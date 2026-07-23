@@ -5,7 +5,7 @@ import * as Location from 'expo-location';
 import { AppState, Dimensions } from 'react-native';
 import type { Coordinate, MapBounds } from '../../types';
 import { searchService } from '../../services/search';
-import { resolveIpLocation } from '../../services/markets';
+import { resolveIpLocation } from '../../services/launch-position';
 import { logger } from '../../utils';
 import {
   SINGLE_LOCATION_ZOOM_LEVEL,

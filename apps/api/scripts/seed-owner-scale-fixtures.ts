@@ -28,7 +28,6 @@ import { randomUUID } from 'node:crypto';
 
 const OWNER_EMAIL = 'kimble.brandonm@gmail.com';
 const IMPORT_USER_EMAIL = 'google-import@crave-search.local';
-const MARKET_KEY = 'region-us-tx-austin';
 const POOL_SIZE = 50;
 
 const prisma = new PrismaClient();
@@ -98,14 +97,22 @@ async function loadPool(): Promise<PoolRestaurant[]> {
     { entity_id: string; name: string }[]
   >(
     `
+    with austin_place as (
+      select bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
+      from places
+      where name = 'Austin' and subdivision_code = 'TX' and country_code = 'US'
+      order by promoted_at desc nulls last
+      limit 1
+    )
     select e.entity_id, e.name
     from core_entities e
     join core_public_entity_scores s
       on s.subject_id = e.entity_id and s.subject_type = 'restaurant'
-    join core_entity_market_presence mp
-      on mp.entity_id = e.entity_id and mp.market_key = '${MARKET_KEY}'
     join core_restaurant_locations l on l.location_id = e.primary_location_id
+    cross join austin_place ap
     where e.type = 'restaurant' and l.google_place_id is not null
+      and l.latitude between ap.bbox_min_lat and ap.bbox_max_lat
+      and l.longitude between ap.bbox_min_lng and ap.bbox_max_lng
     order by s.display_score desc
     limit ${POOL_SIZE}
     `,

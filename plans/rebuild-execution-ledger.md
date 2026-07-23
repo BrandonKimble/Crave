@@ -816,3 +816,229 @@ collection_communities.market_key, geo_boundary_features,
 market_bootstrap_events. No migrations this leg (drops are leg 4's).
 Verify: api tsc clean + 732 tests green; mobile tsc 2 pre-existing +
 396 tests green + eslint/prettier clean.
+
+## MARKETS EXTERMINATION LEG 4 (2026-07-22): physical schema drop + naming sweep
+
+Physical drop, migration `20260722120000_markets_extermination_leg4`
+(applied + resolved): tables `core_markets`, `core_entity_market_presence`,
+`market_bootstrap_events`, `geo_boundary_features`; enum `market_type`;
+columns `polls.market_key`, `poll_topics.market_key`,
+`collection_communities.market_key`, `demand_scoring_runs.market_key`,
+`demand_scoring_candidates.market_key`; view `connection_entity_names`
+(depended on the dropped shape). `collectable_market_key` renamed to
+`engine_name` on `demand_scoring_runs` / `demand_scoring_candidates` /
+`keyword_attempt_history` (physical rename, no more `@map`-flagged alias).
+Code deleted: the empty `markets` module (`markets.module.ts` + README),
+`onboard-market.ts`, `market-provisioning.ts`; `seed-market.ts` renamed to
+`seed-archive.ts` (kept as reference, no longer wired to `db:seed`).
+
+**Naming sweep** (rename identifiers pointing at the live territory/place
+machinery; reword stale-but-live comments; delete dead Prisma-model mocks
+for the now-nonexistent `market` delegate; leave brief past-tense
+"died with the market model, §N" notes as-is):
+
+- `entity-text-search.service.ts`: `marketFilter` → `territoryFilter` (4
+  call sites).
+- `autocomplete.service.ts`: `marketScopeKey` param → `scopePlaceKey`;
+  reworded the poll-lane doc comment ("in the current market" → "in the
+  current viewport scope").
+- `restaurant-location-enrichment.service.ts` +
+  `restaurant-enrichment-queue.service.ts` + `restaurant-enrichment.worker.ts`
+  - `unified-processing.service.ts`: `sourceMarket` → `sourceLocale`
+    end-to-end (the {city, region} bias context, incl. the
+    `RestaurantEnrichmentDispatchContext` shape); `normalizeSourceMarket` →
+    `normalizeSourceLocale`; the never-assigned `inMarket` trail field →
+    `localeBiasMatch`; `hasCandidateMarketPreferenceContext` →
+    `hasCandidateLocaleBiasContext`; `buildAutocompleteMarketRetryQuery` →
+    `buildAutocompleteLocaleRetryQuery`; `marketParts` → `localeParts`. Same
+    rename threaded through `llm.types.ts`
+    (`LLMRestaurantPlaceChooserInput.sourceMarket` → `.sourceLocale`) and
+    `restaurant-place-chooser.prompt.ts` so the call site still type-checks
+    (this was the one non-mechanical spot: the LLM chooser input shares the
+    name and had to move in lockstep or the build breaks).
+- `displayMarketName` (search response metadata field, live on the wire) →
+  `displayPlaceName`, threaded through `search.service.ts`,
+  `search-header-place.spec.ts`, `packages/shared/src/types/search.ts`,
+  and the mobile consumers (`on-demand-notice-copy.ts`,
+  `use-search-results-panel-on-demand-notice-runtime.tsx`,
+  `search-on-demand-notice.spec.ts`, `useSearchRequests.ts`'s
+  `responseDisplayMarketName` → `responseDisplayPlaceName`). Required a
+  `packages/shared` rebuild (`yarn build`) — the api's `tsconfig.build.json`
+  resolves `@crave-search/shared` to its compiled `dist/`, not source, so
+  the stale dist briefly produced 9 phantom `displayPlaceName does not
+exist` errors until rebuilt.
+- `ListDetailPanel.tsx`: the City-slice selector chip was still labeled
+  `title: 'Market'` / `'All markets'` / `key="market"` — a genuine
+  user-facing vestige, not just a comment; relabeled to City / 'All
+  cities' / `key="city"`.
+- Poll-creation header place name (`PollCreationPanelParams.marketName` and
+  friends) renamed end-to-end: `marketName` → `placeName`,
+  `PollCreationHeaderMarket` → `PollCreationHeaderPlace` (+ its
+  `EMPTY_…`/`resolve…`/`are…Equal`/`use…` siblings), `pollCreationMarketName`
+  → `pollCreationPlaceName`, across `PollCreationPanel.tsx`,
+  `useSearchRoutePollCreationPanelSpec.ts`,
+  `useSearchRoutePollCreationSceneStateRuntime.ts`,
+  `app-overlay-route-params-equality.ts(+.spec.ts)`,
+  `app-overlay-route-types.ts`,
+  `use-app-route-poll-creation-scene-input-writer-runtime.tsx`,
+  `PollsPanel.tsx`.
+- Comment rewords (no identifier change): `polls.service.ts` "polls per
+  market" → "polls per place"; `favorite-lists.service.ts` /
+  `favorite-lists.ts` (mobile) "majority market" → "majority city";
+  `signals.service.ts` "lazy lookups — market bbox" → "place bbox" (and
+  the K3 cache-sizing comment's "actors ≫ markets/places" → "actors ≫
+  places", matching the actual `PLACE_BBOX_CACHE_MAX` constant);
+  `poll-entity-seed.service.ts` "Market presence… is derived" (stale
+  present-tense) → reworded to say geometric location data, no legacy
+  market presence involved; `PersistentSheetHeaderHost.tsx` "market-gated
+  create" / "Pick a market" → "place-gated create" / "Pick a place"
+  (describes a still-live registration path, not dead code);
+  `polls.ts` (mobile) "active polls in the market" → "in the scoped
+  place"; `use-search-results-panel-on-demand-notice-runtime.tsx`
+  "response-metadata market names" → "place names" (post-rename).
+- Deleted dead Prisma-model mocks for the extinct `market` delegate:
+  `signals.service.spec.ts`'s `market: { findFirst… }` and
+  `polls-creation-place-rekey.spec.ts`'s `market: { findMany… }` +
+  `marketKey: null` fixture field. Left the two files' `not.toContain`/
+  `not.toHaveProperty('marketKey')` extermination-proof assertions in
+  place — those are the point of the test, not the vestige.
+- Fixed a genuinely broken dev script surfaced by the sweep's `tsc`
+  pass: `apps/api/scripts/poll-comment-probe.ts` was still passing
+  `marketKey: 'region-us-ny-new-york'` into `prisma.poll.create` — a
+  column dropped this leg. Removed the field (probe doesn't need a
+  place scope to post comments).
+
+**Deliberately left alone** (case-insensitive `market` hits that are NOT
+naming vestiges): brief past-tense "died with the market model / §N"
+historical comments across `entity-text-search.service.ts`,
+`autocomplete.service.ts`, `places.module.ts`, `tomtom-chain-probe.port.ts`,
+`launch-position.controller.ts`, `polls.service.ts`, `poll-graduation.
+service.ts`, `signals.service.ts`, `signal-demand-read.territory.spec.ts`,
+`search-header-place.spec.ts`, `search-query.builder.ts`,
+`search-coverage.service.ts`, `engine-coverage.service.ts` /
+`.spec.ts`, `search-query-suggestion.service.ts`, `on-demand-tuning.
+constants.ts`, `search.controller.ts`, `entity-resolution.service.ts` /
+`.types.ts`, the reddit-collector files, `notifications-poll-release.
+spec.ts`, `notifications.service.ts`, mobile `MainLaunchCoordinator.tsx`,
+`pollsHeaderVisuals.tsx`, `launch-position.ts`, `search.ts`,
+`profile-mutable-state-record.ts`, `search-desired-state-contract.ts`,
+`on-demand-notice-copy.ts`, `search-on-demand-notice.spec.ts`; the
+`polls-feed.spec.ts` / `polls-signals-write.spec.ts` /
+`poll-weekly-ritual.service.spec.ts` dead-`market`-delegate mocks (same
+extermination-proof pattern as the two deleted above, but not named in
+scope — left for a follow-up pass); informal "cross-market
+outlier"/"another market" geography jargon in the map/camera runtime
+(`search-map.tsx`, `resolve-fit-all-camera.ts(+.spec)`,
+`resolve-focus-camera.ts(+.spec)`, `use-direct-search-map-source-
+controller.ts`, `profile-restaurant-camera-motion-runtime.ts`,
+`search-world-fetch.ts`) — describes distant geography, not the deleted
+schema; `LLMPollAxis.marketHint` / `market_hint` (llm.types.ts,
+llm-response-schemas.ts, poll-weekly-ritual.service.ts, llm.service.ts,
+poll-subject-prompt.md) — an LLM-contract field name (a locality phrase
+the model extracts from poll text), independent of the deleted `core_
+markets` table; `restaurant-place-chooser.prompt.ts` / `entity-match-
+prompt.md` / `relevance-gate-prompt.md` "market" as ordinary English
+(source market, in-market brand cluster, grocers/markets) inside LLM
+instruction text, not a schema reference; `apps/mobile/src/perf/perf-
+scenario-attribution.ts`'s `MARKET_DEMAND_SCENARIO_PREFIX` — a perf
+scenario label (`maestro/perf/flows/market-demand/`), not tied to the
+dropped tables; `apps/api/scripts/search-harness/*` + `data-fixes/README.
+md` + `seed-owner-fixtures.ts` / `seed-poll-fixtures.ts` — dev-only
+harness/fixture scripts against an archived pre-leg-4 snapshot
+(`frozen-fixture.v1.json`), out of scope for a live-code sweep.
+**Follow-up pass (same day): the three flagged-broken scripts, resolved to
+zero remnants.** Per-script verdict:
+
+- **`check-tomtom-regional-health.ts` — DELETED.** Its only purpose was
+  regional `core_markets` boundary/geometry health (TomTom source-boundary
+  counts, `core_markets.geometry` validity, `collection_communities.
+market_key` join) — no non-market purpose to re-key onto. Deleted with
+  its wiring: `apps/api/package.json`'s `tomtom:regional-health` script,
+  and root `package.json`'s `tomtom-market:health` /
+  `tomtom-market:deploy-gate` / `tomtom-market:delete-gate` entries. Two
+  more files turned out to be pure fallout of that same market-only
+  purpose and were deleted too: `scripts/tomtom-market-deploy-gate.sh`
+  (deploy gate whose only real branch pointed operators at the
+  already-deleted `onboard-market.ts` for "regional market repair") and
+  `scripts/tomtom-market-cutover-delete-gate.sh` (a 430-line leg-2/3-era
+  regression gate asserting invariants about `apps/api/src/modules/
+markets/*` — `market-registry.service.ts`, `tomtom-boundary-bootstrap.
+service.ts`, `markets.controller.ts` — and `apps/mobile/src/services/
+markets.ts`, all of which no longer exist; the gate could not have run
+  since those legs landed).
+- **`seed-google-photos.ts` — RE-KEYED.** Live, non-market purpose (dev
+  photo-gallery seeding through the real Cloudinary/photos pipeline). The
+  `top_austin` CTE's `JOIN core_entity_market_presence mp ON … mp.market_key
+= 'region-us-tx-austin'` became a `cross join` on an `austin_place` CTE
+  (`SELECT … FROM places WHERE name='Austin' AND subdivision_code='TX' AND
+country_code='US'`) with a `latitude/longitude BETWEEN bbox_min_*/bbox_
+max_*` containment check against `core_restaurant_locations` — the same
+  bbox-containment shape `restaurant-location-enrichment.service.ts`
+  already uses elsewhere, minus the ST_Covers polygon precision (this is a
+  dev-fixture script; bbox is a fair substitute and doesn't depend on the
+  place's Tier-2 geometry being promoted).
+- **`seed-owner-scale-fixtures.ts` — RE-KEYED.** Live, non-market purpose
+  (owner-account list/photo scale fixtures). Same fix as above applied to
+  `loadPool()`'s restaurant pool query; the `MARKET_KEY` constant is gone
+  (the query resolves Austin from `places` directly, no key indirection
+  needed now that there's no market row to key off).
+
+**Also found and fixed while re-checking `scripts/` for dropped-table
+references**: `apps/api/scripts/search-harness/frozen-fixture.ts` — the
+harness-fixture GENERATOR (not just a consumer of the already-archived
+`frozen-fixture.v1.json`) was still running `SELECT entity_id, market_key
+FROM core_entity_market_presence` to stamp each fixture entity. Re-keyed
+to the same bbox-containment shape, resolving the region from
+`_shared.ts`'s `DEFAULT_MARKET_KEY` label via a small
+`REGION_PLACE_BY_MARKET_KEY` lookup (the two keys this harness family has
+ever used, NYC/Austin); `FixtureEntity.hasMarketPresence`/`marketKeys` →
+`hasRegionPresence`/`regionKeys` (only consumed within `_shared.ts` +
+`frozen-fixture.ts` itself, so the rename was self-contained — no other
+harness script reads those fields). `DEFAULT_MARKET_KEY` itself and its
+~12 label-only consumers (`typo-replay.ts`, `margin-link-eval.ts`,
+`variant-link-replay.ts`, etc. — none of them pass it into a live
+service call, it's printed as a run-header string) were deliberately left
+alone: they don't reference a dropped table, they're not broken, and a
+full rename would be relabeling a harmless legacy label across a dozen
+files for no functional gain. Reworded its doc comment to say so
+(display-only bookkeeping, not a live filter — recall is engine-territory
+scoped in prod now).
+
+**Found, judged out of scope, left alone**: `scripts/search-demand-
+cutover-delete-gate.sh` references `JOIN core_markets m` and
+`LOWER(mp.market_key)`, but it was ALREADY broken before this leg for an
+unrelated reason (it asserts against `apps/api/src/modules/analytics/
+search-demand-aggregation.service.ts`, a file that no longer exists —
+gone in an earlier, separate cutover). Its market references are one
+symptom of a stale multi-concern gate, not a market-specific remnant;
+fixing it properly means rebuilding the whole search-demand-cutover gate,
+which is a different leg's cleanup. `apps/api/scripts/data-fixes/{README.
+md,fix-integrity-defects.sql}` still literally mention
+`core_entity_market_presence` (an INSERT/DELETE against it) — left alone
+as an archival record of an already-executed one-time data fix (the
+README states the post-fix counts), not a script anyone re-runs.
+
+None of the three re-keyed/generator scripts are exercised by `yarn
+build`/`yarn jest` (scripts are excluded from the build tsconfig and have
+no tests, `search-harness/` doubly so), so the fix is verified by `cd
+apps/api && npx tsc --noEmit -p tsconfig.json` (0 errors, confirms every
+script in the tree still type-checks) rather than a runtime run against a
+live DB.
+
+**Grep-proof after the sweep**: `grep -rin "market" apps/api/src apps/api/
+scripts packages/shared/src apps/mobile/src` (excluding the frozen JSON/
+JSONL fixtures, font license text, and the untouched `apps/mobile/ios`
+native surface) returns ~300 hits, all either (a) the historical/informal/
+LLM-contract/harness categories above, or (b) extermination-proof spec
+assertions (`not.toContain('market...')`, `not.toHaveProperty('market...')`).
+No remaining hit is a live naming vestige pointing at the dropped schema.
+
+Verify: `apps/api` — `npx prisma generate && yarn build` (0 errors, after
+rebuilding `packages/shared` which the sweep's `displayPlaceName` type
+change touched) + `yarn jest --silent` → 732/732 green. `apps/mobile` —
+`yarn jest --silent` → 396/396 green; `npx tsc --noEmit` → exactly the 2
+pre-existing errors (`search-map.tsx` `nativeHostKey`,
+`use-search-runtime-camera-intent-runtime.ts` `animationCompletionId`), no
+new ones. API rebuilt + restarted (`lsof -ti tcp:3000 -sTCP:LISTEN | xargs
+kill -9` → relaunch `node --enable-source-maps dist/main`); smoke:
+`GET /api/v1/places/launch-position` → 200.

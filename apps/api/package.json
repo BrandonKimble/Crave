@@ -43,8 +43,6 @@
     "db:migrate:reset": "npx prisma migrate reset",
     "db:migrate:status": "npx prisma migrate status",
     "db:generate": "npx prisma generate",
-    "tomtom:deploy-gate": "bash ../../scripts/tomtom-market-deploy-gate.sh",
-    "tomtom:regional-health": "ts-node scripts/check-tomtom-regional-health.ts",
     "crave-score:rebuild": "ts-node scripts/rebuild-crave-scores.ts",
     "crave-score:fixtures": "ts-node scripts/validate-crave-score-fixtures.ts",
     "crave-score:backfill-mentions": "ts-node scripts/backfill-item-mention-records.ts",

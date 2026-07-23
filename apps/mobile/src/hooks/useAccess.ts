@@ -9,7 +9,7 @@ export const accessQueryKey = (userId: string | null | undefined) =>
   ['users', 'me', 'access', userId ?? 'anonymous'] as const;
 
 export interface AccessState {
-  /** SERVER-TRUTH: does this user currently have Crave+ access. */
+  /** SERVER-TRUTH: does this user currently have Crave Premium access. */
   active: boolean;
   /** null while active = lifetime; string ISO expiry otherwise. */
   expiresAt: string | null;

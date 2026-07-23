@@ -74,7 +74,6 @@ type RestaurantDishRow = {
   restaurant_crave_score: unknown;
   restaurant_name: string;
   restaurant_aliases: string[];
-  market_key: string;
   restaurant_price_level: number | null;
   food_name: string;
   food_aliases: string[];
@@ -748,7 +747,7 @@ export class SearchService {
           // §2 header law (master plan §22 cut 3): the VALUE comes from the
           // Place Catalog (resolveDisplayPlaceName); the FIELD name is the
           // frozen wire contract until the mobile-side cut.
-          displayMarketName: displayPlaceName,
+          displayPlaceName,
           // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
           // viewport + the engines present. Consumers judge per their own
           // law (§16 — no threshold baked here); nothing market-shaped.
@@ -1086,7 +1085,7 @@ export class SearchService {
         primaryFoodTerm: primaryFoodTerm || undefined,
         // §2 header law: catalog-derived value, frozen field name (see the
         // no-relaxation metadata site).
-        displayMarketName: displayPlaceName,
+        displayPlaceName,
         // ENGINE-COVERAGE (leg 2): see the no-relaxation metadata site.
         engineCoverageShare: engineViewportCoverage.share,
         engineCoverage:

@@ -18,12 +18,12 @@ import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
  * call runs the ACTUAL production code path — and they never edit any hot file.
  */
 
-/** Default market for restaurant recall scoping. The dev corpus is ~99% NYC
- *  (region-us-ny-new-york: 1782/1801 restaurants have this market presence),
- *  which is also the market the deleted A/B harness + search-link-probe target.
- *  foods/attributes are NEVER market-filtered (the filter only applies to
- *  type='restaurant'), so this only affects the restaurant bucket. Override with
- *  MARKET_KEY=… env. */
+/** Default region LABEL for harness output (the dev corpus is ~99% NYC). This
+ *  is display-only now: the old market-keyed recall scoping it named died with
+ *  the market model (leg 2/leg 3) — restaurant recall is engine-territory
+ *  scoped in prod, and these harnesses run global (unscoped) queries, so the
+ *  label is bookkeeping for reading harness output, not a live filter value.
+ *  Override with MARKET_KEY=… env. */
 export const DEFAULT_MARKET_KEY =
   process.env.MARKET_KEY?.trim() || 'region-us-ny-new-york';
 
@@ -38,11 +38,13 @@ export interface FixtureEntity {
   name: string;
   type: EntityType;
   aliases: string[];
-  /** true when this entity has ≥1 market_presence row (restaurants only, in
-   *  practice) — lets a harness know whether market scoping can hide it. */
-  hasMarketPresence: boolean;
-  /** the market keys this entity is present in (may be empty). */
-  marketKeys: string[];
+  /** true when this entity's primary location falls inside the DEFAULT_MARKET_KEY
+   *  region's bbox (restaurants only, in practice — the geometric successor to
+   *  the old market_presence row; §13 leg 3). */
+  hasRegionPresence: boolean;
+  /** region labels this entity's location falls inside (may be empty; today
+   *  at most one — the single default region bbox check). */
+  regionKeys: string[];
 }
 
 export interface Fixture {

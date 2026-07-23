@@ -59,7 +59,7 @@ const CLOSE_WINDOW_OPTIONS: ReadonlyArray<{ label: string; value: number }> = [
 
 type UsePollCreationPanelSpecOptions = {
   visible: boolean;
-  marketName?: string | null;
+  placeName?: string | null;
   bounds?: MapBounds | null;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
@@ -67,9 +67,9 @@ type UsePollCreationPanelSpecOptions = {
   onCreated: (poll: Poll) => void;
 };
 
-// The header (market-aware title + close action) no longer rides this spec — it is extracted to
-// the persistent-header descriptor below (P3), which re-sources the market from the pollCreation
-// route params. `marketName` stays on the options contract for the callers; the spec itself only
+// The header (place-aware title + close action) no longer rides this spec — it is extracted to
+// the persistent-header descriptor below (P3), which re-sources the place from the pollCreation
+// route params. `placeName` stays on the options contract for the callers; the spec itself only
 // consumes what the BODY (submit flow) needs.
 export const usePollCreationPanelSpec = ({
   visible,
@@ -342,24 +342,24 @@ export const usePollCreationPanelSpec = ({
 
 // ─── Persistent header descriptor (P3, page-switch-master-plan.md §6-P3) ────────────────────
 // The poll-creation header is extracted OUT of the panel spec into the hoisted persistent chrome
-// (PersistentSheetHeaderHost). The place-aware title re-sources marketName (the feed's place
+// (PersistentSheetHeaderHost). The place-aware title re-sources placeName (the feed's place
 // verdict snapshot) from the SAME place the panel spec got it — the active pollCreation route's
 // params (the exact polls-parent guard useSearchRoutePollCreationSceneStateRuntime applies) —
 // read live from the route-overlay navigation authority. The last resolved label is LATCHED
 // while the header outlives the route for a dismiss frame, so the title never flickers to the
 // fallback mid-close.
 
-type PollCreationHeaderMarket = {
-  marketName: string | null;
+type PollCreationHeaderPlace = {
+  placeName: string | null;
 };
 
-const EMPTY_POLL_CREATION_HEADER_MARKET: PollCreationHeaderMarket = {
-  marketName: null,
+const EMPTY_POLL_CREATION_HEADER_PLACE: PollCreationHeaderPlace = {
+  placeName: null,
 };
 
-const resolvePollCreationHeaderMarket = (
+const resolvePollCreationHeaderPlace = (
   route: OverlayRouteEntry
-): PollCreationHeaderMarket | null => {
+): PollCreationHeaderPlace | null => {
   if (route.key !== 'pollCreation') {
     return null;
   }
@@ -368,50 +368,50 @@ const resolvePollCreationHeaderMarket = (
     return null;
   }
   return {
-    marketName: params?.marketName ?? null,
+    placeName: params?.placeName ?? null,
   };
 };
 
-const arePollCreationHeaderMarketsEqual = (
-  left: PollCreationHeaderMarket | null,
-  right: PollCreationHeaderMarket | null
+const arePollCreationHeaderPlacesEqual = (
+  left: PollCreationHeaderPlace | null,
+  right: PollCreationHeaderPlace | null
 ): boolean =>
-  left === right || (left != null && right != null && left.marketName === right.marketName);
+  left === right || (left != null && right != null && left.placeName === right.placeName);
 
-const usePollCreationHeaderMarket = (): PollCreationHeaderMarket => {
+const usePollCreationHeaderPlace = (): PollCreationHeaderPlace => {
   const { routeOverlayNavigationAuthority } = useAppRouteSceneRuntime();
-  const [market, setMarket] = React.useState<PollCreationHeaderMarket>(
+  const [place, setPlace] = React.useState<PollCreationHeaderPlace>(
     () =>
-      resolvePollCreationHeaderMarket(
+      resolvePollCreationHeaderPlace(
         routeOverlayNavigationAuthority.getSnapshot().activeOverlayRoute
-      ) ?? EMPTY_POLL_CREATION_HEADER_MARKET
+      ) ?? EMPTY_POLL_CREATION_HEADER_PLACE
   );
   React.useEffect(
     () =>
       routeOverlayNavigationAuthority.registerTarget({
-        selector: (snapshot) => resolvePollCreationHeaderMarket(snapshot.activeOverlayRoute),
+        selector: (snapshot) => resolvePollCreationHeaderPlace(snapshot.activeOverlayRoute),
         syncNavigationSnapshot: (_snapshot, resolved) => {
-          // LATCH: null (another route is active) keeps the last pollCreation market so the title
+          // LATCH: null (another route is active) keeps the last pollCreation place so the title
           // holds steady on dismiss frames; a fresh pollCreation route always overwrites it.
           if (resolved != null) {
-            setMarket((previous) =>
-              arePollCreationHeaderMarketsEqual(previous, resolved) ? previous : resolved
+            setPlace((previous) =>
+              arePollCreationHeaderPlacesEqual(previous, resolved) ? previous : resolved
             );
           }
         },
-        isEqual: arePollCreationHeaderMarketsEqual,
+        isEqual: arePollCreationHeaderPlacesEqual,
         attributionLabel: 'PollCreationPersistentHeaderTitle',
       }),
     [routeOverlayNavigationAuthority]
   );
-  return market;
+  return place;
 };
 
 const PollCreationPersistentHeaderTitle = React.memo(() => {
-  const { marketName } = usePollCreationHeaderMarket();
+  const { placeName } = usePollCreationHeaderPlace();
   // HEADER SUBJECT-STORE (ratified 2026-07-21): the creation place label reads
   // the ONE client subject verdict once committed — the route-param
-  // marketName (creation-context snapshot) is only the pre-first-commit
+  // placeName (creation-context snapshot) is only the pre-first-commit
   // fallback, so the title names where the map actually IS, not where the
   // feed last fetched.
   const { verdict: subjectVerdict } = useViewportSubjectState();
@@ -419,8 +419,8 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
     ? subjectVerdict.kind === 'place'
       ? `Add a poll in ${subjectVerdict.placeName}`
       : 'Add a poll near here'
-    : marketName?.trim()
-      ? `Add a poll in ${marketName.trim()}`
+    : placeName?.trim()
+      ? `Add a poll in ${placeName.trim()}`
       : 'Add a poll near here';
   return <ChromeTitleText>{toSingleLineText(headerTitle)}</ChromeTitleText>;
 });

@@ -59,7 +59,7 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
     left.openerRouteKey === right.openerRouteKey &&
     left.routeInstanceId === right.routeInstanceId,
   pollCreation: (left, right) =>
-    left.marketName === right.marketName &&
+    left.placeName === right.placeName &&
     // Reference compare (the old `bounds` arm's semantics) — bounds is a captured
     // map-region snapshot, stable per publish.
     left.bounds === right.bounds &&

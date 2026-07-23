@@ -25,7 +25,7 @@ export class KeywordAttemptHistoryService {
   }
 
   async recordAttempt(params: {
-    collectableMarketKey: string;
+    engineName: string;
     /** §11 attempt-ledger key: (engine, term). The legacy market-key PK
      *  column survives until Phase C; both are stamped. */
     engineId?: string;
@@ -39,12 +39,10 @@ export class KeywordAttemptHistoryService {
       !Number.isNaN(params.attemptedAt.getTime())
         ? params.attemptedAt
         : new Date();
-    const collectableMarketKey = params.collectableMarketKey
-      .trim()
-      .toLowerCase();
+    const engineName = params.engineName.trim().toLowerCase();
     const normalizedTerm = params.normalizedTerm.trim().toLowerCase();
 
-    if (!collectableMarketKey.length || !normalizedTerm.length) {
+    if (!engineName.length || !normalizedTerm.length) {
       return;
     }
 
@@ -57,13 +55,13 @@ export class KeywordAttemptHistoryService {
     try {
       await this.prisma.keywordAttemptHistory.upsert({
         where: {
-          collectableMarketKey_normalizedTerm: {
-            collectableMarketKey,
+          engineName_normalizedTerm: {
+            engineName,
             normalizedTerm,
           },
         },
         create: {
-          collectableMarketKey,
+          engineName,
           engineId: params.engineId ?? null,
           normalizedTerm,
           lastAttemptAt: attemptedAt,
@@ -85,7 +83,7 @@ export class KeywordAttemptHistoryService {
       });
     } catch (error) {
       this.logger.warn('Failed to record keyword attempt history', {
-        collectableMarketKey,
+        engineName,
         normalizedTerm,
         outcome: params.outcome,
         error:

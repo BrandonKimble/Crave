@@ -16,8 +16,7 @@ const DEFAULT_TRACE_ALL_RETENTION_DAYS = 14;
 
 export interface CreateDemandScoringRunInput {
   consumerKind: DemandScoringConsumerKind;
-  marketKey?: string | null;
-  collectableMarketKey?: string | null;
+  engineName?: string | null;
   cycleStartAt: Date;
   cycleEndAt: Date;
   scorerVersion: string;
@@ -33,8 +32,7 @@ export interface DemandScoringCandidateTraceInput {
   entityId?: string | null;
   entityType?: EntityType | null;
   normalizedText?: string | null;
-  marketKey?: string | null;
-  collectableMarketKey?: string | null;
+  engineName?: string | null;
   bucket?: string | null;
   lane?: string | null;
   reason?: string | null;
@@ -61,10 +59,7 @@ export class DemandScoringTraceService {
     const run = await this.prisma.demandScoringRun.create({
       data: {
         consumerKind: input.consumerKind,
-        marketKey: this.normalizeScopeKey(input.marketKey),
-        collectableMarketKey: this.normalizeScopeKey(
-          input.collectableMarketKey,
-        ),
+        engineName: this.normalizeScopeKey(input.engineName),
         cycleStartAt: input.cycleStartAt,
         cycleEndAt: input.cycleEndAt,
         scorerVersion: input.scorerVersion,
@@ -183,10 +178,7 @@ export class DemandScoringTraceService {
       entityId: candidate.entityId ?? null,
       entityType: candidate.entityType ?? null,
       normalizedText: this.normalizeText(candidate.normalizedText),
-      marketKey: this.normalizeScopeKey(candidate.marketKey),
-      collectableMarketKey: this.normalizeScopeKey(
-        candidate.collectableMarketKey,
-      ),
+      engineName: this.normalizeScopeKey(candidate.engineName),
       bucket: this.normalizeText(candidate.bucket),
       lane: this.normalizeText(candidate.lane),
       reason: this.normalizeText(candidate.reason),

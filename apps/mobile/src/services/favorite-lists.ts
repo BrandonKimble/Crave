@@ -29,7 +29,7 @@ export interface FavoriteListSummary {
   pinned?: boolean;
   /** Wave-2 §2 "Use your photos": tile gallery renders the owner's own photos. */
   useOwnPhotos?: boolean;
-  /** Majority market of the list's items (§8.15 city grouping) — only on the
+  /** Majority city of the list's items (§8.15 city grouping) — only on the
    *  public profile read. */
   city?: string | null;
   shareEnabled: boolean;

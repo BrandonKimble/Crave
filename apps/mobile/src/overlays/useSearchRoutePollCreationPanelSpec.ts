@@ -8,7 +8,7 @@ type PollCreationPanelParams = Parameters<typeof usePollCreationPanelSpec>[0];
 type UseSearchRoutePollCreationPanelSpecArgs = {
   routeSceneRuntime: AppRouteSceneRuntime;
   sceneLayout: SearchRouteSceneLayoutState;
-  pollCreationMarketName: PollCreationPanelParams['marketName'];
+  pollCreationPlaceName: PollCreationPanelParams['placeName'];
   pollCreationBounds: PollCreationPanelParams['bounds'];
   shouldShowPollCreationPanel: boolean;
 };
@@ -16,13 +16,13 @@ type UseSearchRoutePollCreationPanelSpecArgs = {
 export const useSearchRoutePollCreationPanelSpec = ({
   routeSceneRuntime,
   sceneLayout,
-  pollCreationMarketName,
+  pollCreationPlaceName,
   pollCreationBounds,
   shouldShowPollCreationPanel,
 }: UseSearchRoutePollCreationPanelSpecArgs): SearchRoutePublishedSceneParts | null => {
   const pollCreationPublishedSceneParts = usePollCreationPanelSpec({
     visible: shouldShowPollCreationPanel,
-    marketName: pollCreationMarketName,
+    placeName: pollCreationPlaceName,
     bounds: pollCreationBounds,
     searchBarTop: sceneLayout.searchBarTop,
     snapPoints: sceneLayout.snapPoints,

@@ -36,12 +36,14 @@
 - [projection-rebuild.service.ts](/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/projection-rebuild.service.ts): Rebuilds projections from active evidence.
 - [unified-processing.service.ts](/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/unified-processing.service.ts): Persists entities, events, items, and triggers rebuild.
 
-## Community / Market Boundary
+## Source Boundary
 
-- Reddit collection coverage is driven only by active community-to-market links in `collection_communities`.
-- A market existing in `core_markets` does not automatically make it collectible.
-- Search and polls can bootstrap locality markets for new areas, but those markets remain poll/search-only until a real community is linked manually.
-- Keyword scheduling loads its targets from the linked collectable markets surfaced by `MarketRegistryService.listCommunityMarketTargets(...)`.
+- Reddit collection coverage is driven by SOURCE rows (`sources` table, §10):
+  per-(source, lane) cadence state in `source_collection_lanes`.
+- `collection_communities` survives only as collector-owned saturation
+  metadata (avg posts/day, safe interval) keyed by community name.
+- Keyword scheduling keys off engines (operator-attached member-place sets);
+  provenance keys off the source's `anchorPlaceId`/`engineId`.
 
 ## Projection Notes
 
@@ -102,11 +104,11 @@ Build shared types first:
 yarn workspace @crave-search/shared build
 ```
 
-Seed a market from archives (THE seeding command — requires the API running; the
+Seed a subreddit from archives (THE seeding command — requires the API running; the
 app's poller owns the batch lifecycle):
 
 ```bash
-yarn workspace api ts-node scripts/seed-market.ts --subreddit austinfood
+yarn workspace api ts-node scripts/seed-archive.ts --subreddit austinfood
 ```
 
 ## Notes

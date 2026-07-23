@@ -1,8 +1,13 @@
 /**
  * Subreddit Onboarding Script
  *
- * Creates or updates a subreddit, fetches a Google Places viewport for
- * city bounds, and queues volume calculation jobs.
+ * Creates or updates a subreddit's collection_communities metadata row
+ * (collector-owned saturation metadata: location name, active flag) and
+ * queues the volume calculation job (real Reddit API posting-rate sampling).
+ *
+ * Source identity (sources row: platform/handle, anchor place, engine) is
+ * operator-managed separately (§10 source-centric collector state); the old
+ * market resolution/mapping machinery died in the markets-extermination legs.
  */
 
 import * as dotenv from 'dotenv';
@@ -17,61 +22,33 @@ import { Queue } from 'bull';
 import { Prisma } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { GooglePlacesService } from '../src/modules/external-integrations/google-places';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
-const CITY_PLACE_TYPES = new Set([
-  'locality',
-  'administrative_area_level_2',
-  'administrative_area_level_1',
-  'postal_town',
-]);
-
-const SUBREDDIT_SUFFIXES = [
-  'food',
-  'foods',
-  'eats',
-  'dining',
-  'restaurant',
-  'restaurants',
-];
-
 type ParsedArgs = {
-  subreddit: string | null;
-  centerLat: number | null;
-  centerLng: number | null;
+  subreddit: string;
   locationName: string | null;
   overwrite: boolean;
   skipVolume: boolean;
-  fillMissing: boolean;
 };
 
 const parseArgs = (): ParsedArgs => {
   const args = process.argv.slice(2);
   const usage =
-    'Usage: yarn ts-node apps/api/scripts/onboard-subreddit.ts [subreddit] [centerLat centerLng] [--location-name <name>] [--overwrite] [--skip-volume] [--fill-missing] (omit subreddit to batch fill missing rows)';
+    'Usage: yarn ts-node apps/api/scripts/onboard-subreddit.ts <subreddit> [--location-name <name>] [--overwrite] [--skip-volume]';
 
   const positionals: string[] = [];
   let locationName: string | null = null;
   let overwrite = false;
   let skipVolume = false;
-  let fillMissing = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
-    if (arg === '--only-missing') {
-      continue;
-    }
     if (arg === '--skip-volume') {
       skipVolume = true;
       continue;
     }
     if (arg === '--overwrite') {
       overwrite = true;
-      continue;
-    }
-    if (arg === '--fill-missing') {
-      fillMissing = true;
       continue;
     }
     if (arg === '--location-name' || arg.startsWith('--location-name=')) {
@@ -91,318 +68,10 @@ const parseArgs = (): ParsedArgs => {
 
   const subreddit = positionals[0]?.trim() || null;
   if (!subreddit) {
-    if (locationName) {
-      throw new Error(`location-name requires a subreddit.\n${usage}`);
-    }
-    fillMissing = true;
+    throw new Error(`Subreddit name is required.\n${usage}`);
   }
 
-  const centerLat =
-    positionals[1] !== undefined ? Number(positionals[1]) : null;
-  const centerLng =
-    positionals[2] !== undefined ? Number(positionals[2]) : null;
-
-  if ((centerLat === null) !== (centerLng === null)) {
-    throw new Error('Provide both centerLat and centerLng, or neither.');
-  }
-
-  if (centerLat !== null && !Number.isFinite(centerLat)) {
-    throw new Error('centerLat must be a valid number.');
-  }
-
-  if (centerLng !== null && !Number.isFinite(centerLng)) {
-    throw new Error('centerLng must be a valid number.');
-  }
-
-  return {
-    subreddit,
-    centerLat,
-    centerLng,
-    locationName,
-    overwrite,
-    skipVolume,
-    fillMissing,
-  };
-};
-
-const normalizeMarketKey = (value: string): string =>
-  value.trim().toLowerCase().replace(/\s+/g, '_');
-
-const resolveViewportCenter = (viewport?: {
-  low?: { latitude?: number; longitude?: number };
-  high?: { latitude?: number; longitude?: number };
-}): { lat: number; lng: number } | null => {
-  const lowLat = viewport?.low?.latitude;
-  const lowLng = viewport?.low?.longitude;
-  const highLat = viewport?.high?.latitude;
-  const highLng = viewport?.high?.longitude;
-  if (
-    typeof lowLat !== 'number' ||
-    typeof lowLng !== 'number' ||
-    typeof highLat !== 'number' ||
-    typeof highLng !== 'number'
-  ) {
-    return null;
-  }
-
-  return {
-    lat: (lowLat + highLat) / 2,
-    lng: (lowLng + highLng) / 2,
-  };
-};
-
-const computeDistanceMiles = (
-  origin: { lat: number; lng: number },
-  target: { lat: number; lng: number },
-): number => {
-  const toRad = (value: number) => (value * Math.PI) / 180;
-  const dLat = toRad(target.lat - origin.lat);
-  const dLng = toRad(target.lng - origin.lng);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(origin.lat)) *
-      Math.cos(toRad(target.lat)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return 3958.8 * c;
-};
-
-const resolveLocalityDisplayName = (
-  addressComponents: Array<{
-    shortText?: string;
-    longText?: string;
-    types?: string[];
-  }> = [],
-  fallbackName?: string | null,
-): string | null => {
-  const lookup = (type: string): string | null => {
-    const component = addressComponents.find((entry) =>
-      entry.types?.includes(type),
-    );
-    if (!component) {
-      return null;
-    }
-    return component.shortText || component.longText || null;
-  };
-
-  const locality =
-    lookup('locality') ||
-    lookup('postal_town') ||
-    lookup('sublocality') ||
-    lookup('sublocality_level_1');
-  if (locality) {
-    return locality;
-  }
-
-  if (fallbackName) {
-    const [first] = fallbackName.split(',');
-    return first?.trim() || fallbackName.trim();
-  }
-
-  return null;
-};
-
-const buildCityQuery = (subreddit: string): string => {
-  const normalized = subreddit.toLowerCase().replace(/[_-]+/g, ' ').trim();
-  if (!normalized) {
-    return subreddit;
-  }
-
-  let stripped = normalized;
-  for (const suffix of SUBREDDIT_SUFFIXES) {
-    if (stripped.endsWith(` ${suffix}`)) {
-      stripped = stripped.slice(0, -(suffix.length + 1)).trim();
-      break;
-    }
-    if (stripped.endsWith(suffix) && stripped.length > suffix.length + 2) {
-      stripped = stripped.slice(0, -suffix.length).trim();
-      break;
-    }
-  }
-
-  return stripped || normalized;
-};
-
-const pickCityPlaceId = (
-  places: Array<{ id?: string; types?: string[] }>,
-): string | null => {
-  for (const place of places) {
-    const types = place.types ?? [];
-    if (types.some((type) => CITY_PLACE_TYPES.has(type))) {
-      return place.id ?? null;
-    }
-  }
-
-  return places[0]?.id ?? null;
-};
-
-const resolveExistingMarketKey = async (
-  prisma: PrismaService,
-  center: { lat: number; lng: number },
-  excludeName?: string,
-): Promise<string | null> => {
-  type AreaCandidate = {
-    name: string;
-    marketKey: string;
-    area: number;
-    center: { lat: number; lng: number };
-  };
-
-  const marketCandidates = await prisma.market.findMany({
-    where: {
-      isActive: true,
-      bboxNeLat: { not: null },
-      bboxNeLng: { not: null },
-      bboxSwLat: { not: null },
-      bboxSwLng: { not: null },
-      ...(excludeName
-        ? {
-            sourceCommunity: {
-              not: excludeName.toLowerCase(),
-            },
-          }
-        : {}),
-    },
-    select: {
-      marketKey: true,
-      centerLatitude: true,
-      centerLongitude: true,
-      bboxNeLat: true,
-      bboxNeLng: true,
-      bboxSwLat: true,
-      bboxSwLng: true,
-    },
-  });
-
-  const resolveNumber = (
-    value: Prisma.Decimal | number | null,
-  ): number | null =>
-    value instanceof Prisma.Decimal ? value.toNumber() : (value ?? null);
-
-  const containingMarkets = marketCandidates
-    .map((row) => {
-      const northEastLat = resolveNumber(row.bboxNeLat);
-      const northEastLng = resolveNumber(row.bboxNeLng);
-      const southWestLat = resolveNumber(row.bboxSwLat);
-      const southWestLng = resolveNumber(row.bboxSwLng);
-      if (
-        northEastLat === null ||
-        northEastLng === null ||
-        southWestLat === null ||
-        southWestLng === null
-      ) {
-        return null;
-      }
-      const minLat = Math.min(southWestLat, northEastLat);
-      const maxLat = Math.max(southWestLat, northEastLat);
-      const minLng = Math.min(southWestLng, northEastLng);
-      const maxLng = Math.max(southWestLng, northEastLng);
-      const inBounds =
-        center.lat >= minLat &&
-        center.lat <= maxLat &&
-        center.lng >= minLng &&
-        center.lng <= maxLng;
-      if (!inBounds) {
-        return null;
-      }
-      const area = Math.abs(maxLat - minLat) * Math.abs(maxLng - minLng);
-      const centerLat = resolveNumber(row.centerLatitude);
-      const centerLng = resolveNumber(row.centerLongitude);
-      const candidateCenter =
-        typeof centerLat === 'number' && typeof centerLng === 'number'
-          ? { lat: centerLat, lng: centerLng }
-          : {
-              lat: (northEastLat + southWestLat) / 2,
-              lng: (northEastLng + southWestLng) / 2,
-            };
-      return {
-        name: row.marketKey,
-        marketKey: row.marketKey,
-        area,
-        center: candidateCenter,
-      };
-    })
-    .filter((row): row is AreaCandidate => Boolean(row));
-
-  if (containingMarkets.length) {
-    const epsilon = 1e-6;
-    const best = containingMarkets.reduce(
-      (winner, candidate) => {
-        if (!winner || candidate.area < winner.area - epsilon) {
-          return candidate;
-        }
-        if (Math.abs(candidate.area - winner.area) <= epsilon) {
-          const candidateDistance = computeDistanceMiles(
-            center,
-            candidate.center,
-          );
-          const winnerDistance = computeDistanceMiles(center, winner.center);
-          if (candidateDistance < winnerDistance) {
-            return candidate;
-          }
-        }
-        return winner;
-      },
-      null as (typeof containingMarkets)[number] | null,
-    );
-
-    const rawKey = best?.marketKey?.trim() || best?.name?.trim() || null;
-    return rawKey ? normalizeMarketKey(rawKey) : null;
-  }
-
-  return null;
-};
-
-const syncMarketSubredditMapping = async (params: {
-  prisma: PrismaService;
-  marketKey: string;
-  subreddit: string;
-  locationName?: string | null;
-  displayName?: string | null;
-}): Promise<void> => {
-  const normalizedSubreddit = params.subreddit.trim().toLowerCase();
-  if (!normalizedSubreddit) {
-    return;
-  }
-
-  const market = await params.prisma.market.findUnique({
-    where: { marketKey: params.marketKey },
-    select: {
-      marketId: true,
-      marketName: true,
-      marketShortName: true,
-      marketType: true,
-    },
-  });
-
-  if (!market) {
-    console.warn(
-      `⚠️  No market row found for "${params.marketKey}". Community metrics were saved, but market mapping was not updated.`,
-    );
-    return;
-  }
-
-  const preferredShortName =
-    params.displayName?.trim() || params.locationName?.trim() || null;
-
-  await params.prisma.market.update({
-    where: { marketKey: params.marketKey },
-    data: {
-      sourceCommunity: normalizedSubreddit,
-      isCollectable: true,
-      schedulerEnabled: true,
-      isActive: true,
-      ...(preferredShortName && !market.marketShortName
-        ? { marketShortName: preferredShortName }
-        : {}),
-      ...(params.displayName?.trim() &&
-      market.marketType === 'locality' &&
-      market.marketName !== params.displayName.trim()
-        ? { marketName: params.displayName.trim() }
-        : {}),
-    },
-  });
+  return { subreddit, locationName, overwrite, skipVolume };
 };
 
 async function onboardSubreddit() {
@@ -412,17 +81,8 @@ async function onboardSubreddit() {
   let app;
 
   try {
-    const {
-      subreddit,
-      centerLat,
-      centerLng,
-      locationName,
-      overwrite,
-      skipVolume,
-      fillMissing,
-    } = parseArgs();
+    const { subreddit, locationName, overwrite, skipVolume } = parseArgs();
 
-    // Initialize NestJS application
     console.log('\n🏗️  Initializing NestJS application...');
     app = await NestFactory.createApplicationContext(AppModule, {
       logger: ['error', 'warn', 'log'],
@@ -430,7 +90,6 @@ async function onboardSubreddit() {
     stopCronsForScript(app);
 
     const prisma = app.get(PrismaService);
-    const googlePlaces = app.get(GooglePlacesService);
 
     const formatNumber = (value: number | null | undefined): string =>
       typeof value === 'number' && Number.isFinite(value)
@@ -467,7 +126,6 @@ async function onboardSubreddit() {
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         const bullJob = await volumeQueue.getJob(job.id);
-
         if (bullJob && bullJob.finishedOn) {
           jobComplete = true;
 
@@ -526,296 +184,61 @@ async function onboardSubreddit() {
       console.log('   The collection scheduler will now use these real values');
     };
 
-    const processSubreddit = async (params: {
-      subreddit: string;
-      centerLat: number | null;
-      centerLng: number | null;
-      locationName: string | null;
-      overwrite: boolean;
-    }): Promise<void> => {
-      const onlyMissing = !params.overwrite;
+    const onlyMissing = !overwrite;
 
-      const existingRows = await prisma.collectionCommunity.findMany({
-        where: {
-          communityName: {
-            equals: params.subreddit,
-            mode: 'insensitive',
-          },
-        },
-        select: {
-          communityName: true,
-          marketKey: true,
-          locationName: true,
-        },
-      });
-      const exactMatch = existingRows.find(
-        (row) => row.communityName === params.subreddit,
+    const existingRows = await prisma.collectionCommunity.findMany({
+      where: {
+        communityName: { equals: subreddit, mode: 'insensitive' },
+      },
+      select: { communityName: true, locationName: true },
+    });
+    const exactMatch = existingRows.find(
+      (row) => row.communityName === subreddit,
+    );
+    const existingRow = exactMatch ?? existingRows[0] ?? null;
+    if (existingRows.length > 1 && !exactMatch) {
+      console.warn(
+        `⚠️  Multiple subreddit rows matched "${subreddit}" (case-insensitive). Using "${existingRow?.communityName}".`,
       );
-      const existingRow = exactMatch ?? existingRows[0] ?? null;
-      if (existingRows.length > 1 && !exactMatch) {
-        console.warn(
-          `⚠️  Multiple subreddit rows matched "${params.subreddit}" (case-insensitive). Using "${existingRow?.communityName}".`,
-        );
-      }
+    }
 
-      const resolvedLocationName =
-        params.locationName?.trim() ||
-        existingRow?.locationName?.trim() ||
-        null;
-      const placeQuery =
-        resolvedLocationName || buildCityQuery(params.subreddit);
-
-      let placeAddressComponents:
-        | Array<{
-            shortText?: string;
-            longText?: string;
-            types?: string[];
-          }>
-        | undefined;
-
-      console.log('\n🧭 Preparing city viewport lookup...');
-      console.log(`   Subreddit: ${params.subreddit}`);
-      if (resolvedLocationName) {
-        console.log(`   Location name: ${resolvedLocationName}`);
-      }
-      console.log(`   Place query: ${placeQuery}`);
-
-      const locationBias =
-        params.centerLat !== null && params.centerLng !== null
-          ? {
-              lat: params.centerLat,
-              lng: params.centerLng,
-              radiusMeters: 50000,
-            }
-          : undefined;
-
-      const placeSearch = await googlePlaces.findPlaceFromText(placeQuery, {
-        fields: ['id', 'displayName', 'types'],
-        locationBias,
-      });
-
-      const placeId = pickCityPlaceId(placeSearch.places);
-      let viewport:
-        | {
-            low?: { latitude?: number; longitude?: number };
-            high?: { latitude?: number; longitude?: number };
-          }
-        | undefined;
-
-      if (placeId) {
-        const details = await googlePlaces.getPlaceDetails(placeId, {
-          fields: ['id', 'displayName', 'viewport', 'addressComponents'],
-        });
-        viewport = details.place.viewport;
-        placeAddressComponents = details.place.addressComponents ?? [];
-        const viewportCenter = resolveViewportCenter(viewport);
-        const placeName =
-          typeof details.place.displayName?.text === 'string'
-            ? details.place.displayName.text
-            : 'unknown';
-        console.log(`✅ Viewport resolved from Google Place: ${placeName}`);
-        if (viewportCenter) {
-          console.log(
-            `   Viewport center: ${viewportCenter.lat}, ${viewportCenter.lng}`,
-          );
-          if (
-            typeof params.centerLat === 'number' &&
-            typeof params.centerLng === 'number'
-          ) {
-            const distance = computeDistanceMiles(viewportCenter, {
-              lat: params.centerLat,
-              lng: params.centerLng,
-            });
-            console.log(
-              `   Provided center: ${params.centerLat}, ${
-                params.centerLng
-              } (~${distance.toFixed(2)} mi from viewport center)`,
-            );
-          }
-        }
-      } else {
-        console.warn('⚠️  No Google place found for viewport lookup.');
-      }
-
-      const viewportNeLat = viewport?.high?.latitude;
-      const viewportNeLng = viewport?.high?.longitude;
-      const viewportSwLat = viewport?.low?.latitude;
-      const viewportSwLng = viewport?.low?.longitude;
-      const isFiniteNumber = (value: unknown): value is number =>
-        typeof value === 'number' && Number.isFinite(value);
-      const viewportBounds =
-        isFiniteNumber(viewportNeLat) &&
-        isFiniteNumber(viewportNeLng) &&
-        isFiniteNumber(viewportSwLat) &&
-        isFiniteNumber(viewportSwLng)
-          ? {
-              neLat: viewportNeLat,
-              neLng: viewportNeLng,
-              swLat: viewportSwLat,
-              swLng: viewportSwLng,
-            }
-          : null;
-
-      const viewportCenter = resolveViewportCenter(viewport);
-      const derivedCenter =
-        params.centerLat !== null && params.centerLng !== null
-          ? { lat: params.centerLat, lng: params.centerLng }
-          : (viewportCenter ?? null);
-      const marketCenter = derivedCenter;
-
-      let resolvedMarketKey =
-        existingRow?.marketKey && onlyMissing
-          ? normalizeMarketKey(existingRow.marketKey)
-          : null;
-
-      if (!resolvedMarketKey && marketCenter) {
-        resolvedMarketKey = await resolveExistingMarketKey(
-          prisma,
-          marketCenter,
-          existingRow?.communityName ?? params.subreddit,
-        );
-      }
-
-      if (!resolvedMarketKey) {
-        console.warn(
-          '   Skipping: no existing market contains the resolved viewport center. Seed or bootstrap the target TomTom-backed market before mapping this subreddit.',
-        );
-        return;
-      }
-
-      const resolvedDisplayName = resolveLocalityDisplayName(
-        placeAddressComponents,
-        resolvedLocationName,
-      );
-
-      console.log(`   Market key: ${resolvedMarketKey}`);
-
-      const createData: Prisma.CollectionCommunityCreateInput = {
-        communityName: params.subreddit,
-        marketKey: resolvedMarketKey,
-        isActive: true,
-      };
-
-      if (params.locationName) {
-        createData.locationName = params.locationName.trim();
-      }
-
-      if (viewportBounds) {
-        console.log(
-          `   Viewport NE: ${viewportBounds.neLat}, ${viewportBounds.neLng}`,
-        );
-        console.log(
-          `   Viewport SW: ${viewportBounds.swLat}, ${viewportBounds.swLng}`,
-        );
-      }
-
+    console.log('\n🗃️  Saving subreddit record...');
+    if (existingRow) {
       const updateData: Prisma.CollectionCommunityUpdateInput = {};
-
-      if (
-        params.locationName &&
-        (!onlyMissing || !existingRow?.locationName?.trim())
-      ) {
-        updateData.locationName = params.locationName.trim();
+      if (locationName && (!onlyMissing || !existingRow.locationName?.trim())) {
+        updateData.locationName = locationName.trim();
       }
-
-      if (!onlyMissing || !existingRow?.marketKey) {
-        updateData.marketKey = resolvedMarketKey;
-      }
-
-      console.log('\n🗃️  Saving subreddit record...');
-      if (existingRow) {
-        if (Object.keys(updateData).length > 0) {
-          await prisma.collectionCommunity.update({
-            where: { communityName: existingRow.communityName },
-            data: updateData,
-          });
-        } else {
-          console.log('   No updates needed (only-missing default).');
-        }
+      if (Object.keys(updateData).length > 0) {
+        await prisma.collectionCommunity.update({
+          where: { communityName: existingRow.communityName },
+          data: updateData,
+        });
       } else {
-        await prisma.collectionCommunity.create({ data: createData });
-      }
-
-      await syncMarketSubredditMapping({
-        prisma,
-        marketKey: resolvedMarketKey,
-        subreddit: params.subreddit,
-        locationName: params.locationName,
-        displayName: resolvedDisplayName,
-      });
-    };
-
-    const batchMode = fillMissing;
-
-    if (batchMode) {
-      if (subreddit) {
-        console.log(
-          'NOTE: --fill-missing enabled; ignoring the provided subreddit.',
-        );
-      }
-
-      const rows = await prisma.collectionCommunity.findMany({
-        select: {
-          communityName: true,
-          locationName: true,
-          marketKey: true,
-        },
-      });
-
-      let skippedNoLocation = 0;
-      const candidates = rows.filter((row) => {
-        const hasLocationName =
-          typeof row.locationName === 'string' &&
-          row.locationName.trim().length > 0;
-        if (!hasLocationName) {
-          skippedNoLocation += 1;
-          return false;
-        }
-
-        if (overwrite) {
-          return true;
-        }
-
-        const missingMarket =
-          typeof row.marketKey !== 'string' || !row.marketKey.trim();
-
-        return missingMarket;
-      });
-
-      if (skippedNoLocation > 0) {
-        console.log(
-          `\n⚠️  Skipping ${skippedNoLocation} subreddit(s) missing location_name. Add a location_name to enable Google lookup.`,
-        );
-      }
-
-      if (!candidates.length) {
-        console.log('\n✅ No communities found with missing market mappings.');
-      } else {
-        console.log(
-          `\n🧾 Filling missing market mappings for ${candidates.length} community record(s)...`,
-        );
-        for (const row of candidates) {
-          await processSubreddit({
-            subreddit: row.communityName,
-            centerLat: null,
-            centerLng: null,
-            locationName: row.locationName ?? null,
-            overwrite,
-          });
-        }
+        console.log('   No updates needed (only-missing default).');
       }
     } else {
-      if (!subreddit) {
-        throw new Error('Subreddit name is required.');
+      const createData: Prisma.CollectionCommunityCreateInput = {
+        communityName: subreddit,
+        isActive: true,
+      };
+      if (locationName) {
+        createData.locationName = locationName.trim();
       }
+      await prisma.collectionCommunity.create({ data: createData });
+    }
 
-      await processSubreddit({
-        subreddit,
-        centerLat,
-        centerLng,
-        locationName,
-        overwrite,
-      });
+    const source = await prisma.source.findUnique({
+      where: { platform_handle: { platform: 'reddit', handle: subreddit } },
+      select: { sourceId: true, anchorPlaceId: true, engineId: true },
+    });
+    if (source) {
+      console.log(
+        `   Source row: ${source.sourceId} (engine ${source.engineId ?? 'none'}, anchor place ${source.anchorPlaceId ?? 'none'})`,
+      );
+    } else {
+      console.warn(
+        '⚠️  No sources row exists for this subreddit yet — collection identity (anchor place, engine) is operator-managed in the sources table (§10).',
+      );
     }
 
     if (!skipVolume) {

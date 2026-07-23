@@ -262,7 +262,7 @@ export class CollectorPacerService implements OnModuleInit {
       subreddit: lane.handle,
       sourceId: lane.sourceId,
       engineId: engine.engineId,
-      collectableMarketKey: engine.name,
+      engineName: engine.name,
       safeIntervalDays,
       declaredRequests: declared,
       sortPlan: buildKeywordSortPlan({

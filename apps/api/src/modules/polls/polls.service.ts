@@ -73,7 +73,7 @@ import {
 // the precise entity-level dedup runs post-resolution (stage 3).
 const POLL_DUPLICATE_SIMILARITY_THRESHOLD = 0.6;
 
-// Per-user soft cap (§5): a creator may start at most this many polls per market in a
+// Per-user soft cap (§5): a creator may start at most this many polls per place in a
 // rolling window. Comments/discussion are never capped. App/seeded polls don't count
 // (they have no `createdByUserId`).
 const POLL_USER_WEEKLY_CAP = 2;
@@ -187,7 +187,7 @@ export class PollsService {
    * is dead), §2 header verdict in the response metadata.
    *
    * Membership: placesInView(bounds) → the §2 subjecthood judgment
-   * (resolveHeaderPlace — the SAME derivation search's displayMarketName
+   * (resolveHeaderPlace — the SAME derivation search's displayPlaceName
    * uses) → feed members = in-view places (minus over-scale subdivision+
    * places, §4's feed-at-that-zoom boundary) ∪ descendants of the
    * commensurate subject(s). Every poll row is place-keyed (legacy-poll

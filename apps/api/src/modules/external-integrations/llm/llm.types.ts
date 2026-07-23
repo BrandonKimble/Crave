@@ -375,7 +375,7 @@ export interface LLMRestaurantPlaceChooserCandidate {
 export interface LLMRestaurantPlaceChooserInput {
   query: string;
   sourceText?: string | null;
-  sourceMarket?: {
+  sourceLocale?: {
     city?: string | null;
     region?: string | null;
   } | null;

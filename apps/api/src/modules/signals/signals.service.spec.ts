@@ -29,7 +29,6 @@ function createPrisma() {
     signalActor: {
       upsert: jest.fn().mockResolvedValue({ actorId: ACTOR_ID }),
     },
-    market: { findFirst: jest.fn().mockResolvedValue(null) },
     place: { findUnique: jest.fn().mockResolvedValue(null) },
     restaurantLocation: { findFirst: jest.fn().mockResolvedValue(null) },
     connection: { findFirst: jest.fn().mockResolvedValue(null) },

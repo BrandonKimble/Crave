@@ -124,7 +124,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
       options.engineId ?? null,
     );
@@ -138,7 +138,7 @@ export class EntityTextSearchService {
       WHERE e.type = ANY(${typeArray})
         AND e.status = 'active'::entity_status
         AND e.name_embedding IS NOT NULL
-        ${marketFilter}
+        ${territoryFilter}
       ORDER BY e.name_embedding <=> ${literal}::vector
       LIMIT ${safeLimit}
     `);
@@ -626,7 +626,7 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
       options.engineId,
     );
@@ -693,7 +693,7 @@ export class EntityTextSearchService {
           FROM core_entities e
           WHERE e.type = ANY(${entityTypeArray})
             AND e.status = 'active'::entity_status
-            ${marketFilter}
+            ${territoryFilter}
             AND lower(e.name) LIKE v.prefix_pattern
         ) scored
         ORDER BY
@@ -728,7 +728,7 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
       options.engineId,
     );
@@ -876,7 +876,7 @@ export class EntityTextSearchService {
           FROM core_entities e
           WHERE e.type = ANY(${entityTypeArray})
             AND e.status = 'active'::entity_status
-            ${marketFilter}
+            ${territoryFilter}
             AND (
               lower(e.name) LIKE v.prefix_pattern
               OR EXISTS (
@@ -976,7 +976,7 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
+    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
       options.engineId ?? null,
     );
@@ -1002,7 +1002,7 @@ export class EntityTextSearchService {
             WHERE LOWER(a) = ANY(${candidates}::text[])
           )
         )
-        ${marketFilter}
+        ${territoryFilter}
     `);
 
     const candidateSet = new Set(candidates);

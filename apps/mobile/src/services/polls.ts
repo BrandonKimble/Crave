@@ -310,7 +310,7 @@ export type PollDuplicateMatch = {
 };
 
 // Stage-1 creation dedup: fast text-similarity check against active polls in the
-// market, before the LLM resolves the poll. A non-empty result → route the creator to
+// scoped place, before the LLM resolves the poll. A non-empty result → route the creator to
 // the existing poll instead of spinning up a duplicate (§3).
 export const checkPollDuplicate = async (body: {
   question: string;

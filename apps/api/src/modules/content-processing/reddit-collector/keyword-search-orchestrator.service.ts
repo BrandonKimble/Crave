@@ -83,7 +83,7 @@ export class KeywordSearchOrchestratorService {
     options: {
       sortPlan?: KeywordSearchSortPlan[];
       source?: KeywordSearchJobData['source'] | 'manual';
-      collectableMarketKey?: string;
+      engineName?: string;
       engineId?: string;
       safeIntervalDays?: number;
     } = {},
@@ -96,8 +96,7 @@ export class KeywordSearchOrchestratorService {
       const startTime = Date.now();
       const source = options.source ?? 'manual';
       const dryRun = this.keywordCollectionDryRunEnabled();
-      const collectableMarketKey =
-        options.collectableMarketKey ?? subreddit.trim().toLowerCase();
+      const engineName = options.engineName ?? subreddit.trim().toLowerCase();
       const safeIntervalDays =
         typeof options.safeIntervalDays === 'number' &&
         Number.isFinite(options.safeIntervalDays) &&
@@ -115,7 +114,7 @@ export class KeywordSearchOrchestratorService {
         subreddit,
         source,
         dryRun,
-        collectableMarketKey,
+        engineName,
         safeIntervalDays,
         requestedTermCount: terms.length,
         selectedTermCount: termNames.length,
@@ -478,7 +477,7 @@ export class KeywordSearchOrchestratorService {
                   : 'deferred';
 
           await this.keywordAttemptHistory.recordAttempt({
-            collectableMarketKey,
+            engineName,
             engineId: options.engineId,
             normalizedTerm: entry.normalizedTerm,
             outcome: attemptOutcome,
@@ -1155,7 +1154,7 @@ export class KeywordSearchOrchestratorService {
       cycleId,
       correlationId: cycleId,
       subreddit: data.subreddit,
-      collectableMarketKey: data.collectableMarketKey ?? null,
+      engineName: data.engineName ?? null,
       source: data.source,
       termCount: data.terms.length,
       sortsPlanned: data.sortPlan?.map((entry) => entry.sort) ?? undefined,
@@ -1291,7 +1290,7 @@ export interface KeywordSearchJobData {
   engineId?: string;
   /** Engine natural key = legacy market key during Phase B/C (decision-ledger
    *  traces + the attempt-history legacy PK). */
-  collectableMarketKey?: string;
+  engineName?: string;
   safeIntervalDays?: number;
   /** Pacer's reserved reddit-pool estimate (§14.2 declared-vs-actual). */
   declaredRequests?: number;

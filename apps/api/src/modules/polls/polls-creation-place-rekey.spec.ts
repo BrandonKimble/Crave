@@ -38,7 +38,6 @@ function createHarness(options: { priorPollCount?: number } = {}) {
   const createdPoll = {
     pollId: 'poll-1',
     placeId: PLACE_ID,
-    marketKey: null,
     question: 'Where should I eat tonight?',
     topic: null,
   };
@@ -56,7 +55,6 @@ function createHarness(options: { priorPollCount?: number } = {}) {
         .fn()
         .mockResolvedValue([{ placeId: PLACE_ID, name: PLACE.name }]),
     },
-    market: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const placesCatalog = {
     smallestContaining: jest.fn().mockResolvedValue(PLACE),

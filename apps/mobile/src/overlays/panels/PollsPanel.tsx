@@ -392,7 +392,7 @@ const usePollsHeaderCreateActionRegistration = () => {
 
         sceneState.onRequestPollCreationExpand?.();
         pushRoute('pollCreation', {
-          marketName: headerModel?.placeName ?? null,
+          placeName: headerModel?.placeName ?? null,
           bounds: settledBounds,
         });
       }),

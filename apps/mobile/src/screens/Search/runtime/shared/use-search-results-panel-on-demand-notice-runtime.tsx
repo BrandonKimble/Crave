@@ -17,7 +17,7 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
   onDemandNoticeQuery,
 }: UseSearchResultsPanelOnDemandNoticeRuntimeArgs) => {
   // HEADER SUBJECT-STORE (ratified 2026-07-21): the area label reads the ONE
-  // client subject verdict once committed; the response-metadata market names
+  // client subject verdict once committed; the response-metadata place names
   // are only the pre-first-commit fallback (chain simplifies to: store →
   // metadata names → 'this area').
   const viewportSubject = useViewportSubjectState();
@@ -27,7 +27,7 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
 
     // The subject store's §2 verdict is the area authority once committed —
     // it gates the area label in BOTH arms of the pure core (place name or
-    // 'this area'); the response-metadata name (displayMarketName) serves
+    // 'this area'); the response-metadata name (displayPlaceName) serves
     // STRICTLY pre-first-commit.
     const verdictAreaLabel = subjectVerdict
       ? subjectVerdict.kind === 'place'

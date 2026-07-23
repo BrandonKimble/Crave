@@ -55,7 +55,6 @@ model Entity {
   favoriteListItems                   FavoriteListItem[]
   demandScoringCandidates             DemandScoringCandidate[]
   locations                           RestaurantLocation[]        @relation("RestaurantLocations")
-  marketPresences                     EntityMarketPresence[]
   restaurantEvents                    RestaurantEvent[]           @relation("RestaurantEventRestaurant")
   restaurantEntityEvents              RestaurantEntityEvent[]     @relation("RestaurantEntityEventRestaurant")
   restaurantEntityEventTargets        RestaurantEntityEvent[]     @relation("RestaurantEntityEventTarget")
@@ -84,17 +83,6 @@ model Entity {
   @@map("core_entities")
 }
 
-model EntityMarketPresence {
-  entityId  String   @map("entity_id") @db.Uuid
-  marketKey String   @map("market_key") @db.VarChar(255)
-  createdAt DateTime @default(now()) @map("created_at")
-  entity    Entity   @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
-
-  @@id([entityId, marketKey])
-  @@index([marketKey], map: "idx_entity_market_presence_market_key")
-  @@index([entityId], map: "idx_entity_market_presence_entity_id")
-  @@map("core_entity_market_presence")
-}
 
 model RestaurantLocation {
   locationId       String    @id @default(dbgenerated("gen_random_uuid()")) @map("location_id") @db.Uuid
@@ -381,8 +369,7 @@ model SourceCollectionLane {
 /// and keyword slices key off engines; scoring provenance keys off SOURCES.
 model Engine {
   engineId       String   @id @default(dbgenerated("gen_random_uuid()")) @map("engine_id") @db.Uuid
-  /// Stable natural key. Backfilled engines carry the legacy market_key as
-  /// their name so the ask-event unmet lane keeps reading during Phase B/C.
+  /// Stable natural key.
   name           String   @unique @db.VarChar(255)
   memberPlaceIds String[] @default([]) @map("member_place_ids") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
@@ -670,12 +657,9 @@ model PollTopic {
   topicId                     String          @id @default(dbgenerated("gen_random_uuid()")) @map("topic_id") @db.Uuid
   title                       String          @db.VarChar(255)
   description                 String?         @db.VarChar(500)
-  marketKey                   String?         @map("market_key") @db.VarChar(255)
   region                      String?         @db.VarChar(255)
   country                     String?         @db.VarChar(2)
-  /// §22 item 4 re-key: new supply attaches topics to the place catalog.
-  /// Old rows keep marketKey; new rows carry placeId (marketKey best-effort
-  /// shim for the item-5 feed).
+  /// §22 item 4 re-key: supply attaches topics to the place catalog.
   placeId                     String?         @map("place_id") @db.Uuid
   categoryEntityIds           String[]        @default([]) @map("category_entity_ids") @db.Uuid
   seedEntityIds               String[]        @default([]) @map("seed_entity_ids") @db.Uuid
@@ -695,7 +679,6 @@ model PollTopic {
   targetRestaurantAttribute   Entity?         @relation("PollTopicTargetRestaurantAttribute", fields: [targetRestaurantAttributeId], references: [entityId])
   polls                       Poll[]
 
-  @@index([marketKey], map: "idx_poll_topics_market_key")
   @@index([placeId], map: "idx_poll_topics_place_id")
   @@index([createdByUserId], map: "idx_poll_topics_created_by_user")
   @@index([status], map: "idx_poll_topics_status")
@@ -710,9 +693,7 @@ model Poll {
   origin             PollOrigin             @default(user)
   mode               PollMode               @default(ranked)
   axis               Json?
-  marketKey          String?                @map("market_key") @db.VarChar(255)
-  /// §22 item 4 re-key: new supply-published polls attach to placeId (place
-  /// catalog). Existing polls carry marketKey; old rows untouched.
+  /// §22 item 4 re-key: polls attach to placeId (place catalog).
   placeId            String?                @map("place_id") @db.Uuid
   region             String?                @db.VarChar(255)
   scheduledFor       DateTime?              @map("scheduled_for")
@@ -732,7 +713,6 @@ model Poll {
 
   @@index([topicId], map: "idx_polls_topic_id")
   @@index([state], map: "idx_polls_state")
-  @@index([marketKey], map: "idx_polls_market_key")
   @@index([placeId], map: "idx_polls_place_id")
   @@index([createdByUserId], map: "idx_polls_created_by_user")
   @@map("polls")
@@ -893,8 +873,7 @@ model UserNotification {
 model DemandScoringRun {
   runId                String                    @id @default(dbgenerated("gen_random_uuid()")) @map("run_id") @db.Uuid
   consumerKind         DemandScoringConsumerKind @map("consumer_kind")
-  marketKey            String?                   @map("market_key") @db.VarChar(255)
-  collectableMarketKey String?                   @map("collectable_market_key") @db.VarChar(255)
+  engineName           String?                   @map("engine_name") @db.VarChar(255)
   cycleStartAt         DateTime                  @map("cycle_start_at")
   cycleEndAt           DateTime                  @map("cycle_end_at")
   scorerVersion        String                    @map("scorer_version") @db.VarChar(64)
@@ -905,8 +884,7 @@ model DemandScoringRun {
   candidates           DemandScoringCandidate[]
 
   @@index([consumerKind, startedAt(sort: Desc)], map: "idx_demand_scoring_runs_consumer_started")
-  @@index([marketKey, consumerKind, startedAt(sort: Desc)], map: "idx_demand_scoring_runs_market_consumer")
-  @@index([collectableMarketKey, consumerKind, startedAt(sort: Desc)], map: "idx_demand_scoring_runs_collectable_consumer")
+  @@index([engineName, consumerKind, startedAt(sort: Desc)], map: "idx_demand_scoring_runs_engine_consumer")
   @@map("demand_scoring_runs")
 }
 
@@ -923,8 +901,7 @@ model DemandScoringCandidate {
   entityId             String?                    @map("entity_id") @db.Uuid
   entityType           EntityType?                @map("entity_type")
   normalizedText       String?                    @map("normalized_text") @db.VarChar(500)
-  marketKey            String?                    @map("market_key") @db.VarChar(255)
-  collectableMarketKey String?                    @map("collectable_market_key") @db.VarChar(255)
+  engineName           String?                    @map("engine_name") @db.VarChar(255)
   bucket               String?                    @db.VarChar(64)
   lane                 String?                    @db.VarChar(64)
   reason               String?                    @db.VarChar(64)
@@ -1480,7 +1457,6 @@ model CollectionCommunity {
   collectionCommunityId String    @id @default(dbgenerated("gen_random_uuid()")) @map("collection_community_id") @db.Uuid
   communityName         String    @unique(map: "collection_communities_community_name_key") @map("community_name") @db.Citext
   locationName          String?   @map("location_name") @db.Citext
-  marketKey             String?   @map("market_key") @db.VarChar(100)
   avgPostsPerDay        Float?    @map("avg_posts_per_day")
   lastCalculated        DateTime? @map("last_calculated") @db.Timestamptz(6)
   lastProcessed         DateTime? @map("last_processed") @db.Timestamptz(6)
@@ -1489,114 +1465,21 @@ model CollectionCommunity {
   safeIntervalDays      Float?    @map("safe_interval_days")
 
   @@index([communityName], map: "collection_communities_community_name_idx")
-  @@index([marketKey], map: "idx_collection_communities_market_key")
   @@index([isActive], map: "idx_collection_communities_active")
   @@index([lastProcessed], map: "idx_collection_communities_last_processed")
   @@index([safeIntervalDays], map: "idx_collection_communities_safe_interval")
   @@map("collection_communities")
 }
 
-model Market {
-  marketId               String                                       @id @default(dbgenerated("gen_random_uuid()")) @map("market_id") @db.Uuid
-  marketKey              String                                       @unique(map: "core_markets_market_key_key") @map("market_key") @db.VarChar(255)
-  marketName             String                                       @map("market_name") @db.VarChar(255)
-  marketShortName        String?                                      @map("market_short_name") @db.VarChar(255)
-  marketType             MarketType                                   @map("market_type")
-  countryCode            String                                       @default("US") @map("country_code") @db.VarChar(2)
-  stateCode              String?                                      @map("state_code") @db.VarChar(8)
-  sourceBoundaryProvider String?                                      @map("source_boundary_provider") @db.VarChar(64)
-  sourceBoundaryId       String?                                      @map("source_boundary_id") @db.VarChar(255)
-  sourceBoundaryType     String?                                      @map("source_boundary_type") @db.VarChar(64)
-  sourceCommunity        String?                                      @map("source_community") @db.VarChar(100)
-  isCollectable          Boolean                                      @default(false) @map("is_collectable")
-  schedulerEnabled       Boolean                                      @default(false) @map("scheduler_enabled")
-  isActive               Boolean                                      @default(true) @map("is_active")
-  centerLatitude         Decimal?                                     @map("center_latitude") @db.Decimal(11, 8)
-  centerLongitude        Decimal?                                     @map("center_longitude") @db.Decimal(11, 8)
-  bboxNeLat              Decimal?                                     @map("bbox_ne_latitude") @db.Decimal(11, 8)
-  bboxNeLng              Decimal?                                     @map("bbox_ne_longitude") @db.Decimal(11, 8)
-  bboxSwLat              Decimal?                                     @map("bbox_sw_latitude") @db.Decimal(11, 8)
-  bboxSwLng              Decimal?                                     @map("bbox_sw_longitude") @db.Decimal(11, 8)
-  geometry               Unsupported("geometry(MultiPolygon, 4326)")?
-  metadata               Json?                                        @default("{}")
-  createdAt              DateTime                                     @default(now()) @map("created_at")
-  updatedAt              DateTime                                     @updatedAt @map("updated_at")
-  sourceBoundary         BoundaryFeature?                             @relation(fields: [sourceBoundaryProvider, sourceBoundaryId, sourceBoundaryType], references: [sourceProvider, sourceBoundaryId, sourceBoundaryType], onDelete: Restrict, onUpdate: Cascade)
 
-  @@index([marketType], map: "idx_core_markets_type")
-  @@index([sourceCommunity], map: "idx_core_markets_source_community")
-  @@index([isCollectable], map: "idx_core_markets_collectable")
-  @@index([schedulerEnabled], map: "idx_core_markets_scheduler_enabled")
-  @@index([sourceBoundaryProvider, sourceBoundaryId], map: "idx_core_markets_source_boundary")
-  @@index([isActive], map: "idx_core_markets_is_active")
-  @@index([centerLatitude, centerLongitude], map: "idx_core_markets_center")
-  @@map("core_markets")
-}
 
-model BoundaryFeature {
-  boundaryFeatureId  String                                       @id @default(dbgenerated("gen_random_uuid()")) @map("boundary_feature_id") @db.Uuid
-  sourceProvider     String                                       @map("source_provider") @db.VarChar(64)
-  sourceBoundaryId   String                                       @map("source_boundary_id") @db.VarChar(255)
-  sourceBoundaryType String                                       @map("source_boundary_type") @db.VarChar(64)
-  providerType       String                                       @map("provider_type") @db.VarChar(64)
-  name               String                                       @db.VarChar(255)
-  shortName          String?                                      @map("short_name") @db.VarChar(255)
-  countryCode        String                                       @default("US") @map("country_code") @db.VarChar(2)
-  stateCode          String?                                      @map("state_code") @db.VarChar(8)
-  centerLatitude     Decimal?                                     @map("center_latitude") @db.Decimal(11, 8)
-  centerLongitude    Decimal?                                     @map("center_longitude") @db.Decimal(11, 8)
-  bboxNeLat          Decimal?                                     @map("bbox_ne_latitude") @db.Decimal(11, 8)
-  bboxNeLng          Decimal?                                     @map("bbox_ne_longitude") @db.Decimal(11, 8)
-  bboxSwLat          Decimal?                                     @map("bbox_sw_latitude") @db.Decimal(11, 8)
-  bboxSwLng          Decimal?                                     @map("bbox_sw_longitude") @db.Decimal(11, 8)
-  geometry           Unsupported("geometry(MultiPolygon, 4326)")?
-  metadata           Json?                                        @default("{}")
-  fetchedAt          DateTime                                     @default(now()) @map("fetched_at")
-  createdAt          DateTime                                     @default(now()) @map("created_at")
-  updatedAt          DateTime                                     @updatedAt @map("updated_at")
-  markets            Market[]
-
-  @@unique([sourceProvider, sourceBoundaryId, sourceBoundaryType], map: "uq_geo_boundary_features_source")
-  @@index([sourceProvider, sourceBoundaryType], map: "idx_geo_boundary_features_source_type")
-  @@index([stateCode], map: "idx_geo_boundary_features_state")
-  @@index([centerLatitude, centerLongitude], map: "idx_geo_boundary_features_center")
-  @@map("geo_boundary_features")
-}
-
-model MarketBootstrapEvent {
-  marketBootstrapEventId String   @id @default(dbgenerated("gen_random_uuid()")) @map("market_bootstrap_event_id") @db.Uuid
-  requestId              String?  @map("request_id") @db.Uuid
-  sourceProvider         String   @map("source_provider") @db.VarChar(64)
-  sourceBoundaryId       String?  @map("source_boundary_id") @db.VarChar(255)
-  sourceBoundaryType     String?  @map("source_boundary_type") @db.VarChar(64)
-  eventType              String   @map("event_type") @db.VarChar(64)
-  triggerKind            String?  @map("trigger_kind") @db.VarChar(64)
-  marketKey              String?  @map("market_key") @db.VarChar(255)
-  attemptIndex           Int?     @map("attempt_index")
-  uncoveredAreaMeters    Float?   @map("uncovered_area_meters")
-  uncoveredAreaShare     Float?   @map("uncovered_area_share")
-  candidateName          String?  @map("candidate_name") @db.VarChar(255)
-  stopReason             String?  @map("stop_reason") @db.VarChar(64)
-  lookupLatitude         Decimal? @map("lookup_latitude") @db.Decimal(11, 8)
-  lookupLongitude        Decimal? @map("lookup_longitude") @db.Decimal(11, 8)
-  message                String?  @db.Text
-  metadata               Json?    @default("{}")
-  createdAt              DateTime @default(now()) @map("created_at")
-
-  @@index([sourceProvider, sourceBoundaryId, sourceBoundaryType], map: "idx_market_bootstrap_events_source")
-  @@index([eventType], map: "idx_market_bootstrap_events_event_type")
-  @@index([createdAt(sort: Desc)], map: "idx_market_bootstrap_events_created_at")
-  @@map("market_bootstrap_events")
-}
 
 model OnDemandRequest {
   requestId             String                @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
   term                  String                @db.VarChar(255)
   entityType            EntityType            @map("entity_type")
-  /// ENGINE re-key (markets extermination leg 2): holds the covering
-  /// engine's engine_id. Column still NAMED market_key in the DB — the
-  /// rename migration rides the next drift-path migration window (a live
-  /// column rename requires the shared-API restart this leg may not do).
+  /// ENGINE re-key (markets extermination leg 2): the covering engine's
+  /// engine_id.
   engineId              String                @map("engine_id") @db.VarChar(255)
   distinctUserCount     Int                   @default(0) @map("distinct_user_count")
   lastSeenAt            DateTime              @default(now()) @map("last_seen_at")
@@ -1637,10 +1520,10 @@ model OnDemandRequestUser {
 
 
 model KeywordAttemptHistory {
-  collectableMarketKey String                 @map("collectable_market_key") @db.VarChar(255)
+  engineName           String                 @map("engine_name") @db.VarChar(255)
   normalizedTerm       String                 @map("normalized_term") @db.VarChar(255)
-  /// §11 attempt ledger re-key: the schedulable unit is (engine, term).
-  /// Backfilled from the legacy market_key; the old PK column dies in Phase C.
+  /// §11 attempt ledger: the schedulable unit is (engine, term); engineName
+  /// is the engine's natural key.
   engineId             String?                @map("engine_id") @db.Uuid
   lastAttemptAt        DateTime?              @map("last_attempt_at")
   lastSuccessAt        DateTime?              @map("last_success_at")
@@ -1649,20 +1532,13 @@ model KeywordAttemptHistory {
   createdAt            DateTime               @default(now()) @map("created_at")
   updatedAt            DateTime               @updatedAt @map("updated_at")
 
-  @@id([collectableMarketKey, normalizedTerm])
-  @@index([collectableMarketKey], map: "idx_collection_keyword_attempt_history_collectable_market_key")
+  @@id([engineName, normalizedTerm])
+  @@index([engineName], map: "idx_collection_keyword_attempt_history_engine_name")
   @@index([cooldownUntil], map: "idx_collection_keyword_attempt_history_cooldown_until")
   @@index([engineId, normalizedTerm], map: "idx_collection_keyword_attempt_history_engine_term")
   @@map("collection_keyword_attempt_history")
 }
 
-enum MarketType {
-  regional
-  locality
-  manual
-
-  @@map("market_type")
-}
 
 enum KeywordAttemptOutcome {
   success

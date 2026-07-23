@@ -11,10 +11,10 @@ import { randomUUID } from 'node:crypto';
  * and a live `photos` row is written, attributed to the dedicated
  * "Crave Imports" system user (google-import@crave-search.local).
  *
- * Restaurant set: top Austin-market restaurants by crave display_score that
- * have a google_place_id, plus every restaurant referenced by the owner's
- * favorite lists. Additive + idempotent: a restaurant with >=5 imported
- * photos is skipped.
+ * Restaurant set: top Austin restaurants (by crave display_score, bbox-scoped
+ * to the catalog's Austin, TX place) that have a google_place_id, plus every
+ * restaurant referenced by the owner's favorite lists. Additive + idempotent:
+ * a restaurant with >=5 imported photos is skipped.
  *
  *   yarn ts-node -r tsconfig-paths/register scripts/seed-google-photos.ts [--limit N]
  */
@@ -51,7 +51,14 @@ async function getCandidates(): Promise<Candidate[]> {
     { entity_id: string; name: string; google_place_id: string }[]
   >(
     `
-    with owner_list_restaurants as (
+    with austin_place as (
+      select place_id, bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
+      from places
+      where name = 'Austin' and subdivision_code = 'TX' and country_code = 'US'
+      order by promoted_at desc nulls last
+      limit 1
+    ),
+    owner_list_restaurants as (
       select distinct coalesce(li.restaurant_id, c.restaurant_id) as entity_id
       from favorite_list_items li
       join favorite_lists l on l.list_id = li.list_id
@@ -64,9 +71,12 @@ async function getCandidates(): Promise<Candidate[]> {
       from core_entities e
       join core_public_entity_scores s
         on s.subject_id = e.entity_id and s.subject_type = 'restaurant'
-      join core_entity_market_presence mp
-        on mp.entity_id = e.entity_id and mp.market_key = 'region-us-tx-austin'
+      join core_restaurant_locations rl on rl.location_id = e.primary_location_id
+      cross join austin_place ap
       where e.type = 'restaurant'
+        and ap.place_id is not null
+        and rl.latitude between ap.bbox_min_lat and ap.bbox_max_lat
+        and rl.longitude between ap.bbox_min_lng and ap.bbox_max_lng
       order by s.display_score desc
       limit ${TOP_AUSTIN_LIMIT}
     ),

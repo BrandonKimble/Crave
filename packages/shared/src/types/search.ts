@@ -333,7 +333,7 @@ export interface SearchResponseMetadata {
   primaryFoodTerm?: string;
   /** §2 header law: catalog-derived display name; FIELD name is the frozen
    *  wire contract until the mobile-side header cut. */
-  displayMarketName?: string | null;
+  displayPlaceName?: string | null;
   /** ENGINE-COVERAGE (markets extermination leg 2): raw share of the
    *  viewport covered by engine territories (union across engines, 0..1).
    *  No thresholds — consumers judge per their own law. */

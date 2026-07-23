@@ -1,10 +1,9 @@
 /**
  * TomtomChainProbe PORT (plans/geo-demand-foundation-rebuild.md §2).
  *
- * The §2 naming reconciler consumes probes through this thin port, NOT the
- * legacy TomTomBoundaryBootstrapService in src/modules/markets/ — the market
- * model is superseded by the places DAG (§20 changelog), and coupling the new
- * catalog to the dying bootstrap would drag the market vocabulary forward.
+ * The §2 naming reconciler consumes probes through this thin port (the legacy
+ * boundary-bootstrap service died with the market model — §20 changelog; the
+ * places DAG is the only geography surface).
  *
  * Contract per §2 "sketch mechanics (live-verified)":
  *   - ONE reverse geocode at the anchor returns the FULL chain of names +

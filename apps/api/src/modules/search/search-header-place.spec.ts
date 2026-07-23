@@ -14,7 +14,7 @@ import type { PlaceInView } from '../places/places-catalog.service';
 //   (b) reconciler wiring — a submitted search with bounds hands the viewport
 //       to noteViewport exactly once, and a reconcile failure cannot affect
 //       the search response;
-//   (c) contract — the response metadata field NAME (displayMarketName) and
+//   (c) contract — the response metadata field NAME (displayPlaceName) and
 //       the sibling market fields are unchanged on the wire; only the header
 //       value's source of truth moved.
 
@@ -87,7 +87,7 @@ function createExecutor() {
 
 // ENGINE-COVERAGE re-key (markets extermination leg 2): the market election
 // is DEAD — the search path resolves engine territory coverage instead. A
-// tripwire NAME is planted on the engine so the displayMarketName assertions
+// tripwire NAME is planted on the engine so the displayPlaceName assertions
 // go RED if the header ever reads coverage output as a name source.
 function createEngineCoverage() {
   return {
@@ -169,7 +169,7 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       ],
     });
     const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayMarketName).toBe('Austin');
+    expect(response.metadata.displayPlaceName).toBe('Austin');
   });
 
   it('§2(e) tier-2 promotion: a place-kind header verdict reports a header answer; "this area" does not', async () => {
@@ -177,7 +177,7 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       placesInView: [placeInView('Austin', VIEW, 1)],
     });
     const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayMarketName).toBe('Austin');
+    expect(response.metadata.displayPlaceName).toBe('Austin');
     expect(placesPromotions.noteHeaderAnswer).toHaveBeenCalledTimes(1);
 
     const empty = createHarness({ placesInView: [] });
@@ -207,7 +207,7 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       ],
     });
     const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayMarketName).toBeNull();
+    expect(response.metadata.displayPlaceName).toBeNull();
   });
 
   it('only over-scale containing places in view → the FINEST of them names the header (never "this area")', async () => {
@@ -232,13 +232,13 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       ],
     });
     const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayMarketName).toBe('Texas');
+    expect(response.metadata.displayPlaceName).toBe('Texas');
   });
 
   it('unnamed ground (empty catalog) yields null', async () => {
     const { service } = createHarness({ placesInView: [] });
     const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayMarketName).toBeNull();
+    expect(response.metadata.displayPlaceName).toBeNull();
   });
 
   it('a catalog failure degrades the header to null without failing the search', async () => {
@@ -246,7 +246,7 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       placesInViewError: new Error('catalog down'),
     });
     const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayMarketName).toBeNull();
+    expect(response.metadata.displayPlaceName).toBeNull();
     expect(response.metadata.searchRequestId).toBeDefined();
   });
 });
@@ -291,7 +291,7 @@ describe('§2 reconciler wiring (the growth machine is live at the search chokep
     });
     const response = await service.runQuery(buildRequest());
     await reconciler.whenIdle(); // flush the failing background flight
-    expect(response.metadata.displayMarketName).toBeNull();
+    expect(response.metadata.displayPlaceName).toBeNull();
     expect(response.metadata.totalFoodResults).toBe(0);
   });
 });
@@ -305,7 +305,7 @@ describe('leg 2 contract: the search metadata carries engine coverage and NOTHIN
     expect(response.metadata).toMatchObject({
       // The frozen field NAME carries the catalog place name — were coverage
       // ever read as a name source, this would be the tripwire engine name.
-      displayMarketName: 'Austin',
+      displayPlaceName: 'Austin',
       engineCoverageShare: 0.5,
       engineCoverage: [
         {

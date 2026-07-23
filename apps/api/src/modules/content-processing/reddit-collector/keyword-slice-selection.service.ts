@@ -543,7 +543,7 @@ export class KeywordSliceSelectionService {
     try {
       const runId = await this.scoringTrace.createRun({
         consumerKind: DemandScoringConsumerKind.keyword_collection,
-        collectableMarketKey: params.engineName,
+        engineName: params.engineName,
         cycleStartAt: params.cycleStartAt,
         cycleEndAt: params.cycleEndAt,
         scorerVersion: KEYWORD_COLLECTION_SCORER_VERSION,
@@ -641,7 +641,7 @@ export class KeywordSliceSelectionService {
       candidateKind: `${params.candidate.slice}_term`,
       subjectKind: DemandSubjectKind.term,
       subjectKey: params.candidate.normalizedTerm,
-      collectableMarketKey: params.engineName,
+      engineName: params.engineName,
       entityId:
         typeof origin.entityId === 'string' ? origin.entityId : undefined,
       entityType: params.candidate.entityType ?? null,

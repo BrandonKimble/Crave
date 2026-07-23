@@ -780,15 +780,15 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
             // §8.16 "sliced by city": City — VALUE-displayed when overridden
             // (§2 chip law); options derived from the unsliced rows (self-provisioning).
             <SelectorChip
-              key="market"
+              key="city"
               label={data.slice.cityChipLabel}
               active={data.slice.cityPlaceId != null}
               expanded={optionSelectorOpenKey === LIST_DETAIL_CITY_SELECTOR_KEY}
               onPress={() =>
                 toggleOptionSelector({
                   key: LIST_DETAIL_CITY_SELECTOR_KEY,
-                  title: 'Market',
-                  options: [{ value: 'any', label: 'All markets' }, ...data.slice.cityOptions],
+                  title: 'City',
+                  options: [{ value: 'any', label: 'All cities' }, ...data.slice.cityOptions],
                   value: data.slice.cityPlaceId ?? 'any',
                   onSelect: (value) =>
                     data.slice.applySlice({ cityPlaceId: value === 'any' ? null : value }, 'city'),

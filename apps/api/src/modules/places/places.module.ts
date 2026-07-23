@@ -1,8 +1,8 @@
 /**
  * Place Catalog module (plans/geo-demand-foundation-rebuild.md §1/§2) — the
  * places containment DAG + the background naming reconciler. This module is
- * the go-forward geography surface; src/modules/markets/ is the superseded
- * market model (§20) and nothing here may depend on it.
+ * the go-forward geography surface (the legacy market model died in the
+ * markets-extermination legs, 2026-07; §20 changelog).
  */
 import { HttpModule } from '@nestjs/axios';
 import { Module, forwardRef } from '@nestjs/common';

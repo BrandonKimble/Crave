@@ -6,5 +6,5 @@
  * be changed/cancelled through iOS).
  */
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
-export const PRIVACY_URL = 'https://cravesearch.com/privacy';
+export const PRIVACY_URL = 'https://craveapp.ai/privacy';
 export const MANAGE_SUBSCRIPTIONS_URL = 'https://apps.apple.com/account/subscriptions';

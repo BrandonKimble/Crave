@@ -770,7 +770,7 @@ export class AutocompleteService {
   }
 
   /**
-   * Poll lane (§8.1): active polls in the current market whose question matches
+   * Poll lane (§8.1): active polls in the current viewport scope whose question matches
    * the query. Zero reserved slots — these join the overflow pool and surface only
    * when they out-score leftover entity/query candidates. v1 ranks on question
    * text match (word-similarity + substring); entity-in-poll match and recency
@@ -1269,14 +1269,14 @@ export class AutocompleteService {
     userId: string | null,
     entityTypes: EntityType[],
     normalizedQuery: string,
-    marketScopeKey: string,
+    scopePlaceKey: string,
     attributeLaneEnabled: boolean,
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
     const queryToken = encodeURIComponent(normalizedQuery);
     return `${this.cacheRedisKeyPrefix}:${
       userId ?? 'anon'
-    }:${scopeKey}:${marketScopeKey}:attrs-${
+    }:${scopeKey}:${scopePlaceKey}:attrs-${
       attributeLaneEnabled ? 'on' : 'off'
     }:${queryToken}`;
   }

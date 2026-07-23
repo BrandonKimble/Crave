@@ -16,8 +16,8 @@
  *       promotion queue is the ORDINARY intake now, and the hourly drain
  *       cadence is the only latency (birth→outline within the hour is fine);
  *   (a) poll_created     — polls.service createPoll after place resolution;
- *   (b) source_attached  — the §10 onboarding verb (prisma/
- *       market-provisioning.ts) for the source's anchor place. The lazy
+ *   (b) source_attached  — the §10 onboarding verb for the source's anchor
+ *       place. The lazy
  *       poll_surface source (§5) is deliberately NOT wired: its place
  *       already entered via (a)/(c) by construction (a poll_surface row is
  *       only minted at first graduation of that place's polls);

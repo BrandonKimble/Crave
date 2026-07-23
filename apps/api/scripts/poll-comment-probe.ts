@@ -31,7 +31,6 @@ async function main(): Promise<void> {
     const poll = await prisma.poll.create({
       data: {
         question: 'best slice in town?',
-        marketKey: 'region-us-ny-new-york',
         state: PollState.active,
         mode: PollMode.discussion,
         createdByUserId: uid,

@@ -472,7 +472,7 @@ export type OverlayRouteParamsMap = {
   scoreInfo?: undefined;
   pollCreation?: {
     /** Display label for the creation header (the feed's §2 place verdict). */
-    marketName?: string | null;
+    placeName?: string | null;
     bounds?: MapBounds | null;
     parentSceneKey?: 'polls' | null;
     ownerSceneKey?: 'polls' | null;

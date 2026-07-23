@@ -8,7 +8,7 @@ type UseSearchRoutePollCreationSceneStateRuntimeArgs = {
 
 export type SearchRoutePollCreationSceneStateRuntime = {
   pollCreationBounds: NonNullable<OverlayRouteEntry<'pollCreation'>['params']>['bounds'] | null;
-  pollCreationMarketName: string | null;
+  pollCreationPlaceName: string | null;
   shouldShowPollCreationPanel: boolean;
 };
 
@@ -32,8 +32,8 @@ export const useSearchRoutePollCreationSceneStateRuntime = ({
     const shouldShowPollCreationPanel = activePollCreationRoute != null;
 
     return {
-      pollCreationMarketName: shouldShowPollCreationPanel
-        ? (activePollCreationRoute.params?.marketName ?? null)
+      pollCreationPlaceName: shouldShowPollCreationPanel
+        ? (activePollCreationRoute.params?.placeName ?? null)
         : null,
       pollCreationBounds: shouldShowPollCreationPanel
         ? (activePollCreationRoute.params?.bounds ?? null)

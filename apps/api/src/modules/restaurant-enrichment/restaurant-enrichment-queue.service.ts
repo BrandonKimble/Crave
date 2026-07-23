@@ -9,7 +9,7 @@ const JOB_NAME = 'enrich-restaurant';
 export interface RestaurantEnrichmentJobData {
   restaurantId: string;
   requestedAt: string;
-  sourceMarket?: { city?: string | null; region?: string | null } | null;
+  sourceLocale?: { city?: string | null; region?: string | null } | null;
   countryCode?: string | null;
   locationBias?: { lat: number; lng: number; radiusMeters?: number } | null;
 }

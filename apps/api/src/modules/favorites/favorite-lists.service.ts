@@ -264,7 +264,7 @@ export class FavoriteListsService {
   }
 
   /**
-   * §8.15 city grouping: a list's city = the majority market of its items
+   * §8.15 city grouping: a list's city = the majority city of its items
    * (restaurant items directly; dish items via their connection's
    * restaurant). Ties break arbitrarily-but-stably; the client renders the
    * "Multiple cities"/flat decisions on top of this.

@@ -163,9 +163,9 @@ export class PollEntitySeedService {
       };
     }
 
-    // Market presence (when any legacy market contains the VERIFIED place)
-    // is derived inside buildRestaurantCreateInput from the Google place
-    // itself — §13: creation anchors to the verification result.
+    // Geometric location data is derived inside buildRestaurantCreateInput
+    // from the Google place itself — §13: creation anchors to the
+    // verification result (no legacy market presence involved).
     const entityData =
       await this.restaurantEnrichment.buildRestaurantCreateInput({
         name,

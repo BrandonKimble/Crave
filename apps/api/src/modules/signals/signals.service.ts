@@ -106,7 +106,7 @@ export interface RecordSignalInput {
   deviceKey?: string | null;
   subject?: SignalSubject;
   /**
-   * Resolved bbox, or a promise for one (lazy lookups — market bbox, primary
+   * Resolved bbox, or a promise for one (lazy lookups — place bbox, primary
    * location — stay off the caller's hot path; record() awaits internally).
    * null / resolved-null skips the write with a once-per-key debug log.
    */
@@ -118,7 +118,7 @@ export interface RecordSignalInput {
 // §16: process-local cache caps — K3-shaped capacity bounds (memory ceiling
 // per replica; FIFO eviction just re-fetches), NOT behavior constants: no
 // read changes meaning at any cap value. Sized to corpus reality (actors ≫
-// markets/places); pacer-derived sizing replaces them if they ever bind.
+// places); pacer-derived sizing replaces them if they ever bind.
 const ACTOR_CACHE_MAX = 10_000;
 const PLACE_BBOX_CACHE_MAX = 1_000;
 

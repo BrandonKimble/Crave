@@ -32,7 +32,7 @@ export class RestaurantEnrichmentWorker implements OnModuleInit {
       return;
     }
     await this.enrichment.enrichRestaurantById(restaurantId, {
-      sourceMarket: job.data.sourceMarket ?? undefined,
+      sourceLocale: job.data.sourceLocale ?? undefined,
       countryCode: job.data.countryCode ?? undefined,
       locationBias: job.data.locationBias ?? undefined,
     });

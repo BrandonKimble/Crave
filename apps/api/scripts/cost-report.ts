@@ -16,16 +16,16 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  * Standalone, rerunnable cost + discovery report (archive-load audit §9).
  *
  *   yarn ts-node scripts/cost-report.ts [--since 2026-07-08T10:50:00Z] \
- *     [--days 7] [--market austinfood]
+ *     [--days 7] [--subreddit austinfood]
  *
- * --market adds POST-SEQUENCE discovery attribution (the saturation curve)
+ * --subreddit adds POST-SEQUENCE discovery attribution (the saturation curve)
  * for that community. Spend is priced at official list rates; free tiers and
  * cached-read discounts make real bills lower.
  */
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   let since: Date | null = null;
-  let market: string | undefined;
+  let subreddit: string | undefined;
   let days = 7;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     };
     if (token === '--since') since = new Date(next());
     else if (token === '--days') days = Number(next());
-    else if (token === '--market') market = next().toLowerCase();
+    else if (token === '--subreddit') subreddit = next().toLowerCase();
     else throw new Error(`Unknown argument: ${token}`);
   }
   const windowStart = since ?? new Date(Date.now() - days * 24 * 3600 * 1000);
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
       prisma,
       out: (line) => process.stdout.write(`${line}\n`),
       since: windowStart,
-      market,
+      subreddit,
     });
   } finally {
     await app.close();

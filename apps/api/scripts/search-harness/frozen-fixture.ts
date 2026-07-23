@@ -5,6 +5,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import {
   bootstrap,
   out,
+  DEFAULT_MARKET_KEY,
   FIXTURE_PATH,
   FIXTURE_VERSION,
   type Fixture,
@@ -13,9 +14,11 @@ import {
 
 /**
  * frozen-fixture.ts — dump all `core_entities` (id, type, name, aliases) plus
- * market presence to a versioned JSON fixture so the replay harnesses run
- * hermetically (their corpus can't shift under them mid-sweep). Regenerated ONLY
- * on demand.
+ * region presence (§13 leg 3: geometric — a restaurant's primary location
+ * inside the DEFAULT_MARKET_KEY region's catalog-place bbox, the successor to
+ * the dropped `core_entity_market_presence` table) to a versioned JSON
+ * fixture so the replay harnesses run hermetically (their corpus can't shift
+ * under them mid-sweep). Regenerated ONLY on demand.
  *
  *   yarn workspace api ts-node scripts/search-harness/frozen-fixture.ts
  *
@@ -32,8 +35,27 @@ interface EntityRow {
 }
 interface PresenceRow {
   entity_id: string;
-  market_key: string;
 }
+
+/** DEFAULT_MARKET_KEY → the catalog place whose bbox stands in for that
+ *  legacy region (§13 leg 3: the only two keys this harness family has ever
+ *  used). Unknown keys fall back to no region filter (presence = false for
+ *  everyone) rather than guessing. */
+const REGION_PLACE_BY_MARKET_KEY: Record<
+  string,
+  { name: string; subdivisionCode: string; countryCode: string }
+> = {
+  'region-us-ny-new-york': {
+    name: 'New York',
+    subdivisionCode: 'NY',
+    countryCode: 'US',
+  },
+  'region-us-tx-austin': {
+    name: 'Austin',
+    subdivisionCode: 'TX',
+    countryCode: 'US',
+  },
+};
 
 async function main(): Promise<void> {
   const app = await bootstrap();
@@ -46,26 +68,41 @@ async function main(): Promise<void> {
         WHERE status = 'active'
         ORDER BY type, name`,
     );
-    const presence = await prisma.$queryRawUnsafe<PresenceRow[]>(
-      `SELECT entity_id, market_key FROM core_entity_market_presence`,
-    );
 
-    const marketsById = new Map<string, string[]>();
-    for (const p of presence) {
-      const arr = marketsById.get(p.entity_id) ?? [];
-      arr.push(p.market_key);
-      marketsById.set(p.entity_id, arr);
-    }
+    const regionPlace = REGION_PLACE_BY_MARKET_KEY[DEFAULT_MARKET_KEY];
+    const presence = regionPlace
+      ? await prisma.$queryRawUnsafe<PresenceRow[]>(
+          `WITH region_place AS (
+             SELECT bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
+               FROM places
+              WHERE name = $1 AND subdivision_code = $2 AND country_code = $3
+              ORDER BY promoted_at DESC NULLS LAST
+              LIMIT 1
+           )
+           SELECT e.entity_id
+             FROM core_entities e
+             JOIN core_restaurant_locations l ON l.location_id = e.primary_location_id
+             CROSS JOIN region_place rp
+            WHERE e.type = 'restaurant'
+              AND l.latitude BETWEEN rp.bbox_min_lat AND rp.bbox_max_lat
+              AND l.longitude BETWEEN rp.bbox_min_lng AND rp.bbox_max_lng`,
+          regionPlace.name,
+          regionPlace.subdivisionCode,
+          regionPlace.countryCode,
+        )
+      : [];
+
+    const presentIds = new Set(presence.map((p) => p.entity_id));
 
     const fixtureEntities: FixtureEntity[] = entities.map((e) => {
-      const marketKeys = marketsById.get(e.entity_id) ?? [];
+      const hasRegionPresence = presentIds.has(e.entity_id);
       return {
         entityId: e.entity_id,
         name: e.name,
         type: e.type,
         aliases: (e.aliases ?? []).filter((a) => a && a.trim().length > 0),
-        hasMarketPresence: marketKeys.length > 0,
-        marketKeys,
+        hasRegionPresence,
+        regionKeys: hasRegionPresence ? [DEFAULT_MARKET_KEY] : [],
       };
     });
 
@@ -77,8 +114,8 @@ async function main(): Promise<void> {
       (n, e) => n + e.aliases.length,
       0,
     );
-    counts.withMarketPresence = fixtureEntities.filter(
-      (e) => e.hasMarketPresence,
+    counts.withRegionPresence = fixtureEntities.filter(
+      (e) => e.hasRegionPresence,
     ).length;
 
     const fixture: Fixture = {

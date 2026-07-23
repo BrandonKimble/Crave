@@ -1,7 +1,7 @@
 export type OnDemandNoticeMetadata = {
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
-  displayMarketName?: string | null;
+  displayPlaceName?: string | null;
   engineCoverageShare?: number;
 };
 
@@ -10,7 +10,7 @@ export type OnDemandNoticeMetadata = {
 // territory ground intersects the viewport (share > 0). The election fields
 // (marketResolutionStatus / candidateLocalityName / collectableMarketKeys)
 // are DEAD; area naming is verdict-first with the catalog-derived
-// displayMarketName as the strictly-pre-first-commit fallback.
+// displayPlaceName as the strictly-pre-first-commit fallback.
 export const resolveOnDemandNoticeText = ({
   metadata,
   verdictAreaLabel,
@@ -27,8 +27,8 @@ export const resolveOnDemandNoticeText = ({
       : 0;
   const coveredByEngines = engineCoverageShare > 0;
   const displayName =
-    typeof metadata.displayMarketName === 'string' && metadata.displayMarketName.trim()
-      ? metadata.displayMarketName.trim()
+    typeof metadata.displayPlaceName === 'string' && metadata.displayPlaceName.trim()
+      ? metadata.displayPlaceName.trim()
       : null;
 
   if (metadata.onDemandQueued) {

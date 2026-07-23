@@ -150,7 +150,7 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
   if (access.active) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>You have Crave+</Text>
+        <Text style={styles.title}>You have Crave Premium</Text>
         {access.expiresAt ? (
           <Text style={styles.subtitle}>
             Access until {new Date(access.expiresAt).toLocaleDateString()}
@@ -167,7 +167,7 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
     return (
       <View style={styles.container}>
         <ActivityIndicator />
-        <Text style={styles.title}>Activating Crave+…</Text>
+        <Text style={styles.title}>Activating Crave Premium…</Text>
         <Text style={styles.subtitle}>
           Your purchase went through — access unlocks in a moment. If this takes longer than a
           minute, reopen the app; you will not be charged again.
@@ -178,7 +178,7 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Crave+</Text>
+      <Text style={styles.title}>Crave Premium</Text>
       <Text style={styles.subtitle}>
         The dish layer: ranked dishes across the city, dish scores, and the receipts behind them.
       </Text>

@@ -405,7 +405,7 @@ export const useSearchRequests = () => {
           responsePage: response.metadata?.page ?? null,
           responseDishCount: response.dishes?.length ?? 0,
           responseRestaurantCount: response.restaurants?.length ?? 0,
-          responseDisplayMarketName: response.metadata?.displayMarketName ?? null,
+          responseDisplayPlaceName: response.metadata?.displayPlaceName ?? null,
           responseEngineCoverageShare: response.metadata?.engineCoverageShare ?? null,
           responseEngineCount: response.metadata?.engineCoverage?.length ?? 0,
         });

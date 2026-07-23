@@ -33,9 +33,9 @@ export function buildRestaurantPlaceChooserPrompt(
 ): string {
   const trimmedQuery = input.query?.trim() ?? '';
   const sourceText = input.sourceText?.trim() || 'unknown';
-  const sourceMarket = [
-    input.sourceMarket?.city?.trim(),
-    input.sourceMarket?.region?.trim(),
+  const sourceLocale = [
+    input.sourceLocale?.city?.trim(),
+    input.sourceLocale?.region?.trim(),
   ]
     .filter((value): value is string => Boolean(value && value.length > 0))
     .join(', ');
@@ -69,7 +69,7 @@ export function buildRestaurantPlaceChooserPrompt(
     '',
     `Query: ${trimmedQuery}`,
     `Source text: ${sourceText}`,
-    `Source market: ${sourceMarket || 'unknown'}`,
+    `Source market: ${sourceLocale || 'unknown'}`,
     '',
     'Candidates:',
     ...candidateLines,

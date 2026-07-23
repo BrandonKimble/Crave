@@ -31,12 +31,13 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  * seed and a LIVE PRODUCTION load is which DATABASE_URL this process points
  * at. The deployed app just sees new rows — no deploy, no restart.
  *
- *   yarn ts-node scripts/seed-market.ts \
+ *   yarn ts-node scripts/seed-archive.ts \
  *     --subreddit austinfood [--subreddit foodnyc ...] \
  *     [--window-years 3] [--max-posts 1000] [--batch-size 250]
  *
- * Prereq per subreddit: onboard-market.ts already ran (market + community
- * exist) — this script verifies and refuses otherwise.
+ * Prereq per subreddit: the source row exists (sources table, platform
+ * 'reddit') — run scripts/onboard-subreddit.ts first; this script verifies
+ * and refuses otherwise.
  *
  * Everything is INCREMENTAL and idempotent: source docs dedupe by id,
  * relevance verdicts are cached, enriched restaurants are skip-guarded, and
@@ -86,7 +87,7 @@ async function main(): Promise<void> {
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(
     logDir,
-    `seed-market-${new Date().toISOString().replace(/[:.]/g, '-')}.log`,
+    `seed-archive-${new Date().toISOString().replace(/[:.]/g, '-')}.log`,
   );
   // Tee to a logfile so a killed wrapper/pipe can never eat the report
   // (audit §9 — it happened).
@@ -102,16 +103,20 @@ async function main(): Promise<void> {
 
     // Prereq check: every subreddit must be onboarded (never silently create).
     for (const subreddit of options.subreddits) {
-      const community = await prisma.collectionCommunity.findUnique({
-        where: { communityName: subreddit },
-        select: { marketKey: true, isActive: true },
+      const source = await prisma.source.findUnique({
+        where: {
+          platform_handle: { platform: 'reddit', handle: subreddit },
+        },
+        select: { sourceId: true, anchorPlaceId: true, engineId: true },
       });
-      if (!community) {
+      if (!source) {
         throw new Error(
-          `r/${subreddit} is not onboarded — run scripts/onboard-market.ts first`,
+          `r/${subreddit} has no source row — run scripts/onboard-subreddit.ts first`,
         );
       }
-      out(`r/${subreddit} -> ${community.marketKey}`);
+      out(
+        `r/${subreddit} -> source ${source.sourceId} (engine ${source.engineId ?? 'none'}, anchor place ${source.anchorPlaceId ?? 'none'})`,
+      );
     }
 
     const startedAt = new Date();
@@ -177,13 +182,13 @@ async function main(): Promise<void> {
 
     // ---- COST REPORT (shared, rerunnable, post-sequence attributed) ----
     // Also re-runnable any time after the fact:
-    //   yarn ts-node scripts/cost-report.ts --since <ISO> --market <subreddit>
+    //   yarn ts-node scripts/cost-report.ts --since <ISO> --subreddit <subreddit>
     for (const subreddit of options.subreddits) {
       await printCostReport({
         prisma,
         out,
         since: startedAt,
-        market: subreddit,
+        subreddit,
       });
     }
     const after = {
@@ -193,7 +198,7 @@ async function main(): Promise<void> {
       }),
     };
     out(
-      `\nentities +${after.entities - baseline.entities}; place-backed locations +${after.restaurants - baseline.restaurants} (wall-clock, ALL markets — the per-market truth is the post-sequence section above)`,
+      `\nentities +${after.entities - baseline.entities}; place-backed locations +${after.restaurants - baseline.restaurants} (wall-clock, ALL subreddits — the per-subreddit truth is the post-sequence section above)`,
     );
     out(`report also written to ${logFile}`);
   } finally {

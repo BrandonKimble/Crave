@@ -2,12 +2,12 @@ import type { PrismaService } from '../../src/prisma/prisma.service';
 
 /**
  * THE cost report (archive-load audit §9): standalone, rerunnable, and
- * market-scoped — never again lost to a killed wrapper process, and never
+ * subreddit-scoped — never again lost to a killed wrapper process, and never
  * again attributing discovery by wall clock (wall-clock createdAt deltas mix
- * every market loaded in the window and produced a false "no saturation"
+ * every subreddit loaded in the window and produced a false "no saturation"
  * reading during the stage-2 load; post-sequence attribution is the truth).
  *
- * Used by scripts/cost-report.ts (CLI) and scripts/seed-market.ts (end of a
+ * Used by scripts/cost-report.ts (CLI) and scripts/seed-archive.ts (end of a
  * seeding run).
  */
 
@@ -44,12 +44,12 @@ export interface CostReportOptions {
   /** Ledger window start. */
   since: Date;
   /** Community name (e.g. 'austinfood'): adds POST-SEQUENCE discovery
-   *  attribution for that market. Omit for spend-only. */
-  market?: string;
+   *  attribution for that subreddit. Omit for spend-only. */
+  subreddit?: string;
 }
 
 export async function printCostReport(opts: CostReportOptions): Promise<void> {
-  const { prisma, out, since, market } = opts;
+  const { prisma, out, since, subreddit } = opts;
 
   // ---- Spend (ledger window, official list rates) ----
   const usage = await prisma.apiUsageEvent.groupBy({
@@ -86,9 +86,9 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
     `  TOTAL: places $${placesUsd.toFixed(2)} + gemini $${geminiUsd.toFixed(2)} = $${(placesUsd + geminiUsd).toFixed(2)} (list rates; free tiers + cached-read discounts make real bills LOWER)`,
   );
 
-  if (!market) return;
+  if (!subreddit) return;
 
-  // ---- Market discovery, POST-SEQUENCE attributed ----
+  // ---- Discovery, POST-SEQUENCE attributed ----
   // Every source document resolves to its thread-root post (recursive parent
   // walk — comments can nest); a restaurant's discovery position is the
   // sequence number of the FIRST post whose thread first mentioned it.
@@ -142,15 +142,15 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
     GROUP BY 1
     ORDER BY 1
     `,
-    market,
+    subreddit,
   )) satisfies unknown as { bucket: number; discovered: number }[];
 
   const totalPosts = (await prisma.$queryRawUnsafe(
     `SELECT COUNT(*)::int AS n FROM collection_source_documents WHERE community = $1 AND source_type = 'post'`,
-    market,
+    subreddit,
   )) satisfies unknown as { n: number }[];
 
-  out(`\n=== DISCOVERY (r/${market}, post-sequence attributed) ===`);
+  out(`\n=== DISCOVERY (r/${subreddit}, post-sequence attributed) ===`);
   out(`  posts loaded: ${totalPosts[0]?.n ?? 0}`);
   let cumulative = 0;
   for (const b of buckets) {

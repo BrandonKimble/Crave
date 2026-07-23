@@ -154,14 +154,14 @@ export const PersistentSheetHeaderHost: React.FC<{
       return;
     }
     if (sceneKey === 'polls') {
-      // Fallback create-poll push. The market-gated create (market params + "Pick a market"
+      // Fallback create-poll push. The place-gated create (place params + "Pick a place"
       // modal) registers from PollsPanel's header Title mount (leg 7) — this fallback only
       // fires if the plus is pressed before that effect commits, and the warn is the signal.
       if (__DEV__) {
         // eslint-disable-next-line no-console
         console.warn(
           `[HeaderNavAction] polls create fell back to a bare pollCreation push — ` +
-            `PollsPanel has not registered its market-gated create on the header-create registry.`
+            `PollsPanel has not registered its place-gated create on the header-create registry.`
         );
       }
       pushRoute('pollCreation');

@@ -160,15 +160,15 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
   paramsCase({
     name: 'pollCreation: same bounds reference + label equal',
     key: 'pollCreation',
-    left: { marketName: 'Austin', bounds: BOUNDS_A },
-    right: { marketName: 'Austin', bounds: BOUNDS_A },
+    left: { placeName: 'Austin', bounds: BOUNDS_A },
+    right: { placeName: 'Austin', bounds: BOUNDS_A },
     expected: true,
   }),
   paramsCase({
     name: 'pollCreation: differing bounds reference unequal',
     key: 'pollCreation',
-    left: { marketName: 'Austin', bounds: BOUNDS_A },
-    right: { marketName: 'Austin', bounds: { ...BOUNDS_A } },
+    left: { placeName: 'Austin', bounds: BOUNDS_A },
+    right: { placeName: 'Austin', bounds: { ...BOUNDS_A } },
     expected: false,
   }),
   // ── fall-through-disease fixes (old impl: always false) ───────────────────

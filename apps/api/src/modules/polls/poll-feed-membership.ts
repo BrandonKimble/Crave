@@ -5,7 +5,7 @@
  * The header is the SAME §2.5 polygon-native judgment search uses
  * (resolveHeaderPlace — one law, one implementation; "Polls in this area" is
  * the client's rendering of the null verdict, exactly like search's
- * displayMarketName).
+ * displayPlaceName).
  *
  * §4 boundary, feed half — "big-place (subdivision+) polls are
  * feed-at-that-zoom only": an in-view place that is BOTH over-scale for the

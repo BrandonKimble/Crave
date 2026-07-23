@@ -327,7 +327,7 @@ export interface RestaurantEnrichmentOptions {
   sessionToken?: string;
   query?: string;
   sourceText?: string;
-  sourceMarket?: {
+  sourceLocale?: {
     city?: string | null;
     region?: string | null;
   };
@@ -406,7 +406,7 @@ type CandidateSelectionTrailEntry = {
   reason?: string;
   autocompleteRank?: number;
   searchTextRank?: number;
-  inMarket?: boolean;
+  localeBiasMatch?: boolean;
   exactNameMatch?: boolean;
   consensusCandidate?: boolean;
 };
@@ -721,7 +721,7 @@ export class RestaurantLocationEnrichmentService {
     } as RestaurantEntity;
 
     const searchContext = this.buildSearchContext(entity, {
-      sourceMarket: {
+      sourceLocale: {
         city: params.city ?? null,
         region: params.region ?? null,
       },
@@ -2133,20 +2133,20 @@ export class RestaurantLocationEnrichmentService {
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
   ): EnrichmentSearchContext {
-    const sourceMarket = this.normalizeSourceMarket(options.sourceMarket);
+    const sourceLocale = this.normalizeSourceLocale(options.sourceLocale);
     const query = options.query?.trim() || entity.name?.trim() || '';
     return {
       query: query.trim().length ? query : null,
       sourceText: options.sourceText?.trim() || undefined,
-      city: sourceMarket.city ?? undefined,
-      region: sourceMarket.region ?? undefined,
+      city: sourceLocale.city ?? undefined,
+      region: sourceLocale.region ?? undefined,
       countryCode: this.normalizeCountryCode(options.countryCode) ?? undefined,
       locationBias: options.locationBias,
     };
   }
 
-  private normalizeSourceMarket(
-    sourceMarket?: {
+  private normalizeSourceLocale(
+    sourceLocale?: {
       city?: string | null;
       region?: string | null;
     } | null,
@@ -2154,8 +2154,8 @@ export class RestaurantLocationEnrichmentService {
     city?: string;
     region?: string;
   } {
-    const city = sourceMarket?.city?.trim();
-    const region = sourceMarket?.region?.trim();
+    const city = sourceLocale?.city?.trim();
+    const region = sourceLocale?.region?.trim();
 
     return {
       city: city || undefined,
@@ -2561,7 +2561,7 @@ export class RestaurantLocationEnrichmentService {
     }));
   }
 
-  private hasCandidateMarketPreferenceContext(
+  private hasCandidateLocaleBiasContext(
     context: EnrichmentSearchContext,
   ): boolean {
     const radiusMeters = context.locationBias?.radiusMeters;
@@ -2700,7 +2700,7 @@ export class RestaurantLocationEnrichmentService {
       const decision = await this.llmService.chooseRestaurantPlaceCandidate({
         query: params.entity.name,
         sourceText: params.context?.sourceText,
-        sourceMarket: {
+        sourceLocale: {
           city: params.context?.city,
           region: params.context?.region,
         },
@@ -2853,7 +2853,7 @@ export class RestaurantLocationEnrichmentService {
     let retryEvaluation: CandidateStageEvaluation | undefined;
 
     const retryQuery =
-      this.buildAutocompleteMarketRetryQuery(
+      this.buildAutocompleteLocaleRetryQuery(
         params.context,
         params.context?.query ?? params.entity.name ?? null,
       ) ?? undefined;
@@ -2993,7 +2993,7 @@ export class RestaurantLocationEnrichmentService {
     );
   }
 
-  private buildAutocompleteMarketRetryQuery(
+  private buildAutocompleteLocaleRetryQuery(
     context: EnrichmentSearchContext | undefined,
     query: string | null,
   ): string | null {
@@ -3002,15 +3002,15 @@ export class RestaurantLocationEnrichmentService {
       return null;
     }
 
-    const marketParts = [context?.city?.trim(), context?.region?.trim()].filter(
+    const localeParts = [context?.city?.trim(), context?.region?.trim()].filter(
       (value): value is string => Boolean(value && value.length > 0),
     );
-    if (!marketParts.length) {
+    if (!localeParts.length) {
       return null;
     }
 
     const normalizedQuery = trimmedQuery.toLowerCase();
-    const missingParts = marketParts.filter(
+    const missingParts = localeParts.filter(
       (part) => !normalizedQuery.includes(part.toLowerCase()),
     );
     if (!missingParts.length) {

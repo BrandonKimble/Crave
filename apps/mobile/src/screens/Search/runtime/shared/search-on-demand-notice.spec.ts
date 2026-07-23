@@ -3,8 +3,8 @@ import { resolveOnDemandNoticeText } from './on-demand-notice-copy';
 // ENGINE-COVERAGE notice re-key parity (markets extermination leg 2).
 // Old law → new law mapping:
 //   covered      ⇔ collectableMarketKeys.length > 0  →  engineCoverageShare > 0
-//   area label   ⇔ verdict → displayMarketName/candidateLocalityName chain
-//                →  verdict → displayMarketName (catalog header) only
+//   area label   ⇔ verdict → displayPlaceName/candidateLocalityName chain
+//                →  verdict → displayPlaceName (catalog header) only
 //   multi-market "zoom out" tie arm → DEAD (ground coverage has no tie state)
 
 describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
@@ -13,7 +13,7 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
       metadata: {
         onDemandQueued: true,
         onDemandEtaMs: 30 * 60000,
-        displayMarketName: 'Austin',
+        displayPlaceName: 'Austin',
         engineCoverageShare: 0.9,
       },
       verdictAreaLabel: 'East Austin',
@@ -26,7 +26,7 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
 
   it('queued arm pre-commit: falls back to the catalog header name, then "this area"', () => {
     const withName = resolveOnDemandNoticeText({
-      metadata: { onDemandQueued: true, displayMarketName: 'Austin' },
+      metadata: { onDemandQueued: true, displayPlaceName: 'Austin' },
       verdictAreaLabel: null,
       onDemandNoticeQuery: '',
     });
@@ -41,7 +41,7 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
 
   it('a committed straddle verdict ("this area") out-votes the metadata name', () => {
     const text = resolveOnDemandNoticeText({
-      metadata: { onDemandQueued: true, displayMarketName: 'Austin' },
+      metadata: { onDemandQueued: true, displayPlaceName: 'Austin' },
       verdictAreaLabel: 'this area',
       onDemandNoticeQuery: '',
     });
@@ -51,7 +51,7 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
 
   it('UNCOVERED state (share 0 or absent, nothing queued): growth copy with the verdict/header label', () => {
     const text = resolveOnDemandNoticeText({
-      metadata: { engineCoverageShare: 0, displayMarketName: 'Marfa' },
+      metadata: { engineCoverageShare: 0, displayPlaceName: 'Marfa' },
       verdictAreaLabel: null,
       onDemandNoticeQuery: 'kolaches',
     });
@@ -68,7 +68,7 @@ describe('resolveOnDemandNoticeText (engine-coverage re-key)', () => {
   it('COVERED (share > 0) with nothing queued renders NO notice', () => {
     expect(
       resolveOnDemandNoticeText({
-        metadata: { engineCoverageShare: 0.4, displayMarketName: 'Austin' },
+        metadata: { engineCoverageShare: 0.4, displayPlaceName: 'Austin' },
         verdictAreaLabel: 'Austin',
         onDemandNoticeQuery: 'tacos',
       })

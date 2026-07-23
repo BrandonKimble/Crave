@@ -62,7 +62,7 @@ type SourceBreakdown = {
 };
 
 type RestaurantEnrichmentDispatchContext = {
-  sourceMarket?: {
+  sourceLocale?: {
     city?: string;
     region?: string;
   };
@@ -2594,7 +2594,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     // hasPlaceId guard. Failures retry with backoff inside the queue.
     for (const entityId of restaurantIds) {
       await this.restaurantEnrichmentQueue.queueEnrichment(entityId, {
-        sourceMarket: enrichmentContext.sourceMarket ?? null,
+        sourceLocale: enrichmentContext.sourceLocale ?? null,
         countryCode: enrichmentContext.countryCode ?? null,
         locationBias: enrichmentContext.locationBias ?? null,
       });
@@ -2642,7 +2642,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     });
 
     return {
-      sourceMarket: anchorPlace
+      sourceLocale: anchorPlace
         ? {
             city: anchorPlace.name?.trim() || undefined,
             region: anchorPlace.subdivisionCode?.trim() || undefined,

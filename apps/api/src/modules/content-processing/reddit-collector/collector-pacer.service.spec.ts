@@ -205,7 +205,7 @@ describe('CollectorPacerService', () => {
       expect.objectContaining({
         sourceId: 'src-1',
         engineId: 'engine-austin',
-        collectableMarketKey: 'region-us-tx-austin',
+        engineName: 'region-us-tx-austin',
         declaredRequests: expect.any(Number) as number,
         source: 'scheduled',
       }),
