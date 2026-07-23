@@ -81,7 +81,6 @@ export interface PollTopic {
   targetRestaurantAttributeId?: string | null;
   title?: string | null;
   description?: string | null;
-  marketKey?: string | null;
 }
 
 export interface Poll {
@@ -93,9 +92,6 @@ export interface Poll {
   /** §6 place-keyed feed: the poll's place + its batch-resolved label. */
   placeId?: string | null;
   placeName?: string | null;
-  /** Legacy market fields — still present on non-feed reads (getPoll, topic); the feed renders placeName. */
-  marketKey?: string | null;
-  marketName?: string | null;
   createdByUserId?: string | null;
   createdAt?: string | null;
   launchedAt?: string | null;
@@ -121,7 +117,7 @@ export type PollFeedPromise = {
 /**
  * §22 item-5 feed contract (POST /polls/query): viewport-scoped feed with keyset
  * cursor pagination. The header carries the §2 subjecthood verdict — null renders
- * the first-class "Polls in this area". marketKey/marketName/marketStatus are DEAD.
+ * the first-class "Polls in this area".
  */
 export type PollQueryResponse = {
   header: { placeName: string | null };
@@ -154,7 +150,6 @@ export type CreatePollPayload = {
   question?: string;
   topicType?: PollTopicType;
   description?: string;
-  marketKey?: string;
   bounds?: MapBounds | null;
   closeWindowDays?: number;
   targetDishId?: string;
@@ -320,7 +315,7 @@ export type PollDuplicateMatch = {
 export const checkPollDuplicate = async (body: {
   question: string;
   // Place-scoped dedupe: the server resolves the duplicate scope from the
-  // viewport bounds (marketKey is legacy accepted-ignored server-side).
+  // viewport bounds.
   bounds?: MapBounds | null;
 }): Promise<{ matches: PollDuplicateMatch[] }> => {
   const response = await api.post('/polls/check-duplicate', body);

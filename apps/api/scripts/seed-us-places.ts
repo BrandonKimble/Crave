@@ -18,6 +18,22 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  * spend. Verified 2026-07-19: FUNCSTAT=A rows = 19,465 — the plan's "~19.5k
  * municipalities" is a measured fact, not an estimate.
  *
+ * ── FRESH DEV DB BOOTSTRAP (wave-6 item 10, 2026-07-22) ────────────────────
+ * The old `db:seed` (prisma/seed.ts — regional MARKET provisioning) is
+ * DELETED; markets are legacy machinery on the survivor-ledger kill path.
+ * A fresh database bootstraps through the place catalog instead:
+ *
+ *   1. yarn db:migrate:deploy                      # schema
+ *   2. yarn places:seed-us --execute               # this script: ~19.5k sketches
+ *   3. yarn places:seed-coarse-polygons --execute  # countries/states/counties ground
+ *   4. Restaurant/dish data arrives via the COLLECTION PIPELINE (reddit
+ *      collectors + enrichment crons in the running API), not a seed script.
+ *      Optional dev fixtures: yarn polls:seed-fixtures.
+ *
+ * If a legacy market row is ever needed (coverage gating still reads the
+ * markets table until the §10/§11 engine re-key), provision it manually via
+ * scripts/onboard-market.ts.
+ *
  * What this deliberately does NOT do:
  *  - No TomTom draws. The §1 "$50 TomTom polygons" are TIER-2 geometry: seeded
  *    places enter the §2 promotion queue via trigger (d) "batch seed" and

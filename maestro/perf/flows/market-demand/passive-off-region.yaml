@@ -6,7 +6,7 @@ appId: com.brandonkimble.cravesearch
 - tapOn:
     text: 'Close results'
     optional: true
-- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=46.7867&lng=-92.1005&zoom=11.5&label=duluth'
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=46.7867&lng=-92.1005&zoom=11.5&label=duluth'
 - waitForAnimationToEnd:
     timeout: 2500
 - extendedWaitUntil:

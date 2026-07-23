@@ -1,5 +1,4 @@
-import { Body, Controller, Get, Ip, Post } from '@nestjs/common';
-import { MarketResolveDto } from './dto/market-resolve.dto';
+import { Controller, Get, Ip } from '@nestjs/common';
 import { MarketRegistryService } from './market-registry.service';
 import { IpLocationService } from './ip-location.service';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
@@ -21,16 +20,6 @@ export class MarketsController {
   @Get('active')
   listActive() {
     return this.marketRegistry.listActiveMarkets();
-  }
-
-  @Post('resolve')
-  resolve(@Body() dto: MarketResolveDto) {
-    return this.marketRegistry.resolveViewportCoverage({
-      bounds: dto.bounds ?? null,
-      userLocation: dto.userLocation ?? null,
-      mode: dto.mode,
-      ensureLocalityMarkets: false,
-    });
   }
 
   // Coarse IP→metro for the startup map fallback when the device has no location

@@ -470,7 +470,6 @@ export class PollsService {
             targetRestaurantId: true,
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
-            marketKey: true,
             title: true,
             description: true,
             metadata: true,
@@ -482,20 +481,16 @@ export class PollsService {
     const ordered = pollIds
       .map((id) => byId.get(id))
       .filter((poll): poll is (typeof polls)[number] => poll != null);
-    const labeled = await this.attachPlaceLabels(
-      await this.attachMarketLabels(ordered),
-    );
+    const labeled = await this.attachPlaceLabels(ordered);
     return this.attachPollStats(labeled, viewerUserId);
   }
 
   /**
-   * §6 per-poll place labels: ONE batch place lookup for the page. Legacy
-   * marketKey rows keep their attachMarketLabels name; place-keyed rows also
-   * mirror placeName into marketName so pre-cut mobile renders a label.
+   * §6 per-poll place labels: ONE batch place lookup for the page.
    */
-  private async attachPlaceLabels<
-    T extends { placeId?: string | null; marketName?: string | null },
-  >(polls: T[]): Promise<Array<T & { placeName: string | null }>> {
+  private async attachPlaceLabels<T extends { placeId?: string | null }>(
+    polls: T[],
+  ): Promise<Array<T & { placeName: string | null }>> {
     const placeIds = [
       ...new Set(
         polls
@@ -519,16 +514,13 @@ export class PollsService {
       return {
         ...poll,
         placeName,
-        marketName: poll.marketName ?? placeName,
       };
     });
   }
 
   /**
-   * Feed response envelope. New contract: header (§2 verdict; null renders
-   * "Polls in this area"), typed cold-start promise (§6), nextCursor. The
-   * legacy fields exist ONLY for pre-cut mobile (marketName carries the
-   * header verdict; marketKey is dead) and are deleted with the mobile cut.
+   * Feed response envelope: header (§2 verdict; null renders "Polls in this
+   * area"), typed cold-start promise (§6), polls, nextCursor.
    */
   private buildFeedResponse(params: {
     headerPlaceName: string | null;
@@ -548,23 +540,6 @@ export class PollsService {
       promise,
       polls,
       nextCursor,
-      // ─── legacy envelope (pre-cut mobile; dies with the mobile cut) ───
-      marketKey: null,
-      marketName: headerPlaceName,
-      marketStatus: 'resolved' as const,
-      candidateLocalityName: null,
-      candidateBoundaryProvider: null,
-      candidateBoundaryId: null,
-      candidateBoundaryType: null,
-      cta: {
-        kind: 'create_poll' as const,
-        label: headerPlaceName
-          ? `Create a poll for ${headerPlaceName}`
-          : 'Create a poll',
-        prompt: headerPlaceName
-          ? `Create a poll for ${headerPlaceName}`
-          : 'Create a poll',
-      },
     };
   }
 
@@ -923,7 +898,6 @@ export class PollsService {
               targetRestaurantId: true,
               targetFoodAttributeId: true,
               targetRestaurantAttributeId: true,
-              marketKey: true,
               title: true,
               description: true,
               metadata: true,
@@ -970,9 +944,7 @@ export class PollsService {
     // so a ranked poll ranks the creator's organic suggestion from frame one.
     // (No-op for discussion polls — rebuildPollLeaderboard early-returns.)
     await this.rebuildPollLeaderboard(poll.pollId);
-    const [enriched] = await this.attachPlaceLabels(
-      await this.attachMarketLabels([poll]),
-    );
+    const [enriched] = await this.attachPlaceLabels([poll]);
     return enriched;
   }
 
@@ -1109,7 +1081,6 @@ export class PollsService {
             targetRestaurantId: true,
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
-            marketKey: true,
             title: true,
             description: true,
             metadata: true,
@@ -1138,9 +1109,7 @@ export class PollsService {
       meta: { pollId: poll.pollId },
     });
     // W4: no counter bump — the stat is a live count (UserService.countCreatedPolls).
-    const [enriched] = await this.attachPlaceLabels(
-      await this.attachMarketLabels([poll]),
-    );
+    const [enriched] = await this.attachPlaceLabels([poll]);
     return enriched;
   }
 
@@ -1155,7 +1124,6 @@ export class PollsService {
             targetRestaurantId: true,
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
-            marketKey: true,
             title: true,
             description: true,
             metadata: true,
@@ -1168,7 +1136,7 @@ export class PollsService {
       throw new NotFoundException('Poll not found');
     }
 
-    const [enriched] = await this.attachMarketLabels([poll]);
+    const [enriched] = await this.attachPlaceLabels([poll]);
     return enriched;
   }
 
@@ -2108,7 +2076,6 @@ export class PollsService {
               targetRestaurantId: true,
               targetFoodAttributeId: true,
               targetRestaurantAttributeId: true,
-              marketKey: true,
               title: true,
               description: true,
               metadata: true,
@@ -2117,7 +2084,7 @@ export class PollsService {
         },
       });
 
-      const enriched = await this.attachMarketLabels(polls);
+      const enriched = await this.attachPlaceLabels(polls);
       return {
         activity,
         polls: enriched,
@@ -2166,7 +2133,6 @@ export class PollsService {
                   targetRestaurantId: true,
                   targetFoodAttributeId: true,
                   targetRestaurantAttributeId: true,
-                  marketKey: true,
                   title: true,
                   description: true,
                   metadata: true,
@@ -2177,63 +2143,13 @@ export class PollsService {
         : [];
 
     const enriched = await this.attachPollStats(
-      await this.attachMarketLabels(polls),
+      await this.attachPlaceLabels(polls),
       userId,
     );
     return {
       activity,
       polls: enriched,
     };
-  }
-
-  private async attachMarketLabels<
-    T extends {
-      marketKey?: string | null;
-      topic?: { marketKey?: string | null } | null;
-    },
-  >(polls: T[]): Promise<Array<T & { marketName?: string | null }>> {
-    const marketKeys = new Set<string>();
-    for (const poll of polls) {
-      const rawKey = poll.marketKey ?? poll.topic?.marketKey ?? null;
-      if (typeof rawKey === 'string' && rawKey.trim()) {
-        marketKeys.add(rawKey.trim().toLowerCase());
-      }
-    }
-
-    if (marketKeys.size === 0) {
-      return polls;
-    }
-
-    const keys = Array.from(marketKeys.values());
-    const marketRows = await this.prisma.market.findMany({
-      where: {
-        marketKey: { in: keys },
-      },
-      select: {
-        marketKey: true,
-        marketName: true,
-        marketShortName: true,
-      },
-    });
-
-    const labelByKey = new Map<string, string>();
-    for (const row of marketRows) {
-      const label = this.resolveMarketLabel(row);
-      if (!label) {
-        continue;
-      }
-      labelByKey.set(row.marketKey.toLowerCase(), label);
-    }
-
-    return polls.map((poll) => {
-      const rawKey = poll.marketKey ?? poll.topic?.marketKey ?? null;
-      const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
-      const marketName = key ? (labelByKey.get(key) ?? null) : null;
-      return {
-        ...poll,
-        marketName,
-      };
-    });
   }
 
   /**
@@ -2462,20 +2378,6 @@ export class PollsService {
         },
       };
     });
-  }
-
-  private resolveMarketLabel(row: {
-    marketKey: string;
-    marketName: string;
-    marketShortName: string | null;
-  }): string | null {
-    if (row.marketShortName && row.marketShortName.trim()) {
-      return row.marketShortName.trim();
-    }
-    if (row.marketName && row.marketName.trim()) {
-      return row.marketName.trim();
-    }
-    return row.marketKey.trim() || null;
   }
 
   private buildPollQuestion(

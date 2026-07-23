@@ -10,7 +10,6 @@
     "app-route:delete-gate": "bash ./scripts/app-route-runtime-delete-gate.sh",
     "tomtom-market:delete-gate": "bash ./scripts/tomtom-market-cutover-delete-gate.sh",
     "tomtom-market:deploy-gate": "bash ./scripts/tomtom-market-deploy-gate.sh",
-    "tomtom-market:fixtures": "yarn workspace api tomtom:fixtures",
     "tomtom-market:health": "yarn workspace api tomtom:regional-health",
     "search-demand:delete-gate": "bash ./scripts/search-demand-cutover-delete-gate.sh",
     "search-demand:rebuild": "yarn workspace api search-demand:rebuild",

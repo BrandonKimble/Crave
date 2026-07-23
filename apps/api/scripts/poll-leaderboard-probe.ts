@@ -8,7 +8,11 @@ import { PollsService } from '../src/modules/polls/polls.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
-const NYC = 'region-us-ny-new-york';
+// Creation is bounds-anchored (place catalog); a lower-Manhattan viewport.
+const NYC_BOUNDS = {
+  northEast: { lat: 40.7411, lng: -73.9578 },
+  southWest: { lat: 40.6987, lng: -74.0132 },
+};
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
@@ -29,7 +33,7 @@ async function main(): Promise<void> {
     const [u1, u2, u3] = users.map((u) => u.userId);
 
     const poll = await polls.createPoll(
-      { question: 'best breakfast sandwich in NYC', marketKey: NYC },
+      { question: 'best breakfast sandwich in NYC', bounds: NYC_BOUNDS },
       u1,
     );
     pollId = poll.pollId;

@@ -59,7 +59,6 @@ const CLOSE_WINDOW_OPTIONS: ReadonlyArray<{ label: string; value: number }> = [
 
 type UsePollCreationPanelSpecOptions = {
   visible: boolean;
-  marketKey: string | null;
   marketName?: string | null;
   bounds?: MapBounds | null;
   searchBarTop?: number;
@@ -74,7 +73,6 @@ type UsePollCreationPanelSpecOptions = {
 // consumes what the BODY (submit flow) needs.
 export const usePollCreationPanelSpec = ({
   visible,
-  marketKey,
   bounds,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
@@ -109,7 +107,7 @@ export const usePollCreationPanelSpec = ({
   // snap in ~1 frame, so the keyboard rising right after reads as "keyboard-up on open".
 
   const handleSubmit = useCallback(async () => {
-    if (!marketKey && !bounds) {
+    if (!bounds) {
       showAppModal({
         title: 'Pick an area',
         message: 'Move the map to the area you want to ask about before creating a poll.',
@@ -130,9 +128,7 @@ export const usePollCreationPanelSpec = ({
 
       // Stage 1 — fast text dedup (no LLM): route obvious duplicates to the existing
       // poll instead of spinning up another. Precision-favoring threshold server-side.
-      // Place-scoped: the server resolves the dedupe scope from the viewport bounds
-      // (the legacy marketKey gate left this with ZERO live callers — marketKey is
-      // null on the live path).
+      // Place-scoped: the server resolves the dedupe scope from the viewport bounds.
       const { matches } = await checkPollDuplicate({ question: trimmedQuestion, bounds });
       const match = matches[0];
       if (match) {
@@ -156,7 +152,6 @@ export const usePollCreationPanelSpec = ({
 
       const payload: CreatePollPayload = {
         question: trimmedQuestion,
-        marketKey: marketKey ?? undefined,
         bounds,
         description: description.trim() || undefined,
         closeWindowDays,
@@ -168,7 +163,7 @@ export const usePollCreationPanelSpec = ({
     } finally {
       setSubmitting(false);
     }
-  }, [bounds, closeWindowDays, description, marketKey, onClose, onCreated, pushRoute, question]);
+  }, [bounds, closeWindowDays, description, onClose, onCreated, pushRoute, question]);
 
   const expanded = resolveExpandedTop(searchBarTop, insets.top);
   // The list body frame fills the full sheet height but the sheet is translated DOWN by `expanded`,
@@ -347,19 +342,18 @@ export const usePollCreationPanelSpec = ({
 
 // ─── Persistent header descriptor (P3, page-switch-master-plan.md §6-P3) ────────────────────
 // The poll-creation header is extracted OUT of the panel spec into the hoisted persistent chrome
-// (PersistentSheetHeaderHost). The market-aware title re-sources marketKey/marketName from the
-// SAME place the panel spec got them — the active pollCreation route's params (the exact
-// polls-parent guard useSearchRoutePollCreationSceneStateRuntime applies) — read live from the
-// route-overlay navigation authority. The last resolved market is LATCHED while the header
-// outlives the route for a dismiss frame, so the title never flickers to the fallback mid-close.
+// (PersistentSheetHeaderHost). The place-aware title re-sources marketName (the feed's place
+// verdict snapshot) from the SAME place the panel spec got it — the active pollCreation route's
+// params (the exact polls-parent guard useSearchRoutePollCreationSceneStateRuntime applies) —
+// read live from the route-overlay navigation authority. The last resolved label is LATCHED
+// while the header outlives the route for a dismiss frame, so the title never flickers to the
+// fallback mid-close.
 
 type PollCreationHeaderMarket = {
-  marketKey: string | null;
   marketName: string | null;
 };
 
 const EMPTY_POLL_CREATION_HEADER_MARKET: PollCreationHeaderMarket = {
-  marketKey: null,
   marketName: null,
 };
 
@@ -374,7 +368,6 @@ const resolvePollCreationHeaderMarket = (
     return null;
   }
   return {
-    marketKey: params?.marketKey ?? null,
     marketName: params?.marketName ?? null,
   };
 };
@@ -383,11 +376,7 @@ const arePollCreationHeaderMarketsEqual = (
   left: PollCreationHeaderMarket | null,
   right: PollCreationHeaderMarket | null
 ): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.marketKey === right.marketKey &&
-    left.marketName === right.marketName);
+  left === right || (left != null && right != null && left.marketName === right.marketName);
 
 const usePollCreationHeaderMarket = (): PollCreationHeaderMarket => {
   const { routeOverlayNavigationAuthority } = useAppRouteSceneRuntime();
@@ -419,7 +408,7 @@ const usePollCreationHeaderMarket = (): PollCreationHeaderMarket => {
 };
 
 const PollCreationPersistentHeaderTitle = React.memo(() => {
-  const { marketKey, marketName } = usePollCreationHeaderMarket();
+  const { marketName } = usePollCreationHeaderMarket();
   // HEADER SUBJECT-STORE (ratified 2026-07-21): the creation place label reads
   // the ONE client subject verdict once committed — the route-param
   // marketName (creation-context snapshot) is only the pre-first-commit
@@ -432,9 +421,7 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
       : 'Add a poll near here'
     : marketName?.trim()
       ? `Add a poll in ${marketName.trim()}`
-      : marketKey
-        ? 'Add a poll'
-        : 'Add a poll near here';
+      : 'Add a poll near here';
   return <ChromeTitleText>{toSingleLineText(headerTitle)}</ChromeTitleText>;
 });
 PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTitle';

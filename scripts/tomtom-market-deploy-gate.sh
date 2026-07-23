@@ -66,8 +66,11 @@ else
     echo "tomtom-market-deploy-gate: TOMTOM_API_KEY or scoped TOMTOM_API_KEY_DEV/PROD is required when regional market seed is needed" >&2
     exit 1
   fi
-  yarn workspace api db:seed
-  yarn tomtom-market:health
+  # WAVE-6 item 10 (2026-07-22): prisma/seed.ts (db:seed) is DELETED. Regional
+  # market repair is a manual operator action now — provision the missing
+  # market via apps/api/scripts/onboard-market.ts, then re-run this gate.
+  echo "tomtom-market-deploy-gate: regional market health FAILED and the db:seed repair path is gone — run apps/api/scripts/onboard-market.ts for the unhealthy market, then re-run" >&2
+  exit 1
 fi
 
 echo "tomtom-market-deploy-gate: ok"

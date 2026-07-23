@@ -99,24 +99,17 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
   }),
   // ── polls arm (pin) ───────────────────────────────────────────────────────
   paramsCase({
-    name: 'polls: identical market + pollId equal',
+    name: 'polls: identical pollId equal',
     key: 'polls',
-    left: { pollId: 'p1', marketKey: 'austin', marketName: 'Austin', pinnedMarket: true },
-    right: { pollId: 'p1', marketKey: 'austin', marketName: 'Austin', pinnedMarket: true },
+    left: { pollId: 'p1' },
+    right: { pollId: 'p1' },
     expected: true,
   }),
   paramsCase({
-    name: 'polls: differing marketKey unequal',
+    name: 'polls: differing pollId unequal',
     key: 'polls',
-    left: { pollId: 'p1', marketKey: 'austin' },
-    right: { pollId: 'p1', marketKey: 'dallas' },
-    expected: false,
-  }),
-  paramsCase({
-    name: 'polls: differing pinnedMarket unequal',
-    key: 'polls',
-    left: { marketKey: 'austin', pinnedMarket: true },
-    right: { marketKey: 'austin', pinnedMarket: false },
+    left: { pollId: 'p1' },
+    right: { pollId: 'p2' },
     expected: false,
   }),
   // ── pollDetail (previously rode the pollId arm) ───────────────────────────
@@ -165,17 +158,17 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
   }),
   // ── bounds arm (pin — pollCreation) ───────────────────────────────────────
   paramsCase({
-    name: 'pollCreation: same bounds reference + market equal',
+    name: 'pollCreation: same bounds reference + label equal',
     key: 'pollCreation',
-    left: { marketKey: 'austin', marketName: 'Austin', bounds: BOUNDS_A },
-    right: { marketKey: 'austin', marketName: 'Austin', bounds: BOUNDS_A },
+    left: { marketName: 'Austin', bounds: BOUNDS_A },
+    right: { marketName: 'Austin', bounds: BOUNDS_A },
     expected: true,
   }),
   paramsCase({
     name: 'pollCreation: differing bounds reference unequal',
     key: 'pollCreation',
-    left: { marketKey: 'austin', bounds: BOUNDS_A },
-    right: { marketKey: 'austin', bounds: { ...BOUNDS_A } },
+    left: { marketName: 'Austin', bounds: BOUNDS_A },
+    right: { marketName: 'Austin', bounds: { ...BOUNDS_A } },
     expected: false,
   }),
   // ── fall-through-disease fixes (old impl: always false) ───────────────────

@@ -16,12 +16,13 @@ import { IpLocationService } from './ip-location.service';
  * writers, the old demand rollup, poll CREATION (re-keyed to the place
  * catalog; resolveOrEnsureForPollCreation deleted). What remains, and the
  * leg that kills each:
- *  - /markets/resolve + /markets/resolve-ip + IpLocationService: after the
- *    HOME-PLACE REGISTRATION leg (2026-07-19: registration → placeAt →
- *    homePlaceId LANDED; notifications no longer read markets) the surviving
- *    mobile readers are the STARTUP LADDER only — resolve-ip is the
- *    no-device-signal IP→metro rung in MainLaunchCoordinator; /markets/resolve
- *    is down to the perf harness (PerfScenarioCoordinator). Dies when the
+ *  - /markets/resolve: KILLED 2026-07-22 (wave-6 punch item 7) — its last
+ *    reader was the perf harness, which now drives bounds-only camera
+ *    commands; the endpoint + MarketResolveDto are deleted.
+ *    MarketResolverService itself SURVIVES as internal machinery (the
+ *    ip-location + registry coverage paths below resolve through it).
+ *  - /markets/resolve-ip + IpLocationService: the STARTUP LADDER's
+ *    no-device-signal IP→metro rung in MainLaunchCoordinator. Dies when the
  *    launch ladder re-keys its bottom rung to the place catalog.
  *  - /markets/active: ListDetail "Market" chip vocabulary — dies when that
  *    chip re-keys to the place catalog (city slice re-key).
@@ -38,10 +39,11 @@ import { IpLocationService } from './ip-location.service';
  *    2026-07-20 (LEGACY-POLL-EXPIRY leg) — all 94 legacy market-keyed polls
  *    backfilled to catalog places (name+bbox identity match, else smallest
  *    same-state containing place); the feed/dedupe/signal-geo market arms and
- *    the feed dto marketKey are deleted. polls.market_key still EXISTS as a
- *    display/label column (attachMarketLabels) and the comment-highlight
- *    gazetteer scope (entityTextSearch { marketKey }) — both die with the
- *    §13 territory re-key, which then also drops the column.
+ *    the feed dto marketKey are deleted. The attachMarketLabels display join
+ *    + the legacy poll envelope died 2026-07-22 (wave-6 punch item 8);
+ *    polls.market_key still EXISTS as the comment-highlight gazetteer scope
+ *    (entityTextSearch { marketKey }) — it dies with the §13 territory
+ *    re-key, which then also drops the column.
  *  - NotificationsService market fallback: KILLED 2026-07-19 (home-place
  *    registration leg) — poll-release targeting is homePlaceId subtree
  *    membership; the dispatch path reads no markets. notification_devices
@@ -58,11 +60,8 @@ import { IpLocationService } from './ip-location.service';
     TomTomBoundaryBootstrapService,
     IpLocationService,
   ],
-  exports: [
-    MarketResolverService,
-    MarketRegistryService,
-    MarketBootstrapMetricsService,
-    TomTomBoundaryBootstrapService,
-  ],
+  // Only MarketRegistryService has external consumers (search / autocomplete /
+  // interpretation / enrichment / reddit-collector); the rest are internal.
+  exports: [MarketRegistryService],
 })
 export class MarketsModule {}

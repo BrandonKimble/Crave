@@ -10,7 +10,7 @@
 //   /l/<shareSlug>                          SHARED list (async getShared resolution)
 //   /q/<query>                              natural search desire
 //   /s/<dishes|restaurants>                 viewport shortcut desire
-//   /p/<pollId>?market=…    and  /polls?market=…
+//   /p/<pollId>             and  /polls
 //
 // Custom-scheme gotcha handled here once: `new URL('crave://l/abc')` puts the first segment
 // in HOSTNAME, not pathname — the resolver folds hostname into the segment list for
@@ -30,7 +30,7 @@ export type ParsedDesireLink =
   | { kind: 'sharedList'; shareSlug: string; joinIntent?: true }
   | { kind: 'naturalSearch'; query: string }
   | { kind: 'shortcutSearch'; shortcutTab: 'dishes' | 'restaurants' }
-  | { kind: 'polls'; marketKey?: string | null; pollId?: string | null }
+  | { kind: 'polls'; pollId?: string | null }
   | { kind: 'none' };
 
 const ENTITY_DESIRE_TYPES = ['food', 'food_attribute', 'restaurant_attribute'] as const;
@@ -122,11 +122,9 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
         ? { kind: 'shortcutSearch', shortcutTab: a }
         : { kind: 'none' };
     case 'p':
-      return a
-        ? { kind: 'polls', pollId: safeDecode(a), marketKey: params.get('market') }
-        : { kind: 'none' };
+      return a ? { kind: 'polls', pollId: safeDecode(a) } : { kind: 'none' };
     case 'polls':
-      return { kind: 'polls', marketKey: params.get('market'), pollId: params.get('poll') };
+      return { kind: 'polls', pollId: params.get('poll') };
     default:
       return { kind: 'none' };
   }
@@ -174,14 +172,8 @@ export const serializeDesireLinkToPath = (
       return `/q/${encodeSegment(link.query)}`;
     case 'shortcutSearch':
       return `/s/${link.shortcutTab}`;
-    case 'polls': {
-      if (link.pollId) {
-        const market = link.marketKey ? `?market=${encodeURIComponent(link.marketKey)}` : '';
-        return `/p/${encodeSegment(link.pollId)}${market}`;
-      }
-      const market = link.marketKey ? `?market=${encodeURIComponent(link.marketKey)}` : '';
-      return `/polls${market}`;
-    }
+    case 'polls':
+      return link.pollId ? `/p/${encodeSegment(link.pollId)}` : '/polls';
   }
   // Exhaustive above; TypeScript narrows, this satisfies the return type.
   throw new Error('[DESIRE-URL] unreachable serializer arm');

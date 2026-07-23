@@ -23,9 +23,7 @@ import {
 } from './perf-scenario-hermes-sampling-profiler';
 import { searchMapRenderController } from '../screens/Search/runtime/map/search-map-render-controller';
 import { startUiFrameSampler } from './ui-frame-sampler';
-import { resolveMarket } from '../services/markets';
 import { useSystemStatusStore } from '../store/systemStatusStore';
-import type { MapBounds } from '../types';
 
 const flushedNativeMapApplyRunIds = new Set<string>();
 
@@ -69,34 +67,6 @@ const withScenarioMetadata = (
 });
 
 const roundScenarioPerfMs = (value: number): number => Number(value.toFixed(1));
-
-const clampLatitude = (value: number): number => Math.max(-89.9, Math.min(89.9, value));
-
-const buildScenarioCommandBounds = ({
-  lat,
-  lng,
-  zoom,
-}: {
-  lat: number;
-  lng: number;
-  zoom: number | null;
-}): MapBounds => {
-  const resolvedZoom = zoom ?? 11.5;
-  const latSpan =
-    resolvedZoom >= 13 ? 0.045 : resolvedZoom >= 12 ? 0.08 : resolvedZoom >= 11 ? 0.16 : 0.3;
-  const cosine = Math.max(0.25, Math.cos((lat * Math.PI) / 180));
-  const lngSpan = latSpan / cosine;
-  return {
-    northEast: {
-      lat: clampLatitude(lat + latSpan / 2),
-      lng: lng + lngSpan / 2,
-    },
-    southWest: {
-      lat: clampLatitude(lat - latSpan / 2),
-      lng: lng - lngSpan / 2,
-    },
-  };
-};
 
 const isSubmitDismissMeasuredLoopScenario = (scenario: string): boolean =>
   scenario === SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO ||
@@ -465,106 +435,6 @@ export const PerfScenarioCoordinator: React.FC = () => {
         zoom: event.zoom,
         label: event.label,
       });
-      return;
-    }
-
-    if (event.action === 'set_map_camera_and_resolve_market') {
-      if (!registry.setMapCamera || event.lat == null || event.lng == null || event.zoom == null) {
-        logPayload({
-          event: 'perf_scenario_command_failed',
-          action: event.action,
-          reason: registry.setMapCamera
-            ? 'missing_camera_parameters'
-            : 'camera_command_not_registered',
-          hasSetMapCamera: registry.setMapCamera != null,
-          lat: event.lat,
-          lng: event.lng,
-          zoom: event.zoom,
-        });
-        return;
-      }
-      const accepted = registry.setMapCamera({
-        lat: event.lat,
-        lng: event.lng,
-        zoom: event.zoom,
-        label: event.label,
-      });
-      logPayload({
-        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
-        action: event.action,
-        step: 'set_map_camera',
-        reason: accepted ? null : 'camera_commit_rejected',
-        lat: event.lat,
-        lng: event.lng,
-        zoom: event.zoom,
-        label: event.label,
-      });
-      if (!accepted) {
-        return;
-      }
-
-      const bounds = buildScenarioCommandBounds({
-        lat: event.lat,
-        lng: event.lng,
-        zoom: event.zoom,
-      });
-      void resolveMarket(bounds, null)
-        .then((response) => {
-          logPayload({
-            event: 'perf_scenario_command_executed',
-            action: event.action,
-            step: 'resolve_market',
-            marketKey: response.market?.marketKey ?? null,
-            marketStatus: response.status ?? null,
-          });
-        })
-        .catch((error) => {
-          logPayload({
-            event: 'perf_scenario_command_failed',
-            action: event.action,
-            step: 'resolve_market',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        });
-      return;
-    }
-
-    if (event.action === 'resolve_market') {
-      if (event.lat == null || event.lng == null) {
-        logPayload({
-          event: 'perf_scenario_command_failed',
-          action: event.action,
-          reason: 'missing_market_resolve_parameters',
-          lat: event.lat,
-          lng: event.lng,
-          zoom: event.zoom,
-        });
-        return;
-      }
-
-      const bounds = buildScenarioCommandBounds({
-        lat: event.lat,
-        lng: event.lng,
-        zoom: event.zoom,
-      });
-      void resolveMarket(bounds, null)
-        .then((response) => {
-          logPayload({
-            event: 'perf_scenario_command_executed',
-            action: event.action,
-            step: 'resolve_market',
-            marketKey: response.market?.marketKey ?? null,
-            marketStatus: response.status ?? null,
-          });
-        })
-        .catch((error) => {
-          logPayload({
-            event: 'perf_scenario_command_failed',
-            action: event.action,
-            step: 'resolve_market',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        });
       return;
     }
 

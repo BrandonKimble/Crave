@@ -1,7 +1,8 @@
 /**
- * Market provisioning core — the single implementation behind BOTH
- * prisma/seed.ts (list-driven replay) and scripts/onboard-market.ts
- * (one-command city onboarding). A regional market is the PostGIS UNION of
+ * Market provisioning core — the single implementation behind
+ * scripts/onboard-market.ts (one-command city onboarding; the old
+ * prisma/seed.ts list-driven replay died in wave-6 item 10).
+ * A regional market is the PostGIS UNION of
  * county polygons: each source boundary is an anchor point inside a county;
  * TomTom reverse-geocodes it at CountrySecondarySubdivision level, the
  * county polygon is fetched and unioned, with a covers-its-anchor sanity

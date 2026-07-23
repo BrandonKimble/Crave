@@ -34,7 +34,6 @@ import {
   useOnboardingStore,
   type OnboardingAnswerValue,
 } from '../store/onboardingStore';
-import { useCityStore } from '../store/cityStore';
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
 import { usersService, type UsernameAvailability } from '../services/users';
@@ -240,7 +239,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   const toggleStoredMultiValue = useOnboardingStore((state) => state.toggleMultiValue);
   const addStoredCustomMultiValue = useOnboardingStore((state) => state.addCustomMultiValue);
   const completeOnboardingLocally = useOnboardingStore((state) => state.completeOnboardingLocally);
-  const setSelectedCity = useCityStore((state) => state.setSelectedCity);
   const clearServiceIssue = useSystemStatusStore((state) => state.clearServiceIssue);
   const stepIndex = React.useMemo(() => {
     const resolvedIndex = onboardingSteps.findIndex((step) => step.id === currentStepId);
@@ -401,10 +399,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     setCompletionSubmitting(true);
 
     try {
-      if (selectedCity) {
-        setSelectedCity(selectedCity);
-      }
-
       if (isSignedIn) {
         const profile = await usersService.completeOnboarding({
           status: 'completed',
@@ -451,14 +445,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     } finally {
       setCompletionSubmitting(false);
     }
-  }, [
-    answers,
-    clearServiceIssue,
-    completeOnboardingLocally,
-    isSignedIn,
-    locationValue,
-    setSelectedCity,
-  ]);
+  }, [answers, clearServiceIssue, completeOnboardingLocally, isSignedIn, locationValue]);
 
   React.useEffect(() => {
     if (
@@ -658,16 +645,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     const perMealLabel = budgetRange
       ? budgetRange.label
       : budgetLabel
-      ? `${budgetLabel} each`
-      : `${formatCurrency(budgetAmount)} each`;
+        ? `${budgetLabel} each`
+        : `${formatCurrency(budgetAmount)} each`;
     const monthlySpendMin =
       (monthlyMealRange?.[0] ?? monthlyMealsAverage) * (budgetRange?.min ?? budgetAmount);
     const monthlySpendMax =
       monthlyMealRange?.[1] && budgetRange?.max
         ? monthlyMealRange[1] * budgetRange.max
         : budgetRange?.max
-        ? (monthlyMealRange?.[1] ?? monthlyMealsAverage) * budgetRange.max
-        : undefined;
+          ? (monthlyMealRange?.[1] ?? monthlyMealsAverage) * budgetRange.max
+          : undefined;
     const monthlySpendRangeLabel = monthlySpendMax
       ? `${formatCurrency(monthlySpendMin)}–${formatCurrency(monthlySpendMax)}`
       : `${formatCurrency(monthlySpendMin)}+`;
@@ -1680,8 +1667,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                           dayType === 'none'
                             ? ['#d8d8d8', '#d8d8d8']
                             : dayType === 'good'
-                            ? ['#d8d8d8', '#8ce48b']
-                            : ['#d8d8d8', '#fb6b6b'],
+                              ? ['#d8d8d8', '#8ce48b']
+                              : ['#d8d8d8', '#fb6b6b'],
                       });
 
                       return (
@@ -1719,8 +1706,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                           dayType === 'none'
                             ? ['#d8d8d8', '#d8d8d8']
                             : dayType === 'good'
-                            ? ['#d8d8d8', '#8ce48b']
-                            : ['#d8d8d8', '#fb6b6b'],
+                              ? ['#d8d8d8', '#8ce48b']
+                              : ['#d8d8d8', '#fb6b6b'],
                       });
 
                       return (
@@ -1963,8 +1950,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     const notificationBody = barrierSelections.includes('no-time')
       ? "You said finding time to research is hard. We'll do the work for you."
       : barrierSelections.length === 0
-      ? "We'll keep you updated on what's worth trying."
-      : step.body;
+        ? "We'll keep you updated on what's worth trying."
+        : step.body;
     return (
       <View>
         <Text variant="subtitle" weight="bold" style={styles.questionTitle}>

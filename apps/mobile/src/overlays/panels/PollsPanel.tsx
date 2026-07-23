@@ -365,13 +365,12 @@ const PollsPersistentHeaderTitle = React.memo(() => {
 PollsPersistentHeaderTitle.displayName = 'PollsPersistentHeaderTitle';
 
 // §4 header plus (leg 7): the host-owned HeaderNavAction fires the CREATE lane for parents;
-// polls' create is VIEWPORT-GATED (creation needs bounds — or a legacy marketKey param — to
-// anchor the poll), so it registers on the header-create registry from the header Title mount
-// (a real committed component under the app providers — the scene body-spec hooks never commit
-// effects). Snapshots read at PRESS time. The creation flow itself is NOT rearchitected this
-// leg: it still takes marketKey/marketName params; the feed hands it the §2 place verdict as
-// the display name and the SUBJECT STORE's settled viewport as the anchor (leg 3 — the old
-// scene-threaded pollBounds is dead; the store's settledBounds is the one bounds authority).
+// polls' create is VIEWPORT-GATED (creation needs bounds to anchor the poll), so it registers
+// on the header-create registry from the header Title mount (a real committed component under
+// the app providers — the scene body-spec hooks never commit effects). Snapshots read at PRESS
+// time. The feed hands the creation flow the §2 place verdict as the display name and the
+// SUBJECT STORE's settled viewport as the anchor (leg 3 — the old scene-threaded pollBounds is
+// dead; the store's settledBounds is the one bounds authority).
 const usePollsHeaderCreateActionRegistration = () => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { pushRoute } = useAppOverlayRouteController();
@@ -381,11 +380,9 @@ const usePollsHeaderCreateActionRegistration = () => {
         const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
         const headerModel =
           routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
-        const params = sceneState.params;
-        const legacyMarketKey = params?.marketKey?.trim() || null;
         const settledBounds = getViewportSubjectState().settledBounds;
 
-        if (!settledBounds && !legacyMarketKey) {
+        if (!settledBounds) {
           showAppModal({
             title: 'Move the map',
             message: 'Move the map to a local area before creating a poll.',
@@ -395,8 +392,7 @@ const usePollsHeaderCreateActionRegistration = () => {
 
         sceneState.onRequestPollCreationExpand?.();
         pushRoute('pollCreation', {
-          marketKey: legacyMarketKey,
-          marketName: headerModel?.placeName ?? params?.marketName ?? null,
+          marketName: headerModel?.placeName ?? null,
           bounds: settledBounds,
         });
       }),

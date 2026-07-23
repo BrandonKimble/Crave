@@ -32,7 +32,7 @@ export const usePerfScenarioOverlaySceneCommand = ({
 
     const commitPollsHome = (pollId?: string | null): void => {
       searchActions.openAppSearchRoutePollsHome({
-        params: pollId ? { pollId, pinnedMarket: true } : {},
+        params: pollId ? { pollId } : {},
         snap: 'expanded',
       });
     };

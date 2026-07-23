@@ -2,13 +2,11 @@ import React from 'react';
 import * as Notifications from 'expo-notifications';
 import { useAppRouteCoordinator } from '../navigation/runtime/AppRouteCoordinator';
 import { parseLaunchIntentFromUrl } from '../navigation/runtime/app-route-types';
-import { useCityStore } from '../store/cityStore';
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
 const PollNotificationListener: React.FC = () => {
-  const setCityPreference = useCityStore((state) => state.setSelectedCity);
   const { dispatchLaunchIntent } = useAppRouteCoordinator();
 
   const handleResponse = React.useCallback(
@@ -34,22 +32,17 @@ const PollNotificationListener: React.FC = () => {
         return;
       }
 
-      const cityRaw = (payload as { city?: unknown }).city;
+      // Poll-release push → open the polls surface (the feed is viewport-scoped;
+      // the payload's placeId targets DELIVERY server-side, not the route).
       const pollIdsRaw = (payload as { pollIds?: unknown }).pollIds;
-      const normalizedCity = typeof cityRaw === 'string' ? cityRaw.trim() : undefined;
       const pollIds = isStringArray(pollIdsRaw) ? pollIdsRaw : [];
-
-      if (normalizedCity) {
-        setCityPreference(normalizedCity);
-      }
 
       dispatchLaunchIntent({
         type: 'polls',
-        marketKey: normalizedCity ?? null,
         pollId: pollIds[0] ?? null,
       });
     },
-    [dispatchLaunchIntent, setCityPreference]
+    [dispatchLaunchIntent]
   );
 
   React.useEffect(() => {

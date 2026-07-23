@@ -55,7 +55,6 @@ function createHarness(options: {
   parents?: Record<string, string[]>;
   /** Descendant rows the subtree CTE returns (roots echo + these). */
   descendants?: string[];
-  legacyMarkets?: string[];
 }) {
   const parents = options.parents ?? {};
   const placeNames = new Map<string, string>(
@@ -152,25 +151,10 @@ function createHarness(options: {
       ),
     },
     market: {
-      findMany: jest.fn(({ where }: { where: Record<string, unknown> }) => {
-        const keys = options.legacyMarkets ?? [];
-        if (where.marketKey && (where.marketKey as { in?: string[] }).in) {
-          // attachMarketLabels' label lookup.
-          return Promise.resolve(
-            keys
-              .filter((key) =>
-                ((where.marketKey as { in: string[] }).in ?? []).includes(
-                  key.toLowerCase(),
-                ),
-              )
-              .map((key) => ({
-                marketKey: key,
-                marketName: `${key} name`,
-                marketShortName: null,
-              })),
-          );
-        }
-        return Promise.resolve(keys.map((marketKey) => ({ marketKey })));
+      // No market reads remain on the feed path (the attachMarketLabels join
+      // died in wave-6 item 8); any call here is a regression.
+      findMany: jest.fn(() => {
+        throw new Error('unexpected market.findMany on the polls feed path');
       }),
       findFirst: jest.fn().mockResolvedValue(null),
     },
@@ -280,7 +264,6 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
       placesInView: [TOWN_IN_VIEW, STATE_IN_VIEW],
       parents: { [STATE]: [] }, // parentless root → structurally subdivision+
       descendants: [NEIGHBORHOOD],
-      legacyMarkets: ['austin-metro'],
     });
 
     const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
@@ -290,7 +273,7 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     expect(ids).toEqual([pollId(1), pollId(2), pollId(4)]);
   });
 
-  it('stamps the §2 header verdict (place name; legacy marketName mirrors it) and per-poll place labels via ONE batch query', async () => {
+  it('stamps the §2 header verdict (place name) and per-poll place labels via ONE batch query', async () => {
     const now = Date.now();
     const { service, prisma } = createHarness({
       pollTable: [
@@ -313,17 +296,17 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
 
     const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
     expect(response.header).toEqual({ placeName: 'Round Rock' });
-    expect(response.marketName).toBe('Round Rock'); // legacy envelope mirror
+    // The legacy market envelope is DEAD (wave-6 item 8): no marketName mirror.
+    expect(response).not.toHaveProperty('marketName');
+    expect(response).not.toHaveProperty('marketKey');
 
     const polls = response.polls as Array<{
       pollId: string;
       placeName: string | null;
-      marketName: string | null;
     }>;
     expect(polls[0].placeName).toBe('Round Rock');
     expect(polls[1].placeName).toBe('Old Town');
-    // Place-keyed rows mirror placeName into the legacy marketName label.
-    expect(polls[0].marketName).toBe('Round Rock');
+    expect(polls[0]).not.toHaveProperty('marketName');
 
     // ONE batch place-name lookup for the whole page.
     const labelCalls = prisma.place.findMany.mock.calls.filter(

@@ -42,13 +42,4 @@ export class CheckPollDuplicateDto {
   @ValidateNested()
   @Type(() => BoundsDto)
   bounds?: BoundsDto;
-
-  /**
-   * ACCEPTED-IGNORED (legacy-poll expiry): the running mobile client still
-   * sends marketKey when it has one; forbidNonWhitelisted would 400 it.
-   * Never read. Delete with the next mobile touch.
-   */
-  @IsOptional()
-  @IsString()
-  marketKey?: string;
 }

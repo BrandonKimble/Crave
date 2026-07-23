@@ -40,11 +40,7 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
   settings: paramlessSceneParamsEqual,
   editProfile: paramlessSceneParamsEqual,
   messagesInbox: paramlessSceneParamsEqual,
-  polls: (left, right) =>
-    left.pollId === right.pollId &&
-    left.marketKey === right.marketKey &&
-    left.marketName === right.marketName &&
-    left.pinnedMarket === right.pinnedMarket,
+  polls: (left, right) => left.pollId === right.pollId,
   profile: (left, right) => left.profileUserId === right.profileUserId,
   restaurant: (left, right) =>
     left.restaurantId === right.restaurantId &&
@@ -63,7 +59,6 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
     left.openerRouteKey === right.openerRouteKey &&
     left.routeInstanceId === right.routeInstanceId,
   pollCreation: (left, right) =>
-    left.marketKey === right.marketKey &&
     left.marketName === right.marketName &&
     // Reference compare (the old `bounds` arm's semantics) — bounds is a captured
     // map-region snapshot, stable per publish.

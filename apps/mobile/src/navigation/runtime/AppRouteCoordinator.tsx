@@ -3,7 +3,6 @@ import { Linking } from 'react-native';
 import { useAuth, useSessionList } from '@clerk/clerk-expo';
 import { ONBOARDING_VERSION, type UserOnboardingProfile } from '@crave-search/shared';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { useCityStore } from '../../store/cityStore';
 import { usersService } from '../../services/users';
 import { useQueryClient } from '@tanstack/react-query';
 import { accessQueryKey, useAccess } from '../../hooks/useAccess';
@@ -54,22 +53,6 @@ const areRouteStatesEqual = (left: AppRouteState | null, right: AppRouteState | 
   );
 };
 
-const syncCityPreference = (
-  onboardingProfile: UserOnboardingProfile | null,
-  localSelectedCity: string | null,
-  persistedCity: string,
-  setSelectedCity: (city: string) => void
-): void => {
-  const nextCity =
-    onboardingProfile?.selectedCity?.trim() ||
-    onboardingProfile?.previewCity?.trim() ||
-    localSelectedCity?.trim() ||
-    persistedCity.trim();
-  if (nextCity.length > 0 && nextCity !== persistedCity.trim()) {
-    setSelectedCity(nextCity);
-  }
-};
-
 export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoaded, isSignedIn, userId: clerkUserId } = useAuth();
   const queryClient = useQueryClient();
@@ -90,14 +73,8 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   const hydrateCompletionFromServer = useOnboardingStore(
     (state) => state.hydrateCompletionFromServer
   );
-  const selectedCity = useCityStore((state) => state.selectedCity);
-  const setSelectedCity = useCityStore((state) => state.setSelectedCity);
-
   const [isOnboardingHydrated, setIsOnboardingHydrated] = React.useState(() =>
     isStoreHydrated(useOnboardingStore.persist)
-  );
-  const [isCityHydrated, setIsCityHydrated] = React.useState(() =>
-    isStoreHydrated(useCityStore.persist)
   );
   const [isInitialIntentResolved, setIsInitialIntentResolved] = React.useState(false);
   const [serverOnboardingProfile, setServerOnboardingProfile] =
@@ -112,17 +89,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   const sessionRecoveryInFlightRef = React.useRef<Promise<boolean> | null>(null);
   const resumedSessionIdRef = React.useRef<string | null>(null);
   const onboardingSyncInFlightRef = React.useRef(false);
-  const latestOnboardingSelectedCityRef = React.useRef(onboardingSelectedCity);
-  const latestSelectedCityRef = React.useRef(selectedCity);
   const hasResolvedSignedInProfileRef = React.useRef(false);
-
-  React.useEffect(() => {
-    latestOnboardingSelectedCityRef.current = onboardingSelectedCity;
-  }, [onboardingSelectedCity]);
-
-  React.useEffect(() => {
-    latestSelectedCityRef.current = selectedCity;
-  }, [selectedCity]);
 
   React.useEffect(() => {
     if (useOnboardingStore.persist.hasHydrated()) {
@@ -131,17 +98,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     }
     const unsubscribe = useOnboardingStore.persist.onFinishHydration(() => {
       setIsOnboardingHydrated(true);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  React.useEffect(() => {
-    if (useCityStore.persist.hasHydrated()) {
-      setIsCityHydrated(true);
-      return;
-    }
-    const unsubscribe = useCityStore.persist.onFinishHydration(() => {
-      setIsCityHydrated(true);
     });
     return () => unsubscribe();
   }, []);
@@ -264,12 +220,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
         }
         if (profile.onboarding) {
           hydrateCompletionFromServer(profile.onboarding);
-          syncCityPreference(
-            profile.onboarding,
-            latestOnboardingSelectedCityRef.current,
-            latestSelectedCityRef.current,
-            setSelectedCity
-          );
         }
       })
       .catch((error) => {
@@ -285,7 +235,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     return () => {
       cancelled = true;
     };
-  }, [authStatus, hydrateCompletionFromServer, setSelectedCity]);
+  }, [authStatus, hydrateCompletionFromServer]);
 
   React.useEffect(() => {
     if (
@@ -302,7 +252,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       .completeOnboarding({
         status: 'completed',
         onboardingVersion: ONBOARDING_VERSION,
-        selectedCity: onboardingSelectedCity ?? selectedCity,
+        selectedCity: onboardingSelectedCity ?? null,
         previewCity: onboardingPreviewCity,
         answers: {},
         username: null,
@@ -310,12 +260,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       .then((profile) => {
         setServerOnboardingProfile(profile.onboarding);
         hydrateCompletionFromServer(profile.onboarding);
-        syncCityPreference(
-          profile.onboarding,
-          latestOnboardingSelectedCityRef.current,
-          latestSelectedCityRef.current,
-          setSelectedCity
-        );
       })
       .catch((error) => {
         logger.warn('Failed to mirror completed onboarding to server', error);
@@ -329,9 +273,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     onboardingPreviewCity,
     onboardingSelectedCity,
     onboardingStatus,
-    selectedCity,
     serverOnboardingProfile?.status,
-    setSelectedCity,
   ]);
 
   const effectiveOnboardingStatus = React.useMemo(() => {
@@ -343,7 +285,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
 
   const isReady =
     isOnboardingHydrated &&
-    isCityHydrated &&
     isInitialIntentResolved &&
     authStatus !== 'loading' &&
     (authStatus !== 'signed_in' || hasResolvedSignedInProfile);

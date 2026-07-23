@@ -1,6 +1,5 @@
 export enum PollListState {
   active = 'active',
-  scheduled = 'scheduled',
   closed = 'closed',
 }
 

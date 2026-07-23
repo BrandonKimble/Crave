@@ -441,10 +441,7 @@ export type OverlayRouteParamsMap = {
   sheetHost?: undefined;
   bookmarks?: undefined;
   polls?: {
-    marketKey?: string | null;
-    marketName?: string | null;
     pollId?: string | null;
-    pinnedMarket?: boolean | null;
   };
   // Return-to-origin foundation (P5) — the profile identity axis. Own profile leaves
   // profileUserId undefined/null (self-default re-root, byte-identical to today's param-less
@@ -474,7 +471,7 @@ export type OverlayRouteParamsMap = {
   price?: undefined;
   scoreInfo?: undefined;
   pollCreation?: {
-    marketKey?: string | null;
+    /** Display label for the creation header (the feed's §2 place verdict). */
     marketName?: string | null;
     bounds?: MapBounds | null;
     parentSceneKey?: 'polls' | null;

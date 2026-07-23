@@ -41,18 +41,6 @@ export class RegisterDeviceDto {
   locale?: string | null;
 
   /**
-   * ACCEPTED-IGNORED (legacy-poll-expiry leg, 2026-07-20): the running mobile
-   * client still sends `city` at registration; forbidNonWhitelisted would 400
-   * the request if the field vanished, so it stays declared — but the column
-   * is DROPPED and the server never reads it (home-place registration is the
-   * §4 targeting truth). Delete with the next mobile touch.
-   */
-  @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  city?: string | null;
-
-  /**
    * §4 home-place registration — the device's home coordinate, GROUND TRUTH
    * from the client (never a place id: the server judges placeAt). Three
    * states: {lat,lng} = resolve placeAt(point) → homePlaceId; explicit null =

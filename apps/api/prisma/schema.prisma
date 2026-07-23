@@ -679,7 +679,7 @@ model PollTopic {
   placeId                     String?         @map("place_id") @db.Uuid
   categoryEntityIds           String[]        @default([]) @map("category_entity_ids") @db.Uuid
   seedEntityIds               String[]        @default([]) @map("seed_entity_ids") @db.Uuid
-  status                      PollTopicStatus @default(draft)
+  status                      PollTopicStatus
   metadata                    Json?           @default("{}")
   createdByUserId             String?         @map("created_by_user_id") @db.Uuid
   createdAt                   DateTime        @default(now()) @map("created_at")
@@ -706,7 +706,7 @@ model Poll {
   pollId             String                 @id @default(dbgenerated("gen_random_uuid()")) @map("poll_id") @db.Uuid
   topicId            String?                @map("topic_id") @db.Uuid
   question           String                 @db.VarChar(500)
-  state              PollState              @default(draft)
+  state              PollState
   origin             PollOrigin             @default(user)
   mode               PollMode               @default(ranked)
   axis               Json?
@@ -735,7 +735,6 @@ model Poll {
   @@index([marketKey], map: "idx_polls_market_key")
   @@index([placeId], map: "idx_polls_place_id")
   @@index([createdByUserId], map: "idx_polls_created_by_user")
-  @@index([scheduledFor], map: "idx_polls_scheduled_for")
   @@map("polls")
 }
 
@@ -1775,8 +1774,6 @@ enum OnboardingStatus {
 }
 
 enum PollTopicStatus {
-  draft
-  ready
   archived
 
   @@map("poll_topic_status")
@@ -1795,8 +1792,6 @@ enum PollTopicType {
 }
 
 enum PollState {
-  draft
-  scheduled
   active
   closed
   archived

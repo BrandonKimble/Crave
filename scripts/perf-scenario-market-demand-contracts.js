@@ -108,9 +108,6 @@ const autocompleteResponses = searchRequestEvents.filter(
   (event) =>
     event.source === 'useSearchRequests.runAutocomplete' && event.phase === 'autocomplete_response'
 );
-const marketResolveResponses = searchRequestEvents.filter(
-  (event) => event.source === 'markets.resolveMarket' && event.phase === 'market_resolve_response'
-);
 const pollHeaderModels = searchRequestEvents.filter(
   (event) => event.source === 'polls.headerModel' && event.phase === 'poll_header_model'
 );
@@ -125,7 +122,6 @@ const renderedAutocompleteEvents = searchRequestEvents.filter(
 const last = (items) => items[items.length - 1] ?? null;
 const lastSearchResponse = last(searchResponses);
 const lastAutocompleteResponse = last(autocompleteResponses);
-const lastMarketResolveResponse = last(marketResolveResponses);
 const lastPollHeaderModel = last(pollHeaderModels);
 const lastRenderedPollHeaderEvent = last(renderedPollHeaderEvents);
 const lastRenderedAutocompleteEvent = last(renderedAutocompleteEvents);
@@ -273,13 +269,11 @@ const responseBoundsChanged = (left, right) => {
 evidence.searchResponseCount = searchResponses.length;
 evidence.autocompleteResponseCount = autocompleteResponses.length;
 evidence.renderedAutocompleteEventCount = renderedAutocompleteEvents.length;
-evidence.marketResolveResponseCount = marketResolveResponses.length;
 evidence.pollHeaderModelCount = pollHeaderModels.length;
 evidence.renderedPollHeaderEventCount = renderedPollHeaderEvents.length;
 evidence.lastSearchResponse = lastSearchResponse;
 evidence.lastAutocompleteResponse = lastAutocompleteResponse;
 evidence.lastRenderedAutocompleteEvent = lastRenderedAutocompleteEvent;
-evidence.lastMarketResolveResponse = lastMarketResolveResponse;
 evidence.lastPollHeaderModel = lastPollHeaderModel;
 evidence.lastRenderedPollHeaderEvent = lastRenderedPollHeaderEvent;
 evidence.visualSourceFrameCount = searchVisualSourceFrames.length;
@@ -341,68 +335,39 @@ const assertAustinCollectableScope = (response, label) => {
     });
   }
 };
-const assertPollHeaderMarket = (label, expectedMarketKey, expectedNameFragment) => {
-  const matchingHeaders = pollHeaderModels.filter(
-    (event) => event.pollHeaderMarketKey === expectedMarketKey
+// WAVE-6 item 7: the header model event carries the §2 place verdict
+// (pollHeaderPlaceName), not a market key — the assertions filter on it.
+const pollHeaderMatchesPlace = (event, normalizedName) =>
+  String(event.pollHeaderPlaceName ?? event.pollHeaderTitle ?? '')
+    .toLowerCase()
+    .includes(normalizedName);
+
+const assertPollHeaderPlace = (label, expectedNameFragment) => {
+  const normalizedName = expectedNameFragment.toLowerCase();
+  const matchingHeaders = pollHeaderModels.filter((event) =>
+    pollHeaderMatchesPlace(event, normalizedName)
   );
   if (matchingHeaders.length === 0) {
-    fail(`${label} did not publish the expected poll header market.`, {
-      expectedMarketKey,
+    fail(`${label} did not publish the expected poll header place.`, {
+      expectedNameFragment,
       lastPollHeaderModel,
       pollHeaderModels: pollHeaderModels.slice(-8),
     });
-    return;
-  }
-  if (expectedNameFragment) {
-    const normalizedName = expectedNameFragment.toLowerCase();
-    const hasName = matchingHeaders.some((event) =>
-      String(event.pollHeaderMarketName ?? event.pollHeaderTitle ?? '')
-        .toLowerCase()
-        .includes(normalizedName)
-    );
-    if (!hasName) {
-      fail(`${label} poll header did not expose the expected market name.`, {
-        expectedNameFragment,
-        matchingHeaders,
-      });
-    }
   }
 };
 
-const assertPollHeaderMarketAfterLine = (
-  label,
-  expectedMarketKey,
-  expectedNameFragment,
-  afterLine
-) => {
+const assertPollHeaderPlaceAfterLine = (label, expectedNameFragment, afterLine) => {
+  const normalizedName = expectedNameFragment.toLowerCase();
   const matchingHeaders = pollHeaderModels.filter(
-    (event) => event.line > afterLine && event.pollHeaderMarketKey === expectedMarketKey
+    (event) => event.line > afterLine && pollHeaderMatchesPlace(event, normalizedName)
   );
   if (matchingHeaders.length === 0) {
-    fail(`${label} did not publish the expected poll header market after the triggering event.`, {
-      expectedMarketKey,
+    fail(`${label} did not publish the expected poll header place after the triggering event.`, {
+      expectedNameFragment,
       afterLine,
       lastPollHeaderModel,
       pollHeaderModels: pollHeaderModels.slice(-8),
     });
-    return;
-  }
-  if (expectedNameFragment) {
-    const normalizedName = expectedNameFragment.toLowerCase();
-    const hasName = matchingHeaders.some((event) =>
-      String(event.pollHeaderMarketName ?? event.pollHeaderTitle ?? '')
-        .toLowerCase()
-        .includes(normalizedName)
-    );
-    if (!hasName) {
-      fail(
-        `${label} poll header did not expose the expected market name after the triggering event.`,
-        {
-          expectedNameFragment,
-          matchingHeaders,
-        }
-      );
-    }
   }
 };
 
@@ -596,81 +561,33 @@ switch (scenarioName) {
         responseAttributionMarketKeys: lastSearchResponse.responseAttributionMarketKeys,
       });
     }
-    assertPollHeaderMarket('Off-region active search', 'locality-us-mn-duluth', 'Duluth');
+    assertPollHeaderPlace('Off-region active search', 'Duluth');
     assertRevealForSearchResponse('Off-region active search', lastSearchResponse);
     break;
   }
   case 'market_demand_passive_off_region': {
-    if (!lastMarketResolveResponse) {
-      fail('Passive off-region scenario did not emit a market resolve response.');
-      break;
-    }
-    const cameraResolveCommandReceived = scenarioCommandEvent(
-      'set_map_camera_and_resolve_market',
+    // WAVE-6 item 7: /markets/resolve is dead — passive attribution is the polls
+    // header's §2 place verdict after the camera command lands (bounds-only world).
+    const cameraCommandReceived = scenarioCommandEvent(
+      'set_map_camera',
       'perf_scenario_command_received'
     );
-    const headerTriggerLine = cameraResolveCommandReceived?.line ?? lastMarketResolveResponse.line;
+    if (!cameraCommandReceived) {
+      fail('Passive off-region scenario did not receive the set_map_camera command.');
+      break;
+    }
+    const headerTriggerLine = cameraCommandReceived.line;
     if (searchResponses.length > 0) {
       fail('Passive off-region scenario unexpectedly submitted a search.', {
         searchResponseCount: searchResponses.length,
       });
     }
-    if (lastMarketResolveResponse.marketResolveMode !== 'polls_read') {
-      fail('Passive off-region scenario did not use passive polls_read market resolution.', {
-        marketResolveMode: lastMarketResolveResponse.marketResolveMode,
-      });
-    }
-    if (lastMarketResolveResponse.marketKey !== 'locality-us-mn-duluth') {
-      fail('Passive off-region scenario did not resolve the stored Duluth locality.', {
-        marketKey: lastMarketResolveResponse.marketKey,
-      });
-    }
-    assertPollHeaderMarketAfterLine(
-      'Passive off-region scenario',
-      'locality-us-mn-duluth',
-      'Duluth',
-      headerTriggerLine
-    );
+    assertPollHeaderPlaceAfterLine('Passive off-region scenario', 'Duluth', headerTriggerLine);
     assertRenderedPollHeaderPlaceAfterLine(
       'Passive off-region scenario',
       'Duluth',
       headerTriggerLine
     );
-    if (!hasOwn(lastMarketResolveResponse, 'marketIsCollectable')) {
-      fail('Passive off-region scenario did not expose collectable-market observability.', {
-        lastMarketResolveResponse,
-      });
-    } else if (lastMarketResolveResponse.marketIsCollectable !== false) {
-      fail('Passive off-region scenario resolved an executable collectable market unexpectedly.', {
-        marketIsCollectable: lastMarketResolveResponse.marketIsCollectable,
-      });
-    }
-    for (const key of [
-      'candidateBoundaryProvider',
-      'candidateBoundaryId',
-      'candidateBoundaryType',
-    ]) {
-      if (!hasOwn(lastMarketResolveResponse, key)) {
-        fail('Passive off-region scenario did not expose candidate-boundary observability.', {
-          missingKey: key,
-          lastMarketResolveResponse,
-        });
-      }
-    }
-    if (
-      lastMarketResolveResponse.candidateBoundaryProvider != null ||
-      lastMarketResolveResponse.candidateBoundaryId != null ||
-      lastMarketResolveResponse.candidateBoundaryType != null
-    ) {
-      fail(
-        'Passive off-region scenario exposed a provider candidate boundary, which would indicate bootstrap-oriented resolution.',
-        {
-          candidateBoundaryProvider: lastMarketResolveResponse.candidateBoundaryProvider,
-          candidateBoundaryId: lastMarketResolveResponse.candidateBoundaryId,
-          candidateBoundaryType: lastMarketResolveResponse.candidateBoundaryType,
-        }
-      );
-    }
     break;
   }
   case 'market_demand_autocomplete_first_letter': {

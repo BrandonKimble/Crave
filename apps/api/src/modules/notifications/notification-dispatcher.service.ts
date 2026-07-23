@@ -108,11 +108,9 @@ export class NotificationDispatcherService {
       const payload = notification.payload as {
         placeId?: string | null;
         placeName?: string | null;
-        // Legacy already-queued rows (pre §4 place re-key) carried `city`.
-        city?: string | null;
         pollIds?: string[];
       } | null;
-      const placeLabel = payload?.placeName ?? payload?.city ?? null;
+      const placeLabel = payload?.placeName ?? null;
       return {
         to: notification.device.expoPushToken,
         sound: 'default',
@@ -125,8 +123,6 @@ export class NotificationDispatcherService {
           pollIds: payload?.pollIds ?? [],
           placeId: payload?.placeId ?? null,
           placeName: placeLabel,
-          // Legacy field pre-cut mobile push handlers read.
-          city: placeLabel,
         },
       };
     }

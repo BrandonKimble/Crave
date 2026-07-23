@@ -10,7 +10,7 @@ import type { PollFeedSort, PollFeedTime, PollFeedType } from '../../../services
  * strip was trapped as a snap-gated ListHeaderComponent. With the strip migrated to
  * the persistent-header mount the controls are CHROME: chrome (the header strip) and
  * body (the feed query) must both reach the state, so it lives here, module-scope,
- * house zustand pattern (cityStore / systemStatusStore).
+ * house zustand pattern (systemStatusStore).
  *
  * WRITE PROTOCOL: a control press writes the store — that write IS the optimistic
  * flip (the pill/chip moves instantly). The network consequence stays with its owner:

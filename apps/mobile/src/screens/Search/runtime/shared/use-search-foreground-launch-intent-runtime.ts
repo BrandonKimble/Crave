@@ -81,9 +81,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     if (activeMainIntent.type === 'polls') {
       routeSearchCommandActions.openAppSearchRoutePollsHome({
         params: {
-          marketKey: activeMainIntent.marketKey,
           pollId: activeMainIntent.pollId,
-          pinnedMarket: Boolean(activeMainIntent.marketKey || activeMainIntent.pollId),
         },
         snap: 'expanded',
       });

@@ -505,7 +505,7 @@ async function main(): Promise<void> {
         data: {
           topicType: seed.topicType,
           title: seed.question,
-          status: PollTopicStatus.ready,
+          status: PollTopicStatus.archived,
           marketKey: MARKET_KEY,
           targetDishId,
           targetRestaurantId,

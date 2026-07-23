@@ -8,7 +8,6 @@ import * as SecureStore from 'expo-secure-store';
 import { setAuthTokenResolver } from '../services/api';
 import { notificationsService } from '../services/notifications';
 import { usePushPermissionGrantVersion } from '../services/push-permission';
-import { useCityStore } from '../store/cityStore';
 import { useNotificationStore } from '../store/notificationStore';
 import SearchHistoryPreload from './SearchHistoryPreload';
 
@@ -162,11 +161,9 @@ const resolveHomeLocationSignal = async (): Promise<HomeLocationSignal> => {
 const PushNotificationRegistrar: React.FC = () => {
   const { userId } = useAuth();
   const pushPermissionGrantVersion = usePushPermissionGrantVersion();
-  const selectedCity = useCityStore((state) => state.selectedCity);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
   const lastRegistrationRef = React.useRef<{
     token: string;
-    city: string | null;
     userId: string | null;
     homeRefreshNonce: number;
   } | null>(null);
@@ -232,15 +229,10 @@ const PushNotificationRegistrar: React.FC = () => {
           return;
         }
 
-        const normalizedCity =
-          typeof selectedCity === 'string' && selectedCity.trim().length
-            ? selectedCity.trim()
-            : null;
         const lastRegistration = lastRegistrationRef.current;
         if (
           lastRegistration &&
           lastRegistration.token === token &&
-          lastRegistration.city === normalizedCity &&
           lastRegistration.userId === (userId ?? null) &&
           lastRegistration.homeRefreshNonce === homeRefreshNonce
         ) {
@@ -257,7 +249,6 @@ const PushNotificationRegistrar: React.FC = () => {
           platform: Platform.OS,
           appVersion: Constants.expoConfig?.version,
           locale: Intl.DateTimeFormat().resolvedOptions().locale,
-          city: normalizedCity ?? undefined,
           ...(homeSignal.kind === 'coordinate'
             ? { homeLocation: homeSignal.coordinate }
             : homeSignal.kind === 'revoked'
@@ -269,7 +260,6 @@ const PushNotificationRegistrar: React.FC = () => {
         }
         lastRegistrationRef.current = {
           token,
-          city: normalizedCity,
           userId: userId ?? null,
           homeRefreshNonce,
         };
@@ -281,7 +271,7 @@ const PushNotificationRegistrar: React.FC = () => {
     };
 
     void register();
-  }, [homeRefreshNonce, pushPermissionGrantVersion, selectedCity, setPushToken, userId]);
+  }, [homeRefreshNonce, pushPermissionGrantVersion, setPushToken, userId]);
 
   return null;
 };

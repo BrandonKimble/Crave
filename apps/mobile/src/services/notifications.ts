@@ -6,7 +6,6 @@ export interface RegisterDeviceRequest {
   platform?: string;
   appVersion?: string;
   locale?: string;
-  city?: string;
   /**
    * §4 home-place registration — GROUND TRUTH home coordinate; the server
    * judges placeAt. {lat,lng} = set/refresh; explicit null = location revoked,

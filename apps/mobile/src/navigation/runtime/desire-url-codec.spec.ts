@@ -35,8 +35,7 @@ const ROUND_TRIP_CASES: LiveLink[] = [
   { kind: 'sharedList', shareSlug: 'sunny-tacos-9f' },
   { kind: 'naturalSearch', query: 'best khachapuri & wine' },
   { kind: 'shortcutSearch', shortcutTab: 'restaurants' },
-  { kind: 'polls', pollId: 'poll-1', marketKey: 'new-york' },
-  { kind: 'polls', pollId: 'poll-1', marketKey: null },
+  { kind: 'polls', pollId: 'poll-1' },
 ];
 
 // RT-1: malformed percent-encoding must NEVER throw — WHATWG URL accepts a stray '%'
@@ -74,10 +73,9 @@ describe('desire-url-codec', () => {
     });
   });
 
-  it('parses the bare polls collection with market', () => {
-    expect(parseDesireLink('crave://polls?market=austin')).toEqual({
+  it('parses the bare polls collection', () => {
+    expect(parseDesireLink('crave://polls')).toEqual({
       kind: 'polls',
-      marketKey: 'austin',
       pollId: null,
     });
   });

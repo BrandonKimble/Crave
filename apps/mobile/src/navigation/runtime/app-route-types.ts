@@ -15,7 +15,7 @@ export type LaunchIntent =
   // the VALUE no longer duplicates that vocabulary. A restaurant deep link constructs
   // restaurantWorld with an empty name (the consumer's fetch fallback resolves it).
   | { type: 'entityAction'; action: EntityRefAction }
-  | { type: 'polls'; marketKey?: string | null; pollId?: string | null }
+  | { type: 'polls'; pollId?: string | null }
   | { type: 'search'; searchIntent: MainSearchIntent }
   // S-E (addressability): a /l/<shareSlug> share link — resolution is ASYNC (getShared),
   // so the intent carries the slug and the consumer resolves it into the listDetail push.
@@ -71,7 +71,7 @@ export const parseLaunchIntentFromUrl = (url: string | null): LaunchIntent => {
         joinIntent: link.joinIntent === true,
       };
     case 'polls':
-      return { type: 'polls', marketKey: link.marketKey ?? null, pollId: link.pollId ?? null };
+      return { type: 'polls', pollId: link.pollId ?? null };
     case 'naturalSearch':
       return { type: 'searchDesire', desire: { kind: 'natural', query: link.query } };
     case 'shortcutSearch':

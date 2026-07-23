@@ -121,9 +121,8 @@ export class SharePackageResolverService {
         ) {
           return unavailable;
         }
-        if (poll.state === 'draft' && poll.createdByUserId !== viewerUserId) {
-          return unavailable;
-        }
+        // (The draft poll state died in wave-6 item 9 — every poll row is
+        // active/closed/archived, all shareable.)
         return available(poll.question, 'Poll');
       }
       case SharedEntityKind.comment: {

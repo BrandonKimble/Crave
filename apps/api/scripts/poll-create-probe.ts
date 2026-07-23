@@ -8,7 +8,11 @@ import { PollsService } from '../src/modules/polls/polls.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
-const MARKET = 'region-us-ny-new-york';
+// Creation is bounds-anchored (place catalog); a lower-Manhattan viewport.
+const NYC_BOUNDS = {
+  northEast: { lat: 40.7411, lng: -73.9578 },
+  southWest: { lat: 40.6987, lng: -74.0132 },
+};
 const QUESTIONS = [
   'best breakfast sandwich in LES',
   'best patio',
@@ -30,7 +34,7 @@ async function main(): Promise<void> {
 
     for (const q of QUESTIONS) {
       const poll = await polls.createPoll(
-        { question: q, marketKey: MARKET },
+        { question: q, bounds: NYC_BOUNDS },
         user.userId,
       );
       created.push(poll.pollId);

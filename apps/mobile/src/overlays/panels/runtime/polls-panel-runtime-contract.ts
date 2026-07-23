@@ -5,16 +5,8 @@ import type { OverlaySheetSnap } from '../../types';
 import type { SearchRouteSceneSnapMeta } from '../../searchRouteSceneShellMotionContract';
 
 export type PollsPanelParams = {
-  /**
-   * LEGACY route identity (notification deep links / poll-creation pass-through).
-   * The FEED no longer consumes these — it is viewport-scoped (§22 item 5); the
-   * pinned-market feed arm is dead. They die entirely when notification targeting
-   * moves to placeId (the server's quarantined home-place seam).
-   */
-  marketKey?: string | null;
-  marketName?: string | null;
+  /** A poll to auto-open on entry (notification deep links / post-create). */
   pollId?: string | null;
-  pinnedMarket?: boolean | null;
 };
 
 export type PollsPanelMode = 'docked' | 'overlay';

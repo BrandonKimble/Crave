@@ -23,8 +23,6 @@ ACTIVE_RUNTIME_PATHS=(
   apps/mobile/src
   packages/shared/src
   apps/api/package.json
-  apps/api/prisma/seed.ts
-  apps/api/prisma/seed-polls.ts
 )
 
 check_absent \
@@ -72,21 +70,15 @@ if [[ -e apps/api/scripts/import_census_markets.py ]]; then
   failed=1
 fi
 
+# WAVE-6 item 10 (2026-07-22): prisma/seed.ts (regional market provisioning)
+# is DELETED — market provisioning lives in scripts/onboard-market.ts; the
+# fresh-DB bootstrap is the place-catalog seed sequence documented in
+# apps/api/scripts/seed-us-places.ts. The seed.ts content assertions that
+# lived here died with it.
 if ! rg -n "'region-' \\|\\| lower\\(country_code\\)|region-us-tx-austin" \
   apps/api/prisma/migrations/20260515201000_provider_neutral_regional_markets/migration.sql \
-  apps/api/prisma/seed.ts \
   >/dev/null; then
   echo "tomtom-market-cutover-delete-gate: regional market keys must be app-owned provider-neutral region-* keys" >&2
-  failed=1
-fi
-
-if rg -n "manual_region|ST_MakeEnvelope" apps/api/prisma/seed.ts >/dev/null; then
-  echo "tomtom-market-cutover-delete-gate: regional seed geometry must come from TomTom boundary polygons, not manual rectangles" >&2
-  failed=1
-fi
-
-if ! rg -n "tomtom_boundary_union|sourceBoundaries" apps/api/prisma/seed.ts >/dev/null; then
-  echo "tomtom-market-cutover-delete-gate: regional seed must record TomTom boundary union provenance" >&2
   failed=1
 fi
 
@@ -427,16 +419,9 @@ if ! rg -n "tomtom-market:deploy-gate|tomtom:deploy-gate" package.json apps/api/
   failed=1
 fi
 
-if ! rg -n "tomtom-market:fixtures|tomtom:fixtures" package.json apps/api/package.json >/dev/null; then
-  echo "tomtom-market-cutover-delete-gate: TomTom cutover must expose semantic market behavior fixtures" >&2
-  failed=1
-fi
-
-if ! rg -n "covered Austin active viewport|passive uncovered viewport|regional boundary point|active bootstrap recomputes coverage" \
-  apps/api/scripts/validate-tomtom-market-fixtures.ts >/dev/null; then
-  echo "tomtom-market-cutover-delete-gate: TomTom fixtures must cover covered, passive, boundary, and bootstrap recompute behavior" >&2
-  failed=1
-fi
+# WAVE-6 item 10 (2026-07-22): validate-tomtom-market-fixtures.ts + the
+# tomtom:fixtures / tomtom-market:fixtures scripts are DELETED (they gated
+# nothing in CI; the markets machinery is on the survivor-ledger kill path).
 
 if [[ "$failed" -ne 0 ]]; then
   exit 1

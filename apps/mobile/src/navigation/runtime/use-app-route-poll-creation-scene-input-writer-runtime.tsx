@@ -21,7 +21,6 @@ export const useAppRoutePollCreationSceneInputWriterRuntime = ({
   const pollCreationSceneParts = useSearchRoutePollCreationPanelSpec({
     routeSceneRuntime,
     sceneLayout,
-    pollCreationMarketKey: pollCreationSceneStateRuntime.pollCreationMarketKey,
     pollCreationMarketName: pollCreationSceneStateRuntime.pollCreationMarketName,
     pollCreationBounds: pollCreationSceneStateRuntime.pollCreationBounds,
     shouldShowPollCreationPanel: pollCreationSceneStateRuntime.shouldShowPollCreationPanel,
