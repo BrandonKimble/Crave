@@ -281,6 +281,11 @@ export const useBottomSheetSharedRuntime = ({
   // fallback shared value is used only when no external scrollOffsetValue was provided.
   const fallbackScrollOffset = useSharedValue(0);
   const scrollOffset = scrollOffsetValue ?? fallbackScrollOffset;
+  // THE BOUNDARY-PHYSICS VALUE (boundary-physics law §1): <0 past the list top, >0 past
+  // the bottom, 0 inside. Native bounce stays OFF forever — the runtime owns everything
+  // beyond a boundary. Slice 1 mints the value and signs consumers up (plate follows a
+  // negative offset); the physics writers (pans + momentum edge) land in later slices.
+  const contentOverscroll = useSharedValue(0);
   const scrollTopOffset = useSharedValue(0);
   const primaryScrollOffset = useSharedValue(0);
   const secondaryScrollOffset = useSharedValue(0);
@@ -468,6 +473,7 @@ export const useBottomSheetSharedRuntime = ({
         publicationRuntime.effectiveShowsVerticalScrollIndicator,
       scrollHeaderHeight: publicationRuntime.scrollHeaderHeight,
       scrollOffset,
+      contentOverscroll,
       onHeaderLayout: publicationRuntime.onHeaderLayout,
       onScrollHeaderLayout: publicationRuntime.onScrollHeaderLayout,
       primaryListOnScroll,

@@ -1086,3 +1086,13 @@ expandPan (smallest real case, no momentum interplay); (3) top momentum-rebound
 (velocity capture at the 0-edge); (4) short-page floor deletion + dead-knob
 reconciliation; (5) the strip/header seam under overscroll (pinned chrome, band
 block never separates — the seam law's block is the one number to respect).
+
+### Boundary-physics law — slice 1 SHIPPED (2026-07-23): the value + consumer sign-up
+`contentOverscroll` minted in the shared sheet runtime (one value, host-owned like the
+scroll offsets), threaded through BottomSheetSharedScrollRuntime +
+BottomSheetSceneStackBodyScrollRuntime; the scene white plate's translate becomes
+`-(clamp(scrollOffset,0,max) + contentOverscroll)` — the ≥0 floor that would detach
+FrostCutout holes during overscroll is dead. Inert by construction (no writer yet).
+Gates: tsc/jest 396, matrix 21/21, invariants 30/30. Next slices per the build order:
+(2) bottom-boundary drag physics in expandPan; (3) top momentum-rebound; (4) short-page
+floor deletion; (5) seam-under-overscroll verification.

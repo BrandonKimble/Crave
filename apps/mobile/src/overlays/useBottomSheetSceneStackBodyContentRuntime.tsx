@@ -373,6 +373,7 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       return (
         <SceneBodyFoundationSurface
           scrollOffset={bodyScrollRuntime.scrollOffset}
+          contentOverscroll={bodyScrollRuntime.contentOverscroll}
           // hasFoundationWhiteLayer ⇒ a spec row exists ⇒ sceneKey IS a SheetSceneKey.
           sceneKey={sceneKey as SheetSceneKey}
           style={sceneSurfaceStyle}
