@@ -43,9 +43,12 @@ async function main(): Promise<void> {
     const expand = app.get(SearchEntityExpansionService);
 
     for (const q of QUERIES) {
-      const denseHits = await dense.searchByEmbedding(q, [EntityType.food], K, {
-        marketKey: DEFAULT_MARKET_KEY,
-      });
+      const denseHits = await dense.searchByEmbedding(
+        q,
+        [EntityType.food],
+        K,
+        {},
+      );
       const lexHits = await expand.expandEntitiesByText({
         terms: [q],
         entityTypes: [EntityType.food],

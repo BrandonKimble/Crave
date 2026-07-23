@@ -90,6 +90,22 @@ export class FavoritesController {
     return this.favoriteListsService.getListResults(user.userId, listId, dto);
   }
 
+  // City-chip vocabulary (§8.16 "sliced by city"): the distinct catalog
+  // cities present in the list. POST for parity with /results (carries the
+  // same access dto: shareSlug / targetUserId); accepts virtual All ids.
+  @Post('lists/:listId/cities')
+  listCitiesForList(
+    @CurrentUser() user: User,
+    @Param('listId') listId: string,
+    @Body() dto: FavoriteListResultsDto,
+  ) {
+    return this.favoriteListsService.listCitiesForList(
+      user.userId,
+      listId,
+      dto,
+    );
+  }
+
   @Get('lists/:listId/collaborators')
   getCollaborators(
     @CurrentUser() user: User,

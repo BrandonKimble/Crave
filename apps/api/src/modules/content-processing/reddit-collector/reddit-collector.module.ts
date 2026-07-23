@@ -34,7 +34,6 @@ import { ProjectionRebuildService } from './projection-rebuild.service';
 import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
-import { MarketsModule } from '../../markets/markets.module';
 import { SignalsModule } from '../../signals/signals.module';
 import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
 import { BullQueueMetricsService } from './bull-queue-metrics.service';
@@ -151,7 +150,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     }),
     forwardRef(() => RestaurantEnrichmentModule),
     AnalyticsModule,
-    MarketsModule,
     SignalsModule, // §11/C3: collector demand reads the signals substrate
   ],
   providers: [

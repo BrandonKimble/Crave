@@ -609,20 +609,20 @@ describe('virtual All list (spec B.1.6)', () => {
     expect(filter.payload).toEqual({ priceLevels: [2] });
   });
 
-  it('marketKey slices by geometry as an id PRE-FILTER — the search engine carries no market conditions (master plan §7)', async () => {
+  it('cityPlaceId slices by place-ground geometry as an id PRE-FILTER — the search engine carries no place conditions (master plan §7)', async () => {
     const { service, executor, assemblerPrisma } = makeHarness({ lists });
     await service.getListResults(OWNER, 'all:restaurants', {
-      marketKey: 'austin',
+      cityPlaceId: '00000000-0000-4000-8000-00000000c171',
     } as never);
     // The slice ran one geometry query over the list's candidate restaurants…
     expect(assemblerPrisma.$queryRaw).toHaveBeenCalledTimes(1);
-    // …and the executor received only the in-market ids, with NO directives.
+    // …and the executor received only the in-city ids, with NO directives.
     const call = executor.executeSingle.mock.calls[0][0];
     expect(call.plan.restaurantFilters[0].entityIds).toEqual([R1]);
     expect(call.directives).toBeUndefined();
   });
 
-  it('marketKey slice applies on the explicit-order (custom sort) path — pages over SLICED ids with sliced totals (red-team regression)', async () => {
+  it('cityPlaceId slice applies on the explicit-order (custom sort) path — pages over SLICED ids with sliced totals (red-team regression)', async () => {
     const { service, executor, assemblerPrisma } = makeHarness({
       lists: [
         makeList({
@@ -635,7 +635,7 @@ describe('virtual All list (spec B.1.6)', () => {
     });
     // Slice mock allows only R1; custom sort forces the explicitOrder path.
     await service.getListResults(OWNER, LIST_ID, {
-      marketKey: 'austin',
+      cityPlaceId: '00000000-0000-4000-8000-00000000c171',
       sort: 'custom',
     } as never);
     expect(assemblerPrisma.$queryRaw).toHaveBeenCalledTimes(1);
@@ -644,7 +644,7 @@ describe('virtual All list (spec B.1.6)', () => {
     expect(call.plan.restaurantFilters[0].entityIds).toEqual([R1]);
   });
 
-  it('omitted marketKey runs no geometry query and passes no directives', async () => {
+  it('omitted cityPlaceId runs no geometry query and passes no directives', async () => {
     const { service, executor, assemblerPrisma } = makeHarness({ lists });
     await service.getListResults(OWNER, 'all:restaurants', {} as never);
     expect(assemblerPrisma.$queryRaw).not.toHaveBeenCalled();

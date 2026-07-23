@@ -97,7 +97,7 @@ export const useSearchStructuredSubmitOwner = ({
         sort?: 'custom' | 'best' | 'recent';
         openNow?: boolean;
         priceLevels?: number[];
-        marketKey?: string | null;
+        cityPlaceId?: string | null;
       };
     }): Promise<void> => {
       const isReslice = params.slice != null;
@@ -126,7 +126,7 @@ export const useSearchStructuredSubmitOwner = ({
             priceLevels: params.slice?.priceLevels ?? [],
             rising: false,
             ...(params.slice?.sort != null ? { listSort: params.slice.sort } : {}),
-            ...(params.slice?.marketKey != null ? { marketKey: params.slice.marketKey } : {}),
+            ...(params.slice?.cityPlaceId != null ? { cityPlaceId: params.slice.cityPlaceId } : {}),
           },
           // A list world is BOUNDS-INDEPENDENT (the fetch arm is "no LLM, no
           // bounds"; the camera derives from the members via fitAll). Carrying

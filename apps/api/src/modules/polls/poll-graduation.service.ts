@@ -92,7 +92,6 @@ export class PollGraduationService implements OnModuleInit {
         pollId: true,
         state: true,
         question: true,
-        marketKey: true,
         placeId: true,
         launchedAt: true,
         createdAt: true,
@@ -218,10 +217,10 @@ export class PollGraduationService implements OnModuleInit {
     //
     //    §5 source law: a place-keyed poll's thread is a document of the
     //    place's poll_surface SOURCE (lazily created, NO engineId). The
-    //    source handle stamps the documents' community; legacy market-keyed
-    //    polls keep the marketKey community until their Phase B cutover.
-    const marketKey = poll.marketKey ?? 'global';
-    let community = marketKey;
+    //    source handle stamps the documents' community. Every poll row is
+    //    place-keyed (legacy-poll expiry); a null placeId is the degenerate
+    //    'global' community, never a market key.
+    let community = 'global';
     let pollSurfaceSourceId: string | null = null;
     if (poll.placeId) {
       const source = await this.pollSurfaceSources.ensureForPlace(poll.placeId);
@@ -244,7 +243,7 @@ export class PollGraduationService implements OnModuleInit {
       id: `poll-${pollId}`,
       title: poll.question,
       content: poll.question,
-      subreddit: marketKey,
+      subreddit: community,
       author: 'crave-poll',
       url: `crave://poll/${pollId}`,
       score: 0,
@@ -272,7 +271,6 @@ export class PollGraduationService implements OnModuleInit {
       activateDocumentsBeforeProcessing: true,
       runMetadata: {
         pollId,
-        marketKey,
         ...(poll.placeId ? { placeId: poll.placeId, pollSurfaceSourceId } : {}),
       },
     });
@@ -315,7 +313,7 @@ export class PollGraduationService implements OnModuleInit {
       where: { pollId },
       select: {
         pollId: true,
-        marketKey: true,
+        placeId: true,
         metadata: true,
         graduatedAt: true,
       },
@@ -339,7 +337,7 @@ export class PollGraduationService implements OnModuleInit {
     for (const comment of comments) {
       const spans = await this.pollsService.highlightCommentSpans(
         comment.body,
-        poll.marketKey,
+        poll.placeId,
       );
       await this.prisma.pollComment.update({
         where: { commentId: comment.commentId },

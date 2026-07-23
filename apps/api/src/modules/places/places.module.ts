@@ -13,6 +13,8 @@ import {
   PLACE_BIRTH_LISTENER,
   PlacesCatalogService,
 } from './places-catalog.service';
+import { IpLocationService } from './ip-location.service';
+import { LaunchPositionController } from './launch-position.controller';
 import { PlacesController } from './places.controller';
 import { PlacesPromotionService } from './places-promotion.service';
 import { PlacesReconcilerService } from './places-reconciler.service';
@@ -29,8 +31,9 @@ import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
     HttpModule,
     forwardRef(() => IdentityModule),
   ],
-  controllers: [PlacesController],
+  controllers: [PlacesController, LaunchPositionController],
   providers: [
+    IpLocationService,
     PlacesCatalogService,
     PlacesPromotionService,
     PlacesReconcilerService,

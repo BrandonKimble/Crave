@@ -79,7 +79,6 @@ async function linkDecision(
     };
 
   const candidates = await search.retrieveCandidates(t, [type], SHORTLIST_K, {
-    marketKey: type === 'restaurant' ? DEFAULT_MARKET_KEY : undefined,
     denseMode: 'none',
     poolSize: RECALL_POOL,
   });

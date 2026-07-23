@@ -359,6 +359,66 @@ export class FavoriteListsService {
     return this.resultsAssembler.run(source, dto);
   }
 
+  /**
+   * The City chip's option vocabulary (§8.16 "sliced by city" — markets
+   * extermination leg 3): the CITIES PRESENT IN THE LIST, i.e. the distinct
+   * municipality-level catalog places whose §2.6 ground covers a location of
+   * the list's restaurants. Self-provisioning from the list's own rows (no
+   * global market table); ordered by how much of the list each city holds.
+   * Same access/virtual-All resolution as getListResults.
+   */
+  async listCitiesForList(
+    userId: string,
+    listId: string,
+    dto: FavoriteListResultsDto,
+  ): Promise<
+    Array<{ placeId: string; name: string; restaurantCount: number }>
+  > {
+    const source = await this.resolveResultsSource(userId, listId, dto);
+    const restaurantIds = Array.from(
+      new Set(
+        source.items
+          .map((item) => item.restaurantId ?? item.connection?.restaurantId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    if (!restaurantIds.length) {
+      return [];
+    }
+    const rows = await this.prisma.$queryRaw<
+      Array<{ placeId: string; name: string; restaurantCount: bigint | number }>
+    >(Prisma.sql`
+      SELECT p.place_id AS "placeId",
+             p.name,
+             COUNT(DISTINCT rl.restaurant_id) AS "restaurantCount"
+      FROM core_restaurant_locations rl
+      JOIN place_geometries pg
+        ON ST_Covers(
+             pg.geometry,
+             ST_SetSRID(
+               ST_MakePoint(
+                 rl.longitude::double precision,
+                 rl.latitude::double precision
+               ),
+               4326
+             )
+           )
+      JOIN places p
+        ON p.place_id = pg.place_id
+       AND p.provider_level_code = 'municipality'
+      WHERE rl.restaurant_id = ANY(${restaurantIds}::uuid[])
+        AND rl.latitude IS NOT NULL
+        AND rl.longitude IS NOT NULL
+      GROUP BY p.place_id, p.name
+      ORDER BY COUNT(DISTINCT rl.restaurant_id) DESC, p.name ASC
+    `);
+    return rows.map((row) => ({
+      placeId: row.placeId,
+      name: row.name,
+      restaurantCount: Number(row.restaurantCount),
+    }));
+  }
+
   private async resolveResultsSource(
     userId: string,
     listId: string,

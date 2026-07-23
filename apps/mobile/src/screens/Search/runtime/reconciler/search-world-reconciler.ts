@@ -30,7 +30,7 @@ export type SearchWorldTransitionClass =
   | 'session_replace'
   /** IDENTITY revise within a session: includeSimilar (retrieval-semantic). */
   | 'variant_rerun'
-  /** LENS flip (lens exit §2): openNow/price/rising/listSort/marketKey — a new VIEW of
+  /** LENS flip (lens exit §2): openNow/price/rising/listSort/cityPlaceId — a new VIEW of
    *  the SAME world. Never a session/world event: the slice presents through the
    *  toggle-revise choreography ({paint, mapFrame} episode), identity untouched. */
   | 'lens_flip'

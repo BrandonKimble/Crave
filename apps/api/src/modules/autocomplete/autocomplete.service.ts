@@ -1160,7 +1160,7 @@ export class AutocompleteService {
           normalizedName: normalizedQuery,
           originalText: dto.query,
           entityType,
-          marketKey: null,
+          engineId: null,
         },
       ],
       {

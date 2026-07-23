@@ -10,24 +10,14 @@ import {
   BatchProcessingResult,
 } from './batch-processing-queue.types';
 import { LLMPost } from '../../external-integrations/llm/llm.types';
-import { MarketRegistryService } from '../../markets/market-registry.service';
 import { ExtractionPipelineService } from './extraction-pipeline.service';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { CollectionEvidenceService } from './collection-evidence.service';
 import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
 
-const DEFAULT_MARKET_KEY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const DEFAULT_MARKET_KEY_CACHE_MAX_ENTRIES = 512;
-
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly marketKeyCache = new Map<
-    string,
-    { value: string; expiresAt: number }
-  >();
-  private readonly marketKeyCacheTtlMs: number;
-  private readonly marketKeyCacheMaxEntries: number;
   private keywordGateConfig!: {
     lookbackMs: number;
     commentSampleLimit: number;
@@ -40,20 +30,11 @@ export class RedditBatchProcessingService implements OnModuleInit {
     @Inject(RedditService) private readonly redditService: RedditService,
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
-    private readonly marketRegistry: MarketRegistryService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly extractionPipelineService: ExtractionPipelineService,
     private readonly sourceRegistry: CollectorSourceRegistryService,
     private readonly collectionEvidence: CollectionEvidenceService,
-  ) {
-    this.marketKeyCacheTtlMs =
-      this.parsePositiveInt(process.env.REDDIT_BATCH_COVERAGE_CACHE_TTL_MS) ??
-      DEFAULT_MARKET_KEY_CACHE_TTL_MS;
-    this.marketKeyCacheMaxEntries =
-      this.parsePositiveInt(
-        process.env.REDDIT_BATCH_COVERAGE_CACHE_MAX_ENTRIES,
-      ) ?? DEFAULT_MARKET_KEY_CACHE_MAX_ENTRIES;
-  }
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RedditBatchProcessingService');
@@ -63,8 +44,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
       commentSampleLimit: this.keywordGateConfig.commentSampleLimit,
       minNewComments: this.keywordGateConfig.minNewComments,
       pipelineScope: this.keywordGateConfig.pipelineScope,
-      marketKeyCacheTtlMs: this.marketKeyCacheTtlMs,
-      marketKeyCacheMaxEntries: this.marketKeyCacheMaxEntries,
     });
   }
 
@@ -783,85 +762,5 @@ export class RedditBatchProcessingService implements OnModuleInit {
       subreddit: job.subreddit,
       ...metadata,
     });
-  }
-
-  private async resolveMarketKeyForCommunity(
-    communityName: string,
-  ): Promise<string | null> {
-    const normalized = communityName?.trim().toLowerCase();
-    if (!normalized) {
-      return null;
-    }
-
-    const cached = this.getCachedMarketKey(normalized);
-    if (cached) {
-      return cached;
-    }
-
-    const resolved =
-      await this.marketRegistry.resolveMarketKeyForCommunity(communityName);
-    if (!resolved) {
-      return null;
-    }
-
-    this.setCachedMarketKey(normalized, resolved);
-    return resolved;
-  }
-
-  private getCachedMarketKey(key: string): string | null {
-    if (this.marketKeyCacheTtlMs <= 0 || this.marketKeyCacheMaxEntries <= 0) {
-      return null;
-    }
-
-    const entry = this.marketKeyCache.get(key);
-    if (!entry) {
-      return null;
-    }
-
-    if (entry.expiresAt <= Date.now()) {
-      this.marketKeyCache.delete(key);
-      return null;
-    }
-
-    // Refresh recency when a hot key is reused.
-    this.marketKeyCache.delete(key);
-    this.marketKeyCache.set(key, entry);
-    return entry.value;
-  }
-
-  private setCachedMarketKey(key: string, value: string): void {
-    if (this.marketKeyCacheTtlMs <= 0 || this.marketKeyCacheMaxEntries <= 0) {
-      return;
-    }
-
-    this.marketKeyCache.set(key, {
-      value,
-      expiresAt: Date.now() + this.marketKeyCacheTtlMs,
-    });
-    this.pruneMarketKeyCache();
-  }
-
-  private pruneMarketKeyCache(): void {
-    if (this.marketKeyCacheMaxEntries <= 0) {
-      this.marketKeyCache.clear();
-      return;
-    }
-
-    const now = Date.now();
-    for (const [key, entry] of this.marketKeyCache.entries()) {
-      if (entry.expiresAt <= now) {
-        this.marketKeyCache.delete(key);
-      }
-    }
-
-    while (this.marketKeyCache.size > this.marketKeyCacheMaxEntries) {
-      const oldestKey = this.marketKeyCache.keys().next().value as
-        | string
-        | undefined;
-      if (!oldestKey) {
-        break;
-      }
-      this.marketKeyCache.delete(oldestKey);
-    }
   }
 }

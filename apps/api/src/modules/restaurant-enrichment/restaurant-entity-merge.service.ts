@@ -48,11 +48,6 @@ export class RestaurantEntityMergeService {
         duplicate.entityId,
       );
       await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
-      await this.mergeMarketPresences(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
       await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
 
       const updatedCanonical = await tx.entity.update({
@@ -502,45 +497,6 @@ export class RestaurantEntityMergeService {
     return params.subjectKind === DemandSubjectKind.entity
       ? params.canonicalId
       : params.subjectKey;
-  }
-
-  private async mergeMarketPresences(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const duplicatePresences = await tx.entityMarketPresence.findMany({
-      where: { entityId: duplicateId },
-      select: { marketKey: true },
-    });
-
-    if (!duplicatePresences.length) {
-      return;
-    }
-
-    const canonicalPresences = new Set(
-      (
-        await tx.entityMarketPresence.findMany({
-          where: { entityId: canonicalId },
-          select: { marketKey: true },
-        })
-      ).map((row) => row.marketKey.trim().toLowerCase()),
-    );
-
-    for (const presence of duplicatePresences) {
-      const normalizedKey = presence.marketKey.trim().toLowerCase();
-      if (!normalizedKey || canonicalPresences.has(normalizedKey)) {
-        continue;
-      }
-
-      await tx.entityMarketPresence.create({
-        data: {
-          entityId: canonicalId,
-          marketKey: normalizedKey,
-        },
-      });
-      canonicalPresences.add(normalizedKey);
-    }
   }
 
   private async mergeLocations(

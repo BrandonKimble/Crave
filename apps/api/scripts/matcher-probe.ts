@@ -84,7 +84,6 @@ async function main(): Promise<void> {
             normalizedName: c.term,
             originalText: c.term,
             entityType: c.type,
-            marketKey: c.market ?? null,
           },
         ],
         {

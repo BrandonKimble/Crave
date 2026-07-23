@@ -38,7 +38,10 @@ export type StartupLocationSnapshot = {
   permission: 'granted' | 'denied' | 'undetermined';
   reducedAccuracy: boolean;
   isStale: boolean;
-  ipMarketKey?: string | null;
+  /** Launch-position camera envelope (the smallest containing catalog
+   *  place's bbox) for the IP rung — frames the whole locale instead of a
+   *  fixed single-location zoom. */
+  ipBounds?: MapBounds | null;
 };
 
 // Deterministic startup-location override for tests/dev. When EXPO_PUBLIC_STARTUP_LAT
@@ -260,14 +263,15 @@ const parseCachedAppLocation = (
   }
 };
 
-// IP→metro snapshot: coarse city-level coordinate from the server (Google's
-// no-device-signal rung). NOT the user's true position, so it reads as
-// 'unavailable' for the user-location dot. Carries the resolved market key so
-// polls/coverage bootstrap for the right metro.
+// IP→locale snapshot: coarse city-level coordinate from the place catalog's
+// launch endpoint (Google's no-device-signal rung). NOT the user's true
+// position, so it reads as 'unavailable' for the user-location dot. Carries
+// the containing place's bbox so the camera frames the locale (no market
+// shape — markets extermination leg 3).
 const buildIpFallbackSnapshot = (
   coordinate: Coordinate,
   permission: StartupLocationSnapshot['permission'],
-  ipMarketKey: string | null
+  ipBounds: MapBounds | null
 ): StartupLocationSnapshot => ({
   ...buildLocationSnapshot({
     coordinate,
@@ -278,7 +282,7 @@ const buildIpFallbackSnapshot = (
     reducedAccuracy: false,
     isStale: true,
   }),
-  ipMarketKey,
+  ipBounds,
 });
 
 // Absolute last resort when there is NO device location and IP→metro also fails:
@@ -299,11 +303,20 @@ const buildNationalFallbackSnapshot = (
 
 const buildCameraFromSnapshot = (snapshot: StartupLocationSnapshot): StartupCameraSpec => {
   if (snapshot.coordinate) {
+    // IP rung with a catalog-place envelope: fit the locale instead of the
+    // fixed single-location zoom (bounds → zoom is the inverse of
+    // deriveBoundsFromCamera's zoom → bounds).
+    const boundsZoom =
+      snapshot.source === 'ip_fallback' && snapshot.ipBounds
+        ? deriveZoomFromBounds(snapshot.ipBounds, snapshot.coordinate)
+        : null;
     return {
       center: [snapshot.coordinate.lng, snapshot.coordinate.lat],
-      // Device + IP fixes frame a single locale; the neutral national fallback
+      // Device fixes frame a single locale; the neutral national fallback
       // (city_fallback at USA center) zooms way out. No per-city zoom anymore.
-      zoom: snapshot.source === 'city_fallback' ? USA_FALLBACK_ZOOM : SINGLE_LOCATION_ZOOM_LEVEL,
+      zoom:
+        boundsZoom ??
+        (snapshot.source === 'city_fallback' ? USA_FALLBACK_ZOOM : SINGLE_LOCATION_ZOOM_LEVEL),
       pitch: 0,
       heading: 0,
       source: snapshot.source,
@@ -382,6 +395,35 @@ const raceWithTimeout = async <T,>(promise: Promise<T>, timeoutMs: number): Prom
 };
 
 const clampLatitude = (value: number): number => Math.max(-85, Math.min(85, value));
+
+// Inverse of deriveBoundsFromCamera: the zoom whose viewport spans the given
+// envelope (limiting axis wins), clamped to a sane city..street band so a
+// degenerate or continent-sized envelope can't produce a broken camera.
+const deriveZoomFromBounds = (bounds: MapBounds, center: Coordinate): number | null => {
+  const latDelta = Math.abs(bounds.northEast.lat - bounds.southWest.lat);
+  const lngDelta = Math.abs(bounds.northEast.lng - bounds.southWest.lng);
+  if (!Number.isFinite(latDelta) || !Number.isFinite(lngDelta) || latDelta <= 0 || lngDelta <= 0) {
+    return null;
+  }
+  const viewport = Dimensions.get('window');
+  const safeHeight = Math.max(viewport.height, 1);
+  const safeWidth = Math.max(viewport.width, 1);
+  const latitudeRadians = (clampLatitude(center.lat) * Math.PI) / 180;
+  const cosLatitude = Math.max(Math.cos(latitudeRadians), 0.2);
+  const metersPerDegreeLatitude = 111_320;
+  const metersPerDegreeLongitude = metersPerDegreeLatitude * cosLatitude;
+  const heightMeters = latDelta * metersPerDegreeLatitude;
+  const widthMeters = lngDelta * metersPerDegreeLongitude;
+  const metersPerPixelNeeded = Math.max(heightMeters / safeHeight, widthMeters / safeWidth);
+  if (!Number.isFinite(metersPerPixelNeeded) || metersPerPixelNeeded <= 0) {
+    return null;
+  }
+  const zoom = Math.log2((156543.03392 * cosLatitude) / metersPerPixelNeeded);
+  if (!Number.isFinite(zoom)) {
+    return null;
+  }
+  return Math.max(8, Math.min(zoom, 14));
+};
 
 const deriveBoundsFromCamera = (camera: StartupCameraSpec | null): MapBounds | null => {
   if (!camera) {
@@ -710,7 +752,11 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       if (!bestSnapshot?.coordinate) {
         const ip = await resolveIpLocation();
         if (ip?.resolved && ip.coordinate) {
-          bestSnapshot = buildIpFallbackSnapshot(ip.coordinate, permission, ip.marketKey ?? null);
+          const ipBounds =
+            ip.bounds?.northEast && ip.bounds?.southWest
+              ? { northEast: ip.bounds.northEast, southWest: ip.bounds.southWest }
+              : null;
+          bestSnapshot = buildIpFallbackSnapshot(ip.coordinate, permission, ipBounds);
         } else {
           bestSnapshot = buildNationalFallbackSnapshot(permission);
         }

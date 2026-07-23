@@ -1147,14 +1147,20 @@ export class PollsService {
   }
 
   /**
-   * Phase 5 gazetteer: scan a comment for KNOWN restaurant/food mentions (no LLM,
-   * market-scoped) and return display spans for highlight + deeplink. Brand-new
-   * entities aren't here yet — they graduate at close (§6.1).
+   * Phase 5 gazetteer: scan a comment for KNOWN restaurant/food mentions (no
+   * LLM) and return display spans for highlight + deeplink. Brand-new entities
+   * aren't here yet — they graduate at close (§6.1).
+   *
+   * §13 territory-as-retrieval-prior (markets extermination leg 3): restaurant
+   * matching is scoped to the ENGINE whose territory covers the poll's PLACE
+   * (member grounds cover the place centroid). A poll outside every engine
+   * territory scans globally — the honest uncovered state, never a market key.
    */
   async highlightCommentSpans(
     body: string,
-    marketKey: string | null,
+    placeId: string | null,
   ): Promise<Prisma.InputJsonValue> {
+    const engineId = await this.engineIdForPlace(placeId);
     const spans = await this.entityTextSearch.scanForKnownEntities(
       body,
       [
@@ -1163,9 +1169,55 @@ export class PollsService {
         EntityType.food_attribute,
         EntityType.restaurant_attribute,
       ],
-      { marketKey },
+      { engineId },
     );
     return spans as unknown as Prisma.InputJsonValue;
+  }
+
+  /**
+   * The covering engine for a place: an engine whose MEMBER GROUNDS cover the
+   * place's centroid (§5 — territory is the derived union of member grounds;
+   * a descendant place is geometrically inside a member, so member grounds
+   * suffice). Smallest covering member ground wins on overlap. null = no
+   * covering engine (gazetteer scope falls back to global).
+   */
+  private async engineIdForPlace(
+    placeId: string | null,
+  ): Promise<string | null> {
+    if (!placeId) {
+      return null;
+    }
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ engineId: string }>>(
+        Prisma.sql`
+          SELECT e.engine_id AS "engineId"
+          FROM engines e
+          JOIN place_geometries pg ON pg.place_id = ANY(e.member_place_ids)
+          JOIN places target ON target.place_id = ${placeId}::uuid
+          WHERE target.centroid_lat IS NOT NULL
+            AND target.centroid_lng IS NOT NULL
+            AND ST_Covers(
+              pg.geometry,
+              ST_SetSRID(
+                ST_MakePoint(
+                  target.centroid_lng::double precision,
+                  target.centroid_lat::double precision
+                ),
+                4326
+              )
+            )
+          ORDER BY ST_Area(pg.geometry) ASC
+          LIMIT 1
+        `,
+      );
+      return rows[0]?.engineId ?? null;
+    } catch (error) {
+      this.logger.warn(
+        'Covering-engine lookup failed — gazetteer scanning globally',
+        { placeId, detail: String(error) },
+      );
+      return null;
+    }
   }
 
   async postComment(pollId: string, dto: CreateCommentDto, userId: string) {
@@ -1174,7 +1226,6 @@ export class PollsService {
       select: {
         pollId: true,
         state: true,
-        marketKey: true,
         placeId: true,
         question: true,
         topic: {
@@ -1218,7 +1269,7 @@ export class PollsService {
       }
     }
 
-    const entitySpans = await this.highlightCommentSpans(body, poll.marketKey);
+    const entitySpans = await this.highlightCommentSpans(body, poll.placeId);
     const comment = await this.prisma.pollComment.create({
       data: {
         pollId,
@@ -1270,11 +1321,11 @@ export class PollsService {
 
     const poll = await this.prisma.poll.findUnique({
       where: { pollId: comment.pollId },
-      select: { marketKey: true },
+      select: { placeId: true },
     });
     const entitySpans = await this.highlightCommentSpans(
       body,
-      poll?.marketKey ?? null,
+      poll?.placeId ?? null,
     );
     const updated = await this.prisma.pollComment.update({
       where: { commentId },
@@ -1529,7 +1580,7 @@ export class PollsService {
       select: {
         mode: true,
         createdByUserId: true,
-        marketKey: true,
+        placeId: true,
         topic: {
           select: {
             topicType: true,
@@ -1608,7 +1659,7 @@ export class PollsService {
               EntityType.food_attribute,
               EntityType.restaurant_attribute,
             ],
-            { marketKey: poll.marketKey },
+            { engineId: await this.engineIdForPlace(poll.placeId) },
           )
         : [];
 
@@ -1937,7 +1988,6 @@ export class PollsService {
       select: {
         state: true,
         question: true,
-        marketKey: true,
         placeId: true,
         topic: {
           select: {

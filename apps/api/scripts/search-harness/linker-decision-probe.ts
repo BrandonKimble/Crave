@@ -69,7 +69,6 @@ async function main(): Promise<void> {
       // Pull with dense ALWAYS so we can SEE what dense/rrf would have offered,
       // even though the live linker runs denseMode:'none'.
       const cands = await search.retrieveCandidates(cs.term, [cs.type], 5, {
-        marketKey: DEFAULT_MARKET_KEY,
         denseMode: 'always',
         poolSize: 60,
       });

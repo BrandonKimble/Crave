@@ -72,16 +72,15 @@ export class FavoriteListResultsDto {
   priceLevels?: number[];
 
   /**
-   * Leg 11 (leg-9 primitive defect: Market chip had no data path): the
-   * ListDetail strip's Market chip (§8.16 — the virtual All list is "sliced by
-   * city"). Applied as a geometry id pre-filter in the assembler (the search engine carries no market conditions) (the
-   * core_markets geometry-covers filter) — same additive pattern as
-   * openNow/priceLevels above.
+   * The ListDetail strip's City chip (§8.16 "sliced by city" — markets
+   * extermination leg 3 re-key): a PLACE id from GET
+   * /favorites/lists/:listId/cities. Applied as a ground-containment id
+   * pre-filter in the assembler (place_geometries ST_Covers over the list's
+   * restaurant locations) — same additive pattern as openNow/priceLevels.
    */
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  marketKey?: string;
+  @IsUUID()
+  cityPlaceId?: string;
 
   @IsOptional()
   @ValidateNested()

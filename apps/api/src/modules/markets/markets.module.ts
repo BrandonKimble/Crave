@@ -1,77 +1,57 @@
 import { Module } from '@nestjs/common';
-import { HttpModule } from '@nestjs/axios';
-import { PrismaModule } from '../../prisma/prisma.module';
-import { SharedModule } from '../../shared/shared.module';
-import { MetricsModule } from '../metrics/metrics.module';
-import { MarketsController } from './markets.controller';
-import { MarketBootstrapMetricsService } from './market-bootstrap-metrics.service';
-import { MarketRegistryService } from './market-registry.service';
-import { MarketResolverService } from './market-resolver.service';
-import { TomTomBoundaryBootstrapService } from './tomtom-boundary-bootstrap.service';
-import { IpLocationService } from './ip-location.service';
 
 /**
- * PHASE C SURVIVOR LEDGER (geo-demand rebuild §15/§21 sweep, 2026-07-19).
- * The markets machinery lost these readers in Phase C: old event/rollup
- * writers, the old demand rollup, poll CREATION (re-keyed to the place
- * catalog; resolveOrEnsureForPollCreation deleted). What remains, and the
- * leg that kills each:
- *  - /markets/resolve: KILLED 2026-07-22 (wave-6 punch item 7) — its last
- *    reader was the perf harness, which now drives bounds-only camera
- *    commands; the endpoint + MarketResolveDto are deleted.
- *    MarketResolverService itself SURVIVES as internal machinery (the
- *    ip-location + registry coverage paths below resolve through it).
- *  - /markets/resolve-ip + IpLocationService: the STARTUP LADDER's
- *    no-device-signal IP→metro rung in MainLaunchCoordinator. Dies when the
- *    launch ladder re-keys its bottom rung to the place catalog.
- *  - /markets/active: ListDetail "Market" chip vocabulary — dies when that
- *    chip re-keys to the place catalog (city slice re-key).
- *  - resolveViewportCoverage: KILLED 2026-07-22 (ENGINE-COVERAGE re-key,
- *    markets extermination leg 2) — search/interpretation coverage is
- *    EngineCoverageService (engine territory grounds ∩ viewport, §5/§2.6);
- *    on-demand queues key off engineId; the autocomplete poll lane scopes
- *    by place ground ∩ viewport; resolveCollectableMarketKey(s) + the whole
- *    viewport-coverage/bootstrap support path deleted with it.
- *  - resolveOrEnsureForLocation + boundary bootstrap: entity market-presence
- *    stamping in enrichment — dies with the §13 territory-as-retrieval-prior
- *    re-key (presence → place geometry).
- *  - resolveMarketKeyForCommunity (unified-processing / batch): mention
- *    market provenance — same §13 re-key.
- *  - SignalsService.bboxFromMarketKey + the polls legacy feed arm: KILLED
- *    2026-07-20 (LEGACY-POLL-EXPIRY leg) — all 94 legacy market-keyed polls
- *    backfilled to catalog places (name+bbox identity match, else smallest
- *    same-state containing place); the feed/dedupe/signal-geo market arms and
- *    the feed dto marketKey are deleted. The attachMarketLabels display join
- *    + the legacy poll envelope died 2026-07-22 (wave-6 punch item 8);
- *    polls.market_key still EXISTS as the comment-highlight gazetteer scope
- *    (entityTextSearch { marketKey }) — it dies with the §13 territory
- *    re-key, which then also drops the column.
- *  - NotificationsService market fallback: KILLED 2026-07-19 (home-place
- *    registration leg) — poll-release targeting is homePlaceId subtree
- *    membership; the dispatch path reads no markets. notification_devices
- *    .city column DROPPED 2026-07-20 (legacy-poll-expiry leg).
- * core_markets itself drops only after ALL of the above are gone.
+ * PHASE C SURVIVOR LEDGER (geo-demand rebuild §15/§21 sweep; leg-3 close
+ * 2026-07-22). POST-LEG-3 STATE: **core_markets is writer-less and
+ * reader-less — leg 4 performs the physical census + drop.** Every service
+ * this module ever held is deleted; the module survives only as this ledger
+ * until leg 4 removes it from app.module.
  *
- * POST-LEG-2 SURVIVOR SET (ratified target: {ip ladder, ListDetail chip,
- * polls gazetteer scope, core_markets}); still-standing §13 remnants beyond
- * that target are resolveOrEnsureForLocation (enrichment presence stamping)
- * and resolveMarketKeyForCommunity / listCommunityMarketTargets (mention
- * market provenance) — both die with the §13 territory-as-retrieval-prior
- * re-key (legs 3-4), which then also drops core_entity_market_presence and
- * polls.market_key.
+ * Final dispositions (leg 3, markets extermination):
+ *  - /markets/resolve: KILLED 2026-07-22 (wave-6 punch item 7).
+ *  - resolveViewportCoverage: KILLED 2026-07-22 (ENGINE-COVERAGE re-key,
+ *    leg 2) — coverage is EngineCoverageService (engine territory grounds).
+ *  - /markets/active + listActiveMarkets: KILLED leg 3 — the ListDetail chip
+ *    re-keyed to "cities present in the list" (POST
+ *    /favorites/lists/:listId/cities — municipality places whose ground
+ *    covers the list's restaurant locations; slice filter = place ground
+ *    containment in the results assembler; dto.marketKey → dto.cityPlaceId).
+ *  - /markets/resolve-ip + the market half of IpLocationService: KILLED
+ *    leg 3 — the launch ladder rung is GET /places/launch-position
+ *    (IpLocationService MOVED to modules/places, geolocation only; camera
+ *    envelope = smallestContaining place bbox; no market shape on the wire).
+ *  - polls gazetteer scope (entityTextSearch { marketKey }): KILLED leg 3 —
+ *    scanning scopes by the ENGINE covering the poll's place (member grounds
+ *    cover the place centroid; uncovered ⇒ global). polls.market_key and
+ *    poll_topics.market_key are now reader-less AND writer-less → leg-4
+ *    column drops.
+ *  - resolveOrEnsureForLocation + boundary bootstrap (presence stamping):
+ *    KILLED leg 3 — §13 presence is GEOMETRIC (locations vs place grounds,
+ *    derived at read). No presence writer or reader remains anywhere →
+ *    core_entity_market_presence is leg-4 drop material.
+ *  - resolveMarketKeyForCommunity / listCommunityMarketTargets (mention
+ *    provenance): KILLED leg 3 — provenance keys off SOURCES (§5):
+ *    unified-processing resolves the community's source row
+ *    (collector-source-registry findRedditSourceByHandle) and uses its
+ *    engineId for recall bias and its anchorPlaceId for enrichment bias
+ *    (place centroid + bbox-derived radius). Entity resolution is engine-
+ *    scoped (T1/alias GLOBAL per §13; recall geo-biased by engine territory).
+ *  - MarketRegistryService / MarketResolverService /
+ *    TomTomBoundaryBootstrapService / MarketBootstrapMetricsService /
+ *    market-geo.util / markets.controller: DELETED leg 3 (caller-less).
+ *  - SignalsService.bboxFromMarketKey + polls legacy feed arm: KILLED
+ *    2026-07-20 (legacy-poll expiry). NotificationsService market fallback:
+ *    KILLED 2026-07-19 (home-place registration).
+ *
+ * LEG-4 CENSUS (dead physical schema left for the drop leg):
+ *  - core_markets (table) — zero writers/readers.
+ *  - core_entity_market_presence (table) — zero writers/readers.
+ *  - polls.market_key, poll_topics.market_key (columns) — zero readers,
+ *    zero writers.
+ *  - geo_boundary_features / market_bootstrap_events (bootstrap tables) —
+ *    writers deleted with the bootstrap service; census with the rest.
+ *  - collection_communities.market_key (column) — last reader
+ *    (resolveMarketKeyForCommunity) deleted.
  */
-@Module({
-  imports: [HttpModule, PrismaModule, SharedModule, MetricsModule],
-  controllers: [MarketsController],
-  providers: [
-    MarketBootstrapMetricsService,
-    MarketResolverService,
-    MarketRegistryService,
-    TomTomBoundaryBootstrapService,
-    IpLocationService,
-  ],
-  // Only MarketRegistryService has external consumers (search / autocomplete /
-  // interpretation / enrichment / reddit-collector); the rest are internal.
-  exports: [MarketRegistryService],
-})
+@Module({})
 export class MarketsModule {}

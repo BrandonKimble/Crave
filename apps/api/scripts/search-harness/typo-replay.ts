@@ -202,8 +202,6 @@ async function main(): Promise<void> {
             [e.type],
             SHORTLIST_K,
             {
-              marketKey:
-                e.type === 'restaurant' ? DEFAULT_MARKET_KEY : undefined,
               denseMode: 'none', // same as the query-time linker
               poolSize: RECALL_POOL,
             },
@@ -261,7 +259,6 @@ async function main(): Promise<void> {
       for (let i = 0; i < GIBBERISH_COUNT; i++) {
         const g = gibberish();
         const candidates = await search.retrieveCandidates(g, [type], 5, {
-          marketKey: type === 'restaurant' ? DEFAULT_MARKET_KEY : undefined,
           denseMode: 'none',
           poolSize: RECALL_POOL,
         });

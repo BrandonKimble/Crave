@@ -28,9 +28,12 @@ async function main(): Promise<void> {
   try {
     const search = app.get(EntityTextSearchService);
     for (const q of QUERIES) {
-      const dense = await search.searchByEmbedding(q, [EntityType.food], 12, {
-        marketKey: DEFAULT_MARKET_KEY,
-      });
+      const dense = await search.searchByEmbedding(
+        q,
+        [EntityType.food],
+        12,
+        {},
+      );
       console.log(
         `\n=== DENSE-only "${q}"  (top ${dense.length} by cosine, no lexical) ===`,
       );

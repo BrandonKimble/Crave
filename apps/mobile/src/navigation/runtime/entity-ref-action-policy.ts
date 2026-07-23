@@ -66,7 +66,7 @@ export type EntityRefAction =
         sort?: 'custom' | 'best' | 'recent';
         openNow?: boolean;
         priceLevels?: number[];
-        marketKey?: string | null;
+        cityPlaceId?: string | null;
       };
     };
 

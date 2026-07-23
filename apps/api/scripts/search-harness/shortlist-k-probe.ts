@@ -66,7 +66,6 @@ async function main(): Promise<void> {
         [truth.type],
         K_WIDE,
         {
-          marketKey: truth.type === 'restaurant' ? DEFAULT_MARKET_KEY : null,
           denseMode: 'always',
         },
       )) as { entityId: string; name: string }[];

@@ -334,7 +334,7 @@ export class EntityResolutionService implements OnModuleInit {
     globalNewEntityMap: Map<string, EntityResolutionResult>,
   ): Promise<EntityResolutionResult[]> {
     if (entityType !== 'restaurant') {
-      return this.resolveEntitiesByTypeForMarket(
+      return this.resolveEntitiesByTypeForEngine(
         entities,
         entityType,
         config,
@@ -343,23 +343,23 @@ export class EntityResolutionService implements OnModuleInit {
       );
     }
 
-    const entitiesByMarket = new Map<string, EntityResolutionInput[]>();
+    const entitiesByEngine = new Map<string, EntityResolutionInput[]>();
     for (const entity of entities) {
-      const marketKey = this.normalizeMarketKey(entity.marketKey);
-      if (!entitiesByMarket.has(marketKey)) {
-        entitiesByMarket.set(marketKey, []);
+      const engineScope = this.normalizeEngineScope(entity.engineId);
+      if (!entitiesByEngine.has(engineScope)) {
+        entitiesByEngine.set(engineScope, []);
       }
-      entitiesByMarket.get(marketKey)!.push(entity);
+      entitiesByEngine.get(engineScope)!.push(entity);
     }
 
     const results: EntityResolutionResult[] = [];
-    for (const [marketKey, group] of entitiesByMarket.entries()) {
-      const resolved = await this.resolveEntitiesByTypeForMarket(
+    for (const [engineScope, group] of entitiesByEngine.entries()) {
+      const resolved = await this.resolveEntitiesByTypeForEngine(
         group,
         entityType,
         config,
         globalNewEntityMap,
-        marketKey,
+        engineScope === 'global' ? null : engineScope,
       );
       results.push(...resolved);
     }
@@ -367,16 +367,16 @@ export class EntityResolutionService implements OnModuleInit {
     return results;
   }
 
-  private async resolveEntitiesByTypeForMarket(
+  private async resolveEntitiesByTypeForEngine(
     entities: EntityResolutionInput[],
     entityType: EntityType,
     config: EntityResolutionConfig,
     globalNewEntityMap: Map<string, EntityResolutionResult>,
-    marketKey: string | null,
+    engineId: string | null,
   ): Promise<EntityResolutionResult[]> {
     this.logger.debug('Resolving entities by type', {
       entityType,
-      marketKey: marketKey ?? undefined,
+      engineId: engineId ?? undefined,
       count: entities.length,
     });
 
@@ -384,7 +384,7 @@ export class EntityResolutionService implements OnModuleInit {
     const exactMatchResults = await this.performExactMatches(
       entities,
       entityType,
-      marketKey,
+      engineId,
     );
     const unmatchedAfterExact = entities.filter(
       (entity) =>
@@ -395,7 +395,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Exact match results', {
       entityType,
-      marketKey: marketKey ?? undefined,
+      engineId: engineId ?? undefined,
       matched: exactMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterExact.length,
     });
@@ -404,7 +404,7 @@ export class EntityResolutionService implements OnModuleInit {
     const aliasMatchResults = await this.performAliasMatches(
       unmatchedAfterExact,
       entityType,
-      marketKey,
+      engineId,
     );
     const unmatchedAfterAlias = unmatchedAfterExact.filter(
       (entity) =>
@@ -415,7 +415,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Alias match results', {
       entityType,
-      marketKey: marketKey ?? undefined,
+      engineId: engineId ?? undefined,
       matched: aliasMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterAlias.length,
     });
@@ -434,7 +434,7 @@ export class EntityResolutionService implements OnModuleInit {
         // accumulate as separate entities.
         entityType === 'ingredient');
     const fuzzyMatchResults = useLlmMatcher
-      ? await this.performLlmMatches(unmatchedAfterAlias, entityType, marketKey)
+      ? await this.performLlmMatches(unmatchedAfterAlias, entityType, engineId)
       : [];
 
     const unmatchedAfterFuzzy = unmatchedAfterAlias.filter(
@@ -446,7 +446,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Fuzzy match results', {
       entityType,
-      marketKey: marketKey ?? undefined,
+      engineId: engineId ?? undefined,
       matched: fuzzyMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterFuzzy.length,
     });
@@ -508,7 +508,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performExactMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
-    marketKey: string | null,
+    engineId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -528,14 +528,6 @@ export class EntityResolutionService implements OnModuleInit {
           mode: 'insensitive',
         },
       };
-
-      if (entityType === 'restaurant') {
-        whereClause.marketPresences = {
-          some: {
-            marketKey: this.normalizeMarketKey(marketKey),
-          },
-        };
-      }
 
       const matchedEntities = await this.prisma.entity.findMany({
         where: whereClause,
@@ -570,7 +562,7 @@ export class EntityResolutionService implements OnModuleInit {
       this.logger.error('Exact match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
-        marketKey: marketKey ?? undefined,
+        engineId: engineId ?? undefined,
         count: entities.length,
       });
       throw error;
@@ -584,7 +576,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performAliasMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
-    marketKey: string | null,
+    engineId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -618,14 +610,6 @@ export class EntityResolutionService implements OnModuleInit {
         },
       };
 
-      if (entityType === 'restaurant') {
-        whereClause.marketPresences = {
-          some: {
-            marketKey: this.normalizeMarketKey(marketKey),
-          },
-        };
-      }
-
       const matchedEntities = await this.prisma.entity.findMany({
         where: whereClause,
         select: {
@@ -654,7 +638,7 @@ export class EntityResolutionService implements OnModuleInit {
       this.logger.error('Alias match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
-        marketKey: marketKey ?? undefined,
+        engineId: engineId ?? undefined,
         count: entities.length,
       });
       throw error;
@@ -678,7 +662,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performLlmMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
-    marketKey: string | null,
+    engineId: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -710,7 +694,7 @@ export class EntityResolutionService implements OnModuleInit {
           term,
           [entityType],
           EntityResolutionService.LLM_MATCHER_SHORTLIST_K,
-          { marketKey, denseMode: 'always' },
+          { engineId, denseMode: 'always' },
         );
         return { entity, term, candidates };
       },
@@ -1029,8 +1013,8 @@ export class EntityResolutionService implements OnModuleInit {
         const normalizedName = entity.normalizedName.toLowerCase().trim();
         const normalizedKey =
           entityType === 'restaurant'
-            ? `${entityType}:${this.normalizeMarketKey(
-                entity.marketKey,
+            ? `${entityType}:${this.normalizeEngineScope(
+                entity.engineId,
               )}:${normalizedName}`
             : `${entityType}:${normalizedName}`;
         const existingPrimary = primaryNewEntityMap.get(normalizedKey);
@@ -1055,9 +1039,9 @@ export class EntityResolutionService implements OnModuleInit {
           this.logger.debug('Resolver reused primary new entity within batch', {
             entityType,
             normalizedName: entity.normalizedName,
-            marketKey:
+            engineScope:
               entityType === 'restaurant'
-                ? this.normalizeMarketKey(entity.marketKey)
+                ? this.normalizeEngineScope(entity.engineId)
                 : undefined,
             primaryTempId: existingPrimary.tempId,
             duplicateTempId: entity.tempId,
@@ -1099,7 +1083,7 @@ export class EntityResolutionService implements OnModuleInit {
         // Fail-closed: judge says new → separate entity, exactly as today.
         const lanePrefix =
           entityType === 'restaurant'
-            ? `${entityType}:${this.normalizeMarketKey(entity.marketKey)}:`
+            ? `${entityType}:${this.normalizeEngineScope(entity.engineId)}:`
             : `${entityType}:`;
         const overlayCandidates = [...primaryNewEntityMap.entries()]
           .filter(([key]) => key.startsWith(lanePrefix))
@@ -1222,9 +1206,9 @@ export class EntityResolutionService implements OnModuleInit {
         this.logger.warn('Resolver created new entity', {
           entityType,
           normalizedName: entity.normalizedName,
-          marketKey:
+          engineScope:
             entityType === 'restaurant'
-              ? this.normalizeMarketKey(entity.marketKey)
+              ? this.normalizeEngineScope(entity.engineId)
               : undefined,
           originalText: entity.originalText,
           aliases: entity.aliases,
@@ -1308,9 +1292,8 @@ export class EntityResolutionService implements OnModuleInit {
     return grouped;
   }
 
-  private normalizeMarketKey(marketKey?: string | null): string {
-    const normalized =
-      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : '';
+  private normalizeEngineScope(engineId?: string | null): string {
+    const normalized = typeof engineId === 'string' ? engineId.trim() : '';
     return normalized.length ? normalized : 'global';
   }
 
@@ -1445,9 +1428,9 @@ export class EntityResolutionService implements OnModuleInit {
     const cacheSignature = JSON.stringify({
       version: this.cacheVersion,
       entityType: entity.entityType,
-      marketKey:
+      engineScope:
         entity.entityType === 'restaurant'
-          ? this.normalizeMarketKey(entity.marketKey)
+          ? this.normalizeEngineScope(entity.engineId)
           : 'global',
       tokens: tokenSignature,
       config: {

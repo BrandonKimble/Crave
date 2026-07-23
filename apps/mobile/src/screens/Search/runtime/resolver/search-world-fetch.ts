@@ -59,7 +59,7 @@ export type SearchWorldFetchEnv = {
       /** Wave-4 §3 strip 'world' flip: the list-strip's full slice rides the world. */
       sort?: 'custom' | 'best' | 'recent';
       priceLevels?: number[];
-      marketKey?: string | null;
+      cityPlaceId?: string | null;
     }
   ) => Promise<SearchResponse | null>;
 };
@@ -169,13 +169,13 @@ export const createSearchWorldFetcher =
         // RT-18: shared reads present the slug capability.
         shareSlug: identity.shareSlug ?? undefined,
         // Strip 'world' flip: the list-strip slice rides the tuple's filterVariant, so a
-        // sort/price/market chip re-resolves the WORLD (map pins + cards re-slice together).
+        // sort/price/city chip re-resolves the WORLD (map pins + cards re-slice together).
         sort: tuple.filterVariant.listSort,
         priceLevels:
           tuple.filterVariant.priceLevels.length > 0
             ? [...tuple.filterVariant.priceLevels]
             : undefined,
-        marketKey: tuple.filterVariant.marketKey ?? undefined,
+        cityPlaceId: tuple.filterVariant.cityPlaceId ?? undefined,
       });
       if (__DEV__) {
         // eslint-disable-next-line no-console

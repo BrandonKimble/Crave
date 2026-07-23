@@ -25,7 +25,6 @@ import {
   PublicCraveScoreService,
   RescoreCoordinatorService,
 } from '../content-processing/public-crave-score';
-import { MarketRegistryService } from '../markets/market-registry.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
@@ -462,7 +461,6 @@ export class RestaurantLocationEnrichmentService {
     private readonly llmService: LLMService,
     private readonly aliasManagementService: AliasManagementService,
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
-    private readonly marketRegistry: MarketRegistryService,
     private readonly publicCraveScoreService: PublicCraveScoreService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
@@ -874,14 +872,9 @@ export class RestaurantLocationEnrichmentService {
       placeTypeAttributeIds,
     );
 
-    // Phase C: the presence marketKey derives from the VERIFIED place itself
-    // (lookup only, never a bootstrap — §13: creation anchors to the
-    // verification result). A place outside every legacy market simply has no
-    // presence row.
-    const presenceMarketKey = await this.resolveMarketKeyFromPlace(
-      params.place,
-    );
-
+    // §13 (markets extermination leg 3): NO presence stamping — geometric
+    // presence (locations vs place grounds) is derived at read; the
+    // core_entity_market_presence table is writer/reader-less.
     return {
       ...createUpdateData,
       name: displayName,
@@ -889,13 +882,6 @@ export class RestaurantLocationEnrichmentService {
       canonicalDomain:
         this.normalizeWebsiteDomain(params.place.websiteUri) ?? undefined,
       aliases: alias,
-      ...(presenceMarketKey
-        ? {
-            marketPresences: {
-              create: [{ marketKey: presenceMarketKey }],
-            },
-          }
-        : {}),
       restaurantAttributes: mergedRestaurantAttributes,
       generalPraiseUpvotes: 0,
     };
@@ -1248,27 +1234,6 @@ export class RestaurantLocationEnrichmentService {
         updatedFields: combinedUpdatedFields,
       });
 
-      const marketPresence = await this.reconcileMarketPresenceForEntity({
-        entity,
-        placeDetails,
-        context: 'enrichment_update',
-      });
-      if (marketPresence?.mergedInto) {
-        await this.cuisineExtractionQueue.queueExtraction(
-          marketPresence.mergedInto,
-          {
-            source: 'google_places_enrichment',
-          },
-        );
-        return {
-          entityId: entity.entityId,
-          mergedInto: marketPresence.mergedInto,
-          status: 'updated',
-          placeId: placeDetails.id,
-          score: best.score,
-          updatedFields: combinedUpdatedFields,
-        };
-      }
       const trustedCanonicalDomain =
         this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
         this.normalizeWebsiteDomain(combinedUpdateData.canonicalDomain) ??
@@ -1636,20 +1601,6 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Canonical entity not found for Google Place ID');
     }
 
-    const [canonicalMarketKeys, duplicateMarketKeys] = await Promise.all([
-      this.listMarketKeysForRestaurantEntity(canonical.entityId),
-      this.listMarketKeysForRestaurantEntity(entity.entityId),
-    ]);
-    if (canonicalMarketKeys.join('|') !== duplicateMarketKeys.join('|')) {
-      this.logger.warn('Google Place collision across seed market keys', {
-        placeId,
-        canonicalId: canonical.entityId,
-        canonicalMarketKeys,
-        duplicateId: entity.entityId,
-        duplicateMarketKeys,
-      });
-    }
-
     const placeDetails = details.place;
 
     const canonicalUpdate = this.buildEntityUpdate(
@@ -1717,17 +1668,9 @@ export class RestaurantLocationEnrichmentService {
       },
     );
 
-    const previousMarketKeys = await this.listMarketKeysForRestaurantEntity(
-      updatedCanonical.entityId,
-    );
-    const syncedMarketKeys = await this.syncRestaurantMarketPresences({
-      restaurantId: updatedCanonical.entityId,
-      pruneToVerifiedLocationsOnly: true,
-    });
-    await this.refreshPublicScoresForMarkets([
-      ...previousMarketKeys,
-      ...syncedMarketKeys,
-    ]);
+    // §12.6: a merge moved evidence — mark the rescorer dirty (the old
+    // market-key bookkeeping around this is dead; §13 presence is geometric).
+    await this.rescoreCoordinator.markDirty('location-enrichment');
 
     this.logger.info('Merged restaurant into canonical entity', {
       duplicateId: entity.entityId,
@@ -1736,12 +1679,7 @@ export class RestaurantLocationEnrichmentService {
       updatedFields: mergedFields,
     });
 
-    const marketPresence = await this.reconcileMarketPresenceForEntity({
-      entity: updatedCanonical,
-      placeDetails,
-      context: 'place_collision',
-    });
-    const mergedInto = marketPresence?.mergedInto ?? updatedCanonical.entityId;
+    const mergedInto = updatedCanonical.entityId;
     await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
       source: 'google_places_collision',
     });
@@ -1785,7 +1723,6 @@ export class RestaurantLocationEnrichmentService {
     const trustedCanonicalDomain =
       this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
       this.normalizeWebsiteDomain(entity.canonicalDomain);
-    const marketKey = await this.resolveMarketKeyFromPlace(placeDetails);
     const canonical: RestaurantEntityWithLocations | null =
       trustedCanonicalDomain
         ? await this.prisma.entity.findFirst({
@@ -1803,17 +1740,12 @@ export class RestaurantLocationEnrichmentService {
             where: {
               entityId: { not: entity.entityId },
               type: EntityType.restaurant,
+              // §13: identity is GLOBAL — name conflict is judged globally,
+              // never through a market-presence lane.
               name:
                 resolvedName ??
                 this.getPlaceDisplayName(placeDetails) ??
                 undefined,
-              ...(marketKey
-                ? {
-                    marketPresences: {
-                      some: { marketKey },
-                    },
-                  }
-                : {}),
             },
             include: { primaryLocation: true, locations: true },
           });
@@ -1898,17 +1830,7 @@ export class RestaurantLocationEnrichmentService {
       },
     );
 
-    const previousMarketKeys = await this.listMarketKeysForRestaurantEntity(
-      updatedCanonical.entityId,
-    );
-    const syncedMarketKeys = await this.syncRestaurantMarketPresences({
-      restaurantId: updatedCanonical.entityId,
-      pruneToVerifiedLocationsOnly: true,
-    });
-    await this.refreshPublicScoresForMarkets([
-      ...previousMarketKeys,
-      ...syncedMarketKeys,
-    ]);
+    await this.rescoreCoordinator.markDirty('location-enrichment');
 
     this.logger.info('Merged restaurant into existing canonical by name', {
       duplicateId: entity.entityId,
@@ -1916,12 +1838,7 @@ export class RestaurantLocationEnrichmentService {
       targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
     });
 
-    const marketPresence = await this.reconcileMarketPresenceForEntity({
-      entity: updatedCanonical,
-      placeDetails,
-      context: 'name_collision',
-    });
-    const mergedInto = marketPresence?.mergedInto ?? updatedCanonical.entityId;
+    const mergedInto = updatedCanonical.entityId;
     await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
       source: 'google_places_name_collision',
     });
@@ -2097,14 +2014,6 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Merged canonical entity not found after domain merge');
     }
 
-    const previousMarketKeys = await this.listMarketKeysForRestaurantEntity(
-      refreshedCanonical.entityId,
-    );
-    const syncedMarketKeys = await this.syncRestaurantMarketPresences({
-      restaurantId: refreshedCanonical.entityId,
-      pruneToVerifiedLocationsOnly: true,
-    });
-
     this.logger.info('Merged restaurant into canonical entity by domain', {
       duplicateId: params.entity.entityId,
       canonicalId: refreshedCanonical.entityId,
@@ -2112,10 +2021,7 @@ export class RestaurantLocationEnrichmentService {
       score: params.score,
     });
 
-    await this.refreshPublicScoresForMarkets([
-      ...previousMarketKeys,
-      ...syncedMarketKeys,
-    ]);
+    await this.rescoreCoordinator.markDirty('location-enrichment');
 
     return {
       mergedInto: refreshedCanonical.entityId,
@@ -2395,142 +2301,12 @@ export class RestaurantLocationEnrichmentService {
         pageToken = response.nextPageToken;
         await this.delay(2000);
       } while (pageToken);
-
-      await this.syncRestaurantMarketPresences({
-        restaurantId: entity.entityId,
-        pruneToVerifiedLocationsOnly: true,
-      });
     } catch (error) {
       this.logger.warn('Failed to enrich secondary locations', {
         entityId: entity.entityId,
         message: error instanceof Error ? error.message : String(error),
       });
     }
-  }
-
-  private async listLocationDerivedMarketKeysForRestaurantEntity(
-    restaurantId: string,
-  ): Promise<string[]> {
-    const locations = await this.prisma.restaurantLocation.findMany({
-      where: {
-        restaurantId,
-        latitude: { not: null },
-        longitude: { not: null },
-      },
-      select: {
-        latitude: true,
-        longitude: true,
-      },
-    });
-
-    const resolved = await Promise.all(
-      locations.map((location) =>
-        this.marketRegistry.resolveOrEnsureForLocation({
-          userLocation: {
-            lat: Number(location.latitude),
-            lng: Number(location.longitude),
-          },
-          allowBootstrap: false,
-        }),
-      ),
-    );
-
-    return Array.from(
-      new Set(
-        resolved
-          .map((result) => this.normalizeMarketKey(result?.marketKey ?? null))
-          .filter((value): value is string => Boolean(value)),
-      ),
-    );
-  }
-
-  private async listMarketKeysForRestaurantEntity(
-    restaurantId: string,
-  ): Promise<string[]> {
-    const rows = await this.prisma.entityMarketPresence.findMany({
-      where: { entityId: restaurantId },
-      select: { marketKey: true },
-      orderBy: [{ createdAt: 'asc' }, { marketKey: 'asc' }],
-    });
-
-    return Array.from(
-      new Set(
-        rows
-          .map((row) => this.normalizeMarketKey(row.marketKey))
-          .filter((value): value is string => Boolean(value)),
-      ),
-    );
-  }
-
-  private async syncRestaurantMarketPresences(params: {
-    restaurantId: string;
-    seedMarketKeys?: Array<string | null | undefined>;
-    tx?: Prisma.TransactionClient;
-    pruneToVerifiedLocationsOnly?: boolean;
-  }): Promise<string[]> {
-    const delegate = params.tx ?? this.prisma;
-    const pruneToVerifiedLocationsOnly =
-      params.pruneToVerifiedLocationsOnly === true;
-    const seedMarketKeys = Array.from(
-      new Set(
-        (params.seedMarketKeys ?? [])
-          .map((value) => this.normalizeMarketKey(value))
-          .filter((value): value is string => Boolean(value)),
-      ),
-    );
-
-    const locationDerivedMarketKeys =
-      await this.listLocationDerivedMarketKeysForRestaurantEntity(
-        params.restaurantId,
-      );
-    const desiredMarketKeys = pruneToVerifiedLocationsOnly
-      ? locationDerivedMarketKeys
-      : Array.from(new Set([...seedMarketKeys, ...locationDerivedMarketKeys]));
-
-    const existingRows = await delegate.entityMarketPresence.findMany({
-      where: { entityId: params.restaurantId },
-      select: { marketKey: true },
-    });
-    const existing = new Set(
-      existingRows
-        .map((row) => this.normalizeMarketKey(row.marketKey))
-        .filter((value): value is string => Boolean(value)),
-    );
-
-    if (pruneToVerifiedLocationsOnly) {
-      const desiredSet = new Set(desiredMarketKeys);
-      const staleMarketKeys = Array.from(existing).filter(
-        (marketKey) => !desiredSet.has(marketKey),
-      );
-      if (staleMarketKeys.length > 0) {
-        await delegate.entityMarketPresence.deleteMany({
-          where: {
-            entityId: params.restaurantId,
-            marketKey: { in: staleMarketKeys },
-          },
-        });
-        staleMarketKeys.forEach((marketKey) => existing.delete(marketKey));
-      }
-    }
-
-    if (!desiredMarketKeys.length) {
-      return [];
-    }
-
-    for (const marketKey of desiredMarketKeys) {
-      if (existing.has(marketKey)) {
-        continue;
-      }
-      await delegate.entityMarketPresence.create({
-        data: {
-          entityId: params.restaurantId,
-          marketKey,
-        },
-      });
-      existing.add(marketKey);
-    }
-
-    return desiredMarketKeys;
   }
 
   private resolveIncludedType(primaryType?: string | null): string | null {
@@ -2555,200 +2331,6 @@ export class RestaurantLocationEnrichmentService {
       Array.isArray(types) &&
       types.some((type) => PREFERRED_PLACE_TYPES.has(type.toLowerCase()))
     );
-  }
-
-  private normalizeMarketKey(value?: string | null): string | null {
-    if (typeof value !== 'string') {
-      return null;
-    }
-    const normalized = value.trim().toLowerCase();
-    return normalized.length ? normalized : null;
-  }
-
-  private async resolveMarketKeyFromPlace(
-    placeDetails: GooglePlacesV1Place,
-  ): Promise<string | null> {
-    const latitude = placeDetails.location?.latitude;
-    const longitude = placeDetails.location?.longitude;
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      return null;
-    }
-
-    const resolved = await this.marketRegistry.resolveOrEnsureForLocation({
-      userLocation: {
-        lat: latitude as number,
-        lng: longitude as number,
-      },
-      allowBootstrap: false,
-    });
-
-    return this.normalizeMarketKey(resolved?.marketKey ?? null);
-  }
-
-  private async reconcileMarketPresenceForEntity(params: {
-    entity: RestaurantEntity;
-    placeDetails: GooglePlacesV1Place;
-    context: string;
-  }): Promise<{
-    resolvedMarketKey: string | null;
-    mergedInto?: string;
-  } | null> {
-    const currentMarketKeys = await this.listMarketKeysForRestaurantEntity(
-      params.entity.entityId,
-    );
-    const targetKey = await this.resolveMarketKeyFromPlace(params.placeDetails);
-
-    if (!targetKey || currentMarketKeys.includes(targetKey)) {
-      return null;
-    }
-
-    const name = params.entity.name?.trim();
-    if (!name) {
-      return null;
-    }
-
-    const conflict = await this.prisma.entity.findFirst({
-      where: {
-        entityId: { not: params.entity.entityId },
-        type: EntityType.restaurant,
-        name,
-        marketPresences: {
-          some: { marketKey: targetKey },
-        },
-      },
-      select: { entityId: true },
-    });
-
-    if (conflict) {
-      const canonical = await this.prisma.entity.findUnique({
-        where: { entityId: conflict.entityId },
-        include: { primaryLocation: true, locations: true },
-      });
-
-      if (!canonical) {
-        this.logger.warn(
-          'Market-presence reconciliation conflict missing canonical entity',
-          {
-            entityId: params.entity.entityId,
-            conflictEntityId: conflict.entityId,
-            context: params.context,
-          },
-        );
-        return null;
-      }
-
-      const placeId =
-        typeof params.placeDetails.id === 'string'
-          ? params.placeDetails.id.trim()
-          : '';
-      if (!placeId) {
-        this.logger.warn(
-          'Market-presence reconciliation conflict missing place id',
-          {
-            entityId: params.entity.entityId,
-            canonicalId: canonical.entityId,
-            currentMarketKeys,
-            targetMarketKey: targetKey,
-            context: params.context,
-          },
-        );
-        return null;
-      }
-
-      const canonicalPlaceId = this.getOwnedPlaceId(canonical);
-      let placeIdMatches = canonicalPlaceId === placeId;
-
-      if (!placeIdMatches) {
-        const canonicalLocation =
-          await this.prisma.restaurantLocation.findFirst({
-            where: {
-              restaurantId: canonical.entityId,
-              googlePlaceId: placeId,
-            },
-            select: { locationId: true },
-          });
-        placeIdMatches = Boolean(canonicalLocation);
-      }
-
-      if (!placeIdMatches) {
-        this.logger.warn(
-          'Market-presence reconciliation conflict skipped due to place id mismatch',
-          {
-            entityId: params.entity.entityId,
-            canonicalId: canonical.entityId,
-            placeId,
-            canonicalPlaceId,
-            currentMarketKeys,
-            targetMarketKey: targetKey,
-            context: params.context,
-          },
-        );
-        return null;
-      }
-
-      const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
-        canonical,
-        this.getPlaceDisplayName(params.placeDetails),
-        this.collectAliasCandidates(params.entity),
-      );
-      const mergeAugmentations = this.buildCanonicalMergeAugmentations(
-        canonical,
-        params.entity,
-      );
-      const mergedUpdate = this.mergeEntityUpdates(
-        canonicalAliasUpdate.updateData,
-        mergeAugmentations.updateData,
-      );
-
-      const mergedCanonical =
-        await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
-          canonical,
-          duplicate: params.entity,
-          canonicalUpdate: mergedUpdate,
-        });
-
-      await this.syncRestaurantMarketPresences({
-        restaurantId: mergedCanonical.entityId,
-        pruneToVerifiedLocationsOnly: true,
-      });
-
-      this.logger.info('Market-presence merge completed', {
-        entityId: params.entity.entityId,
-        mergedInto: mergedCanonical.entityId,
-        currentMarketKeys,
-        targetMarketKey: targetKey,
-        context: params.context,
-      });
-
-      await this.refreshPublicScoresForMarkets([
-        ...currentMarketKeys,
-        targetKey,
-      ]);
-
-      return {
-        resolvedMarketKey: targetKey,
-        mergedInto: mergedCanonical.entityId,
-      };
-    }
-
-    this.logger.info(
-      'Resolved restaurant market presence from place geometry',
-      {
-        entityId: params.entity.entityId,
-        currentMarketKeys,
-        targetMarketKey: targetKey,
-        context: params.context,
-      },
-    );
-
-    await this.syncRestaurantMarketPresences({
-      restaurantId: params.entity.entityId,
-      pruneToVerifiedLocationsOnly: true,
-    });
-
-    await this.refreshPublicScoresForMarkets([...currentMarketKeys, targetKey]);
-
-    return { resolvedMarketKey: targetKey };
   }
 
   private async delay(ms: number): Promise<void> {
@@ -4921,20 +4503,6 @@ export class RestaurantLocationEnrichmentService {
       }
     }
     return null;
-  }
-
-  private async refreshPublicScoresForMarkets(
-    marketKeys: string[],
-  ): Promise<void> {
-    const hasMarketContext = marketKeys.some(
-      (value) => typeof value === 'string' && value.trim().length > 0,
-    );
-    if (!hasMarketContext) {
-      return;
-    }
-    // §12.6 singleton rescorer: mark dirty (durable flag) — never a direct
-    // rebuild from a collection/enrichment path (red-team 1ac21b70 follow-up).
-    await this.rescoreCoordinator.markDirty('location-enrichment');
   }
 
   private toNumberValue(value: unknown): number | undefined {

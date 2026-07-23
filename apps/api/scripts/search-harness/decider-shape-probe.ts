@@ -63,7 +63,6 @@ async function main() {
     i++;
     if (i % 200 === 0) out(`...${i}`);
     const cands = await search.retrieveCandidates(p.term, [p.type], K, {
-      marketKey: p.type === 'restaurant' ? DEFAULT_MARKET_KEY : undefined,
       denseMode: 'none',
       poolSize: POOL,
     });

@@ -28,7 +28,7 @@ async function main(): Promise<void> {
       const spans = await ets.scanForKnownEntities(
         c,
         [EntityType.restaurant, EntityType.food],
-        { marketKey: NYC },
+        { engineId: null },
       );
       out('');
       out(`"${c}"`);

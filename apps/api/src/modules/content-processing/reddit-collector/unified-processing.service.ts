@@ -35,7 +35,7 @@ import {
 } from '../entity-resolver/entity-resolution.types';
 import { UnifiedProcessingExceptionFactory } from './unified-processing.exceptions';
 import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
-import { MarketRegistryService } from '../../markets/market-registry.service';
+import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { AttributeOntologyQueueService } from '../../attribute-ontology/attribute-ontology-queue.service';
 import type { ExtractionTraceContext } from './collection-evidence.service';
 import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
@@ -77,6 +77,14 @@ type RestaurantEnrichmentDispatchContext = {
 type TimedCacheEntry<T> = {
   value: T;
   expiresAt: number;
+};
+
+/** The §5 source scope of a collection community: the source's engine (recall
+ *  territory prior) and anchor place (enrichment bias anchor). */
+type SubredditSourceScope = {
+  sourceId: string;
+  engineId: string | null;
+  anchorPlaceId: string | null;
 };
 
 interface SourceMetadata {
@@ -163,9 +171,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     string,
     TimedCacheEntry<{ latitude: number; longitude: number }>
   >();
-  private readonly subredditMarketCache = new Map<
+  /** §5 provenance re-key (markets extermination leg 3): community handle →
+   *  its SOURCE row's scope (engine for territory-biased recall, anchor place
+   *  for enrichment bias). Replaces the dead subreddit→market election. */
+  private readonly subredditScopeCache = new Map<
     string,
-    TimedCacheEntry<string>
+    TimedCacheEntry<SubredditSourceScope>
   >();
 
   constructor(
@@ -175,7 +186,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly restaurantEnrichmentQueue: RestaurantEnrichmentQueueService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
-    private readonly marketRegistry: MarketRegistryService,
+    private readonly collectorSourceRegistry: CollectorSourceRegistryService,
     private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
@@ -396,12 +407,12 @@ export class UnifiedProcessingService implements OnModuleInit {
       });
 
       if (this.dryRunEnabled) {
-        const marketKey = await this.resolveMarketKey(
+        const scope = await this.resolveSourceScope(
           sourceMetadata.subreddit ?? null,
         );
         const resolutionResult = await this.resolveEntitiesForOutput(
           { mentions },
-          marketKey,
+          scope?.engineId ?? null,
         );
 
         this.logger.info('Unified processing dry run enabled', {
@@ -690,22 +701,15 @@ export class UnifiedProcessingService implements OnModuleInit {
     ledgerRecordsBySourceId: Map<string, SourceLedgerRecord>,
     startTime: number,
   ): Promise<ProcessingResult> {
-    // Step 4a: Entity Resolution (cached for retries)
-    const marketKey = await this.resolveMarketKey(
+    // Step 4a: Entity Resolution (cached for retries). §13: identity is
+    // GLOBAL — the source's ENGINE (when it has one) only geo-biases recall;
+    // an engineless community resolves globally, never skips.
+    const scope = await this.resolveSourceScope(
       sourceMetadata.subreddit ?? null,
     );
-    if (!marketKey) {
-      this.logger.warn('Market key missing for ingestion batch', {
-        batchId,
-        collectionType: sourceMetadata.collectionType,
-        subreddit: sourceMetadata.subreddit,
-        searchEntity: sourceMetadata.searchEntity,
-        sourceBreakdown: sourceMetadata.sourceBreakdown,
-      });
-    }
     const resolutionResult = await this.resolveEntitiesForOutput(
       llmOutput,
-      marketKey,
+      scope?.engineId ?? null,
     );
 
     // Step 4b-5: Single Consolidated Processing Phase with retry logic
@@ -773,10 +777,10 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   private async resolveEntitiesForOutput(
     llmOutput: EnrichedLLMOutputStructure,
-    marketKey: string | null,
+    engineId: string | null,
   ): Promise<BatchResolutionResult> {
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
-      marketKey,
+      engineId,
     });
     return this.entityResolutionService.resolveBatch(entityResolutionInput, {
       batchSize: this.entityResolutionBatchSize,
@@ -794,13 +798,10 @@ export class UnifiedProcessingService implements OnModuleInit {
    */
   private extractEntitiesFromLLMOutput(
     llmOutput: EnrichedLLMOutputStructure,
-    options: { marketKey?: string | null } = {},
+    options: { engineId?: string | null } = {},
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : null;
+    const engineId = options.engineId ?? null;
 
     const getSurfaceString = (surface: unknown, fallback: unknown): string => {
       if (typeof surface === 'string' && surface.length > 0) {
@@ -858,7 +859,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             originalText: restaurantSurface,
             entityType: 'restaurant' as const,
             tempId: restaurantTempId,
-            marketKey: normalizedMarketKey,
+            engineId,
             aliases:
               restaurantSurface && restaurantSurface !== mention.restaurant
                 ? [restaurantSurface]
@@ -1254,9 +1255,6 @@ export class UnifiedProcessingService implements OnModuleInit {
     affectedRestaurantIds: string[];
   }> {
     const startTime = Date.now();
-    const resolvedMarketKey = await this.resolveMarketKey(
-      sourceMetadata.subreddit ?? null,
-    );
 
     try {
       this.logger.debug('Starting consolidated processing phase', {
@@ -1404,36 +1402,14 @@ export class UnifiedProcessingService implements OnModuleInit {
               entityType,
             );
             resolution.normalizedName = canonicalName;
-            let entityMarketKey: string;
-            if (entityType === 'restaurant') {
-              if (!resolvedMarketKey) {
-                this.logger.warn(
-                  'Skipping restaurant entity creation without resolved market',
-                  {
-                    batchId,
-                    tempId: resolution.tempId,
-                    normalizedName: canonicalName,
-                    subreddit: sourceMetadata.subreddit ?? undefined,
-                  },
-                );
-                continue;
-              }
-              entityMarketKey = resolvedMarketKey;
-            } else {
-              entityMarketKey = 'global';
-            }
-
+            // §13: identity is GLOBAL — the canonical-name guard is a
+            // global (name, type) check; no market/presence lane, and no
+            // skip for engineless communities. Geometric presence (locations
+            // vs place grounds) is derived at read, never stamped.
             const existing = await tx.entity.findFirst({
               where: {
                 name: canonicalName,
                 type: entityType,
-                ...(entityType === 'restaurant'
-                  ? {
-                      marketPresences: {
-                        some: { marketKey: entityMarketKey },
-                      },
-                    }
-                  : {}),
               },
               select: {
                 entityId: true,
@@ -1532,9 +1508,6 @@ export class UnifiedProcessingService implements OnModuleInit {
               };
 
               if (entityType === 'restaurant') {
-                entityData.marketPresences = {
-                  create: [{ marketKey: entityMarketKey }],
-                };
                 entityData.restaurantAttributes = { set: [] };
                 entityData.generalPraiseUpvotes = 0;
                 entityData.restaurantMetadata = Prisma.DbNull;
@@ -2445,28 +2418,22 @@ export class UnifiedProcessingService implements OnModuleInit {
       return cached;
     }
 
-    const resolvedMarketKey = await this.resolveMarketKey(subreddit);
-    if (!resolvedMarketKey) {
+    const scope = await this.resolveSourceScope(subreddit);
+    if (!scope?.anchorPlaceId) {
       return null;
     }
 
-    const marketRecord = await tx.market.findFirst({
-      where: {
-        marketKey: resolvedMarketKey,
-        isActive: true,
-      },
-      select: {
-        centerLatitude: true,
-        centerLongitude: true,
-      },
+    const anchorPlace = await tx.place.findUnique({
+      where: { placeId: scope.anchorPlaceId },
+      select: { centroidLat: true, centroidLng: true },
     });
 
-    if (!marketRecord) {
+    if (!anchorPlace) {
       return null;
     }
 
-    const latitude = this.toNumeric(marketRecord.centerLatitude);
-    const longitude = this.toNumeric(marketRecord.centerLongitude);
+    const latitude = this.toNumeric(anchorPlace.centroidLat);
+    const longitude = this.toNumeric(anchorPlace.centroidLng);
 
     if (
       typeof latitude === 'number' &&
@@ -2482,27 +2449,29 @@ export class UnifiedProcessingService implements OnModuleInit {
     return null;
   }
 
-  private async resolveMarketKey(
+  private async resolveSourceScope(
     subreddit?: string | null,
-  ): Promise<string | null> {
+  ): Promise<SubredditSourceScope | null> {
     if (!subreddit || !subreddit.trim()) {
       return null;
     }
 
     const cacheKey = subreddit.trim().toLowerCase();
-    const cached = this.getCachedValue(this.subredditMarketCache, cacheKey);
+    const cached = this.getCachedValue(this.subredditScopeCache, cacheKey);
     if (cached) {
       return cached;
     }
 
-    const mappedMarketKey =
-      await this.marketRegistry.resolveMarketKeyForCommunity(subreddit);
-    if (!mappedMarketKey) {
+    const source =
+      await this.collectorSourceRegistry.findRedditSourceByHandle(subreddit);
+    if (!source) {
+      // Not a registered collection source (e.g. a poll_surface handle):
+      // honest global scope — never a market election.
       return null;
     }
 
-    this.setCachedValue(this.subredditMarketCache, cacheKey, mappedMarketKey);
-    return mappedMarketKey;
+    this.setCachedValue(this.subredditScopeCache, cacheKey, source);
+    return source;
   }
 
   private getCachedValue<T>(
@@ -2635,107 +2604,99 @@ export class UnifiedProcessingService implements OnModuleInit {
   private async resolveRestaurantEnrichmentDispatchContext(
     subreddit?: string | null,
   ): Promise<RestaurantEnrichmentDispatchContext> {
-    const preferredMarketKey = await this.resolveMarketKey(subreddit);
+    // §13 enrichment bias from PLACE geometry (markets extermination leg 3):
+    // the community's SOURCE anchors at a catalog place; its centroid is the
+    // bias center and its bbox derives the radius. No source/anchor ⇒ no bias.
+    const scope = await this.resolveSourceScope(subreddit);
     const location = await this.resolveSubredditLocation(
       this.prismaService,
       subreddit,
     );
 
-    if (!location && !preferredMarketKey) {
+    if (!location || !scope?.anchorPlaceId) {
       return {};
     }
 
-    const marketRecord = preferredMarketKey
-      ? await this.prismaService.market.findFirst({
-          where: {
-            marketKey: { equals: preferredMarketKey, mode: 'insensitive' },
-            isActive: true,
-          },
-          select: {
-            marketShortName: true,
-            marketName: true,
-            stateCode: true,
-            countryCode: true,
-          },
-        })
-      : null;
-
-    const radiusMeters = preferredMarketKey
-      ? await this.resolveMarketBiasRadiusMeters(preferredMarketKey)
-      : undefined;
-
-    return {
-      sourceMarket: marketRecord
-        ? {
-            city:
-              marketRecord.marketShortName?.trim() ||
-              marketRecord.marketName?.split(',')[0]?.trim() ||
-              undefined,
-            region:
-              marketRecord.stateCode?.trim() ||
-              marketRecord.marketName?.match(/,\s*([A-Z]{2})(?:\s|$)/)?.[1] ||
-              undefined,
-          }
-        : undefined,
-      countryCode: marketRecord?.countryCode?.trim() || undefined,
-      locationBias: location
-        ? {
-            lat: location.latitude,
-            lng: location.longitude,
-            radiusMeters,
-          }
-        : undefined,
-    };
-  }
-
-  private async resolveMarketBiasRadiusMeters(
-    marketKey: string,
-  ): Promise<number> {
-    const market = await this.prismaService.market.findFirst({
-      where: {
-        marketKey: {
-          equals: marketKey,
-          mode: 'insensitive',
-        },
-        isActive: true,
-      },
+    const anchorPlace = await this.prismaService.place.findUnique({
+      where: { placeId: scope.anchorPlaceId },
       select: {
-        centerLatitude: true,
-        centerLongitude: true,
-        bboxNeLat: true,
-        bboxNeLng: true,
-        bboxSwLat: true,
-        bboxSwLng: true,
+        name: true,
+        subdivisionCode: true,
+        countryCode: true,
+        centroidLat: true,
+        centroidLng: true,
+        bboxMinLat: true,
+        bboxMinLng: true,
+        bboxMaxLat: true,
+        bboxMaxLng: true,
       },
     });
 
-    const centerLatitude = this.toNumeric(market?.centerLatitude);
-    const centerLongitude = this.toNumeric(market?.centerLongitude);
-    const northEastLat = this.toNumeric(market?.bboxNeLat);
-    const northEastLng = this.toNumeric(market?.bboxNeLng);
-    const southWestLat = this.toNumeric(market?.bboxSwLat);
-    const southWestLng = this.toNumeric(market?.bboxSwLng);
+    const radiusMeters = this.resolvePlaceBiasRadiusMeters({
+      centroidLat: this.toNumeric(anchorPlace?.centroidLat),
+      centroidLng: this.toNumeric(anchorPlace?.centroidLng),
+      bboxMaxLat: this.toNumeric(anchorPlace?.bboxMaxLat),
+      bboxMaxLng: this.toNumeric(anchorPlace?.bboxMaxLng),
+      bboxMinLat: this.toNumeric(anchorPlace?.bboxMinLat),
+      bboxMinLng: this.toNumeric(anchorPlace?.bboxMinLng),
+    });
 
+    return {
+      sourceMarket: anchorPlace
+        ? {
+            city: anchorPlace.name?.trim() || undefined,
+            region: anchorPlace.subdivisionCode?.trim() || undefined,
+          }
+        : undefined,
+      countryCode: anchorPlace?.countryCode?.trim() || undefined,
+      locationBias: {
+        lat: location.latitude,
+        lng: location.longitude,
+        radiusMeters,
+      },
+    };
+  }
+
+  /**
+   * Bias radius from the anchor PLACE's bbox (center→corner distance, padded
+   * and clamped exactly like the old market-bbox derivation). A bbox-less
+   * place falls back to the 15km floor — the location's own coordinates plus
+   * a city-scale radius, never a market read.
+   */
+  private resolvePlaceBiasRadiusMeters(place: {
+    centroidLat: number | null;
+    centroidLng: number | null;
+    bboxMaxLat: number | null;
+    bboxMaxLng: number | null;
+    bboxMinLat: number | null;
+    bboxMinLng: number | null;
+  }): number {
+    const {
+      centroidLat,
+      centroidLng,
+      bboxMaxLat,
+      bboxMaxLng,
+      bboxMinLat,
+      bboxMinLng,
+    } = place;
     if (
-      centerLatitude === null ||
-      centerLongitude === null ||
-      northEastLat === null ||
-      northEastLng === null ||
-      southWestLat === null ||
-      southWestLng === null
+      centroidLat === null ||
+      centroidLng === null ||
+      bboxMaxLat === null ||
+      bboxMaxLng === null ||
+      bboxMinLat === null ||
+      bboxMinLng === null
     ) {
-      throw new Error(
-        `Missing market bbox/center for enrichment bias radius: ${marketKey}`,
-      );
+      return 15000;
     }
 
     const northEastDistance = this.calculateDistanceMeters(
-      { lat: centerLatitude, lng: centerLongitude },
-      { lat: northEastLat, lng: northEastLng },
+      { lat: centroidLat, lng: centroidLng },
+      { lat: bboxMaxLat, lng: bboxMaxLng },
     );
     const southWestDistance = this.calculateDistanceMeters(
-      { lat: centerLatitude, lng: centerLongitude },
-      { lat: southWestLat, lng: southWestLng },
+      { lat: centroidLat, lng: centroidLng },
+      { lat: bboxMinLat, lng: bboxMinLng },
     );
 
     return Math.max(

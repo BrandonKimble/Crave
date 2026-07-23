@@ -125,8 +125,8 @@ export const favoriteListsService = {
       openNow?: boolean;
       /** Leg 10 (defect #4): Google price_level values 0–4 — the strip's Price chip. */
       priceLevels?: number[];
-      /** Leg 11: the strip's Market chip (§8.16, All lists) — executor market slice. */
-      marketKey?: string | null;
+      /** The strip's City chip (§8.16, All lists) — a catalog place id. */
+      cityPlaceId?: string | null;
       userLocation?: Coordinate;
       pagination?: { page?: number; pageSize?: number };
       /** RT-18 slug-as-capability: shared reads present the slug. */
@@ -140,7 +140,7 @@ export const favoriteListsService = {
     const response = await api.post<SearchResponse>(`/favorites/lists/${listId}/results`, {
       openNow: opts?.openNow,
       priceLevels: opts?.priceLevels?.length ? opts.priceLevels : undefined,
-      marketKey: opts?.marketKey ?? undefined,
+      cityPlaceId: opts?.cityPlaceId ?? undefined,
       userLocation: opts?.userLocation
         ? { lat: opts.userLocation.lat, lng: opts.userLocation.lng }
         : undefined,
@@ -150,6 +150,25 @@ export const favoriteListsService = {
       targetUserId: opts?.targetUserId ?? undefined,
     });
     return response.data;
+  },
+  /** City-chip vocabulary (§8.16 "sliced by city"): the catalog cities present
+   *  in the list (distinct municipality places ground-covering the list's
+   *  restaurant locations), most-represented first. */
+  async listCities(
+    listId: string,
+    opts?: { shareSlug?: string | null; targetUserId?: string | null }
+  ): Promise<Array<{ placeId: string; name: string; restaurantCount: number }>> {
+    const response = await api.post(`/favorites/lists/${listId}/cities`, {
+      shareSlug: opts?.shareSlug ?? undefined,
+      targetUserId: opts?.targetUserId ?? undefined,
+    });
+    const raw =
+      response.data && typeof response.data === 'object' && 'data' in response.data
+        ? (response.data as { data?: unknown }).data
+        : response.data;
+    return Array.isArray(raw)
+      ? (raw as Array<{ placeId: string; name: string; restaurantCount: number }>)
+      : [];
   },
   async getShared(shareSlug: string): Promise<FavoriteListDetail> {
     const response = await api.get<FavoriteListDetail>(`/favorites/lists/share/${shareSlug}`);

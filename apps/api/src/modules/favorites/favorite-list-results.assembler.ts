@@ -111,12 +111,14 @@ export class ListResultsAssembler {
         );
 
     // ListDetail "sliced by city" (§8.16): an EXPLICIT user chip slice. The
-    // search engine carries no market conditions (master plan §7), so the
+    // search engine carries no place conditions (master plan §7), so the
     // slice is an id PRE-FILTER here — same shape as the favorites scoping
-    // itself, applied before pagination. Order-preserving.
-    const marketSliceKey = dto.marketKey?.trim().toLowerCase() || null;
+    // itself, applied before pagination. Order-preserving. Geometry source is
+    // the place catalog's ONE ground (place_geometries, §2.6) — the old
+    // core_markets read is dead (markets extermination leg 3).
+    const cityPlaceId = dto.cityPlaceId?.trim() || null;
     let sliceAllow: Set<string> | null = null;
-    if (marketSliceKey) {
+    if (cityPlaceId) {
       const candidateRestaurantIds = Array.from(
         new Set([...restaurantIds, ...dishListRestaurantIds]),
       );
@@ -126,15 +128,13 @@ export class ListResultsAssembler {
         >(Prisma.sql`
           SELECT DISTINCT rl.restaurant_id AS "restaurantId"
           FROM core_restaurant_locations rl
-          JOIN core_markets m
-            ON m.market_key = ${marketSliceKey}
-           AND m.is_active = true
-           AND m.geometry IS NOT NULL
+          JOIN place_geometries pg
+            ON pg.place_id = ${cityPlaceId}::uuid
           WHERE rl.restaurant_id = ANY(${candidateRestaurantIds}::uuid[])
             AND rl.latitude IS NOT NULL
             AND rl.longitude IS NOT NULL
             AND ST_Covers(
-              m.geometry,
+              pg.geometry,
               ST_SetSRID(
                 ST_MakePoint(
                   rl.longitude::double precision,
@@ -310,7 +310,7 @@ export class ListResultsAssembler {
       ? { skip: 0, take: Math.max(pageAxisIds.length, 1) }
       : { skip, take: pageSize };
 
-    // NO directives: the market slice is the id pre-filter above; v1 fits the
+    // NO directives: the city slice is the id pre-filter above; v1 fits the
     // map to the list extent (no bounds).
     //
     // A RESTAURANT list only consumes the restaurant axis (dishes are discarded

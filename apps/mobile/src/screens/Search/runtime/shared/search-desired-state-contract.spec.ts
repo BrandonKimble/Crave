@@ -1,7 +1,7 @@
 // RED-provable coverage for the desired-state contract decisions made in wave-4 §3
 // (2026-07-13). These lock in the load-bearing key/identity rules so a future edit that
 // violates them goes RED here:
-//   - listSort / marketKey are LIST-world variant axes: they key the world ONLY when
+//   - listSort / cityPlaceId are LIST-world variant axes: they key the world ONLY when
 //     present (the key-pollution guard, same principle as the bounds fix), and they
 //     participate in filterVariant equality.
 //   - targetUserId is IDENTITY (a virtual-All under two owners is two worlds) → it keys
@@ -57,26 +57,26 @@ describe('SearchFilterVariant equality — list variant axes', () => {
     ).toBe(false);
   });
 
-  it('a marketKey difference makes variants UNEQUAL', () => {
+  it('a cityPlaceId difference makes variants UNEQUAL', () => {
     expect(
       areSearchFilterVariantsEqual(
-        filterVariant({ marketKey: 'austin' }),
-        filterVariant({ marketKey: 'nyc' })
+        filterVariant({ cityPlaceId: 'place-austin' }),
+        filterVariant({ cityPlaceId: 'place-nyc' })
       )
     ).toBe(false);
   });
 
-  it('absent vs explicitly-null marketKey are EQUAL (null-normalized)', () => {
-    expect(areSearchFilterVariantsEqual(filterVariant(), filterVariant({ marketKey: null }))).toBe(
-      true
-    );
+  it('absent vs explicitly-null cityPlaceId are EQUAL (null-normalized)', () => {
+    expect(
+      areSearchFilterVariantsEqual(filterVariant(), filterVariant({ cityPlaceId: null }))
+    ).toBe(true);
   });
 
   it('identical list variants are EQUAL', () => {
     expect(
       areSearchFilterVariantsEqual(
-        filterVariant({ listSort: 'recent', marketKey: 'austin' }),
-        filterVariant({ listSort: 'recent', marketKey: 'austin' })
+        filterVariant({ listSort: 'recent', cityPlaceId: 'place-austin' }),
+        filterVariant({ listSort: 'recent', cityPlaceId: 'place-austin' })
       )
     ).toBe(true);
   });
@@ -103,24 +103,24 @@ describe('list query-identity equality — targetUserId is identity, shareSlug i
 });
 
 describe('buildSearchCardsWorldKey — list variant + access-material key rules', () => {
-  it('OMITS sort/market when absent (the default-slice world = one cache entry)', () => {
+  it('OMITS sort/city when absent (the default-slice world = one cache entry)', () => {
     const key = buildSearchCardsWorldKey(listTuple());
     expect(key).not.toContain('sort:');
-    expect(key).not.toContain('mkt:');
+    expect(key).not.toContain('city:');
   });
 
-  it('sort/market are LENS axes (S2): they key the SLICE, never the world', () => {
+  it('sort/city are LENS axes (S2): they key the SLICE, never the world', () => {
     const base = listTuple();
-    const sliced = listTuple({}, { listSort: 'recent', marketKey: 'austin' });
+    const sliced = listTuple({}, { listSort: 'recent', cityPlaceId: 'place-austin' });
     expect(buildSearchCardsWorldKey(sliced)).toBe(buildSearchCardsWorldKey(base));
     const sliceKey = buildSearchWorldSliceKey(sliced);
     expect(sliceKey).toContain('sort:recent');
-    expect(sliceKey).toContain('mkt:austin');
+    expect(sliceKey).toContain('city:place-austin');
   });
 
-  it('a market flip mints a DISTINCT slice (membership changes ⇒ different cache entry) of the SAME world', () => {
-    const austin = listTuple({}, { marketKey: 'austin' });
-    const nyc = listTuple({}, { marketKey: 'nyc' });
+  it('a city flip mints a DISTINCT slice (membership changes ⇒ different cache entry) of the SAME world', () => {
+    const austin = listTuple({}, { cityPlaceId: 'place-austin' });
+    const nyc = listTuple({}, { cityPlaceId: 'place-nyc' });
     expect(buildSearchWorldSliceKey(austin)).not.toBe(buildSearchWorldSliceKey(nyc));
     expect(buildSearchCardsWorldKey(austin)).toBe(buildSearchCardsWorldKey(nyc));
   });

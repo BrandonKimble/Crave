@@ -190,7 +190,7 @@ type SearchSubmitOwner = {
       sort?: 'custom' | 'best' | 'recent';
       openNow?: boolean;
       priceLevels?: number[];
-      marketKey?: string | null;
+      cityPlaceId?: string | null;
     };
   }) => Promise<void>;
 };

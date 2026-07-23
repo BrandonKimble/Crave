@@ -87,10 +87,11 @@ export type SearchFilterVariant = {
    *  without changing membership, so it keys the world (cache) but never the identity.
    *  Absent/undefined ⇒ the server applies the list's own defaultSort. */
   listSort?: 'custom' | 'best' | 'recent';
-  /** LIST worlds only: the market (city) slice — virtual-All lists slice by city (§8.16).
-   *  A market flip changes MEMBERSHIP (map pins re-slice), so it keys the world. Absent/
-   *  null ⇒ all markets. */
-  marketKey?: string | null;
+  /** LIST worlds only: the city slice — virtual-All lists slice by city (§8.16;
+   *  markets extermination leg 3: a catalog PLACE id, never a market key). A city
+   *  flip changes MEMBERSHIP (map pins re-slice), so it keys the world. Absent/
+   *  null ⇒ all cities. */
+  cityPlaceId?: string | null;
 };
 
 /** The viewport adopted at a commit moment — a frozen snapshot, never a live read.
@@ -130,7 +131,7 @@ export type SearchTupleWriteCause =
    *  writer rule: even the resolver's own adopt is a tuple write). */
   | 'response_tab_adopt'
   | 'favorites_launch'
-  /** A list world's strip re-slice (sort/open-now/price/market): same list identity,
+  /** A list world's strip re-slice (sort/open-now/price/city): same list identity,
    *  new filterVariant → the reconciler classifies it variant_rerun (map + cards
    *  re-slice together). Distinct from favorites_launch (the initial enter). */
   | 'list_reslice'
@@ -224,7 +225,7 @@ export const areSearchFilterVariantsEqual = (
   a.rising === b.rising &&
   a.includeSimilar === b.includeSimilar &&
   (a.listSort ?? null) === (b.listSort ?? null) &&
-  (a.marketKey ?? null) === (b.marketKey ?? null) &&
+  (a.cityPlaceId ?? null) === (b.cityPlaceId ?? null) &&
   areNumberArraysEqual(a.priceLevels, b.priceLevels);
 
 export const areSearchDesiredTuplesEqual = (
@@ -246,13 +247,13 @@ export const areSearchDesiredTuplesEqual = (
 //   — it changes what the search MEANS) + tab. What entry.desire stamps, dismiss
 //   preserves, sessions coerce on (M-1).
 // - LENS (how is this world viewed?): openNow / priceLevels / rising / listSort /
-//   marketKey — fact-projections and orderings over ONE world. Flips never mint
+//   cityPlaceId — fact-projections and orderings over ONE world. Flips never mint
 //   worlds or sessions; fetch mechanics stay free to slice server-side (the
 //   2026-07-14 filter-before-paginate parity fix is the slice fetch — a client lens
 //   over loaded pages undercounts, which WAS the parity bug).
 //
 // `rising` is classified LENS by default (groups with open/price in the coverage
-// variant); `marketKey` changes membership but not identity — a city slice of the
+// variant); `cityPlaceId` changes membership but not identity — a city slice of the
 // same list (owner flags at ratification: both accepted as lens).
 
 export type SearchLens = {
@@ -260,7 +261,7 @@ export type SearchLens = {
   priceLevels: readonly number[];
   rising: boolean;
   listSort?: 'custom' | 'best' | 'recent';
-  marketKey?: string | null;
+  cityPlaceId?: string | null;
 };
 
 export const selectSearchLens = (tuple: SearchDesiredTuple): SearchLens => ({
@@ -268,21 +269,21 @@ export const selectSearchLens = (tuple: SearchDesiredTuple): SearchLens => ({
   priceLevels: tuple.filterVariant.priceLevels,
   rising: tuple.filterVariant.rising,
   listSort: tuple.filterVariant.listSort,
-  marketKey: tuple.filterVariant.marketKey,
+  cityPlaceId: tuple.filterVariant.cityPlaceId,
 });
 
 export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
   a.openNow === b.openNow &&
   a.rising === b.rising &&
   (a.listSort ?? null) === (b.listSort ?? null) &&
-  (a.marketKey ?? null) === (b.marketKey ?? null) &&
+  (a.cityPlaceId ?? null) === (b.cityPlaceId ?? null) &&
   areNumberArraysEqual(a.priceLevels, b.priceLevels);
 
 /** The slice key (S2: `worldCache[worldKey].slices[lensKey]`). Stable serialization —
  *  the DEFAULT lens serializes to the same token everywhere so the unlensed slice is
  *  the canonical page-1 world. */
 export const buildSearchLensKey = (lens: SearchLens): string =>
-  `open:${lens.openNow ? 1 : 0}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.marketKey != null ? `|mkt:${lens.marketKey}` : ''}`;
+  `open:${lens.openNow ? 1 : 0}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.cityPlaceId != null ? `|city:${lens.cityPlaceId}` : ''}`;
 
 /** WORLD IDENTITY equality (M-1 session coercion + S2's identity-keyed cache): the
  *  lens is EXCLUDED — a lens flip over a live session is a slice presentation, never

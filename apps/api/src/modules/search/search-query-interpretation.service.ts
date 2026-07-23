@@ -291,7 +291,7 @@ export class SearchQueryInterpretationService {
           originalText: normalized,
           entityType,
           aliases: [normalized],
-          marketKey: null,
+          engineId: null,
         });
       }
       return tempIds;

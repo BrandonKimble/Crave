@@ -128,7 +128,7 @@ async function main(): Promise<void> {
         const spans = await gazetteer.scanForKnownEntities(
           seed.target.name,
           [seed.target.type],
-          { marketKey: MARKET_KEY },
+          { engineId: null },
         );
         const entityId =
           spans.find((s) => s.type === seed.target!.type && s.entityId)
@@ -147,7 +147,6 @@ async function main(): Promise<void> {
           topicType: seed.topicType,
           title: seed.question,
           status: PollTopicStatus.archived,
-          marketKey: MARKET_KEY,
           targetDishId,
           targetRestaurantId,
           metadata: { seedFixture: true },
@@ -161,7 +160,6 @@ async function main(): Promise<void> {
           state: PollState.active,
           mode: PollMode.ranked,
           origin: seed.origin,
-          marketKey: MARKET_KEY,
           launchedAt: new Date(),
           createdByUserId:
             seed.origin === PollOrigin.user ? userPollOwnerId : null,
@@ -176,7 +174,7 @@ async function main(): Promise<void> {
         const spans = await gazetteer.scanForKnownEntities(
           body,
           [EntityType.restaurant, EntityType.food],
-          { marketKey: MARKET_KEY },
+          { engineId: null },
         );
         await prisma.pollComment.create({
           data: {

@@ -53,7 +53,7 @@ describe('the lens axis (S1 vocabulary)', () => {
         rising: false,
         includeSimilar: true,
         listSort: 'best',
-        marketKey: 'region-us-tx-austin',
+        cityPlaceId: 'place-austin',
       },
     });
     const worldKey = buildSearchCardsWorldKey(tuple);
@@ -64,9 +64,9 @@ describe('the lens axis (S1 vocabulary)', () => {
     expect(worldKey).not.toContain('open:');
     expect(worldKey).not.toContain('rising:');
     expect(worldKey).not.toContain('sort:');
-    expect(worldKey).not.toContain('mkt:');
+    expect(worldKey).not.toContain('city:');
     // Lens side carries the rest, and the slice key is the exact composition.
-    expect(lensKey).toBe('open:1|price:2|rising:0|sort:best|mkt:region-us-tx-austin');
+    expect(lensKey).toBe('open:1|price:2|rising:0|sort:best|city:place-austin');
     expect(sliceKey).toBe(`${worldKey}##${lensKey}`);
     expect(searchWorldGroupOfSliceKey(sliceKey)).toBe(worldKey);
   });

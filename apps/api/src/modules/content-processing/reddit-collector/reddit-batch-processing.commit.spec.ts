@@ -38,7 +38,6 @@ function build() {
       findMany: jest.fn().mockResolvedValue([]),
     },
   };
-  const marketRegistry = { resolveMarketKeyForCommunity: jest.fn() };
   const rescoreCoordinator = { markDirty: jest.fn().mockResolvedValue(true) };
   const extractionPipelineService = { processPosts: jest.fn() };
   const sourceRegistry = {
@@ -57,7 +56,6 @@ function build() {
     redditService as never,
     configService as never,
     prismaService as never,
-    marketRegistry as never,
     rescoreCoordinator as never,
     extractionPipelineService as never,
     sourceRegistry as never,

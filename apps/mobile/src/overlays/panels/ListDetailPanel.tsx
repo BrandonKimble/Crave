@@ -72,7 +72,6 @@ import {
   type FavoriteListViewerRole,
 } from '../../services/favorite-lists';
 import { usersService } from '../../services/users';
-import { listActiveMarkets } from '../../services/markets';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../types';
 // The person atoms + the modal itself live with the ROOT host (leg 12) — the panel
 // only mounts the chip and syncs the imperative store.
@@ -283,11 +282,11 @@ const CollaboratorStackChip = ({
 // The hand-rolled SortChips + two-row morph are DELETED — ListDetail declares the ToggleStrip
 // engine (frost cutouts, edge bleed, physics, warm restore, citizen entry/exit, action-row
 // slot all inherited). Inventory: [Edit] · Sort (value-displayed SelectorChip) · Open now ·
-// Market (virtual All only, honest-disabled). Edit rides the ENGINE action-row slot.
+// City (virtual All only, honest-disabled). Edit rides the ENGINE action-row slot.
 const listDetailStripCacheSeat = createToggleStripCacheSeat();
 const LIST_DETAIL_SORT_SELECTOR_KEY = 'list-detail-sort';
 const LIST_DETAIL_PRICE_SELECTOR_KEY = 'list-detail-price';
-const LIST_DETAIL_MARKET_SELECTOR_KEY = 'list-detail-market';
+const LIST_DETAIL_CITY_SELECTOR_KEY = 'list-detail-city';
 // v1 Price vocabulary: any, or exactly one level (the API takes the full 0–4 array —
 // range selection is a strip-parity follow-up with the results Price sheet).
 const PRICE_OPTIONS = [
@@ -343,17 +342,17 @@ type ListDetailSliceData = {
   effectiveSort: FavoriteListSort;
   openNow: boolean;
   priceLevel: number | null;
-  marketKey: string | null;
-  marketOptions: Array<{ value: string; label: string }>;
-  marketChipLabel: string;
+  cityPlaceId: string | null;
+  cityOptions: Array<{ value: string; label: string }>;
+  cityChipLabel: string;
   applySlice: (
     patch: {
       sort?: FavoriteListSort;
       openNow?: boolean;
       priceLevel?: number | null;
-      marketKey?: string | null;
+      cityPlaceId?: string | null;
     },
-    kind: 'sort' | 'open_now' | 'price' | 'market'
+    kind: 'sort' | 'open_now' | 'price' | 'city'
   ) => void;
   contentPhase: string;
 };
@@ -640,11 +639,11 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
       .filter((row): row is ListDetailRichRow => row != null);
   }, [editSession.order, richRowsByKey]);
 
-
   const rowCount = data.listType === 'restaurant' ? restaurantRows.length : dishRows.length;
   const hasCustomSortOption = !data.isVirtualAll && (data.defaultSort === 'custom' || data.canEdit);
   const customSortLabel = resolveCustomSortLabel(data.viewerRole);
-  const sortChipLabel = data.slice.effectiveSort === 'custom' ? customSortLabel : SORT_LABELS[data.slice.effectiveSort];
+  const sortChipLabel =
+    data.slice.effectiveSort === 'custom' ? customSortLabel : SORT_LABELS[data.slice.effectiveSort];
   const sortOptions: Array<{ value: FavoriteListSort; label: string }> = [
     ...(hasCustomSortOption ? [{ value: 'custom' as const, label: customSortLabel }] : []),
     { value: 'best' as const, label: SORT_LABELS.best },
@@ -665,10 +664,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
       <View style={styles.pageBlock}>
         <View style={styles.metaRow}>
           {data.roster != null ? (
-            <CollaboratorStackChip
-              roster={data.roster}
-              onPress={data.openCollaboratorRoster}
-            />
+            <CollaboratorStackChip roster={data.roster} onPress={data.openCollaboratorRoster} />
           ) : null}
           <Text
             variant="caption"
@@ -756,7 +752,11 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
           {/* Leg 10 (defect #4): Price — VALUE-displayed when overridden (§2 chip law). */}
           <SelectorChip
             key="price"
-            label={data.slice.priceLevel != null ? (PRICE_LEVEL_SYMBOLS[data.slice.priceLevel] ?? 'Price') : 'Price'}
+            label={
+              data.slice.priceLevel != null
+                ? (PRICE_LEVEL_SYMBOLS[data.slice.priceLevel] ?? 'Price')
+                : 'Price'
+            }
             active={data.slice.priceLevel != null}
             expanded={optionSelectorOpenKey === LIST_DETAIL_PRICE_SELECTOR_KEY}
             onPress={() =>
@@ -766,7 +766,10 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
                 options: PRICE_OPTIONS,
                 value: data.slice.priceLevel == null ? 'any' : String(data.slice.priceLevel),
                 onSelect: (value) =>
-                  data.slice.applySlice({ priceLevel: value === 'any' ? null : Number(value) }, 'price'),
+                  data.slice.applySlice(
+                    { priceLevel: value === 'any' ? null : Number(value) },
+                    'price'
+                  ),
                 testID: 'list-detail-price-sheet',
               })
             }
@@ -774,25 +777,25 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
           />
 
           {data.isVirtualAll ? (
-            // Leg 11 (§8.16 "sliced by city"): Market — VALUE-displayed when overridden
+            // §8.16 "sliced by city": City — VALUE-displayed when overridden
             // (§2 chip law); options derived from the unsliced rows (self-provisioning).
             <SelectorChip
               key="market"
-              label={data.slice.marketChipLabel}
-              active={data.slice.marketKey != null}
-              expanded={optionSelectorOpenKey === LIST_DETAIL_MARKET_SELECTOR_KEY}
+              label={data.slice.cityChipLabel}
+              active={data.slice.cityPlaceId != null}
+              expanded={optionSelectorOpenKey === LIST_DETAIL_CITY_SELECTOR_KEY}
               onPress={() =>
                 toggleOptionSelector({
-                  key: LIST_DETAIL_MARKET_SELECTOR_KEY,
+                  key: LIST_DETAIL_CITY_SELECTOR_KEY,
                   title: 'Market',
-                  options: [{ value: 'any', label: 'All markets' }, ...data.slice.marketOptions],
-                  value: data.slice.marketKey ?? 'any',
+                  options: [{ value: 'any', label: 'All markets' }, ...data.slice.cityOptions],
+                  value: data.slice.cityPlaceId ?? 'any',
                   onSelect: (value) =>
-                    data.slice.applySlice({ marketKey: value === 'any' ? null : value }, 'market'),
-                  testID: 'list-detail-market-sheet',
+                    data.slice.applySlice({ cityPlaceId: value === 'any' ? null : value }, 'city'),
+                  testID: 'list-detail-city-sheet',
                 })
               }
-              testID="list-detail-market-chip"
+              testID="list-detail-city-chip"
             />
           ) : null}
         </ToggleStrip>
@@ -945,11 +948,11 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // priceLevels (openNow pattern). v1 vocabulary = exactly-one-level ($ · $$ · $$$ · $$$$)
   // through the option-selector seat; null = any price.
   const [priceLevel, setPriceLevel] = React.useState<number | null>(null);
-  // Leg 11 (leg-9 defect closed): Market joins the strip on All lists (§8.16 "sliced by
-  // city") — the list-results API now takes marketKey (executor market-slice directive).
-  // null = all markets. Option vocabulary is DERIVED from the unsliced rows' own
-  // marketKey/marketName (self-provisioning — no hardcoded market list).
-  const [marketKey, setMarketKey] = React.useState<string | null>(null);
+  // City joins the strip on All lists (§8.16 "sliced by city") — the
+  // list-results API takes cityPlaceId (a catalog place id; ground-containment
+  // pre-filter). null = all cities. Vocabulary = the cities present in the
+  // list (listCities endpoint).
+  const [cityPlaceId, setCityPlaceId] = React.useState<string | null>(null);
 
   // ─── Panel world-read (wave-4 §3): a world-backed entry reads ALL slices from the
   // presented world — the resolver fetched getListResults for this identity, and the
@@ -1020,7 +1023,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       effectiveSort,
       openNow,
       priceLevel,
-      marketKey,
+      cityPlaceId,
       targetUserId,
     ],
     enabled: resolvedListId != null && !worldServesResults,
@@ -1036,7 +1039,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         sort: effectiveSort,
         openNow: openNow || undefined,
         priceLevels: priceLevel != null ? [priceLevel] : undefined,
-        marketKey,
+        cityPlaceId,
         targetUserId,
       }),
   });
@@ -1045,10 +1048,10 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // Content-consequence while the body owns its data fetch; flips to the WORLD class when the
   // §1 trigger rewire lands (the body then reads the presented world and toggles re-slice
   // map + cards through the reconciler).
-  const sliceRef = React.useRef({ sort: effectiveSort, openNow, priceLevel, marketKey });
-  sliceRef.current = { sort: effectiveSort, openNow, priceLevel, marketKey };
+  const sliceRef = React.useRef({ sort: effectiveSort, openNow, priceLevel, cityPlaceId });
+  sliceRef.current = { sort: effectiveSort, openNow, priceLevel, cityPlaceId };
   const { seam: contentSeam, phase: contentPhase } = useContentToggle<
-    'sort' | 'open_now' | 'price' | 'market'
+    'sort' | 'open_now' | 'price' | 'city'
   >({
     surfaceName: 'list-detail',
     captureControlBaseline: () => {
@@ -1057,7 +1060,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         setSortOverride(snapshot.sort);
         setOpenNow(snapshot.openNow);
         setPriceLevel(snapshot.priceLevel);
-        setMarketKey(snapshot.marketKey);
+        setCityPlaceId(snapshot.cityPlaceId);
       };
     },
   });
@@ -1067,9 +1070,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         sort?: FavoriteListSort;
         openNow?: boolean;
         priceLevel?: number | null;
-        marketKey?: string | null;
+        cityPlaceId?: string | null;
       },
-      kind: 'sort' | 'open_now' | 'price' | 'market'
+      kind: 'sort' | 'open_now' | 'price' | 'city'
     ) => {
       if (resolvedListId == null) {
         return;
@@ -1083,8 +1086,8 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       if (patch.priceLevel !== undefined) {
         setPriceLevel(patch.priceLevel);
       }
-      if (patch.marketKey !== undefined) {
-        setMarketKey(patch.marketKey);
+      if (patch.cityPlaceId !== undefined) {
+        setCityPlaceId(patch.cityPlaceId);
       }
       contentSeam.scheduleCommit(
         async () => {
@@ -1113,7 +1116,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                   ...(slice.sort !== defaultSort ? { sort: slice.sort } : {}),
                   openNow: slice.openNow,
                   priceLevels: slice.priceLevel != null ? [slice.priceLevel] : [],
-                  marketKey: slice.marketKey,
+                  cityPlaceId: slice.cityPlaceId,
                 },
               },
             });
@@ -1126,7 +1129,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
               slice.sort,
               slice.openNow,
               slice.priceLevel,
-              slice.marketKey,
+              slice.cityPlaceId,
               targetUserId,
             ],
             staleTime: 60_000,
@@ -1136,7 +1139,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                 sort: slice.sort,
                 openNow: slice.openNow || undefined,
                 priceLevels: slice.priceLevel != null ? [slice.priceLevel] : undefined,
-                marketKey: slice.marketKey,
+                cityPlaceId: slice.cityPlaceId,
                 targetUserId,
               }),
           });
@@ -1353,28 +1356,32 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
 
   const response = worldServesResults ? worldResults : (resultsQuery.data ?? null);
 
-  // Market vocabulary (leg 11): the ACTIVE MARKETS table — the self-provisioning
-  // source of truth (§8.16 "sliced by city"). Search rows carry no per-row market
-  // provenance (the executor's row marketKey is an echo of the active-market
-  // directive), so options can never derive from rows.
-  const activeMarketsQuery = useQuery({
-    queryKey: ['activeMarkets'],
-    enabled: isVirtualAll,
+  // City vocabulary (markets extermination leg 3): the CITIES PRESENT IN THE
+  // LIST — distinct catalog places whose ground covers the list's restaurant
+  // locations (§8.16 "sliced by city"; self-provisioning from the list's own
+  // rows, no market table).
+  const listCitiesQuery = useQuery({
+    queryKey: ['listDetailCities', resolvedListId, targetUserId],
+    enabled: isVirtualAll && resolvedListId != null,
     staleTime: 300_000,
-    queryFn: listActiveMarkets,
+    queryFn: () =>
+      favoriteListsService.listCities(resolvedListId as string, {
+        shareSlug,
+        targetUserId,
+      }),
   });
-  const marketOptions = React.useMemo(
+  const cityOptions = React.useMemo(
     () =>
-      (activeMarketsQuery.data ?? []).map((market) => ({
-        value: market.marketKey,
-        label: market.marketName?.trim() || market.marketShortName?.trim() || market.marketKey,
+      (listCitiesQuery.data ?? []).map((city) => ({
+        value: city.placeId,
+        label: city.name,
       })),
-    [activeMarketsQuery.data]
+    [listCitiesQuery.data]
   );
-  const marketChipLabel =
-    marketKey != null
-      ? (marketOptions.find((option) => option.value === marketKey)?.label ?? 'Market')
-      : 'Market';
+  const cityChipLabel =
+    cityPlaceId != null
+      ? (cityOptions.find((option) => option.value === cityPlaceId)?.label ?? 'City')
+      : 'City';
   // ─── Header seat (leg 9 §2a/§2 charter): name-as-header + the ellipsis menu ────────────────
   const resolvedName = isVirtualAll
     ? listType === 'restaurant'
@@ -1523,7 +1530,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     });
   }, [entryId, hasHeaderMenu, resolvedName]);
 
-
   // ─── Controller commands crossing the data seam ────────────────────────────────────
   const openCollaboratorRoster = React.useCallback(() => {
     setCollaboratorModalVisible(true);
@@ -1570,9 +1576,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             effectiveSort,
             openNow,
             priceLevel,
-            marketKey,
-            marketOptions,
-            marketChipLabel,
+            cityPlaceId,
+            cityOptions,
+            cityChipLabel,
             applySlice,
             contentPhase,
           },
@@ -1588,7 +1594,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     data: listDetailData,
   });
   return <PageBodyShell spec={LIST_DETAIL_PAGE_BODY} state={bodyState} />;
-
 });
 ListDetailPanelBody.displayName = 'ListDetailPanelBody';
 

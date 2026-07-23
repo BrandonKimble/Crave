@@ -111,7 +111,6 @@ async function main(): Promise<void> {
     const search = app.get(EntityTextSearchService);
     for (const cs of CASES) {
       const cands = await search.retrieveCandidates(cs.q, cs.types, 50, {
-        marketKey: DEFAULT_MARKET_KEY,
         denseMode: 'always',
         poolSize: 60,
       });

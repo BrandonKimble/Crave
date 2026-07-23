@@ -139,10 +139,6 @@ async function main(): Promise<void> {
         [pair.type],
         SHORTLIST_K,
         {
-          marketKey:
-            pair.type === EntityType.restaurant
-              ? DEFAULT_MARKET_KEY
-              : undefined,
           denseMode: 'none',
           poolSize: POOL,
         },

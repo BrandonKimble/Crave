@@ -50,7 +50,6 @@ async function recall(
   const t = term.trim();
   if (!t) return [];
   return (await search.retrieveCandidates(t, [type], SHORTLIST_K, {
-    marketKey: type === 'restaurant' ? DEFAULT_MARKET_KEY : undefined,
     denseMode: 'none',
     poolSize: RECALL_POOL,
   })) as Cand[];

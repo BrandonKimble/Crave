@@ -6,7 +6,6 @@ import { RepositoryModule } from '../../repositories/repository.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
-import { MarketsModule } from '../markets/markets.module';
 import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
 import { RestaurantJanitorService } from './restaurant-janitor.service';
 import { RestaurantEnrichmentQueueService } from './restaurant-enrichment-queue.service';
@@ -35,7 +34,6 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     RepositoryModule,
     ExternalIntegrationsModule,
     EntityResolverModule,
-    MarketsModule,
     PublicCraveScoreModule,
     forwardRef(() => RedditCollectorModule),
     BullModule.registerQueue({

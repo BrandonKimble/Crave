@@ -81,7 +81,6 @@ async function main(): Promise<void> {
         // scoring/blend). Mirror the autocomplete call: dense 'always' at len>=3.
         const denseMode = q.length >= 3 ? 'always' : 'fallback';
         const cands = await textSearch.retrieveCandidates(q, FOODS, 12, {
-          marketKey: DEFAULT_MARKET_KEY,
           denseMode: denseMode as never,
           poolSize: 60,
         });

@@ -16,7 +16,11 @@ export interface EntityResolutionInput {
   originalText: string;
   entityType: EntityType;
   aliases?: string[];
-  marketKey?: string | null;
+  /** §13 territory-as-retrieval-prior: the batch's SOURCE engine (collection
+   *  provenance) — geo-biases restaurant recall via the engine's territory
+   *  grounds. null = no covering engine (global; poll-surface threads and
+   *  identity remain global either way). Never a market key. */
+  engineId?: string | null;
 }
 
 /**

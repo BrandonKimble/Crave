@@ -768,3 +768,51 @@ account strategy, week-one instrumentation).
 - Item 2 landed: TomTom 429 → poisonWindow + typed 'denied' in
   tomtom-chain-probe.adapter.ts (429 leaves the queue row attempt-free;
   genuine vendor errors still record the attempt).
+
+## MARKETS EXTERMINATION LEG 3 (2026-07-22): the last consumers re-keyed — core_markets writer/reader-less
+
+The five survivors (post-leg-2 target set) all cut; leg 4 is now a pure
+census + physical drop. Per survivor:
+
+1. **ListDetail 'Market' chip → City slice**: dto.marketKey →
+   dto.cityPlaceId (place id); the assembler's slice pre-filter re-keyed
+   from core_markets.geometry to place_geometries ST_Covers; NEW endpoint
+   POST /favorites/lists/:listId/cities = the cities PRESENT IN THE LIST
+   (municipality places ground-covering the list's restaurant locations,
+   most-represented first). Mobile: chip renamed City, vocabulary from the
+   list itself, cityPlaceId threaded through the lens/world contract
+   (`|city:` lens key), GET /markets/active + listActiveMarkets DELETED.
+2. **IP launch ladder**: GET /places/launch-position replaces
+   /markets/resolve-ip — IpLocationService MOVED to modules/places
+   (geolocation only, marketResolver dep dead); response = coords +
+   smallestContaining place's bbox envelope; mobile rung consumes
+   coords/bounds (bounds→zoom fit), ipMarketKey deleted (was write-only).
+3. **Polls gazetteer scope**: entityTextSearch scope re-keyed
+   {marketKey}→{engineId}; restaurant filter is now GEOMETRIC (engine
+   territory place grounds ST_Covers restaurant locations — the
+   core_entity_market_presence read is dead); polls.service resolves the
+   covering engine from the poll's placeId (member grounds cover the place
+   centroid; uncovered ⇒ global). polls.market_key / poll_topics.market_key
+   now reader-less AND writer-less (graduation community = poll_surface
+   handle; leaderboard/comment scans key off placeId).
+4. **§13 presence/provenance**: presence is derivable (location→place
+   containment at read) ⇒ ALL presence writers/readers deleted (enrichment
+   stamping + sync/reconcile machinery, merge presence-union,
+   unified-processing creation lane — creation dedupe is now GLOBAL
+   (name,type) per §13 global identity). Provenance keys off SOURCES:
+   unified-processing resolves community → source row
+   (findRedditSourceByHandle) → engineId biases resolution recall,
+   anchorPlaceId anchors enrichment bias. resolveMarketKeyForCommunity /
+   listCommunityMarketTargets / resolveOrEnsureForLocation DELETED.
+5. **Google enrichment bias**: dispatch context re-keyed to the source's
+   anchor PLACE (name/subdivision/country + centroid + bbox-derived radius,
+   same 15–50km clamp); all prisma.market reads gone.
+
+Markets module now = the survivor-ledger comment only (empty @Module);
+market-registry/resolver/tomtom-boundary-bootstrap/bootstrap-metrics/
+geo-util/controller DELETED. LEG-4 CENSUS (dead schema): core_markets,
+core_entity_market_presence, polls.market_key, poll_topics.market_key,
+collection_communities.market_key, geo_boundary_features,
+market_bootstrap_events. No migrations this leg (drops are leg 4's).
+Verify: api tsc clean + 732 tests green; mobile tsc 2 pre-existing +
+396 tests green + eslint/prettier clean.

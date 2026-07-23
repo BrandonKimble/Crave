@@ -2,7 +2,6 @@ import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../../shared';
-import { MarketResolverService } from './market-resolver.service';
 
 type Coordinate = { lat: number; lng: number };
 
@@ -13,9 +12,6 @@ export type IpLocationResult = {
   // City/region labels (diagnostic / optional display).
   city: string | null;
   region: string | null;
-  // The market that geographically contains the IP coordinate, if any — so the
-  // client can bootstrap polls/coverage for the right market, not just a center.
-  marketKey: string | null;
   source: 'ip';
 };
 
@@ -55,7 +51,6 @@ export class IpLocationService {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly marketResolver: MarketResolverService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('IpLocationService');
@@ -75,25 +70,12 @@ export class IpLocationService {
       return null;
     }
 
-    let marketKey: string | null = null;
-    try {
-      const resolved = await this.marketResolver.resolve({
-        userLocation: coordinate.coordinate,
-        mode: 'search',
-      });
-      marketKey = resolved.market?.marketKey ?? null;
-    } catch (error) {
-      this.logger.warn('IP market resolution failed', {
-        detail: String(error),
-      });
-    }
-
-    return { ...coordinate, marketKey, source: 'ip' };
+    return { ...coordinate, source: 'ip' };
   }
 
   private async lookupCoordinate(
     ip: string,
-  ): Promise<Omit<IpLocationResult, 'marketKey' | 'source'> | null> {
+  ): Promise<Omit<IpLocationResult, 'source'> | null> {
     try {
       const response = await firstValueFrom(
         this.httpService.get<IpApiResponse>(

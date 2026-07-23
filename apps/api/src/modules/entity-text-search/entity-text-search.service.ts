@@ -85,6 +85,11 @@ export class EntityTextSearchService {
     string,
     { expiresAt: number; limit: number; results: TextSearchMatch[] }
   >();
+  /** engineId → territory place ids (short TTL; see resolveEngineTerritoryPlaceIds). */
+  private readonly territoryCache = new Map<
+    string,
+    { expiresAt: number; placeIds: string[] }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -106,7 +111,7 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null; marketKeys?: string[] } = {},
+    options: { engineId?: string | null } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
@@ -119,13 +124,9 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const marketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : null;
-    const marketFilter = this.buildRestaurantMarketFilter(
+    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
-      options.marketKeys ?? marketKey,
+      options.engineId ?? null,
     );
 
     const rows = await this.prisma.$queryRaw<
@@ -165,11 +166,15 @@ export class EntityTextSearchService {
     entityTypes: EntityType[],
     limit: number,
     options: {
-      marketKey?: string | null;
-      // Step 9: viewport-overlapping market set. When present, restaurant recall
-      // spans all of them (not just the single resolved market) so a restaurant
-      // across a market line stays findable. Falls back to [marketKey] when absent.
-      marketKeys?: string[];
+      /**
+       * §13 territory-as-retrieval-PRIOR (markets extermination leg 3): the
+       * COLLECTION ENGINE whose territory geo-scopes restaurant recall — a
+       * restaurant qualifies when one of its LOCATIONS falls inside a member
+       * place's ground (geometric presence, place_geometries; never the dead
+       * core_entity_market_presence rows). null/absent = GLOBAL (identity is
+       * global; scope is a bias for corpus-scoped consumers only).
+       */
+      engineId?: string | null;
       poolSize?: number;
       /**
        * 'always' (default) — run the dense lane every time (batch heads: resolution,
@@ -188,14 +193,8 @@ export class EntityTextSearchService {
     if (!normalizedTerm || entityTypes.length === 0) return [];
 
     const pool = Math.max(limit, options.poolSize ?? 50);
-    const sparseOpts = {
-      marketKey: options.marketKey,
-      marketKeys: options.marketKeys,
-    };
-    const denseOpts = {
-      marketKey: options.marketKey,
-      marketKeys: options.marketKeys,
-    };
+    const sparseOpts = { engineId: options.engineId };
+    const denseOpts = { engineId: options.engineId };
 
     const denseMode = options.denseMode ?? 'always';
     let sparse: TextSearchMatch[];
@@ -276,8 +275,7 @@ export class EntityTextSearchService {
     entityTypes: EntityType[],
     limit: number,
     options: {
-      marketKey?: string | null;
-      marketKeys?: string[];
+      engineId?: string | null;
     } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
@@ -290,19 +288,12 @@ export class EntityTextSearchService {
     }
 
     const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : null;
 
     const resultsByTerm = await this.searchEntitiesForTerms(
       [normalizedTerm],
       entityTypes,
       safeLimit,
-      {
-        marketKey: normalizedMarketKey,
-        marketKeys: options.marketKeys,
-      },
+      { engineId: options.engineId },
     );
     return resultsByTerm.get(normalizedTerm) ?? [];
   }
@@ -311,7 +302,7 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null } = {},
+    options: { engineId?: string | null } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
     if (
@@ -330,15 +321,11 @@ export class EntityTextSearchService {
     }
 
     const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : null;
     const resultsByTerm = await this.searchEntitiesForTerms(
       [normalizedTerm],
       attributeTypes,
       Math.min(safeLimit * 4, this.maxLimit),
-      { marketKey: normalizedMarketKey },
+      { engineId: options.engineId },
     );
 
     return (resultsByTerm.get(normalizedTerm) ?? [])
@@ -353,8 +340,7 @@ export class EntityTextSearchService {
     entityTypes: EntityType[],
     perTermLimit: number,
     options: {
-      marketKey?: string | null;
-      marketKeys?: string[];
+      engineId?: string | null;
     } = {},
   ): Promise<Map<string, TextSearchMatch[]>> {
     const normalizedTerms = terms
@@ -378,17 +364,14 @@ export class EntityTextSearchService {
     }
 
     const safePerTermLimit = Math.max(1, Math.min(perTermLimit, this.maxLimit));
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : null;
+    const engineId = options.engineId ?? null;
 
     const missingTerms: string[] = [];
     uniqueTerms.forEach((term) => {
       const cached = this.getCachedTermResults({
         term,
         entityTypes,
-        marketKey: normalizedMarketKey,
+        engineId,
         limit: safePerTermLimit,
       });
       if (cached) {
@@ -416,8 +399,7 @@ export class EntityTextSearchService {
           terms: shortTerms,
           entityTypes,
           perTermLimit: safePerTermLimit,
-          marketKey: normalizedMarketKey,
-          marketKeys: options.marketKeys,
+          engineId,
         });
         rows.forEach((row) => {
           const term = row.term ?? '';
@@ -432,8 +414,7 @@ export class EntityTextSearchService {
           terms: longTerms,
           entityTypes,
           perTermLimit: safePerTermLimit,
-          marketKey: normalizedMarketKey,
-          marketKeys: options.marketKeys,
+          engineId,
           thresholdsByTerm,
         });
         rows.forEach((row) => {
@@ -478,7 +459,7 @@ export class EntityTextSearchService {
         this.setCachedTermResults({
           term,
           entityTypes,
-          marketKey: normalizedMarketKey,
+          engineId,
           limit: safePerTermLimit,
           results: matches,
         });
@@ -583,20 +564,16 @@ export class EntityTextSearchService {
   private buildCacheKey(options: {
     term: string;
     entityTypes: EntityType[];
-    marketKey?: string | null;
+    engineId?: string | null;
   }): string {
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : '';
     const entityTypesKey = [...options.entityTypes].sort().join(',');
-    return [normalizedMarketKey, entityTypesKey, options.term].join('::');
+    return [options.engineId ?? '', entityTypesKey, options.term].join('::');
   }
 
   private getCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
-    marketKey?: string | null;
+    engineId?: string | null;
     limit: number;
   }): TextSearchMatch[] | null {
     const key = this.buildCacheKey(options);
@@ -615,7 +592,7 @@ export class EntityTextSearchService {
   private setCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
-    marketKey?: string | null;
+    engineId?: string | null;
     limit: number;
     results: TextSearchMatch[];
   }): void {
@@ -638,8 +615,7 @@ export class EntityTextSearchService {
     terms: string[];
     entityTypes: EntityType[];
     perTermLimit: number;
-    marketKey: string | null;
-    marketKeys?: string[];
+    engineId: string | null;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((term, idx) => {
@@ -650,9 +626,9 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const marketFilter = this.buildRestaurantMarketFilter(
+    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
-      options.marketKeys ?? options.marketKey,
+      options.engineId,
     );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
@@ -736,8 +712,7 @@ export class EntityTextSearchService {
     terms: string[];
     entityTypes: EntityType[];
     perTermLimit: number;
-    marketKey: string | null;
-    marketKeys?: string[];
+    engineId: string | null;
     thresholdsByTerm: Map<string, number>;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
@@ -753,9 +728,9 @@ export class EntityTextSearchService {
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
       options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
     )}]`;
-    const marketFilter = this.buildRestaurantMarketFilter(
+    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
-      options.marketKeys ?? options.marketKey,
+      options.engineId,
     );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
@@ -960,12 +935,13 @@ export class EntityTextSearchService {
    * generate 1..N-word candidate phrases with offsets, then ONE indexed query for
    * entities whose normalized name or alias equals a candidate. Overlapping matches
    * resolve by longest-match (so "breakfast sandwich" wins over "breakfast").
-   * Restaurants are market-scoped; foods/attributes are global.
+   * Restaurants are engine-territory-scoped when an engineId is given (no
+   * covering engine ⇒ global match); foods/attributes are always global.
    */
   async scanForKnownEntities(
     text: string,
     entityTypes: EntityType[],
-    options: { marketKey?: string | null; maxPhraseWords?: number } = {},
+    options: { engineId?: string | null; maxPhraseWords?: number } = {},
   ): Promise<EntitySpan[]> {
     const raw = text ?? '';
     if (!raw.trim() || entityTypes.length === 0) return [];
@@ -1000,9 +976,9 @@ export class EntityTextSearchService {
     const typeArray = Prisma.sql`ARRAY[${Prisma.join(
       entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
     )}]`;
-    const marketFilter = this.buildRestaurantMarketFilter(
+    const marketFilter = await this.buildRestaurantEngineTerritoryFilter(
       'e',
-      options.marketKey ?? null,
+      options.engineId ?? null,
     );
     const rows = await this.prisma.$queryRaw<
       {
@@ -1066,24 +1042,22 @@ export class EntityTextSearchService {
     return accepted;
   }
 
-  private buildRestaurantMarketFilter(
+  /**
+   * §13 GEOMETRIC restaurant scope (markets extermination leg 3 — replaces
+   * the core_entity_market_presence read): a restaurant is "in scope" when
+   * one of its geocoded LOCATIONS is ground-covered by a member place of the
+   * engine's territory (member place ids + places-DAG descendants, §5 derived
+   * union — resolved here into an id list, then judged against the ONE
+   * place_geometries ground per §2.6). No engine / empty territory ⇒ no
+   * filter (identity is global; the scope is only a retrieval prior).
+   */
+  private async buildRestaurantEngineTerritoryFilter(
     entityAlias: string,
-    // Step 9: accepts a single market OR the viewport-overlapping market SET, so a
-    // restaurant just across a market line stays findable. Single-key callers are
-    // unchanged (a string is treated as a one-element set); in single-market dev the
-    // set is [currentMarket] → byte-identical to the old single-key filter.
-    marketKeyOrKeys: string | string[] | null,
-  ): Prisma.Sql {
-    const keys = (
-      Array.isArray(marketKeyOrKeys)
-        ? marketKeyOrKeys
-        : marketKeyOrKeys
-          ? [marketKeyOrKeys]
-          : []
-    )
-      .map((k) => k?.trim().toLowerCase())
-      .filter((k): k is string => !!k);
-    if (keys.length === 0) {
+    engineId: string | null,
+  ): Promise<Prisma.Sql> {
+    const territoryPlaceIds =
+      await this.resolveEngineTerritoryPlaceIds(engineId);
+    if (!territoryPlaceIds.length) {
       return Prisma.empty;
     }
 
@@ -1093,11 +1067,56 @@ export class EntityTextSearchService {
         ${entityReference}.type != 'restaurant'
         OR EXISTS (
           SELECT 1
-          FROM core_entity_market_presence emp
-          WHERE emp.entity_id = ${entityReference}.entity_id
-            AND LOWER(emp.market_key) = ANY(${keys})
+          FROM core_restaurant_locations rl
+          JOIN place_geometries pg
+            ON pg.place_id = ANY(${territoryPlaceIds}::uuid[])
+           AND ST_Covers(
+                 pg.geometry,
+                 ST_SetSRID(
+                   ST_MakePoint(
+                     rl.longitude::double precision,
+                     rl.latitude::double precision
+                   ),
+                   4326
+                 )
+               )
+          WHERE rl.restaurant_id = ${entityReference}.entity_id
+            AND rl.latitude IS NOT NULL
+            AND rl.longitude IS NOT NULL
         )
       )
     `;
+  }
+
+  /** Engine territory = member places + places-DAG descendants (§5: derived
+   *  union, never stored). Cached briefly — batch heads scan many terms per
+   *  engine. Unknown engine ⇒ empty (global scope). */
+  private async resolveEngineTerritoryPlaceIds(
+    engineId: string | null,
+  ): Promise<string[]> {
+    if (!engineId) {
+      return [];
+    }
+    const cached = this.territoryCache.get(engineId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.placeIds;
+    }
+    const rows = await this.prisma.$queryRaw<Array<{ place_id: string }>>`
+      WITH RECURSIVE territory AS (
+        SELECT unnest(e.member_place_ids) AS place_id
+        FROM engines e
+        WHERE e.engine_id = ${engineId}::uuid
+        UNION
+        SELECT p.place_id FROM places p
+        JOIN territory t ON t.place_id = ANY(p.parent_place_ids)
+      )
+      SELECT place_id FROM territory
+    `;
+    const placeIds = rows.map((row) => row.place_id);
+    this.territoryCache.set(engineId, {
+      placeIds,
+      expiresAt: Date.now() + this.cacheTtlMs,
+    });
+    return placeIds;
   }
 }
