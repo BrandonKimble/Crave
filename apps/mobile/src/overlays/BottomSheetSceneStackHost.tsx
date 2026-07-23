@@ -209,6 +209,16 @@ const computeLegRole = (
 // signatures: a painting leg (role!=='idle') with bodyNull=true → blank frost (S2); the painting
 // leg's key !== the pressed tab → wrong page (S1). __DEV__-only; kept post-P2 as the regression
 // tripwire — retirement is governed by the post-soak cleanup ledger (master plan §9.5).
+// [COMMITDBG] TEMPORARY (L4 return-from-child attribution) — per-leg Profiler sink:
+// logs any leg whose subtree render exceeds 8ms in a commit. Dev-only by construction
+// (console.log is stripped in release anyway); strip with the Profiler wrappers.
+const logSlowLegCommit: React.ProfilerOnRenderCallback = (id, phase, actualDuration) => {
+  if (__DEV__ && actualDuration > 8) {
+    // eslint-disable-next-line no-console
+    console.log(`[COMMITDBG] ${id} phase=${phase} actualMs=${actualDuration.toFixed(1)}`);
+  }
+};
+
 const logPageSwitch = (tag: string, data: Record<string, unknown>): void => {
   if (__DEV__) {
     // eslint-disable-next-line no-console
@@ -1701,18 +1711,25 @@ const ActiveSceneStackSurfaceHost = React.memo(
                     legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
                   />
                 ) : (
-                  <SceneStackBodyLayerHost
+                  // [COMMITDBG] TEMPORARY (L4 return-from-child attribution): per-leg render
+                  // cost of the reveal commit — strip after the diet lands.
+                  <React.Profiler
                     key={`scene-${sceneKey}`}
-                    sceneKey={sceneKey}
-                    sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                    routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-                    bodyRuntimeAuthority={bodyRuntimeAuthority}
-                    // THE PAGE L1: each leg's body-lane inset is ITS OWN scene's COMPUTED
-                    // chrome height — pure, exact, same committed frame as the chrome box.
-                    // No measurement, no guess, no retained fallback.
-                    chromeHeight={computeSceneChromeHeight(sceneKey)}
-                    legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
-                  />
+                    id={`leg-${sceneKey}`}
+                    onRender={logSlowLegCommit}
+                  >
+                    <SceneStackBodyLayerHost
+                      sceneKey={sceneKey}
+                      sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                      routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+                      bodyRuntimeAuthority={bodyRuntimeAuthority}
+                      // THE PAGE L1: each leg's body-lane inset is ITS OWN scene's COMPUTED
+                      // chrome height — pure, exact, same committed frame as the chrome box.
+                      // No measurement, no guess, no retained fallback.
+                      chromeHeight={computeSceneChromeHeight(sceneKey)}
+                      legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
+                    />
+                  </React.Profiler>
                 )
               )}
               {/* THE PERSISTENT HEADER (P3, req 2b) — one OverlaySheetHeaderChrome hoisted above

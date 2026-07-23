@@ -659,6 +659,29 @@ scenario system already carries start/stop/dump) on the return-from-child window
 selector-diff WorkSpans are all 0ms noise and Profiler render events don't arm on
 this scenario. Gates: jest 390/390, invariants 29/29, matrix 21/21 cold.
 
+**L4 SLICE 4 — THE RETURN-FROM-CHILD ATTRIBUTION (2026-07-23; instrument landed,
+trigger cornered, one bisection left).** The Hermes sampling profiler is DEAD on
+this RN build (HermesInternal exposes zero keys — api_missing; the env-gated
+scenario plumbing is intact for a future build). Landed instead: **[COMMITDBG]**
+per-leg React.Profiler wrappers in the host's co-mount map (dev-only; logs leg
+subtree renders >8ms). WHAT IT PROVED, with an inner split + a controller-input
+probe (both stripped after reading):
+- The reveal-gated beat machinery WORKS: the bookmarks activation renders (grid,
+  ~58-75ms total) land POST-reveal on normal opens — the deferred beat as designed.
+- The return-from-child pre-reveal weight = the bookmarks BODY subtree re-rendering
+  ~75ms of a ~77ms leg render (leg machinery ≈ 2ms) — INSIDE the chrome-ack commit.
+- THE CORNERED MYSTERY: the bookmarks controller re-renders ~4× per transition
+  with its activity flags UNCHANGED (subLane=false throughout) — including
+  transitions that never involve bookmarks (a notifications push). The activity
+  context is identity-stable (field-memoized ✓), the body-surface authority IS the
+  deferred chokepoint ✓, the component is memo'd with no props ✓ — the trigger is
+  hook-level inside the controller (RQ/zustand/context set) and needs ONE more
+  bisection (per-hook identity logging, or why-did-you-render). This is the
+  background-render-tax class in a new costume: an uninvolved resident tab's
+  full grid re-rendering on every transition.
+Gates: jest 390/390, invariants 29/29, matrix 21/21 (fresh app; the 20/21
+warm-app pollution pattern reconfirmed the rig lore).
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
