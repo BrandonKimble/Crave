@@ -4,6 +4,11 @@ import type {
 } from '../navigation/runtime/app-overlay-route-types';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 
+/** The residency-managed key space: the sheet scenes plus 'search' (the one
+ *  SheetSceneKey exclusion that IS residency-managed — its display target is
+ *  bespoke but its visibility rides the same manager bit). */
+export type ResidencyManagedSceneKey = SheetSceneKey | 'search';
+
 // ─── THE RESIDENCY REGISTRY (L3 — the strangler's pure facts) ───────────────────────
 //
 // Which scenes are residency-managed, and WHAT KEYS a resident unit, are PURE facts
@@ -12,7 +17,7 @@ import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec'
 // scheduler. Grows per-slice per the migration bridge order; deleted-with-the-
 // strangler when every scene is managed.
 
-export const RESIDENCY_MANAGED_SCENES: readonly SheetSceneKey[] = [
+export const RESIDENCY_MANAGED_SCENES: readonly ResidencyManagedSceneKey[] = [
   // Slices 1-2: the self-contained leaves.
   'notifications',
   'settings',
@@ -36,6 +41,11 @@ export const RESIDENCY_MANAGED_SCENES: readonly SheetSceneKey[] = [
   'editProfile',
   'saveList',
   'postPhotos',
+  // The search slice (structural half): the search sheet body display-detaches when
+  // another root presents; the world/dismiss choreography rides transitionLive via
+  // the frame's outgoing leg. The display target stays bespoke — only the display
+  // fact joins the manager.
+  'search',
 ];
 
 export const isResidencyManagedScene = (scene: OverlayKey): boolean =>

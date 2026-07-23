@@ -37,6 +37,7 @@ import type {
 } from './bottomSheetSceneStackHostContract';
 import type { SceneStackBodyContentActivity } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
+import { ShellVisibilityBoundary } from './ShellVisibilityBoundary';
 import {
   areSearchRouteSceneStackBodyContentEntriesEqual,
   areSearchRouteSceneStackBodyTransportEntriesEqual,
@@ -1027,7 +1028,11 @@ const SearchSceneStackBodyDisplayTarget = React.memo(
         sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
         legRole={legRole}
       >
-        {searchResultsPageBundle}
+        {/* L3 search slice (structural half): the search sheet body display-detaches
+            when another root presents — the boundary INSIDE the frame host so the
+            transition machinery (opacity worklets, the paint plumbing) stays outside;
+            transitionLive keeps the bundle displayed through dismiss choreography. */}
+        <ShellVisibilityBoundary scene="search">{searchResultsPageBundle}</ShellVisibilityBoundary>
       </SceneStackBodyFrameHost>
     );
 

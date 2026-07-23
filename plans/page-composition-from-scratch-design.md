@@ -814,6 +814,36 @@ membership stays as future-proofing. The search slice's remainder is purely
 STRUCTURAL (boundary/display composition + the engine vocabulary death with the
 bespoke scenes).
 
+**THE FOUNDATION'S CLOSING VERDICTS (2026-07-23 — search wrapped, B#12 rescoped,
+the census complete).**
+- **SEARCH JOINED (the structural half):** the registry type widened
+  (ResidencyManagedSceneKey = SheetSceneKey | 'search'); the search sheet body now
+  display-detaches when another root presents, via ShellVisibilityBoundary INSIDE
+  the frame host (transition machinery outside; transitionLive carries dismiss
+  choreography). The display target stays bespoke. Verified: matrix 21/21 (the
+  search lifecycle), submit→results→hop→detach eye-passed, zero contract errors.
+- **THE BESPOKE THREE (pollDetail/pollCreation/restaurant): ALREADY LAW-CONFORMANT
+  by their own idiom — the THIRD residency temperament formalized:**
+  CONTROLLER-RESIDENT / BODY-EPHEMERAL. Their spec hooks run continuously in
+  always-mounted hosts with visible-gated liveness (pollDetail's socket
+  disconnects on hide; pollCreation resets deliberately; restaurant renders from
+  snapshots — none poll hidden); their bodies unmount on pop (no hidden-tree tax,
+  no A#9 exposure). Forcing them into mounted-body residency would be shape
+  uniformity without measured need — NOT migrated, BY VERDICT.
+- **B#12 RESCOPED, honestly:** the cold-path vocabulary does not die wholesale —
+  it SHRINKS TO ITS TRUE DOMAIN: cold constructions (the ephemeral three's pushes
+  + genuine first visits before prewarm). For the resident world it is already
+  inert (paint = same-tick evidence-offer; chrome = the real header commit; the
+  managed set reveals in 20-35ms with content as post-reveal beats). The falsifier
+  permits this: where L3-residency is deliberately not applied, the ack is
+  legitimately needed. What survives everywhere: identity, supersession, the
+  trace, progress semantics, the mapFrame content-readiness join.
+**L0-L4 STANDS COMPLETE for the resident world.** Remaining, all owner-gated or
+blocked: the slow-network law (owner ratifies), the listDetail image-memory
+measure (blocked on list-open automation), polls (the parallel session's domain),
+and the owner's queued arcs (frost pass, overscroll, the global surface
+abstraction) which build ON this foundation.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:

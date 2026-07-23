@@ -2,6 +2,7 @@ import { InteractionManager } from 'react-native';
 
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
+import type { ResidencyManagedSceneKey } from './shell-residency-registry';
 import { isResidencyManagedScene, RESIDENCY_MANAGED_SCENES } from './shell-residency-registry';
 
 export { isResidencyManagedScene } from './shell-residency-registry';
@@ -35,15 +36,15 @@ export { isResidencyManagedScene } from './shell-residency-registry';
 
 type ShellResidencyState = {
   /** Scenes whose shells are currently mounted resident (mount order). */
-  residentScenes: readonly SheetSceneKey[];
+  residentScenes: readonly ResidencyManagedSceneKey[];
   /** THE visible bit's owner — at most one resident scene is visible. */
-  visibleScene: SheetSceneKey | null;
+  visibleScene: ResidencyManagedSceneKey | null;
   /** Transition participants (the outgoing leg during a live transition): DISPLAYED so
    *  the crossfade never fades a blank, back to hidden at settle. Written by the same
    *  driver as visibleScene — one writer, two coordinated facts. */
-  transitionLiveScenes: readonly SheetSceneKey[];
+  transitionLiveScenes: readonly ResidencyManagedSceneKey[];
   /** Most-recent-first visit order (the eviction law's last-N exemption input). */
-  visitOrder: readonly SheetSceneKey[];
+  visitOrder: readonly ResidencyManagedSceneKey[];
 };
 
 let state: ShellResidencyState = {
@@ -73,7 +74,7 @@ export const getShellResidencySnapshot = (): ShellResidencyState => state;
 export type EnsureShellResidentReason = 'prewarm_idle' | 'press_down' | 'navigation';
 
 export const ensureShellResident = (
-  scene: SheetSceneKey,
+  scene: ResidencyManagedSceneKey,
   reason: EnsureShellResidentReason
 ): void => {
   if (!isResidencyManagedScene(scene) || state.residentScenes.includes(scene)) {
@@ -103,13 +104,13 @@ export const setVisibleResidentScene = (
   transitionLiveScenes: readonly (OverlayKey | null | undefined)[] = []
 ): void => {
   const managedScene =
-    scene != null && isResidencyManagedScene(scene) ? (scene as SheetSceneKey) : null;
+    scene != null && isResidencyManagedScene(scene) ? (scene as ResidencyManagedSceneKey) : null;
   if (managedScene != null) {
     ensureShellResident(managedScene, 'navigation');
   }
   const nextVisible = managedScene;
   const nextTransitionLive = transitionLiveScenes.filter(
-    (candidate): candidate is SheetSceneKey =>
+    (candidate): candidate is ResidencyManagedSceneKey =>
       candidate != null && isResidencyManagedScene(candidate) && candidate !== nextVisible
   );
   const transitionLiveUnchanged =
@@ -154,11 +155,14 @@ export const scheduleResidentShellPrewarm = (): void => {
 // eviction's value is bounding growth, not reclaiming the past. Slice 1 records
 // commitments; the budget check is a seam that names its own inactivation.
 
-const contentCommitmentBySceneKb = new Map<SheetSceneKey, number>();
+const contentCommitmentBySceneKb = new Map<ResidencyManagedSceneKey, number>();
 
-export const recordShellContentCommitment = (scene: SheetSceneKey, estimatedKb: number): void => {
+export const recordShellContentCommitment = (
+  scene: ResidencyManagedSceneKey,
+  estimatedKb: number
+): void => {
   contentCommitmentBySceneKb.set(scene, estimatedKb);
 };
 
-export const readShellContentCommitments = (): ReadonlyMap<SheetSceneKey, number> =>
+export const readShellContentCommitments = (): ReadonlyMap<ResidencyManagedSceneKey, number> =>
   contentCommitmentBySceneKb;
