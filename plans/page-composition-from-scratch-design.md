@@ -742,6 +742,24 @@ paint acks / warm gates / painted-evidence / freeze bundles reduce to constants 
 what survives: identity, supersession, the trace, progress semantics, and the
 mapFrame content-readiness join).
 
+**SEARCH SLICE, STEP 1 (2026-07-23): the deferral set + the leg's own tax named.**
+[COMMITDBG] now wraps the search leg too — and it pays 15-80ms renders during
+root-tab hops it is not part of (the transition-tax class). Search joined a NEW
+DISTINCT set — DEFERRED_PUBLICATION_SCENES (residency set + 'search') — feeding
+the two deferral sites, WITHOUT joining residency (display/choreography stay
+bespoke; the A#9 lane cut and unit retention stay residency-only). Safe by
+analysis: during submits search is already active (no activity flips to hold; the
+pending block rides the surface fence; structural publications stay sync).
+HONEST RESULT: **inert today** — the search leg's transition renders flow through
+its BESPOKE authorities (sceneStackSurface/bodyRuntime/surface-runtime), not the
+generic body-surface publication; the deferral engages when that plumbing
+consolidates. The search-leg render tax needs SUBSCRIPTION-LEVEL attribution in
+the search slice proper (which authority notify drives the search body during
+uninvolved transitions). Search submit/dismiss verified intact end-to-end (pins/
+dots/cards/strip); gates jest 396/396 (+6 from the concurrent session), invariants
+29/29, matrix 21/21 cold. (A 453→21ms push joinWait swing across baselines is
+warm-cache variance — NOT claimed.)
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:

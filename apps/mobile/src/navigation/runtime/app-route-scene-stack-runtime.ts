@@ -1,5 +1,8 @@
 import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
-import { isResidencyManagedScene } from '../../overlays/shell-residency-registry';
+import {
+  isDeferredPublicationScene,
+  isResidencyManagedScene,
+} from '../../overlays/shell-residency-registry';
 import {
   getLiveTransitionTxn,
   subscribeTransitionTxn,
@@ -1985,7 +1988,7 @@ class AppRouteSceneStackLayerStateController {
       return false;
     }
     const isActivityOnlyChange =
-      isResidencyManagedScene(sceneKey) &&
+      isDeferredPublicationScene(sceneKey) &&
       previousSnapshot.contentEntry === nextSnapshot.contentEntry &&
       previousSnapshot.transportEntry === nextSnapshot.transportEntry &&
       previousSnapshot.mountedEntryUnits === nextSnapshot.mountedEntryUnits &&
@@ -2100,7 +2103,7 @@ class AppRouteSceneStackLayerStateController {
   private notifySceneBodySurfaceListeners(sceneKeys: readonly OverlayKey[]): void {
     const syncSceneKeys: OverlayKey[] = [];
     sceneKeys.forEach((sceneKey) => {
-      if (isResidencyManagedScene(sceneKey)) {
+      if (isDeferredPublicationScene(sceneKey)) {
         this.deferredBodySurfaceNotifySceneKeys.add(sceneKey);
       } else {
         syncSceneKeys.push(sceneKey);

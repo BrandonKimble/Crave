@@ -1703,13 +1703,14 @@ const ActiveSceneStackSurfaceHost = React.memo(
               ) : null}
               {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) =>
                 sceneKey === 'search' ? (
-                  <SearchSceneStackBodyDisplayTarget
-                    key="scene-search"
-                    routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-                    sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                    bodyRuntimeAuthority={bodyRuntimeAuthority}
-                    legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
-                  />
+                  <React.Profiler key="scene-search" id="leg-search" onRender={logSlowLegCommit}>
+                    <SearchSceneStackBodyDisplayTarget
+                      routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+                      sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                      bodyRuntimeAuthority={bodyRuntimeAuthority}
+                      legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
+                    />
+                  </React.Profiler>
                 ) : (
                   // [COMMITDBG] TEMPORARY (L4 return-from-child attribution): per-leg render
                   // cost of the reveal commit — strip after the diet lands.

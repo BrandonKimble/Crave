@@ -93,3 +93,21 @@ export const residentUnitIdentityOf = (entry: OverlayRouteEntry): string | null 
       return 'scene';
   }
 };
+
+// ─── THE DEFERRED-PUBLICATION SET (L4 — a distinct fact from residency) ─────────────
+//
+// Scenes whose ACTIVITY-ONLY body-surface publications hold until the reveal-gated
+// flush. Search joins HERE without joining the residency set: its display/choreography
+// stays bespoke (the world enter machinery — its own slice), but its activity flips
+// (root-tab hops in/out of search) are the same transition tax the managed scenes
+// shed. Safe by analysis: during search SUBMITS the scene is already active (no
+// activity change → nothing held; the pending block rides the surface fence and
+// structural publications stay synchronous); the flips happen exactly on the tab
+// hops where deferral is the win.
+export const DEFERRED_PUBLICATION_SCENES: readonly OverlayKey[] = [
+  ...RESIDENCY_MANAGED_SCENES,
+  'search',
+];
+
+export const isDeferredPublicationScene = (scene: OverlayKey): boolean =>
+  (DEFERRED_PUBLICATION_SCENES as readonly string[]).includes(scene);
