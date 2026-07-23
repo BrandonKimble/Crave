@@ -10,8 +10,11 @@ export interface OnDemandRequestInput {
   entityType: EntityType;
   reason: OnDemandReason;
   entityId?: string | null;
-  marketKey?: string | null;
-  collectableMarketKeys?: string[];
+  /** ENGINE re-key (§10/§11): the engines whose territory covers the ask's
+   *  viewport. Queue rows are minted per engine; an ask with NO covering
+   *  engine mints no queue row but STILL records its on_demand_ask signal —
+   *  that is the uncovered-ask lane the ledger's territory read serves. */
+  engineIds?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -41,12 +44,7 @@ export class OnDemandRequestService {
     options: OnDemandRequestRecordOptions = {},
     context: Record<string, unknown> = {},
   ): Promise<OnDemandRequestInput[]> {
-    const scopedRequests = requests.filter((request) => {
-      const marketKey =
-        typeof request.marketKey === 'string' ? request.marketKey.trim() : '';
-      return marketKey.length > 0;
-    });
-    const deduped = this.deduplicateRequests(scopedRequests);
+    const deduped = this.deduplicateRequests(requests);
     const capped =
       this.maxEntities > 0 ? deduped.slice(0, this.maxEntities) : deduped;
     if (!capped.length) {
@@ -96,7 +94,7 @@ export class OnDemandRequestService {
             term: request.term,
             entityType: request.entityType,
             reason: request.reason,
-            marketKey: queueTarget.collectableMarketKey,
+            engineId: queueTarget.engineId,
             entityIdentityKey: queueTarget.entityIdentityKey,
             lastSeenAt: seenAt,
             lastQueuedAt: requestIsQueueable ? seenAt : undefined,
@@ -118,7 +116,7 @@ export class OnDemandRequestService {
 
           const updateData: Prisma.OnDemandRequestUpdateInput = {
             lastSeenAt: seenAt,
-            marketKey: queueTarget.collectableMarketKey,
+            engineId: queueTarget.engineId,
             entityIdentityKey: queueTarget.entityIdentityKey,
           };
           if (requestIsQueueable) {
@@ -147,10 +145,10 @@ export class OnDemandRequestService {
           updateData.reason = request.reason;
           const record = await tx.onDemandRequest.upsert({
             where: {
-              term_entityType_marketKey_entityIdentityKey: {
+              term_entityType_engineId_entityIdentityKey: {
                 term: request.term,
                 entityType: request.entityType,
-                marketKey: queueTarget.collectableMarketKey,
+                engineId: queueTarget.engineId,
                 entityIdentityKey: queueTarget.entityIdentityKey,
               },
             },
@@ -251,35 +249,24 @@ export class OnDemandRequestService {
       if (!sanitizedTerm) {
         continue;
       }
-      const marketKey = this.normalizeMarketKey(request.marketKey);
       const entityId = this.normalizeEntityId(request.entityId);
       const key = `${request.reason}:${
         request.entityType
       }:${entityId ?? 'no_entity'}:${sanitizedTerm.toLowerCase()}`;
-      const scopedKey = `${key}:${marketKey}`;
-      if (seen.has(scopedKey)) {
+      if (seen.has(key)) {
         continue;
       }
-      seen.add(scopedKey);
+      seen.add(key);
       result.push({
         term: sanitizedTerm,
         entityType: request.entityType,
         reason: request.reason,
         entityId,
-        marketKey,
-        collectableMarketKeys: this.normalizeCollectableMarketKeys(
-          request.collectableMarketKeys,
-        ),
+        engineIds: this.normalizeEngineIds(request.engineIds),
         metadata: request.metadata,
       });
     }
     return result;
-  }
-
-  private normalizeMarketKey(marketKey?: string | null): string {
-    const normalized =
-      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : '';
-    return normalized;
   }
 
   private normalizeUserId(userId?: string | null): string | null {
@@ -311,13 +298,13 @@ export class OnDemandRequestService {
     term: string;
     entityType: EntityType;
     reason: OnDemandReason;
-    collectableMarketKey: string;
+    engineId: string;
     entityIdentityKey: string;
   }): string {
     return `${request.reason}:${
       request.entityType
     }:${request.entityIdentityKey}:${request.term.toLowerCase()}:${
-      request.collectableMarketKey
+      request.engineId
     }`;
   }
 
@@ -326,7 +313,7 @@ export class OnDemandRequestService {
       term: string;
       entityType: EntityType;
       reason: OnDemandReason;
-      collectableMarketKey: string;
+      engineId: string;
       entityIdentityKey: string;
     }>,
     seenAt: Date,
@@ -335,7 +322,7 @@ export class OnDemandRequestService {
       term: string;
       entityType: EntityType;
       reason: OnDemandReason;
-      collectableMarketKey: string;
+      engineId: string;
       entityIdentityKey: string;
     }>
   > {
@@ -350,7 +337,7 @@ export class OnDemandRequestService {
       term: request.term,
       entityType: request.entityType,
       reason: request.reason,
-      marketKey: request.collectableMarketKey,
+      engineId: request.engineId,
       entityIdentityKey: request.entityIdentityKey,
     }));
 
@@ -360,7 +347,7 @@ export class OnDemandRequestService {
         term: true,
         entityType: true,
         reason: true,
-        marketKey: true,
+        engineId: true,
         entityIdentityKey: true,
         lastQueuedAt: true,
       },
@@ -370,7 +357,7 @@ export class OnDemandRequestService {
     for (const row of existing) {
       cutoffByKey.set(
         `${row.reason}:${row.entityType}:${row.entityIdentityKey}:${row.term.toLowerCase()}:${
-          row.marketKey
+          row.engineId
         }`,
         row.lastQueuedAt,
       );
@@ -391,17 +378,15 @@ export class OnDemandRequestService {
     term: string;
     entityType: EntityType;
     reason: OnDemandReason;
-    collectableMarketKey: string;
+    engineId: string;
     entityIdentityKey: string;
   }> {
     const entityIdentityKey = this.composeEntityIdentityKey(request.entityId);
-    return this.normalizeCollectableMarketKeys(
-      request.collectableMarketKeys,
-    ).map((collectableMarketKey) => ({
+    return this.normalizeEngineIds(request.engineIds).map((engineId) => ({
       term: request.term,
       entityType: request.entityType,
       reason: request.reason,
-      collectableMarketKey,
+      engineId,
       entityIdentityKey,
     }));
   }
@@ -410,17 +395,17 @@ export class OnDemandRequestService {
     return this.normalizeEntityId(entityId) ?? 'no_entity';
   }
 
-  private normalizeCollectableMarketKeys(
-    marketKeys?: string[] | null,
-  ): string[] {
-    if (!Array.isArray(marketKeys)) {
+  private normalizeEngineIds(engineIds?: string[] | null): string[] {
+    if (!Array.isArray(engineIds)) {
       return [];
     }
     return Array.from(
       new Set(
-        marketKeys
-          .map((marketKey) => this.normalizeMarketKey(marketKey))
-          .filter((marketKey) => marketKey.length > 0),
+        engineIds
+          .map((engineId) =>
+            typeof engineId === 'string' ? engineId.trim() : '',
+          )
+          .filter((engineId) => engineId.length > 0),
       ),
     );
   }

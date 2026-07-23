@@ -1593,7 +1593,11 @@ model OnDemandRequest {
   requestId             String                @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
   term                  String                @db.VarChar(255)
   entityType            EntityType            @map("entity_type")
-  marketKey             String                @map("market_key") @db.VarChar(255)
+  /// ENGINE re-key (markets extermination leg 2): holds the covering
+  /// engine's engine_id. Column still NAMED market_key in the DB — the
+  /// rename migration rides the next drift-path migration window (a live
+  /// column rename requires the shared-API restart this leg may not do).
+  engineId              String                @map("market_key") @db.VarChar(255)
   distinctUserCount     Int                   @default(0) @map("distinct_user_count")
   lastSeenAt            DateTime              @default(now()) @map("last_seen_at")
   lastQueuedAt          DateTime?             @map("last_queued_at")
@@ -1608,7 +1612,7 @@ model OnDemandRequest {
   entity                Entity?               @relation(fields: [entityId], references: [entityId])
   requestUsers          OnDemandRequestUser[]
 
-  @@unique([term, entityType, marketKey, entityIdentityKey], map: "uq_on_demand_request_identity")
+  @@unique([term, entityType, engineId, entityIdentityKey], map: "uq_on_demand_request_identity")
   @@index([reason], map: "idx_on_demand_requests_reason")
   @@index([entityIdentityKey], map: "idx_on_demand_requests_entity_identity")
   @@index([lastSeenAt(sort: Desc)], map: "idx_on_demand_requests_last_seen_at")

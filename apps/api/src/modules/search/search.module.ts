@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RepositoryModule } from '../../repositories/repository.module';
-import { MarketsModule } from '../markets/markets.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
@@ -21,6 +20,7 @@ import { SearchMetricsService } from './search-metrics.service';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { OnDemandRequestService } from './on-demand-request.service';
+import { EngineCoverageService } from './engine-coverage.service';
 import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
 import { OnDemandRequestUsersCleanupService } from './on-demand-request-users-cleanup.service';
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
@@ -34,7 +34,6 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     SharedModule,
     PrismaModule,
     RepositoryModule,
-    MarketsModule,
     RedditCollectorModule,
     EntityResolverModule,
     ExternalIntegrationsModule,
@@ -56,6 +55,7 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     SearchMetricsService,
     SearchQueryInterpretationService,
     OnDemandRequestService,
+    EngineCoverageService,
     SearchOrchestrationService,
     OnDemandPlaceholderCleanupService,
     OnDemandRequestUsersCleanupService,

@@ -319,7 +319,7 @@ export class RestaurantEntityMergeService {
         term: true,
         entityType: true,
         reason: true,
-        marketKey: true,
+        engineId: true,
         lastSeenAt: true,
         lastQueuedAt: true,
         resultRestaurantCount: true,
@@ -336,7 +336,7 @@ export class RestaurantEntityMergeService {
           term: request.term,
           entityType: request.entityType,
           reason: request.reason,
-          marketKey: request.marketKey,
+          engineId: request.engineId,
           entityIdentityKey: canonicalId,
         },
         select: {

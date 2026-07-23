@@ -114,12 +114,12 @@ Restaurant rows can now include:
 - `matchedTags`: the matched restaurant-level tags returned for card/profile rendering
 - `hasMenuItems`: explicit guard showing the restaurant still has menu-item inventory backing eligibility
 
-When a query supplies food entities/attributes but returns fewer than `ON_DEMAND_MIN_RESULTS` restaurants, the API can automatically enqueue keyword search cycles for the overlapping `collectableMarketKeys` resolved from the viewport. A market only counts as collectable when it has an active linked community target in `collection_communities`; markets without linked communities still accumulate search demand and support polls, but they do not enqueue Reddit collection work.
+When a query supplies food entities/attributes but returns fewer than `ON_DEMAND_MIN_RESULTS` restaurants, the API records the ask and — when at least one ENGINE's territory covers the viewport (engine territory = derived union of member-place grounds, §5) — enqueues per-engine keyword targets. An ask with no covering engine mints no queue row but still records its `on_demand_ask` signal with the viewport geo; the collector's unmet family reads those asks from the ledger by territory (the uncovered-ask lane).
 
 Search responses now distinguish two different coverage concepts in metadata:
 
 - `resultCoverageStatus`: whether the returned results fully satisfied the search intent (`full`, `partial`, `unresolved`)
-- `marketResolutionStatus`: whether the viewport resolved to one market, multiple overlapping markets, no market, or an error (`resolved`, `multi_market`, `no_market`, `error`)
+- `engineCoverageShare` / `engineCoverage`: raw share of the viewport covered by engine territories, plus the engines present (no thresholds — consumers judge)
 
 ## POST /search/plan
 

@@ -24,7 +24,7 @@ import {
   LINKER_MIN_FLOOR,
 } from './linker-calibration.generated';
 import { OnDemandRequestService } from './on-demand-request.service';
-import { MarketRegistryService } from '../markets/market-registry.service';
+import { EngineCoverageService } from './engine-coverage.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
 const METERS_PER_MILE = 1609.34;
@@ -40,16 +40,6 @@ interface InterpretationResult {
   onDemandEtaMs?: number;
   phaseTimings?: Record<string, number>;
 }
-
-// What interpretation actually READS from the old market resolver: the
-// restaurant-scoping marketKey and the on-demand collection scope. The
-// naming/header outputs died with master plan §22 cut 3 (the header derives
-// from the Place Catalog in SearchService); the remaining fields die with
-// the collection-trigger cuts (§22 items 6–7).
-type SearchInterpretationMarketContext = {
-  marketKey: string | null;
-  collectableMarketKeys: string[];
-};
 
 // Confident-link thresholds for the shared-recall linking. No LLM on this
 // query-time path, so linking is conservative — a strong LEXICAL signal is
@@ -96,7 +86,7 @@ export class SearchQueryInterpretationService {
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly onDemandRequestService: OnDemandRequestService,
-    private readonly marketRegistry: MarketRegistryService,
+    private readonly engineCoverage: EngineCoverageService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -158,17 +148,13 @@ export class SearchQueryInterpretationService {
       foods: cleanedAnalysis.foods,
     });
 
-    const resolvedMarket = await this.resolveSearchMarketContext(request);
     const { inputs: resolutionInputs, excludedIngredientTempIds } =
-      this.buildResolutionInputs(cleanedAnalysis, resolvedMarket.marketKey);
+      this.buildResolutionInputs(cleanedAnalysis);
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
     const resolutionResultList: EntityResolutionResult[] =
       resolutionInputs.length
-        ? await this.linkViaHybridRecall(
-            resolutionInputs,
-            resolvedMarket.collectableMarketKeys,
-          )
+        ? await this.linkViaHybridRecall(resolutionInputs)
         : [];
     entityResolutionMs = performance.now() - resolutionStart;
 
@@ -207,11 +193,14 @@ export class SearchQueryInterpretationService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandMarketKey = resolvedMarket.marketKey
-        ? resolvedMarket.marketKey.trim().toLowerCase()
-        : '';
-      const collectableMarketKeys = viewportEligible
-        ? resolvedMarket.collectableMarketKeys
+      // ENGINE re-key (§10/§11): queue targets are the engines whose
+      // territory covers the ask's viewport. No covering engine → no queue
+      // row, but the on_demand_ask signal (viewport geo) still records —
+      // the ledger's territory read serves the uncovered-ask lane.
+      const engineIds = viewportEligible
+        ? (
+            await this.engineCoverage.resolveViewportCoverage(request.bounds)
+          ).engines.map((engine) => engine.engineId)
         : [];
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
@@ -226,18 +215,15 @@ export class SearchQueryInterpretationService {
       }
 
       const reason: OnDemandReason = 'unresolved';
-      const unresolvedRequests = onDemandMarketKey
-        ? unresolved.flatMap((group) =>
-            group.terms.map((term) => ({
-              term,
-              entityType: group.type,
-              reason,
-              marketKey: onDemandMarketKey,
-              collectableMarketKeys,
-              metadata: { source: 'natural_query', unresolvedType: group.type },
-            })),
-          )
-        : [];
+      const unresolvedRequests = unresolved.flatMap((group) =>
+        group.terms.map((term) => ({
+          term,
+          entityType: group.type,
+          reason,
+          engineIds,
+          metadata: { source: 'natural_query', unresolvedType: group.type },
+        })),
+      );
 
       if (unresolvedRequests.length > 0) {
         const recordedRequests =
@@ -248,7 +234,7 @@ export class SearchQueryInterpretationService {
           );
         onDemandQueued =
           viewportEligible &&
-          collectableMarketKeys.length > 0 &&
+          engineIds.length > 0 &&
           recordedRequests.length > 0;
       }
       onDemandMs = performance.now() - onDemandStart;
@@ -275,10 +261,7 @@ export class SearchQueryInterpretationService {
     };
   }
 
-  private buildResolutionInputs(
-    analysis: LLMSearchQueryAnalysis,
-    marketKey: string | null,
-  ): {
+  private buildResolutionInputs(analysis: LLMSearchQueryAnalysis): {
     inputs: EntityResolutionInput[];
     /** Which ingredient-typed inputs belong to the EXCLUSION lane — same
      *  vocabulary and linker as the include lane, different downstream verb. */
@@ -286,8 +269,6 @@ export class SearchQueryInterpretationService {
   } {
     const inputs: EntityResolutionInput[] = [];
 
-    const normalizedMarketKey =
-      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : null;
     const addEntries = (names: string[], entityType: EntityType): string[] => {
       const seen = new Set<string>();
       const tempIds: string[] = [];
@@ -310,7 +291,7 @@ export class SearchQueryInterpretationService {
           originalText: normalized,
           entityType,
           aliases: [normalized],
-          marketKey: entityType === 'restaurant' ? normalizedMarketKey : null,
+          marketKey: null,
         });
       }
       return tempIds;
@@ -339,13 +320,12 @@ export class SearchQueryInterpretationService {
    */
   private async linkViaHybridRecall(
     inputs: EntityResolutionInput[],
-    collectableMarketKeys: string[] = [],
   ): Promise<EntityResolutionResult[]> {
     return this.mapLimit(
       inputs,
       HYBRID_LINK_CONCURRENCY,
       async (input): Promise<EntityResolutionResult> => {
-        const live = await this.linkOneInput(input, collectableMarketKeys);
+        const live = await this.linkOneInput(input);
         if (live.entityId || input.entityType !== 'food') {
           return live;
         }
@@ -355,10 +335,10 @@ export class SearchQueryInterpretationService {
         // always win (fallback only). When BOTH fail, return the original
         // food-typed miss so unresolved routing / on-demand collection sees
         // the term as the food the query model classified it as.
-        const ingredientLink = await this.linkOneInput(
-          { ...input, entityType: 'ingredient' },
-          collectableMarketKeys,
-        );
+        const ingredientLink = await this.linkOneInput({
+          ...input,
+          entityType: 'ingredient',
+        });
         return ingredientLink.entityId ? ingredientLink : live;
       },
     );
@@ -366,7 +346,6 @@ export class SearchQueryInterpretationService {
 
   private async linkOneInput(
     input: EntityResolutionInput,
-    collectableMarketKeys: string[],
   ): Promise<EntityResolutionResult> {
     const term = input.normalizedName?.trim() ?? '';
     const unmatched: EntityResolutionResult = {
@@ -383,13 +362,10 @@ export class SearchQueryInterpretationService {
       [input.entityType],
       HYBRID_LINK_SHORTLIST_K,
       {
-        marketKey: input.marketKey,
-        // Step 9: recall spans the viewport-overlapping markets (falls back to
-        // the single market when the set is empty) so a restaurant across a
-        // market line is still linkable.
-        marketKeys: collectableMarketKeys.length
-          ? collectableMarketKeys
-          : undefined,
+        // Market scoping DIED with the election (leg 2): recall is global —
+        // the conservative exact/0.82 lexical rule plus viewport-filtered
+        // results bound the damage of a distant-city restaurant link, and
+        // territory-as-retrieval-prior is the §13 replacement.
         // Dense OFF: the link decider reads only sparseSimilarity, so dense
         // candidates are never selectable here — the dense call was measured
         // pure dead cost. Re-enable when a decider can consume dense evidence.
@@ -650,35 +626,6 @@ export class SearchQueryInterpretationService {
         request.submissionContext.selectedEntityId &&
         request.submissionContext.selectedEntityType,
     );
-  }
-
-  private async resolveSearchMarketContext(
-    request: NaturalSearchRequestDto,
-  ): Promise<SearchInterpretationMarketContext> {
-    try {
-      const resolved = await this.marketRegistry.resolveViewportCoverage({
-        bounds: request.bounds ?? null,
-        userLocation: request.userLocation ?? null,
-        mode: 'search',
-        ensureLocalityMarkets: true,
-      });
-
-      return {
-        marketKey: resolved.market?.marketKey ?? null,
-        collectableMarketKeys: resolved.collectableMarketKeys,
-      };
-    } catch (error) {
-      this.logger.debug('Unable to resolve search market context', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return {
-        marketKey: null,
-        collectableMarketKeys: [],
-      };
-    }
   }
 
   private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {

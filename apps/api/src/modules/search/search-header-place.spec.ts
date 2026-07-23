@@ -85,27 +85,21 @@ function createExecutor() {
   };
 }
 
-// The old resolver still runs for the OTHER consumers (marketKey scoping,
-// collection triggers, candidate CTA fields) — its NAMES are planted here as
-// tripwires: if the header ever reads the election again, the assertions on
-// displayMarketName go RED.
-function createMarketRegistry() {
+// ENGINE-COVERAGE re-key (markets extermination leg 2): the market election
+// is DEAD — the search path resolves engine territory coverage instead. A
+// tripwire NAME is planted on the engine so the displayMarketName assertions
+// go RED if the header ever reads coverage output as a name source.
+function createEngineCoverage() {
   return {
     resolveViewportCoverage: jest.fn().mockResolvedValue({
-      market: {
-        marketKey: 'austin',
-        marketShortName: 'OLD-RESOLVER-SHORT-NAME',
-        marketName: 'OLD-RESOLVER-NAME',
-      },
-      status: 'resolved',
-      resolution: {
-        candidateLocalityName: 'Resolver Locality',
-        candidateBoundaryProvider: 'tomtom',
-        candidateBoundaryId: 'boundary-1',
-        candidateBoundaryType: 'locality',
-      },
-      markets: [{ marketKey: 'austin' }],
-      collectableMarketKeys: ['austin'],
+      share: 0.5,
+      engines: [
+        {
+          engineId: '99999999-9999-9999-9999-999999999999',
+          name: 'ENGINE-NAME-NEVER-A-HEADER',
+          share: 0.5,
+        },
+      ],
     }),
   };
 }
@@ -139,7 +133,7 @@ function createHarness(options: {
     { recordSearchExecution: jest.fn() } as never, // searchMetrics
     {} as never, // textSanitizer (no entities on these requests)
     {} as never, // prisma (no impression targets → search log untouched)
-    createMarketRegistry() as never, // marketRegistry
+    createEngineCoverage() as never, // engineCoverage
     {} as never, // restaurantStatusService
     signals as never, // signals
     {} as never, // signalDemandRead (recent-searches reader; unused here)
@@ -302,24 +296,39 @@ describe('§2 reconciler wiring (the growth machine is live at the search chokep
   });
 });
 
-describe('§22 cut 3 contract (wire shape unchanged; only the header source moved)', () => {
-  it('the metadata keeps every market field with resolver-derived values — and the header no longer reads the election', async () => {
+describe('leg 2 contract: the search metadata carries engine coverage and NOTHING market-shaped', () => {
+  it('metadata = catalog header name + engine coverage share; every market field is ABSENT', async () => {
     const { service } = createHarness({
       placesInView: [placeInView('Austin', VIEW, 1)],
     });
     const response = await service.runQuery(buildRequest());
     expect(response.metadata).toMatchObject({
-      marketKey: 'austin',
-      // The frozen field NAME carries the catalog place name — were the old
-      // election still wired, this would be 'OLD-RESOLVER-SHORT-NAME'.
+      // The frozen field NAME carries the catalog place name — were coverage
+      // ever read as a name source, this would be the tripwire engine name.
       displayMarketName: 'Austin',
-      marketResolutionStatus: 'resolved',
-      candidateLocalityName: 'Resolver Locality',
-      candidateBoundaryProvider: 'tomtom',
-      candidateBoundaryId: 'boundary-1',
-      candidateBoundaryType: 'locality',
-      attributionMarketKeys: ['austin'],
-      collectableMarketKeys: ['austin'],
+      engineCoverageShare: 0.5,
+      engineCoverage: [
+        {
+          engineId: '99999999-9999-9999-9999-999999999999',
+          name: 'ENGINE-NAME-NEVER-A-HEADER',
+          share: 0.5,
+        },
+      ],
     });
+    // Extermination proof: any market read on the search metadata is a
+    // remnant. The fields must be ABSENT, not null.
+    const metadata = response.metadata as unknown as Record<string, unknown>;
+    for (const deadField of [
+      'marketKey',
+      'marketResolutionStatus',
+      'candidateLocalityName',
+      'candidateBoundaryProvider',
+      'candidateBoundaryId',
+      'candidateBoundaryType',
+      'attributionMarketKeys',
+      'collectableMarketKeys',
+    ]) {
+      expect(deadField in metadata).toBe(false);
+    }
   });
 });

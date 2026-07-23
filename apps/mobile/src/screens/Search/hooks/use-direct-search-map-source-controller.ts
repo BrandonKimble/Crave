@@ -2357,7 +2357,6 @@ export const useDirectSearchMapSourceController = ({
               shortcutCoverageSearchRequestId: searchRequestId,
               shortcutCoverageBoundsKey: null,
               shortcutCoverageActiveTab: activeTab,
-              shortcutCoverageMarketKey: mountedResults?.metadata?.marketKey ?? null,
               shortcutCoverageFetchReason: null,
               shortcutCoverageInFlightCount,
               shortcutCoverageSupersededCount: 0,

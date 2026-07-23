@@ -94,7 +94,11 @@ function createHarness(
     {} as never, // searchMetrics
     {} as never, // textSanitizer
     searchPrisma as never, // prisma
-    {} as never, // marketRegistry
+    {
+      resolveViewportCoverage: jest
+        .fn()
+        .mockResolvedValue({ share: 0, engines: [] }),
+    } as never, // engineCoverage
     {} as never, // restaurantStatusService
     signals, // signals ledger (§3 — the ONE write path)
     {} as never, // signalDemandRead (recent-searches reader; unused here)

@@ -13,6 +13,7 @@ const ACTOR_ID = '22222222-2222-2222-2222-222222222222';
 const ENTITY_ID = '33333333-3333-3333-3333-333333333333';
 const SEARCH_REQUEST_ID = '55555555-5555-5555-5555-555555555555';
 const PLACE_ID = '44444444-4444-4444-4444-444444444444';
+const ENGINE_ID = '66666666-6666-6666-6666-666666666666';
 
 function createLogger() {
   const logger = {
@@ -81,8 +82,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
           entityType: 'food' as never,
           reason: 'unresolved' as never,
           entityId: null,
-          marketKey: 'austin',
-          collectableMarketKeys: ['austin'],
+          engineIds: [ENGINE_ID],
         },
       ],
       { userId: USER_ID },
@@ -140,8 +140,7 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
           entityType: 'food' as never,
           reason: 'low_result' as never,
           entityId: ENTITY_ID,
-          marketKey: 'austin',
-          collectableMarketKeys: ['austin'],
+          engineIds: [ENGINE_ID],
         },
       ],
       { userId: USER_ID },
@@ -160,6 +159,63 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
     expect(data.subjectId).toBe(ENTITY_ID);
     expect(data.subjectText).toBe('birria');
     expect(data.meta).toMatchObject({ reason: 'low_result' });
+  });
+
+  it('ENGINE queueing (leg 2): one queue row per covering engine, keyed by engineId', async () => {
+    const { service, tx } = createHarness();
+    const ENGINE_ID_2 = '77777777-7777-7777-7777-777777777777';
+
+    await service.recordRequests(
+      [
+        {
+          term: 'khachapuri',
+          entityType: 'food' as never,
+          reason: 'unresolved' as never,
+          entityId: null,
+          engineIds: [ENGINE_ID, ENGINE_ID_2],
+        },
+      ],
+      { userId: USER_ID },
+      {},
+    );
+    await flush();
+
+    expect(tx.onDemandRequest.upsert).toHaveBeenCalledTimes(2);
+    const engineIds = tx.onDemandRequest.upsert.mock.calls.map(
+      (call: [{ where: Record<string, { engineId: string }> }]) =>
+        call[0].where.term_entityType_engineId_entityIdentityKey.engineId,
+    );
+    expect(engineIds.sort()).toEqual([ENGINE_ID, ENGINE_ID_2].sort());
+  });
+
+  it('the UNCOVERED-ASK lane: no covering engine mints NO queue row, but the on_demand_ask signal (viewport geo) still records for the ledger territory read', async () => {
+    const { service, signalsPrisma, tx } = createHarness();
+
+    await service.recordRequests(
+      [
+        {
+          term: 'khachapuri',
+          entityType: 'food' as never,
+          reason: 'unresolved' as never,
+          entityId: null,
+          engineIds: [],
+        },
+      ],
+      { userId: USER_ID },
+      {
+        bounds: {
+          northEast: { lat: 30.4, lng: -97.6 },
+          southWest: { lat: 30.1, lng: -97.9 },
+        },
+      },
+    );
+    await flush();
+
+    expect(tx.onDemandRequest.upsert).not.toHaveBeenCalled();
+    expect(signalsPrisma.signal.create).toHaveBeenCalledTimes(1);
+    const data = signalsPrisma.signal.create.mock.calls[0][0].data;
+    expect(data.kind).toBe('on_demand_ask');
+    expect(data.geoMinLat).toBe(30.1);
   });
 });
 

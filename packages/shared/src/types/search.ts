@@ -331,15 +331,15 @@ export interface SearchResponseMetadata {
   dataReadyFrom?: 'backend' | 'cache' | 'in_flight';
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
-  marketKey?: string | null;
+  /** §2 header law: catalog-derived display name; FIELD name is the frozen
+   *  wire contract until the mobile-side header cut. */
   displayMarketName?: string | null;
-  marketResolutionStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error';
-  candidateLocalityName?: string | null;
-  candidateBoundaryProvider?: string | null;
-  candidateBoundaryId?: string | null;
-  candidateBoundaryType?: string | null;
-  attributionMarketKeys?: string[];
-  collectableMarketKeys?: string[];
+  /** ENGINE-COVERAGE (markets extermination leg 2): raw share of the
+   *  viewport covered by engine territories (union across engines, 0..1).
+   *  No thresholds — consumers judge per their own law. */
+  engineCoverageShare?: number;
+  /** Engines whose territory intersects the viewport, with per-engine share. */
+  engineCoverage?: Array<{ engineId: string; name: string; share: number }>;
   emptyQueryMessage?: string;
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;

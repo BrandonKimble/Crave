@@ -38,8 +38,8 @@ import {
   OnDemandRequestService,
   OnDemandRequestInput,
 } from './on-demand-request.service';
+import { EngineCoverageService } from './engine-coverage.service';
 import { SearchMetricsService } from './search-metrics.service';
-import { MarketRegistryService } from '../markets/market-registry.service';
 import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
@@ -147,17 +147,6 @@ interface StageExecutionResult {
   timings: { planMs: number; executeMs: number };
 }
 
-type SearchMarketContext = {
-  marketKey: string | null;
-  marketResolutionStatus: 'resolved' | 'multi_market' | 'no_market' | 'error';
-  candidateLocalityName: string | null;
-  candidateBoundaryProvider: string | null;
-  candidateBoundaryId: string | null;
-  candidateBoundaryType: string | null;
-  attributionMarketKeys: string[];
-  collectableMarketKeys: string[];
-};
-
 type SearchExplainInput = {
   request: SearchQueryRequestDto;
   pagination: PaginationState;
@@ -221,7 +210,7 @@ export class SearchService {
     private readonly searchMetrics: SearchMetricsService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
-    private readonly marketRegistry: MarketRegistryService,
+    private readonly engineCoverage: EngineCoverageService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signals: SignalsService,
     private readonly signalDemandRead: SignalDemandReadService,
@@ -357,8 +346,11 @@ export class SearchService {
       // submit is real viewport attention.
       return this.runSeeLocationsQuery(request, searchRequestId, start);
     }
-    const [resolvedMarket, displayPlaceName] = await Promise.all([
-      this.resolveSearchMarketContext(request),
+    // ENGINE-COVERAGE re-key (leg 2): coverage = engine territory ground
+    // coverage of the viewport (§5 derived-union territory through the §2.6
+    // ground law). Raw share + engines present; no market election exists.
+    const [engineViewportCoverage, displayPlaceName] = await Promise.all([
+      this.engineCoverage.resolveViewportCoverage(request.bounds ?? null),
       this.resolveDisplayPlaceName(view),
     ]);
 
@@ -701,10 +693,9 @@ export class SearchService {
         const viewportEligible = this.isViewportEligibleForOnDemand(
           request.bounds,
         );
-        const onDemandMarketContext = {
-          marketKey: resolvedMarket.marketKey,
-          collectableMarketKeys: viewportEligible
-            ? resolvedMarket.collectableMarketKeys
+        const onDemandEngineContext = {
+          engineIds: viewportEligible
+            ? engineViewportCoverage.engines.map((engine) => engine.engineId)
             : [],
         };
 
@@ -720,7 +711,7 @@ export class SearchService {
               restaurantCount: totalRestaurantResults,
               dishCount: totalFoodResults,
               viewportEligible,
-              onDemandMarketContext,
+              onDemandEngineContext,
               expansionSignals: expansionAnalysisMetadata,
             })
           : { queued: false, etaMs: undefined };
@@ -754,23 +745,17 @@ export class SearchService {
           pageSize: pagination.pageSize,
           resultCoverageStatus,
           primaryFoodTerm: primaryFoodTerm || undefined,
-          marketKey: resolvedMarket.marketKey,
-          // §2 header law (master plan §22 cut 3): the VALUE now comes from
-          // the Place Catalog (resolveDisplayPlaceName); the FIELD name is the
+          // §2 header law (master plan §22 cut 3): the VALUE comes from the
+          // Place Catalog (resolveDisplayPlaceName); the FIELD name is the
           // frozen wire contract until the mobile-side cut.
           displayMarketName: displayPlaceName,
-          marketResolutionStatus: resolvedMarket.marketResolutionStatus,
-          candidateLocalityName: resolvedMarket.candidateLocalityName,
-          candidateBoundaryProvider: resolvedMarket.candidateBoundaryProvider,
-          candidateBoundaryId: resolvedMarket.candidateBoundaryId,
-          candidateBoundaryType: resolvedMarket.candidateBoundaryType,
-          attributionMarketKeys:
-            resolvedMarket.attributionMarketKeys.length > 0
-              ? resolvedMarket.attributionMarketKeys
-              : undefined,
-          collectableMarketKeys:
-            resolvedMarket.collectableMarketKeys.length > 0
-              ? resolvedMarket.collectableMarketKeys
+          // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
+          // viewport + the engines present. Consumers judge per their own
+          // law (§16 — no threshold baked here); nothing market-shaped.
+          engineCoverageShare: engineViewportCoverage.share,
+          engineCoverage:
+            engineViewportCoverage.engines.length > 0
+              ? engineViewportCoverage.engines
               : undefined,
           onDemandQueued: onDemandQueued || undefined,
           onDemandEtaMs,
@@ -1020,10 +1005,9 @@ export class SearchService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandMarketContext = {
-        marketKey: resolvedMarket.marketKey,
-        collectableMarketKeys: viewportEligible
-          ? resolvedMarket.collectableMarketKeys
+      const onDemandEngineContext = {
+        engineIds: viewportEligible
+          ? engineViewportCoverage.engines.map((engine) => engine.engineId)
           : [],
       };
 
@@ -1039,7 +1023,7 @@ export class SearchService {
             restaurantCount: strictRestaurantExactCount,
             dishCount: strictDishExactCount,
             viewportEligible,
-            onDemandMarketContext,
+            onDemandEngineContext,
             expansionSignals: expansionAnalysisMetadata,
             relaxation: {
               stage: selectedStage,
@@ -1100,22 +1084,14 @@ export class SearchService {
         pageSize: pagination.pageSize,
         resultCoverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
-        marketKey: resolvedMarket.marketKey,
         // §2 header law: catalog-derived value, frozen field name (see the
         // no-relaxation metadata site).
         displayMarketName: displayPlaceName,
-        marketResolutionStatus: resolvedMarket.marketResolutionStatus,
-        candidateLocalityName: resolvedMarket.candidateLocalityName,
-        candidateBoundaryProvider: resolvedMarket.candidateBoundaryProvider,
-        candidateBoundaryId: resolvedMarket.candidateBoundaryId,
-        candidateBoundaryType: resolvedMarket.candidateBoundaryType,
-        attributionMarketKeys:
-          resolvedMarket.attributionMarketKeys.length > 0
-            ? resolvedMarket.attributionMarketKeys
-            : undefined,
-        collectableMarketKeys:
-          resolvedMarket.collectableMarketKeys.length > 0
-            ? resolvedMarket.collectableMarketKeys
+        // ENGINE-COVERAGE (leg 2): see the no-relaxation metadata site.
+        engineCoverageShare: engineViewportCoverage.share,
+        engineCoverage:
+          engineViewportCoverage.engines.length > 0
+            ? engineViewportCoverage.engines
             : undefined,
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs: undefined,
@@ -2369,9 +2345,8 @@ export class SearchService {
     restaurantCount: number;
     dishCount: number;
     viewportEligible: boolean;
-    onDemandMarketContext: {
-      marketKey: string | null;
-      collectableMarketKeys: string[];
+    onDemandEngineContext: {
+      engineIds: string[];
     };
     expansionSignals?: Record<string, unknown> | null;
     relaxation?: {
@@ -2383,7 +2358,7 @@ export class SearchService {
     try {
       const lowResultRequests = this.buildLowResultRequests(
         params.request,
-        params.onDemandMarketContext,
+        params.onDemandEngineContext,
       );
       if (!lowResultRequests.length) {
         return { queued: false, etaMs: undefined };
@@ -2441,7 +2416,7 @@ export class SearchService {
 
       if (
         params.viewportEligible &&
-        params.onDemandMarketContext.collectableMarketKeys.length > 0
+        params.onDemandEngineContext.engineIds.length > 0
       ) {
         const recorded = await record();
         return { queued: recorded.length > 0, etaMs: undefined };
@@ -2885,52 +2860,6 @@ export class SearchService {
     return { ...value };
   }
 
-  private async resolveSearchMarketContext(
-    request: SearchQueryRequestDto,
-  ): Promise<SearchMarketContext> {
-    try {
-      const resolved = await this.marketRegistry.resolveViewportCoverage({
-        bounds: request.bounds ?? null,
-        userLocation: request.userLocation ?? null,
-        mode: 'search',
-        ensureLocalityMarkets: true,
-      });
-
-      return {
-        marketKey: resolved.market?.marketKey ?? null,
-        marketResolutionStatus: resolved.status,
-        candidateLocalityName:
-          resolved.resolution.candidateLocalityName ?? null,
-        candidateBoundaryProvider:
-          resolved.resolution.candidateBoundaryProvider ?? null,
-        candidateBoundaryId: resolved.resolution.candidateBoundaryId ?? null,
-        candidateBoundaryType:
-          resolved.resolution.candidateBoundaryType ?? null,
-        attributionMarketKeys: resolved.markets.map(
-          (market) => market.marketKey,
-        ),
-        collectableMarketKeys: resolved.collectableMarketKeys,
-      };
-    } catch (error) {
-      this.logger.debug('Unable to resolve search market context', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return {
-        marketKey: null,
-        marketResolutionStatus: 'error',
-        candidateLocalityName: null,
-        candidateBoundaryProvider: null,
-        candidateBoundaryId: null,
-        candidateBoundaryType: null,
-        attributionMarketKeys: [],
-        collectableMarketKeys: [],
-      };
-    }
-  }
-
   /**
    * Request viewport bounds → wrap-aware GeoBbox (place-geo R1: minLng >
    * maxLng means the viewport crosses the antimeridian). SW/NE longitudes map
@@ -3239,22 +3168,14 @@ export class SearchService {
 
   private buildLowResultRequests(
     request: SearchQueryRequestDto,
-    marketContext: {
-      marketKey: string | null;
-      collectableMarketKeys: string[];
+    engineContext: {
+      engineIds: string[];
     },
   ): OnDemandRequestInput[] {
-    const marketKey =
-      typeof marketContext.marketKey === 'string'
-        ? marketContext.marketKey.trim().toLowerCase()
-        : '';
-    if (!marketKey) {
-      return [];
-    }
-    const collectableMarketKeys = Array.from(
+    const engineIds = Array.from(
       new Set(
-        marketContext.collectableMarketKeys
-          .map((marketKey) => marketKey.trim().toLowerCase())
+        engineContext.engineIds
+          .map((engineId) => engineId.trim())
           .filter(Boolean),
       ),
     );
@@ -3290,8 +3211,7 @@ export class SearchService {
           entityType,
           reason,
           entityId,
-          marketKey,
-          collectableMarketKeys,
+          engineIds,
           metadata: entity.originalText
             ? { originalText: entity.originalText }
             : undefined,

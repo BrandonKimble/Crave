@@ -885,7 +885,6 @@ const createSearchMountedResultsDataIdentityKey = (
     `request:${metadata.searchRequestId ?? ''}`,
     `query:${metadata.sourceQuery ?? ''}`,
     `food:${metadata.primaryFoodTerm ?? ''}`,
-    `market:${metadata.marketKey ?? ''}`,
     `page:${metadata.page ?? ''}`,
     `dishes:${results.dishes?.length ?? 0}`,
     `restaurants:${results.restaurants?.length ?? 0}`,

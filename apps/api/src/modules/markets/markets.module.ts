@@ -26,10 +26,12 @@ import { IpLocationService } from './ip-location.service';
  *    launch ladder re-keys its bottom rung to the place catalog.
  *  - /markets/active: ListDetail "Market" chip vocabulary — dies when that
  *    chip re-keys to the place catalog (city slice re-key).
- *  - resolveViewportCoverage (search / interpretation / autocomplete):
- *    collectable-coverage gating for on-demand + the mobile coverage notice
- *    — dies when coverage re-keys to ENGINES (source-centric collector
- *    territory), a §10/§11 follow-up.
+ *  - resolveViewportCoverage: KILLED 2026-07-22 (ENGINE-COVERAGE re-key,
+ *    markets extermination leg 2) — search/interpretation coverage is
+ *    EngineCoverageService (engine territory grounds ∩ viewport, §5/§2.6);
+ *    on-demand queues key off engineId; the autocomplete poll lane scopes
+ *    by place ground ∩ viewport; resolveCollectableMarketKey(s) + the whole
+ *    viewport-coverage/bootstrap support path deleted with it.
  *  - resolveOrEnsureForLocation + boundary bootstrap: entity market-presence
  *    stamping in enrichment — dies with the §13 territory-as-retrieval-prior
  *    re-key (presence → place geometry).
@@ -49,6 +51,14 @@ import { IpLocationService } from './ip-location.service';
  *    membership; the dispatch path reads no markets. notification_devices
  *    .city column DROPPED 2026-07-20 (legacy-poll-expiry leg).
  * core_markets itself drops only after ALL of the above are gone.
+ *
+ * POST-LEG-2 SURVIVOR SET (ratified target: {ip ladder, ListDetail chip,
+ * polls gazetteer scope, core_markets}); still-standing §13 remnants beyond
+ * that target are resolveOrEnsureForLocation (enrichment presence stamping)
+ * and resolveMarketKeyForCommunity / listCommunityMarketTargets (mention
+ * market provenance) — both die with the §13 territory-as-retrieval-prior
+ * re-key (legs 3-4), which then also drops core_entity_market_presence and
+ * polls.market_key.
  */
 @Module({
   imports: [HttpModule, PrismaModule, SharedModule, MetricsModule],

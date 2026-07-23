@@ -32,7 +32,6 @@ export class SearchEntityExpansionService {
     terms: string[];
     entityTypes: EntityType[];
     limit: number;
-    marketKey?: string | null;
   }): Promise<ExpandedEntityMatch[]> {
     const normalizedTerms = options.terms
       .map((term) => term.trim().toLowerCase())
@@ -49,10 +48,6 @@ export class SearchEntityExpansionService {
       return [];
     }
 
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string'
-        ? options.marketKey.trim().toLowerCase()
-        : null;
     const limit = Math.max(1, Math.min(options.limit, 50));
     const perTermLimit = Math.max(3, Math.ceil(limit / uniqueTerms.length) + 2);
 
@@ -63,7 +58,6 @@ export class SearchEntityExpansionService {
         uniqueTerms,
         entityTypes,
         perTermLimit,
-        { marketKey: normalizedMarketKey },
       );
 
       for (const term of uniqueTerms) {

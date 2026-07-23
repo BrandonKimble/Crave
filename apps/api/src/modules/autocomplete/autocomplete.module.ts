@@ -8,7 +8,6 @@ import { AutocompleteController } from './autocomplete.controller';
 import { EntitySearchService } from './entity-search.service';
 import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
-import { MarketsModule } from '../markets/markets.module';
 import { SignalsModule } from '../signals/signals.module';
 
 @Module({
@@ -19,7 +18,6 @@ import { SignalsModule } from '../signals/signals.module';
     PrismaModule,
     IdentityModule,
     EntityTextSearchModule,
-    MarketsModule,
     SignalsModule,
   ],
   controllers: [AutocompleteController],

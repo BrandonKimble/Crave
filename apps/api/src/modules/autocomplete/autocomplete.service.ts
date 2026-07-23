@@ -20,7 +20,8 @@ import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
 import { MetricsService } from '../metrics/metrics.service';
-import { MarketRegistryService } from '../markets/market-registry.service';
+import { viewportEnvelopeSql } from '../search/engine-coverage.service';
+import type { MapBoundsDto } from '../search/dto/search-query.dto';
 import {
   SignalDemandReadService,
   type RestaurantViewStatsRow,
@@ -110,7 +111,6 @@ export class AutocompleteService {
     private readonly searchQuerySuggestionService: SearchQuerySuggestionService,
     private readonly searchPopularityService: SearchPopularityService,
     private readonly restaurantStatusService: RestaurantStatusService,
-    private readonly marketRegistry: MarketRegistryService,
     private readonly signalDemandRead: SignalDemandReadService,
     metricsService: MetricsService,
   ) {
@@ -193,8 +193,6 @@ export class AutocompleteService {
       const attributeEntityTypes = this.resolveAttributeEntityTypes(dto);
       const cacheEntityTypes = [...entityTypes, ...attributeEntityTypes];
       const primaryEntityType = entityTypes[0] ?? EntityType.food;
-      const marketScope = await this.resolveAutocompleteMarketScope(dto);
-      const marketKey = marketScope.marketKey;
 
       if (normalizedQuery.length < MIN_QUERY_LENGTH) {
         return {
@@ -210,7 +208,9 @@ export class AutocompleteService {
         user?.userId ?? null,
         cacheEntityTypes,
         normalizedQuery,
-        marketScope.cacheScopeKey,
+        // Market-election cache scoping DIED with leg 2 of the markets
+        // extermination — recall is global, so the cache scope is too.
+        'global',
         this.attributeLaneEnabled,
       );
       const cacheLookup = await this.getFromCache(cacheKey);
@@ -254,7 +254,6 @@ export class AutocompleteService {
                   normalizedQuery,
                   entityTypes,
                   Math.min(limit * entityTypes.length, limit * 3),
-                  { marketKey },
                 ),
               (seconds) => {
                 totalDbDurationSeconds += seconds;
@@ -268,7 +267,6 @@ export class AutocompleteService {
                   normalizedQuery,
                   attributeEntityTypes,
                   Math.max(limit, ATTRIBUTE_RESERVED_SLOTS * 6),
-                  { marketKey },
                 ),
               (seconds) => {
                 totalDbDurationSeconds += seconds;
@@ -301,7 +299,6 @@ export class AutocompleteService {
               normalizedQuery,
               primaryEntityType,
               limit,
-              marketKey,
             ),
           (seconds) => {
             totalDbDurationSeconds += seconds;
@@ -336,9 +333,9 @@ export class AutocompleteService {
             entityMatches: candidateMatches,
             querySuggestions,
             user,
-            marketKey,
             normalizedQuery,
             limit,
+            bounds: dto.bounds ?? null,
           }),
         (seconds) => {
           totalDbDurationSeconds += seconds;
@@ -511,9 +508,9 @@ export class AutocompleteService {
     entityMatches: AutocompleteMatchDto[];
     querySuggestions: QuerySuggestion[];
     user?: User;
-    marketKey?: string | null;
     normalizedQuery: string;
     limit: number;
+    bounds?: MapBoundsDto | null;
   }): Promise<{
     matches: AutocompleteMatchDto[];
     querySuggestionTexts: string[];
@@ -525,8 +522,8 @@ export class AutocompleteService {
     // overflow pool below (zero reserved slots, §8.1).
     const pollCandidatesPromise = this.fetchPollMatches(
       normalizedQuery,
-      params.marketKey ?? null,
       limit,
+      params.bounds ?? null,
     );
     const userCandidatesPromise = this.fetchUserMatches(normalizedQuery, limit);
 
@@ -570,10 +567,7 @@ export class AutocompleteService {
       ]),
     );
 
-    const attributeSupport = await this.loadAttributeSupport(
-      entityMatches,
-      params.marketKey ?? null,
-    );
+    const attributeSupport = await this.loadAttributeSupport(entityMatches);
 
     const scoredEntities = entityMatches.flatMap((match) => {
       const attributeSupportScore = this.isAttributeType(match.entityType)
@@ -784,12 +778,18 @@ export class AutocompleteService {
    */
   private async fetchPollMatches(
     normalizedQuery: string,
-    marketKey: string | null,
     limit: number,
+    bounds: MapBoundsDto | null,
   ): Promise<Array<{ match: AutocompleteMatchDto; score: number }>> {
+    // Leg 2 markets extermination: the lane's old market_key scope (fed by the
+    // per-search market election) is DEAD. Scope is now the §2.6 ground law
+    // directly — polls of places whose ground intersects the viewport (same
+    // place-scoped semantics as the polls feed). No bounds → lane off, exactly
+    // as the old no-market case.
+    const envelope = viewportEnvelopeSql(bounds);
     if (
       !this.pollLaneEnabled ||
-      !marketKey ||
+      !envelope ||
       normalizedQuery.trim().length < POLL_LANE_MIN_QUERY_LENGTH
     ) {
       return [];
@@ -799,14 +799,20 @@ export class AutocompleteService {
     const rows = await this.prisma.$queryRaw<
       Array<{ poll_id: string; question: string; sim: number }>
     >(Prisma.sql`
-      SELECT poll_id, question,
-             word_similarity(${normalizedQuery}, question) AS sim
-      FROM polls
-      WHERE state::text = 'active'
-        AND market_key = ${marketKey}
+      SELECT p.poll_id, p.question,
+             word_similarity(${normalizedQuery}, p.question) AS sim
+      FROM polls p
+      WHERE p.state::text = 'active'
+        AND p.place_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM place_geometries pg
+          WHERE pg.place_id = p.place_id
+            AND pg.geometry && ${envelope}
+            AND ST_Intersects(pg.geometry, ${envelope})
+        )
         AND (
-          question ILIKE ${likePattern}
-          OR word_similarity(${normalizedQuery}, question) >= ${POLL_LANE_MIN_SIMILARITY}
+          p.question ILIKE ${likePattern}
+          OR word_similarity(${normalizedQuery}, p.question) >= ${POLL_LANE_MIN_SIMILARITY}
         )
       ORDER BY sim DESC, launched_at DESC NULLS LAST
       LIMIT ${take}
@@ -948,7 +954,6 @@ export class AutocompleteService {
 
   private async loadAttributeSupport(
     matches: AutocompleteMatchDto[],
-    marketKey: string | null,
   ): Promise<Map<string, AttributeSupportScore>> {
     const attributeIds = Array.from(
       new Set(
@@ -979,33 +984,11 @@ export class AutocompleteService {
         }>
       >(Prisma.sql`
       WITH scoped_restaurants AS (
-        SELECT DISTINCT r.entity_id AS restaurant_id
+        -- Leg 2 markets extermination: the market-scoped arm is DEAD; corpus
+        -- support is global (matching the global demand lanes above).
+        SELECT r.entity_id AS restaurant_id
         FROM core_entities r
         WHERE r.type = 'restaurant'
-          AND (
-            ${marketKey}::text IS NULL
-            OR EXISTS (
-              SELECT 1
-              FROM core_restaurant_locations rl
-              JOIN core_markets m
-                ON LOWER(m.market_key) = LOWER(${marketKey}::text)
-               AND m.is_active = true
-               AND m.geometry IS NOT NULL
-              WHERE rl.restaurant_id = r.entity_id
-                AND rl.latitude IS NOT NULL
-                AND rl.longitude IS NOT NULL
-                AND ST_Covers(
-                  m.geometry,
-                  ST_SetSRID(
-                    ST_MakePoint(
-                      rl.longitude::double precision,
-                      rl.latitude::double precision
-                    ),
-                    4326
-                  )
-                )
-            )
-          )
       ),
       attribute_refs AS (
         SELECT UNNEST(r.restaurant_attributes) AS attribute_id, r.entity_id AS restaurant_id
@@ -1169,7 +1152,6 @@ export class AutocompleteService {
     normalizedQuery: string,
     entityType: EntityType,
     limit: number,
-    marketKey: string | null,
   ): Promise<AutocompleteMatchDto[]> {
     const resolution = await this.entityResolutionService.resolveBatch(
       [
@@ -1178,7 +1160,7 @@ export class AutocompleteService {
           normalizedName: normalizedQuery,
           originalText: dto.query,
           entityType,
-          marketKey: entityType === 'restaurant' ? marketKey : null,
+          marketKey: null,
         },
       ],
       {
@@ -1297,39 +1279,6 @@ export class AutocompleteService {
     }:${scopeKey}:${marketScopeKey}:attrs-${
       attributeLaneEnabled ? 'on' : 'off'
     }:${queryToken}`;
-  }
-
-  private async resolveAutocompleteMarketScope(
-    dto: AutocompleteRequestDto,
-  ): Promise<{ marketKey: string | null; cacheScopeKey: string }> {
-    if (!dto.bounds && !dto.userLocation) {
-      return { marketKey: null, cacheScopeKey: 'global' };
-    }
-
-    try {
-      const resolved = await this.marketRegistry.resolveViewportCoverage({
-        bounds: dto.bounds ?? null,
-        userLocation: dto.userLocation ?? null,
-        mode: 'search',
-        ensureLocalityMarkets: false,
-      });
-      const marketKey =
-        typeof resolved.market?.marketKey === 'string'
-          ? resolved.market.marketKey.trim().toLowerCase()
-          : '';
-      return {
-        marketKey: marketKey || null,
-        cacheScopeKey: marketKey ? `market:${marketKey}` : 'global',
-      };
-    } catch (error) {
-      this.logger.warn('Failed to resolve autocomplete market scope', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return { marketKey: null, cacheScopeKey: 'global' };
-    }
   }
 
   private elapsedSeconds(start: bigint): number {

@@ -405,14 +405,9 @@ export const useSearchRequests = () => {
           responsePage: response.metadata?.page ?? null,
           responseDishCount: response.dishes?.length ?? 0,
           responseRestaurantCount: response.restaurants?.length ?? 0,
-          responseMarketKey: response.metadata?.marketKey ?? null,
           responseDisplayMarketName: response.metadata?.displayMarketName ?? null,
-          responseMarketResolutionStatus: response.metadata?.marketResolutionStatus ?? null,
-          responseAttributionMarketKeys: response.metadata?.attributionMarketKeys ?? [],
-          responseCollectableMarketKeys: response.metadata?.collectableMarketKeys ?? [],
-          responseCandidateLocalityName: response.metadata?.candidateLocalityName ?? null,
-          responseCandidateBoundaryProvider: response.metadata?.candidateBoundaryProvider ?? null,
-          responseCandidateBoundaryType: response.metadata?.candidateBoundaryType ?? null,
+          responseEngineCoverageShare: response.metadata?.engineCoverageShare ?? null,
+          responseEngineCount: response.metadata?.engineCoverage?.length ?? 0,
         });
         return response;
       } catch (error) {

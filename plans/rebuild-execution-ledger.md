@@ -58,6 +58,23 @@ agent in flight at turn end so completion notifications chain turns.
 
 ## Progress detail
 
+- ENGINE-COVERAGE RE-KEY (markets extermination leg 2, 2026-07-22, uncommitted):
+  the per-search MARKET ELECTION is dead. resolveViewportCoverage + its whole
+  support path (collectable resolvers, viewport bootstrap, display-market
+  election, ~850 lines) deleted from market-registry; search/interpretation
+  coverage = new EngineCoverageService (engines member_place_ids + DAG
+  descendants → place_geometries ground ∩ viewport, ONE recursive-CTE PostGIS
+  query, raw share + engines present, NO thresholds §16). Search metadata:
+  marketKey/marketResolutionStatus/candidate*/attribution*/collectable\* fields
+  DELETED (shared type re-keyed to engineCoverageShare + engineCoverage;
+  displayMarketName survives as the frozen §2 header field). On-demand queue
+  keys off engineId (Prisma field re-key; DB column still named market_key —
+  rename migration deferred, needs API-restart window); uncovered asks mint no
+  queue row but still write the on_demand_ask signal (ledger territory read =
+  the uncovered-ask lane). Autocomplete market scope killed (global cache
+  scope; poll lane re-keyed to place-ground ∩ viewport). Mobile notice
+  re-keyed to share>0. API 732 green / mobile 396 green, tsc 2 pre-existing.
+
 - Leg 1 server DONE (build green, 283/283): builder market EXISTS deleted +
   signatures collapsed; aggregates CTE forced global (market branch deleted);
   coverage marketKey filter + 50k LIMIT deleted (dto field ACCEPT-AND-IGNORED

@@ -97,7 +97,11 @@ function createServiceHarness(options: { inViewLocationCount?: number } = {}) {
     {} as never, // searchMetrics
     {} as never, // textSanitizer
     {} as never, // prisma
-    {} as never, // marketRegistry
+    {
+      resolveViewportCoverage: jest
+        .fn()
+        .mockResolvedValue({ share: 0, engines: [] }),
+    } as never, // engineCoverage
     {} as never, // restaurantStatusService
     signals,
     {} as never, // signalDemandRead

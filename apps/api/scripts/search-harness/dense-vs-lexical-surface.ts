@@ -50,7 +50,6 @@ async function main(): Promise<void> {
         terms: [q],
         entityTypes: [EntityType.food],
         limit: K,
-        marketKey: DEFAULT_MARKET_KEY,
       });
 
       const denseById = new Map(denseHits.map((h) => [h.entityId, h]));

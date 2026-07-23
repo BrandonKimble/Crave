@@ -47,7 +47,6 @@ export class EntitySearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
   ): Promise<EntitySearchResult[]> {
     // Dense on ONLY after a committed word: ≥1 completed token AND the current
     // tail is empty (trailing space) or itself long enough to embed (≥3 chars).
@@ -68,7 +67,6 @@ export class EntitySearchService {
       entityTypes,
       limit,
       {
-        marketKey: options.marketKey,
         denseMode,
       },
     );
@@ -94,13 +92,11 @@ export class EntitySearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null } = {},
   ): Promise<EntitySearchResult[]> {
     const matches = await this.textSearch.searchAttributeAutocompleteEntities(
       term,
       entityTypes,
       limit,
-      options,
     );
     return matches.map((row) => ({
       entityId: row.entityId,
