@@ -789,6 +789,17 @@ RED-PROVEN with a throwaway service probe: 4 fetches in ~20s visible, ZERO acros
   RESIDENT_UNIT_RETENTION_LIMIT=3 stands as the bound and the commitment ledger
   (recordShellContentCommitment) stays the seam.
 
+**SEARCH SLICE, STEP 2 (2026-07-23): the leg's transition tax PRECISELY SCOPED.**
+Target-vs-bundle split probe (stripped): with a COLD search world, the search leg
+renders ZERO times during uninvolved root-tab hops — the tax exists ONLY when a
+search world is RESIDENT (post-submit): 13-41ms bundle-SUBTREE renders per
+transition (target-level accounts for ~2 of 6 — the drivers are the search-side
+stores' transition-coupled notifies: surface runtime / mounted store / route-gate
+selectors, e.g. the isFocused gate diffs). THE SEARCH SLICE'S OPENING, exact:
+attribute which search store notify fires during uninvolved hops with a world
+resident, then bring those notifies under the deferral discipline (the
+DEFERRED_PUBLICATION membership engages when this plumbing consolidates).
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
