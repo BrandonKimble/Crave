@@ -1128,3 +1128,18 @@ clean (normal scrolls unchanged). The rubber-band FEEL is NOT yet eye-verified �
 results list paginates so its true bottom is impractical in the rig; the deterministic
 surface is a short page's bottom, which is slice 4's territory (short-page floor) —
 verify both together with the owner's eye.
+
+### Boundary-physics slice 3 SHIPPED (2026-07-23): the top momentum-rebound
+Momentum arrival at the pinned top converts to a rubber-band impulse: each onScroll
+(all three handlers, active list only) detects isInMomentum + offset≤top edge +
+arrival velocity ≥ MOMENTUM_EDGE_MIN_VELOCITY_PT_MS(0.15) and fires ONCE per episode
+(topReboundFired, reset on begin-drag): contentOverscroll = withSpring(0,
+{TOP_REBOUND_SPRING, velocity: -v*1000}) — dips negative and springs home; the
+container + plate translate together.
+VERIFICATION STATE: tsc/jest 396, invariants 30/30, matrix 21/21 cold; normal
+scrolling regression-clean by eye. The impulse FIRING is not yet attributed on-sim
+(the flick-to-top video frames can't distinguish decel-to-stop from a small rebound;
+FlashList's scroll-event throttle may also gate the edge frame's velocity) — NEXT: a
+[BOUNCEDBG] dev probe at the fire site + owner-eye feel pass, together with slice 4
+(short-page floor deletion, whose short pages are also the deterministic bottom-
+overscroll surface) and slice 5 (seam under overscroll).

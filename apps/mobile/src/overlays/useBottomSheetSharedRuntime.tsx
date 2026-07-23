@@ -329,6 +329,7 @@ export const useBottomSheetSharedRuntime = ({
   const { primaryListOnScroll, secondaryListOnScroll, primaryScrollViewOnScroll } =
     useBottomSheetSharedScrollEventsRuntime({
       maxScrollOffset,
+      contentOverscroll,
       activePrimaryList,
       isInMomentum,
       onMomentumBeginJS,
