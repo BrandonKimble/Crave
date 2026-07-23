@@ -1037,3 +1037,52 @@ passthrough (chrome-freeze controller + hook, header-policy threading), and the 
 computeSceneChromeHeight('search') directly (§4: no measured lanes). Filters header
 keeps its genuinely content-driven measured height. Gates: jest 396/396, matrix 21/21,
 results eye-verified flush.
+
+## THE BOUNDARY-PHYSICS LAW (rubber-band overscroll, from-scratch derivation 2026-07-23)
+
+Ground truth (survey): one shared BottomSheetScrollContainer; two-pan + native-scroll
+arbitration (expandPan/collapsePan, GESTURE_OWNER, handoffExpandGestureToScroll);
+native bounce killed unconditionally (SHEET_BODY_NO_OVERSCROLL, after-spread) BECAUSE
+the down-handoff needs the list pinned at top AND the plate translate
+(-max(scrollOffset,0)) can't follow negative offsets; the only rubber-band today is on
+SHEET position between snaps (applyElasticBounds, RUBBER_BAND_RANGE_PX=96/COEFF=0.44);
+SHORT_PAGE_SCROLL_ROOM_PX=96 pads short pages into fake scrollability.
+
+The derivation — native bounce stays OFF (that decision is CORRECT: the pinned
+boundary is what makes ownership arbitration possible); what's missing is that nobody
+OWNS the beyond-boundary physics. The law:
+
+1. **ONE OWNER PER REGION.** The native scroll owns the INTERIOR (0..max). The sheet
+   runtime owns everything BEYOND a boundary, expressed as ONE new shared value
+   `contentOverscroll` (<0 past top, >0 past bottom, 0 inside). Native bounce stays
+   disabled forever — overscroll is runtime physics, so the handoff inputs (atTop,
+   owner, momentum) keep their exact meaning.
+2. **ONE PHYSICS VOCABULARY.** The overscroll curve and rebound spring are THE SAME
+   constants the sheet's elastic bounds already use (RUBBER_BAND_RANGE_PX/COEFFICIENT
+   + the snap spring family) — the sheet-between-snaps band and the list-past-boundary
+   band are one material, so the two can never feel different.
+3. **OWNERSHIP DERIVES FROM THE EXISTING FACTS** (the owner's cases become a table):
+   - top boundary + finger-DOWN drag → sheet grab (collapsePan — unchanged, exists);
+   - top boundary reached BY MOMENTUM (finger up) → runtime overscroll: capture exit
+     velocity at the offset-hits-0 edge in onScroll, decay into contentOverscroll,
+     spring-rebound to 0;
+   - bottom boundary + sheet at top snap + finger drag → runtime overscroll + rebound
+     (expandPan's up-drag past list end, currently a no-op);
+   - bottom boundary + sheet below top snap → the grabber (expandPan drives the sheet
+     up — unchanged).
+4. **EVERY OFFSET CONSUMER SIGNS UP FOR NEGATIVE.** The body content translates by
+   -contentOverscroll (the visual rubber-band); the scene white plate translates by
+   -(clamp(scrollOffset,0,max) + contentOverscroll) — the ≥0 floor dies, FrostCutout
+   holes track overscroll by construction; the divider keeps its CLAMP (negative reads
+   as 0 — correct: no divider during top overscroll).
+5. **SHORT_PAGE_SCROLL_ROOM_PX DIES** (the global surface abstraction): a page shorter
+   than its viewport has interior range 0 — both boundaries at once — and the SAME law
+   gives it real rubber-band feel with zero fake padding. minHeight-floor deleted; the
+   dead bounce props plumbed through BottomSheetWithFlashList reconcile away.
+
+Build order (each slice gated by eye + matrix): (1) contentOverscroll value + plate/
+consumer sign-up (inert — value stays 0); (2) bottom-boundary drag overscroll via
+expandPan (smallest real case, no momentum interplay); (3) top momentum-rebound
+(velocity capture at the 0-edge); (4) short-page floor deletion + dead-knob
+reconciliation; (5) the strip/header seam under overscroll (pinned chrome, band
+block never separates — the seam law's block is the one number to respect).
