@@ -23,6 +23,7 @@ import type {
   LLMProcessingInput,
   LLMSourceMap,
 } from '../src/modules/external-integrations/llm/llm.types';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * packing-ab.ts — PACKED vs UNPACKED contamination A/B for the cross-post
@@ -464,6 +465,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const prisma = app.get(PrismaService);
     const llm = app.get(LLMService);

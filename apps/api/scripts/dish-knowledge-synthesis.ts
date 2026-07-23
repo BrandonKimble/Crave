@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { DishKnowledgeSynthesisService } from '../src/modules/content-processing/entity-resolver/dish-knowledge-synthesis.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Knowledge-tier dish synthesis (canonical ingredients + established aliases).
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const service = app.get(DishKnowledgeSynthesisService);
     const summary = await service.run({

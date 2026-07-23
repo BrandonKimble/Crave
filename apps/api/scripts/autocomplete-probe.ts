@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { AutocompleteService } from '../src/modules/autocomplete/autocomplete.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 async function main(): Promise<void> {
   const queries = process.argv.slice(2).filter((a) => !a.startsWith('--'));
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
 
   try {

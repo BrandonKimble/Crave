@@ -8,6 +8,7 @@ import configuration from '../src/config/configuration';
 import { EntitlementsModule } from '../src/modules/entitlements/entitlements.module';
 import { EntitlementService } from '../src/modules/entitlements/entitlement.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Admin CLI for the access-grant ledger (plans/payments-ideal-shape.md).
@@ -40,6 +41,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AccessGrantCliModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (message: string) => process.stdout.write(`${message}\n`);
   try {
     const entitlements = app.get(EntitlementService);

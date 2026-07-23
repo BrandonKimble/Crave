@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { GeminiBatchService } from '../src/modules/external-integrations/llm/gemini-batch.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Live smoke for the Gemini Batch pipeline: submit a tiny 2-item job, poll via
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const batch = app.get(GeminiBatchService);

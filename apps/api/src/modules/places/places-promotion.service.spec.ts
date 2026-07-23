@@ -22,6 +22,12 @@ const logger: any = {
   debug: jest.fn(),
 };
 
+/** Shared module-level logger — count deltas, never absolute call totals. */
+const countSeedCompleteWarns = (): number =>
+  (logger.warn as jest.Mock).mock.calls.filter((call) =>
+    String(call[0]).startsWith('SEED COMPLETE'),
+  ).length;
+
 function makePlaceRow(overrides: Record<string, unknown> = {}) {
   return {
     placeId: PLACE_ID,
@@ -76,6 +82,10 @@ function makeHarness(options: {
   hasGeometryAlready?: boolean;
   resolveGeometryId?: jest.Mock;
   fetchPolygon?: jest.Mock;
+  /** Wave-6 item 1b: pg_try_advisory_lock outcome (default acquired). */
+  lockAcquired?: boolean;
+  /** Wave-6 item 5: unpromoted backlog the tripwire count reads. */
+  backlogCount?: number;
 }) {
   const executeRawCalls: Array<{ sql: string; values: unknown[] }> = [];
   const prisma = {
@@ -85,6 +95,18 @@ function makeHarness(options: {
     }),
     $queryRaw: jest.fn().mockImplementation((query: any) => {
       const sql: string = query.sql ?? '';
+      if (sql.includes('pg_try_advisory_lock')) {
+        return Promise.resolve([{ locked: options.lockAcquired ?? true }]);
+      }
+      if (sql.includes('pg_advisory_unlock')) {
+        return Promise.resolve([{ unlocked: true }]);
+      }
+      if (sql.includes('count(*)')) {
+        // Item-5 tripwire backlog read: default mirrors the queue fixture.
+        return Promise.resolve([
+          { n: BigInt(options.backlogCount ?? options.queueRows?.length ?? 0) },
+        ]);
+      }
       if (sql.includes('FROM place_geometry_promotions')) {
         return Promise.resolve(options.queueRows ?? []);
       }
@@ -323,12 +345,82 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
     it('the month-window backoff clause rides the drain read (K4 pool window = the backoff clock)', async () => {
       const { service, prisma } = makeHarness({ queueRows: [] });
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      const drainSelect = prisma.$queryRaw.mock.calls[0][0];
+      const drainSelect = prisma.$queryRaw.mock.calls
+        .map((call: any[]) => call[0])
+        .find((query: any) =>
+          String(query.sql ?? '').includes('ORDER BY enqueued_at ASC'),
+        );
+      expect(drainSelect).toBeDefined();
       expect(String(drainSelect.sql)).toContain(
         "date_trunc('month', last_attempt_at)",
       );
       expect(String(drainSelect.sql)).toContain('promoted_at IS NULL');
-      expect(String(drainSelect.sql)).toContain('ORDER BY enqueued_at ASC');
+    });
+  });
+
+  describe('cross-process drain lock (wave-6 item 1b)', () => {
+    it('skips the whole pass when pg_try_advisory_lock is not acquired — no reads, no draws', async () => {
+      const fetchPolygon = jest.fn();
+      const resolveGeometryId = jest.fn();
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow()],
+        lockAcquired: false,
+        fetchPolygon,
+        resolveGeometryId,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      // Only the lock probe ran — the due read never happened.
+      const sqls = prisma.$queryRaw.mock.calls.map((call: any[]) =>
+        String(call[0].sql ?? ''),
+      );
+      expect(sqls.some((sql) => sql.includes('pg_try_advisory_lock'))).toBe(
+        true,
+      );
+      expect(sqls.some((sql) => sql.includes('ORDER BY enqueued_at'))).toBe(
+        false,
+      );
+      expect(fetchPolygon).not.toHaveBeenCalled();
+      expect(resolveGeometryId).not.toHaveBeenCalled();
+      // A losing lock never unlocks (it holds nothing to release).
+      expect(sqls.some((sql) => sql.includes('pg_advisory_unlock'))).toBe(
+        false,
+      );
+    });
+
+    it('releases the advisory lock in finally — even when the vendor throws mid-pass', async () => {
+      const fetchPolygon = jest
+        .fn()
+        .mockRejectedValue(new Error('vendor down'));
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow({ providerBoundaryId: 'geo-cached' })],
+        fetchPolygon,
+      });
+      // The transport throw records the attempt and ends the pass ('stop'),
+      // so drainQueue resolves; the unlock must still have been issued.
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      const sqls = prisma.$queryRaw.mock.calls.map((call: any[]) =>
+        String(call[0].sql ?? ''),
+      );
+      expect(sqls.some((sql) => sql.includes('pg_advisory_unlock'))).toBe(true);
+    });
+  });
+
+  describe('seed-complete tripwire (wave-6 item 5)', () => {
+    it('warns LOUD once per process lifetime on the first pass where the backlog reads 0', async () => {
+      const { service } = makeHarness({ queueRows: [], backlogCount: 0 });
+      const warnsBefore = countSeedCompleteWarns();
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      expect(countSeedCompleteWarns()).toBe(warnsBefore + 1);
+      // Second pass: once per process lifetime — no re-warn.
+      await service.drainQueue(new Date('2026-07-20T01:00:00Z'));
+      expect(countSeedCompleteWarns()).toBe(warnsBefore + 1);
+    });
+
+    it('stays silent while the backlog is non-zero', async () => {
+      const { service } = makeHarness({ queueRows: [], backlogCount: 3 });
+      const warnsBefore = countSeedCompleteWarns();
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      expect(countSeedCompleteWarns()).toBe(warnsBefore);
     });
   });
 

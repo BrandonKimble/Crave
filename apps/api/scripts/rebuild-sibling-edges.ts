@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { EntitySiblingEdgeBuilderService } from '../src/modules/entity-text-search/entity-sibling-edge-builder.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Manually rebuild `derived_entity_sibling_edges` (dense co-inclusion siblings).
@@ -18,6 +19,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
 
   try {

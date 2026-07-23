@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { EntityResolutionService } from '../src/modules/content-processing/entity-resolver/entity-resolution.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const NYC = 'region-us-ny-new-york';
 // term, type, market, expectation — variants of real seeded entities the old
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const svc = app.get(EntityResolutionService);

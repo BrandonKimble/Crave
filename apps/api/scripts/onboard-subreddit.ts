@@ -18,6 +18,7 @@ import { Prisma } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { GooglePlacesService } from '../src/modules/external-integrations/google-places';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const CITY_PLACE_TYPES = new Set([
   'locality',
@@ -426,6 +427,7 @@ async function onboardSubreddit() {
     app = await NestFactory.createApplicationContext(AppModule, {
       logger: ['error', 'warn', 'log'],
     });
+    stopCronsForScript(app);
 
     const prisma = app.get(PrismaService);
     const googlePlaces = app.get(GooglePlacesService);

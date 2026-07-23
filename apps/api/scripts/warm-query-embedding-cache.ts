@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { EmbeddingService } from '../src/modules/external-integrations/llm/embedding.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Pre-warm the query-embedding cache so the always-on dense autocomplete lane is
@@ -21,6 +22,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const embeddings = app.get(EmbeddingService);

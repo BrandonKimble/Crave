@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { ReplayService } from '../src/modules/content-processing/reddit-collector/replay.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 type CliOptions = {
   sourceRunId?: string;
@@ -170,6 +171,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
 
   try {
     const replayService = app.get(ReplayService);

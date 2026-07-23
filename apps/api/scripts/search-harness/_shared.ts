@@ -7,6 +7,7 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplicationContext } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { AppModule } from '../../src/app.module';
+import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
 
 /**
  * Shared plumbing for the Step-1 search validation harnesses (see README.md).
@@ -54,9 +55,12 @@ export interface Fixture {
 
 /** Bootstrap the real Nest app context (production code path). */
 export async function bootstrap(): Promise<INestApplicationContext> {
-  return NestFactory.createApplicationContext(AppModule, {
+  const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  // Scripts never run scheduled work — see src/shared/utils/stop-crons.ts.
+  stopCronsForScript(app);
+  return app;
 }
 
 export function loadFixture(): Fixture {

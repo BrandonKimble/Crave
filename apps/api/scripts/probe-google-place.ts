@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { GooglePlacesModule } from '../src/modules/external-integrations/google-places/google-places.module';
 import { GooglePlacesService } from '../src/modules/external-integrations/google-places/google-places.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 async function bootstrap(): Promise<void> {
   const placeId = process.argv[2];
@@ -16,6 +17,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(GooglePlacesModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
 
   try {
     const service = app.get(GooglePlacesService);

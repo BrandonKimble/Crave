@@ -10,6 +10,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { printCostReport } from './lib/cost-report';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Standalone, rerunnable cost + discovery report (archive-load audit §9).
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const prisma = app.get(PrismaService);
     await printCostReport({

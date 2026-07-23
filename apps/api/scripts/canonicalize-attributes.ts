@@ -7,6 +7,7 @@ import {
   AttributeEntityType,
   CanonicalizationScope,
 } from '../src/modules/attribute-ontology/attribute-ontology.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 interface CliOptions {
   type: AttributeEntityType;
@@ -73,6 +74,7 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
 
   try {
     const service = app.get(AttributeOntologyService);

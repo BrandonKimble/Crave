@@ -45,12 +45,31 @@ function buildAdapter(options: {
   additionalData?: unknown[];
   denyPool?: boolean;
   knownBboxIdentities?: boolean;
+  /** Wave-6 item 2: every http call rejects with a vendor HTTP failure
+   *  (AxiosError shape); retryAfter fills the Retry-After header. */
+  httpFailure?: { status: number; retryAfter?: string };
 }) {
   const calls: HttpCall[] = [];
   const drawCalls: Array<{ pool: string; workClass: string }> = [];
   const httpService = {
     get: (url: string, config: { params: Record<string, unknown> }) => {
       calls.push({ url, params: config.params });
+      if (options.httpFailure) {
+        throw Object.assign(
+          new Error(
+            `Request failed with status code ${options.httpFailure.status}`,
+          ),
+          {
+            isAxiosError: true,
+            response: {
+              status: options.httpFailure.status,
+              headers: options.httpFailure.retryAfter
+                ? { 'retry-after': options.httpFailure.retryAfter }
+                : {},
+            },
+          },
+        );
+      }
       if (url.includes('/reverseGeocode/')) {
         return of({ data: { addresses: options.reverseAddresses ?? [] } });
       }
@@ -60,7 +79,9 @@ function buildAdapter(options: {
       return of({ data: { results: options.forwardResults ?? [] } });
     },
   };
+  const poisonWindow = jest.fn();
   const governance = {
+    pools: { poisonWindow },
     draw: async (
       pool: string,
       workClass: string,
@@ -93,7 +114,7 @@ function buildAdapter(options: {
     configService as never,
     loggerService as never,
   );
-  return { adapter, calls, drawCalls };
+  return { adapter, calls, drawCalls, poisonWindow };
 }
 
 const ANCHOR = { lat: 40.787, lng: -73.9754 };
@@ -324,5 +345,46 @@ describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
     expect(await empty.adapter.fetchPolygon('geo-wolfe')).toEqual({
       kind: 'miss',
     });
+  });
+});
+
+describe('TomtomChainProbeAdapter — wave-6 item 2: 429 → poisonWindow', () => {
+  it('fetchPolygon: a vendor 429 poisons the SCARCE pool with the Retry-After span and returns typed denied (row attempt-free)', async () => {
+    const { adapter, poisonWindow } = buildAdapter({
+      httpFailure: { status: 429, retryAfter: '5' },
+    });
+    // 'denied' — promoteOne treats it as pool-denial: row UNTOUCHED, pass
+    // ends. A throw here would recordAttempt and burn the month backoff on
+    // a transient.
+    expect(await adapter.fetchPolygon('geo-wolfe')).toEqual({
+      kind: 'denied',
+    });
+    expect(poisonWindow).toHaveBeenCalledWith('tomtom.scarcePolygons', 5000);
+  });
+
+  it('resolveGeometryId: a 429 without Retry-After poisons the CHEAP pool with the K4 per-second-window default', async () => {
+    const { adapter, poisonWindow } = buildAdapter({
+      httpFailure: { status: 429 },
+    });
+    expect(await adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
+      kind: 'denied',
+    });
+    expect(poisonWindow).toHaveBeenCalledWith('tomtom.cheapGeocode', 1000);
+  });
+
+  it('probe (reverse geocode): a 429 poisons the cheap pool and throws the pool-denied operational miss — never a negative observation', async () => {
+    const { adapter, poisonWindow } = buildAdapter({
+      httpFailure: { status: 429, retryAfter: '2' },
+    });
+    await expect(adapter.probe(ANCHOR)).rejects.toThrow('tomtom_pool_denied');
+    expect(poisonWindow).toHaveBeenCalledWith('tomtom.cheapGeocode', 2000);
+  });
+
+  it('a genuine vendor error (non-429) still throws — the drain records the attempt', async () => {
+    const boom = buildAdapter({ httpFailure: { status: 500 } });
+    await expect(boom.adapter.fetchPolygon('geo-wolfe')).rejects.toThrow(
+      'status code 500',
+    );
+    expect(boom.poisonWindow).not.toHaveBeenCalled();
   });
 });

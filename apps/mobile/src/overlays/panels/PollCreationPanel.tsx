@@ -111,8 +111,8 @@ export const usePollCreationPanelSpec = ({
   const handleSubmit = useCallback(async () => {
     if (!marketKey && !bounds) {
       showAppModal({
-        title: 'Pick a market',
-        message: 'Move the map to a local market before creating a poll.',
+        title: 'Pick an area',
+        message: 'Move the map to the area you want to ask about before creating a poll.',
       });
       return;
     }
@@ -130,27 +130,28 @@ export const usePollCreationPanelSpec = ({
 
       // Stage 1 — fast text dedup (no LLM): route obvious duplicates to the existing
       // poll instead of spinning up another. Precision-favoring threshold server-side.
-      if (marketKey) {
-        const { matches } = await checkPollDuplicate({ question: trimmedQuestion, marketKey });
-        const match = matches[0];
-        if (match) {
-          setSubmitting(false);
-          showAppModal({
-            title: 'This poll already exists',
-            message: `"${match.question}" is already live here. Jump into that discussion instead?`,
-            actions: [
-              { label: 'Cancel', style: 'cancel' },
-              {
-                label: 'View poll',
-                onPress: () => {
-                  onClose();
-                  pushRoute('pollDetail', { pollId: match.pollId });
-                },
+      // Place-scoped: the server resolves the dedupe scope from the viewport bounds
+      // (the legacy marketKey gate left this with ZERO live callers — marketKey is
+      // null on the live path).
+      const { matches } = await checkPollDuplicate({ question: trimmedQuestion, bounds });
+      const match = matches[0];
+      if (match) {
+        setSubmitting(false);
+        showAppModal({
+          title: 'This poll already exists',
+          message: `"${match.question}" is already live here. Jump into that discussion instead?`,
+          actions: [
+            { label: 'Cancel', style: 'cancel' },
+            {
+              label: 'View poll',
+              onPress: () => {
+                onClose();
+                pushRoute('pollDetail', { pollId: match.pollId });
               },
-            ],
-          });
-          return;
-        }
+            },
+          ],
+        });
+        return;
       }
 
       const payload: CreatePollPayload = {

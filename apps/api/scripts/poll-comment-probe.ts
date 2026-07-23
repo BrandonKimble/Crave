@@ -7,11 +7,13 @@ import { PollMode, PollState } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PollsService } from '../src/modules/polls/polls.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   let pollId: string | null = null;
   const prisma = app.get(PrismaService);

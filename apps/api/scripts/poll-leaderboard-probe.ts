@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { PollsService } from '../src/modules/polls/polls.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const NYC = 'region-us-ny-new-york';
 
@@ -13,6 +14,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   const prisma = app.get(PrismaService);
   let pollId: string | null = null;

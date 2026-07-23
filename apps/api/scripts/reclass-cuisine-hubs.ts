@@ -7,6 +7,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
 import { EntitySiblingEdgeBuilderService } from '../src/modules/entity-text-search/entity-sibling-edge-builder.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * One-shot CUISINE-HUB reclass migration. `{cuisine} food/meal/dish` names were
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
 
   try {

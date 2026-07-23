@@ -16,6 +16,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PollsService } from '../src/modules/polls/polls.service';
 import { EntityTextSearchService } from '../src/modules/entity-text-search/entity-text-search.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Seed realistic LIVE-MODEL poll data (poll + topic + threaded comments with real
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const prisma = app.get(PrismaService);
     const polls = app.get(PollsService);

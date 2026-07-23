@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { FoodDedupeMergeService } from '../src/modules/content-processing/entity-resolver/food-dedupe-merge.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * Food dedupe-merge pass (see food-dedupe-merge.service.ts).
@@ -16,6 +17,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const service = app.get(FoodDedupeMergeService);
     const summary = await service.run({

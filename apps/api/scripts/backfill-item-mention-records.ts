@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ProjectionRebuildService } from '../src/modules/content-processing/reddit-collector/projection-rebuild.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * One-time backfill for the Crave Score v3 decay-ready mention ledger.
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const prisma = app.get(PrismaService);
     const projection = app.get(ProjectionRebuildService);

@@ -6,6 +6,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { SearchQueryInterpretationService } from '../src/modules/search/search-query-interpretation.service';
 import type { NaturalSearchRequestDto } from '../src/modules/search/dto/search-query.dto';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 // NYC viewport so the market resolves to region-us-ny-new-york.
 const NYC_BOUNDS = {
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const svc = app.get(SearchQueryInterpretationService);

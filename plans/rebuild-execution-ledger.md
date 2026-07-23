@@ -734,3 +734,20 @@ cadences (reddit-collection-adapter.ts), source arrival-rate prior 10
 (score-calibration.ts). Plus standing §18 items 1-6 (dispatch-25 recall
 prior, §18.2 fail-policy table, batch quota discovery, ops readers, reddit
 account strategy, week-one instrumentation).
+
+## WAVE-6 PUNCH LIST (2026-07-22, in flight)
+
+- NAMED FOLLOW-UP (item 5, owner action when the tripwire fires): RETURN the
+  seed-month pool raises — tomtom.cheapGeocode 45_000→20_000 and
+  tomtom.scarcePolygons 25_000→10_000 in governance.service.ts (K1
+  re-ratify; the SEED MONTH comments there carry the numbers). The tripwire:
+  PlacesPromotionService.warnIfSeedComplete logs
+  "SEED COMPLETE — seed-month pool raises still active…" once per process
+  on the first drain pass where the promotion backlog reads 0.
+- Item 1 landed: ONE cron-stop chokepoint (src/shared/utils/stop-crons.ts;
+  main.ts + every createApplicationContext script), drainQueue advisory
+  lock (single drainer across processes), drive-polygon-drain.tmp.ts
+  deleted (superseded by cron + lock).
+- Item 2 landed: TomTom 429 → poisonWindow + typed 'denied' in
+  tomtom-chain-probe.adapter.ts (429 leaves the queue row attempt-free;
+  genuine vendor errors still record the attempt).

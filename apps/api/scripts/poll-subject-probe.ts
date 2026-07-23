@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../src/app.module';
 import { LLMService } from '../src/modules/external-integrations/llm/llm.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 // question → expectation (from §3.1 table + discussion cases).
 const CASES: { q: string; expect: string }[] = [
@@ -31,6 +32,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m = '') => process.stdout.write(`${m}\n`);
   try {
     const llm = app.get(LLMService);

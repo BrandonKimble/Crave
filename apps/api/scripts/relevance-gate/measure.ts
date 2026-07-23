@@ -9,6 +9,7 @@ import { ArchiveIngestionService } from '../../src/modules/content-processing/re
 import { RelevanceGateService } from '../../src/modules/content-processing/reddit-collector/relevance-gate.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import type { LLMPost } from '../../src/modules/external-integrations/llm/llm.types';
+import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
 
 /**
  * Step-4 measurement (plans/archive-prefilter-pipeline.md): run Stage-0 +
@@ -25,6 +26,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const out = (m: string) => process.stdout.write(`${m}\n`);
   try {
     const ingestion = app.get(ArchiveIngestionService, { strict: false });

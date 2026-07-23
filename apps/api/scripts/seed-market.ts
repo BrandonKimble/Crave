@@ -20,6 +20,7 @@ import type {
   ArchiveCollectionJobData,
   ArchiveCollectionJobResult,
 } from '../src/modules/content-processing/reddit-collector/archive/archive-collection.worker';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * THE archive seeding command (supersedes test-pipeline.ts, which truncated
@@ -80,6 +81,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   const logDir = path.join(__dirname, '..', 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(

@@ -35,6 +35,7 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AxiosError, AxiosResponse } from 'axios';
 import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -105,6 +106,16 @@ const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
  * derivation); this alias keeps the adapter reading in vendor terms.
  */
 const REVERSE_GEOCODE_RADIUS_METERS = PROBE_SPEAKS_FOR_METERS;
+
+/**
+ * §16 K4-derived: the default poison span when a TomTom 429 arrives WITHOUT
+ * a Retry-After header. The vendor's binding rate window on the Search
+ * endpoints is per-SECOND (~5 QPS — same K4 fact behind the drain's
+ * VENDOR_QPS_SPACING_MS), so one full window is the honest default; a
+ * header-carried Retry-After always wins (mirrors reddit.service's §14.5
+ * handling, where the vendor's minute window yields a 60s default).
+ */
+const TOMTOM_429_DEFAULT_RETRY_MS = 1_000;
 
 type TomtomAddress = {
   countryCode?: string;
@@ -296,25 +307,66 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     return { chain, probedBbox };
   }
 
+  /**
+   * §14.5: an upstream 429 on a governed TomTom act poisons the pool's ONE
+   * window — retry-after honored GLOBALLY through the governor, never per
+   * caller (mirrors reddit.service.ts makeRequest). Returns true when the
+   * error was a 429 (poison applied; caller surfaces its typed 'denied' /
+   * pool-denial path so NO attempt is recorded on a transient), false for
+   * every other error (genuine vendor fault — caller keeps throwing).
+   */
+  private poisonPoolOn429(error: unknown, poolName: string): boolean {
+    const axiosError = error as AxiosError;
+    if (axiosError?.response?.status !== 429) {
+      return false;
+    }
+    const retryAfterSeconds = Number.parseInt(
+      String(axiosError.response.headers?.['retry-after'] ?? ''),
+      10,
+    );
+    const retryAfterMs =
+      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds * 1000
+        : TOMTOM_429_DEFAULT_RETRY_MS;
+    this.governance.pools.poisonWindow(poolName, retryAfterMs);
+    this.logger.warn('TomTom 429 — pool window poisoned', {
+      poolName,
+      retryAfterMs,
+    });
+    return true;
+  }
+
   /** One governed reverse geocode; a pool denial reads as "no answer now". */
   private async reverseGeocode(
     anchor: GeoPoint,
   ): Promise<TomtomReverseAddressEntry | null> {
     const url = `${this.reverseBaseUrl}/${anchor.lat},${anchor.lng}.json`;
-    const response = await this.governance.draw(
-      'tomtom.cheapGeocode',
-      'chain-probe',
-      () =>
-        firstValueFrom(
-          this.httpService.get<TomtomReverseResponse>(url, {
-            params: {
-              key: this.apiKey as string,
-              entityType: LEVEL_LADDER.map((rung) => rung.levelCode).join(','),
-            },
-            timeout: this.timeoutMs,
-          }),
-        ),
-    );
+    let response: AxiosResponse<TomtomReverseResponse> | null;
+    try {
+      response = await this.governance.draw(
+        'tomtom.cheapGeocode',
+        'chain-probe',
+        () =>
+          firstValueFrom(
+            this.httpService.get<TomtomReverseResponse>(url, {
+              params: {
+                key: this.apiKey as string,
+                entityType: LEVEL_LADDER.map((rung) => rung.levelCode).join(
+                  ',',
+                ),
+              },
+              timeout: this.timeoutMs,
+            }),
+          ),
+      );
+    } catch (error) {
+      if (this.poisonPoolOn429(error, 'tomtom.cheapGeocode')) {
+        // Same shape as a pool denial: operational miss (throw) so the
+        // reconciler logs-and-skips — never a negative observation.
+        throw new Error('tomtom_pool_denied');
+      }
+      throw error;
+    }
     if (!response) {
       // Typed not-now: the probe simply doesn't happen this cycle. Signal it
       // as an operational miss (throw) so the reconciler does NOT record a
@@ -391,22 +443,30 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         .join(', '),
     );
     const url = `${this.geocodeBaseUrl}/${query}.json`;
-    const response = await this.governance.draw(
-      'tomtom.cheapGeocode',
-      workClass,
-      () =>
-        firstValueFrom(
-          this.httpService.get<TomtomGeocodeResponse>(url, {
-            params: {
-              key: this.apiKey as string,
-              entityTypeSet: node.providerLevelCode,
-              countrySet: node.countryCode,
-              limit: 1,
-            },
-            timeout: this.timeoutMs,
-          }),
-        ),
-    );
+    let response: AxiosResponse<TomtomGeocodeResponse> | null;
+    try {
+      response = await this.governance.draw(
+        'tomtom.cheapGeocode',
+        workClass,
+        () =>
+          firstValueFrom(
+            this.httpService.get<TomtomGeocodeResponse>(url, {
+              params: {
+                key: this.apiKey as string,
+                entityTypeSet: node.providerLevelCode,
+                countrySet: node.countryCode,
+                limit: 1,
+              },
+              timeout: this.timeoutMs,
+            }),
+          ),
+      );
+    } catch (error) {
+      if (this.poisonPoolOn429(error, 'tomtom.cheapGeocode')) {
+        return { kind: 'denied' }; // transient — NOT an attempt (wave-6 item 2)
+      }
+      throw error;
+    }
     if (!response) {
       return { kind: 'denied' };
     }
@@ -442,17 +502,30 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (this.geometryZoom !== null) {
       params.geometriesZoom = this.geometryZoom;
     }
-    const response = await this.governance.draw(
-      'tomtom.scarcePolygons',
-      'promotion',
-      () =>
-        firstValueFrom(
-          this.httpService.get<TomtomAdditionalDataResponse>(
-            this.additionalDataUrl,
-            { params, timeout: this.timeoutMs },
+    let response: AxiosResponse<TomtomAdditionalDataResponse> | null;
+    try {
+      response = await this.governance.draw(
+        'tomtom.scarcePolygons',
+        'promotion',
+        () =>
+          firstValueFrom(
+            this.httpService.get<TomtomAdditionalDataResponse>(
+              this.additionalDataUrl,
+              { params, timeout: this.timeoutMs },
+            ),
           ),
-        ),
-    );
+      );
+    } catch (error) {
+      // Wave-6 item 2: a 429 is a transient rate signal, NOT a systemic
+      // vendor fault — poison the window and surface the typed 'denied'
+      // (promoteOne leaves the row UNTOUCHED and ends the pass) instead of
+      // throwing (which would recordAttempt and burn the row's month
+      // backoff on a transient).
+      if (this.poisonPoolOn429(error, 'tomtom.scarcePolygons')) {
+        return { kind: 'denied' };
+      }
+      throw error;
+    }
     if (!response) {
       return { kind: 'denied' };
     }

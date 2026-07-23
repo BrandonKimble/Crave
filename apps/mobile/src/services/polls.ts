@@ -319,7 +319,9 @@ export type PollDuplicateMatch = {
 // the existing poll instead of spinning up a duplicate (§3).
 export const checkPollDuplicate = async (body: {
   question: string;
-  marketKey?: string;
+  // Place-scoped dedupe: the server resolves the duplicate scope from the
+  // viewport bounds (marketKey is legacy accepted-ignored server-side).
+  bounds?: MapBounds | null;
 }): Promise<{ matches: PollDuplicateMatch[] }> => {
   const response = await api.post('/polls/check-duplicate', body);
   const data = (response.data ?? {}) as { matches?: PollDuplicateMatch[] };

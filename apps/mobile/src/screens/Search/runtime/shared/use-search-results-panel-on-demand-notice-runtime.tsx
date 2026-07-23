@@ -42,6 +42,17 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
         ? metadata.candidateLocalityName.trim()
         : null;
 
+    // The subject store's §2 verdict is the area authority once committed —
+    // it gates the area label in ALL arms below (place name or 'this area');
+    // the response-metadata names (displayMarketName / candidateLocalityName)
+    // serve STRICTLY pre-first-commit. Without this, election leftovers in
+    // the metadata would override a committed 'this-area' straddle verdict.
+    const verdictAreaLabel = subjectVerdict
+      ? subjectVerdict.kind === 'place'
+        ? subjectVerdict.placeName
+        : 'this area'
+      : null;
+
     let noticeText: string | null = null;
 
     if (metadata.onDemandQueued) {
@@ -56,23 +67,26 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
           etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
         }
       }
-      // The subject store's §2 verdict is the area authority when committed
-      // (it already reserves 'this area' for straddles/unnamed ground); before
-      // the first commit, keep the legacy metadata chain — name the market
-      // only when exactly one collectable market is in play; several ->
-      // "this area" (collection fans out; naming one would lie).
-      const areaLabel = subjectVerdict
-        ? subjectVerdict.kind === 'place'
-          ? subjectVerdict.placeName
-          : 'this area'
-        : collectableMarketCount > 1
+      // Committed verdict wins; before the first commit, keep the legacy
+      // metadata chain — name the market only when exactly one collectable
+      // market is in play; several -> "this area" (collection fans out;
+      // naming one would lie).
+      const areaLabel =
+        verdictAreaLabel ??
+        (collectableMarketCount > 1
           ? 'this area'
-          : (displayName ?? candidateLocalityName ?? 'this area');
+          : (displayName ?? candidateLocalityName ?? 'this area'));
       const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
       const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
       noticeText = `Your search${searchLabel} is helping us grow coverage in ${areaLabel}. More searches like this help us learn what people want here.${suffix} Create a poll to get answers faster.`;
     } else if (collectableMarketCount === 0) {
-      if (metadata.marketResolutionStatus === 'no_market' && candidateLocalityName) {
+      // Mirrors the queued arm: the committed verdict gates the area label
+      // here too — a committed 'this-area' straddle verdict must not be
+      // out-voted by election-leftover metadata names.
+      if (verdictAreaLabel) {
+        const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
+        noticeText = `Your search${searchLabel} is helping us grow coverage in ${verdictAreaLabel}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;
+      } else if (metadata.marketResolutionStatus === 'no_market' && candidateLocalityName) {
         const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
         noticeText = `Your search${searchLabel} is helping us grow coverage in ${candidateLocalityName}. More searches like this help us learn what people want here. Check back soon, or create a poll to get answers faster.`;
       } else if (displayName) {

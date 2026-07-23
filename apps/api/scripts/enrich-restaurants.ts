@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { RestaurantEnrichmentModule } from '../src/modules/restaurant-enrichment';
 import { RestaurantLocationEnrichmentService } from '../src/modules/restaurant-enrichment';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 interface CliOptions {
   limit: number;
@@ -45,6 +46,7 @@ async function bootstrap(): Promise<void> {
       logger: ['error', 'warn'],
     },
   );
+  stopCronsForScript(app);
 
   try {
     const service = app.get(RestaurantLocationEnrichmentService);

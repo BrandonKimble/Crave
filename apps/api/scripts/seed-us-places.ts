@@ -9,6 +9,7 @@ import {
   PlaceSketchNode,
 } from '../src/modules/places/places-catalog.service';
 import { countyAxisName, stripLsadDescriptor } from './lib/gazetteer-names';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * US pre-seed (plans/geo-demand-foundation-rebuild.md §1): sketch every
@@ -300,6 +301,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const catalog = app.get(PlacesCatalogService);
     let done = 0;

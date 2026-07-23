@@ -11,6 +11,7 @@ import {
   PlaceSketchNode,
 } from '../src/modules/places/places-catalog.service';
 import { countyAxisName } from './lib/gazetteer-names';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * COARSE POLYGON SEED (plans/geo-demand-foundation-rebuild.md §2.5(e),
@@ -196,6 +197,7 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const catalog = app.get(PlacesCatalogService);
     const prisma = app.get(PrismaService);

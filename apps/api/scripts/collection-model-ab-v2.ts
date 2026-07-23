@@ -16,6 +16,7 @@ import type {
   LLMMention,
   LLMProcessingInput,
 } from '../src/modules/external-integrations/llm/llm.types';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 /**
  * collection-model-ab-v2.ts — MODEL QUALITY A/B for the collection pipeline.
@@ -233,6 +234,7 @@ async function generate(tag: string, strata: Stratum[]): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  stopCronsForScript(app);
   try {
     const prisma = app.get(PrismaService);
     const llm = app.get(LLMService);

@@ -96,6 +96,17 @@ const VENDOR_QPS_SPACING_MS = 500;
 
 const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
 
+/**
+ * §16 K3-shaped operational constant: pg advisory-lock key for the promotion
+ * drain — single drainer across PROCESSES (the in-process `draining` latch
+ * only guards this process; a script/second dyno booting the module graph
+ * would otherwise double-drain the governed queue against the same vendor
+ * pools). Same convention as RESCORE_ADVISORY_LOCK_KEY (0x63726176 'crav');
+ * this one spells 'poly'. Not a product number — what changes it: a key
+ * collision with another advisory-locked job, never tuning.
+ */
+export const PROMOTION_DRAIN_ADVISORY_LOCK_KEY = 0x706f6c79; // 'poly'
+
 /** Per-item drain outcome (see promoteOne). 'stop' ends the whole pass. */
 type DrainOutcome = 'promoted' | 'skipped' | 'attempted' | 'stop';
 
@@ -112,9 +123,20 @@ export class PlacesPromotionService {
    * cache (worst case a restart forgets one first-answer). `enqueuedOnce`
    * keeps a hot header place (every search names it) from re-hitting the
    * idempotent enqueue on each request.
+   *
+   * MULTI-PROCESS CAVEAT (wave-6 finding 4.5, documented not fixed): both
+   * memories are PER-PROCESS — two processes serving header traffic each
+   * count their own first-answer, so "frequent" may need up to 2× answers
+   * to trigger, and each process re-hits the (idempotent, cheap) enqueue
+   * once. Harmless by construction: the enqueue is ON CONFLICT DO NOTHING
+   * and the DRAIN is single-flight across processes (advisory lock below),
+   * so the worst case is a slightly later earned moment — no double spend.
    */
   private headerAnswers = new Map<string, number>();
   private readonly enqueuedOnce = new Set<string>();
+
+  /** Item-5 tripwire: the SEED COMPLETE warn fires once per process. */
+  private seedCompleteWarned = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -214,41 +236,105 @@ export class PlacesPromotionService {
     }
     this.draining = true;
     try {
-      const due = await this.prisma.$queryRaw<PlaceGeometryPromotion[]>(
+      // CROSS-PROCESS single drainer: pg_try_advisory_lock (session-scoped;
+      // same shipped pattern as rescore-coordinator). Two processes (the
+      // worker's cron + any script/second dyno) can never drain — and spend
+      // the governed vendor pools — concurrently; the loser simply skips
+      // this pass (the queue is the lateness buffer, next tick retries).
+      const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
         Prisma.sql`
-          SELECT place_id            AS "placeId",
-                 trigger             AS "trigger",
-                 enqueued_at         AS "enqueuedAt",
-                 promoted_at         AS "promotedAt",
-                 attempts            AS "attempts",
-                 last_attempt_at     AS "lastAttemptAt",
-                 provider_boundary_id AS "providerBoundaryId"
-          FROM place_geometry_promotions
-          WHERE promoted_at IS NULL
-            AND (last_attempt_at IS NULL
-                 OR date_trunc('month', last_attempt_at)
-                    < date_trunc('month', ${utcInstantSql(now)}))
-          ORDER BY enqueued_at ASC
-          LIMIT ${DRAIN_BATCH_LIMIT_PER_TICK}
+          SELECT pg_try_advisory_lock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS locked
         `,
       );
-      for (const item of due) {
-        const outcome = await this.promoteOne(item, now);
-        if (outcome === 'stop') {
-          break;
+      if (!lock[0]?.locked) {
+        this.logger.info('Promotion drain skipped (another process drains)');
+        return;
+      }
+      try {
+        await this.drainPass(now);
+      } finally {
+        // Best-effort release; a pooled connection MAY not be the acquiring
+        // session (rescore-coordinator has the same caveat). An unreleased
+        // lock self-heals when the connection closes; warn so a stuck drain
+        // is attributable.
+        const unlocked = await this.prisma
+          .$queryRaw<Array<{ unlocked: boolean }>>(
+            Prisma.sql`
+              SELECT pg_advisory_unlock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS unlocked
+            `,
+          )
+          .catch(() => null);
+        if (!unlocked?.[0]?.unlocked) {
+          this.logger.warn(
+            'Promotion drain advisory unlock did not release (pooled-session mismatch; lock clears when its connection closes)',
+          );
         }
-        // §16 K4 (vendor fact): TomTom pay-as-you-go allows ~5 QPS on the
-        // Search endpoints; each promotion spends up to 2 calls. Space items
-        // so the drain can never out-run the vendor's per-second window (the
-        // month pool bounds VOLUME; this bounds RATE — observed 429s on the
-        // 2026-07-22 seed run without it).
-        await new Promise((resolve) =>
-          setTimeout(resolve, VENDOR_QPS_SPACING_MS),
-        );
       }
     } finally {
       this.draining = false;
     }
+  }
+
+  private async drainPass(now: Date): Promise<void> {
+    const due = await this.prisma.$queryRaw<PlaceGeometryPromotion[]>(
+      Prisma.sql`
+        SELECT place_id            AS "placeId",
+               trigger             AS "trigger",
+               enqueued_at         AS "enqueuedAt",
+               promoted_at         AS "promotedAt",
+               attempts            AS "attempts",
+               last_attempt_at     AS "lastAttemptAt",
+               provider_boundary_id AS "providerBoundaryId"
+        FROM place_geometry_promotions
+        WHERE promoted_at IS NULL
+          AND (last_attempt_at IS NULL
+               OR date_trunc('month', last_attempt_at)
+                  < date_trunc('month', ${utcInstantSql(now)}))
+        ORDER BY enqueued_at ASC
+        LIMIT ${DRAIN_BATCH_LIMIT_PER_TICK}
+      `,
+    );
+    for (const item of due) {
+      const outcome = await this.promoteOne(item, now);
+      if (outcome === 'stop') {
+        break;
+      }
+      // §16 K4 (vendor fact): TomTom pay-as-you-go allows ~5 QPS on the
+      // Search endpoints; each promotion spends up to 2 calls. Space items
+      // so the drain can never out-run the vendor's per-second window (the
+      // month pool bounds VOLUME; this bounds RATE — observed 429s on the
+      // 2026-07-22 seed run without it).
+      await new Promise((resolve) =>
+        setTimeout(resolve, VENDOR_QPS_SPACING_MS),
+      );
+    }
+    await this.warnIfSeedComplete();
+  }
+
+  /**
+   * Wave-6 item 5 — the SEED-MONTH pool-return tripwire. The seed-month
+   * raises (tomtom.cheapGeocode 45k, tomtom.scarcePolygons 25k — SEED MONTH
+   * comments in governance.service.ts) carry return-to numbers nothing
+   * enforces; this warn IS the mechanism for a solo dev: the first pass
+   * that sees the backlog read 0 logs LOUD, once per process lifetime.
+   */
+  private async warnIfSeedComplete(): Promise<void> {
+    if (this.seedCompleteWarned) {
+      return;
+    }
+    const backlog = await this.prisma.$queryRaw<Array<{ n: bigint }>>(
+      Prisma.sql`
+        SELECT count(*) AS n FROM place_geometry_promotions
+        WHERE promoted_at IS NULL
+      `,
+    );
+    if (Number(backlog[0]?.n ?? 0) !== 0) {
+      return;
+    }
+    this.seedCompleteWarned = true;
+    this.logger.warn(
+      'SEED COMPLETE — seed-month pool raises still active; return cheapGeocode→20k scarcePolygons→10k per governance.service.ts comments',
+    );
   }
 
   private async promoteOne(
