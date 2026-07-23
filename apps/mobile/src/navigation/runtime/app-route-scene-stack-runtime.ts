@@ -2,7 +2,9 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import {
   isDeferredPublicationScene,
   isResidencyManagedScene,
+  RESIDENT_SHELL_PREWARM_SCENES,
 } from '../../overlays/shell-residency-registry';
+import { scheduleResidentShellPrewarm } from '../../overlays/shell-residency-manager';
 import {
   getLiveTransitionTxn,
   subscribeTransitionTxn,
@@ -91,12 +93,17 @@ type AppRouteStaticSceneMountState = {
   pollsPrewarmed: boolean;
   profileBootstrapped: boolean;
   inactiveTabsPrewarmed: boolean;
+  /** WARM-BEFORE-NAVIGATE (L3 A#6): the residency-managed shell set mounted at first
+   *  app-idle — after this flips, a managed scene's first navigation retargets
+   *  visibility on an already-warm shell, never a cold mount. */
+  residentShellsPrewarmed: boolean;
 };
 
 type AppRouteStaticSceneMountSnapshot = {
   bookmarksShouldMount: boolean;
   pollsShouldMount: boolean;
   profileShouldMount: boolean;
+  residentShellsShouldMount: boolean;
 };
 
 export type AppRouteSceneFrameSnapshot = {
@@ -182,6 +189,7 @@ const createAppRouteStaticSceneMountState = (): AppRouteStaticSceneMountState =>
   pollsPrewarmed: false,
   profileBootstrapped: false,
   inactiveTabsPrewarmed: false,
+  residentShellsPrewarmed: false,
 });
 
 const resolveAppRouteStaticSceneMount = ({
@@ -232,12 +240,31 @@ const resolveAppRouteStaticSceneMount = ({
     };
   }
 
+  // WARM-BEFORE-NAVIGATE (L3 A#6/B#6iii): the residency-managed shell set joins the
+  // always-mounted legs at the same first-idle readiness edge the static tabs use —
+  // shells mount at app-idle (empty: hidden boundary, A#9 zero subscriptions, frozen
+  // clocks), so a managed scene's first navigation retargets visibility instead of
+  // compiling a shell. This is ALSO the mount-machinery expression of "shells never
+  // evict": a managed child leg no longer unmounts when its last entry pops (the
+  // resident-unit retention law needs the leg alive to retain units).
+  if (
+    !nextState.residentShellsPrewarmed &&
+    areStaticTabScenesReady &&
+    transitionPhase === 'idle'
+  ) {
+    nextState = {
+      ...nextState,
+      residentShellsPrewarmed: true,
+    };
+  }
+
   return {
     state: nextState,
     snapshot: {
       bookmarksShouldMount: nextState.bookmarksBootstrapped || activeSceneKey === 'bookmarks',
       pollsShouldMount: nextState.pollsPrewarmed || activeSceneKey === 'polls',
       profileShouldMount: nextState.profileBootstrapped || activeSceneKey === 'profile',
+      residentShellsShouldMount: nextState.residentShellsPrewarmed,
     },
   };
 };
@@ -876,6 +903,12 @@ const resolveMountedSceneKeys = ({
 
   if (staticSceneMountSnapshot.profileShouldMount) {
     mountedSceneKeys.add('profile');
+  }
+
+  if (staticSceneMountSnapshot.residentShellsShouldMount) {
+    RESIDENT_SHELL_PREWARM_SCENES.forEach((sceneKey) => {
+      appendRouteSceneKey({ mountedSceneKeys, sceneKey });
+    });
   }
 
   return mountedSceneKeys;
@@ -3031,6 +3064,9 @@ class AppRouteSceneStackLayerStateController {
                 isPollsSceneReady: isPollsSceneInputReady(sceneInputAuthority),
               })
           );
+        if (staticSceneMountState.residentShellsPrewarmed && !this.staticSceneMountState.residentShellsPrewarmed) {
+          scheduleResidentShellPrewarm();
+        }
         this.staticSceneMountState = staticSceneMountState;
         const overlayRouteStack = routeSceneSwitchRuntime.getRouteState().overlayRouteStack;
         // W1 slice 1 — entry-keyed child mounts recompute on the same cadence as the key set.

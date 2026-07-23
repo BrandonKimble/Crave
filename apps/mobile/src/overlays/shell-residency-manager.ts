@@ -26,10 +26,11 @@ export { isResidencyManagedScene } from './shell-residency-registry';
 //   transition. `ensureShellResident(scene, 'navigation')` mounting a cold shell is a
 //   LOUD contract violation (console.error — the RED instrument), not a fallback.
 // - **THE EVICTION SEAM (A#11/B#7):** shells never evict; CONTENT evicts under a
-//   budget. Slice 1 lands the bookkeeping (visit order for the last-N exemption +
-//   the commitment ledger the measured prototype demands — RSS is sticky, so the
-//   budget counts COMMITMENT, not reclaim). The budget itself activates when
-//   content-heavy scenes join residency; until then it is recorded as unbounded.
+//   budget. Today only the visit order (the last-N exemption input) is live.
+//   RECORDED DEFERRAL: the commitment ledger the measured prototype demands (RSS is
+//   sticky, so the budget counts COMMITMENT, not reclaim) gets built WITH the budget
+//   when content-heavy scenes join residency — real estimates from real body mounts,
+//   not dead scaffolding shipped ahead of its writer.
 // - **THE STRANGLER BOOLEAN (migration bridge B#5):** `isResidencyManagedScene` is
 //   the one check the legacy hosts consult (conditional mount, persistent header) —
 //   deleted with the last unmigrated scene.
@@ -137,9 +138,11 @@ export const setVisibleResidentScene = (
   notify();
 };
 
-/** WARM-BEFORE-NAVIGATE's scheduler: mounts the reachable residency-managed set at
- *  app-idle (post-boot / post-transition), so a navigation never compiles a shell.
- *  Idempotent; call from the app root once interactions settle. */
+/** WARM-BEFORE-NAVIGATE's scheduler: records the reachable residency-managed set
+ *  resident at app-idle. WIRED at the scene-stack runtime's first-idle readiness edge
+ *  (resolveAppRouteStaticSceneMount residentShellsPrewarmed — the same edge that adds
+ *  RESIDENT_SHELL_PREWARM_SCENES to the always-mounted legs), so the bookkeeping and
+ *  the actual leg mounts flip together. Idempotent. */
 export const scheduleResidentShellPrewarm = (): void => {
   void InteractionManager.runAfterInteractions(() => {
     RESIDENCY_MANAGED_SCENES.forEach((scene) => {
@@ -147,22 +150,3 @@ export const scheduleResidentShellPrewarm = (): void => {
     });
   });
 };
-
-// ─── The eviction seam (bookkeeping now, budget activates with content scenes) ─────
-//
-// The measured prototype's finding: content commitment ~170KB/row (image-free) and
-// RSS does NOT return on unmount — so the budget counts what was COMMITTED, and
-// eviction's value is bounding growth, not reclaiming the past. Slice 1 records
-// commitments; the budget check is a seam that names its own inactivation.
-
-const contentCommitmentBySceneKb = new Map<ResidencyManagedSceneKey, number>();
-
-export const recordShellContentCommitment = (
-  scene: ResidencyManagedSceneKey,
-  estimatedKb: number
-): void => {
-  contentCommitmentBySceneKb.set(scene, estimatedKb);
-};
-
-export const readShellContentCommitments = (): ReadonlyMap<ResidencyManagedSceneKey, number> =>
-  contentCommitmentBySceneKb;

@@ -15,6 +15,7 @@ import {
   SettingsMountedSceneBody,
   UserProfileMountedSceneBody,
 } from './panels/ChildScenePanels';
+import { isResidencyManagedScene } from './shell-residency-registry';
 import { ShellVisibilityBoundary } from './ShellVisibilityBoundary';
 
 /**
@@ -27,99 +28,47 @@ export type MountedSceneBodyProps = {
   entry?: OverlayRouteEntry | null;
 };
 
+/** One component per mounted-body key — the registry's ONLY per-scene fact. */
+const MOUNTED_BODY_BY_KEY: Partial<
+  Record<SearchRouteMountedSceneBodyKey, React.ComponentType<MountedSceneBodyProps>>
+> = {
+  bookmarks: BookmarksMountedSceneBody,
+  profile: ProfileMountedSceneBody,
+  saveList: SaveListMountedSceneBody,
+  userProfile: UserProfileMountedSceneBody,
+  listDetail: ListDetailMountedSceneBody,
+  followList: FollowListMountedSceneBody,
+  notifications: NotificationsMountedSceneBody,
+  settings: SettingsMountedSceneBody,
+  editProfile: EditProfileMountedSceneBody,
+  postPhotos: PostPhotosPanelBody,
+  messagesInbox: MessagesInboxPanelBody,
+  dmSession: DmSessionPanelBody,
+};
+
 type BottomSheetSceneStackMountedBodyProps = {
   mountedBodyKey: SearchRouteMountedSceneBodyKey;
   entry?: OverlayRouteEntry | null;
 };
 
+/**
+ * L3 residency: the visibility boundary is DERIVED from registry membership
+ * (`isResidencyManagedScene`), applied exactly once here — the "which scenes are
+ * managed" fact has ONE home (RESIDENCY_MANAGED_SCENES), so adding a scene to the
+ * registry cannot silently miss its boundary (the old hand-wrapped switch could).
+ */
 export const BottomSheetSceneStackMountedBody = React.memo(
   ({ mountedBodyKey, entry }: BottomSheetSceneStackMountedBodyProps) => {
-    switch (mountedBodyKey) {
-      case 'bookmarks':
-        // L3 slice 4 (the pair): the lists root tab under the visibility boundary.
-        return (
-          <ShellVisibilityBoundary scene="bookmarks">
-            <BookmarksMountedSceneBody />
-          </ShellVisibilityBoundary>
-        );
-      case 'profile':
-        // L3 slice 3: the root own-tab under the visibility boundary (root scenes
-        // have no entry units — the singleton path; the boundary is the display
-        // fact's one home).
-        return (
-          <ShellVisibilityBoundary scene="profile">
-            <ProfileMountedSceneBody />
-          </ShellVisibilityBoundary>
-        );
-      case 'saveList':
-        return (
-          <ShellVisibilityBoundary scene="saveList">
-            <SaveListMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'userProfile':
-        return (
-          <ShellVisibilityBoundary scene="userProfile">
-            <UserProfileMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'listDetail':
-        // L3 slice 4 (the pair): the first MULTI-ENTRY managed scene — identity-keyed
-        // resident units (listId) mean this body's tree survives pops and re-pushes of
-        // the same list; per-unit activity + the scene bit compose the visibility.
-        return (
-          <ShellVisibilityBoundary scene="listDetail">
-            <ListDetailMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'followList':
-        return (
-          <ShellVisibilityBoundary scene="followList">
-            <FollowListMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      // L3 residency slice 1: the residency-managed leaves render under the liveness
-      // boundary — their controllers re-derive on become-visible and their material's
-      // clocks freeze when hidden (the retained-body stale-forever bug dies here).
-      case 'notifications':
-        return (
-          <ShellVisibilityBoundary scene="notifications">
-            <NotificationsMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'settings':
-        return (
-          <ShellVisibilityBoundary scene="settings">
-            <SettingsMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'editProfile':
-        return (
-          <ShellVisibilityBoundary scene="editProfile">
-            <EditProfileMountedSceneBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'postPhotos':
-        return (
-          <ShellVisibilityBoundary scene="postPhotos">
-            <PostPhotosPanelBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'messagesInbox':
-        return (
-          <ShellVisibilityBoundary scene="messagesInbox">
-            <MessagesInboxPanelBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      case 'dmSession':
-        return (
-          <ShellVisibilityBoundary scene="dmSession">
-            <DmSessionPanelBody entry={entry} />
-          </ShellVisibilityBoundary>
-        );
-      default:
-        return null;
+    const Body = MOUNTED_BODY_BY_KEY[mountedBodyKey];
+    if (Body == null) {
+      return null;
     }
+    const content = <Body entry={entry} />;
+    return isResidencyManagedScene(mountedBodyKey) ? (
+      <ShellVisibilityBoundary scene={mountedBodyKey}>{content}</ShellVisibilityBoundary>
+    ) : (
+      content
+    );
   }
 );
 

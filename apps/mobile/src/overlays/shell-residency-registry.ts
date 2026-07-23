@@ -48,13 +48,23 @@ export const RESIDENCY_MANAGED_SCENES: readonly ResidencyManagedSceneKey[] = [
   'search',
 ];
 
-export const isResidencyManagedScene = (scene: OverlayKey): boolean =>
+export const isResidencyManagedScene = (scene: OverlayKey): scene is ResidencyManagedSceneKey =>
   (RESIDENCY_MANAGED_SCENES as readonly string[]).includes(scene);
 
 /** How many popped identities a multi-entry managed scene retains resident — the
  *  EVICTION LAW's first live budget (last-N exemption; the stack-pinned set is
  *  always exempt). The measured prototype says commitment is what the budget
  *  counts (~170KB/image-free row; RSS sticky) — N stays small. */
+/** WARM-BEFORE-NAVIGATE's reachable set (A#6/B#6iii): every managed scene whose SHELL
+ * (leg + spec host + visibility boundary) mounts at first app-idle, so a navigation
+ * never compiles a shell. DERIVED from the one membership list — 'search' is excluded
+ * only because its leg is always-mounted by the bespoke search composition. Content
+ * identities (a specific list, a specific DM thread) still mount their resident UNIT
+ * on navigation — that is content, not shell; shells are the free part (measured,
+ * ResidentShellPrototype 2026-07-21). */
+export const RESIDENT_SHELL_PREWARM_SCENES: readonly ResidencyManagedSceneKey[] =
+  RESIDENCY_MANAGED_SCENES.filter((scene) => scene !== 'search');
+
 export const RESIDENT_UNIT_RETENTION_LIMIT = 3;
 
 /** THE RESIDENT-UNIT IDENTITY (the eviction law's shell identity): what a resident

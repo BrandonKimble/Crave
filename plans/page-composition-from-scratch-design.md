@@ -949,3 +949,22 @@ Eye-verified: search pending face shows the blurred live map through every hole
 shows the map's green through every hole via the scene-plate punch; reveal lands rows
 on solid white with no frost flash. Gates: jest 396/396, invariants 29/29, matrix
 21/21 cold.
+
+## L3 debt repair — warm-before-navigate WIRED + boundary derivation + ledger honesty (2026-07-23)
+
+The audit's three residency findings, fixed in order:
+1. **Warm-before-navigate is real now**: `RESIDENT_SHELL_PREWARM_SCENES` (derived from
+   the one membership list, minus bespoke 'search') joins the always-mounted legs at the
+   SAME first-idle readiness edge the static tabs use (`residentShellsPrewarmed` in
+   `resolveAppRouteStaticSceneMount`); `scheduleResidentShellPrewarm()` fires at that
+   edge so manager bookkeeping and leg mounts flip together. Consequence in the mount
+   machinery: a managed child leg no longer unmounts when its last entry pops — the
+   mount-machinery expression of "shells never evict" (unit retention needs the leg
+   alive). RED-proof: pre-fix every managed first visit fired
+   [SHELL-RESIDENCY][CONTRACT]; post-fix a full matrix (21/21) fires ZERO.
+2. **Boundary derived, not hand-wrapped**: the mounted-body registry maps key→component
+   and applies ShellVisibilityBoundary once, from `isResidencyManagedScene` (now a type
+   guard) — registry membership can no longer silently miss a boundary.
+3. **Commitment ledger deleted**: the write-nothing/read-nothing ledger is gone; the
+   deferral is RECORDED in the eviction-seam doc (ledger gets built WITH the budget when
+   content-heavy scenes join — real estimates from real mounts, not dead scaffolding).
