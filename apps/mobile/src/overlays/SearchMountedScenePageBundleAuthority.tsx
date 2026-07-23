@@ -356,7 +356,7 @@ export const SearchResultsPageBundleHost = React.memo(
       // frosty-blank hole this replaces.
       return (
         <BottomSheetSceneStackPageFrame
-          bodyComponent={<SceneLoadingSurface rowType={skeletonRowType} />}
+          bodyComponent={<SceneLoadingSurface rowType={skeletonRowType} withFilterStripHoles />}
           reserveHeaderLane
           chromeHeight={SEARCH_SCENE_CHROME_HEIGHT}
         />

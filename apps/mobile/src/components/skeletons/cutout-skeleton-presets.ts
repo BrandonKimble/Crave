@@ -1,4 +1,8 @@
 import {
+  STRIP_BAND_BOTTOM_SPACER_HEIGHT,
+  TOGGLE_STRIP_BAND_HEIGHT,
+} from '../../toggles/toggle-strip-metrics';
+import {
   CARD_LINE_GAP,
   CARD_VERTICAL_PADDING,
   CARD_VERTICAL_PADDING_BALANCE,
@@ -349,11 +353,12 @@ const ROW_BUILDERS: Record<CutoutSkeletonRowType, { build: RowBuilder; stride: n
 // few pill-shaped holes exactly where the toggle strip sits — static approximations of the
 // strip's cutouts, since the real strip is hidden during initial loading; the interaction
 // skeleton omits them because the live strip is visible above it) ───────────────────────
-const STRIP_PILL_HEIGHT = 32; // CONTROL_HEIGHT
+const STRIP_PILL_HEIGHT = TOGGLE_STRIP_BAND_HEIGHT; // the declared band height — never a re-listed number
 const STRIP_PILL_RADIUS = 8; // CONTROL_RADIUS
 const STRIP_PILL_GAP = 8;
 const STRIP_PILL_WIDTHS = [104, 72, 88];
-const STRIP_BLOCK_BOTTOM_GAP = 12;
+// The block's bottom gap = the ONE band-block seam (strip-band seam law §1).
+const STRIP_BLOCK_BOTTOM_GAP = STRIP_BAND_BOTTOM_SPACER_HEIGHT;
 
 /** The vertical space the strip-pill block occupies (rows stack below it). */
 export const FILTER_STRIP_HOLES_BLOCK_HEIGHT = STRIP_PILL_HEIGHT + STRIP_BLOCK_BOTTOM_GAP;

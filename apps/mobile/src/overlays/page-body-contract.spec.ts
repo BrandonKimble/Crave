@@ -44,8 +44,20 @@ describe('resolveSceneLoadingMaterial (L0 — the one declared material, no back
   it('resolves the declared row; backing is not a choice (true-cutout law)', () => {
     // Every skeleton is a true cutout onto the shared frost — the old frostBacking
     // fork is deleted; the material is just the scene's declared row shape.
-    expect(resolveSceneLoadingMaterial('notifications')).toEqual({ rowType: 'comment' });
-    expect(resolveSceneLoadingMaterial('settings')).toEqual({ rowType: 'tile' });
+    expect(resolveSceneLoadingMaterial('notifications')).toEqual({
+      rowType: 'comment',
+      withStripHoles: false,
+    });
+    expect(resolveSceneLoadingMaterial('settings')).toEqual({
+      rowType: 'tile',
+      withStripHoles: false,
+    });
+    // THE SKELETON-STRIP LAW (§3): an in-list strip scene's pending face carries the
+    // band block as pill cutouts — derived from the declared basis, never a call site.
+    expect(resolveSceneLoadingMaterial('listDetail')).toEqual({
+      rowType: 'restaurant',
+      withStripHoles: true,
+    });
   });
 
   it('spec-less scenes have no material (search owns its composition)', () => {

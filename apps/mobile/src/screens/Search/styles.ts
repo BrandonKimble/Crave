@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { STRIP_BAND_BOTTOM_SPACER_HEIGHT } from '../../toggles/toggle-strip-metrics';
 
 import { SEARCH_SHORTCUT_SHADOW, SEARCH_THIS_AREA_SHADOW } from './shadows';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
@@ -643,8 +644,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+  // The band block's bottom seam — the ONE shared constant (strip-band seam law §1).
   resultsListHeaderBottomStrip: {
-    height: 8,
+    height: STRIP_BAND_BOTTOM_SPACER_HEIGHT,
     width: '100%',
     backgroundColor: '#ffffff',
   },

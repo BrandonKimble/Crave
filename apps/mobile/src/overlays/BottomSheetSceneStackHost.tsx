@@ -912,7 +912,10 @@ const SceneStackBodyContentLayerHost = React.memo(
       if (skeletonSpec != null) {
         const skeletonHost = (
           <View pointerEvents="none" style={styles.sceneStackBodyLayer}>
-            <SceneLoadingSurface rowType={skeletonSpec.rowType} />
+            <SceneLoadingSurface
+              rowType={skeletonSpec.rowType}
+              withFilterStripHoles={getSceneFoundationSpec(sceneKey)?.strip === 'in-list'}
+            />
           </View>
         );
         const profiledSkeletonHost = onProfilerRender ? (

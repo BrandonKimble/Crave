@@ -31,10 +31,11 @@ import type { OverlayKey } from '../../overlays/types';
 // day a morph needs to change chrome height, it interpolates between two COMPUTED
 // heights on one named clock (design §L1); it must not reintroduce measurement.
 
-/** The 8px white seam between a header-mounted strip band and the divider — mirrors
- *  the results reference (resultsListHeaderBottomStrip). One constant, two consumers:
- *  the host's spacer style and this geometry sum. */
-export const HEADER_STRIP_BOTTOM_SPACER_HEIGHT = 8;
+/** The band block's bottom seam — re-exported from the ONE band-metric home (strip-band
+ *  seam law §1) so existing chrome consumers keep their import path. */
+import { STRIP_BAND_BOTTOM_SPACER_HEIGHT } from '../../toggles/toggle-strip-metrics';
+
+export const HEADER_STRIP_BOTTOM_SPACER_HEIGHT = STRIP_BAND_BOTTOM_SPACER_HEIGHT;
 
 /**
  * THE chrome height for a presented sheet scene — pure, synchronous, exact, RN-free.

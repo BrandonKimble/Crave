@@ -968,3 +968,62 @@ The audit's three residency findings, fixed in order:
 3. **Commitment ledger deleted**: the write-nothing/read-nothing ledger is gone; the
    deferral is RECORDED in the eviction-seam doc (ledger gets built WITH the budget when
    content-heavy scenes join — real estimates from real mounts, not dead scaffolding).
+
+## THE STRIP-BAND SEAM LAW (from-scratch derivation, 2026-07-23 — owner-directed arc)
+
+Surveyed ground truth: 4 live strips (polls/bookmarks header-basis; search in-list;
+listDetail in-content), the single-boundary chrome law (computed height, three sync
+consumers, ±0.5px dev bark), and three diseases: (1) the band's 8px bottom seam is
+declared TWICE (scene-chrome-geometry vs search styles) plus a bespoke 14/6 in
+listDetail; (2) the strip-in-skeleton mode (withFilterStripHoles) is DEAD CODE — no
+caller — so listDetail's strip VANISHES during pending and search's initial face has
+no strip cutouts; (3) search carries vestigial measured-header lanes.
+
+The law, stated once:
+
+1. **ONE BAND BLOCK.** A strip band = bandHeight + bandBottomSpacer, declared in ONE
+   home (toggle-strip metrics). Every basis composes the SAME block: header chrome
+   adds it to computed height; an in-list header renders it as the list's first
+   element; the skeleton's strip-pill block derives its height from the same pair.
+   Independent seam constants are a build failure (grep-invariant).
+2. **BASIS is the declared fact** (foundation spec `strip:` — already exists):
+   'header' = band in persistent chrome, divider BELOW the block; 'in-list' = band is
+   the first body/list element, divider at title-bottom. The apparent divider
+   inconsistency is PRINCIPLED once stated: the divider sits at the fixed/scrolling
+   boundary — below whatever does not scroll. A future 'list-sticky' basis is named
+   by the law but NOT built until a scene needs it (dead modes rot — see disease 2).
+3. **THE SKELETON-STRIP LAW.** At any moment the strip region shows exactly one of:
+   the LIVE strip riding above the pending body (whenever the strip's host is mounted
+   — header-basis always; in-list when the list itself survives the pending state,
+   e.g. mid-search redraws), or STRIP-IN-SKELETON — the pending face includes the
+   band block as pill cutouts at the block's exact geometry, rows stacking below.
+   Blank strip regions are unrepresentable. The choice is DERIVED (L0 style), never
+   a call-site opinion: PageBodyShell derives withFilterStripHoles from the scene's
+   declared basis ('in-list' + full-body pending ⇒ pills; header-basis ⇒ live strip
+   above); the search bundle authority's initial face (list not yet mounted) passes
+   pills; the mid-search pending block (list header live) does not.
+4. **FLUSH BY CONSTRUCTION.** The band block's bottom spacer IS the seam everywhere
+   (listDetail's bespoke bottom margin dies); the block's top edge lands on the
+   single boundary (header basis: inside chrome; in-list: body-lane top). No
+   measured lanes: search's vestigial effectiveResultsHeaderHeight onLayout thread
+   is deleted.
+
+This is the geometry foundation the rubber-band overscroll arc builds on: every seam
+is a declared block on the one computed boundary, so an overscrolling list under a
+pinned band has exactly one number to respect.
+
+### Strip-band seam law — slice 1 SHIPPED (2026-07-23)
+§1 ONE BAND BLOCK: STRIP_BAND_BOTTOM_SPACER_HEIGHT lives in toggle-strip-metrics; the
+chrome geometry, search's resultsListHeaderBottomStrip, listDetail's stripBlock bottom
+margin (was bespoke 6), and the skeleton pill block's gap (was 12) all consume it; the
+pill height derives from TOGGLE_STRIP_BAND_HEIGHT (was re-listed 32). Grep-invariant
+added (independent seam literal == build failure). §3 SKELETON-STRIP LAW wired:
+resolveSceneLoadingMaterial derives withStripHoles from strip==='in-list' (listDetail
+pending face now carries the band pills — the vanishing-strip disease dies); the search
+pre-bundle face passes pills (list not yet mounted); mid-search keeps the live strip
+(eye-verified flush). Gates: jest 396/396 (contract spec pins the derivation),
+invariants 30/30, matrix 21/21 cold, zero residency contract errors.
+REMAINING in this arc: delete search's vestigial measured-header lanes
+(effectiveResultsHeaderHeight onLayout thread); owner-eye on the listDetail pending
+face + pre-bundle search face; then the rubber-band overscroll deep dive on this
+foundation.

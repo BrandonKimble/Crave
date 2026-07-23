@@ -63,6 +63,7 @@ const PageListBody = ({
           rowType={band.materialRowType ?? material.rowType}
           count={band.placeholder.count}
           insetX={band.placeholder.insetX}
+          withFilterStripHoles={material.withStripHoles}
           style={pendingMaterialFillStyle}
         />
       </View>
@@ -134,6 +135,7 @@ const PageCollectionBody = <TItem,>({
           rowType={material.rowType}
           count={spec.placeholder.count}
           insetX={spec.placeholder.insetX}
+          withFilterStripHoles={material.withStripHoles}
           style={pendingMaterialFillStyle}
         />
       </View>
@@ -175,6 +177,7 @@ const PageContentBody = <TData,>({
     <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
       <SceneLoadingSurface
         rowType={material.rowType}
+        withFilterStripHoles={material.withStripHoles}
         style={pendingMaterialFillStyle}
       />
     </View>

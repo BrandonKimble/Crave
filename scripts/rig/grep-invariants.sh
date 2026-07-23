@@ -111,6 +111,11 @@ check_eq "hand-rolled isLoadFailed in listDetail" 0 \
 check_eq "self-frost residue (frostBacking/withFrost/FrostMaterialBackdrop props)" 0 \
   "$(grep -rlE "frostBacking=|withFrost|FrostMaterialBackdrop" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | wc -l | tr -d ' ')"
 
+# STRIP-BAND SEAM LAW §1: the band's bottom seam has ONE home (toggle-strip-metrics).
+# An independent hardcoded 8px seam at a strip bottom edge is the two-constants disease.
+check_eq "independent strip-seam literals (height: 8 outside the metric home)" 0 \
+  "$(grep -rn 'resultsListHeaderBottomStrip' $SRC/screens/Search/styles.ts | grep -c 'height: 8' || true)"
+
 echo "=== THE PENDING BLOCK (search family) — the cover classes stay dead ==="
 check_eq "pinned results loading cover references" 0 \
   "$(file_count 'resultsLoadingCoverSurface\|results-loading-cover' $SRC)"

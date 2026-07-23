@@ -9,3 +9,10 @@ import { CONTROL_HEIGHT } from '../screens/Search/constants/ui';
 // computeSceneChromeHeight (scene-chrome-geometry.ts) sums this into every
 // header-strip scene's chrome height synchronously.
 export const TOGGLE_STRIP_BAND_HEIGHT = CONTROL_HEIGHT;
+
+/** THE BAND BLOCK's bottom seam (strip-band seam law §1): the 8px white spacer between
+ *  a strip band and whatever sits below it — the SAME edge on every basis: the header
+ *  host's spacer, the in-list header's bottom strip, an in-content strip's bottom
+ *  margin, and the skeleton strip-pill block's gap all consume THIS constant.
+ *  Independent seam constants are a grep-invariant failure. */
+export const STRIP_BAND_BOTTOM_SPACER_HEIGHT = 8;

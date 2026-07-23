@@ -1,4 +1,6 @@
 import React from 'react';
+
+import { STRIP_BAND_BOTTOM_SPACER_HEIGHT } from '../../toggles/toggle-strip-metrics';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { setClipboardString } from '../../utils/clipboard';
 import {
@@ -1661,9 +1663,11 @@ const styles = StyleSheet.create({
   pageBlock: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
+  // Bottom edge = the ONE band-block seam (strip-band seam law §1); top stays scene
+  // content spacing.
   stripBlock: {
     marginTop: 14,
-    marginBottom: 6,
+    marginBottom: STRIP_BAND_BOTTOM_SPACER_HEIGHT,
   },
   // §2a meta row: avatar stack flush under the header + username · dot · typed count.
   metaRow: {

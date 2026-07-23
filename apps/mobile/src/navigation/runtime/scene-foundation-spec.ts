@@ -234,13 +234,20 @@ export const getSceneFoundationSpec = (sceneKey: OverlayKey): SceneFoundationSpe
  * cutout row. Backing is NOT a choice any more: every skeleton is a TRUE cutout onto
  * the sheet's one shared frost (the SceneLoadingSurface FrostCutout punches the scene
  * white plate where one exists) — the old self-frost/frostBacking fork is deleted.
+ *
+ * THE SKELETON-STRIP LAW (strip-band seam law §3): withStripHoles derives from the
+ * scene's declared strip basis. An 'in-list' strip lives in the body, so a full-body
+ * pending face replaces it — the face carries the band block as pill cutouts (the
+ * strip region never blanks). A 'header' strip is chrome — always live above any
+ * skeleton — and 'none' has nothing to represent. Nobody re-decides this at a call
+ * site.
  */
 export const resolveSceneLoadingMaterial = (
   sceneKey: OverlayKey
-): { rowType: SceneLoadingRowType } | null => {
+): { rowType: SceneLoadingRowType; withStripHoles: boolean } | null => {
   const spec = getSceneFoundationSpec(sceneKey);
   if (spec == null) {
     return null;
   }
-  return { rowType: spec.skeleton.rowType };
+  return { rowType: spec.skeleton.rowType, withStripHoles: spec.strip === 'in-list' };
 };
