@@ -760,6 +760,21 @@ dots/cards/strip); gates jest 396/396 (+6 from the concurrent session), invarian
 29/29, matrix 21/21 cold. (A 453→21ms push joinWait swing across baselines is
 warm-cache variance — NOT claimed.)
 
+**THE DEBT-REPAIR PASS, PART 1 (2026-07-23): A#9 wired across the census scenes —
+and a REAL residency regression caught and killed.** The audit the owner's
+"are we deferring something?" question triggered found the census scenes had
+retention WITHOUT the subscription law: plain RQ observers on hidden resident
+trees — and messaging POLLS (15s inbox ×2, 15s dm conversation, 5s dm messages)
+ungated: pre-residency the unmount killed them; post-residency a hidden retained
+dm thread polled the API every 5s for the session's remainder. WIRED: `subscribed:
+<useShellLiveness()>` on all seven query sites (userProfile, followList, dm
+conversation+messages, inbox+requests, settings blocks, subscription status) +
+`refetchInterval: live ? N : false` on the four polls. Per-visit freshness
+survives mount-once retention via RQ's resubscribe-refetch (staleTime governs).
+RED-PROVEN with a throwaway service probe: 4 fetches in ~20s visible, ZERO across
+35s hidden, +2 on return (the resubscribe pair). Gates: jest 396/396, invariants
+29/29, matrix 21/21 cold.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:

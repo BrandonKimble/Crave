@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShellLiveness } from '../ShellVisibilityBoundary';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -112,9 +113,12 @@ const BlockedRowAvatar = ({ user }: { user: FollowListUser }) => (
 const BlockedUsersSection = () => {
   const queryClient = useQueryClient();
   const [pendingUnblockId, setPendingUnblockId] = React.useState<string | null>(null);
+  // A#9 (residency): settings is resident — the hidden section must stay quiet.
+  const blocksLive = useShellLiveness();
   const blocksQuery = useQuery({
     queryKey: ['my-blocks'],
     queryFn: () => usersService.listMyBlocks(),
+    subscribed: blocksLive,
     staleTime: 30 * 1000,
   });
   const handleUnblock = React.useCallback(
@@ -190,7 +194,9 @@ const BlockedUsersSection = () => {
 // Subscription status line — server-truth access block (usersService.getMe().access);
 // manage/cancel rides the MANAGE_IN_APP_STORE path (App Store subs are managed in iOS).
 const SubscriptionStatusLine = () => {
-  const profileQuery = useQuery(createProfileQueryOptions());
+  // A#9 (residency): quiet while the hosting shell is hidden.
+  const subscriptionLive = useShellLiveness();
+  const profileQuery = useQuery({ ...createProfileQueryOptions(), subscribed: subscriptionLive });
   const access = profileQuery.data?.access;
   if (access == null) {
     return null;

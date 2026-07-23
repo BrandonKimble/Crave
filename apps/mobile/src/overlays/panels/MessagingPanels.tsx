@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShellLiveness } from '../ShellVisibilityBoundary';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Reanimated, {
   useAnimatedKeyboard,
@@ -104,19 +105,25 @@ const ConversationRow = ({
 
 export const MessagesInboxPanelBody = React.memo((_props: MountedSceneBodyProps) => {
   const { pushRoute } = useAppOverlayRouteController();
-  // §3.1 cadence: 15s inbox poll while on screen; refetchOnMount 'always' is the
-  // on-focus refetch until M3's useConversationSync owns the timer.
+  // §3.1 cadence: 15s inbox poll WHILE LIVE (A#9, residency): the retained hidden
+  // body must neither poll nor re-render on cache events — `subscribed` gates the
+  // observer and the interval gates the timer. Per-visit freshness survives the
+  // mount-once world: staleTime 0 ⇒ RQ refetches on RESUBSCRIBE (the become-visible
+  // edge), the retained-tree equivalent of the old refetchOnMount 'always'.
+  const live = useShellLiveness();
   const inboxQuery = useQuery({
     queryKey: INBOX_QUERY_KEY,
     queryFn: () => messagingService.listConversations('inbox'),
-    refetchInterval: 15_000,
+    refetchInterval: live ? 15_000 : false,
     refetchOnMount: 'always',
+    subscribed: live,
   });
   const requestsQuery = useQuery({
     queryKey: REQUESTS_QUERY_KEY,
     queryFn: () => messagingService.listConversations('requests'),
-    refetchInterval: 15_000,
+    refetchInterval: live ? 15_000 : false,
     refetchOnMount: 'always',
+    subscribed: live,
   });
 
   const openConversation = React.useCallback(
@@ -280,11 +287,15 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     entry?.key === 'dmSession' ? (entry.params as OverlayRouteParamsMap['dmSession']) : null;
   const conversationId = typeof params?.conversationId === 'string' ? params.conversationId : null;
 
+  // A#9 (residency): a hidden retained dm thread must not poll (it was hitting the
+  // API every 5s for the rest of the session) nor re-render on cache events.
+  const dmLive = useShellLiveness();
   const conversationQuery = useQuery({
     queryKey: conversationQueryKey(conversationId ?? 'missing'),
     enabled: conversationId != null,
     queryFn: () => messagingService.getConversation(conversationId as string),
-    refetchInterval: 15_000,
+    refetchInterval: dmLive ? 15_000 : false,
+    subscribed: dmLive,
   });
   // §3.1 cadence: 5s while the session is open. Crude-real: full-window refetch on the same
   // cache key (launch-scale threads); M3's useConversationSync swaps in `after` deltas.
@@ -292,8 +303,9 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     queryKey: messagesQueryKey(conversationId ?? 'missing'),
     enabled: conversationId != null,
     queryFn: () => messagingService.listMessages(conversationId as string),
-    refetchInterval: 5_000,
+    refetchInterval: dmLive ? 5_000 : false,
     refetchOnMount: 'always',
+    subscribed: dmLive,
   });
 
   const conversation = conversationQuery.data ?? null;

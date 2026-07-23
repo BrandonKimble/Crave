@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShellLiveness } from '../ShellVisibilityBoundary';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -43,9 +44,12 @@ export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
 
   // RT-19 (state-loss half): cache-keyed by (mode, userId) — the drill loop's pop back
   // re-renders instantly from cache instead of a spinner refetch.
+  // A#9 (residency): see UserProfilePanel — hidden resident units stay quiet.
+  const followListLive = useShellLiveness();
   const listQuery = useQuery({
     queryKey: ['followList', mode, ownerUserId],
     enabled: ownerUserId != null,
+    subscribed: followListLive,
     staleTime: 60_000,
     queryFn: () =>
       mode === 'following'

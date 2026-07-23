@@ -1,4 +1,5 @@
 import React from 'react';
+import { useShellLiveness } from '../ShellVisibilityBoundary';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -447,9 +448,13 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
   // THE PAGE CONTROLLER. RT-19 (state-loss half): page data rides the query CACHE
   // keyed by userId — the drill loop's pop back to A re-renders instantly from cache
   // instead of a spinner refetch.
+  // A#9 (residency): per-user resident units keep their trees — the hidden ones
+  // must not re-render on cache events. Resubscribe refetches when >60s stale.
+  const userProfileLive = useShellLiveness();
   const profileQuery = useQuery({
     queryKey: ['userProfile', userId],
     enabled: userId != null,
+    subscribed: userProfileLive,
     staleTime: 60_000,
     queryFn: async () => {
       const [profile, edge] = await Promise.all([
