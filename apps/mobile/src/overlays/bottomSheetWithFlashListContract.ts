@@ -69,9 +69,6 @@ export type BottomSheetWithFlashListBaseProps<T> = {
   onEndReachedThreshold?: FlashListProps<T>['onEndReachedThreshold'];
   showsVerticalScrollIndicator?: boolean;
   keyboardDismissMode?: FlashListProps<T>['keyboardDismissMode'];
-  bounces?: boolean;
-  alwaysBounceVertical?: boolean;
-  overScrollMode?: FlashListProps<T>['overScrollMode'];
   testID?: string;
   activeList?: DualListSelection;
   onDragStateChange?: (isDragging: boolean) => void;

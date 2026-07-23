@@ -1143,3 +1143,17 @@ FlashList's scroll-event throttle may also gate the edge frame's velocity) — N
 [BOUNCEDBG] dev probe at the fire site + owner-eye feel pass, together with slice 4
 (short-page floor deletion, whose short pages are also the deterministic bottom-
 overscroll surface) and slice 5 (seam under overscroll).
+
+### Boundary-physics slice 4 SHIPPED (2026-07-23): the short-page floor is dead
+SHORT_PAGE_SCROLL_ROOM_PX deleted (constant, container minHeight floor, viewport
+measurement state, stale comments). A short page's interior range is honestly 0 — both
+boundaries at once — and the overscroll pan now treats maxScrollOffset===0 as a legal
+bottom (atExpanded still gates), so short pages get the real rubber-band with zero
+fake padding. Dead bounce knobs reconciled away: bounces/alwaysBounceVertical/
+overScrollMode removed from the BottomSheetWithFlashList contract, the shell-props and
+scroll-body-defaults Pick contracts, and all forward sites — boundary behavior has ONE
+structural home (the container).
+Gates: tsc/jest 396, invariants 30/30, matrix 21/21 (handoffs intact post-floor).
+ARC STATUS: slices 1-4 shipped; slice 5 (seam under overscroll) + the FEEL passes
+(top rebound firing attribution via [BOUNCEDBG], bottom band on a short page, spring
+tuning) are the owner-eye rounds — the eye is the oracle for feel, per the law.

@@ -543,9 +543,10 @@ export const useBottomSheetSharedGestureRuntime = ({
         }
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
-        const atBottom =
-          maxScrollOffset.value > 0 &&
-          scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
+        // A short page (interior range 0) is at BOTH boundaries — bottom overscroll
+        // included (law §5); atExpanded still gates, so below the top snap the up-drag
+        // keeps driving the sheet.
+        const atBottom = scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
         if (atExpanded && atBottom && !isInMomentum.value) {
           stateManager.activate();
           overscrollPanActive.value = true;

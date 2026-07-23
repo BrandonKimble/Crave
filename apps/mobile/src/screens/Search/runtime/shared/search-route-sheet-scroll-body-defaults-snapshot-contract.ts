@@ -6,9 +6,6 @@ export type SearchRouteSheetScrollBodyDefaultsEntry = Pick<
   | 'keyboardShouldPersistTaps'
   | 'scrollIndicatorInsets'
   | 'keyboardDismissMode'
-  | 'bounces'
-  | 'alwaysBounceVertical'
-  | 'overScrollMode'
   | 'testID'
   | 'flashListProps'
 >;

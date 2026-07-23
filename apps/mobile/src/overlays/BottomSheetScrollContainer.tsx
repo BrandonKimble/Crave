@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
-import { SHEET_BODY_NO_OVERSCROLL, SHORT_PAGE_SCROLL_ROOM_PX } from './sheetBodyScrollDefaults';
+import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const AnimatedNativeScrollView = AnimatedScrollView as unknown as React.ComponentType<
@@ -85,27 +85,10 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       return { scrollEnabled: shouldEnableScrollShared.value };
     }, [shouldEnableScrollShared]);
 
-    // MINIMUM SCROLL ROOM (the "make every page a list anyway" law — owner, 2026-07-11):
-    // content pads to viewport + SHORT_PAGE_SCROLL_ROOM_PX, so a short page GENUINELY scrolls a
-    // little instead of being an immovable brick. That makes the one proven result-sheet handoff
-    // cover every page with zero special cases: the up-drag fails the pan into a REAL native
-    // scroll mid-finger, the divider fades on a REAL offset, and scroll-to-top hands back to the
-    // collapse pan. (This replaced the bespoke "tug" gesture mode, which fought the real
-    // machinery and caused the jitter/dead-handoff class — see plans/sheet-scroll-primitive.md.)
-    // A no-op for long content (minHeight loses to taller content).
-    const [viewportHeight, setViewportHeight] = React.useState(0);
-    const handleLayout = React.useCallback(
-      (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
-        const nextHeight = Math.round(event.nativeEvent.layout.height);
-        setViewportHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-        onLayout?.(event);
-      },
-      [onLayout]
-    );
-    const minScrollRoomStyle = React.useMemo(
-      () => (viewportHeight > 0 ? { minHeight: viewportHeight + SHORT_PAGE_SCROLL_ROOM_PX } : null),
-      [viewportHeight]
-    );
+    // THE SHORT-PAGE FLOOR IS DEAD (boundary-physics law §5): a short page's interior
+    // range is genuinely 0 and the runtime-owned overscroll supplies the feel — no fake
+    // minHeight padding. The old floor existed so the up-drag had a real scroll to fail
+    // into; boundary ownership (the overscroll pan) replaced that need.
 
     // FrostCutout re-measure signal: content re-flow (a row above a cutout growing) changes the
     // content size without firing the cutout's own onLayout — this pings the scene's foundation
@@ -137,12 +120,11 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           alwaysBounceVertical={SHEET_BODY_NO_OVERSCROLL.alwaysBounceVertical}
           overScrollMode={SHEET_BODY_NO_OVERSCROLL.overScrollMode}
           animatedProps={scrollEnabledAnimatedProps}
-          onLayout={handleLayout}
+          onLayout={onLayout}
           onContentSizeChange={handleContentSizeChange}
           style={[style, overscrollTranslateStyle, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[
             contentContainerStyle,
-            minScrollRoomStyle,
             transparent ? styles.transparentScrollContent : null,
           ]}
         />

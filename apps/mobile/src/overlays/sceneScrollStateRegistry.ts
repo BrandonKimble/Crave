@@ -10,7 +10,7 @@ import type { SharedValue } from 'react-native-reanimated';
 // The LIVE gesture values (bodyScrollRuntime.scrollOffset etc.) stay host-owned by design —
 // exactly one scene is presented at a time and the runtime re-bases them per presentation.
 // (The former content-fits/tug machinery is GONE: short pages get real scroll room instead —
-// BottomSheetScrollContainer's SHORT_PAGE_SCROLL_ROOM_PX — so the one result-sheet handoff
+// the boundary-physics law — so the one result-sheet handoff
 // covers every page and there is no parallel gesture mode to desync.)
 
 export type OverlaySceneScrollHandle = {

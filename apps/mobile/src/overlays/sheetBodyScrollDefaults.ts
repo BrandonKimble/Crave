@@ -30,13 +30,10 @@ import type { ScrollViewProps } from 'react-native';
  * pinned header during the down-handoff AND desynced the FrostCutout plate (which translates by
  * -scrollOffset and cannot follow a negative over-scroll offset).
  */
-/**
- * Minimum extra scrollable height below every sheet page's content ("make every page a list
- * anyway"): short pages get real scroll room so the ONE result-sheet handoff covers them with no
- * special cases. Applied structurally by BottomSheetScrollContainer as a contentContainerStyle
- * minHeight of viewport + this; a no-op when content is taller.
- */
-export const SHORT_PAGE_SCROLL_ROOM_PX = 96;
+// SHORT_PAGE_SCROLL_ROOM_PX is DELETED (boundary-physics law §5): a short page has
+// interior scroll range 0 — both boundaries at once — and the runtime-owned overscroll
+// gives it real rubber-band feel with zero fake padding. The old floor existed only so
+// the handoff had a real scroll to fail into; boundary ownership replaced that need.
 
 export const SHEET_BODY_NO_OVERSCROLL: {
   bounces: boolean;
