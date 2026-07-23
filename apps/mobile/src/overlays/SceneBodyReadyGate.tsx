@@ -65,7 +65,7 @@ export const SceneBodyReadyGate: React.FC<{
       {/* L2: rowType + backing come from the ONE derivation home
           (resolveSceneLoadingMaterial) — the gate no longer re-decides the §Q redo T2
           white-on-white rule; it shares the exact derivation PageBodyShell uses. */}
-      <SceneLoadingSurface rowType={material.rowType} frostBacking={material.frostBacking} />
+      <SceneLoadingSurface rowType={material.rowType} />
     </View>
   );
 };

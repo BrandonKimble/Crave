@@ -777,7 +777,7 @@ export const useRestaurantPanelSpec = ({
       // structure-matched dish-card skeleton (mirrors the dish list) instead of a bare spinner.
       return (
         <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
-          <SceneLoadingSurface rowType="dish" frostBacking />
+          <SceneLoadingSurface rowType="dish" />
         </View>
       );
     }
@@ -798,7 +798,7 @@ export const useRestaurantPanelSpec = ({
   const renderSeedSkeleton = React.useCallback(
     () => (
       <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
-        <SceneLoadingSurface rowType="dish" frostBacking />
+        <SceneLoadingSurface rowType="dish" />
       </View>
     ),
     [emptyAreaMinHeight]

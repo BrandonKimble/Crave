@@ -423,9 +423,9 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
           // CONTENT_HORIZONTAL_PADDING; cancel the ScrollView's own horizontal pad so the
           // skeleton rows align with the real history rows (single inset, not double).
           <View style={styles.loadingSkeleton}>
-            {/* frostBacking: the recent-history list sits over the opaque white search screen, not
-                the map, so a self-contained frost gives the holes their frosted-window contrast. */}
-            <SceneLoadingSurface rowType="history" count={5} frostBacking />
+            {/* True cutout: the holes read through to the search surface's own frosted layer
+                (the suggestion shell composition) — no self-frost. */}
+            <SceneLoadingSurface rowType="history" count={5} />
           </View>
         ) : !hasSections ? (
           <Text style={styles.emptyText}>{emptyLabel}</Text>

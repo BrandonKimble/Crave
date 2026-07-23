@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { CONTENT_HORIZONTAL_PADDING } from '../../screens/Search/constants/search';
+import { FrostCutout } from '../../overlays/SceneBodyFoundationSurface';
 import { CutoutSkeletonSurface } from './CutoutSkeletonSurface';
 import {
   buildFilterStripPillHoles,
@@ -19,21 +20,15 @@ import {
  *
  * The look is driven entirely by two co-designable inputs: the per-rowType HOLE GEOMETRY
  * (cutout-skeleton-presets.ts) and the shared shimmer knobs (cutout-skeleton-config.ts). This
- * container only sizes the surface and supplies the inset + frost choice.
+ * container only sizes the surface and supplies the inset.
  *
- * TWO contrast sources, by scene:
- *   • FROST-THROUGH TO THE MAP (the default, frostBacking=false) — the surface paints no opaque
- *     background; the white plate is the sheet and its holes are transparent down to the hoisted
- *     frosted map. Used where the body lane sits directly over the frost: restaurant (dish),
- *     profile / bookmarks favorites (tile/restaurant). These are real windows onto the map.
- *   • SELF-FROST (frostBacking=true) — for scenes whose body sits over an OPAQUE layer that blocks
- *     the map: the PollDetail comment thread (white sheetSurface), the search-results reveal (the
- *     opaque loading cover that hides the outgoing feed), and recent history (the white search
- *     screen). There the holes reveal a self-contained frosted gray instead of the live map.
- *
- * Wired into: results/restaurant (dish, self-frost), saveList/bookmarks/profile-favorites (tile,
- * map-frost), recentHistory (history, self-frost), and the poll-detail comment thread (comment,
- * self-frost).
+ * ONE contrast source (the true-cutout law): every hole is transparent down to the sheet's ONE
+ * constant frosted layer — the same frost the toggle-strip / header cutouts reveal. There is no
+ * self-frost and no painted imitation. Where the scene body sits on the foundation white plate
+ * (SceneBodyFoundationSurface), the surface wraps itself in a FrostCutout: its whole rect is
+ * punched out of the scene plate, the skeleton's own plate takes over as THE white there, and
+ * the holes reach the real frost. Outside a foundation surface (the search sheet's canonical
+ * composition) FrostCutout is a no-op and the lane is transparent by construction.
  */
 
 export type SceneLoadingRowType = CutoutSkeletonRowType;
@@ -57,14 +52,6 @@ export type SceneLoadingSurfaceProps = {
    */
   insetX?: number;
   /**
-   * Mount a SELF-CONTAINED frosted backing under the holes instead of frost-through to the
-   * hoisted map. Needed for a scene whose body sits over an OPAQUE plate (PollDetail's white
-   * sheetSurface, kept for poll-header readability) — there the holes can't reach the hoisted
-   * frost, so a self-frost gives the windows their contrast. The default (false) is the ideal:
-   * transparent holes reveal the real frosted map directly.
-   */
-  frostBacking?: boolean;
-  /**
    * Prepend a static block of pill-shaped holes where the toggle strip sits (the
    * INITIAL/reveal skeleton — the real strip is hidden then; rows stack below the block).
    * The interaction skeleton omits it: the live strip renders above that cover.
@@ -77,7 +64,6 @@ export const SceneLoadingSurface: React.FC<SceneLoadingSurfaceProps> = ({
   rowType,
   count = rowType === 'tile' ? TILE_ROW_COUNT : DEFAULT_ROW_COUNT,
   insetX = CONTENT_HORIZONTAL_PADDING,
-  frostBacking = false,
   withFilterStripHoles = false,
   style,
 }) => {
@@ -100,16 +86,19 @@ export const SceneLoadingSurface: React.FC<SceneLoadingSurfaceProps> = ({
       pointerEvents="none"
       style={[styles.surface, { minHeight: minRowsHeight }, style]}
     >
-      {/* Shimmer knobs + plate color default from CUTOUT_SKELETON_CONFIG inside the surface — no
-          need to re-thread them here; this container only owns sizing + inset + frost choice. */}
-      <CutoutSkeletonSurface
-        rowType={rowType}
-        rowCount={rowCount}
-        insetX={insetX}
-        insetY={stripBlockHeight}
-        extraHoles={extraHoles}
-        withFrost={frostBacking}
-      />
+      {/* The FrostCutout punches this surface's whole rect out of the scene's foundation white
+          plate (no-op outside one), so the skeleton's own plate is the ONE white here and its
+          holes are true windows onto the shared frost. Shimmer knobs + plate color default from
+          CUTOUT_SKELETON_CONFIG inside the surface — this container only owns sizing + inset. */}
+      <FrostCutout style={styles.cutoutFill}>
+        <CutoutSkeletonSurface
+          rowType={rowType}
+          rowCount={rowCount}
+          insetX={insetX}
+          insetY={stripBlockHeight}
+          extraHoles={extraHoles}
+        />
+      </FrostCutout>
     </View>
   );
 };
@@ -121,6 +110,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignSelf: 'stretch',
     width: '100%',
+  },
+  cutoutFill: {
+    ...StyleSheet.absoluteFillObject,
   },
 });
 

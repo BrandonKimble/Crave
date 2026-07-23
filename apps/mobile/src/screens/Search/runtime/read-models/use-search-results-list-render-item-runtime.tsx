@@ -19,14 +19,15 @@ import type { RestaurantResultCardDescriptor } from '../../components/restaurant
 // the reveal is a plain data swap. Height = one window (THE LENGTH LAW: fills the
 // sheet at the highest snap, bounded scroll, no repeat). The old pinned overlay
 // cover + the rows-visibility level died with this — there are no stale rows in the
-// tree to hide. frostBacking stays the INTERIM look until the frost-layer tuning
-// (owner-eye) restores true cutouts that read frosty.
+// tree to hide. TRUE CUTOUTS (frost pass 2026-07-23): nothing opaque paints behind the
+// pending face (probe-proven — the sheet's white layers are episode-gated off), so the
+// block's plate is THE white and its holes are real windows onto the blurred live map.
 const ResultsPendingBlockCell = React.memo(({ rowType }: { rowType: 'restaurant' | 'dish' }) => {
   const { height: windowHeight } = useWindowDimensions();
   const band = rowType === 'dish' ? SEARCH_RESULTS_BANDS.dishes : SEARCH_RESULTS_BANDS.restaurants;
   return (
     <View pointerEvents="none" style={{ height: windowHeight, overflow: 'hidden' }}>
-      <SceneLoadingSurface rowType={rowType} count={band.placeholder.count} frostBacking />
+      <SceneLoadingSurface rowType={rowType} count={band.placeholder.count} />
     </View>
   );
 });

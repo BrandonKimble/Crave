@@ -18,7 +18,7 @@ export type SheetSceneKey = Exclude<OverlayKey, 'search' | 'sheetHost' | 'price'
 
 export type SceneFoundationSpec = {
   /** The cutout skeleton the shared loading leg renders for this scene. */
-  skeleton: { rowType: SceneLoadingRowType; frostBacking?: boolean };
+  skeleton: { rowType: SceneLoadingRowType };
   /**
    * THE STRIP LAW (load-bearing since leg 2 — plans/toggle-strip-rebuild-ledger.md):
    * whether this page renders a toggle/filter strip, and WHERE it mounts.
@@ -231,20 +231,16 @@ export const getSceneFoundationSpec = (sceneKey: OverlayKey): SceneFoundationSpe
 
 /**
  * THE loading-material derivation (THE PAGE L0/L2 — one home): the scene's declared
- * cutout row + the DERIVED backing. Self-frost derives from the body surface — a
- * frost-through skeleton over an opaque white body renders invisible holes (the owner's
- * "just white" sheets; §Q redo T2 caught 13 sibling rows sharing the latent class). An
- * explicit row value still wins; nobody re-decides this at a call site.
+ * cutout row. Backing is NOT a choice any more: every skeleton is a TRUE cutout onto
+ * the sheet's one shared frost (the SceneLoadingSurface FrostCutout punches the scene
+ * white plate where one exists) — the old self-frost/frostBacking fork is deleted.
  */
 export const resolveSceneLoadingMaterial = (
   sceneKey: OverlayKey
-): { rowType: SceneLoadingRowType; frostBacking: boolean } | null => {
+): { rowType: SceneLoadingRowType } | null => {
   const spec = getSceneFoundationSpec(sceneKey);
   if (spec == null) {
     return null;
   }
-  return {
-    rowType: spec.skeleton.rowType,
-    frostBacking: spec.skeleton.frostBacking ?? spec.bodySurface === 'white',
-  };
+  return { rowType: spec.skeleton.rowType };
 };

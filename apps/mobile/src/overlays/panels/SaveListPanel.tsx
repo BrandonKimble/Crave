@@ -438,7 +438,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
         // Row skeleton; inherits the 20px horizontal inset from the body
         // transport's contentContainer, so no extra insetX (see the tile-grid
         // double-pad gotcha that used to live here).
-        <SceneLoadingSurface rowType="history" insetX={0} frostBacking />
+        <SceneLoadingSurface rowType="history" insetX={0} />
       ) : lists.length ? (
         <View style={styles.rowList}>
           {lists.map((item) => (

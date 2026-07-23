@@ -18,8 +18,6 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, G, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { FrostedGlassBackground } from '../FrostedGlassBackground';
-import FrostMaterialBackdrop from './FrostMaterialBackdrop';
 import { useShellLiveness } from '../../overlays/ShellVisibilityBoundary';
 import MaskedHoleOverlay, { type MaskedHole } from '../MaskedHoleOverlay';
 import { CUTOUT_SKELETON_CONFIG, type CutoutShimmerMode } from './cutout-skeleton-config';
@@ -27,20 +25,20 @@ import { buildPresetHoles, type CutoutSkeletonRowType } from './cutout-skeleton-
 
 /**
  * THE production loading-skeleton primitive: a sheet-colored plate with skeleton-shaped HOLES
- * punched out of it, pulsed by a shimmer. Where the surface sits over the transparent body lane
- * (the null-plate scenes), the holes reveal the constant frosted MAP behind the sheet — windows
- * onto the frost, the same effect the header grab-handle/close-button cutouts produce. Where it
- * sits over an opaque plate instead (PollDetail comment, the title pill), pass `withFrost` to mount
- * a SELF-contained frosted backing tinted from CUTOUT_SKELETON_CONFIG so those holes still read as
- * frosted windows. The shape contrast comes from the frost, not a per-skeleton tint.
+ * punched out of it, pulsed by a shimmer. The holes are TRANSPARENT — they reveal the ONE
+ * constant frosted layer (the real BlurView over the live map) that founds every sheet, the
+ * exact effect the toggle-strip / header grab-handle cutouts produce. There is NO self-frost
+ * and NO painted imitation: a host must guarantee nothing opaque paints between this surface
+ * and the shared frost (foundation-plated scenes get that via the FrostCutout punch in
+ * SceneLoadingSurface/CutoutSkeletonShape; the search sheet's canonical composition is
+ * transparent there by construction).
  *
- * Rendered by SceneLoadingSurface (the single chokepoint for every wired scene) and CutoutSkeletonTitle.
+ * Rendered by SceneLoadingSurface (the single chokepoint for every wired scene) and CutoutSkeletonShape.
  * Tuned via CUTOUT_SKELETON_CONFIG (knobs) + cutout-skeleton-presets.ts (hole geometry).
  *
  * Layer stack (bottom → top), absolutely filled:
- *   1. FrostedGlassBackground (optional `withFrost`) — the self-frost the holes reveal.
- *   2. Shimmer layer ('pulse' | 'sweep' | 'domino') — below the plate, so it reads only through holes.
- *   3. MaskedHoleOverlay — the opaque sheet plate with the holes punched out (top).
+ *   1. Shimmer layer ('pulse' | 'sweep' | 'domino') — below the plate, so it reads only through holes.
+ *   2. MaskedHoleOverlay — the opaque sheet plate with the holes punched out (top).
  */
 
 const AnimatedRect = Reanimated.createAnimatedComponent(Rect);
@@ -67,14 +65,6 @@ export type CutoutSkeletonSurfaceProps = {
   /** Horizontal/vertical inset for the preset's first row. */
   insetX?: number;
   insetY?: number;
-
-  /** Mount the self-frosted backing under the holes (scenes that can't frost-through to the map). */
-  withFrost?: boolean;
-  /** BlurView intensity for the frost backing (when `withFrost`). */
-  frostIntensity?: number;
-  /** Frost tint override (when `withFrost`). Defaults to the shared config tint. */
-  frostTintColor?: string;
-  frostTintOpacity?: number;
 
   // --- Shimmer knobs (default to the shared config so a dropped prop renders the shipped look) ---
   shimmerMode?: CutoutShimmerMode;
@@ -154,10 +144,6 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
   rowCount = 6,
   insetX = 16,
   insetY = 8,
-  withFrost = false,
-  frostIntensity,
-  frostTintColor = CUTOUT_SKELETON_CONFIG.frostTintColor,
-  frostTintOpacity = CUTOUT_SKELETON_CONFIG.frostTintOpacity,
   shimmerMode = CUTOUT_SKELETON_CONFIG.shimmerMode,
   shimmerDurationMs = CUTOUT_SKELETON_CONFIG.shimmerDurationMs,
   shimmerColor = CUTOUT_SKELETON_CONFIG.shimmerColor,
@@ -308,24 +294,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
 
   return (
     <View style={containerStyle} onLayout={onLayout} pointerEvents="none">
-      {/* 1. The frost the holes reveal, for scenes that can't frost-through to the map:
-          THE FROST MATERIAL (law §2) — the designed blurred-map look. A BlurView over
-          the sheet's white body has nothing to blur (the old "grayer blocks" read);
-          the material carries the frosty look itself. Explicit tint overrides (the
-          legacy PollDetail/title sites) keep the blur+tint path until they migrate. */}
-      {withFrost ? (
-        frostTintColor != null || frostTintOpacity != null || frostIntensity != null ? (
-          <FrostedGlassBackground
-            intensity={frostIntensity}
-            tintColor={frostTintColor}
-            tintOpacity={frostTintOpacity}
-          />
-        ) : (
-          <FrostMaterialBackdrop />
-        )
-      ) : null}
-
-      {/* 2. Shimmer — masked to the holes by the plate above. */}
+      {/* 1. Shimmer — masked to the holes by the plate above. */}
       {shimmerMode === 'pulse' ? (
         <Reanimated.View
           pointerEvents="none"
@@ -369,7 +338,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
         </Svg>
       ) : null}
 
-      {/* 3. The sheet plate with the holes punched out. renderWhenEmpty paints a holes-less plate on
+      {/* 2. The sheet plate with the holes punched out. renderWhenEmpty paints a holes-less plate on
           the first (pre-measure) frame so the scene lands on a solid plate, never a transparent flash. */}
       <MaskedHoleOverlay holes={resolvedHoles} backgroundColor={plateColor} renderWhenEmpty />
     </View>

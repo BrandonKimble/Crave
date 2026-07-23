@@ -138,11 +138,12 @@ LAYER on top of the shared frosted foundation — no page may sit on bare frost.
   background of its own, and keep its text legible on frost gray. First consumer:
   the profile metrics box (`ProfilePanel` `statsRow`).
 - **In-body loading skeletons:** a `SceneLoadingSurface` rendered INSIDE a body
-  (list-empty/loading states) now sits over the opaque foundation white — pass
-  `frostBacking` so its holes read as frosted windows (the self-frost rule the
-  skeleton already documents). The shared skeleton LEG (body-null fallback)
-  renders without the white layer and keeps true frost-through — leave its
-  foundation-spec `skeleton.frostBacking` values as they are.
+  (list-empty/loading states) is a TRUE cutout automatically: it wraps itself in a
+  `FrostCutout`, punching its whole rect out of the foundation white plate, so its
+  own plate is the one white there and the holes reach the real frost. There is no
+  `frostBacking`/self-frost fork any more — never paint an imitation frost. The
+  shared skeleton LEG (body-null fallback) renders before the white layer mounts
+  and frost-throughs by construction.
 
 **The strip-band backdrop law (owner ratified 2026-07-12 — "the cutouts should
 actually see through, and we should adapt the white area to accommodate that"):**

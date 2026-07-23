@@ -4,7 +4,6 @@ import { Image } from 'expo-image';
 import { Plus } from 'lucide-react-native';
 
 import { colors as themeColors } from '../../constants/theme';
-import { CUTOUT_SKELETON_CONFIG } from '../skeletons/cutout-skeleton-config';
 
 // The ONE card photo strip (product/images.md, owner 2026-07-10: cards carry
 // horizontally scrollable STRIPS, never single slots; ~3-4 photos visible at
@@ -51,12 +50,12 @@ export interface PhotoStripProps {
 const DEFAULT_ASPECT = 4 / 3;
 const TILE_GAP = 6;
 const TILE_RADIUS = 10;
-// The app's frost-gray token (cutout-skeleton-config frostTint) at a soft
-// resting opacity — the placeholder reads as a quiet frosted pane, not chrome.
-const FROST_GRAY = CUTOUT_SKELETON_CONFIG.frostTintColor.replace('rgb(', 'rgba(');
-const PLACEHOLDER_COLOR = FROST_GRAY.replace(')', ', 0.16)');
-const ADD_TILE_BORDER = FROST_GRAY.replace(')', ', 0.45)');
-const ADD_ICON_COLOR = CUTOUT_SKELETON_CONFIG.frostTintColor;
+// First-class placeholder tokens (a quiet neutral pane, not chrome). These are the
+// strip's OWN colors — the old derivation string-mutated the skeleton config's
+// self-frost tint, a token that died with the true-cutout law.
+const PLACEHOLDER_COLOR = 'rgba(146, 151, 159, 0.16)';
+const ADD_TILE_BORDER = 'rgba(146, 151, 159, 0.45)';
+const ADD_ICON_COLOR = 'rgb(146, 151, 159)';
 
 // ─── The plus SLIVER (leg 10 step 4; listdetail-ideal §7 gallery seam) ───────────────────────
 // Decree: the "+" tile is a SLIVER — 1/6–1/8 of an image block's width, image height. At

@@ -63,7 +63,6 @@ const PageListBody = ({
           rowType={band.materialRowType ?? material.rowType}
           count={band.placeholder.count}
           insetX={band.placeholder.insetX}
-          frostBacking={material.frostBacking}
           style={pendingMaterialFillStyle}
         />
       </View>
@@ -82,7 +81,6 @@ const PageListBody = ({
           rowType={band.materialRowType ?? material.rowType}
           count={APPENDING_TAIL_ROWS}
           insetX={band.placeholder.insetX}
-          frostBacking={material.frostBacking}
         />
       ) : null}
     </View>
@@ -136,7 +134,6 @@ const PageCollectionBody = <TItem,>({
           rowType={material.rowType}
           count={spec.placeholder.count}
           insetX={spec.placeholder.insetX}
-          frostBacking={material.frostBacking}
           style={pendingMaterialFillStyle}
         />
       </View>
@@ -153,7 +150,6 @@ const PageCollectionBody = <TItem,>({
           rowType={material.rowType}
           count={APPENDING_TAIL_ROWS}
           insetX={spec.placeholder.insetX}
-          frostBacking={material.frostBacking}
         />
       ) : null}
     </>
@@ -179,7 +175,6 @@ const PageContentBody = <TData,>({
     <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
       <SceneLoadingSurface
         rowType={material.rowType}
-        frostBacking={material.frostBacking}
         style={pendingMaterialFillStyle}
       />
     </View>

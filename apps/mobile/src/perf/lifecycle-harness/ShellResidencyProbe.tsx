@@ -31,7 +31,7 @@ const subscribe = (l: Listener) => {
 const ShellFacsimile = React.memo(({ hidden }: { hidden: boolean }) => (
   <View style={hidden ? styles.hidden : styles.shell} pointerEvents="none">
     <View style={styles.chromeBand} />
-    <SceneLoadingSurface rowType="restaurant" count={4} frostBacking />
+    <SceneLoadingSurface rowType="restaurant" count={4} />
   </View>
 ));
 ShellFacsimile.displayName = 'ShellFacsimile';

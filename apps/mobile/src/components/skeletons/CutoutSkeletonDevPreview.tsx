@@ -17,8 +17,8 @@ import type { CutoutSkeletonRowType } from './cutout-skeleton-presets';
  *
  * The overlay is transparent except the cutout area + the control panel, so whatever is behind
  * it shows through — open it from the home/map screen (sheets collapsed) to tune against the real
- * map. `withFrost` blurs+tints that real backdrop the same way the sheet frost does, so the holes
- * read as windows onto the frosted map.
+ * map. The holes are TRUE cutouts — transparent to whatever is behind the overlay, exactly like
+ * production (open it over the map so they read as windows onto the real frost).
  *
  * The controls START from CUTOUT_SKELETON_CONFIG (the production values). When a look is dialed in,
  * bake the chosen values back into cutout-skeleton-config.ts (shimmer knobs) and the per-rowType
@@ -113,7 +113,6 @@ export const CutoutSkeletonDevPreview: React.FC = () => {
   const [dominoSharpness, setDominoSharpness] = React.useState(
     CUTOUT_SKELETON_CONFIG.dominoSharpness
   );
-  const [frostGray, setFrostGray] = React.useState(CUTOUT_SKELETON_CONFIG.frostTintOpacity);
 
   React.useEffect(() => {
     const handleUrl = (url: string | null) => {
@@ -147,12 +146,11 @@ export const CutoutSkeletonDevPreview: React.FC = () => {
   return (
     <View style={styles.root} pointerEvents="box-none">
       {/* The cutout skeleton under test, over whatever is behind the overlay (open from the map
-          screen to tune against the real frosted map). withFrost blurs+tints that backdrop. */}
+          screen to tune against the real frosted map) — true cutouts, same as production. */}
       <CutoutSkeletonSurface
         rowType={rowType}
         rowCount={ROW_COUNT_BY_TYPE[rowType]}
         insetX={CONTENT_HORIZONTAL_PADDING}
-        withFrost
         shimmerMode={shimmerMode}
         shimmerIntensity={shimmerIntensity}
         shimmerColor={CUTOUT_SKELETON_CONFIG.shimmerColor}
@@ -162,8 +160,6 @@ export const CutoutSkeletonDevPreview: React.FC = () => {
         dominoSpread={dominoSpread}
         dominoSharpness={dominoSharpness}
         plateColor={CUTOUT_SKELETON_CONFIG.plateColor}
-        frostTintColor={CUTOUT_SKELETON_CONFIG.frostTintColor}
-        frostTintOpacity={frostGray}
         style={styles.cutoutArea}
       />
 
@@ -220,11 +216,6 @@ export const CutoutSkeletonDevPreview: React.FC = () => {
           step={100}
           format={(v) => `${Math.round(v)}`}
           onDelta={(d) => setShimmerDurationMs((v) => Math.max(400, Math.min(5000, v + d)))}
-        />
-        <Stepper
-          label="frost gray"
-          value={frostGray}
-          onDelta={(d) => setFrostGray((v) => clamp01(round2(v + d)))}
         />
         <Pressable style={styles.closeBtn} onPress={() => setVisible(false)}>
           <Text style={styles.closeBtnText}>Close preview</Text>

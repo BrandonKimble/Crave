@@ -1248,7 +1248,7 @@ export const usePollDetailPanelSpec = ({
     // a self-contained frosted backing so its holes still read as frosted windows. insetX={0}: the
     // list's contentContainerStyle already insets the body by OVERLAY_HORIZONTAL_PADDING, so the
     // holes must NOT re-inset (else they double-pad).
-    <SceneLoadingSurface rowType="comment" frostBacking insetX={0} />
+    <SceneLoadingSurface rowType="comment" insetX={0} />
   ) : (
     <View style={styles.emptyComments}>
       <MessageCircle size={20} color={themeColors.textMuted} strokeWidth={1.8} />

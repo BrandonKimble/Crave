@@ -105,10 +105,11 @@ check_eq "SceneBodyReadyGate/LoadState in MIGRATED panels (notif+profile+userPro
 # may not return.
 check_eq "hand-rolled isLoadFailed in listDetail" 0 \
   "$(grep -c 'isLoadFailed' $SRC/overlays/panels/ListDetailPanel.tsx || true)"
-# One derivation home: nobody but scene-foundation-spec derives frostBacking from
-# bodySurface (the distributed-decision disease that caused "just white" sheets).
-check_eq "frostBacking-from-bodySurface derivation sites (foundation only)" 1 \
-  "$(grep -rlE "frostBacking.*bodySurface|bodySurface.*frostBacking" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | wc -l | tr -d ' ')"
+# THE TRUE-CUTOUT LAW (frost pass 2026-07-23): the self-frost fork is DELETED — no
+# frostBacking prop, no withFrost, no painted frost imitation anywhere. Skeleton holes
+# reveal the ONE shared frost (FrostCutout punches the scene plate where one exists).
+check_eq "self-frost residue (frostBacking/withFrost/FrostMaterialBackdrop props)" 0 \
+  "$(grep -rlE "frostBacking=|withFrost|FrostMaterialBackdrop" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | wc -l | tr -d ' ')"
 
 echo "=== THE PENDING BLOCK (search family) — the cover classes stay dead ==="
 check_eq "pinned results loading cover references" 0 \

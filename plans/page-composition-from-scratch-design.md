@@ -892,7 +892,8 @@ The strangler needs an explicit, budgeted-for-deletion bridge:
 4. **The migration order** (settings/notifications → profile → listDetail+bookmarks
    pair → search family).
 
-## Frost pass — the over-white frost material (2026-07-23, SHIPPED)
+## Frost pass — SUPERSEDED same day by the TRUE-CUTOUT law below (the material was a
+## painted imitation — owner-rejected; kept here as the record of the wrong turn)
 
 Self-frost disease attributed and fixed at the frost layer's look, per the skeleton-sheet
 law. The disease: `FrostedGlassBackground`'s BlurView over the sheet's white body has
@@ -915,3 +916,36 @@ Verified on-sim: pending face shows pastel frost through the holes (green/blue v
 avatar circles + trailing dots); the header/skeleton seam is CLEAN in the capture — no
 divider line reproduced (owner-eye recheck requested). Gates: jest 396/396, invariants
 29/29, matrix 21/21 cold. Owner-eye tuning of the material is the open loop.
+
+## THE TRUE-CUTOUT LAW (frost pass v2, 2026-07-23, SHIPPED — the real fix)
+
+Owner correction: the frost material was a FAKE — a painted imitation of the blurred
+map. The law: ONE shared frosted layer founds every sheet; every see-through element
+(toggle cutouts, header cutouts, skeleton blocks) punches holes that reveal THAT layer.
+No self-frost, no imitation, ever.
+
+What shipped:
+- The entire `frostBacking`/`withFrost` self-frost fork is DELETED: prop, config tokens
+  (`frostTintColor/Opacity`, `frostMaterial`), `FrostMaterialBackdrop` (file deleted),
+  the `bodySurface === 'white'` derivation in `resolveSceneLoadingMaterial`, and every
+  call-site pass-through. `CutoutSkeletonSurface` is now shimmer + hole-punched plate
+  only — its holes are transparent, full stop.
+- Foundation-plated scenes: `SceneLoadingSurface` (and `CutoutSkeletonShape`) wrap
+  themselves in `FrostCutout` — the surface's whole rect is punched out of the scene's
+  ONE white plate (`SceneBodyFoundationSurface` hole store, the toggle mechanism), the
+  skeleton's own plate takes over as THE white there, and its holes reach the real
+  frost. Outside a foundation surface `FrostCutout` is a no-op by design.
+- Search: probe-proven (red/blue tint probe) that NOTHING opaque paints behind the
+  pending block — `frostBacking` was covering up a frost that was already reachable.
+  Dropping it was the whole search-side fix; the sheet's white layers are episode-gated
+  off by existing composition.
+- `PhotoStrip` placeholder tokens made first-class (the string-surgery derivation from
+  the dead frost tint is gone).
+- grep-invariant rewritten: self-frost residue == 0 (RED-capable, replaces the old
+  "derivation exists" check).
+
+Eye-verified: search pending face shows the blurred live map through every hole
+(Houston run — park greens/road tints visible); listDetail skeleton (foundation scene)
+shows the map's green through every hole via the scene-plate punch; reveal lands rows
+on solid white with no frost flash. Gates: jest 396/396, invariants 29/29, matrix
+21/21 cold.

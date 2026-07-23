@@ -10,11 +10,10 @@ export type CutoutShimmerMode = 'pulse' | 'sweep' | 'domino';
 // file (shimmer knobs) + the per-rowType hole geometry into cutout-skeleton-presets.ts. That manual
 // copy IS the co-design loop — there is no runtime persistence.
 //
-// Shape contrast comes from the holes revealing the constant frosted map behind the sheet (the same
-// frost the header grab-handle / close-button cutouts reveal). The scenes that sit over an opaque
-// plate instead of the transparent body lane (the PollDetail comment thread; the header title pill)
-// can't reach that map, so they use a SELF-CONTAINED frost tinted by frostTint* below — kept here so
-// the preview's frost-gray slider maps to the same value those production paths use.
+// Shape contrast comes from the holes revealing the ONE constant frosted layer behind the sheet —
+// the same frost the toggle-strip / header cutouts reveal. Every skeleton is a true cutout onto it;
+// there is no self-frost and no painted imitation (foundation scenes punch the scene plate via
+// FrostCutout so nothing opaque sits between the holes and the frost).
 export type CutoutSkeletonConfig = {
   /** Shimmer style. We've collapsed on 'domino' (the rolling per-hole pulse). */
   shimmerMode: CutoutShimmerMode;
@@ -30,21 +29,6 @@ export type CutoutSkeletonConfig = {
   dominoSharpness: number;
   /** The opaque sheet plate the holes are punched out of (the sheet white). */
   plateColor: string;
-  /** Self-frost tint for the scenes that can't frost-through to the map (PollDetail comment, title). */
-  frostTintColor: string;
-  frostTintOpacity: number;
-  /** THE FROST MATERIAL (skeleton-sheet law §2): the designed over-white frost the
-   *  holes reveal where no map exists to blur — a soft cool base + two pastel depth
-   *  blooms (the blurred-map impression) + the standard light frost tint on top.
-   *  Owner-eye iteration lives here. */
-  frostMaterial: {
-    baseColor: string;
-    bloomColorA: string;
-    bloomOpacityA: number;
-    bloomColorB: string;
-    bloomOpacityB: number;
-    tintColor: string;
-  };
 };
 
 export const CUTOUT_SKELETON_CONFIG: CutoutSkeletonConfig = {
@@ -57,19 +41,4 @@ export const CUTOUT_SKELETON_CONFIG: CutoutSkeletonConfig = {
   // The sheet's white surface — the plate that reads as the sheet, with skeleton-shaped windows
   // punched through to the frosted map.
   plateColor: themeColors.surface,
-  // A neutral gray so the self-frost windows read as frosted gray (not a faint blur of white),
-  // consistent with the real frosted-map windows on the frost-through scenes.
-  frostTintColor: 'rgb(146, 151, 159)',
-  frostTintOpacity: 0.4,
-  frostMaterial: {
-    // The blurred-map impression: cool off-white base, a green-tinged bloom (parks/
-    // map greens) upper-left, a blue-tinged bloom (water/roads) lower-right, the
-    // standard light frost tint unifying on top.
-    baseColor: '#E9EEF3',
-    bloomColorA: 'rgb(196, 216, 200)',
-    bloomOpacityA: 0.5,
-    bloomColorB: 'rgb(190, 206, 224)',
-    bloomOpacityB: 0.45,
-    tintColor: 'rgba(248, 251, 255, 0.35)',
-  },
 };

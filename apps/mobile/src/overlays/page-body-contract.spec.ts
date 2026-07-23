@@ -40,18 +40,12 @@ describe('resolvePageBodyListState (the closed enum derivation)', () => {
   });
 });
 
-describe('resolveSceneLoadingMaterial (L0 — backing DERIVED, never an argument)', () => {
-  it('derives self-frost from the white body surface (the "just white" class)', () => {
-    // Every foundation scene declares bodySurface 'white' today ⇒ frost derives true
-    // unless the row explicitly overrides — nobody re-decides this at a call site.
-    expect(resolveSceneLoadingMaterial('notifications')).toEqual({
-      rowType: 'comment',
-      frostBacking: true,
-    });
-    expect(resolveSceneLoadingMaterial('settings')).toEqual({
-      rowType: 'tile',
-      frostBacking: true,
-    });
+describe('resolveSceneLoadingMaterial (L0 — the one declared material, no backing fork)', () => {
+  it('resolves the declared row; backing is not a choice (true-cutout law)', () => {
+    // Every skeleton is a true cutout onto the shared frost — the old frostBacking
+    // fork is deleted; the material is just the scene's declared row shape.
+    expect(resolveSceneLoadingMaterial('notifications')).toEqual({ rowType: 'comment' });
+    expect(resolveSceneLoadingMaterial('settings')).toEqual({ rowType: 'tile' });
   });
 
   it('spec-less scenes have no material (search owns its composition)', () => {

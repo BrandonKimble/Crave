@@ -806,9 +806,9 @@ const SceneStackBodyFrameHost = React.memo(
 // (contentEntry/transportEntry null — the blank-frame hole), render the scene's cutout-shimmer
 // skeleton instead of null: presented ⇒ skeleton-or-content, never visible-and-empty. Per-scene
 // row shapes mirror the scene's real content (cutout-skeleton-foundation co-design defaults).
-// frostBacking=true ONLY where the body sits over an OPAQUE plate that blocks the hoisted
-// frosted map (pollDetail's white sheetSurface; pollCreation's own form surface) — everywhere
-// else the holes are real windows down to the frost. 'search' has no spec here because it never
+// Every skeleton is a TRUE cutout: its holes are real windows down to the sheet's one shared
+// frost (the true-cutout law — the SceneLoadingSurface FrostCutout punches the scene white
+// plate where one exists). 'search' has no spec here because it never
 // routes through this content host — its never-null skeleton page lives in
 // SearchResultsPageBundleHost (P5), which is the search leg's own S2 guarantee.
 // Skeleton specs DERIVE from the compile-time SceneFoundationSpec table
@@ -912,10 +912,7 @@ const SceneStackBodyContentLayerHost = React.memo(
       if (skeletonSpec != null) {
         const skeletonHost = (
           <View pointerEvents="none" style={styles.sceneStackBodyLayer}>
-            <SceneLoadingSurface
-              rowType={skeletonSpec.rowType}
-              frostBacking={skeletonSpec.frostBacking}
-            />
+            <SceneLoadingSurface rowType={skeletonSpec.rowType} />
           </View>
         );
         const profiledSkeletonHost = onProfilerRender ? (
