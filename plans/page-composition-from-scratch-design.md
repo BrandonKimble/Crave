@@ -800,6 +800,20 @@ attribute which search store notify fires during uninvolved hops with a world
 resident, then bring those notifies under the deferral discipline (the
 DEFERRED_PUBLICATION membership engages when this plumbing consolidates).
 
+**SEARCH SLICE, STEP 3 (2026-07-23): the store-notify attribution CLOSES the tax —
+by correcting step 2.** Clean isolation (submit → dismiss → 4s settle → hops):
+with a SETTLED resident world, uninvolved root-tab hops produce **ZERO search-leg
+renders**, and the WorkSpan census shows nothing search-side firing (only 0ms
+sheet diffs + the neighbors' A#9 flips). Step 2's "resident-world tax" was
+DISMISS-SETTLE AFTERMATH misread as hop tax (its hops ran hot on the heels of
+close_results); the original pre-fix 15-80ms renders were killed by the
+debt-repair cuts (context split + A#9 + deferred publication reaching the search
+subtree's consumers). VERDICT: the search-leg transition tax does not exist in
+steady state — no notify-deferral work needed; the DEFERRED_PUBLICATION
+membership stays as future-proofing. The search slice's remainder is purely
+STRUCTURAL (boundary/display composition + the engine vocabulary death with the
+bespoke scenes).
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
