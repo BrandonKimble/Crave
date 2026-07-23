@@ -548,6 +548,30 @@ grid intact, zero contract errors). L3 REMAINING: the runtime-governance merge
 (activity flags → the manager's bit, A#9's real home), commitment-based eviction
 budget beyond last-N, search family residency (with L4).
 
+**L3 SLICE 5 EXECUTED 2026-07-23 (the runtime-governance merge — A#9 lands).**
+For residency-managed scenes, the two STANDING hidden data lanes died in the
+activity derivation (the one computation home, scoped by the strangler boolean):
+(1) the hidden-idle prewarm lane (canPrewarmRetainedMountedBody held CONTINUOUSLY
+while a retained tab sat hidden at idle — the background render tax: every cache
+invalidation re-rendered display:none resident trees) and (2) keep-subscribed-
+after-activation retention. The resident TREE is the warmth — a tab switch shows
+last data instantly; the lane re-admits at press-up via the existing P4
+presented-activation (immediate admission), and stale queries re-derive at reveal.
+Unmanaged scenes (polls) keep today's timing. Sim-proven (managed-bit probe, then
+removed): hidden bookmarks runData:false subData:false while profile active —
+visible scenes keep live lanes; page intact. Gates: jest 393/393, invariants
+29/29, matrix 21/21. First-visit cold open is now press-up-admitted (slightly
+colder ONLY on the very first visit); press-down prediction is the recorded
+warm-before-navigate refinement. Pre-L4 note: re-derive at reveal can show
+last-data→fresh update — the beat-writer (L4) owns removing that flash.
+
+RIG TRAP (2026-07-23, cost a debugging loop): the repo folder was RENAMED
+(~/CraveApp → ~/Crave, old name now a symlink) while Metro ran — Metro's watcher
+stayed rooted at the pre-rename path and SERVED STALE TRANSFORMS for every
+post-rename edit, while reload-dev-client's "bundle quiescent" check passed
+(deterministic STALE output hashes equal). Any repo move/rename ⇒ restart Metro
+from the canonical path with --clear.
+
 ## L4 — REVEAL + THE CONTENT-LANDING CLOCK (redesigned; v1's weakest level)
 
 The red-team's deepest finding (B#1/#2): v1's "one beat at the joint" attacked the

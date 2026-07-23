@@ -1,4 +1,5 @@
 import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import { isResidencyManagedScene } from '../../overlays/shell-residency-registry';
 import type { OverlayRouteEntry } from './app-overlay-route-types';
 import {
   areSceneEntryMountUnitArraysEqual,
@@ -2054,9 +2055,19 @@ class AppRouteSceneStackLayerStateController {
       shouldPrewarmRetainedMountedSceneBody(bodyAdmissionPolicy) &&
       isActive &&
       isMounted;
+    // THE RUNTIME-GOVERNANCE MERGE (L3, A#9 — invisible shells subscribe to NOTHING):
+    // for residency-managed scenes the hidden-idle prewarm lane DIES — it was a
+    // STANDING data lane (this flag holds continuously while hidden at idle), i.e.
+    // the background render tax: every cache invalidation re-rendered display:none
+    // resident trees. The resident TREE is the warmth (a tab switch shows last data
+    // instantly); the lane re-admits at press-up via P4 presented-activation
+    // (immediate admission), and stale queries re-derive at reveal. Unmanaged scenes
+    // (polls) keep today's timing — the strangler boolean scopes the law.
+    const isResidencyManaged = isResidencyManagedScene(sceneKey);
     const canPrewarmRetainedMountedBody =
       shouldRetainMountedBody &&
       shouldPrewarmRetainedMountedSceneBody(bodyAdmissionPolicy) &&
+      !isResidencyManaged &&
       !isActive &&
       isMounted &&
       transitionPhase === 'idle' &&
@@ -2094,9 +2105,12 @@ class AppRouteSceneStackLayerStateController {
     }
     const nextHasActivatedExpandedContent =
       hasActivatedExpandedContent || (shouldRetainMountedBody && shouldRunDataLane);
+    // A#9's second arm: keep-subscribed-after-activation retention is a STANDING
+    // subscription on a hidden shell — dead for managed scenes (same law as above).
     const shouldSubscribeDataLane =
       shouldRunDataLane ||
-      (bodyAdmissionPolicy?.keepDataSubscribedAfterActivation === true &&
+      (!isResidencyManaged &&
+        bodyAdmissionPolicy?.keepDataSubscribedAfterActivation === true &&
         nextHasActivatedExpandedContent);
     const shouldRenderExpandedContent = shouldRetainMountedBody
       ? nextHasActivatedExpandedContent || shouldRunDataLane
