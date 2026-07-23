@@ -723,6 +723,25 @@ messagesInbox all reveal in the 25-35ms [L4STAMP] band, zero contract errors,
 inbox eye-verified. THE STRANGLER'S REMAINDER: search family, polls,
 pollDetail/pollCreation, restaurant — then the cold-path vocabulary dies.
 
+**THE SEARCH-FAMILY CLOSING ACT — BASELINE MEASURED, PLAN SET (2026-07-23).**
+[L4STAMP] on the search transitions: **push (submit) = 453.8ms with ZERO declared
+joins** — nothing engine-side holds the reveal; that is the world-enter latency
+itself (fetch → world → catalog → map enter), the territory the catalog/reveal
+arcs already dieted and the slow-network law governs (owner ratifies). **revise
+(warm world flip) = 0.2ms** — paint/mapFrame/sheet join instantly. VERDICT: no
+cold-path stamp tax exists on search transitions; the mapFrame join is real
+content-readiness (survives B#12 by design). The search family's remaining
+foundation work is therefore purely STRUCTURAL, not performance: (1) search joins
+the residency vocabulary (widen the registry type past SheetSceneKey's search
+exclusion; the boundary composes with the search display target's world
+choreography — needs the search verification arsenal: submit/dismiss loops,
+FITALL, map enters); (2) polls (parallel session owns the feed), pollDetail/
+pollCreation, restaurant each get their own slice (different hosts than the
+mounted-body registry); (3) THEN the cold-path vocabulary dies wholesale (B#12:
+paint acks / warm gates / painted-evidence / freeze bundles reduce to constants —
+what survives: identity, supersession, the trace, progress semantics, and the
+mapFrame content-readiness join).
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
