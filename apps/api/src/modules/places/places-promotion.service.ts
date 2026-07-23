@@ -428,7 +428,62 @@ export class PlacesPromotionService {
       return 'attempted';
     }
 
-    await this.persistPolygon(item.placeId, geometryId, polygon.geojson, now);
+    // §2.5 WRONG-ENTITY GUARD: the vendor sometimes resolves a name to a
+    // much smaller feature (observed seed run: San Antonio TX → a 1×2km
+    // fragment; 39/5826 rows). A polygon that spans <20% of the place's own
+    // bbox on BOTH axes (when that bbox is non-trivial) is a different
+    // entity, and persisting it would make the "real" ground a lie —
+    // sketch-grade envelope truth beats outline-grade fiction. Reject: the
+    // row stays sketch, the cached geometry id is cleared so a future pass
+    // re-resolves instead of refetching the same wrong feature.
+    const envelope = geojsonEnvelope(polygon.geojson);
+    const bboxLngSpan =
+      place.bboxMaxLng !== null && place.bboxMinLng !== null
+        ? Number(place.bboxMaxLng) - Number(place.bboxMinLng)
+        : null;
+    const bboxLatSpan =
+      place.bboxMaxLat !== null && place.bboxMinLat !== null
+        ? Number(place.bboxMaxLat) - Number(place.bboxMinLat)
+        : null;
+    if (
+      envelope &&
+      bboxLngSpan !== null &&
+      bboxLatSpan !== null &&
+      Math.max(bboxLngSpan, bboxLatSpan) > 0.05 &&
+      envelope.lngSpan < 0.2 * bboxLngSpan &&
+      envelope.latSpan < 0.2 * bboxLatSpan
+    ) {
+      await this.prisma.placeGeometryPromotion.update({
+        where: { placeId: item.placeId },
+        data: { providerBoundaryId: null },
+      });
+      await this.recordAttempt(item.placeId, now);
+      this.logger.warn('WRONG-ENTITY polygon rejected (place stays sketch)', {
+        placeId: item.placeId,
+        geometryId,
+        polygonSpan: { lng: envelope.lngSpan, lat: envelope.latSpan },
+        bboxSpan: { lng: bboxLngSpan, lat: bboxLatSpan },
+      });
+      return 'attempted';
+    }
+
+    const landed = await this.persistPolygon(
+      item.placeId,
+      geometryId,
+      polygon.geojson,
+      now,
+    );
+    if (!landed) {
+      // Vendor 'ok' with no usable polygon rings (observed seed run: 6,448
+      // rows silently stamped promoted while still sketch). A draw that
+      // lands nothing is a MISS, not a promotion.
+      await this.recordAttempt(item.placeId, now);
+      this.logger.warn('Polygon fetch landed no rings (place stays sketch)', {
+        placeId: item.placeId,
+        geometryId,
+      });
+      return 'attempted';
+    }
     await this.stampPromoted(item.placeId, geometryId, now);
     this.logger.info('Place promoted to tier-2 polygon', {
       placeId: item.placeId,
@@ -457,8 +512,8 @@ export class PlacesPromotionService {
     geometryId: string,
     geojson: unknown,
     now: Date,
-  ): Promise<void> {
-    await this.prisma.$executeRaw(Prisma.sql`
+  ): Promise<boolean> {
+    const rows = await this.prisma.$executeRaw(Prisma.sql`
       WITH raw_input AS (
         SELECT ${JSON.stringify(geojson)}::jsonb AS geojson
       ),
@@ -514,6 +569,9 @@ export class PlacesPromotionService {
         fetched_at = EXCLUDED.fetched_at,
         geometry = EXCLUDED.geometry
     `);
+    if (rows === 0) {
+      return false; // no usable rings — caller treats as a miss
+    }
     // §2.5(c): bbox = INDEX only, and the index DERIVES from truth when
     // truth lands — widen the places bbox to the polygon's envelope
     // (grow-only, LEAST/GREATEST like the §1 merge law; COALESCE lets a
@@ -532,6 +590,7 @@ export class PlacesPromotionService {
         AND p.place_id = ${placeId}::uuid
         AND g.geometry IS NOT NULL
     `);
+    return true;
   }
 
   /** Promotion completes: stamp the queue row AND places.promoted_at. */
@@ -559,4 +618,53 @@ export class PlacesPromotionService {
       data: { attempts: { increment: 1 }, lastAttemptAt: now },
     });
   }
+}
+
+/**
+ * Envelope of every coordinate in a GeoJSON FeatureCollection (wrong-entity
+ * guard input). Null when no finite coordinates are found.
+ */
+function geojsonEnvelope(
+  geojson: unknown,
+): { lngSpan: number; latSpan: number } | null {
+  let minLng = Infinity;
+  let minLat = Infinity;
+  let maxLng = -Infinity;
+  let maxLat = -Infinity;
+  const walk = (node: unknown): void => {
+    if (!Array.isArray(node)) {
+      return;
+    }
+    if (
+      node.length >= 2 &&
+      typeof node[0] === 'number' &&
+      typeof node[1] === 'number'
+    ) {
+      if (Number.isFinite(node[0]) && Number.isFinite(node[1])) {
+        minLng = Math.min(minLng, node[0]);
+        maxLng = Math.max(maxLng, node[0]);
+        minLat = Math.min(minLat, node[1]);
+        maxLat = Math.max(maxLat, node[1]);
+      }
+      return;
+    }
+    for (const child of node) {
+      walk(child);
+    }
+  };
+  const features =
+    typeof geojson === 'object' && geojson !== null
+      ? (
+          geojson as {
+            features?: Array<{ geometry?: { coordinates?: unknown } }>;
+          }
+        ).features
+      : undefined;
+  for (const feature of features ?? []) {
+    walk(feature?.geometry?.coordinates);
+  }
+  if (!Number.isFinite(minLng) || !Number.isFinite(minLat)) {
+    return null;
+  }
+  return { lngSpan: maxLng - minLng, latSpan: maxLat - minLat };
 }

@@ -1042,3 +1042,49 @@ pre-existing errors (`search-map.tsx` `nativeHostKey`,
 new ones. API rebuilt + restarted (`lsof -ti tcp:3000 -sTCP:LISTEN | xargs
 kill -9` → relaunch `node --enable-source-maps dist/main`); smoke:
 `GET /api/v1/places/launch-position` → 200.
+
+### Leg 4 follow-up 2 — sim validation caught TWO drain defects (fixed + healed, 2026-07-22)
+
+The post-extermination sim drive (Austin → San Antonio at zoom 11) showed
+"Polls in Bexar" over downtown San Antonio. Attribution (never ideate
+first): SA's "real" polygon covered **0** of the view — the drain had
+persisted a ~1×2km wrong-entity fragment for San Antonio TX
+(`provider_boundary_id` non-null, extent BOX(-98.60,29.37 → -98.59,29.38)
+vs the true ~0.66° municipality). Census: **39/5,826** outline rows had a
+polygon spanning <20% of the place's own bbox (wrong-entity vendor
+resolutions).
+
+While healing those, a second, bigger defect surfaced: **6,448 queue rows
+were stamped `promoted_at` while their geometry row is still
+sketch-grade** — `persistPolygon`'s `WHERE bounded.geometry IS NOT NULL`
+can insert/update NOTHING (vendor 'ok' with no usable polygon rings), yet
+`promoteOne` stamped the promotion anyway. Silent success, sketch forever,
+never retried.
+
+Fixes (places-promotion.service.ts):
+
+1. **Wrong-entity guard** — after a successful fetch, if the polygon's
+   envelope spans <20% of the place bbox on BOTH axes (and the bbox is
+   non-trivial, >0.05°), reject: warn `WRONG-ENTITY polygon rejected`,
+   clear the cached geometry id (future pass re-resolves), record attempt,
+   stay sketch. Sketch truth beats outline fiction.
+2. **Landed check** — `persistPolygon` now returns whether a row landed;
+   a no-rings result is a MISS (warn + attempt), never a stamped
+   promotion.
+
+Data heal (one-time SQL, applied): the 28 rows failing the both-axes
+guard reset to sketch envelopes (`ST_MakeEnvelope` from bbox,
+`provider_boundary_id` NULL); ALL falsely-stamped rows (6,448) reset to
+pending (`promoted_at` NULL, attempts 0) in both the queue and
+`places.promoted_at` — the hourly drain re-earns them under the new
+guards.
+
+Residual (known, honest): until SA's true polygon drains, its sketch
+envelope (county-sized bbox) is slightly LARGER than Bexar county's real
+polygon, so the finest-dominator law lawfully answers "Bexar" there.
+Self-corrects when the outline lands. Open improvement if wrong-entity
+retries keep failing: validate the geometry-id choice against the place
+bbox at RESOLVE time (or filter the geocode by municipality entity type).
+Verified: build 0 errors, places suite green, API restarted, cold-launch
+sim drive re-run (Austin commit correct; Bexar-over-SA is the documented
+lawful interim).
