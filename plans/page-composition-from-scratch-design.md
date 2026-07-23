@@ -775,6 +775,20 @@ RED-PROVEN with a throwaway service probe: 4 fetches in ~20s visible, ZERO acros
 35s hidden, +2 on return (the resubscribe pair). Gates: jest 396/396, invariants
 29/29, matrix 21/21 cold.
 
+**THE DEBT-REPAIR PASS, PARTS 2-3 (2026-07-23).**
+- **The bookmarks render-residue: RESOLVED.** Post-fixes probe: 4 renders at
+  activation (the legitimate beat sequence), +2 when bookmarks is the OUTGOING
+  participant (its own deactivation/A#9 flip — post-reveal by the flush), and
+  **ZERO renders on a genuinely-uninvolved transition** (was ~4 × 20-75ms). The
+  transition tax for resident scenes is fully dead.
+- **The listDetail image-memory measure: PROTOCOL RECORDED, blocked on list-open
+  automation.** The measure needs 4+ image-heavy lists opened to fill the
+  retention (3 retained + 1 live) with RSS sampled per step — listDetail opens
+  need real listIds the deep-link probes don't have. Protocol: owner session or a
+  matrix-harness extension that surfaces listIds; until measured,
+  RESIDENT_UNIT_RETENTION_LIMIT=3 stands as the bound and the commitment ledger
+  (recordShellContentCommitment) stays the seam.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
