@@ -1133,6 +1133,11 @@ class AppRouteSceneStackLayerStateController {
     this.sceneActivitySnapshots.clear();
     this.sceneBodySurfaceListeners.clear();
     this.sceneBodySurfaceAuthorities.clear();
+    if (this.deferredBodySurfaceNotifyHandle != null) {
+      clearTimeout(this.deferredBodySurfaceNotifyHandle);
+      this.deferredBodySurfaceNotifyHandle = null;
+    }
+    this.deferredBodySurfaceNotifySceneKeys.clear();
     this.sceneBodySurfaceSnapshots.clear();
     this.sceneEntryMountStateByKey.clear();
     this.deferredSceneBodyInputKeys.clear();
@@ -1977,9 +1982,55 @@ class AppRouteSceneStackLayerStateController {
     return changedSceneKeys;
   }
 
-  private notifySceneBodySurfaceListeners(sceneKeys: readonly OverlayKey[]): void {
-    withSearchNavSwitchRuntimeAttribution('sceneStack', 'notify:sceneBodySurface', () => {
+  // L4 ACTIVITY-FLIP DEFERRAL (Law 1's stamp diet, [L4STAMP]-measured): a managed
+  // scene's body-surface notify moves ONE TASK behind the frame/header publish, so
+  // the content re-activation cascade (data-lane re-admission renders — the press-up
+  // commit's measured bulk) lands in the FIRST BEAT after the reveal, not inside the
+  // reveal commit the chrome ack waits on. The SNAPSHOT still computes synchronously
+  // (P4's press-up admission is state truth immediately; only the render defers one
+  // pass); unmanaged scenes keep the synchronous notify. Coalesced per flush; late
+  // subscribers are covered by useSyncExternalStore's subscribe-time re-read.
+  private deferredBodySurfaceNotifySceneKeys = new Set<OverlayKey>();
+  private deferredBodySurfaceNotifyHandle: ReturnType<typeof setTimeout> | null = null;
+
+  private flushDeferredBodySurfaceNotifies(): void {
+    this.deferredBodySurfaceNotifyHandle = null;
+    if (this.deferredBodySurfaceNotifySceneKeys.size === 0) {
+      return;
+    }
+    const sceneKeys = [...this.deferredBodySurfaceNotifySceneKeys];
+    this.deferredBodySurfaceNotifySceneKeys.clear();
+    withSearchNavSwitchRuntimeAttribution('sceneStack', 'notify:sceneBodySurface:deferred', () => {
       sceneKeys.forEach((sceneKey) => {
+        this.sceneBodySurfaceListeners.get(sceneKey)?.forEach((listener) => {
+          listener();
+        });
+      });
+    });
+  }
+
+  private notifySceneBodySurfaceListeners(sceneKeys: readonly OverlayKey[]): void {
+    const syncSceneKeys: OverlayKey[] = [];
+    sceneKeys.forEach((sceneKey) => {
+      if (isResidencyManagedScene(sceneKey)) {
+        this.deferredBodySurfaceNotifySceneKeys.add(sceneKey);
+      } else {
+        syncSceneKeys.push(sceneKey);
+      }
+    });
+    if (
+      this.deferredBodySurfaceNotifySceneKeys.size > 0 &&
+      this.deferredBodySurfaceNotifyHandle == null
+    ) {
+      this.deferredBodySurfaceNotifyHandle = setTimeout(() => {
+        this.flushDeferredBodySurfaceNotifies();
+      }, 0);
+    }
+    if (syncSceneKeys.length === 0) {
+      return;
+    }
+    withSearchNavSwitchRuntimeAttribution('sceneStack', 'notify:sceneBodySurface', () => {
+      syncSceneKeys.forEach((sceneKey) => {
         withSearchNavSwitchRuntimeAttribution(
           'sceneStack',
           `notify:sceneBodySurface:${sceneKey}`,

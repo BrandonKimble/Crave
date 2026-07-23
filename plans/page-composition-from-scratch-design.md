@@ -626,6 +626,22 @@ surgery; must preserve P4's press-up admission by at most one pass). Gates: jest
 re-attributed to accumulated in-app rig state across back-to-back scenario+matrix
 loops — cold relaunch clean; the pollution class is recorded rig lore).
 
+**L4 SLICE 2 EXECUTED 2026-07-23 (the activity-flip deferral).** The one publish
+chokepoint (notifySceneBodySurfaceListeners) now defers MANAGED scenes' body-
+surface notifies one task behind the frame/header publish (coalesced flush;
+snapshot state still computes synchronously — P4's press-up admission is truth
+immediately, only the render moves a pass; unmanaged scenes keep the sync notify;
+teardown clears the pending flush). [L4STAMP] verdict, honest: root→root improved
+(profile 43→24ms) and the architecture is right (content re-activation renders
+are structurally out of the reveal commit) — but the RETURN-FROM-CHILD shape
+(setRoot bookmarks from a pushed notifications) holds at ~90ms in every run vs
+~36 from home: a different commit anatomy (stack unwind + child teardown + root
+re-activation together), NOT flowing through this chokepoint. Next attribution
+target, tools named: WorkSpan spans + the React Profiler onRender hooks under
+perf attribution, on the return-from-child commit. Gates: jest 390/390 (the
+393→390 delta predates this slice — concurrent wave-6 session commits),
+invariants 29/29, matrix 21/21 cold.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
