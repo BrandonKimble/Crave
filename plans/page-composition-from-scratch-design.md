@@ -1096,3 +1096,19 @@ FrostCutout holes during overscroll is dead. Inert by construction (no writer ye
 Gates: tsc/jest 396, matrix 21/21, invariants 30/30. Next slices per the build order:
 (2) bottom-boundary drag physics in expandPan; (3) top momentum-rebound; (4) short-page
 floor deletion; (5) seam-under-overscroll verification.
+
+### Boundary-physics slice 2 design note (pre-implementation)
+The failed-pan trap: at expanded, expandPan FAILS into native scroll
+(handoffExpandGestureToScroll) — a failed pan cannot drive bottom overscroll. The
+architecture is therefore a MIRROR of the existing at-top pattern: collapsePan proves
+a simultaneous pan can own a boundary while native scroll is live. Slice 2 adds the
+bottom analog — a pan (or collapsePan extension) that activates on atBottom +
+atExpanded + up-drag, drives contentOverscroll = rubberBand(translation) with the
+shared curve, and spring-releases to 0. Requires a `maxScrollOffset` shared value
+published by the scroll-events runtime (contentSize − layoutMeasurement, ≥0) for the
+atBottom fact (TOP_EPSILON's mirror). The CONTENT translate: contentOverscroll must
+visually move the scroll container's content (animated translateY on the container's
+inner wrapper in BottomSheetScrollContainer), with the plate already following. Eye
+iteration required on what the revealed region shows per scene (frost by
+construction — nothing opaque may paint there; that is the true-cutout law's
+guarantee).
