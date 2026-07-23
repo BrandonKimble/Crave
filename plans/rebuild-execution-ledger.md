@@ -1131,3 +1131,41 @@ wins; no size/center tests. Spec added (wide-but-right candidate chosen);
 the SA twin + no-agreement specs unchanged and green. Tonight's missed
 pending rows reset (attempts=0) so the next hourly pass retries them
 under the corrected rule. Suite green, API restarted.
+
+### Wave-7 red team (3-lens: completeness / dead code / coherence, 2026-07-23)
+
+Three independent review passes over the whole rebuilt surface. Verdicts:
+completeness — no plan-vs-code gap (all §18 items landed or honestly
+deferred; §2.5 law identical on both runtimes; §2.6 grade-blind judgment
+verified airtight: zero grade-aware branches anywhere). Dead code — one
+prod-dead helper. Coherence — two real seams + one structural silo, ALL
+FIXED same-day:
+
+1. **Geometry upgrade → demand re-attribution** (stale-tolerated,
+   undocumented → FIXED): the aggregate only rebuilt days carrying signals
+   newer than its watermark, so a sketch→outline upgrade left old days
+   attributed against the dead rectangle forever. The drain now calls
+   `pullDemandWatermarkBack(placeId)` after every landed polygon: one SQL
+   pulls the watermark back past the oldest signal whose geo touches the
+   place's new ground; the next hourly refresh re-derives those days with
+   the true polygon (reuses the aggregate's own designed seam — no new
+   machinery; direct SQL because SignalsModule→PlacesModule would cycle).
+2. **Mobile slice cache unbounded in TIME** (spatial marginBox only →
+   FIXED): `VIEWPORT_SLICE_TTL_MS = 15 min` — any camera activity after
+   the TTL refetches even inside marginBox (cause 'ttl-refresh'); a parked
+   untouched map has no viewer to lie to, and the hourly drain makes a
+   fresher bound pointless.
+3. **Probe-path bbox donation unvalidated** (the structural silo — the
+   probe's limit=1 first-result fill donates the very bbox the drain later
+   VALIDATES against → FIXED): `forwardGeocode` now draws the candidate
+   list and takes the first candidate whose bbox CONTAINS THE ANCHOR — the
+   probe's own ground truth (the chain came from reverse-geocoding that
+   point; a same-name twin elsewhere cannot contain it). None containing =
+   node stays bbox-less (warn), never poisons the index.
+
+Cleanups: `coverageOfView` bbox helper deleted from shared subjects
+(prod-dead since §2.6; spec block removed); stale polls.service legacy-
+envelope comment fixed; dead `market` prisma mocks purged from the last 3
+specs (polls-feed, polls-signals-write, poll-weekly-ritual). Verified:
+shared+api rebuilt, api 734/734, mobile 396/396, tsc = the 2 known
+pre-existing errors, API restarted.

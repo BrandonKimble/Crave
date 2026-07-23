@@ -193,10 +193,9 @@ export class PollsService {
    * commensurate subject(s). Every poll row is place-keyed (legacy-poll
    * expiry, 2026-07-20) — the market-bbox interim arm is gone.
    *
-   * Response carries BOTH the new contract (header / promise / nextCursor /
-   * per-poll placeName) and the legacy envelope fields pre-cut mobile
-   * renders (marketName = the header verdict, polls array) — the mobile cut
-   * lands next and deletes the legacy block.
+   * Response carries the place-native contract: header / promise /
+   * nextCursor / per-poll placeName. (The pre-cut legacy envelope —
+   * marketName + bare polls array — was deleted with the mobile cut.)
    */
   async queryPolls(query: QueryPollsDto, viewerUserId?: string | null) {
     const sort = query.sort ?? PollListSort.new;

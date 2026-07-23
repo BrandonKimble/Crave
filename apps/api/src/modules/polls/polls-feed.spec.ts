@@ -150,14 +150,6 @@ function createHarness(options: {
         },
       ),
     },
-    market: {
-      // No market reads remain on the feed path (the attachMarketLabels join
-      // died in wave-6 item 8); any call here is a regression.
-      findMany: jest.fn(() => {
-        throw new Error('unexpected market.findMany on the polls feed path');
-      }),
-      findFirst: jest.fn().mockResolvedValue(null),
-    },
     pollLeaderboardEntry: {
       findMany: jest.fn().mockResolvedValue([]),
     },

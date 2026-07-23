@@ -44,16 +44,6 @@ function createHarness(
     signalActor: {
       upsert: jest.fn().mockResolvedValue({ actorId: ACTOR_ID }),
     },
-    market: {
-      findFirst: jest.fn().mockResolvedValue({
-        bboxNeLat: '30.4',
-        bboxNeLng: '-97.6',
-        bboxSwLat: '30.1',
-        bboxSwLng: '-97.9',
-        centerLatitude: '30.27',
-        centerLongitude: '-97.74',
-      }),
-    },
     place: {
       findUnique: jest.fn().mockResolvedValue({
         bboxMinLat: '29.5',
@@ -74,7 +64,6 @@ function createHarness(
       findUnique: jest.fn().mockResolvedValue({
         state: 'active',
         question: 'Best birria in Austin?',
-        marketKey: 'austin',
         placeId: options.pollPlaceId ?? null,
         topic: {
           targetDishId: TARGET_DISH_ID,
@@ -161,7 +150,7 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
     });
   });
 
-  it('a vote on a PLACE-keyed poll writes the signal with the PLACE bbox (red-team 3e: the closed loop for the 98.8% of places with no market)', async () => {
+  it('a vote on a PLACE-keyed poll writes the signal with the PLACE bbox (red-team 3e)', async () => {
     const PLACE_ID = '99999999-9999-9999-9999-999999999999';
     const { service, signalsPrisma } = createHarness({
       pollPlaceId: PLACE_ID,
@@ -178,8 +167,6 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
     expect(signalsPrisma.place.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { placeId: PLACE_ID } }),
     );
-    // The legacy market path is never consulted for a placeId poll.
-    expect(signalsPrisma.market.findFirst).not.toHaveBeenCalled();
     expect(signalsPrisma.signal.create).toHaveBeenCalledTimes(1);
     const data = signalsPrisma.signal.create.mock.calls[0][0].data;
     expect(data.kind).toBe('poll_vote');

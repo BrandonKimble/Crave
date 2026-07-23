@@ -89,6 +89,17 @@ export const VIEWPORT_SETTLE_QUIESCENCE_MS = MAP_PLANNER_NORMAL_WORK_FAIRNESS_PO
 /** K1 (feel pass may tune): the minimal honest "a human paused here" hold. */
 export const VIEWPORT_SUBJECT_DWELL_MS = 1_000;
 
+/**
+ * Slice cache soft TTL (coherence red-team 2026-07-23): marginBox bounds the
+ * cache SPATIALLY but nothing bounded it in TIME — a session parked inside
+ * the same margin box could judge with a geometry snapshot indefinitely,
+ * while the server upgrades grounds sketch→outline underneath (the hourly
+ * promotion drain). Any camera activity after the TTL refetches the slice
+ * even inside marginBox. 15 min: an hourly drain makes a fresher bound
+ * pointless, and a parked, untouched map has no viewer to lie to.
+ */
+export const VIEWPORT_SLICE_TTL_MS = 15 * 60 * 1_000;
+
 /** Failed slice fetch retry (only re-armed while a fetch is still needed). */
 export const SLICE_FETCH_RETRY_MS = 5_000;
 
@@ -152,6 +163,7 @@ export const createViewportSubjectStoreController = ({
   let sliceRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let sliceFetchInFlight = false;
   let fetchEpoch = 0;
+  let sliceFetchedAt = 0;
   let settledEpisode: SettledEpisode | null = null;
   let pendingExitVerdict: ViewportSubjectVerdict | null = null;
   let lastLoggedCandidateIdentity: string | null = null;
@@ -286,12 +298,13 @@ export const createViewportSubjectStoreController = ({
       return;
     }
     const { slice, marginBox } = getViewportSubjectState();
-    if (slice != null && marginBox != null && bboxContains(marginBox, view)) {
+    const sliceExpired = slice != null && Date.now() - sliceFetchedAt > VIEWPORT_SLICE_TTL_MS;
+    if (slice != null && marginBox != null && bboxContains(marginBox, view) && !sliceExpired) {
       return;
     }
     sliceFetchInFlight = true;
     const epoch = ++fetchEpoch;
-    const cause = slice == null ? 'no-slice' : 'margin-escape';
+    const cause = slice == null ? 'no-slice' : sliceExpired ? 'ttl-refresh' : 'margin-escape';
     logSubjectStore('slice-fetch', { cause, view });
     void fetchSlice(view)
       .then((response) => {
@@ -299,6 +312,7 @@ export const createViewportSubjectStoreController = ({
           return;
         }
         sliceFetchInFlight = false;
+        sliceFetchedAt = Date.now();
         // Replace slice+marginBox atomically; the committed verdict stands
         // until the hysteresis pipeline re-judges (never blank mid-move).
         // Rows are stored VERBATIM (PlaceLike) — §2.5 ground rings and

@@ -296,7 +296,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         continue;
       }
       forwardBudget -= 1;
-      const resolved = await this.forwardGeocode(node);
+      const resolved = await this.forwardGeocode(node, anchor);
       if (resolved) {
         node.bbox = resolved.bbox;
         node.centroid = resolved.centroid;
@@ -379,17 +379,52 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     return entries[0] ?? null;
   }
 
-  /** Governed forward geocode of one chain node; null on any miss. */
-  private async forwardGeocode(node: PlaceSketchNode): Promise<{
+  /**
+   * Governed forward geocode of one chain node; null on any miss.
+   *
+   * ANCHOR-CONTAINMENT VALIDATION (coherence red-team 2026-07-23): this fill
+   * DONATES the bbox that later serves as the drain's twin-disambiguation
+   * reference (resolveGeometryId's node.bbox), so it must not adopt a
+   * wrong-twin record itself. The probe owns ground truth the drain lacks:
+   * the chain came from reverse-geocoding THE ANCHOR, so the node's true
+   * extent must contain that point — a same-name twin elsewhere cannot.
+   * Draw a candidate list and take the first (vendor-ranked) candidate whose
+   * bbox contains the anchor; none containing = stay bbox-less (a later
+   * probe retries) rather than poison the catalog index.
+   */
+  private async forwardGeocode(
+    node: PlaceSketchNode,
+    anchor: GeoPoint,
+  ): Promise<{
     bbox: GeoBbox | null;
     centroid: GeoPoint | null;
     providerPlaceId: string | null;
   } | null> {
-    const outcome = await this.forwardGeocodeMatch(node, 'chain-probe');
+    const outcome = await this.forwardGeocodeMatch(
+      node,
+      'chain-probe',
+      GEOMETRY_ID_CANDIDATE_LIMIT,
+    );
     if (outcome.kind !== 'ok') {
       return null; // denial: bbox-less until a later probe; miss: logged below
     }
-    const result = outcome.result;
+    const result =
+      outcome.results.find((candidate) => {
+        const bbox = parseForwardBoundingBox(candidate.boundingBox);
+        return (
+          bbox !== null &&
+          anchor.lat >= bbox.minLat &&
+          anchor.lat <= bbox.maxLat &&
+          anchor.lng >= bbox.minLng &&
+          anchor.lng <= bbox.maxLng
+        );
+      }) ?? null;
+    if (!result) {
+      this.logger.warn(
+        `forwardGeocode: no anchor-containing candidate for ${node.providerLevelCode} "${node.name}" (${outcome.results.length} candidates) — node stays bbox-less`,
+      );
+      return null;
+    }
     return {
       bbox: parseForwardBoundingBox(result.boundingBox),
       centroid:

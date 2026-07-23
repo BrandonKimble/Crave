@@ -103,7 +103,6 @@ function createHarness(options: HarnessOptions = {}) {
       findMany: jest.fn().mockResolvedValue(options.cooldownTopics ?? []),
     },
     pollComment: { groupBy: jest.fn().mockResolvedValue([]) },
-    market: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue([]),
     $transaction: jest.fn(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),

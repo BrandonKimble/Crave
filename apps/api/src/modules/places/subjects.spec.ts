@@ -24,7 +24,6 @@ import {
   bboxArea,
   bboxToGround,
   clipRingToRect,
-  coverageOfView,
   groundArea,
   groundContainsPoint,
   groundCoverageOfView,
@@ -472,19 +471,6 @@ describe('subjectCandidatesInView — the shared slice read (both runtimes)', ()
     const [candidateRow] = subjectCandidatesInView(view, [grounded]);
     expect(candidateRow.coverageOfView).toBeCloseTo(0.25, 6);
     expect(candidateRow.placeArea).toBeCloseTo(groundArea(grounded.ground), 9);
-  });
-
-  it('coverageOfView (bbox fallback): null when disjoint; a zero-area (point) view degenerates to coverage 1', () => {
-    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
-    const far: GeoBbox = { minLat: 5, minLng: 5, maxLat: 6, maxLng: 6 };
-    expect(coverageOfView(view, bboxArea(view), far)).toBeNull();
-    const point: GeoBbox = {
-      minLat: 0.5,
-      minLng: 0.5,
-      maxLat: 0.5,
-      maxLng: 0.5,
-    };
-    expect(coverageOfView(point, bboxArea(point), view)).toBe(1);
   });
 
   it('wrap-aware: a crossing (Fiji) view derives full coverage from a crossing place bbox', () => {

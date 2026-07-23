@@ -18,7 +18,12 @@ import { geoEnvelopeSql } from './ground-containment';
  *   it happened). Each cron pass rebuilds every day that has ledger rows
  *   recorded since the last watermark. INVARIANT: any signal, whenever
  *   recorded — offline queue flush, collector backfill, cross-day retry —
- *   lands in its occurred-at day slice within one cron pass.
+ *   lands in its occurred-at day slice within one cron pass. The watermark
+ *   is also the GEOMETRY-UPGRADE seam (coherence red-team 2026-07-23): the
+ *   promotion drain pulls it back past the oldest signal touching an
+ *   upgraded place's ground (places-promotion.service
+ *   pullDemandWatermarkBack), so old days re-attribute against the true
+ *   polygon on the next pass.
  * - Attribution is the §3 containment-TILING storage law (red-team 3a): each
  *   signal geo attributes to (i) the SMALLEST place CONTAINING it and (ii)
  *   the COARSEST catalog level(s) TILING the places contained in it (US-wide

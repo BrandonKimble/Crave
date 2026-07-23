@@ -499,6 +499,7 @@ export class PlacesPromotionService {
       return 'attempted';
     }
     await this.stampPromoted(item.placeId, geometryId, now);
+    await this.pullDemandWatermarkBack(item.placeId);
     this.logger.info('Place promoted to tier-2 polygon', {
       placeId: item.placeId,
       trigger: item.trigger,
@@ -623,6 +624,43 @@ export class PlacesPromotionService {
         data: { promotedAt: now },
       }),
     ]);
+  }
+
+  /**
+   * GEOMETRY UPGRADE → DEMAND RE-ATTRIBUTION (coherence red-team 2026-07-23):
+   * signal→place attribution is computed against the ground that exists at
+   * rebuild time, and the aggregate's refresh only revisits days carrying
+   * signals NEWER than its watermark — so a sketch→outline upgrade would
+   * otherwise leave every already-aggregated day attributed against the old
+   * rectangle forever. The honest hook reuses the aggregate's own invariant
+   * ("any signal whose recorded_at is past the watermark reaches its own day
+   * slice"): pull the watermark back to just before the OLDEST signal whose
+   * geo touches this place's new ground, and the next hourly refresh
+   * re-derives those days with the true polygon. Direct SQL on the ONE-ROW
+   * state table (signal_demand_rebuild_state) rather than a service dep:
+   * SignalsModule already imports PlacesModule (module cycle), and the
+   * watermark is the aggregate's designed public seam for "revisit these
+   * rows". Over-rebuilding is safe by design (delete+reinsert per day).
+   */
+  private async pullDemandWatermarkBack(placeId: string): Promise<void> {
+    await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE signal_demand_rebuild_state st
+      SET watermark = LEAST(
+            st.watermark,
+            affected.oldest - interval '1 second'
+          ),
+          updated_at = now()
+      FROM (
+        SELECT min(s.recorded_at) AS oldest
+        FROM signals s, place_geometries g
+        WHERE g.place_id = ${placeId}::uuid
+          AND s.geo_max_lat >= ST_YMin(g.geometry)
+          AND s.geo_min_lat <= ST_YMax(g.geometry)
+          AND s.geo_max_lng >= ST_XMin(g.geometry)
+          AND s.geo_min_lng <= ST_XMax(g.geometry)
+      ) affected
+      WHERE st.id = 1 AND affected.oldest IS NOT NULL
+    `);
   }
 
   /** A consumed-draw miss: attempts++ (no cap), next chance next window. */

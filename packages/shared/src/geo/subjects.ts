@@ -52,7 +52,6 @@ import {
   bboxArea,
   bboxCenter,
   bboxContainsPoint,
-  bboxIntersectionParts,
   bboxLngSpan,
   normalizeLng,
   pointDistance,
@@ -137,23 +136,6 @@ export interface PlaceLike {
 export interface PlaceCoverage {
   coverageOfView: number;
   placeArea: number;
-}
-
-/**
- * Bbox-intersection coverage — area(bbox ∩ view) / area(view). §2.6: NOT a
- * judgment arm (the judgment law is single-representation, ground-only) —
- * kept as pure index-side math (candidate diagnostics, fixtures). Returns
- * null when the bbox misses the view entirely. A zero-area (point) view
- * degenerates to coverage 1: any place whose bbox admits the point fully
- * covers the attention there.
- */
-export function coverageOfView(view: GeoBbox, viewArea: number, bbox: GeoBbox): number | null {
-  const parts = bboxIntersectionParts(bbox, view);
-  if (parts.length === 0) {
-    return null;
-  }
-  const intersectionArea = parts.reduce((sum, part) => sum + bboxArea(part), 0);
-  return viewArea > 0 ? intersectionArea / viewArea : 1;
 }
 
 /**
