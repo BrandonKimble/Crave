@@ -115,37 +115,42 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     // The two tilings of the same day slice, in one statement.
     expect(insert).toContain('UNION ALL');
     expect(insert).toContain('NULL, d.actor_id'); // global tile (place NULL)
-    // Red-team 3a: containment-tiling storage — envelope containment
-    // operators (GiST-indexed), smallest-containing pick, coarsest tiling —
-    // and NO bbox-intersection join.
+    // Red-team 3a: containment-tiling storage — the bbox envelope
+    // containment operator survives ONLY as the GiST candidate PREFILTER of
+    // the containing pick — and NO bbox-intersection join.
     expect(insert).toContain('ST_MakeEnvelope');
-    expect(insert).toMatch(/~\s*¤?\s*ST_MakeEnvelope/); // place CONTAINS geo
-    expect(insert).toMatch(/@\s*¤?\s*ST_MakeEnvelope/); // place CONTAINED in geo
-    // §2.5(c) polygon-first (C1/C5 cut): where real ground exists it JUDGES —
-    // the containing pick requires ST_Covers(ground, geo) and ranks
-    // polygon-covered candidates (by real ground area) BEFORE geometry-null
-    // bbox candidates (by bbox area); bbox containment survives only for
-    // geometry-null rows.
+    expect(insert).toMatch(/~\s*¤?\s*ST_MakeEnvelope/); // containing prefilter
+    // §2.6 GROUND UNIFICATION (leg 1): THE ONE GROUND judges — the
+    // containing pick is an INNER JOIN on place_geometries requiring
+    // ST_Covers(ground, geo) and ranks by ground area; zero fallback arms
+    // (no geometry-null branch, no polygon-vs-bbox tier, no bbox
+    // containment judgment anywhere).
     expect(insert).toContain('ST_Covers(pg.geometry,');
-    expect(insert).toContain('pg.geometry IS NULL');
-    expect(insert).toContain('(pg.geometry IS NOT NULL) DESC');
-    expect(insert).toContain('ST_Area(pg.geometry)');
-    expect(insert).toContain('ELSE x.area END ASC');
+    expect(insert).toContain('ST_Area(pg.geometry) ASC');
     expect(insert).toContain('x.place_id ASC'); // deterministic pick anchor
-    // Tiling direction: ground-⊆-geo through the geometry GiST index; the
-    // bbox arms are fenced to geometry-null places, and parent domination
-    // speaks the same law (parent ground judges when present).
+    expect(insert).not.toContain('pg.geometry IS NULL');
+    expect(insert).not.toContain('(pg.geometry IS NOT NULL) DESC');
+    expect(insert).not.toContain('ELSE x.area END');
+    // Tiling direction: ground-⊆-geo through the geometry GiST index — the
+    // single contained arm; parent domination REUSES those verdicts (hash
+    // anti-join on (place, geo) — never a per-row geometry re-probe, which
+    // took minutes on a continental geo, and never the O(N²) merge on
+    // geo-only columns).
     expect(insert).toContain('ST_CoveredBy(pg.geometry,');
-    expect(insert).toContain('ST_CoveredBy(ppg.geometry,');
-    expect(insert).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM place_geometries pg/);
-    // Coarsest tiling: parent-domination via per-row PK probe (never a
-    // contained×contained self-join — the proven O(N²) planner trap).
+    expect(insert).not.toContain('ppg.geometry');
+    // No geometry-null fencing remains (the old bbox arms' NOT EXISTS).
+    expect(insert).not.toMatch(
+      /NOT EXISTS \(\s*SELECT 1 FROM place_geometries pg\b/,
+    );
     expect(insert).toContain('unnest(c.parent_place_ids)');
-    expect(insert).toContain('pp.place_id = parent.place_id');
+    expect(insert).toContain('parent.place_id) IN');
+    expect(insert).toContain('c.place_id) NOT IN');
     expect(insert).not.toContain('d.geo_min_lat <= p.bbox_max_lat'); // no intersection join
-    // Wrap-awareness: crossing geos split into two segments.
-    expect(insert).toContain('geo_min_lng > geo_max_lng');
-    expect(insert).toContain('180::numeric');
+    // Wrap-awareness: a crossing geo's envelope is the union of its arms
+    // (geoEnvelopeSql CASE, embedded fragment); the indexed fast path fences
+    // to non-crossing geos and the crossing-place prefilter branch survives.
+    expect(insert).toContain('g.geo_min_lng <= g.geo_max_lng');
+    expect(insert).toContain('crossing_places');
     // Red-team 1c: window-wide, geo-free retry dedupe — first occurrence
     // wins in-day, prior days excluded by anti-join.
     expect(insert).toContain("s.meta->>'searchRequestId'");

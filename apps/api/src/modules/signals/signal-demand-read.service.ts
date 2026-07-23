@@ -921,8 +921,8 @@ export class SignalDemandReadService {
           AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
           -- Wave-5 F4: wrap-aware longitude intersect (the ONE canonical
           -- predicate) as the PREFILTER; attribution itself is the
-          -- aggregate's §2.5(c) containment law — polygon-judged where
-          -- ground exists, geometry-null bbox fallback (C3 cut).
+          -- aggregate's §2.6 single-ground containment law (C3 cut) —
+          -- ST_Covers/ST_CoveredBy on the place's ONE geometry row.
           AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
           AND (${freshSignalAttributionSql('p')})
           ${freshFirstOccurrenceSql(todayStart)}
@@ -1024,8 +1024,8 @@ export class SignalDemandReadService {
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
           AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
           -- Wave-5 F4: wrap-aware longitude intersect (canonical helper) as
-          -- the PREFILTER; membership judged by the §2.5(c) containment law
-          -- (polygon-first, geometry-null bbox fallback — C3 cut).
+          -- the PREFILTER; membership judged by the §2.6 single-ground
+          -- containment law (C3 cut) — the place's ONE geometry row.
           AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
           AND (${freshSignalAttributionSql('p')})
       ),

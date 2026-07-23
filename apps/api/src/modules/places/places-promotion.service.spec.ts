@@ -166,8 +166,12 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(sql).toContain('ON CONFLICT (place_id) DO NOTHING');
       // §17c fallback mints never enqueue (no vendor geometry exists).
       expect(sql).toContain("provider <> 'fallback'");
-      // A place that already holds a polygon is already promoted.
+      // §2.6: "already promoted" = an OUTLINE-grade row (provider_boundary_id
+      // set). Every place has a geometry row now, so bare row existence must
+      // NOT gate the enqueue — a sketch envelope still earns its outline.
       expect(sql).toContain('place_geometries');
+      expect(sql).toContain('provider_boundary_id IS NOT NULL');
+      expect(sql).not.toContain('geometry IS NOT NULL');
       expect(values).toContain('poll_created');
     });
 

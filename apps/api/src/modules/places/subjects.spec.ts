@@ -22,6 +22,7 @@ import {
   PlaceLike,
   SubjectCandidate,
   bboxArea,
+  bboxToGround,
   clipRingToRect,
   coverageOfView,
   groundArea,
@@ -71,6 +72,10 @@ function placeLike(
     bbox,
     providerLevelCode: 'municipality',
     parentPlaceIds: [],
+    // §2.6: ground is REQUIRED — the default fixture is the sketch-grade
+    // envelope (exactly what a sketch place_geometries row ships; wrap-aware:
+    // a crossing bbox becomes two rings).
+    ground: bboxToGround(bbox),
     ...overrides,
   };
 }
@@ -140,27 +145,27 @@ describe('ground kernel — clip + shoelace + wrap (shared ground.ts)', () => {
     expect(groundContainsPoint(ground, { lat: 5, lng: 5 })).toBe(false);
   });
 
-  it('resolvePlaceCoverage: polygon = truth (bbox index noise is dropped), bbox = honest fallback', () => {
+  it('resolvePlaceCoverage (§2.6 single-arm): the ONE ground judges — index noise drops, no-ground rows are invisible', () => {
     const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
     const viewArea = bboxArea(view);
-    // Bbox intersects the view; the real ground does NOT → not a candidate.
+    // The index (bbox) would intersect the view; the real ground does NOT →
+    // not a candidate. There is no bbox arm to fall back to.
     const liar = resolvePlaceCoverage(view, viewArea, {
-      bbox: { minLat: -2, minLng: -2, maxLat: 2, maxLng: 2 },
       ground: [rectRing({ minLat: -2, minLng: -2, maxLat: -1, maxLng: -1 })],
     });
     expect(liar).toBeNull();
-    // No ground → bbox fallback with bbox area as the finest key.
-    const fallback = resolvePlaceCoverage(view, viewArea, {
-      bbox: { minLat: 0, minLng: 0, maxLat: 1, maxLng: 0.5 },
+    // Empty ground (a bbox-less birth: no ground knowledge) → invisible.
+    expect(resolvePlaceCoverage(view, viewArea, { ground: [] })).toBeNull();
+    // Sketch-grade envelope rectangle: same clip law, bbox-equal numbers —
+    // the §2.6 "sketch-envelope == bbox semantics" continuity.
+    const sketch = resolvePlaceCoverage(view, viewArea, {
+      ground: [rectRing({ minLat: 0, minLng: 0, maxLat: 1, maxLng: 0.5 })],
     });
-    expect(fallback?.groundKnown).toBe(false);
-    expect(fallback?.coverageOfView).toBeCloseTo(0.5, 6);
-    // Ground present → polygon coverage and REAL ground area, not bbox area.
+    expect(sketch?.coverageOfView).toBeCloseTo(0.5, 6);
+    // Full outline → polygon coverage and REAL ground area.
     const grounded = resolvePlaceCoverage(view, viewArea, {
-      bbox: { minLat: -2, minLng: -2, maxLat: 2, maxLng: 2 },
       ground: [rectRing({ minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 })],
     });
-    expect(grounded?.groundKnown).toBe(true);
     expect(grounded?.coverageOfView).toBeCloseTo(1, 6);
     expect(grounded?.placeArea).toBeCloseTo(
       groundArea([rectRing({ minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 })]),
@@ -466,7 +471,7 @@ describe('subjectCandidatesInView — the shared slice read (both runtimes)', ()
     );
     const [candidateRow] = subjectCandidatesInView(view, [grounded]);
     expect(candidateRow.coverageOfView).toBeCloseTo(0.25, 6);
-    expect(candidateRow.placeArea).toBeCloseTo(groundArea(grounded.ground!), 9);
+    expect(candidateRow.placeArea).toBeCloseTo(groundArea(grounded.ground), 9);
   });
 
   it('coverageOfView (bbox fallback): null when disjoint; a zero-area (point) view degenerates to coverage 1', () => {

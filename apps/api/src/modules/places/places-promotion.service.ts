@@ -149,8 +149,11 @@ export class PlacesPromotionService {
   /**
    * Idempotent enqueue of one earned moment. A place already queued OR
    * already promoted (queue row with promotedAt, or an existing
-   * place_geometries polygon) is a no-op; fallback-provider mints never
-   * enqueue. Never throws — every caller is fire-and-forget.
+   * OUTLINE-grade place_geometries row — §2.6: EVERY place has a geometry
+   * row, so the "already has ground" test is provider_boundary_id IS NOT
+   * NULL, never bare row existence; a sketch envelope still earns its
+   * outline) is a no-op; fallback-provider mints never enqueue. Never
+   * throws — every caller is fire-and-forget.
    */
   async enqueue(placeId: string, trigger: string): Promise<void> {
     try {
@@ -162,7 +165,8 @@ export class PlacesPromotionService {
           AND p.provider <> 'fallback'
           AND NOT EXISTS (
             SELECT 1 FROM place_geometries g
-            WHERE g.place_id = p.place_id AND g.geometry IS NOT NULL
+            WHERE g.place_id = p.place_id
+              AND g.provider_boundary_id IS NOT NULL
           )
         ON CONFLICT (place_id) DO NOTHING
       `);
@@ -353,11 +357,14 @@ export class PlacesPromotionService {
       return 'skipped';
     }
 
-    // Raced/pre-existing polygon → just stamp the promotion.
+    // Raced/pre-existing OUTLINE → just stamp the promotion. §2.6: a
+    // sketch-grade envelope row (provider_boundary_id NULL) does NOT count
+    // as promoted — the drain exists to upgrade it in place.
     const existing = await this.prisma.$queryRaw<Array<{ placeId: string }>>(
       Prisma.sql`
         SELECT place_id AS "placeId" FROM place_geometries
-        WHERE place_id = ${item.placeId}::uuid AND geometry IS NOT NULL
+        WHERE place_id = ${item.placeId}::uuid
+          AND provider_boundary_id IS NOT NULL
       `,
     );
     if (existing.length > 0) {
@@ -436,6 +443,14 @@ export class PlacesPromotionService {
    * geometry column lives OUTSIDE the prisma model (§1), raw SQL only. The
    * ST_ shape mirrors the live-proven legacy bootstrap write (collect →
    * unary-union → make-valid → extract polygons → ST_Multi).
+   *
+   * §2.6 SKETCH→OUTLINE UPGRADE: the ON CONFLICT (place_id) DO UPDATE below
+   * is THE grade transition — it overwrites the sketch-grade envelope row's
+   * geometry IN PLACE and stamps provider_boundary_id (= EXCLUDED, always
+   * non-null here), which IS the outline-grade marker. Detail never
+   * decreases: an outline only ever replaces a sketch or a prior outline
+   * (re-promotion), and the catalog's sketch writes are guarded
+   * `WHERE provider_boundary_id IS NULL` so they can never undo this.
    */
   private async persistPolygon(
     placeId: string,

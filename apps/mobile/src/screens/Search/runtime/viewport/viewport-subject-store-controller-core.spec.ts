@@ -3,12 +3,18 @@
  * settle+dwell hysteresis pipeline (leg B of the polygon-native header
  * rebuild). The shared law itself is specced in apps/api subjects.spec.ts;
  * these specs pin the CLIENT half: slice rows (ground + parentPlaceIds) are
- * stored verbatim and judged with polygon truth at every commit, the bbox
- * fallback still resolves polygon-less slices, the per-tick candidate hint is
- * bbox-only (judgment-cadence split), and the marker logs carry the §2.5
+ * stored verbatim and judged with full-detail ground at every commit, a
+ * sketch-grade slice (envelope-rectangle ground — §2.6's ONE representation)
+ * still resolves, the per-tick candidate hint judges the envelope-grade
+ * shadow (judgment-cadence split), and the marker logs carry the §2.5
  * reason union ('finest-dominator' | 'straddle' | 'unnamed-ground').
  */
-import type { GeoBbox, PlaceLike, PlacesInViewSliceResponse } from '@crave-search/shared';
+import {
+  bboxToGround,
+  type GeoBbox,
+  type PlaceLike,
+  type PlacesInViewSliceResponse,
+} from '@crave-search/shared';
 
 import {
   getViewportSubjectState,
@@ -36,6 +42,8 @@ const place = (partial: Partial<PlaceLike> & Pick<PlaceLike, 'placeId' | 'bbox'>
   name: partial.placeId,
   providerLevelCode: 'test-level',
   parentPlaceIds: [],
+  // §2.6: ground is REQUIRED — default fixture is the sketch-grade envelope.
+  ground: bboxToGround(partial.bbox),
   ...partial,
 });
 
@@ -174,12 +182,13 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     harness.dispose();
   });
 
-  it('resolves a polygon-less slice via the honest bbox fallback (§2.5(f))', async () => {
+  it('resolves a sketch-grade slice (envelope-rectangle ground — §2.6 one representation, no outline landed yet)', async () => {
     const austin = place({
       placeId: 'austin',
       name: 'Austin',
       bbox: { minLat: 28.8, maxLat: 30.2, minLng: -100.5, maxLng: -98.5 },
-      // no ground: polygon not landed yet
+      // ground defaults to the sketch envelope (bboxToGround) — exactly
+      // what the server ships before the outline drain lands.
     });
     const harness = startController([austin]);
     await flushMicrotasks();
@@ -251,7 +260,7 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     harness.dispose();
   });
 
-  it('judges the per-tick candidate hint bbox-only (cadence split) while commits stay ground-truth', async () => {
+  it('judges the per-tick candidate hint at envelope grade (cadence split) while commits stay full-detail ground', async () => {
     const harness = startController([TEXAS, MEXICO]);
     await flushMicrotasks();
     jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS);
@@ -260,14 +269,14 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     // Pan south (still inside the margin box, so the same slice answers): the
     // view (lat 28.2→29.2) leaves Texas almost entirely (ground floor at
     // 29.11 → 9% coverage). Mid-pan we assert the cadence split only: every
-    // camera-candidate log carries the bbox-hint judge marker, and nothing
-    // commits before settle.
+    // camera-candidate log carries the envelope-hint judge marker, and
+    // nothing commits before settle.
     const pannedView: GeoBbox = { minLat: 28.2, maxLat: 29.2, minLng: -100, maxLng: -99 };
     harness.setBounds(pannedView);
 
     const cameraLogs = harness.logsFor('camera-candidate');
     expect(cameraLogs.length).toBeGreaterThan(0);
-    expect(cameraLogs.every((entry) => entry.judge === 'bbox-hint')).toBe(true);
+    expect(cameraLogs.every((entry) => entry.judge === 'envelope-hint')).toBe(true);
     // Mid-pan (before settle) nothing committed: Texas still serves.
     expect(getViewportSubjectState().verdict).toMatchObject({ placeId: 'texas' });
 

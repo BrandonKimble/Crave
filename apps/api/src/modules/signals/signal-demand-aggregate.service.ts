@@ -26,18 +26,17 @@ import { geoEnvelopeSql } from './ground-containment';
  *   Containment, never intersection — storage is O(few) rows per signal; the
  *   "every place in view at weight 1" semantics is supplied at READ time by
  *   inheritance (own rows + descendants' rows + each distinct ancestor row
- *   once — SignalDemandReadService). Containment is judged POLYGON-FIRST
- *   (§2.5(c): polygon = truth, bbox = index/prefilter + geometry-null
- *   fallback only): where a place has real ground in place_geometries, the
- *   `containing` pick requires ST_Covers(ground, geo) and ranks by real
- *   ground area (polygon-covered candidates before every bbox-only one), and
- *   the `contained` tiling prefers ground-⊆-geo through the geometry GiST
- *   index; bbox containment judges only geometry-null rows. Longitude is
- *   wrap-aware (min_lng > max_lng crosses the antimeridian): crossing geos
- *   split into two segments for the indexed containment probes (a crossing
- *   geo's polygon envelope is the union of its two arms); crossing PLACES
- *   (none in the current catalog) take explicit non-indexed branches over
- *   that tiny set.
+ *   once — SignalDemandReadService). Containment is judged on THE ONE GROUND
+ *   (§2.6 GROUND UNIFICATION: every place's ground lives in
+ *   place_geometries.geometry — a sketch-grade row holds its bbox envelope
+ *   as a rectangular polygon; §2.5(c): bbox = index/prefilter only): the
+ *   `containing` pick requires ST_Covers(ground, geo) and ranks by ground
+ *   area; the `contained` tiling is ground-⊆-geo through the geometry GiST
+ *   index. No fallback arms — no code path branches on which representation
+ *   exists. Longitude is wrap-aware (min_lng > max_lng crosses the
+ *   antimeridian): a crossing geo's envelope is the ST_Union of its two
+ *   arms; crossing PLACES (none in the current catalog) take an explicit
+ *   non-indexed PREFILTER branch over that tiny materialized set.
  *   Additionally every signal lands EXACTLY ONCE on the GLOBAL tile
  *   (place_id NULL) so unscoped readers never see attribution fan-out.
  * - Redirects are applied AT READ (the aggregate stores raw subjectIds;
@@ -314,50 +313,31 @@ export class SignalDemandAggregateService {
           FROM places
           WHERE bbox_min_lat IS NOT NULL AND bbox_min_lng > bbox_max_lng
         ),
-        segments AS (
-          -- Wrap-normalize: an antimeridian-crossing geo (min_lng > max_lng)
-          -- covers [min_lng, 180] ∪ [-180, max_lng]; split it so the indexed
-          -- envelope probes only ever see non-crossing intervals.
-          SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng,
-                 geo_min_lng AS seg_min_lng, geo_max_lng AS seg_max_lng
-          FROM geos WHERE geo_min_lng <= geo_max_lng
-          UNION ALL
-          SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng,
-                 geo_min_lng, 180::numeric
-          FROM geos WHERE geo_min_lng > geo_max_lng
-          UNION ALL
-          SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng,
-                 (-180)::numeric, geo_max_lng
-          FROM geos WHERE geo_min_lng > geo_max_lng
-        ),
         containing AS (
-          -- §3 (i) under §2.5(c): the SMALLEST place whose GROUND contains
-          -- the whole geo — at most ONE row per geo (read-time inheritance
-          -- walks the ancestor chain; storing the chain would double-count).
-          -- POLYGON JUDGES where real ground exists (bbox is only the GiST
-          -- prefilter): a candidate with geometry must ST_Covers the geo
-          -- envelope or it is REFUSED (its bbox lied — the El Paso act
+          -- §3 (i) under §2.6 GROUND UNIFICATION: the SMALLEST place whose
+          -- GROUND contains the whole geo — at most ONE row per geo
+          -- (read-time inheritance walks the ancestor chain; storing the
+          -- chain would double-count). The bbox is ONLY the candidate
+          -- prefilter (GiST envelope index + the crossing-place branch);
+          -- the ONE ground judges every candidate: it must ST_Covers the
+          -- geo envelope or it is REFUSED (its bbox lied — the El Paso act
           -- inside a Juárez-class overhanging rectangle never attributes
-          -- across the border), and polygon-covered candidates rank by real
-          -- ground area BEFORE every geometry-null bbox candidate.
+          -- across the border), and candidates rank by real ground area
+          -- (a sketch envelope's area equals its bbox area, so the ranking
+          -- metric is unchanged for sketch-grade rows).
           SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng, place_id
           FROM (
             SELECT x.geo_min_lat, x.geo_min_lng, x.geo_max_lat, x.geo_max_lng,
                    x.place_id,
                    ROW_NUMBER() OVER (
                      PARTITION BY x.geo_min_lat, x.geo_min_lng, x.geo_max_lat, x.geo_max_lng
-                     ORDER BY (pg.geometry IS NOT NULL) DESC,
-                              CASE WHEN pg.geometry IS NOT NULL
-                                   THEN ST_Area(pg.geometry)
-                                   ELSE x.area END ASC,
+                     ORDER BY ST_Area(pg.geometry) ASC,
                               x.place_id ASC
                    ) AS pick
             FROM (
               -- Indexed fast path: non-crossing geo × non-crossing place.
               SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
-                     p.place_id,
-                     ((p.bbox_max_lat - p.bbox_min_lat)
-                       * (p.bbox_max_lng - p.bbox_min_lng))::float8 AS area
+                     p.place_id
               FROM geos g
               JOIN places p
                 ON p.bbox_min_lat IS NOT NULL
@@ -367,13 +347,11 @@ export class SignalDemandAggregateService {
                                      g.geo_max_lng::float8, g.geo_max_lat::float8, 4326)
               WHERE g.geo_min_lng <= g.geo_max_lng
               UNION ALL
-              -- Crossing places (materialized tiny set): wrap-aware
-              -- containment — a non-crossing geo fits one arm; a crossing
-              -- geo needs both its arms covered.
+              -- Crossing places (materialized tiny set): wrap-aware bbox
+              -- PREFILTER — a non-crossing geo fits one arm; a crossing
+              -- geo needs both its arms covered. Judgment stays below.
               SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
-                     p.place_id,
-                     ((p.bbox_max_lat - p.bbox_min_lat)
-                       * (360 - (p.bbox_min_lng - p.bbox_max_lng)))::float8 AS area
+                     p.place_id
               FROM geos g
               JOIN crossing_places p
                 ON p.bbox_min_lat <= g.geo_min_lat
@@ -384,98 +362,62 @@ export class SignalDemandAggregateService {
                      ELSE p.bbox_min_lng <= g.geo_min_lng AND g.geo_max_lng <= p.bbox_max_lng
                    END
             ) x
-            LEFT JOIN place_geometries pg
-              ON pg.place_id = x.place_id AND pg.geometry IS NOT NULL
-            WHERE pg.geometry IS NULL
-               OR ST_Covers(pg.geometry, ${geoEnvelopeSql('x')})
+            JOIN place_geometries pg
+              ON pg.place_id = x.place_id
+             AND ST_Covers(pg.geometry, ${geoEnvelopeSql('x')})
           ) ranked
           WHERE pick = 1
         ),
-        contained AS (
-          -- §3 (ii) step 1 under §2.5(c): every place INSIDE the geo.
-          -- Polygon arm first: where real ground exists it JUDGES
-          -- (ground ⊆ geo via the place_geometries GiST index — a place
-          -- whose bbox overhangs the geo but whose ground sits inside is
-          -- FOUND, and an overhanging ground under a contained bbox is
-          -- REFUSED); the bbox arms survive only for geometry-null places.
+        contained AS MATERIALIZED (
+          -- §3 (ii) step 1 under §2.6: every place whose GROUND sits inside
+          -- the geo — ONE arm, ground ⊆ geo through the place_geometries
+          -- GiST index (a place whose bbox overhangs the geo but whose
+          -- ground sits inside is FOUND, and an overhanging ground under a
+          -- contained bbox is REFUSED). Crossing geos are handled by the
+          -- wrap-aware envelope (union of arms), so no bbox arms remain.
+          -- MATERIALIZED: referenced three times below (dominated ×2 +
+          -- tiling); one evaluation.
           SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
                  p.place_id, p.parent_place_ids
           FROM geos g
           JOIN place_geometries pg
-            ON pg.geometry IS NOT NULL
-           AND ST_CoveredBy(pg.geometry, ${geoEnvelopeSql('g')})
+            ON ST_CoveredBy(pg.geometry, ${geoEnvelopeSql('g')})
           JOIN places p ON p.place_id = pg.place_id
-          UNION
-          SELECT DISTINCT sg.geo_min_lat, sg.geo_min_lng, sg.geo_max_lat, sg.geo_max_lng,
-                 p.place_id, p.parent_place_ids
-          FROM segments sg
-          JOIN places p
-            ON p.bbox_min_lat IS NOT NULL
-           AND p.bbox_min_lng <= p.bbox_max_lng
-           AND ${PLACE_ENVELOPE_SQL}
-               @ ST_MakeEnvelope(sg.seg_min_lng::float8, sg.geo_min_lat::float8,
-                                 sg.seg_max_lng::float8, sg.geo_max_lat::float8, 4326)
-          WHERE NOT EXISTS (
-            SELECT 1 FROM place_geometries pg
-            WHERE pg.place_id = p.place_id AND pg.geometry IS NOT NULL
-          )
-          UNION
-          -- Crossing place inside a crossing geo: both arms nested.
-          SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
-                 p.place_id, p.parent_place_ids
-          FROM geos g
-          JOIN crossing_places p
-            ON g.geo_min_lng > g.geo_max_lng
-           AND p.bbox_min_lat >= g.geo_min_lat
-           AND p.bbox_max_lat <= g.geo_max_lat
-           AND p.bbox_min_lng >= g.geo_min_lng
-           AND p.bbox_max_lng <= g.geo_max_lng
-          WHERE NOT EXISTS (
-            SELECT 1 FROM place_geometries pg
-            WHERE pg.place_id = p.place_id AND pg.geometry IS NOT NULL
-          )
+        ),
+        dominated AS MATERIALIZED (
+          -- §3 (ii) step 2a: contained rows whose direct DAG parent is
+          -- ITSELF contained in the same geo. Under §2.6 the parent's
+          -- containment verdict is ALREADY IN "contained" (every place has
+          -- exactly one ground and "contained" judged them all), so parent
+          -- domination reuses those verdicts — never a per-row geometry
+          -- re-probe (a continental-viewport geo contains ~20k grounds;
+          -- 40k exact ST_CoveredBy re-probes on stored outlines took
+          -- minutes, proven live 2026-07-22). The row-constructor IN forces
+          -- a HASHED SubPlan regardless of the planner's (unknowable) CTE
+          -- row estimates — a JOIN form was planned as a 390M-loop nested
+          -- loop on this exact data, and a geo-only merge is the old 3b
+          -- O(N²) trap; both proven live.
+          SELECT DISTINCT c.geo_min_lat, c.geo_min_lng, c.geo_max_lat,
+                 c.geo_max_lng, c.place_id
+          FROM contained c
+          JOIN unnest(c.parent_place_ids) AS parent(place_id) ON TRUE
+          WHERE (c.geo_min_lat, c.geo_min_lng, c.geo_max_lat, c.geo_max_lng,
+                 parent.place_id) IN
+                (SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng,
+                        place_id FROM contained)
         ),
         tiling AS (
-          -- §3 (ii) step 2: keep only the COARSEST contained places — drop
-          -- any place whose direct DAG parent is itself contained (US-wide
-          -- geo → the US row survives; its states and towns fold away).
-          -- Domination recomputes parent containment against places by PK
-          -- (per-row unnest + index probe) — NEVER a contained×contained
-          -- self-join, which the planner turns into an O(N²) merge on the
-          -- low-cardinality geo columns (the 3b timeout, proven live).
-          -- Parent containment speaks the SAME §2.5(c) law as the
-          -- contained CTE: the parent's ground judges when it exists; bbox
-          -- containment only for geometry-null parents.
+          -- §3 (ii) step 2b: keep only the COARSEST contained places — drop
+          -- the dominated ones (US-wide geo → the US row survives; its
+          -- states and towns fold away). NOT IN is NULL-safe here (every
+          -- column is NOT NULL by construction) and hashes like the IN
+          -- above.
           SELECT c.geo_min_lat, c.geo_min_lng, c.geo_max_lat, c.geo_max_lng, c.place_id
           FROM contained c
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM unnest(c.parent_place_ids) AS parent(place_id)
-            JOIN places pp ON pp.place_id = parent.place_id
-            LEFT JOIN place_geometries ppg
-              ON ppg.place_id = pp.place_id AND ppg.geometry IS NOT NULL
-            WHERE CASE
-                    WHEN ppg.geometry IS NOT NULL
-                      THEN ST_CoveredBy(ppg.geometry, ${geoEnvelopeSql('c')})
-                    ELSE
-                      pp.bbox_min_lat IS NOT NULL
-                      AND pp.bbox_min_lat >= c.geo_min_lat
-                      AND pp.bbox_max_lat <= c.geo_max_lat
-                      AND CASE
-                    -- parent and geo both non-crossing
-                    WHEN c.geo_min_lng <= c.geo_max_lng AND pp.bbox_min_lng <= pp.bbox_max_lng
-                      THEN pp.bbox_min_lng >= c.geo_min_lng AND pp.bbox_max_lng <= c.geo_max_lng
-                    -- crossing geo, non-crossing parent: parent in one arm
-                    WHEN c.geo_min_lng > c.geo_max_lng AND pp.bbox_min_lng <= pp.bbox_max_lng
-                      THEN pp.bbox_min_lng >= c.geo_min_lng OR pp.bbox_max_lng <= c.geo_max_lng
-                    -- both crossing: arms nested
-                    WHEN c.geo_min_lng > c.geo_max_lng AND pp.bbox_min_lng > pp.bbox_max_lng
-                      THEN pp.bbox_min_lng >= c.geo_min_lng AND pp.bbox_max_lng <= c.geo_max_lng
-                        -- crossing parent can't fit a non-crossing geo
-                        ELSE FALSE
-                      END
-                  END
-          )
+          WHERE (c.geo_min_lat, c.geo_min_lng, c.geo_max_lat, c.geo_max_lng,
+                 c.place_id) NOT IN
+                (SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng,
+                        place_id FROM dominated)
         ),
         attributed AS (
           SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng, place_id

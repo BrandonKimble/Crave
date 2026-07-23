@@ -123,26 +123,29 @@ export interface PlaceLike {
   /** Optional cached bboxArea(bbox); recomputed when absent. */
   area?: number;
   /**
-   * §2.5 real ground: simplified boundary rings (view-appropriate
-   * simplification is the SERVER's concern; full detail never ships).
-   * Absent = polygon not landed yet → bbox fallback (§2.5(f)).
+   * §2.6 GROUND UNIFICATION: real ground is REQUIRED — every place has ONE
+   * ground representation (simplified boundary rings; a sketch-grade place
+   * ships its bbox envelope as a 5-point rectangle). View-appropriate
+   * simplification is the SERVER's concern; full detail never ships. A
+   * degraded caller synthesizes the envelope ring (bboxToGround) — same
+   * representation, never a second judgment arm.
    */
-  ground?: PlaceGround | null;
+  ground: PlaceGround;
 }
 
 /** resolvePlaceCoverage result: the two §2.5 judgment inputs per candidate. */
 export interface PlaceCoverage {
   coverageOfView: number;
   placeArea: number;
-  /** True when the polygon (not the bbox fallback) produced the numbers. */
-  groundKnown: boolean;
 }
 
 /**
- * Bbox-fallback coverage — area(bbox ∩ view) / area(view). §2.5(f): legal
- * ONLY where no polygon exists. Returns null when the bbox misses the view
- * entirely. A zero-area (point) view degenerates to coverage 1: any place
- * whose bbox admits the point fully covers the attention there.
+ * Bbox-intersection coverage — area(bbox ∩ view) / area(view). §2.6: NOT a
+ * judgment arm (the judgment law is single-representation, ground-only) —
+ * kept as pure index-side math (candidate diagnostics, fixtures). Returns
+ * null when the bbox misses the view entirely. A zero-area (point) view
+ * degenerates to coverage 1: any place whose bbox admits the point fully
+ * covers the attention there.
  */
 export function coverageOfView(view: GeoBbox, viewArea: number, bbox: GeoBbox): number | null {
   const parts = bboxIntersectionParts(bbox, view);
@@ -154,44 +157,38 @@ export function coverageOfView(view: GeoBbox, viewArea: number, bbox: GeoBbox): 
 }
 
 /**
- * THE per-candidate coverage law (§2.5(c)/(f)) shared by the server catalog
- * read (PlacesCatalogService.placesInView) and the client's slice
- * evaluation: polygon-clip coverage + real-ground area when `ground` is
- * present; bbox coverage + bbox area otherwise. Returns null when the place
- * is NOT a candidate for this view at all — bbox disjoint, or (the index
- * lied) ground present but clipping to zero: the bbox found it, the polygon
- * disqualifies it.
+ * THE per-candidate coverage law (§2.5(c) under §2.6 GROUND UNIFICATION)
+ * shared by the server catalog read (PlacesCatalogService.placesInView) and
+ * the client's slice evaluation: polygon-clip coverage + real-ground area,
+ * ALWAYS — every place has ONE ground representation (a sketch-grade place's
+ * ground is its bbox envelope rectangle; same math, coarser precision).
+ * Returns null when the place is NOT a candidate for this view at all —
+ * ground absent/empty (a bbox-less birth: no ground knowledge) or clipping
+ * to zero (the index found it, the ground disqualifies it). NO bbox arm:
+ * no code path may branch on which representation exists.
  */
 export function resolvePlaceCoverage(
   view: GeoBbox,
   viewArea: number,
-  place: { bbox: GeoBbox; ground?: PlaceGround | null }
+  place: { ground: PlaceGround }
 ): PlaceCoverage | null {
-  if (place.ground && place.ground.length > 0) {
-    const coverage = groundCoverageOfView(view, viewArea, place.ground);
-    if (coverage <= 0) {
-      return null; // real ground never touches the view — the bbox was index noise
-    }
-    return {
-      coverageOfView: coverage,
-      placeArea: groundArea(place.ground),
-      groundKnown: true,
-    };
+  if (place.ground.length === 0) {
+    return null; // no ground knowledge — invisible to judgment
   }
-  const bboxCoverage = coverageOfView(view, viewArea, place.bbox);
-  if (bboxCoverage === null) {
-    return null;
+  const coverage = groundCoverageOfView(view, viewArea, place.ground);
+  if (coverage <= 0) {
+    return null; // real ground never touches the view — the index was noise
   }
   return {
-    coverageOfView: bboxCoverage,
-    placeArea: bboxArea(place.bbox),
-    groundKnown: false,
+    coverageOfView: coverage,
+    placeArea: groundArea(place.ground),
   };
 }
 
 /**
  * Catalog rows → subject candidates for one view: keep every place whose
- * ground (or fallback bbox) genuinely touches the view, with its §2.5
+ * ground genuinely touches the view (§2.6: ground is the ONE
+ * representation — sketch rectangles and full outlines alike), with its §2.5
  * coverage share and finest-ranking area. This is the pure core of the
  * server's placesInView (which merely adds the DB prefilter and geometry
  * hydration) and the WHOLE of the client's read over its slice — feed the

@@ -204,9 +204,11 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
 
     expect(create).not.toHaveBeenCalled();
     // The widen is raw SQL (LEAST/GREATEST composes concurrent widenings —
-    // a plain read-modify-write update would let one merge shrink another's).
+    // a plain read-modify-write update would let one merge shrink another's)
+    // PLUS the §2.6 sketch-ground refresh (the envelope row derives from the
+    // post-widen bbox in the same call flow).
     expect(update).not.toHaveBeenCalled();
-    expect(executeRaw).toHaveBeenCalledTimes(1);
+    expect(executeRaw).toHaveBeenCalledTimes(2);
     const [template, ...values] = executeRaw.mock.calls[0];
     const sql = (template as string[]).join('?');
     expect(sql).toContain('LEAST(COALESCE(bbox_min_lat');
@@ -226,6 +228,15 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       -97.7,
       existing.placeId,
     ]);
+    // §2.6 derivation invariant: the second statement upserts the sketch
+    // envelope FROM the live places row, guarded to sketch-grade only.
+    const sketchSql = (executeRaw.mock.calls[1][0] as string[]).join('?');
+    expect(sketchSql).toContain('INSERT INTO place_geometries');
+    expect(sketchSql).toContain('ST_MakeEnvelope');
+    expect(sketchSql).toContain('ON CONFLICT (place_id) DO UPDATE');
+    expect(sketchSql).toContain(
+      'WHERE place_geometries.provider_boundary_id IS NULL',
+    );
     // Bbox-only merge re-reads the row for the post-widen truth.
     expect(findUniqueOrThrow).toHaveBeenCalledWith({
       where: { placeId: existing.placeId },
@@ -613,7 +624,7 @@ describe('PlacesCatalogService — §1 COUNTY-AXIS decision table (§18 item 8)'
 });
 
 describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
-  it('bbox fallback (§2.5(f)): no polygon yet → bbox coverage + bbox area + deduped parent edges', async () => {
+  it('§2.6 envelope degradation: hydration returns nothing → the envelope RING judges (bbox-equal numbers, same representation) + deduped parent edges', async () => {
     const half = makePlaceRow({
       name: 'West Town',
       bboxMinLat: 0,
@@ -636,7 +647,16 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
       9,
     );
     expect(results[0].parentPlaceIds).toEqual(['p-1', 'p-2']);
-    expect(results[0].ground).toBeUndefined();
+    // §2.6: ground is ALWAYS present — here the envelope ring derived from
+    // the bbox (sketch-grade representation), never undefined.
+    expect(results[0].ground).toEqual([
+      [
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+      ],
+    ]);
   });
 
   it('polygon = truth (§2.5(c)): a landed geometry judges coverage; the lying index bbox is demoted to candidate-finding', async () => {
@@ -709,6 +729,24 @@ describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
     );
   });
 
+  it('§2.6 birth = ground immediately: the CREATE path writes the sketch envelope synchronously with the place row (never waiting for the drain)', async () => {
+    const { service, create, executeRaw } = makeHarness([null]);
+    const [created] = await service.sketchChain([austinNode]);
+    expect(create).toHaveBeenCalledTimes(1);
+    // The sketch-ground upsert ran in the same call flow, keyed to the new
+    // row, guarded to sketch grade (outline rows can never be clobbered).
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    const [template, ...values] = executeRaw.mock.calls[0];
+    const sql = (template as string[]).join('?');
+    expect(sql).toContain('INSERT INTO place_geometries');
+    expect(sql).toContain('ST_MakeEnvelope');
+    expect(sql).toContain('ON CONFLICT (place_id) DO UPDATE');
+    expect(sql).toContain(
+      'WHERE place_geometries.provider_boundary_id IS NULL',
+    );
+    expect(values).toContain(created.placeId);
+  });
+
   it('a MERGED re-sketch never re-fires birth (the queue is for new ground)', async () => {
     const existing = makePlaceRow({
       bboxMinLat: 30.1,
@@ -725,7 +763,7 @@ describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
 });
 
 describe('PlacesCatalogService.smallestContaining — §2/§3 containment read', () => {
-  it('picks the smallest-area containing place (point = zero-area bbox)', async () => {
+  it('picks the smallest-GROUND-area containing place (point = zero-area bbox; §2.6 every candidate is ground-judged)', async () => {
     const city = makePlaceRow({
       name: 'City',
       bboxMinLat: 0,
@@ -740,8 +778,12 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
       bboxMaxLat: 2,
       bboxMaxLng: 2,
     });
-    const { service, findMany } = makeHarness([]);
+    const { service, findMany, queryRaw } = makeHarness([]);
     findMany.mockResolvedValue([county, city]);
+    queryRaw.mockResolvedValue([
+      { placeId: city.placeId, covers: true, groundArea: 1 },
+      { placeId: county.placeId, covers: true, groundArea: 9 },
+    ]);
 
     const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
     expect(smallest?.name).toBe('City');
@@ -777,7 +819,7 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
     expect(smallest?.name).toBe('TrueTown');
   });
 
-  it('§2.5(c) rank law: polygon-covered candidates outrank geometry-null bbox candidates; geometry-null rows stay judgeable (honest fallback)', async () => {
+  it('§2.6 single-arm rank: a verdict-less candidate (no ground row — bbox-less birth) is EXCLUDED, never bbox-judged, even with the smaller bbox', async () => {
     const covered = makePlaceRow({
       name: 'CoveredCounty',
       bboxMinLat: -1,
@@ -785,27 +827,27 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
       bboxMaxLat: 2,
       bboxMaxLng: 2,
     });
-    const bboxOnly = makePlaceRow({
-      name: 'BboxTown',
+    const groundless = makePlaceRow({
+      name: 'GroundlessTown',
       bboxMinLat: 0.45,
       bboxMinLng: 0.45,
       bboxMaxLat: 0.55,
       bboxMaxLng: 0.55,
     });
     const { service, findMany, queryRaw } = makeHarness([]);
-    findMany.mockResolvedValue([covered, bboxOnly]);
-    // Only the county has landed ground; the town is geometry-null.
+    findMany.mockResolvedValue([covered, groundless]);
+    // Only the county has a place_geometries row (§2.6: a candidate with no
+    // verdict row has no ground knowledge at all).
     queryRaw.mockResolvedValue([
       { placeId: covered.placeId, covers: true, groundArea: 6 },
     ]);
 
     const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
-    // Polygon truth beats a smaller—but unproven—bbox (§2.5(c): bbox never
-    // judges where a judged polygon candidate exists at the pick).
+    // The ground-judged candidate wins; the groundless one is invisible.
     expect(smallest?.name).toBe('CoveredCounty');
   });
 
-  it('ground-verdict failure degrades THIS read to the bbox fallback (§2.5(f) posture, never an error)', async () => {
+  it('ground-verdict failure degrades THIS read to NO CONTAINER (§2.6 posture: never bbox-judged, never an error)', async () => {
     const city = makePlaceRow({
       name: 'City',
       bboxMinLat: 0,
@@ -818,6 +860,6 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
     queryRaw.mockRejectedValue(new Error('postgis down'));
 
     const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
-    expect(smallest?.name).toBe('City');
+    expect(smallest).toBeNull();
   });
 });

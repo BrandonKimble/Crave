@@ -1,18 +1,16 @@
 import { Prisma } from '@prisma/client';
-import {
-  lngContainsSql,
-  LngIntervalColumns,
-  placeLngColumns,
-} from './lng-intersect';
 
 /**
- * §2.5(c) polygon-first containment predicates for signal-geo attribution
- * (plans/geo-demand-foundation-rebuild.md): polygon = truth, bbox = index/
- * prefilter + geometry-null fallback ONLY. Stated ONCE here and consumed by
- * every fresh-arm ledger read (demand-mass reader, signal-demand territory
- * reads) so both arms of the aggregate∪fresh union speak the aggregate's
- * attribution law (signal-demand-aggregate.service `containing`/`contained`
- * CTEs restate the same predicates inline over the rebuild's candidate sets).
+ * §2.5(c)/§2.6 ground containment predicates for signal-geo attribution
+ * (plans/geo-demand-foundation-rebuild.md): GROUND UNIFICATION — a place has
+ * ONE ground representation (place_geometries.geometry; sketch-grade rows
+ * hold the bbox envelope as a rectangular polygon), so containment is a
+ * plain ST_Covers/ST_CoveredBy against that column, no fallback arm. Stated
+ * ONCE here and consumed by every fresh-arm ledger read (demand-mass reader,
+ * signal-demand territory reads) so both arms of the aggregate∪fresh union
+ * speak the aggregate's attribution law (signal-demand-aggregate.service
+ * `containing`/`contained` CTEs restate the same predicates inline over the
+ * rebuild's candidate sets).
  *
  * Two directions, one law:
  * - place COVERS geo  — the §3 (i) "containing" direction (own-place row);
@@ -22,34 +20,19 @@ import {
  *   lineage read brings it back, so the fresh arm must speak the same
  *   containment, never intersection).
  *
- * Where a place has real ground (place_geometries.geometry), the polygon
- * JUDGES (an act inside a neighbor's overhanging bbox but outside its ground
- * never attributes there); the wrap-aware bbox containment survives only for
- * geometry-null places. The correlated place_geometries probe is a PK lookup
- * (place_id is the primary key) — cheap at fresh-arm cardinalities.
+ * The ground JUDGES (an act inside a neighbor's overhanging bbox but outside
+ * its ground never attributes there); a place with no geometry row (a
+ * bbox-less birth — no ground knowledge at all) is simply not a container.
+ * The correlated place_geometries probe is a PK lookup (place_id is the
+ * primary key) — cheap at fresh-arm cardinalities. Call sites keep their
+ * bbox-intersection join conditions as the btree PREFILTER (§2.5(c): bbox =
+ * index only; containment implies intersection, so the prefilter never
+ * drops a true candidate).
  *
  * Wrap-awareness: a crossing signal geo (min_lng > max_lng) covers
- * [min, 180] ∪ [-180, max]; its polygon-side envelope is the ST_Union of the
- * two arms (never one seam-spanning rectangle), and the bbox fallback goes
- * through the canonical lngContainsSql cases.
+ * [min, 180] ∪ [-180, max]; its envelope is the ST_Union of the two arms
+ * (never one seam-spanning rectangle).
  */
-
-/** Column references for a signal-shaped geo bbox (geo_min_* / geo_max_*). */
-function geoLatColumns(alias: string): { min: Prisma.Sql; max: Prisma.Sql } {
-  const ref = Prisma.raw(alias);
-  return {
-    min: Prisma.sql`${ref}.geo_min_lat`,
-    max: Prisma.sql`${ref}.geo_max_lat`,
-  };
-}
-
-function geoLngColumns(alias: string): LngIntervalColumns {
-  const ref = Prisma.raw(alias);
-  return {
-    min: Prisma.sql`${ref}.geo_min_lng`,
-    max: Prisma.sql`${ref}.geo_max_lng`,
-  };
-}
 
 /**
  * Wrap-aware PostGIS envelope over a signal-shaped geo bbox (columns
@@ -72,50 +55,42 @@ export function geoEnvelopeSql(alias: string): Prisma.Sql {
 }
 
 /**
- * TRUE when the place's ground CONTAINS the signal geo — §3 (i) restated
- * polygon-first: ST_Covers(geometry, geo envelope) when real ground exists,
- * wrap-aware bbox containment for geometry-null places.
+ * TRUE when the place's ground CONTAINS the signal geo — §3 (i) under §2.6:
+ * ST_Covers(geometry, geo envelope), one representation, no fallback arm.
  */
 export function placeCoversGeoSql(
   placeAlias: string,
   geoAlias = 's',
 ): Prisma.Sql {
   const p = Prisma.raw(placeAlias);
-  const geoLat = geoLatColumns(geoAlias);
-  return Prisma.sql`COALESCE(
-        (SELECT ST_Covers(pg.geometry, ${geoEnvelopeSql(geoAlias)})
-           FROM place_geometries pg
-          WHERE pg.place_id = ${p}.place_id AND pg.geometry IS NOT NULL),
-        ${p}.bbox_min_lat <= ${geoLat.min} AND ${p}.bbox_max_lat >= ${geoLat.max}
-          AND (${lngContainsSql(placeLngColumns(placeAlias), geoLngColumns(geoAlias))})
+  return Prisma.sql`EXISTS (
+        SELECT 1 FROM place_geometries pg
+        WHERE pg.place_id = ${p}.place_id
+          AND ST_Covers(pg.geometry, ${geoEnvelopeSql(geoAlias)})
       )`;
 }
 
 /**
- * TRUE when the signal geo CONTAINS the place's ground — §3 (ii) restated
- * polygon-first: ST_CoveredBy(geometry, geo envelope) when real ground
- * exists, wrap-aware bbox containment for geometry-null places.
+ * TRUE when the signal geo CONTAINS the place's ground — §3 (ii) under §2.6:
+ * ST_CoveredBy(geometry, geo envelope), one representation, no fallback arm.
  */
 export function geoCoversPlaceSql(
   placeAlias: string,
   geoAlias = 's',
 ): Prisma.Sql {
   const p = Prisma.raw(placeAlias);
-  const geoLat = geoLatColumns(geoAlias);
-  return Prisma.sql`COALESCE(
-        (SELECT ST_CoveredBy(pg.geometry, ${geoEnvelopeSql(geoAlias)})
-           FROM place_geometries pg
-          WHERE pg.place_id = ${p}.place_id AND pg.geometry IS NOT NULL),
-        ${geoLat.min} <= ${p}.bbox_min_lat AND ${geoLat.max} >= ${p}.bbox_max_lat
-          AND (${lngContainsSql(geoLngColumns(geoAlias), placeLngColumns(placeAlias))})
+  return Prisma.sql`EXISTS (
+        SELECT 1 FROM place_geometries pg
+        WHERE pg.place_id = ${p}.place_id
+          AND ST_CoveredBy(pg.geometry, ${geoEnvelopeSql(geoAlias)})
       )`;
 }
 
 /**
- * THE fresh-arm attribution predicate (C3 cut): a today's-ledger signal
- * belongs to a place read iff one CONTAINS the other — polygon-judged where
- * ground exists, bbox only as the geometry-null fallback. The call sites
- * keep their cheap bbox-intersection join conditions as the PREFILTER
+ * THE fresh-arm attribution predicate (C3 cut, single-representation under
+ * §2.6): a today's-ledger signal belongs to a place read iff one CONTAINS
+ * the other — always judged on the place's ONE ground. The call sites keep
+ * their cheap bbox-intersection join conditions as the PREFILTER
  * (containment in either direction implies intersection, so the prefilter
  * never drops a true candidate). Residual seam, documented: a coarse geo
  * that STRADDLES the place (neither contains the other) reaches the place

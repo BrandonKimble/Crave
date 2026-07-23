@@ -20,8 +20,8 @@
  * - FRESH TODAY from the ledger (flat weight — day age 0 is inside the flat
  *   cycle), with TRUE act-grain dedupe (the wave-5 F2 COALESCE including
  *   askSearchRequestId) and the aggregate's OWN attribution law
- *   (freshSignalAttributionSql: containment in either direction, polygon-
- *   judged where ground exists, geometry-null bbox fallback; the canonical
+ *   (freshSignalAttributionSql: containment in either direction, judged on
+ *   the place's ONE ground — §2.6 single representation; the canonical
  *   wrap-aware lng predicate survives as the prefilter); a cross-midnight
  *   retry is excluded by a first-occurrence anti-join (the aggregate already
  *   counted the act on its first day).
@@ -285,11 +285,11 @@ export class DemandMassReader {
       fresh_acts AS (
         -- TODAY from the ledger: true act-grain dedupe (echo rows collapse
         -- into their parent act's key group), first-occurrence gate against
-        -- earlier days. Attribution speaks the aggregate's §2.5(c) law
+        -- earlier days. Attribution speaks the aggregate's §2.6 law
         -- (freshSignalAttributionSql): CONTAINMENT in either direction,
-        -- polygon-judged where real ground exists, bbox only as the
-        -- geometry-null fallback — the wrap-aware lng intersect stays as
-        -- the cheap PREFILTER (containment implies intersection). AT TIME
+        -- judged on the place's ONE ground (sketch envelope or outline) —
+        -- the wrap-aware lng intersect stays as the cheap PREFILTER
+        -- (containment implies intersection). AT TIME
         -- ZONE 'UTC' law: occurred_at is naive UTC (live-proven wave-5).
         SELECT
           pb.place_id AS root,

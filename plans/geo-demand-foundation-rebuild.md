@@ -120,6 +120,49 @@ whose polygon has not landed yet (degradation, never a judge where a
 polygon exists). Slices serve view-appropriate SIMPLIFIED geometry; full
 detail stays server-side in place_geometries.
 
+## §2.6 GROUND UNIFICATION (RATIFIED 2026-07-22 — supersedes §2.5(f)'s
+
+bbox-fallback arm; leg 1 of the market-remnant removal)
+
+**A place has ONE ground representation — the place_geometries geometry
+column.** A rectangle-only sketch is stored AS a rectangular polygon
+(the bbox envelope) in the SAME column; precision improves IN PLACE — the
+detailed vendor outline replaces the coarse rectangle when the promotion
+drain lands it. **NO code path may ever branch on which representation
+exists.** Detail never decreases: full outlines stay full.
+
+- **Grade marker (derived, not a column)**: sketch-grade ⇔
+  `provider_boundary_id IS NULL`. An outline always carries the vendor's
+  stable geometry id (persistPolygon requires it), so the marker is
+  unambiguous; the drain's ON CONFLICT upsert sets it, making
+  sketch→outline upgrade correct even from a binary that predates this
+  section (drain-concurrent-safe by construction).
+- **Derivation invariant (one direction of truth per grade)**: while
+  sketch-grade, geometry is DERIVED from the places bbox — every bbox
+  write site (create, widen/merge) refreshes the envelope row in the same
+  statement flow, guarded `WHERE provider_boundary_id IS NULL` so a
+  sketch refresh can never clobber an outline. Once outline-grade, the
+  bbox is DERIVED from geometry (the drain's envelope-widen). The two can
+  therefore never diverge.
+- **Birth = ground immediately**: the catalog create path writes the
+  sketch envelope SYNCHRONOUSLY with the place row (not waiting for the
+  drain); the drain upgrades grade later. A place with a bbox but no
+  geometry row is IMPOSSIBLE. (The only ground-less rows are bbox-less
+  births — no ground knowledge at all — which stay invisible to judgment
+  exactly as before, and degenerate zero-span bboxes, which cannot form a
+  polygon.)
+- **Judgment sites are single-predicate**: every containment/coverage
+  judgment is a plain ST_Covers/ST_CoveredBy/ST_Area inner join on
+  place_geometries (or the shared ground clip on rings). The bbox columns
+  on places survive ONLY as the btree/GiST candidate INDEX preceding a
+  geometry judgment (§2.5(c) unchanged) — zero COALESCE-fallback
+  predicates remain. Shared law: PlaceLike.ground is REQUIRED; slices
+  always ship rings (a sketch is 5 points). Degradation (ground hydration
+  failure) synthesizes the envelope RING from the bbox — same
+  representation, coarser precision — never a second judgment arm.
+- places bbox\_\* columns stay for now as the derived envelope index
+  (btree paths still use them); full removal is a later optimization.
+
 ## §3 The Signals Ledger
 
 **signals**: { signalId, kind, subjectType (entity|term|none), subjectId?,

@@ -62,18 +62,19 @@ export class PlacesController {
     const rows = await this.catalog.placesInView(marginBox);
     return {
       marginBox,
-      // Lean PlaceLike rows: bbox + identity + DAG edges, plus §2.5 `ground`
-      // where a polygon has landed (simplified to the MARGIN box span inside
-      // placesInView — view-appropriate detail, full geometry never ships).
-      // Areas and coverages are DERIVED client-side with the same shared
-      // functions — derivable data never ships.
+      // Lean PlaceLike rows: bbox (index) + identity + DAG edges + the §2.6
+      // ONE ground — ALWAYS present (a sketch-grade place ships its 5-point
+      // envelope rectangle; outlines are simplified to the MARGIN box span
+      // inside placesInView — view-appropriate detail, full geometry never
+      // ships). Areas and coverages are DERIVED client-side with the same
+      // shared functions — derivable data never ships.
       places: rows.map(({ place, bbox, ground }) => ({
         placeId: place.placeId,
         name: place.name,
         bbox,
         providerLevelCode: place.providerLevelCode,
         parentPlaceIds: placeParentIds(place),
-        ...(ground ? { ground } : {}),
+        ground,
       })),
     };
   }

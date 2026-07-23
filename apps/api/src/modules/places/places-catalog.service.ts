@@ -4,9 +4,13 @@
  * The catalog is a containment DAG of places: open providerLevelCode
  * vocabulary (stored, never switched on), parent edges captured from the
  * reverse-geocode chain at creation (geometry never derives hierarchy), and
- * two-tier geometry — a lean bbox on the hot places row, tier-2 polygons in
- * place_geometries (whose PostGIS geometry column lives OUTSIDE the prisma
- * model; any polygon-precise op must go through $queryRaw).
+ * ONE ground representation (§2.6 GROUND UNIFICATION): every bbox-carrying
+ * place has a place_geometries polygon — a sketch-grade bbox envelope
+ * (provider_boundary_id NULL, written synchronously at birth and refreshed
+ * on widen) upgraded IN PLACE to the vendor outline by the promotion drain.
+ * The places bbox stays as the derived candidate INDEX only (btree paths).
+ * The PostGIS geometry column lives OUTSIDE the prisma model; any
+ * polygon-precise op must go through $queryRaw.
  *
  * §1 identity law (COUNTY-AXIS amendment, §18 item 8 ratified 2026-07-19):
  * placeKey = (countryCode, subdivisionCode?, county?, providerLevelCode,
@@ -33,6 +37,7 @@ import {
   bboxLatSpan,
   bboxLngArcs,
   bboxLngSpan,
+  bboxToGround,
   bboxUnion,
   isGeoPoint,
   normalizePlaceName,
@@ -99,20 +104,21 @@ export interface PlaceSketchNode {
 export interface PlaceInView {
   place: Place;
   bbox: GeoBbox;
-  /**
-   * §2.5 coverage: polygon-clip share when the place's real ground is known
-   * (`ground` set), bbox-intersection share as the honest fallback (§2.5(f)).
-   */
+  /** §2.5/§2.6 coverage: the ONE ground's polygon-clip share of the view. */
   coverageOfView: number;
   /**
-   * The finest-ranking key: real-ground area when known, bbox area
-   * otherwise — same cos-weighted degrees² metric as the view's.
+   * The finest-ranking key: real-ground area — same cos-weighted degrees²
+   * metric as the view's (a sketch envelope's area equals its bbox area).
    */
   placeArea: number;
   /** Deduped DAG parent edges (placeParentIds) — the straddle reservation. */
   parentPlaceIds: string[];
-  /** Simplified real ground (§2.5), absent where no polygon has landed. */
-  ground?: PlaceGround;
+  /**
+   * Simplified real ground (§2.6: ALWAYS present — sketch-grade rows carry
+   * their envelope rectangle; hydration failure degrades to the envelope
+   * ring derived from the bbox, same representation).
+   */
+  ground: PlaceGround;
 }
 
 /** Read a Place row's decimal bbox as a GeoBbox, or null when un-sketched. */
@@ -219,12 +225,13 @@ export class PlacesCatalogService {
 
   /**
    * All places whose bbox intersects the view, judged by the §2.5 coverage
-   * law: polygon-clip coverage where real ground is known, bbox coverage as
-   * the honest fallback (§2.5(f)). The bbox predicate is INDEX ONLY
-   * (§2.5(c)) — it finds candidates and never judges them; a candidate whose
-   * polygon clips to zero inside the view is dropped (the bbox lied). Rows
-   * without a sketched bbox drop out (NULL fails every comparison), which is
-   * right: an unindexed sketch can't be found.
+   * law on THE ONE GROUND (§2.6: every bbox-carrying place has a
+   * place_geometries row — sketch envelope or full outline; one clip law,
+   * no fallback arm). The bbox predicate is INDEX ONLY (§2.5(c)) — it finds
+   * candidates and never judges them; a candidate whose ground clips to
+   * zero inside the view is dropped (the bbox lied). Rows without a
+   * sketched bbox drop out (NULL fails every comparison), which is right:
+   * an unindexed sketch can't be found and has no ground.
    *
    * Antimeridian handling (wrap-aware, R1): a crossing VIEW splits into its
    * two non-crossing lng ranges (OR of two plain range predicates — btree
@@ -258,11 +265,14 @@ export class PlacesCatalogService {
     for (const place of rows) {
       const bbox = placeBbox(place);
       if (!bbox) continue;
-      const ground = grounds.get(place.placeId);
+      // §2.6: ground is ALWAYS judged. Hydration failure (or a raced
+      // just-born row) degrades to the envelope ring derived from the bbox
+      // — the SAME representation a sketch row stores, never a second arm.
+      const ground = grounds.get(place.placeId) ?? bboxToGround(bbox);
       // THE per-row coverage law is shared (resolvePlaceCoverage) so the
       // client's slice evaluation and this server read feed
       // resolveHeaderPlace identical numbers (header subject-store design).
-      const coverage = resolvePlaceCoverage(view, viewArea, { bbox, ground });
+      const coverage = resolvePlaceCoverage(view, viewArea, { ground });
       if (coverage === null) continue;
       results.push({
         place,
@@ -270,7 +280,7 @@ export class PlacesCatalogService {
         coverageOfView: coverage.coverageOfView,
         placeArea: coverage.placeArea,
         parentPlaceIds: placeParentIds(place),
-        ...(ground ? { ground } : {}),
+        ground,
       });
     }
     return results;
@@ -285,9 +295,10 @@ export class PlacesCatalogService {
    * The GeoJSON is flattened to OUTER rings (holes dropped — see
    * @crave-search/shared ground.ts for why that is honest).
    *
-   * Failure posture: ground hydration failing degrades to the §2.5(f) bbox
-   * fallback for THIS read (warn logged) — the header law's own legal
-   * degradation, never an error surface.
+   * Failure posture (§2.6): ground hydration failing degrades THIS read to
+   * the envelope ring derived from the bbox at the caller (warn logged) —
+   * the SAME ground representation at sketch precision, never a second
+   * judgment arm and never an error surface.
    */
   private async loadSimplifiedGrounds(
     placeIds: string[],
@@ -308,8 +319,7 @@ export class PlacesCatalogService {
                  ST_SimplifyPreserveTopology(geometry, ${tolerance})
                ) AS "geojson"
         FROM place_geometries
-        WHERE geometry IS NOT NULL
-          AND place_id = ANY(${placeIds}::uuid[])
+        WHERE place_id = ANY(${placeIds}::uuid[])
       `);
       for (const row of rows) {
         if (!row.geojson) continue;
@@ -320,7 +330,7 @@ export class PlacesCatalogService {
       }
     } catch (error) {
       this.logger.warn(
-        'Ground hydration failed — §2.5(f) bbox fallback for this read',
+        'Ground hydration failed — §2.6 envelope-ring degradation for this read',
         {
           error: {
             message: error instanceof Error ? error.message : String(error),
@@ -336,17 +346,18 @@ export class PlacesCatalogService {
    * "smallest place containing its geo"; also the §2 header fallback's
    * containment read). Points are the zero-area bbox degenerate case.
    *
-   * §2.5(c) — polygon = truth, bbox = index/prefilter + geometry-null
-   * fallback ONLY. The bbox prefilter finds candidates (a place whose
-   * ground contains the target has a bbox containing it too, so the
-   * prefilter never drops a true container); then real ground JUDGES
-   * wherever it exists:
-   * a candidate with geometry must ST_Covers the target or it is refused
-   * (a target inside a neighbor's bbox overhang but outside its ground
-   * resolves to the true container), and polygon-covered candidates rank by
-   * real ground area BEFORE every geometry-null bbox candidate (bbox area).
-   * Consumers (poll placeAt, home-place registration) persist this verdict —
-   * which is exactly why it must be ground-true at write.
+   * §2.5(c) under §2.6 — polygon = truth, bbox = index/prefilter ONLY. The
+   * bbox prefilter finds candidates (a place whose ground contains the
+   * target has a bbox containing it too, so the prefilter never drops a
+   * true container); then THE ONE GROUND judges every candidate: it must
+   * ST_Covers the target or it is refused (a target inside a neighbor's
+   * bbox overhang but outside its ground resolves to the true container),
+   * and candidates rank by real ground area (sketch envelope area == bbox
+   * area, so the metric is continuous across grades). A candidate with no
+   * verdict row has no ground (bbox-less birth / transient error) and is
+   * excluded — never bbox-judged. Consumers (poll placeAt, home-place
+   * registration) persist this verdict — which is exactly why it must be
+   * ground-true at write.
    */
   async smallestContaining(target: GeoPoint | GeoBbox): Promise<Place | null> {
     const box = isGeoPoint(target) ? pointToBbox(target) : target;
@@ -380,34 +391,30 @@ export class PlacesCatalogService {
       box,
     );
     let smallest: Place | null = null;
-    // Rank key: [tier, area] — tier 0 = polygon-covered (area = real ground
-    // area), tier 1 = geometry-null bbox fallback (area = bbox area). Every
-    // polygon-covered candidate outranks every bbox-only one.
-    let smallestKey: [number, number] | null = null;
+    // Rank key: real ground area, smallest wins (§2.6 single-arm — every
+    // candidate is ground-judged; no tiers, no bbox ranking).
+    let smallestArea: number | null = null;
     for (const place of candidates) {
       const verdict = verdicts.get(place.placeId);
-      let key: [number, number];
-      if (verdict) {
-        if (!verdict.covers) {
-          // Real ground refuses the target: the bbox overhang lied.
-          continue;
-        }
-        key = [0, verdict.groundArea];
-      } else {
-        key = [1, bboxArea(placeBbox(place) as GeoBbox)];
+      if (!verdict) {
+        // No ground row (bbox-less birth / transient error): not a judge-
+        // able container — excluded, never bbox-judged.
+        continue;
+      }
+      if (!verdict.covers) {
+        // Real ground refuses the target: the bbox overhang lied.
+        continue;
       }
       if (
-        smallestKey === null ||
-        key[0] < smallestKey[0] ||
-        (key[0] === smallestKey[0] && key[1] < smallestKey[1]) ||
+        smallestArea === null ||
+        verdict.groundArea < smallestArea ||
         // Deterministic tiebreak on equal rank (name-stability flavor, §2).
-        (key[0] === smallestKey[0] &&
-          key[1] === smallestKey[1] &&
+        (verdict.groundArea === smallestArea &&
           smallest !== null &&
           place.name.localeCompare(smallest.name) < 0)
       ) {
         smallest = place;
-        smallestKey = key;
+        smallestArea = verdict.groundArea;
       }
     }
     return smallest;
@@ -420,8 +427,10 @@ export class PlacesCatalogService {
    * cheap at candidate cardinalities). Wrap-aware target envelope (a
    * crossing target box becomes the union of its two arms).
    *
-   * Failure posture: an error degrades THIS read to the §2.5(f) bbox
-   * fallback (empty map, warn logged) — the law's own legal degradation.
+   * Failure posture (§2.6): an error yields an empty verdict map (warn
+   * logged) — smallestContaining then honestly answers "no container"
+   * for THIS read rather than bbox-judging; consumers already tolerate a
+   * null place (transient, next read heals). Never a second judgment arm.
    */
   private async loadGroundContainmentVerdicts(
     placeIds: string[],
@@ -445,8 +454,7 @@ export class PlacesCatalogService {
                ST_Covers(geometry, ${envelope}) AS "covers",
                ST_Area(geometry)::float8 AS "groundArea"
         FROM place_geometries
-        WHERE geometry IS NOT NULL
-          AND place_id = ANY(${placeIds}::uuid[])
+        WHERE place_id = ANY(${placeIds}::uuid[])
       `);
       for (const row of rows) {
         verdicts.set(row.placeId, {
@@ -456,7 +464,7 @@ export class PlacesCatalogService {
       }
     } catch (error) {
       this.logger.warn(
-        'Ground containment verdicts failed — §2.5(f) bbox fallback for this read',
+        'Ground containment verdicts failed — no container answered for this read (§2.6: never bbox-judged)',
         {
           error: {
             message: error instanceof Error ? error.message : String(error),
@@ -654,9 +662,14 @@ export class PlacesCatalogService {
             providerPlaceId: node.providerPlaceId ?? null,
           },
         });
+        // §2.6 BIRTH = GROUND IMMEDIATELY: the sketch envelope lands in
+        // place_geometries synchronously with the place row (never waiting
+        // for the drain) — a bbox-carrying place without a geometry row is
+        // impossible. The drain upgrades grade (sketch→outline) later.
+        await this.writeSketchGround(created.placeId);
         // §2.5(d) POLYGON AT BIRTH: every new place enters the governed
         // promotion queue immediately (fire-and-forget; the enqueue itself
-        // filters fallback mints and already-promoted ground). The hourly
+        // filters fallback mints and already-outlined ground). The hourly
         // drain turns it into an outline within the hour — fine by law.
         if (this.birthListener) {
           void this.birthListener.enqueue(created.placeId, 'birth');
@@ -822,16 +835,60 @@ export class PlacesCatalogService {
           bbox_max_lat = GREATEST(COALESCE(bbox_max_lat, ${observed.maxLat}), ${observed.maxLat}),
           bbox_max_lng = GREATEST(COALESCE(bbox_max_lng, ${observed.maxLng}), ${observed.maxLng})
         WHERE place_id = ${placeId}::uuid`;
-      return;
+    } else {
+      const hull = bboxUnion(knownBbox, observed) as GeoBbox;
+      await this.prisma.$executeRaw`
+        UPDATE places SET
+          bbox_min_lat = LEAST(COALESCE(bbox_min_lat, ${hull.minLat}), ${hull.minLat}),
+          bbox_min_lng = ${hull.minLng},
+          bbox_max_lat = GREATEST(COALESCE(bbox_max_lat, ${hull.maxLat}), ${hull.maxLat}),
+          bbox_max_lng = ${hull.maxLng}
+        WHERE place_id = ${placeId}::uuid`;
     }
-    const hull = bboxUnion(knownBbox, observed) as GeoBbox;
+    // §2.6 derivation invariant: while sketch-grade, geometry DERIVES from
+    // the bbox — every widen refreshes the envelope row from the POST-widen
+    // places row in the same call flow (outline rows are untouched: the
+    // upsert is guarded on provider_boundary_id IS NULL).
+    await this.writeSketchGround(placeId);
+  }
+
+  /**
+   * §2.6 GROUND UNIFICATION — the sketch-grade ground write chokepoint:
+   * upsert the place's bbox envelope into place_geometries as a rectangular
+   * polygon (provider_boundary_id NULL = sketch-grade marker). Wrap-aware
+   * (a crossing bbox stores the union of its two arms) and degenerate-safe
+   * (a zero-span bbox cannot form a polygon — skipped; such a place stays
+   * invisible to judgment exactly like a bbox-less birth). The guard
+   * `WHERE provider_boundary_id IS NULL` means a sketch refresh can NEVER
+   * clobber a landed outline — detail never decreases; the drain's outline
+   * upsert (which stamps provider_boundary_id) is the only sketch→outline
+   * transition.
+   */
+  private async writeSketchGround(placeId: string): Promise<void> {
     await this.prisma.$executeRaw`
-      UPDATE places SET
-        bbox_min_lat = LEAST(COALESCE(bbox_min_lat, ${hull.minLat}), ${hull.minLat}),
-        bbox_min_lng = ${hull.minLng},
-        bbox_max_lat = GREATEST(COALESCE(bbox_max_lat, ${hull.maxLat}), ${hull.maxLat}),
-        bbox_max_lng = ${hull.maxLng}
-      WHERE place_id = ${placeId}::uuid`;
+      INSERT INTO place_geometries (place_id, provider_boundary_id, fetched_at, geometry)
+      SELECT p.place_id, NULL, now(),
+             CASE
+               WHEN p.bbox_min_lng < p.bbox_max_lng THEN
+                 ST_Multi(ST_MakeEnvelope(
+                   p.bbox_min_lng::float8, p.bbox_min_lat::float8,
+                   p.bbox_max_lng::float8, p.bbox_max_lat::float8, 4326))
+               ELSE
+                 ST_Multi(ST_Union(
+                   ST_MakeEnvelope(p.bbox_min_lng::float8, p.bbox_min_lat::float8,
+                                   180::float8, p.bbox_max_lat::float8, 4326),
+                   ST_MakeEnvelope((-180)::float8, p.bbox_min_lat::float8,
+                                   p.bbox_max_lng::float8, p.bbox_max_lat::float8, 4326)))
+             END
+      FROM places p
+      WHERE p.place_id = ${placeId}::uuid
+        AND p.bbox_min_lat IS NOT NULL
+        AND p.bbox_min_lat < p.bbox_max_lat
+        AND p.bbox_min_lng <> p.bbox_max_lng
+      ON CONFLICT (place_id) DO UPDATE SET
+        geometry = EXCLUDED.geometry,
+        fetched_at = EXCLUDED.fetched_at
+      WHERE place_geometries.provider_boundary_id IS NULL`;
   }
 
   private sameBbox(a: GeoBbox | null, b: GeoBbox | null): boolean {

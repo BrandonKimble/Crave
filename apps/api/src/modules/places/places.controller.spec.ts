@@ -146,7 +146,7 @@ describe('GET /places/in-view — slice membership + margin law', () => {
     );
   });
 
-  it('rows are lean PlaceLike: bbox + identity + DAG edges (deduped), NO derivable area/coverage', async () => {
+  it('rows are lean PlaceLike: bbox + identity + DAG edges (deduped) + the §2.6 ground, NO derivable area/coverage', async () => {
     const row = placeRow(
       'Coreville',
       { minLat: 30.2, minLng: -97.8, maxLat: 30.6, maxLng: -97.4 },
@@ -162,18 +162,28 @@ describe('GET /places/in-view — slice membership + margin law', () => {
         bbox: { minLat: 30.2, minLng: -97.8, maxLat: 30.6, maxLng: -97.4 },
         providerLevelCode: 'municipality',
         parentPlaceIds: ['p-1', 'p-2'],
+        // §2.6: ground ALWAYS ships — hydration missing degrades to the
+        // envelope ring (same representation, sketch precision).
+        ground: [
+          [
+            [-97.8, 30.2],
+            [-97.4, 30.2],
+            [-97.4, 30.6],
+            [-97.8, 30.6],
+          ],
+        ],
       },
     ]);
   });
 
-  it('§2.5 ground ships on the wire when a polygon has landed; polygon-less rows stay lean', async () => {
+  it('§2.6 ground ALWAYS ships: hydrated rings where the DB has them, the envelope rectangle otherwise — one representation on the wire', async () => {
     const grounded = placeRow('Coreville', {
       minLat: 30.2,
       minLng: -97.8,
       maxLat: 30.6,
       maxLng: -97.4,
     });
-    const lean = placeRow('Barefort', {
+    const sketchy = placeRow('Barefort', {
       minLat: 30.3,
       minLng: -97.7,
       maxLat: 30.5,
@@ -187,7 +197,7 @@ describe('GET /places/in-view — slice membership + margin law', () => {
       [-97.8, 30.2],
     ];
     const controller = createController(
-      [grounded, lean],
+      [grounded, sketchy],
       [
         {
           placeId: grounded.placeId,
@@ -201,7 +211,16 @@ describe('GET /places/in-view — slice membership + margin law', () => {
     const response = await controller.placesInView(query(view));
     const byName = new Map(response.places.map((p) => [p.name, p]));
     expect(byName.get('Coreville')?.ground).toEqual([ring]);
-    expect(byName.get('Barefort')?.ground).toBeUndefined();
+    // Hydration returned nothing for Barefort → the envelope ring, never a
+    // ground-less wire row (the client law requires ground).
+    expect(byName.get('Barefort')?.ground).toEqual([
+      [
+        [-97.7, 30.3],
+        [-97.5, 30.3],
+        [-97.5, 30.5],
+        [-97.7, 30.5],
+      ],
+    ]);
   });
 
   it('containing chain needs no separate field: over-scale CONTAINING nodes (state, country) are slice members because containment implies intersection', async () => {

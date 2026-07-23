@@ -1,5 +1,6 @@
 import {
   bboxContains,
+  bboxToGround,
   resolveHeaderPlace,
   subjectCandidatesInView,
   type GeoBbox,
@@ -54,20 +55,25 @@ import type { ViewportBoundsService } from './viewport-bounds-service';
  *     (never blank the header while moving); unknown only stands pre-first-
  *     commit.
  *
- * §2.5 JUDGMENT CADENCE (the polygon-cost split, measured 2026-07-22):
- * slice rows now carry real ground (margin-simplified outer rings), and the
- * shared law clips polygons wherever ground is known. Clipping ~40 candidate
- * grounds costs ~0.3–2ms per call in V8 (40 × 300–2000 vertices; Hermes is
- * slower still) vs ~4µs for the bbox arm — too hot to spend on EVERY camera
- * tick of a 60fps pan. So:
+ * §2.5 JUDGMENT CADENCE (the polygon-cost split, measured 2026-07-22;
+ * re-decided under §2.6 GROUND UNIFICATION 2026-07-22): every slice row now
+ * carries THE ONE ground (sketch rows a 5-point envelope rectangle, outline
+ * rows margin-simplified rings of 300–2000 vertices — detail never
+ * decreases, so the outline cost is unchanged from the measurement).
+ * Clipping ~40 candidate grounds at full detail costs ~0.3–2ms per call in
+ * V8 (Hermes slower still) — too hot for EVERY camera tick of a 60fps pan;
+ * a 5-point rectangle clips in ~µs. The split therefore SURVIVES, but as a
+ * PRECISION split inside the single representation, never a format branch:
  *   - Every COMMIT judges with GROUND TRUTH: resolveAtSettle (settle tick and
- *     the slice-landed re-judge) feeds the real slice — polygons and all —
+ *     the slice-landed re-judge) feeds the real slice — full rings and all —
  *     through the shared law. The Mexico-bbox lie can never name the header.
  *   - The INTRA-PAN candidate hint (handleBoundsChange's camera-candidate
- *     log — a log, nothing more; verdicts never commit mid-pan) judges a
- *     ground-STRIPPED shadow of the slice: §2.5(c)'s bbox-as-INDEX coverage,
- *     honest fallback semantics, bounded per-tick cost regardless of polygon
- *     detail. The shadow derives once per slice landing (reference-keyed).
+ *     log — a log, nothing more; verdicts never commit mid-pan) judges an
+ *     ENVELOPE-GRADE shadow of the slice: each place's ground replaced by
+ *     its bbox rectangle ring (bboxToGround — the same representation a
+ *     sketch row stores), through the SAME shared law. Bounded ~5-point
+ *     per-candidate cost regardless of outline detail. The shadow derives
+ *     once per slice landing (reference-keyed).
  *
  * The dwell-complete tick is the settle+dwell primitive's single event: it
  * lands any pending exit commit AND fires the §3 viewport_dwell observation
@@ -151,8 +157,9 @@ export const createViewportSubjectStoreController = ({
   let lastLoggedCandidateIdentity: string | null = null;
   let lastDwellFire: LastDwellFire | null = null;
   let latestMapBounds: MapBounds | null = null;
-  // §2.5 judgment-cadence split: the per-tick hint's ground-stripped shadow,
-  // derived once per slice landing (keyed on the slice reference).
+  // §2.5/§2.6 judgment-cadence split: the per-tick hint's envelope-grade
+  // shadow (same ground representation, rectangle precision), derived once
+  // per slice landing (keyed on the slice reference).
   let hintSliceSource: PlaceLike[] | null = null;
   let hintSlice: PlaceLike[] | null = null;
 
@@ -162,28 +169,29 @@ export const createViewportSubjectStoreController = ({
     }
   };
 
-  const groundStrippedSlice = (slice: PlaceLike[]): PlaceLike[] => {
+  const envelopeGroundSlice = (slice: PlaceLike[]): PlaceLike[] => {
     if (hintSliceSource !== slice) {
       hintSliceSource = slice;
-      hintSlice = slice.map((place) => (place.ground ? { ...place, ground: null } : place));
+      hintSlice = slice.map((place) => ({ ...place, ground: bboxToGround(place.bbox) }));
     }
     return hintSlice as PlaceLike[];
   };
 
   /**
    * Local §2.5 read: null = the slice cannot answer this view (unknown).
-   * `judge` picks the cadence arm: 'ground' = polygon truth (every commit);
-   * 'bbox-hint' = index-only coverage (the per-tick candidate log).
+   * `judge` picks the cadence arm: 'ground' = full-detail rings (every
+   * commit); 'envelope-hint' = envelope-grade rings (the per-tick candidate
+   * log) — ONE representation, one law, two precisions.
    */
   const computeResolution = (
     view: GeoBbox,
-    judge: 'ground' | 'bbox-hint'
+    judge: 'ground' | 'envelope-hint'
   ): HeaderResolution | null => {
     const { slice, marginBox } = getViewportSubjectState();
     if (slice == null || marginBox == null || !bboxContains(marginBox, view)) {
       return null;
     }
-    const places = judge === 'ground' ? slice : groundStrippedSlice(slice);
+    const places = judge === 'ground' ? slice : envelopeGroundSlice(slice);
     return resolveHeaderPlace(view, subjectCandidatesInView(view, places));
   };
 
@@ -341,9 +349,10 @@ export const createViewportSubjectStoreController = ({
     clearTimer(dwellTimer);
     dwellTimer = null;
     // Cheap per-camera-change local read: the CANDIDATE hint (held, not
-    // committed — hysteresis commits at settle+dwell, with ground truth).
-    // Judges bbox-only (§2.5 cadence split): bounded microseconds per tick.
-    const resolution = computeResolution(view, 'bbox-hint');
+    // committed — hysteresis commits at settle+dwell, with full-detail
+    // ground). Judges envelope-grade rings (§2.5/§2.6 cadence split):
+    // bounded microseconds per tick.
+    const resolution = computeResolution(view, 'envelope-hint');
     const candidateIdentity = viewportSubjectVerdictIdentity(
       resolution == null ? null : verdictFromResolution(resolution)
     );
@@ -352,7 +361,7 @@ export const createViewportSubjectStoreController = ({
       logSubjectStore('camera-candidate', {
         candidate: candidateIdentity,
         reason: resolution?.reason ?? 'no-slice',
-        judge: 'bbox-hint',
+        judge: 'envelope-hint',
       });
     }
     ensureSliceFetch(view);

@@ -38,6 +38,32 @@ import { GeoBbox, GeoPoint, bboxCenter, bboxLngArcs } from './place-geo';
  */
 export type PlaceGround = number[][][];
 
+/**
+ * §2.6 GROUND UNIFICATION: a bbox as ground — one rectangular outer ring per
+ * non-crossing lng arc (a crossing bbox becomes two rings, never one
+ * seam-spanning rectangle). This is the SAME representation the sketch-grade
+ * place_geometries envelope stores, so callers that must degrade (ground
+ * hydration failure, per-tick judgment shadows) stay inside the single
+ * ground representation — coarser precision, never a second judgment arm.
+ * Returns [] for a zero-span bbox (no polygon can form — no ground).
+ */
+export function bboxToGround(bbox: GeoBbox): PlaceGround {
+  if (bbox.maxLat <= bbox.minLat) {
+    return [];
+  }
+  const rings: PlaceGround = [];
+  for (const arc of bboxLngArcs(bbox)) {
+    if (arc.end <= arc.start) continue;
+    rings.push([
+      [arc.start, bbox.minLat],
+      [arc.end, bbox.minLat],
+      [arc.end, bbox.maxLat],
+      [arc.start, bbox.maxLat],
+    ]);
+  }
+  return rings;
+}
+
 /** Unsigned shoelace area of one ring, in raw degrees² (no cos weighting). */
 export function ringShoelaceArea(ring: number[][]): number {
   if (ring.length < 3) {

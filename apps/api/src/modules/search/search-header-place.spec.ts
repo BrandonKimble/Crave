@@ -51,6 +51,15 @@ function placeInView(
     coverageOfView,
     placeArea: bboxArea(bbox),
     parentPlaceIds: [],
+    // §2.6: ground is REQUIRED — sketch-grade envelope rectangle fixture.
+    ground: [
+      [
+        [bbox.minLng, bbox.minLat],
+        [bbox.maxLng, bbox.minLat],
+        [bbox.maxLng, bbox.maxLat],
+        [bbox.minLng, bbox.maxLat],
+      ],
+    ],
   };
 }
 
