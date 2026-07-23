@@ -50,6 +50,12 @@ export const ShellVisibilityBoundary = ({
   children: React.ReactNode;
 }): React.ReactElement => {
   const displayed = useShellVisibility(scene);
+  // THE STAMP SPLIT (L4 Law 1 — the one-batch reveal): DISPLAY is urgent (style-only,
+  // lands with the header swap in the press-up commit the chrome ack measures);
+  // LIVENESS is DEFERRED one pass — the content re-derivation it triggers (fetch
+  // effects, subscription re-attachment) is the first content BEAT, after the
+  // reveal, never inside it. This is the [L4STAMP] joinWait's structural diet.
+  const live = React.useDeferredValue(displayed);
   return (
     <View
       style={displayed ? styles.displayedShell : styles.hiddenShell}
@@ -58,7 +64,7 @@ export const ShellVisibilityBoundary = ({
       importantForAccessibility={displayed ? 'auto' : 'no-hide-descendants'}
       testID={`resident-shell-${scene}-${displayed ? 'displayed' : 'hidden'}`}
     >
-      <ShellLivenessContext.Provider value={displayed}>{children}</ShellLivenessContext.Provider>
+      <ShellLivenessContext.Provider value={live}>{children}</ShellLivenessContext.Provider>
     </View>
   );
 };

@@ -197,6 +197,20 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
   txn.phase = nextPhase;
   (txn.marks as Record<string, number>)[`${nextPhase}At`] = now();
   emitTrace(txn, nextPhase);
+  if (__DEV__ && nextPhase === 'revealed') {
+    // [L4STAMP] — THE STAMP INSTRUMENT (L4 Law 1): how long the reveal waited on its
+    // join after the switch committed. joinWait ≈ the size of the press-up commit
+    // (the chrome ack fires at that commit's end) — the number the one-batch stamp
+    // law exists to shrink. One line per txn, greppable next to [TXN-TRACE].
+    const committedAt = (txn.marks as Record<string, number>).committedAt;
+    const revealedAt = (txn.marks as Record<string, number>).revealedAt;
+    if (committedAt != null && revealedAt != null) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[L4STAMP] target=${txn.mutation.targetSceneKey ?? 'none'} kind=${txn.mutation.kind} joinWaitMs=${(revealedAt - committedAt).toFixed(1)}`
+      );
+    }
+  }
   // EVERY edge of the LIVE transaction notifies subscribers — the pure advance fns
   // (commit/seal/settle) are called directly by stagers, and a subscriber waiting on a
   // phase (the Q-2 deferred revise waits for the route txn to terminate) must hear

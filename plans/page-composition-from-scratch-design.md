@@ -603,6 +603,29 @@ seconds after the transition, outside any transition edge. L4 is now two laws:
   past a declared timeout resolves to the error material with retry. No 10-second
   silent shimmer.
 
+**L4 SLICE 1 EXECUTED 2026-07-23 (attribution + the stamp seam + the honest miss).**
+THE TRACE FINDINGS (managed→managed transitions, [TXN-TRACE]): the PAINT join is
+ALREADY a same-tick constant for warm legs — the host's T5 evidence-offer fires it
+~0.1ms after arm (B#12's reduction exists de facto; the declaration dies with full
+migration, not per-scene). The REAL reveal wait is the CHROME join: 28-96ms — and
+it is NOT ack plumbing, it is THE SIZE OF THE PRESS-UP COMMIT (frame flip + header
+swap + the entire content re-activation cascade render in one React commit; the
+chrome ack fires at its end; the reveal correctly waits for it).
+LANDED: **[L4STAMP]** (permanent dev instrument — per-txn `joinWaitMs` =
+committed→revealed at the revealed edge; the number Law 1 exists to shrink) + **the
+stamp seam** in ShellVisibilityBoundary: DISPLAY is urgent (style-only, lands with
+the header in the reveal commit); LIVENESS is `useDeferredValue`-deferred one pass —
+content re-derivation is structurally the first BEAT after the reveal, never inside
+it. THE HONEST MISS, measured: joinWait ~unchanged (30-87 vs 28-96 baseline) — the
+commit's dominant weight is the ACTIVITY-FLAG CASCADE (data-lane re-admission
+renders at press-up flow through the runtime's urgent publish), not the boundary's
+liveness consumers. NEXT LEVER, named: defer the managed scenes' content-lane
+activity flip one pass behind the frame/header publish (runtime publish-path
+surgery; must preserve P4's press-up admission by at most one pass). Gates: jest
+393/393, invariants 29/29, matrix 21/21 ×2 consecutive (an earlier 20→19 degrade
+re-attributed to accumulated in-app rig state across back-to-back scenario+matrix
+loops — cold relaunch clean; the pollution class is recorded rig lore).
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
