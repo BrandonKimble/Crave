@@ -891,3 +891,27 @@ The strangler needs an explicit, budgeted-for-deletion bridge:
 3. **The residency-prototype gate** (L3 waits for its numbers — accept the sequencing).
 4. **The migration order** (settings/notifications → profile → listDetail+bookmarks
    pair → search family).
+
+## Frost pass — the over-white frost material (2026-07-23, SHIPPED)
+
+Self-frost disease attributed and fixed at the frost layer's look, per the skeleton-sheet
+law. The disease: `FrostedGlassBackground`'s BlurView over the sheet's white body has
+nothing to blur, plus a flat gray tint (`rgb(146,151,159)@0.4`) — the owner's "grayer
+blocks on the sheet, not cutouts." Frost-THROUGH scenes always looked right because their
+holes reveal the blurred MAP.
+
+The fix: `FrostMaterialBackdrop` — the blurred-map look, designed. Soft cool base
+(`#E9EEF3`) + two large pastel radial blooms (green upper-left = parks, blue lower-right
+= water/roads) + the standard light frost tint. Static; the domino shimmer rides above,
+masked by the plate's holes. Every knob in `CUTOUT_SKELETON_CONFIG.frostMaterial` — the
+owner-eye iteration surface.
+
+Routing in `CutoutSkeletonSurface`: explicit `frostTintColor`/`frostTintOpacity`/
+`frostIntensity` overrides → legacy blur path; otherwise → the material. No site passes
+overrides today, so every over-white frost (SceneLoadingSurface, CutoutSkeletonShape) gets
+the material.
+
+Verified on-sim: pending face shows pastel frost through the holes (green/blue visible in
+avatar circles + trailing dots); the header/skeleton seam is CLEAN in the capture — no
+divider line reproduced (owner-eye recheck requested). Gates: jest 396/396, invariants
+29/29, matrix 21/21 cold. Owner-eye tuning of the material is the open loop.

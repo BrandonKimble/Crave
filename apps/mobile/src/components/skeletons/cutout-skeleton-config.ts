@@ -33,6 +33,18 @@ export type CutoutSkeletonConfig = {
   /** Self-frost tint for the scenes that can't frost-through to the map (PollDetail comment, title). */
   frostTintColor: string;
   frostTintOpacity: number;
+  /** THE FROST MATERIAL (skeleton-sheet law §2): the designed over-white frost the
+   *  holes reveal where no map exists to blur — a soft cool base + two pastel depth
+   *  blooms (the blurred-map impression) + the standard light frost tint on top.
+   *  Owner-eye iteration lives here. */
+  frostMaterial: {
+    baseColor: string;
+    bloomColorA: string;
+    bloomOpacityA: number;
+    bloomColorB: string;
+    bloomOpacityB: number;
+    tintColor: string;
+  };
 };
 
 export const CUTOUT_SKELETON_CONFIG: CutoutSkeletonConfig = {
@@ -49,4 +61,15 @@ export const CUTOUT_SKELETON_CONFIG: CutoutSkeletonConfig = {
   // consistent with the real frosted-map windows on the frost-through scenes.
   frostTintColor: 'rgb(146, 151, 159)',
   frostTintOpacity: 0.4,
+  frostMaterial: {
+    // The blurred-map impression: cool off-white base, a green-tinged bloom (parks/
+    // map greens) upper-left, a blue-tinged bloom (water/roads) lower-right, the
+    // standard light frost tint unifying on top.
+    baseColor: '#E9EEF3',
+    bloomColorA: 'rgb(196, 216, 200)',
+    bloomOpacityA: 0.5,
+    bloomColorB: 'rgb(190, 206, 224)',
+    bloomOpacityB: 0.45,
+    tintColor: 'rgba(248, 251, 255, 0.35)',
+  },
 };

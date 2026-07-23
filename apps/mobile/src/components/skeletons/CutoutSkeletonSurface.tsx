@@ -19,6 +19,7 @@ import Reanimated, {
 import Svg, { Defs, G, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { FrostedGlassBackground } from '../FrostedGlassBackground';
+import FrostMaterialBackdrop from './FrostMaterialBackdrop';
 import { useShellLiveness } from '../../overlays/ShellVisibilityBoundary';
 import MaskedHoleOverlay, { type MaskedHole } from '../MaskedHoleOverlay';
 import { CUTOUT_SKELETON_CONFIG, type CutoutShimmerMode } from './cutout-skeleton-config';
@@ -307,13 +308,21 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
 
   return (
     <View style={containerStyle} onLayout={onLayout} pointerEvents="none">
-      {/* 1. Self-frost backing (only the scenes that can't frost-through to the map). */}
+      {/* 1. The frost the holes reveal, for scenes that can't frost-through to the map:
+          THE FROST MATERIAL (law §2) — the designed blurred-map look. A BlurView over
+          the sheet's white body has nothing to blur (the old "grayer blocks" read);
+          the material carries the frosty look itself. Explicit tint overrides (the
+          legacy PollDetail/title sites) keep the blur+tint path until they migrate. */}
       {withFrost ? (
-        <FrostedGlassBackground
-          intensity={frostIntensity}
-          tintColor={frostTintColor}
-          tintOpacity={frostTintOpacity}
-        />
+        frostTintColor != null || frostTintOpacity != null || frostIntensity != null ? (
+          <FrostedGlassBackground
+            intensity={frostIntensity}
+            tintColor={frostTintColor}
+            tintOpacity={frostTintOpacity}
+          />
+        ) : (
+          <FrostMaterialBackdrop />
+        )
       ) : null}
 
       {/* 2. Shimmer — masked to the holes by the plate above. */}
