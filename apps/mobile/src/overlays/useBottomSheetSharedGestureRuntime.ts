@@ -207,6 +207,7 @@ export const useBottomSheetSharedGestureRuntime = ({
       options?: HandoffOptions
     ) => {
       'worklet';
+      console.log('[ARBDBG] expand->scroll handoff (fail)');
       const runtimeSnapValues = resolveRuntimeSnapValues();
       const shouldClampToExpanded =
         options?.clampToExpanded ?? sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
@@ -320,6 +321,7 @@ export const useBottomSheetSharedGestureRuntime = ({
             handoffExpandGestureToScroll(stateManager, { clampToExpanded: false });
             return;
           }
+          console.log('[ARBDBG] expandPan ACTIVATE (below expanded)');
           stateManager.activate();
           expandPanActive.value = true;
           beginDrag(sheetY.value);
@@ -461,6 +463,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
         const atTop = isAtScrollTop(scrollOffset.value, scrollTopOffset.value);
         if (atExpanded && atTop && !isInMomentum.value) {
+          console.log(`[ARBDBG] collapse ACTIVATE off=${scrollOffset.value.toFixed(1)}`);
           stateManager.activate();
           collapsePanActive.value = true;
           beginDrag(sheetY.value);
@@ -562,10 +565,17 @@ export const useBottomSheetSharedGestureRuntime = ({
         // (layout-time, per-leg gated) and the active list's onScroll. max==0 is a
         // LEGAL bottom only when the viewport fact proves a live publication happened
         // (shortPage); an unknown surface (viewport 0) never activates the pan.
-        const factsKnown = scrollViewportHeight.value > 0;
+        // MITIGATION (red team 2, 2026-07-24): facts are HOST-shared and LINGER across
+        // leg switches — a non-publishing leg (polls) inherits a stale max=0/vp pair
+        // and reads as a trusted short page (probe: overscroll ACTIVATE off=0 max=0
+        // vp=806 on polls → the double-motion + shake). Until facts are PER-SCENE
+        // records switched with presentation (the red-team-2 redesign), the pan only
+        // trusts a scroll-proven positive max; the short-page band is OFF again.
         const atBottom =
-          factsKnown && scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
+          maxScrollOffset.value > 0 &&
+          scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
         if (atExpanded && atBottom && !isInMomentum.value) {
+          console.log(`[ARBDBG] overscroll ACTIVATE off=${scrollOffset.value.toFixed(1)} max=${maxScrollOffset.value.toFixed(1)} vp=${scrollViewportHeight.value.toFixed(0)}`);
           stateManager.activate();
           overscrollPanActive.value = true;
           overscrollStartTouchY.value = touchY;

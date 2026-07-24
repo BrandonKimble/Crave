@@ -1296,3 +1296,40 @@ MOUNT-STABLE in the gesture runtime (worklets already read every changing fact f
 shared values; the useMemo deps that re-mint them are the disease) — a designed
 slice, not a re-attachment hack. The short-page fact (per-leg publication) is
 unaffected and stays.
+
+## RED TEAM 2 CHARTER — the scroll-fact architecture (owner-directed, 2026-07-24)
+
+OWNER SYMPTOM LEDGER (this session, per page):
+- polls: down-drag shake persists; up-drag = sheet drags WHILE list scrolls (double
+  motion, no clean handoff); scrolls otherwise; header divider never fades in.
+- results (search): scrolls fine; NO top rubber-band anymore (flick stops dead at the
+  strip's top edge — the momentum rebound regressed at some point after its proven
+  round); divider fade works.
+- lists page: scrolls; NO rubber-band top or bottom; divider inconsistent.
+- profile: scrolls; divider doesn't fade in.
+ATTRIBUTED (probe-proven): `overscroll ACTIVATE off=0.0 max=0.0 vp=806` ON POLLS —
+the host-shared boundary facts (scrollOffset/maxScrollOffset/scrollViewportHeight)
+LINGER across leg switches; a non-publishing leg inherits a stale mixture (vp from a
+tall leg + max=0 from a short one) and my viewport-proves-publication gate reads it
+as a trusted short page → the pan impersonates scroll (double motion) + fake at-top
+(collapse grab = shake). Mitigated tonight: pan requires scroll-proven max>0 (short-
+page band OFF again).
+INSTRUMENT LESSON: Gesture.Native onBegin/onStart/onFinalize DO NOT FIRE in this
+RNGH version — a probe there is always-silent (lying). The live instruments are the
+pan worklet logs + the scroll-handler logs ([ARBDBG] set, currently in tree,
+uncommitted).
+THE DISEASE (the from-scratch target): ONE shared mutable fact-set with per-leg
+writers and no owner identity. Facts arrive from whichever leg wrote last and
+survive presentation switches. The divider inconsistency is the same disease via
+another consumer (its opacity reads the shared scrollOffset, which some pages' lists
+apparently never feed — same routing question).
+THE REDESIGN DIRECTION: per-scene SCROLL-FACT RECORDS (offset, max, viewport,
+momentum) — sceneScrollStateRegistry already holds per-scene offsets; extend it to
+the full fact record, and THE PRESENTED SCENE'S RECORD is the one the pans, the
+divider, and the rebound read, switched atomically with the presentation frame (the
+same one-writer law as shell visibility). No fact survives a scene switch; a scene
+with no record has UNKNOWN facts (pans decline). Also in scope: why the top rebound
+regressed on results; why polls' list feeds no divider offset; whether polls (bespoke
+host vs scene-stack leg) double-hosts its gesture runtime.
+STATUS: charter recorded; mitigation reloaded; redesign NOT started — needs a fresh
+full-context session (this one is at its end).
