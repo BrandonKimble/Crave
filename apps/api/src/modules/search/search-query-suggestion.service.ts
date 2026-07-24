@@ -5,6 +5,8 @@ import {
   SignalDemandReadService,
 } from '../signals/signal-demand-read.service';
 
+// §16 K1 (attention-window sentence): suggestions draw on a quarter of
+// query history. Classified 2026-07-24 (pre-constitution module).
 const DEFAULT_QUERY_SUGGESTION_WINDOW_DAYS = 90;
 
 interface QuerySuggestionRow {

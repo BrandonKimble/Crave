@@ -8,6 +8,9 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
+// §16 K1 (owner sentence): "who asked" is operator forensics, kept one
+// quarter — long enough to debug any collection complaint, short enough to
+// not hoard user data. What changes it: owner re-ratify (privacy stance).
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

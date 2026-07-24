@@ -424,11 +424,14 @@ in staging before being trusted. Legit-zero ≠ broken-zero.
 
 ## §11 Selection: term due-times
 
-- **The schedulable unit is (engine, term) with a nextDueAt.** Judgment
-  families are due-time WRITERS: unmet, refresh, demand, explore, and SURGE
-  (an hourly reader over the aggregate — no hot-spike lane, sentinel row, or
-  job cap exists; urgency is ordering). The pacer (§14) batches due terms
-  per source into dispatches.
+- **The schedulable unit is the (source, lane) dispatch; terms are judged
+  AT DISPATCH TIME** (AMENDED 2026-07-24 — the original per-(engine, term)
+  nextDueAt data model was superseded by the harvest-snapshot derivation
+  below: eligibility is computed live from durable state, so no per-term
+  due-time rows exist or are needed). Judgment families — unmet, refresh,
+  demand, explore, and SURGE (an hourly reader over the aggregate — no
+  hot-spike lane, sentinel row, or job cap exists; urgency is ordering) —
+  are scoring SLICES within a dispatch's selection.
 - **Merge law**: families PROPOSE due-times; the expected-new-content model
   floor-CLAMPS; renewed demand may PIERCE the clamp (world-changed
   evidence).
@@ -685,7 +688,11 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
 1. Fixture-gated values to ratify when proposed: keyword recall limit;
    viability day-one prior (15) confirmation; sourceClassInfluence 1.0
    confirmation via the fake-elite fixture; the two portfolio floor
-   FRACTIONS (unmet promise + explore insurance shares of each dispatch).
+   FRACTIONS (unmet promise + explore insurance shares of each dispatch);
+   ADDED 2026-07-24 (full-plan pass — pre-constitution holdovers found in
+   autocomplete.service.ts): the attribute-lane weights (0.6/0.3/0.1) and
+   the 0.4 user/poll-lane similarity thresholds — ratify as K1 or
+   re-derive via per-lane percentile normalization at next touch.
 2. Per-pool fail-policy TABLE ratification (§14.5).
 3. Gemini batch quota discovery — approved procedure, run pre-campaign.
 4. Ops readers for usage/decision ledgers (minimal endpoints) — confirm.

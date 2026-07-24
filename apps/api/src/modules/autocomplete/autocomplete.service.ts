@@ -29,6 +29,18 @@ import {
 } from '../signals/signal-demand-read.service';
 import type { SignalKind } from '../signals/signals.service';
 
+// §16 CLASSIFICATION (full-plan pass 2026-07-24 — this module predates the
+// Constants Constitution; classified in place rather than left naked):
+// - Slot counts / limits / min-lengths below = K1 owner sentences (how many
+//   rows a surface shows, how many slots each lane reserves, how short a
+//   query may be) — product choices the eye re-ratifies, never measured.
+// - Windows (90d support) = K1 attention-window sentences.
+// - The 0.6/0.3/0.1 attribute-lane WEIGHTS and the 0.4 similarity
+//   thresholds are PRE-CONSTITUTION HOLDOVERS: unratified hand-set blends
+//   of exactly the kind §16 killed in the old rollup. Added to the §18
+//   item-1 ratify list (2026-07-24) — owner ratifies as K1 sentences or
+//   the lanes get re-derived (per-lane percentile normalization, the §11
+//   pattern) when autocomplete is next touched. Flagged, not hidden.
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 1;
 const PERSONAL_QUERY_RESERVED_SLOTS = 2;

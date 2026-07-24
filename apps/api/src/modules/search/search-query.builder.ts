@@ -3,9 +3,14 @@ import { Prisma } from '@prisma/client';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 
-// Open-now candidate depth. The lean candidate query (id + hours, no rich joins) fetches
-// the whole ranked set so JS openness evaluation runs BEFORE pagination — mirrors the map
-// coverage layer's depth (search-coverage.service.ts) so list openness == map openness.
+// §16 K3 (operational guard, not a result cap — and NOT the §7-deleted 50k
+// viewport LIMIT, which capped RESULTS): the lean open-now candidate query
+// (id + hours only) must fetch the WHOLE ranked set so JS openness
+// evaluation runs before pagination — the same unbounded-within-viewport
+// stance the map coverage layer takes. This literal only bounds a
+// pathological query's scan; real viewport candidate sets sit orders of
+// magnitude below it, so list openness == map openness in practice. What
+// changes it: never tuning — only a proven pathological-scan incident.
 const OPEN_NOW_CANDIDATE_CAP = 50000;
 
 export interface BuildRestaurantQueryOptions {

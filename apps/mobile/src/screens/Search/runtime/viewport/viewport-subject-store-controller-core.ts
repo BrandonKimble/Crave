@@ -90,15 +90,18 @@ export const VIEWPORT_SETTLE_QUIESCENCE_MS = MAP_PLANNER_NORMAL_WORK_FAIRNESS_PO
 export const VIEWPORT_SUBJECT_DWELL_MS = 1_000;
 
 /**
- * Slice cache soft TTL (coherence red-team 2026-07-23): marginBox bounds the
- * cache SPATIALLY but nothing bounded it in TIME — a session parked inside
- * the same margin box could judge with a geometry snapshot indefinitely,
- * while the server upgrades grounds sketch→outline underneath (the hourly
- * promotion drain). Any camera activity after the TTL refetches the slice
- * even inside marginBox. 15 min: an hourly drain makes a fresher bound
- * pointless, and a parked, untouched map has no viewer to lie to.
+ * Slice cache soft TTL — DERIVED (no-fake-estimates law, 2026-07-24):
+ * marginBox bounds the cache SPATIALLY but nothing bounded it in TIME — a
+ * session parked inside the same margin box could judge with a geometry
+ * snapshot indefinitely while the server upgrades grounds sketch→outline
+ * underneath. The TTL equals the PROMOTION DRAIN CADENCE (hourly — the
+ * only clock that changes ground truth server-side): refreshing faster
+ * re-downloads identical data; refreshing slower can serve two-cycle-old
+ * ground. Any camera activity after the TTL refetches even inside
+ * marginBox; a parked, untouched map has no viewer to lie to. What
+ * changes it: the drain cadence, never tuning.
  */
-export const VIEWPORT_SLICE_TTL_MS = 15 * 60 * 1_000;
+export const VIEWPORT_SLICE_TTL_MS = 60 * 60 * 1_000;
 
 /** Failed slice fetch retry (only re-armed while a fetch is still needed). */
 export const SLICE_FETCH_RETRY_MS = 5_000;

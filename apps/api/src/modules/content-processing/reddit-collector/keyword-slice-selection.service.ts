@@ -85,7 +85,7 @@ const KEYWORD_COLLECTION_SCORER_VERSION = 'keyword-collection-v2';
 const UNMET_CURRENT_CYCLE_DAYS = 7;
 const UNMET_HALF_LIFE_DAYS = 14;
 
-/** 45d no-results recovery — K2 prior of the expected-new-content model
+/** 45d no-results recovery — K1 (the 45d no-results recovery sentence, §16 K1 list — cross-referenced by K2)
  *  (§16: the cooldown constants survive as its cold-start priors). */
 const NO_RESULTS_RECOVERY_DAYS = 45;
 
@@ -323,23 +323,11 @@ export class KeywordSliceSelectionService {
           history?.lastOutcome === KeywordAttemptOutcome.no_results;
         // THE DERIVED CLAMP: harvested terms wait until the corpus delta ×
         // their measured match share expects ≥ 1 whole new document.
-        const harvested =
-          history?.lastHarvestAt != null &&
-          typeof history.corpusDocsAtHarvest === 'number' &&
-          history.corpusDocsAtHarvest > 0;
-        const expectedNewDocs = harvested
-          ? Math.max(
-              0,
-              corpusDocsNow - (history.corpusDocsAtHarvest as number),
-            ) *
-            ((history.lastResultCount ?? 0) /
-              (history.corpusDocsAtHarvest as number))
-          : Number.POSITIVE_INFINITY;
-        if (
-          harvested &&
-          expectedNewDocs < 1 &&
-          !shouldApplySmoothNoResultsRecovery
-        ) {
+        const expectedNewDocs = keywordTermExpectedNewDocs(
+          history,
+          corpusDocsNow,
+        );
+        if (expectedNewDocs < 1 && !shouldApplySmoothNoResultsRecovery) {
           stats.dropped.belowExpectedNew += 1;
           gateRejects.push({
             candidate,

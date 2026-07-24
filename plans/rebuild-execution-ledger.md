@@ -1421,3 +1421,44 @@ relevance gate 24/25 kept, batch processing flowing. Production
 collection operational; the archive-end gap is closing. Fast-iteration
 levers proven: railway ssh probes (instant) and due_at=now() re-arm
 (≤10min full-pipeline).
+
+### Full-plan pass against the amended master doc (4 domains, 2026-07-24)
+
+Four reviewers against the amended plan pair, each sweeping its domain's
+numeric literals under the §16 no-fake-estimates preamble. Mechanics
+verdict everywhere: FAITHFUL — §1/§2.5/§2.6 header law, drain guard
+stack, reverted pools, §3 ledger algebra + watermark pullback, §4 poll
+supply (credit formula, warm start, median test, viability self-erasure
+mechanically verified in EstimatorRegistry, K6 ballot-mention law), §8
+calibration kernel, amended §10/§11 verbatim in the pacer + eligibility
+clamp, §12 persist-first, declared-vs-actual pairs. One reviewer claim
+REFUTED on verification: the §8 kill-condition/fake-elite/rising-flap/
+author-concentration fixtures were reported missing but live in
+scripts/validate-crave-score-fixtures.ts (the reviewer grepped src/ +
+test/ only).
+
+Findings fixed same-day:
+
+1. VIEWPORT_SLICE_TTL_MS was an underived 15min → now DERIVED = the
+   hourly promotion-drain cadence (the only clock that changes ground
+   truth; faster re-downloads identical data).
+2. The eligibility gate inline-duplicated keywordTermExpectedNewDocs →
+   now calls the exported pure helper (drift risk closed).
+3. NO_RESULTS_RECOVERY_DAYS comment mis-tagged K2 → corrected to K1
+   (the §16 45d sentence).
+4. §11's opening sentence still described the superseded per-(engine,
+   term) nextDueAt data model → amended to the per-dispatch derivation
+   the code (correctly) implements.
+5. Pre-constitution constant clusters CLASSIFIED in place: on-demand
+   (MIN_RESULTS=1 → K6 smallest-honest-count; 2mi/0.85 viewport floor +
+   300s cooldown + 5 max entities → K1 sentences; 90d who-asked
+   retention → K1 privacy stance; 30d placeholder TTL → reuses the K1
+   30d sentence), search-popularity 30d + query-suggestion 90d → K1
+   attention windows, OPEN_NOW_CANDIDATE_CAP 50000 → K3 pathological-
+   scan guard with corrected comment (verified NOT the §7-deleted result
+   LIMIT — different role, later wave). Autocomplete's 0.6/0.3/0.1
+   attribute weights + 0.4 similarity thresholds honestly flagged as
+   PRE-CONSTITUTION HOLDOVERS and ADDED to the §18 item-1 ratify list
+   (ratify as K1 or re-derive via per-lane percentile normalization at
+   next touch) — flagged, not hidden.
+   735 api + 396 mobile green; build clean; API restarted.

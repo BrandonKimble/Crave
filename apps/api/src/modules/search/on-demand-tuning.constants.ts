@@ -3,21 +3,22 @@
  * consumers that must agree on it (SearchService trigger, keyword-search
  * scheduler priority, keyword-slice low-result severity).
  *
- * 2026-07-11 config fold-in: formerly env `SEARCH_ON_DEMAND_MIN_RESULTS`.
- * The .env value production behavior has been using is 1 (trigger on-demand
- * collection only when a food query returns ZERO restaurants); the scattered
- * code fallbacks (25 / defaultPageSize) were never in effect and disagreed
- * with each other. Reconciled in favor of the .env value.
+ * §16 K6 (definitional — the smallest honest count): trigger on-demand
+ * collection exactly when a food query returns ZERO restaurants — "the app
+ * had nothing to show" is the definition of an unmet ask, not a threshold.
+ * Any value > 1 would be an invented quality bar. (2026-07-11 fold-in:
+ * formerly env SEARCH_ON_DEMAND_MIN_RESULTS; scattered 25/pageSize
+ * fallbacks were never in effect.)
  */
 export const ON_DEMAND_MIN_RESULTS = 1;
 
 /**
- * On-demand collection is market-wide, so a viewport must be at least
- * ~neighborhood-sized before its emptiness says anything about the market.
- * The 0.85 tolerance is hysteresis: a viewport a hair under the 2-mile floor
- * shouldn't flap the trigger. Formerly duplicated verbatim in
- * search.service.ts and search-query-interpretation.service.ts (a silent
- * behavior fork if one drifted) — extracted 2026-07-11 (value census).
+ * §16 K1 (owner sentences): "a viewport must be at least ~neighborhood-
+ * sized (2 miles) before its emptiness says anything about the area," and
+ * "a hair under the floor must not flap the trigger" (0.85 hysteresis).
+ * Falsifiable product sentences, not measurements — the eye/usage may
+ * re-ratify them. Formerly duplicated verbatim in search.service.ts and
+ * search-query-interpretation.service.ts — extracted 2026-07-11.
  */
 export const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
 export const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;

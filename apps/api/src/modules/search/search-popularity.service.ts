@@ -5,6 +5,8 @@ import {
   EntityDemandParams,
 } from '../signals/signal-demand-read.service';
 
+// §16 K1 (attention-window sentence): popularity = the trailing month of
+// demand. Classified 2026-07-24 (pre-constitution module).
 const DEFAULT_POPULARITY_WINDOW_DAYS = 30;
 
 /**

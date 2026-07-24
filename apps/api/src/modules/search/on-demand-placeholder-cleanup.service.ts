@@ -8,6 +8,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
+// §16 K1: reuses the ratified 30d TTL sentence (§16 K1 list, "30d
+// no-place TTL") — one attention-memory constant, not a new knob.
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
