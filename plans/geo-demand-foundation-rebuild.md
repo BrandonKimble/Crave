@@ -405,8 +405,13 @@ in staging before being trusted. Legit-zero ≠ broken-zero.
   (mod-approved backfill caveat stated).
 - **docsPerDay sampling law**: derived only from adapter-declared unbiased
   lanes, computed over COVERED days (a dead lane cannot read as a quiet
-  room). Keyword hits never feed it. Cold start: archive sweep or adapter
-  prior. Cadence clamps 7–60d are pacing bounds (K1-able sentences).
+  room). Keyword hits never feed it. Cold start (AMENDED 2026-07-24,
+  no-fake-estimates law): archive sweep or the unconditional first visit —
+  no adapter prior; the first action IS the measurement. Chronological
+  cadence is fully DERIVED from it: interval = clamp(0.5 × 1000-post
+  window ÷ measured posts/day, 2h, 14d measurement horizon); the lane's
+  1d declaration is bootstrap-only (pre-first-measurement). The K1 60d
+  clamp sentence survives as the keyword heavy-sort floor.
 - **Archive = one-shot seeding per source, EVER** (pre-launch bulk; per-city
   at engine onboarding), enqueued as a `proposed` sweep with a preflight
   price tag (doc count × measured per-doc cost from the usage ledger)
@@ -427,12 +432,17 @@ in staging before being trusted. Legit-zero ≠ broken-zero.
 - **Merge law**: families PROPOSE due-times; the expected-new-content model
   floor-CLAMPS; renewed demand may PIERCE the clamp (world-changed
   evidence).
-- **Expected-new-content model** (replaces the cooldown constants, which
-  survive as its cold-start priors): revisit when expected new matching
-  content ≥ 1, from the source's measured arrival rate × the term's measured
-  hit rate; dead terms' hit rates drift toward the MEASURED global
-  term-resurrection base rate (no Beta-prior back door). Attempt ledger =
-  collector state.
+- **Expected-new-content model** (AMENDED 2026-07-24 — the cooldown
+  constants are DEAD, no cold-start priors survive): each harvest stores a
+  snapshot (lastHarvestAt, lastResultCount = the query's full yield,
+  corpusDocsAtHarvest); a term re-enters when
+  (corpusNow − corpusAtHarvest) × (lastResultCount ÷ corpusAtHarvest) ≥ 1
+  whole document. Never-harvested = always eligible (the first search is
+  the measurement). Measured-barren (share 0) re-enters ONLY via the
+  unmet demand PIERCE — known-zero is evidence, not a timeout; the old
+  term-resurrection base rate is superseded by pierce-only. Errors and
+  denials never touch the snapshot (§12.3 exact). Attempt ledger =
+  collector state, keyed (engineName, normalizedTerm).
 - **Portfolio**: TWO floors only, each a K1 sentence — UNMET ("user-expressed
   gaps always get attention," a product promise independent of yield) and
   EXPLORE ("insurance for the unmeasurable"). Refresh + demand compete for
@@ -607,6 +617,20 @@ before or parallel to Phase A.
 **The law: every number is exactly one of six kinds, defined by WHAT CHANGES
 IT. Unclassifiable numbers are not allowed to exist.**
 
+**THE NO-FAKE-ESTIMATES LAW (RATIFIED 2026-07-24, supersedes every seeded
+prior below unless owner-marked):** a number may only exist as a FACT
+(K4), an OWNER CHOICE (K1/K6, incl. feel constants), or a DERIVATION.
+Cold start is never a guess: the first action is unconditional and IS the
+measurement; before it, the system abstains. A seeded prior is legitimate
+only where the decision can't wait AND can't be derived from existing
+data AND unconditional-first-action is unacceptable (surviving instance:
+the poll-viability bridge — engagement data comes FROM launched polls).
+Executed 2026-07-24: the collector estimator scaffolding (arrival 10/day,
+term hit-rate 0.5) DELETED — inert, zero callers; the four keyword
+cooldown timers DEAD (derived harvest-snapshot eligibility, §11);
+chronological cadence DERIVED (§10). Guesses masquerading as measurement
+are the disease this law exists to kill (see: safeIntervalDays).
+
 - K1 (owner ratification) — falsifiable product sentences: 365d/21d mention
   half-lives; 7d cycle + 14d demand half-life; 28d cooldown gaussian; 45d
   no-results recovery (as prior, see K2); ATTENTION_FRACTION 1/3;
@@ -617,12 +641,13 @@ IT. Unclassifiable numbers are not allowed to exist.**
 - K2 (data; self-erasing priors; closed-loop law applies where the consumer
   gates its own observations): viability(place) [prior 15]; answerYield;
   conversion + tail-concentration [warm-start inputs — instrument from the
-  FIRST Sundays]; expected-new-content model [cooldown constants as priors];
-  per-source thread-activity half-life [21d as prior]; per-reader kind
+  FIRST Sundays]; expected-new-content model [DERIVED 2026-07-24 — no
+  priors, see the no-fake-estimates law above and §11]; per-reader kind
   weights; per-source burst variance; measured overruns; prior strengths &
   shrinkage (inventoried).
 - K3 (controller cycles): poll supply (warm-start → cohort re-estimate →
-  ±1 median test); saturation-adaptive chronological cadence; pacer-derived
+  ±1 median test); chronological cadence [REALIZED 2026-07-24 as the
+  derived loss-horizon interval, §10 — no longer deferred]; pacer-derived
   dispatch sizes and worker counts.
 - K4 (vendor facts): Reddit 1000/100-per-min; Gemini 24h SLA + TPM; Places
   quotas; TomTom pools.
@@ -672,6 +697,12 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    1 − ATTENTION_FRACTION = 2/3 (one-knob law); (b) lone commensurate
    non-covering place IS the header ('this area' reserved for genuine
    straddles/unnamed ground). Both are now §2 law.
+   8a. RATIFIED 2026-07-24 — the no-fake-estimates law (§16 preamble): the
+   §18 arrival-rate-prior marker is RESOLVED BY ELIMINATION (the estimator
+   scaffolding is deleted, not ratified); the cadence marker narrows to
+   nothing (chronological derived; keyword timers dead). Remaining owner
+   items of the guess kind: the poll-viability bridge and the feel
+   constants only.
 8. §1 identity-law amendment — BUILT 2026-07-19 (county-axis leg): places
    grew `county` (provider county NAME, normalized — no stable cross-provider
    code exists); identity index rebuilt as UNIQUE (country_code,
