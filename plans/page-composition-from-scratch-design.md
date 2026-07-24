@@ -1367,3 +1367,20 @@ Slices:
    (c) strip the [ARBDBG] probes when done.
 Each slice: tsc/jest + matrix + owner-eye where feel changes; commit separately with
 pathspec + --no-verify.
+
+### Scroll-fact redesign slices 1-3 SHIPPED (2026-07-24)
+1. Per-scene boundary-fact records in sceneScrollStateRegistry (max, viewport, known;
+   UNKNOWN default). 2. Scene-keyed writers: SceneScrollFactsSceneKeyContext at each
+   leg's body root; the container's per-leg-gated publication writes the scene's
+   RECORD (durable) + the live SVs (projection). 3. THE PROJECTOR: the scene-stack
+   assembly registers its live SVs (registerBoundaryFactsProjection); the presentation
+   driver (PersistentSheetHeaderHost, same effect as shell visibility) calls
+   projectSceneBoundaryFacts(presented) on every frame flip — no fact survives into
+   another scene's tenure. New boundaryFactsKnown SV: pan requires known (max==0 legal
+   again — the short-page band RETURNS on honest per-scene facts); active onScroll +
+   live publication set known; UNKNOWN scenes (bespoke polls; search pre-scroll)
+   decline. Verified: no overscroll misfires post-reload on up-drags (probe count
+   flat); scroll healthy; jest 396/396, matrix 21/21, invariants 30/30.
+REMAINING in red team 2: owner re-repro on polls (shake/double-motion should be dead —
+polls is UNKNOWN now); results top-rebound regression attribution; divider-fade
+per-page audit (polls/profile/lists — routing); strip [ARBDBG] probes after.

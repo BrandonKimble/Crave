@@ -44,6 +44,7 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
   contentOverscroll: SharedValue<number>;
   maxScrollOffset: SharedValue<number>;
   scrollViewportHeight: SharedValue<number>;
+  boundaryFactsKnown: SharedValue<boolean>;
   preventSwipeDismiss: boolean;
   expandedSnap: number;
   middleSnap: number;
@@ -96,6 +97,7 @@ export const useBottomSheetSharedGestureRuntime = ({
   contentOverscroll,
   maxScrollOffset,
   scrollViewportHeight,
+  boundaryFactsKnown,
   preventSwipeDismiss,
   expandedSnap,
   middleSnap,
@@ -565,14 +567,12 @@ export const useBottomSheetSharedGestureRuntime = ({
         // (layout-time, per-leg gated) and the active list's onScroll. max==0 is a
         // LEGAL bottom only when the viewport fact proves a live publication happened
         // (shortPage); an unknown surface (viewport 0) never activates the pan.
-        // MITIGATION (red team 2, 2026-07-24): facts are HOST-shared and LINGER across
-        // leg switches — a non-publishing leg (polls) inherits a stale max=0/vp pair
-        // and reads as a trusted short page (probe: overscroll ACTIVATE off=0 max=0
-        // vp=806 on polls → the double-motion + shake). Until facts are PER-SCENE
-        // records switched with presentation (the red-team-2 redesign), the pan only
-        // trusts a scroll-proven positive max; the short-page band is OFF again.
+        // RED TEAM 2 (per-scene facts): the pan trusts the PROJECTED record —
+        // boundaryFactsKnown flips with the presentation frame, so a scene that never
+        // measured (polls, bespoke) is UNKNOWN and the pan declines; a measured short
+        // page (max 0, known) rubber-bands legitimately.
         const atBottom =
-          maxScrollOffset.value > 0 &&
+          boundaryFactsKnown.value &&
           scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
         if (atExpanded && atBottom && !isInMomentum.value) {
           console.log(`[ARBDBG] overscroll ACTIVATE off=${scrollOffset.value.toFixed(1)} max=${maxScrollOffset.value.toFixed(1)} vp=${scrollViewportHeight.value.toFixed(0)}`);

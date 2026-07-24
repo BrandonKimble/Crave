@@ -13,6 +13,7 @@ type UseBottomSheetSharedScrollContainerRuntimeArgs = {
   contentOverscroll: SharedValue<number>;
   maxScrollOffset: SharedValue<number>;
   scrollViewportHeight: SharedValue<number>;
+  boundaryFactsKnown: SharedValue<boolean>;
   shouldEnableScrollShared: SharedValue<boolean>;
   scrollHeaderComponent?: React.ReactNode;
 };
@@ -36,6 +37,7 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   contentOverscroll,
   maxScrollOffset,
   scrollViewportHeight,
+  boundaryFactsKnown,
   shouldEnableScrollShared,
   scrollHeaderComponent,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
@@ -53,6 +55,8 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   maxScrollOffsetRef.current = maxScrollOffset;
   const scrollViewportHeightRef = React.useRef(scrollViewportHeight);
   scrollViewportHeightRef.current = scrollViewportHeight;
+  const boundaryFactsKnownRef = React.useRef(boundaryFactsKnown);
+  boundaryFactsKnownRef.current = boundaryFactsKnown;
 
   const shouldEnableScrollSharedRef = React.useRef(shouldEnableScrollShared);
   shouldEnableScrollSharedRef.current = shouldEnableScrollShared;
@@ -76,6 +80,7 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
         contentOverscroll={contentOverscrollRef.current}
         maxScrollOffset={maxScrollOffsetRef.current}
         scrollViewportHeight={scrollViewportHeightRef.current}
+        boundaryFactsKnown={boundaryFactsKnownRef.current}
         shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
         transparent={transparentRef.current}
       />

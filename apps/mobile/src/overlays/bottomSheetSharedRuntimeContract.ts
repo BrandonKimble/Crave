@@ -114,6 +114,10 @@ export type BottomSheetSharedScrollRuntime = {
   scrollOffset: SharedValue<number>;
   /** Boundary-physics law §1: runtime-owned overscroll (<0 top / >0 bottom / 0 inside). */
   contentOverscroll: SharedValue<number>;
+  /** Red team 2: the presented scene's projected boundary facts. */
+  maxScrollOffset: SharedValue<number>;
+  scrollViewportHeight: SharedValue<number>;
+  boundaryFactsKnown: SharedValue<boolean>;
   onHeaderLayout: (event: LayoutChangeEvent) => void;
   onScrollHeaderLayout: (event: LayoutChangeEvent) => void;
   primaryListOnScroll: FlashListProps<unknown>['onScroll'];

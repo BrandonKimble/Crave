@@ -91,6 +91,41 @@ export const recordSceneBoundaryFacts = (
 export const readSceneBoundaryFacts = (sceneKey: string): SceneBoundaryFacts =>
   states.get(sceneKey)?.boundaryFacts ?? UNKNOWN_BOUNDARY_FACTS;
 
+// ─── THE PROJECTOR (red team 2 slice 3) ──────────────────────────────────────────────
+// The live host SharedValues are a PROJECTION of the presented scene's record. The
+// scene-stack assembly registers its SVs once; the presentation driver (the same one
+// that writes shell visibility) calls projectSceneBoundaryFacts on every frame flip —
+// so no boundary fact ever survives into another scene's tenure.
+type BoundaryFactsProjection = {
+  maxScrollOffset: SharedValue<number>;
+  scrollViewportHeight: SharedValue<number>;
+  boundaryFactsKnown: SharedValue<boolean>;
+};
+
+let boundaryFactsProjection: BoundaryFactsProjection | null = null;
+
+export const registerBoundaryFactsProjection = (
+  projection: BoundaryFactsProjection
+): (() => void) => {
+  boundaryFactsProjection = projection;
+  return () => {
+    if (boundaryFactsProjection === projection) {
+      boundaryFactsProjection = null;
+    }
+  };
+};
+
+export const projectSceneBoundaryFacts = (sceneKey: string | null): void => {
+  const projection = boundaryFactsProjection;
+  if (projection == null) {
+    return;
+  }
+  const facts = sceneKey == null ? UNKNOWN_BOUNDARY_FACTS : readSceneBoundaryFacts(sceneKey);
+  projection.maxScrollOffset.value = facts.maxScrollOffset;
+  projection.scrollViewportHeight.value = facts.viewportHeight;
+  projection.boundaryFactsKnown.value = facts.known;
+};
+
 const states = new Map<string, SceneScrollState>();
 
 const getState = (sceneKey: string): SceneScrollState => {

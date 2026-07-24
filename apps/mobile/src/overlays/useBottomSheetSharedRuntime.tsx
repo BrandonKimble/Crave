@@ -288,6 +288,7 @@ export const useBottomSheetSharedRuntime = ({
   const contentOverscroll = useSharedValue(0);
   const maxScrollOffset = useSharedValue(0);
   const scrollViewportHeight = useSharedValue(0);
+  const boundaryFactsKnown = useSharedValue(false);
   const scrollTopOffset = useSharedValue(0);
   const primaryScrollOffset = useSharedValue(0);
   const secondaryScrollOffset = useSharedValue(0);
@@ -331,6 +332,7 @@ export const useBottomSheetSharedRuntime = ({
     useBottomSheetSharedScrollEventsRuntime({
       maxScrollOffset,
       scrollViewportHeight,
+      boundaryFactsKnown,
       contentOverscroll,
       activePrimaryList,
       isInMomentum,
@@ -411,6 +413,7 @@ export const useBottomSheetSharedRuntime = ({
     contentOverscroll,
     maxScrollOffset,
     scrollViewportHeight,
+    boundaryFactsKnown,
     preventSwipeDismiss,
     expandedSnap,
     middleSnap,
@@ -459,6 +462,7 @@ export const useBottomSheetSharedRuntime = ({
     contentOverscroll,
     maxScrollOffset,
     scrollViewportHeight,
+    boundaryFactsKnown,
     shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });
@@ -486,6 +490,9 @@ export const useBottomSheetSharedRuntime = ({
       scrollHeaderHeight: publicationRuntime.scrollHeaderHeight,
       scrollOffset,
       contentOverscroll,
+      maxScrollOffset,
+      scrollViewportHeight,
+      boundaryFactsKnown,
       onHeaderLayout: publicationRuntime.onHeaderLayout,
       onScrollHeaderLayout: publicationRuntime.onScrollHeaderLayout,
       primaryListOnScroll,

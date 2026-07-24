@@ -5,6 +5,7 @@ import { Easing, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import { setVisibleResidentScene } from './shell-residency-manager';
+import { projectSceneBoundaryFacts } from './sceneScrollStateRegistry';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import {
   runHeaderCloseAction,
@@ -98,6 +99,9 @@ export const PersistentSheetHeaderHost: React.FC<{
       residencySceneKey,
       transitionOutgoingSceneKey != null ? [transitionOutgoingSceneKey] : []
     );
+    // RED TEAM 2 slice 3: reload the presented scene's boundary facts into the live
+    // projection — no fact survives into another scene's tenure.
+    projectSceneBoundaryFacts(residencySceneKey);
   }, [residencySceneKey, transitionOutgoingSceneKey]);
   const descriptor = sceneKey != null ? getPersistentHeaderDescriptor(sceneKey) : undefined;
   // ─── HeaderNavAction driver (leg 6 — §4 plus↔X rotation, child-transition primitive §3.2).

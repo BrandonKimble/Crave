@@ -1,4 +1,6 @@
 import React from 'react';
+
+import { registerBoundaryFactsProjection } from './sceneScrollStateRegistry';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import { Platform } from 'react-native';
 
@@ -185,6 +187,22 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
       scrollBodyDefaultsEntry.scrollIndicatorInsets,
       scrollBodyDefaultsEntry.testID,
       scrollRuntime.scrollHeaderHeight,
+    ]
+  );
+
+  // RED TEAM 2 slice 3: this host's live boundary-fact SVs are THE projection the
+  // presentation driver reloads per frame flip (projectSceneBoundaryFacts).
+  React.useEffect(
+    () =>
+      registerBoundaryFactsProjection({
+        maxScrollOffset: scrollRuntime.maxScrollOffset,
+        scrollViewportHeight: scrollRuntime.scrollViewportHeight,
+        boundaryFactsKnown: scrollRuntime.boundaryFactsKnown,
+      }),
+    [
+      scrollRuntime.boundaryFactsKnown,
+      scrollRuntime.maxScrollOffset,
+      scrollRuntime.scrollViewportHeight,
     ]
   );
 

@@ -43,6 +43,7 @@ type BottomSheetScrollContainerProps = ScrollViewProps & {
    *  never by the host-level flag that let hidden legs clobber (red-team round). */
   maxScrollOffset: SharedValue<number>;
   scrollViewportHeight: SharedValue<number>;
+  boundaryFactsKnown: SharedValue<boolean>;
 
   // UI-thread scrollEnabled authority (plans/sheet-scroll-primitive.md §3.1): the authority-synced
   // SharedValue mirror of visible && listScrollEnabled && interactionEnabled. Driven via
@@ -61,6 +62,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       contentOverscroll,
       maxScrollOffset,
       scrollViewportHeight,
+      boundaryFactsKnown,
       shouldEnableScrollShared,
       transparent = false,
       style,
@@ -132,6 +134,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       }
       maxScrollOffset.value = Math.max(0, contentHeightRef.current - viewportHeightRef.current);
       scrollViewportHeight.value = viewportHeightRef.current;
+      boundaryFactsKnown.value = true;
       // RED TEAM 2 slice 2: the fact's DURABLE home is the scene's record — the live
       // SVs above are the presented-scene projection (the projector reloads them on
       // the frame flip, so no fact ever survives into another scene's tenure).
@@ -142,7 +145,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           viewportHeightRef.current
         );
       }
-    }, [maxScrollOffset, scrollViewportHeight]);
+    }, [boundaryFactsKnown, maxScrollOffset, scrollViewportHeight]);
     const handleLayout = React.useCallback(
       (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
         viewportHeightRef.current = event.nativeEvent.layout.height;
