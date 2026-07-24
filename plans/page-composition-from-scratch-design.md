@@ -1409,3 +1409,17 @@ PROBES IN TREE (uncommitted): [ARBDBG] set + [REMINT]. Keep until the fix verifi
 handoff), then strip all probes.
 ALSO STILL OPEN: results top-rebound regression; divider-fade routing audit; the
 dead BottomSheetWithFlashList deletion.
+
+### MOUNT-STABLE PANS SHIPPED (2026-07-24) — the stale-relations cure
+The snap-number props (motionStateEntry.snapPoints, per presented scene) were captured
+raw in both the gesture runtime's pan useMemo and the snap-execution callbacks — every
+snap-set change re-minted resolveDestination/startSpring and therefore the PANS.
+Fix: SV mirrors (expandedSnapValue/... in the gesture runtime; *Mirror in snap
+execution) — worklets read live values through stable identities; dep lists carry the
+mirrors. RED→GREEN: [REMINT] went from 3 mints (boot 2 + search-open 1) to ONE mint
+for boot + search-open combined. With a single mint, a container's Gesture.Native
+relations can never reference detached pans — the polls double-motion/shake mechanism
+is structurally gone. Gates: tsc/jest 396, matrix 21/21 (snaps still resolve via
+mirrors), scroll sanity on-sim. ACCEPTANCE = owner's polls repro (shake/double-motion/
+early-handoff) + then strip probes ([REMINT], [ARBDBG], red divider marker) and take
+the rebound + divider audits.

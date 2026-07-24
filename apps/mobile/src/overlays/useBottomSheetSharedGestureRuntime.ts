@@ -141,6 +141,34 @@ export const useBottomSheetSharedGestureRuntime = ({
 }: UseBottomSheetSharedGestureRuntimeArgs) => {
   const ownedGestureEnabledValue = useSharedValue(gestureEnabled ? 1 : 0);
   const gestureEnabledValue = runtimeConfigValues?.gestureEnabled ?? ownedGestureEnabledValue;
+  // MOUNT-STABLE PANS (red team 2 root-cause fix): the snap-number props change per
+  // presented scene; captured raw they re-minted the pans (3 mints/session), leaving
+  // never-re-rendered containers (polls) holding Gesture.Native relations to DETACHED
+  // pans — native scroll outside live arbitration (the double-motion/shake). Worklets
+  // now read these through stable SV mirrors, so the gesture set mints ONCE.
+  const expandedSnapValue = useSharedValue(expandedSnap);
+  const middleSnapValue = useSharedValue(middleSnap);
+  const collapsedSnapValue = useSharedValue(collapsedSnap);
+  const hiddenSnapValue = useSharedValue(hiddenSnap ?? Number.NaN);
+  const preventSwipeDismissValue = useSharedValue(preventSwipeDismiss);
+  React.useEffect(() => {
+    expandedSnapValue.value = expandedSnap;
+    middleSnapValue.value = middleSnap;
+    collapsedSnapValue.value = collapsedSnap;
+    hiddenSnapValue.value = hiddenSnap ?? Number.NaN;
+    preventSwipeDismissValue.value = preventSwipeDismiss;
+  }, [
+    collapsedSnap,
+    collapsedSnapValue,
+    expandedSnap,
+    expandedSnapValue,
+    hiddenSnap,
+    hiddenSnapValue,
+    middleSnap,
+    middleSnapValue,
+    preventSwipeDismiss,
+    preventSwipeDismissValue,
+  ]);
   // Boundary-physics local state (the bottom-overscroll pan's touch bookkeeping).
   const overscrollPanActive = useSharedValue(false);
   const overscrollAxisLock = useSharedValue(0);
@@ -157,18 +185,22 @@ export const useBottomSheetSharedGestureRuntime = ({
   }, [gestureEnabled, ownedGestureEnabledValue, runtimeConfigValues]);
 
   return React.useMemo(() => {
+    console.log('[REMINT] sheet pans minted');
     const resolveRuntimeSnapValues = () => {
       'worklet';
-      const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
-      const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnap;
-      const runtimeCollapsedSnap = runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
+      const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnapValue.value;
+      const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnapValue.value;
+      const runtimeCollapsedSnap =
+        runtimeConfigValues?.collapsedSnap.value ?? collapsedSnapValue.value;
       const runtimeHiddenSnap = runtimeConfigValues
         ? runtimeConfigValues.hasHiddenSnap.value
           ? runtimeConfigValues.hiddenSnap.value
           : undefined
-        : hiddenSnap;
+        : Number.isNaN(hiddenSnapValue.value)
+          ? undefined
+          : hiddenSnapValue.value;
       const runtimePreventSwipeDismiss =
-        runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismiss;
+        runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismissValue.value;
       return {
         expanded: runtimeExpandedSnap,
         middle: runtimeMiddleSnap,
@@ -656,7 +688,7 @@ export const useBottomSheetSharedGestureRuntime = ({
       overscrollPan: overscrollPanGesture,
     };
   }, [
-    collapsedSnap,
+    collapsedSnapValue,
     collapseAxisLock,
     collapseLastTouchX,
     collapseLastTouchY,
@@ -688,16 +720,16 @@ export const useBottomSheetSharedGestureRuntime = ({
     expandStartTouchY,
     expandStartedBelowExpanded,
     expandTouchInHeader,
-    expandedSnap,
+    expandedSnapValue,
     gestureEnabledValue,
     hasUserDrivenSheet,
     headerHeight,
-    hiddenSnap,
+    hiddenSnapValue,
     isDragging,
     isInMomentum,
     isSettling,
-    middleSnap,
-    preventSwipeDismiss,
+    middleSnapValue,
+    preventSwipeDismissValue,
     resolveDestination,
     runtimeConfigValues,
     scrollOffset,
