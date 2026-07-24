@@ -1502,3 +1502,19 @@ ACCEPTANCE PENDING: the owner's polls repro (boot lock + double-motion + shake) 
 with immutable pans, a boot-minted container's relations stay valid forever; the
 polls mechanism is unrepresentable. THEN: strip probes ([REMINT], [ARBDBG], red
 divider marker), delete dead BottomSheetWithFlashList, rebound + divider audits.
+
+### THE POISONED WRITER — polls finally reproduced + fixed (2026-07-24)
+Populated the polls feed on the rig (Closed tab) and reproduced the owner's exact
+sequence: probe showed `overscroll ACTIVATE off=0.0 max=0.0 vp=766` SURVIVING all
+structural fixes. Root cause: event.contentSize is NULL in these Reanimated scroll
+events (the same lie as event.velocity) — the onScroll fact-mirror wrote max=0 with
+vp=real and stamped known=true on EVERY active scroll, poisoning the per-scene truth
+the instant any list scrolled. Every architecture layer above it was correct and
+bypassed. FIX: boundary facts are NEVER written from onScroll — the container's
+layout/content-size publication is the ONE writer (real numbers); search's body now
+provides SceneScrollFactsSceneKeyContext ('search') so its container records too.
+RE-REPRO: ZERO overscroll activations across the polls scroll+drag sequence; healthy
+trace (beginDrag off=487.7 — real offsets; handoffs correct). Gates: jest 396/396,
+matrix 21/21. RNGH/Reanimated LORE (now twice-burned, three fields): event.velocity,
+Gesture.Native callbacks, event.contentSize — NEVER trust an event field without a
+RED-capable probe first.

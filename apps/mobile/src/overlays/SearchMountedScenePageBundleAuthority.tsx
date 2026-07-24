@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { SceneScrollFactsSceneKeyContext } from './sceneScrollStateRegistry';
+
 import { computeSceneChromeHeight } from '../navigation/runtime/scene-chrome-geometry';
 import { getPerfScenarioWorkNow, logPerfScenarioWorkSpan } from '../perf/perf-scenario-work-span';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
@@ -372,10 +374,12 @@ export const SearchResultsPageBundleHost = React.memo(
         underlayComponent={pageBundle.underlayComponent}
         backgroundComponent={backgroundComponent}
         bodyComponent={
-          <SearchResultsPersistentBodyHost
-            bodyDefaults={bodyDefaults}
-            bodyScrollRuntime={bodyScrollRuntime}
-          />
+          <SceneScrollFactsSceneKeyContext.Provider value="search">
+            <SearchResultsPersistentBodyHost
+              bodyDefaults={bodyDefaults}
+              bodyScrollRuntime={bodyScrollRuntime}
+            />
+          </SceneScrollFactsSceneKeyContext.Provider>
         }
         // P5/L1: no in-frame header — the results header rides the hoisted
         // PersistentSheetHeaderHost ('search' descriptor). The lane is reserved at the

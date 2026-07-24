@@ -111,12 +111,12 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
           scrollTopOffset.value = nextTopOffset;
         }
         scrollOffset.value = event.contentOffset.y;
-        maxScrollOffset.value = Math.max(
-          0,
-          (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
-        );
-        scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
-        boundaryFactsKnown.value = true;
+        // BOUNDARY FACTS ARE NOT WRITTEN HERE (polls red team, probe-proven
+        // 2026-07-24): event.contentSize is NULL in these Reanimated scroll events
+        // (like event.velocity) — deriving max here wrote a POISONED trusted 0
+        // (max=0, vp=real, known=true) on every scroll, which activated the bottom
+        // pan against the native scroll (the polls double-motion). The container's
+        // layout/content-size publication is THE one writer of max/viewport/known.
         if (isInMomentum.value) {
           const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
           const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
