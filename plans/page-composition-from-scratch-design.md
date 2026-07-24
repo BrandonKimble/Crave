@@ -1205,3 +1205,16 @@ spring's pt/s; MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME=4). RED→GREEN proven:
 ~300ms of spring-back oscillation after arrival vs the prior 2-frame dead stop.
 Probes stripped. Gates: tsc/jest 396, matrix 21/21. REMAINING: the owner-eye feel
 pass (spring constants, the bottom band on a short page, rebound-interrupt-by-touch).
+
+### Boundary-physics feel round 3 — the bottom band, eye-verified (2026-07-23)
+Settings page (real content ≈ viewport + ~150px after the floor deletion): up-drag at
+its scroll bottom stretches the content past its end (~80px on a ~200px pull — the
+shared rubber curve), header pinned, seam flush, ~230ms spring back on release. The
+video peak frame shows "Crave v1.0.0" lifted clear of the sheet bottom with clean
+white behind — no plate detach, no gap artifacts. Case 3 (bottom band at top snap)
+is REAL on a production page. Remaining owner-feel items: spring softness/bounciness
+(both springs {damping:28, stiffness:300, mass:0.6}, curve RUBBER_BAND_RANGE 96 /
+COEFF 0.44), the top momentum-rebound's amplitude on a hard flick, and
+rebound-interrupt-by-touch. All knobs in bottomSheetSharedRuntimeUtils +
+useBottomSheetSharedScrollEventsRuntime (TOP_REBOUND_SPRING) +
+useBottomSheetSharedGestureRuntime (OVERSCROLL_REBOUND_SPRING).
