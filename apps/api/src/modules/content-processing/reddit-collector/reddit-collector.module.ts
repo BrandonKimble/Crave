@@ -29,7 +29,6 @@ import { ExtractionPipelineService } from './extraction-pipeline.service';
 import { RelevanceGateService } from './relevance-gate.service';
 import { CollectorPacerService } from './collector-pacer.service';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
-import { CollectorEstimators } from './collector-estimators';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
@@ -69,7 +68,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       // not instantiate any collection scheduling machinery.
       CollectorPacerService,
       CollectorSourceRegistryService,
-      CollectorEstimators,
       CollectionJobSchedulerService,
       // Keyword Entity Search components
       KeywordSliceSelectionService,

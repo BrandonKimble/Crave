@@ -241,29 +241,30 @@ export class CollectorSourceRegistryService {
   }
 
   /**
-   * Advance a dispatched lane by its cadence (the pacer's row-advance).
-   * `maxIntervalDays` clamps the advance below the row cadence — the
-   * chronological LOSS-HORIZON FLOOR (v2 cadence design, 2026-07-23): the
-   * only irreversible cadence error is letting posts scroll past the
-   * vendor's 1000-post /new window uncollected, converting free
-   * chronological completeness into expensive keyword gap-repair.
+   * Advance a dispatched lane (the pacer's row-advance). When the pacer
+   * supplies `derivedIntervalDays` (chronological: the loss-horizon formula
+   * clamped by the arrival measurement's horizon — no-fake-estimates law,
+   * 2026-07-24), it REPLACES the row cadence entirely: the declared
+   * cadence_days is bootstrap-only, standing in until the first measurement
+   * exists. Hot sources tighten below it; quiet sources stretch above it
+   * (never past the measurement horizon). Absent = the declared cadence.
    */
   async advanceLane(
     sourceId: string,
     lane: string,
     now: Date = new Date(),
-    maxIntervalDays?: number,
+    derivedIntervalDays?: number,
   ): Promise<void> {
-    const cap =
-      typeof maxIntervalDays === 'number' &&
-      Number.isFinite(maxIntervalDays) &&
-      maxIntervalDays > 0
-        ? maxIntervalDays
+    const derived =
+      typeof derivedIntervalDays === 'number' &&
+      Number.isFinite(derivedIntervalDays) &&
+      derivedIntervalDays > 0
+        ? derivedIntervalDays
         : null;
     await this.prisma.$executeRaw`
       UPDATE source_collection_lanes
       SET due_at = ${now}::timestamp + make_interval(
-            secs => LEAST(cadence_days, COALESCE(${cap}::float8, cadence_days)) * 86400
+            secs => COALESCE(${derived}::float8, cadence_days) * 86400
           ),
           last_ran_at = ${now},
           updated_at = now()

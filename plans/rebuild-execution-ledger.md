@@ -1251,3 +1251,42 @@ Left by design: collector estimator registry = intentionally deferred §22
 scaffolding (self-documented trigger); partition-maintenance has no pager
 (logged-error only — acceptable solo-dev posture, noted). api 735/735 +
 mobile 396/396 green; API restarted; smoke 200.
+
+### The no-fake-estimates law — cold-start guesses eliminated (owner-ratified 2026-07-24)
+
+Owner interrogated the constants inventory: why seed guesses at all instead
+of letting the system produce values the moment data exists? The audit test
+(a guess is necessary only when the decision can't wait AND can't be
+derived from existing data AND unconditional-first-action is unacceptable)
+found most "priors" already eliminable — two were literally inert:
+
+1. **Collector estimator scaffolding DELETED** (collector-estimators.ts +
+   spec + module wiring): the arrival prior (10 docs/day, strength 7) and
+   term hit-rate prior (0.5, strength 4) lived in registered-but-never-fed
+   machinery with zero production callers. The live system already follows
+   the law: first visits are unconditional, rates are measured from durable
+   source_documents, untried terms enter via the ratified exploration floor
+   (a fake 0.5 estimate answered a question nobody asks). This RESOLVES the
+   §18 "source arrival-rate prior" OWNER-RATIFY marker by elimination.
+   The shared EstimatorRegistry class stays (poll-supply estimators are
+   wired and live).
+2. **Chronological cadence now fully DERIVED** — the 1d declaration is
+   bootstrap-only (pre-first-measurement). From the first measurement:
+   interval = clamp(0.5 × 1000-post window ÷ measured posts/day, 2h,
+   14d). Every bound derives: loss-horizon from the vendor window +
+   one-missed-tick safety; the 14d upper clamp is the arrival
+   measurement's OWN horizon (stretch visits past it and the measurement
+   starves itself blind — a quiet source must be observed once per window
+   to notice it waking). advanceLane semantics changed from cap-below-
+   cadence to derived-replaces-cadence (hot sources tighten, quiet
+   sources stretch). This narrows the §18 cadence OWNER-RATIFY marker to
+   keyword's 7d cooldown only (v2 measured uncovered-yield replaces it;
+   its coverage half is buildable pre-launch from known gap mass — the
+   demand-weighting half alone waits for users).
+
+Surviving numbers are now exactly three kinds: FACTS (vendor windows,
+rate limits), OWNER CHOICES (pool price-tags, the ⅔ header law, feel
+constants — the eye is the instrument), and BOOTSTRAP PRODUCT DECISIONS
+(poll-viability proxy: engagement data comes FROM launched polls, so a
+minimal bridge is irreducible). 728 api green (estimator specs deleted),
+build clean, API restarted.

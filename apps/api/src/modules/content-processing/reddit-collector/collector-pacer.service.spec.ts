@@ -33,9 +33,9 @@ function makeLane(overrides: Partial<CollectorLane> = {}): CollectorLane {
 
 function build(options: { lanes?: CollectorLane[]; admit?: boolean } = {}) {
   const prisma = {
-    // Loss-horizon floor arrival count (chronologicalLossHorizonDays):
-    // default = a quiet source (280 posts/14d = 20/day → floor 25d, far
-    // above the 1d cadence — no clamp).
+    // Derived-interval arrival count (chronologicalDerivedIntervalDays):
+    // default = a quiet source (280 posts/14d = 20/day → 25d loss horizon,
+    // clamped to the 14d measurement horizon).
     $queryRaw: jest.fn().mockResolvedValue([{ n: 280 }]),
   };
   const logger = {
@@ -128,13 +128,14 @@ describe('CollectorPacerService', () => {
     const h = build({ lanes });
     const result = await h.service.tick(NOW);
     expect(result).toEqual({ dispatched: 2, denied: 0 });
-    // Chronological carries the loss-horizon cap (20 posts/day → 25d floor,
-    // above cadence — present but non-binding); keyword never caps.
+    // Chronological carries the DERIVED interval (20 posts/day → 25d loss
+    // horizon, clamped to the 14d measurement horizon — a quiet source
+    // stretches past its 1d bootstrap cadence); keyword never derives.
     expect(h.registry.advanceLane).toHaveBeenCalledWith(
       'src-1',
       'chronological',
       NOW,
-      25,
+      14,
     );
     expect(h.registry.advanceLane).toHaveBeenCalledWith(
       'src-1',
@@ -144,7 +145,7 @@ describe('CollectorPacerService', () => {
     );
   });
 
-  it('a high-arrival source clamps the chronological advance to the loss-horizon floor (v2 hard rule)', async () => {
+  it('a high-arrival source tightens the derived interval below the bootstrap cadence (loss-horizon hard rule)', async () => {
     const h = build({ lanes: [makeLane()] });
     // 7,000 posts/14d = 500/day → floor = 0.5 × 1000 / 500 = 1 day... make
     // it hotter: 14,000/14d = 1,000/day → floor 0.5d, UNDER the 1d cadence.

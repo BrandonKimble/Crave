@@ -63,6 +63,15 @@ const LOSS_HORIZON_SAFETY = 0.5;
 const MIN_CHRONOLOGICAL_INTERVAL_DAYS = 2 / 24;
 
 /**
+ * The arrival measurement's trailing horizon — AND therefore the derived
+ * interval's upper clamp (a lane must be observed at least once per
+ * measurement window or the measurement starves itself blind). One
+ * constant, two derived roles; what changes it: choosing a different
+ * measurement horizon, never cadence tuning.
+ */
+const ARRIVAL_LOOKBACK_DAYS = 14;
+
+/**
  * §16 K3-as-prior: the keyword-term SUCCESS cooldown — how long before
  * re-searching a term that just returned results is worth a draw again
  * (one 7d cycle, plan §16 K1's cycle length). HONESTY NOTE (full-plan red
@@ -198,7 +207,7 @@ export class CollectorPacerService implements OnModuleInit {
           lane.lane,
           now,
           lane.lane === 'chronological'
-            ? await this.chronologicalLossHorizonDays(lane.handle, now)
+            ? await this.chronologicalDerivedIntervalDays(lane.handle, now)
             : undefined,
         );
       } catch (error) {
@@ -432,37 +441,44 @@ export class CollectorPacerService implements OnModuleInit {
   }
 
   /**
-   * LOSS-HORIZON FLOOR (v2 cadence design, 2026-07-23) — the one HARD
-   * cadence rule: reddit's /new listing serves at most
-   * REDDIT_NEW_WINDOW_POSTS recent posts, so a source must be revisited
-   * before arrivalRate × interval overflows the window or content scrolls
-   * off into the archive-end gap forever (repairable only by expensive
-   * keyword sweeps). Interval cap = SAFETY × window ÷ measured posts/day —
-   * SAFETY 0.5 tolerates one fully missed tick before any loss. Arrival is
-   * measured directly from the durable source_documents substrate (posts
-   * per day over a trailing 14d of source_created_at — post-archive the
-   * window is completely covered, so the count is the true rate); fewer
-   * than a day of data (fresh onboard) → no cap, the 1d default already
-   * sits far under any plausible floor. Clamped to ≥2h so a pathological
-   * count can never spin the lane. Null = no cap (cadence stands).
+   * THE DERIVED CHRONOLOGICAL INTERVAL (no-fake-estimates law, owner-ratified
+   * 2026-07-24) — the lane's whole rhythm derives from facts; the adapter's
+   * 1d declaration is BOOTSTRAP-ONLY (a source with no measured arrival yet):
+   *
+   *   interval = clamp( SAFETY × window ÷ measured posts/day,
+   *                     2h,  ARRIVAL_LOOKBACK_DAYS )
+   *
+   * Every bound is derived, none is tuned: the loss-horizon term is reddit's
+   * ≤1000-post /new window (vendor fact) with SAFETY 0.5 = one fully missed
+   * tick can never overflow; the 2h floor guards a pathological count; and
+   * the upper clamp is the arrival MEASUREMENT'S OWN horizon — stretch
+   * visits past the lookback and the measurement starves itself blind (a
+   * quiet source must still be observed once per measurement window to
+   * notice it waking up). Arrival is measured from the durable
+   * source_documents substrate (post-archive the window is completely
+   * covered, so the count is the true rate). Undefined = no data yet
+   * (fresh onboard, pre-archive) → the bootstrap cadence stands until the
+   * first visit creates the measurement.
    */
-  private async chronologicalLossHorizonDays(
+  private async chronologicalDerivedIntervalDays(
     handle: string,
     now: Date,
   ): Promise<number | undefined> {
-    const LOOKBACK_DAYS = 14;
     const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
       SELECT count(*) AS n FROM collection_source_documents
       WHERE community = ${handle}
         AND source_type = 'post'
-        AND source_created_at >= ${now}::timestamp - (${LOOKBACK_DAYS} * interval '1 day')
+        AND source_created_at >= ${now}::timestamp - (${ARRIVAL_LOOKBACK_DAYS} * interval '1 day')
     `;
-    const postsPerDay = Number(rows[0]?.n ?? 0) / LOOKBACK_DAYS;
+    const postsPerDay = Number(rows[0]?.n ?? 0) / ARRIVAL_LOOKBACK_DAYS;
     if (!(postsPerDay > 0)) {
       return undefined;
     }
-    const floorDays =
+    const lossHorizonDays =
       (LOSS_HORIZON_SAFETY * REDDIT_NEW_WINDOW_POSTS) / postsPerDay;
-    return Math.max(floorDays, MIN_CHRONOLOGICAL_INTERVAL_DAYS);
+    return Math.min(
+      Math.max(lossHorizonDays, MIN_CHRONOLOGICAL_INTERVAL_DAYS),
+      ARRIVAL_LOOKBACK_DAYS,
+    );
   }
 }

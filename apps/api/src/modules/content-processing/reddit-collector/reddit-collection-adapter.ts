@@ -31,6 +31,11 @@ export interface RedditLaneDeclaration {
 export const REDDIT_LANES: readonly RedditLaneDeclaration[] = [
   {
     lane: 'chronological',
+    // BOOTSTRAP-ONLY (no-fake-estimates law, 2026-07-24): stands in until
+    // the first visit creates an arrival measurement; from then on the
+    // pacer's DERIVED interval (loss-horizon formula clamped by the
+    // measurement horizon) replaces it entirely. Safe universally: 1d sits
+    // under the loss floor of any source below ~500 posts/day.
     defaultCadenceDays: 1,
     defaultLatenessToleranceDays: 1,
     // /new listing pages: 1000-post max at 100/page.
