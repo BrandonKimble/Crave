@@ -357,8 +357,9 @@ export class RedditService implements OnModuleInit {
     if (!this.redditConfig.clientId) missingFields.push('reddit.clientId');
     if (!this.redditConfig.clientSecret)
       missingFields.push('reddit.clientSecret');
-    if (!this.redditConfig.username) missingFields.push('reddit.username');
-    if (!this.redditConfig.password) missingFields.push('reddit.password');
+    // username/password are NOT required since the app-only grant
+    // (2026-07-24): client_credentials reads public listings without an
+    // account password. REDDIT_USERNAME survives only as UA attribution.
     if (!this.redditConfig.userAgent) missingFields.push('reddit.userAgent');
 
     if (missingFields.length > 0) {
@@ -408,15 +409,21 @@ export class RedditService implements OnModuleInit {
       // §12.5: token minted on EXPIRY only; the mint is itself an enumerated
       // draw on the one reddit pool (§14.1 — provider auth/status calls are
       // enumerated draws, never free side-channels).
+      //
+      // APP-ONLY GRANT (2026-07-24, the production-outage root cause): the
+      // old password grant had been returning HTTP 200 with
+      // {"error":"invalid_grant"} (stale password or 2FA on the account) —
+      // from EVERY network, not just datacenters — and the missing error
+      // check below stamped it "Authentication successful", so all
+      // collection died downstream with generic failures. We only READ
+      // public listings; client_credentials is the correct grant, needs no
+      // account password, and was live-verified from both residential and
+      // Railway IPs.
       const response = await this.governedAct('reddit.auth', () =>
         firstValueFrom(
           this.httpService.post(
             'https://www.reddit.com/api/v1/access_token',
-            new URLSearchParams({
-              grant_type: 'password',
-              username: this.redditConfig.username,
-              password: this.redditConfig.password,
-            }),
+            new URLSearchParams({ grant_type: 'client_credentials' }),
             {
               headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -428,7 +435,17 @@ export class RedditService implements OnModuleInit {
         ),
       );
 
-      const tokenData = response.data as RedditTokenResponse;
+      const tokenData = response.data as RedditTokenResponse & {
+        error?: string;
+      };
+      // Reddit answers grant failures with HTTP 200 + {"error": ...} — a
+      // 200 is NOT success until a token actually exists.
+      if (!tokenData.access_token || tokenData.error) {
+        throw new RedditAuthenticationError(
+          'Reddit token grant rejected',
+          JSON.stringify({ error: tokenData.error ?? 'no access_token' }),
+        );
+      }
       this.accessToken = tokenData.access_token;
       this.tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
@@ -443,6 +460,11 @@ export class RedditService implements OnModuleInit {
 
       if (error instanceof RedditGovernanceDenialError) {
         // Typed not-now — never rebranded as an auth/API failure (§12.3).
+        throw error;
+      }
+      if (error instanceof RedditAuthenticationError) {
+        // Our own 200-with-error verdict above — already precise.
+        this.logger.error('Authentication failed', error.message);
         throw error;
       }
 

@@ -227,7 +227,11 @@ export default () => {
       clientSecret: resolveSecretEnv('REDDIT_CLIENT_SECRET'),
       username: resolveSecretEnv('REDDIT_USERNAME'),
       password: resolveSecretEnv('REDDIT_PASSWORD'),
-      userAgent: process.env.REDDIT_USER_AGENT || 'CraveSearch/1.0.0',
+      // Reddit API rules require 'platform:app-id:version (by /u/username)'
+      // — a generic UA is exactly what their anti-abuse layer punishes.
+      userAgent:
+        process.env.REDDIT_USER_AGENT ||
+        `web:crave-search:v1.0.0 (by /u/${process.env.REDDIT_USERNAME || 'crave-search'})`,
       timeout: parseInt(process.env.REDDIT_TIMEOUT || '10000', 10),
       requestsPerMinute: parseInt(
         process.env.REDDIT_REQUESTS_PER_MINUTE || '100',
