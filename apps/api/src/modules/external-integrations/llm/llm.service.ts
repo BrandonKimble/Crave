@@ -20,6 +20,8 @@ import { Counter } from 'prom-client';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
+import { GovernanceService } from '../governance/governance.service';
+import { msUntilVendorMonthReset } from '../shared/gemini-pricing';
 import {
   LLMConfig,
   LLMModelInput,
@@ -202,6 +204,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     private readonly metricsService: MetricsService,
     private readonly usageLedger: UsageLedgerService,
     private readonly decisionLedger: DecisionLedgerService,
+    private readonly governance: GovernanceService,
   ) {}
 
   onModuleInit(): void {
@@ -2794,6 +2797,21 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /** The gemini.monthlySpend budget gate (see callLLMApi + batch submit). */
+  assertSpendBudgetOpen(): void {
+    const status = this.governance.pools.poolStatus('gemini.monthlySpend');
+    if (status.poisonedForMs !== null && status.poisonedForMs > 0) {
+      throw new Error(
+        `LLM spend budget poisoned (vendor cap) — reopens in ${Math.ceil(status.poisonedForMs / 3_600_000)}h; work stays queued`,
+      );
+    }
+    if (status.used >= status.limit) {
+      throw new Error(
+        'LLM spend budget exhausted (gemini.monthlySpend owner cap) — typed not-now; work stays queued until the month window rolls or the cap is raised',
+      );
+    }
+  }
+
   /**
    * Make authenticated API call to Gemini service using @google/genai library
    */
@@ -2801,6 +2819,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     prompt: string,
     options: LLMGenerationOptions = {},
   ): Promise<LLMApiResponse> {
+    // §16 K1 owner budget gate: when the gemini.monthlySpend pool (metered
+    // from ACTUAL dollars at the usage-ledger chokepoint) is spent or
+    // vendor-poisoned, fail HERE — locally, instantly, zero vendor calls.
+    // Callers treat it like any transient LLM failure, so queued work
+    // refills and drains when the budget reopens; nothing storms Google.
+    this.assertSpendBudgetOpen();
     const targetModel = options.model ?? this.llmConfig.model;
     const maxRetries =
       typeof options.maxRetries === 'number' && options.maxRetries >= 0
@@ -3464,6 +3488,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           maxRetries,
         };
 
+        // Vendor MONTHLY CAP 429: not transient — poison the spend pool
+        // until the vendor's own reset (first of month PST + grace) so the
+        // budget gate stops all further dispatch instead of retry-storming.
+        if (errorMessage.includes('monthly spending cap')) {
+          this.governance.pools.poisonWindow(
+            'gemini.monthlySpend',
+            msUntilVendorMonthReset(),
+          );
+          this.logger.error(
+            'GEMINI VENDOR SPEND CAP HIT — spend pool poisoned until the vendor month reset; raise the AI Studio cap (and GEMINI_MONTHLY_SPEND_CAP_USD) to resume',
+          );
+        }
         this.logger.error(
           'Detailed @google/genai API error',
           error,

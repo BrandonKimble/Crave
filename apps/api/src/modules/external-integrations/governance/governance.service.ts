@@ -80,6 +80,27 @@ export class GovernanceService implements OnModuleInit {
       failPolicy: { kind: 'emergencyFraction', fraction: 0.95 },
       reservationTtlMs: 60_000,
     });
+    // §16 K1 (owner price-tag, 2026-07-24): the gemini MONTHLY DOLLAR
+    // budget, in micro-USD, metered from ACTUAL token counts at the
+    // usage-ledger chokepoint (gemini-pricing.ts K4 rates). Mirrors the AI
+    // Studio console's monthly spend cap so the system self-stops with a
+    // typed not-now BEFORE the vendor's wall (whose 429s the batch retrier
+    // would otherwise storm against). Set GEMINI_MONTHLY_SPEND_CAP_USD to
+    // the console cap (or below); adjusting = owner re-ratify. hardClosed +
+    // durable: a restart can never forget spend.
+    const capUsd = Number(process.env.GEMINI_MONTHLY_SPEND_CAP_USD || '300');
+    this.pools.register({
+      name: 'gemini.monthlySpend',
+      credential: 'default',
+      window: {
+        kind: 'perMonth',
+        limit: Math.round(
+          (Number.isFinite(capUsd) && capUsd > 0 ? capUsd : 300) * 1_000_000,
+        ),
+      },
+      failPolicy: { kind: 'hardClosed' },
+      reservationTtlMs: 60_000,
+    });
     // Reddit pool (§12.5 client rewrite executed): vendor fact K4 is
     // 1000-per-10-minutes / 100-per-minute; the per-minute window is the
     // binding constraint. This pool is THE one reddit window and ledger

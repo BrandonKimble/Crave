@@ -3,6 +3,7 @@ import { SharedModule } from '../../../shared/shared.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { RateLimitCoordinatorService } from './rate-limit-coordinator.service';
 import { UsageLedgerService } from './usage-ledger.service';
+import { GovernanceModule } from '../governance/governance.module';
 import { DecisionLedgerService } from './decision-ledger.service';
 
 /**
@@ -14,6 +15,7 @@ import { DecisionLedgerService } from './decision-ledger.service';
   imports: [
     SharedModule, // Imports ConfigModule and provides LoggerService
     PrismaModule,
+    GovernanceModule, // gemini.monthlySpend metering at the ledger chokepoint
   ],
   providers: [
     RateLimitCoordinatorService,

@@ -1,6 +1,8 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { GovernanceService } from '../governance/governance.service';
+import { geminiCostMicros } from './gemini-pricing';
 
 export interface UsageEvent {
   service: 'gemini' | 'google_places' | 'tomtom';
@@ -83,14 +85,21 @@ export class UsageLedgerService implements OnModuleDestroy {
 
   private readonly logger: LoggerService;
 
+  /** 80%-of-budget warn fires once per process lifetime. */
+  private spendWarned = false;
+
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    // Optional: slim script module graphs may lack the governance module;
+    // the ledger's DB record must never depend on the meter.
+    @Optional() private readonly governance?: GovernanceService,
   ) {
     this.logger = loggerService.setContext('UsageLedgerService');
   }
 
   record(event: UsageEvent): void {
+    this.meterGeminiSpend(event);
     const data = {
       service: event.service,
       operation: event.operation,
@@ -121,6 +130,40 @@ export class UsageLedgerService implements OnModuleDestroy {
       });
     this.pending.add(write);
     void write.finally(() => this.pending.delete(write));
+  }
+
+  /**
+   * Meter ACTUAL gemini dollars (micro-USD, K4 rates) into the
+   * gemini.monthlySpend pool — the §14.2 pattern in the vendor's own
+   * currency. The pool's window is the admission gate's source of truth;
+   * this is the write side. Fire-and-forget; never breaks the record.
+   */
+  private meterGeminiSpend(event: UsageEvent): void {
+    if (event.service !== 'gemini' || !this.governance) {
+      return;
+    }
+    try {
+      const micros = geminiCostMicros(event);
+      if (micros <= 0) {
+        return;
+      }
+      void this.governance.pools.meter('gemini.monthlySpend', micros);
+      if (!this.spendWarned) {
+        const status = this.governance.pools.poolStatus('gemini.monthlySpend');
+        if (status.used >= 0.8 * status.limit) {
+          this.spendWarned = true;
+          this.logger.warn(
+            'GEMINI SPEND at 80% of the monthly owner budget — new LLM dispatches hard-stop at 100% (typed not-now; work stays queued)',
+            {
+              usedUsd: Math.round(status.used / 10_000) / 100,
+              limitUsd: Math.round(status.limit / 10_000) / 100,
+            },
+          );
+        }
+      }
+    } catch {
+      // Metering must never break the usage record itself.
+    }
   }
 
   /** Highest-SKU-in-mask classification, mirroring Google's billing rule. */

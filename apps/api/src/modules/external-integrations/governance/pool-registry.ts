@@ -428,6 +428,28 @@ export class PoolRegistry {
   }
 
   /**
+   * METERED ACTUALS (2026-07-24, the gemini spend pool): some pools track a
+   * quantity only known AFTER the act (dollars from actual token counts) —
+   * no reservation makes sense, the act already happened. meter() consumes
+   * directly; admission control comes from the SAME window (a gate checks
+   * poolStatus before dispatching new work). Fire-and-forget durable flush.
+   */
+  meter(
+    poolName: string,
+    amount: number,
+    at: Date = new Date(),
+  ): Promise<void> {
+    const pool = this.requirePool(poolName);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return Promise.resolve();
+    }
+    this.consume(poolName, amount, at);
+    return this.isDurable(pool) && this.store !== undefined
+      ? this.flushDurable(poolName)
+      : Promise.resolve();
+  }
+
+  /**
    * VENDOR-LEDGER ALIGNMENT (§14.2 taken to its logical end, 2026-07-24):
    * vendors that return live rate-limit headers (reddit:
    * x-ratelimit-remaining/reset) publish THEIR window ledger on every
