@@ -135,9 +135,6 @@ export class PlacesPromotionService {
   private headerAnswers = new Map<string, number>();
   private readonly enqueuedOnce = new Set<string>();
 
-  /** Item-5 tripwire: the SEED COMPLETE warn fires once per process. */
-  private seedCompleteWarned = false;
-
   constructor(
     private readonly prisma: PrismaService,
     @Inject(TOMTOM_CHAIN_PROBE) private readonly probe: TomtomChainProbe,
@@ -312,33 +309,6 @@ export class PlacesPromotionService {
         setTimeout(resolve, VENDOR_QPS_SPACING_MS),
       );
     }
-    await this.warnIfSeedComplete();
-  }
-
-  /**
-   * Wave-6 item 5 — the SEED-MONTH pool-return tripwire. The seed-month
-   * raises (tomtom.cheapGeocode 45k, tomtom.scarcePolygons 25k — SEED MONTH
-   * comments in governance.service.ts) carry return-to numbers nothing
-   * enforces; this warn IS the mechanism for a solo dev: the first pass
-   * that sees the backlog read 0 logs LOUD, once per process lifetime.
-   */
-  private async warnIfSeedComplete(): Promise<void> {
-    if (this.seedCompleteWarned) {
-      return;
-    }
-    const backlog = await this.prisma.$queryRaw<Array<{ n: bigint }>>(
-      Prisma.sql`
-        SELECT count(*) AS n FROM place_geometry_promotions
-        WHERE promoted_at IS NULL
-      `,
-    );
-    if (Number(backlog[0]?.n ?? 0) !== 0) {
-      return;
-    }
-    this.seedCompleteWarned = true;
-    this.logger.warn(
-      'SEED COMPLETE — seed-month pool raises still active; return cheapGeocode→20k scarcePolygons→10k per governance.service.ts comments',
-    );
   }
 
   private async promoteOne(

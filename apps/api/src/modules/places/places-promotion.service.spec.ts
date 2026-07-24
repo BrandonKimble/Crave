@@ -22,12 +22,6 @@ const logger: any = {
   debug: jest.fn(),
 };
 
-/** Shared module-level logger — count deltas, never absolute call totals. */
-const countSeedCompleteWarns = (): number =>
-  (logger.warn as jest.Mock).mock.calls.filter((call) =>
-    String(call[0]).startsWith('SEED COMPLETE'),
-  ).length;
-
 function makePlaceRow(overrides: Record<string, unknown> = {}) {
   return {
     placeId: PLACE_ID,
@@ -84,8 +78,6 @@ function makeHarness(options: {
   fetchPolygon?: jest.Mock;
   /** Wave-6 item 1b: pg_try_advisory_lock outcome (default acquired). */
   lockAcquired?: boolean;
-  /** Wave-6 item 5: unpromoted backlog the tripwire count reads. */
-  backlogCount?: number;
 }) {
   const executeRawCalls: Array<{ sql: string; values: unknown[] }> = [];
   const prisma = {
@@ -100,12 +92,6 @@ function makeHarness(options: {
       }
       if (sql.includes('pg_advisory_unlock')) {
         return Promise.resolve([{ unlocked: true }]);
-      }
-      if (sql.includes('count(*)')) {
-        // Item-5 tripwire backlog read: default mirrors the queue fixture.
-        return Promise.resolve([
-          { n: BigInt(options.backlogCount ?? options.queueRows?.length ?? 0) },
-        ]);
       }
       if (sql.includes('FROM place_geometry_promotions')) {
         return Promise.resolve(options.queueRows ?? []);
@@ -409,25 +395,6 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         String(call[0].sql ?? ''),
       );
       expect(sqls.some((sql) => sql.includes('pg_advisory_unlock'))).toBe(true);
-    });
-  });
-
-  describe('seed-complete tripwire (wave-6 item 5)', () => {
-    it('warns LOUD once per process lifetime on the first pass where the backlog reads 0', async () => {
-      const { service } = makeHarness({ queueRows: [], backlogCount: 0 });
-      const warnsBefore = countSeedCompleteWarns();
-      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      expect(countSeedCompleteWarns()).toBe(warnsBefore + 1);
-      // Second pass: once per process lifetime — no re-warn.
-      await service.drainQueue(new Date('2026-07-20T01:00:00Z'));
-      expect(countSeedCompleteWarns()).toBe(warnsBefore + 1);
-    });
-
-    it('stays silent while the backlog is non-zero', async () => {
-      const { service } = makeHarness({ queueRows: [], backlogCount: 3 });
-      const warnsBefore = countSeedCompleteWarns();
-      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      expect(countSeedCompleteWarns()).toBe(warnsBefore);
     });
   });
 
