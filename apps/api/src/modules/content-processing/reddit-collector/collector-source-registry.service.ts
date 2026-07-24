@@ -214,15 +214,31 @@ export class CollectorSourceRegistryService {
     return rows.map((row) => row.place_id);
   }
 
-  /** Advance a dispatched lane by its cadence (the pacer's row-advance). */
+  /**
+   * Advance a dispatched lane by its cadence (the pacer's row-advance).
+   * `maxIntervalDays` clamps the advance below the row cadence — the
+   * chronological LOSS-HORIZON FLOOR (v2 cadence design, 2026-07-23): the
+   * only irreversible cadence error is letting posts scroll past the
+   * vendor's 1000-post /new window uncollected, converting free
+   * chronological completeness into expensive keyword gap-repair.
+   */
   async advanceLane(
     sourceId: string,
     lane: string,
     now: Date = new Date(),
+    maxIntervalDays?: number,
   ): Promise<void> {
+    const cap =
+      typeof maxIntervalDays === 'number' &&
+      Number.isFinite(maxIntervalDays) &&
+      maxIntervalDays > 0
+        ? maxIntervalDays
+        : null;
     await this.prisma.$executeRaw`
       UPDATE source_collection_lanes
-      SET due_at = ${now}::timestamp + make_interval(secs => cadence_days * 86400),
+      SET due_at = ${now}::timestamp + make_interval(
+            secs => LEAST(cadence_days, COALESCE(${cap}::float8, cadence_days)) * 86400
+          ),
           last_ran_at = ${now},
           updated_at = now()
       WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
@@ -309,6 +325,14 @@ export class CollectorSourceRegistryService {
    * §12.4 heartbeat write: record a tick's OUTPUT (documents produced) and
    * fold it into the lane's EWMA baseline. Output is a fact about persisted
    * documents — never "a handler fired".
+   */
+  /**
+   * V2-CADENCE PREREQUISITE (audited 2026-07-23): for the keyword lane this
+   * records TOTAL search results — fine for the heartbeat's output-collapse
+   * baseline, but the v2 value-ranked scheduler keys keyword decay on
+   * UNCOVERED yield (new docs per dispatch), which today exists only
+   * transiently in the extraction pipeline's coverage split. When v2 lands,
+   * persist uncovered count per (source, lane) beside last_output_docs.
    */
   async recordLaneOutput(
     sourceId: string,

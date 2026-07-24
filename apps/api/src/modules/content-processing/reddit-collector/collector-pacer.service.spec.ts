@@ -36,6 +36,10 @@ function build(options: { lanes?: CollectorLane[]; admit?: boolean } = {}) {
     collectionCommunity: {
       findFirst: jest.fn().mockResolvedValue({ safeIntervalDays: 12 }),
     },
+    // Loss-horizon floor arrival count (chronologicalLossHorizonDays):
+    // default = a quiet source (280 posts/14d = 20/day → floor 25d, far
+    // above the 1d cadence — no clamp).
+    $queryRaw: jest.fn().mockResolvedValue([{ n: 280 }]),
   };
   const logger = {
     setContext: jest.fn().mockReturnThis(),
@@ -127,15 +131,35 @@ describe('CollectorPacerService', () => {
     const h = build({ lanes });
     const result = await h.service.tick(NOW);
     expect(result).toEqual({ dispatched: 2, denied: 0 });
+    // Chronological carries the loss-horizon cap (20 posts/day → 25d floor,
+    // above cadence — present but non-binding); keyword never caps.
     expect(h.registry.advanceLane).toHaveBeenCalledWith(
       'src-1',
       'chronological',
       NOW,
+      25,
     );
     expect(h.registry.advanceLane).toHaveBeenCalledWith(
       'src-1',
       'keyword',
       NOW,
+      undefined,
+    );
+  });
+
+  it('a high-arrival source clamps the chronological advance to the loss-horizon floor (v2 hard rule)', async () => {
+    const h = build({ lanes: [makeLane()] });
+    // 7,000 posts/14d = 500/day → floor = 0.5 × 1000 / 500 = 1 day... make
+    // it hotter: 14,000/14d = 1,000/day → floor 0.5d, UNDER the 1d cadence.
+    (h.prisma as Record<string, unknown>).$queryRaw = jest
+      .fn()
+      .mockResolvedValue([{ n: 14000 }]);
+    await h.service.tick(NOW);
+    expect(h.registry.advanceLane).toHaveBeenCalledWith(
+      'src-1',
+      'chronological',
+      NOW,
+      0.5,
     );
   });
 
@@ -233,6 +257,7 @@ describe('CollectorPacerService', () => {
       'src-1',
       'keyword',
       NOW,
+      undefined,
     );
   });
 

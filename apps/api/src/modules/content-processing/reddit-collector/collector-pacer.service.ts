@@ -49,6 +49,19 @@ import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.
 import { buildKeywordSortPlan } from './keyword-sort-plan';
 import { PrismaService } from '../../../prisma/prisma.service';
 
+/** Vendor fact (reddit-collection-adapter): /new serves ≤1000 posts. */
+const REDDIT_NEW_WINDOW_POSTS = 1000;
+
+/**
+ * Loss-horizon safety factor: revisit by the time HALF the window could
+ * have scrolled — derived, not tuned: one fully missed tick (crash,
+ * governance denial streak) must never overflow the window.
+ */
+const LOSS_HORIZON_SAFETY = 0.5;
+
+/** Pathological-count guard: the floor never spins a lane under 2h. */
+const MIN_CHRONOLOGICAL_INTERVAL_DAYS = 2 / 24;
+
 @Injectable()
 export class CollectorPacerService implements OnModuleInit {
   private logger!: LoggerService;
@@ -167,7 +180,14 @@ export class CollectorPacerService implements OnModuleInit {
           continue;
         }
         count('dispatched');
-        await this.registry.advanceLane(lane.sourceId, lane.lane, now);
+        await this.registry.advanceLane(
+          lane.sourceId,
+          lane.lane,
+          now,
+          lane.lane === 'chronological'
+            ? await this.chronologicalLossHorizonDays(lane.handle, now)
+            : undefined,
+        );
       } catch (error) {
         // Loud, and the lane stays due so the next tick retries.
         this.logger.error('Lane dispatch failed; lane remains due', {
@@ -397,6 +417,41 @@ export class CollectorPacerService implements OnModuleInit {
         );
       }
     }
+  }
+
+  /**
+   * LOSS-HORIZON FLOOR (v2 cadence design, 2026-07-23) — the one HARD
+   * cadence rule: reddit's /new listing serves at most
+   * REDDIT_NEW_WINDOW_POSTS recent posts, so a source must be revisited
+   * before arrivalRate × interval overflows the window or content scrolls
+   * off into the archive-end gap forever (repairable only by expensive
+   * keyword sweeps). Interval cap = SAFETY × window ÷ measured posts/day —
+   * SAFETY 0.5 tolerates one fully missed tick before any loss. Arrival is
+   * measured directly from the durable source_documents substrate (posts
+   * per day over a trailing 14d of source_created_at — post-archive the
+   * window is completely covered, so the count is the true rate); fewer
+   * than a day of data (fresh onboard) → no cap, the 1d default already
+   * sits far under any plausible floor. Clamped to ≥2h so a pathological
+   * count can never spin the lane. Null = no cap (cadence stands).
+   */
+  private async chronologicalLossHorizonDays(
+    handle: string,
+    now: Date,
+  ): Promise<number | undefined> {
+    const LOOKBACK_DAYS = 14;
+    const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
+      SELECT count(*) AS n FROM collection_source_documents
+      WHERE community = ${handle}
+        AND source_type = 'post'
+        AND source_created_at >= ${now}::timestamp - (${LOOKBACK_DAYS} * interval '1 day')
+    `;
+    const postsPerDay = Number(rows[0]?.n ?? 0) / LOOKBACK_DAYS;
+    if (!(postsPerDay > 0)) {
+      return undefined;
+    }
+    const floorDays =
+      (LOSS_HORIZON_SAFETY * REDDIT_NEW_WINDOW_POSTS) / postsPerDay;
+    return Math.max(floorDays, MIN_CHRONOLOGICAL_INTERVAL_DAYS);
   }
 
   /** Saturation-adaptive cadence is trigger-deferred (§22); the measured

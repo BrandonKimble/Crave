@@ -1169,3 +1169,36 @@ envelope comment fixed; dead `market` prisma mocks purged from the last 3
 specs (polls-feed, polls-signals-write, poll-weekly-ritual). Verified:
 shared+api rebuilt, api 734/734, mobile 396/396, tsc = the 2 known
 pre-existing errors, API restarted.
+
+### V2 cadence design — the loss-horizon floor lands; the rest deferred to data (2026-07-23)
+
+Owner-ratified v2 framing: lanes are three instruments against ONE goal
+(coverage of each source's content through time) — archive = bulk deep
+past (one-time, ends 2025); chronological = the flowing present, complete
+and cheap ONLY within reddit's ≤1000-post /new window; keyword = the sole
+random-access into the archive-end gap, with self-decaying uncovered-
+yield. The ideal scheduler funds dispatches by expected UNCOVERED docs ×
+demand weight under the pool budget — cadence becomes an emergent
+outcome, not a setting; keyword dominance in a source's gap era and its
+graceful decay to a trickle both emerge from measured yield. Deferred
+until real dispatch data exists (same reasoning as the other §18
+markers).
+
+Landed NOW (the one irreversible-error rule): the CHRONOLOGICAL
+LOSS-HORIZON FLOOR — advanceLane accepts a cap; the pacer computes it per
+source as 0.5 × 1000 / measured posts-per-day (trailing 14d of
+collection_source_documents source_created_at; ≥2h clamp; no data = no
+cap). A source hot enough to overflow the window between default-cadence
+visits now auto-tightens; everyone else keeps the 1d default untouched.
+Spec: high-arrival source clamps advance to 0.5d; quiet source carries a
+non-binding 25d cap.
+
+Audit rulings recorded in code comments: (a) recordLaneOutput records
+TOTAL keyword results (fine for heartbeat collapse detection) — v2 needs
+per-(source,lane) UNCOVERED yield persisted; marked at the method. (b)
+CollectorEstimators.observeArrival has zero production callers (the
+arrival estimator is registered scaffolding); the floor measures arrival
+directly from the durable source_documents substrate instead. (c)
+Post-archive first chronological sweep: lanes are seeded due-immediately
+at onboarding, so the baseline sweep fires on the next pacer tick after
+archive load — no change needed. 735 api green; API restarted.
