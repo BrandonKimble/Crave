@@ -18,10 +18,17 @@
  * reads the on-demand ask-event gap record keyed by the engine's legacy
  * market-key name; that table moves onto the ledger in Phase C.
  *
- * Expected-new-content model (§11) at priors: the attempt-history cooldown
- * constants ARE its cold-start priors (the measured arrival × hit reader is
- * trigger-deferred per §22 — see collector-estimators.ts); unmet demand may
- * PIERCE the clamp via the smooth no-results recovery (§11 merge law).
+ * Expected-new-content model (§11) — DERIVED, no timers (no-fake-estimates
+ * law, 2026-07-24): a harvested term is eligible again when
+ * (corpusNow − corpusAtHarvest) × (lastResultCount ÷ corpusAtHarvest) ≥ 1 —
+ * the source has produced enough new content that the term's MEASURED match
+ * share expects at least one whole new document (the smallest honest count;
+ * same pattern as §2(e) frequent = 2). Rotation emerges without cooldowns:
+ * just-harvested terms have corpus delta ≈ 0 and sink; hot sources
+ * resurface terms fast, quiet ones slowly. Measured-barren terms (share 0)
+ * re-enter only via renewed user demand (the §11 unmet PIERCE — known-zero
+ * is evidence, not a timeout). Never-harvested terms are always eligible
+ * (candidacy itself is demand-ranked; the first search IS the measurement).
  */
 import { Inject, Injectable } from '@nestjs/common';
 import {
@@ -117,6 +124,36 @@ function shouldTraceAllDemandCandidates(): boolean {
 
 export type KeywordSlice = 'unmet' | 'refresh' | 'demand' | 'explore';
 
+/**
+ * THE derived expected-new-docs law (no-fake-estimates, 2026-07-24), pure:
+ * how many new documents a re-search of this term should return, from the
+ * harvest snapshot alone. corpus delta × measured match share. Infinity =
+ * never harvested (the first search IS the measurement — always eligible).
+ */
+export function keywordTermExpectedNewDocs(
+  history:
+    | {
+        lastHarvestAt: Date | null;
+        lastResultCount: number | null;
+        corpusDocsAtHarvest: number | null;
+      }
+    | undefined,
+  corpusDocsNow: number,
+): number {
+  const harvested =
+    history?.lastHarvestAt != null &&
+    typeof history.corpusDocsAtHarvest === 'number' &&
+    history.corpusDocsAtHarvest > 0;
+  if (!harvested) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const corpusAtHarvest = history.corpusDocsAtHarvest as number;
+  return (
+    Math.max(0, corpusDocsNow - corpusAtHarvest) *
+    ((history.lastResultCount ?? 0) / corpusAtHarvest)
+  );
+}
+
 /** The source under selection — §10: work keys off SOURCE rows. */
 export interface KeywordSelectionSource {
   sourceId: string;
@@ -127,7 +164,6 @@ export interface KeywordSelectionSource {
    *  (the ask-event unmet lane and attempt-history legacy PK read by it). */
   engineName: string;
   territoryPlaceIds: string[];
-  safeIntervalDays: number;
 }
 
 export interface KeywordTermCandidate {
@@ -145,7 +181,7 @@ export interface KeywordSliceSelectionStats {
   selectedBySlice: Record<KeywordSlice, number>;
   dropped: {
     invalid: number;
-    cooldown: number;
+    belowExpectedNew: number;
     deduped: number;
   };
 }
@@ -196,7 +232,7 @@ export class KeywordSliceSelectionService {
       candidatesBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
       eligibleBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
       selectedBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
-      dropped: { invalid: 0, cooldown: 0, deduped: 0 },
+      dropped: { invalid: 0, belowExpectedNew: 0, deduped: 0 },
     };
     const gateRejects: KeywordGateRejectTrace[] = [];
 
@@ -251,6 +287,17 @@ export class KeywordSliceSelectionService {
       stats.candidatesBySlice[slice] = candidatesBySlice[slice].length;
     }
 
+    // The eligibility derivation's live corpus size (posts only — the unit
+    // reddit search results share). One count per selection.
+    const corpusRows = await this.prisma.$queryRaw<
+      Array<{ n: bigint | number }>
+    >`
+      SELECT count(*) AS n FROM collection_source_documents
+      WHERE community = ${source.handle}
+        AND source_type = 'post'
+    `;
+    const corpusDocsNow = Number(corpusRows[0]?.n ?? 0);
+
     const attemptHistoryMap = await this.loadAttemptHistoryByTerm({
       engineId: source.engineId,
       normalizedTerms: Array.from(
@@ -268,18 +315,32 @@ export class KeywordSliceSelectionService {
       const filtered: KeywordTermCandidate[] = [];
       for (const candidate of candidatesBySlice[slice]) {
         const history = attemptHistoryMap.get(candidate.normalizedTerm);
-        // §11 merge law: the expected-new-content clamp (cooldown priors) may
-        // be PIERCED by renewed user-expressed demand — unmet no-results
-        // candidates recover smoothly instead of hard-gating.
+        // §11 merge law: the expected-new-content clamp may be PIERCED by
+        // renewed user-expressed demand — unmet no-results candidates
+        // recover smoothly instead of hard-gating.
         const shouldApplySmoothNoResultsRecovery =
           candidate.slice === 'unmet' &&
           history?.lastOutcome === KeywordAttemptOutcome.no_results;
+        // THE DERIVED CLAMP: harvested terms wait until the corpus delta ×
+        // their measured match share expects ≥ 1 whole new document.
+        const harvested =
+          history?.lastHarvestAt != null &&
+          typeof history.corpusDocsAtHarvest === 'number' &&
+          history.corpusDocsAtHarvest > 0;
+        const expectedNewDocs = harvested
+          ? Math.max(
+              0,
+              corpusDocsNow - (history.corpusDocsAtHarvest as number),
+            ) *
+            ((history.lastResultCount ?? 0) /
+              (history.corpusDocsAtHarvest as number))
+          : Number.POSITIVE_INFINITY;
         if (
-          history?.cooldownUntil &&
-          history.cooldownUntil > now &&
+          harvested &&
+          expectedNewDocs < 1 &&
           !shouldApplySmoothNoResultsRecovery
         ) {
-          stats.dropped.cooldown += 1;
+          stats.dropped.belowExpectedNew += 1;
           gateRejects.push({
             candidate,
             decisionState: DemandScoringDecisionState.gate_reject,
@@ -735,7 +796,6 @@ export class KeywordSliceSelectionService {
     candidate: KeywordTermCandidate,
     history:
       | {
-          cooldownUntil: Date | null;
           lastOutcome: KeywordAttemptOutcome | null;
           lastAttemptAt: Date | null;
         }
@@ -972,7 +1032,6 @@ export class KeywordSliceSelectionService {
           lastSuccessAt: row.lastSuccessAt?.toISOString() ?? null,
           lastAttemptAt: row.lastAttemptAt?.toISOString() ?? null,
           lastOutcome: row.lastOutcome ?? null,
-          cooldownUntil: row.cooldownUntil?.toISOString() ?? null,
         },
       };
     });
@@ -1001,9 +1060,11 @@ export class KeywordSliceSelectionService {
     Map<
       string,
       {
-        cooldownUntil: Date | null;
         lastOutcome: KeywordAttemptOutcome | null;
         lastAttemptAt: Date | null;
+        lastHarvestAt: Date | null;
+        lastResultCount: number | null;
+        corpusDocsAtHarvest: number | null;
       }
     >
   > {
@@ -1018,9 +1079,11 @@ export class KeywordSliceSelectionService {
       },
       select: {
         normalizedTerm: true,
-        cooldownUntil: true,
         lastOutcome: true,
         lastAttemptAt: true,
+        lastHarvestAt: true,
+        lastResultCount: true,
+        corpusDocsAtHarvest: true,
       },
     });
 
@@ -1028,9 +1091,11 @@ export class KeywordSliceSelectionService {
       rows.map((row) => [
         row.normalizedTerm,
         {
-          cooldownUntil: row.cooldownUntil,
           lastOutcome: row.lastOutcome,
           lastAttemptAt: row.lastAttemptAt,
+          lastHarvestAt: row.lastHarvestAt,
+          lastResultCount: row.lastResultCount,
+          corpusDocsAtHarvest: row.corpusDocsAtHarvest,
         },
       ]),
     );

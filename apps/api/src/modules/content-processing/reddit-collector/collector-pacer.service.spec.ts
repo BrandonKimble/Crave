@@ -220,9 +220,6 @@ describe('CollectorPacerService', () => {
         engineId: 'engine-austin',
         engineName: 'region-us-tx-austin',
         territoryPlaceIds: ['place-austin', 'place-hyde-park'],
-        // The keyword-term success cooldown is openly a constant now (the
-        // vestigial safeIntervalDays column died in the full-plan red team).
-        safeIntervalDays: 7,
       }),
     );
     expect(h.keywordOrchestrator.enqueueKeywordSearchJob).toHaveBeenCalledWith(

@@ -29,15 +29,8 @@ export class KeywordSearchJobWorker {
 
   @Process('run-keyword-search')
   async handle(job: Job<KeywordSearchJobData>): Promise<void> {
-    const {
-      subreddit,
-      terms,
-      source,
-      engineName,
-      engineId,
-      safeIntervalDays,
-      sortPlan,
-    } = job.data;
+    const { subreddit, terms, source, engineName, engineId, sortPlan } =
+      job.data;
     const cycleId =
       job.data.cycleId ?? CorrelationUtils.generateCorrelationId();
 
@@ -64,7 +57,6 @@ export class KeywordSearchJobWorker {
               source,
               engineName,
               engineId,
-              safeIntervalDays,
               sortPlan,
             },
           );

@@ -71,19 +71,6 @@ const MIN_CHRONOLOGICAL_INTERVAL_DAYS = 2 / 24;
  */
 const ARRIVAL_LOOKBACK_DAYS = 14;
 
-/**
- * §16 K3-as-prior: the keyword-term SUCCESS cooldown — how long before
- * re-searching a term that just returned results is worth a draw again
- * (one 7d cycle, plan §16 K1's cycle length). HONESTY NOTE (full-plan red
- * team 2026-07-23): this was previously read from
- * collection_communities.safeIntervalDays, a column with ZERO writers (its
- * only producer was the dead volume-tracking queue) — every read silently
- * fell back to 7 while pretending to be measured. Now it is openly the
- * constant it always was. What replaces it: the v2 value-ranked scheduler's
- * measured per-(source,lane) uncovered yield — not a better column.
- */
-const KEYWORD_TERM_SUCCESS_COOLDOWN_DAYS = 7;
-
 @Injectable()
 export class CollectorPacerService implements OnModuleInit {
   private logger!: LoggerService;
@@ -277,7 +264,6 @@ export class CollectorPacerService implements OnModuleInit {
       engineId: engine.engineId,
       engineName: engine.name,
       territoryPlaceIds,
-      safeIntervalDays: KEYWORD_TERM_SUCCESS_COOLDOWN_DAYS,
     });
     if (!selection.terms.length) {
       // Legit outcome (nothing due for this source); cadence still advances —
@@ -304,10 +290,8 @@ export class CollectorPacerService implements OnModuleInit {
       sourceId: lane.sourceId,
       engineId: engine.engineId,
       engineName: engine.name,
-      safeIntervalDays: KEYWORD_TERM_SUCCESS_COOLDOWN_DAYS,
       declaredRequests: declared,
       sortPlan: buildKeywordSortPlan({
-        safeIntervalDays: KEYWORD_TERM_SUCCESS_COOLDOWN_DAYS,
         lastTopRelevanceRunAt:
           lastTopRelevanceRunAt &&
           !Number.isNaN(lastTopRelevanceRunAt.getTime())

@@ -1488,13 +1488,18 @@ model KeywordAttemptHistory {
   lastAttemptAt        DateTime?              @map("last_attempt_at")
   lastSuccessAt        DateTime?              @map("last_success_at")
   lastOutcome          KeywordAttemptOutcome? @map("last_outcome")
-  cooldownUntil        DateTime?              @map("cooldown_until")
+  /// Harvest snapshot (no-fake-estimates law): when the query last actually
+  /// ran against the vendor, how many results it returned, and how big the
+  /// source corpus was — eligibility DERIVES from these (corpus delta ×
+  /// measured share ≥ 1 doc), no cooldown timers.
+  lastHarvestAt        DateTime?              @map("last_harvest_at") @db.Timestamptz(6)
+  lastResultCount      Int?                   @map("last_result_count")
+  corpusDocsAtHarvest  Int?                   @map("corpus_docs_at_harvest")
   createdAt            DateTime               @default(now()) @map("created_at")
   updatedAt            DateTime               @updatedAt @map("updated_at")
 
   @@id([engineName, normalizedTerm])
   @@index([engineName], map: "idx_collection_keyword_attempt_history_engine_name")
-  @@index([cooldownUntil], map: "idx_collection_keyword_attempt_history_cooldown_until")
   @@index([engineId, normalizedTerm], map: "idx_collection_keyword_attempt_history_engine_term")
   @@map("collection_keyword_attempt_history")
 }

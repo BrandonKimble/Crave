@@ -85,7 +85,6 @@ export class KeywordSearchOrchestratorService {
       source?: KeywordSearchJobData['source'] | 'manual';
       engineName?: string;
       engineId?: string;
-      safeIntervalDays?: number;
     } = {},
   ): Promise<KeywordSearchExecutionResult> {
     const existingCorrelationId = CorrelationUtils.getCorrelationId();
@@ -97,12 +96,6 @@ export class KeywordSearchOrchestratorService {
       const source = options.source ?? 'manual';
       const dryRun = this.keywordCollectionDryRunEnabled();
       const engineName = options.engineName ?? subreddit.trim().toLowerCase();
-      const safeIntervalDays =
-        typeof options.safeIntervalDays === 'number' &&
-        Number.isFinite(options.safeIntervalDays) &&
-        options.safeIntervalDays > 0
-          ? options.safeIntervalDays
-          : 7;
       const selection = this.dedupeTermsForKeywordSearch(terms);
       const selectedTerms = selection.selectedTerms;
       const termNames = selectedTerms.map((term) => term.term);
@@ -115,7 +108,6 @@ export class KeywordSearchOrchestratorService {
         source,
         dryRun,
         engineName,
-        safeIntervalDays,
         requestedTermCount: terms.length,
         selectedTermCount: termNames.length,
         dedupedCount: selection.dedupedCount,
@@ -416,6 +408,11 @@ export class KeywordSearchOrchestratorService {
         let termsNoResults = 0;
         let termsErrored = 0;
 
+        // One corpus count per cycle — the harvest snapshot every term's
+        // attempt record carries (derived-eligibility clamp input).
+        const cycleCorpusDocs =
+          await this.keywordAttemptHistory.corpusDocsForCommunity(subreddit);
+
         for (const [index, entry] of selectedTerms.entries()) {
           const termResult = results.searchResults[entry.term];
           const termErrorMessages = termErrors.get(entry.term) ?? [];
@@ -481,7 +478,10 @@ export class KeywordSearchOrchestratorService {
             engineId: options.engineId,
             normalizedTerm: entry.normalizedTerm,
             outcome: attemptOutcome,
-            safeIntervalDays,
+            // Harvest snapshot for the derived eligibility clamp (posts =
+            // the corpus unit; comments ride along in processing).
+            resultCount: posts,
+            corpusDocs: cycleCorpusDocs,
           });
         }
 
@@ -1291,7 +1291,6 @@ export interface KeywordSearchJobData {
   /** Engine natural key = legacy market key during Phase B/C (decision-ledger
    *  traces + the attempt-history legacy PK). */
   engineName?: string;
-  safeIntervalDays?: number;
   /** Pacer's reserved reddit-pool estimate (§14.2 declared-vs-actual). */
   declaredRequests?: number;
   sortPlan?: KeywordSearchSortPlan[];

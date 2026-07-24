@@ -1335,3 +1335,38 @@ work (pacer, drain, rescorer, partitions). Prod redis = Railway Redis
 (fresh queues; lane cursors rode in via the DB). Old 'Postgres' service
 (Feb data) left running for a soak period — DELETE after confidence;
 nothing references it.
+
+### The keyword cooldown timers die — eligibility becomes a derivation (2026-07-24)
+
+Owner pushed past the placeholder: if rotation is the goal, a RANKED/
+derived eligibility makes timers unnecessary — a just-harvested term
+sinks because its measured expectation drops, not because a clock says
+so. Implemented:
+
+- **Harvest snapshot** replaces cooldown state (migration
+  20260724150000_keyword_ranked_eligibility): keyword_attempt_history
+  gains last_harvest_at / last_result_count / corpus_docs_at_harvest;
+  cooldown_until DROPPED. Success + no_results are harvests (the query
+  genuinely ran); error/deferred record ONLY outcome/attemptedAt — §12.3
+  is now exact: a fault cannot re-time a term in any direction (the 1d
+  error and 6h deferred timers are gone with nothing in their place, by
+  design — pool denial already leaves work due).
+- **The derived clamp** (keywordTermExpectedNewDocs, pure + spec'd):
+  expectedNew = (corpusNow − corpusAtHarvest) × (lastResultCount ÷
+  corpusAtHarvest); eligible when ≥ 1 whole document (smallest honest
+  count — same pattern as §2(e) frequent = 2). Never-harvested = always
+  eligible (the first search IS the measurement). Measured-barren
+  (share 0) re-enters only via the §11 unmet demand PIERCE — known-zero
+  is evidence, not a timeout (the 60d no-results timer dies).
+- **safeIntervalDays threading fully dead** end to end (pacer →
+  selection → orchestrator → worker → sort plan); the sort plan's heavy
+  pass now keys on the K1 60d clamp sentence alone. The orchestrator
+  stamps each attempt with resultCount + a once-per-cycle corpus count.
+- Existing attempt rows have null snapshots → treated never-harvested →
+  re-eligible once; dedupe makes the re-search idempotent.
+
+The four timers (7d/60d/1d/6h) were the last invented collector numbers.
+Remaining by category only: facts, owner choices (incl. K1 60d clamp
+sentence + feel constants), derivations, and the poll-viability bootstrap
+bridge. 735 api green (new eligibility + harvest specs, RED-able both
+sides); build clean; API restarted.
