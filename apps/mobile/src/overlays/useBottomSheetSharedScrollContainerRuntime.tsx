@@ -59,48 +59,30 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   const transparentRef = React.useRef(transparent);
   transparentRef.current = transparent;
 
-  // RELATION-STALENESS GUARD (red-team ledger #3 — applied for real this round; the
-  // 99e020f9 edit silently no-op'd on a drifted anchor): the mount-stable component
-  // reads the pans from refs at ITS render, but nothing forced that render when the
-  // pans re-mint — a container's Gesture.Native could keep requireExternalGestureToFail
-  // relations against DETACHED pan instances (a frozen-scroll vector). Pan identity is
-  // now a subscription: a re-mint bumps the store, every live instance re-renders.
-  const panRevisionRef = React.useRef({ revision: 0, listeners: new Set<() => void>() });
-  const panRevision = panRevisionRef.current;
-  React.useEffect(() => {
-    panRevision.revision += 1;
-    panRevision.listeners.forEach((listener) => listener());
-  }, [expandPanGesture, collapsePanGesture, overscrollPanGesture, panRevision]);
-
+  // RELATION-STALENESS: the revision-subscription guard is REVERTED (2026-07-24) —
+  // with pan identities that can re-mint on host renders, forcing every container to
+  // re-render and re-attach its Gesture.Native cancelled in-flight scrolls (the
+  // owner's all-pages freeze). The latent stale-relation vector is RECORDED, unfixed:
+  // its proper cure is making the PANS mount-stable in the gesture runtime (identity
+  // that never changes), not re-attachment churn here. Until then: refs-only.
   const ScrollComponent = React.useMemo(() => {
-    const subscribe = (listener: () => void) => {
-      panRevision.listeners.add(listener);
-      return () => {
-        panRevision.listeners.delete(listener);
-      };
-    };
-    const getRevision = () => panRevision.revision;
-    const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => {
-      React.useSyncExternalStore(subscribe, getRevision, getRevision);
-      return (
-        <BottomSheetScrollContainer
-          {...props}
-          ref={ref}
-          expandPanGesture={expandPanRef.current}
-          collapsePanGesture={collapsePanRef.current}
-          overscrollPanGesture={overscrollPanRef.current}
-          contentOverscroll={contentOverscrollRef.current}
-          maxScrollOffset={maxScrollOffsetRef.current}
-          scrollViewportHeight={scrollViewportHeightRef.current}
-          shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
-          transparent={transparentRef.current}
-        />
-      );
-    });
+    const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
+      <BottomSheetScrollContainer
+        {...props}
+        ref={ref}
+        expandPanGesture={expandPanRef.current}
+        collapsePanGesture={collapsePanRef.current}
+        overscrollPanGesture={overscrollPanRef.current}
+        contentOverscroll={contentOverscrollRef.current}
+        maxScrollOffset={maxScrollOffsetRef.current}
+        scrollViewportHeight={scrollViewportHeightRef.current}
+        shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
+        transparent={transparentRef.current}
+      />
+    ));
     Component.displayName = 'OverlaySheetScrollView';
     return Component;
-    // Mount-stable: inputs read from refs; pan identity via the revision subscription.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Deliberately mount-stable: every input is read from a ref (stable identity).
   }, []);
 
   return {

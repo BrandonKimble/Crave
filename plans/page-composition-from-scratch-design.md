@@ -1283,3 +1283,16 @@ anchor matched — a silent no-op ships a lie.
 VERIFIED: long-list scroll healthy post-change (deep scroll, no early handoff, no
 misfires); tsc/jest 396, invariants 30/30, matrix 21/21. OPEN: deliberate settings-
 band eye pass (blind rig taps landed on a restaurant page) + owner thumb.
+
+### Relation-staleness guard REVERTED (2026-07-24) — it froze all scrolling
+The revision-subscription guard (applied for real earlier today) was the owner's
+all-pages freeze: pan identities re-mint on host renders, so the subscription forced
+every container to re-render and re-attach its Gesture.Native continuously —
+cancelling every in-flight scroll. Reverted to refs-only (scroll verified restored
+on-sim, rows deep under the header). THE LATENT VECTOR STANDS RECORDED, UNFIXED: a
+container's native-gesture relations can reference detached pans after a re-mint
+until an incidental re-render. Its PROPER cure is upstream — make the pans
+MOUNT-STABLE in the gesture runtime (worklets already read every changing fact from
+shared values; the useMemo deps that re-mint them are the disease) — a designed
+slice, not a re-attachment hack. The short-page fact (per-leg publication) is
+unaffected and stays.
