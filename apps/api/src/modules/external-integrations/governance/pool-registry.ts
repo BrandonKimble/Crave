@@ -428,6 +428,49 @@ export class PoolRegistry {
   }
 
   /**
+   * VENDOR-LEDGER ALIGNMENT (§14.2 taken to its logical end, 2026-07-24):
+   * vendors that return live rate-limit headers (reddit:
+   * x-ratelimit-remaining/reset) publish THEIR window ledger on every
+   * response — and theirs is truth, ours is the estimate. The cooperative
+   * pattern is to align after every response instead of discovering
+   * divergence at a 429: when the vendor says fewer draws remain than our
+   * window believes (their window is shared with token mints, other
+   * processes, clock skew), consume the gap so admission reflects reality;
+   * when the vendor says zero remain, poison until their reset. Alignment
+   * only ever TIGHTENS — a vendor reporting MORE headroom than our ledger
+   * never loosens ours (our limit may be deliberately below the vendor's,
+   * and a pool must never exceed its owner-priced budget).
+   */
+  alignToVendor(
+    poolName: string,
+    vendorRemaining: number,
+    vendorResetMs: number | null,
+    at: Date = new Date(),
+  ): Promise<void> {
+    const pool = this.requirePool(poolName);
+    this.expireLeaks(at);
+    if (!Number.isFinite(vendorRemaining)) {
+      return Promise.resolve();
+    }
+    if (vendorRemaining <= 0 && vendorResetMs !== null && vendorResetMs > 0) {
+      this.poisonWindow(poolName, vendorResetMs, at);
+    }
+    const status = this.poolStatus(poolName, at);
+    const ourRemaining = Math.max(
+      0,
+      status.limit - status.used - status.reservedOutstanding,
+    );
+    const gap = ourRemaining - Math.max(0, Math.floor(vendorRemaining));
+    if (gap <= 0) {
+      return Promise.resolve();
+    }
+    this.consume(poolName, gap, at);
+    return this.isDurable(pool) && this.store !== undefined
+      ? this.flushDurable(poolName)
+      : Promise.resolve();
+  }
+
+  /**
    * Write through this process's unpersisted consumption for a durable pool.
    * Success on an already-confirmed window keeps it confirmed; failure clears
    * confirmation (fail closed). Never throws.

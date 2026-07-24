@@ -93,6 +93,57 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     expect(registry.measureDrift('chronological')).toBeCloseTo(0.25);
   });
 
+  describe('vendor-ledger alignment (§14.2 alignToVendor)', () => {
+    it('TIGHTENS to the vendor remaining when it is below ours', async () => {
+      const registry = new PoolRegistry();
+      registry.register(
+        minutePool({ window: { kind: 'perMinute', limit: 100 } }),
+      );
+      // Vendor says 30 remain; we believe 100 → consume the 70 gap.
+      await registry.alignToVendor('reddit.requests', 30, 60_000, t0);
+      const status = registry.poolStatus('reddit.requests', t0);
+      expect(status.used).toBe(70);
+      // Admission now reflects the vendor's reality.
+      expect(
+        registry.reserve('reddit.requests', 31, 'chronological', t0).admitted,
+      ).toBe(false);
+      expect(
+        registry.reserve('reddit.requests', 30, 'chronological', t0).admitted,
+      ).toBe(true);
+    });
+
+    it('NEVER loosens: vendor headroom above ours is ignored (owner budget stands)', async () => {
+      const registry = new PoolRegistry();
+      registry.register(
+        minutePool({ window: { kind: 'perMinute', limit: 10 } }),
+      );
+      const res = registry.reserve('reddit.requests', 8, 'chronological', t0);
+      if (res.admitted) await registry.reconcile(res.reservationId, 8, t0);
+      // Vendor claims 600 remain — our 10-limit window keeps only 2 free.
+      await registry.alignToVendor('reddit.requests', 600, 60_000, t0);
+      expect(
+        registry.reserve('reddit.requests', 3, 'keyword', t0).admitted,
+      ).toBe(false);
+      expect(
+        registry.reserve('reddit.requests', 2, 'keyword', t0).admitted,
+      ).toBe(true);
+    });
+
+    it('vendor ZERO remaining poisons until the vendor reset', async () => {
+      const registry = new PoolRegistry();
+      registry.register(
+        minutePool({ window: { kind: 'perMinute', limit: 100 } }),
+      );
+      await registry.alignToVendor('reddit.requests', 0, 45_000, t0);
+      const denied = registry.reserve('reddit.requests', 1, 'keyword', t0);
+      expect(denied.admitted).toBe(false);
+      if (!denied.admitted) {
+        expect(denied.reason).toBe('upstreamRateLimited');
+        expect(denied.retryAfterMs).toBeGreaterThanOrEqual(44_000);
+      }
+    });
+  });
+
   it('denials are typed not-now with a retry hint, never throws', () => {
     const registry = new PoolRegistry();
     registry.register(minutePool({ window: { kind: 'perMinute', limit: 5 } }));

@@ -698,6 +698,34 @@ export class RedditService implements OnModuleInit {
     };
   }
 
+  /**
+   * §14.2 vendor-ledger alignment: reddit publishes its OWN window state on
+   * every response (x-ratelimit-remaining, x-ratelimit-reset in seconds) —
+   * the cooperative pattern is reading it every time instead of discovering
+   * divergence at a 429. The vendor's ledger is truth; ours is the
+   * estimate; alignment only ever tightens (see PoolRegistry.alignToVendor).
+   * Fire-and-forget; malformed/absent headers are a no-op.
+   */
+  private alignPoolToVendorHeaders(
+    headers: Record<string, unknown> | undefined,
+  ): void {
+    if (!headers) {
+      return;
+    }
+    const remaining = Number(headers['x-ratelimit-remaining']);
+    const resetSeconds = Number(headers['x-ratelimit-reset']);
+    if (!Number.isFinite(remaining)) {
+      return;
+    }
+    void this.governance.pools.alignToVendor(
+      REDDIT_REQUESTS_POOL,
+      remaining,
+      Number.isFinite(resetSeconds) && resetSeconds > 0
+        ? resetSeconds * 1000
+        : null,
+    );
+  }
+
   private recordPerformanceMetrics(responseTime: number): void {
     this.performanceMetrics.requestCount++;
     this.performanceMetrics.totalResponseTime += responseTime;
@@ -775,12 +803,14 @@ export class RedditService implements OnModuleInit {
         const responseTime = Date.now() - startTime;
         this.recordPerformanceMetrics(responseTime);
 
+        this.alignPoolToVendorHeaders(response.headers);
         return response.data as T;
       } catch (error) {
         const responseTime = Date.now() - startTime;
         this.recordPerformanceMetrics(responseTime);
 
         const axiosError = error as AxiosError;
+        this.alignPoolToVendorHeaders(axiosError.response?.headers);
         if (axiosError.response?.status === 429) {
           const retryAfter = parseInt(
             String(axiosError.response.headers?.['retry-after'] || '60'),
