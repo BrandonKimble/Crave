@@ -1454,3 +1454,32 @@ unlocks) must be explained BY the map.
 STEP 2: the design doc (state machine states/transitions/inputs; migration plan;
 deletion list). Owner reviews before code.
 STEP 3+: build behind the polls acceptance test.
+
+### GESTURE REDESIGN — THE MAP'S VERDICT + THE IMMUTABLE-PAN DESIGN (2026-07-24)
+Survey (definitive, file:line in agent report): ONE runtime instance
+(assembly:123), ONE detector (SurfaceHost:177), ONE pan set for every surface;
+BottomSheetWithFlashList is DEAD (never mounted). The polls pathology is purely
+temporal: pans STILL re-mint (deps: runtimeConfigValues, startSpring,
+resolveDestination, gestureEnabledValue identities — the snap-number mirrors were
+necessary but not sufficient), and the polls leg — always-mounted from boot
+(transition-policy:162), never re-rendered — keeps Gesture.Native relations to the
+BOOT pans while the detector arbitrates re-minted ones. Boot lock: the
+canRenderSurface-gated late commit + no become-live edge for polls at boot.
+Leave-and-return re-renders the container → fresh relations → "unlocked" but the
+deeper double-motion persists whenever any later re-mint outruns polls' next render.
+
+THE DESIGN (charter law 1, refined by the map): IMMUTABLE PANS + COMMAND BUS.
+- The pan set mints ONCE per runtime mount (useMemo deps: []). INVARIANT: nothing
+  captured by a pan worklet may have JS identity that can change — facts arrive via
+  stable owned SharedValues only.
+- CONFIG MIRRORS: runtimeConfigValues' fields sync into runtime-owned SVs via
+  useAnimatedReaction OUTSIDE the pan memo (reactions may re-mint freely — they are
+  not gesture identity). gestureEnabledValue likewise always the owned SV.
+- THE COMMAND BUS: pans never call resolveDestination/startSpring (JS-identity
+  functions). onEnd writes a release command SV {kind, y, velocity, seq}; an
+  executor reaction outside the memo consumes it with the CURRENT snap machinery.
+  tapToMiddle emits a command too.
+- RNGH relations stay (the proven mid-finger handoff) — the star's center is now
+  immutable, so a relation minted at ANY commit is valid for the container's life.
+- Acceptance: [REMINT] must log exactly ONCE per app session across boot + search +
+  scene hops (RED-capable); then the owner's polls repro.
