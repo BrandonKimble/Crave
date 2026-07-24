@@ -899,3 +899,130 @@ synthesizer's pre-registered pass: estimator zoo, tick/pacer overlap, DAG
 plural-parent leak, two-store question (resolved KEEP by the
 facts-vs-judgments argument), operability concern (resolved by staging, not
 redesign).
+
+# §24 COST GOVERNANCE v2 — projection-governed spend (FULL REPLACEMENT)
+
+Ordered by the owner 2026-07-24 as a full cutover: "I don't want to rely on
+budgets… any job that costs money should carry a really accurate estimate,
+made at the step with the most context, approved by me for the big things,
+then run UNCAPPED and stopped programmatically only when actuals stray from
+the projection." This section replaces every cap-as-work-governor behavior;
+prior mechanisms survive only where they are re-derived below with a new
+role. The July-24 incident is the motivating autopsy: a healthy extraction
+run hit the vendor's monthly cap mid-flight (a cap mostly consumed by an
+unrelated dev-era spike), the retrier stormed, and the system LOOKED broken
+while doing exactly its job — caps conflate "what work should cost" with
+"how much a catastrophe may lose," and those are different numbers.
+
+## §24.1 The three-tier law
+
+- **Tier 1 — CAMPAIGNS (owner-approved, envelope-governed).** A campaign is
+  any finite, named, spend-bearing job: archive load, source onboarding,
+  polygon seed, re-judge sweep, backfill. Law: (a) the ESTIMATE is computed
+  at the point of MAXIMUM CONTEXT — after dedupe/relevance gates, when unit
+  counts are facts, not guesses; if context accrues in stages, the estimate
+  REFINES at each stage boundary and the envelope re-anchors; (b) unit
+  costs come ONLY from the measured unit-cost table (§24.2) — an estimate
+  containing an invented number is a constitution violation (§16); (c) the
+  owner approves the estimate BEFORE the first paid draw (the approval
+  mints the §14.6 grant — grants survive as the campaign's spend identity,
+  not as a cap); (d) the job then runs UNGATED inside a PROJECTION
+  ENVELOPE: actual-spend vs projected-spend-at-this-progress, with
+  tolerance DERIVED from the declared-vs-actual drift statistics of the
+  same work class (§14.2's measureDrift is the instrument — never a chosen
+  percentage); (e) an envelope breach STOPS THE CAMPAIGN (not the system):
+  typed, loud, resumable after owner re-approval with the refined estimate.
+- **Tier 2 — STEADY STATE (expectation-tracked, unattended).** Recurring
+  lanes (chronological, keyword, enrichment, drain retries, search-time
+  interactive LLM) run with NO owner loop and NO monthly work-cap. Each
+  spending lane carries a COST BASELINE — the same EWMA pattern as the
+  §12.4 output-collapse baseline, in micro-USD per tick — and a breach of
+  the expectation band pauses THAT LANE with a loud RED, exactly like
+  output collapse does today. Self-calibrating: the band is the lane's own
+  measured history; a lane's first ticks can never false-RED (no baseline
+  yet). Symmetric: anomalously HIGH spend per tick is the alarm; low spend
+  is already covered by output collapse.
+- **Tier 3 — CATASTROPHE BACKSTOPS (never felt in healthy operation).**
+  Monthly dollar pools survive with a demotion and a law: limit =
+  BACKSTOP_MULTIPLE × the trailing measured monthly spend (re-derived
+  monthly by the same job that refreshes baselines), where
+  BACKSTOP_MULTIPLE is the ONE owner-ratified constant of this section
+  (K1; initial 3 — "a bug may cost at most two extra months"). A backstop
+  firing is by definition an incident, never scheduling. Vendor-truth
+  reflexes stay at the outermost ring: rate-header alignment, 429/cap
+  poisoning to the vendor's own reset.
+
+## §24.2 The unit-cost table (measured, never invented)
+
+One derived table (refreshed by the baseline job, queryable live):
+`(work_class, unit) → micro-USD per unit`, computed from the
+api_usage_ledger joined to the work it produced — gemini per-document by
+(source, pipeline, model, mode); TomTom per-draw by pool; Places per-call
+by SKU; reddit = 0 (rate-limited, not billed). Every Tier-1 estimate and
+Tier-2 expectation is unit-count × this table. Cold start (a work class
+with no history): run a BOUNDED PILOT (the smallest unit batch that yields
+a measurable sample) as an automatic micro-campaign, then estimate from
+its actuals — the pilot's own spend needs no estimate (bounded by unit
+count, priced post-hoc). No priors, no seeding numbers (§16 no-fake-
+estimates law).
+
+## §24.3 The approval surface
+
+A `spend_campaigns` row: name, work class, unit counts, estimate breakdown,
+envelope tolerance, state (draft → awaiting_approval → approved → running →
+completed | breached → re-awaiting). Owner approves via the ops seam (the
+§18.4 ops-reader leg grows its first WRITE verb) or, interim, via the
+operator scripts that already gate these jobs — the scripts print the
+estimate and refuse to start without an explicit flag carrying the
+estimate's hash (approving THIS estimate, not "whatever it turns out to
+be"). Steady-state lanes never touch this surface.
+
+## §24.4 KILL LIST (the full-replacement clause)
+
+1. **Seed-month pool raises: extinct as a pattern.** Any future bulk vendor
+   work is a Tier-1 campaign whose grant IS its budget; nobody edits a
+   standing pool limit for a job again (the July revert dance dies).
+2. **gemini.monthlySpend as dispatch gate: demoted.** The gates at
+   callLLMApi/batch-submit stop consulting "the monthly cap" as a work
+   governor; they consult (a) campaign envelope when running Tier-1 work,
+   (b) lane pause state for Tier-2, (c) the Tier-3 backstop last. The
+   pool row itself survives as that backstop (re-derived limit).
+3. **tomtom.cheapGeocode / scarcePolygons monthly limits: demoted** to
+   backstops on the same law; the drain's spend becomes a Tier-2 lane with
+   a cost baseline. The 334-straggler retries stop being "next month's
+   window" theater — the month window survives only as attempt-backoff
+   clock (unchanged) while spend is expectation-governed.
+4. **GEMINI_MONTHLY_SPEND_CAP_USD env: replaced** by the derived backstop
+   (owner sets BACKSTOP_MULTIPLE once; the dollar number is measured).
+   Interim value stands until the baseline job exists.
+5. **Ad-hoc budget env knobs die where they duplicate this system**:
+   GOOGLE_PLACES_REQUESTS_PER_DAY-style daily spend proxies become either
+   vendor-fact rate limits (keep, K4) or Tier-2/3 spend governance (fold
+   in); the census in the first leg classifies every one.
+6. **The 80%-of-budget warn: replaced** by envelope/band telemetry (percent
+   of projection, not percent of cap).
+
+## §24.5 Legs (each lands green, committed, verified RED-capable)
+
+- **Leg A — unit-cost table + baseline job** (derived views over
+  api_usage_ledger + run/doc joins; nightly refresh; ops-readable).
+- **Leg B — Tier-2 cost baselines** on every spending lane + pause-on-
+  breach wired into the same heartbeat surface as output collapse; staging
+  proof: a fixture lane with an injected price spike must show RED and
+  pause (a band that cannot fire is lying).
+- **Leg C — campaign ledger + estimate-at-max-context + script approval
+  gates** for the named campaign types; envelope stop proven RED in
+  staging by a mutated unit-cost fixture.
+- **Leg D — demotions + kill list execution**: backstop re-derivation,
+  gate rewiring, env/knob census, delete the dead patterns, grep-proof.
+- Ordering: A → B ships unattended safety first; C before the next big
+  onboarding campaign (NYC follow-ups, new markets); D last.
+
+## §24.6 §16 classifications introduced here
+
+- BACKSTOP_MULTIPLE — K1 owner price-tag (initial 3; re-ratify to change).
+- Envelope tolerance — DERIVED (declared-vs-actual drift per work class).
+- Cost-baseline EWMA α — reuses the §12.4 OUTPUT_BASELINE_ALPHA constant
+  (one smoothing prior, not a new knob).
+- Backstop limits, expectation bands, unit costs — all MEASURED (no owner
+  numbers, no fake estimates).
