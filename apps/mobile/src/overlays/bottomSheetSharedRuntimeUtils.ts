@@ -34,44 +34,7 @@ export const isAtScrollTop = (offsetY: number, scrollTopOffset: number): boolean
   return offsetY <= scrollTopOffset + TOP_EPSILON;
 };
 
-/** THE NATIVE RUBBER CURVE (boundary-physics native baseline): Apple's own formula —
- *  offset = (1 − 1/(x·c/d + 1))·d with c = 0.55 and d = the VIEWPORT dimension (WebKit
- *  ScrollElasticityController constants). Content overscroll uses THIS (the feel every
- *  iOS scroll view has); the sheet's between-snap band keeps the tighter fixed-range
- *  curve below — one formula family, two declared materials. */
-export const NATIVE_RUBBER_COEFFICIENT = 0.55;
-export const nativeRubberBandDistance = (
-  distanceFromBound: number,
-  viewportDimension: number
-): number => {
-  'worklet';
-  if (distanceFromBound <= 0 || viewportDimension <= 0) {
-    return 0;
-  }
-  return (
-    (1 - 1 / ((distanceFromBound * NATIVE_RUBBER_COEFFICIENT) / viewportDimension + 1)) *
-    viewportDimension
-  );
-};
-
-/** Inverse of the native curve — the CATCH seed: given a visible stretch y, the
- *  equivalent finger pull x with rubber(x) = y, so a finger landing mid-rebound
- *  continues the curve from where the content actually is (native catch semantics). */
-export const inverseNativeRubberBandDistance = (
-  stretch: number,
-  viewportDimension: number
-): number => {
-  'worklet';
-  if (stretch <= 0 || viewportDimension <= 0 || stretch >= viewportDimension) {
-    return 0;
-  }
-  return (
-    (viewportDimension * stretch) /
-    (NATIVE_RUBBER_COEFFICIENT * (viewportDimension - stretch))
-  );
-};
-
-export const rubberBandDistance = (distanceFromBound: number): number => {
+const rubberBandDistance = (distanceFromBound: number): number => {
   'worklet';
   if (distanceFromBound <= 0) {
     return 0;

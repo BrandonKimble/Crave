@@ -42,8 +42,6 @@ export type BottomSheetSceneStackBodyScrollRuntime = {
   primaryListOnScroll: FlashListProps<unknown>['onScroll'];
   secondaryListOnScroll: FlashListProps<unknown>['onScroll'];
   scrollOffset: SharedValue<number>;
-  /** Boundary-physics law §1: runtime-owned overscroll (<0 top / >0 bottom / 0 inside). */
-  contentOverscroll: SharedValue<number>;
 };
 
 export type BottomSheetSceneStackBodyRuntimeSnapshot = {

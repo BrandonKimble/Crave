@@ -71,6 +71,9 @@ const BottomSheetWithFlashList = <T,>({
   onMomentumEndJS,
   showsVerticalScrollIndicator,
   keyboardDismissMode,
+  bounces,
+  alwaysBounceVertical,
+  overScrollMode,
   testID,
   activeList = 'primary',
   onDragStateChange,
@@ -130,9 +133,9 @@ const BottomSheetWithFlashList = <T,>({
   const resolvedScrollIndicatorInsets = scrollIndicatorInsets;
   const resolvedShowsVerticalScrollIndicator = showsVerticalScrollIndicator;
   const resolvedKeyboardDismissMode = keyboardDismissMode;
-  // The bounce knobs are GONE from the contract (boundary-physics law §1): the scroll
-  // container owns boundary behavior structurally; a per-scene bounce prop was a dead
-  // knob the container's after-spread constants always overrode.
+  const resolvedBounces = bounces;
+  const resolvedAlwaysBounceVertical = alwaysBounceVertical;
+  const resolvedOverScrollMode = overScrollMode;
   const resolvedTestID = testID;
 
   const { gestureRuntime, scrollRuntime, surfaceRuntime } = useBottomSheetSharedRuntime({
@@ -312,6 +315,9 @@ const BottomSheetWithFlashList = <T,>({
                         scrollRuntime.effectiveShowsVerticalScrollIndicator
                       }
                       keyboardDismissMode={resolvedKeyboardDismissMode}
+                      bounces={resolvedBounces}
+                      alwaysBounceVertical={resolvedAlwaysBounceVertical}
+                      overScrollMode={resolvedOverScrollMode}
                       testID={resolvedTestID}
                       scrollIndicatorInsets={resolvedScrollIndicatorInsets}
                     >
@@ -384,6 +390,9 @@ const BottomSheetWithFlashList = <T,>({
                         (!shouldRenderDualLists || resolvedActiveList === 'primary')
                       }
                       keyboardDismissMode={resolvedKeyboardDismissMode}
+                      bounces={resolvedBounces}
+                      alwaysBounceVertical={resolvedAlwaysBounceVertical}
+                      overScrollMode={resolvedOverScrollMode}
                       testID={resolvedTestID}
                       extraData={extraData}
                       scrollIndicatorInsets={resolvedScrollIndicatorInsets}
@@ -449,6 +458,9 @@ const BottomSheetWithFlashList = <T,>({
                           resolvedActiveList === 'secondary'
                         }
                         keyboardDismissMode={resolvedKeyboardDismissMode}
+                        bounces={resolvedBounces}
+                        alwaysBounceVertical={resolvedAlwaysBounceVertical}
+                        overScrollMode={resolvedOverScrollMode}
                         testID={secondaryList.testID ?? resolvedTestID}
                         extraData={secondaryList.extraData ?? extraData}
                         scrollIndicatorInsets={

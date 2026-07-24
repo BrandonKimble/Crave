@@ -9,11 +9,6 @@ import BottomSheetScrollContainer from './BottomSheetScrollContainer';
 type UseBottomSheetSharedScrollContainerRuntimeArgs = {
   expandPanGesture: GestureType;
   collapsePanGesture: GestureType;
-  overscrollPanGesture: GestureType;
-  contentOverscroll: SharedValue<number>;
-  maxScrollOffset: SharedValue<number>;
-  scrollViewportHeight: SharedValue<number>;
-  boundaryFactsKnown: SharedValue<boolean>;
   shouldEnableScrollShared: SharedValue<boolean>;
   scrollHeaderComponent?: React.ReactNode;
 };
@@ -33,11 +28,6 @@ type UseBottomSheetSharedScrollContainerRuntimeResult = {
 export const useBottomSheetSharedScrollContainerRuntime = ({
   expandPanGesture,
   collapsePanGesture,
-  overscrollPanGesture,
-  contentOverscroll,
-  maxScrollOffset,
-  scrollViewportHeight,
-  boundaryFactsKnown,
   shouldEnableScrollShared,
   scrollHeaderComponent,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
@@ -47,28 +37,11 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   expandPanRef.current = expandPanGesture;
   const collapsePanRef = React.useRef(collapsePanGesture);
   collapsePanRef.current = collapsePanGesture;
-  const overscrollPanRef = React.useRef(overscrollPanGesture);
-  overscrollPanRef.current = overscrollPanGesture;
-  const contentOverscrollRef = React.useRef(contentOverscroll);
-  contentOverscrollRef.current = contentOverscroll;
-  const maxScrollOffsetRef = React.useRef(maxScrollOffset);
-  maxScrollOffsetRef.current = maxScrollOffset;
-  const scrollViewportHeightRef = React.useRef(scrollViewportHeight);
-  scrollViewportHeightRef.current = scrollViewportHeight;
-  const boundaryFactsKnownRef = React.useRef(boundaryFactsKnown);
-  boundaryFactsKnownRef.current = boundaryFactsKnown;
-
   const shouldEnableScrollSharedRef = React.useRef(shouldEnableScrollShared);
   shouldEnableScrollSharedRef.current = shouldEnableScrollShared;
   const transparentRef = React.useRef(transparent);
   transparentRef.current = transparent;
 
-  // RELATION-STALENESS: the revision-subscription guard is REVERTED (2026-07-24) —
-  // with pan identities that can re-mint on host renders, forcing every container to
-  // re-render and re-attach its Gesture.Native cancelled in-flight scrolls (the
-  // owner's all-pages freeze). The latent stale-relation vector is RECORDED, unfixed:
-  // its proper cure is making the PANS mount-stable in the gesture runtime (identity
-  // that never changes), not re-attachment churn here. Until then: refs-only.
   const ScrollComponent = React.useMemo(() => {
     const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
       <BottomSheetScrollContainer
@@ -76,11 +49,6 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
         ref={ref}
         expandPanGesture={expandPanRef.current}
         collapsePanGesture={collapsePanRef.current}
-        overscrollPanGesture={overscrollPanRef.current}
-        contentOverscroll={contentOverscrollRef.current}
-        maxScrollOffset={maxScrollOffsetRef.current}
-        scrollViewportHeight={scrollViewportHeightRef.current}
-        boundaryFactsKnown={boundaryFactsKnownRef.current}
         shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
         transparent={transparentRef.current}
       />

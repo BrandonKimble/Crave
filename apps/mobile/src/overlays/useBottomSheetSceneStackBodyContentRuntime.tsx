@@ -23,7 +23,6 @@ import {
   type SheetSceneKey,
 } from '../navigation/runtime/scene-foundation-spec';
 import { SceneBodyFoundationSurface } from './SceneBodyFoundationSurface';
-import { SceneScrollFactsSceneKeyContext } from './sceneScrollStateRegistry';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
 // ─── W1 slice 1 — entry-keyed child mount boundary ──────────────────────────────────────────
@@ -372,24 +371,17 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
   return React.useMemo(() => {
     if (hasFoundationWhiteLayer) {
       return (
-        <SceneScrollFactsSceneKeyContext.Provider value={sceneKey ?? null}>
         <SceneBodyFoundationSurface
           scrollOffset={bodyScrollRuntime.scrollOffset}
-          contentOverscroll={bodyScrollRuntime.contentOverscroll}
           // hasFoundationWhiteLayer ⇒ a spec row exists ⇒ sceneKey IS a SheetSceneKey.
           sceneKey={sceneKey as SheetSceneKey}
           style={sceneSurfaceStyle}
         >
           {sceneBodyInner}
         </SceneBodyFoundationSurface>
-        </SceneScrollFactsSceneKeyContext.Provider>
       );
     }
-    return (
-      <SceneScrollFactsSceneKeyContext.Provider value={sceneKey ?? null}>
-        <View style={sceneSurfaceStyle}>{sceneBodyInner}</View>
-      </SceneScrollFactsSceneKeyContext.Provider>
-    );
+    return <View style={sceneSurfaceStyle}>{sceneBodyInner}</View>;
   }, [
     bodyScrollRuntime.scrollOffset,
     hasFoundationWhiteLayer,

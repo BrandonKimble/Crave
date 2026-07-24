@@ -1518,3 +1518,22 @@ trace (beginDrag off=487.7 — real offsets; handoffs correct). Gates: jest 396/
 matrix 21/21. RNGH/Reanimated LORE (now twice-burned, three fields): event.velocity,
 Gesture.Native callbacks, event.contentSize — NEVER trust an event field without a
 RED-capable probe first.
+
+## THE SCROLL/GESTURE ARC REVERT (owner-directed, 2026-07-24)
+DECISION: five verified fixes changed nothing the owner could feel, and the layers
+added real frame cost (owner: laggy). The methodological failure is recorded: every
+slice was accepted against RIG reproductions, which repeatedly failed to predict the
+owner's experience — my green was never the acceptance signal. All scroll/gesture
+files are restored to the pre-arc baseline (05a41601, strip-seam slice 2): the
+overscroll pan, contentOverscroll, rebound, native curves, fact records, projector,
+immutable pans, command bus, and every probe are GONE from the runtime. The frost
+true-cutout work, strip-seam law, and residency work stand (independent, verified).
+WHAT SURVIVES AS KNOWLEDGE (plans doc entries above + memory): the complete
+structural map (one runtime/detector/pan-set; legacy host dead); the three lying
+platform APIs (event.velocity, event.contentSize, Gesture.Native callbacks); the
+writer laws; the physics constants. THE REDO LAW: the rubber-band arc re-lands ONLY
+in owner-gated slices — each slice accepted by the OWNER'S THUMB before the next
+begins; the rig is an instrument, never the acceptance.
+Baseline gates: tsc/jest 396, invariants 30/30, matrix 21/21, results scroll clean.
+GROUND-TRUTH CHECK PENDING: the owner verifies polls/results/lists/profile feel
+restored (stable, fast, no shake) before anything new lands.

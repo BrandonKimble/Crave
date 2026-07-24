@@ -10,7 +10,7 @@ import type { SharedValue } from 'react-native-reanimated';
 // The LIVE gesture values (bodyScrollRuntime.scrollOffset etc.) stay host-owned by design —
 // exactly one scene is presented at a time and the runtime re-bases them per presentation.
 // (The former content-fits/tug machinery is GONE: short pages get real scroll room instead —
-// the boundary-physics law — so the one result-sheet handoff
+// BottomSheetScrollContainer's SHORT_PAGE_SCROLL_ROOM_PX — so the one result-sheet handoff
 // covers every page and there is no parallel gesture mode to desync.)
 
 export type OverlaySceneScrollHandle = {
@@ -35,26 +35,6 @@ type SceneScrollState = {
   // scenes keep every in-stack entry's body mounted — pushing dmSession B over A registers B on
   // top; popping B surfaces A's registration again.
   publishedOffsets: SharedValue<number>[];
-  // RED TEAM 2 (scroll-fact redesign slice 1): the scene's BOUNDARY FACTS — the
-  // per-scene record the live host SharedValues are a PROJECTION of. Writers write
-  // HERE (per-leg gated container publication + the active list's onScroll mirror);
-  // the projector loads the presented scene's record on the frame flip. `known`
-  // distinguishes a real short page (max 0, viewport measured) from an unmeasured
-  // scene — the stale-hand-me-down disease (polls inheriting another leg's facts)
-  // is unrepresentable because facts never leave their scene's record.
-  boundaryFacts: SceneBoundaryFacts;
-};
-
-export type SceneBoundaryFacts = {
-  maxScrollOffset: number;
-  viewportHeight: number;
-  known: boolean;
-};
-
-const UNKNOWN_BOUNDARY_FACTS: SceneBoundaryFacts = {
-  maxScrollOffset: 0,
-  viewportHeight: 0,
-  known: false,
 };
 
 const createSceneScrollState = (): SceneScrollState => ({
@@ -62,69 +42,7 @@ const createSceneScrollState = (): SceneScrollState => ({
   pendingRestore: null,
   scrollHandle: null,
   publishedOffsets: [],
-  boundaryFacts: UNKNOWN_BOUNDARY_FACTS,
 });
-
-/** Scene identity for scroll-fact writers: provided by the body content runtime at
- *  each leg's root so the shared scroll container knows WHOSE record it feeds. */
-export const SceneScrollFactsSceneKeyContext = React.createContext<string | null>(null);
-export const useSceneScrollFactsSceneKey = (): string | null =>
-  React.useContext(SceneScrollFactsSceneKeyContext);
-
-/** Record the scene's measured boundary facts (content − viewport, ≥0). */
-export const recordSceneBoundaryFacts = (
-  sceneKey: string,
-  maxScrollOffset: number,
-  viewportHeight: number
-): void => {
-  if (viewportHeight <= 0) {
-    return;
-  }
-  getState(sceneKey).boundaryFacts = {
-    maxScrollOffset: Math.max(0, maxScrollOffset),
-    viewportHeight,
-    known: true,
-  };
-};
-
-/** The scene's boundary facts — UNKNOWN (known:false) until its own surface measures. */
-export const readSceneBoundaryFacts = (sceneKey: string): SceneBoundaryFacts =>
-  states.get(sceneKey)?.boundaryFacts ?? UNKNOWN_BOUNDARY_FACTS;
-
-// ─── THE PROJECTOR (red team 2 slice 3) ──────────────────────────────────────────────
-// The live host SharedValues are a PROJECTION of the presented scene's record. The
-// scene-stack assembly registers its SVs once; the presentation driver (the same one
-// that writes shell visibility) calls projectSceneBoundaryFacts on every frame flip —
-// so no boundary fact ever survives into another scene's tenure.
-type BoundaryFactsProjection = {
-  maxScrollOffset: SharedValue<number>;
-  scrollViewportHeight: SharedValue<number>;
-  boundaryFactsKnown: SharedValue<boolean>;
-};
-
-let boundaryFactsProjection: BoundaryFactsProjection | null = null;
-
-export const registerBoundaryFactsProjection = (
-  projection: BoundaryFactsProjection
-): (() => void) => {
-  boundaryFactsProjection = projection;
-  return () => {
-    if (boundaryFactsProjection === projection) {
-      boundaryFactsProjection = null;
-    }
-  };
-};
-
-export const projectSceneBoundaryFacts = (sceneKey: string | null): void => {
-  const projection = boundaryFactsProjection;
-  if (projection == null) {
-    return;
-  }
-  const facts = sceneKey == null ? UNKNOWN_BOUNDARY_FACTS : readSceneBoundaryFacts(sceneKey);
-  projection.maxScrollOffset.value = facts.maxScrollOffset;
-  projection.scrollViewportHeight.value = facts.viewportHeight;
-  projection.boundaryFactsKnown.value = facts.known;
-};
 
 const states = new Map<string, SceneScrollState>();
 
