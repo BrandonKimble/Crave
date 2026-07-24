@@ -33,9 +33,6 @@ function makeLane(overrides: Partial<CollectorLane> = {}): CollectorLane {
 
 function build(options: { lanes?: CollectorLane[]; admit?: boolean } = {}) {
   const prisma = {
-    collectionCommunity: {
-      findFirst: jest.fn().mockResolvedValue({ safeIntervalDays: 12 }),
-    },
     // Loss-horizon floor arrival count (chronologicalLossHorizonDays):
     // default = a quiet source (280 posts/14d = 20/day → floor 25d, far
     // above the 1d cadence — no clamp).
@@ -222,7 +219,9 @@ describe('CollectorPacerService', () => {
         engineId: 'engine-austin',
         engineName: 'region-us-tx-austin',
         territoryPlaceIds: ['place-austin', 'place-hyde-park'],
-        safeIntervalDays: 12,
+        // The keyword-term success cooldown is openly a constant now (the
+        // vestigial safeIntervalDays column died in the full-plan red team).
+        safeIntervalDays: 7,
       }),
     );
     expect(h.keywordOrchestrator.enqueueKeywordSearchJob).toHaveBeenCalledWith(

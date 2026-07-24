@@ -95,7 +95,6 @@ function createHarness(
     {} as never, // moderation
     {} as never, // pollEntitySeedService
     {} as never, // gateway
-    {} as never, // userEventService
     {} as never, // llmService
     {} as never, // entityTextSearch
     signals, // signals ledger (§3 dual-write)

@@ -32,7 +32,6 @@ import {
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
-import { UserEventService } from '../identity/user-event.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMPollAxis } from '../external-integrations/llm/llm.types';
 import {
@@ -128,7 +127,6 @@ export class PollsService {
     private readonly moderation: ModerationService,
     private readonly pollEntitySeedService: PollEntitySeedService,
     private readonly gateway: PollsGateway,
-    private readonly userEventService: UserEventService,
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly signals: SignalsService,
@@ -919,16 +917,6 @@ export class PollsService {
     });
 
     this.gateway.emitPollUpdate(poll.pollId);
-    void this.userEventService.recordEvent({
-      userId,
-      eventType: 'poll_created',
-      eventData: {
-        pollId: poll.pollId,
-        topicId: poll.topicId,
-        placeId: poll.placeId,
-        topicType: dto.topicType,
-      },
-    });
     // §3 signals: the poll_created act.
     this.signals.record({
       kind: 'poll_created',
@@ -1089,15 +1077,6 @@ export class PollsService {
     });
 
     this.gateway.emitPollUpdate(poll.pollId);
-    void this.userEventService.recordEvent({
-      userId,
-      eventType: 'poll_created',
-      eventData: {
-        pollId: poll.pollId,
-        placeId: poll.placeId,
-        mode: PollMode.discussion,
-      },
-    });
     // §3 signals: the poll_created act (discussion polls are topic-less —
     // subject falls through to the question term).
     this.signals.record({
@@ -1285,13 +1264,8 @@ export class PollsService {
 
     await this.rebuildPollLeaderboard(pollId);
     this.gateway.emitPollUpdate(pollId);
-    void this.userEventService.recordEvent({
-      userId,
-      eventType: 'poll_comment_posted',
-      eventData: { pollId, commentId: comment.commentId },
-    });
-    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-    // §3 signals: the poll_comment act beside the userEventService writer.
+    // §3 signals: the poll_comment act (the pre-ledger user_events
+    // dual-write died in the full-plan red team, 2026-07-23).
     this.signals.record({
       kind: 'poll_comment',
       userId,
@@ -1432,11 +1406,6 @@ export class PollsService {
 
     await this.rebuildPollLeaderboard(comment.pollId);
     this.gateway.emitPollUpdate(comment.pollId);
-    void this.userEventService.recordEvent({
-      userId,
-      eventType: result.liked ? 'poll_comment_liked' : 'poll_comment_unliked',
-      eventData: { pollId: comment.pollId, commentId },
-    });
     return result;
   }
 

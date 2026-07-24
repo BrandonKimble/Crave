@@ -1,7 +1,7 @@
 import 'dotenv/config';
-// 'worker': AppModule no longer boots under role 'api' (CollectionSchedulerService
-// depends on worker-gated CollectionJobSchedulerService). Scheduler stays inert:
-// COLLECTION_SCHEDULER_ENABLED=false in .env.
+// 'worker': AppModule no longer boots under role 'api' (the collector
+// pacer depends on worker-gated CollectionJobSchedulerService). Scheduler
+// stays inert: COLLECTION_SCHEDULER_ENABLED=false in .env.
 process.env.PROCESS_ROLE ||= 'worker';
 
 import * as fs from 'fs';

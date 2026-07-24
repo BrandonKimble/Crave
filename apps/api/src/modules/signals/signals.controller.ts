@@ -23,8 +23,8 @@ import { SignalsService } from './signals.service';
  * this controller must never grow a generic "record any signal" endpoint
  * (the ledger's meaning lives in server-side chokepoints, not client claims).
  *
- * Mobile wiring lands with the home-place-registration leg (ledger
- * follow-up); until then the endpoint stands ready and unwired.
+ * Mobile wiring is LIVE: the viewport subject-store controller's
+ * settle+dwell tick posts here (services/signals.ts).
  */
 @Controller('signals')
 @UseGuards(ClerkAuthGuard)

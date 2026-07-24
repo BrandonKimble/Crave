@@ -203,7 +203,6 @@ export class RestaurantEntityMergeService {
     // in the immutable signals ledger, resolved through entity_redirects at
     // read (the redirect row is written by the merge flow itself).
     await this.rehomeUserFavorites(tx, canonicalId, duplicateId);
-    await this.rehomeUserFavoriteEvents(tx, canonicalId, duplicateId);
     await this.rehomeFavoriteListRestaurantItems(tx, canonicalId, duplicateId);
     await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
@@ -242,17 +241,6 @@ export class RestaurantEntityMergeService {
         data: { entityId: canonicalId },
       });
     }
-  }
-
-  private async rehomeUserFavoriteEvents(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    await tx.userFavoriteEvent.updateMany({
-      where: { entityId: duplicateId },
-      data: { entityId: canonicalId },
-    });
   }
 
   private async rehomeFavoriteListRestaurantItems(

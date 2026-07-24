@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EntityType, FavoriteEventKind, Prisma } from '@prisma/client';
+import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { SignalsService } from '../signals/signals.service';
@@ -133,24 +133,14 @@ export class FavoritesService {
         },
       });
 
-      await tx.userFavoriteEvent.create({
-        data: {
-          userId,
-          entityId: entity.entityId,
-          entityType: entity.type,
-          eventKind: FavoriteEventKind.added,
-          occurredAt: created.createdAt,
-          metadata: this.buildFavoriteEventMetadata('favorite_action'),
-        },
-      });
-
       createdNew = true;
       return created;
     });
 
     if (createdNew) {
-      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-      // §3 signals: the favorite_added act beside userFavoriteEvent above.
+      // §3 signals: the favorite_added act (the pre-ledger
+      // user_favorite_events dual-write died in the full-plan red team,
+      // 2026-07-23 — the ledger is the only record).
       // Geo = the saved location's point, else the entity's primary
       // restaurant location (a FOOD favorite resolves its restaurant via the
       // food's most-evidenced connection — a food entityId is not a
@@ -201,17 +191,6 @@ export class FavoritesService {
         where: { favoriteId: favorite.favoriteId },
       });
 
-      await tx.userFavoriteEvent.create({
-        data: {
-          userId,
-          entityId: favorite.entityId,
-          entityType: favorite.entityType,
-          eventKind: FavoriteEventKind.removed,
-          occurredAt: new Date(),
-          metadata: this.buildFavoriteEventMetadata('favorite_action'),
-        },
-      });
-
       return true;
     });
 
@@ -248,17 +227,6 @@ export class FavoritesService {
         where: { favoriteId: favorite.favoriteId },
       });
 
-      await tx.userFavoriteEvent.create({
-        data: {
-          userId,
-          entityId: favorite.entityId,
-          entityType: favorite.entityType,
-          eventKind: FavoriteEventKind.removed,
-          occurredAt: new Date(),
-          metadata: this.buildFavoriteEventMetadata('favorite_action'),
-        },
-      });
-
       return true;
     });
 
@@ -271,9 +239,5 @@ export class FavoritesService {
       userId,
       entityId,
     });
-  }
-
-  private buildFavoriteEventMetadata(source: string): Prisma.JsonObject {
-    return { source };
   }
 }

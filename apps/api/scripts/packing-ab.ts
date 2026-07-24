@@ -1,6 +1,6 @@
 import 'dotenv/config';
-// PROCESS_ROLE 'all' so the DI graph resolves (CollectionSchedulerService
-// needs the worker-side scheduler providers); the flags below keep every
+// PROCESS_ROLE 'all' so the DI graph resolves (the collector pacer needs
+// the worker-side scheduler providers); the flags below keep every
 // background lane inert for the duration of the run.
 process.env.PROCESS_ROLE ||= 'all';
 // Force interactive extraction, no background collection machinery.

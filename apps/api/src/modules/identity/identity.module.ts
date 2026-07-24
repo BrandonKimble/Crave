@@ -16,7 +16,6 @@ import { AuthController } from './auth.controller';
 import { UserController } from './user.controller';
 import { PublicUserController } from './public-user.controller';
 import { UserService } from './user.service';
-import { UserEventService } from './user-event.service';
 import { UsernameService } from './username.service';
 import { UserStatsService } from './user-stats.service';
 import { UserFollowService } from './user-follow.service';
@@ -46,7 +45,6 @@ import { FavoriteListProvisioningService } from '../favorites/favorite-list-prov
     OptionalClerkAuthGuard,
     NativeAppleAuthService,
     UserService,
-    UserEventService,
     UsernameService,
     UserStatsService,
     UserFollowService,
@@ -62,7 +60,6 @@ import { FavoriteListProvisioningService } from '../favorites/favorite-list-prov
     OptionalClerkAuthGuard,
     NativeAppleAuthService,
     UserService,
-    UserEventService,
     UsernameService,
     UserStatsService,
     UserFollowService,

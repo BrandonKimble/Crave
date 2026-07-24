@@ -1207,3 +1207,47 @@ adapter-declared lanes due NOW) + the same insert inline in
 onboard-subreddit.ts, so the post-archive baseline chronological sweep
 fires on the first pacer tick after onboarding. 735 api green; API
 restarted.
+
+### Full-plan red team (4-lens: signals / scoring / collector / polls+search, 2026-07-23)
+
+Owner-ordered sweep of the ENTIRE rebuilt plan surface. Verdicts: signals
+ledger + demand aggregate "unusually coherent" (all 9 kinds have live
+writers; act-identity dedupe identical on write+read arms; partitions +
+maintenance live; every former event-table consumer on the substrate;
+old event tables confirmed dead). Polls supply + on-demand + search:
+fully clean (all purge-list items zero-hit verified). Scoring: epochs,
+kill condition (RED-capable), rising-flap, coverage-normalization,
+portfolio floors all verified. Collector: governance pools, §12.3,
+loss-horizon floor all coherent.
+
+Findings FIXED same-day (migration
+20260723130000_full_plan_red_team_dead_tables, drift-path):
+
+1. **user_favorite_events + user_events DIE** — both were write-only
+   pre-ledger tables (zero readers, verified): favorites dual-wrote
+   UserFavoriteEvent beside the favorite_added signal; polls dual-wrote
+   4 UserEventService.recordEvent calls beside poll signals. All writers,
+   the rehome-on-merge, UserEventService itself, the models, the
+   favorite_event_kind enum, and both tables deleted (§22's own
+   "DUAL-WRITE — delete with old logging" markers executed).
+2. **safeIntervalDays honesty cut** — the column had ZERO writers (its
+   producer was the dead volume-tracking queue); the pacer's read fell
+   back to 7 forever while pretending measurement. Now openly
+   KEYWORD_TERM_SUCCESS_COOLDOWN_DAYS = 7 (K3-as-prior; v2's measured
+   uncovered yield replaces it, not a better column).
+   avg_posts_per_day / last_calculated / safe_interval_days dropped from
+   collection_communities; resolveSafeIntervalDays deleted.
+3. **onboard-subreddit.ts un-broken** — it crashed on
+   getQueueToken('volume-tracking') (queue registered nowhere); the whole
+   volume-calculation step + --skip-volume flag deleted; the inline lane
+   SQL replaced with the registry's ensureLanes (the script boots the
+   full Nest graph — the "bare prisma" comment was wrong).
+4. Stale docs fixed: signals.controller "unwired" comment (it IS wired),
+   CollectionSchedulerService references in packing-ab /
+   collection-model-ab-v2 / search README → CollectorPacerService
+   (job-control.ts left as-is: outside the lint project, cosmetic only).
+
+Left by design: collector estimator registry = intentionally deferred §22
+scaffolding (self-documented trigger); partition-maintenance has no pager
+(logged-error only — acceptable solo-dev posture, noted). api 735/735 +
+mobile 396/396 green; API restarted; smoke 200.

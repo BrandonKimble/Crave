@@ -83,7 +83,6 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     moderation as never,
     {} as never, // pollEntitySeedService
     { emitPollUpdate: jest.fn() } as never, // gateway
-    { recordEvent: jest.fn().mockResolvedValue(undefined) } as never,
     llmService as never,
     {} as never, // entityTextSearch
     { record: jest.fn(), bboxFromPlace: jest.fn() } as never, // signals

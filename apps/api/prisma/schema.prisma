@@ -46,7 +46,6 @@ model Entity {
   restaurantConnections               Connection[]                @relation("RestaurantEntity")
   onDemandRequests                    OnDemandRequest[]
   restaurantPhotos                    Photo[]                     @relation("RestaurantPhotos")
-  favoriteEvents                      UserFavoriteEvent[]
   pollTopicDishTargets                PollTopic[]                 @relation("PollTopicTargetDish")
   pollTopicRestaurantTargets          PollTopic[]                 @relation("PollTopicTargetRestaurant")
   pollTopicFoodAttributeTargets       PollTopic[]                 @relation("PollTopicTargetFoodAttribute")
@@ -945,24 +944,6 @@ model UserFavorite {
   @@map("user_favorites")
 }
 
-model UserFavoriteEvent {
-  favoriteEventId String            @id @default(dbgenerated("gen_random_uuid()")) @map("favorite_event_id") @db.Uuid
-  userId          String            @map("user_id") @db.Uuid
-  entityId        String            @map("entity_id") @db.Uuid
-  entityType      EntityType        @map("entity_type")
-  eventKind       FavoriteEventKind @map("event_kind")
-  occurredAt      DateTime          @default(now()) @map("occurred_at") @db.Timestamptz(6)
-  metadata        Json?             @default("{}")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  user            User              @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  entity          Entity            @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
-
-  @@index([occurredAt(sort: Desc)], map: "idx_user_favorite_events_occurred_at")
-  @@index([userId, occurredAt(sort: Desc)], map: "idx_user_favorite_events_user_time")
-  @@index([entityId, occurredAt(sort: Desc)], map: "idx_user_favorite_events_entity_time")
-  @@index([eventKind, occurredAt(sort: Desc)], map: "idx_user_favorite_events_kind_time")
-  @@map("user_favorite_events")
-}
 
 model User {
   userId                   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
@@ -990,9 +971,7 @@ model User {
   accessGrants             AccessGrant[]
   photos                   Photo[]
   photoReports             PhotoReport[]
-  events                   UserEvent[]
   favorites                UserFavorite[]
-  favoriteEvents           UserFavoriteEvent[]
   favoriteLists            FavoriteList[]
   favoriteListItems        FavoriteListItem[]
   listCollaborations       FavoriteListCollaborator[] @relation("FavoriteListCollaboratorUser")
@@ -1437,37 +1416,18 @@ model PhotoEvent {
   @@map("photo_events")
 }
 
-model UserEvent {
-  eventId   String   @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  eventType String   @map("event_type") @db.VarChar(50)
-  eventData Json     @default("{}") @map("event_data")
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User     @relation(fields: [userId], references: [userId])
-
-  @@index([userId], map: "idx_user_events_user_id")
-  @@index([eventType], map: "idx_user_events_event_type")
-  @@index([createdAt(sort: Desc)], map: "idx_user_events_created_at")
-  @@index([userId, eventType], map: "idx_user_events_user_type")
-  @@index([userId, createdAt(sort: Desc)], map: "idx_user_events_user_created")
-  @@map("user_events")
-}
 
 model CollectionCommunity {
   collectionCommunityId String    @id @default(dbgenerated("gen_random_uuid()")) @map("collection_community_id") @db.Uuid
   communityName         String    @unique(map: "collection_communities_community_name_key") @map("community_name") @db.Citext
   locationName          String?   @map("location_name") @db.Citext
-  avgPostsPerDay        Float?    @map("avg_posts_per_day")
-  lastCalculated        DateTime? @map("last_calculated") @db.Timestamptz(6)
   lastProcessed         DateTime? @map("last_processed") @db.Timestamptz(6)
   isActive              Boolean   @default(true) @map("is_active")
   updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  safeIntervalDays      Float?    @map("safe_interval_days")
 
   @@index([communityName], map: "collection_communities_community_name_idx")
   @@index([isActive], map: "idx_collection_communities_active")
   @@index([lastProcessed], map: "idx_collection_communities_last_processed")
-  @@index([safeIntervalDays], map: "idx_collection_communities_safe_interval")
   @@map("collection_communities")
 }
 
@@ -1799,12 +1759,6 @@ enum MentionSource {
 }
 
 
-enum FavoriteEventKind {
-  added
-  removed
-
-  @@map("favorite_event_kind")
-}
 
 enum DemandSubjectKind {
   entity

@@ -5,7 +5,7 @@
 - `SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW` (default `false`): when `true`, every `/search/run` response includes the serialized SQL/Prisma preview even if the client doesn’t set `includeSqlPreview`.
 - `SEARCH_VERBOSE_DIAGNOSTICS` (default `false`): enables additional executor logging (counts, open-now coverage) for debugging environments.
 - `SEARCH_OPEN_NOW_FETCH_MULTIPLIER` (default `4`): how many pages of results to prefetch when `openNow` is requested so closed restaurants can be filtered before pagination.
-- On-demand tunables are code constants since the 2026-07-11 config fold-in: cooldown 300s + max entities 5 in `on-demand-request.service.ts`, trigger threshold `ON_DEMAND_MIN_RESULTS` (=1) in `on-demand-tuning.constants.ts`, keyword limit/sorts in `keyword-search-orchestrator.service.ts`. Cadence itself is planned by `CollectionSchedulerService` via `collection_schedules` rows (`COLLECTION_SCHEDULER_ENABLED`).
+- On-demand tunables are code constants since the 2026-07-11 config fold-in: cooldown 300s + max entities 5 in `on-demand-request.service.ts`, trigger threshold `ON_DEMAND_MIN_RESULTS` (=1) in `on-demand-tuning.constants.ts`, keyword limit/sorts in `keyword-search-orchestrator.service.ts`. Cadence itself is planned by `CollectorPacerService` via `source_collection_lanes` rows (`COLLECTION_SCHEDULER_ENABLED`).
 
 ## POST /search/run
 

@@ -184,7 +184,6 @@ function createHarness(options: {
     {} as never, // moderation
     {} as never, // pollEntitySeedService
     {} as never, // gateway
-    {} as never, // userEventService
     {} as never, // llmService
     {} as never, // entityTextSearch
     { record: jest.fn() } as never, // signals
