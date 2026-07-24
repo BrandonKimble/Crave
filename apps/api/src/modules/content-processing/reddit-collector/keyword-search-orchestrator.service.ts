@@ -478,9 +478,15 @@ export class KeywordSearchOrchestratorService {
             engineId: options.engineId,
             normalizedTerm: entry.normalizedTerm,
             outcome: attemptOutcome,
-            // Harvest snapshot for the derived eligibility clamp (posts =
-            // the corpus unit; comments ride along in processing).
-            resultCount: posts,
+            // Harvest snapshot for the derived eligibility clamp. The
+            // count is the query's FULL yield (posts + comments): a
+            // comments-only term must never read as measured-barren
+            // (share 0 would lock it out of the clamp with no pierce —
+            // its outcome is 'success'). The share divides by a
+            // posts-only corpus, so it is an approximation; under the
+            // vendor's per-sort result cap it errs conservative (slower
+            // re-entry), never eager.
+            resultCount: posts + comments,
             corpusDocs: cycleCorpusDocs,
           });
         }

@@ -1370,3 +1370,29 @@ Remaining by category only: facts, owner choices (incl. K1 60d clamp
 sentence + feel constants), derivations, and the poll-viability bootstrap
 bridge. 735 api green (new eligibility + harvest specs, RED-able both
 sides); build clean; API restarted.
+
+### Final red team on the no-fake-estimates arc (2026-07-24)
+
+Two adversarial passes. Remnants sweep: CLEAN — zero leftovers of the
+deleted timers/priors/scaffolding anywhere (every remaining term hit is a
+retrospective comment correctly documenting the removal); the plan's §16
+treatment and README references verified consistent; no dead exports or
+stale env keys. Correctness pass: 6 FINE (clamp order, COALESCE
+semantics, migration/schema agreement, null-snapshot bootstrap, corpus
+monotonicity, conservative vendor-cap distortion), 2 findings FIXED:
+
+1. **Comments-only barren-lock (BROKEN → fixed)**: the orchestrator
+   decided outcome from posts+comments but recorded resultCount from
+   posts alone — a comments-only term became outcome 'success' with
+   share 0, permanently clamped with NO pierce (the unmet pierce keys on
+   lastOutcome='no_results'). Harvest now records the query's FULL yield
+   (posts + comments); the share stays a documented approximation that
+   errs conservative under the vendor cap.
+2. **Nullable-column read keying (RISKY → fixed)**: attempt-history and
+   refresh-candidate reads filtered by the nullable non-PK engineId while
+   writes upsert by the (engineName, normalizedTerm) PK — a row written
+   without engineId would be invisible to every read (fail-open
+   over-collection). Both reads re-keyed to normalized engineName, the
+   actual PK.
+
+735 api green, build clean, API restarted, smoke 200.

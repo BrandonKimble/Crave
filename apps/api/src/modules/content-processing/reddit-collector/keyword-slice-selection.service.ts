@@ -249,7 +249,7 @@ export class KeywordSliceSelectionService {
         since,
         now,
       ),
-      refresh: await this.loadRefreshCandidates(source.engineId, now),
+      refresh: await this.loadRefreshCandidates(source.engineName, now),
       demand: territoryDemand.map((row) => ({
         term: row.entityName,
         normalizedTerm: '',
@@ -299,7 +299,7 @@ export class KeywordSliceSelectionService {
     const corpusDocsNow = Number(corpusRows[0]?.n ?? 0);
 
     const attemptHistoryMap = await this.loadAttemptHistoryByTerm({
-      engineId: source.engineId,
+      engineName: source.engineName,
       normalizedTerms: Array.from(
         new Set(
           SLICE_PRIORITY.flatMap((slice) =>
@@ -1003,11 +1003,11 @@ export class KeywordSliceSelectionService {
 
   /** REFRESH family — the (engine, term) attempt ledger, staleness-scored. */
   private async loadRefreshCandidates(
-    engineId: string,
+    engineName: string,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
     const rows = await this.prisma.keywordAttemptHistory.findMany({
-      where: { engineId },
+      where: { engineName: engineName.trim().toLowerCase() },
       orderBy: [{ lastSuccessAt: 'asc' }, { lastAttemptAt: 'asc' }],
       take: MAX_TERMS_PER_CYCLE * 10,
     });
@@ -1054,7 +1054,10 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadAttemptHistoryByTerm(params: {
-    engineId: string;
+    /** Attempt rows key by (engineName, normalizedTerm) — the PK. Reading
+     *  by the nullable engineId column made rows written without it
+     *  invisible (red-team 2026-07-24 finding 2). */
+    engineName: string;
     normalizedTerms: string[];
   }): Promise<
     Map<
@@ -1074,7 +1077,7 @@ export class KeywordSliceSelectionService {
 
     const rows = await this.prisma.keywordAttemptHistory.findMany({
       where: {
-        engineId: params.engineId,
+        engineName: params.engineName.trim().toLowerCase(),
         normalizedTerm: { in: params.normalizedTerms },
       },
       select: {
