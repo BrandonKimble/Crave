@@ -15,7 +15,6 @@
  */
 import { INestApplicationContext } from '@nestjs/common';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import { isWorkerRuntime } from './process-role';
 
 const stopAllRegisteredCrons = (
   app: INestApplicationContext,
@@ -43,11 +42,21 @@ const stopAllRegisteredCrons = (
  * per-process in-flight latches would otherwise fire the same job on every
  * dyno).
  */
-export const stopCronsUnlessWorker = (app: INestApplicationContext): void => {
-  if (isWorkerRuntime()) {
-    return;
-  }
-  stopAllRegisteredCrons(app, 'non-worker runtime');
+export const stopCronsUnlessWorker = (
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _app: INestApplicationContext,
+): void => {
+  // Railway cutover 2026-07-24: this is now a documented NO-OP by
+  // construction. A worker runtime keeps its crons; a NON-worker runtime
+  // never registers ScheduleModule at all (app.module gates it on
+  // isSchedulerRuntime), so there is no SchedulerRegistry to query and no
+  // cron to stop — and probing `app.get(SchedulerRegistry)` on the
+  // application PROXY throws through Nest's ExceptionsZone, which tears the
+  // process down BEFORE any try/catch sees it (first observed on the
+  // first-ever PROCESS_ROLE=api boot). The module gate IS the guarantee;
+  // the chokepoint stays as the bootstrap seam (and scripts still need the
+  // real stop — see stopCronsForScript, whose 'all'-role graph DOES carry
+  // ScheduleModule).
 };
 
 /**

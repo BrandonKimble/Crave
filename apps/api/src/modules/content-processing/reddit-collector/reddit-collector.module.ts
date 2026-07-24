@@ -45,6 +45,14 @@ const redditCollectorCoreProviders = [
   ProjectionRebuildService,
   ReplayService,
   UnifiedProcessingService,
+  // CORE, not worker (Railway cutover 2026-07-24): the markets-extermination
+  // leg re-keyed UnifiedProcessingService's provenance resolution onto
+  // findRedditSourceByHandle, so the registry is a dependency of the CORE
+  // processing path now. It is a passive prisma reader — the SCHEDULING
+  // machinery (pacer, workers) stays worker-gated below; providing the
+  // registry under the api role instantiates no crons and dispatches
+  // nothing.
+  CollectorSourceRegistryService,
 ];
 
 const redditCollectorWorkerProviders = isWorkerRuntime()
@@ -67,7 +75,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       // loop (cron) — worker-only by module composition; the api role must
       // not instantiate any collection scheduling machinery.
       CollectorPacerService,
-      CollectorSourceRegistryService,
       CollectionJobSchedulerService,
       // Keyword Entity Search components
       KeywordSliceSelectionService,
