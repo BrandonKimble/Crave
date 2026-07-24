@@ -1157,3 +1157,22 @@ Gates: tsc/jest 396, invariants 30/30, matrix 21/21 (handoffs intact post-floor)
 ARC STATUS: slices 1-4 shipped; slice 5 (seam under overscroll) + the FEEL passes
 (top rebound firing attribution via [BOUNCEDBG], bottom band on a short page, spring
 tuning) are the owner-eye rounds — the eye is the oracle for feel, per the law.
+
+### Boundary-physics feel round 1 — attribution findings (2026-07-23, probes in tree)
+[BOUNCEDBG] probe round (uncommitted dev probes in
+useBottomSheetSharedScrollEventsRuntime + useBottomSheetSharedGestureRuntime):
+1. REAL BUG CAUGHT & FIXED (uncommitted yet): pre-first-scroll, maxScrollOffset was
+   unpublished (0) so a fresh LONG list read as at-bottom and the bottom pan ATE the
+   first up-drag (probe: "bottom-pan activate off=0.0 max=0.0"). Fix implemented: the
+   scroll container publishes maxScrollOffset from onLayout + onContentSizeChange
+   (content − viewport, ≥0), gated on shouldEnableScrollShared so hidden legs can't
+   clobber. Verified: the misfire no longer reproduces.
+2. TOP-REBOUND MISWIRED FOR SEARCH: a coarse near-top probe (any event, offset≤60)
+   never fires on the search results list while gesture-runtime worklet logs DO reach
+   metro — the search list's scroll events do NOT flow through
+   useBottomSheetSharedScrollEventsRuntime (search injects scrollOffsetValue; its
+   events ride a bespoke path). The slice-3 writer therefore only covers foundation
+   scenes. NEXT: locate search's actual onScroll lane (SearchMountedSceneBody /
+   bodyDefaults wiring) and either route it through the ONE events runtime (ideal —
+   the bespoke exception again) or mount the same edge-writer there. Then re-run the
+   flick attribution, then the feel pass.
