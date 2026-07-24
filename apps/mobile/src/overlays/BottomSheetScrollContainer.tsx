@@ -36,6 +36,8 @@ type BottomSheetScrollContainerProps = ScrollViewProps & {
    *  layout/content-size HERE (before any scroll event exists; the probe-caught bug:
    *  an unpublished 0 made a fresh long list read as at-bottom). */
   maxScrollOffset: SharedValue<number>;
+  /** Native-baseline rubber: the live surface's viewport height — the curve's `d`. */
+  scrollViewportHeight: SharedValue<number>;
   // UI-thread scrollEnabled authority (plans/sheet-scroll-primitive.md §3.1): the authority-synced
   // SharedValue mirror of visible && listScrollEnabled && interactionEnabled. Driven via
   // useAnimatedProps on THIS real ScrollView, so a child leg that first commits mid page-switch
@@ -52,6 +54,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       overscrollPanGesture,
       contentOverscroll,
       maxScrollOffset,
+      scrollViewportHeight,
       shouldEnableScrollShared,
       transparent = false,
       style,
@@ -105,7 +108,8 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
         return;
       }
       maxScrollOffset.value = Math.max(0, contentHeightRef.current - viewportHeightRef.current);
-    }, [maxScrollOffset, shouldEnableScrollShared]);
+      scrollViewportHeight.value = viewportHeightRef.current;
+    }, [maxScrollOffset, scrollViewportHeight, shouldEnableScrollShared]);
     const handleLayout = React.useCallback(
       (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
         viewportHeightRef.current = event.nativeEvent.layout.height;

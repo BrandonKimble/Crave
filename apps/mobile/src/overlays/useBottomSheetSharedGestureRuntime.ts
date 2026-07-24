@@ -20,7 +20,7 @@ import {
   GESTURE_OWNER_SHEET,
   applyElasticBounds,
   isAtScrollTop,
-  rubberBandDistance,
+  nativeRubberBandDistance,
 } from './bottomSheetSharedRuntimeUtils';
 
 type HandoffOptions = {
@@ -32,9 +32,9 @@ type GestureStateManagerLike = {
   fail: () => void;
 };
 
-// The rebound spring (boundary-physics law §2 — one physics vocabulary): tuned to the
-// snap-spring family's feel; the release always lands exactly at 0.
-const OVERSCROLL_REBOUND_SPRING = { damping: 28, stiffness: 300, mass: 0.6 } as const;
+// The rebound spring (native baseline): CRITICALLY DAMPED — native scroll bounce never
+// overshoots; it returns asymptotically in ~450ms. damping = 2·√(stiffness·mass).
+const OVERSCROLL_REBOUND_SPRING = { mass: 1, stiffness: 170, damping: 26 } as const;
 
 type UseBottomSheetSharedGestureRuntimeArgs = {
   gestureEnabled: boolean;
@@ -42,6 +42,7 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
    *  interior offset (the atBottom fact). */
   contentOverscroll: SharedValue<number>;
   maxScrollOffset: SharedValue<number>;
+  scrollViewportHeight: SharedValue<number>;
   preventSwipeDismiss: boolean;
   expandedSnap: number;
   middleSnap: number;
@@ -93,6 +94,7 @@ export const useBottomSheetSharedGestureRuntime = ({
   gestureEnabled,
   contentOverscroll,
   maxScrollOffset,
+  scrollViewportHeight,
   preventSwipeDismiss,
   expandedSnap,
   middleSnap,
@@ -559,7 +561,8 @@ export const useBottomSheetSharedGestureRuntime = ({
           return;
         }
         const pulled = overscrollStartTouchY.value - event.absoluteY;
-        contentOverscroll.value = pulled > 0 ? rubberBandDistance(pulled) : 0;
+        contentOverscroll.value =
+          pulled > 0 ? nativeRubberBandDistance(pulled, scrollViewportHeight.value) : 0;
       })
       .onEnd(() => {
         'worklet';
@@ -628,6 +631,7 @@ export const useBottomSheetSharedGestureRuntime = ({
     collapseTouchInHeader,
     contentOverscroll,
     maxScrollOffset,
+    scrollViewportHeight,
     overscrollAxisLock,
     overscrollLastTouchY,
     overscrollPanActive,

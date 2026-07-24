@@ -1218,3 +1218,19 @@ COEFF 0.44), the top momentum-rebound's amplitude on a hard flick, and
 rebound-interrupt-by-touch. All knobs in bottomSheetSharedRuntimeUtils +
 useBottomSheetSharedScrollEventsRuntime (TOP_REBOUND_SPRING) +
 useBottomSheetSharedGestureRuntime (OVERSCROLL_REBOUND_SPRING).
+
+### Boundary-physics — THE NATIVE BASELINE (2026-07-23, SHIPPED)
+Content overscroll now runs Apple's own physics instead of hand-tuned numbers:
+- Curve: nativeRubberBandDistance — offset = (1 − 1/(x·c/d + 1))·d, c = 0.55 (the
+  WebKit elasticity constant), d = the LIVE viewport height (published by the scroll
+  container alongside maxScrollOffset — no magic range).
+- Return springs (top rebound + bottom release): CRITICALLY DAMPED {mass:1,
+  stiffness:170, damping:26} ≈ 450ms asymptotic return, no overshoot — native scroll
+  bounce behavior.
+- The SHEET's between-snap band deliberately keeps the tighter fixed 96/0.44 curve —
+  one formula family, two declared materials (sheet drag is firmer than content
+  bounce on-platform too).
+Eye-checked on settings: stretch present, header pinned, seam flush, part of finger
+travel correctly spends on interior scroll before the band engages. Gates: tsc/jest
+396, invariants 30/30, matrix 21/21. Owner-thumb pass is now a DEVIATION from a
+known-correct baseline (say "stretchier/softer/shorter" to move off native).

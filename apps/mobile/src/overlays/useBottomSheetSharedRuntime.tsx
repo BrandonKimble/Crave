@@ -287,6 +287,7 @@ export const useBottomSheetSharedRuntime = ({
   // negative offset); the physics writers (pans + momentum edge) land in later slices.
   const contentOverscroll = useSharedValue(0);
   const maxScrollOffset = useSharedValue(0);
+  const scrollViewportHeight = useSharedValue(0);
   const scrollTopOffset = useSharedValue(0);
   const primaryScrollOffset = useSharedValue(0);
   const secondaryScrollOffset = useSharedValue(0);
@@ -408,6 +409,7 @@ export const useBottomSheetSharedRuntime = ({
     gestureEnabled,
     contentOverscroll,
     maxScrollOffset,
+    scrollViewportHeight,
     preventSwipeDismiss,
     expandedSnap,
     middleSnap,
@@ -455,6 +457,7 @@ export const useBottomSheetSharedRuntime = ({
     overscrollPanGesture: gestures.overscrollPan,
     contentOverscroll,
     maxScrollOffset,
+    scrollViewportHeight,
     shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });
