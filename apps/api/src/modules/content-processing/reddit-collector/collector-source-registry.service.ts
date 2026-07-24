@@ -13,6 +13,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { REDDIT_LANES } from './reddit-collection-adapter';
 
 export interface CollectorLane {
   sourceId: string;
@@ -212,6 +213,31 @@ export class CollectorSourceRegistryService {
       SELECT place_id FROM territory
     `;
     return rows.map((row) => row.place_id);
+  }
+
+  /**
+   * Idempotent lane provisioning (v2 cadence audit, 2026-07-23): the
+   * original lane rows were seeded by the 20260719230000 migration from the
+   * dead collection_schedules table — NEW sources onboarded after it got NO
+   * lanes and the pacer would never visit them. Every lane the platform
+   * adapter declares is inserted due-NOW (the post-archive baseline sweep
+   * fires on the next pacer tick — the archive-end gap starts growing the
+   * moment onboarding finishes). ON CONFLICT keeps existing rows untouched.
+   */
+  async ensureLanes(sourceId: string): Promise<void> {
+    for (const declaration of REDDIT_LANES) {
+      await this.prisma.$executeRaw`
+        INSERT INTO source_collection_lanes
+          (source_id, lane, enabled, cadence_days, lateness_tolerance_days,
+           due_at, state)
+        VALUES
+          (${sourceId}::uuid, ${declaration.lane}, true,
+           ${declaration.defaultCadenceDays},
+           ${declaration.defaultLatenessToleranceDays},
+           now(), '{}'::jsonb)
+        ON CONFLICT (source_id, lane) DO NOTHING
+      `;
+    }
   }
 
   /**

@@ -1199,6 +1199,11 @@ per-(source,lane) UNCOVERED yield persisted; marked at the method. (b)
 CollectorEstimators.observeArrival has zero production callers (the
 arrival estimator is registered scaffolding); the floor measures arrival
 directly from the durable source_documents substrate instead. (c)
-Post-archive first chronological sweep: lanes are seeded due-immediately
-at onboarding, so the baseline sweep fires on the next pacer tick after
-archive load — no change needed. 735 api green; API restarted.
+CORRECTED on verification: lane rows were seeded ONLY by the
+20260719230000 migration from the dead collection_schedules table — new
+sources onboarded after it got NO lanes (the pacer would never visit
+them). Fixed: CollectorSourceRegistryService.ensureLanes (idempotent,
+adapter-declared lanes due NOW) + the same insert inline in
+onboard-subreddit.ts, so the post-archive baseline chronological sweep
+fires on the first pacer tick after onboarding. 735 api green; API
+restarted.

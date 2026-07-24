@@ -273,7 +273,7 @@ export class LegalController {
         <h2>11. Contact Us</h2>
         <p>If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:</p>
         <p>
-            <strong>Email:</strong> cravesearch.app@gmail.com<br>
+            <strong>Email:</strong> support@craveapp.ai<br>
             <strong>Support:</strong> Via the in-app "Help & Support" section
         </p>
     </div>
@@ -289,7 +289,7 @@ export class LegalController {
             <li>Right to opt-out of the sale of personal information (we do not sell your information)</li>
             <li>Right to non-discrimination for exercising your privacy rights</li>
         </ul>
-        <p>To exercise these rights, contact us at cravesearch.app@gmail.com</p>
+        <p>To exercise these rights, contact us at support@craveapp.ai</p>
     </div>
 </body>
 </html>
@@ -555,7 +555,7 @@ export class LegalController {
         </p>
         <p>
             Before filing a lawsuit, you agree to try to resolve disputes informally by contacting us at 
-            cravesearch.app@gmail.com. We'll try to resolve the dispute informally within 30 days.
+            support@craveapp.ai. We'll try to resolve the dispute informally within 30 days.
         </p>
     </div>
 
@@ -576,7 +576,7 @@ export class LegalController {
         <h2>16. Contact Us</h2>
         <p>If you have questions about these Terms, please contact us at:</p>
         <p>
-            <strong>Email:</strong> cravesearch.app@gmail.com<br>
+            <strong>Email:</strong> support@craveapp.ai<br>
             <strong>Support:</strong> Via the in-app "Help & Support" section
         </p>
     </div>

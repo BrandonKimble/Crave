@@ -20,6 +20,7 @@ import { NestFactory } from '@nestjs/core';
 import { getQueueToken } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { Prisma } from '@prisma/client';
+import { REDDIT_LANES } from '../src/modules/content-processing/reddit-collector/reddit-collection-adapter';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
@@ -234,6 +235,28 @@ async function onboardSubreddit() {
     if (source) {
       console.log(
         `   Source row: ${source.sourceId} (engine ${source.engineId ?? 'none'}, anchor place ${source.anchorPlaceId ?? 'none'})`,
+      );
+      // Lane provisioning (v2 cadence audit 2026-07-23): the migration-era
+      // seed only covered pre-existing sources — a new source needs its
+      // declared lanes or the pacer never visits it. Due NOW: the baseline
+      // chronological sweep should fire on the next tick, before the
+      // archive-end gap grows. Mirrors
+      // CollectorSourceRegistryService.ensureLanes (kept inline — the
+      // script runs on a bare prisma client, not the Nest graph).
+      for (const lane of REDDIT_LANES) {
+        await prisma.$executeRaw`
+          INSERT INTO source_collection_lanes
+            (source_id, lane, enabled, cadence_days, lateness_tolerance_days,
+             due_at, state)
+          VALUES
+            (${source.sourceId}::uuid, ${lane.lane}, true,
+             ${lane.defaultCadenceDays}, ${lane.defaultLatenessToleranceDays},
+             now(), '{}'::jsonb)
+          ON CONFLICT (source_id, lane) DO NOTHING
+        `;
+      }
+      console.log(
+        '   Collection lanes ensured (chronological + keyword, due now).',
       );
     } else {
       console.warn(
