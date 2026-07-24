@@ -558,16 +558,13 @@ export const useBottomSheetSharedGestureRuntime = ({
         }
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
-        // TRUSTED FACTS ONLY (feel round 4): maxScrollOffset is written by the ACTIVE
-        // list's onScroll — a never-scrolled surface has max=0, which is ambiguous
-        // between "short page" and "unknown", and the probe round proved acting on it
-        // activates the pan mid-drag and fights the collapse pan (the shake). The pan
-        // therefore requires a POSITIVE, scroll-proven max. The short-page bottom band
-        // returns with a per-active-container fact (recorded deferral — boundary-
-        // physics §5 addendum), never with a guess.
+        // TRUSTED FACTS (law §5 addendum): max is written by the live leg's container
+        // (layout-time, per-leg gated) and the active list's onScroll. max==0 is a
+        // LEGAL bottom only when the viewport fact proves a live publication happened
+        // (shortPage); an unknown surface (viewport 0) never activates the pan.
+        const factsKnown = scrollViewportHeight.value > 0;
         const atBottom =
-          maxScrollOffset.value > 0 &&
-          scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
+          factsKnown && scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
         if (atExpanded && atBottom && !isInMomentum.value) {
           stateManager.activate();
           overscrollPanActive.value = true;

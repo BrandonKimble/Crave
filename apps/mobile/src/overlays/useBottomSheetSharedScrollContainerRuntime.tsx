@@ -11,6 +11,8 @@ type UseBottomSheetSharedScrollContainerRuntimeArgs = {
   collapsePanGesture: GestureType;
   overscrollPanGesture: GestureType;
   contentOverscroll: SharedValue<number>;
+  maxScrollOffset: SharedValue<number>;
+  scrollViewportHeight: SharedValue<number>;
   shouldEnableScrollShared: SharedValue<boolean>;
   scrollHeaderComponent?: React.ReactNode;
 };
@@ -32,6 +34,8 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   collapsePanGesture,
   overscrollPanGesture,
   contentOverscroll,
+  maxScrollOffset,
+  scrollViewportHeight,
   shouldEnableScrollShared,
   scrollHeaderComponent,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
@@ -45,29 +49,58 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   overscrollPanRef.current = overscrollPanGesture;
   const contentOverscrollRef = React.useRef(contentOverscroll);
   contentOverscrollRef.current = contentOverscroll;
+  const maxScrollOffsetRef = React.useRef(maxScrollOffset);
+  maxScrollOffsetRef.current = maxScrollOffset;
+  const scrollViewportHeightRef = React.useRef(scrollViewportHeight);
+  scrollViewportHeightRef.current = scrollViewportHeight;
 
   const shouldEnableScrollSharedRef = React.useRef(shouldEnableScrollShared);
   shouldEnableScrollSharedRef.current = shouldEnableScrollShared;
   const transparentRef = React.useRef(transparent);
   transparentRef.current = transparent;
 
-  const ScrollComponent = React.useMemo(() => {
-    const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
-      <BottomSheetScrollContainer
-        {...props}
-        ref={ref}
-        expandPanGesture={expandPanRef.current}
-        collapsePanGesture={collapsePanRef.current}
-        overscrollPanGesture={overscrollPanRef.current}
-        contentOverscroll={contentOverscrollRef.current}
+  // RELATION-STALENESS GUARD (red-team ledger #3 — applied for real this round; the
+  // 99e020f9 edit silently no-op'd on a drifted anchor): the mount-stable component
+  // reads the pans from refs at ITS render, but nothing forced that render when the
+  // pans re-mint — a container's Gesture.Native could keep requireExternalGestureToFail
+  // relations against DETACHED pan instances (a frozen-scroll vector). Pan identity is
+  // now a subscription: a re-mint bumps the store, every live instance re-renders.
+  const panRevisionRef = React.useRef({ revision: 0, listeners: new Set<() => void>() });
+  const panRevision = panRevisionRef.current;
+  React.useEffect(() => {
+    panRevision.revision += 1;
+    panRevision.listeners.forEach((listener) => listener());
+  }, [expandPanGesture, collapsePanGesture, overscrollPanGesture, panRevision]);
 
-        shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
-        transparent={transparentRef.current}
-      />
-    ));
+  const ScrollComponent = React.useMemo(() => {
+    const subscribe = (listener: () => void) => {
+      panRevision.listeners.add(listener);
+      return () => {
+        panRevision.listeners.delete(listener);
+      };
+    };
+    const getRevision = () => panRevision.revision;
+    const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => {
+      React.useSyncExternalStore(subscribe, getRevision, getRevision);
+      return (
+        <BottomSheetScrollContainer
+          {...props}
+          ref={ref}
+          expandPanGesture={expandPanRef.current}
+          collapsePanGesture={collapsePanRef.current}
+          overscrollPanGesture={overscrollPanRef.current}
+          contentOverscroll={contentOverscrollRef.current}
+          maxScrollOffset={maxScrollOffsetRef.current}
+          scrollViewportHeight={scrollViewportHeightRef.current}
+          shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
+          transparent={transparentRef.current}
+        />
+      );
+    });
     Component.displayName = 'OverlaySheetScrollView';
     return Component;
-    // Deliberately mount-stable: every input is read from a ref (stable identity).
+    // Mount-stable: inputs read from refs; pan identity via the revision subscription.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

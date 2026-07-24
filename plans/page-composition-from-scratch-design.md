@@ -1266,3 +1266,20 @@ fact writes, the momentum-rebound impulse, and the momentum bookkeeping are writ
 once. Also unified: onBeginDrag's rebound-tracker reset is active-gated in all three
 roles (the secondary's unconditional reset was drift — the disease this refactor
 kills). Verified: scroll + flick-to-top on-sim, jest 396/396, matrix 21/21.
+
+### Boundary-physics §5 addendum SHIPPED (2026-07-24): the short-page fact
+Layout-time boundary publication returns to the container, gated PER-LEG: publish only
+while shellLiveness && stack-body isActive (both false for hidden co-mounted legs — the
+exact gate the clobbered round lacked; host-level flags are banned from this fact). A
+short page gets a TRUSTED max=0 (viewport known + content known) so the bottom band
+covers it; a long unscrolled list gets its real max before any scroll event (the
+early-handoff ambiguity window closes). The pan trusts max==0 only when
+scrollViewportHeight > 0 proves a live publication happened. Bespoke non-stack bodies
+never publish (isActive defaults false) — their band stays a recorded deferral.
+ALSO: the relation-staleness guard (ledger #3) is applied FOR REAL this round — the
+99e020f9 edit silently no-op'd on a drifted python-replace anchor (commit message
+claimed it; the tree lacked it). PROCESS LORE: every scripted replace must assert its
+anchor matched — a silent no-op ships a lie.
+VERIFIED: long-list scroll healthy post-change (deep scroll, no early handoff, no
+misfires); tsc/jest 396, invariants 30/30, matrix 21/21. OPEN: deliberate settings-
+band eye pass (blind rig taps landed on a restaurant page) + owner thumb.

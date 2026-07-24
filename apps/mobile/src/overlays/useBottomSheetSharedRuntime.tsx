@@ -457,6 +457,8 @@ export const useBottomSheetSharedRuntime = ({
     collapsePanGesture: gestures.collapsePan,
     overscrollPanGesture: gestures.overscrollPan,
     contentOverscroll,
+    maxScrollOffset,
+    scrollViewportHeight,
     shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });

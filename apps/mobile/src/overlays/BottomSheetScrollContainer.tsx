@@ -9,7 +9,9 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { useBottomSheetSceneStackBodyIsActive } from './BottomSheetSceneStackBodyActivityContext';
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
+import { useShellLiveness } from './ShellVisibilityBoundary';
 import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -32,6 +34,11 @@ type BottomSheetScrollContainerProps = ScrollViewProps & {
   overscrollPanGesture: GestureType;
   /** Boundary-physics law §1: runtime-owned overscroll — translates the content. */
   contentOverscroll: SharedValue<number>;
+  /** THE SHORT-PAGE FACT (law §5 addendum): boundary facts published from layout by
+   *  THE LIVE LEG'S container only — gated per-leg (shell liveness + body isActive),
+   *  never by the host-level flag that let hidden legs clobber (red-team round). */
+  maxScrollOffset: SharedValue<number>;
+  scrollViewportHeight: SharedValue<number>;
 
   // UI-thread scrollEnabled authority (plans/sheet-scroll-primitive.md §3.1): the authority-synced
   // SharedValue mirror of visible && listScrollEnabled && interactionEnabled. Driven via
@@ -48,6 +55,8 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       collapsePanGesture,
       overscrollPanGesture,
       contentOverscroll,
+      maxScrollOffset,
+      scrollViewportHeight,
       shouldEnableScrollShared,
       transparent = false,
       style,
@@ -91,11 +100,46 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     // minHeight padding. The old floor existed so the up-drag had a real scroll to fail
     // into; boundary ownership (the overscroll pan) replaced that need.
     //
-    // NOTE (feel round 4, probe-proven): container-level boundary-fact publication is
-    // DELETED — the host-level gate let every co-mounted container (empty legs, the
-    // inactive search tab) clobber the active list's facts (the shake/early-handoff
-    // round's root cause). The ACTIVE list's onScroll is the ONE writer of
-    // maxScrollOffset; the pan refuses untrusted facts instead (see gesture runtime).
+    // THE SHORT-PAGE FACT (law §5 addendum): layout-time boundary publication returns,
+    // but gated PER-LEG — this container publishes only while its leg is the live one
+    // (shell liveness bit + the stack body's isActive primitive; both false for hidden
+    // co-mounted legs, which is exactly what the clobbered round lacked). A short page
+    // thereby gets a TRUSTED max=0 (viewport known, content known) and the bottom band
+    // covers it; a long unscrolled list gets its real max before any scroll event.
+    // Bespoke non-stack bodies (isActive defaults false) never publish — their band is
+    // a recorded deferral, never a guess.
+    const shellLive = useShellLiveness();
+    const bodyIsActive = useBottomSheetSceneStackBodyIsActive();
+    const isLiveLegSurface = shellLive && bodyIsActive;
+    const isLiveLegSurfaceRef = React.useRef(isLiveLegSurface);
+    isLiveLegSurfaceRef.current = isLiveLegSurface;
+    const viewportHeightRef = React.useRef(0);
+    const contentHeightRef = React.useRef(0);
+    const publishBoundaryFacts = React.useCallback(() => {
+      if (
+        !isLiveLegSurfaceRef.current ||
+        viewportHeightRef.current <= 0 ||
+        contentHeightRef.current <= 0
+      ) {
+        return;
+      }
+      maxScrollOffset.value = Math.max(0, contentHeightRef.current - viewportHeightRef.current);
+      scrollViewportHeight.value = viewportHeightRef.current;
+    }, [maxScrollOffset, scrollViewportHeight]);
+    const handleLayout = React.useCallback(
+      (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
+        viewportHeightRef.current = event.nativeEvent.layout.height;
+        publishBoundaryFacts();
+        onLayout?.(event);
+      },
+      [onLayout, publishBoundaryFacts]
+    );
+    React.useEffect(() => {
+      // Become-live edge (leg presented after mounting hidden): publish the held facts.
+      if (isLiveLegSurface) {
+        publishBoundaryFacts();
+      }
+    }, [isLiveLegSurface, publishBoundaryFacts]);
 
     // FrostCutout re-measure signal: content re-flow (a row above a cutout growing) changes the
     // content size without firing the cutout's own onLayout — this pings the scene's foundation
@@ -103,10 +147,12 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     const notifyCutoutContentLayout = useSceneFrostCutoutContentLayoutSignal();
     const handleContentSizeChange = React.useCallback(
       (width: number, height: number) => {
+        contentHeightRef.current = height;
+        publishBoundaryFacts();
         notifyCutoutContentLayout();
         onContentSizeChange?.(width, height);
       },
-      [notifyCutoutContentLayout, onContentSizeChange]
+      [notifyCutoutContentLayout, onContentSizeChange, publishBoundaryFacts]
     );
 
     return (
@@ -127,7 +173,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           alwaysBounceVertical={SHEET_BODY_NO_OVERSCROLL.alwaysBounceVertical}
           overScrollMode={SHEET_BODY_NO_OVERSCROLL.overScrollMode}
           animatedProps={scrollEnabledAnimatedProps}
-          onLayout={onLayout}
+          onLayout={handleLayout}
           onContentSizeChange={handleContentSizeChange}
           style={[style, overscrollTranslateStyle, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[
