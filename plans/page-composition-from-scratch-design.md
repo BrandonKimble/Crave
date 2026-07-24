@@ -1257,3 +1257,12 @@ the events runtime's triplicated handler config (one-factory refactor); the poll
 [CHROME-GEOMETRY] transient (68 vs 108 at one commit — strip renders now; own
 attribution). Gates: tsc/jest 396, invariants 30/30, matrix 21/21, on-sim scroll +
 flick re-verified post-fix.
+
+### Events-runtime handler factory (red-team ledger, 2026-07-23 — SHIPPED)
+The three hand-copied scroll-handler configs (primary list / primary scrollview /
+secondary list) collapse into ONE buildHandlerConfig factory parameterized by exactly
+the two facts that differ: activeWhenPrimary + the per-list offset pair. All shared-
+fact writes, the momentum-rebound impulse, and the momentum bookkeeping are written
+once. Also unified: onBeginDrag's rebound-tracker reset is active-gated in all three
+roles (the secondary's unconditional reset was drift — the disease this refactor
+kills). Verified: scroll + flick-to-top on-sim, jest 396/396, matrix 21/21.

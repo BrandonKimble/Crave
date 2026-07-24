@@ -1,7 +1,13 @@
 import type { ScrollViewProps } from 'react-native';
 
 import type { FlashListProps } from '@shopify/flash-list';
-import { runOnJS, useAnimatedScrollHandler, useSharedValue, withSpring } from 'react-native-reanimated';
+import {
+  runOnJS,
+  useAnimatedScrollHandler,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import type { ReanimatedScrollEvent } from 'react-native-reanimated/lib/typescript/hook/commonTypes';
 import type { SharedValue } from 'react-native-reanimated';
 
 import { getScrollTopOffset } from './bottomSheetSharedRuntimeUtils';
@@ -62,50 +68,73 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
   primaryScrollTopOffset,
   secondaryScrollTopOffset,
 }: UseBottomSheetSharedScrollEventsRuntimeArgs): UseBottomSheetSharedScrollEventsRuntimeResult => {
-  // One impulse per momentum episode (reset when a new drag/momentum begins).
+  // One impulse per momentum episode (reset when a new drag begins).
   const topReboundFired = useSharedValue(false);
   // The previous momentum event's offset + step — the derived arrival velocity's inputs.
   const momentumPrevOffset = useSharedValue(0);
   const momentumPrevDelta = useSharedValue(0);
-  const primaryAnimatedScrollHandler = useAnimatedScrollHandler(
-    {
-      onScroll: (event) => {
+
+  // ─── ONE HANDLER FACTORY (red-team ledger: the config was hand-copied three times —
+  // the drift disease). Each list role differs by exactly two facts: which per-list
+  // offset pair it owns, and whether it is the active list when activePrimaryList is
+  // true. Everything else — the shared-fact writes (scrollOffset/scrollTopOffset/
+  // maxScrollOffset/scrollViewportHeight), the top momentum-rebound impulse, the
+  // momentum bookkeeping — is written ONCE here. All inner functions are worklets
+  // (the babel plugin workletizes directive-marked closures created at hook time).
+  const buildHandlerConfig = ({
+    activeWhenPrimary,
+    ownScrollOffset,
+    ownScrollTopOffset,
+  }: {
+    activeWhenPrimary: boolean;
+    ownScrollOffset: SharedValue<number>;
+    ownScrollTopOffset: SharedValue<number>;
+  }) => {
+    const isActiveList = () => {
+      'worklet';
+      return activePrimaryList.value === activeWhenPrimary;
+    };
+    return {
+      onScroll: (event: ReanimatedScrollEvent) => {
+        'worklet';
         const nextTopOffset = getScrollTopOffset(event.contentInset?.top);
-        if (Math.abs(nextTopOffset - primaryScrollTopOffset.value) > 0.5) {
-          primaryScrollTopOffset.value = nextTopOffset;
+        if (Math.abs(nextTopOffset - ownScrollTopOffset.value) > 0.5) {
+          ownScrollTopOffset.value = nextTopOffset;
         }
-        primaryScrollOffset.value = event.contentOffset.y;
-        if (activePrimaryList.value) {
-          if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
-            scrollTopOffset.value = nextTopOffset;
+        ownScrollOffset.value = event.contentOffset.y;
+        if (!isActiveList()) {
+          return;
+        }
+        if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
+          scrollTopOffset.value = nextTopOffset;
+        }
+        scrollOffset.value = event.contentOffset.y;
+        maxScrollOffset.value = Math.max(
+          0,
+          (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
+        );
+        scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
+        if (isInMomentum.value) {
+          const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
+          const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
+          if (
+            !topReboundFired.value &&
+            event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
+            arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
+          ) {
+            topReboundFired.value = true;
+            contentOverscroll.value = withSpring(0, {
+              ...TOP_REBOUND_SPRING,
+              velocity: -arrivalDelta * FRAMES_PER_SECOND,
+            });
           }
-          scrollOffset.value = event.contentOffset.y;
-          maxScrollOffset.value = Math.max(
-            0,
-            (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
-          );
-          scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
-          if (isInMomentum.value) {
-            const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
-            const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
-            if (
-              !topReboundFired.value &&
-              event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-              arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
-            ) {
-              topReboundFired.value = true;
-              contentOverscroll.value = withSpring(0, {
-                ...TOP_REBOUND_SPRING,
-                velocity: -arrivalDelta * FRAMES_PER_SECOND,
-              });
-            }
-            momentumPrevDelta.value = stepDelta;
-            momentumPrevOffset.value = event.contentOffset.y;
-          }
+          momentumPrevDelta.value = stepDelta;
+          momentumPrevOffset.value = event.contentOffset.y;
         }
       },
       onBeginDrag: () => {
-        if (!activePrimaryList.value) {
+        'worklet';
+        if (!isActiveList()) {
           return;
         }
         isInMomentum.value = false;
@@ -114,7 +143,8 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
         momentumPrevOffset.value = scrollOffset.value;
       },
       onMomentumBegin: () => {
-        if (!activePrimaryList.value) {
+        'worklet';
+        if (!isActiveList()) {
           return;
         }
         isInMomentum.value = true;
@@ -123,7 +153,8 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
         }
       },
       onMomentumEnd: () => {
-        if (!activePrimaryList.value) {
+        'worklet';
+        if (!isActiveList()) {
           return;
         }
         isInMomentum.value = false;
@@ -134,180 +165,47 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
           runOnJS(onScrollOffsetChange)(scrollOffset.value);
         }
       },
-    },
-    [
-      activePrimaryList,
-      isInMomentum,
-      onMomentumBeginJS,
-      onMomentumEndJS,
-      onScrollOffsetChange,
-      primaryScrollOffset,
-      primaryScrollTopOffset,
-      scrollOffset,
-      scrollTopOffset,
-    ]
+    };
+  };
+
+  const handlerDeps = [
+    activePrimaryList,
+    isInMomentum,
+    onMomentumBeginJS,
+    onMomentumEndJS,
+    onScrollOffsetChange,
+    scrollOffset,
+    scrollTopOffset,
+    maxScrollOffset,
+    scrollViewportHeight,
+    contentOverscroll,
+  ];
+
+  const primaryAnimatedScrollHandler = useAnimatedScrollHandler(
+    buildHandlerConfig({
+      activeWhenPrimary: true,
+      ownScrollOffset: primaryScrollOffset,
+      ownScrollTopOffset: primaryScrollTopOffset,
+    }),
+    [...handlerDeps, primaryScrollOffset, primaryScrollTopOffset]
   );
 
   const primaryScrollViewAnimatedScrollHandler = useAnimatedScrollHandler(
-    {
-      onScroll: (event) => {
-        const nextTopOffset = getScrollTopOffset(event.contentInset?.top);
-        if (Math.abs(nextTopOffset - primaryScrollTopOffset.value) > 0.5) {
-          primaryScrollTopOffset.value = nextTopOffset;
-        }
-        primaryScrollOffset.value = event.contentOffset.y;
-        if (activePrimaryList.value) {
-          if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
-            scrollTopOffset.value = nextTopOffset;
-          }
-          scrollOffset.value = event.contentOffset.y;
-          maxScrollOffset.value = Math.max(
-            0,
-            (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
-          );
-          scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
-          if (isInMomentum.value) {
-            const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
-            const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
-            if (
-              !topReboundFired.value &&
-              event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-              arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
-            ) {
-              topReboundFired.value = true;
-              contentOverscroll.value = withSpring(0, {
-                ...TOP_REBOUND_SPRING,
-                velocity: -arrivalDelta * FRAMES_PER_SECOND,
-              });
-            }
-            momentumPrevDelta.value = stepDelta;
-            momentumPrevOffset.value = event.contentOffset.y;
-          }
-        }
-      },
-      onBeginDrag: () => {
-        if (!activePrimaryList.value) {
-          return;
-        }
-        isInMomentum.value = false;
-        topReboundFired.value = false;
-        momentumPrevDelta.value = 0;
-        momentumPrevOffset.value = scrollOffset.value;
-      },
-      onMomentumBegin: () => {
-        if (!activePrimaryList.value) {
-          return;
-        }
-        isInMomentum.value = true;
-        if (onMomentumBeginJS) {
-          runOnJS(onMomentumBeginJS)();
-        }
-      },
-      onMomentumEnd: () => {
-        if (!activePrimaryList.value) {
-          return;
-        }
-        isInMomentum.value = false;
-        if (onMomentumEndJS) {
-          runOnJS(onMomentumEndJS)();
-        }
-        if (onScrollOffsetChange) {
-          runOnJS(onScrollOffsetChange)(scrollOffset.value);
-        }
-      },
-    },
-    [
-      activePrimaryList,
-      isInMomentum,
-      onMomentumBeginJS,
-      onMomentumEndJS,
-      onScrollOffsetChange,
-      primaryScrollOffset,
-      primaryScrollTopOffset,
-      scrollOffset,
-      scrollTopOffset,
-    ]
+    buildHandlerConfig({
+      activeWhenPrimary: true,
+      ownScrollOffset: primaryScrollOffset,
+      ownScrollTopOffset: primaryScrollTopOffset,
+    }),
+    [...handlerDeps, primaryScrollOffset, primaryScrollTopOffset]
   );
 
   const secondaryAnimatedScrollHandler = useAnimatedScrollHandler(
-    {
-      onScroll: (event) => {
-        const nextTopOffset = getScrollTopOffset(event.contentInset?.top);
-        if (Math.abs(nextTopOffset - secondaryScrollTopOffset.value) > 0.5) {
-          secondaryScrollTopOffset.value = nextTopOffset;
-        }
-        secondaryScrollOffset.value = event.contentOffset.y;
-        if (!activePrimaryList.value) {
-          if (Math.abs(nextTopOffset - scrollTopOffset.value) > 0.5) {
-            scrollTopOffset.value = nextTopOffset;
-          }
-          scrollOffset.value = event.contentOffset.y;
-          maxScrollOffset.value = Math.max(
-            0,
-            (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
-          );
-          scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
-          if (isInMomentum.value) {
-            const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
-            const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
-            if (
-              !topReboundFired.value &&
-              event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-              arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
-            ) {
-              topReboundFired.value = true;
-              contentOverscroll.value = withSpring(0, {
-                ...TOP_REBOUND_SPRING,
-                velocity: -arrivalDelta * FRAMES_PER_SECOND,
-              });
-            }
-            momentumPrevDelta.value = stepDelta;
-            momentumPrevOffset.value = event.contentOffset.y;
-          }
-        }
-      },
-      onBeginDrag: () => {
-        topReboundFired.value = false;
-        momentumPrevDelta.value = 0;
-        momentumPrevOffset.value = scrollOffset.value;
-        if (activePrimaryList.value) {
-          return;
-        }
-        isInMomentum.value = false;
-      },
-      onMomentumBegin: () => {
-        if (activePrimaryList.value) {
-          return;
-        }
-        isInMomentum.value = true;
-        if (onMomentumBeginJS) {
-          runOnJS(onMomentumBeginJS)();
-        }
-      },
-      onMomentumEnd: () => {
-        if (activePrimaryList.value) {
-          return;
-        }
-        isInMomentum.value = false;
-        if (onMomentumEndJS) {
-          runOnJS(onMomentumEndJS)();
-        }
-        if (onScrollOffsetChange) {
-          runOnJS(onScrollOffsetChange)(scrollOffset.value);
-        }
-      },
-    },
-    [
-      activePrimaryList,
-      isInMomentum,
-      onMomentumBeginJS,
-      onMomentumEndJS,
-      onScrollOffsetChange,
-      scrollOffset,
-      scrollTopOffset,
-      secondaryScrollOffset,
-      secondaryScrollTopOffset,
-    ]
+    buildHandlerConfig({
+      activeWhenPrimary: false,
+      ownScrollOffset: secondaryScrollOffset,
+      ownScrollTopOffset: secondaryScrollTopOffset,
+    }),
+    [...handlerDeps, secondaryScrollOffset, secondaryScrollTopOffset]
   );
 
   return {
