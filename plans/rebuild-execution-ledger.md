@@ -1290,3 +1290,48 @@ constants — the eye is the instrument), and BOOTSTRAP PRODUCT DECISIONS
 (poll-viability proxy: engagement data comes FROM launched polls, so a
 minimal bridge is irreducible). 728 api green (estimator specs deleted),
 build clean, API restarted.
+
+### Railway production cutover (2026-07-24) — the system leaves the laptop
+
+Owner-ordered full cutover. End state: production topology api + worker +
+postgis-db (NEW: timescale/timescaledb-ha:pg17 — the stock Railway
+Postgres has neither postgis nor pgvector; volume at /home/postgres/
+pgdata, RAILWAY_RUN_UID=0 for the mount) + Redis + site. The Feb-17
+zombie deployments (5 months stale, two dead-era crons erroring daily)
+are replaced.
+
+DB: local crave_search dumped (371MB custom) and restored into
+postgis-db (staged: pre-data → drop the two validate_entity_references
+CHECK constraints (they fire on same-table forward references mid-COPY)
+→ data → re-add NOT VALID → post-data; the HNSW name-embedding index
+rebuilt serially after a shared-memory failure at default parallelism).
+Parity verified: 85 tables, 348/348 indexes, all row counts (signals
+drifted +18 locally post-dump — sim-driving dwells, accepted).
+api/worker DATABASE_URL repointed to postgis-db.railway.internal.
+
+Vars: REDDIT\_\* credentials + TOMTOM_API_KEY/TOMTOM_GEOMETRY_ZOOM set on
+both services (missing since Feb — predate the geo work); worker:
+COLLECTION_SCHEDULER_ENABLED=true, COLLECTION_LLM_MODE=batch (owner-
+ratified: collection ON in prod; measured cost ~2k in + ~385 out tokens
+/doc → ~$7-14/mo batch steady-state for austinfood+foodnyc, ~$35-65
+one-time gap-fill; prompt churn is safe — persist-first, re-judge later).
+
+The first-ever non-'all'-role boots found and fixed two latent bugs
+(commit 1ce0ccab): CollectorSourceRegistryService was worker-gated but
+leg 3 made it a CORE dep of UnifiedProcessingService; and
+stopCronsUnlessWorker probed SchedulerRegistry through Nest's
+ExceptionsZone (process death before catch) — now a documented no-op
+since non-worker graphs never register ScheduleModule. Plus the
+dist-only bootstrap crash (8907d5dc): prompt files loaded from
+process.cwd()/src — now \_\_dirname-relative. Deploys via `railway up`
+(CLI upload; Dockerfile at apps/api/Dockerfile — never deleted, earlier
+glob confusion).
+
+Verified live: api SUCCESS + GET /api/v1/places/launch-position → 200
+resolving a real IP to Austin with catalog bounds; worker SUCCESS,
+clean boot. LOCAL RETIREMENT: apps/api/.env PROCESS_ROLE=api — the
+laptop is a pure dev api (zero crons); production owns ALL scheduled
+work (pacer, drain, rescorer, partitions). Prod redis = Railway Redis
+(fresh queues; lane cursors rode in via the DB). Old 'Postgres' service
+(Feb data) left running for a soak period — DELETE after confidence;
+nothing references it.
