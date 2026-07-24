@@ -1234,3 +1234,26 @@ Eye-checked on settings: stretch present, header pinned, seam flush, part of fin
 travel correctly spends on interior scroll before the band engages. Gates: tsc/jest
 396, invariants 30/30, matrix 21/21. Owner-thumb pass is now a DEVIATION from a
 known-correct baseline (say "stretchier/softer/shorter" to move off native).
+
+### Boundary-physics RED TEAM (owner-directed, 2026-07-23) — full-plan review + fixes
+Owner symptoms (early handoff, grabber shake, frozen lists) fully attributed via
+complete logic read + topology sweep + probes. THE UNIFYING ROOT CAUSE: the bottom
+overscroll pan could IMPERSONATE scrolling on any max=0 surface (round-1's clobbered
+publication made that most surfaces) — the "scrolled under the header" was the
+translate, scrollOffset stayed truthfully 0 (hence the "early" sheet grab: the scroll
+position was a lie), and the translate fought the collapse pan during grabs (the
+shake). The tested page (polls) is EMPTY (Live·0) — post-gate "frozen" = an empty page
+correctly doing nothing. Clean-Metro verification: real pages scroll perfectly.
+FIXES SHIPPED: (1) the overscroll pan FAILS on horizontal axis-lock (never lingers —
+mirror of its siblings); (2) THE CATCH: activation seeds the pull from the live
+stretch via inverseNativeRubberBandDistance so a finger landing mid-rebound continues
+the curve from where the content is (native catch semantics; the write also cancels
+the spring); (3) RELATION-STALENESS GUARD: pan identity is now a subscription (a
+revision store in the scroll-container runtime) — a pan re-mint re-renders every live
+container so Gesture.Native relations can never point at detached pan instances (a
+latent frozen-scroll vector the mount-stable design left open).
+REMAINING (recorded): the short-page band's per-active-container fact (§5 addendum);
+the events runtime's triplicated handler config (one-factory refactor); the polls
+[CHROME-GEOMETRY] transient (68 vs 108 at one commit — strip renders now; own
+attribution). Gates: tsc/jest 396, invariants 30/30, matrix 21/21, on-sim scroll +
+flick re-verified post-fix.

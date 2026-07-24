@@ -15,6 +15,8 @@ type UseBottomSheetSharedScrollEventsRuntimeArgs = {
   scrollOffset: SharedValue<number>;
   /** Boundary-physics: the ACTIVE list's max interior offset (contentSize − viewport, ≥0). */
   maxScrollOffset: SharedValue<number>;
+  /** Native rubber's `d`: the ACTIVE list's viewport height (same one-writer law). */
+  scrollViewportHeight: SharedValue<number>;
   /** Boundary-physics law §3 (top momentum case): the runtime-owned overscroll the
    *  momentum-rebound impulse drives when a momentum scroll lands on the pinned top. */
   contentOverscroll: SharedValue<number>;
@@ -53,6 +55,7 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
   scrollOffset,
   scrollTopOffset,
   maxScrollOffset,
+  scrollViewportHeight,
   contentOverscroll,
   primaryScrollOffset,
   secondaryScrollOffset,
@@ -81,6 +84,7 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             0,
             (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
           );
+          scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
           if (isInMomentum.value) {
             const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
             const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
@@ -161,6 +165,7 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             0,
             (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
           );
+          scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
           if (isInMomentum.value) {
             const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
             const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
@@ -241,6 +246,7 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             0,
             (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
           );
+          scrollViewportHeight.value = event.layoutMeasurement?.height ?? 0;
           if (isInMomentum.value) {
             const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
             const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);

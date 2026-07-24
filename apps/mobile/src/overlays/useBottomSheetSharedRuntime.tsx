@@ -330,6 +330,7 @@ export const useBottomSheetSharedRuntime = ({
   const { primaryListOnScroll, secondaryListOnScroll, primaryScrollViewOnScroll } =
     useBottomSheetSharedScrollEventsRuntime({
       maxScrollOffset,
+      scrollViewportHeight,
       contentOverscroll,
       activePrimaryList,
       isInMomentum,
@@ -456,8 +457,6 @@ export const useBottomSheetSharedRuntime = ({
     collapsePanGesture: gestures.collapsePan,
     overscrollPanGesture: gestures.overscrollPan,
     contentOverscroll,
-    maxScrollOffset,
-    scrollViewportHeight,
     shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });

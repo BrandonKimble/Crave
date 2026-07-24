@@ -54,6 +54,23 @@ export const nativeRubberBandDistance = (
   );
 };
 
+/** Inverse of the native curve — the CATCH seed: given a visible stretch y, the
+ *  equivalent finger pull x with rubber(x) = y, so a finger landing mid-rebound
+ *  continues the curve from where the content actually is (native catch semantics). */
+export const inverseNativeRubberBandDistance = (
+  stretch: number,
+  viewportDimension: number
+): number => {
+  'worklet';
+  if (stretch <= 0 || viewportDimension <= 0 || stretch >= viewportDimension) {
+    return 0;
+  }
+  return (
+    (viewportDimension * stretch) /
+    (NATIVE_RUBBER_COEFFICIENT * (viewportDimension - stretch))
+  );
+};
+
 export const rubberBandDistance = (distanceFromBound: number): number => {
   'worklet';
   if (distanceFromBound <= 0) {

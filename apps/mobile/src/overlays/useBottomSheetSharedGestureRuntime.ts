@@ -20,6 +20,7 @@ import {
   GESTURE_OWNER_SHEET,
   applyElasticBounds,
   isAtScrollTop,
+  inverseNativeRubberBandDistance,
   nativeRubberBandDistance,
 } from './bottomSheetSharedRuntimeUtils';
 
@@ -142,6 +143,8 @@ export const useBottomSheetSharedGestureRuntime = ({
   const overscrollPanActive = useSharedValue(false);
   const overscrollAxisLock = useSharedValue(0);
   const overscrollStartTouchY = useSharedValue(0);
+  const overscrollStartTouchX = useSharedValue(0);
+  const overscrollCatchPull = useSharedValue(0);
   const overscrollLastTouchY = useSharedValue(0);
 
   React.useEffect(() => {
@@ -518,6 +521,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         const touchY = event.allTouches[0]?.absoluteY ?? 0;
         overscrollLastTouchY.value = touchY;
         overscrollStartTouchY.value = touchY;
+        overscrollStartTouchX.value = event.allTouches[0]?.absoluteX ?? 0;
       })
       .onTouchesMove((event, stateManager) => {
         'worklet';
@@ -532,8 +536,17 @@ export const useBottomSheetSharedGestureRuntime = ({
         const dy = touchY - overscrollLastTouchY.value;
         overscrollLastTouchY.value = touchY;
         if (overscrollAxisLock.value !== AXIS_LOCK_VERTICAL) {
+          const touchX = event.allTouches[0]?.absoluteX ?? 0;
+          const totalDx = Math.abs(touchX - overscrollStartTouchX.value);
           const totalDy = Math.abs(touchY - overscrollStartTouchY.value);
-          if (totalDy >= AXIS_LOCK_SLOP_PX) {
+          if (totalDx + totalDy >= AXIS_LOCK_SLOP_PX) {
+            if (totalDx > totalDy * AXIS_LOCK_RATIO) {
+              // Horizontal drag: this pan can never own it — FAIL like its siblings,
+              // never linger undetermined for the whole touch (red-team ledger #1).
+              overscrollAxisLock.value = AXIS_LOCK_HORIZONTAL;
+              stateManager.fail();
+              return;
+            }
             overscrollAxisLock.value = AXIS_LOCK_VERTICAL;
           } else if (dy !== 0) {
             return;
@@ -545,14 +558,29 @@ export const useBottomSheetSharedGestureRuntime = ({
         }
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
-        // A short page (interior range 0) is at BOTH boundaries — bottom overscroll
-        // included (law §5); atExpanded still gates, so below the top snap the up-drag
-        // keeps driving the sheet.
-        const atBottom = scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
+        // TRUSTED FACTS ONLY (feel round 4): maxScrollOffset is written by the ACTIVE
+        // list's onScroll — a never-scrolled surface has max=0, which is ambiguous
+        // between "short page" and "unknown", and the probe round proved acting on it
+        // activates the pan mid-drag and fights the collapse pan (the shake). The pan
+        // therefore requires a POSITIVE, scroll-proven max. The short-page bottom band
+        // returns with a per-active-container fact (recorded deferral — boundary-
+        // physics §5 addendum), never with a guess.
+        const atBottom =
+          maxScrollOffset.value > 0 &&
+          scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
         if (atExpanded && atBottom && !isInMomentum.value) {
           stateManager.activate();
           overscrollPanActive.value = true;
           overscrollStartTouchY.value = touchY;
+          // THE CATCH (red-team ledger #2, native semantics): a finger landing while a
+          // rebound spring is in flight continues the curve from the CONTENT's live
+          // position — seed the equivalent pull via the inverse curve. The plain write
+          // also cancels the running spring (Reanimated write-cancels-animation).
+          overscrollCatchPull.value = inverseNativeRubberBandDistance(
+            contentOverscroll.value,
+            scrollViewportHeight.value
+          );
+          contentOverscroll.value = contentOverscroll.value;
         }
       })
       .onChange((event) => {
@@ -560,7 +588,8 @@ export const useBottomSheetSharedGestureRuntime = ({
         if (!overscrollPanActive.value || gestureEnabledValue.value !== 1) {
           return;
         }
-        const pulled = overscrollStartTouchY.value - event.absoluteY;
+        const pulled =
+          overscrollCatchPull.value + (overscrollStartTouchY.value - event.absoluteY);
         contentOverscroll.value =
           pulled > 0 ? nativeRubberBandDistance(pulled, scrollViewportHeight.value) : 0;
       })
@@ -633,6 +662,8 @@ export const useBottomSheetSharedGestureRuntime = ({
     maxScrollOffset,
     scrollViewportHeight,
     overscrollAxisLock,
+    overscrollCatchPull,
+    overscrollStartTouchX,
     overscrollLastTouchY,
     overscrollPanActive,
     overscrollStartTouchY,
