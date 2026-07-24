@@ -1384,3 +1384,28 @@ pathspec + --no-verify.
 REMAINING in red team 2: owner re-repro on polls (shake/double-motion should be dead —
 polls is UNKNOWN now); results top-rebound regression attribution; divider-fade
 per-page audit (polls/profile/lists — routing); strip [ARBDBG] probes after.
+
+### RED TEAM 2 — ROOT CAUSE PINNED (2026-07-24): stale relations via rare pan re-mints
+[REMINT] probe: the sheet pans mint 3× (2 at boot, 1 at search open) — NOT per-render
+churn. That is exactly the stale-relations window: a container mounted before the
+LAST mint that never re-renders again (polls: boot-mounted, memo'd feed) keeps
+Gesture.Native relations to DETACHED pans → its native scroll runs OUTSIDE the live
+arbitration, simultaneously with the live pans driving the sheet = the owner's
+double-motion + shake + early-handoff feel, page-dependent by mount recency (results
+remounts per search → always fresh → behaves). Same-build proven (red divider
+marker). THE FIX (the recorded ideal, now mandatory): MOUNT-STABLE PANS — mint the
+gesture set ONCE; every changing input must be an SV or a stable worklet:
+  (a) audit useBottomSheetSharedGestureRuntime's useMemo deps: find what changed at
+      the search-open re-mint (suspects: resolveDestination/startSpring identity from
+      useBottomSheetSharedSnapExecutionRuntime dep churn; runtimeConfigValues object
+      identity; snap-number props on the assembly path);
+  (b) stabilize those (SV-read worklets, empty-dep useCallbacks; the legacy
+      BottomSheetWithFlashList host is DEAD CODE — delete it rather than support its
+      number-prop fallbacks);
+  (c) then the pans' useMemo deps collapse to stable identities → single mint →
+      relations can never stale; the revision-store guard stays unnecessary.
+PROBES IN TREE (uncommitted): [ARBDBG] set + [REMINT]. Keep until the fix verifies
+(the owner's polls repro is the acceptance test: no shake, no double-motion, clean
+handoff), then strip all probes.
+ALSO STILL OPEN: results top-rebound regression; divider-fade routing audit; the
+dead BottomSheetWithFlashList deletion.
