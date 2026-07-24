@@ -35,6 +35,26 @@ type SceneScrollState = {
   // scenes keep every in-stack entry's body mounted — pushing dmSession B over A registers B on
   // top; popping B surfaces A's registration again.
   publishedOffsets: SharedValue<number>[];
+  // RED TEAM 2 (scroll-fact redesign slice 1): the scene's BOUNDARY FACTS — the
+  // per-scene record the live host SharedValues are a PROJECTION of. Writers write
+  // HERE (per-leg gated container publication + the active list's onScroll mirror);
+  // the projector loads the presented scene's record on the frame flip. `known`
+  // distinguishes a real short page (max 0, viewport measured) from an unmeasured
+  // scene — the stale-hand-me-down disease (polls inheriting another leg's facts)
+  // is unrepresentable because facts never leave their scene's record.
+  boundaryFacts: SceneBoundaryFacts;
+};
+
+export type SceneBoundaryFacts = {
+  maxScrollOffset: number;
+  viewportHeight: number;
+  known: boolean;
+};
+
+const UNKNOWN_BOUNDARY_FACTS: SceneBoundaryFacts = {
+  maxScrollOffset: 0,
+  viewportHeight: 0,
+  known: false,
 };
 
 const createSceneScrollState = (): SceneScrollState => ({
@@ -42,7 +62,28 @@ const createSceneScrollState = (): SceneScrollState => ({
   pendingRestore: null,
   scrollHandle: null,
   publishedOffsets: [],
+  boundaryFacts: UNKNOWN_BOUNDARY_FACTS,
 });
+
+/** Record the scene's measured boundary facts (content − viewport, ≥0). */
+export const recordSceneBoundaryFacts = (
+  sceneKey: string,
+  maxScrollOffset: number,
+  viewportHeight: number
+): void => {
+  if (viewportHeight <= 0) {
+    return;
+  }
+  getState(sceneKey).boundaryFacts = {
+    maxScrollOffset: Math.max(0, maxScrollOffset),
+    viewportHeight,
+    known: true,
+  };
+};
+
+/** The scene's boundary facts — UNKNOWN (known:false) until its own surface measures. */
+export const readSceneBoundaryFacts = (sceneKey: string): SceneBoundaryFacts =>
+  states.get(sceneKey)?.boundaryFacts ?? UNKNOWN_BOUNDARY_FACTS;
 
 const states = new Map<string, SceneScrollState>();
 
