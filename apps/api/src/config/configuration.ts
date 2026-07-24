@@ -228,10 +228,13 @@ export default () => {
       username: resolveSecretEnv('REDDIT_USERNAME'),
       password: resolveSecretEnv('REDDIT_PASSWORD'),
       // Reddit API rules require 'platform:app-id:version (by /u/username)'
-      // — a generic UA is exactly what their anti-abuse layer punishes.
+      // — a generic UA is exactly what their anti-abuse layer punishes. The
+      // app-id is a deliberately NEUTRAL codename (owner directive
+      // 2026-07-24): distinctive + stable is what Reddit wants; it need not
+      // and must not carry the product brand.
       userAgent:
         process.env.REDDIT_USER_AGENT ||
-        `web:crave-search:v1.0.0 (by /u/${process.env.REDDIT_USERNAME || 'crave-search'})`,
+        `web:threadsift:v1.0.0 (by /u/${process.env.REDDIT_USERNAME || 'threadsift'})`,
       timeout: parseInt(process.env.REDDIT_TIMEOUT || '10000', 10),
       requestsPerMinute: parseInt(
         process.env.REDDIT_REQUESTS_PER_MINUTE || '100',
