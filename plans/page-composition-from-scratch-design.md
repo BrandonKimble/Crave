@@ -1333,3 +1333,37 @@ regressed on results; why polls' list feeds no divider offset; whether polls (be
 host vs scene-stack leg) double-hosts its gesture runtime.
 STATUS: charter recorded; mitigation reloaded; redesign NOT started — needs a fresh
 full-context session (this one is at its end).
+
+### RED TEAM 2 — THE SCROLL-FACT REDESIGN (implementation spec, 2026-07-24)
+THE LAW: per-scene fact RECORDS are the store; the host's live SharedValues are a
+PROJECTION of the presented scene's record; writers write records; ONE projector
+switches the projection on the presentation frame flip (same driver as shell
+visibility: PersistentSheetHeaderHost's frame effect).
+Slices:
+1. REGISTRY EXTENSION (pure): SceneScrollState gains `boundaryFacts: { maxScrollOffset:
+   number; viewportHeight: number; known: boolean }` + setters/readers
+   (`recordSceneBoundaryFacts(sceneKey, max, viewport)`, `readSceneBoundaryFacts`),
+   default { 0, 0, known:false }. Hermetic tests.
+2. WRITER REROUTE: BottomSheetScrollContainer publication (per-leg gated as today)
+   writes THE SCENE'S RECORD, not the live SVs. Scene identity via a SceneKeyContext
+   provided at the body layer (BottomSheetSceneStackBodyLayer already knows its leg's
+   sceneKey; foundation surfaces also carry SceneStripLawContext). onScroll handlers
+   (events runtime) KEEP writing the live SVs (they are presented-scene-only by
+   construction: only the presented leg's list receives touches) AND mirror max/vp
+   into the record (keeps record fresh mid-scroll).
+3. THE PROJECTOR: on frame.presentedSceneKey change (the header-host driver effect),
+   (a) save outgoing scene's live offset into its record (exists today via saved
+   offset paths — verify), (b) LOAD incoming scene's record into the live SVs:
+   scrollOffset:=savedOffset (already done by re-base — verify where), max/vp:=record
+   or {0,0}, factsKnown SV := record.known. New SV: `boundaryFactsKnown` in the shared
+   runtime, threaded to the gesture runtime.
+4. PAN LAW: atBottom requires factsKnown && offset >= max − eps (max==0 legal again —
+   the short-page band RETURNS, now on honest per-scene facts). Unknown scenes decline.
+5. ATTRIBUTION SUBSLICES (same arc): (a) results top-rebound regression — probe the
+   fire condition on a flick (isInMomentum? delta? offset edge?); (b) divider
+   inconsistency — find which pages' lists never feed the projected scrollOffset
+   (polls = bespoke host split — likely reads the WRONG host's offset; decide: route
+   polls divider from its own host or record the polls-host migration as the cure);
+   (c) strip the [ARBDBG] probes when done.
+Each slice: tsc/jest + matrix + owner-eye where feel changes; commit separately with
+pathspec + --no-verify.
