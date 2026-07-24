@@ -786,6 +786,15 @@ export class RedditService implements OnModuleInit {
             error as Error,
           );
         } else {
+          // Attribution before ideation (Railway cutover 2026-07-24): the
+          // generic message swallowed status/body all the way up the worker
+          // logs — log the vendor's actual answer at the chokepoint.
+          this.logger.error('Reddit API request failed (chokepoint detail)', {
+            url,
+            status: axiosError.response?.status ?? null,
+            code: axiosError.code ?? null,
+            data: JSON.stringify(axiosError.response?.data)?.slice(0, 300),
+          });
           throw new RedditApiError(
             'API request failed',
             axiosError.response?.status,
