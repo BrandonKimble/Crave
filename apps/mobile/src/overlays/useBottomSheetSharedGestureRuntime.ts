@@ -1,8 +1,11 @@
 import React from 'react';
 
 import { Gesture } from 'react-native-gesture-handler';
-import { useSharedValue, type SharedValue,
+import {
+  useAnimatedReaction,
+  useSharedValue,
   withSpring,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
@@ -140,7 +143,8 @@ export const useBottomSheetSharedGestureRuntime = ({
   runtimeConfigValues,
 }: UseBottomSheetSharedGestureRuntimeArgs) => {
   const ownedGestureEnabledValue = useSharedValue(gestureEnabled ? 1 : 0);
-  const gestureEnabledValue = runtimeConfigValues?.gestureEnabled ?? ownedGestureEnabledValue;
+  // Immutable-pan law: the pans read ONLY the owned SV; config syncs into it below.
+  const gestureEnabledValue = ownedGestureEnabledValue;
   // MOUNT-STABLE PANS (red team 2 root-cause fix): the snap-number props change per
   // presented scene; captured raw they re-minted the pans (3 mints/session), leaving
   // never-re-rendered containers (polls) holding Gesture.Native relations to DETACHED
@@ -184,23 +188,74 @@ export const useBottomSheetSharedGestureRuntime = ({
     ownedGestureEnabledValue.value = gestureEnabled ? 1 : 0;
   }, [gestureEnabled, ownedGestureEnabledValue, runtimeConfigValues]);
 
+  // ─── IMMUTABLE PANS (gesture redesign) ────────────────────────────────────────────
+  // INVARIANT: nothing a pan worklet captures may have changeable JS identity — the
+  // polls disease was Gesture.Native relations pointing at DETACHED pan objects after
+  // a re-mint (boot-mounted leg, never re-rendered). Facts reach the pans through the
+  // owned SV mirrors below; effects leave through the command bus. The reactions and
+  // executor may re-mint freely — they are NOT gesture identity.
+  useAnimatedReaction(
+    () =>
+      runtimeConfigValues == null
+        ? null
+        : {
+            expanded: runtimeConfigValues.expandedSnap.value,
+            middle: runtimeConfigValues.middleSnap.value,
+            collapsed: runtimeConfigValues.collapsedSnap.value,
+            hidden: runtimeConfigValues.hasHiddenSnap.value
+              ? runtimeConfigValues.hiddenSnap.value
+              : Number.NaN,
+            preventSwipeDismiss: runtimeConfigValues.preventSwipeDismiss.value,
+            gestureEnabled: runtimeConfigValues.gestureEnabled.value,
+          },
+    (config) => {
+      if (config == null) {
+        return;
+      }
+      expandedSnapValue.value = config.expanded;
+      middleSnapValue.value = config.middle;
+      collapsedSnapValue.value = config.collapsed;
+      hiddenSnapValue.value = config.hidden;
+      preventSwipeDismissValue.value = config.preventSwipeDismiss;
+      ownedGestureEnabledValue.value = config.gestureEnabled;
+    },
+    [runtimeConfigValues]
+  );
+
+  // THE COMMAND BUS: pans emit releases; this executor (re-mintable) settles them
+  // with the CURRENT snap machinery. seq is the edge; payload rides alongside.
+  const releaseCommandSeq = useSharedValue(0);
+  const releaseCommandVelocity = useSharedValue(0);
+  const releaseCommandTargetMiddle = useSharedValue(false);
+  useAnimatedReaction(
+    () => releaseCommandSeq.value,
+    (seq, previousSeq) => {
+      if (previousSeq == null || seq === previousSeq || seq === 0) {
+        return;
+      }
+      if (releaseCommandTargetMiddle.value) {
+        startSpring(middleSnapValue.value, 0, false, 'gesture');
+        return;
+      }
+      const velocity = releaseCommandVelocity.value;
+      const destination = resolveDestination(sheetY.value, velocity, dragStartY.value);
+      const hidden = Number.isNaN(hiddenSnapValue.value) ? undefined : hiddenSnapValue.value;
+      startSpring(destination, velocity, destination === hidden, 'gesture');
+    },
+    [resolveDestination, startSpring]
+  );
+
   return React.useMemo(() => {
     console.log('[REMINT] sheet pans minted');
     const resolveRuntimeSnapValues = () => {
       'worklet';
-      const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnapValue.value;
-      const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnapValue.value;
-      const runtimeCollapsedSnap =
-        runtimeConfigValues?.collapsedSnap.value ?? collapsedSnapValue.value;
-      const runtimeHiddenSnap = runtimeConfigValues
-        ? runtimeConfigValues.hasHiddenSnap.value
-          ? runtimeConfigValues.hiddenSnap.value
-          : undefined
-        : Number.isNaN(hiddenSnapValue.value)
-          ? undefined
-          : hiddenSnapValue.value;
-      const runtimePreventSwipeDismiss =
-        runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismissValue.value;
+      const runtimeExpandedSnap = expandedSnapValue.value;
+      const runtimeMiddleSnap = middleSnapValue.value;
+      const runtimeCollapsedSnap = collapsedSnapValue.value;
+      const runtimeHiddenSnap = Number.isNaN(hiddenSnapValue.value)
+        ? undefined
+        : hiddenSnapValue.value;
+      const runtimePreventSwipeDismiss = preventSwipeDismissValue.value;
       return {
         expanded: runtimeExpandedSnap,
         middle: runtimeMiddleSnap,
@@ -417,14 +472,9 @@ export const useBottomSheetSharedGestureRuntime = ({
         if (!success || expandDidHandoffToScroll.value) {
           return;
         }
-        const runtimeSnapValues = resolveRuntimeSnapValues();
-        const destination = resolveDestination(sheetY.value, event.velocityY, dragStartY.value);
-        startSpring(
-          destination,
-          event.velocityY,
-          destination === runtimeSnapValues.hidden,
-          'gesture'
-        );
+        releaseCommandVelocity.value = event.velocityY;
+        releaseCommandTargetMiddle.value = false;
+        releaseCommandSeq.value += 1;
       })
       .onFinalize(() => {
         'worklet';
@@ -525,14 +575,9 @@ export const useBottomSheetSharedGestureRuntime = ({
         if (!success) {
           return;
         }
-        const runtimeSnapValues = resolveRuntimeSnapValues();
-        const destination = resolveDestination(sheetY.value, event.velocityY, dragStartY.value);
-        startSpring(
-          destination,
-          event.velocityY,
-          destination === runtimeSnapValues.hidden,
-          'gesture'
-        );
+        releaseCommandVelocity.value = event.velocityY;
+        releaseCommandTargetMiddle.value = false;
+        releaseCommandSeq.value += 1;
       })
       .onFinalize(() => {
         'worklet';
@@ -666,7 +711,8 @@ export const useBottomSheetSharedGestureRuntime = ({
         const hasMiddleAbove =
           runtimeSnapValues.middle < runtimeSnapValues.collapsed - DRAG_EPSILON;
         if (atDocked && touchInHeader && hasMiddleAbove) {
-          startSpring(runtimeSnapValues.middle, 0, false, 'gesture');
+          releaseCommandTargetMiddle.value = true;
+          releaseCommandSeq.value += 1;
         }
       });
 
@@ -687,56 +733,10 @@ export const useBottomSheetSharedGestureRuntime = ({
       collapsePan: collapsePanGesture,
       overscrollPan: overscrollPanGesture,
     };
-  }, [
-    collapsedSnapValue,
-    collapseAxisLock,
-    collapseLastTouchX,
-    collapseLastTouchY,
-    collapsePanActive,
-    collapseStartSheetY,
-    collapseStartTouchX,
-    collapseStartTouchY,
-    collapseTouchInHeader,
-    contentOverscroll,
-    maxScrollOffset,
-    scrollViewportHeight,
-    overscrollAxisLock,
-    overscrollCatchPull,
-    overscrollStartTouchX,
-    overscrollLastTouchY,
-    overscrollPanActive,
-    overscrollStartTouchY,
-    dragStartY,
-    expandAllowTopElastic,
-    expandAxisLock,
-    expandDidHandoffToScroll,
-    expandGestureOwner,
-    expandHandoffLocked,
-    expandLastTouchX,
-    expandLastTouchY,
-    expandPanActive,
-    expandStartSheetY,
-    expandStartTouchX,
-    expandStartTouchY,
-    expandStartedBelowExpanded,
-    expandTouchInHeader,
-    expandedSnapValue,
-    gestureEnabledValue,
-    hasUserDrivenSheet,
-    headerHeight,
-    hiddenSnapValue,
-    isDragging,
-    isInMomentum,
-    isSettling,
-    middleSnapValue,
-    preventSwipeDismissValue,
-    resolveDestination,
-    runtimeConfigValues,
-    scrollOffset,
-    scrollTopOffset,
-    sheetY,
-    springId,
-    springTargetY,
-    startSpring,
-  ]);
+    // IMMUTABLE PANS: every capture is a stable SharedValue, a module constant, or a
+    // worklet defined inside this memo. Empty deps = ONE mint per runtime mount —
+    // Gesture.Native relations minted by any container at any time stay valid for
+    // that container's entire life (the polls disease is unrepresentable).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 };

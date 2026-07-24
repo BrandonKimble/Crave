@@ -1483,3 +1483,22 @@ THE DESIGN (charter law 1, refined by the map): IMMUTABLE PANS + COMMAND BUS.
   immutable, so a relation minted at ANY commit is valid for the container's life.
 - Acceptance: [REMINT] must log exactly ONCE per app session across boot + search +
   scene hops (RED-capable); then the owner's polls repro.
+
+### IMMUTABLE PANS + COMMAND BUS SHIPPED (2026-07-24)
+The gesture set now mints with EMPTY useMemo deps — one mint per runtime mount, by
+construction:
+- Config mirrors: a useAnimatedReaction (outside gesture identity) syncs
+  runtimeConfigValues' SVs into the runtime-owned mirrors (snaps, preventSwipeDismiss,
+  gestureEnabled); the pans read mirrors only. resolveRuntimeSnapValues no longer
+  touches the config object.
+- THE COMMAND BUS: pans emit releases as SV commands (seq + velocity + toMiddle);
+  an executor reaction consumes them with the CURRENT resolveDestination/startSpring —
+  JS-function identity can no longer reach the pans.
+- gestureEnabledValue = the owned SV always.
+VERIFIED: [REMINT] delta ZERO across search submits + scrolls (previously re-minted
+per snap-set change); drag-release settles via the executor (delta-0 settle shot);
+scroll healthy; jest 396/396, matrix 21/21, invariants 30/30.
+ACCEPTANCE PENDING: the owner's polls repro (boot lock + double-motion + shake) —
+with immutable pans, a boot-minted container's relations stay valid forever; the
+polls mechanism is unrepresentable. THEN: strip probes ([REMINT], [ARBDBG], red
+divider marker), delete dead BottomSheetWithFlashList, rebound + divider audits.
