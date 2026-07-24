@@ -32,6 +32,10 @@ type BottomSheetScrollContainerProps = ScrollViewProps & {
   overscrollPanGesture: GestureType;
   /** Boundary-physics law §1: runtime-owned overscroll — translates the content. */
   contentOverscroll: SharedValue<number>;
+  /** Boundary-physics: the live surface's max interior offset — published from
+   *  layout/content-size HERE (before any scroll event exists; the probe-caught bug:
+   *  an unpublished 0 made a fresh long list read as at-bottom). */
+  maxScrollOffset: SharedValue<number>;
   // UI-thread scrollEnabled authority (plans/sheet-scroll-primitive.md §3.1): the authority-synced
   // SharedValue mirror of visible && listScrollEnabled && interactionEnabled. Driven via
   // useAnimatedProps on THIS real ScrollView, so a child leg that first commits mid page-switch
@@ -47,6 +51,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       collapsePanGesture,
       overscrollPanGesture,
       contentOverscroll,
+      maxScrollOffset,
       shouldEnableScrollShared,
       transparent = false,
       style,
@@ -89,6 +94,26 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     // range is genuinely 0 and the runtime-owned overscroll supplies the feel — no fake
     // minHeight padding. The old floor existed so the up-drag had a real scroll to fail
     // into; boundary ownership (the overscroll pan) replaced that need.
+    //
+    // maxScrollOffset publication: content height − viewport height, from the layout
+    // callbacks (NOT only onScroll — a never-scrolled list must still be known-long).
+    // Gated on being the live surface so a hidden leg's layout can't clobber the fact.
+    const viewportHeightRef = React.useRef(0);
+    const contentHeightRef = React.useRef(0);
+    const publishMaxScrollOffset = React.useCallback(() => {
+      if (!shouldEnableScrollShared.value) {
+        return;
+      }
+      maxScrollOffset.value = Math.max(0, contentHeightRef.current - viewportHeightRef.current);
+    }, [maxScrollOffset, shouldEnableScrollShared]);
+    const handleLayout = React.useCallback(
+      (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
+        viewportHeightRef.current = event.nativeEvent.layout.height;
+        publishMaxScrollOffset();
+        onLayout?.(event);
+      },
+      [onLayout, publishMaxScrollOffset]
+    );
 
     // FrostCutout re-measure signal: content re-flow (a row above a cutout growing) changes the
     // content size without firing the cutout's own onLayout — this pings the scene's foundation
@@ -96,10 +121,12 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     const notifyCutoutContentLayout = useSceneFrostCutoutContentLayoutSignal();
     const handleContentSizeChange = React.useCallback(
       (width: number, height: number) => {
+        contentHeightRef.current = height;
+        publishMaxScrollOffset();
         notifyCutoutContentLayout();
         onContentSizeChange?.(width, height);
       },
-      [notifyCutoutContentLayout, onContentSizeChange]
+      [notifyCutoutContentLayout, onContentSizeChange, publishMaxScrollOffset]
     );
 
     return (
@@ -120,7 +147,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           alwaysBounceVertical={SHEET_BODY_NO_OVERSCROLL.alwaysBounceVertical}
           overScrollMode={SHEET_BODY_NO_OVERSCROLL.overScrollMode}
           animatedProps={scrollEnabledAnimatedProps}
-          onLayout={onLayout}
+          onLayout={handleLayout}
           onContentSizeChange={handleContentSizeChange}
           style={[style, overscrollTranslateStyle, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[

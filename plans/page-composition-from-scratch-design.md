@@ -1176,3 +1176,17 @@ useBottomSheetSharedScrollEventsRuntime + useBottomSheetSharedGestureRuntime):
    bodyDefaults wiring) and either route it through the ONE events runtime (ideal —
    the bespoke exception again) or mount the same edge-writer there. Then re-run the
    flick attribution, then the feel pass.
+
+### Boundary-physics feel round 1 — SHIPPED FIX + final attribution (2026-07-23)
+Committed: the maxScrollOffset container-publication fix (the fresh-long-list at-bottom
+misread, probe-caught, re-repro'd clean after the fix). Final attribution of the
+missing top-rebound, probe-proven twice over: the SEARCH results list's scroll events
+NEVER reach useBottomSheetSharedScrollEventsRuntime (a coarse any-event near-top probe
+logs ZERO even on a gentle top-area scroll, while worklet logs from the gesture
+runtime flow freely) — the onScroll={bodyScrollRuntime.primaryListOnScroll} attachment
+through FlashList's renderScrollComponent does not deliver, and the scrollOffset SV
+must be driven by another lane (the injected scrollOffsetValue / motion-state path).
+NEXT ROUND: attribute WHO writes search's scrollOffset (grep the motionStateEntry
+scrollOffsetValue producer), route search's events through the ONE events runtime (the
+bespoke-exception disease again), then the rebound fires there for free; then the
+owner-eye feel pass (springs).
