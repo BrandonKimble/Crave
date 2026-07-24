@@ -1396,3 +1396,28 @@ monotonicity, conservative vendor-cap distortion), 2 findings FIXED:
    actual PK.
 
 735 api green, build clean, API restarted, smoke 200.
+
+### Production collection first light (2026-07-24) — the reddit outage autopsy
+
+The worker's first prod collection failed everywhere with generic 'API
+request failed'. The IP-block theory was FALSIFIED by live probes
+(railway ssh + node one-liners): the password grant returned HTTP 200 +
+{"error":"invalid_grant"} from BOTH residential and Railway IPs — and
+the client's missing body-check stamped it "Authentication successful",
+so collection had been silently dead on every network. Probable
+original sin: a one-character typo in REDDIT_USERNAME (trailing '~').
+Fixes (16c09782 + 9e8ebb46): app-only client_credentials grant (correct
+for reading public listings; live-verified both networks), 200-without-
+token = typed auth failure, User-Agent to Reddit's required format with
+a NEUTRAL codename (owner directive: no product brand in the vendor
+identity — 'web:threadsift:v1.0.0 (by /u/<dev-account>)'); username
+typo corrected in local + Railway envs. The dev account itself was
+verified in good standing, auto-generated name, zero brand linkage;
+2FA enablement = owner to-do; commercial API registration = launch
+to-do. Worker deploy flakes (5× FAILED post-healthcheck, no runtime
+logs, healthcheck green) resolved on retry — platform transient.
+VERIFIED: 07:00 tick — foodnyc chronological fetching 25-post batches,
+relevance gate 24/25 kept, batch processing flowing. Production
+collection operational; the archive-end gap is closing. Fast-iteration
+levers proven: railway ssh probes (instant) and due_at=now() re-arm
+(≤10min full-pipeline).
