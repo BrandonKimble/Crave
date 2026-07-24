@@ -844,15 +844,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   private loadRequiredPromptFile(filename: string, operation: string): string {
-    const promptPath = join(
-      process.cwd(),
-      'src',
-      'modules',
-      'external-integrations',
-      'llm',
-      'prompts',
-      filename,
-    );
+    // __dirname-relative (Railway cutover 2026-07-24): the old
+    // process.cwd()/src/... path only worked because every runtime so far
+    // happened to run from apps/api with the SOURCE tree present — the
+    // Docker image ships dist only and crashed at bootstrap. __dirname
+    // resolves to this module's own directory in BOTH runtimes (src under
+    // ts-jest, dist under node — nest-cli.json copies prompts/*.md into
+    // dist as assets).
+    const promptPath = join(__dirname, 'prompts', filename);
 
     try {
       return readFileSync(promptPath, 'utf-8');
