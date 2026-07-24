@@ -1423,3 +1423,34 @@ is structurally gone. Gates: tsc/jest 396, matrix 21/21 (snaps still resolve via
 mirrors), scroll sanity on-sim. ACCEPTANCE = owner's polls repro (shake/double-motion/
 early-handoff) + then strip probes ([REMINT], [ARBDBG], red divider marker) and take
 the rebound + divider audits.
+
+## THE GESTURE REDESIGN CHARTER (from-scratch, owner-directed 2026-07-24)
+
+VERDICT: the sheet gesture/scroll system's correctness is an emergent property of
+mount order and cross-instance relation wiring — structurally un-red-teamable. Owner
+acceptance evidence: polls locked at boot, unlocks after leave-and-return, then
+double-scroll + shake persist THROUGH mount-stable pans. Patches end here.
+
+FIRST PRINCIPLES (the design's laws):
+1. ONE GESTURE AUTHORITY, ZERO RELATION WEBS. A single root detector owns every sheet
+   touch. Ownership (sheet-drag | scroll | boundary-physics) is an EXPLICIT STATE
+   MACHINE on shared values — no requireExternalGestureToFail / simultaneousWith
+   cross-handler graphs anywhere. Scroll containers declare nothing; scrollEnabled
+   derives from the owner state on the UI thread.
+2. ONE HOST. The scene-stack assembly is the only sheet runtime instance. The polls
+   docked lane migrates in; BottomSheetWithFlashList and every second
+   useBottomSheetSharedRuntime call are DELETED.
+3. FACTS PER SCENE (keep): the boundary-fact records + projector shipped this arc are
+   the fact layer. The boundary physics (native rubber curve, critically damped
+   springs, the catch) carries over as pure worklet math.
+4. BORN INSTRUMENTED: the owner-state machine logs every transition with a reason —
+   a polls-class repro must attribute itself in one log read (RED-capable by design).
+
+STEP 1 (survey, before design): the definitive per-surface map — for polls' docked
+lane, search, and every scene leg: which GestureDetector arbitrates its touches,
+which runtime instance minted that gesture, and whose pans its scroll container
+references (file:line). The polls mount-order lock (boot-locked → leave-and-return
+unlocks) must be explained BY the map.
+STEP 2: the design doc (state machine states/transitions/inputs; migration plan;
+deletion list). Owner reviews before code.
+STEP 3+: build behind the polls acceptance test.
