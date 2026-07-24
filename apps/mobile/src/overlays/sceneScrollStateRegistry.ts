@@ -65,6 +65,12 @@ const createSceneScrollState = (): SceneScrollState => ({
   boundaryFacts: UNKNOWN_BOUNDARY_FACTS,
 });
 
+/** Scene identity for scroll-fact writers: provided by the body content runtime at
+ *  each leg's root so the shared scroll container knows WHOSE record it feeds. */
+export const SceneScrollFactsSceneKeyContext = React.createContext<string | null>(null);
+export const useSceneScrollFactsSceneKey = (): string | null =>
+  React.useContext(SceneScrollFactsSceneKeyContext);
+
 /** Record the scene's measured boundary facts (content − viewport, ≥0). */
 export const recordSceneBoundaryFacts = (
   sceneKey: string,

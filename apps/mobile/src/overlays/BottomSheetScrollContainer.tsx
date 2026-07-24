@@ -12,6 +12,10 @@ import Animated, {
 import { useBottomSheetSceneStackBodyIsActive } from './BottomSheetSceneStackBodyActivityContext';
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
 import { useShellLiveness } from './ShellVisibilityBoundary';
+import {
+  recordSceneBoundaryFacts,
+  useSceneScrollFactsSceneKey,
+} from './sceneScrollStateRegistry';
 import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -110,6 +114,9 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     // a recorded deferral, never a guess.
     const shellLive = useShellLiveness();
     const bodyIsActive = useBottomSheetSceneStackBodyIsActive();
+    const factsSceneKey = useSceneScrollFactsSceneKey();
+    const factsSceneKeyRef = React.useRef(factsSceneKey);
+    factsSceneKeyRef.current = factsSceneKey;
     const isLiveLegSurface = shellLive && bodyIsActive;
     const isLiveLegSurfaceRef = React.useRef(isLiveLegSurface);
     isLiveLegSurfaceRef.current = isLiveLegSurface;
@@ -125,6 +132,16 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       }
       maxScrollOffset.value = Math.max(0, contentHeightRef.current - viewportHeightRef.current);
       scrollViewportHeight.value = viewportHeightRef.current;
+      // RED TEAM 2 slice 2: the fact's DURABLE home is the scene's record — the live
+      // SVs above are the presented-scene projection (the projector reloads them on
+      // the frame flip, so no fact ever survives into another scene's tenure).
+      if (factsSceneKeyRef.current != null) {
+        recordSceneBoundaryFacts(
+          factsSceneKeyRef.current,
+          contentHeightRef.current - viewportHeightRef.current,
+          viewportHeightRef.current
+        );
+      }
     }, [maxScrollOffset, scrollViewportHeight]);
     const handleLayout = React.useCallback(
       (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
