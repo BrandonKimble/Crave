@@ -30,7 +30,11 @@ type UseBottomSheetSharedScrollEventsRuntimeArgs = {
 // contentOverscroll dips negative and springs home. RN iOS reports scroll velocity in
 // pt/ms; Reanimated springs take pt/s.
 const TOP_REBOUND_SPRING = { damping: 28, stiffness: 300, mass: 0.6 } as const;
-const MOMENTUM_EDGE_MIN_VELOCITY_PT_MS = 0.15;
+// Arrival speed is DERIVED from momentum offset deltas (probe-proven 2026-07-23:
+// event.velocity is null in these Reanimated scroll events; the deltas are the
+// velocity — ~1 event/frame at 60Hz, so pt/frame × 60 = pt/s).
+const MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME = 4;
+const FRAMES_PER_SECOND = 60;
 
 type UseBottomSheetSharedScrollEventsRuntimeResult = {
   primaryListOnScroll: FlashListProps<unknown>['onScroll'];
@@ -55,6 +59,9 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
 }: UseBottomSheetSharedScrollEventsRuntimeArgs): UseBottomSheetSharedScrollEventsRuntimeResult => {
   // One impulse per momentum episode (reset when a new drag/momentum begins).
   const topReboundFired = useSharedValue(false);
+  // The previous momentum event's offset + step — the derived arrival velocity's inputs.
+  const momentumPrevOffset = useSharedValue(0);
+  const momentumPrevDelta = useSharedValue(0);
   const primaryAnimatedScrollHandler = useAnimatedScrollHandler(
     {
       onScroll: (event) => {
@@ -72,18 +79,22 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             0,
             (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
           );
-          const arrivalVelocity = Math.abs(event.velocity?.y ?? 0);
-          if (
-            isInMomentum.value &&
-            !topReboundFired.value &&
-            event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-            arrivalVelocity >= MOMENTUM_EDGE_MIN_VELOCITY_PT_MS
-          ) {
-            topReboundFired.value = true;
-            contentOverscroll.value = withSpring(0, {
-              ...TOP_REBOUND_SPRING,
-              velocity: -arrivalVelocity * 1000,
-            });
+          if (isInMomentum.value) {
+            const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
+            const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
+            if (
+              !topReboundFired.value &&
+              event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
+              arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
+            ) {
+              topReboundFired.value = true;
+              contentOverscroll.value = withSpring(0, {
+                ...TOP_REBOUND_SPRING,
+                velocity: -arrivalDelta * FRAMES_PER_SECOND,
+              });
+            }
+            momentumPrevDelta.value = stepDelta;
+            momentumPrevOffset.value = event.contentOffset.y;
           }
         }
       },
@@ -93,6 +104,8 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
         }
         isInMomentum.value = false;
         topReboundFired.value = false;
+        momentumPrevDelta.value = 0;
+        momentumPrevOffset.value = scrollOffset.value;
       },
       onMomentumBegin: () => {
         if (!activePrimaryList.value) {
@@ -146,18 +159,22 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             0,
             (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
           );
-          const arrivalVelocity = Math.abs(event.velocity?.y ?? 0);
-          if (
-            isInMomentum.value &&
-            !topReboundFired.value &&
-            event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-            arrivalVelocity >= MOMENTUM_EDGE_MIN_VELOCITY_PT_MS
-          ) {
-            topReboundFired.value = true;
-            contentOverscroll.value = withSpring(0, {
-              ...TOP_REBOUND_SPRING,
-              velocity: -arrivalVelocity * 1000,
-            });
+          if (isInMomentum.value) {
+            const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
+            const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
+            if (
+              !topReboundFired.value &&
+              event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
+              arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
+            ) {
+              topReboundFired.value = true;
+              contentOverscroll.value = withSpring(0, {
+                ...TOP_REBOUND_SPRING,
+                velocity: -arrivalDelta * FRAMES_PER_SECOND,
+              });
+            }
+            momentumPrevDelta.value = stepDelta;
+            momentumPrevOffset.value = event.contentOffset.y;
           }
         }
       },
@@ -167,6 +184,8 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
         }
         isInMomentum.value = false;
         topReboundFired.value = false;
+        momentumPrevDelta.value = 0;
+        momentumPrevOffset.value = scrollOffset.value;
       },
       onMomentumBegin: () => {
         if (!activePrimaryList.value) {
@@ -220,23 +239,29 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             0,
             (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
           );
-          const arrivalVelocity = Math.abs(event.velocity?.y ?? 0);
-          if (
-            isInMomentum.value &&
-            !topReboundFired.value &&
-            event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
-            arrivalVelocity >= MOMENTUM_EDGE_MIN_VELOCITY_PT_MS
-          ) {
-            topReboundFired.value = true;
-            contentOverscroll.value = withSpring(0, {
-              ...TOP_REBOUND_SPRING,
-              velocity: -arrivalVelocity * 1000,
-            });
+          if (isInMomentum.value) {
+            const stepDelta = Math.abs(event.contentOffset.y - momentumPrevOffset.value);
+            const arrivalDelta = Math.max(stepDelta, momentumPrevDelta.value);
+            if (
+              !topReboundFired.value &&
+              event.contentOffset.y <= scrollTopOffset.value + 0.5 &&
+              arrivalDelta >= MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME
+            ) {
+              topReboundFired.value = true;
+              contentOverscroll.value = withSpring(0, {
+                ...TOP_REBOUND_SPRING,
+                velocity: -arrivalDelta * FRAMES_PER_SECOND,
+              });
+            }
+            momentumPrevDelta.value = stepDelta;
+            momentumPrevOffset.value = event.contentOffset.y;
           }
         }
       },
       onBeginDrag: () => {
         topReboundFired.value = false;
+        momentumPrevDelta.value = 0;
+        momentumPrevOffset.value = scrollOffset.value;
         if (activePrimaryList.value) {
           return;
         }

@@ -1190,3 +1190,18 @@ NEXT ROUND: attribute WHO writes search's scrollOffset (grep the motionStateEntr
 scrollOffsetValue producer), route search's events through the ONE events runtime (the
 bespoke-exception disease again), then the rebound fires there for free; then the
 owner-eye feel pass (springs).
+
+### Boundary-physics feel round 2 — THE REBOUND FIRES (2026-07-23)
+CORRECTION to round 1's finding: search does NOT bypass the events runtime — the
+"zero events" observation came from testing against an EXPIRED perf scenario (the app
+was on home; no results list existed). With a live results list, the primary handler
+receives dense events (185/scroll, active=true). ONE SPINE ALREADY HOLDS. Rig lore:
+always re-verify the scenario is alive before trusting a zero-probe result.
+The REAL blocker, probe-proven: `event.velocity` is NULL in these Reanimated scroll
+events — the velocity gate could never pass. Fix: arrival velocity DERIVED from
+momentum offset deltas (momentumPrevOffset/Delta shared values; pt/frame × 60 → the
+spring's pt/s; MOMENTUM_EDGE_MIN_DELTA_PT_PER_FRAME=4). RED→GREEN proven:
+[BOUNCEDBG] top-rebound FIRE delta=59.0pt/frame on a real flick, and the video shows
+~300ms of spring-back oscillation after arrival vs the prior 2-frame dead stop.
+Probes stripped. Gates: tsc/jest 396, matrix 21/21. REMAINING: the owner-eye feel
+pass (spring constants, the bottom band on a short page, rebound-interrupt-by-touch).
