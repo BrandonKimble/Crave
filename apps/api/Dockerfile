@@ -102,5 +102,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 # Start the application
-# Railway will inject DATABASE_URL and other env vars at runtime
-CMD ["node", "apps/api/dist/main.js"]
+# Railway will inject DATABASE_URL and other env vars at runtime.
+# `prisma migrate deploy` first: applies any pending committed migrations
+# before the app boots, so deploys carry their own schema changes (it's a
+# no-op when nothing is pending; concurrent api/worker deploys serialize on
+# prisma's advisory lock). Migrations are AUTHORED locally (prisma migrate
+# dev against the local DB) — this only ever APPLIES committed files.
+CMD ["sh", "-c", "npx prisma migrate deploy --schema apps/api/prisma/schema.prisma && node apps/api/dist/main.js"]
