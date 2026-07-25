@@ -28,7 +28,7 @@ deploy_one() {
   local svc="$1" attempt out
   for attempt in 1 2; do
     echo "==> Deploying $svc (attempt $attempt) ..."
-    out="$(npx -y @railway/cli up --service "$svc" --ci 2>&1 | tail -1)"
+    out="$(railway up --service "$svc" --ci 2>&1 | tail -1)"
     if [[ "$out" == *"Deploy complete"* ]]; then
       echo "==> $svc: Deploy complete"
       return 0
