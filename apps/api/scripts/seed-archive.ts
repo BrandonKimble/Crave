@@ -147,21 +147,33 @@ async function main(): Promise<void> {
     const unitCount = options.maxPosts * options.subreddits.length;
     let campaignId: string;
     try {
-      const estimate = await spendCampaigns.prepareEstimate({
+      // §24.3 v2 ALL-IN MANIFEST: the approved number covers EVERY paid
+      // class the docs trigger (extraction + interactive pipeline +
+      // embeddings + places enrichment), not just batch extraction.
+      const estimate = await spendCampaigns.prepareManifestEstimate({
         name: `archive:${options.subreddits.join(',')}`,
-        workClass,
-        unit,
-        unitCount,
+        docCount: unitCount,
       });
-      out(`\n=== §24.3 spend estimate (campaign ${estimate.campaignId}) ===`);
-      out(`  work_class=${workClass} unit=${unit} unit_count=${unitCount}`);
       out(
-        `  rate=${estimate.microUsdPerUnit.toFixed(4)} micro-USD/${unit}  ` +
-          `estimate=$${(estimate.estimateMicros / 1_000_000).toFixed(2)}  ` +
+        `\n=== §24.3 all-in spend manifest (campaign ${estimate.campaignId}) ===`,
+      );
+      out(
+        `  docs=${estimate.docCount}  expected new restaurants=${estimate.expectedEntities} ` +
+          `(measured entities/kilodoc ratio)`,
+      );
+      for (const line of estimate.lines) {
+        out(
+          `  ${line.workClass.padEnd(28)} ${line.unitCount} ${line.unit}(s) × ` +
+            `${line.microUsdPerUnit.toFixed(4)} micro-USD = ` +
+            `$${(line.estimateMicros / 1_000_000).toFixed(2)}`,
+        );
+      }
+      out(
+        `  ALL-IN total=$${(estimate.totalEstimateMicros / 1_000_000).toFixed(2)}  ` +
           `tolerance=${(estimate.toleranceFraction * 100).toFixed(1)}%  ` +
           `envelope(breach stop)=$${(estimate.envelopeMicros / 1_000_000).toFixed(2)}`,
       );
-      out(`  hash=${estimate.estimateHash}`);
+      out(`  hash=${estimate.estimateHash} (one hash over the whole manifest)`);
       if (options.approveEstimate !== estimate.estimateHash) {
         out(
           `\nRefusing to start: re-run with --approve-estimate ${estimate.estimateHash} ` +
@@ -176,13 +188,14 @@ async function main(): Promise<void> {
       if (!(error instanceof NoPublishedRateError)) {
         throw error;
       }
-      // §24.2 cold-start law: no published rate yet for this work class —
-      // run a bounded pilot (budget = unitCount, priced post-hoc) instead
-      // of inventing a rate.
+      // §24.2 cold-start law: a manifest line's class has no published rate
+      // yet (the error names WHICH one) — run a bounded pilot (budget =
+      // unitCount, priced post-hoc) instead of inventing a rate.
       out(
-        `\nNo published rate for ${workClass}/${unit} yet — running a ` +
-          `bounded pilot campaign instead (§24.2 cold start; budget = ` +
-          `${unitCount} ${unit}s, priced post-hoc from this run's actuals).`,
+        `\nNo published rate for ${error.workClass}/${error.unit} yet — ` +
+          `running a bounded pilot campaign instead (§24.2 cold start; ` +
+          `budget = ${unitCount} ${unit}s, priced post-hoc from this run's ` +
+          `actuals).`,
       );
       const pilot = await spendCampaigns.preparePilot({
         name: `archive-pilot:${options.subreddits.join(',')}`,

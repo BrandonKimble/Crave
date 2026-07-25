@@ -44,6 +44,37 @@ export interface PrepareEstimateParams {
   unitCount: number;
 }
 
+/** One line of an all-in manifest estimate (§24.3 v2, 2026-07-25). */
+export interface ManifestEstimateLine {
+  workClass: string;
+  unit: string;
+  unitCount: number;
+  microUsdPerUnit: number;
+  estimateMicros: number;
+}
+
+export interface PrepareManifestEstimateParams {
+  name: string;
+  /** Documents the campaign will collect/process — the single driver every
+   *  manifest line derives from. */
+  docCount: number;
+}
+
+export interface PreparedManifestEstimate {
+  campaignId: string;
+  name: string;
+  docCount: number;
+  /** Expected NEW restaurant entities, derived from the measured
+   *  pipeline.entities_per_kilodoc ratio (never invented). */
+  expectedEntities: number;
+  lines: ManifestEstimateLine[];
+  totalEstimateMicros: number;
+  toleranceFraction: number;
+  /** ONE hash over the whole manifest (fixed field order). */
+  estimateHash: string;
+  envelopeMicros: number;
+}
+
 export interface PreparedEstimate {
   campaignId: string;
   name: string;
@@ -151,6 +182,56 @@ function hashEstimate(payload: {
   return createHash('sha256').update(canonical).digest('hex');
 }
 
+/**
+ * §24.3 v2 manifest hash: ONE sha256 over the WHOLE manifest — a fixed-order
+ * JSON array of per-line fixed-order tuples followed by the all-in total and
+ * tolerance. Same anti-ambiguity rationale as hashEstimate (JSON escapes its
+ * own delimiters); approving the hash approves EVERY line and the total at
+ * once, so a single re-measured rate anywhere invalidates the printout.
+ */
+function hashManifest(payload: {
+  lines: ManifestEstimateLine[];
+  totalEstimateMicros: number;
+  toleranceFraction: number;
+}): string {
+  const canonical = JSON.stringify([
+    payload.lines.map((line) => [
+      line.workClass,
+      line.unit,
+      line.unitCount,
+      line.microUsdPerUnit,
+      line.estimateMicros,
+    ]),
+    payload.totalEstimateMicros,
+    payload.toleranceFraction,
+  ]);
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+/** The manifest's four paid classes, in fixed line order (§24.3 v2 — the
+ *  owner's "everything that costs us money from Google" directive). The
+ *  entities_per_kilodoc ratio row is the doc→entity converter, not a line. */
+const MANIFEST_EXTRACTION = {
+  workClass: 'gemini.reddit_extraction',
+  unit: 'document',
+} as const;
+const MANIFEST_INTERACTIVE = {
+  workClass: 'gemini.interactive_pipeline',
+  unit: 'document',
+} as const;
+const MANIFEST_EMBEDDING = {
+  workClass: 'gemini.embedding',
+  unit: 'document',
+} as const;
+const MANIFEST_PLACES = {
+  workClass: 'google_places.enrichment',
+  unit: 'restaurant',
+} as const;
+const MANIFEST_ENTITY_RATIO = {
+  workClass: 'pipeline.entities_per_kilodoc',
+  unit: 'ratio',
+} as const;
+
 @Injectable()
 export class SpendCampaignService {
   private readonly logger: LoggerService;
@@ -235,6 +316,120 @@ export class SpendCampaignService {
       unitCount: params.unitCount,
       microUsdPerUnit: rate.microUsdPerUnit,
       estimateMicros,
+      toleranceFraction,
+      estimateHash,
+      envelopeMicros,
+    };
+  }
+
+  /**
+   * §24.3 v2 ALL-IN MANIFEST estimate (2026-07-25, owner directive:
+   * "everything that costs us money from Google should be known and
+   * accounted for"): for a doc-count input, the estimate the owner approves
+   * is the SUM of every paid class the docs will trigger —
+   *   1. extraction        docs × gemini.reddit_extraction rate
+   *   2. interactive       docs × gemini.interactive_pipeline rate (gate +
+   *                        entity resolution + categorization/alias/
+   *                        attribute prompts umbrella)
+   *   3. embeddings        docs × gemini.embedding rate
+   *   4. places enrichment (docs × entities_per_kilodoc ÷ 1000) entities
+   *                        × google_places.enrichment rate
+   * ONE hash covers the whole manifest; envelope = all-in total ×
+   * (1 + tolerance). A MISSING measured rate for ANY line is a typed
+   * refusal naming the missing class (NoPublishedRateError) — a line is
+   * never silently skipped, because a silently-thinner estimate is exactly
+   * the ±20-30% miss this replaces.
+   *
+   * ENFORCEMENT NOTE: metering/breach attribution stays as-is for now
+   * (extraction batch spend + places enrichment drain the campaign grant);
+   * per-class enforcement attribution arrives as the Job-1 tagged ledger
+   * data accumulates — the manifest changes what the owner APPROVES, not
+   * yet how each class's actuals are drained.
+   *
+   * Persisted row compatibility: the spend_campaigns row stores the
+   * manifest as (workClass = extraction's, unit 'document', unitCount =
+   * docCount, microUsdPerUnit = all-in total ÷ docCount, estimateMicros =
+   * all-in total, estimateHash = MANIFEST hash) so approve()/recordSpend()/
+   * resumeAfterBreach()/complete() keep working unchanged.
+   */
+  async prepareManifestEstimate(
+    params: PrepareManifestEstimateParams,
+  ): Promise<PreparedManifestEstimate> {
+    const requireRate = async (spec: { workClass: string; unit: string }) => {
+      const rate = await this.prisma.spendUnitCost.findUnique({
+        where: {
+          workClass_unit: { workClass: spec.workClass, unit: spec.unit },
+        },
+      });
+      if (!rate) {
+        throw new NoPublishedRateError(spec.workClass, spec.unit);
+      }
+      return rate.microUsdPerUnit;
+    };
+
+    const extractionRate = await requireRate(MANIFEST_EXTRACTION);
+    const interactiveRate = await requireRate(MANIFEST_INTERACTIVE);
+    const embeddingRate = await requireRate(MANIFEST_EMBEDDING);
+    const placesRate = await requireRate(MANIFEST_PLACES);
+    // Entities-per-kilodoc: NOT currency — restaurants per 1,000 docs (see
+    // spend-analytics refreshPipelineClassRates's encoding note).
+    const entitiesPerKilodoc = await requireRate(MANIFEST_ENTITY_RATIO);
+
+    const docCount = params.docCount;
+    const expectedEntities = Math.round((docCount * entitiesPerKilodoc) / 1000);
+
+    const makeLine = (
+      spec: { workClass: string; unit: string },
+      unitCount: number,
+      microUsdPerUnit: number,
+    ): ManifestEstimateLine => ({
+      workClass: spec.workClass,
+      unit: spec.unit,
+      unitCount,
+      microUsdPerUnit,
+      estimateMicros: Math.round(unitCount * microUsdPerUnit),
+    });
+    const lines: ManifestEstimateLine[] = [
+      makeLine(MANIFEST_EXTRACTION, docCount, extractionRate),
+      makeLine(MANIFEST_INTERACTIVE, docCount, interactiveRate),
+      makeLine(MANIFEST_EMBEDDING, docCount, embeddingRate),
+      makeLine(MANIFEST_PLACES, expectedEntities, placesRate),
+    ];
+    const totalEstimateMicros = lines.reduce(
+      (sum, line) => sum + line.estimateMicros,
+      0,
+    );
+    const toleranceFraction = this.deriveTolerance(
+      MANIFEST_EXTRACTION.workClass,
+    );
+    const estimateHash = hashManifest({
+      lines,
+      totalEstimateMicros,
+      toleranceFraction,
+    });
+    const row = await this.prisma.spendCampaign.create({
+      data: {
+        name: params.name,
+        workClass: MANIFEST_EXTRACTION.workClass,
+        unit: MANIFEST_EXTRACTION.unit,
+        unitCount: docCount,
+        microUsdPerUnit: docCount > 0 ? totalEstimateMicros / docCount : 0,
+        estimateMicros: totalEstimateMicros,
+        toleranceFraction,
+        estimateHash,
+        state: 'awaiting_approval',
+      },
+    });
+    const envelopeMicros = Math.round(
+      totalEstimateMicros * (1 + toleranceFraction),
+    );
+    return {
+      campaignId: row.campaignId,
+      name: params.name,
+      docCount,
+      expectedEntities,
+      lines,
+      totalEstimateMicros,
       toleranceFraction,
       estimateHash,
       envelopeMicros,

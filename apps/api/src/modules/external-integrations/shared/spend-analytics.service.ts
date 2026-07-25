@@ -195,6 +195,9 @@ export class SpendAnalyticsService {
     results.push(...this.constantRateFloorRows(windowStart, windowEnd));
     results.push(...(await this.refreshTomtomDraws(windowStart, windowEnd)));
     results.push(...(await this.refreshPlacesCalls(windowStart, windowEnd)));
+    results.push(
+      ...(await this.refreshPipelineClassRates(windowStart, windowEnd)),
+    );
 
     await this.attributeLaneCosts(windowStart, windowEnd);
     await this.refreshBackstop(windowStart, windowEnd, now);
@@ -464,6 +467,179 @@ export class SpendAnalyticsService {
       });
     }
     return out;
+  }
+
+  /**
+   * §24.2 all-in per-class rates (2026-07-25, owner directive: "everything
+   * that costs us money from Google should be known and accounted for").
+   * All MEASURED from the ledger over the trailing window — never invented;
+   * each rate publishes only when its denominator clears MIN_SAMPLE_UNITS.
+   *
+   * - gemini.relevance_gate / document: gate spend (caller
+   *   'relevance-gate.judgeBatch') ÷ relevance verdicts judged in the
+   *   window (one verdict per document gated). Refines automatically as
+   *   the Job-1 caller taxonomy accumulates richer tags.
+   * - gemini.embedding / document: embedding spend (caller
+   *   'embedding.embed') ÷ documents collected in the window.
+   * - gemini.interactive_pipeline / document: the honest UMBRELLA rate —
+   *   TOTAL non-batch, non-search gemini spend (everything interactive
+   *   except the gate, embeddings, and 'query.interpret' user-search
+   *   traffic; legacy blur-tagged 'llm.callGeminiApi' rows count here)
+   *   ÷ documents collected. Per-class tagged rates refine this split as
+   *   tagged data accrues, but the umbrella keeps estimates all-in today.
+   * - google_places.enrichment / restaurant: total places spend (SKU-priced
+   *   per K4 rate table) ÷ NEW restaurant entities created in the window.
+   * - pipeline.entities_per_kilodoc / ratio: measured doc→restaurant-entity
+   *   conversion. ENCODING: microUsdPerUnit here is NOT currency — it
+   *   stores restaurants-created-per-1000-documents-collected directly
+   *   (unit 'ratio' marks the row); estimates use it to turn a doc count
+   *   into an expected entity count for the places-enrichment line.
+   */
+  private async refreshPipelineClassRates(
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<UnitCostRow[]> {
+    const out: UnitCostRow[] = [];
+    const createdWindow = { gte: windowStart, lt: windowEnd };
+
+    const docsCollected = await this.prisma.sourceDocument.count({
+      where: { collectedAt: createdWindow },
+    });
+
+    // gemini.relevance_gate / document
+    const verdictCount = await this.prisma.collectionRelevanceVerdict.count({
+      where: { judgedAt: createdWindow },
+    });
+    if (verdictCount >= MIN_SAMPLE_UNITS) {
+      const gateSpend = await this.geminiSpendMicrosForCallers(
+        windowStart,
+        windowEnd,
+        { in: ['relevance-gate.judgeBatch'] },
+      );
+      out.push({
+        workClass: 'gemini.relevance_gate',
+        unit: 'document',
+        microUsdPerUnit: gateSpend / verdictCount,
+        sampleUnits: verdictCount,
+        windowStart,
+        windowEnd,
+      });
+    }
+
+    if (docsCollected >= MIN_SAMPLE_UNITS) {
+      // gemini.embedding / document
+      const embedSpend = await this.geminiSpendMicrosForCallers(
+        windowStart,
+        windowEnd,
+        { in: ['embedding.embed'] },
+      );
+      out.push({
+        workClass: 'gemini.embedding',
+        unit: 'document',
+        microUsdPerUnit: embedSpend / docsCollected,
+        sampleUnits: docsCollected,
+        windowStart,
+        windowEnd,
+      });
+
+      // gemini.interactive_pipeline / document — non-batch, non-search,
+      // non-gate, non-embedding umbrella (legacy blur rows included).
+      const interactiveSpend = await this.geminiSpendMicrosForCallers(
+        windowStart,
+        windowEnd,
+        {
+          notIn: [
+            'gemini-batch.collection_extraction',
+            'relevance-gate.judgeBatch',
+            'embedding.embed',
+            'query.interpret',
+          ],
+        },
+        { excludeBatchMode: true },
+      );
+      out.push({
+        workClass: 'gemini.interactive_pipeline',
+        unit: 'document',
+        microUsdPerUnit: interactiveSpend / docsCollected,
+        sampleUnits: docsCollected,
+        windowStart,
+        windowEnd,
+      });
+    }
+
+    // google_places.enrichment / restaurant + entities_per_kilodoc
+    const newRestaurants = await this.prisma.entity.count({
+      where: { type: 'restaurant', createdAt: createdWindow },
+    });
+    if (newRestaurants >= MIN_SAMPLE_UNITS) {
+      const placesRows = await this.prisma.apiUsageEvent.findMany({
+        where: { service: 'google_places', createdAt: createdWindow },
+        select: { skuTier: true, requestCount: true },
+      });
+      let placesSpend = 0;
+      for (const row of placesRows) {
+        placesSpend +=
+          placesCostMicrosPerCall(row.skuTier ?? null) *
+          (row.requestCount ?? 0);
+      }
+      out.push({
+        workClass: 'google_places.enrichment',
+        unit: 'restaurant',
+        microUsdPerUnit: placesSpend / newRestaurants,
+        sampleUnits: newRestaurants,
+        windowStart,
+        windowEnd,
+      });
+    }
+    if (docsCollected >= MIN_SAMPLE_UNITS) {
+      out.push({
+        workClass: 'pipeline.entities_per_kilodoc',
+        unit: 'ratio',
+        // NOT currency: restaurants created per 1,000 documents collected.
+        microUsdPerUnit: (newRestaurants / docsCollected) * 1000,
+        sampleUnits: docsCollected,
+        windowStart,
+        windowEnd,
+      });
+    }
+    return out;
+  }
+
+  /** Ledger-priced gemini spend (micro-USD) for a caller filter over
+   *  [start, end). `excludeBatchMode` drops mode='batch' rows (used by the
+   *  interactive-pipeline umbrella). */
+  private async geminiSpendMicrosForCallers(
+    start: Date,
+    end: Date,
+    caller: { in?: string[]; notIn?: string[] },
+    opts: { excludeBatchMode?: boolean } = {},
+  ): Promise<number> {
+    const rows = await this.prisma.apiUsageEvent.findMany({
+      where: {
+        service: 'gemini',
+        createdAt: { gte: start, lt: end },
+        caller,
+        ...(opts.excludeBatchMode ? { NOT: { mode: 'batch' } } : {}),
+      },
+      select: {
+        inputTokens: true,
+        outputTokens: true,
+        cachedTokens: true,
+        model: true,
+        mode: true,
+      },
+    });
+    let total = 0;
+    for (const row of rows) {
+      total += geminiCostMicros({
+        model: row.model ?? undefined,
+        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
+        inputTokens: row.inputTokens ?? 0,
+        outputTokens: row.outputTokens ?? 0,
+        cachedTokens: row.cachedTokens ?? 0,
+      });
+    }
+    return total;
   }
 
   /**

@@ -1872,3 +1872,25 @@ switches no longer cluster under dead choices), artifact honesty
 "claims, not hardware" limitation in the plan). 844 api green; API
 restarted; smoke 200. Railway api+worker carry SIGNAL_AUDIT_HMAC_KEY
 (set, no deploy triggered).
+
+## 2026-07-25 — All-in estimation: caller taxonomy, per-class rates, manifest approvals
+
+Owner directive: "everything that costs us money from Google should be known
+and accounted for." (1) The llm.callGeminiApi ledger blur is dead: all 12
+interactive call sites now carry distinct caller tags (content.extract,
+query.interpret, entity-resolution.match/\_batch, attribute.place/
+canonicalize_name, cuisine.extract/classify_hubs, dish.knowledge_synthesize,
+poll.infer_subject, places.choose_candidate, moderation.classify); generic
+fallback = dead-man warn; a structural spec parses the source and REDs on
+any dropped/duplicate tag. (2) spend_unit_costs gains measured per-class
+rates: relevance_gate/doc, embedding/doc, interactive_pipeline/doc (umbrella
+until tagged data accumulates), google_places.enrichment/restaurant,
+pipeline.entities_per_kilodoc (ratio row, documented encoding). (3)
+Campaign approvals are now ALL-IN MANIFESTS: extraction + interactive +
+embeddings + places lines, one hash, envelope = all-in total ×(1+tol),
+missing any rate → typed refusal naming the class. (4) Dashboard expected-
+by-today v2 = trailing-30d MEDIAN daily × day + full envelopes of campaigns
+approved in-month (burst-robust; mean→median diverges ~11× under the burst
+fixture). 857 tests green. Archive-file fact recorded: FoodNYC dump ends
+2025-12-31 → Jan–May 2026 hole until a fresher dump is downloaded; owner
+holding the NYC archive run for that.

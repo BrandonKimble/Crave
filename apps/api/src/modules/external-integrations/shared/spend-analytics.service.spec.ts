@@ -1,5 +1,6 @@
 import { SpendAnalyticsService } from './spend-analytics.service';
 import { geminiCostMicros } from './gemini-pricing';
+import { placesCostMicrosPerCall } from './vendor-pricing';
 
 /**
  * §24.2 Leg A: the unit-cost derivation must PROVE per-document math for the
@@ -37,6 +38,11 @@ function buildPrisma(params: {
   };
   placesEvents?: Array<{ skuTier: string | null; requestCount: number }>;
   laneJoinRows: unknown[];
+  /** §24.2 per-class rate denominators (refreshPipelineClassRates) — all
+   *  default 0 so pre-existing fixtures publish no per-class rows. */
+  docsCollected?: number;
+  verdictsJudged?: number;
+  newRestaurants?: number;
 }) {
   const queryRawCalls = [params.joinedRows, params.laneJoinRows];
   let queryRawIndex = 0;
@@ -60,9 +66,45 @@ function buildPrisma(params: {
         if (service === 'google_places') {
           return Promise.resolve(params.placesEvents ?? []);
         }
-        return Promise.resolve(params.unattributedGeminiEvents);
+        // Honor the §24.2 per-class caller filter (in / notIn) and the
+        // interactive umbrella's NOT-batch-mode filter, so fixtures can tag
+        // events with a `caller` and get class-scoped answers. Calls with no
+        // caller filter behave exactly as before.
+        const where = (
+          args as {
+            where?: {
+              caller?: { in?: string[]; notIn?: string[] };
+              NOT?: { mode?: string };
+            };
+          }
+        ).where;
+        let events = params.unattributedGeminiEvents as Array<{
+          caller?: string;
+          mode?: string;
+        }>;
+        if (where?.caller?.in) {
+          const allowed = where.caller.in;
+          events = events.filter((e) => allowed.includes(e.caller ?? ''));
+        } else if (where?.caller?.notIn) {
+          const blocked = where.caller.notIn;
+          events = events.filter((e) => !blocked.includes(e.caller ?? ''));
+        }
+        if (where?.NOT?.mode) {
+          const blockedMode = where.NOT.mode;
+          events = events.filter((e) => e.mode !== blockedMode);
+        }
+        return Promise.resolve(events);
       }),
       aggregate: jest.fn().mockResolvedValue(params.tomtomAgg),
+    },
+    sourceDocument: {
+      count: jest.fn().mockResolvedValue(params.docsCollected ?? 0),
+    },
+    collectionRelevanceVerdict: {
+      count: jest.fn().mockResolvedValue(params.verdictsJudged ?? 0),
+    },
+    entity: {
+      count: jest.fn().mockResolvedValue(params.newRestaurants ?? 0),
     },
     spendUnitCost: {
       upsert,
@@ -685,5 +727,110 @@ describe('SpendAnalyticsService.checkTomtomPoolHot (§18.4 TomTom credit proxy)'
       callCheck(service, new Date('2026-07-15T00:00:00Z')),
     ).not.toThrow();
     expect(opsAlerts.emit).not.toHaveBeenCalled();
+  });
+});
+
+describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-class rates)', () => {
+  const mkEvent = (
+    caller: string,
+    inputTokens: number,
+    outputTokens: number,
+  ) => ({
+    caller,
+    inputTokens,
+    outputTokens,
+    cachedTokens: 0,
+    model: MODEL,
+    mode: 'interactive',
+  });
+  const cost = (e: { inputTokens: number; outputTokens: number }) =>
+    geminiCostMicros({
+      model: MODEL,
+      mode: 'interactive',
+      inputTokens: e.inputTokens,
+      outputTokens: e.outputTokens,
+      cachedTokens: 0,
+    });
+
+  function build(counts: {
+    docsCollected: number;
+    verdictsJudged: number;
+    newRestaurants: number;
+  }) {
+    const gateEvent = mkEvent('relevance-gate.judgeBatch', 2_000_000, 100_000);
+    const embedEvent = mkEvent('embedding.embed', 1_000_000, 0);
+    const blurEvent = mkEvent('llm.callGeminiApi', 3_000_000, 500_000);
+    const searchEvent = mkEvent('query.interpret', 4_000_000, 200_000);
+    const prisma = buildPrisma({
+      joinedRows: [],
+      unattributedGeminiEvents: [gateEvent, embedEvent, blurEvent, searchEvent],
+      tomtomAgg: emptyAgg(),
+      placesEvents: [{ skuTier: 'essentials', requestCount: 300 }],
+      laneJoinRows: [],
+      ...counts,
+    });
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn().mockResolvedValue(undefined) } as never,
+      { emit: jest.fn() } as never,
+    );
+    return { service, gateEvent, embedEvent, blurEvent };
+  }
+
+  it('publishes measured per-class rates: gate/doc, embedding/doc, interactive umbrella/doc (legacy blur IN, search OUT), places/restaurant, and the entities-per-kilodoc ratio', async () => {
+    const { service, gateEvent, embedEvent, blurEvent } = build({
+      docsCollected: 200,
+      verdictsJudged: 120,
+      newRestaurants: 150,
+    });
+    const rows = await service.refreshUnitCosts(WINDOW_END);
+
+    const gate = rows.find((r) => r.workClass === 'gemini.relevance_gate');
+    expect(gate).toMatchObject({ unit: 'document', sampleUnits: 120 });
+    expect(gate!.microUsdPerUnit).toBeCloseTo(cost(gateEvent) / 120);
+
+    const embed = rows.find((r) => r.workClass === 'gemini.embedding');
+    expect(embed).toMatchObject({ unit: 'document', sampleUnits: 200 });
+    expect(embed!.microUsdPerUnit).toBeCloseTo(cost(embedEvent) / 200);
+
+    // Umbrella: ONLY the legacy blur event — gate/embedding have their own
+    // rows and query.interpret is user-search traffic, not pipeline spend.
+    const interactive = rows.find(
+      (r) => r.workClass === 'gemini.interactive_pipeline',
+    );
+    expect(interactive).toMatchObject({ unit: 'document', sampleUnits: 200 });
+    expect(interactive!.microUsdPerUnit).toBeCloseTo(cost(blurEvent) / 200);
+
+    const places = rows.find((r) => r.workClass === 'google_places.enrichment');
+    expect(places).toMatchObject({ unit: 'restaurant', sampleUnits: 150 });
+    expect(places!.microUsdPerUnit).toBeCloseTo(
+      (placesCostMicrosPerCall('essentials') * 300) / 150,
+    );
+
+    const ratio = rows.find(
+      (r) => r.workClass === 'pipeline.entities_per_kilodoc',
+    );
+    expect(ratio).toMatchObject({ unit: 'ratio', sampleUnits: 200 });
+    // ENCODING: restaurants per 1000 docs — 150/200 × 1000 = 750; NOT $.
+    expect(ratio!.microUsdPerUnit).toBeCloseTo(750);
+  });
+
+  it('RED-proof: denominators under MIN_SAMPLE_UNITS publish NO per-class row (never an invented rate)', async () => {
+    const { service } = build({
+      docsCollected: 50,
+      verdictsJudged: 40,
+      newRestaurants: 30,
+    });
+    const rows = await service.refreshUnitCosts(WINDOW_END);
+    for (const workClass of [
+      'gemini.relevance_gate',
+      'gemini.embedding',
+      'gemini.interactive_pipeline',
+      'google_places.enrichment',
+      'pipeline.entities_per_kilodoc',
+    ]) {
+      expect(rows.find((r) => r.workClass === workClass)).toBeUndefined();
+    }
   });
 });

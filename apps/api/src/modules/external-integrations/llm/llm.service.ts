@@ -131,6 +131,12 @@ interface LLMGenerationOptions {
    *  response schema's source_id to an enum so ref typos are impossible at
    *  the decode layer (digit-count drift class, attributed 2026-07-10). */
   sourceRefs?: string[];
+  /** REQUIRED distinct usage-ledger caller tag (§24 caller taxonomy,
+   *  2026-07-25). Every call site must name its prompt class (e.g.
+   *  'entity-resolution.match', 'query.interpret') so per-class spend is
+   *  measurable. The generic 'llm.callGeminiApi' fallback is a dead-man
+   *  default that logs a warning when hit. */
+  usageCaller?: string;
 }
 
 type CacheRefreshReason =
@@ -899,6 +905,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const prompt = this.buildProcessingPrompt(input);
       const shouldLogThoughts = this.shouldLogThoughts('content');
       const response = await this.callLLMApi(prompt, {
+        usageCaller: 'content.extract',
         thinkingOverride: shouldLogThoughts
           ? { includeThoughts: true }
           : undefined,
@@ -1026,6 +1033,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const response = await this.callLLMApi(prompt, {
+      usageCaller: 'query.interpret',
       generationConfig: queryGenerationConfig,
       cacheName: this.queryInstructionCache?.name ?? null,
       systemInstruction: this.queryPrompt,
@@ -1250,6 +1258,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const response = await this.callLLMApi(prompt, {
+      usageCaller: 'cuisine.extract',
       generationConfig,
       systemInstruction: this.cuisinePrompt,
       model,
@@ -1313,6 +1322,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const response = await this.callLLMApi(JSON.stringify({ text: trimmed }), {
+      usageCaller: 'moderation.classify',
       generationConfig,
       systemInstruction: this.moderationPrompt,
       model,
@@ -1409,6 +1419,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidates: input.candidates.map((c) => ({ id: c.id, name: c.name })),
     });
     const response = await this.callLLMApi(payload, {
+      usageCaller: 'attribute.place',
       generationConfig,
       systemInstruction: this.attributePlacementPrompt,
       model,
@@ -1552,6 +1563,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const response = await this.callLLMApi(
         JSON.stringify({ items: payload }),
         {
+          usageCaller: 'entity-resolution.match_batch',
           generationConfig,
           systemInstruction,
           model,
@@ -1666,6 +1678,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       const response = await this.callLLMApi(
         JSON.stringify({ dishes: payload }),
         {
+          usageCaller: 'dish.knowledge_synthesize',
           generationConfig,
           systemInstruction,
           model: this.llmConfig.model,
@@ -1751,6 +1764,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidates: input.candidates.map((c) => ({ id: c.id, name: c.name })),
     });
     const response = await this.callLLMApi(payload, {
+      usageCaller: 'entity-resolution.match',
       generationConfig,
       systemInstruction: this.entityMatchPrompt,
       model,
@@ -1859,6 +1873,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
 
     const response = await this.callLLMApi(JSON.stringify({ question: q }), {
+      usageCaller: 'poll.infer_subject',
       generationConfig,
       systemInstruction: this.pollSubjectPrompt,
       model,
@@ -1986,6 +2001,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const response = await this.callLLMApi(JSON.stringify({ terms: names }), {
+        usageCaller: 'attribute.canonicalize_name',
         generationConfig,
         systemInstruction,
         model,
@@ -2054,6 +2070,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       'covering EVERY input name verbatim.';
 
     const response = await this.callLLMApi(JSON.stringify({ names: cleaned }), {
+      usageCaller: 'cuisine.classify_hubs',
       generationConfig,
       systemInstruction,
       model,
@@ -2117,6 +2134,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     };
 
     const response = await this.callLLMApi(prompt, {
+      usageCaller: 'places.choose_candidate',
       generationConfig,
       model: 'gemini-3.1-flash-lite-preview',
       timeoutMs:
@@ -3299,6 +3317,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         const finishReason = response.candidates?.[0]?.finishReason;
         const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
         const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+        // §24 caller taxonomy: the generic tag is a dead-man default only.
+        // Any warning here means a call site forgot its usageCaller tag.
+        if (!options.usageCaller) {
+          this.logger.warn(
+            'usage-ledger record fell back to generic caller tag — tag the call site with usageCaller',
+            {
+              operation: 'call_llm_api',
+              model: targetModel,
+              correlationId: CorrelationUtils.getCorrelationId(),
+            },
+          );
+        }
         this.usageLedger.record({
           service: 'gemini',
           operation: 'generateContent',
@@ -3310,7 +3340,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           outputTokens:
             outputTokens + (response.usageMetadata?.thoughtsTokenCount ?? 0),
           cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
-          caller: 'llm.callGeminiApi',
+          caller: options.usageCaller ?? 'llm.callGeminiApi',
         });
         const tokenLimit =
           typeof requestConfigWithTimeout.maxOutputTokens === 'number' &&

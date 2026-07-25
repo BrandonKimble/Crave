@@ -34,6 +34,41 @@ const MONTH_POSITION_HOT_RATIO = 1.3;
 
 export type MonthPositionColor = 'blue' | 'yellow' | 'red';
 
+/** Median (even length: mean of middle two). Exported for the expectation
+ *  math's RED-provable tests. */
+export function medianOf(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+/**
+ * Expectation v2 (2026-07-25 — the owner's ±20-30% complaint): expected
+ * month-to-date spend = trailing-30d MEDIAN daily spend × day of month,
+ * PLUS the full envelope of every campaign approved inside the current
+ * month (counted once, never prorated — an approved campaign is explicitly
+ * expected spend). The old mean-based line let one bursty campaign day
+ * poison the baseline in BOTH directions: the burst inflated the mean going
+ * forward AND the burst's own spend looked like an overrun on the day. A
+ * median ignores the burst; the campaign term explains it instead. Pure and
+ * exported for RED-provable tests (must differ from the mean formula under
+ * a burst fixture). Returns null when there is nothing measured to expect.
+ */
+export function expectedByTodayMicrosV2(
+  dailyTotalMicros: number[],
+  dayOfMonth: number,
+  approvedCampaignEnvelopesThisMonthMicros: number,
+): number | null {
+  const baseline = medianOf(dailyTotalMicros) * dayOfMonth;
+  const total = baseline + approvedCampaignEnvelopesThisMonthMicros;
+  return total > 0 ? total : null;
+}
+
 /** Pure month-position banding — exported so the thresholds are RED-provably
  *  testable without a service graph. */
 export function monthPositionColor(
@@ -72,8 +107,9 @@ export interface OpsSummary {
       dayOfMonth: number;
       daysInMonth: number;
       spentMtdMicros: number;
-      /** Prorated trailing-baseline expectation (30d daily mean × day of
-       *  month) — null when there is no measured history to derive from. */
+      /** Expectation v2: (trailing-30d MEDIAN daily spend × day of month)
+       *  + full envelopes of campaigns approved this month (counted once,
+       *  never prorated) — null when there is nothing measured to expect. */
       expectedByTodayMicros: number | null;
       percentOfExpected: number | null;
       color: MonthPositionColor | null;
@@ -270,8 +306,6 @@ export class OpsSummaryService {
       (value, i) => value + dailyPlaces[i] + dailyTomtom[i],
     );
 
-    const mean =
-      dailyTotalMicros.reduce((a, b) => a + b, 0) / DAILY_WINDOW_DAYS;
     const dayOfMonth = Math.max(
       1,
       Math.floor((now.getTime() - monthStart.getTime()) / MS_PER_DAY) + 1,
@@ -279,7 +313,29 @@ export class OpsSummaryService {
     const daysInMonth = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
     ).getUTCDate();
-    const expectedByTodayMicros = mean > 0 ? mean * dayOfMonth : null;
+    // Expectation v2 (see expectedByTodayMicrosV2's doc comment): median
+    // baseline + full envelopes of campaigns APPROVED this month. Pilots
+    // (estimateMicros null) have no envelope and contribute nothing.
+    const approvedThisMonth = await this.prisma.spendCampaign.findMany({
+      where: {
+        approvedAt: { gte: monthStart, lte: now },
+        estimateMicros: { not: null },
+      },
+      select: { estimateMicros: true, toleranceFraction: true },
+    });
+    const campaignEnvelopesMicros = approvedThisMonth.reduce(
+      (sum, row) =>
+        sum +
+        Math.round(
+          Number(row.estimateMicros) * (1 + (row.toleranceFraction ?? 0)),
+        ),
+      0,
+    );
+    const expectedByTodayMicros = expectedByTodayMicrosV2(
+      dailyTotalMicros,
+      dayOfMonth,
+      campaignEnvelopesMicros,
+    );
 
     return {
       monthToDateByService: {

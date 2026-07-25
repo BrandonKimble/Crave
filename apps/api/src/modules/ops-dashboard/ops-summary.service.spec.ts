@@ -2,6 +2,8 @@ import {
   OpsSummaryService,
   monthPositionColor,
   tomtomCreditRemainingMicros,
+  medianOf,
+  expectedByTodayMicrosV2,
 } from './ops-summary.service';
 import { PoolRegistry } from '../external-integrations/governance/pool-registry';
 
@@ -365,5 +367,45 @@ describe('tomtomCreditRemainingMicros (RED-provable)', () => {
 
   it('goes negative when burn exceeds the declared credit (overdraft is visible, not clamped)', () => {
     expect(tomtomCreditRemainingMicros(1, 2_000_000)).toBe(-1_000_000);
+  });
+});
+
+describe('expectedByTodayMicrosV2 (expectation v2: median + approved campaigns, RED-provable)', () => {
+  it('medianOf: middle value (odd), mean of middle two (even), 0 on empty', () => {
+    expect(medianOf([5, 1, 9])).toBe(5);
+    expect(medianOf([1, 2, 10, 100])).toBe(6);
+    expect(medianOf([])).toBe(0);
+  });
+
+  it('RED-proof: under a burst fixture the median expectation PROVABLY differs from the old mean formula', () => {
+    // 29 quiet days of 100 + one 30_000 campaign-burst day.
+    const daily = [...Array<number>(29).fill(100), 30_000];
+    const dayOfMonth = 10;
+    const meanFormula = (daily.reduce((a, b) => a + b, 0) / 30) * dayOfMonth;
+    const v2 = expectedByTodayMicrosV2(daily, dayOfMonth, 0);
+    // Median ignores the burst entirely: 100 × 10.
+    expect(v2).toBe(1_000);
+    // The old mean formula was poisoned by the single burst day (~11× the
+    // median baseline) — the exact ±20-30% disease being replaced.
+    expect(meanFormula).toBeCloseTo(10_966.7, 0);
+    expect(v2).not.toBeCloseTo(meanFormula);
+  });
+
+  it('adds the FULL envelope of campaigns approved this month once (never prorated)', () => {
+    const daily = Array<number>(30).fill(100);
+    expect(expectedByTodayMicrosV2(daily, 10, 0)).toBe(1_000);
+    expect(expectedByTodayMicrosV2(daily, 10, 500_000)).toBe(501_000);
+    // Same envelope on day 1 and day 28 — full amount, not prorated.
+    expect(expectedByTodayMicrosV2(daily, 1, 500_000)).toBe(500_100);
+    expect(expectedByTodayMicrosV2(daily, 28, 500_000)).toBe(502_800);
+  });
+
+  it('null when there is nothing measured to expect (no history, no campaigns)', () => {
+    expect(expectedByTodayMicrosV2([], 10, 0)).toBeNull();
+    expect(
+      expectedByTodayMicrosV2(Array<number>(30).fill(0), 15, 0),
+    ).toBeNull();
+    // A campaign alone IS an expectation even with zero daily history.
+    expect(expectedByTodayMicrosV2([], 10, 42)).toBe(42);
   });
 });

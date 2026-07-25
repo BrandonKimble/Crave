@@ -396,3 +396,102 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     );
   });
 });
+
+describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifest)', () => {
+  function seedAllRates(prisma: ReturnType<typeof buildPrisma>) {
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    prisma._unitCosts.set('gemini.interactive_pipeline::document', {
+      microUsdPerUnit: 5,
+    });
+    prisma._unitCosts.set('gemini.embedding::document', {
+      microUsdPerUnit: 1,
+    });
+    prisma._unitCosts.set('google_places.enrichment::restaurant', {
+      microUsdPerUnit: 2000,
+    });
+    // NOT currency: 50 restaurants per 1000 documents.
+    prisma._unitCosts.set('pipeline.entities_per_kilodoc::ratio', {
+      microUsdPerUnit: 50,
+    });
+  }
+
+  it('RED-proof: a manifest missing ANY line rate refuses (typed), naming the missing class — never silently skips the line', async () => {
+    const prisma = buildPrisma();
+    seedAllRates(prisma);
+    prisma._unitCosts.delete('gemini.embedding::document');
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const promise = service.prepareManifestEstimate({
+      name: 'archive:test',
+      docCount: 1000,
+    });
+    await expect(promise).rejects.toBeInstanceOf(NoPublishedRateError);
+    await promise.catch((error: NoPublishedRateError) => {
+      expect(error.workClass).toBe('gemini.embedding');
+      expect(error.unit).toBe('document');
+    });
+  });
+
+  it('sums EVERY paid class into one all-in total, derives entities from the measured ratio, and hashes the whole manifest once', async () => {
+    const prisma = buildPrisma();
+    seedAllRates(prisma);
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const manifest = await service.prepareManifestEstimate({
+      name: 'archive:test',
+      docCount: 1000,
+    });
+    // 50 entities/kilodoc × 1000 docs = 50 expected restaurants.
+    expect(manifest.expectedEntities).toBe(50);
+    expect(manifest.lines.map((l) => [l.workClass, l.estimateMicros])).toEqual([
+      ['gemini.reddit_extraction', 10_000],
+      ['gemini.interactive_pipeline', 5_000],
+      ['gemini.embedding', 1_000],
+      ['google_places.enrichment', 100_000],
+    ]);
+    expect(manifest.totalEstimateMicros).toBe(116_000);
+    // Bootstrap tolerance 0.25 → envelope = all-in total × 1.25.
+    expect(manifest.envelopeMicros).toBe(145_000);
+    // ONE hash over the whole manifest, stored on the row so approve()
+    // approves every line + total at once.
+    const row = prisma._campaigns.get(manifest.campaignId);
+    expect(row?.estimateHash).toBe(manifest.estimateHash);
+    expect(row?.estimateMicros).toBe(116_000);
+    await expect(
+      service.approve(manifest.campaignId, manifest.estimateHash),
+    ).resolves.toMatchObject({ envelopeMicros: 145_000 });
+  });
+
+  it('a re-measured rate on any single line changes the ONE manifest hash (a stale printout cannot be approved against fresher rates)', async () => {
+    const prisma = buildPrisma();
+    seedAllRates(prisma);
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const first = await service.prepareManifestEstimate({
+      name: 'archive:test',
+      docCount: 1000,
+    });
+    prisma._unitCosts.set('gemini.embedding::document', {
+      microUsdPerUnit: 2,
+    });
+    const second = await service.prepareManifestEstimate({
+      name: 'archive:test',
+      docCount: 1000,
+    });
+    expect(second.estimateHash).not.toBe(first.estimateHash);
+  });
+});
