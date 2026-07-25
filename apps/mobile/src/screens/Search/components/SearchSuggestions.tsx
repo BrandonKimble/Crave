@@ -94,16 +94,11 @@ const summarizeRenderedAutocompleteMatches = (
   };
 };
 
-// Refit layer 2 (type-differentiated rows): every non-obvious row answers "why am
-// I here" with a small type label. Attribute rows also swap to a distinct icon
-// (Sparkles) so they stop rendering identically to dishes. K1 feel copy — plain
-// lowercase words, no counts.
-const SUGGESTION_TYPE_LABELS: Record<string, string> = {
-  food_attribute: 'attribute',
-  restaurant_attribute: 'vibe',
-  poll: 'poll',
-  user: 'person',
-};
+// Refit layer 2 (type-differentiated rows) — OWNER-CORRECTED 2026-07-24:
+// differentiation is ICON-ONLY (the left icon is the type language the app
+// already speaks); the text type labels were reverted as noise ("not
+// relevant to the user"). Attribute rows keep the distinct Sparkles icon so
+// they stop rendering identically to dishes.
 
 // Never-blank rule (c): the quiet one-line failure notice, distinct from
 // no-matches. K1 feel copy.
@@ -249,7 +244,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             const isViewed = Boolean(match.badges?.viewed);
             const isAttribute =
               match.entityType === 'food_attribute' || match.entityType === 'restaurant_attribute';
-            const typeLabel = SUGGESTION_TYPE_LABELS[match.entityType] ?? null;
             // Refit layer 2 (match highlighting): bold the predictive completion —
             // the typed span renders regular, everything the engine added renders
             // bold. No-match rows (fuzzy/semantic) keep a uniform regular title.
@@ -322,7 +316,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     ) : null}
                   </View>
                   <View style={styles.autocompleteBadges}>
-                    {typeLabel ? <Text style={styles.typeLabelText}>{typeLabel}</Text> : null}
                     {isMultiLocationRestaurant ? (
                       <TouchableOpacity
                         onPress={() => onSelectSuggestion(match, { seeLocations: true })}
@@ -546,10 +539,6 @@ const styles = StyleSheet.create({
   // Type label: one step below the meta line (13) so it reads as metadata, in
   // the existing muted meta color — K1 feel sentence, not a measured number
   // (§16 K1).
-  typeLabelText: {
-    fontSize: 12,
-    color: '#64748b',
-  },
   // Error row sits in a standard row seat (ROW_HEIGHT) in the muted meta color —
   // quiet by design (§16 K1).
   autocompleteErrorRow: {
