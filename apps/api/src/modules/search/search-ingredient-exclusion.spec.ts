@@ -132,6 +132,22 @@ describe('ingredient exclusion lane (compiler → builder)', () => {
     );
   });
 
+  it('include arm carries the named-food third branch (dish IS the ingredient by name)', () => {
+    const plan = compileQueryPlanFromConstraints(
+      buildConstraints({ ingredientIds: [INCLUDE_ID] }),
+    );
+    const preview = dishPreviewFor(plan);
+    expect(preview).toContain('same-name-or-alias(f, i)');
+  });
+
+  it('exclude arm NEVER widens through the named-food branch', () => {
+    const plan = compileQueryPlanFromConstraints(
+      buildConstraints({ excludedIngredientIds: [EXCLUDE_ID] }),
+    );
+    const preview = dishPreviewFor(plan);
+    expect(preview).not.toContain('same-name-or-alias');
+  });
+
   it('emits no ingredient SQL when both lanes are empty', () => {
     const plan = compileQueryPlanFromConstraints(buildConstraints({}));
     const preview = dishPreviewFor(plan);

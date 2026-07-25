@@ -1930,8 +1930,11 @@ location_aggregates AS (
    * src/modules/content-processing/entity-resolver/testimony-knowledge-doctrine.md).
    * No consumer touches c.ingredients / canonical_ingredients directly:
    * - 'include' (recall): UNION of tiers — venue testimony OR the dish's
-   *   synthesized canon. Knowledge fills recall ("gruyere" finds dishes whose
-   *   canon includes it even when no Redditor named it).
+   *   synthesized canon OR the dish IS the ingredient by name ("burrata"
+   *   must return dishes NAMED burrata alongside dishes containing it; the
+   *   name/alias join covers synthesis gaps — owner ruling 2026-07-25).
+   *   Knowledge fills recall ("gruyere" finds dishes whose canon includes
+   *   it even when no Redditor named it).
    * - 'exclude' (allergies / "no cilantro"): CONSERVATIVE — excluded when
    *   EITHER tier names the ingredient. Canon says ramen has egg; a venue's
    *   version might not — for an exclusion you never gamble on the venue
@@ -1952,9 +1955,36 @@ location_aggregates AS (
     )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
       ingredientIds,
     )}))`;
-    return mode === 'include'
-      ? { sql: overlap, preview: previewCore }
-      : { sql: Prisma.sql`NOT ${overlap}`, preview: `NOT ${previewCore}` };
+    if (mode === 'exclude') {
+      // Exclusion stays two-tier only: a dish NAMED burrata is trivially
+      // excluded by "no burrata" through its own canon/evidence; the name
+      // join below is a RECALL widener and has no business shrinking an
+      // exclusion beyond the doctrine's conservative rule.
+      return { sql: Prisma.sql`NOT ${overlap}`, preview: `NOT ${previewCore}` };
+    }
+    // Include arm, third branch: the dish IS the ingredient by name — a food
+    // entity whose name (or an alias) equals the linked ingredient entity's
+    // name (or one of ITS aliases). Covers "burrata" returning dishes named
+    // Burrata even when synthesis hasn't stamped their canon yet.
+    const namedFood = Prisma.sql`c.food_id IN (
+      SELECT f.entity_id FROM core_entities f
+      JOIN core_entities i ON i.entity_id IN (${Prisma.join(
+        ingredientIds.map((value) => Prisma.sql`${value}::uuid`),
+        ', ',
+      )})
+      WHERE f.type = 'food'
+        AND (
+          lower(f.name) = lower(i.name)
+          OR lower(i.name) IN (SELECT lower(a) FROM unnest(f.aliases) a)
+          OR lower(f.name) IN (SELECT lower(a) FROM unnest(i.aliases) a)
+        )
+    )`;
+    return {
+      sql: Prisma.sql`(${overlap} OR ${namedFood})`,
+      preview: `(${previewCore} OR c.food_id IN (SELECT f.entity_id FROM core_entities f JOIN core_entities i ON i.entity_id IN ${this.formatUuidArray(
+        ingredientIds,
+      )} WHERE f.type = 'food' AND same-name-or-alias(f, i)))`,
+    };
   }
 
   private buildArrayOverlapClause(
