@@ -64,11 +64,12 @@ export const EXPLORE_FLOOR_FRACTION = 0.08;
 
 /** Score-quality gates per family (a floor guarantees ATTENTION when real
  *  candidates exist — it never manufactures busywork). */
-// PRE-CONSTITUTION HOLDOVERS (retro audit 2026-07-24 — flagged, not
-// hidden): naked hand-set floors in unstated units (refresh 0.2 silently
-// means "≥18 days stale" via the 90d staleness saturation; the 1s are in
-// demand-score units). §18 docket: ratify as K1 sentences or dissolve
-// into rank-only selection when the §11 family-yield competition lands.
+// §16 K1 INTERIM — RATIFIED 2026-07-24 (§18-8b(c), owner-delegated):
+// quality bars so weak candidates don't spend budget. Honest units:
+// refresh 0.2 ⇔ "a term earns a refresh only after ≥18 days stale"
+// (0.2 × the 90d staleness saturation); unmet/demand 1 = one whole unit
+// of demand-score mass. Scheduled to DISSOLVE into rank-under-budget
+// when the v2 scheduler lands — bars die when ranking makes them moot.
 const MIN_SELECTABLE_SCORE_BY_SLICE: Record<KeywordSlice, number> = {
   unmet: 1,
   refresh: 0.2,

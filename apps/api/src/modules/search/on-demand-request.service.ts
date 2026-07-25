@@ -284,16 +284,14 @@ export class OnDemandRequestService {
     return stripped.isGenericOnly ? '' : stripped.text;
   }
 
-  // §16 UNRATIFIED (retro audit 2026-07-24 — honest status): the 300s
-  // debounce's old rationale ("collection takes minutes to land") is
-  // measurement-shaped and CONTRADICTED by the measured ~10min
-  // full-pipeline landing — so it is either a pure K1 debounce sentence
-  // (rationale deleted) or a derivation (cooldown ≥ measured landing
-  // latency, which would be ~600s). The 5-entity blast radius is genuine
-  // owner territory (deriving it from engagement would repeat the
-  // sourceClassInfluence mistake) but its magnitude carries no sentence.
-  // BOTH on the §18 docket for the owner's call; values unchanged until
-  // then.
+  // §16 K1 — RATIFIED 2026-07-24 (§18-8b(a), owner-delegated): the 300s
+  // is a PURE DEBOUNCE ("the same ask may re-trigger at most every 5
+  // minutes") — the old landing-latency rationale is deleted because
+  // duplicate-work protection is the queue's target-key +
+  // searchRequestId DEDUPE's job, not the cooldown's. The 5-entity
+  // blast radius is K1 ("one ask queues a handful") — collection breadth
+  // per ask is an owner cost stance; deriving it from engagement would
+  // cross the values boundary.
   private resolveCooldownMs(): number {
     return 300_000;
   }

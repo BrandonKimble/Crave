@@ -68,10 +68,9 @@ const MIN_CHRONOLOGICAL_INTERVAL_DAYS = 2 / 24;
  * stability derivation: an interval longer than the lookback depresses the
  * measured rate, stretching the interval further — a quiet-lock feedback
  * loop; clamping at the lookback is the fixed-point bound. The VALUE 14 is
- * an owner sentence awaiting ratification ("two weeks of behavior defines
- * a source's rhythm" — §18 docket, retro audit 2026-07-24); the clamp then
- * derives cleanly from it. What changes it: owner re-ratifying the
- * horizon, never cadence tuning.
+ * K1 — RATIFIED 2026-07-24 (§18-8b(c), owner-delegated): "two weeks of
+ * behavior defines a source's rhythm"; the clamp derives cleanly from it.
+ * What changes it: owner re-ratifying the horizon, never cadence tuning.
  */
 const ARRIVAL_LOOKBACK_DAYS = 14;
 

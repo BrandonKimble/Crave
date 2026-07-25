@@ -704,31 +704,51 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    autocomplete.service.ts): the attribute-lane weights (0.6/0.3/0.1) and
    the 0.4 user/poll-lane similarity thresholds — ratify as K1 or
    re-derive via per-lane percentile normalization at next touch.
-2. Per-pool fail-policy TABLE ratification (§14.5).
-3. Gemini batch quota discovery — approved procedure, run pre-campaign.
-4. Ops readers for usage/decision ledgers (minimal endpoints) — confirm.
-5. Reddit account strategy before ~10 engines (multi-app sharding; official
-   API contract evaluation before ~40).
+2. Per-pool fail-policy TABLE ratification (§14.5) — RATIFIED 2026-07-24, see 8b(d).
+3. Gemini batch quota discovery — CLOSED as a pre-campaign RUNBOOK step (procedure documented at §14; the §24 campaign surface's estimate→approve flow is the enforcement seam; nothing to build until the first big batch campaign).
+4. Ops readers — CLOSED 2026-07-24: delivered as the /ops owner dashboard (spend unit costs, campaigns, pool state, alerts); decision-ledger traces stay DB-query-only by choice (solo-dev posture).
+5. Reddit account strategy — CLOSED as a TRIGGER item (nothing actionable
+   at 2 sources): revisit at ~10 engines (multi-app sharding), official
+   API contract evaluation before ~40.
 6. WEEK-ONE BUILD PRIORITY: instrument conversion + concentration from
    Austin's first Sundays (the warm-start predictor's direct inputs).
 7. RATIFIED 2026-07-19 (owner docket, one-by-one): (a) COVERING_FRACTION =
    1 − ATTENTION_FRACTION = 2/3 (one-knob law); (b) lone commensurate
    non-covering place IS the header ('this area' reserved for genuine
    straddles/unnamed ground). Both are now §2 law.
-   8b. BATCH-RATIFY DOCKET (retro audit 2026-07-24 — retroactively K-stamped
-   constants needing a real owner yes; values unchanged until ruled):
-   (a) on-demand cluster: MIN_RESULTS=1 (re-filed K6→K1 "only genuine
-   emptiness pulls the cord"), 300s cooldown (rationale contradicted by
-   measured ~10min landing — ratify as pure debounce OR re-derive ≥
-   landing latency), 5-entity blast radius, 2mi+0.85 viewport floor, 90d
-   who-asked retention, placeholder 30d ("a placeholder gets a month to
-   earn its existence" — its OWN sentence, not the geo TTL's);
-   (b) attention windows: popularity 30d, query-suggestions 90d;
-   (c) collector: 14d arrival horizon ("two weeks defines a source's
-   rhythm"), the one-missed-tick loss tolerance (SAFETY 0.5's root),
-   hourly drain cadence, MIN_SELECTABLE_SCORE_BY_SLICE floors;
-   (d) already-docketed: autocomplete 0.6/0.3/0.1 weights + 0.4
-   similarity floors (superseded if the suggest redesign lands).
+   8b. RATIFIED 2026-07-24 (owner-delegated to Claude, judgment recorded):
+   (a) on-demand: MIN_RESULTS=1 K1 ("only genuine emptiness pulls the
+   cord"); 300s cooldown K1 as a PURE DEBOUNCE — the landing-latency
+   rationale is deleted because in-flight duplicate protection is the
+   queue's target-key + searchRequestId DEDUPE's job, not the cooldown's;
+   5-entity blast radius K1 ("one ask queues a handful — collection
+   breadth is an owner cost stance, underivable without crossing the
+   values boundary"); 2mi+0.85 viewport floor K1 (ratified as written);
+   90d who-asked retention K1 (privacy stance); placeholder 30d K1 ("a
+   placeholder gets a month to earn its existence").
+   (b) attention windows K1: popularity = a trailing month; suggestions =
+   a trailing quarter (human calendar units; deriving them from signal
+   half-lives would be derivation theater).
+   (c) collector: 14d arrival horizon K1 ("two weeks of behavior defines
+   a source's rhythm"); one-missed-tick loss tolerance K1 (SAFETY 0.5's
+   root sentence); hourly drain cadence K1 (reuses the ratified "a
+   polygon an hour late is fine" sentence — same decision, same clock);
+   MIN_SELECTABLE_SCORE_BY_SLICE ratified as INTERIM K1 quality bars with
+   honest unit sentences in code (refresh 0.2 ⇔ "≥18 days stale"),
+   scheduled to DISSOLVE into rank-under-budget when v2 lands.
+   (d) §18-2 per-pool fail-policy TABLE ratified as implemented: paid
+   vendor pools fail CLOSED (tomtom cheap/scarce, gemini.monthlySpend,
+   campaign envelopes — broken bookkeeping must stop spending money);
+   per-minute rate pools fail with emergency fractions (gemini.tokens
+   0.95, reddit.requests 0.1 — a Redis blip must not blank the product;
+   the fraction bounds worst-case overdraw for one window).
+   (e) suggest refit slot sentences K1 (supersede the dissolved
+   0.6/0.3/0.1 weights + 0.4 floors): panel ≤ 8 rows; query strip ≤ 3;
+   people ≤ 3 and polls ≤ 3 by rank only; 1-2-char queries are
+   navigational (prefix-only, no fuzz); fuzzy+dense open at ≥3 chars.
+   Judgment basis: each is a falsifiable product sentence whose
+   derivation would either cross a values boundary or launder a guess;
+   the eye/first-Sundays may re-ratify any of them.
    8a. RATIFIED 2026-07-24 — the no-fake-estimates law (§16 preamble): the
    §18 arrival-rate-prior marker is RESOLVED BY ELIMINATION (the estimator
    scaffolding is deleted, not ratified); the cadence marker narrows to
@@ -1078,3 +1098,22 @@ script author cannot "reasonably" skip it.
   (one smoothing prior, not a new knob).
 - Backstop limits, expectation bands, unit costs — all MEASURED (no owner
   numbers, no fake estimates).
+
+# §25 Deferred lever: ID-first chronological collection (owner idea, 2026-07-25)
+
+Trigger: reddit.requests reservation denials appearing in pacer logs (the
+dashboard surfaces them) — i.e. real rate-limit pressure, expected only at
+O(50+) markets on the single app registration (new registrations are no
+longer obtainable; the commercial-tier application is the other path).
+
+The lever: split the chronological lane's tick into (a) a tiny time-critical
+ID sweep — /new listing pages only, 100 post ids per request, so ~1-2
+requests/day/source secures the delta against the ≤1000-post listing
+window — and (b) elastic comment collection by saved post id, schedulable
+whenever budget allows, since comment trees stay fetchable by id
+indefinitely (the listing window only censors DISCOVERY, not retrieval).
+This decouples the loss horizon from the expensive part of collection:
+the time-critical footprint per source per day collapses from ~dozens of
+requests to ~2, and comment fetching joins keyword as a purely elastic
+lane. Not built now (§16: no speculative machinery at 2 sources); the
+schema cost when triggered is one staged-ids table + a drain lane.
