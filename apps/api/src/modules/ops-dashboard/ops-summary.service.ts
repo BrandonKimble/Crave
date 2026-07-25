@@ -1,5 +1,6 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LoggerService } from '../../shared';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
@@ -211,12 +212,30 @@ interface UnitCostRowLite {
  */
 @Injectable()
 export class OpsSummaryService {
+  private readonly logger: LoggerService;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly opsAlerts: OpsAlertsService,
     private readonly registry: CollectorSourceRegistryService,
+    @Inject(LoggerService) loggerService: LoggerService,
     @Optional() private readonly governance?: GovernanceService,
-  ) {}
+  ) {
+    this.logger = loggerService.setContext('OpsSummaryService');
+  }
+
+  /** Data-honesty rule: a dashboard read failure may degrade its own card to
+   *  empty/zero, but NEVER silently — every swallow logs the real error so a
+   *  DB regression can't hide behind a quietly-empty card. */
+  private warnSwallowed(section: string, error: unknown): void {
+    this.logger.warn('Ops dashboard read failed — section degraded', {
+      operation: 'ops_summary_section_read',
+      section,
+      error: {
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
 
   async summary(now: Date = new Date()): Promise<OpsSummary> {
     const [
@@ -234,7 +253,10 @@ export class OpsSummaryService {
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
-      this.prisma.spendUnitCost.findMany().catch(() => [] as UnitCostRowLite[]),
+      this.prisma.spendUnitCost.findMany().catch((error: unknown) => {
+        this.warnSwallowed('spendUnitCost', error);
+        return [] as UnitCostRowLite[];
+      }),
       this.opsAlerts.list(50),
       this.opsAlerts.unacknowledgedCount(),
       this.placesSection(now),
@@ -687,9 +709,10 @@ export class OpsSummaryService {
           GROUP BY lower(d.community)
         `,
       ]);
-    } catch {
+    } catch (error) {
       // A read failure must never take the whole dashboard down — the
-      // Places card just renders empty this refresh.
+      // Places card renders empty this refresh, but the failure is logged.
+      this.warnSwallowed('places', error);
     }
 
     const docsByCommunity = new Map<
@@ -746,9 +769,10 @@ export class OpsSummaryService {
           WHERE l.enabled
         `,
       ]);
-    } catch {
+    } catch (error) {
       // A read failure must never take the whole dashboard down — the
-      // Sources card just renders empty this refresh.
+      // Sources card renders empty this refresh, but the failure is logged.
+      this.warnSwallowed('sources', error);
     }
     const timesByKey = new Map<
       string,
@@ -796,22 +820,40 @@ export class OpsSummaryService {
     ] = await Promise.all([
       this.prisma.sourceDocument
         .count({ where: { collectedAt: { gte: since } } })
-        .catch(() => 0),
+        .catch((error: unknown) => {
+          this.warnSwallowed('pipeline.docs24h', error);
+          return 0;
+        }),
       this.prisma.restaurantEntityEvent
         .count({ where: { createdAt: { gte: since } } })
-        .catch(() => 0),
+        .catch((error: unknown) => {
+          this.warnSwallowed('pipeline.entities24h', error);
+          return 0;
+        }),
       this.prisma.extractionRun
         .count({ where: { startedAt: { gte: since } } })
-        .catch(() => 0),
+        .catch((error: unknown) => {
+          this.warnSwallowed('pipeline.extractionRuns24h', error);
+          return 0;
+        }),
       this.prisma.extractionRun
         .count({ where: { status: 'failed', startedAt: { gte: since } } })
-        .catch(() => 0),
+        .catch((error: unknown) => {
+          this.warnSwallowed('pipeline.extractionFailed24h', error);
+          return 0;
+        }),
       this.prisma.llmBatchJob
         .count({ where: { ingestedAt: null } })
-        .catch(() => 0),
+        .catch((error: unknown) => {
+          this.warnSwallowed('pipeline.batchJobsPending', error);
+          return 0;
+        }),
       this.prisma.llmBatchJob
         .count({ where: { ingestedAt: { gte: since } } })
-        .catch(() => 0),
+        .catch((error: unknown) => {
+          this.warnSwallowed('pipeline.batchJobsIngested24h', error);
+          return 0;
+        }),
     ]);
     return {
       docs24h,

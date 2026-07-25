@@ -27,6 +27,17 @@ interface PrismaOverrides {
   queryRawRows?: unknown[][];
 }
 
+const buildLogger = () => {
+  const logger = {
+    setContext: () => logger,
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
+  return logger as never;
+};
+
 function buildPrisma(overrides: PrismaOverrides = {}) {
   const queryRawResults = [...(overrides.queryRawRows ?? [])];
   return {
@@ -138,6 +149,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       buildPrisma() as never,
       buildOpsAlerts() as never,
       buildRegistry([FULL_HEARTBEAT]) as never,
+      buildLogger(),
       buildGovernance(),
     );
     const summary = await service.summary(NOW);
@@ -213,6 +225,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       buildPrisma() as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,
+      buildLogger(),
     );
     const summary = await service.summary(NOW);
     expect(summary.vendors.gemini.backstopLimitMicros).toBeNull();
@@ -235,6 +248,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       }) as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,
+      buildLogger(),
     );
     const summary = await service.summary(NOW);
     expect(summary.vendors.gemini.backstopLimitMicros).toBe(42_000_000);
@@ -254,6 +268,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       }) as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,
+      buildLogger(),
     );
     const summary = await service.summary(NOW);
     const credit = summary.vendors.tomtom.credit;
@@ -275,6 +290,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       buildPrisma({ tomtomAggregateRequestCount: 10_000 }) as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,
+      buildLogger(),
     );
     const summary = await service.summary(NOW);
     expect(summary.vendors.tomtom.credit.declared).toBe(false);
@@ -295,6 +311,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       buildPrisma() as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,
+      buildLogger(),
       governance,
     );
     const summary = await service.summary(NOW);
@@ -326,6 +343,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       }) as never,
       buildOpsAlerts() as never,
       buildRegistry() as never,
+      buildLogger(),
     );
     const summary = await service.summary(NOW);
     expect(summary.places).toEqual([
