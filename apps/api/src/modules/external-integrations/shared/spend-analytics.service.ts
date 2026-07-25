@@ -3,6 +3,10 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { geminiCostMicros } from './gemini-pricing';
+import {
+  placesCostMicrosPerCall,
+  tomtomCostMicrosPerDraw,
+} from './vendor-pricing';
 import { CollectorSourceRegistryService } from '../../content-processing/reddit-collector/collector-source-registry.service';
 import { GovernanceService } from '../governance/governance.service';
 
@@ -165,28 +169,29 @@ export class SpendAnalyticsService {
     results.push(
       ...(await this.refreshGeminiPerDocument(windowStart, windowEnd)),
     );
-    results.push(
-      ...(await this.refreshUnattributed(
-        'tomtom',
-        'draw',
-        windowStart,
-        windowEnd,
-      )),
-    );
-    results.push(
-      ...(await this.refreshUnattributed(
-        'google_places',
-        'call',
-        windowStart,
-        windowEnd,
-      )),
-    );
+    // Constant-rate floor rows FIRST — sample-derived rows below overwrite
+    // them (same workClass+unit key, later upsert wins) the moment real
+    // ledger history exists; see constantRateFloorRows's doc comment.
+    results.push(...this.constantRateFloorRows(windowStart, windowEnd));
+    results.push(...(await this.refreshTomtomDraws(windowStart, windowEnd)));
+    results.push(...(await this.refreshPlacesCalls(windowStart, windowEnd)));
 
     await this.attributeLaneCosts(windowStart, windowEnd);
     await this.refreshBackstop(windowStart, windowEnd, now);
     await this.logSpendTelemetry(now);
 
+    // Dedupe by (workClass, unit), LAST occurrence wins — a constant-rate
+    // floor row pushed before a sample-derived row for the same key must
+    // not shadow it in the RETURNED array either (the DB upsert loop below
+    // already applies last-wins per key; this keeps the in-memory result
+    // the caller sees consistent with what lands in spend_unit_costs).
+    const dedupedByKey = new Map<string, UnitCostRow>();
     for (const row of results) {
+      dedupedByKey.set(`${row.workClass} ${row.unit}`, row);
+    }
+    const deduped = [...dedupedByKey.values()];
+
+    for (const row of deduped) {
       await this.prisma.spendUnitCost.upsert({
         where: { workClass_unit: { workClass: row.workClass, unit: row.unit } },
         create: {
@@ -206,7 +211,7 @@ export class SpendAnalyticsService {
         },
       });
     }
-    return results;
+    return deduped;
   }
 
   /**
@@ -353,24 +358,27 @@ export class SpendAnalyticsService {
   }
 
   /**
-   * §24.2 (b)/(c) tomtom-per-draw and places-per-call: no vendor $-per-call
-   * price table exists in this repo yet (unlike gemini's gemini-pricing.ts
-   * K4 table) — inventing one here would violate the §16 no-fake-estimates
-   * law (a number may only be a FACT, an owner choice, or a derivation; a
-   * guessed vendor rate is none of those). Until a K4 price table for these
-   * vendors lands, their spend is honestly surfaced as
-   * 'unattributed.<service>' — request-COUNTED (sampleUnits = request
-   * count), priced at 0 micro-USD/unit rather than a fabricated rate. Spend
-   * never vanishes; it just isn't priced yet.
+   * §24.2(b) tomtom-per-draw, now PRICED (vendor-pricing.ts's
+   * tomtomCostMicrosPerDraw, K1-sourced $2.50/1,000 requests — "VERIFY
+   * AGAINST FIRST TOMTOM INVOICE"). The ledger does not yet distinguish
+   * which pool (cheapGeocode vs scarcePolygons) a tomtom draw belongs to —
+   * no recording site threads a pool-specific operation/caller today — so
+   * every tomtom request in the window is one work class,
+   * 'tomtom.searchFamily' (both draws are Search-family calls at the same
+   * rate). sampleUnits = actual request counts; microUsdPerUnit is the
+   * PER-REQUEST rate, not derived from spend — if TomTom ever meters
+   * differently (e.g. per-draw-type pricing), this table's per-service join
+   * is the path to replace it with a real ledger-derived rate.
    */
-  private async refreshUnattributed(
-    service: 'tomtom' | 'google_places',
-    unit: string,
+  private async refreshTomtomDraws(
     windowStart: Date,
     windowEnd: Date,
   ): Promise<UnitCostRow[]> {
     const agg = await this.prisma.apiUsageEvent.aggregate({
-      where: { service, createdAt: { gte: windowStart, lt: windowEnd } },
+      where: {
+        service: 'tomtom',
+        createdAt: { gte: windowStart, lt: windowEnd },
+      },
       _sum: { requestCount: true },
       _count: { _all: true },
     });
@@ -380,9 +388,9 @@ export class SpendAnalyticsService {
     }
     return [
       {
-        workClass: `unattributed.${service}`,
-        unit,
-        microUsdPerUnit: 0,
+        workClass: 'tomtom.searchFamily',
+        unit: 'draw',
+        microUsdPerUnit: tomtomCostMicrosPerDraw,
         sampleUnits,
         windowStart,
         windowEnd,
@@ -391,14 +399,103 @@ export class SpendAnalyticsService {
   }
 
   /**
-   * Leg B wiring point: for every reddit source with joinable extraction
-   * spend in the window (gemini-batch.collection_extraction, joined via
-   * run_key -> extraction run -> document -> community = source.handle),
-   * feed the window's total attributed cost into that source's 'keyword'
-   * lane cost baseline via CollectorSourceRegistryService.recordLaneCost —
-   * the same EWMA + breach primitive Leg B specifies, ticked nightly
-   * (see refreshUnitCosts's doc comment for why "nightly" is this
-   * architecture's honest analogue of "per tick" for LLM spend).
+   * §24.2(c) google_places-per-call, now PRICED per SKU tier
+   * (vendor-pricing.ts's placesCostMicrosPerCall — K4 entry-tier rates,
+   * fetched 2026-07-25). One work class per SKU actually observed in the
+   * window ('google_places.<sku>'), sampleUnits = request counts grouped
+   * by sku_tier (classifyPlacesSku's exact output strings). A null/unknown
+   * sku_tier groups under 'google_places.unknown', priced at the highest
+   * known rate (same over-meter-never-vanish principle as gemini-pricing's
+   * unknown model) — spend never vanishes, it just falls into the loudest
+   * bucket.
+   */
+  private async refreshPlacesCalls(
+    windowStart: Date,
+    windowEnd: Date,
+  ): Promise<UnitCostRow[]> {
+    const rows = await this.prisma.apiUsageEvent.findMany({
+      where: {
+        service: 'google_places',
+        createdAt: { gte: windowStart, lt: windowEnd },
+      },
+      select: { skuTier: true, requestCount: true },
+    });
+    const bySku = new Map<string, number>();
+    for (const row of rows) {
+      const skuLabel = row.skuTier ?? 'unknown';
+      bySku.set(skuLabel, (bySku.get(skuLabel) ?? 0) + (row.requestCount ?? 0));
+    }
+    const out: UnitCostRow[] = [];
+    for (const [skuLabel, sampleUnits] of bySku) {
+      if (sampleUnits === 0) {
+        continue;
+      }
+      out.push({
+        workClass: `google_places.${skuLabel}`,
+        unit: 'call',
+        microUsdPerUnit: placesCostMicrosPerCall(
+          skuLabel === 'unknown' ? null : skuLabel,
+        ),
+        sampleUnits,
+        windowStart,
+        windowEnd,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * §24.3 Leg C wiring gap: prepareEstimate reads spend_unit_costs, but
+   * that table is populated by the NIGHTLY refresh above — a work class
+   * with zero ledger history (e.g. a first-ever tomtom/places campaign)
+   * would have no row to estimate against until tomorrow night, even
+   * though the RATE is already known (it's rate-table-priced, not
+   * sample-derived). Publish the constant-rate rows immediately whenever
+   * refreshUnitCosts runs, with sampleUnits = 0 when no ledger sample
+   * exists yet (never invented — 0 documents "no measured sample", not
+   * "measured zero-cost"), so a same-day estimate always has a row to
+   * read. Sample-derived rows (refreshTomtomDraws/refreshPlacesCalls
+   * above) still overwrite these with a REAL sampleUnits the moment ledger
+   * history exists — this is a floor, not a competing source of truth.
+   */
+  private constantRateFloorRows(
+    windowStart: Date,
+    windowEnd: Date,
+  ): UnitCostRow[] {
+    return [
+      {
+        workClass: 'tomtom.searchFamily',
+        unit: 'draw',
+        microUsdPerUnit: tomtomCostMicrosPerDraw,
+        sampleUnits: 0,
+        windowStart,
+        windowEnd,
+      },
+    ];
+  }
+
+  /**
+   * §24 Task 2 (Leg B wiring point, now CHRONOLOGICAL-AWARE): for every
+   * reddit source with joinable extraction spend in the window
+   * (gemini-batch.collection_extraction, joined via run_key -> extraction
+   * run -> document -> community = source.handle), feed the window's total
+   * attributed cost into that source's lane cost baseline via
+   * CollectorSourceRegistryService.recordLaneCost — the same EWMA + breach
+   * primitive Leg B specifies, ticked nightly (see refreshUnitCosts's doc
+   * comment for why "nightly" is this architecture's honest analogue of
+   * "per tick" for LLM spend).
+   *
+   * The lane is now read off the document's own `lane` column (stamped at
+   * collection time by collection-evidence.service.ts's
+   * persistSourceDocuments — see mapPipelineToLane), grouped
+   * (source_id, lane). Only 'chronological' and 'keyword' rows are fed into
+   * recordLaneCost — those are the two lanes source_collection_lanes
+   * tracks; documents with lane NULL (archive/poll-thread pipelines, or
+   * legacy rows collected before this column existed) are SKIPPED for lane
+   * attribution (their cost still counts in the per-document unit cost
+   * above; it just has no lane to attribute to). Legacy rows self-heal:
+   * every future collection tick stamps a real lane, so the skipped share
+   * shrinks over time without a backfill migration.
    */
   private async attributeLaneCosts(
     windowStart: Date,
@@ -407,6 +504,7 @@ export class SpendAnalyticsService {
     const rows = await this.prisma.$queryRaw<
       Array<{
         source_id: string;
+        lane: string;
         input_tokens: bigint | null;
         output_tokens: bigint | null;
         cached_tokens: bigint | null;
@@ -414,8 +512,8 @@ export class SpendAnalyticsService {
         mode: string | null;
       }>
     >`
-      SELECT s.source_id, e.input_tokens, e.output_tokens, e.cached_tokens,
-             e.model, e.mode
+      SELECT s.source_id, d.lane, e.input_tokens, e.output_tokens,
+             e.cached_tokens, e.model, e.mode
       FROM api_usage_ledger e
       JOIN llm_batch_jobs j ON j.job_id::text = e.run_key
       JOIN collection_extraction_inputs ei
@@ -428,9 +526,10 @@ export class SpendAnalyticsService {
         AND e.created_at >= ${windowStart}
         AND e.created_at < ${windowEnd}
         AND j.resume_context ->> 'extractionRunId' IS NOT NULL
+        AND d.lane IN ('chronological', 'keyword')
     `;
 
-    const bySource = new Map<string, number>();
+    const bySourceLane = new Map<string, number>();
     for (const row of rows) {
       const costMicros = geminiCostMicros({
         model: row.model ?? undefined,
@@ -441,18 +540,18 @@ export class SpendAnalyticsService {
         cachedTokens:
           row.cached_tokens === null ? 0 : Number(row.cached_tokens),
       });
-      bySource.set(
-        row.source_id,
-        (bySource.get(row.source_id) ?? 0) + costMicros,
-      );
+      const key = `${row.source_id} ${row.lane}`;
+      bySourceLane.set(key, (bySourceLane.get(key) ?? 0) + costMicros);
     }
 
-    for (const [sourceId, costMicros] of bySource) {
+    for (const [key, costMicros] of bySourceLane) {
+      const [sourceId, lane] = key.split(' ');
       await this.registry
-        .recordLaneCost(sourceId, 'keyword', Math.round(costMicros))
+        .recordLaneCost(sourceId, lane, Math.round(costMicros))
         .catch((error: unknown) => {
           this.logger.warn('Lane cost attribution write failed', {
             sourceId,
+            lane,
             error:
               error instanceof Error
                 ? { message: error.message }

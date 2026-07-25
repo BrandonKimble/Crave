@@ -246,6 +246,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         platform: 'reddit',
         community: params.community,
         posts: params.llmPosts,
+        pipeline: params.pipeline,
       });
     // Relevance is an ADMISSION judgment into the scored corpus (§12.1):
     // cheap title+body verdicts decide what proceeds to chunking/extraction —

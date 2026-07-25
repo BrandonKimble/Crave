@@ -24,8 +24,10 @@ function stubLogger() {
 /** Build a prisma double whose calls are answered in the exact sequence
  *  refreshUnitCosts issues them: (1) refreshGeminiPerDocument's joined
  *  $queryRaw, (2) unattributedGeminiMicros's apiUsageEvent.findMany,
- *  (3) tomtom refreshUnattributed's aggregate, (4) google_places
- *  refreshUnattributed's aggregate, (5) attributeLaneCosts's $queryRaw. */
+ *  (3) refreshTomtomDraws's aggregate, (4) refreshPlacesCalls's
+ *  apiUsageEvent.findMany, (5) attributeLaneCosts's $queryRaw.
+ *  findMany is called TWICE per run (gemini unattributed, then places) —
+ *  answered in that order from a queue, same idiom as $queryRaw below. */
 function buildPrisma(params: {
   joinedRows: unknown[];
   unattributedGeminiEvents: unknown[];
@@ -33,16 +35,11 @@ function buildPrisma(params: {
     _sum: { requestCount: number | null };
     _count: { _all: number };
   };
-  placesAgg: {
-    _sum: { requestCount: number | null };
-    _count: { _all: number };
-  };
+  placesEvents?: Array<{ skuTier: string | null; requestCount: number }>;
   laneJoinRows: unknown[];
 }) {
   const queryRawCalls = [params.joinedRows, params.laneJoinRows];
   let queryRawIndex = 0;
-  const aggregateCalls = [params.tomtomAgg, params.placesAgg];
-  let aggregateIndex = 0;
   const upsert = jest.fn().mockResolvedValue(undefined);
   return {
     $queryRaw: jest.fn().mockImplementation(() => {
@@ -51,12 +48,21 @@ function buildPrisma(params: {
       return Promise.resolve(value);
     }),
     apiUsageEvent: {
-      findMany: jest.fn().mockResolvedValue(params.unattributedGeminiEvents),
-      aggregate: jest.fn().mockImplementation(() => {
-        const value = aggregateCalls[aggregateIndex];
-        aggregateIndex += 1;
-        return Promise.resolve(value);
+      // Distinguish by `where.service`: google_places calls (only
+      // refreshPlacesCalls) get placesEvents; every gemini call (the
+      // unattributed-spend join AND refreshBackstop/logSpendTelemetry's
+      // per-day totalGeminiSpendMicros sweep, dozens of calls) gets the
+      // SAME fixture value every time — mirrors the old mockResolvedValue
+      // idiom, just service-scoped now that two distinct fixtures exist.
+      findMany: jest.fn().mockImplementation((args: unknown) => {
+        const service = (args as { where?: { service?: string } }).where
+          ?.service;
+        if (service === 'google_places') {
+          return Promise.resolve(params.placesEvents ?? []);
+        }
+        return Promise.resolve(params.unattributedGeminiEvents);
       }),
+      aggregate: jest.fn().mockResolvedValue(params.tomtomAgg),
     },
     spendUnitCost: {
       upsert,
@@ -110,7 +116,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       joinedRows: [joinedRow],
       unattributedGeminiEvents: [unattributedEvent],
       tomtomAgg: emptyAgg(),
-      placesAgg: emptyAgg(),
+      placesEvents: [],
       laneJoinRows: [],
     });
     const logger = stubLogger();
@@ -162,7 +168,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       joinedRows: [thinRow],
       unattributedGeminiEvents: [],
       tomtomAgg: emptyAgg(),
-      placesAgg: emptyAgg(),
+      placesEvents: [],
       laneJoinRows: [],
     });
     const registry = { recordLaneCost: jest.fn().mockResolvedValue(undefined) };
@@ -184,12 +190,16 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     expect(unattributedRow!.microUsdPerUnit).toBeGreaterThan(0);
   });
 
-  it('surfaces request-counted (unpriced) rows for vendors with ledger activity but no $-rate table', async () => {
+  it('§24 Task 1: tomtom draws and google_places calls are now PRICED (vendor-pricing.ts rate table), not unattributed 0-priced rows', async () => {
     const prisma = buildPrisma({
       joinedRows: [],
       unattributedGeminiEvents: [],
       tomtomAgg: { _sum: { requestCount: 12 }, _count: { _all: 4 } },
-      placesAgg: emptyAgg(),
+      placesEvents: [
+        { skuTier: 'essentials', requestCount: 3 },
+        { skuTier: 'enterprise', requestCount: 2 },
+        { skuTier: null, requestCount: 1 },
+      ],
       laneJoinRows: [],
     });
     const registry = { recordLaneCost: jest.fn().mockResolvedValue(undefined) };
@@ -200,17 +210,80 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     );
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
-    const tomtomRow = rows.find((r) => r.workClass === 'unattributed.tomtom');
+
+    const tomtomRow = rows.find((r) => r.workClass === 'tomtom.searchFamily');
     expect(tomtomRow).toBeDefined();
     expect(tomtomRow!.sampleUnits).toBe(12);
-    expect(tomtomRow!.microUsdPerUnit).toBe(0);
+    expect(tomtomRow!.microUsdPerUnit).toBe(2_500);
+
+    const essentialsRow = rows.find(
+      (r) => r.workClass === 'google_places.essentials',
+    );
+    expect(essentialsRow).toBeDefined();
+    expect(essentialsRow!.sampleUnits).toBe(3);
+    expect(essentialsRow!.microUsdPerUnit).toBe(5_000);
+
+    const enterpriseRow = rows.find(
+      (r) => r.workClass === 'google_places.enterprise',
+    );
+    expect(enterpriseRow).toBeDefined();
+    expect(enterpriseRow!.sampleUnits).toBe(2);
+    expect(enterpriseRow!.microUsdPerUnit).toBe(20_000);
+
+    // Unknown/null SKU groups under 'unknown', priced at the highest rate.
+    const unknownRow = rows.find(
+      (r) => r.workClass === 'google_places.unknown',
+    );
+    expect(unknownRow).toBeDefined();
+    expect(unknownRow!.sampleUnits).toBe(1);
+    expect(unknownRow!.microUsdPerUnit).toBe(25_000);
+
+    // The old zero-priced unattributed rows are gone.
+    expect(
+      rows.find((r) => r.workClass === 'unattributed.tomtom'),
+    ).toBeUndefined();
+    expect(
+      rows.find((r) => r.workClass === 'unattributed.google_places'),
+    ).toBeUndefined();
   });
 
-  it('feeds joined per-source lane spend into CollectorSourceRegistryService.recordLaneCost (Leg B wiring)', async () => {
-    const laneJoinRow = {
+  it('§24 Task 1: publishes a constant-rate floor row for tomtom.searchFamily even with zero ledger sample', async () => {
+    const prisma = buildPrisma({
+      joinedRows: [],
+      unattributedGeminiEvents: [],
+      tomtomAgg: emptyAgg(),
+      placesEvents: [],
+      laneJoinRows: [],
+    });
+    const registry = { recordLaneCost: jest.fn().mockResolvedValue(undefined) };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      stubLogger() as never,
+      registry as never,
+    );
+
+    const rows = await service.refreshUnitCosts(WINDOW_END);
+    const tomtomRow = rows.find((r) => r.workClass === 'tomtom.searchFamily');
+    expect(tomtomRow).toBeDefined();
+    expect(tomtomRow!.sampleUnits).toBe(0);
+    expect(tomtomRow!.microUsdPerUnit).toBe(2_500);
+  });
+
+  it('§24 Task 2: feeds joined per-source PER-LANE spend into CollectorSourceRegistryService.recordLaneCost, reading the lane off the document (chronological now attributed, not just keyword)', async () => {
+    const keywordRow = {
       source_id: 'src-1',
+      lane: 'keyword',
       input_tokens: 1_000_000n,
       output_tokens: 200_000n,
+      cached_tokens: 0n,
+      model: MODEL,
+      mode: 'batch',
+    };
+    const chronologicalRow = {
+      source_id: 'src-2',
+      lane: 'chronological',
+      input_tokens: 500_000n,
+      output_tokens: 100_000n,
       cached_tokens: 0n,
       model: MODEL,
       mode: 'batch',
@@ -219,8 +292,8 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       joinedRows: [],
       unattributedGeminiEvents: [],
       tomtomAgg: emptyAgg(),
-      placesAgg: emptyAgg(),
-      laneJoinRows: [laneJoinRow],
+      placesEvents: [],
+      laneJoinRows: [keywordRow, chronologicalRow],
     });
     const registry = { recordLaneCost: jest.fn().mockResolvedValue(undefined) };
     const service = new SpendAnalyticsService(
@@ -231,12 +304,17 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
 
     await service.refreshUnitCosts(WINDOW_END);
 
-    expect(registry.recordLaneCost).toHaveBeenCalledTimes(1);
-    const [sourceId, lane, costMicros] = registry.recordLaneCost.mock
-      .calls[0] as [string, string, number];
-    expect(sourceId).toBe('src-1');
-    expect(lane).toBe('keyword');
-    expect(costMicros).toBeGreaterThan(0);
+    expect(registry.recordLaneCost).toHaveBeenCalledTimes(2);
+    const calls = registry.recordLaneCost.mock.calls as Array<
+      [string, string, number]
+    >;
+    const bySource = new Map(
+      calls.map(([sourceId, lane, cost]) => [sourceId, { lane, cost }]),
+    );
+    expect(bySource.get('src-1')?.lane).toBe('keyword');
+    expect(bySource.get('src-1')!.cost).toBeGreaterThan(0);
+    expect(bySource.get('src-2')?.lane).toBe('chronological');
+    expect(bySource.get('src-2')!.cost).toBeGreaterThan(0);
   });
 });
 

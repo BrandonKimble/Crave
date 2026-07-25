@@ -560,6 +560,13 @@ model SourceDocument {
   collectedAt            DateTime                  @default(now()) @map("collected_at")
   scoreSnapshot          Int?                      @map("score_snapshot")
   rawPayload             Json?                     @map("raw_payload")
+  /// §24 Task 2: chronological|keyword|archive lane tag, stamped from the
+  /// collection pipeline at persist time (poll-thread and legacy
+  /// pre-migration rows are NULL). Drives spend-analytics.attributeLaneCosts
+  /// — NULL/archive rows are skipped for lane cost attribution (they still
+  /// price into per-doc unit costs) and self-heal as new collection stamps
+  /// tags.
+  lane                   String?                   @db.VarChar(32)
   activeExtractionRunId  String?                   @map("active_extraction_run_id") @db.Uuid
   activeExtractionRun    ExtractionRun?            @relation("ActiveExtractionRunDocuments", fields: [activeExtractionRunId], references: [extractionRunId], onDelete: SetNull)
   extractionInputs       ExtractionInputDocument[]
@@ -1918,6 +1925,11 @@ model PlaceGeometryPromotion {
   attempts           Int       @default(0)
   lastAttemptAt      DateTime? @map("last_attempt_at")
   providerBoundaryId String?   @map("provider_boundary_id") @db.VarChar(128)
+  /// §24 Task 3: the spend campaign that enqueued this item (e.g. the coarse
+  /// polygon seed's pilot campaign), when one exists. Organic/header/poll
+  /// triggers leave this NULL — the drain treats a NULL campaignId as
+  /// always-dispatchable (no campaign gate).
+  campaignId         String?   @map("campaign_id") @db.Uuid
 
   @@index([promotedAt, enqueuedAt], map: "idx_place_geometry_promotions_drain")
   @@map("place_geometry_promotions")

@@ -997,6 +997,13 @@ estimate and refuse to start without an explicit flag carrying the
 estimate's hash (approving THIS estimate, not "whatever it turns out to
 be"). Steady-state lanes never touch this surface.
 
+STANDING LAW (§24 tracked follow-ups, ratified 2026-07-24): every future
+spend-bearing operator script MUST gate through SpendCampaignService
+(prepareEstimate/preparePilot + an explicit `--approve-estimate` flag
+carrying the estimate's hash) — this is not per-script discretion, it is
+the one approval surface every such script uses, named here so a future
+script author cannot "reasonably" skip it.
+
 ## §24.4 KILL LIST (the full-replacement clause)
 
 1. **Seed-month pool raises: extinct as a pattern.** Any future bulk vendor

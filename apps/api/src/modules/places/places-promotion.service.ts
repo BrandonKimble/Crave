@@ -61,7 +61,7 @@
  *     a synthetic name has no vendor geometry; when naming backfill gives
  *     the ground real identity, the real place earns its own moment.
  */
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlaceGeometryPromotion, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -73,6 +73,8 @@ import {
   TOMTOM_CHAIN_PROBE,
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
+import { SpendCampaignService } from '../external-integrations/shared/spend-campaign.service';
+import { tomtomCostMicrosPerDraw } from '../external-integrations/shared/vendor-pricing';
 
 /**
  * §16: the header-answer memory window REUSES the §2 30d region-observation
@@ -139,6 +141,14 @@ export class PlacesPromotionService {
     private readonly prisma: PrismaService,
     @Inject(TOMTOM_CHAIN_PROBE) private readonly probe: TomtomChainProbe,
     loggerService: LoggerService,
+    // §24 Task 3: SpendCampaignService is @Global (SharedServicesModule) —
+    // every real app graph has it. Optional so unit-test harnesses that
+    // construct this service directly (no campaign fixtures) keep working
+    // — a missing service is treated the same as "no campaign on this item"
+    // (see the campaignId-gated call sites below, all no-ops when absent).
+    @Inject(SpendCampaignService)
+    @Optional()
+    private readonly spendCampaigns?: SpendCampaignService,
   ) {
     this.logger = loggerService.setContext('PlacesPromotionService');
   }
@@ -285,7 +295,8 @@ export class PlacesPromotionService {
                promoted_at         AS "promotedAt",
                attempts            AS "attempts",
                last_attempt_at     AS "lastAttemptAt",
-               provider_boundary_id AS "providerBoundaryId"
+               provider_boundary_id AS "providerBoundaryId",
+               campaign_id         AS "campaignId"
         FROM place_geometry_promotions
         WHERE promoted_at IS NULL
           AND (last_attempt_at IS NULL
@@ -296,6 +307,24 @@ export class PlacesPromotionService {
       `,
     );
     for (const item of due) {
+      // §24 Task 3: pool = rate+backstop (admission/rate, unchanged below —
+      // this drain still draws from the SAME monthly pools regardless of
+      // campaign), envelope = budget (a campaign's spend ceiling). An item
+      // tagged with a non-dispatchable campaign (breached/not yet approved)
+      // is skipped — stays queued, retried once the campaign resumes —
+      // WITHOUT spending a pool draw on work whose budget is closed.
+      const campaignId = (item as { campaignId?: string | null }).campaignId;
+      if (campaignId && this.spendCampaigns) {
+        const dispatchable =
+          await this.spendCampaigns.isDispatchable(campaignId);
+        if (!dispatchable) {
+          this.logger.info(
+            'Promotion item skipped — campaign not dispatchable (stays queued)',
+            { placeId: item.placeId, campaignId },
+          );
+          continue;
+        }
+      }
       const outcome = await this.promoteOne(item, now);
       if (outcome === 'stop') {
         break;
@@ -342,6 +371,11 @@ export class PlacesPromotionService {
       return 'promoted';
     }
 
+    // §24 Task 3: count of vendor draws ACTUALLY consumed this call (not
+    // pool denials, which never reach the vendor) — the basis for
+    // recordSpend on a successful promotion below.
+    let drawsThisCall = 0;
+
     // Step 1 — the stable TomTom geometry id. tomtom-provider places carry
     // it as providerPlaceId (§1 identity law); census-seeded places (GEOID
     // alias) resolve it via ONE cheap county-qualified forward geocode,
@@ -375,9 +409,11 @@ export class PlacesPromotionService {
         return 'stop'; // cheap pool not-now — NOT an attempt; next window
       }
       if (resolved.kind === 'miss') {
+        drawsThisCall += 1;
         await this.recordAttempt(item.placeId, now);
         return 'attempted';
       }
+      drawsThisCall += 1;
       geometryId = resolved.geometryId;
       await this.prisma.placeGeometryPromotion.update({
         where: { placeId: item.placeId },
@@ -408,9 +444,11 @@ export class PlacesPromotionService {
       return 'stop';
     }
     if (polygon.kind === 'miss') {
+      drawsThisCall += 1;
       await this.recordAttempt(item.placeId, now);
       return 'attempted';
     }
+    drawsThisCall += 1;
 
     // §2.5 WRONG-ENTITY GUARD: the vendor sometimes resolves a name to a
     // much smaller feature (observed seed run: San Antonio TX → a 1×2km
@@ -475,6 +513,29 @@ export class PlacesPromotionService {
       trigger: item.trigger,
       geometryId,
     });
+    // §24 Task 3: envelope = budget. Pool admission (rate/backstop) already
+    // governed this draw above; this meters it against the campaign's
+    // budget, if the item carries one. Never blocks the promotion itself —
+    // a campaign breach here just flips the campaign's state for the NEXT
+    // item's isDispatchable check.
+    const campaignId = (item as { campaignId?: string | null }).campaignId;
+    if (campaignId && this.spendCampaigns && drawsThisCall > 0) {
+      await this.spendCampaigns
+        .recordSpend(campaignId, drawsThisCall * tomtomCostMicrosPerDraw)
+        .catch((error: unknown) => {
+          this.logger.warn(
+            'Campaign spend recording failed (promotion stands)',
+            {
+              placeId: item.placeId,
+              campaignId,
+              error:
+                error instanceof Error
+                  ? { message: error.message }
+                  : { message: String(error) },
+            },
+          );
+        });
+    }
     return 'promoted';
   }
 

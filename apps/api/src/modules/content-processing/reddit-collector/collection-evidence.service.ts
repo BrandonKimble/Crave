@@ -27,6 +27,22 @@ export interface ExtractionTraceContext {
 
 type CollectionRunStatus = 'running' | 'completed' | 'failed';
 
+/**
+ * §24 Task 2: map the extraction pipeline's collectionType
+ * ('chronological'|'keyword'|'archive'|'poll-thread', see
+ * ExtractionPipelineBaseParams.pipeline) to the document lane tag —
+ * chronological and keyword are the two lanes spend-analytics attributes
+ * cost against (source-collection-lanes rows); archive and poll-thread (and
+ * any future/unknown pipeline value) are NOT a lane cost concept and stay
+ * NULL, same as legacy pre-migration rows.
+ */
+export function mapPipelineToLane(pipeline: string | null): string | null {
+  if (pipeline === 'chronological' || pipeline === 'keyword') {
+    return pipeline;
+  }
+  return null;
+}
+
 @Injectable()
 export class CollectionEvidenceService implements OnModuleInit {
   private logger!: LoggerService;
@@ -45,13 +61,20 @@ export class CollectionEvidenceService implements OnModuleInit {
     platform?: string;
     community?: string | null;
     posts: LLMPost[];
+    /** §24 Task 2: pipeline/collectionType from the extraction params,
+     *  mapped to the document's lane tag (chronological->'chronological',
+     *  keyword->'keyword', archive/poll-thread/unset->NULL — see
+     *  mapPipelineToLane). Drives spend-analytics lane cost attribution. */
+    pipeline?: string | null;
   }): Promise<Map<SourceDocumentKey, string>> {
     const platform = params.platform?.trim().toLowerCase() || 'reddit';
     const community = params.community?.trim() || null;
+    const lane = mapPipelineToLane(params.pipeline ?? null);
     const documents = this.flattenSourceDocuments(
       platform,
       community,
       params.posts,
+      lane,
     );
 
     if (documents.length === 0) {
@@ -645,6 +668,7 @@ export class CollectionEvidenceService implements OnModuleInit {
     platform: string,
     community: string | null,
     posts: LLMPost[],
+    lane: string | null,
   ): Array<{
     platform: string;
     community: string | null;
@@ -658,6 +682,7 @@ export class CollectionEvidenceService implements OnModuleInit {
     collectedAt: Date;
     scoreSnapshot: number | null;
     rawPayload: Prisma.InputJsonObject;
+    lane: string | null;
   }> {
     const now = new Date();
     const byKey = new Map<
@@ -675,6 +700,7 @@ export class CollectionEvidenceService implements OnModuleInit {
         collectedAt: Date;
         scoreSnapshot: number | null;
         rawPayload: Prisma.InputJsonObject;
+        lane: string | null;
       }
     >();
 
@@ -691,6 +717,7 @@ export class CollectionEvidenceService implements OnModuleInit {
         sourceCreatedAt: this.parseDate(post.created_at, now),
         collectedAt: now,
         scoreSnapshot: Number.isFinite(post.score) ? post.score : null,
+        lane,
         rawPayload: {
           id: post.id,
           title: post.title ?? null,
@@ -717,6 +744,7 @@ export class CollectionEvidenceService implements OnModuleInit {
           sourceCreatedAt: this.parseDate(comment.created_at, now),
           collectedAt: now,
           scoreSnapshot: Number.isFinite(comment.score) ? comment.score : null,
+          lane,
           rawPayload: {
             id: comment.id,
             content: comment.content ?? null,

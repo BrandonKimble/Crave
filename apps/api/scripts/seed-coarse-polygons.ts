@@ -206,37 +206,60 @@ async function main(): Promise<void> {
     const catalog = app.get(PlacesCatalogService);
     const prisma = app.get(PrismaService);
 
-    // §24.3 Leg C gate: this script's OWN act (writing catalog rows +
-    // enqueueing place_geometry_promotions) spends zero vendor dollars —
-    // the governed hourly drain (PlacesPromotionService) does every real
-    // TomTom fetch, already paced by the tomtom.scarcePolygons monthly
-    // pool (§16 K1 owner price-tag). There is also no published tomtom
-    // per-draw $ rate yet (spend-analytics.service.ts's documented gap —
-    // inventing one would violate §16), so prepareEstimate always refuses
-    // here today; this script always takes the §24.2 cold-start PILOT
-    // path, bounded by the countries+states+counties count known BEFORE
-    // any enqueue happens (municipalities are enqueued too, but their
-    // count needs no separate estimate — the pilot's "budget" is
-    // definitional bookkeeping only; the REAL admission control remains
-    // the pre-existing monthly pool). No recordSpend attribution is wired
-    // here (the drain isn't a per-campaign chokepoint); the campaign is
-    // opened and immediately completed as a record of this run.
+    // §24.3 Leg C / §24 Task 3 gate: this script's OWN act (writing catalog
+    // rows + enqueueing place_geometry_promotions) spends zero vendor
+    // dollars — the governed hourly drain (PlacesPromotionService) does
+    // every real TomTom fetch, paced by the tomtom.scarcePolygons monthly
+    // pool (§16 K1 owner price-tag: rate/admission) AND now BUDGETED by
+    // this campaign's envelope (spend, via drain.recordSpend) — pool =
+    // rate+backstop, envelope = budget, per the drain's own doc comment.
+    // vendor-pricing.ts's tomtomCostMicrosPerDraw now prices
+    // 'tomtom.searchFamily' (unified — the ledger doesn't distinguish
+    // cheapGeocode vs scarcePolygons draws), and spend-analytics publishes
+    // a constant-rate floor row for it so prepareEstimate can find a rate
+    // WITHOUT waiting for ledger samples. unitCount = rows-to-enqueue x 2
+    // (§2 two-step: one cheap geocode + one scarce polygon draw per row).
+    // The §24.3 standing law (plans/geo-demand-foundation-rebuild.md §24.3):
+    // every spend-bearing operator script gates through prepareEstimate +
+    // --approve-estimate (or preparePilot as the cold-start fallback if the
+    // rate table isn't populated yet — e.g. before the first nightly
+    // refresh has run).
     const spendCampaigns = app.get(SpendCampaignService);
-    const workClass = 'tomtom.scarcePolygons';
+    const workClass = 'tomtom.searchFamily';
     const unit = 'draw';
-    const unitCount = COUNTRIES.length + counties.length;
+    const rowsToEnqueue = COUNTRIES.length + counties.length;
+    const unitCount = rowsToEnqueue * 2;
+    const approveEstimateArg = process.argv.find((arg) =>
+      arg.startsWith('--approve-estimate='),
+    );
+    const approveHash = approveEstimateArg?.split('=')[1] ?? null;
     let campaignId: string;
     try {
-      await spendCampaigns.prepareEstimate({
+      const estimate = await spendCampaigns.prepareEstimate({
         name: 'seed-coarse-polygons',
         workClass,
         unit,
         unitCount,
       });
-      throw new Error(
-        `unexpected: a published rate now exists for ${workClass}/${unit} — ` +
-          'this script needs its cold-start pilot branch updated to a real ' +
-          'estimate+approval gate (see prepareEstimate/approve).',
+      if (!approveHash) {
+        console.log(
+          `§24.3: estimate ready — campaign ${estimate.campaignId}, ` +
+            `${unitCount} draws @ ${estimate.microUsdPerUnit} micro-USD/draw ` +
+            `= ${estimate.estimateMicros} micro-USD estimate ` +
+            `(envelope ${estimate.envelopeMicros} micro-USD). Re-run with ` +
+            `--execute --approve-estimate=${estimate.estimateHash} to approve ` +
+            'and enqueue.',
+        );
+        return;
+      }
+      const approved = await spendCampaigns.approve(
+        estimate.campaignId,
+        approveHash,
+      );
+      campaignId = approved.campaignId;
+      console.log(
+        `§24.3: campaign ${campaignId} approved (${workClass}/${unit}, ` +
+          `${unitCount} draws, envelope ${approved.envelopeMicros} micro-USD).`,
       );
     } catch (error) {
       if (!(error instanceof NoPublishedRateError)) {
@@ -250,8 +273,9 @@ async function main(): Promise<void> {
       });
       campaignId = pilot.campaignId;
       console.log(
-        `§24.3: pilot campaign ${campaignId} opened (${workClass}/${unit}, ` +
-          `${unitCount} rows) — real admission stays the existing monthly pool.`,
+        `§24.3 cold-start: no published rate yet — pilot campaign ` +
+          `${campaignId} opened (${workClass}/${unit}, ${unitCount} draws) ` +
+          '— real admission stays the existing monthly pool.',
       );
     }
 
@@ -339,8 +363,8 @@ async function main(): Promise<void> {
       where: Prisma.Sql,
     ): Promise<void> => {
       const inserted = await prisma.$executeRaw(Prisma.sql`
-        INSERT INTO place_geometry_promotions (place_id, trigger)
-        SELECT p.place_id, 'paid_seed'
+        INSERT INTO place_geometry_promotions (place_id, trigger, campaign_id)
+        SELECT p.place_id, 'paid_seed', ${campaignId}::uuid
         FROM places p
         WHERE ${where}
           AND p.provider <> 'fallback'

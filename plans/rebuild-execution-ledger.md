@@ -1542,6 +1542,38 @@ price tables (K4 fetch like gemini's), chronological-lane cost
 attribution (needs a lane tag on source documents), campaign gates on
 future onboarding scripts as they're written.
 
+**All three follow-ups EXECUTED 2026-07-24.** (1) Vendor rate tables:
+`vendor-pricing.ts` prices TomTom Search-family draws (cheapGeocode +
+scarcePolygons, unified as work class `tomtom.searchFamily` — the ledger
+doesn't distinguish which pool a draw belongs to) at $2.50/1,000 requests
+— OWNER-RATIFIED (the K1 price-tag already in governance.service.ts's
+scarcePolygons comment), not vendor-invoice-verified; pending verification
+against the first TomTom invoice — and Google Places (New) at the K4
+entry-tier per-SKU rates ($5/$17/$20/$25 per 1,000 for
+essentials/pro/enterprise/enterprise_atmosphere), fetched live 2026-07-25.
+spend-analytics.service.ts now publishes PRICED `tomtom.searchFamily` and
+`google_places.<sku>` rows (replacing the old zero-priced
+`unattributed.*` rows) plus constant-rate floor rows so a same-day
+campaign estimate never has to wait for a ledger sample. (2)
+Chronological lane cost attribution: `collection_source_documents` gained
+a `lane varchar(32)` column (migration
+`20260724180000_document_lane_tag`), stamped at persist time from the
+extraction pipeline's collectionType (chronological/keyword; archive and
+poll-thread stay NULL, same as legacy pre-migration rows).
+`attributeLaneCosts` now groups by (source, lane) and feeds BOTH lanes
+into `recordLaneCost` — chronological finally receives real cost
+attribution, not just keyword. (3) Campaign gates as standing law: §24.3
+now states the rule explicitly (`prepareEstimate`/`preparePilot` +
+`--approve-estimate` is mandatory for every future spend-bearing operator
+script, not per-script discretion); `seed-coarse-polygons.ts` is the
+first script updated to the real estimate+approve flow (with the §24.2
+pilot as cold-start fallback), and `place_geometry_promotions` gained a
+`campaign_id uuid` column (same migration) so the hourly drain can check
+`SpendCampaignService.isDispatchable` before spending a pool draw and
+`recordSpend` the actual draws made after a successful promotion — pool
+governs rate/admission, campaign envelope governs budget, unchanged
+division of labor.
+
 ### §24 red team (3-lens, 2026-07-24)
 
 A 3-lens adversarial pass over the executed §24 legs found 11 real gaps.
