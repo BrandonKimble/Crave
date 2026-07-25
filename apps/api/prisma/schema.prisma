@@ -355,12 +355,41 @@ model SourceCollectionLane {
   /// baseline reads RED (legit-zero ≠ broken-zero via the baseline).
   lastOutputDocs        Int?      @map("last_output_docs")
   outputDocsBaseline    Float?    @map("output_docs_baseline")
+  /// §24.5 Leg B — the COST mirror of the output baseline above (§24.1
+  /// Tier 2): last tick's attributed spend, an EWMA baseline, and an EWMA
+  /// of absolute deviation (the band width — §24.1's K=3 three-sigma rule
+  /// reads baseline ± K*dev). costPaused is the breach flag; listDueLanes
+  /// excludes paused lanes, mirroring how output collapse never blocks
+  /// dispatch but cost breach DOES (asymmetric: high spend is the alarm).
+  lastCostMicros         BigInt?   @map("last_cost_micros")
+  costBaselineMicros     Float?    @map("cost_baseline_micros")
+  costBaselineDevMicros  Float?    @map("cost_baseline_dev_micros")
+  costPaused             Boolean   @default(false) @map("cost_paused")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @map("updated_at")
 
   @@id([sourceId, lane])
   @@index([enabled, dueAt], map: "idx_source_collection_lanes_due")
   @@map("source_collection_lanes")
+}
+
+/// §24.2 the measured unit-cost table: (work_class, unit) -> micro-USD per
+/// unit, derived nightly by SpendAnalyticsService from api_usage_ledger
+/// joined to the work it produced. NEVER hand-seeded — a work class with no
+/// join yet simply has no row (cold start = no estimate, per the
+/// no-fake-estimates law), and unjoinable spend still appears as a
+/// work_class 'unattributed.<service>' row so spend is never silently lost.
+model SpendUnitCost {
+  workClass       String   @map("work_class") @db.VarChar(64)
+  unit            String   @db.VarChar(32)
+  microUsdPerUnit Float    @map("micro_usd_per_unit")
+  sampleUnits     BigInt   @map("sample_units")
+  windowStart     DateTime @map("window_start")
+  windowEnd       DateTime @map("window_end")
+  refreshedAt     DateTime @default(now()) @map("refreshed_at")
+
+  @@id([workClass, unit])
+  @@map("spend_unit_costs")
 }
 
 /// §5 engines: operator-attached collection units. Territory = derived union

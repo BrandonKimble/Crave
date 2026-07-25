@@ -13,6 +13,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { LoggerService } from '../../../shared';
 import { REDDIT_LANES } from './reddit-collection-adapter';
 
 export interface CollectorLane {
@@ -26,6 +27,11 @@ export interface CollectorLane {
   state: Record<string, unknown>;
   lastOutputDocs: number | null;
   outputDocsBaseline: number | null;
+  /** §24.5 Leg B cost mirror of the output baseline above. */
+  lastCostMicros: number | null;
+  costBaselineMicros: number | null;
+  costBaselineDevMicros: number | null;
+  costPaused: boolean;
   /** Joined source columns — the lane's collection identity. */
   platform: string;
   handle: string;
@@ -43,6 +49,10 @@ export interface CollectorHeartbeat {
   outputCollapsed: boolean;
   lastOutputDocs: number | null;
   outputDocsBaseline: number | null;
+  /** §24.1 Tier 2 breach: last-tick cost exceeded baseline + K*dev (§24.5). */
+  costBreached: boolean;
+  lastCostMicros: number | null;
+  costBaselineMicros: number | null;
   /** §10 advance-at-extraction: a staged window older than the reconcile
    *  grace that never committed = the lane FETCHED but no extraction run
    *  entered the evidence system — RED. */
@@ -83,6 +93,59 @@ export const PENDING_WINDOW_GRACE_HOURS = 2;
  *  estimator-refresher turns on (§22 trigger-deferred reader). */
 const OUTPUT_COLLAPSE_FRACTION = 0.2;
 
+/**
+ * §24.6/§16: the cost-baseline EWMA REUSES OUTPUT_BASELINE_ALPHA above — one
+ * smoothing prior, not a second knob (§24.6 explicitly names this reuse).
+ * Also used for the deviation EWMA (cost_baseline_dev_micros), same
+ * rationale: one smoothing constant governs how fast both the center and
+ * the spread of the lane's cost distribution adapt.
+ */
+const COST_BASELINE_ALPHA = OUTPUT_BASELINE_ALPHA;
+
+/**
+ * §16 K6 (definitional — nothing changes it): the standard three-sigma
+ * convention. §24.1 Tier 2 calls for a band derived from the lane's own
+ * measured dispersion rather than an invented percentage; K=3 is not a
+ * tuned owner knob, it names a universally recognized statistical
+ * convention (99.7% of a normal distribution falls within 3 std devs) —
+ * the same status as e.g. a 95% confidence interval's z=1.96. §24.1 marks
+ * this the section's one deliberately-borrowed convention.
+ */
+const COST_BREACH_K = 3;
+
+/**
+ * Pure mirror of the SQL in recordLaneCost's UPDATE (kept 1:1 with the CASE
+ * expressions there) so the §24.1 Tier-2 breach law is exercisable in a
+ * plain unit test without a database. A change to either copy that isn't
+ * mirrored in the other is the bug this duplication exists to catch —
+ * treat them as one piece of logic transcribed twice, not two designs.
+ */
+export function evaluateCostBreach(
+  costMicros: number,
+  priorBaselineMicros: number | null,
+  priorDevMicros: number | null,
+): {
+  paused: boolean;
+  nextBaselineMicros: number;
+  nextDevMicros: number;
+} {
+  if (priorBaselineMicros === null) {
+    // First tick: no baseline to compare against — structurally cannot
+    // breach. This branch is the ONLY way nextDevMicros starts at 0 and
+    // paused starts false.
+    return { paused: false, nextBaselineMicros: costMicros, nextDevMicros: 0 };
+  }
+  const dev = priorDevMicros ?? 0;
+  const paused = costMicros > priorBaselineMicros + COST_BREACH_K * dev;
+  const nextDevMicros =
+    dev * (1 - COST_BASELINE_ALPHA) +
+    Math.abs(costMicros - priorBaselineMicros) * COST_BASELINE_ALPHA;
+  const nextBaselineMicros =
+    priorBaselineMicros * (1 - COST_BASELINE_ALPHA) +
+    costMicros * COST_BASELINE_ALPHA;
+  return { paused, nextBaselineMicros, nextDevMicros };
+}
+
 export function normalizedLateness(
   lane: Pick<CollectorLane, 'dueAt' | 'latenessToleranceDays'>,
   now: Date,
@@ -96,7 +159,14 @@ export function normalizedLateness(
 
 @Injectable()
 export class CollectorSourceRegistryService {
-  constructor(private readonly prisma: PrismaService) {}
+  private readonly logger: LoggerService;
+
+  constructor(
+    private readonly prisma: PrismaService,
+    loggerService: LoggerService,
+  ) {
+    this.logger = loggerService.setContext('CollectorSourceRegistryService');
+  }
 
   /** Due lanes ordered by normalized lateness DESC — §14.3 priority. */
   async listDueLanes(now: Date = new Date()): Promise<CollectorLane[]> {
@@ -112,6 +182,10 @@ export class CollectorSourceRegistryService {
         state: Record<string, unknown> | null;
         last_output_docs: number | null;
         output_docs_baseline: number | null;
+        last_cost_micros: bigint | null;
+        cost_baseline_micros: number | null;
+        cost_baseline_dev_micros: number | null;
+        cost_paused: boolean;
         platform: string;
         handle: string;
         anchor_place_id: string | null;
@@ -121,7 +195,7 @@ export class CollectorSourceRegistryService {
       SELECT l.*, s.platform, s.handle, s.anchor_place_id, s.engine_id
       FROM source_collection_lanes l
       JOIN sources s ON s.source_id = l.source_id
-      WHERE l.enabled AND l.due_at <= ${now}
+      WHERE l.enabled AND l.due_at <= ${now} AND NOT l.cost_paused
       ORDER BY (EXTRACT(EPOCH FROM (${now}::timestamp - l.due_at))
                 / GREATEST(l.lateness_tolerance_days * 86400, 1)) DESC
     `;
@@ -139,6 +213,11 @@ export class CollectorSourceRegistryService {
         row.output_docs_baseline === null
           ? null
           : Number(row.output_docs_baseline),
+      lastCostMicros:
+        row.last_cost_micros === null ? null : Number(row.last_cost_micros),
+      costBaselineMicros: row.cost_baseline_micros,
+      costBaselineDevMicros: row.cost_baseline_dev_micros,
+      costPaused: row.cost_paused,
       platform: row.platform,
       handle: row.handle,
       anchorPlaceId: row.anchor_place_id,
@@ -380,6 +459,77 @@ export class CollectorSourceRegistryService {
   }
 
   /**
+   * §24.5 Leg B: record a tick's attributed COST and fold it into the
+   * lane's EWMA baseline + EWMA absolute-deviation band (§24.1 Tier 2),
+   * mirroring recordLaneOutput above exactly. A tick's cost exceeding
+   * baseline + COST_BREACH_K * deviation PAUSES the lane (cost_paused) —
+   * the asymmetric alarm: anomalously HIGH spend is the alarm here, unlike
+   * output collapse's LOW-side alarm, because low spend is already covered
+   * by output collapse (§24.1). The FIRST tick (no baseline yet) can NEVER
+   * breach — structurally impossible below, not merely untested: the
+   * breach branch of the CASE only evaluates once cost_baseline_micros IS
+   * NOT NULL, and that branch is what sets cost_paused; the bootstrap
+   * branch (baseline IS NULL) always writes cost_paused = false.
+   */
+  async recordLaneCost(
+    sourceId: string,
+    lane: string,
+    costMicros: number,
+  ): Promise<void> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ paused: boolean; baseline: number; dev: number }>
+    >`
+      UPDATE source_collection_lanes
+      SET last_cost_micros = ${BigInt(Math.round(costMicros))},
+          cost_baseline_dev_micros = CASE
+            WHEN cost_baseline_micros IS NULL THEN 0::float8
+            ELSE cost_baseline_dev_micros * ${1 - COST_BASELINE_ALPHA}
+                 + ABS(${costMicros}::float8 - cost_baseline_micros)
+                   * ${COST_BASELINE_ALPHA}
+          END,
+          cost_paused = CASE
+            WHEN cost_baseline_micros IS NULL THEN false
+            ELSE ${costMicros}::float8
+                 > cost_baseline_micros
+                   + ${COST_BREACH_K} * COALESCE(cost_baseline_dev_micros, 0)
+          END,
+          cost_baseline_micros = CASE
+            WHEN cost_baseline_micros IS NULL THEN ${costMicros}::float8
+            ELSE cost_baseline_micros * ${1 - COST_BASELINE_ALPHA}
+                 + ${costMicros}::float8 * ${COST_BASELINE_ALPHA}
+          END,
+          updated_at = now()
+      WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+      RETURNING cost_paused AS paused, cost_baseline_micros AS baseline,
+                cost_baseline_dev_micros AS dev
+    `;
+    const result = rows[0];
+    if (result?.paused) {
+      this.logger.error('LANE COST BREACH — paused pending owner eyes', {
+        sourceId,
+        lane,
+        costMicros,
+        baselineMicros: result.baseline,
+        deviationMicros: result.dev,
+        breachThresholdMicros:
+          result.baseline + COST_BREACH_K * (result.dev ?? 0),
+      });
+    }
+  }
+
+  /** Operator seam (§24.1 Tier 2): clear a paused lane's breach flag so it
+   *  re-enters listDueLanes. No caller wiring yet — ops scripts drive this
+   *  later, once an owner has looked at the numbers logged at breach time. */
+  async resumeLane(sourceId: string, lane: string): Promise<void> {
+    await this.prisma.$executeRaw`
+      UPDATE source_collection_lanes
+      SET cost_paused = false,
+          updated_at = now()
+      WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+    `;
+  }
+
+  /**
    * The per-(source, lane) heartbeat reader (§12.4/C8) — CAN show RED two
    * ways: normalized lateness > 1 (the lane stopped running) or output
    * collapse vs its own baseline (the lane runs but produces nothing where
@@ -397,12 +547,16 @@ export class CollectorSourceRegistryService {
         lateness_tolerance_days: number;
         last_output_docs: number | null;
         output_docs_baseline: number | null;
+        last_cost_micros: bigint | null;
+        cost_baseline_micros: number | null;
+        cost_paused: boolean | null;
         state: Record<string, unknown> | null;
       }>
     >`
       SELECT l.source_id, s.handle, l.lane, l.due_at,
              l.lateness_tolerance_days, l.last_output_docs,
-             l.output_docs_baseline, l.state
+             l.output_docs_baseline, l.last_cost_micros,
+             l.cost_baseline_micros, l.cost_paused, l.state
       FROM source_collection_lanes l
       JOIN sources s ON s.source_id = l.source_id
       WHERE l.enabled
@@ -455,6 +609,13 @@ export class CollectorSourceRegistryService {
         outputCollapsed,
         lastOutputDocs: row.last_output_docs,
         outputDocsBaseline: baseline,
+        // §24.5 Leg B: the pause flag IS the breach verdict (recordLaneCost
+        // is the sole writer, computed at write time with the full band —
+        // the reader just surfaces it, same shape as outputCollapsed).
+        costBreached: row.cost_paused === true,
+        lastCostMicros:
+          row.last_cost_micros === null ? null : Number(row.last_cost_micros),
+        costBaselineMicros: row.cost_baseline_micros,
         pendingWindowStale,
         expectedBatchesShortfall,
         coverageGapDetected: state.coverageGap != null,
@@ -487,6 +648,10 @@ export class CollectorSourceRegistryService {
         state: Record<string, unknown> | null;
         last_output_docs: number | null;
         output_docs_baseline: number | null;
+        last_cost_micros: bigint | null;
+        cost_baseline_micros: number | null;
+        cost_baseline_dev_micros: number | null;
+        cost_paused: boolean;
         platform: string;
         handle: string;
         anchor_place_id: string | null;
@@ -514,6 +679,11 @@ export class CollectorSourceRegistryService {
         row.output_docs_baseline === null
           ? null
           : Number(row.output_docs_baseline),
+      lastCostMicros:
+        row.last_cost_micros === null ? null : Number(row.last_cost_micros),
+      costBaselineMicros: row.cost_baseline_micros,
+      costBaselineDevMicros: row.cost_baseline_dev_micros,
+      costPaused: row.cost_paused,
       platform: row.platform,
       handle: row.handle,
       anchorPlaceId: row.anchor_place_id,

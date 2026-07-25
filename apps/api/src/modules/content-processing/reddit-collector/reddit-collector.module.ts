@@ -37,6 +37,7 @@ import { SignalsModule } from '../../signals/signals.module';
 import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
 import { BullQueueMetricsService } from './bull-queue-metrics.service';
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
+import { SpendAnalyticsService } from '../../external-integrations/shared/spend-analytics.service';
 
 const redditCollectorCoreProviders = [
   CollectionEvidenceService,
@@ -76,6 +77,11 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       // not instantiate any collection scheduling machinery.
       CollectorPacerService,
       CollectionJobSchedulerService,
+      // §24.5 Legs A+B: the unit-cost/baseline refresh cron — worker-gated
+      // for the same reason CollectorPacerService is (it's scheduling
+      // machinery, and it writes lane cost_paused state via
+      // CollectorSourceRegistryService.recordLaneCost).
+      SpendAnalyticsService,
       // Keyword Entity Search components
       KeywordSliceSelectionService,
       KeywordAttemptHistoryService,
