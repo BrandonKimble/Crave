@@ -1559,3 +1559,141 @@ NEXT (the real remaining bugs, now correctly framed as BASELINE issues):
   shouldEnableScrollShared at boot for the polls leg (visible/listScrollEnabled/
   interactionEnabled at the docked-polls initial presentation) + first-touch
   arbitration on the boot-mounted container.
+
+# ═══════════════════════════════════════════════════════════════════════════════════
+# THE ONE TRACK — the sheet interaction system from first principles
+# (owner-directed full derivation, 2026-07-25 — no current-code assumptions)
+# ═══════════════════════════════════════════════════════════════════════════════════
+
+## 0. The axiom (where every observed failure comes from)
+A finger applies ONE displacement stream. Every failure we have ever observed is a
+violation of one law: DISPLACEMENT DISTRIBUTION MUST BE A TOTAL FUNCTION of (touch
+phase, system state) — never an emergent negotiation.
+- The shake = two consumers writing sheet position in the same frames.
+- Double-scroll = sheet AND list both consuming one drag.
+- Frozen scroll = a distribution rule with a gap (no consumer).
+- Broken handoffs = the rule's value changing mid-gesture through recognizer
+  negotiation (require-to-fail webs), whose validity is temporal (stale relations).
+The current architecture CANNOT satisfy the axiom, because it delegates distribution
+to two independent physics engines (RNGH pans + UIScrollView's native pan) glued by
+declarative relations. Both-consume and neither-consume states are REACHABLE by
+design. No amount of fixing reaches impossibility. The abstraction itself is wrong.
+
+## 1. The two architectures that satisfy the axiom, and the verdict
+(B) ONE ARBITER, SCROLL ENSLAVED: a single root pan consumes everything; the list
+scrolls programmatically. Distribution is a literal total function — but it means
+hand-rolling scroll physics (momentum, deceleration, edge feel). This repo already
+buried that road once (the "tug mode" of plans/sheet-scroll-primitive.md): bespoke
+momentum never feels native. REJECTED.
+(A) ONE TRACK: remove the second physics engine instead of arbitrating it. The
+sheet's travel and the list's scroll are ONE CONTINUOUS NATIVE SCROLL TRACK. There is
+nothing to arbitrate and no handoff — crossing from "moving the sheet" to "scrolling
+the list" is continuity inside one native gesture on one engine (UIScrollView's, the
+best physics in the business). This is how the canonical iOS sheets actually feel.
+VERDICT: A.
+
+## 2. THE MODEL
+Two DISJOINT input surfaces; one value each; everything else is pure derivation.
+
+STATE (the only interaction state that exists):
+- D  — the sheet DETENT position (collapsed..expanded), global, snapped.
+- Lₛ — per-scene list offset (the registry's per-scene record — kept from this arc).
+- τ  — THE TRACK: the presented scene's native scroll offset. Its content is laid
+       out as [SHEET REGION spacer of height = distance(D_at_touch → expanded)]
+       followed by [the scene's list content].
+
+INPUT SURFACE 1 — THE BODY (the track): every touch on the sheet body feeds the ONE
+native scroll view. The track is partitioned by a single number H (remaining sheet
+travel at gesture start):
+  τ ∈ [0,H): the spacer region — sheetY DERIVES from τ (linear collapsed→expanded
+             map). The list hasn't moved. Dragging down here IS the sheet grab.
+  τ ≥ H:     the list region — sheet pinned expanded; list offset = τ − H.
+  τ < 0 / τ > end: NATIVE bounce (bounces=true — the native rubber band, free).
+PHASE-DEPENDENT BOUNDS (the one boundary law, replacing every handoff rule):
+  - FINGER DOWN: bounds = [0, end] — a drag can travel continuously from deep list
+    up through H and into sheet travel (the "grab at top" case is just... scrolling).
+  - BALLISTIC (finger up): lower bound = H — momentum arriving at the list top
+    BOUNCES natively (the owner's case a), it never collapses the sheet. Implemented
+    as a contentInset/limit flip on touch-up — one animated prop, no negotiation.
+SNAPS: only meaningful inside the spacer region. On release with τ < H: drive τ to
+the velocity-chosen detent (worklet-driven spring scrollTo; the arc's proven spring
+constants). On settle, D updates and the spacer re-bases. In the list region there is
+no snapping — free native scroll (exactly native sheet feel).
+
+INPUT SURFACE 2 — THE HEADER (the grab): one pan on the header/grab-handle region
+drives D directly (the only way to move the sheet while the list is deep-scrolled).
+Its region is DISJOINT from the body by layout, so no touch can ever have two
+consumers — arbitration is geometric, total, and trivially correct. Header taps
+(toggles, buttons) are ordinary presses; the strip never participates in vertical
+distribution at all.
+
+DERIVATIONS (each a pure function of D/τ/Lₛ — one writer each, the shell-visibility
+law generalized): sheet transform; the scene plate translation (frost cutouts); the
+header divider opacity; sticky-strip pinning (an in-list strip pins by translating
+when its natural position crosses the header bottom — a τ-derivation, NOT an input);
+map parallax; dismiss progress.
+
+## 3. The permutation table (why every configuration is now trivially coherent)
+- Header-mounted strip (polls/bookmarks): chrome. Lives in input surface 2's region;
+  taps only. Zero interaction with the track.
+- In-list strip (search results): content. Scrolls with τ like any row.
+- Sticky-in-list strip (future): content + a pin derivation of τ. Still zero
+  arbitration role.
+- No strip: nothing to say — which is the point. Strips CANNOT break handoffs
+  because handoffs don't exist and strips never consume vertical displacement.
+- Short pages: list region length ≈ 0; the track is spacer + bounce. Rubber band
+  at both ends is native. No floors, no fake padding, no special case.
+- Scene switch: τ re-bases atomically from (D, L_scene) at the presentation flip —
+  the projector pattern this arc already proved, now projecting ONE value.
+- Boot (the polls freeze class): a track is a plain native scroll view, enabled
+  always; there are no relations to be stale and no arbitration to wedge. The class
+  dies with the architecture.
+
+## 4. Impossibility arguments (the owner's acceptance list, proven structurally)
+1. SHAKE impossible: sheet position has exactly one writer per touch — the header
+   pan (surface 2) XOR the τ-derivation (surface 1). Two-writer frames are
+   unrepresentable.
+2. DOUBLE-SCROLL impossible: for body touches, sheet motion and list motion are the
+   SAME value in different sub-ranges of one monotone track. One value cannot be in
+   two ranges at once.
+3. BROKEN HANDOFFS impossible: there is no handoff — the transition is continuity of
+   one native gesture over one engine. Nothing negotiates, so nothing can fail to.
+4. BOUNCE/REBOUND interplay impossible to break: overscroll is the native engine's
+   own bounce at bounds that are a two-case pure function of touch phase. No custom
+   physics coexists with it.
+5. STRIP permutations impossible to break: strips are layout/derivation citizens
+   with no role in displacement distribution, by type.
+
+## 5. What dies, what survives
+DIES (the deletion list): both body pans + the overscroll pan and every RNGH
+relation (require-to-fail/simultaneous webs); the gesture-owner flags and handoff
+locks; SHEET_BODY_NO_OVERSCROLL (bounces becomes TRUE — native); the contentOverscroll
+system and both custom rebound springs (native bounce replaces them); the
+scrollEnabled authority dance; the command bus (no pan needs it); the dead
+BottomSheetWithFlashList.
+SURVIVES: the per-scene record registry + atomic projector (now projecting τ/L);
+computed chrome geometry + seam law; frost/plate derivations (re-driven by τ);
+the snap-spring constants (the detent settle); scene foundation specs; everything
+above the interaction layer.
+
+## 6. Honest unknowns (the prototype must answer, RED-capable)
+U1. The spacer mechanism inside FlashList (leading spacer as content vs animated
+    contentInset) and re-basing it on detent change without visible jumps.
+U2. The ballistic lower-bound flip on touch-up (animated contentInset vs clamp) —
+    latency and bounce fidelity at H.
+U3. Worklet-driven spring scrollTo for detent snaps (feel parity with today's
+    spring) — including catch-during-settle (touch mid-snap must hand the track
+    back seamlessly; native does this for free if the snap is scroll-driven).
+U4. Velocity continuity crossing H finger-down (native handles it — verify on
+    device, not simulator assumptions).
+U5. FlashList virtualization with a large leading spacer (viewport calculations).
+
+## 7. The build law (learned the hard way, now binding)
+- PROTOTYPE FIRST: one scene (search results), behind a presented-scene flag,
+  owner-thumb accepted BEFORE any migration begins. The rig is an instrument; the
+  owner is the acceptance.
+- MIGRATE scene-by-scene; the old system keeps serving unmigrated scenes via the
+  strangler boolean pattern already proven by residency.
+- Every platform event field gets a RED-capable probe before anything trusts it
+  (velocity/contentSize/Native-callbacks lore).
+- Each slice: tsc/jest/matrix + owner acceptance; pathspec commits.
