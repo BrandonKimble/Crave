@@ -131,12 +131,23 @@ function buildGovernance() {
   } as unknown as import('../governance/governance.service').GovernanceService;
 }
 
+function buildOpsAlerts() {
+  const emit = jest.fn();
+  return {
+    mock: {
+      emit: emit as never,
+    } as unknown as import('./ops-alerts.service').OpsAlertsService,
+    emit,
+  };
+}
+
 describe('SpendCampaignService (§24.5 Leg C)', () => {
   it('prepareEstimate refuses (typed) when the work class has no published rate', async () => {
     const prisma = buildPrisma();
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts().mock,
       buildGovernance(),
     );
     await expect(
@@ -154,6 +165,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts().mock,
       buildGovernance(),
     );
     const pilot = await service.preparePilot({
@@ -176,6 +188,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts().mock,
       buildGovernance(),
     );
     const estimate = await service.prepareEstimate({
@@ -201,9 +214,11 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
       microUsdPerUnit: 10,
     });
     const governance = buildGovernance();
+    const opsAlerts = buildOpsAlerts();
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      opsAlerts.mock,
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -230,6 +245,15 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     expect(row?.state).toBe('breached');
     expect(row?.breachNote).toEqual(expect.stringContaining('envelope breach'));
 
+    // The breach emits a critical ops alert, deduped per campaign.
+    expect(opsAlerts.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: 'critical',
+        kind: 'campaign_breached',
+        dedupeKey: `campaign_breached:${estimate.campaignId}`,
+      }),
+    );
+
     // Breached campaigns refuse further spend (typed, not silent).
     await expect(
       service.recordSpend(estimate.campaignId, 1),
@@ -245,6 +269,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts(),
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -276,6 +301,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts(),
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -308,6 +334,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts(),
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -349,6 +376,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
+      buildOpsAlerts(),
       governance,
     );
     const estimate = await service.prepareEstimate({

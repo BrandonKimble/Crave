@@ -111,6 +111,7 @@ function buildAdapter(options: {
     httpService as never,
     prisma as never,
     governance as never,
+    { emit: jest.fn() } as never,
     configService as never,
     loggerService as never,
   );

@@ -21,6 +21,7 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
 import { GovernanceService } from '../governance/governance.service';
+import { OpsAlertsService } from '../shared/ops-alerts.service';
 import { msUntilVendorMonthReset } from '../shared/gemini-pricing';
 import {
   LLMConfig,
@@ -205,6 +206,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     private readonly usageLedger: UsageLedgerService,
     private readonly decisionLedger: DecisionLedgerService,
     private readonly governance: GovernanceService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {}
 
   onModuleInit(): void {
@@ -2812,12 +2814,27 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    */
   assertSpendBudgetOpen(): void {
     const status = this.governance.pools.poolStatus('gemini.monthlySpend');
+    const monthKey = new Date().toISOString().slice(0, 7);
     if (status.poisonedForMs !== null && status.poisonedForMs > 0) {
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'gemini_backstop',
+        title: 'Gemini spend budget poisoned (vendor cap)',
+        body: `LLM spend budget poisoned (vendor cap) — reopens in ${Math.ceil(status.poisonedForMs / 3_600_000)}h; work stays queued.`,
+        dedupeKey: `gemini_backstop:${monthKey}`,
+      });
       throw new Error(
         `LLM spend budget poisoned (vendor cap) — reopens in ${Math.ceil(status.poisonedForMs / 3_600_000)}h; work stays queued`,
       );
     }
     if (status.used >= status.limit) {
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'gemini_backstop',
+        title: 'Gemini spend budget backstop fired',
+        body: 'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived.',
+        dedupeKey: `gemini_backstop:${monthKey}`,
+      });
       throw new Error(
         'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
       );
@@ -3513,6 +3530,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           this.logger.error(
             'GEMINI VENDOR SPEND CAP HIT — spend pool poisoned until the vendor month reset; raise the AI Studio cap (and GEMINI_MONTHLY_SPEND_CAP_USD) to resume',
           );
+          const monthKey = new Date().toISOString().slice(0, 7);
+          this.opsAlerts.emit({
+            severity: 'critical',
+            kind: 'gemini_vendor_cap',
+            title: 'AI Studio monthly cap hit',
+            body: 'AI Studio monthly cap hit — raise the cap in the console; work queued until then.',
+            dedupeKey: `gemini_vendor_cap:${monthKey}`,
+          });
         }
         this.logger.error(
           'Detailed @google/genai API error',

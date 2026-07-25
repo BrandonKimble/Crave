@@ -9,6 +9,7 @@ import {
 } from './vendor-pricing';
 import { CollectorSourceRegistryService } from '../../content-processing/reddit-collector/collector-source-registry.service';
 import { GovernanceService } from '../governance/governance.service';
+import { OpsAlertsService } from './ops-alerts.service';
 
 /**
  * §24.2 the measured unit-cost table (plans/geo-demand-foundation-rebuild.md
@@ -78,6 +79,24 @@ const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
  */
 const SPEND_TELEMETRY_WARN_K = 3;
 
+/**
+ * §18.4/§24.3 TomTom credit PROXY (comment discipline, §16): we cannot see
+ * the prepaid balance via the TomTom API at all — no endpoint exposes it —
+ * so this nightly check is a PROXY signal only: "the scarcePolygons pool
+ * used ≥80% of its monthly limit before day 20 of the month" is unusually
+ * fast burn, worth an owner glance at the vendor portal balance. Both
+ * numbers are §16 K2-SHAPED PRIORS WITH AN EXPLICIT ERASURE NOTE — a stand-
+ * in for "burn rate exceeds what the remaining days in the month can
+ * absorb at the historical pace," which needs a measured burn-rate model
+ * (multiple months of scarcePolygons draw history) that doesn't exist yet.
+ * ERASED the moment that measured model lands; until then, 80%-by-day-20
+ * (≈2/3 of the days having used ≥4/5 of the budget) stands as a documented
+ * placeholder, not a ratified permanent knob. A TRUE balance alert needs
+ * the vendor portal (no API) — this is the closest observable proxy today.
+ */
+const TOMTOM_POOL_HOT_FRACTION = 0.8;
+const TOMTOM_POOL_HOT_DAY_OF_MONTH = 20;
+
 /** Median of a numeric array (even-length: mean of the two middle values).
  *  Used by refreshBackstop instead of a mean so a run of ~15 runaway days
  *  cannot single-handedly drag the trailing baseline up with them. */
@@ -100,6 +119,7 @@ export class SpendAnalyticsService {
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
     private readonly registry: CollectorSourceRegistryService,
+    private readonly opsAlerts: OpsAlertsService,
     // Optional: slim script graphs may lack the governance module; the
     // unit-cost/backstop-row refresh must never depend on live pool access
     // (governance.service.ts re-reads the written row at its OWN boot).
@@ -179,6 +199,8 @@ export class SpendAnalyticsService {
     await this.attributeLaneCosts(windowStart, windowEnd);
     await this.refreshBackstop(windowStart, windowEnd, now);
     await this.logSpendTelemetry(now);
+    this.checkTomtomPoolHot(now);
+    await this.checkLaneReds(now);
 
     // Dedupe by (workClass, unit), LAST occurrence wins — a constant-rate
     // floor row pushed before a sample-derived row for the same key must
@@ -779,8 +801,115 @@ export class SpendAnalyticsService {
         'Gemini spend telemetry: month-to-date is running hot vs. the trailing measured baseline (informational — no gate)',
         logFields,
       );
+      const dayKey = now.toISOString().slice(0, 10);
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'spend_above_expectation',
+        title: 'Gemini spend running above the trailing baseline',
+        body: `Month-to-date spend is $${logFields.monthToDateUsd} vs. a prorated expectation of $${logFields.proratedExpectationUsd} (day ${dayOfMonth} of month, daily mean $${logFields.dailyMeanUsd} ± $${logFields.dailyStddevUsd}). Informational only — no gate.`,
+        dedupeKey: `spend_above_expectation:${dayKey}`,
+      });
     } else {
       this.logger.info('Gemini spend telemetry', logFields);
+    }
+  }
+
+  /**
+   * §18.4 TomTom credit PROXY (see TOMTOM_POOL_HOT_FRACTION's doc comment):
+   * the tomtom.scarcePolygons pool used ≥80% of its monthly limit before
+   * day 20 — unusually early burn, worth checking the vendor portal
+   * balance/top-up. No-ops when no live GovernanceService is wired (slim
+   * script graphs) since there is no pool to read.
+   */
+  private checkTomtomPoolHot(now: Date): void {
+    if (!this.governance) {
+      return;
+    }
+    const dayOfMonth = now.getUTCDate();
+    if (dayOfMonth >= TOMTOM_POOL_HOT_DAY_OF_MONTH) {
+      return;
+    }
+    let status: { used: number; limit: number };
+    try {
+      status = this.governance.pools.poolStatus('tomtom.scarcePolygons');
+    } catch {
+      return;
+    }
+    if (status.limit <= 0) {
+      return;
+    }
+    const usedFraction = status.used / status.limit;
+    if (usedFraction < TOMTOM_POOL_HOT_FRACTION) {
+      return;
+    }
+    const monthKey = now.toISOString().slice(0, 7);
+    this.logger.warn(
+      'TomTom scarcePolygons pool unusually hot for the day of month',
+      {
+        dayOfMonth,
+        used: status.used,
+        limit: status.limit,
+        usedFraction,
+      },
+    );
+    this.opsAlerts.emit({
+      severity: 'warn',
+      kind: 'tomtom_pool_hot',
+      title: 'TomTom scarcePolygons pool running hot',
+      body: `TomTom scarcePolygons used ${Math.round(usedFraction * 1000) / 10}% of its monthly limit (${status.used}/${status.limit}) by day ${dayOfMonth} of the month — check TomTom balance/top-up. (Proxy signal — the vendor API exposes no true prepaid balance.)`,
+      dedupeKey: `tomtom_pool_hot:${monthKey}`,
+    });
+  }
+
+  /**
+   * §18.4 lane RED persistence: surface any enabled lane whose heartbeat
+   * currently shows RED (output collapsed, a fetched-but-uncommitted
+   * window gone stale, or an expected-batches shortfall) so it appears on
+   * the ops dashboard without waiting for a human to query
+   * collectorHeartbeats by hand. Dedupe per (lane, day) — a persistently
+   * RED lane pages once a day, not once per nightly tick's specific cause.
+   */
+  private async checkLaneReds(now: Date): Promise<void> {
+    let heartbeats: Awaited<
+      ReturnType<CollectorSourceRegistryService['collectorHeartbeats']>
+    >;
+    try {
+      heartbeats = await this.registry.collectorHeartbeats(now);
+    } catch (error) {
+      this.logger.warn('Lane RED check failed to read heartbeats', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return;
+    }
+    const dayKey = now.toISOString().slice(0, 10);
+    for (const beat of heartbeats) {
+      const reasons: string[] = [];
+      if (beat.outputCollapsed) {
+        reasons.push('output collapsed vs. baseline');
+      }
+      if (beat.pendingWindowStale) {
+        reasons.push('fetched window stale with no run committed');
+      }
+      if (
+        beat.expectedBatchesShortfall !== null &&
+        beat.expectedBatchesShortfall > 0
+      ) {
+        reasons.push(
+          `expected-batches shortfall ${beat.expectedBatchesShortfall}`,
+        );
+      }
+      if (reasons.length === 0) {
+        continue;
+      }
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'lane_red',
+        title: `Lane RED: ${beat.handle} / ${beat.lane}`,
+        body: `Source ${beat.handle} (${beat.sourceId}) lane ${beat.lane} is RED: ${reasons.join('; ')}.`,
+        dedupeKey: `lane_red:${beat.sourceId}:${beat.lane}:${dayKey}`,
+      });
     }
   }
 }

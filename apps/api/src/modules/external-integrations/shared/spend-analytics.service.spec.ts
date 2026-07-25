@@ -125,6 +125,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       prisma as never,
       logger as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
@@ -176,6 +177,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       prisma as never,
       stubLogger() as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
@@ -207,6 +209,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       prisma as never,
       stubLogger() as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
@@ -260,6 +263,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       prisma as never,
       stubLogger() as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     const rows = await service.refreshUnitCosts(WINDOW_END);
@@ -300,6 +304,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
       prisma as never,
       stubLogger() as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     await service.refreshUnitCosts(WINDOW_END);
@@ -379,6 +384,7 @@ describe('SpendAnalyticsService.logSpendTelemetry (§24.4 item 6)', () => {
       prisma as never,
       logger as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     await (
@@ -405,6 +411,7 @@ describe('SpendAnalyticsService.logSpendTelemetry (§24.4 item 6)', () => {
       prisma as never,
       logger as never,
       registry as never,
+      { emit: jest.fn() } as never,
     );
 
     await (
@@ -477,6 +484,7 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
       prisma as never,
       stubLogger() as never,
       { recordLaneCost: jest.fn() } as never,
+      { emit: jest.fn() } as never,
       governance as never,
     );
 
@@ -512,6 +520,7 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
       prisma as never,
       stubLogger() as never,
       { recordLaneCost: jest.fn() } as never,
+      { emit: jest.fn() } as never,
       governance as never,
     );
 
@@ -541,6 +550,7 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
       prisma as never,
       stubLogger() as never,
       { recordLaneCost: jest.fn() } as never,
+      { emit: jest.fn() } as never,
       governance as never,
     );
 
@@ -572,6 +582,7 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
       prisma as never,
       stubLogger() as never,
       { recordLaneCost: jest.fn() } as never,
+      { emit: jest.fn() } as never,
       governance as never,
     );
 
@@ -586,5 +597,93 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
     };
     expect(call.create.microUsdPerUnit).toBe(90_000);
     expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 90_000);
+  });
+});
+
+/**
+ * §18.4 TomTom credit PROXY (checkTomtomPoolHot): RED-provable at the
+ * fixture threshold (80% used before day 20) and NOT below it — both the
+ * fraction boundary and the day-of-month boundary are exercised so the
+ * check can be proven capable of firing, not a metric that only ever
+ * reads green.
+ */
+describe('SpendAnalyticsService.checkTomtomPoolHot (§18.4 TomTom credit proxy)', () => {
+  function buildService(governance: unknown, opsAlerts: { emit: jest.Mock }) {
+    return new SpendAnalyticsService(
+      {} as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn() } as never,
+      opsAlerts as never,
+      governance as never,
+    );
+  }
+
+  function callCheck(service: SpendAnalyticsService, now: Date): void {
+    (
+      service as unknown as { checkTomtomPoolHot(now: Date): void }
+    ).checkTomtomPoolHot(now);
+  }
+
+  it('fires warn tomtom_pool_hot at >=80% used before day 20', () => {
+    const governance = {
+      pools: {
+        poolStatus: jest.fn().mockReturnValue({ used: 8_000, limit: 10_000 }), // 80%
+      },
+    };
+    const opsAlerts = { emit: jest.fn() };
+    const service = buildService(governance, opsAlerts);
+
+    callCheck(service, new Date('2026-07-15T00:00:00Z')); // day 15 < 20
+
+    expect(opsAlerts.emit).toHaveBeenCalledTimes(1);
+    expect(opsAlerts.emit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        severity: 'warn',
+        kind: 'tomtom_pool_hot',
+        dedupeKey: 'tomtom_pool_hot:2026-07',
+      }),
+    );
+  });
+
+  it('does NOT fire below the 80% fraction threshold (RED-proof: the band can read green too)', () => {
+    const governance = {
+      pools: {
+        poolStatus: jest.fn().mockReturnValue({ used: 7_999, limit: 10_000 }), // just under 80%
+      },
+    };
+    const opsAlerts = { emit: jest.fn() };
+    const service = buildService(governance, opsAlerts);
+
+    callCheck(service, new Date('2026-07-15T00:00:00Z'));
+
+    expect(opsAlerts.emit).not.toHaveBeenCalled();
+  });
+
+  it('does NOT fire on/after day 20, even at 100% used (the day-of-month gate)', () => {
+    const governance = {
+      pools: {
+        poolStatus: jest.fn().mockReturnValue({ used: 10_000, limit: 10_000 }),
+      },
+    };
+    const opsAlerts = { emit: jest.fn() };
+    const service = buildService(governance, opsAlerts);
+
+    callCheck(service, new Date('2026-07-20T00:00:00Z'));
+
+    expect(opsAlerts.emit).not.toHaveBeenCalled();
+  });
+
+  it('no-ops (never throws) when no live GovernanceService is wired', () => {
+    const opsAlerts = { emit: jest.fn() };
+    const service = new SpendAnalyticsService(
+      {} as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn() } as never,
+      opsAlerts as never,
+    );
+    expect(() =>
+      callCheck(service, new Date('2026-07-15T00:00:00Z')),
+    ).not.toThrow();
+    expect(opsAlerts.emit).not.toHaveBeenCalled();
   });
 });

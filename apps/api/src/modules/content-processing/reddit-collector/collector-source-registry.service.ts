@@ -15,6 +15,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { REDDIT_LANES } from './reddit-collection-adapter';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 
 export interface CollectorLane {
   sourceId: string;
@@ -173,6 +174,7 @@ export class CollectorSourceRegistryService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly opsAlerts: OpsAlertsService,
   ) {
     this.logger = loggerService.setContext('CollectorSourceRegistryService');
   }
@@ -554,6 +556,13 @@ export class CollectorSourceRegistryService {
           deviationMicros: result.dev,
         },
       );
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'lane_cost_escalated',
+        title: `Chronological lane cost breach (source ${sourceId})`,
+        body: `Lane ${lane} on source ${sourceId} cost ${costMicros} micro-USD, exceeding its baseline ${result.baseline} + ${COST_BREACH_K}×dev ${result.dev ?? 0}. The lane keeps running (loss-horizon law) — owner eyes needed.`,
+        dedupeKey: `lane_cost_escalated:${sourceId}:${lane}`,
+      });
     } else if (result.paused) {
       this.logger.error('LANE COST BREACH — paused pending owner eyes', {
         sourceId,
@@ -563,6 +572,13 @@ export class CollectorSourceRegistryService {
         deviationMicros: result.dev,
         breachThresholdMicros:
           result.baseline + COST_BREACH_K * (result.dev ?? 0),
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'lane_cost_paused',
+        title: `Elastic lane paused on cost breach (source ${sourceId})`,
+        body: `Lane ${lane} on source ${sourceId} cost ${costMicros} micro-USD, exceeding its baseline — lane paused. Resume via CollectorSourceRegistryService.resumeLane(sourceId, lane) once reviewed.`,
+        dedupeKey: `lane_cost_paused:${sourceId}:${lane}`,
       });
     }
   }

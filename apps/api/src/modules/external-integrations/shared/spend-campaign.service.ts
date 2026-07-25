@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
+import { OpsAlertsService } from './ops-alerts.service';
 
 /**
  * §24.3 the campaign surface (Leg C, plans/geo-demand-foundation-rebuild.md
@@ -157,6 +158,7 @@ export class SpendCampaignService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly opsAlerts: OpsAlertsService,
     @Optional() private readonly governance?: GovernanceService,
   ) {
     this.logger = loggerService.setContext('SpendCampaignService');
@@ -429,6 +431,18 @@ export class SpendCampaignService {
         actualMicros: status.used,
         projectedEnvelopeMicros: status.limit,
         unitCount: row.unitCount,
+      });
+      const actualUsd = Math.round(status.used / 10_000) / 100;
+      const projectedUsd = Math.round(status.limit / 10_000) / 100;
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'campaign_breached',
+        title: `Campaign "${row.name}" breached its envelope`,
+        body: `Campaign ${campaignId} (${row.workClass}) spent $${actualUsd} vs. a projected envelope of $${projectedUsd} (unit_count ${row.unitCount}). Re-approve via resumeAfterBreach with a refined estimate.`,
+        // One alert per campaign-breach per campaign (dedupe collapses a
+        // fast-retrying caller that hits recordSpend again before the
+        // campaign's state flip is visible everywhere).
+        dedupeKey: `campaign_breached:${campaignId}`,
       });
       await this.prisma.spendCampaign.updateMany({
         where: { campaignId, state: { in: ['approved', 'running'] } },

@@ -74,6 +74,7 @@ describe('collectorHeartbeats (§12.4 — must be able to show RED)', () => {
       service: new CollectorSourceRegistryService(
         prisma as never,
         logger as never,
+        { emit: jest.fn() } as never,
       ),
       prisma,
       logger,
@@ -290,6 +291,7 @@ describe('recordLaneCost (§24.5 Leg B write path)', () => {
       service: new CollectorSourceRegistryService(
         prisma as never,
         logger as never,
+        { emit: jest.fn() } as never,
       ),
       logger,
     };

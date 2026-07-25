@@ -40,6 +40,7 @@ import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
   GeoBbox,
   GeoPoint,
@@ -190,6 +191,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
     private readonly governance: GovernanceService,
+    private readonly opsAlerts: OpsAlertsService,
     configService: ConfigService,
     loggerService: LoggerService,
   ) {
@@ -332,6 +334,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     this.logger.warn('TomTom 429 — pool window poisoned', {
       poolName,
       retryAfterMs,
+    });
+    const dayKey = new Date().toISOString().slice(0, 10);
+    this.opsAlerts.emit({
+      severity: 'warn',
+      kind: 'tomtom_vendor_throttle',
+      title: `TomTom vendor 429 (${poolName})`,
+      body: `TomTom returned 429 for pool ${poolName}; window poisoned for ${retryAfterMs}ms. This is a throttle signal, not a balance read (the vendor exposes no prepaid-balance API) — check the TomTom portal if this recurs.`,
+      dedupeKey: `tomtom_vendor_throttle:${poolName}:${dayKey}`,
     });
     return true;
   }

@@ -428,6 +428,27 @@ model SpendCampaign {
   @@map("spend_campaigns")
 }
 
+/// §18.4/§24.3 owner ops dashboard + alert infrastructure. One row per
+/// emitted alert; dedupeKey (nullable UNIQUE) is the alert-storm collapse —
+/// a chokepoint that fires repeatedly for the same underlying condition
+/// (a campaign breach, a monthly vendor-cap hit, a lane pause) reuses the
+/// SAME dedupe key so the createMany({skipDuplicates:true}) write is a
+/// no-op on repeats instead of paging the owner every tick.
+model OpsAlert {
+  alertId   String    @id @default(dbgenerated("gen_random_uuid()")) @map("alert_id") @db.Uuid
+  /// 'info' | 'warn' | 'critical'.
+  severity  String    @db.VarChar(16)
+  /// Stable machine key, e.g. 'campaign_breached', 'lane_cost_paused'.
+  kind      String    @db.VarChar(64)
+  title     String    @db.VarChar(200)
+  body      String
+  dedupeKey String?   @unique @map("dedupe_key") @db.VarChar(128)
+  createdAt DateTime  @default(now()) @map("created_at")
+  acknowledgedAt DateTime? @map("acknowledged_at")
+
+  @@map("ops_alerts")
+}
+
 /// §5 engines: operator-attached collection units. Territory = derived union
 /// of memberPlaceIds (+ DAG descendants at read), NEVER stored. Deficiency
 /// and keyword slices key off engines; scoring provenance keys off SOURCES.
