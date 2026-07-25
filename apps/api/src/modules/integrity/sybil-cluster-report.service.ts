@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { hmacDeviceKey } from '../signals/audit-hmac';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 
 /**
@@ -41,6 +42,12 @@ const SWEEP_LOOKBACK_DAYS = 30;
 // cluster key (dedupe_key is varchar(128); 40 hex chars ≫ collision-safe at
 // any realistic cluster count).
 const CLUSTER_KEY_HASH_LENGTH = 40;
+// §16 class: K7 plumbing — sha256-hex prefix for the sorted-pollid hash in
+// the dedupe key. Without it, a ring's SECOND poll collapses into the first
+// acked alert (ops_alerts dedupe is a FOREVER unique column, not a window),
+// so each new poll a cluster touches must mint a new dedupe key. 12 hex
+// chars keeps `sybil:<40>:<12>` well under dedupe_key's varchar(128).
+const POLLS_HASH_LENGTH = 12;
 
 interface DeviceVoteClusterRow {
   device_key: string;
@@ -60,12 +67,16 @@ interface IpVoteRow {
   ip_subnet_hmac: string;
   poll_id: string;
   endorsed_subject_id: string;
+  endorsed_subject_type: string | null;
   user_id: string;
   occurred_at: Date;
 }
 
 export interface SybilClusterFinding {
   clusterKey: string;
+  /** Full ops_alerts dedupe key — per-poll-set for vote clusters so a
+   *  ring's next poll re-alerts instead of collapsing into an acked row. */
+  dedupeKey: string;
   kind: 'device' | 'device_heavy' | 'ip_timing';
   severity: 'warn' | 'critical';
   title: string;
@@ -138,12 +149,22 @@ export class SybilClusterReportService {
       byDevice.set(row.device_key, list);
     }
     for (const [deviceKey, rows] of byDevice) {
+      const memberIds = [...new Set(rows.flatMap((r) => r.user_ids))];
+      const pollIds = [...new Set(rows.map((r) => r.poll_id))];
+      // Artifact honesty: sharing a device (user_devices co-registration)
+      // does NOT prove the votes were cast FROM it — say which claim the
+      // evidence supports, and compare per-vote deviceKeyHmac when captured.
+      const provenance = await this.describeVoteProvenance(
+        deviceKey,
+        memberIds,
+        pollIds,
+      );
       findings.push(
         await this.buildVoteClusterFinding({
           clusterKey: deviceKey,
           kind: 'device',
-          lockstepFact: `accounts share device ${deviceKey}`,
-          memberIds: [...new Set(rows.flatMap((r) => r.user_ids))],
+          lockstepFact: `accounts share device ${deviceKey} (co-registration in user_devices — this alone proves shared-device CLAIMS, not where the votes were cast). ${provenance}`,
+          memberIds,
           votes: rows.map((r) => ({
             pollId: r.poll_id,
             subjectKey: `${r.subject_type}:${r.subject_id}`,
@@ -166,6 +187,8 @@ export class SybilClusterReportService {
       const members = await this.describeMembers(users);
       findings.push({
         clusterKey: device.device_key,
+        // No poll set → the plain forever-key is right: one nag per device.
+        dedupeKey: `sybil:device:${device.device_key}`,
         kind: 'device_heavy',
         severity: 'warn',
         title: `Sybil signal: one device carries ${users.length} accounts`,
@@ -181,8 +204,13 @@ export class SybilClusterReportService {
     // --- (b) TIMING-corroborated IP clusters. Shared IP alone NEVER
     // triggers (K1 sentence): a group only reports when ≥2 accounts on one
     // subnet cast the SAME choice on the SAME poll within the timing window.
+    // The ballot is STANDING (un-endorse deletes the endorsement while the
+    // append-only signal stays), so retracted/changed votes must not
+    // cluster: keep only rows whose (user, poll, subject) endorsement still
+    // exists.
+    const liveRows = await this.filterToLiveEndorsements(ipVoteRows);
     const ipGroups = new Map<string, IpVoteRow[]>();
-    for (const row of ipVoteRows) {
+    for (const row of liveRows) {
       const key = `${row.ip_subnet_hmac}|${row.poll_id}|${row.endorsed_subject_id}`;
       const list = ipGroups.get(key) ?? [];
       list.push(row);
@@ -193,33 +221,38 @@ export class SybilClusterReportService {
       if (users.length < SAME_DEVICE_SAME_CHOICE_MIN_ACCOUNTS) {
         continue;
       }
-      const times = rows
-        .map((r) => r.occurred_at.getTime())
-        .sort((a, b) => a - b);
-      const span = times[times.length - 1] - times[0];
-      if (span > IP_TIMING_WINDOW_MS) {
+      // Inner-window scan, NOT total span: a single delayed honest vote in
+      // the group must not suppress a tight bot burst inside it. Report if
+      // ANY subset of ≥2 distinct users falls within the window; cluster
+      // members = the users inside the tightest qualifying window.
+      const window = this.tightestQualifyingWindow(rows);
+      if (!window) {
         continue; // IP-only, no timing corroboration → nothing, by law.
       }
+      const { windowRows, windowUsers, spanMs, outsideCount } = window;
       const first = rows[0];
       const clusterKey = createHash('sha256')
-        .update([...users].sort().join(','))
+        .update([...windowUsers].sort().join(','))
         .digest('hex')
         .slice(0, CLUSTER_KEY_HASH_LENGTH);
+      const outsideNote =
+        outsideCount > 0
+          ? ` (${outsideCount} additional same-choice vote${outsideCount === 1 ? '' : 's'} on this subnet fall OUTSIDE the window — listed users are the in-window cluster only)`
+          : '';
       findings.push(
         await this.buildVoteClusterFinding({
           clusterKey,
           kind: 'ip_timing',
-          lockstepFact: `same /24-/48 subnet (hmac ${first.ip_subnet_hmac.slice(0, 12)}…), same choice, within ${Math.round(span / 60000)} min`,
-          memberIds: users,
+          lockstepFact: `same /24-/48 subnet (hmac ${first.ip_subnet_hmac.slice(0, 12)}…), same choice, within ${Math.round(spanMs / 60000)} min${outsideNote}`,
+          memberIds: windowUsers,
           votes: [
             {
               pollId: first.poll_id,
-              // signals meta carries only the subject id; type folds into it.
-              subjectKey: first.endorsed_subject_id,
-              userIds: users,
-              votedAts: rows
-                .map((r) => r.occurred_at)
-                .sort((a, b) => a.getTime() - b.getTime()),
+              subjectKey: first.endorsed_subject_type
+                ? `${first.endorsed_subject_type}:${first.endorsed_subject_id}`
+                : first.endorsed_subject_id,
+              userIds: windowUsers,
+              votedAts: windowRows.map((r) => r.occurred_at),
             },
           ],
         }),
@@ -232,7 +265,7 @@ export class SybilClusterReportService {
         kind: 'sybil_cluster',
         title: finding.title,
         body: finding.body,
-        dedupeKey: `sybil:${finding.clusterKey}`,
+        dedupeKey: finding.dedupeKey,
       });
     }
     return findings;
@@ -255,6 +288,14 @@ export class SybilClusterReportService {
   }): Promise<SybilClusterFinding> {
     const memberSet = new Set(cluster.memberIds);
     const pollIds = [...new Set(cluster.votes.map((v) => v.pollId))];
+    // Per-poll-set dedupe: ops_alerts dedupe is a FOREVER unique column, so
+    // a ring hitting a SECOND poll must mint a fresh key or it silently
+    // collapses into the first (possibly acked) alert.
+    const pollsHash = createHash('sha256')
+      .update([...pollIds].sort().join(','))
+      .digest('hex')
+      .slice(0, POLLS_HASH_LENGTH);
+    const dedupeKey = `sybil:${cluster.clusterKey}:${pollsHash}`;
     let flipped = false;
     const marginLines: string[] = [];
     for (const pollId of pollIds) {
@@ -278,6 +319,7 @@ export class SybilClusterReportService {
     const severity: 'warn' | 'critical' = flipped ? 'critical' : 'warn';
     return {
       clusterKey: cluster.clusterKey,
+      dedupeKey,
       kind: cluster.kind,
       severity,
       title: flipped
@@ -358,6 +400,146 @@ export class SybilClusterReportService {
     };
   }
 
+  /** Inner-window scan (two-pointer over time-sorted rows): find whether
+   *  ANY subset of ≥2 DISTINCT users falls within IP_TIMING_WINDOW_MS, and
+   *  return the tightest qualifying window — most distinct users, then
+   *  smallest span. Total-span logic was wrong: one delayed honest vote on
+   *  the subnet stretched the span and suppressed the bot burst inside it. */
+  private tightestQualifyingWindow(rows: IpVoteRow[]): {
+    windowRows: IpVoteRow[];
+    windowUsers: string[];
+    spanMs: number;
+    outsideCount: number;
+  } | null {
+    const sorted = [...rows].sort(
+      (a, b) => a.occurred_at.getTime() - b.occurred_at.getTime(),
+    );
+    let best: {
+      start: number;
+      end: number;
+      users: number;
+      span: number;
+    } | null = null;
+    let j = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      if (j < i) {
+        j = i;
+      }
+      while (
+        j + 1 < sorted.length &&
+        sorted[j + 1].occurred_at.getTime() - sorted[i].occurred_at.getTime() <=
+          IP_TIMING_WINDOW_MS
+      ) {
+        j++;
+      }
+      const slice = sorted.slice(i, j + 1);
+      const users = new Set(slice.map((r) => r.user_id)).size;
+      if (users < SAME_DEVICE_SAME_CHOICE_MIN_ACCOUNTS) {
+        continue;
+      }
+      const span =
+        slice[slice.length - 1].occurred_at.getTime() -
+        slice[0].occurred_at.getTime();
+      if (
+        !best ||
+        users > best.users ||
+        (users === best.users && span < best.span)
+      ) {
+        best = { start: i, end: j, users, span };
+      }
+    }
+    if (!best) {
+      return null;
+    }
+    const windowRows = sorted.slice(best.start, best.end + 1);
+    return {
+      windowRows,
+      windowUsers: [...new Set(windowRows.map((r) => r.user_id))],
+      spanMs: best.span,
+      outsideCount: sorted.length - windowRows.length,
+    };
+  }
+
+  /** Stale-vote filter: the signals ledger is append-only while the ballot
+   *  is standing — un-endorsing (or switching choice) deletes the
+   *  poll_endorsements row but never the signal. Keep only rows whose
+   *  (user, poll, subject) endorsement STILL exists, so retracted votes
+   *  can't cluster under their old choice. */
+  private async filterToLiveEndorsements(
+    rows: IpVoteRow[],
+  ): Promise<IpVoteRow[]> {
+    const pollIds = [...new Set(rows.map((r) => r.poll_id))];
+    const live = new Set<string>();
+    for (const pollId of pollIds) {
+      const endorsements = await this.prisma.pollEndorsement.findMany({
+        where: { pollId },
+        select: { subjectType: true, subjectId: true, userId: true },
+      });
+      for (const e of endorsements) {
+        live.add(`${pollId}|${e.subjectType}|${e.subjectId}|${e.userId}`);
+      }
+    }
+    return rows.filter((r) => {
+      // Older captures without endorsedSubjectType can't be matched by type;
+      // fall back to matching any subjectType with that id.
+      if (r.endorsed_subject_type) {
+        return live.has(
+          `${r.poll_id}|${r.endorsed_subject_type}|${r.endorsed_subject_id}|${r.user_id}`,
+        );
+      }
+      return [...live].some((k) => {
+        const [pollId, , subjectId, userId] = k.split('|');
+        return (
+          pollId === r.poll_id &&
+          subjectId === r.endorsed_subject_id &&
+          userId === r.user_id
+        );
+      });
+    });
+  }
+
+  /** Artifact-honesty helper: does the per-vote deviceKeyHmac (captured in
+   *  signals meta) match the shared device from user_devices? Compares
+   *  hmacDeviceKey(user_devices.device_key) against the votes' meta hmacs.
+   *  Absence of captures (or of the hmac key) is stated, never guessed. */
+  private async describeVoteProvenance(
+    deviceKey: string,
+    userIds: string[],
+    pollIds: string[],
+  ): Promise<string> {
+    const expected = hmacDeviceKey(deviceKey);
+    if (!expected) {
+      return 'Vote provenance: unknown (SIGNAL_AUDIT_HMAC_KEY unset — cannot compare per-vote device hmacs).';
+    }
+    let hmacRows: Array<{ user_id: string; device_key_hmac: string }>;
+    try {
+      hmacRows = await this.prisma.$queryRaw<
+        Array<{ user_id: string; device_key_hmac: string }>
+      >`
+        SELECT DISTINCT sa.user_id::text AS user_id,
+               s.meta->>'deviceKeyHmac' AS device_key_hmac
+        FROM signals s
+        JOIN signal_actors sa ON sa.actor_id = s.actor_id
+        WHERE s.kind = 'poll_vote'
+          AND s.meta ? 'deviceKeyHmac'
+          AND s.meta->>'pollId' = ANY(${pollIds})
+          AND sa.user_id::text = ANY(${userIds})
+      `;
+    } catch {
+      return 'Vote provenance: unknown (per-vote device-hmac lookup failed).';
+    }
+    if (!hmacRows?.length) {
+      return 'Vote provenance: no per-vote deviceKeyHmac captured for these votes — the shared device is proven by user_devices co-registration only, not by where the votes were cast.';
+    }
+    const matching = new Set(
+      hmacRows
+        .filter((r) => r.device_key_hmac === expected)
+        .map((r) => r.user_id),
+    );
+    const captured = new Set(hmacRows.map((r) => r.user_id));
+    return `Vote provenance: ${matching.size}/${captured.size} accounts with captured vote device-hmacs match the shared device${matching.size === captured.size ? ' (votes cast FROM this device)' : ' — the rest voted from OTHER devices'}.`;
+  }
+
   private async describeMembers(userIds: string[]): Promise<string[]> {
     const users = await this.prisma.user.findMany({
       where: { userId: { in: userIds } },
@@ -412,6 +594,7 @@ export class SybilClusterReportService {
       SELECT s.meta->>'ipSubnetHmac' AS ip_subnet_hmac,
              s.meta->>'pollId' AS poll_id,
              s.meta->>'endorsedSubjectId' AS endorsed_subject_id,
+             s.meta->>'endorsedSubjectType' AS endorsed_subject_type,
              sa.user_id::text AS user_id,
              s.occurred_at
       FROM signals s

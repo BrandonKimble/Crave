@@ -21,7 +21,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
 import { SignalBbox, SignalsService } from '../signals/signals.service';
-import { computeIpAuditHmacs } from '../signals/audit-hmac';
+import { computeIpAuditHmacs, hmacDeviceKey } from '../signals/audit-hmac';
 import { PollsGateway } from './polls.gateway';
 import { PollListSort, PollListTime, PollListType } from './dto/list-polls.dto';
 import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
@@ -2030,13 +2030,22 @@ export class PollsService {
           endorsedSubjectId: subjectId,
           endorsedSubjectType: subjectType,
           // Vote-integrity audit fields (plans/vote-integrity-ladder.md):
-          // the one skip-forever-lose-forever capture. deviceKey = keychain
-          // install id; ipHmac/ipSubnetHmac = keyed HMACs (equality-joinable,
-          // never reversible; raw ip NEVER stored). Absent inputs / absent
-          // SIGNAL_AUDIT_HMAC_KEY → fields omitted, never faked.
-          ...(auditContext?.deviceKey
-            ? { deviceKey: auditContext.deviceKey }
-            : {}),
+          // the one skip-forever-lose-forever capture. deviceKeyHmac =
+          // keyed HMAC of the keychain install id; ipHmac/ipSubnetHmac =
+          // keyed HMACs of the canonicalized IP/subnet. All equality-
+          // joinable, never reversible: the append-only ledger must hold NO
+          // redactable identifier, so the RAW device key (like the raw ip)
+          // never enters it — it lives only in the retention-manageable
+          // user_devices table, while the HMAC preserves every equality
+          // join. Absent inputs / absent SIGNAL_AUDIT_HMAC_KEY → fields
+          // omitted, never faked.
+          ...((): Record<string, string> => {
+            const deviceKeyHmac = hmacDeviceKey(
+              auditContext?.deviceKey,
+              (message) => this.logger.warn(message),
+            );
+            return deviceKeyHmac ? { deviceKeyHmac } : {};
+          })(),
           ...(computeIpAuditHmacs(auditContext?.ip, (message) =>
             this.logger.warn(message),
           ) ?? {}),

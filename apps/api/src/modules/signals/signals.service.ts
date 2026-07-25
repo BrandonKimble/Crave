@@ -102,7 +102,10 @@ export interface RecordSignalInput {
   kind: SignalKind;
   /** Authenticated actor. */
   userId?: string | null;
-  /** Anonymous actor (per-device pseudonymous id). */
+  /** Anonymous actor (per-device pseudonymous id). NOTE: convention since
+   *  the vote-integrity red team — device keys in signal META are stored as
+   *  deviceKeyHmac (see audit-hmac.ts); this actor-resolution field
+   *  predates that and keeps raw semantics (zero meta writers use it). */
   deviceKey?: string | null;
   subject?: SignalSubject;
   /**

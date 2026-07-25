@@ -85,10 +85,13 @@ import { stopCronsUnlessWorker } from './shared/utils/stop-crons';
 import fastifyRawBody from 'fastify-raw-body';
 
 async function bootstrap() {
-  // Create with Fastify adapter. trustProxy lets request.ip reflect the real
-  // client IP from X-Forwarded-For behind Railway's proxy (needed for the
-  // IP→metro startup fallback when a user denies location permission).
-  const fastifyAdapter = new FastifyAdapter({ trustProxy: true });
+  // Create with Fastify adapter. trustProxy: 1 = trust EXACTLY ONE proxy hop
+  // (Railway's LB appends the real client IP as the LAST X-Forwarded-For
+  // entry). `true` would trust the whole client-writable XFF chain, letting
+  // an attacker set request.ip at will — both spoof-evading the vote-audit
+  // IP capture AND framing honest subnets in the sybil report. Needed for
+  // the IP→metro startup fallback when a user denies location permission.
+  const fastifyAdapter = new FastifyAdapter({ trustProxy: 1 });
   await fastifyAdapter.getInstance().register(fastifyRawBody, {
     field: 'rawBody',
     // Exactly the webhook routes whose providers sign the RAW bytes —

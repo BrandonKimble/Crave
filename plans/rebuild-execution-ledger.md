@@ -1849,3 +1849,26 @@ now filtered of timescale entries, plus a HARD non-empty verification
 campaign governs extraction only; measured all-in month rate (~$2.77/1k
 docs incl. gate/matching) projects ~$1.4k total, gated by the $500 AI
 Studio cap → owner must raise the cap or stage the load before approving.
+
+### Vote-integrity red team + fixes (2026-07-25)
+
+Adversarial review of a390794f: 8 findings, all fixed same-day, each with
+a RED-able spec. The two urgent: (1) IPv6 hashing was JOIN-BROKEN —
+compressed vs expanded forms hashed differently, silently inerting the IP
+rung for v6-native carriers on the capture-forever rung; fixed with full
+canonicalization (:: expansion, zero-pad, lowercase) before hashing.
+(2) trustProxy: true made request.ip ATTACKER-CONTROLLED (client-written
+XFF — spoof-evasion AND framing honest subnets); now trustProxy: 1
+(Railway's single LB hop), with all other request.ip consumers verified
+logging-only. Privacy decision made before launch traffic: the vote
+meta stores deviceKeyHmac, never the raw key — the append-only ledger
+holds NO redactable identifier; raw keys live only in the
+retention-manageable user_devices table. Detection robustness: sliding
+inner-window (a delayed honest vote can no longer suppress a cluster),
+per-poll dedupe keys (ops_alerts dedupe verified FOREVER-scoped — a
+ring's second poll now re-alerts), stale-vote filter (standing-ballot
+switches no longer cluster under dead choices), artifact honesty
+(co-registration ≠ vote provenance; per-vote hmac comparison line;
+"claims, not hardware" limitation in the plan). 844 api green; API
+restarted; smoke 200. Railway api+worker carry SIGNAL_AUDIT_HMAC_KEY
+(set, no deploy triggered).

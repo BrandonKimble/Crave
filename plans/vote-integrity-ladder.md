@@ -100,8 +100,10 @@ The first-principles red team corrected four things:
 ## Owner consumption (fits the standard ops machinery — no new channels)
 
 Detection runs at poll close (the harm moment) + weekly sweep, emits
-ops_alerts with dedupeKey 'sybil:<clusterKey>' (a persistent cluster nags
-once). Dashboard Alerts card = the review surface; ack = "reviewed,
+ops_alerts with dedupeKey 'sybil:<clusterKey>:<pollsHash>' (a persistent
+cluster nags once PER POLL SET — ops_alerts dedupe is forever, so a ring's
+next poll mints a fresh key instead of collapsing into an acked alert;
+no-poll heavy-device alerts use 'sybil:device:<deviceKey>'). Dashboard Alerts card = the review surface; ack = "reviewed,
 legit" (the family-iPad answer). The review artifact carries everything a
 2-minute decision needs: members (age at first vote), choices +
 timestamps + spacing, the lockstep fact, and the decision line — leader
@@ -125,6 +127,21 @@ three seams above); remintForPoll built on first confirmed ring.
 OWNER PROCESS ITEMS: Clerk dashboard toggles (subaddress + disposable
 blocks, CAPTCHA check); App Store privacy label (Device ID, App
 Functionality, linked, no ATT).
+
+## Red-team fixes (2026-07-25) — documented limitations & conventions
+
+- **deviceKey is client-asserted — a cluster proves co-occurrence of
+  CLAIMS, not of hardware; never enforce on deviceKey membership alone.**
+- **deviceKeyHmac convention:** the append-only signals ledger holds NO
+  redactable identifier — vote meta stores HMAC-SHA256(deviceKey) under
+  SIGNAL_AUDIT_HMAC_KEY (equality joins preserved); the RAW device key
+  lives only in the retention-manageable user_devices table.
+- **trustProxy: 1** (main.ts): trust exactly ONE proxy hop — Railway's LB
+  appends the real client IP as the last X-Forwarded-For entry. `true`
+  trusts the client-writable XFF chain, letting an attacker set
+  request.ip: spoof-evading IP capture AND framing honest subnets.
+- IP hmacs hash the CANONICAL address (IPv6 fully expanded + lowercased;
+  v4-mapped unwrapped) so every spelling of one address equality-joins.
 
 The fake-elite fixture remains the scoring-side floor — stuffing can't
 mint elite scores even BEFORE detection catches the ring; polls'
