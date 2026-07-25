@@ -339,8 +339,16 @@ export class OpsSummaryService {
         ),
       0,
     );
+    // Leading zero-days are ABSENCE of measurement (the ledger simply didn't
+    // exist yet — e.g. right after the prod cutover), not measured zero
+    // spend; feeding them to the median reads "expected = $0" for weeks.
+    // Trim to the first day with any recorded spend; genuine zero days
+    // AFTER activity began still count.
+    const firstActive = dailyTotalMicros.findIndex((v) => v > 0);
+    const measuredDays =
+      firstActive >= 0 ? dailyTotalMicros.slice(firstActive) : [];
     const expectedByTodayMicros = expectedByTodayMicrosV2(
-      dailyTotalMicros,
+      measuredDays,
       dayOfMonth,
       campaignEnvelopesMicros,
     );
