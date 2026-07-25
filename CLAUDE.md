@@ -18,6 +18,21 @@ find a stray branch or worktree, treat it as cruft to surface, not something to 
 
 ---
 
+## Workflow: prod deploys + sim target (2026-07-25)
+
+- **Deploy with `./scripts/rig/deploy.sh [api|worker]`** (default: both). It encodes
+  the burned-in laws: repo-ROOT build context (a subdir cwd breaks the Docker build),
+  push-main-first, watch each deploy to terminal state, single retry, /health smoke.
+  Migrations self-apply at container boot (`prisma migrate deploy` in the Dockerfile
+  CMD) — author them locally with `prisma migrate dev`, commit, deploy. GOTCHA: never
+  add a `startCommand` to railway.json — it overrides the Dockerfile CMD and is exec'd
+  WITHOUT a shell (`&&` becomes argv; container exits 0 after the first command).
+- **Sim targets PROD by default** (apps/mobile/.env.local). Switch with
+  `./scripts/rig/sim-target.sh prod|local` — it restarts Metro (EXPO*PUBLIC*\* inlines
+  at Metro start, NOT per bundle) and runs the verified reload. Local-api mode needs
+  `scripts/rig/refresh-local-db-from-prod.sh` for data (one-way prod→local; NEVER
+  point a local api at the prod DB).
+
 ## Memory: after ANY prisma migration, rebuild + restart the shared API — twice-burned trap
 
 2026-07-11, hit twice in one day. The dev API on :3000 is one long-lived `node dist/main`
