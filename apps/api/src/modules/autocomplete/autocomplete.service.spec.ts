@@ -542,7 +542,7 @@ describe('AutocompleteService — query lane rank-only', () => {
   });
 });
 
-describe('AutocompleteService — ingredient lane shadowing', () => {
+describe('AutocompleteService — ingredient twin merge', () => {
   const candidate = (entityType: string, name: string) => ({
     match: { entityId: `${entityType}-${name}`, entityType, name },
     textStrength: 6,
@@ -552,35 +552,46 @@ describe('AutocompleteService — ingredient lane shadowing', () => {
     popularity: 0,
   });
 
-  it('drops an ingredient row when a same-named food row holds the seat', () => {
+  it('twin names: ONE row — the food seat adopts the ingredient identity (superset tap)', () => {
     const { service } = createHarness();
     const kept = (
       service as unknown as {
-        dropShadowedIngredientMatches: (c: unknown[]) => Array<{
-          match: { entityType: string; name: string };
+        mergeIngredientTwinMatches: (c: unknown[]) => Array<{
+          match: { entityId: string; entityType: string; name: string };
         }>;
       }
-    ).dropShadowedIngredientMatches([
+    ).mergeIngredientTwinMatches([
       candidate('food', 'Burrata'),
       candidate('ingredient', 'burrata'),
       candidate('ingredient', 'octopus'),
     ]);
-    expect(kept.map((c) => `${c.match.entityType}:${c.match.name}`)).toEqual([
-      'food:Burrata',
-      'ingredient:octopus',
+    expect(
+      kept.map(
+        (c) => `${c.match.entityType}:${c.match.name}:${c.match.entityId}`,
+      ),
+    ).toEqual([
+      'ingredient:Burrata:ingredient-burrata',
+      'ingredient:octopus:ingredient-octopus',
     ]);
   });
 
-  it('keeps ingredient rows untouched when no name collides', () => {
+  it('keeps ingredient rows untouched (in ranked position) when no food name collides', () => {
     const { service } = createHarness();
     const kept = (
       service as unknown as {
-        dropShadowedIngredientMatches: (c: unknown[]) => unknown[];
+        mergeIngredientTwinMatches: (c: unknown[]) => Array<{
+          match: { entityType: string; name: string };
+        }>;
       }
-    ).dropShadowedIngredientMatches([
+    ).mergeIngredientTwinMatches([
       candidate('restaurant', 'Octo Sushi'),
       candidate('ingredient', 'octopus'),
+      candidate('food', 'grilled octopus'),
     ]);
-    expect(kept).toHaveLength(2);
+    expect(kept.map((c) => `${c.match.entityType}:${c.match.name}`)).toEqual([
+      'restaurant:Octo Sushi',
+      'ingredient:octopus',
+      'food:grilled octopus',
+    ]);
   });
 });

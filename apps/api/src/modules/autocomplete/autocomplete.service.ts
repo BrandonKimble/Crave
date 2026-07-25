@@ -751,7 +751,7 @@ export class AutocompleteService {
     // ENTITY-LANE EXCEPTION (ratified): internal order stays evidence-tier-
     // first with the band-clamped demand re-rank INSIDE tiers — RRF fuses the
     // lanes but never breaks tier ordering within the entity lane itself.
-    const entityLane = this.dropShadowedIngredientMatches(
+    const entityLane = this.mergeIngredientTwinMatches(
       scoredEntities
         .filter(
           ({ candidate }) => !this.isAttributeType(candidate.match.entityType),
@@ -1284,25 +1284,62 @@ export class AutocompleteService {
   }
 
   /**
-   * Name-collision rule for ingredient rows (728 names exist as BOTH food
-   * and ingredient entities — "burrata"): the FOOD row keeps the seat. Two
-   * identical-looking rows with different tap behavior is the confusion;
-   * the food row's dish results are the primary intent for a name that IS
-   * a dish, and the typed-submit path still reaches the full union.
+   * Name-collision rule (728 names exist as BOTH food and ingredient
+   * entities — "burrata"; owner ruling 2026-07-25): ONE row per name, and
+   * for twins the row keeps the FOOD candidate's seat (its rank rides the
+   * food entity's engagement/popularity facts and the entity lane's tier
+   * order) but adopts the INGREDIENT identity, because the ingredient tap's
+   * result set is a strict SUPERSET of the food tap's — dishes NAMED
+   * burrata (the named-food branch of the include clause) PLUS dishes
+   * containing it. Same presentation either way (dish + restaurant cards);
+   * the widest correct search wins the tap. Ingredient-only names
+   * ("octopus") keep their own row; to the user every one of these is
+   * simply a dish-ish row (no separate icon).
    */
-  private dropShadowedIngredientMatches(
+  private mergeIngredientTwinMatches(
     candidates: LaneCandidate[],
   ): LaneCandidate[] {
-    const nonIngredientNames = new Set(
+    const ingredientByName = new Map<string, LaneCandidate>();
+    for (const candidate of candidates) {
+      if (candidate.match.entityType === EntityType.ingredient) {
+        ingredientByName.set(
+          candidate.match.name.trim().toLowerCase(),
+          candidate,
+        );
+      }
+    }
+    const foodNames = new Set(
       candidates
-        .filter((c) => c.match.entityType !== EntityType.ingredient)
+        .filter((c) => c.match.entityType === EntityType.food)
         .map((c) => c.match.name.trim().toLowerCase()),
     );
-    return candidates.filter(
-      (c) =>
-        c.match.entityType !== EntityType.ingredient ||
-        !nonIngredientNames.has(c.match.name.trim().toLowerCase()),
-    );
+    const merged: LaneCandidate[] = [];
+    for (const candidate of candidates) {
+      const key = candidate.match.name.trim().toLowerCase();
+      if (candidate.match.entityType === EntityType.ingredient) {
+        if (!foodNames.has(key)) {
+          merged.push(candidate); // ingredient-only name keeps its own seat
+        }
+        continue; // twin: the food candidate carries the merged row
+      }
+      const twin =
+        candidate.match.entityType === EntityType.food
+          ? ingredientByName.get(key)
+          : undefined;
+      merged.push(
+        twin
+          ? {
+              ...candidate,
+              match: {
+                ...candidate.match,
+                entityId: twin.match.entityId,
+                entityType: EntityType.ingredient,
+              },
+            }
+          : candidate,
+      );
+    }
+    return merged;
   }
 
   private resolveEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
