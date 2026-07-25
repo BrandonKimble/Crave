@@ -48,7 +48,7 @@ export type SubmitSearchOptions = {
    *  producers no longer hand-build stringly context records. */
   selectedEntity?: {
     entityId: string;
-    entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+    entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
   };
   submission?: {
     source: NaturalSearchRequest['submissionSource'];

@@ -176,7 +176,7 @@ type SearchSubmitOwner = {
   loadMoreResults: (searchMode: SearchMode) => void;
   launchEntitySearchResults: (params: {
     entityId: string;
-    entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+    entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
     submittedLabel: string;
   }) => Promise<void>;
   /** Wave-4 §3: the list-world half of the listWorld composite (favorites-as-search). */
@@ -483,7 +483,7 @@ const useSearchSubmitOwner = ({
   const launchEntitySearchResults = React.useCallback(
     async (params: {
       entityId: string;
-      entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+      entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
       submittedLabel: string;
     }): Promise<void> => {
       await submitSearch(

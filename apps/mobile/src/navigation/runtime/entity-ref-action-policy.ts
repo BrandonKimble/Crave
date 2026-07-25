@@ -19,6 +19,7 @@ export type EntityRefType =
   | 'food'
   | 'food_attribute'
   | 'restaurant_attribute'
+  | 'ingredient'
   | 'person'
   | 'list';
 
@@ -44,7 +45,7 @@ export type EntityRefAction =
   | {
       kind: 'entityDesire';
       entityId: string;
-      entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+      entityType: 'food' | 'food_attribute' | 'restaurant_attribute' | 'ingredient';
       label: string;
     }
   | { kind: 'pushScene'; scene: 'userProfile'; params: { userId: string } }
@@ -77,6 +78,7 @@ export const resolveEntityRefAction = (ref: EntityRef): EntityRefAction => {
     case 'food':
     case 'food_attribute':
     case 'restaurant_attribute':
+    case 'ingredient':
       return {
         kind: 'entityDesire',
         entityId: ref.entityId,

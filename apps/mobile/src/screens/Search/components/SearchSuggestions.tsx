@@ -7,6 +7,7 @@ import {
   HandPlatter,
   Heart,
   Search as SearchIcon,
+  Carrot,
   Sparkles,
   Store,
   View as ViewIcon,
@@ -264,6 +265,8 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               <SearchIcon size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isAttribute ? (
               <Sparkles size={20} color={ICON_COLOR} strokeWidth={2} />
+            ) : match.entityType === 'ingredient' ? (
+              <Carrot size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : match.entityType === 'restaurant' ? (
               <Store size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : (

@@ -144,7 +144,8 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         Boolean(match.entityId) &&
         (match.entityType === 'food' ||
           match.entityType === 'food_attribute' ||
-          match.entityType === 'restaurant_attribute');
+          match.entityType === 'restaurant_attribute' ||
+          match.entityType === 'ingredient');
       void submitSearch(
         {
           ...(isTypedEntitySelection && match.entityId
@@ -154,7 +155,8 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
                   entityType: match.entityType as
                     | 'food'
                     | 'food_attribute'
-                    | 'restaurant_attribute',
+                    | 'restaurant_attribute'
+                    | 'ingredient',
                 },
               }
             : null),

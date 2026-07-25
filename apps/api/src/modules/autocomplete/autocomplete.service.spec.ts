@@ -541,3 +541,46 @@ describe('AutocompleteService — query lane rank-only', () => {
     expect(queryNames).toEqual(['my recent search', 'global hit']);
   });
 });
+
+describe('AutocompleteService — ingredient lane shadowing', () => {
+  const candidate = (entityType: string, name: string) => ({
+    match: { entityId: `${entityType}-${name}`, entityType, name },
+    textStrength: 6,
+    favorite: false,
+    viewed: false,
+    affinity: 0,
+    popularity: 0,
+  });
+
+  it('drops an ingredient row when a same-named food row holds the seat', () => {
+    const { service } = createHarness();
+    const kept = (
+      service as unknown as {
+        dropShadowedIngredientMatches: (c: unknown[]) => Array<{
+          match: { entityType: string; name: string };
+        }>;
+      }
+    ).dropShadowedIngredientMatches([
+      candidate('food', 'Burrata'),
+      candidate('ingredient', 'burrata'),
+      candidate('ingredient', 'octopus'),
+    ]);
+    expect(kept.map((c) => `${c.match.entityType}:${c.match.name}`)).toEqual([
+      'food:Burrata',
+      'ingredient:octopus',
+    ]);
+  });
+
+  it('keeps ingredient rows untouched when no name collides', () => {
+    const { service } = createHarness();
+    const kept = (
+      service as unknown as {
+        dropShadowedIngredientMatches: (c: unknown[]) => unknown[];
+      }
+    ).dropShadowedIngredientMatches([
+      candidate('restaurant', 'Octo Sushi'),
+      candidate('ingredient', 'octopus'),
+    ]);
+    expect(kept).toHaveLength(2);
+  });
+});
