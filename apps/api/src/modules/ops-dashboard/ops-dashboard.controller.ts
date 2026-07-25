@@ -34,6 +34,14 @@ export class OpsDashboardController {
   getDashboard(@Res() res: FastifyReply): void {
     res
       .header('Content-Type', 'text/html; charset=utf-8')
+      // The page is a single self-contained file (inline CSS+JS, zero
+      // external requests) behind the ops token — helmet's global
+      // script-src 'self' would block its inline script, so this route
+      // carries its own equally-strict-everywhere-else policy.
+      .header(
+        'Content-Security-Policy',
+        "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
+      )
       .send(OPS_DASHBOARD_HTML);
   }
 }
