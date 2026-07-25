@@ -1516,3 +1516,28 @@ leg actually executes is the one the kill list names explicitly: the
 `llm/gemini-batch.service.ts` (comment-only Tier-3 rewrites), plus specs:
 `governance/pool-registry.spec.ts` (`resetLimit`),
 `shared/spend-analytics.service.spec.ts` (`logSpendTelemetry` RED/green).
+
+### §24 COST GOVERNANCE v2 — EXECUTED (all four legs, 2026-07-24)
+
+Full replacement complete, deployed to production (worker + api SUCCESS,
+smoke 200). Commits: f13c7996 (Legs A+B), 41a554fc (Leg C), 8e95b056
+(Leg D). Migrations 20260724160000_spend_unit_costs +
+20260724170000_spend_campaigns applied drift-path to LOCAL and PROD
+(plus the concurrent session's keyword_ranked_eligibility to prod).
+
+End state: spend_unit_costs refreshed nightly from the ledger (gemini
+per-document via the batch runKey→extraction-run→documents join;
+unattributable spend surfaces, never vanishes; tomtom/places rates
+honestly absent pending their K4 price tables); every collector lane
+carries a cost EWMA + deviation band pausing only itself on breach
+(3σ, RED-proven); spend_campaigns implements estimate-at-max-context →
+approve-by-exact-hash → grant-as-envelope (breach = exhaustion, one
+event, loud + resumable; completion feeds measureDrift so tolerance is
+learned); seed-archive gates on --approve-estimate; the gemini backstop
+re-derives nightly at 3× trailing measured spend (BACKSTOP_MULTIPLE,
+the section's one K1) with the env var demoted to boot seed; spend
+telemetry is percent-of-expectation (mean + 3σ√days), the 80%-of-cap
+warn deleted. 767/767 green. Known follow-ups by design: TomTom/Places
+price tables (K4 fetch like gemini's), chronological-lane cost
+attribution (needs a lane tag on source documents), campaign gates on
+future onboarding scripts as they're written.
