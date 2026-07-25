@@ -250,11 +250,13 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
         html +=
           '<div class="mp-line">Day ' + mp.dayOfMonth + ' of ' + mp.daysInMonth + ' — spent <strong>' + usd(mp.spentMtdMicros) +
           '</strong> vs ' + usd(mp.expectedByTodayMicros) + ' expected by today' +
-          (mp.percentOfExpected !== null ? ' <span class="muted">(' + mp.percentOfExpected + '% of expected)</span>' : '') +
+          (mp.percentOfExpected !== null
+            ? ' <span class="muted">(' + (mp.percentOfExpected > 999 ? 'over 10x' : mp.percentOfExpected + '%') + ' of expected)</span>'
+            : '') +
           '</div>' +
           '<div class="mp-track"><div class="mp-fill' + colorClass + '" style="width:' + fillPct.toFixed(1) + '%"></div>' +
           '<div class="mp-tick" style="left:' + tickPct.toFixed(1) + '%"></div></div>' +
-          '<div class="mp-legend">Bar = what this month has spent so far. The white tick = the typical (median) daily spend of the last 30 days times the day of the month, plus the full budget envelope of any campaign approved this month (a campaign you approved is expected spend, counted once). Blue = on pace, yellow = up to 30% over, red = more than 30% over.</div>';
+          '<div class="mp-legend">Bar = what this month has spent so far. The white tick = the typical (median) daily spend of the last 30 days times the day of the month, plus the full budget envelope of any campaign approved this month (a campaign you approved is expected spend, counted once). Blue = on pace, yellow = up to 30% over, red = more than 30% over. Note: spend from before campaign governance existed (the July onboarding bursts) has no envelope explaining it, so it reads far over expectation by construction — this line becomes meaningful as governed history accumulates.</div>';
       } else {
         html += '<div class="mp-line muted">Day ' + mp.dayOfMonth + ' of ' + mp.daysInMonth +
           ' — no trailing spend history yet, so no "expected by today" to compare against.</div>';
