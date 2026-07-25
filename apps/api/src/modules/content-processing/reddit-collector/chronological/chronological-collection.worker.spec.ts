@@ -1,5 +1,8 @@
 import { ChronologicalCollectionWorker } from './chronological-collection.worker';
-import { RedditGovernanceDenialError } from '../../../external-integrations/reddit/reddit.exceptions';
+import {
+  RedditApiError,
+  RedditGovernanceDenialError,
+} from '../../../external-integrations/reddit/reddit.exceptions';
 
 /**
  * §10 advance-at-extraction specs (the cursor law):
@@ -28,10 +31,38 @@ function fetchResult(
   };
 }
 
+/** Raw Reddit thread response for the orphan-parent fetch path. */
+function rawThreadResponse(postFullname: string) {
+  return [
+    {
+      data: {
+        children: [
+          {
+            kind: 't3',
+            data: {
+              name: postFullname,
+              title: 'Old thread',
+              selftext: 'Original body',
+              subreddit: 'austinfood',
+              author: 'op',
+              score: 3,
+              created_utc: 1_700_000_000,
+            },
+          },
+        ],
+      },
+    },
+    { data: { children: [] } },
+  ];
+}
+
 function build(options: {
   posts?: Array<Record<string, unknown>>;
   overlapConfirmed?: boolean;
   fetchError?: Error;
+  orphanParents?: string[];
+  judgedParents?: string[];
+  parentFetch?: 'ok' | 'gone' | Error;
 }) {
   const logger = {
     setContext: jest.fn().mockReturnThis(),
@@ -40,6 +71,7 @@ function build(options: {
     warn: jest.fn(),
     error: jest.fn(),
   };
+  const parentFetch = options.parentFetch ?? 'ok';
   const redditService = {
     getChronologicalPosts: options.fetchError
       ? jest.fn().mockRejectedValue(options.fetchError)
@@ -48,6 +80,39 @@ function build(options: {
           .mockResolvedValue(
             fetchResult(options.posts ?? [], options.overlapConfirmed),
           ),
+    getCompletePostWithComments: jest.fn(
+      (subreddit: string, baseId: string) => {
+        if (parentFetch instanceof Error) {
+          return Promise.reject(parentFetch);
+        }
+        return Promise.resolve({
+          rawResponse:
+            parentFetch === 'gone' ? [] : rawThreadResponse(`t3_${baseId}`),
+          metadata: { retrievalMethod: 'raw', rateLimitStatus: {} },
+          performance: {
+            responseTime: 5,
+            apiCallsUsed: 1,
+            rateLimitHit: false,
+          },
+          attribution: { postUrl: `/r/${subreddit}/comments/${baseId}` },
+        });
+      },
+    ),
+  };
+  const prisma = {
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValue(
+        (options.orphanParents ?? []).map((id) => ({ parent_source_id: id })),
+      ),
+    collectionRelevanceVerdict: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(
+          (options.judgedParents ?? []).map((id) => ({ postId: id })),
+        ),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
   const sourceRegistry = {
     findRedditSourceByHandle: jest.fn().mockResolvedValue({
@@ -70,7 +135,7 @@ function build(options: {
   const batchQueue = { add: jest.fn().mockResolvedValue({ id: 'bull-1' }) };
   const worker = new ChronologicalCollectionWorker(
     logger as never,
-    {} as never,
+    prisma as never,
     redditService as never,
     sourceRegistry as never,
     governance as never,
@@ -97,6 +162,8 @@ function build(options: {
     collectionEvidence,
     governance,
     batchQueue,
+    prisma,
+    redditService,
   };
 }
 
@@ -200,5 +267,134 @@ describe('ChronologicalCollectionWorker (§10 cursor law)', () => {
       expect.stringContaining('coverage gap'),
       expect.anything(),
     );
+  });
+});
+
+describe('ChronologicalCollectionWorker (§10 orphan-parent self-healing sweep)', () => {
+  it('an orphan comment triggers a parent fetch and the parent rides a NORMAL batch toward gating', async () => {
+    const posts = [{ id: 'p1', created_utc: 1_800_000_000 }];
+    const h = build({ posts, orphanParents: ['t3_old1'] });
+    const result = await h.worker.processChronologicalCollection(
+      h.job as never,
+    );
+    expect(result.success).toBe(true);
+    // Parent fetched by id through the existing chokepoint (base id, no t3_).
+    expect(h.redditService.getCompletePostWithComments).toHaveBeenCalledWith(
+      'austinfood',
+      'old1',
+      { depth: 50 },
+    );
+    // Healing batch enqueued with pre-transformed llmPosts — the normal batch
+    // path persists + gates it (no parallel gating machinery).
+    const healingCall = h.batchQueue.add.mock.calls.find(
+      ([, data]: [string, { batchId: string }]) =>
+        data.batchId === 'job-1-orphan-parents',
+    ) as [string, { llmPosts: Array<{ id: string }> }];
+    expect(healingCall).toBeDefined();
+    expect(healingCall[1].llmPosts).toHaveLength(1);
+    expect(healingCall[1].llmPosts[0].id).toBe('t3_old1');
+    // The healing batch counts in the §10 fan-out (1 listing batch + 1 heal).
+    expect(h.collectionEvidence.registerExpectedFanOut).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedBatches: 2 }),
+    );
+    expect(result.batchesProcessed).toBe(2);
+  });
+
+  it('the sweep runs even on a legit-zero tick (pre-existing orphans heal without new posts)', async () => {
+    const h = build({ posts: [], orphanParents: ['t3_old1'] });
+    const result = await h.worker.processChronologicalCollection(
+      h.job as never,
+    );
+    expect(result.success).toBe(true);
+    expect(h.redditService.getCompletePostWithComments).toHaveBeenCalled();
+    expect(h.collectionEvidence.registerExpectedFanOut).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedBatches: 1 }),
+    );
+    expect(h.batchQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unfetchable parent (404) gets the keep=false parent_unfetchable tombstone verdict', async () => {
+    const h = build({
+      posts: [{ id: 'p1', created_utc: 1_800_000_000 }],
+      orphanParents: ['t3_gone1'],
+      parentFetch: new RedditApiError('not found', 404),
+    });
+    const result = await h.worker.processChronologicalCollection(
+      h.job as never,
+    );
+    expect(result.success).toBe(true);
+    expect(h.prisma.collectionRelevanceVerdict.createMany).toHaveBeenCalledWith(
+      {
+        data: [
+          expect.objectContaining({
+            platform: 'reddit',
+            postId: 't3_gone1',
+            keep: false,
+            reason: 'parent_unfetchable',
+          }),
+        ],
+        skipDuplicates: true,
+      },
+    );
+    // Nothing healed → no healing batch.
+    expect(result.batchesProcessed).toBe(1);
+  });
+
+  it('a fetch that answers without a post payload is also tombstoned (parent deleted)', async () => {
+    const h = build({
+      posts: [{ id: 'p1', created_utc: 1_800_000_000 }],
+      orphanParents: ['t3_gone2'],
+      parentFetch: 'gone',
+    });
+    await h.worker.processChronologicalCollection(h.job as never);
+    expect(h.prisma.collectionRelevanceVerdict.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ postId: 't3_gone2', keep: false })],
+      }),
+    );
+  });
+
+  it('a tombstoned parent is NOT retried on the next tick (verdict filter excludes it)', async () => {
+    const h = build({
+      posts: [{ id: 'p1', created_utc: 1_800_000_000 }],
+      orphanParents: ['t3_gone1'],
+      judgedParents: ['t3_gone1'],
+    });
+    const result = await h.worker.processChronologicalCollection(
+      h.job as never,
+    );
+    expect(h.redditService.getCompletePostWithComments).not.toHaveBeenCalled();
+    expect(
+      h.prisma.collectionRelevanceVerdict.createMany,
+    ).not.toHaveBeenCalled();
+    expect(result.batchesProcessed).toBe(1);
+  });
+
+  it('the sweep is a strict no-op when no orphans exist', async () => {
+    const h = build({ posts: [{ id: 'p1', created_utc: 1_800_000_000 }] });
+    const result = await h.worker.processChronologicalCollection(
+      h.job as never,
+    );
+    expect(h.redditService.getCompletePostWithComments).not.toHaveBeenCalled();
+    expect(h.collectionEvidence.registerExpectedFanOut).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedBatches: 1 }),
+    );
+    expect(result.batchesProcessed).toBe(1);
+  });
+
+  it('a transient parent-fetch failure leaves the orphan for the next tick (no tombstone, no fabrication)', async () => {
+    const h = build({
+      posts: [{ id: 'p1', created_utc: 1_800_000_000 }],
+      orphanParents: ['t3_flaky'],
+      parentFetch: new Error('socket hang up'),
+    });
+    const result = await h.worker.processChronologicalCollection(
+      h.job as never,
+    );
+    expect(result.success).toBe(true);
+    expect(
+      h.prisma.collectionRelevanceVerdict.createMany,
+    ).not.toHaveBeenCalled();
+    expect(result.batchesProcessed).toBe(1);
   });
 });

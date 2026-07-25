@@ -10,6 +10,10 @@ import { CollectorSourceRegistryService } from '../collector-source-registry.ser
 import { CollectionEvidenceService } from '../collection-evidence.service';
 import { REDDIT_POOL_NAME } from '../reddit-collection-adapter';
 import { BatchJob } from '../batch-processing-queue.types';
+import { RedditApiError } from '../../../external-integrations/reddit/reddit.exceptions';
+import { filterAndTransformToLLM } from '../../../external-integrations/reddit/reddit-data-filter';
+import { LLMPost } from '../../../external-integrations/llm/llm.types';
+import { Prisma } from '@prisma/client';
 
 export interface ChronologicalCollectionJobData {
   subreddit: string; // Changed from subreddits array to single subreddit
@@ -275,7 +279,22 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         });
       }
 
-      if (posts.length === 0) {
+      // §10 SELF-HEALING ORPHAN-PARENT SWEEP: comments can arrive on posts
+      // OLDER than any collection window, so the parent post doc was never
+      // collected — and since the relevance gate judges POSTS (comments
+      // inherit the parent's verdict), such orphan comments never enter
+      // extraction. Each tick, fetch a bounded set of missing parents and
+      // ride them through the NORMAL batch machinery (persist-first → gate →
+      // extraction) as one extra batch. Community-scoped and unscoped in
+      // time, so pre-existing orphans (e.g. the 2026-07-24 foodnyc backlog)
+      // heal with zero manual steps. Best-effort per tick: a failure leaves
+      // the orphans for the next tick, never fails the collection.
+      const healedParents = await this.sweepOrphanCommentParents(
+        subreddit,
+        correlationId,
+      );
+
+      if (posts.length === 0 && healedParents.length === 0) {
         // Legit zero: the window was OBSERVED empty at fetch — there is no
         // extraction evidence to await, so the cursor advances here (§10's
         // advance-at-extraction degenerates to advance-at-observation for an
@@ -300,8 +319,11 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         };
       }
 
-      // PHASE 2: Queue batches for async processing
+      // PHASE 2: Queue batches for async processing. The orphan-parent
+      // healing batch (when present) counts in the fan-out so the §10
+      // expectedBatches reconciler and the staged-window commit see it.
       const batches = chunk(ids, this.BATCH_SIZE);
+      const totalBatchCount = batches.length + (healedParents.length ? 1 : 0);
       let latestTimestamp = 0;
 
       // §10 advance-at-extraction, BEFORE any batch is enqueued:
@@ -320,7 +342,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
           community: subreddit,
           sourceId,
           lane: 'chronological',
-          expectedBatches: batches.length,
+          expectedBatches: totalBatchCount,
           coveredThrough: new Date(collectionStartTime * 1000),
         });
         await this.sourceRegistry.stagePendingWindow(
@@ -329,7 +351,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
           {
             parentJobId: jobId,
             coveredThrough: new Date(collectionStartTime * 1000).toISOString(),
-            expectedBatches: batches.length,
+            expectedBatches: totalBatchCount,
             stagedAt: new Date().toISOString(),
           },
         );
@@ -354,7 +376,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
           subreddit,
           postIds: batchIds,
           batchNumber: batchNum,
-          totalBatches: batches.length,
+          totalBatches: totalBatchCount,
           createdAt: new Date(),
           options: {
             depth: 50,
@@ -368,10 +390,33 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         batchJobs.push(queuedJob);
       }
 
+      // Orphan-parent healing batch: pre-transformed llmPosts ride the
+      // NORMAL chronological batch path (persist-first → relevance gate →
+      // extraction) — no parallel gating machinery.
+      if (healedParents.length) {
+        batchJobs.push(
+          this.queueChronologicalBatch(
+            {
+              batchId: `${jobId}-orphan-parents`,
+              parentJobId: jobId,
+              collectionType: 'chronological',
+              subreddit,
+              llmPosts: healedParents,
+              batchNumber: totalBatchCount,
+              totalBatches: totalBatchCount,
+              createdAt: new Date(),
+              options: { depth: 50 },
+              priority: 1,
+            },
+            batches.length,
+          ),
+        );
+      }
+
       // Wait for all batch jobs to be queued
       await Promise.all(batchJobs);
       await job.log(
-        `📨 Successfully queued ${batches.length} batches for async processing`,
+        `📨 Successfully queued ${totalBatchCount} batches for async processing`,
       );
       // For now, we'll return immediately after queuing
       // The actual processing and mention extraction will happen asynchronously
@@ -402,7 +447,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         correlationId,
         subreddit,
         coveredThrough: new Date(collectionStartTime * 1000).toISOString(),
-        batchesQueued: batches.length,
+        batchesQueued: totalBatchCount,
         latestPostTimestamp: latestTimestamp,
         processingDurationMinutes: Math.round(
           (Date.now() - startTime) / (1000 * 60),
@@ -418,7 +463,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         jobId,
         subreddit,
         postsProcessed: posts.length,
-        batchesProcessed: batches.length,
+        batchesProcessed: totalBatchCount,
         mentionsExtracted: 0, // Will be updated by async batch processing
         processingTime: Date.now() - startTime,
         nextScheduledCollection: undefined,
@@ -428,7 +473,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       this.logger.info('Chronological collection job queued successfully', {
         correlationId,
         result,
-        batchesQueued: batches.length,
+        batchesQueued: totalBatchCount,
         message: 'Async batch processing will handle mention extraction',
       });
 
@@ -554,6 +599,189 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         },
       });
     }
+  }
+
+  /**
+   * §10 self-healing orphan-parent sweep.
+   *
+   * Finds collected COMMENT docs in this community whose parent post doc is
+   * absent (the comment arrived inside a collection window; its parent post
+   * predates every window), fetches each missing parent from Reddit through
+   * the existing governed chokepoint, and returns them as LLMPosts for one
+   * extra normal batch (persist-first → relevance gate → extraction).
+   *
+   * Idempotence / termination per parent id:
+   *  - healed: the post doc persists → the anti-join stops matching;
+   *  - gate-rejected: same (persist-first stores the doc regardless);
+   *  - unfetchable on Reddit (404 / no post in the response): a tombstone
+   *    verdict keep=false reason 'parent_unfetchable' is persisted through
+   *    the existing collection_relevance_verdicts table, the verdict filter
+   *    below excludes it forever, and the orphan comments become
+   *    gate-rejected instead of eternally pending;
+   *  - transient fetch failure: log + leave for the next tick (never
+   *    fabricate, never fail the collection).
+   *
+   * Per-tick bound: BATCH_SIZE (25) — REUSED from the tick's existing batch
+   * granularity (§16: no invented constants); the sweep adds at most one
+   * batch-sized unit of healing work per tick, so the 687-doc prod backlog
+   * drains across ticks with zero manual steps.
+   */
+  private async sweepOrphanCommentParents(
+    subreddit: string,
+    correlationId: string,
+  ): Promise<LLMPost[]> {
+    let candidateParentIds: string[];
+    try {
+      // Anti-join over ALL collected docs for the community (no collected_at
+      // scope — pre-existing orphans must match). Parents are post fullnames
+      // (t3_*); a t1_ parent means a nested comment whose thread root is
+      // healed via its own top-level sibling rows.
+      const rows = await this.prisma.$queryRaw<
+        Array<{ parent_source_id: string }>
+      >(Prisma.sql`
+        SELECT DISTINCT c.parent_source_id
+        FROM collection_source_documents c
+        WHERE c.platform = 'reddit'
+          AND c.community = ${subreddit}
+          AND c.source_type = 'comment'
+          AND c.parent_source_id LIKE 't3\\_%'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM collection_source_documents p
+            WHERE p.platform = 'reddit'
+              AND p.source_type = 'post'
+              AND p.source_id = c.parent_source_id
+          )
+        ORDER BY c.parent_source_id
+      `);
+      candidateParentIds = rows
+        .map((row) => row.parent_source_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 3);
+    } catch (error) {
+      this.logger.warn(
+        'Orphan-parent sweep query failed (collection unaffected; retried next tick)',
+        {
+          correlationId,
+          subreddit,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+      return [];
+    }
+
+    if (candidateParentIds.length === 0) {
+      return [];
+    }
+
+    // Exclude parents already judged (incl. 'parent_unfetchable' tombstones):
+    // a verdict means the gate has decisively spoken — never re-fetch.
+    const judged = await this.prisma.collectionRelevanceVerdict.findMany({
+      where: { platform: 'reddit', postId: { in: candidateParentIds } },
+      select: { postId: true },
+    });
+    const judgedSet = new Set(judged.map((row) => row.postId));
+    const dueParentIds = candidateParentIds
+      .filter((id) => !judgedSet.has(id))
+      .slice(0, this.BATCH_SIZE);
+
+    if (dueParentIds.length === 0) {
+      return [];
+    }
+
+    this.logger.info('Orphan-parent sweep found missing parents', {
+      correlationId,
+      subreddit,
+      orphanParentCandidates: candidateParentIds.length,
+      fetchingThisTick: dueParentIds.length,
+    });
+
+    const healed: LLMPost[] = [];
+    const unfetchable: string[] = [];
+    for (const fullname of dueParentIds) {
+      const baseId = fullname.replace(/^t3_/i, '');
+      try {
+        const rawResult = await this.redditService.getCompletePostWithComments(
+          subreddit,
+          baseId,
+          { depth: 50 },
+        );
+        const { post, comments } = filterAndTransformToLLM(
+          rawResult.rawResponse,
+          rawResult.attribution.postUrl,
+        );
+        if (!post) {
+          // Fetch answered but carried no post payload — the parent is gone
+          // from Reddit. Decisive tombstone, not an eternal retry.
+          unfetchable.push(fullname);
+          continue;
+        }
+        post.comments = comments;
+        healed.push(post);
+      } catch (error) {
+        if (error instanceof RedditGovernanceDenialError) {
+          // Typed not-now: stop drawing from the pool; the remaining orphans
+          // stay due and the next tick's sweep resumes.
+          this.logger.info(
+            'Orphan-parent sweep deferred by governance (remaining parents stay due)',
+            { correlationId, subreddit, remaining: dueParentIds.length },
+          );
+          break;
+        }
+        if (error instanceof RedditApiError && error.statusCode === 404) {
+          unfetchable.push(fullname);
+          continue;
+        }
+        // Transient failure: log + leave for next tick — never fabricate.
+        this.logger.warn('Orphan-parent fetch failed (retried next tick)', {
+          correlationId,
+          subreddit,
+          parentSourceId: fullname,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+
+    if (unfetchable.length) {
+      // §10 honest outcome through the EXISTING verdicts table: keep=false so
+      // the orphan comments become gate-rejected; the sweep's verdict filter
+      // never retries these ids.
+      await this.prisma.collectionRelevanceVerdict
+        .createMany({
+          data: unfetchable.map((postId) => ({
+            platform: 'reddit',
+            postId,
+            keep: false,
+            reason: 'parent_unfetchable',
+            model: 'orphan-parent-sweep',
+            promptHash: null,
+          })),
+          skipDuplicates: true,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            'Orphan-parent tombstone persistence failed (retried next tick)',
+            {
+              correlationId,
+              subreddit,
+              parents: unfetchable.length,
+              error: {
+                message: error instanceof Error ? error.message : String(error),
+              },
+            },
+          );
+        });
+      this.logger.info('Orphan parents tombstoned as unfetchable', {
+        correlationId,
+        subreddit,
+        tombstoned: unfetchable.length,
+      });
+    }
+
+    return healed;
   }
 
   private queueChronologicalBatch(

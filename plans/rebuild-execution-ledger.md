@@ -2025,3 +2025,21 @@ attributed: 601 gate-rejected (by design) + 687 orphan comments (parents
 outside the listing window, never judged — small design gap, candidate
 §10 follow-up: on-demand parent fetch for orphans). 14 failed batch jobs
 are Jul-11-era terminal relics.
+
+## 2026-07-25 — §10 orphan-comment heal: self-healing parent fetch
+
+The gap the final red team surfaced (687 foodnyc comments whose parent
+posts predate the listing window — never judged, never extracted) is
+closed with a self-healing sweep, not a backfill: every chronological
+tick anti-joins for comments missing their parent post doc (community-
+scoped, NO time scope — the existing backlog heals on the first tick),
+fetches each missing parent by id through the existing governed reddit
+chokepoint (posts are fetchable by id forever; this is the §25 insight
+applied in miniature), and rides the parents through ONE normal
+chronological batch — persist-first, normal gate, normal extraction, no
+parallel path. Deleted/unfetchable parents get a terminal keep=false
+'parent_unfetchable' verdict so the sweep never retries them. Bound =
+the worker's existing 25-post batch granularity (§16 documented reuse).
+Healing batches count in expectedBatches so §10 reconciliation stays
+honest. 871 tests green (+7 RED-proof: heal, tombstone, no-retry,
+no-op, transient-failure paths).
