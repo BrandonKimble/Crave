@@ -60,6 +60,9 @@ interface Options {
   batchSize?: number;
   /** §24.3 Leg C: approves THIS run's printed estimate hash exactly. */
   approveEstimate?: string;
+  /** Curve-derived NEW-restaurant count for the Places manifest line (see
+   *  PrepareManifestEstimateParams.expectedNewRestaurants). */
+  expectedRestaurants?: number;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -76,6 +79,8 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--max-posts') options.maxPosts = Number(next());
     else if (token === '--batch-size') options.batchSize = Number(next());
     else if (token === '--approve-estimate') options.approveEstimate = next();
+    else if (token === '--expected-restaurants')
+      options.expectedRestaurants = Number(next());
     else throw new Error(`Unknown argument: ${token}`);
   }
   if (!options.subreddits.length) {
@@ -153,13 +158,16 @@ async function main(): Promise<void> {
       const estimate = await spendCampaigns.prepareManifestEstimate({
         name: `archive:${options.subreddits.join(',')}`,
         docCount: unitCount,
+        expectedNewRestaurants: options.expectedRestaurants,
       });
       out(
         `\n=== §24.3 all-in spend manifest (campaign ${estimate.campaignId}) ===`,
       );
       out(
         `  docs=${estimate.docCount}  expected new restaurants=${estimate.expectedEntities} ` +
-          `(measured entities/kilodoc ratio)`,
+          (options.expectedRestaurants !== undefined
+            ? `(curve-derived override — measured discovery curve)`
+            : `(measured entities/kilodoc ratio)`),
       );
       for (const line of estimate.lines) {
         out(

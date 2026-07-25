@@ -58,6 +58,13 @@ export interface PrepareManifestEstimateParams {
   /** Documents the campaign will collect/process — the single driver every
    *  manifest line derives from. */
   docCount: number;
+  /** Optional curve-derived override for the Places line's expected NEW
+   *  restaurants. The default (docCount × measured entities_per_kilodoc)
+   *  blanket-applies an early-lifecycle ratio and badly overestimates large
+   *  loads — discovery follows a measured Heaps-style curve (β≈0.72 in both
+   *  seeded cities, 2026-07-25 analysis). Pass the extrapolated NEW-restaurant
+   *  count from that curve; the printout labels which method priced the line. */
+  expectedNewRestaurants?: number;
 }
 
 export interface PreparedManifestEstimate {
@@ -376,7 +383,10 @@ export class SpendCampaignService {
     const entitiesPerKilodoc = await requireRate(MANIFEST_ENTITY_RATIO);
 
     const docCount = params.docCount;
-    const expectedEntities = Math.round((docCount * entitiesPerKilodoc) / 1000);
+    const expectedEntities =
+      params.expectedNewRestaurants !== undefined
+        ? Math.round(params.expectedNewRestaurants)
+        : Math.round((docCount * entitiesPerKilodoc) / 1000);
 
     const makeLine = (
       spec: { workClass: string; unit: string },
