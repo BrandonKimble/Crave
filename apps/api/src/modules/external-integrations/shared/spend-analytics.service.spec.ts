@@ -214,7 +214,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     const tomtomRow = rows.find((r) => r.workClass === 'tomtom.searchFamily');
     expect(tomtomRow).toBeDefined();
     expect(tomtomRow!.sampleUnits).toBe(12);
-    expect(tomtomRow!.microUsdPerUnit).toBe(2_500);
+    expect(tomtomRow!.microUsdPerUnit).toBe(3_240);
 
     const essentialsRow = rows.find(
       (r) => r.workClass === 'google_places.essentials',
@@ -266,7 +266,7 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     const tomtomRow = rows.find((r) => r.workClass === 'tomtom.searchFamily');
     expect(tomtomRow).toBeDefined();
     expect(tomtomRow!.sampleUnits).toBe(0);
-    expect(tomtomRow!.microUsdPerUnit).toBe(2_500);
+    expect(tomtomRow!.microUsdPerUnit).toBe(3_240);
   });
 
   it('§24 Task 2: feeds joined per-source PER-LANE spend into CollectorSourceRegistryService.recordLaneCost, reading the lane off the document (chronological now attributed, not just keyword)', async () => {

@@ -74,7 +74,10 @@ import {
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
 import { SpendCampaignService } from '../external-integrations/shared/spend-campaign.service';
-import { tomtomCostMicrosPerDraw } from '../external-integrations/shared/vendor-pricing';
+import {
+  tomtomCheapCostMicrosPerDraw,
+  tomtomScarceCostMicrosPerDraw,
+} from '../external-integrations/shared/vendor-pricing';
 
 /**
  * §16: the header-answer memory window REUSES the §2 30d region-observation
@@ -374,7 +377,8 @@ export class PlacesPromotionService {
     // §24 Task 3: count of vendor draws ACTUALLY consumed this call (not
     // pool denials, which never reach the vendor) — the basis for
     // recordSpend on a successful promotion below.
-    let drawsThisCall = 0;
+    let cheapDrawsThisCall = 0;
+    let scarceDrawsThisCall = 0;
 
     // Step 1 — the stable TomTom geometry id. tomtom-provider places carry
     // it as providerPlaceId (§1 identity law); census-seeded places (GEOID
@@ -409,11 +413,11 @@ export class PlacesPromotionService {
         return 'stop'; // cheap pool not-now — NOT an attempt; next window
       }
       if (resolved.kind === 'miss') {
-        drawsThisCall += 1;
+        cheapDrawsThisCall += 1;
         await this.recordAttempt(item.placeId, now);
         return 'attempted';
       }
-      drawsThisCall += 1;
+      cheapDrawsThisCall += 1;
       geometryId = resolved.geometryId;
       await this.prisma.placeGeometryPromotion.update({
         where: { placeId: item.placeId },
@@ -444,11 +448,11 @@ export class PlacesPromotionService {
       return 'stop';
     }
     if (polygon.kind === 'miss') {
-      drawsThisCall += 1;
+      scarceDrawsThisCall += 1;
       await this.recordAttempt(item.placeId, now);
       return 'attempted';
     }
-    drawsThisCall += 1;
+    scarceDrawsThisCall += 1;
 
     // §2.5 WRONG-ENTITY GUARD: the vendor sometimes resolves a name to a
     // much smaller feature (observed seed run: San Antonio TX → a 1×2km
@@ -519,9 +523,12 @@ export class PlacesPromotionService {
     // a campaign breach here just flips the campaign's state for the NEXT
     // item's isDispatchable check.
     const campaignId = (item as { campaignId?: string | null }).campaignId;
-    if (campaignId && this.spendCampaigns && drawsThisCall > 0) {
+    const spendMicros =
+      cheapDrawsThisCall * tomtomCheapCostMicrosPerDraw +
+      scarceDrawsThisCall * tomtomScarceCostMicrosPerDraw;
+    if (campaignId && this.spendCampaigns && spendMicros > 0) {
       await this.spendCampaigns
-        .recordSpend(campaignId, drawsThisCall * tomtomCostMicrosPerDraw)
+        .recordSpend(campaignId, spendMicros)
         .catch((error: unknown) => {
           this.logger.warn(
             'Campaign spend recording failed (promotion stands)',

@@ -7,13 +7,38 @@
  */
 
 /**
- * TomTom Search-family draws (cheapGeocode + scarcePolygons): $2.50 per
- * 1,000 requests. NOT vendor-published-verified — this is the
- * OWNER-RATIFIED price-tag already living in governance.service.ts's
- * scarcePolygons comment (K1-sourced), applied here as the per-draw $
- * rate. VERIFY AGAINST FIRST TOMTOM INVOICE.
+ * EUR→USD conversion for TomTom (which prices in EUR) into the table's
+ * micro-USD unit. K4-shaped market fact fetched 2026-07-25 (~1.08);
+ * refreshed when the price table is next touched or the invoice-vs-table
+ * reconciliation shows drift. Slight staleness only skews estimates a few
+ * percent — the envelope tolerance absorbs it.
  */
-export const tomtomCostMicrosPerDraw = 2_500;
+const EUR_TO_USD = 1.08;
+
+/**
+ * TomTom rates — VENDOR-VERIFIED 2026-07-25 (docs.tomtom.com/pricing,
+ * per-API pricing modals; per 1,000 requests at OUR volume tier):
+ *  - Search API (legacy family: /search/2/search, additionalData polygon
+ *    fetches — the SCARCE draws): free ≤2.5K/mo, then €3.00/1k
+ *    (2.5K–100K tier). The previously owner-ratified $2.50/1k
+ *    UNDERESTIMATED this (~$3.24 at the conversion above).
+ *  - Geocoding + Reverse Geocoding (/search/2/geocode,
+ *    /search/2/reverseGeocode — the CHEAP draws): free ≤20K/mo EACH, then
+ *    €1.00/1k. Our cheap pool's 20k monthly backstop sits exactly at the
+ *    free boundary, so cheap draws are effectively FREE at our volume —
+ *    we still price them at the paid rate (conservative over-estimate;
+ *    estimates may only err safe).
+ */
+export const tomtomScarceCostMicrosPerDraw = Math.round(
+  (3.0 * EUR_TO_USD * 1_000_000) / 1_000,
+); // €3.00/1k → 3,240 micro-USD/draw
+export const tomtomCheapCostMicrosPerDraw = Math.round(
+  (1.0 * EUR_TO_USD * 1_000_000) / 1_000,
+); // €1.00/1k → 1,080 micro-USD/draw
+
+/** Back-compat blended alias for callers that don't split draw kinds —
+ *  priced at the SCARCE (higher) rate: over-meter, never vanish. */
+export const tomtomCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
 
 /**
  * Google Places API (New), entry-tier per-1,000-requests pricing (K4,

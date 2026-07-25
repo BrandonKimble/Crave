@@ -86,9 +86,13 @@ export class GovernanceService implements OnModuleInit {
     //
     // §16 K1 (owner price-tag): the scarce polygon pool is a PAID monthly
     // budget, not a free-tier fact — ratified 2026-07-22 "off the free tier"
-    // (master plan §2.5(a)). 10,000/mo ≈ a ~$25/mo ceiling at ~$2.5/1k
-    // Search-API polygon draws; the pool stays hardClosed + durably stored,
-    // so the ceiling is structural. Adjusting the number = owner re-ratify.
+    // (master plan §2.5(a)). RATE VERIFIED 2026-07-25 (docs.tomtom.com
+    // pricing modals): Search API family is €3.00/1k at our tier (≈$3.24 —
+    // the earlier ~$2.5/1k estimate was LOW), so 10,000/mo ≈ a ~$32/mo
+    // ceiling now (vendor-pricing.ts carries the split verified rates;
+    // cheap geocodes are FREE ≤20k/mo — our cheap pool sits inside the
+    // free tier). The pool stays hardClosed + durably stored, so the
+    // ceiling is structural. Adjusting the number = owner re-ratify.
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
