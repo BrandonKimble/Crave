@@ -8,8 +8,12 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
-// §16 K1: reuses the ratified 30d TTL sentence (§16 K1 list, "30d
-// no-place TTL") — one attention-memory constant, not a new knob.
+// §16 K1 (its OWN sentence — retro audit 2026-07-24: the earlier "reuses
+// the 30d no-place TTL" claim was value-coincidence laundering; that
+// sentence governs geo observations, this governs evidence-less
+// placeholder ENTITIES — a distinct decision that happens to share a
+// value): "an evidence-less placeholder gets a month to earn its
+// existence." §18 docket: awaiting batch ratification.
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 

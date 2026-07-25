@@ -64,10 +64,14 @@ const MIN_CHRONOLOGICAL_INTERVAL_DAYS = 2 / 24;
 
 /**
  * The arrival measurement's trailing horizon — AND therefore the derived
- * interval's upper clamp (a lane must be observed at least once per
- * measurement window or the measurement starves itself blind). One
- * constant, two derived roles; what changes it: choosing a different
- * measurement horizon, never cadence tuning.
+ * interval's upper clamp. The COUPLING (clamp = lookback) is a genuine
+ * stability derivation: an interval longer than the lookback depresses the
+ * measured rate, stretching the interval further — a quiet-lock feedback
+ * loop; clamping at the lookback is the fixed-point bound. The VALUE 14 is
+ * an owner sentence awaiting ratification ("two weeks of behavior defines
+ * a source's rhythm" — §18 docket, retro audit 2026-07-24); the clamp then
+ * derives cleanly from it. What changes it: owner re-ratifying the
+ * horizon, never cadence tuning.
  */
 const ARRIVAL_LOOKBACK_DAYS = 14;
 
@@ -432,7 +436,7 @@ export class CollectorPacerService implements OnModuleInit {
    *   interval = clamp( SAFETY × window ÷ measured posts/day,
    *                     2h,  ARRIVAL_LOOKBACK_DAYS )
    *
-   * Every bound is derived, none is tuned: the loss-horizon term is reddit's
+   * Bounds (retro-audited 2026-07-24 — honest status, not an overclaim): the loss-horizon term is reddit's
    * ≤1000-post /new window (vendor fact) with SAFETY 0.5 = one fully missed
    * tick can never overflow; the 2h floor guards a pathological count; and
    * the upper clamp is the arrival MEASUREMENT'S OWN horizon — stretch

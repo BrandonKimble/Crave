@@ -1636,3 +1636,60 @@ All fixed same-day, minimal + §16-disciplined; 784/784 green (baseline
     sees micro-USD deltas. Fix: comments rewritten to name the calling
     script's loop (e.g. `--max-posts`) as the actual enforcement point —
     a documented deferral, not a silent gap.
+
+### Ultracode teardown study: suggest/matcher + retro derivation audit (2026-07-24)
+
+12-agent workflow (5 code maps, 5 web-research, 2 retro judges), verdicts
+synthesized and verified:
+
+**THE BIG CATCH — keyword recall instrument was censored to 1.**
+resolveKeywordSearchLimit() hardcoded return 1 ("single best post per
+sort", a pre-coverage cost lever): every keyword search fetched ONE post,
+so the harvest snapshot's lastResultCount ≈ 1 for every term → measured
+share ≈ 1/corpus → the eligibility law degenerated to "re-eligible when
+the corpus doubles" — refresh/demand re-search effectively OFF forever
+while tests and comments reported health ("precision theater on a 1-post
+probe"). FIXED: limit = 100 (K4 vendor fact — one search request returns
+up to 100 results for the SAME governed draw; only uncovered thread
+fetches spend more, and the pool paces those). Also: reddit search is
+type:'link' (comments always []) — the posts+comments defense guards a
+today-impossible path; comment corrected to say so (future-proofing
+kept). The "errs conservative, never eager" claim softened to the honest
+"two opposing bounded biases."
+
+**Retro audit verdict: NO forced derivations of the sourceClassInfluence
+kind anywhere in the 07-23/24 arc** — the flagship derivations
+(chronological interval, harvest eligibility, TTL=drain coupling) are
+structurally genuine. The real disease found: CLASSIFICATION THEATER —
+retroactive K1/K6 stamping by agent-written sentences with no owner
+record. Fixed honestly: ON_DEMAND_MIN_RESULTS re-filed K6→K1 (it IS
+falsifiable policy); the 300s cooldown marked UNRATIFIED (its own
+rationale contradicts the measured ~10min landing); placeholder 30d got
+its OWN sentence (borrowing the geo TTL's ratification was value-
+coincidence laundering); MIN_SELECTABLE_SCORE_BY_SLICE flagged as naked
+holdovers; the pacer's "every bound is derived" overclaim corrected (14d
+horizon = coupling sound, value unratified). §16 gained K7 (guards &
+plumbing) so K3 stops being a dumping ground; §18 gained the 8b
+BATCH-RATIFY docket (on-demand cluster, attention windows, 14d horizon,
+one-missed-tick tolerance, hourly drain, slice floors). §11's
+family-yield competition honestly marked NOT-YET-IMPLEMENTED.
+
+**Suggest/autocomplete study → plans/suggest-ideal-shape.md.** Verdict:
+NOT a teardown. The shared matcher is near-ideal (RRF hybrid recall +
+honest evidence tiers = the research's from-scratch prescription; it IS
+the Feb best-in-class revamp the owner remembered) and the lane
+architecture matches the universal industry pattern (per-type generators,
+blending as a separate problem — Spotify/LinkedIn/DoorDash/Instagram all
+converge here; nobody unifies person-scores and dish-scores). The refit:
+(1) FUSION — kill the cross-lane score bridges (0.6/0.3/0.1, naked 1.35,
+query 0.5 floor, env lane weights, 0.4 similarity floors) for within-lane
+rank-only + RRF-over-lane-ranks + K1 slot sentences + length-adaptive
+intent gating; floors die, slot caps replace them; impression logging now
+→ calibrated tap re-ranking post-launch AT THE FUSION LAYER ONLY (values
+guard: learned ordering never rewrites evidence scores). (2)
+PRESENTATION — match highlighting, typed rows with provenance ("12 Reddit
+mentions"), zero-state, never-blank rules, viewport bias. Awaiting owner
+ratification of the proposal; phases A/B are days-sized.
+
+785 api green (other-session §24 spend tests included), build clean, API
+restarted.

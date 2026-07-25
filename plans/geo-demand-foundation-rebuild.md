@@ -450,7 +450,10 @@ in staging before being trusted. Legit-zero ≠ broken-zero.
   gaps always get attention," a product promise independent of yield) and
   EXPLORE ("insurance for the unmeasurable"). Refresh + demand compete for
   all remaining capacity by measured yield via within-family percentile
-  normalization (cross-family weights do not exist). Family yield under
+  normalization (cross-family weights do not exist). STATUS 2026-07-24:
+  the measured-family-yield competition + its closed-loop exploration are
+  NOT yet implemented — code competes by staleness/demand percentile;
+  honest deferral until dispatch yield data exists (same trigger as v2). Family yield under
   competition is bound by the closed-loop law (optimistic selection).
 - **Deficiency (continuous)**: deficiency = localDemand × (1 +
   crossEngineGap × evidenceWeight), evidenceWeight growing with peer count
@@ -660,6 +663,14 @@ are the disease this law exists to kill (see: safeIntervalDays).
 - K6 (definitional — nothing changes them): majority = ½ (median test,
   3-of-5 delta probe); minimal step ±1; the exploration slot (+1 / start
   floor 1).
+- K7 (guards & plumbing — ADDED 2026-07-24, retro audit: K3 had become a
+  "K3-shaped" dumping ground for numbers no controller touches): values
+  free within a stated band; nothing re-derives them; changing them
+  changes nothing observable. Advisory-lock keys, requeue delays, HTTP
+  timeout fallbacks, reservation TTLs, pathological-scan caps (the 50k
+  open-now guard, the 2h interval floor). The only requirement: the
+  comment states the band ("≫ real workloads, ≪ harm"). K3 returns to
+  meaning what it says: quantities a controller cycle actually adjusts.
   **Closed-loop measurement law**: any K2/K3 quantity whose consumer gates the
   observations that update it carries exploration — time-widening uncertainty,
   optimistic selection, frontier dither. (Bound: viability knee, term hit
@@ -704,6 +715,20 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    1 − ATTENTION_FRACTION = 2/3 (one-knob law); (b) lone commensurate
    non-covering place IS the header ('this area' reserved for genuine
    straddles/unnamed ground). Both are now §2 law.
+   8b. BATCH-RATIFY DOCKET (retro audit 2026-07-24 — retroactively K-stamped
+   constants needing a real owner yes; values unchanged until ruled):
+   (a) on-demand cluster: MIN_RESULTS=1 (re-filed K6→K1 "only genuine
+   emptiness pulls the cord"), 300s cooldown (rationale contradicted by
+   measured ~10min landing — ratify as pure debounce OR re-derive ≥
+   landing latency), 5-entity blast radius, 2mi+0.85 viewport floor, 90d
+   who-asked retention, placeholder 30d ("a placeholder gets a month to
+   earn its existence" — its OWN sentence, not the geo TTL's);
+   (b) attention windows: popularity 30d, query-suggestions 90d;
+   (c) collector: 14d arrival horizon ("two weeks defines a source's
+   rhythm"), the one-missed-tick loss tolerance (SAFETY 0.5's root),
+   hourly drain cadence, MIN_SELECTABLE_SCORE_BY_SLICE floors;
+   (d) already-docketed: autocomplete 0.6/0.3/0.1 weights + 0.4
+   similarity floors (superseded if the suggest redesign lands).
    8a. RATIFIED 2026-07-24 — the no-fake-estimates law (§16 preamble): the
    §18 arrival-rate-prior marker is RESOLVED BY ELIMINATION (the estimator
    scaffolding is deleted, not ratified); the cadence marker narrows to

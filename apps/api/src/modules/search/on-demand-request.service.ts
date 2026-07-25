@@ -284,12 +284,16 @@ export class OnDemandRequestService {
     return stripped.isGenericOnly ? '' : stripped.text;
   }
 
-  // §16 K1 (owner sentences; 2026-07-11 fold-in from env): "the same
-  // target/bounds may re-trigger at most every 5 minutes" (a per-ask
-  // debounce — the collection it queues takes minutes to land, so faster
-  // re-asks can only duplicate work), and "one ask queues at most 5
-  // entities" (the ask's blast-radius sentence). Both falsifiable product
-  // sentences; what changes them: owner re-ratify, never tuning.
+  // §16 UNRATIFIED (retro audit 2026-07-24 — honest status): the 300s
+  // debounce's old rationale ("collection takes minutes to land") is
+  // measurement-shaped and CONTRADICTED by the measured ~10min
+  // full-pipeline landing — so it is either a pure K1 debounce sentence
+  // (rationale deleted) or a derivation (cooldown ≥ measured landing
+  // latency, which would be ~600s). The 5-entity blast radius is genuine
+  // owner territory (deriving it from engagement would repeat the
+  // sourceClassInfluence mistake) but its magnitude carries no sentence.
+  // BOTH on the §18 docket for the owner's call; values unchanged until
+  // then.
   private resolveCooldownMs(): number {
     return 300_000;
   }

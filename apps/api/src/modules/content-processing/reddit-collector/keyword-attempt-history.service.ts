@@ -58,7 +58,7 @@ export class KeywordAttemptHistoryService {
     engineId?: string;
     normalizedTerm: string;
     outcome: KeywordAttemptOutcome;
-    /** Posts the query returned (success/no_results harvests only). */
+    /** The query's full yield (success/no_results harvests only). */
     resultCount?: number;
     /** Source corpus size at harvest (success/no_results harvests only). */
     corpusDocs?: number;

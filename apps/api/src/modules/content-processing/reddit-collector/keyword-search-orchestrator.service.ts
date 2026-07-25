@@ -479,13 +479,14 @@ export class KeywordSearchOrchestratorService {
             normalizedTerm: entry.normalizedTerm,
             outcome: attemptOutcome,
             // Harvest snapshot for the derived eligibility clamp. The
-            // count is the query's FULL yield (posts + comments): a
-            // comments-only term must never read as measured-barren
-            // (share 0 would lock it out of the clamp with no pierce —
-            // its outcome is 'success'). The share divides by a
-            // posts-only corpus, so it is an approximation; under the
-            // vendor's per-sort result cap it errs conservative (slower
-            // re-entry), never eager.
+            // count is the query's FULL yield (posts + comments — NOTE:
+            // reddit search runs type:'link', so comments is [] today;
+            // the sum future-proofs a comment-search lane and keeps a
+            // comments-only term from ever reading measured-barren).
+            // The share divides by a posts-only corpus — an approximation
+            // with two opposing bounded biases (vendor result cap
+            // undercounts high-yield terms; any future comment yield
+            // would overcount), both cheap and honest, neither exact.
             resultCount: posts + comments,
             corpusDocs: cycleCorpusDocs,
           });
@@ -1196,12 +1197,17 @@ export class KeywordSearchOrchestratorService {
   }
 
   private resolveKeywordSearchLimit(): number {
-    // Reddit search fetch limit per (keyword, sort) cycle. 1 is the value
-    // production behavior has been using (.env KEYWORD_SEARCH_LIMIT=1 — a
-    // deliberate collection-cost lever; the 1000 code fallback was never in
-    // effect). Reconciled 2026-07-11 in favor of .env; raise deliberately if
-    // keyword cycles should pull more than the single best post per sort.
-    return 1;
+    // §16 K4 (vendor fact): reddit search returns up to 100 results PER
+    // REQUEST — one search call costs the same governed draw whether it
+    // asks for 1 or 100. The old limit=1 was a pre-coverage-era cost lever
+    // that inverted after §11 coverage (covered results are FREE to skip;
+    // only uncovered thread-fetches spend, and the pool governs those) —
+    // at 1 it bought 1/100th of the information per request AND censored
+    // the eligibility law's measured share to ~1/corpus, silently locking
+    // every harvested term out of re-search (retro audit 2026-07-24:
+    // "precision theater on a 1-post probe"). Full-page recall is the
+    // honest instrument the harvest snapshot measures.
+    return 100;
   }
 
   getConfiguredSorts(): KeywordSearchSort[] {
