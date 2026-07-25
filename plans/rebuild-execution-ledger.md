@@ -1462,3 +1462,57 @@ Findings fixed same-day:
    (ratify as K1 or re-derive via per-lane percentile normalization at
    next touch) — flagged, not hidden.
    735 api + 396 mobile green; build clean; API restarted.
+
+### §24 Leg D census (env/knob classification + kill-list verification, 2026-07-24)
+
+Leg D implements the demotions: `governance.service.ts`'s gemini.monthlySpend
+pool becomes a Tier-3 catastrophe backstop (limit = BACKSTOP_MULTIPLE × the
+trailing measured monthly spend, re-derived nightly by
+`SpendAnalyticsService.refreshBackstop` and written to `spend_unit_costs`
+as `work_class='backstop.gemini' unit='month'`; applied live via the new
+`PoolRegistry.resetLimit`, and re-read at boot by
+`GovernanceService.applyDerivedGeminiBackstop`). The 80%-of-cap warn in
+`usage-ledger.service.ts` is deleted; its replacement is
+`SpendAnalyticsService.logSpendTelemetry` (month-to-date vs. prorated
+trailing-baseline expectation, 3σ×√days warn — reuses the `COST_BREACH_K=3`
+convention from `collector-source-registry.service.ts`, applied to the
+monthly aggregate). `llm.service.assertSpendBudgetOpen` and
+`gemini-batch.service.submit`'s gate keep consulting the pool but their
+comments are rewritten to Tier-3 "expected never to fire" language.
+`tomtom.cheapGeocode`/`scarcePolygons` comments rewritten to Tier-3-backstop
+language with NO functional change (no in-repo TomTom $-per-draw price
+table exists yet — §24.2 gap, tracked not invented around).
+
+**Seed-month pattern extinction (kill-list item 1):** grepped `SEED MONTH`,
+`45_000`, `25_000` across `governance.service.ts` — zero hits. Both TomTom
+pool comments already read "REVERTED post-seed (2026-07-24)" with the
+standing K1 price-tags (20,000/mo cheapGeocode, 10,000/mo scarcePolygons).
+CONFIRMED already-reverted; nothing to do this leg.
+
+**Env/knob census (kill-list item 5) — every budget-shaped env var found by
+grep across `src/`:**
+
+| env var                                                                                                                                              | file                                                                                                | verdict                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_PLACES_REQUESTS_PER_MINUTE`                                                                                                                  | `config/configuration.ts:354`                                                                       | K4 KEEP — vendor-fact rate limit (Places console quota), not spend governance. No duplicate to fold.                                                                                                                                                                                                                                                                                                  |
+| `GOOGLE_PLACES_REQUESTS_PER_DAY`                                                                                                                     | `config/configuration.ts:359`                                                                       | K4 KEEP — same; Google's console daily quota is a fact, not an owner spend cap.                                                                                                                                                                                                                                                                                                                       |
+| `LLM_MAX_RPM`                                                                                                                                        | `llm/rate-limiting/centralized-rate-limiter.service.ts:164`                                         | K4 KEEP — vendor RPM ceiling (admission, not $). No spend duplicate.                                                                                                                                                                                                                                                                                                                                  |
+| `LLM_MAX_TPM`                                                                                                                                        | `centralized-rate-limiter.service.ts:165` **and** `governance.service.ts:92` (`gemini.tokens` pool) | K4 KEEP, but READ TWICE — the rate limiter's admission ceiling and the `gemini.tokens` governance pool mirror the SAME vendor TPM fact from the same env var. Not spend governance (tokens ≠ dollars) so no §24 fold-in; flagged as a pre-existing duplicate-read (two call sites, one fact) worth consolidating to one read in a future leg — NOT touched this leg (out of scope: not a spend knob). |
+| `GEMINI_MONTHLY_SPEND_CAP_USD`                                                                                                                       | `governance.service.ts:127`                                                                         | Tier-3 spend governance — THIS is the one kill-list item 4 targets. Demoted this leg: reworded to "boot-only seed, dead after the first nightly backstop derivation."                                                                                                                                                                                                                                 |
+| `KEYWORD_COLLECTION_DRY_RUN`, `KEYWORD_DEMAND_WINDOW_DAYS`, `KEYWORD_TREND_WINDOW_DAYS`                                                              | `keyword-search-orchestrator.service.ts`, `keyword-slice-selection.service.ts`                      | Not budget knobs — a dry-run flag and demand/trend lookback windows (K1/K3 operational bounds), not spend or rate limits. No verdict needed.                                                                                                                                                                                                                                                          |
+| `THROTTLER_SHORT/MEDIUM/LONG_LIMIT`, `REDDIT_MAX_RETRIES`, `PUSHSHIFT_MAX_*`, `SEARCH_EXPANSION_*_CAP`, `LOCATION_REFRESH_LIMIT`, `TEST_*_MAX_POSTS` | various                                                                                             | Scanned, all non-spend operational bounds (HTTP throttling, retry counts, batch/memory caps, search-time term caps) — none duplicate §24's spend machinery. No verdict needed.                                                                                                                                                                                                                        |
+
+No working rate-limit machinery was deleted this leg (per instructions —
+census documents verdicts; fold-ins are follow-up). The only fold-in this
+leg actually executes is the one the kill list names explicitly: the
+80%-of-cap warn (item 6) and the monthly $ cap's role as dispatch gate
+(items 2/4).
+
+**Files changed:** `governance/pool-registry.ts` (+`resetLimit`),
+`governance/governance.service.ts` (+`PrismaService` injection, +`applyDerivedGeminiBackstop`, Tier-3 comment rewrites),
+`shared/spend-analytics.service.ts` (+`BACKSTOP_MULTIPLE=3`, +`refreshBackstop`, +`logSpendTelemetry`, +`SPEND_TELEMETRY_WARN_K=3`,
++optional `GovernanceService` injection), `shared/usage-ledger.service.ts`
+(removed `spendWarned`/80% warn block), `llm/llm.service.ts` and
+`llm/gemini-batch.service.ts` (comment-only Tier-3 rewrites), plus specs:
+`governance/pool-registry.spec.ts` (`resetLimit`),
+`shared/spend-analytics.service.spec.ts` (`logSpendTelemetry` RED/green).

@@ -235,3 +235,198 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     expect(costMicros).toBeGreaterThan(0);
   });
 });
+
+/**
+ * §24.4 item 6: the replacement for the deleted 80%-of-cap warn. Proves the
+ * RED case (month-to-date running hot vs. the trailing measured baseline
+ * warns) and the GREEN case (a normal month does not) — an always-green
+ * telemetry metric would be lying (CLAUDE.md's ATTRIBUTE-before-ideate
+ * law), so both directions are exercised against the SAME fixture shape.
+ */
+describe('SpendAnalyticsService.logSpendTelemetry (§24.4 item 6)', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  // The 10th of the month, 00:00 UTC — day-of-month = 10, so a flat daily
+  // baseline prorates to exactly 10x one day's spend.
+  const NOW = new Date('2026-07-10T00:00:00Z');
+  const DAILY_EVENT_INPUT_TOKENS = 1_000; // MODEL's $0.25/1M input rate.
+
+  function buildTelemetryPrisma(monthToDateCostMicros: number) {
+    const findMany = jest.fn().mockImplementation((args: unknown) => {
+      const where = (args as { where: { createdAt: { gte: Date; lt: Date } } })
+        .where;
+      const start = where.createdAt.gte.getTime();
+      const end = where.createdAt.lt.getTime();
+      const spanDays = (end - start) / DAY_MS;
+      if (spanDays <= 1.5) {
+        // One of the 30 daily-baseline calls: flat DAILY_COST_MICROS/day.
+        return Promise.resolve([
+          {
+            inputTokens: DAILY_EVENT_INPUT_TOKENS,
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: MODEL,
+            mode: 'interactive',
+          },
+        ]);
+      }
+      // The month-to-date call: scaled to hit the exact target cost via
+      // inputTokens (same $0.25/1M rate), independent of how many days
+      // have elapsed.
+      return Promise.resolve([
+        {
+          inputTokens: monthToDateCostMicros / 0.25,
+          outputTokens: 0,
+          cachedTokens: 0,
+          model: MODEL,
+          mode: 'interactive',
+        },
+      ]);
+    });
+    return { apiUsageEvent: { findMany } };
+  }
+
+  it('RED: month-to-date well above the prorated trailing baseline WARNS', async () => {
+    // Prorated expectation at day 10 = 10 * 250 = 2500 micros, stddev = 0,
+    // so anything over 2500 breaches the K=3*stddev*sqrt(days) threshold
+    // (which is exactly 2500 here since stddev is 0) — pick 2x to be
+    // unambiguous.
+    const prisma = buildTelemetryPrisma(5_000);
+    const logger = stubLogger();
+    const registry = { recordLaneCost: jest.fn() };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      logger as never,
+      registry as never,
+    );
+
+    await (
+      service as unknown as { logSpendTelemetry(now: Date): Promise<void> }
+    ).logSpendTelemetry(NOW);
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('running hot'),
+      expect.objectContaining({ dayOfMonth: 10 }),
+    );
+    expect(logger.info).not.toHaveBeenCalledWith(
+      'Gemini spend telemetry',
+      expect.anything(),
+    );
+  });
+
+  it('GREEN: a month tracking exactly its trailing baseline does not warn', async () => {
+    // Exactly at the prorated expectation (2500 micros at day 10) — not
+    // over it, so the metric must be quiet, proving it CAN show green too.
+    const prisma = buildTelemetryPrisma(2_500);
+    const logger = stubLogger();
+    const registry = { recordLaneCost: jest.fn() };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      logger as never,
+      registry as never,
+    );
+
+    await (
+      service as unknown as { logSpendTelemetry(now: Date): Promise<void> }
+    ).logSpendTelemetry(NOW);
+
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      'Gemini spend telemetry',
+      expect.objectContaining({ dayOfMonth: 10 }),
+    );
+  });
+});
+
+/**
+ * §24.4 item 4: the nightly backstop re-derivation must write the
+ * measured backstop row and, when a live GovernanceService is present,
+ * apply it immediately via PoolRegistry.resetLimit.
+ */
+describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)', () => {
+  const WINDOW_START = new Date('2026-06-24T03:40:00Z');
+
+  it('writes backstop.gemini as BACKSTOP_MULTIPLE(3) x trailing measured spend and resets the live pool', async () => {
+    const trailingInputTokens = 4_000; // cost = 4000 * 0.25 = 1000 micros
+    const upsert = jest.fn().mockResolvedValue(undefined);
+    const prisma = {
+      apiUsageEvent: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            inputTokens: trailingInputTokens,
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: MODEL,
+            mode: 'interactive',
+          },
+        ]),
+      },
+      spendUnitCost: { upsert },
+    };
+    const poolStatus = jest.fn().mockReturnValue({ limit: 300_000_000 });
+    const resetLimit = jest.fn();
+    const governance = { pools: { poolStatus, resetLimit } };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn() } as never,
+      governance as never,
+    );
+
+    await (
+      service as unknown as {
+        refreshBackstop(start: Date, end: Date, now: Date): Promise<void>;
+      }
+    ).refreshBackstop(WINDOW_START, WINDOW_END, WINDOW_END);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const call = (upsert.mock.calls as unknown[][])[0][0] as {
+      where: unknown;
+      create: { microUsdPerUnit: number; sampleUnits: number };
+    };
+    expect(call.where).toEqual({
+      workClass_unit: { workClass: 'backstop.gemini', unit: 'month' },
+    });
+    expect(call.create.microUsdPerUnit).toBe(3_000); // 1000 * BACKSTOP_MULTIPLE(3)
+    expect(call.create.sampleUnits).toBe(30);
+    expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 3_000);
+  });
+
+  it('does not touch the pool when the derived limit already matches (no-op re-derivation)', async () => {
+    const trailingInputTokens = 4_000; // cost = 1000 micros -> derived 3000
+    const prisma = {
+      apiUsageEvent: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            inputTokens: trailingInputTokens,
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: MODEL,
+            mode: 'interactive',
+          },
+        ]),
+      },
+      spendUnitCost: { upsert: jest.fn().mockResolvedValue(undefined) },
+    };
+    const resetLimit = jest.fn();
+    const governance = {
+      pools: {
+        poolStatus: jest.fn().mockReturnValue({ limit: 3_000 }),
+        resetLimit,
+      },
+    };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn() } as never,
+      governance as never,
+    );
+
+    await (
+      service as unknown as {
+        refreshBackstop(start: Date, end: Date, now: Date): Promise<void>;
+      }
+    ).refreshBackstop(WINDOW_START, WINDOW_END, WINDOW_END);
+
+    expect(resetLimit).not.toHaveBeenCalled();
+  });
+});

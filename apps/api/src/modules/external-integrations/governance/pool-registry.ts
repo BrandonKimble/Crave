@@ -172,6 +172,37 @@ export class PoolRegistry {
     }
   }
 
+  /**
+   * §24.4/§24.1 Tier-3: a durable pool's LIMIT changes only at boot
+   * (env-seeded) or here, by the backstop re-derivation job — never
+   * mid-window by arbitrary write. Callers: SpendAnalyticsService's nightly
+   * refresh, after computing BACKSTOP_MULTIPLE × trailing measured monthly
+   * spend (plans/geo-demand-foundation-rebuild.md §24.4 item 4). Rejects a
+   * pool with no registered window (typo/never-registered) and rejects a
+   * grant pool (grants refill only by owner approval, never a derived
+   * limit). Does not touch usage/reservations — only the window's capacity;
+   * the caller logs old -> new for the audit trail.
+   */
+  resetLimit(poolName: string, limit: number): void {
+    const pool = this.requirePool(poolName);
+    if (pool.window.kind === 'grant') {
+      throw new PoolRegistrationError(
+        `Pool '${poolName}': resetLimit is not legal on a grant pool ` +
+          `(grants refill only by owner approval, §14.6)`,
+      );
+    }
+    if (!Number.isFinite(limit) || limit <= 0) {
+      throw new PoolRegistrationError(
+        `Pool '${poolName}': resetLimit requires a finite positive limit ` +
+          `(got ${limit})`,
+      );
+    }
+    this.pools.set(poolName, {
+      ...pool,
+      window: { ...pool.window, limit },
+    });
+  }
+
   /** perMonth/perDay/grant + a store present → window consumption is durable. */
   private isDurable(pool: PoolConfig): boolean {
     return this.store !== undefined && pool.window.kind !== 'perMinute';

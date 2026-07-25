@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { geminiCostMicros } from './gemini-pricing';
 import { CollectorSourceRegistryService } from '../../content-processing/reddit-collector/collector-source-registry.service';
+import { GovernanceService } from '../governance/governance.service';
 
 /**
  * §24.2 the measured unit-cost table (plans/geo-demand-foundation-rebuild.md
@@ -46,6 +47,33 @@ const UNIT_COST_WINDOW_DAYS = 30;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/**
+ * §24.6 K1 — the ONE owner-ratified constant of §24 (master plan §24.1
+ * Tier 3): the gemini.monthlySpend catastrophe backstop's limit is
+ * BACKSTOP_MULTIPLE × the trailing measured monthly spend. Initial value 3
+ * ratified 2026-07-24 — "a bug may cost at most two extra months" (the
+ * multiple minus the one month it already spent). Changing this number is
+ * an owner re-ratification, exactly like any other K1 price-tag; it is NOT
+ * re-derived from data (only the trailing spend it multiplies is).
+ */
+const BACKSTOP_MULTIPLE = 3;
+
+/** work_class the derived gemini backstop is written under (spend_unit_costs,
+ *  unit='month') — governance.service.ts reads this exact pair at boot. */
+const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
+
+/**
+ * §24.4 item 6 replacement for the removed 80%-of-cap warn: warn when
+ * month-to-date spend exceeds the prorated trailing-baseline expectation by
+ * more than this many standard deviations of the last 30 daily totals,
+ * scaled by sqrt(days-elapsed) — the standard random-walk aggregation
+ * scaling (variance of a sum of N i.i.d. days = N × per-day variance, so
+ * stddev scales as sqrt(N)). Reuses the same K=3 "three-sigma" convention
+ * as COST_BREACH_K-family constants elsewhere in this codebase, applied to
+ * the monthly aggregate rather than a per-tick lane cost.
+ */
+const SPEND_TELEMETRY_WARN_K = 3;
+
 @Injectable()
 export class SpendAnalyticsService {
   private readonly logger: LoggerService;
@@ -54,6 +82,10 @@ export class SpendAnalyticsService {
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
     private readonly registry: CollectorSourceRegistryService,
+    // Optional: slim script graphs may lack the governance module; the
+    // unit-cost/backstop-row refresh must never depend on live pool access
+    // (governance.service.ts re-reads the written row at its OWN boot).
+    @Optional() private readonly governance?: GovernanceService,
   ) {
     this.logger = loggerService.setContext('SpendAnalyticsService');
   }
@@ -137,6 +169,8 @@ export class SpendAnalyticsService {
     );
 
     await this.attributeLaneCosts(windowStart, windowEnd);
+    await this.refreshBackstop(windowStart, windowEnd, now);
+    await this.logSpendTelemetry(now);
 
     for (const row of results) {
       await this.prisma.spendUnitCost.upsert({
@@ -411,6 +445,195 @@ export class SpendAnalyticsService {
                 : { message: String(error) },
           });
         });
+    }
+  }
+
+  /** Total ACTUAL gemini spend (micro-USD, K4 rates) over [start, end) — the
+   *  same currency the gemini.monthlySpend pool meters, computed straight
+   *  from the ledger so the backstop/telemetry never depend on the unit-cost
+   *  join succeeding. */
+  private async totalGeminiSpendMicros(
+    start: Date,
+    end: Date,
+  ): Promise<number> {
+    const rows = await this.prisma.apiUsageEvent.findMany({
+      where: { service: 'gemini', createdAt: { gte: start, lt: end } },
+      select: {
+        inputTokens: true,
+        outputTokens: true,
+        cachedTokens: true,
+        model: true,
+        mode: true,
+      },
+    });
+    let total = 0;
+    for (const row of rows) {
+      total += geminiCostMicros({
+        model: row.model ?? undefined,
+        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
+        inputTokens: row.inputTokens ?? 0,
+        outputTokens: row.outputTokens ?? 0,
+        cachedTokens: row.cachedTokens ?? 0,
+      });
+    }
+    return total;
+  }
+
+  /**
+   * §24.4 item 4 / §24.1 Tier 3: re-derive the gemini.monthlySpend
+   * catastrophe backstop from trailing-30d MEASURED spend and publish it as
+   * a visible spend_unit_costs row (work_class='backstop.gemini',
+   * unit='month', sample_units=30 — the window length in days, standing in
+   * for the measured sample size per §24.2's row shape). If a live
+   * GovernanceService is present in this process, also apply it immediately
+   * via PoolRegistry.resetLimit (logging old -> new); otherwise the row
+   * alone is enough — governance.service.ts's own boot reads it next
+   * restart. §16: BACKSTOP_MULTIPLE is the only owner number here; the
+   * trailing spend it multiplies is 100% measured.
+   */
+  private async refreshBackstop(
+    windowStart: Date,
+    windowEnd: Date,
+    now: Date,
+  ): Promise<void> {
+    const trailingSpendMicros = await this.totalGeminiSpendMicros(
+      windowStart,
+      windowEnd,
+    );
+    const derivedLimitMicros = Math.round(
+      trailingSpendMicros * BACKSTOP_MULTIPLE,
+    );
+    if (derivedLimitMicros <= 0) {
+      // No measured spend yet in the trailing window — nothing to derive;
+      // the env-seeded boot value stands (§24.4 item 4).
+      return;
+    }
+    await this.prisma.spendUnitCost.upsert({
+      where: {
+        workClass_unit: {
+          workClass: GEMINI_BACKSTOP_WORK_CLASS,
+          unit: 'month',
+        },
+      },
+      create: {
+        workClass: GEMINI_BACKSTOP_WORK_CLASS,
+        unit: 'month',
+        microUsdPerUnit: derivedLimitMicros,
+        sampleUnits: UNIT_COST_WINDOW_DAYS,
+        windowStart,
+        windowEnd,
+      },
+      update: {
+        microUsdPerUnit: derivedLimitMicros,
+        sampleUnits: UNIT_COST_WINDOW_DAYS,
+        windowStart,
+        windowEnd,
+        refreshedAt: now,
+      },
+    });
+    if (this.governance) {
+      try {
+        const before = this.governance.pools.poolStatus(
+          'gemini.monthlySpend',
+        ).limit;
+        if (before !== derivedLimitMicros) {
+          this.governance.pools.resetLimit(
+            'gemini.monthlySpend',
+            derivedLimitMicros,
+          );
+          this.logger.info(
+            'gemini.monthlySpend backstop re-derived (live process)',
+            {
+              beforeUsd: Math.round(before / 10_000) / 100,
+              afterUsd: Math.round(derivedLimitMicros / 10_000) / 100,
+              trailingSpendUsd: Math.round(trailingSpendMicros / 10_000) / 100,
+              backstopMultiple: BACKSTOP_MULTIPLE,
+            },
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          'Live backstop resetLimit failed (row still written)',
+          {
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          },
+        );
+      }
+    }
+  }
+
+  /**
+   * §24.4 item 6 replacement for the removed 80%-of-cap warn: info-log
+   * month-to-date gemini spend vs. the trailing-baseline expectation
+   * prorated to the day of month, and WARN (not error — this is telemetry,
+   * not a gate) when it exceeds prorated-mean + SPEND_TELEMETRY_WARN_K ×
+   * stddev × sqrt(days-elapsed). Mean/stddev come from the last 30 daily
+   * spend totals (a real distribution, never invented). Never gates
+   * anything — Tier 1/2/3 already do that; this is purely visibility into
+   * "is this month tracking normal" (percent of PROJECTION, not percent of
+   * a dollar cap, per §24.4 item 6).
+   */
+  private async logSpendTelemetry(now: Date): Promise<void> {
+    const dayStarts: Date[] = [];
+    for (let i = UNIT_COST_WINDOW_DAYS; i >= 1; i--) {
+      dayStarts.push(new Date(now.getTime() - i * MS_PER_DAY));
+    }
+    const dailyTotals: number[] = [];
+    for (let i = 0; i < dayStarts.length; i++) {
+      const start = dayStarts[i];
+      const end = new Date(start.getTime() + MS_PER_DAY);
+      dailyTotals.push(await this.totalGeminiSpendMicros(start, end));
+    }
+    const n = dailyTotals.length;
+    if (n === 0) {
+      return;
+    }
+    const mean = dailyTotals.reduce((a, b) => a + b, 0) / n;
+    const variance = dailyTotals.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+    const stddev = Math.sqrt(variance);
+
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+    );
+    const dayOfMonth = Math.max(
+      1,
+      Math.floor((now.getTime() - monthStart.getTime()) / MS_PER_DAY) + 1,
+    );
+    const monthToDateMicros = await this.totalGeminiSpendMicros(
+      monthStart,
+      now,
+    );
+    const proratedExpectationMicros = mean * dayOfMonth;
+    const warnThresholdMicros =
+      proratedExpectationMicros +
+      SPEND_TELEMETRY_WARN_K * stddev * Math.sqrt(dayOfMonth);
+
+    const logFields = {
+      monthToDateUsd: Math.round(monthToDateMicros / 10_000) / 100,
+      proratedExpectationUsd:
+        Math.round(proratedExpectationMicros / 10_000) / 100,
+      dailyMeanUsd: Math.round(mean / 10_000) / 100,
+      dailyStddevUsd: Math.round(stddev / 10_000) / 100,
+      dayOfMonth,
+      percentOfProjection:
+        proratedExpectationMicros > 0
+          ? Math.round((monthToDateMicros / proratedExpectationMicros) * 1000) /
+            10
+          : null,
+    };
+
+    if (
+      monthToDateMicros > warnThresholdMicros &&
+      proratedExpectationMicros > 0
+    ) {
+      this.logger.warn(
+        'Gemini spend telemetry: month-to-date is running hot vs. the trailing measured baseline (informational — no gate)',
+        logFields,
+      );
+    } else {
+      this.logger.info('Gemini spend telemetry', logFields);
     }
   }
 }

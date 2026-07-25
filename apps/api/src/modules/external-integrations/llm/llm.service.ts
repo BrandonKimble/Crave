@@ -2797,7 +2797,19 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** The gemini.monthlySpend budget gate (see callLLMApi + batch submit). */
+  /**
+   * §24.1 Tier 3 CATASTROPHE BACKSTOP — the gemini.monthlySpend gate (see
+   * callLLMApi + batch submit). Demoted by §24.4 item 2: this is no longer
+   * "the" work governor. Healthy operation stops spend upstream of here —
+   * Tier 1 (owner-approved campaigns) via their envelope
+   * (spend-campaign.service.ts), Tier 2 (steady-state lanes) via per-lane
+   * cost baselines (collector-source-registry.ts's recordLaneCost) — so
+   * this backstop is expected to NEVER fire in healthy operation. Its limit
+   * is BACKSTOP_MULTIPLE × the trailing measured monthly spend, re-derived
+   * nightly by SpendAnalyticsService (governance.service.ts's
+   * gemini.monthlySpend registration comment); a firing here is an
+   * INCIDENT, not scheduling — "a bug cost at most two extra months."
+   */
   assertSpendBudgetOpen(): void {
     const status = this.governance.pools.poolStatus('gemini.monthlySpend');
     if (status.poisonedForMs !== null && status.poisonedForMs > 0) {
@@ -2807,7 +2819,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
     if (status.used >= status.limit) {
       throw new Error(
-        'LLM spend budget exhausted (gemini.monthlySpend owner cap) — typed not-now; work stays queued until the month window rolls or the cap is raised',
+        'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
       );
     }
   }
@@ -2819,11 +2831,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     prompt: string,
     options: LLMGenerationOptions = {},
   ): Promise<LLMApiResponse> {
-    // §16 K1 owner budget gate: when the gemini.monthlySpend pool (metered
-    // from ACTUAL dollars at the usage-ledger chokepoint) is spent or
-    // vendor-poisoned, fail HERE — locally, instantly, zero vendor calls.
-    // Callers treat it like any transient LLM failure, so queued work
-    // refills and drains when the budget reopens; nothing storms Google.
+    // §24.1 Tier 3 catastrophe backstop (demoted from work governor, §24.4
+    // item 2): when the gemini.monthlySpend pool (metered from ACTUAL
+    // dollars at the usage-ledger chokepoint) is spent or vendor-poisoned,
+    // fail HERE — locally, instantly, zero vendor calls. Callers treat it
+    // like any transient LLM failure, so queued work refills and drains
+    // when the backstop reopens; nothing storms Google. Expected to never
+    // fire — Tier 1/2 govern spend upstream (see assertSpendBudgetOpen).
     this.assertSpendBudgetOpen();
     const targetModel = options.model ?? this.llmConfig.model;
     const maxRetries =

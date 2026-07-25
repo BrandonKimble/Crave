@@ -452,4 +452,87 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       ).toBe(true);
     });
   });
+
+  describe('resetLimit (§24.4 Tier-3 backstop re-derivation)', () => {
+    it('raises the limit and preserves usage/reservations', () => {
+      const registry = new PoolRegistry();
+      registry.register({
+        name: 'gemini.monthlySpend',
+        credential: 'default',
+        window: { kind: 'perMonth', limit: 100 },
+        failPolicy: { kind: 'hardClosed' },
+        reservationTtlMs: 60_000,
+      });
+      const res = registry.reserve('gemini.monthlySpend', 90, 'llm', t0);
+      expect(res.admitted).toBe(true);
+      registry.resetLimit('gemini.monthlySpend', 500);
+      const status = registry.poolStatus('gemini.monthlySpend', t0);
+      expect(status.limit).toBe(500);
+      expect(status.reservedOutstanding).toBe(90);
+    });
+
+    it('lowers the limit below current usage sanely — new draws are denied, nothing crashes', () => {
+      const registry = new PoolRegistry();
+      registry.register({
+        name: 'gemini.monthlySpend',
+        credential: 'default',
+        window: { kind: 'perMonth', limit: 1000 },
+        failPolicy: { kind: 'hardClosed' },
+        reservationTtlMs: 60_000,
+      });
+      const res = registry.reserve('gemini.monthlySpend', 900, 'llm', t0);
+      expect(res.admitted).toBe(true);
+      if (res.admitted) {
+        void registry.reconcile(res.reservationId, 900, t0);
+      }
+      // Backstop re-derived DOWN (spend fell) below what's already used.
+      registry.resetLimit('gemini.monthlySpend', 500);
+      const status = registry.poolStatus('gemini.monthlySpend', t0);
+      expect(status.limit).toBe(500);
+      expect(status.used).toBe(900);
+      // A pool already over its new limit denies the next draw — no crash,
+      // no negative-capacity weirdness.
+      expect(
+        registry.reserve('gemini.monthlySpend', 1, 'llm', t0).admitted,
+      ).toBe(false);
+    });
+
+    it('rejects an unregistered pool name', () => {
+      const registry = new PoolRegistry();
+      expect(() => registry.resetLimit('does.not.exist', 100)).toThrow(
+        PoolRegistrationError,
+      );
+    });
+
+    it('rejects grant pools (grants refill only by owner approval)', () => {
+      const registry = new PoolRegistry();
+      registry.register({
+        name: 'money.llm-archive',
+        credential: 'default',
+        window: { kind: 'grant', amount: 100 },
+        failPolicy: { kind: 'hardClosed' },
+        reservationTtlMs: 60_000,
+      });
+      expect(() => registry.resetLimit('money.llm-archive', 500)).toThrow(
+        PoolRegistrationError,
+      );
+    });
+
+    it('rejects a non-positive limit', () => {
+      const registry = new PoolRegistry();
+      registry.register({
+        name: 'gemini.monthlySpend',
+        credential: 'default',
+        window: { kind: 'perMonth', limit: 1000 },
+        failPolicy: { kind: 'hardClosed' },
+        reservationTtlMs: 60_000,
+      });
+      expect(() => registry.resetLimit('gemini.monthlySpend', 0)).toThrow(
+        PoolRegistrationError,
+      );
+      expect(() => registry.resetLimit('gemini.monthlySpend', -5)).toThrow(
+        PoolRegistrationError,
+      );
+    });
+  });
 });

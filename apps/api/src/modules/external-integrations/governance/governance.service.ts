@@ -2,6 +2,12 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { PoolRegistry, type PoolDenial } from './pool-registry';
 import { PrismaPoolConsumptionStore } from './pool-consumption.store';
+import { PrismaService } from '../../../prisma/prisma.service';
+
+/** §24.4 item 4 / §24.6 K1: the work_class the nightly backstop derivation
+ *  writes to spend_unit_costs (SpendAnalyticsService.refreshBackstop). Read
+ *  here at boot only — see the gemini.monthlySpend registration comment. */
+const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
 
 /**
  * The Resource Governor's runtime seam (master plan §14 v2, Phase-A minimum):
@@ -19,7 +25,11 @@ export class GovernanceService implements OnModuleInit {
   readonly pools: PoolRegistry;
   private readonly logger: LoggerService;
 
-  constructor(loggerService: LoggerService, store: PrismaPoolConsumptionStore) {
+  constructor(
+    loggerService: LoggerService,
+    store: PrismaPoolConsumptionStore,
+    private readonly prisma: PrismaService,
+  ) {
     this.logger = loggerService;
     // §14.5 durable window store: month/grant window consumption is written
     // through to Postgres and loaded at boot — a restart can never reset the
@@ -45,6 +55,17 @@ export class GovernanceService implements OnModuleInit {
       failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 60_000,
     });
+    // §24.1 Tier 3 backstop (demoted 2026-07-24, §24.4 item 3 — NO
+    // functional change this leg): tomtom.cheapGeocode / scarcePolygons stay
+    // owner PRICE-TAGS, not re-derived backstops like gemini's, because no
+    // in-repo $-per-draw price table exists for TomTom yet (§24.2 —
+    // inventing one here would violate §16's no-fake-estimates law; that
+    // gap is tracked, not invented around). The drain's spend becomes a
+    // Tier-2 lane with its own cost baseline once that table lands; the
+    // month window here survives ONLY as the attempt-backoff clock for the
+    // 334 stragglers, unchanged — spend itself stays owner-governed until
+    // §24.2's TomTom price table exists.
+    //
     // §16 K1 (owner price-tag): the scarce polygon pool is a PAID monthly
     // budget, not a free-tier fact — ratified 2026-07-22 "off the free tier"
     // (master plan §2.5(a)). 10,000/mo ≈ a ~$25/mo ceiling at ~$2.5/1k
@@ -80,14 +101,29 @@ export class GovernanceService implements OnModuleInit {
       failPolicy: { kind: 'emergencyFraction', fraction: 0.95 },
       reservationTtlMs: 60_000,
     });
-    // §16 K1 (owner price-tag, 2026-07-24): the gemini MONTHLY DOLLAR
-    // budget, in micro-USD, metered from ACTUAL token counts at the
-    // usage-ledger chokepoint (gemini-pricing.ts K4 rates). Mirrors the AI
-    // Studio console's monthly spend cap so the system self-stops with a
-    // typed not-now BEFORE the vendor's wall (whose 429s the batch retrier
-    // would otherwise storm against). Set GEMINI_MONTHLY_SPEND_CAP_USD to
-    // the console cap (or below); adjusting = owner re-ratify. hardClosed +
-    // durable: a restart can never forget spend.
+    // §24.1 Tier 3 CATASTROPHE BACKSTOP (demoted 2026-07-24, §24.4 items
+    // 2+4): the gemini MONTHLY DOLLAR budget, in micro-USD, metered from
+    // ACTUAL token counts at the usage-ledger chokepoint (gemini-pricing.ts
+    // K4 rates). No longer "the" work governor — Tier 1 campaigns stop via
+    // their envelope, Tier 2 lanes via cost baselines; this pool is the
+    // last-resort backstop so the system self-stops with a typed not-now
+    // BEFORE the vendor's wall (whose 429s the batch retrier would
+    // otherwise storm against), expected to NEVER fire in healthy
+    // operation. Its LIMIT is fixed at boot from GEMINI_MONTHLY_SPEND_CAP_USD
+    // (see that env var's comment below — it is ONLY the pre-first-
+    // derivation boot value now) and then RE-DERIVED nightly by
+    // SpendAnalyticsService.refreshBackstop as BACKSTOP_MULTIPLE (K1 = 3;
+    // "a bug may cost at most two extra months", §24.1 Tier 3) × the
+    // trailing 30d measured gemini spend, via PoolRegistry.resetLimit — the
+    // visible, measured backstop number replaces the env guess once one
+    // refresh has run. hardClosed + durable: a restart can never forget
+    // spend.
+    //
+    // GEMINI_MONTHLY_SPEND_CAP_USD: the boot-only seed. Once
+    // SpendAnalyticsService's nightly refresh has written a
+    // 'backstop.gemini' spend_unit_costs row, this env var is DEAD for every
+    // subsequent boot (governance reads the derived row instead) — it only
+    // matters for the very first boot before any derivation has run.
     const capUsd = Number(process.env.GEMINI_MONTHLY_SPEND_CAP_USD || '300');
     this.pools.register({
       name: 'gemini.monthlySpend',
@@ -149,6 +185,58 @@ export class GovernanceService implements OnModuleInit {
         }
       }),
     );
+    await this.applyDerivedGeminiBackstop();
+  }
+
+  /**
+   * §24.4 item 4 / §24.1 Tier 3: at boot, prefer the MEASURED backstop over
+   * the env-seeded guess — read the latest 'backstop.gemini' row
+   * SpendAnalyticsService's nightly refresh wrote to spend_unit_costs
+   * (micro_usd_per_unit = the derived monthly limit in micro-USD, unit=
+   * 'month') and, when present, resetLimit the gemini.monthlySpend pool to
+   * it. §14 discipline: a pool's limit changes only at boot or by this
+   * re-derivation — never mid-window by arbitrary write. Absent a row yet
+   * (fresh install, before the first nightly refresh), the constructor's
+   * GEMINI_MONTHLY_SPEND_CAP_USD boot value stands unchanged — that env var
+   * is ONLY the pre-first-derivation seed. A read failure is non-fatal
+   * (boot must never fail on this); it just leaves the env-seeded limit.
+   */
+  private async applyDerivedGeminiBackstop(): Promise<void> {
+    try {
+      const row = await this.prisma.spendUnitCost.findUnique({
+        where: {
+          workClass_unit: {
+            workClass: GEMINI_BACKSTOP_WORK_CLASS,
+            unit: 'month',
+          },
+        },
+      });
+      if (!row) {
+        return;
+      }
+      const before = this.pools.poolStatus('gemini.monthlySpend').limit;
+      const after = Math.round(row.microUsdPerUnit);
+      if (after <= 0 || after === before) {
+        return;
+      }
+      this.pools.resetLimit('gemini.monthlySpend', after);
+      this.logger.info(
+        'gemini.monthlySpend backstop re-derived from measured spend at boot',
+        {
+          beforeUsd: Math.round(before / 10_000) / 100,
+          afterUsd: Math.round(after / 10_000) / 100,
+        },
+      );
+    } catch (error) {
+      this.logger.warn(
+        'Backstop re-derivation read failed at boot (env-seeded limit stands)',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+    }
   }
 
   /**

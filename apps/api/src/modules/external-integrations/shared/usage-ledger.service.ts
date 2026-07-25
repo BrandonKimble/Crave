@@ -92,9 +92,6 @@ export class UsageLedgerService implements OnModuleDestroy {
 
   private readonly logger: LoggerService;
 
-  /** 80%-of-budget warn fires once per process lifetime. */
-  private spendWarned = false;
-
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
@@ -145,9 +142,15 @@ export class UsageLedgerService implements OnModuleDestroy {
 
   /**
    * Meter ACTUAL gemini dollars (micro-USD, K4 rates) into the
-   * gemini.monthlySpend pool — the §14.2 pattern in the vendor's own
-   * currency. The pool's window is the admission gate's source of truth;
-   * this is the write side. Fire-and-forget; never breaks the record.
+   * gemini.monthlySpend pool — §24.1 Tier 3, the catastrophe backstop's
+   * ledger side (never a work governor; see governance.service.ts's
+   * registration comment). The pool's window is the LAST-resort admission
+   * gate; this is the write side. Fire-and-forget; never breaks the record.
+   * §24.4 item 6: the 80%-of-budget warn that used to live here is GONE —
+   * it warned against the wrong denominator (percent of a Tier-3 dollar
+   * cap). SpendAnalyticsService.nightlyRefresh now logs the honest
+   * telemetry: month-to-date spend vs. the trailing MEASURED baseline,
+   * prorated to the day of month (see logSpendTelemetry there).
    */
   private meterGeminiSpend(event: UsageEvent): void {
     if (event.service !== 'gemini' || !this.governance) {
@@ -159,19 +162,6 @@ export class UsageLedgerService implements OnModuleDestroy {
         return;
       }
       void this.governance.pools.meter('gemini.monthlySpend', micros);
-      if (!this.spendWarned) {
-        const status = this.governance.pools.poolStatus('gemini.monthlySpend');
-        if (status.used >= 0.8 * status.limit) {
-          this.spendWarned = true;
-          this.logger.warn(
-            'GEMINI SPEND at 80% of the monthly owner budget — new LLM dispatches hard-stop at 100% (typed not-now; work stays queued)',
-            {
-              usedUsd: Math.round(status.used / 10_000) / 100,
-              limitUsd: Math.round(status.limit / 10_000) / 100,
-            },
-          );
-        }
-      }
     } catch {
       // Metering must never break the usage record itself.
     }
