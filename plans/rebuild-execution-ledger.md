@@ -1790,3 +1790,44 @@ usage/balance API (portal+CSV only) → owner-declared credit envs stand;
 Gemini batch ceilings are DOCUMENTED (20MB inline submission — our path;
 2GB file path unused; tier enqueued-token quotas) vs our jobs max 63
 items — no probe needed, question retired. 823 tests green.
+
+### Vote integrity SHIPPED — red-teamed ladder, launch rungs live (2026-07-25)
+
+The first-principles red team corrected the research ladder in four ways
+(all code-verified; plans/vote-integrity-ladder.md carries the corrected
+design): DeviceCheck → keychain device-key (x-device-key header on every
+request; guard-seam user_devices upsert — Clerk owns signup, the sync
+seam is the observation moment); velocity rung dissolved (vote path
+already 'sensitive'-throttled; velocity is structurally blind to slow
+multi-account voting — counts are report EVIDENCE); enforcement =
+BAN-THE-ACTOR via three existing seams (endorsement delete + leaderboard
+rebuild / ballot re-mint + active-run pointer swap / signal_actors
+.excluded_at read-filter — the append-only ledger is never redacted);
+irreversibility audit cut the launch build to metadata capture + report
+(enforcement machinery waits for its first confirmed ring; excluded_at
+pre-built as the flag-flip).
+
+Built: mobile device-key service + header; UserDevicesService (validated,
+1h-throttled, fire-and-forget) called from both auth guards (EXPORTED
+from IdentityModule — guard deps resolve per consuming module; the miss
+was a boot-time DI failure jest can't catch); poll_vote meta gains
+deviceKey + ipHmac + ipSubnetHmac (HMAC-SHA256, SIGNAL_AUDIT_HMAC_KEY
+env, raw IP never stored); migration 20260725120000 (user_devices +
+signal_actors.excluded_at; no FK — the drifted users table has no
+PK/unique to reference, precedent NotificationDevice); integrity module:
+daily 03:45 sybil-cluster report (device clusters ≥2 same-choice
+same-poll; heavy devices ≥3 accounts; IP clusters only with same-choice
+
+- ≤30min timing corroboration — IP alone NEVER triggers, K1) emitting
+  ops_alerts kind sybil_cluster with dedupeKey sybil:<clusterKey>;
+  severity = critical iff un-counting flips the poll leader (the ratified
+  K1 escalation sentence) → the already-wired critical email; body = the
+  2-minute review artifact. Auth endpoint gained @RateLimitTier('auth').
+
+OWNER PROCESS ITEMS (only he can do): Clerk dashboard toggles
+(subaddress + disposable-domain blocks, CAPTCHA check); App Store
+privacy label (Device ID, App Functionality, linked, no ATT); Railway
+worker/api need SIGNAL_AUDIT_HMAC_KEY at next deploy.
+
+api 829/829 + mobile 409/409 green; migration verified via direct reads;
+API restarted; smoke 200.

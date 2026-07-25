@@ -2053,8 +2053,28 @@ model SignalActor {
   userId    String?  @unique @map("user_id") @db.Uuid
   deviceKey String?  @unique @map("device_key") @db.VarChar(128)
   createdAt DateTime @default(now()) @map("created_at")
+  /// Flag-flip seam for confirmed sybil rings; read-side filtering lands with
+  /// the first ring — plans/vote-integrity-ladder.md.
+  excludedAt DateTime? @map("excluded_at") @db.Timestamptz(6)
 
   @@map("signal_actors")
+}
+
+/// Vote-integrity rung (plans/vote-integrity-ladder.md): every authenticated
+/// request's (user, keychain device key) observation, upserted fire-and-forget
+/// from the Clerk auth-guard sync seam. "One device carries N accounts" is a
+/// GROUP BY device_key here — a SIGNAL fed to the sybil clustering report,
+/// never a boolean gate. Bare uuid user_id, no FK (drifted dev users table has
+/// no referencable unique constraint; NotificationDevice.homePlaceId precedent).
+model UserDevice {
+  userId    String   @map("user_id") @db.Uuid
+  deviceKey String   @map("device_key") @db.VarChar(64)
+  firstSeen DateTime @default(now()) @map("first_seen") @db.Timestamptz(6)
+  lastSeen  DateTime @default(now()) @map("last_seen") @db.Timestamptz(6)
+
+  @@id([userId, deviceKey])
+  @@index([deviceKey], map: "idx_user_devices_device_key")
+  @@map("user_devices")
 }
 
 // Identity is a judgment (§3): merges write redirects; readers resolve at

@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
@@ -30,6 +31,8 @@ import { UserBlockService } from '../identity/user-block.service';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { CurrentUser } from '../../shared';
+import type { AuthenticatedRequest } from '../../shared';
+import { UserDevicesService } from '../identity/user-devices.service';
 
 @Controller('polls')
 export class PollsController {
@@ -209,12 +212,22 @@ export class PollsController {
     @Param('pollId') pollId: string,
     @Body() dto: EndorsePollSubjectDto,
     @CurrentUser() user: User,
+    @Req() request: AuthenticatedRequest,
   ) {
     return this.pollsService.togglePollEndorsement(
       pollId,
       dto.subjectId,
       user.userId,
       dto.subjectType,
+      // Vote-time audit context (plans/vote-integrity-ladder.md): the ip is
+      // HMAC'd in the service (raw ip never stored); the device key is the
+      // keychain install id, validated to the same shape as the guard seam.
+      {
+        ip: request.ip ?? null,
+        deviceKey: UserDevicesService.extractDeviceKey(
+          request.headers?.['x-device-key'],
+        ),
+      },
     );
   }
 }

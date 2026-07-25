@@ -6,6 +6,7 @@ import { withPerfScenarioMetadata } from '../perf/perf-scenario-attribution';
 import { logger } from '../utils';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
+import { getOrCreateDeviceKey } from './device-key';
 
 const DEFAULT_API_URL = 'http://localhost:3000/api/v1';
 const DEFAULT_API_TIMEOUT_MS = typeof __DEV__ !== 'undefined' && __DEV__ ? 120_000 : 15_000;
@@ -288,6 +289,12 @@ api.interceptors.request.use(
     const token = await getAuthToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    // Vote-integrity device signal (plans/vote-integrity-ladder.md): best-
+    // effort keychain install id — omitted (never failing) when unavailable.
+    const deviceKey = await getOrCreateDeviceKey();
+    if (deviceKey) {
+      config.headers['x-device-key'] = deviceKey;
     }
     return config;
   },

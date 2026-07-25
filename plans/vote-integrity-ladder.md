@@ -64,9 +64,68 @@ pre-pay for an unseen threat):
 4. Payment/ID only if a monetized high-stakes context ever exists.
    NEVER: karma, weight-splitting, hard per-device blocks.
 
-## Status
+## RED-TEAMED + CORRECTED (2026-07-24; full report: task a66d76c9f3fa73899)
 
-Awaiting owner ratification of the launch rungs (2-4 are the build items;
-1 exists; 5 is a procedure). The fake-elite fixture remains the scoring-
-side floor regardless — it proves stuffing can't mint elite scores even
-BEFORE detection catches the ring.
+The first-principles red team corrected four things:
+
+1. **DeviceCheck → keychain device key.** DeviceCheck's 2 bits can't count
+   accounts, and Clerk owns signup (no webhook exists; none needed) — the
+   server's observation moment is EVERY authenticated request via
+   ClerkAuthGuard's sync seam. Primitive: a keychain-persisted install
+   UUID sent as x-device-key on every request → user_devices join table.
+   "Device has N accounts" becomes a GROUP BY, cross-platform, no vendor
+   API. DeviceCheck/App Attest move to at-scale durability hardening.
+2. **Velocity rung mostly dissolves.** Vote path already carries the
+   'sensitive' throttler tier; account-creation velocity is Clerk's (CAPTCHA
+   config); and velocity is structurally blind to the real enemy (4
+   accounts voting minutes apart). Day-scale counts are report EVIDENCE,
+   not gates. One real gap: the native-Apple auth endpoint lacked a
+   throttler tier.
+3. **"Invalidate the ring's votes" — the outcome survives, the implied
+   mechanism doesn't.** The ledger is append-only BY LAW; no redaction
+   seam exists or should. The honest primitive is BAN-THE-ACTOR via three
+   existing seams: delete poll_endorsements + rebuild leaderboard (open
+   polls); re-mint the ballot extraction run minus ring userIds and swap
+   the active-run pointer (closed polls — visibility pointer already
+   governs projection/score reads); signal_actors.excluded_at filtered at
+   read + dropped at aggregate rebuild (fake demand dies with the ring).
+   Plus Clerk banUser. Wholesale, never fractional — unchanged.
+4. **Irreversibility audit:** the ONLY skip-forever-lose-forever item is
+   vote-time metadata capture (deviceKey + HMAC'd IP/subnet in the vote
+   signal meta — raw IP never enters the forever-ledger; HMACs are
+   equality-joinable, never reversible). Everything else builds later at
+   zero history cost. Cheapest rungs of all were missed: Clerk config
+   toggles (block email subaddresses + disposable domains; CAPTCHA).
+
+## Owner consumption (fits the standard ops machinery — no new channels)
+
+Detection runs at poll close (the harm moment) + weekly sweep, emits
+ops_alerts with dedupeKey 'sybil:<clusterKey>' (a persistent cluster nags
+once). Dashboard Alerts card = the review surface; ack = "reviewed,
+legit" (the family-iPad answer). The review artifact carries everything a
+2-minute decision needs: members (age at first vote), choices +
+timestamps + spacing, the lockstep fact, and the decision line — leader
+margin WITH vs WITHOUT the cluster. Severity IS the medium:
+
+**K1 escalation sentence (RATIFIED 2026-07-24, owner-delegated):** "A
+cluster earns a silent WARN row when ≥2 same-device accounts vote the
+same choice on one poll, or one device carries ≥3 accounts; it earns the
+CRITICAL email only when un-counting the cluster would change that
+poll's leader. Shared-IP alone never triggers anything — an IP is
+corroborating evidence, not a cluster."
+
+## Launch build (implemented 2026-07-24)
+
+Device-key capture (mobile keychain UUID + header; guard-seam
+user_devices upsert), vote-time meta (deviceKey + ipHmac + ipSubnetHmac),
+signal_actors.excluded_at pre-built as a flag (filtering lands with the
+first confirmed ring), the sybil clustering report → ops_alerts, the
+auth-endpoint throttler tier. Enforcement = documented procedure (the
+three seams above); remintForPoll built on first confirmed ring.
+OWNER PROCESS ITEMS: Clerk dashboard toggles (subaddress + disposable
+blocks, CAPTCHA check); App Store privacy label (Device ID, App
+Functionality, linked, no ATT).
+
+The fake-elite fixture remains the scoring-side floor — stuffing can't
+mint elite scores even BEFORE detection catches the ring; polls'
+leaderboards (raw counts, small N) are exactly what this ladder protects.
