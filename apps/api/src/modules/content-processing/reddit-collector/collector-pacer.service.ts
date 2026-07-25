@@ -319,6 +319,10 @@ export class CollectorPacerService implements OnModuleInit {
       workClass,
     );
     if (!reservation.admitted) {
+      // Reservation denials showing up here are the §25 trigger — see
+      // plans/geo-demand-foundation-rebuild.md §25 "ID-first chronological
+      // collection": split the chronological tick into a tiny ID sweep
+      // (secures the delta in ~1-2 req/day) + elastic comment fetching by id.
       this.logger.warn('Reddit pool denied dispatch (lane stays due)', {
         workClass,
         declared,

@@ -49,7 +49,6 @@ const minutePool = (over: Partial<PoolConfig> = {}): PoolConfig => ({
   name: 'reddit.requests',
   credential: 'app-1',
   window: { kind: 'perMinute', limit: 100 },
-  failPolicy: { kind: 'emergencyFraction', fraction: 0.1 },
   reservationTtlMs: 60_000,
   ...over,
 });
@@ -57,17 +56,35 @@ const minutePool = (over: Partial<PoolConfig> = {}): PoolConfig => ({
 describe('PoolRegistry (master plan §14 v2)', () => {
   const t0 = new Date('2026-07-16T12:00:00Z');
 
-  it('rejects emergency fractions on non-minute windows (per-pool fail table)', () => {
-    const registry = new PoolRegistry();
-    expect(() =>
-      registry.register(
-        minutePool({
-          name: 'tomtom.scarcePolygons',
-          window: { kind: 'perMonth', limit: 2500 },
-          failPolicy: { kind: 'emergencyFraction', fraction: 0.1 },
-        }),
-      ),
-    ).toThrow(PoolRegistrationError);
+  it('HARD-CLOSE EVERYWHERE (single fail semantic): a flush failure refuses the next draw, and only a successful flush re-opens the pool', async () => {
+    const store = new FakeConsumptionStore();
+    const registry = new PoolRegistry(store);
+    registry.register(
+      minutePool({
+        name: 'tomtom.scarcePolygons',
+        window: { kind: 'perMonth', limit: 2500 },
+      }),
+    );
+    await registry.ensureWindow('tomtom.scarcePolygons', t0);
+    const res = registry.reserve('tomtom.scarcePolygons', 5, 'us-seed', t0);
+    expect(res.admitted).toBe(true);
+    // RED-provable: the flush fails → the very next draw attempt refuses.
+    store.failing = true;
+    if (res.admitted) await registry.reconcile(res.reservationId, 5, t0);
+    const denied = registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0);
+    expect(denied.admitted).toBe(false);
+    if (!denied.admitted) expect(denied.reason).toBe('storeFailure');
+    // Still closed while the store stays down (no emergency carve-out).
+    await registry.ensureWindow('tomtom.scarcePolygons', t0);
+    expect(
+      registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0).admitted,
+    ).toBe(false);
+    // A successful flush (via ensureWindow) re-opens the window.
+    store.failing = false;
+    await registry.ensureWindow('tomtom.scarcePolygons', t0);
+    expect(
+      registry.reserve('tomtom.scarcePolygons', 1, 'probe', t0).admitted,
+    ).toBe(true);
   });
 
   it('reserve→reconcile: refunds over-declares, ledgers declared-vs-actual', () => {
@@ -236,7 +253,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       minutePool({
         name: 'money.llm-archive-austin',
         window: { kind: 'grant', amount: 200 },
-        failPolicy: { kind: 'hardClosed' },
       }),
     );
     const res = registry.reserve(
@@ -274,7 +290,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       minutePool({
         name: 'tomtom.scarcePolygons',
         window: { kind: 'perMonth', limit: 2500 },
-        failPolicy: { kind: 'hardClosed' },
       }),
     );
     const res = registry.reserve('tomtom.scarcePolygons', 2500, 'us-seed', t0);
@@ -296,7 +311,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       minutePool({
         name: 'tomtom.scarcePolygons',
         window: { kind: 'perMonth', limit: 2500 },
-        failPolicy: { kind: 'hardClosed' },
       });
 
     it('RESTART SURVIVAL: a new registry instance loads the month-to-date consumption a prior instance wrote', async () => {
@@ -323,7 +337,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       expect(within.admitted).toBe(true);
     });
 
-    it('FAIL CLOSED: a hardClosed durable pool denies (storeFailure) while the window is unconfirmed — before any load, and after a failed load', async () => {
+    it('FAIL CLOSED: a durable pool denies (storeFailure) while the window is unconfirmed — before any load, and after a failed load', async () => {
       const store = new FakeConsumptionStore();
       const registry = new PoolRegistry(store);
       registry.register(monthPool());
@@ -452,7 +466,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         minutePool({
           name: 'money.llm-archive-austin',
           window: { kind: 'grant', amount: 200 },
-          failPolicy: { kind: 'hardClosed' },
         }),
       );
       await first.ensureWindow('money.llm-archive-austin', t0);
@@ -466,7 +479,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         minutePool({
           name: 'money.llm-archive-austin',
           window: { kind: 'grant', amount: 200 },
-          failPolicy: { kind: 'hardClosed' },
         }),
       );
       await second.ensureWindow('money.llm-archive-austin', t0);
@@ -488,7 +500,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         name: 'gemini.monthlySpend',
         credential: 'default',
         window: { kind: 'perMonth', limit: 100 },
-        failPolicy: { kind: 'hardClosed' },
         reservationTtlMs: 60_000,
       });
       const res = registry.reserve('gemini.monthlySpend', 90, 'llm', t0);
@@ -505,7 +516,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         name: 'gemini.monthlySpend',
         credential: 'default',
         window: { kind: 'perMonth', limit: 1000 },
-        failPolicy: { kind: 'hardClosed' },
         reservationTtlMs: 60_000,
       });
       const res = registry.reserve('gemini.monthlySpend', 900, 'llm', t0);
@@ -538,7 +548,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         name: 'money.llm-archive',
         credential: 'default',
         window: { kind: 'grant', amount: 100 },
-        failPolicy: { kind: 'hardClosed' },
         reservationTtlMs: 60_000,
       });
       expect(() => registry.resetLimit('money.llm-archive', 500)).toThrow(
@@ -552,7 +561,6 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         name: 'gemini.monthlySpend',
         credential: 'default',
         window: { kind: 'perMonth', limit: 1000 },
-        failPolicy: { kind: 'hardClosed' },
         reservationTtlMs: 60_000,
       });
       expect(() => registry.resetLimit('gemini.monthlySpend', 0)).toThrow(

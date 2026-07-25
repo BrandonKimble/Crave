@@ -661,11 +661,5 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         nextScheduledCollection: result.nextScheduledCollection,
       },
     });
-
-    // Here we could send metrics to monitoring systems:
-    // - Prometheus metrics
-    // - Custom dashboards
-    // - Performance tracking
-    // - Alert systems
   }
 }

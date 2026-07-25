@@ -33,12 +33,27 @@ function buildService(campaignRows: unknown[], findManyError?: Error) {
     },
   };
   const logger = stubLogger();
+  const opsAlerts = {
+    emit: jest.fn<
+      void,
+      [
+        {
+          severity: string;
+          kind: string;
+          title: string;
+          body: string;
+          dedupeKey?: string;
+        },
+      ]
+    >(),
+  };
   const service = new GovernanceService(
     logger as never,
     consumptionStore as never,
     prisma as never,
+    opsAlerts as never,
   );
-  return { service, prisma, logger };
+  return { service, prisma, logger, opsAlerts, consumptionStore };
 }
 
 describe('GovernanceService.onModuleInit reRegisterCampaignGrants (§24 red team finding 4)', () => {
@@ -118,5 +133,43 @@ describe('GovernanceService.onModuleInit reRegisterCampaignGrants (§24 red team
   it('a failed findMany read is non-fatal (boot must never fail on this)', async () => {
     const { service } = buildService([], new Error('db down'));
     await expect(service.onModuleInit()).resolves.not.toThrow();
+  });
+});
+
+describe('GovernanceService durable-flush failure (single fail semantic: hard-close, loudly)', () => {
+  it('a failed durable flush logs at error, emits a critical pool_bookkeeping_failure ops alert (deduped per pool per hour), and hard-closes the pool: the next draw refuses', async () => {
+    const { service, logger, opsAlerts, consumptionStore } = buildService([]);
+    await service.onModuleInit(); // healthy load → windows confirmed
+
+    // The store starts failing writes; the next reconcile's flush fails.
+    consumptionStore.add.mockRejectedValue(new Error('store down'));
+    const res = service.pools.reserve('tomtom.cheapGeocode', 1, 'probe');
+    expect(res.admitted).toBe(true);
+    if (res.admitted) {
+      await service.pools.reconcile(res.reservationId, 1);
+    }
+
+    expect(logger.error).toHaveBeenCalled();
+    expect(opsAlerts.emit).toHaveBeenCalledTimes(1);
+    const emitted = opsAlerts.emit.mock.calls[0][0];
+    expect(emitted.severity).toBe('critical');
+    expect(emitted.kind).toBe('pool_bookkeeping_failure');
+    expect(emitted.dedupeKey).toMatch(
+      /^pool_bookkeeping_failure:tomtom\.cheapGeocode:\d{4}-\d{2}-\d{2}T\d{2}$/,
+    );
+
+    // RED-provable hard-close: flush failure → the draw attempt refuses.
+    const denied = service.pools.reserve('tomtom.cheapGeocode', 1, 'probe');
+    expect(denied.admitted).toBe(false);
+    if (!denied.admitted) {
+      expect(denied.reason).toBe('storeFailure');
+    }
+
+    // Store recovers → ensureWindow flushes successfully → draws admit again.
+    consumptionStore.add.mockResolvedValue(undefined);
+    await service.pools.ensureWindow('tomtom.cheapGeocode');
+    expect(
+      service.pools.reserve('tomtom.cheapGeocode', 1, 'probe').admitted,
+    ).toBe(true);
   });
 });

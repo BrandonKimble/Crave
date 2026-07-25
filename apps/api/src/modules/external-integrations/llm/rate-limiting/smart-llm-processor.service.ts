@@ -7,7 +7,6 @@ import {
   ReservationMetrics,
   ReservationResult,
 } from './centralized-rate-limiter.service';
-import { LlmRateLimiterMetricsService } from './llm-rate-limiter-metrics.service';
 import { GovernanceService } from '../../governance/governance.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
 import {
@@ -78,7 +77,6 @@ export class SmartLLMProcessor implements OnModuleInit {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(CentralizedRateLimiter)
     private readonly centralizedRateLimiter: CentralizedRateLimiter,
-    private readonly llmRateLimiterMetrics: LlmRateLimiterMetricsService,
     private readonly governance: GovernanceService,
   ) {
     const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
@@ -147,7 +145,6 @@ export class SmartLLMProcessor implements OnModuleInit {
           effectiveWorkerId,
           estimatedTokens,
         );
-        this.llmRateLimiterMetrics.recordReservation(reservation);
         const reservationMetrics = this.getReservationMetrics(reservation);
 
         // 3. Wait until the reserved time if necessary
@@ -374,10 +371,6 @@ export class SmartLLMProcessor implements OnModuleInit {
           rateLimitInfo,
         };
         consecutiveRateLimitErrors = 0;
-        this.llmRateLimiterMetrics.recordRequestOutcome(
-          'success',
-          Date.now() - startTime,
-        );
         return enrichedResult;
       } catch (error) {
         if (reservation) {
@@ -396,10 +389,6 @@ export class SmartLLMProcessor implements OnModuleInit {
 
         if (error instanceof LLMRateLimitError) {
           consecutiveRateLimitErrors++;
-          this.llmRateLimiterMetrics.recordRequestOutcome(
-            'rate_limit_error',
-            Date.now() - startTime,
-          );
           const resetTimeSecondsRaw: unknown = error.context?.resetTime;
           const resetTimeSeconds =
             typeof resetTimeSecondsRaw === 'number' &&
@@ -422,10 +411,6 @@ export class SmartLLMProcessor implements OnModuleInit {
                   this.maxConsecutiveRateLimitErrors,
                 resetTimeSeconds,
               },
-            );
-            this.llmRateLimiterMetrics.recordRequestOutcome(
-              'rate_limit_abort',
-              Date.now() - startTime,
             );
             throw new LLMRateLimitAbortError(
               `Aborting after ${consecutiveRateLimitErrors} consecutive LLM rate limits`,
@@ -459,10 +444,6 @@ export class SmartLLMProcessor implements OnModuleInit {
           },
         });
 
-        this.llmRateLimiterMetrics.recordRequestOutcome(
-          'error',
-          Date.now() - startTime,
-        );
         throw error;
       }
     }

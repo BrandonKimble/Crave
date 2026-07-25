@@ -3,6 +3,7 @@ import { LoggerService } from '../../../shared';
 import { PoolRegistry, type PoolDenial } from './pool-registry';
 import { PrismaPoolConsumptionStore } from './pool-consumption.store';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { OpsAlertsService } from '../shared/ops-alerts.service';
 
 /** '<vendor>.<resource>'-shaped pool name for a campaign's §14.6 grant —
  *  mirrors spend-campaign.service.ts's private campaignPoolName (kept
@@ -37,22 +38,39 @@ export class GovernanceService implements OnModuleInit {
     loggerService: LoggerService,
     store: PrismaPoolConsumptionStore,
     private readonly prisma: PrismaService,
+    // Provided by the @Global SharedServicesModule (no module import needed;
+    // OpsAlertsService depends only on Prisma + logger, so no provider cycle).
+    private readonly opsAlerts: OpsAlertsService,
   ) {
     this.logger = loggerService;
     // §14.5 durable window store: month/grant window consumption is written
     // through to Postgres and loaded at boot — a restart can never reset the
     // TomTom month ledgers. perMinute pools stay memory-only (see the
     // registry header for the §16-classified split).
+    //
+    // Single fail semantic (owner decision 2026-07-24): a failed durable
+    // flush HARD-CLOSES the pool's window (reserve() refuses with the typed
+    // 'storeFailure' denial) until a flush succeeds again — and it is LOUD:
+    // error log + critical ops alert, deduped per pool per hour.
     this.pools = new PoolRegistry(store, (poolName, error) => {
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error(
-        'DURABLE POOL FLUSH FAILED — a crash before the next successful flush loses this delta',
-        {
-          poolName,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
+        'DURABLE POOL FLUSH FAILED — window hard-closed (draws refuse) until a flush succeeds; a crash before then loses this delta',
+        { poolName, error: { message } },
       );
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'pool_bookkeeping_failure',
+        title: `Pool bookkeeping failure: ${poolName}`,
+        body:
+          `Durable window flush failed for pool '${poolName}' — the window ` +
+          `is hard-closed (all draws refuse with 'storeFailure') until a ` +
+          `flush succeeds. Error: ${message}`,
+        // Dedupe per pool per UTC hour: 'YYYY-MM-DDTHH' bucket.
+        dedupeKey: `pool_bookkeeping_failure:${poolName}:${new Date()
+          .toISOString()
+          .slice(0, 13)}`,
+      });
     });
     // TomTom pool facts: geocode + reverse geocode 20,000/month each — the
     // cheap pool (free-tier vendor fact, K4). Month windows are hard-closed
@@ -70,7 +88,6 @@ export class GovernanceService implements OnModuleInit {
       // 98.5% drained (22,424/22,758); the 334 stragglers are month-window
       // vendor misses that retry trivially inside this standing limit.
       window: { kind: 'perMonth', limit: 20_000 },
-      failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 60_000,
     });
     // §24.1 Tier 3 backstop (demoted 2026-07-24, §24.4 item 3 — NO
@@ -99,7 +116,6 @@ export class GovernanceService implements OnModuleInit {
       // REVERTED post-seed (2026-07-24) to the standing ~$25/mo price-tag;
       // the seed-month 25k raise served its one purpose.
       window: { kind: 'perMonth', limit: 10_000 },
-      failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 120_000,
     });
     // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM
@@ -110,7 +126,7 @@ export class GovernanceService implements OnModuleInit {
     // estimator-drift instrument). Limit = the same per-project vendor fact
     // the limiter reads (AI Studio shows the live limits; published Tier-2
     // floor 4M TPM is safe for this Tier-3 account, env-overridable — never
-    // guessed). emergencyFraction mirrors the limiter's 0.95 quota headroom.
+    // guessed).
     const envMaxTpm = parseInt(process.env.LLM_MAX_TPM || '', 10);
     this.pools.register({
       name: 'gemini.tokens',
@@ -120,7 +136,6 @@ export class GovernanceService implements OnModuleInit {
         limit:
           Number.isFinite(envMaxTpm) && envMaxTpm > 0 ? envMaxTpm : 4_000_000,
       },
-      failPolicy: { kind: 'emergencyFraction', fraction: 0.95 },
       reservationTtlMs: 60_000,
     });
     // §24.1 Tier 3 CATASTROPHE BACKSTOP (demoted 2026-07-24, §24.4 items
@@ -156,7 +171,6 @@ export class GovernanceService implements OnModuleInit {
           (Number.isFinite(capUsd) && capUsd > 0 ? capUsd : 300) * 1_000_000,
         ),
       },
-      failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 60_000,
     });
     // Reddit pool (§12.5 client rewrite executed): vendor fact K4 is
@@ -173,11 +187,6 @@ export class GovernanceService implements OnModuleInit {
       credential: 'default',
       // §16 K4 (vendor fact): Reddit 100/min.
       window: { kind: 'perMinute', limit: 100 },
-      // §16: 0.1 is §14.5's "bounded per-replica emergency fraction (derived
-      // share of the window)" for minute-window pools — 10 req/min of
-      // emergency headroom when the governance store is down; part of the
-      // §18.2 per-pool fail-policy TABLE awaiting owner ratification.
-      failPolicy: { kind: 'emergencyFraction', fraction: 0.1 },
       reservationTtlMs: 120_000,
     });
   }
@@ -267,7 +276,6 @@ export class GovernanceService implements OnModuleInit {
           name: poolName,
           credential: 'campaign',
           window: { kind: 'grant', amount: envelopeMicros },
-          failPolicy: { kind: 'hardClosed' },
           reservationTtlMs: 60_000,
         });
         const spentMicros = Number(row.spentMicros);

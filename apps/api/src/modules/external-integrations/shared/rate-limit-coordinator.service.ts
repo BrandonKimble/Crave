@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import type { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { MetricsService } from '../../metrics/metrics.service';
 import {
   ExternalApiService,
   RateLimitConfig,
@@ -11,7 +10,6 @@ import {
   RateLimitResponse,
   RateLimitStatus,
 } from './external-integrations.types';
-import { Counter, Gauge } from 'prom-client';
 
 /**
  * Rate Limiting Coordinator
@@ -34,16 +32,9 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     { count: number; expiresAt: number }
   >();
 
-  private requestCounter!: Counter<string>;
-  private rateLimitHitCounter!: Counter<string>;
-  private usageGauge!: Gauge<string>;
-  private limitGauge!: Gauge<string>;
-  private utilizationGauge!: Gauge<string>;
-
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-    private readonly metricsService: MetricsService,
     private readonly redisService: RedisService,
   ) {}
 
@@ -90,7 +81,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     });
 
     this.initializeRateLimitConfigs();
-    this.initializeMetrics();
 
     this.logger.info('Rate Limit Coordinator initialized successfully');
   }
@@ -107,34 +97,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
 
     this.logger.info('Rate limit fallback policy initialized', {
       failClosedServices: Array.from(this.failClosedServices.values()),
-    });
-  }
-
-  private initializeMetrics(): void {
-    this.requestCounter = this.metricsService.getCounter({
-      name: 'external_api_rate_limit_requests_total',
-      help: 'Total external API requests checked by the rate limit coordinator',
-      labelNames: ['service', 'operation', 'decision'],
-    });
-    this.rateLimitHitCounter = this.metricsService.getCounter({
-      name: 'external_api_rate_limit_hits_total',
-      help: 'Total external API rate limit hits (coordinator blocks and upstream 429s)',
-      labelNames: ['service', 'operation', 'source'],
-    });
-    this.usageGauge = this.metricsService.getGauge({
-      name: 'external_api_rate_limit_usage',
-      help: 'Current external API rate limit usage per window',
-      labelNames: ['service', 'operation', 'window'],
-    });
-    this.limitGauge = this.metricsService.getGauge({
-      name: 'external_api_rate_limit_limit',
-      help: 'Configured external API rate limit per window',
-      labelNames: ['service', 'operation', 'window'],
-    });
-    this.utilizationGauge = this.metricsService.getGauge({
-      name: 'external_api_rate_limit_utilization_percent',
-      help: 'External API rate limit utilization percent per window',
-      labelNames: ['service', 'operation', 'window'],
     });
   }
 
@@ -218,76 +180,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     return Math.max(1, Math.ceil((reset.getTime() - now.getTime()) / 1000));
   }
 
-  private async getWindowUsageCounts(
-    scopeKey: string,
-    now: Date,
-  ): Promise<{ minute: number; hour: number; day: number }> {
-    const minuteKey = this.buildRedisKey(
-      scopeKey,
-      'minute',
-      this.getWindowBucket('minute', now),
-    );
-    const hourKey = this.buildRedisKey(
-      scopeKey,
-      'hour',
-      this.getWindowBucket('hour', now),
-    );
-    const dayKey = this.buildRedisKey(
-      scopeKey,
-      'day',
-      this.getWindowBucket('day', now),
-    );
-
-    const values = await this.redis.mget(minuteKey, hourKey, dayKey);
-    return {
-      minute: Number.parseInt(values[0] ?? '0', 10) || 0,
-      hour: Number.parseInt(values[1] ?? '0', 10) || 0,
-      day: Number.parseInt(values[2] ?? '0', 10) || 0,
-    };
-  }
-
-  private recordLimitSnapshot(options: {
-    service: ExternalApiService;
-    operation: string;
-    config: RateLimitConfig;
-    usage: { minute: number; hour: number; day: number };
-  }): void {
-    const { service, operation, config, usage } = options;
-
-    const snapshots = [
-      {
-        window: 'minute',
-        usage: usage.minute,
-        limit: config.requestsPerMinute,
-      },
-      {
-        window: 'hour',
-        usage: usage.hour,
-        limit: config.requestsPerHour,
-      },
-      {
-        window: 'day',
-        usage: usage.day,
-        limit: config.requestsPerDay,
-      },
-    ] as const;
-
-    snapshots.forEach((snapshot) => {
-      this.usageGauge.set(
-        { service, operation, window: snapshot.window },
-        snapshot.usage,
-      );
-      this.limitGauge.set(
-        { service, operation, window: snapshot.window },
-        snapshot.limit,
-      );
-      this.utilizationGauge.set(
-        { service, operation, window: snapshot.window },
-        snapshot.limit > 0 ? (snapshot.usage / snapshot.limit) * 100 : 0,
-      );
-    });
-  }
-
   private parseLuaNumber(value: unknown): number {
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
@@ -338,23 +230,15 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     request: RateLimitRequest;
     config: RateLimitConfig;
     scopeKey: string;
-    operationLabel: string;
     now: Date;
     minuteResetTime: Date;
   }): RateLimitResponse {
-    const { request, config, scopeKey, operationLabel, now, minuteResetTime } =
-      options;
+    const { request, config, scopeKey, now, minuteResetTime } = options;
     const shouldUseEmergencyGuard =
       this.failClosedServices.has(request.service) &&
       config.requestsPerMinute > 0;
 
     if (!shouldUseEmergencyGuard) {
-      this.requestCounter.inc({
-        service: request.service,
-        operation: operationLabel,
-        decision: 'allowed_fallback',
-      });
-
       return {
         allowed: true,
         currentUsage: 0,
@@ -375,17 +259,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     const currentUsage = current?.count ?? 0;
 
     if (currentUsage >= config.requestsPerMinute) {
-      this.requestCounter.inc({
-        service: request.service,
-        operation: operationLabel,
-        decision: 'blocked_fallback',
-      });
-      this.rateLimitHitCounter.inc({
-        service: request.service,
-        operation: operationLabel,
-        source: 'coordinator_fallback',
-      });
-
       this.logger.warn(
         'Redis unavailable; blocking request via emergency local minute guard',
         {
@@ -412,12 +285,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       count: nextUsage,
       expiresAt: minuteResetTime.getTime(),
     });
-    this.requestCounter.inc({
-      service: request.service,
-      operation: operationLabel,
-      decision: 'allowed_fallback_guarded',
-    });
-
     return {
       allowed: true,
       currentUsage: nextUsage,
@@ -438,8 +305,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       request.service,
       request.operation,
     );
-    const operationLabel = scopeKey.includes(':') ? request.operation : 'all';
-
     if (!config) {
       this.logger.warn(
         `No rate limit configuration found for service: ${request.service}`,
@@ -555,25 +420,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       };
       const retryAfter = Math.max(1, this.parseLuaNumber(raw[4]));
 
-      this.recordLimitSnapshot({
-        service: request.service,
-        operation: operationLabel,
-        config,
-        usage,
-      });
-
       if (!allowed) {
-        this.requestCounter.inc({
-          service: request.service,
-          operation: operationLabel,
-          decision: 'blocked',
-        });
-        this.rateLimitHitCounter.inc({
-          service: request.service,
-          operation: operationLabel,
-          source: 'coordinator',
-        });
-
         this.logger.warn(`Rate limit exceeded for ${request.service}`, {
           service: request.service,
           operation: request.operation,
@@ -592,12 +439,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
           resetTime: new Date(now.getTime() + retryAfter * 1000),
         };
       }
-
-      this.requestCounter.inc({
-        service: request.service,
-        operation: operationLabel,
-        decision: 'allowed',
-      });
 
       if (
         config.requestsPerMinute > 0 &&
@@ -641,7 +482,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         request,
         config,
         scopeKey,
-        operationLabel,
         now,
         minuteResetTime,
       });
@@ -657,7 +497,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     operation?: string,
   ): Promise<void> {
     const correlationId = CorrelationUtils.getCorrelationId();
-    const resolvedOperation = operation ?? 'unknown';
 
     this.logger.warn(`Rate limit hit reported for ${service}`, {
       service,
@@ -670,13 +509,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     if (!config) {
       return;
     }
-
-    const operationLabel = scopeKey.includes(':') ? resolvedOperation : 'all';
-    this.rateLimitHitCounter.inc({
-      service,
-      operation: operationLabel,
-      source: 'upstream',
-    });
 
     const now = new Date();
     const minuteKey = this.buildRedisKey(
@@ -698,14 +530,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         'EX',
         ttl,
       );
-
-      const usage = await this.getWindowUsageCounts(scopeKey, now);
-      this.recordLimitSnapshot({
-        service,
-        operation: operationLabel,
-        config,
-        usage,
-      });
     } catch (error) {
       this.logger.warn('Failed to persist upstream rate-limit hit', {
         service,

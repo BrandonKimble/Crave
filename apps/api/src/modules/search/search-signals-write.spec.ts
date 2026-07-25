@@ -91,7 +91,6 @@ function createHarness(
     {} as never, // entityExpansion
     {} as never, // siblingExpansion
     {} as never, // onDemandRequestService
-    {} as never, // searchMetrics
     {} as never, // textSanitizer
     searchPrisma as never, // prisma
     {

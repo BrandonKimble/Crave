@@ -10,10 +10,10 @@
  * reconcile refunds over-declares / debits under-declares; leaked reservations
  * expire by TTL. Declared-vs-actual pairs are the estimator-drift instrument.
  *
- * Fail policy is a PER-POOL declaration (§14.5), never an env switch:
- * minute-window pools may declare a bounded per-replica emergency fraction;
- * day/month/dollar/enqueued pools are hard-closed on store failure (an
- * in-memory counter cannot know month-to-date).
+ * Fail policy (single semantic, owner decision 2026-07-24): every pool fails
+ * HARD. There are no per-pool carve-outs and no emergency fractions — on any
+ * durable-flush failure the affected window is closed (draws refuse) until a
+ * flush succeeds again, loudly (error log + critical ops alert).
  *
  * DURABILITY (§14.5/§16 split — durability leg, 2026-07-20): window
  * CONSUMPTION for perMonth/perDay/grant pools is written through to a
@@ -28,8 +28,7 @@
  * Store-failure law (§14.5): a durable pool whose window the store cannot
  * CONFIRM (boot load failed, write-through failed, or the window rolled and
  * no load has succeeded yet) fails CLOSED — reserve() denies with the typed
- * 'storeFailure' reason. Durable pools are hardClosed by construction (the
- * constitutional check already forbids emergencyFraction off perMinute).
+ * 'storeFailure' reason. This is the one and only failure semantic: hard.
  */
 
 export type PoolWindow =
@@ -40,14 +39,6 @@ export type PoolWindow =
    *  (§14.6) — refills only by a new grant, never by the clock. */
   | { kind: 'grant'; amount: number };
 
-export type PoolFailPolicy =
-  /** Store failure → bounded per-replica emergency window (fraction of the
-   *  minute limit), duration-capped, journaled for post-recovery replay. */
-  | { kind: 'emergencyFraction'; fraction: number }
-  /** Store failure → the pool is closed. Denials are typed 'not now' — they
-   *  never brand cooldowns and never trip fail-open judgment layers. */
-  | { kind: 'hardClosed' };
-
 export type PoolConfig = {
   /** '<vendor>.<resource>' e.g. 'tomtom.scarcePolygons'; internal pools use
    *  'internal.<resource>'. */
@@ -55,7 +46,6 @@ export type PoolConfig = {
   /** (vendor, credential) keying (§14.1): multi-app sharding composes. */
   credential: string;
   window: PoolWindow;
-  failPolicy: PoolFailPolicy;
   /** Reservation TTL — a leaked (never-reconciled) reservation expires. */
   reservationTtlMs: number;
 };
@@ -155,7 +145,7 @@ export class PoolRegistry {
      *  a crash before the next successful flush loses the unpersisted
      *  delta with no signal anyone ever saw. Optional so callers that don't
      *  care (most tests) pay nothing; governance.service.ts wires a
-     *  logger.error callback. */
+     *  logger.error + critical ops-alert callback. */
     private readonly onDurableFlushFailure?: (
       poolName: string,
       error: unknown,
@@ -166,17 +156,6 @@ export class PoolRegistry {
     if (this.pools.has(config.name)) {
       throw new PoolRegistrationError(
         `Pool '${config.name}' already registered`,
-      );
-    }
-    // Constitutional check (§14.5): only minute-window pools may declare an
-    // emergency fraction — longer windows cannot be locally approximated.
-    if (
-      config.failPolicy.kind === 'emergencyFraction' &&
-      config.window.kind !== 'perMinute'
-    ) {
-      throw new PoolRegistrationError(
-        `Pool '${config.name}': emergencyFraction is only legal on perMinute ` +
-          `windows (an in-memory counter cannot know ${config.window.kind} usage)`,
       );
     }
     this.pools.set(config.name, config);
@@ -331,9 +310,9 @@ export class PoolRegistry {
       }
       this.poisonedUntil.delete(poolName);
     }
-    // §14.5 store-failure law: a durable pool whose current window the store
-    // has not CONFIRMED fails closed. Durable pools are hardClosed by
-    // construction; a typed 'not now' — never an error, never fail-open.
+    // §14.5 store-failure law (single semantic — every pool fails HARD): a
+    // durable pool whose current window the store has not CONFIRMED fails
+    // closed; a typed 'not now' — never an error, never fail-open.
     if (this.isDurable(pool)) {
       const key = this.windowKeyString(pool, at);
       const durableState = this.durable.get(pool.name);

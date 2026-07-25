@@ -9,8 +9,6 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import { DatabaseConfig } from '../config/database-config.interface';
 import { DatabaseValidationService } from '../config/database-validation.service';
 import { LoggerService } from '../shared';
-import { MetricsService } from '../modules/metrics/metrics.service';
-import { Histogram, Counter, Gauge } from 'prom-client';
 
 @Injectable()
 export class PrismaService
@@ -28,15 +26,10 @@ export class PrismaService
     connectionErrors: 0,
     lastHealthCheck: new Date(),
   };
-  private readonly queryDurationHistogram: Histogram<string>;
-  private readonly queryErrorCounter: Counter<string>;
-  private readonly inFlightGauge: Gauge<string>;
-
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly validationService: DatabaseValidationService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-    private readonly metricsService: MetricsService,
   ) {
     const dbConfig = configService?.get<DatabaseConfig>('database');
 
@@ -57,25 +50,6 @@ export class PrismaService
         },
       },
       log: logConfig,
-    });
-
-    this.queryDurationHistogram = this.metricsService.getHistogram({
-      name: 'prisma_query_duration_seconds',
-      help: 'Duration of Prisma ORM operations in seconds',
-      labelNames: ['model', 'action'],
-      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
-    });
-
-    this.queryErrorCounter = this.metricsService.getCounter({
-      name: 'prisma_query_errors_total',
-      help: 'Total Prisma ORM operations that resulted in an error',
-      labelNames: ['model', 'action'],
-    });
-
-    this.inFlightGauge = this.metricsService.getGauge({
-      name: 'prisma_in_flight_queries',
-      help: 'Number of Prisma ORM operations currently executing',
-      labelNames: ['model', 'action'],
     });
 
     // Configuration and logger initialization moved to onModuleInit
@@ -105,7 +79,6 @@ export class PrismaService
       } as DatabaseConfig); // Safe after validation
 
     // FIXME: Temporarily simplified due to PrismaClient extension binding issues
-    // this.setupMetricsMiddleware();
     // this.setupEventListeners();
 
     // Connect to database directly (retry logic temporarily disabled)
@@ -300,39 +273,6 @@ export class PrismaService
     subscribe('info', (event: Prisma.LogEvent) => {
       this.logger.info('Database info', { message: event.message });
     });
-  }
-
-  private setupMetricsMiddleware(): void {
-    const metricsExtension = Prisma.defineExtension({
-      query: {
-        $allModels: {
-          $allOperations: async ({ model, operation, args, query }) => {
-            const labels: Record<string, string> = {
-              model: typeof model === 'string' ? model : 'raw',
-              action: typeof operation === 'string' ? operation : 'unknown',
-            };
-            const start = Date.now();
-            this.inFlightGauge.inc(labels, 1);
-            try {
-              const result = await query(args);
-              const durationSeconds = (Date.now() - start) / 1000;
-              this.queryDurationHistogram.observe(labels, durationSeconds);
-              return result;
-            } catch (error) {
-              this.queryErrorCounter.inc(labels, 1);
-              throw error;
-            } finally {
-              this.inFlightGauge.dec(labels, 1);
-            }
-          },
-        },
-      },
-    });
-
-    const extendedClient = this.$extends(metricsExtension);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-    Object.setPrototypeOf(this, Object.getPrototypeOf(extendedClient));
-    Object.assign(this, extendedClient);
   }
 
   /**

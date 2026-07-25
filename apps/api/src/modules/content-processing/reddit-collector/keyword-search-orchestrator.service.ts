@@ -13,7 +13,6 @@ import { RateLimitResponse } from '../../external-integrations/shared/external-i
 import { EntityType, KeywordAttemptOutcome } from '@prisma/client';
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
-import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
@@ -60,7 +59,6 @@ export class KeywordSearchOrchestratorService {
     private readonly keywordQueue: Queue<BatchJob>,
     @InjectQueue('keyword-search-execution')
     private readonly keywordSearchQueue: Queue<KeywordSearchJobData>,
-    private readonly keywordSearchMetrics: KeywordSearchMetricsService,
   ) {
     this.keywordSearchLimit = this.resolveKeywordSearchLimit();
     this.keywordSearchSorts = this.resolveKeywordSearchSorts();
@@ -1133,8 +1131,6 @@ export class KeywordSearchOrchestratorService {
     });
 
     await Promise.all(enqueuePromises);
-
-    await this.safeUpdateQueueMetrics();
   }
 
   async enqueueKeywordSearchJob(data: KeywordSearchJobData): Promise<void> {
@@ -1166,34 +1162,6 @@ export class KeywordSearchOrchestratorService {
       termCount: data.terms.length,
       sortsPlanned: data.sortPlan?.map((entry) => entry.sort) ?? undefined,
     });
-
-    await this.safeUpdateQueueMetrics();
-  }
-
-  private async safeUpdateQueueMetrics(): Promise<void> {
-    try {
-      await Promise.all([
-        this.captureQueueMetrics(
-          this.keywordSearchQueue,
-          'keyword_search_execution',
-        ),
-        this.captureQueueMetrics(this.keywordQueue, 'keyword_batch_processing'),
-      ]);
-    } catch (error) {
-      this.logger.warn('Failed to record keyword queue metrics', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-    }
-  }
-
-  private async captureQueueMetrics<T>(
-    queue: Queue<T>,
-    name: string,
-  ): Promise<void> {
-    const counts: JobCounts = await queue.getJobCounts();
-    this.keywordSearchMetrics.recordQueueSnapshot(name, counts);
   }
 
   private resolveKeywordSearchLimit(): number {

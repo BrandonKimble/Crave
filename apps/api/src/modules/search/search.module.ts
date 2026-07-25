@@ -16,7 +16,6 @@ import { SearchService } from './search.service';
 import { SearchCoverageService } from './search-coverage.service';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
-import { SearchMetricsService } from './search-metrics.service';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { OnDemandRequestService } from './on-demand-request.service';
@@ -52,7 +51,6 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     SearchCoverageService,
     SearchQueryExecutor,
     SearchQueryBuilder,
-    SearchMetricsService,
     SearchQueryInterpretationService,
     OnDemandRequestService,
     EngineCoverageService,

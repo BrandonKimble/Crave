@@ -16,9 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
-import { Counter } from 'prom-client';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { MetricsService } from '../../metrics/metrics.service';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
 import { GovernanceService } from '../governance/governance.service';
 import { OpsAlertsService } from '../shared/ops-alerts.service';
@@ -177,7 +175,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     string,
     { analysis: LLMSearchQueryAnalysis; cachedAt: string; expiresAt: number }
   >();
-  private queryCacheLookupCounter?: Counter<string>;
   private queryPrompt!: string;
   private cuisinePrompt!: string;
   private moderationPrompt!: string;
@@ -202,7 +199,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redisService: RedisService,
-    private readonly metricsService: MetricsService,
     private readonly usageLedger: UsageLedgerService,
     private readonly decisionLedger: DecisionLedgerService,
     private readonly governance: GovernanceService,
@@ -346,12 +342,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       this.queryResultCacheLocalTtlMs = 0;
       this.queryResultCacheLocalMaxEntries = 0;
     }
-
-    this.queryCacheLookupCounter = this.metricsService.getCounter({
-      name: 'llm_search_query_cache_lookups_total',
-      help: 'LLM search query cache lookups',
-      labelNames: ['layer', 'result'],
-    });
 
     // Initialize GoogleGenAI client
     this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
@@ -998,7 +988,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         cacheKeyResult.key,
       );
       if (memoryHit) {
-        this.recordQueryCacheLookup('memory', 'hit');
         this.logger.debug('Search query analysis memory cache hit', {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'analyze_search_query',
@@ -1011,14 +1000,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           'memory',
         );
       }
-      this.recordQueryCacheLookup('memory', 'miss');
 
       if (this.redisClient) {
         const cached = await this.getCachedSearchQueryAnalysis(
           cacheKeyResult.key,
         );
         if (cached) {
-          this.recordQueryCacheLookup('redis', 'hit');
           this.logger.debug('Search query analysis cache hit', {
             correlationId: CorrelationUtils.getCorrelationId(),
             operation: 'analyze_search_query',
@@ -1035,7 +1022,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             'redis',
           );
         }
-        this.recordQueryCacheLookup('redis', 'miss');
       }
     }
 
@@ -2494,16 +2480,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       }
       this.queryResultMemoryCache.delete(oldestKey);
     }
-  }
-
-  private recordQueryCacheLookup(
-    layer: SearchQueryCacheLayer,
-    result: 'hit' | 'miss',
-  ): void {
-    if (!this.queryCacheLookupCounter) {
-      return;
-    }
-    this.queryCacheLookupCounter.inc({ layer, result }, 1);
   }
 
   private decorateSearchQueryAnalysis(

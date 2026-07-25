@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
-import { Counter, Histogram } from 'prom-client';
 import type { Redis } from 'ioredis';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -20,7 +19,6 @@ import {
 import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
-import { MetricsService } from '../metrics/metrics.service';
 import { viewportEnvelopeSql } from '../search/engine-coverage.service';
 import type { MapBoundsDto } from '../search/dto/search-query.dto';
 import {
@@ -70,10 +68,6 @@ const POLL_LANE_MAX_CANDIDATES = 3; // K1 RATIFIED 2026-07-24 §18-8b(e): ≤ 3 
 // attribute lane (fusing its three sub-rankings) and ACROSS lanes (fusing
 // lane ranks). §16 class: published-literature constant, not a tuned weight.
 const RRF_K = 60;
-const REQUEST_DURATION_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5];
-const REQUEST_DB_DURATION_BUCKETS = [
-  0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8,
-];
 type CacheResult = 'hit' | 'miss' | 'skipped';
 
 // Cross-lane tie-break (a): text-match strength as an ORDINAL over the
@@ -152,9 +146,6 @@ export class AutocompleteService {
   private readonly attributeLaneEnabled: boolean;
   private readonly pollLaneEnabled: boolean;
   private readonly userLaneEnabled: boolean;
-  private readonly requestDurationHistogram: Histogram<string>;
-  private readonly requestDbDurationHistogram: Histogram<string>;
-  private readonly cacheLookupsCounter: Counter<string>;
 
   constructor(
     loggerService: LoggerService,
@@ -167,7 +158,6 @@ export class AutocompleteService {
     private readonly searchPopularityService: SearchPopularityService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signalDemandRead: SignalDemandReadService,
-    metricsService: MetricsService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
     this.redis = redisService.getOrThrow();
@@ -210,225 +200,147 @@ export class AutocompleteService {
       'AUTOCOMPLETE_ENABLE_USER_LANE',
       true,
     );
-    this.requestDurationHistogram = metricsService.getHistogram({
-      name: 'autocomplete_request_duration_seconds',
-      help: 'Autocomplete endpoint total duration in seconds',
-      labelNames: ['cache_result'],
-      buckets: REQUEST_DURATION_BUCKETS,
-    });
-    this.requestDbDurationHistogram = metricsService.getHistogram({
-      name: 'autocomplete_request_db_duration_seconds',
-      help: 'Autocomplete endpoint measured DB duration in seconds',
-      labelNames: ['cache_result'],
-      buckets: REQUEST_DB_DURATION_BUCKETS,
-    });
-    this.cacheLookupsCounter = metricsService.getCounter({
-      name: 'autocomplete_cache_lookups_total',
-      help: 'Autocomplete cache lookups by result',
-      labelNames: ['result'],
-    });
   }
 
   async autocompleteEntities(
     dto: AutocompleteRequestDto,
     user?: User,
   ): Promise<AutocompleteResponseDto> {
-    const requestStart = process.hrtime.bigint();
-    let cacheResult: CacheResult = 'skipped';
-    let totalDbDurationSeconds = 0;
+    const normalizedQuery = this.textSanitizer.sanitizeOrThrow(dto.query, {
+      maxLength: 140,
+    });
+    const limit = dto.limit ?? DEFAULT_LIMIT;
+    const entityTypes = this.resolveEntityTypes(dto);
+    const attributeEntityTypes = this.resolveAttributeEntityTypes(dto);
+    const cacheEntityTypes = [...entityTypes, ...attributeEntityTypes];
+    const primaryEntityType = entityTypes[0] ?? EntityType.food;
 
-    try {
-      const normalizedQuery = this.textSanitizer.sanitizeOrThrow(dto.query, {
-        maxLength: 140,
-      });
-      const limit = dto.limit ?? DEFAULT_LIMIT;
-      const entityTypes = this.resolveEntityTypes(dto);
-      const attributeEntityTypes = this.resolveAttributeEntityTypes(dto);
-      const cacheEntityTypes = [...entityTypes, ...attributeEntityTypes];
-      const primaryEntityType = entityTypes[0] ?? EntityType.food;
-
-      if (normalizedQuery.length < MIN_QUERY_LENGTH) {
-        return {
-          matches: [],
-          query: dto.query,
-          normalizedQuery,
-          onDemandQueued: false,
-          querySuggestions: [],
-        };
-      }
-
-      const cacheKey = this.buildCacheKey(
-        user?.userId ?? null,
-        cacheEntityTypes,
-        normalizedQuery,
-        // Market-election cache scoping DIED with leg 2 of the markets
-        // extermination — recall is global, so the cache scope is too.
-        'global',
-        this.attributeLaneEnabled,
-      );
-      const cacheLookup = await this.getFromCache(cacheKey);
-      cacheResult = cacheLookup.result;
-      this.cacheLookupsCounter.inc({ result: cacheLookup.result });
-      if (cacheLookup.response) {
-        // A cache-hit serve is still an impression the LTR bootstrap needs.
-        this.logImpressions(normalizedQuery, cacheLookup.response);
-        return cacheLookup.response;
-      }
-
-      const injectedPromise =
-        user && entityTypes.length > 0
-          ? this.measureDbDuration(
-              () =>
-                this.fetchInjectedUserMatches(
-                  normalizedQuery,
-                  entityTypes,
-                  user,
-                ),
-              (seconds) => {
-                totalDbDurationSeconds += seconds;
-              },
-            )
-          : Promise.resolve({ favorites: [], viewed: [] });
-      const querySuggestionPromise = this.measureDbDuration(
-        () =>
-          this.searchQuerySuggestionService.getSuggestions(
-            normalizedQuery,
-            Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
-            user?.userId,
-          ),
-        (seconds) => {
-          totalDbDurationSeconds += seconds;
-        },
-      );
-
-      const [searchResults, attributeResults] = await Promise.all([
-        entityTypes.length
-          ? this.measureDbDuration(
-              () =>
-                this.entitySearchService.searchEntitiesHybrid(
-                  normalizedQuery,
-                  entityTypes,
-                  Math.min(limit * entityTypes.length, limit * 3),
-                ),
-              (seconds) => {
-                totalDbDurationSeconds += seconds;
-              },
-            )
-          : Promise.resolve([]),
-        attributeEntityTypes.length
-          ? this.measureDbDuration(
-              () =>
-                this.entitySearchService.searchAttributeAutocompleteEntities(
-                  normalizedQuery,
-                  attributeEntityTypes,
-                  Math.max(limit, ATTRIBUTE_RECALL_FLOOR),
-                ),
-              (seconds) => {
-                totalDbDurationSeconds += seconds;
-              },
-            )
-          : Promise.resolve([]),
-      ]);
-
-      let matches: AutocompleteMatchDto[] = searchResults
-        .slice(0, limit)
-        .map((result) => ({
-          entityId: result.entityId,
-          entityType: result.type,
-          name: result.name,
-          confidence: Number(result.similarity.toFixed(2)),
-          aliases: [],
-          matchType: 'entity',
-          evidenceTier: result.evidence,
-        }));
-
-      if (
-        entityTypes.length > 0 &&
-        matches.length === 0 &&
-        normalizedQuery.length >= 3
-      ) {
-        matches = await this.measureDbDuration(
-          () =>
-            this.resolveViaEntityResolver(
-              dto,
-              normalizedQuery,
-              primaryEntityType,
-              limit,
-            ),
-          (seconds) => {
-            totalDbDurationSeconds += seconds;
-          },
-        );
-      }
-
-      const attributeMatches: AutocompleteMatchDto[] = attributeResults.map(
-        (result) => ({
-          entityId: result.entityId,
-          entityType: result.type,
-          name: result.name,
-          confidence: Number(result.similarity.toFixed(2)),
-          aliases: [],
-          matchType: 'entity',
-          evidenceTier: result.evidence,
-        }),
-      );
-
-      const injected = await injectedPromise;
-
-      const candidateMatches = this.mergeEntityMatches(
-        [...matches, ...attributeMatches],
-        [...injected.favorites, ...injected.viewed],
-      );
-
-      const querySuggestions = await querySuggestionPromise;
-
-      const ranked = await this.measureDbDuration(
-        () =>
-          this.rankCandidates({
-            entityMatches: candidateMatches,
-            querySuggestions,
-            user,
-            normalizedQuery,
-            limit,
-            bounds: dto.bounds ?? null,
-          }),
-        (seconds) => {
-          totalDbDurationSeconds += seconds;
-        },
-      );
-
-      // See-locations cut: the old per-request location-count query is DEAD —
-      // the multi-location fact rides statusPreview.locationCount (one shared
-      // status-preview read), which the "See locations" chip derives from.
-      const matchesWithStatus = await this.measureDbDuration(
-        () => this.attachStatusPreviews(ranked.matches),
-        (seconds) => {
-          totalDbDurationSeconds += seconds;
-        },
-      );
-      const response: AutocompleteResponseDto = {
-        matches: matchesWithStatus,
+    if (normalizedQuery.length < MIN_QUERY_LENGTH) {
+      return {
+        matches: [],
         query: dto.query,
         normalizedQuery,
         onDemandQueued: false,
-        onDemandReason: undefined,
-        querySuggestions: ranked.querySuggestionTexts,
+        querySuggestions: [],
       };
+    }
 
-      this.logImpressions(normalizedQuery, response);
-      await this.setInCache(cacheKey, response);
+    const cacheKey = this.buildCacheKey(
+      user?.userId ?? null,
+      cacheEntityTypes,
+      normalizedQuery,
+      // Market-election cache scoping DIED with leg 2 of the markets
+      // extermination — recall is global, so the cache scope is too.
+      'global',
+      this.attributeLaneEnabled,
+    );
+    const cacheLookup = await this.getFromCache(cacheKey);
+    if (cacheLookup.response) {
+      // A cache-hit serve is still an impression the LTR bootstrap needs.
+      this.logImpressions(normalizedQuery, cacheLookup.response);
+      return cacheLookup.response;
+    }
 
-      return response;
-    } finally {
-      this.requestDurationHistogram.observe(
-        { cache_result: cacheResult },
-        this.elapsedSeconds(requestStart),
+    const injectedPromise =
+      user && entityTypes.length > 0
+        ? this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user)
+        : Promise.resolve({ favorites: [], viewed: [] });
+    const querySuggestionPromise =
+      this.searchQuerySuggestionService.getSuggestions(
+        normalizedQuery,
+        Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
+        user?.userId,
       );
-      this.requestDbDurationHistogram.observe(
-        { cache_result: cacheResult },
-        totalDbDurationSeconds,
+
+    const [searchResults, attributeResults] = await Promise.all([
+      entityTypes.length
+        ? this.entitySearchService.searchEntitiesHybrid(
+            normalizedQuery,
+            entityTypes,
+            Math.min(limit * entityTypes.length, limit * 3),
+          )
+        : Promise.resolve([]),
+      attributeEntityTypes.length
+        ? this.entitySearchService.searchAttributeAutocompleteEntities(
+            normalizedQuery,
+            attributeEntityTypes,
+            Math.max(limit, ATTRIBUTE_RECALL_FLOOR),
+          )
+        : Promise.resolve([]),
+    ]);
+
+    let matches: AutocompleteMatchDto[] = searchResults
+      .slice(0, limit)
+      .map((result) => ({
+        entityId: result.entityId,
+        entityType: result.type,
+        name: result.name,
+        confidence: Number(result.similarity.toFixed(2)),
+        aliases: [],
+        matchType: 'entity',
+        evidenceTier: result.evidence,
+      }));
+
+    if (
+      entityTypes.length > 0 &&
+      matches.length === 0 &&
+      normalizedQuery.length >= 3
+    ) {
+      matches = await this.resolveViaEntityResolver(
+        dto,
+        normalizedQuery,
+        primaryEntityType,
+        limit,
       );
     }
+
+    const attributeMatches: AutocompleteMatchDto[] = attributeResults.map(
+      (result) => ({
+        entityId: result.entityId,
+        entityType: result.type,
+        name: result.name,
+        confidence: Number(result.similarity.toFixed(2)),
+        aliases: [],
+        matchType: 'entity',
+        evidenceTier: result.evidence,
+      }),
+    );
+
+    const injected = await injectedPromise;
+
+    const candidateMatches = this.mergeEntityMatches(
+      [...matches, ...attributeMatches],
+      [...injected.favorites, ...injected.viewed],
+    );
+
+    const querySuggestions = await querySuggestionPromise;
+
+    const ranked = await this.rankCandidates({
+      entityMatches: candidateMatches,
+      querySuggestions,
+      user,
+      normalizedQuery,
+      limit,
+      bounds: dto.bounds ?? null,
+    });
+
+    // See-locations cut: the old per-request location-count query is DEAD —
+    // the multi-location fact rides statusPreview.locationCount (one shared
+    // status-preview read), which the "See locations" chip derives from.
+    const matchesWithStatus = await this.attachStatusPreviews(ranked.matches);
+    const response: AutocompleteResponseDto = {
+      matches: matchesWithStatus,
+      query: dto.query,
+      normalizedQuery,
+      onDemandQueued: false,
+      onDemandReason: undefined,
+      querySuggestions: ranked.querySuggestionTexts,
+    };
+
+    this.logImpressions(normalizedQuery, response);
+    await this.setInCache(cacheKey, response);
+
+    return response;
   }
 
   private mergeEntityMatches(
@@ -1511,22 +1423,6 @@ export class AutocompleteService {
       .update(text.trim().toLowerCase())
       .digest('hex')
       .slice(0, 16);
-  }
-
-  private elapsedSeconds(start: bigint): number {
-    return Number(process.hrtime.bigint() - start) / 1_000_000_000;
-  }
-
-  private async measureDbDuration<T>(
-    run: () => Promise<T>,
-    observe: (seconds: number) => void,
-  ): Promise<T> {
-    const start = process.hrtime.bigint();
-    try {
-      return await run();
-    } finally {
-      observe(this.elapsedSeconds(start));
-    }
   }
 
   private async getFromCache(cacheKey: string): Promise<{

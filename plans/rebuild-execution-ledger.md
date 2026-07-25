@@ -1770,3 +1770,23 @@ zero-state.
 
 Verified by the parent session: api 822/822, mobile 411/411, builds
 clean, tsc = the 2 known pre-existing errors, API restarted, smoke 200.
+
+## 2026-07-25 — Prometheus extermination + single fail semantic + resend live
+
+Owner-directed rip-out, both verified write-only before deletion:
+(1) prom-client fully removed (metrics module deleted, 4 metrics services
+deleted, 8 services stripped; the one metric-adjacent piece of REAL logic
+— rate-limit-coordinator's emergencyMinuteCounters plain Map — preserved
+untouched). (2) failPolicy/emergencyFraction removed: the carve-out was
+declared-but-inert (no runtime branch ever read it); the true semantic
+was already hard-close and now it's the ONLY semantic — flush failure →
+error log + critical pool_bookkeeping_failure ops alert (deduped
+pool+hour) + draws refuse until a flush succeeds. RED-proof specs both
+sides. §25 breadcrumb comment at the pacer's reserve-refusal path.
+Resend: craveapp.ai verified, test email delivered from
+alerts@craveapp.ai, OPS_ALERT_FROM set on both services — critical
+alerts now email for real. Research closed: TomTom has NO programmatic
+usage/balance API (portal+CSV only) → owner-declared credit envs stand;
+Gemini batch ceilings are DOCUMENTED (20MB inline submission — our path;
+2GB file path unused; tier enqueued-token quotas) vs our jobs max 63
+items — no probe needed, question retired. 823 tests green.

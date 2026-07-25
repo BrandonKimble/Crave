@@ -130,7 +130,6 @@ function createHarness(options: {
     {} as never, // entityExpansion
     {} as never, // siblingExpansion
     {} as never, // onDemandRequestService
-    { recordSearchExecution: jest.fn() } as never, // searchMetrics
     {} as never, // textSanitizer (no entities on these requests)
     {} as never, // prisma (no impression targets → search log untouched)
     createEngineCoverage() as never, // engineCoverage

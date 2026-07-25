@@ -87,14 +87,12 @@ function buildGovernance() {
     name: 'gemini.monthlySpend',
     credential: 'default',
     window: { kind: 'perMonth', limit: 50_000_000 },
-    failPolicy: { kind: 'hardClosed' },
     reservationTtlMs: 60_000,
   });
   pools.register({
     name: 'campaign.c1',
     credential: 'default',
     window: { kind: 'grant', amount: 1_000 },
-    failPolicy: { kind: 'hardClosed' },
     reservationTtlMs: 60_000,
   });
   return {

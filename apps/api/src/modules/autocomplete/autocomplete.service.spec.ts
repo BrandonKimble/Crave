@@ -154,11 +154,6 @@ function createHarness(overrides: HarnessOverrides = {}) {
         return Promise.resolve(overrides.selectionDemand ?? new Map());
       }),
   };
-  const metricsService = {
-    getHistogram: jest.fn(() => ({ observe: jest.fn() })),
-    getCounter: jest.fn(() => ({ inc: jest.fn() })),
-  };
-
   const service = new AutocompleteService(
     loggerService as never,
     redisService as never,
@@ -170,7 +165,6 @@ function createHarness(overrides: HarnessOverrides = {}) {
     searchPopularityService as never,
     restaurantStatusService as never,
     signalDemandRead as never,
-    metricsService as never,
   );
 
   return {

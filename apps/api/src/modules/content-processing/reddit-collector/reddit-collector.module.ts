@@ -35,7 +35,6 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
 import { AnalyticsModule } from '../../analytics/analytics.module';
 import { SignalsModule } from '../../signals/signals.module';
 import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
-import { BullQueueMetricsService } from './bull-queue-metrics.service';
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
 import { SpendAnalyticsService } from '../../external-integrations/shared/spend-analytics.service';
 
@@ -71,7 +70,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       ArchiveBatchProcessingWorker,
       ArchiveCollectionWorker,
       KeywordSearchMetricsService,
-      BullQueueMetricsService,
       // §10 source-centric collector: CollectorPacerService is THE dispatch
       // loop (cron) — worker-only by module composition; the api role must
       // not instantiate any collection scheduling machinery.

@@ -94,7 +94,6 @@ function createServiceHarness(options: { inViewLocationCount?: number } = {}) {
     {} as never, // entityExpansion
     {} as never, // siblingExpansion
     {} as never, // onDemandRequestService
-    {} as never, // searchMetrics
     {} as never, // textSanitizer
     {} as never, // prisma
     {

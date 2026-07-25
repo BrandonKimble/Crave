@@ -4,11 +4,9 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 import { EntityStatus, EntityType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
-import { Counter } from 'prom-client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { MetricsService } from '../../metrics/metrics.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
   EntityTextSearchService,
@@ -23,8 +21,6 @@ import {
   ResolutionPerformanceMetrics,
   ContextualAttributeInput,
 } from './entity-resolution.types';
-
-type EntityResolutionCacheLayer = 'memory' | 'redis';
 
 interface EntityResolutionCachePayload {
   entityId: string | null;
@@ -78,7 +74,6 @@ export class EntityResolutionService implements OnModuleInit {
     string,
     { entry: EntityResolutionCacheEntry; expiresAt: number }
   >();
-  private cacheLookupCounter?: Counter<string>;
 
   // Max existing entities recalled as the LLM shortlist per unmatched entity.
   // K=8 TESTED vs K=15 2026-07-11 (scripts/search-harness/shortlist-k-probe.ts,
@@ -96,7 +91,6 @@ export class EntityResolutionService implements OnModuleInit {
     private readonly aliasManagementService: AliasManagementService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
-    private readonly metricsService: MetricsService,
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -144,11 +138,6 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     this.redisClient = this.redisService.getOrThrow();
-    this.cacheLookupCounter = this.metricsService.getCounter({
-      name: 'entity_resolution_cache_lookups_total',
-      help: 'Entity resolution cache lookups',
-      labelNames: ['layer', 'result'],
-    });
   }
 
   /**
@@ -1342,13 +1331,11 @@ export class EntityResolutionService implements OnModuleInit {
         const memoryHit = this.getMemoryCachedEntityResolution(cacheKey);
         if (memoryHit) {
           memoryHits += 1;
-          this.recordCacheLookup('memory', 'hit');
           cachedResults.push(
             this.buildResultFromCache(entity, memoryHit.payload),
           );
           continue;
         }
-        this.recordCacheLookup('memory', 'miss');
       }
       pendingRedis.push({ entity, cacheKey });
     }
@@ -1361,19 +1348,16 @@ export class EntityResolutionService implements OnModuleInit {
         const raw = rawValues[index];
         const { entity, cacheKey } = pendingRedis[index];
         if (!raw) {
-          this.recordCacheLookup('redis', 'miss');
           pendingEntities.push(entity);
           continue;
         }
 
         const parsed = this.parseEntityResolutionCacheEntry(raw);
         if (!parsed) {
-          this.recordCacheLookup('redis', 'miss');
           pendingEntities.push(entity);
           continue;
         }
 
-        this.recordCacheLookup('redis', 'hit');
         redisHits += 1;
         cachedResults.push(this.buildResultFromCache(entity, parsed.payload));
         this.setMemoryCachedEntityResolution(cacheKey, parsed);
@@ -1638,16 +1622,6 @@ export class EntityResolutionService implements OnModuleInit {
         });
       }
     }
-  }
-
-  private recordCacheLookup(
-    layer: EntityResolutionCacheLayer,
-    result: 'hit' | 'miss',
-  ): void {
-    if (!this.cacheLookupCounter) {
-      return;
-    }
-    this.cacheLookupCounter.inc({ layer, result }, 1);
   }
 
   private isCacheableResolutionTier(

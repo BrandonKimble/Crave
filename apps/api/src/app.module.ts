@@ -14,7 +14,6 @@ import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
 import { GovernanceModule } from './modules/external-integrations/governance/governance.module';
 import { SearchModule } from './modules/search/search.module';
-import { MetricsModule } from './modules/metrics/metrics.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AccountDeletionModule } from './modules/identity/account-deletion.module';
@@ -82,7 +81,6 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     ExternalIntegrationsModule,
     RedditCollectorModule,
     SearchModule,
-    MetricsModule,
     IdentityModule,
     BillingModule,
     AccountDeletionModule,

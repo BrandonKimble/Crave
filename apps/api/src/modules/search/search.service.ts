@@ -39,7 +39,6 @@ import {
   OnDemandRequestInput,
 } from './on-demand-request.service';
 import { EngineCoverageService } from './engine-coverage.service';
-import { SearchMetricsService } from './search-metrics.service';
 import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
@@ -206,7 +205,6 @@ export class SearchService {
     private readonly entityExpansion: SearchEntityExpansionService,
     private readonly siblingExpansion: SearchSiblingExpansionService,
     private readonly onDemandRequestService: OnDemandRequestService,
-    private readonly searchMetrics: SearchMetricsService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
     private readonly engineCoverage: EngineCoverageService,
@@ -353,652 +351,335 @@ export class SearchService {
       this.resolveDisplayPlaceName(view),
     ]);
 
-    let plan: QueryPlan | undefined;
     const phaseTimings: Record<string, number> = {};
 
     const RELAX_STRICT_THRESHOLD = 10;
     const TOP_DISHES_LIMIT = 3;
 
-    try {
-      const pagination = this.resolvePagination(request.pagination);
-      const includeSqlPreview = this.shouldIncludeSqlPreview(request);
+    const pagination = this.resolvePagination(request.pagination);
+    const includeSqlPreview = this.shouldIncludeSqlPreview(request);
 
-      if (this.debugMode !== 'off') {
-        this.logger.info('Search debug: runQuery start', {
-          searchRequestId,
-          sourceQuery: request.sourceQuery ?? null,
-          submissionSource: request.submissionSource ?? null,
-          submissionContext: request.submissionContext ?? null,
-          bounds: Boolean(request.bounds),
-          openNow: Boolean(request.openNow),
-          page: pagination.page,
-          pageSize: pagination.pageSize,
-          priceLevels: request.priceLevels ?? null,
-          minimumVotes: request.minimumVotes ?? null,
-          structuredEntities:
-            this.debugMode === 'verbose'
-              ? summarizeEntities(request.entities, {
-                  maxEntities: 10,
-                  maxIds: 10,
-                })
-              : summarizeEntities(request.entities),
-          unresolved: summarizeUnresolvedEntities(
-            request.submissionContext?.unresolvedEntities,
-          ),
-          verbose: this.debugMode === 'verbose',
-        });
-      }
+    if (this.debugMode !== 'off') {
+      this.logger.info('Search debug: runQuery start', {
+        searchRequestId,
+        sourceQuery: request.sourceQuery ?? null,
+        submissionSource: request.submissionSource ?? null,
+        submissionContext: request.submissionContext ?? null,
+        bounds: Boolean(request.bounds),
+        openNow: Boolean(request.openNow),
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        priceLevels: request.priceLevels ?? null,
+        minimumVotes: request.minimumVotes ?? null,
+        structuredEntities:
+          this.debugMode === 'verbose'
+            ? summarizeEntities(request.entities, {
+                maxEntities: 10,
+                maxIds: 10,
+              })
+            : summarizeEntities(request.entities),
+        unresolved: summarizeUnresolvedEntities(
+          request.submissionContext?.unresolvedEntities,
+        ),
+        verbose: this.debugMode === 'verbose',
+      });
+    }
 
-      const relaxation = this.resolveRelaxationCapabilities(request);
-      const canRelax = relaxation.canRelax;
+    const relaxation = this.resolveRelaxationCapabilities(request);
+    const canRelax = relaxation.canRelax;
 
-      let planExpansion: PlanExpansionState | null = null;
-      let expansionAnalysisMetadata: Record<string, unknown> | null = null;
+    let planExpansion: PlanExpansionState | null = null;
+    let expansionAnalysisMetadata: Record<string, unknown> | null = null;
 
-      // Dense sibling co-inclusion, 'always' mode: seed the precomputed sibling
-      // set BEFORE the first strict probe so EVERY stage (probe, expansion
-      // re-probe, relaxed stages, counts) sees the widened food filter — and the
-      // <10 relaxation decision is therefore made AFTER dense widening (siblings
-      // that still satisfy the attributes surface before any attribute is
-      // dropped). ONE fetch per request; buildSearchConstraints stays sync.
-      // Known interactions (accepted): siblings count toward the relaxation
-      // trigger, and the widened coverage can suppress the lexical-expansion
-      // trigger below.
-      {
-        const anchorFoodIds = this.collectEntityIds(request.entities.food);
-        if (anchorFoodIds.length) {
-          const [categoryMemberFoodIds, siblingMatches] = await Promise.all([
-            // Category members apply on EVERY search (they replace the old
-            // per-connection `c.categories &&` SQL arm) — one-hop: resolved
-            // from the exact query foods only.
-            this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
-            this.siblingsWanted(request, 'preProbe')
-              ? this.siblingExpansion.getSiblingFoodIds(
-                  anchorFoodIds,
-                  this.denseSiblingsCut,
-                )
-              : Promise.resolve(
-                  [] as { siblingId: string; relevance: number }[],
-                ),
-          ]);
-          const denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
-          if (categoryMemberFoodIds.length || denseSiblingFoodIds.length) {
-            const relevanceByFoodId: Record<string, number> = {};
-            for (const id of categoryMemberFoodIds) relevanceByFoodId[id] = 1;
-            for (const s of siblingMatches)
-              relevanceByFoodId[s.siblingId] = s.relevance;
-            planExpansion = {
-              foodIds: [],
-              foodAttributeIds: [],
-              restaurantAttributeIds: [],
-              foodIdsFromPrimaryFoodAttributeText: [],
-              denseSiblingFoodIds,
-              categoryMemberFoodIds,
-              relevanceByFoodId,
-            };
-            if (this.debugMode !== 'off') {
-              this.logger.info('Search debug: pre-probe food widening seeded', {
-                searchRequestId,
-                anchors: anchorFoodIds.length,
-                categoryMembers: categoryMemberFoodIds.length,
-                siblings: denseSiblingFoodIds.length,
-              });
-            }
+    // Dense sibling co-inclusion, 'always' mode: seed the precomputed sibling
+    // set BEFORE the first strict probe so EVERY stage (probe, expansion
+    // re-probe, relaxed stages, counts) sees the widened food filter — and the
+    // <10 relaxation decision is therefore made AFTER dense widening (siblings
+    // that still satisfy the attributes surface before any attribute is
+    // dropped). ONE fetch per request; buildSearchConstraints stays sync.
+    // Known interactions (accepted): siblings count toward the relaxation
+    // trigger, and the widened coverage can suppress the lexical-expansion
+    // trigger below.
+    {
+      const anchorFoodIds = this.collectEntityIds(request.entities.food);
+      if (anchorFoodIds.length) {
+        const [categoryMemberFoodIds, siblingMatches] = await Promise.all([
+          // Category members apply on EVERY search (they replace the old
+          // per-connection `c.categories &&` SQL arm) — one-hop: resolved
+          // from the exact query foods only.
+          this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
+          this.siblingsWanted(request, 'preProbe')
+            ? this.siblingExpansion.getSiblingFoodIds(
+                anchorFoodIds,
+                this.denseSiblingsCut,
+              )
+            : Promise.resolve([] as { siblingId: string; relevance: number }[]),
+        ]);
+        const denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
+        if (categoryMemberFoodIds.length || denseSiblingFoodIds.length) {
+          const relevanceByFoodId: Record<string, number> = {};
+          for (const id of categoryMemberFoodIds) relevanceByFoodId[id] = 1;
+          for (const s of siblingMatches)
+            relevanceByFoodId[s.siblingId] = s.relevance;
+          planExpansion = {
+            foodIds: [],
+            foodAttributeIds: [],
+            restaurantAttributeIds: [],
+            foodIdsFromPrimaryFoodAttributeText: [],
+            denseSiblingFoodIds,
+            categoryMemberFoodIds,
+            relevanceByFoodId,
+          };
+          if (this.debugMode !== 'off') {
+            this.logger.info('Search debug: pre-probe food widening seeded', {
+              searchRequestId,
+              anchors: anchorFoodIds.length,
+              categoryMembers: categoryMemberFoodIds.length,
+              siblings: denseSiblingFoodIds.length,
+            });
           }
         }
       }
+    }
 
-      const executeStage = async (params: {
-        stage: RelaxationStage;
-        restaurantPagination: { skip: number; take: number };
-        dishPagination: { skip: number; take: number };
-        excludeRestaurantIds?: string[];
-        excludeConnectionIds?: string[];
-        includeSqlPreview?: boolean;
-      }): Promise<StageExecutionResult> => {
-        return this.executeSearchStage({
-          request,
-          stage: params.stage,
-          planExpansion,
-          pagination,
-          restaurantPagination: params.restaurantPagination,
-          dishPagination: params.dishPagination,
-          topDishesLimit: TOP_DISHES_LIMIT,
-          includeSqlPreview: params.includeSqlPreview,
-          excludeRestaurantIds: params.excludeRestaurantIds,
-          excludeConnectionIds: params.excludeConnectionIds,
-        });
-      };
-
-      // Strict probe (page 1 uses full pagination; later pages probe first).
-      // The probe take is CLAMPED to the relaxation threshold: with a client
-      // pageSize below RELAX_STRICT_THRESHOLD the probe would otherwise see fewer
-      // rows than the trigger compares against — silently disabling relaxation and
-      // leaving the strict exclusion set incomplete (duplicate rows across the
-      // strict/relaxed pages). take ≥ threshold guarantees that WHENEVER relaxation
-      // can fire (strict count < threshold) the probe holds the COMPLETE strict set.
-      const strictProbePagination =
-        pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD
-          ? pagination
-          : { skip: 0, take: Math.max(RELAX_STRICT_THRESHOLD, 10) };
-
-      let strictProbe = await executeStage({
-        stage: 'strict',
-        restaurantPagination: strictProbePagination,
-        dishPagination: strictProbePagination,
-        includeSqlPreview: false,
+    const executeStage = async (params: {
+      stage: RelaxationStage;
+      restaurantPagination: { skip: number; take: number };
+      dishPagination: { skip: number; take: number };
+      excludeRestaurantIds?: string[];
+      excludeConnectionIds?: string[];
+      includeSqlPreview?: boolean;
+    }): Promise<StageExecutionResult> => {
+      return this.executeSearchStage({
+        request,
+        stage: params.stage,
+        planExpansion,
+        pagination,
+        restaurantPagination: params.restaurantPagination,
+        dishPagination: params.dishPagination,
+        topDishesLimit: TOP_DISHES_LIMIT,
+        includeSqlPreview: params.includeSqlPreview,
+        excludeRestaurantIds: params.excludeRestaurantIds,
+        excludeConnectionIds: params.excludeConnectionIds,
       });
+    };
 
-      const strictCoverageCount =
-        strictProbe.exec.totalRestaurantCount + strictProbe.exec.totalDishCount;
-      const unresolvedGroups =
-        request.submissionContext?.unresolvedEntities ?? [];
-      const hasUnresolvedTerms = unresolvedGroups.some(
-        (group) => group.terms?.length,
-      );
-      if (this.debugMode !== 'off') {
-        this.logger.info('Search debug: strict probe', {
-          searchRequestId,
-          strictCoverageCount,
-          strictCounts: {
-            restaurantsOnPage: strictProbe.exec.restaurants.length,
-            dishesOnPage: strictProbe.exec.dishes.length,
-            totalRestaurants: strictProbe.exec.totalRestaurantCount,
-            totalDishes: strictProbe.exec.totalDishCount,
-          },
-          planMs: Math.round(strictProbe.timings.planMs),
-          executeMs: Math.round(strictProbe.timings.executeMs),
-          hasUnresolvedTerms,
-          expansionStrictCoverageTarget: this.expansionStrictCoverageTarget,
-        });
-      }
-      if (
-        this.hasEntityTargets(request) &&
-        (strictCoverageCount < this.expansionStrictCoverageTarget ||
-          hasUnresolvedTerms)
-      ) {
-        const expansionStart = performance.now();
-        // Expansion is a strictly-ADDITIVE enrichment: a slow or failing expansion
-        // must never block or fail the search. Budgeted + fail-open — on timeout or
-        // error, proceed with the unexpanded strict results and record the miss.
-        const budgetMs = this.expansionBudgetMs;
-        const expansionAttempt: Promise<{
-          result: PlanExpansionState | null;
-          degraded: 'error' | null;
-        }> = this.buildPlanExpansionForRequest(request, strictProbe.stagePlan)
-          .then((result) => ({ result, degraded: null }))
-          .catch((error: unknown) => {
-            this.logger.warn('Plan expansion failed (failing open)', {
-              searchRequestId,
-              error:
-                error instanceof Error
-                  ? { message: error.message, stack: error.stack }
-                  : { message: String(error) },
-            });
-            return { result: null, degraded: 'error' as const };
-          });
-        let expansionTimer: NodeJS.Timeout | undefined;
-        const raced = await Promise.race([
-          expansionAttempt,
-          new Promise<{ result: null; degraded: 'timeout' }>((resolve) => {
-            expansionTimer = setTimeout(
-              () => resolve({ result: null, degraded: 'timeout' }),
-              budgetMs,
-            );
-          }),
-        ]).finally(() => clearTimeout(expansionTimer));
-        if (raced.degraded) {
-          this.logger.warn('Plan expansion degraded', {
+    // Strict probe (page 1 uses full pagination; later pages probe first).
+    // The probe take is CLAMPED to the relaxation threshold: with a client
+    // pageSize below RELAX_STRICT_THRESHOLD the probe would otherwise see fewer
+    // rows than the trigger compares against — silently disabling relaxation and
+    // leaving the strict exclusion set incomplete (duplicate rows across the
+    // strict/relaxed pages). take ≥ threshold guarantees that WHENEVER relaxation
+    // can fire (strict count < threshold) the probe holds the COMPLETE strict set.
+    const strictProbePagination =
+      pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD
+        ? pagination
+        : { skip: 0, take: Math.max(RELAX_STRICT_THRESHOLD, 10) };
+
+    let strictProbe = await executeStage({
+      stage: 'strict',
+      restaurantPagination: strictProbePagination,
+      dishPagination: strictProbePagination,
+      includeSqlPreview: false,
+    });
+
+    const strictCoverageCount =
+      strictProbe.exec.totalRestaurantCount + strictProbe.exec.totalDishCount;
+    const unresolvedGroups =
+      request.submissionContext?.unresolvedEntities ?? [];
+    const hasUnresolvedTerms = unresolvedGroups.some(
+      (group) => group.terms?.length,
+    );
+    if (this.debugMode !== 'off') {
+      this.logger.info('Search debug: strict probe', {
+        searchRequestId,
+        strictCoverageCount,
+        strictCounts: {
+          restaurantsOnPage: strictProbe.exec.restaurants.length,
+          dishesOnPage: strictProbe.exec.dishes.length,
+          totalRestaurants: strictProbe.exec.totalRestaurantCount,
+          totalDishes: strictProbe.exec.totalDishCount,
+        },
+        planMs: Math.round(strictProbe.timings.planMs),
+        executeMs: Math.round(strictProbe.timings.executeMs),
+        hasUnresolvedTerms,
+        expansionStrictCoverageTarget: this.expansionStrictCoverageTarget,
+      });
+    }
+    if (
+      this.hasEntityTargets(request) &&
+      (strictCoverageCount < this.expansionStrictCoverageTarget ||
+        hasUnresolvedTerms)
+    ) {
+      const expansionStart = performance.now();
+      // Expansion is a strictly-ADDITIVE enrichment: a slow or failing expansion
+      // must never block or fail the search. Budgeted + fail-open — on timeout or
+      // error, proceed with the unexpanded strict results and record the miss.
+      const budgetMs = this.expansionBudgetMs;
+      const expansionAttempt: Promise<{
+        result: PlanExpansionState | null;
+        degraded: 'error' | null;
+      }> = this.buildPlanExpansionForRequest(request, strictProbe.stagePlan)
+        .then((result) => ({ result, degraded: null }))
+        .catch((error: unknown) => {
+          this.logger.warn('Plan expansion failed (failing open)', {
             searchRequestId,
-            reason: raced.degraded,
-            budgetMs,
+            error:
+              error instanceof Error
+                ? { message: error.message, stack: error.stack }
+                : { message: String(error) },
           });
-          expansionAnalysisMetadata = {
-            idExpansion: { degraded: raced.degraded, budgetMs },
-          };
-        }
-        const expansionResult = raced.result;
-        const expansionMs = Math.round(performance.now() - expansionStart);
-        if (expansionResult && this.hasPlanExpansion(expansionResult)) {
-          // Preserve an 'always'-mode sibling seed: the expansion object owns the
-          // lexical adds; the seeded dense siblings ride along (union, deduped).
-          const seededSiblings = planExpansion?.denseSiblingFoodIds ?? [];
-          const seededCategoryMembers =
-            planExpansion?.categoryMemberFoodIds ?? [];
-          planExpansion = {
-            ...expansionResult,
-            denseSiblingFoodIds: Array.from(
-              new Set([
-                ...seededSiblings,
-                ...expansionResult.denseSiblingFoodIds,
-              ]),
-            ),
-            categoryMemberFoodIds: Array.from(
-              new Set([
-                ...seededCategoryMembers,
-                ...expansionResult.categoryMemberFoodIds,
-              ]),
-            ),
-            relevanceByFoodId: {
-              ...(planExpansion?.relevanceByFoodId ?? {}),
-              ...expansionResult.relevanceByFoodId,
-            },
-          };
-          expansionAnalysisMetadata = this.buildExpansionMetadata(
+          return { result: null, degraded: 'error' as const };
+        });
+      let expansionTimer: NodeJS.Timeout | undefined;
+      const raced = await Promise.race([
+        expansionAttempt,
+        new Promise<{ result: null; degraded: 'timeout' }>((resolve) => {
+          expansionTimer = setTimeout(
+            () => resolve({ result: null, degraded: 'timeout' }),
+            budgetMs,
+          );
+        }),
+      ]).finally(() => clearTimeout(expansionTimer));
+      if (raced.degraded) {
+        this.logger.warn('Plan expansion degraded', {
+          searchRequestId,
+          reason: raced.degraded,
+          budgetMs,
+        });
+        expansionAnalysisMetadata = {
+          idExpansion: { degraded: raced.degraded, budgetMs },
+        };
+      }
+      const expansionResult = raced.result;
+      const expansionMs = Math.round(performance.now() - expansionStart);
+      if (expansionResult && this.hasPlanExpansion(expansionResult)) {
+        // Preserve an 'always'-mode sibling seed: the expansion object owns the
+        // lexical adds; the seeded dense siblings ride along (union, deduped).
+        const seededSiblings = planExpansion?.denseSiblingFoodIds ?? [];
+        const seededCategoryMembers =
+          planExpansion?.categoryMemberFoodIds ?? [];
+        planExpansion = {
+          ...expansionResult,
+          denseSiblingFoodIds: Array.from(
+            new Set([
+              ...seededSiblings,
+              ...expansionResult.denseSiblingFoodIds,
+            ]),
+          ),
+          categoryMemberFoodIds: Array.from(
+            new Set([
+              ...seededCategoryMembers,
+              ...expansionResult.categoryMemberFoodIds,
+            ]),
+          ),
+          relevanceByFoodId: {
+            ...(planExpansion?.relevanceByFoodId ?? {}),
+            ...expansionResult.relevanceByFoodId,
+          },
+        };
+        expansionAnalysisMetadata = this.buildExpansionMetadata(
+          strictCoverageCount,
+          planExpansion,
+          {
+            belowTarget:
+              strictCoverageCount < this.expansionStrictCoverageTarget,
+            hasUnresolvedTerms,
+          },
+        );
+        if (this.debugMode !== 'off') {
+          this.logger.info('Search debug: plan expansion applied', {
+            searchRequestId,
+            expansionMs,
             strictCoverageCount,
-            planExpansion,
-            {
+            trigger: {
               belowTarget:
                 strictCoverageCount < this.expansionStrictCoverageTarget,
               hasUnresolvedTerms,
             },
-          );
-          if (this.debugMode !== 'off') {
-            this.logger.info('Search debug: plan expansion applied', {
-              searchRequestId,
-              expansionMs,
-              strictCoverageCount,
-              trigger: {
-                belowTarget:
-                  strictCoverageCount < this.expansionStrictCoverageTarget,
-                hasUnresolvedTerms,
-              },
-              added: {
-                foods: planExpansion.foodIds.length,
-                foodAttributes: planExpansion.foodAttributeIds.length,
-                restaurantAttributes:
-                  planExpansion.restaurantAttributeIds.length,
-                foodsFromPrimaryFoodAttributeText:
-                  planExpansion.foodIdsFromPrimaryFoodAttributeText.length,
-                denseSiblingFoods: planExpansion.denseSiblingFoodIds.length,
-              },
-              samples:
-                this.debugMode === 'verbose'
-                  ? {
-                      foodIds: planExpansion.foodIds.slice(0, 20),
-                      foodAttributeIds: planExpansion.foodAttributeIds.slice(
+            added: {
+              foods: planExpansion.foodIds.length,
+              foodAttributes: planExpansion.foodAttributeIds.length,
+              restaurantAttributes: planExpansion.restaurantAttributeIds.length,
+              foodsFromPrimaryFoodAttributeText:
+                planExpansion.foodIdsFromPrimaryFoodAttributeText.length,
+              denseSiblingFoods: planExpansion.denseSiblingFoodIds.length,
+            },
+            samples:
+              this.debugMode === 'verbose'
+                ? {
+                    foodIds: planExpansion.foodIds.slice(0, 20),
+                    foodAttributeIds: planExpansion.foodAttributeIds.slice(
+                      0,
+                      20,
+                    ),
+                    restaurantAttributeIds:
+                      planExpansion.restaurantAttributeIds.slice(0, 20),
+                    foodIdsFromPrimaryFoodAttributeText:
+                      planExpansion.foodIdsFromPrimaryFoodAttributeText.slice(
                         0,
                         20,
                       ),
-                      restaurantAttributeIds:
-                        planExpansion.restaurantAttributeIds.slice(0, 20),
-                      foodIdsFromPrimaryFoodAttributeText:
-                        planExpansion.foodIdsFromPrimaryFoodAttributeText.slice(
-                          0,
-                          20,
-                        ),
-                    }
-                  : undefined,
-            });
-          }
-          strictProbe = await executeStage({
+                  }
+                : undefined,
+          });
+        }
+        strictProbe = await executeStage({
+          stage: 'strict',
+          restaurantPagination: strictProbePagination,
+          dishPagination: strictProbePagination,
+          includeSqlPreview: false,
+        });
+      }
+    }
+
+    const plan = strictProbe.stagePlan;
+    phaseTimings.queryPlanMs = Math.round(strictProbe.timings.planMs);
+
+    const strictRestaurantExactCount = strictProbe.exec.restaurants.length;
+    const strictDishExactCount = strictProbe.exec.dishes.length;
+
+    const needsRestaurantRelaxation =
+      canRelax && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
+    const needsDishRelaxation =
+      canRelax && strictDishExactCount < RELAX_STRICT_THRESHOLD;
+
+    // Strict execution for the requested page. Lazy on purpose: (a) the probe IS
+    // the page when page 1 ran with real pagination; (b) when BOTH axes relax,
+    // strictPage's rows are never read (the relax path pools from strictProbe),
+    // so executing a full strict page there was pure wasted work — alias the
+    // probe instead; (c) otherwise (an axis stays strict, or a sub-threshold
+    // page-1 take) execute the real page.
+    const probeServesAsPage =
+      pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD;
+    const strictPage = probeServesAsPage
+      ? strictProbe
+      : !needsRestaurantRelaxation || !needsDishRelaxation
+        ? await executeStage({
             stage: 'strict',
-            restaurantPagination: strictProbePagination,
-            dishPagination: strictProbePagination,
-            includeSqlPreview: false,
-          });
-        }
+            restaurantPagination: pagination,
+            dishPagination: pagination,
+            includeSqlPreview,
+          })
+        : strictProbe;
+
+    const primaryFoodTermRaw =
+      request.entities.food?.[0]?.originalText ??
+      request.entities.food?.[0]?.normalizedName ??
+      null;
+    const primaryFoodTerm = primaryFoodTermRaw
+      ? primaryFoodTermRaw.trim()
+      : null;
+
+    // No relaxation: existing behavior.
+    if (!needsRestaurantRelaxation && !needsDishRelaxation) {
+      phaseTimings.queryExecuteMs = Math.round(strictPage.timings.executeMs);
+      if (strictPage.exec.timings) {
+        Object.assign(phaseTimings, strictPage.exec.timings);
       }
 
-      plan = strictProbe.stagePlan;
-      phaseTimings.queryPlanMs = Math.round(strictProbe.timings.planMs);
-
-      const strictRestaurantExactCount = strictProbe.exec.restaurants.length;
-      const strictDishExactCount = strictProbe.exec.dishes.length;
-
-      const needsRestaurantRelaxation =
-        canRelax && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
-      const needsDishRelaxation =
-        canRelax && strictDishExactCount < RELAX_STRICT_THRESHOLD;
-
-      // Strict execution for the requested page. Lazy on purpose: (a) the probe IS
-      // the page when page 1 ran with real pagination; (b) when BOTH axes relax,
-      // strictPage's rows are never read (the relax path pools from strictProbe),
-      // so executing a full strict page there was pure wasted work — alias the
-      // probe instead; (c) otherwise (an axis stays strict, or a sub-threshold
-      // page-1 take) execute the real page.
-      const probeServesAsPage =
-        pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD;
-      const strictPage = probeServesAsPage
-        ? strictProbe
-        : !needsRestaurantRelaxation || !needsDishRelaxation
-          ? await executeStage({
-              stage: 'strict',
-              restaurantPagination: pagination,
-              dishPagination: pagination,
-              includeSqlPreview,
-            })
-          : strictProbe;
-
-      const primaryFoodTermRaw =
-        request.entities.food?.[0]?.originalText ??
-        request.entities.food?.[0]?.normalizedName ??
-        null;
-      const primaryFoodTerm = primaryFoodTermRaw
-        ? primaryFoodTermRaw.trim()
-        : null;
-
-      // No relaxation: existing behavior.
-      if (!needsRestaurantRelaxation && !needsDishRelaxation) {
-        phaseTimings.queryExecuteMs = Math.round(strictPage.timings.executeMs);
-        if (strictPage.exec.timings) {
-          Object.assign(phaseTimings, strictPage.exec.timings);
-        }
-
-        const totalRestaurantResults = strictPage.exec.totalRestaurantCount;
-        const totalFoodResults = strictPage.exec.totalDishCount;
-        const totalResults = totalFoodResults + totalRestaurantResults;
-
-        const viewportEligible = this.isViewportEligibleForOnDemand(
-          request.bounds,
-        );
-        const onDemandEngineContext = {
-          engineIds: viewportEligible
-            ? engineViewportCoverage.engines.map((engine) => engine.engineId)
-            : [],
-        };
-
-        const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
-          request,
-          plan.format,
-          totalRestaurantResults,
-        );
-        const onDemandResult = shouldTriggerOnDemand
-          ? await this.recordLowResultOnDemand({
-              request,
-              planFormat: plan.format,
-              restaurantCount: totalRestaurantResults,
-              dishCount: totalFoodResults,
-              viewportEligible,
-              onDemandEngineContext,
-              expansionSignals: expansionAnalysisMetadata,
-            })
-          : { queued: false, etaMs: undefined };
-        const onDemandQueued = onDemandResult.queued;
-        const onDemandEtaMs = onDemandResult.etaMs;
-
-        const resultCoverageStatus = this.calculateCoverageStatus({
-          request,
-          totalFoodResults,
-          totalRestaurantResults,
-          triggeredOnDemand: onDemandQueued,
-        });
-
-        const metadata: SearchResponseMetadataDto = {
-          totalFoodResults,
-          totalRestaurantResults,
-          queryExecutionTimeMs: Date.now() - start,
-          searchRequestId,
-          boundsApplied: strictPage.exec.metadata.boundsApplied,
-          openNowApplied: strictPage.exec.metadata.openNowApplied,
-          openNowSupportedRestaurants:
-            strictPage.exec.metadata.openNowSupportedRestaurants,
-          openNowUnsupportedRestaurants:
-            strictPage.exec.metadata.openNowUnsupportedRestaurants,
-          openNowUnsupportedRestaurantIds:
-            strictPage.exec.metadata.openNowUnsupportedRestaurantIds,
-          openNowFilteredOut: strictPage.exec.metadata.openNowFilteredOut,
-          priceFilterApplied: strictPage.exec.metadata.priceFilterApplied,
-          minimumVotesApplied: strictPage.exec.metadata.minimumVotesApplied,
-          page: pagination.page,
-          pageSize: pagination.pageSize,
-          resultCoverageStatus,
-          primaryFoodTerm: primaryFoodTerm || undefined,
-          // §2 header law (master plan §22 cut 3): the VALUE comes from the
-          // Place Catalog (resolveDisplayPlaceName); the FIELD name is the
-          // frozen wire contract until the mobile-side cut.
-          displayPlaceName,
-          // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
-          // viewport + the engines present. Consumers judge per their own
-          // law (§16 — no threshold baked here); nothing market-shaped.
-          engineCoverageShare: engineViewportCoverage.share,
-          engineCoverage:
-            engineViewportCoverage.engines.length > 0
-              ? engineViewportCoverage.engines
-              : undefined,
-          onDemandQueued: onDemandQueued || undefined,
-          onDemandEtaMs,
-        };
-
-        this.attachPhaseTimings(metadata, phaseTimings);
-        this.mergeAnalysisMetadata(metadata, expansionAnalysisMetadata);
-        this.attachSearchExplain(metadata, {
-          request,
-          pagination,
-          relaxationCapabilities: relaxation,
-          strictCoverageCount,
-          hasUnresolvedTerms,
-          planExpansion,
-          strictCounts: {
-            restaurantsOnPage: strictPage.exec.restaurants.length,
-            dishesOnPage: strictPage.exec.dishes.length,
-            totalRestaurants: strictPage.exec.totalRestaurantCount,
-            totalDishes: strictPage.exec.totalDishCount,
-          },
-          relaxation: { applied: false, threshold: RELAX_STRICT_THRESHOLD },
-          onDemand: {
-            triggered: shouldTriggerOnDemand,
-            queued: onDemandQueued,
-          },
-        });
-
-        if (request.openNow && !strictPage.exec.metadata.openNowApplied) {
-          this.logger.warn(
-            'Open-now filter requested but insufficient metadata to evaluate',
-            {
-              unsupportedCount:
-                strictPage.exec.metadata.openNowUnsupportedRestaurants,
-            },
-          );
-        }
-
-        if (pagination.page === 1) {
-          try {
-            this.recordQueryImpressions(request, {
-              searchRequestId,
-              totalResults,
-              totalFoodResults,
-              totalRestaurantResults,
-              queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-              resultCoverageStatus,
-            });
-          } catch (error) {
-            this.logger.warn('Failed to record search query impressions', {
-              error: {
-                message: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              },
-            });
-          }
-        }
-
-        this.logger.debug('Search query executed', {
-          dishCount: strictPage.exec.dishes.length,
-          restaurantCount: strictPage.exec.restaurants.length,
-          metadata,
-        });
-
-        if (this.debugMode !== 'off') {
-          this.logger.info('Search debug: runQuery end (no relaxation)', {
-            searchRequestId,
-            queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-            resultCoverageStatus: metadata.resultCoverageStatus,
-            totals: {
-              totalRestaurantResults,
-              totalFoodResults,
-            },
-            onDemandQueued: metadata.onDemandQueued ?? false,
-            onDemandEtaMs: metadata.onDemandEtaMs ?? null,
-            relaxationApplied: false,
-            strictCounts: {
-              restaurantsOnPage: strictPage.exec.restaurants.length,
-              dishesOnPage: strictPage.exec.dishes.length,
-            },
-            phaseTimings:
-              this.debugMode === 'verbose' && Object.keys(phaseTimings).length
-                ? phaseTimings
-                : undefined,
-            analysisMetadataSearchExplain:
-              this.debugMode === 'verbose'
-                ? (metadata.analysisMetadata?.searchExplain ?? null)
-                : undefined,
-          });
-        }
-
-        this.searchMetrics.recordSearchExecution({
-          format: plan.format,
-          openNow: Boolean(request.openNow),
-          durationMs: metadata.queryExecutionTimeMs,
-          totalFoodResults,
-          openNowFilteredOut: strictPage.exec.metadata.openNowFilteredOut ?? 0,
-        });
-
-        const response: SearchResponseDto = {
-          format: plan.format,
-          plan,
-          dishes: strictPage.exec.dishes,
-          restaurants: strictPage.exec.restaurants,
-          sqlPreview: includeSqlPreview
-            ? (strictPage.exec.sqlPreview ?? null)
-            : null,
-          metadata,
-        };
-        await this.attachSimilarPreview({
-          response,
-          request,
-          planExpansion,
-          pagination,
-          topDishesLimit: TOP_DISHES_LIMIT,
-        });
-        return this.applySearchResponseProfile(response, request);
-      }
-
-      // Relaxation path (per-list; still score-ranked). Use strict IDs to exclude duplicates.
-      const candidateStages: RelaxationStage[] = [];
-      if (relaxation.canDropRestaurantAttributes)
-        candidateStages.push('relaxed_restaurant_attributes');
-      if (relaxation.canDropFoodAttributes)
-        candidateStages.push('relaxed_food_attributes');
-
-      const selectedStage = await this.selectRelaxationStage({
-        candidateStages,
-        threshold: RELAX_STRICT_THRESHOLD,
-        canDropAllModifiers: relaxation.canDropAllModifiers,
-        needsRestaurantRelaxation,
-        needsDishRelaxation,
-        probe: async (stage) => {
-          const probeResult = await executeStage({
-            stage,
-            restaurantPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
-            dishPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
-            includeSqlPreview: false,
-          });
-          return {
-            restaurants: probeResult.exec.restaurants,
-            dishes: probeResult.exec.dishes,
-          };
-        },
-      });
-
-      const strictRestaurantIds = strictProbe.exec.restaurants
-        .map((row) => row.restaurantId)
-        .filter((value): value is string => typeof value === 'string');
-      const strictConnectionIds = strictProbe.exec.dishes
-        .map((row) => row.connectionId)
-        .filter((value): value is string => typeof value === 'string');
-
-      const relaxedRestaurantPagination = needsRestaurantRelaxation
-        ? (() => {
-            const exactCount = strictRestaurantExactCount;
-            const relaxedSkip = Math.max(
-              0,
-              (pagination.page - 1) * pagination.pageSize - exactCount,
-            );
-            const relaxedTake =
-              pagination.page === 1
-                ? Math.max(0, pagination.pageSize - exactCount)
-                : pagination.pageSize;
-            return { skip: relaxedSkip, take: relaxedTake };
-          })()
-        : pagination;
-
-      const relaxedDishPagination = needsDishRelaxation
-        ? (() => {
-            const exactCount = strictDishExactCount;
-            const relaxedSkip = Math.max(
-              0,
-              (pagination.page - 1) * pagination.pageSize - exactCount,
-            );
-            const relaxedTake =
-              pagination.page === 1
-                ? Math.max(0, pagination.pageSize - exactCount)
-                : pagination.pageSize;
-            return { skip: relaxedSkip, take: relaxedTake };
-          })()
-        : pagination;
-
-      const relaxed = await executeStage({
-        stage: selectedStage,
-        restaurantPagination: relaxedRestaurantPagination,
-        dishPagination: relaxedDishPagination,
-        excludeRestaurantIds: needsRestaurantRelaxation
-          ? strictRestaurantIds
-          : undefined,
-        excludeConnectionIds: needsDishRelaxation
-          ? strictConnectionIds
-          : undefined,
-        includeSqlPreview,
-      });
-
-      phaseTimings.queryExecuteMs = Math.round(relaxed.timings.executeMs);
-      if (relaxed.exec.timings) {
-        Object.assign(phaseTimings, relaxed.exec.timings);
-      }
-
-      // PURE CRAVE-SCORE RANKING (owner decision): the strict (exact) matches and
-      // the relaxed (modifier-dropped) fallback are pooled and ordered by Crave
-      // Score ALONE. A genuinely-relevant but low-score match can fall below a
-      // higher-score looser match, and we accept that.
-      // FUTURE (see product/scoring.md — "relevant top section"): we may pin a
-      // small, deliberate section of the top ~3 MOST-RELEVANT results above the
-      // main rank, with the main Crave-Score rank excluding those pinned rows.
-      // That is a separate presentation layer, not a change to the score itself.
-      // Pooled page-1 lists are sliced to the requested take: with the probe take
-      // clamped to the relaxation threshold, the strict pool can exceed a
-      // sub-threshold pageSize (idempotent when already within the page).
-      // Sectioned relevancy holds ACROSS the strict+relaxed pool too: exact-match
-      // tier first, pure Crave Score within each tier (rows without a tier sort
-      // as exact — sectioning didn't apply to that query).
-      const tierOf = (row: { exactMatch?: boolean }) =>
-        row.exactMatch === false ? 1 : 0;
-      const pooledOrder = (
-        a: { exactMatch?: boolean; craveScore: number },
-        b: { exactMatch?: boolean; craveScore: number },
-      ) => tierOf(a) - tierOf(b) || b.craveScore - a.craveScore;
-
-      const dishes = needsDishRelaxation
-        ? pagination.page === 1
-          ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
-              .sort(pooledOrder)
-              .slice(0, pagination.take)
-          : relaxed.exec.dishes
-        : strictPage.exec.dishes;
-
-      const restaurants = needsRestaurantRelaxation
-        ? pagination.page === 1
-          ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
-              .sort(pooledOrder)
-              .slice(0, pagination.take)
-          : relaxed.exec.restaurants
-        : strictPage.exec.restaurants;
-
-      const totalFoodResults = needsDishRelaxation
-        ? strictProbe.exec.totalDishCount + relaxed.exec.totalDishCount
-        : strictPage.exec.totalDishCount;
-      const totalRestaurantResults = needsRestaurantRelaxation
-        ? strictProbe.exec.totalRestaurantCount +
-          relaxed.exec.totalRestaurantCount
-        : strictPage.exec.totalRestaurantCount;
+      const totalRestaurantResults = strictPage.exec.totalRestaurantCount;
+      const totalFoodResults = strictPage.exec.totalDishCount;
       const totalResults = totalFoodResults + totalRestaurantResults;
 
       const viewportEligible = this.isViewportEligibleForOnDemand(
@@ -1013,32 +694,21 @@ export class SearchService {
       const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
         request,
         plan.format,
-        strictRestaurantExactCount,
+        totalRestaurantResults,
       );
       const onDemandResult = shouldTriggerOnDemand
         ? await this.recordLowResultOnDemand({
             request,
             planFormat: plan.format,
-            restaurantCount: strictRestaurantExactCount,
-            dishCount: strictDishExactCount,
+            restaurantCount: totalRestaurantResults,
+            dishCount: totalFoodResults,
             viewportEligible,
             onDemandEngineContext,
             expansionSignals: expansionAnalysisMetadata,
-            relaxation: {
-              stage: selectedStage,
-              threshold: RELAX_STRICT_THRESHOLD,
-              dropped: {
-                foodAttributes:
-                  selectedStage === 'relaxed_food_attributes' ||
-                  selectedStage === 'relaxed_modifiers',
-                restaurantAttributes:
-                  selectedStage === 'relaxed_restaurant_attributes' ||
-                  selectedStage === 'relaxed_modifiers',
-              },
-            },
           })
         : { queued: false, etaMs: undefined };
       const onDemandQueued = onDemandResult.queued;
+      const onDemandEtaMs = onDemandResult.etaMs;
 
       const resultCoverageStatus = this.calculateCoverageStatus({
         request,
@@ -1052,62 +722,35 @@ export class SearchService {
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
-        boundsApplied:
-          strictPage.exec.metadata.boundsApplied ||
-          relaxed.exec.metadata.boundsApplied,
-        openNowApplied:
-          strictPage.exec.metadata.openNowApplied ||
-          relaxed.exec.metadata.openNowApplied,
+        boundsApplied: strictPage.exec.metadata.boundsApplied,
+        openNowApplied: strictPage.exec.metadata.openNowApplied,
         openNowSupportedRestaurants:
-          (strictPage.exec.metadata.openNowSupportedRestaurants ?? 0) +
-          (relaxed.exec.metadata.openNowSupportedRestaurants ?? 0),
+          strictPage.exec.metadata.openNowSupportedRestaurants,
         openNowUnsupportedRestaurants:
-          (strictPage.exec.metadata.openNowUnsupportedRestaurants ?? 0) +
-          (relaxed.exec.metadata.openNowUnsupportedRestaurants ?? 0),
-        openNowUnsupportedRestaurantIds: Array.from(
-          new Set([
-            ...(strictPage.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
-            ...(relaxed.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
-          ]),
-        ),
-        openNowFilteredOut:
-          (strictPage.exec.metadata.openNowFilteredOut ?? 0) +
-          (relaxed.exec.metadata.openNowFilteredOut ?? 0),
-        priceFilterApplied:
-          strictPage.exec.metadata.priceFilterApplied ||
-          relaxed.exec.metadata.priceFilterApplied,
-        minimumVotesApplied:
-          strictPage.exec.metadata.minimumVotesApplied ||
-          relaxed.exec.metadata.minimumVotesApplied,
+          strictPage.exec.metadata.openNowUnsupportedRestaurants,
+        openNowUnsupportedRestaurantIds:
+          strictPage.exec.metadata.openNowUnsupportedRestaurantIds,
+        openNowFilteredOut: strictPage.exec.metadata.openNowFilteredOut,
+        priceFilterApplied: strictPage.exec.metadata.priceFilterApplied,
+        minimumVotesApplied: strictPage.exec.metadata.minimumVotesApplied,
         page: pagination.page,
         pageSize: pagination.pageSize,
         resultCoverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
-        // §2 header law: catalog-derived value, frozen field name (see the
-        // no-relaxation metadata site).
+        // §2 header law (master plan §22 cut 3): the VALUE comes from the
+        // Place Catalog (resolveDisplayPlaceName); the FIELD name is the
+        // frozen wire contract until the mobile-side cut.
         displayPlaceName,
-        // ENGINE-COVERAGE (leg 2): see the no-relaxation metadata site.
+        // ENGINE-COVERAGE (leg 2): raw territory-ground share of the
+        // viewport + the engines present. Consumers judge per their own
+        // law (§16 — no threshold baked here); nothing market-shaped.
         engineCoverageShare: engineViewportCoverage.share,
         engineCoverage:
           engineViewportCoverage.engines.length > 0
             ? engineViewportCoverage.engines
             : undefined,
         onDemandQueued: onDemandQueued || undefined,
-        onDemandEtaMs: undefined,
-        exactDishCountOnPage:
-          needsDishRelaxation && pagination.page === 1
-            ? strictDishExactCount
-            : undefined,
-        exactRestaurantCountOnPage:
-          needsRestaurantRelaxation && pagination.page === 1
-            ? strictRestaurantExactCount
-            : undefined,
-        relaxationApplied:
-          (needsRestaurantRelaxation || needsDishRelaxation) &&
-          pagination.page === 1
-            ? true
-            : undefined,
-        relaxationStage: selectedStage,
+        onDemandEtaMs,
       };
 
       this.attachPhaseTimings(metadata, phaseTimings);
@@ -1120,30 +763,25 @@ export class SearchService {
         hasUnresolvedTerms,
         planExpansion,
         strictCounts: {
-          restaurantsOnPage: strictRestaurantExactCount,
-          dishesOnPage: strictDishExactCount,
-          totalRestaurants: strictProbe.exec.totalRestaurantCount,
-          totalDishes: strictProbe.exec.totalDishCount,
+          restaurantsOnPage: strictPage.exec.restaurants.length,
+          dishesOnPage: strictPage.exec.dishes.length,
+          totalRestaurants: strictPage.exec.totalRestaurantCount,
+          totalDishes: strictPage.exec.totalDishCount,
         },
-        relaxation: {
-          applied: true,
-          stage: selectedStage,
-          threshold: RELAX_STRICT_THRESHOLD,
-        },
+        relaxation: { applied: false, threshold: RELAX_STRICT_THRESHOLD },
         onDemand: {
           triggered: shouldTriggerOnDemand,
           queued: onDemandQueued,
         },
       });
 
-      if (
-        request.openNow &&
-        !strictPage.exec.metadata.openNowApplied &&
-        !relaxed.exec.metadata.openNowApplied
-      ) {
+      if (request.openNow && !strictPage.exec.metadata.openNowApplied) {
         this.logger.warn(
           'Open-now filter requested but insufficient metadata to evaluate',
-          { unsupportedCount: metadata.openNowUnsupportedRestaurants },
+          {
+            unsupportedCount:
+              strictPage.exec.metadata.openNowUnsupportedRestaurants,
+          },
         );
       }
 
@@ -1168,13 +806,13 @@ export class SearchService {
       }
 
       this.logger.debug('Search query executed', {
-        dishCount: dishes.length,
-        restaurantCount: restaurants.length,
+        dishCount: strictPage.exec.dishes.length,
+        restaurantCount: strictPage.exec.restaurants.length,
         metadata,
       });
 
       if (this.debugMode !== 'off') {
-        this.logger.info('Search debug: runQuery end (relaxation)', {
+        this.logger.info('Search debug: runQuery end (no relaxation)', {
           searchRequestId,
           queryExecutionTimeMs: metadata.queryExecutionTimeMs,
           resultCoverageStatus: metadata.resultCoverageStatus,
@@ -1184,15 +822,10 @@ export class SearchService {
           },
           onDemandQueued: metadata.onDemandQueued ?? false,
           onDemandEtaMs: metadata.onDemandEtaMs ?? null,
-          relaxationApplied: metadata.relaxationApplied ?? false,
-          relaxationStage: metadata.relaxationStage ?? null,
-          exactCountsOnPage: {
-            exactRestaurants: metadata.exactRestaurantCountOnPage ?? null,
-            exactDishes: metadata.exactDishCountOnPage ?? null,
-          },
-          pageCounts: {
-            restaurantsOnPage: restaurants.length,
-            dishesOnPage: dishes.length,
+          relaxationApplied: false,
+          strictCounts: {
+            restaurantsOnPage: strictPage.exec.restaurants.length,
+            dishesOnPage: strictPage.exec.dishes.length,
           },
           phaseTimings:
             this.debugMode === 'verbose' && Object.keys(phaseTimings).length
@@ -1205,21 +838,13 @@ export class SearchService {
         });
       }
 
-      this.searchMetrics.recordSearchExecution({
-        format: plan.format,
-        openNow: Boolean(request.openNow),
-        durationMs: metadata.queryExecutionTimeMs,
-        totalFoodResults,
-        openNowFilteredOut: metadata.openNowFilteredOut ?? 0,
-      });
-
       const response: SearchResponseDto = {
         format: plan.format,
         plan,
-        dishes,
-        restaurants,
+        dishes: strictPage.exec.dishes,
+        restaurants: strictPage.exec.restaurants,
         sqlPreview: includeSqlPreview
-          ? (relaxed.exec.sqlPreview ?? null)
+          ? (strictPage.exec.sqlPreview ?? null)
           : null,
         metadata,
       };
@@ -1231,14 +856,354 @@ export class SearchService {
         topDishesLimit: TOP_DISHES_LIMIT,
       });
       return this.applySearchResponseProfile(response, request);
-    } catch (error) {
-      this.searchMetrics.recordSearchFailure({
-        format: plan?.format ?? 'unknown',
-        openNow: Boolean(request.openNow),
-        errorName: error instanceof Error ? error.name : 'Error',
-      });
-      throw error;
     }
+
+    // Relaxation path (per-list; still score-ranked). Use strict IDs to exclude duplicates.
+    const candidateStages: RelaxationStage[] = [];
+    if (relaxation.canDropRestaurantAttributes)
+      candidateStages.push('relaxed_restaurant_attributes');
+    if (relaxation.canDropFoodAttributes)
+      candidateStages.push('relaxed_food_attributes');
+
+    const selectedStage = await this.selectRelaxationStage({
+      candidateStages,
+      threshold: RELAX_STRICT_THRESHOLD,
+      canDropAllModifiers: relaxation.canDropAllModifiers,
+      needsRestaurantRelaxation,
+      needsDishRelaxation,
+      probe: async (stage) => {
+        const probeResult = await executeStage({
+          stage,
+          restaurantPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
+          dishPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
+          includeSqlPreview: false,
+        });
+        return {
+          restaurants: probeResult.exec.restaurants,
+          dishes: probeResult.exec.dishes,
+        };
+      },
+    });
+
+    const strictRestaurantIds = strictProbe.exec.restaurants
+      .map((row) => row.restaurantId)
+      .filter((value): value is string => typeof value === 'string');
+    const strictConnectionIds = strictProbe.exec.dishes
+      .map((row) => row.connectionId)
+      .filter((value): value is string => typeof value === 'string');
+
+    const relaxedRestaurantPagination = needsRestaurantRelaxation
+      ? (() => {
+          const exactCount = strictRestaurantExactCount;
+          const relaxedSkip = Math.max(
+            0,
+            (pagination.page - 1) * pagination.pageSize - exactCount,
+          );
+          const relaxedTake =
+            pagination.page === 1
+              ? Math.max(0, pagination.pageSize - exactCount)
+              : pagination.pageSize;
+          return { skip: relaxedSkip, take: relaxedTake };
+        })()
+      : pagination;
+
+    const relaxedDishPagination = needsDishRelaxation
+      ? (() => {
+          const exactCount = strictDishExactCount;
+          const relaxedSkip = Math.max(
+            0,
+            (pagination.page - 1) * pagination.pageSize - exactCount,
+          );
+          const relaxedTake =
+            pagination.page === 1
+              ? Math.max(0, pagination.pageSize - exactCount)
+              : pagination.pageSize;
+          return { skip: relaxedSkip, take: relaxedTake };
+        })()
+      : pagination;
+
+    const relaxed = await executeStage({
+      stage: selectedStage,
+      restaurantPagination: relaxedRestaurantPagination,
+      dishPagination: relaxedDishPagination,
+      excludeRestaurantIds: needsRestaurantRelaxation
+        ? strictRestaurantIds
+        : undefined,
+      excludeConnectionIds: needsDishRelaxation
+        ? strictConnectionIds
+        : undefined,
+      includeSqlPreview,
+    });
+
+    phaseTimings.queryExecuteMs = Math.round(relaxed.timings.executeMs);
+    if (relaxed.exec.timings) {
+      Object.assign(phaseTimings, relaxed.exec.timings);
+    }
+
+    // PURE CRAVE-SCORE RANKING (owner decision): the strict (exact) matches and
+    // the relaxed (modifier-dropped) fallback are pooled and ordered by Crave
+    // Score ALONE. A genuinely-relevant but low-score match can fall below a
+    // higher-score looser match, and we accept that.
+    // FUTURE (see product/scoring.md — "relevant top section"): we may pin a
+    // small, deliberate section of the top ~3 MOST-RELEVANT results above the
+    // main rank, with the main Crave-Score rank excluding those pinned rows.
+    // That is a separate presentation layer, not a change to the score itself.
+    // Pooled page-1 lists are sliced to the requested take: with the probe take
+    // clamped to the relaxation threshold, the strict pool can exceed a
+    // sub-threshold pageSize (idempotent when already within the page).
+    // Sectioned relevancy holds ACROSS the strict+relaxed pool too: exact-match
+    // tier first, pure Crave Score within each tier (rows without a tier sort
+    // as exact — sectioning didn't apply to that query).
+    const tierOf = (row: { exactMatch?: boolean }) =>
+      row.exactMatch === false ? 1 : 0;
+    const pooledOrder = (
+      a: { exactMatch?: boolean; craveScore: number },
+      b: { exactMatch?: boolean; craveScore: number },
+    ) => tierOf(a) - tierOf(b) || b.craveScore - a.craveScore;
+
+    const dishes = needsDishRelaxation
+      ? pagination.page === 1
+        ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
+            .sort(pooledOrder)
+            .slice(0, pagination.take)
+        : relaxed.exec.dishes
+      : strictPage.exec.dishes;
+
+    const restaurants = needsRestaurantRelaxation
+      ? pagination.page === 1
+        ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
+            .sort(pooledOrder)
+            .slice(0, pagination.take)
+        : relaxed.exec.restaurants
+      : strictPage.exec.restaurants;
+
+    const totalFoodResults = needsDishRelaxation
+      ? strictProbe.exec.totalDishCount + relaxed.exec.totalDishCount
+      : strictPage.exec.totalDishCount;
+    const totalRestaurantResults = needsRestaurantRelaxation
+      ? strictProbe.exec.totalRestaurantCount +
+        relaxed.exec.totalRestaurantCount
+      : strictPage.exec.totalRestaurantCount;
+    const totalResults = totalFoodResults + totalRestaurantResults;
+
+    const viewportEligible = this.isViewportEligibleForOnDemand(request.bounds);
+    const onDemandEngineContext = {
+      engineIds: viewportEligible
+        ? engineViewportCoverage.engines.map((engine) => engine.engineId)
+        : [],
+    };
+
+    const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
+      request,
+      plan.format,
+      strictRestaurantExactCount,
+    );
+    const onDemandResult = shouldTriggerOnDemand
+      ? await this.recordLowResultOnDemand({
+          request,
+          planFormat: plan.format,
+          restaurantCount: strictRestaurantExactCount,
+          dishCount: strictDishExactCount,
+          viewportEligible,
+          onDemandEngineContext,
+          expansionSignals: expansionAnalysisMetadata,
+          relaxation: {
+            stage: selectedStage,
+            threshold: RELAX_STRICT_THRESHOLD,
+            dropped: {
+              foodAttributes:
+                selectedStage === 'relaxed_food_attributes' ||
+                selectedStage === 'relaxed_modifiers',
+              restaurantAttributes:
+                selectedStage === 'relaxed_restaurant_attributes' ||
+                selectedStage === 'relaxed_modifiers',
+            },
+          },
+        })
+      : { queued: false, etaMs: undefined };
+    const onDemandQueued = onDemandResult.queued;
+
+    const resultCoverageStatus = this.calculateCoverageStatus({
+      request,
+      totalFoodResults,
+      totalRestaurantResults,
+      triggeredOnDemand: onDemandQueued,
+    });
+
+    const metadata: SearchResponseMetadataDto = {
+      totalFoodResults,
+      totalRestaurantResults,
+      queryExecutionTimeMs: Date.now() - start,
+      searchRequestId,
+      boundsApplied:
+        strictPage.exec.metadata.boundsApplied ||
+        relaxed.exec.metadata.boundsApplied,
+      openNowApplied:
+        strictPage.exec.metadata.openNowApplied ||
+        relaxed.exec.metadata.openNowApplied,
+      openNowSupportedRestaurants:
+        (strictPage.exec.metadata.openNowSupportedRestaurants ?? 0) +
+        (relaxed.exec.metadata.openNowSupportedRestaurants ?? 0),
+      openNowUnsupportedRestaurants:
+        (strictPage.exec.metadata.openNowUnsupportedRestaurants ?? 0) +
+        (relaxed.exec.metadata.openNowUnsupportedRestaurants ?? 0),
+      openNowUnsupportedRestaurantIds: Array.from(
+        new Set([
+          ...(strictPage.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
+          ...(relaxed.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
+        ]),
+      ),
+      openNowFilteredOut:
+        (strictPage.exec.metadata.openNowFilteredOut ?? 0) +
+        (relaxed.exec.metadata.openNowFilteredOut ?? 0),
+      priceFilterApplied:
+        strictPage.exec.metadata.priceFilterApplied ||
+        relaxed.exec.metadata.priceFilterApplied,
+      minimumVotesApplied:
+        strictPage.exec.metadata.minimumVotesApplied ||
+        relaxed.exec.metadata.minimumVotesApplied,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      resultCoverageStatus,
+      primaryFoodTerm: primaryFoodTerm || undefined,
+      // §2 header law: catalog-derived value, frozen field name (see the
+      // no-relaxation metadata site).
+      displayPlaceName,
+      // ENGINE-COVERAGE (leg 2): see the no-relaxation metadata site.
+      engineCoverageShare: engineViewportCoverage.share,
+      engineCoverage:
+        engineViewportCoverage.engines.length > 0
+          ? engineViewportCoverage.engines
+          : undefined,
+      onDemandQueued: onDemandQueued || undefined,
+      onDemandEtaMs: undefined,
+      exactDishCountOnPage:
+        needsDishRelaxation && pagination.page === 1
+          ? strictDishExactCount
+          : undefined,
+      exactRestaurantCountOnPage:
+        needsRestaurantRelaxation && pagination.page === 1
+          ? strictRestaurantExactCount
+          : undefined,
+      relaxationApplied:
+        (needsRestaurantRelaxation || needsDishRelaxation) &&
+        pagination.page === 1
+          ? true
+          : undefined,
+      relaxationStage: selectedStage,
+    };
+
+    this.attachPhaseTimings(metadata, phaseTimings);
+    this.mergeAnalysisMetadata(metadata, expansionAnalysisMetadata);
+    this.attachSearchExplain(metadata, {
+      request,
+      pagination,
+      relaxationCapabilities: relaxation,
+      strictCoverageCount,
+      hasUnresolvedTerms,
+      planExpansion,
+      strictCounts: {
+        restaurantsOnPage: strictRestaurantExactCount,
+        dishesOnPage: strictDishExactCount,
+        totalRestaurants: strictProbe.exec.totalRestaurantCount,
+        totalDishes: strictProbe.exec.totalDishCount,
+      },
+      relaxation: {
+        applied: true,
+        stage: selectedStage,
+        threshold: RELAX_STRICT_THRESHOLD,
+      },
+      onDemand: {
+        triggered: shouldTriggerOnDemand,
+        queued: onDemandQueued,
+      },
+    });
+
+    if (
+      request.openNow &&
+      !strictPage.exec.metadata.openNowApplied &&
+      !relaxed.exec.metadata.openNowApplied
+    ) {
+      this.logger.warn(
+        'Open-now filter requested but insufficient metadata to evaluate',
+        { unsupportedCount: metadata.openNowUnsupportedRestaurants },
+      );
+    }
+
+    if (pagination.page === 1) {
+      try {
+        this.recordQueryImpressions(request, {
+          searchRequestId,
+          totalResults,
+          totalFoodResults,
+          totalRestaurantResults,
+          queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+          resultCoverageStatus,
+        });
+      } catch (error) {
+        this.logger.warn('Failed to record search query impressions', {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          },
+        });
+      }
+    }
+
+    this.logger.debug('Search query executed', {
+      dishCount: dishes.length,
+      restaurantCount: restaurants.length,
+      metadata,
+    });
+
+    if (this.debugMode !== 'off') {
+      this.logger.info('Search debug: runQuery end (relaxation)', {
+        searchRequestId,
+        queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+        resultCoverageStatus: metadata.resultCoverageStatus,
+        totals: {
+          totalRestaurantResults,
+          totalFoodResults,
+        },
+        onDemandQueued: metadata.onDemandQueued ?? false,
+        onDemandEtaMs: metadata.onDemandEtaMs ?? null,
+        relaxationApplied: metadata.relaxationApplied ?? false,
+        relaxationStage: metadata.relaxationStage ?? null,
+        exactCountsOnPage: {
+          exactRestaurants: metadata.exactRestaurantCountOnPage ?? null,
+          exactDishes: metadata.exactDishCountOnPage ?? null,
+        },
+        pageCounts: {
+          restaurantsOnPage: restaurants.length,
+          dishesOnPage: dishes.length,
+        },
+        phaseTimings:
+          this.debugMode === 'verbose' && Object.keys(phaseTimings).length
+            ? phaseTimings
+            : undefined,
+        analysisMetadataSearchExplain:
+          this.debugMode === 'verbose'
+            ? (metadata.analysisMetadata?.searchExplain ?? null)
+            : undefined,
+      });
+    }
+
+    const response: SearchResponseDto = {
+      format: plan.format,
+      plan,
+      dishes,
+      restaurants,
+      sqlPreview: includeSqlPreview ? (relaxed.exec.sqlPreview ?? null) : null,
+      metadata,
+    };
+    await this.attachSimilarPreview({
+      response,
+      request,
+      planExpansion,
+      pagination,
+      topDishesLimit: TOP_DISHES_LIMIT,
+    });
+    return this.applySearchResponseProfile(response, request);
   }
 
   private applySearchResponseProfile(

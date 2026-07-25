@@ -320,7 +320,6 @@ export class SpendCampaignService {
       name: campaignPoolName(campaignId),
       credential: 'campaign',
       window: { kind: 'grant', amount: envelopeMicros },
-      failPolicy: { kind: 'hardClosed' },
       // §16 K3-shaped operational bound (mirrors the other governed pools'
       // reservationTtlMs): campaign spend is metered post-hoc (meter(), not
       // reserve/reconcile — see recordSpend), so no reservation is ever
