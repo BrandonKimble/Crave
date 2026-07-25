@@ -1,0 +1,303 @@
+import React from 'react';
+import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import Reanimated, {
+  interpolate,
+  runOnJS,
+  useAnimatedProps,
+  useAnimatedRef,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  scrollTo as reanimatedScrollTo,
+  useDerivedValue,
+} from 'react-native-reanimated';
+
+// ─── THE ONE TRACK — feel prototype (design doc "THE ONE TRACK", build law §7) ──────
+//
+// Dev-only overlay proving the track model on ONE native UIScrollView before any
+// production migration: sheet travel + list scroll as one continuous scroll; native
+// bounce both ends; the ballistic lower bound flipping to the list top on release
+// (momentum bounces instead of collapsing the sheet); detent snaps only inside the
+// spacer region. Open with:
+//   crave://one-track-proto?show=1     (hide: show=0, toggle: no param)
+//
+// The prototype answers (RED-capable, by feel + the τ readout):
+//   U1 spacer mechanics (static full-travel spacer; no re-basing on the happy path)
+//   U2 ballistic clamp at H via contentInset flip on drag end
+//   U3 detent snap via animated scrollTo (native ease — spring fidelity comes later
+//      via the native-module hatch if this reads as enough)
+//   U4 velocity continuity crossing H finger-down (one gesture, one engine)
+//   U5 is FlashList's exam, NOT this file's — rows here are plain views on purpose.
+
+const DEEP_LINK_HOST = 'one-track-proto';
+
+const SCREEN = Dimensions.get('window');
+// Detents in screen-space (sheet top edge y).
+const EXPANDED_TOP = 120;
+const MIDDLE_TOP = Math.round(SCREEN.height * 0.55);
+const COLLAPSED_TOP = Math.round(SCREEN.height * 0.85);
+// The track: τ ∈ [0, H] is sheet travel (0=collapsed, H=expanded); τ>H scrolls rows.
+const H = COLLAPSED_TOP - EXPANDED_TOP;
+const DETENT_TAUS = [0, COLLAPSED_TOP - MIDDLE_TOP, H];
+const ROW_COUNT = 40;
+const ROW_HEIGHT = 76;
+
+const AnimatedScrollView = Reanimated.ScrollView;
+
+export const OneTrackPrototype: React.FC = () => {
+  const [visible, setVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url || !url.includes(DEEP_LINK_HOST)) {
+        return;
+      }
+      const show = /[?&]show=(1|true|on|yes)/i.test(url);
+      const hide = /[?&]show=(0|false|off|no)/i.test(url);
+      setVisible((prev) => (hide ? false : show ? true : !prev));
+    };
+    Linking.getInitialURL()
+      .then(handleUrl)
+      .catch(() => undefined);
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, []);
+
+  if (!visible) {
+    return null;
+  }
+  return <OneTrackSurface onClose={() => setVisible(false)} />;
+};
+
+const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const scrollRef = useAnimatedRef<Reanimated.ScrollView>();
+  const tau = useSharedValue(0);
+  const dragging = useSharedValue(false);
+  // THE PHASE-DEPENDENT BOUND (boundary law): finger down ⇒ full track [0,end];
+  // ballistic ⇒ lower bound H (momentum bounces at the list top, never collapses
+  // the sheet). contentInset.top = -H makes offset H the native bounce edge.
+  const ballisticClamp = useSharedValue(false);
+  const [tauReadout, setTauReadout] = React.useState('τ=0');
+
+  const publishReadout = React.useCallback((value: number, phase: string) => {
+    setTauReadout(`τ=${Math.round(value)}  H=${H}  ${phase}`);
+  }, []);
+
+  const snapToDetent = React.useCallback(
+    (fromTau: number, velocityGuess: number) => {
+      // Velocity-aware nearest detent (constants from the arc's proven feel work).
+      const projected = fromTau + velocityGuess * 0.18;
+      let best = DETENT_TAUS[0];
+      for (const detent of DETENT_TAUS) {
+        if (Math.abs(detent - projected) < Math.abs(best - projected)) {
+          best = detent;
+        }
+      }
+      scrollRef.current?.scrollTo({ y: best, animated: true });
+    },
+    [scrollRef]
+  );
+
+  const lastTau = useSharedValue(0);
+  const lastDelta = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler(
+    {
+      onScroll: (event) => {
+        const next = event.contentOffset.y;
+        lastDelta.value = next - lastTau.value;
+        lastTau.value = next;
+        tau.value = next;
+      },
+      onBeginDrag: () => {
+        dragging.value = true;
+        ballisticClamp.value = false;
+        runOnJS(publishReadout)(tau.value, 'drag');
+      },
+      onEndDrag: (event) => {
+        dragging.value = false;
+        const releasedTau = event.contentOffset.y;
+        if (releasedTau < H) {
+          // Spacer region: the detent snap owns the release (native decel would
+          // drift the sheet — detents are the law here). Velocity from our own
+          // delta tracking (event.velocity is a proven liar).
+          runOnJS(snapToDetent)(releasedTau, lastDelta.value * 60);
+          runOnJS(publishReadout)(releasedTau, 'snap');
+        } else {
+          // List region: free native momentum, but the lower bound flips to H so
+          // an arriving flick BOUNCES at the list top (owner case a).
+          ballisticClamp.value = true;
+          runOnJS(publishReadout)(releasedTau, 'ballistic(clamp@H)');
+        }
+      },
+      onMomentumEnd: () => {
+        runOnJS(publishReadout)(tau.value, 'settled');
+      },
+    },
+    [publishReadout, snapToDetent]
+  );
+
+  const clampProps = useAnimatedProps(() => ({
+    contentInset: { top: ballisticClamp.value ? -H : 0, bottom: 0, left: 0, right: 0 },
+  }));
+
+  // DERIVATIONS (each a pure function of τ — the model's §2 list, miniaturized):
+  const sheetTopY = useDerivedValue(() => EXPANDED_TOP + Math.max(0, H - tau.value));
+  const headerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTopY.value }],
+  }));
+  const dividerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(tau.value - H, [0, 3, 14], [0, 0.35, 1], 'clamp'),
+  }));
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(tau.value, [0, H], [0.15, 0.55], 'clamp'),
+  }));
+
+  return (
+    <View style={styles.root} pointerEvents="auto">
+      {/* Fake map backdrop (the frost world behind) */}
+      <View style={styles.map} />
+      <Reanimated.View style={[styles.mapDim, backdropStyle]} pointerEvents="none" />
+
+      {/* THE TRACK: one fullscreen native scroll. Content = transparent spacer(H)
+          then the sheet content — the sheet IS where content begins. */}
+      <AnimatedScrollView
+        ref={scrollRef}
+        style={StyleSheet.absoluteFill}
+        contentContainerStyle={{ paddingTop: EXPANDED_TOP }}
+        showsVerticalScrollIndicator={false}
+        bounces
+        alwaysBounceVertical
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        animatedProps={clampProps}
+      >
+        {/* spacer region [0,H): transparent — the map shows through; dragging here
+            IS the sheet grab (it's just scrolling). */}
+        <View style={{ height: H }} pointerEvents="none" />
+        {/* the sheet content */}
+        <View style={styles.sheetBody}>
+          <View style={styles.stripRow}>
+            {['Sort', 'Restaurants', 'Dishes', 'Open now'].map((label, index) => (
+              <View key={label} style={[styles.chip, index === 1 && styles.chipActive]}>
+                <Text style={[styles.chipText, index === 1 && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {Array.from({ length: ROW_COUNT }, (_, index) => (
+            <View key={index} style={styles.row}>
+              <View style={styles.rowBadge}>
+                <Text style={styles.rowBadgeText}>{index + 1}</Text>
+              </View>
+              <View style={styles.rowLines}>
+                <View style={styles.rowLineWide} />
+                <View style={styles.rowLineNarrow} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </AnimatedScrollView>
+
+      {/* Pinned header chrome — a τ-derivation riding ABOVE the track (input surface
+          2's home; in the prototype it only closes + reads out). */}
+      <Reanimated.View style={[styles.header, headerStyle]} pointerEvents="box-none">
+        <View style={styles.headerCard}>
+          <Text style={styles.headerTitle}>One Track</Text>
+          <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
+            <Text style={styles.closeText}>×</Text>
+          </Pressable>
+        </View>
+        <Reanimated.View style={[styles.divider, dividerStyle]} />
+      </Reanimated.View>
+
+      <View style={styles.readout} pointerEvents="none">
+        <Text style={styles.readoutText}>{tauReadout}</Text>
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  root: { ...StyleSheet.absoluteFillObject, zIndex: 9999 },
+  map: { ...StyleSheet.absoluteFillObject, backgroundColor: '#dce7dd' },
+  mapDim: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b3d2e' },
+  sheetBody: {
+    minHeight: SCREEN.height,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 64,
+    paddingHorizontal: 16,
+  },
+  header: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  headerCard: {
+    marginHorizontal: 0,
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: '#0f172a' },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
+  divider: { height: 1, backgroundColor: '#e2e8f0' },
+  stripRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  chip: {
+    height: 32,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: '#f1f5f9',
+  },
+  chipActive: { backgroundColor: '#f43f5e' },
+  chipText: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
+  chipTextActive: { color: '#ffffff' },
+  row: {
+    height: ROW_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rowBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#22c55e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowBadgeText: { color: '#ffffff', fontWeight: '700' },
+  rowLines: { flex: 1, gap: 8 },
+  rowLineWide: { height: 12, borderRadius: 6, backgroundColor: '#e2e8f0', width: '80%' },
+  rowLineNarrow: { height: 10, borderRadius: 5, backgroundColor: '#eef2f7', width: '55%' },
+  readout: {
+    position: 'absolute',
+    bottom: 24,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(15,23,42,0.85)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  readoutText: { color: '#ffffff', fontSize: 12, fontVariant: ['tabular-nums'] },
+});
+
+export default OneTrackPrototype;

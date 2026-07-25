@@ -1745,3 +1745,17 @@ law on our own surface.
 **Expo dev-client / Metro — unchanged**, but the prototype adds a device check to
 U4: velocity continuity gets verified on REAL hardware, not only the simulator (the
 sim's HID timing has already misled this arc once).
+
+### ONE TRACK — prototype slice 1 SHIPPED (2026-07-25)
+Dev-only overlay (App.tsx __DEV__ mount): crave://one-track-proto?show=1 — a real
+fullscreen UIScrollView track over a fake map: transparent spacer [0,H), sheet
+content after; three detents; pinned header + divider + backdrop dim as pure
+τ-derivations; readout HUD (τ/H/phase). MACHINE-VERIFIED on-sim: one continuous
+gesture drives collapsed→expanded→list (τ 0→623=H, "settled"); detent snap on
+spacer release; a hard momentum flick from deep list STOPPED AT THE LIST TOP with
+the sheet expanded (no collapse — the ballistic bound works; whether it reads as a
+soft native bounce vs hard stop at H is U2's tuning: the endDrag inset-flip timing).
+Known simplifications: scrollTo native ease for detent snaps (not our spring — U3);
+velocity from own delta tracking (event.velocity lies); U1 off-track state (header-
+grab with deep list) not in this slice; U5 (FlashList) deliberately excluded.
+OWNER FEEL PASS = the gate for everything next.
