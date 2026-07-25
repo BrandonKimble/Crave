@@ -24,6 +24,14 @@ SERVICES=("$@")
 echo "==> Pushing main first (origin must match what ships) ..."
 git push origin main
 
+# `railway up` uploads the WORKING TREE, not HEAD — a dirty tree means prod
+# runs code that main doesn't have (burned 2026-07-25: a hook-failed commit
+# masked by a pipe shipped uncommitted work). Warn loudly, don't block.
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+  echo "WARNING: working tree is DIRTY — you are deploying uncommitted changes:" >&2
+  git status --short --untracked-files=no >&2
+fi
+
 deploy_one() {
   local svc="$1" attempt out
   for attempt in 1 2; do
