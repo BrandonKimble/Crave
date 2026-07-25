@@ -168,6 +168,9 @@ export class RedditBatchProcessingService implements OnModuleInit {
         activateDocumentsBeforeProcessing: true,
         runMetadata: {
           subreddit: job.subreddit,
+          // §24.3 Leg C: campaign attribution, threaded onward into gemini
+          // batch resumeContext by deferChunkPlanToBatch below.
+          campaignId: job.campaignId,
         },
       });
 

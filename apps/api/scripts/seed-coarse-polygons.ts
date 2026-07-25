@@ -12,6 +12,10 @@ import {
 } from '../src/modules/places/places-catalog.service';
 import { countyAxisName } from './lib/gazetteer-names';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import {
+  SpendCampaignService,
+  NoPublishedRateError,
+} from '../src/modules/external-integrations/shared/spend-campaign.service';
 
 /**
  * COARSE POLYGON SEED (plans/geo-demand-foundation-rebuild.md §2.5(e),
@@ -202,6 +206,55 @@ async function main(): Promise<void> {
     const catalog = app.get(PlacesCatalogService);
     const prisma = app.get(PrismaService);
 
+    // §24.3 Leg C gate: this script's OWN act (writing catalog rows +
+    // enqueueing place_geometry_promotions) spends zero vendor dollars —
+    // the governed hourly drain (PlacesPromotionService) does every real
+    // TomTom fetch, already paced by the tomtom.scarcePolygons monthly
+    // pool (§16 K1 owner price-tag). There is also no published tomtom
+    // per-draw $ rate yet (spend-analytics.service.ts's documented gap —
+    // inventing one would violate §16), so prepareEstimate always refuses
+    // here today; this script always takes the §24.2 cold-start PILOT
+    // path, bounded by the countries+states+counties count known BEFORE
+    // any enqueue happens (municipalities are enqueued too, but their
+    // count needs no separate estimate — the pilot's "budget" is
+    // definitional bookkeeping only; the REAL admission control remains
+    // the pre-existing monthly pool). No recordSpend attribution is wired
+    // here (the drain isn't a per-campaign chokepoint); the campaign is
+    // opened and immediately completed as a record of this run.
+    const spendCampaigns = app.get(SpendCampaignService);
+    const workClass = 'tomtom.scarcePolygons';
+    const unit = 'draw';
+    const unitCount = COUNTRIES.length + counties.length;
+    let campaignId: string;
+    try {
+      await spendCampaigns.prepareEstimate({
+        name: 'seed-coarse-polygons',
+        workClass,
+        unit,
+        unitCount,
+      });
+      throw new Error(
+        `unexpected: a published rate now exists for ${workClass}/${unit} — ` +
+          'this script needs its cold-start pilot branch updated to a real ' +
+          'estimate+approval gate (see prepareEstimate/approve).',
+      );
+    } catch (error) {
+      if (!(error instanceof NoPublishedRateError)) {
+        throw error;
+      }
+      const pilot = await spendCampaigns.preparePilot({
+        name: 'seed-coarse-polygons',
+        workClass,
+        unit,
+        unitCount,
+      });
+      campaignId = pilot.campaignId;
+      console.log(
+        `§24.3: pilot campaign ${campaignId} opened (${workClass}/${unit}, ` +
+          `${unitCount} rows) — real admission stays the existing monthly pool.`,
+      );
+    }
+
     // ---- 1. Countries (reuse existing rows; mint bbox-less when missing).
     const countryPlaceIds: string[] = [];
     for (const country of COUNTRIES) {
@@ -324,6 +377,13 @@ async function main(): Promise<void> {
       `Seed complete. Promotion backlog: ${backlog} rows — drains through ` +
         `the governed pools (scarce budget = the §16 K1 owner price-tag).`,
     );
+    await spendCampaigns.complete(campaignId).catch((error: unknown) => {
+      console.warn(
+        `  (campaign ${campaignId} not completed: ${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      );
+    });
   } finally {
     await app.close();
   }

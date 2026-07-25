@@ -50,6 +50,9 @@ export interface ArchiveEnqueueOptions {
   maxPosts?: number;
   /** Ingest window override (defaults to PUSHSHIFT_WINDOW_YEARS, default 3). */
   windowYears?: number;
+  /** §24.3 Leg C: owner-approved campaign id to attribute this run's gemini
+   *  extraction spend to (threaded onto every BatchJob this enqueue emits). */
+  campaignId?: string;
 }
 
 export interface ArchiveProcessedFileSummary {
@@ -348,6 +351,7 @@ export class ArchiveIngestionService implements OnModuleInit {
       const batchJob: BatchJob = {
         batchId,
         parentJobId,
+        campaignId: options.campaignId,
         collectionType: 'archive',
         subreddit,
         batchNumber: batchIndex,

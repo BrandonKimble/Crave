@@ -540,6 +540,11 @@ export class ExtractionPipelineService implements OnModuleInit {
       ),
       resumeContext: {
         extractionRunId,
+        // §24.3 Leg C: campaign attribution (simplest honest wiring — see
+        // gemini-batch.service.ts's pollOne, the read side). Undefined for
+        // any run not tied to an owner-approved campaign (steady-state
+        // lanes never touch this surface, §24.3).
+        campaignId: params.baseParams.runMetadata?.campaignId,
         baseParams: {
           pipeline: params.baseParams.pipeline,
           batchId: params.baseParams.batchId,

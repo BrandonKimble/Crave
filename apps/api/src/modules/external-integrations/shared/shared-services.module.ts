@@ -5,6 +5,7 @@ import { RateLimitCoordinatorService } from './rate-limit-coordinator.service';
 import { UsageLedgerService } from './usage-ledger.service';
 import { GovernanceModule } from '../governance/governance.module';
 import { DecisionLedgerService } from './decision-ledger.service';
+import { SpendCampaignService } from './spend-campaign.service';
 
 /**
  * Shared services module for external integrations
@@ -21,11 +22,13 @@ import { DecisionLedgerService } from './decision-ledger.service';
     RateLimitCoordinatorService,
     UsageLedgerService,
     DecisionLedgerService,
+    SpendCampaignService,
   ],
   exports: [
     RateLimitCoordinatorService,
     UsageLedgerService,
     DecisionLedgerService,
+    SpendCampaignService,
   ],
 })
 export class SharedServicesModule {}

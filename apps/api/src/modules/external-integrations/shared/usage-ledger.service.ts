@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
 import { geminiCostMicros } from './gemini-pricing';
+import { SpendCampaignService } from './spend-campaign.service';
 
 export interface UsageEvent {
   service: 'gemini' | 'google_places' | 'tomtom';
@@ -20,6 +21,12 @@ export interface UsageEvent {
    *  insert is silently skipped). Use when the same logical usage could be
    *  recorded twice across crash/retry — e.g. one row per batch job. */
   dedupeKey?: string;
+  /** §24.3 Leg C: when this event's spend belongs to an owner-approved Tier
+   *  1 campaign, thread its id through so the envelope gets metered (see
+   *  meterCampaignSpend). Currently threaded from archive gemini-batch
+   *  extraction (resumeContext.campaignId, set at submit time) — see
+   *  gemini-batch.service.ts's pollOne. */
+  campaignId?: string;
 }
 
 /** Places fields that force the Enterprise+Atmosphere SKU. */
@@ -94,12 +101,16 @@ export class UsageLedgerService implements OnModuleDestroy {
     // Optional: slim script module graphs may lack the governance module;
     // the ledger's DB record must never depend on the meter.
     @Optional() private readonly governance?: GovernanceService,
+    // Optional for the same reason — a script graph without the campaign
+    // service simply never attributes campaign spend (events still record).
+    @Optional() private readonly spendCampaigns?: SpendCampaignService,
   ) {
     this.logger = loggerService.setContext('UsageLedgerService');
   }
 
   record(event: UsageEvent): void {
     this.meterGeminiSpend(event);
+    this.meterCampaignSpend(event);
     const data = {
       service: event.service,
       operation: event.operation,
@@ -163,6 +174,41 @@ export class UsageLedgerService implements OnModuleDestroy {
       }
     } catch {
       // Metering must never break the usage record itself.
+    }
+  }
+
+  /**
+   * §24.3 Leg C: forward this event's ACTUAL dollars into its campaign's
+   * envelope, when campaignId is present. Fire-and-forget (mirrors
+   * meterGeminiSpend) — a breach/refusal here must never break the usage
+   * record itself; SpendCampaignService.recordSpend already logs loudly on
+   * breach, so a caught error here only needs a warn for visibility.
+   */
+  private meterCampaignSpend(event: UsageEvent): void {
+    if (!event.campaignId || !this.spendCampaigns) {
+      return;
+    }
+    if (event.service !== 'gemini') {
+      return; // Only gemini spend is priced today (gemini-pricing.ts).
+    }
+    try {
+      const micros = geminiCostMicros(event);
+      if (micros <= 0) {
+        return;
+      }
+      this.spendCampaigns
+        .recordSpend(event.campaignId, micros)
+        .catch((error: unknown) => {
+          this.logger.warn('Campaign spend attribution failed', {
+            campaignId: event.campaignId,
+            error:
+              error instanceof Error
+                ? { message: error.message }
+                : { message: String(error) },
+          });
+        });
+    } catch {
+      // Attribution must never break the usage record itself.
     }
   }
 

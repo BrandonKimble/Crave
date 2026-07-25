@@ -466,6 +466,23 @@ export class GeminiBatchService implements OnModuleDestroy {
         },
       });
     }
+    // §24.3 Leg C read side: campaign id (if any) rides in resumeContext,
+    // stashed at submit() time (extraction-pipeline.service.ts). One extra
+    // small select, only on the terminal-success path (not every poll tick).
+    const resumeContextRow = await this.prisma.llmBatchJob.findUnique({
+      where: { jobId },
+      select: { resumeContext: true },
+    });
+    const campaignId =
+      resumeContextRow?.resumeContext &&
+      typeof resumeContextRow.resumeContext === 'object' &&
+      'campaignId' in resumeContextRow.resumeContext &&
+      typeof (resumeContextRow.resumeContext as Record<string, unknown>)
+        .campaignId === 'string'
+        ? ((resumeContextRow.resumeContext as Record<string, unknown>)
+            .campaignId as string)
+        : undefined;
+
     // Idempotent by dedupeKey (one row per job): a crash/retry re-record is
     // skipped at the unique index, so ordering vs the status flip no longer
     // chooses between under- and double-counting.
@@ -481,6 +498,7 @@ export class GeminiBatchService implements OnModuleDestroy {
       caller: `gemini-batch.${purpose}`,
       runKey: jobId,
       dedupeKey: `gemini-batch:${jobId}`,
+      campaignId,
     });
     await this.prisma.llmBatchJob.update({
       where: { jobId },

@@ -21,6 +21,10 @@ import type {
   ArchiveCollectionJobResult,
 } from '../src/modules/content-processing/reddit-collector/archive/archive-collection.worker';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import {
+  SpendCampaignService,
+  NoPublishedRateError,
+} from '../src/modules/external-integrations/shared/spend-campaign.service';
 
 /**
  * THE archive seeding command (supersedes test-pipeline.ts, which truncated
@@ -54,6 +58,8 @@ interface Options {
   windowYears?: number;
   maxPosts?: number;
   batchSize?: number;
+  /** §24.3 Leg C: approves THIS run's printed estimate hash exactly. */
+  approveEstimate?: string;
 }
 
 function parseArgs(argv: string[]): Options {
@@ -69,6 +75,7 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--window-years') options.windowYears = Number(next());
     else if (token === '--max-posts') options.maxPosts = Number(next());
     else if (token === '--batch-size') options.batchSize = Number(next());
+    else if (token === '--approve-estimate') options.approveEstimate = next();
     else throw new Error(`Unknown argument: ${token}`);
   }
   if (!options.subreddits.length) {
@@ -119,6 +126,74 @@ async function main(): Promise<void> {
       );
     }
 
+    // §24.3 Leg C approval gate (interim operator-script surface, master
+    // plan §24.3): compute the estimate at the point of MAXIMUM CONTEXT
+    // this script has BEFORE any spend — that's --max-posts, a real
+    // declared ceiling the operator already chose (a fact, not a guess),
+    // not the post-dedupe postsQueued count (only knowable AFTER
+    // enqueueArchiveBatches has already queued work). --max-posts is
+    // therefore required here; a truly unbounded full-archive load should
+    // pass an explicit large ceiling rather than running estimate-ungated.
+    if (options.maxPosts === undefined) {
+      throw new Error(
+        '--max-posts is required (§24.3 Leg C spend-estimate gate needs a ' +
+          'unit count known before any spend happens; pass a bounded ' +
+          'ceiling, staged upward across re-runs as before)',
+      );
+    }
+    const spendCampaigns = app.get(SpendCampaignService);
+    const workClass = 'gemini.reddit_extraction';
+    const unit = 'document';
+    const unitCount = options.maxPosts * options.subreddits.length;
+    let campaignId: string;
+    try {
+      const estimate = await spendCampaigns.prepareEstimate({
+        name: `archive:${options.subreddits.join(',')}`,
+        workClass,
+        unit,
+        unitCount,
+      });
+      out(`\n=== §24.3 spend estimate (campaign ${estimate.campaignId}) ===`);
+      out(`  work_class=${workClass} unit=${unit} unit_count=${unitCount}`);
+      out(
+        `  rate=${estimate.microUsdPerUnit.toFixed(4)} micro-USD/${unit}  ` +
+          `estimate=$${(estimate.estimateMicros / 1_000_000).toFixed(2)}  ` +
+          `tolerance=${(estimate.toleranceFraction * 100).toFixed(1)}%  ` +
+          `envelope(breach stop)=$${(estimate.envelopeMicros / 1_000_000).toFixed(2)}`,
+      );
+      out(`  hash=${estimate.estimateHash}`);
+      if (options.approveEstimate !== estimate.estimateHash) {
+        out(
+          `\nRefusing to start: re-run with --approve-estimate ${estimate.estimateHash} ` +
+            `to approve THIS estimate.`,
+        );
+        process.exit(1);
+      }
+      await spendCampaigns.approve(estimate.campaignId, estimate.estimateHash);
+      campaignId = estimate.campaignId;
+      out(`  approved — campaign ${campaignId} running.\n`);
+    } catch (error) {
+      if (!(error instanceof NoPublishedRateError)) {
+        throw error;
+      }
+      // §24.2 cold-start law: no published rate yet for this work class —
+      // run a bounded pilot (budget = unitCount, priced post-hoc) instead
+      // of inventing a rate.
+      out(
+        `\nNo published rate for ${workClass}/${unit} yet — running a ` +
+          `bounded pilot campaign instead (§24.2 cold start; budget = ` +
+          `${unitCount} ${unit}s, priced post-hoc from this run's actuals).`,
+      );
+      const pilot = await spendCampaigns.preparePilot({
+        name: `archive-pilot:${options.subreddits.join(',')}`,
+        workClass,
+        unit,
+        unitCount,
+      });
+      campaignId = pilot.campaignId;
+      out(`  pilot campaign ${campaignId} approved.\n`);
+    }
+
     const startedAt = new Date();
     const baseline = {
       entities: await prisma.entity.count({ where: { status: 'active' } }),
@@ -137,6 +212,7 @@ async function main(): Promise<void> {
           batchSize: options.batchSize,
           maxPosts: options.maxPosts,
           windowYears: options.windowYears,
+          campaignId,
         },
       });
       const result = (await job.finished()) as ArchiveCollectionJobResult;
@@ -201,6 +277,19 @@ async function main(): Promise<void> {
       `\nentities +${after.entities - baseline.entities}; place-backed locations +${after.restaurants - baseline.restaurants} (wall-clock, ALL subreddits — the per-subreddit truth is the post-sequence section above)`,
     );
     out(`report also written to ${logFile}`);
+
+    // §24.3 Leg C: close the campaign out, feeding the realized (estimate
+    // vs actual) pair back into measureDrift for next time. A breach along
+    // the way already flipped the campaign to 'breached' — complete() only
+    // accepts approved/running, so a breached campaign is left as-is here
+    // (the owner resumes it explicitly via resumeAfterBreach).
+    await spendCampaigns.complete(campaignId).catch((error: unknown) => {
+      out(
+        `  (campaign ${campaignId} not completed: ${
+          error instanceof Error ? error.message : String(error)
+        })`,
+      );
+    });
   } finally {
     await app.close();
   }

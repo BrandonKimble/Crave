@@ -82,7 +82,6 @@ model Entity {
   @@map("core_entities")
 }
 
-
 model RestaurantLocation {
   locationId       String    @id @default(dbgenerated("gen_random_uuid()")) @map("location_id") @db.Uuid
   restaurantId     String    @map("restaurant_id") @db.Uuid
@@ -361,10 +360,10 @@ model SourceCollectionLane {
   /// reads baseline ± K*dev). costPaused is the breach flag; listDueLanes
   /// excludes paused lanes, mirroring how output collapse never blocks
   /// dispatch but cost breach DOES (asymmetric: high spend is the alarm).
-  lastCostMicros         BigInt?   @map("last_cost_micros")
-  costBaselineMicros     Float?    @map("cost_baseline_micros")
-  costBaselineDevMicros  Float?    @map("cost_baseline_dev_micros")
-  costPaused             Boolean   @default(false) @map("cost_paused")
+  lastCostMicros        BigInt?   @map("last_cost_micros")
+  costBaselineMicros    Float?    @map("cost_baseline_micros")
+  costBaselineDevMicros Float?    @map("cost_baseline_dev_micros")
+  costPaused            Boolean   @default(false) @map("cost_paused")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @default(now()) @map("updated_at")
 
@@ -390,6 +389,43 @@ model SpendUnitCost {
 
   @@id([workClass, unit])
   @@map("spend_unit_costs")
+}
+
+/// §24.3 the campaign ledger (Tier 1, §24.1): one row per named, finite,
+/// spend-bearing job (archive load, source onboarding, polygon seed,
+/// re-judge sweep, backfill). estimateHash binds an approval to EXACTLY the
+/// estimate it approved. The §14.6 grant pool `campaign.<campaignId>`
+/// (minted at approve()) is the campaign's spend identity — its amount is
+/// estimateMicros x (1 + toleranceFraction), the projection envelope's
+/// upper bound; the grant going exhausted IS the envelope breach stop (the
+/// two are the same event, by construction — see SpendCampaignService).
+/// microUsdPerUnit/estimateMicros/toleranceFraction/estimateHash are
+/// nullable together: a bounded PILOT campaign (§24.2 cold-start law) is
+/// created directly 'approved' with none of the four set — its budget is
+/// its unit COUNT (caller-bounded), priced post-hoc from its own actuals.
+model SpendCampaign {
+  campaignId String @id @default(dbgenerated("gen_random_uuid()")) @map("campaign_id") @db.Uuid
+  name       String @db.VarChar(128)
+  workClass  String @map("work_class") @db.VarChar(64)
+  unit       String @db.VarChar(32)
+  unitCount  Int    @map("unit_count")
+
+  microUsdPerUnit   Float?  @map("micro_usd_per_unit")
+  estimateMicros    BigInt? @map("estimate_micros")
+  toleranceFraction Float?  @map("tolerance_fraction")
+  estimateHash      String? @map("estimate_hash") @db.VarChar(64)
+
+  /// 'draft' | 'awaiting_approval' | 'approved' | 'running' | 'completed'
+  /// | 'breached' | 're_awaiting' (§24.3).
+  state       String    @default("draft") @db.VarChar(24)
+  spentMicros BigInt    @default(0) @map("spent_micros")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  approvedAt  DateTime? @map("approved_at")
+  completedAt DateTime? @map("completed_at")
+  breachNote  String?   @map("breach_note")
+
+  @@index([state, workClass])
+  @@map("spend_campaigns")
 }
 
 /// §5 engines: operator-attached collection units. Territory = derived union
@@ -418,16 +454,16 @@ model RescoreState {
 }
 
 model RestaurantItemMention {
-  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  connectionId  String     @map("connection_id") @db.Uuid
-  kind          String     @db.VarChar(16)
-  mentionedAt   DateTime   @map("mentioned_at")
-  sourceUpvotes Int        @default(0) @map("source_upvotes")
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  connectionId     String     @map("connection_id") @db.Uuid
+  kind             String     @db.VarChar(16)
+  mentionedAt      DateTime   @map("mentioned_at")
+  sourceUpvotes    Int        @default(0) @map("source_upvotes")
   /// §8 provenance unification: the document this contribution came from —
   /// the scorer resolves it to a SOURCE (the calibration room) at read.
   /// Nullable, no FK: this is a full-replace projection over evidence rows.
-  sourceDocumentId String? @map("source_document_id") @db.Uuid
-  connection    Connection @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
+  sourceDocumentId String?    @map("source_document_id") @db.Uuid
+  connection       Connection @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
 
   @@index([connectionId])
   @@map("core_restaurant_item_mentions")
@@ -895,21 +931,18 @@ model UserNotification {
   @@map("user_notifications")
 }
 
-
-
-
 model DemandScoringRun {
-  runId                String                    @id @default(dbgenerated("gen_random_uuid()")) @map("run_id") @db.Uuid
-  consumerKind         DemandScoringConsumerKind @map("consumer_kind")
-  engineName           String?                   @map("engine_name") @db.VarChar(255)
-  cycleStartAt         DateTime                  @map("cycle_start_at")
-  cycleEndAt           DateTime                  @map("cycle_end_at")
-  scorerVersion        String                    @map("scorer_version") @db.VarChar(64)
-  traceAllCandidates   Boolean                   @default(false) @map("trace_all_candidates")
-  startedAt            DateTime                  @default(now()) @map("started_at")
-  finishedAt           DateTime?                 @map("finished_at")
-  metadata             Json?                     @default("{}")
-  candidates           DemandScoringCandidate[]
+  runId              String                    @id @default(dbgenerated("gen_random_uuid()")) @map("run_id") @db.Uuid
+  consumerKind       DemandScoringConsumerKind @map("consumer_kind")
+  engineName         String?                   @map("engine_name") @db.VarChar(255)
+  cycleStartAt       DateTime                  @map("cycle_start_at")
+  cycleEndAt         DateTime                  @map("cycle_end_at")
+  scorerVersion      String                    @map("scorer_version") @db.VarChar(64)
+  traceAllCandidates Boolean                   @default(false) @map("trace_all_candidates")
+  startedAt          DateTime                  @default(now()) @map("started_at")
+  finishedAt         DateTime?                 @map("finished_at")
+  metadata           Json?                     @default("{}")
+  candidates         DemandScoringCandidate[]
 
   @@index([consumerKind, startedAt(sort: Desc)], map: "idx_demand_scoring_runs_consumer_started")
   @@index([engineName, consumerKind, startedAt(sort: Desc)], map: "idx_demand_scoring_runs_engine_consumer")
@@ -920,28 +953,28 @@ model DemandScoringRun {
 /// uq_demand_scoring_candidate_scope uses NULLS NOT DISTINCT across candidate
 /// identity and scope to protect createMany(skipDuplicates) trace writes.
 model DemandScoringCandidate {
-  candidateId          String                     @id @default(dbgenerated("gen_random_uuid()")) @map("candidate_id") @db.Uuid
-  runId                String                     @map("run_id") @db.Uuid
-  consumerKind         DemandScoringConsumerKind  @map("consumer_kind")
-  candidateKind        String                     @map("candidate_kind") @db.VarChar(64)
-  subjectKind          DemandSubjectKind          @map("subject_kind")
-  subjectKey           String                     @map("subject_key") @db.VarChar(500)
-  entityId             String?                    @map("entity_id") @db.Uuid
-  entityType           EntityType?                @map("entity_type")
-  normalizedText       String?                    @map("normalized_text") @db.VarChar(500)
-  engineName           String?                    @map("engine_name") @db.VarChar(255)
-  bucket               String?                    @db.VarChar(64)
-  lane                 String?                    @db.VarChar(64)
-  reason               String?                    @db.VarChar(64)
-  finalScore           Float?                     @map("final_score")
-  rank                 Int?
-  selected             Boolean                    @default(false)
-  decisionState        DemandScoringDecisionState @map("decision_state")
-  decisionReason       String?                    @map("decision_reason") @db.VarChar(255)
-  factorBreakdown      Json?                      @default("{}") @map("factor_breakdown")
-  createdAt            DateTime                   @default(now()) @map("created_at")
-  entity               Entity?                    @relation(fields: [entityId], references: [entityId], onDelete: SetNull)
-  run                  DemandScoringRun           @relation(fields: [runId], references: [runId], onDelete: Cascade)
+  candidateId     String                     @id @default(dbgenerated("gen_random_uuid()")) @map("candidate_id") @db.Uuid
+  runId           String                     @map("run_id") @db.Uuid
+  consumerKind    DemandScoringConsumerKind  @map("consumer_kind")
+  candidateKind   String                     @map("candidate_kind") @db.VarChar(64)
+  subjectKind     DemandSubjectKind          @map("subject_kind")
+  subjectKey      String                     @map("subject_key") @db.VarChar(500)
+  entityId        String?                    @map("entity_id") @db.Uuid
+  entityType      EntityType?                @map("entity_type")
+  normalizedText  String?                    @map("normalized_text") @db.VarChar(500)
+  engineName      String?                    @map("engine_name") @db.VarChar(255)
+  bucket          String?                    @db.VarChar(64)
+  lane            String?                    @db.VarChar(64)
+  reason          String?                    @db.VarChar(64)
+  finalScore      Float?                     @map("final_score")
+  rank            Int?
+  selected        Boolean                    @default(false)
+  decisionState   DemandScoringDecisionState @map("decision_state")
+  decisionReason  String?                    @map("decision_reason") @db.VarChar(255)
+  factorBreakdown Json?                      @default("{}") @map("factor_breakdown")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  entity          Entity?                    @relation(fields: [entityId], references: [entityId], onDelete: SetNull)
+  run             DemandScoringRun           @relation(fields: [runId], references: [runId], onDelete: Cascade)
 
   @@index([runId, rank], map: "idx_demand_scoring_candidates_run_rank")
   @@index([consumerKind, selected, createdAt(sort: Desc)], map: "idx_demand_scoring_candidates_consumer_selected")
@@ -949,9 +982,6 @@ model DemandScoringCandidate {
   @@index([entityId, consumerKind], map: "idx_demand_scoring_candidates_entity_consumer")
   @@map("demand_scoring_candidates")
 }
-
-
-
 
 model UserFavorite {
   favoriteId String              @id @default(dbgenerated("gen_random_uuid()")) @map("favorite_id") @db.Uuid
@@ -972,7 +1002,6 @@ model UserFavorite {
   @@index([userId], map: "idx_user_favorites_user")
   @@map("user_favorites")
 }
-
 
 model User {
   userId                   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
@@ -1445,7 +1474,6 @@ model PhotoEvent {
   @@map("photo_events")
 }
 
-
 model CollectionCommunity {
   collectionCommunityId String    @id @default(dbgenerated("gen_random_uuid()")) @map("collection_community_id") @db.Uuid
   communityName         String    @unique(map: "collection_communities_community_name_key") @map("community_name") @db.Citext
@@ -1459,9 +1487,6 @@ model CollectionCommunity {
   @@index([lastProcessed], map: "idx_collection_communities_last_processed")
   @@map("collection_communities")
 }
-
-
-
 
 model OnDemandRequest {
   requestId             String                @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
@@ -1507,32 +1532,30 @@ model OnDemandRequestUser {
   @@map("collection_on_demand_request_users")
 }
 
-
 model KeywordAttemptHistory {
-  engineName           String                 @map("engine_name") @db.VarChar(255)
-  normalizedTerm       String                 @map("normalized_term") @db.VarChar(255)
+  engineName          String                 @map("engine_name") @db.VarChar(255)
+  normalizedTerm      String                 @map("normalized_term") @db.VarChar(255)
   /// §11 attempt ledger: the schedulable unit is (engine, term); engineName
   /// is the engine's natural key.
-  engineId             String?                @map("engine_id") @db.Uuid
-  lastAttemptAt        DateTime?              @map("last_attempt_at")
-  lastSuccessAt        DateTime?              @map("last_success_at")
-  lastOutcome          KeywordAttemptOutcome? @map("last_outcome")
+  engineId            String?                @map("engine_id") @db.Uuid
+  lastAttemptAt       DateTime?              @map("last_attempt_at")
+  lastSuccessAt       DateTime?              @map("last_success_at")
+  lastOutcome         KeywordAttemptOutcome? @map("last_outcome")
   /// Harvest snapshot (no-fake-estimates law): when the query last actually
   /// ran against the vendor, how many results it returned, and how big the
   /// source corpus was — eligibility DERIVES from these (corpus delta ×
   /// measured share ≥ 1 doc), no cooldown timers.
-  lastHarvestAt        DateTime?              @map("last_harvest_at") @db.Timestamptz(6)
-  lastResultCount      Int?                   @map("last_result_count")
-  corpusDocsAtHarvest  Int?                   @map("corpus_docs_at_harvest")
-  createdAt            DateTime               @default(now()) @map("created_at")
-  updatedAt            DateTime               @updatedAt @map("updated_at")
+  lastHarvestAt       DateTime?              @map("last_harvest_at") @db.Timestamptz(6)
+  lastResultCount     Int?                   @map("last_result_count")
+  corpusDocsAtHarvest Int?                   @map("corpus_docs_at_harvest")
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
 
   @@id([engineName, normalizedTerm])
   @@index([engineName], map: "idx_collection_keyword_attempt_history_engine_name")
   @@index([engineId, normalizedTerm], map: "idx_collection_keyword_attempt_history_engine_term")
   @@map("collection_keyword_attempt_history")
 }
-
 
 enum KeywordAttemptOutcome {
   success
@@ -1792,8 +1815,6 @@ enum MentionSource {
   @@map("mention_source")
 }
 
-
-
 enum DemandSubjectKind {
   entity
   query
@@ -1801,8 +1822,6 @@ enum DemandSubjectKind {
 
   @@map("demand_subject_kind")
 }
-
-
 
 enum DemandScoringConsumerKind {
   poll_topic
