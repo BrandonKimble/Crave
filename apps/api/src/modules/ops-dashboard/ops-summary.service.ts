@@ -2,7 +2,10 @@ import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
-import { CollectorSourceRegistryService } from '../content-processing/reddit-collector/collector-source-registry.service';
+import {
+  CollectorSourceRegistryService,
+  type CollectorHeartbeat,
+} from '../content-processing/reddit-collector/collector-source-registry.service';
 import { geminiCostMicros } from '../external-integrations/shared/gemini-pricing';
 import {
   placesCostMicrosPerCall,
@@ -10,46 +13,165 @@ import {
 } from '../external-integrations/shared/vendor-pricing';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-/** §16 K3-shaped operational bound: the sparkline's window length — long
+
+/** §16 K3-shaped operational bound: the daily-spend window length — long
  *  enough to see a trend, short enough to stay a glance-able chart. Mirrors
  *  spend-analytics.service.ts's UNIT_COST_WINDOW_DAYS (same 30-day horizon,
  *  independently named here since this module has no dependency on that
  *  service's internal constant). */
-const SPARKLINE_DAYS = 30;
+const DAILY_WINDOW_DAYS = 30;
+
+/** Trailing window for the TomTom credit burn-rate derivation (est. days
+ *  left) — a derivation of measured ledger data, never an invented number. */
+const TRAILING_BURN_DAYS = 7;
+
+/** Month-position color thresholds (dashboard readability bands, not gates —
+ *  Tier 1/2/3 governance does the gating): fill is blue while month-to-date
+ *  spend tracks at-or-under the prorated trailing-baseline expectation,
+ *  yellow to 130% of it, red beyond. */
+const MONTH_POSITION_WARN_RATIO = 1.0;
+const MONTH_POSITION_HOT_RATIO = 1.3;
+
+export type MonthPositionColor = 'blue' | 'yellow' | 'red';
+
+/** Pure month-position banding — exported so the thresholds are RED-provably
+ *  testable without a service graph. */
+export function monthPositionColor(
+  spentMicros: number,
+  expectedMicros: number,
+): MonthPositionColor {
+  if (expectedMicros <= 0) {
+    return 'blue';
+  }
+  const ratio = spentMicros / expectedMicros;
+  if (ratio <= MONTH_POSITION_WARN_RATIO) {
+    return 'blue';
+  }
+  if (ratio <= MONTH_POSITION_HOT_RATIO) {
+    return 'yellow';
+  }
+  return 'red';
+}
+
+/** Pure TomTom prepaid-credit math: owner-declared credit (a fact from the
+ *  vendor top-up receipt) minus measured priced burn since the declaration.
+ *  Exported for RED-provable tests. */
+export function tomtomCreditRemainingMicros(
+  creditUsd: number,
+  burnSinceDeclaredMicros: number,
+): number {
+  return Math.round(creditUsd * 1_000_000) - burnSinceDeclaredMicros;
+}
 
 export interface OpsSummary {
   spend: {
     monthToDateByService: Record<string, number>;
+    totalMtdMicros: number;
     last30DailyGeminiMicros: number[];
-    expectationProratedMicros: number | null;
-    warnThresholdMicros: number | null;
+    monthPosition: {
+      dayOfMonth: number;
+      daysInMonth: number;
+      spentMtdMicros: number;
+      /** Prorated trailing-baseline expectation (30d daily mean × day of
+       *  month) — null when there is no measured history to derive from. */
+      expectedByTodayMicros: number | null;
+      percentOfExpected: number | null;
+      color: MonthPositionColor | null;
+    };
   };
-  pools: Array<{
-    name: string;
-    used: number;
-    limit: number;
-    resetMs: number | null;
-    poisonedForMs: number | null;
+  vendors: {
+    gemini: {
+      mtdMicros: number;
+      /** gemini.monthlySpend Tier-3 backstop ceiling (measured-derived). */
+      backstopLimitMicros: number | null;
+      percentOfBackstop: number | null;
+    };
+    tomtom: {
+      mtdMicros: number;
+      credit: {
+        /** Both TOMTOM_PREPAID_CREDIT_USD + TOMTOM_CREDIT_DECLARED_AT set
+         *  and parseable. When false every other field is null — the
+         *  dashboard says "not declared", never invents a balance. */
+        declared: boolean;
+        creditMicros: number | null;
+        declaredAt: string | null;
+        burnSinceDeclaredMicros: number | null;
+        remainingMicros: number | null;
+        /** Derived from trailing-7-day measured burn; null when no recent
+         *  burn exists to derive a rate from. */
+        estDaysLeft: number | null;
+      };
+    };
+    googlePlaces: { mtdMicros: number };
+    /** ONLY currently-broken governance facts (poisoned pool / exhausted
+     *  campaign grant) — empty means nothing to say. */
+    anomalies: Array<{
+      kind: 'pool_poisoned' | 'grant_exhausted';
+      name: string;
+      detail: string;
+    }>;
+  };
+  places: Array<{
+    community: string;
+    anchorPlaceName: string | null;
+    docsTotal: number;
+    docs24h: number;
+    entitiesAttributed: number;
+    /** Measured gemini per-document unit cost × this community's docs —
+     *  null (rendered "—") when no unit-cost row exists yet. */
+    estLlmSpendMicros: number | null;
   }>;
+  sources: Array<{
+    handle: string;
+    lane: string;
+    state: 'ok' | 'cost_paused' | 'red';
+    normalizedLateness: number;
+    lastRanAt: string | null;
+    nextDueAt: string | null;
+    lastOutputDocs: number | null;
+    outputDocsBaseline: number | null;
+    lastCostMicros: number | null;
+  }>;
+  pipeline: {
+    docs24h: number;
+    entities24h: number;
+    extractionRuns24h: number;
+    extractionFailed24h: number;
+    batchJobsPending: number;
+    batchJobsIngested24h: number;
+    drainPending: number | null;
+    unackedAlerts: number;
+  };
   campaigns: unknown[];
-  lanes: unknown[];
-  unitCosts: unknown[];
   alerts: {
     latest: unknown[];
     unacknowledgedCount: number;
   };
-  collection: {
-    docs24h: number;
-    entities24h: number;
-    drainPending: number | null;
-  };
+}
+
+interface SpendCore {
+  monthToDateByService: Record<string, number>;
+  totalMtdMicros: number;
+  dailyGeminiMicros: number[];
+  dailyTotalMicros: number[];
+  dailyTomtomMicros: number[];
+  monthPosition: OpsSummary['spend']['monthPosition'];
+}
+
+interface UnitCostRowLite {
+  workClass: string;
+  unit: string;
+  microUsdPerUnit: number;
 }
 
 /**
- * §18.4 GET /ops/api/summary assembly. Reads existing tables/services
- * directly (spend_unit_costs, spend_campaigns, ops_alerts, governance pool
- * status, collector heartbeats) — no new derivation logic, only a read-side
- * shape for the dashboard.
+ * §18.4 GET /ops/api/summary assembly (V2). Reads existing tables/services
+ * directly (api_usage_ledger priced via the shared vendor/gemini price
+ * tables — the same pricing spend-analytics.service.ts uses — plus
+ * spend_unit_costs, spend_campaigns, ops_alerts, governance pool status,
+ * collector heartbeats, and the collection pipeline tables). No new
+ * derivation logic beyond arithmetic on measured data — a read-side shape
+ * for the dashboard, honest to the no-fake-estimates law.
  */
 @Injectable()
 export class OpsSummaryService {
@@ -62,83 +184,102 @@ export class OpsSummaryService {
 
   async summary(now: Date = new Date()): Promise<OpsSummary> {
     const [
-      spend,
-      pools,
+      spendCore,
       campaigns,
-      lanes,
-      unitCosts,
+      unitCostRows,
       alerts,
       unacknowledgedCount,
-      collection,
+      placesBase,
+      sources,
+      pipelineCore,
     ] = await Promise.all([
-      this.spendSummary(now),
-      Promise.resolve(this.poolsSummary()),
+      this.spendCore(now),
       this.prisma.spendCampaign.findMany({
         orderBy: { createdAt: 'desc' },
         take: 20,
       }),
-      this.registry.collectorHeartbeats(now).catch(() => []),
-      this.prisma.spendUnitCost.findMany(),
+      this.prisma.spendUnitCost.findMany().catch(() => [] as UnitCostRowLite[]),
       this.opsAlerts.list(50),
       this.opsAlerts.unacknowledgedCount(),
-      this.collectionPulse(now),
+      this.placesSection(now),
+      this.sourcesSection(now),
+      this.pipelineCore(now),
     ]);
 
+    const vendors = await this.vendorsSection(now, spendCore, unitCostRows);
+
+    const perDocRow = unitCostRows.find(
+      (row) =>
+        row.workClass === 'gemini.reddit_extraction' && row.unit === 'document',
+    );
+    const places = placesBase.map((entry) => ({
+      ...entry,
+      estLlmSpendMicros:
+        perDocRow !== undefined
+          ? Math.round(perDocRow.microUsdPerUnit * entry.docsTotal)
+          : null,
+    }));
+
     return {
-      spend,
-      pools,
+      spend: {
+        monthToDateByService: spendCore.monthToDateByService,
+        totalMtdMicros: spendCore.totalMtdMicros,
+        last30DailyGeminiMicros: spendCore.dailyGeminiMicros,
+        monthPosition: spendCore.monthPosition,
+      },
+      vendors,
+      places,
+      sources,
+      pipeline: {
+        ...pipelineCore,
+        unackedAlerts: unacknowledgedCount,
+      },
       campaigns,
-      lanes,
-      unitCosts,
       alerts: { latest: alerts, unacknowledgedCount },
-      collection,
     };
   }
 
-  private poolsSummary(): OpsSummary['pools'] {
-    if (!this.governance) {
-      return [];
-    }
-    return this.governance.pools.listRegistered().map((pool) => {
-      const status = this.governance!.pools.poolStatus(pool.name);
-      return {
-        name: pool.name,
-        used: status.used,
-        limit: status.limit,
-        resetMs: status.resetMs,
-        poisonedForMs: status.poisonedForMs,
-      };
-    });
-  }
+  // ---------------------------------------------------------------- spend
 
-  private async spendSummary(now: Date): Promise<OpsSummary['spend']> {
+  private async spendCore(now: Date): Promise<SpendCore> {
     const monthStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
     );
-    const [geminiMtd, placesMtd, tomtomMtd] = await Promise.all([
+    const windowStart = new Date(
+      now.getTime() - DAILY_WINDOW_DAYS * MS_PER_DAY,
+    );
+
+    const [
+      geminiMtd,
+      placesMtd,
+      tomtomMtd,
+      dailyGemini,
+      dailyPlaces,
+      dailyTomtom,
+    ] = await Promise.all([
       this.geminiMicros(monthStart, now),
       this.placesMicros(monthStart, now),
       this.tomtomMicros(monthStart, now),
+      this.dailyGeminiMicros(windowStart, now),
+      this.dailyPlacesMicros(windowStart, now),
+      this.dailyTomtomMicros(windowStart, now),
     ]);
 
-    const dailyTotals: number[] = [];
-    for (let i = SPARKLINE_DAYS - 1; i >= 0; i--) {
-      const start = new Date(now.getTime() - (i + 1) * MS_PER_DAY);
-      const end = new Date(start.getTime() + MS_PER_DAY);
-      dailyTotals.push(await this.geminiMicros(start, end));
-    }
-    const n = dailyTotals.length;
-    const mean = n > 0 ? dailyTotals.reduce((a, b) => a + b, 0) / n : 0;
-    const variance =
-      n > 0 ? dailyTotals.reduce((a, b) => a + (b - mean) ** 2, 0) / n : 0;
-    const stddev = Math.sqrt(variance);
+    const totalMtdMicros = geminiMtd + placesMtd + tomtomMtd;
+    const dailyTotalMicros = dailyGemini.map(
+      (value, i) => value + dailyPlaces[i] + dailyTomtom[i],
+    );
+
+    const mean =
+      dailyTotalMicros.reduce((a, b) => a + b, 0) / DAILY_WINDOW_DAYS;
     const dayOfMonth = Math.max(
       1,
       Math.floor((now.getTime() - monthStart.getTime()) / MS_PER_DAY) + 1,
     );
-    const expectationProratedMicros = mean * dayOfMonth;
-    const warnThresholdMicros =
-      expectationProratedMicros + 3 * stddev * Math.sqrt(dayOfMonth);
+    const daysInMonth = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+    const expectedByTodayMicros = mean > 0 ? mean * dayOfMonth : null;
 
     return {
       monthToDateByService: {
@@ -146,12 +287,95 @@ export class OpsSummaryService {
         google_places: placesMtd,
         tomtom: tomtomMtd,
       },
-      last30DailyGeminiMicros: dailyTotals,
-      expectationProratedMicros:
-        expectationProratedMicros > 0 ? expectationProratedMicros : null,
-      warnThresholdMicros:
-        expectationProratedMicros > 0 ? warnThresholdMicros : null,
+      totalMtdMicros,
+      dailyGeminiMicros: dailyGemini,
+      dailyTotalMicros,
+      dailyTomtomMicros: dailyTomtom,
+      monthPosition: {
+        dayOfMonth,
+        daysInMonth,
+        spentMtdMicros: totalMtdMicros,
+        expectedByTodayMicros,
+        percentOfExpected:
+          expectedByTodayMicros !== null
+            ? Math.round((totalMtdMicros / expectedByTodayMicros) * 1000) / 10
+            : null,
+        color:
+          expectedByTodayMicros !== null
+            ? monthPositionColor(totalMtdMicros, expectedByTodayMicros)
+            : null,
+      },
     };
+  }
+
+  private dayBucket(createdAt: Date, windowStart: Date): number {
+    const index = Math.floor(
+      (createdAt.getTime() - windowStart.getTime()) / MS_PER_DAY,
+    );
+    return Math.min(DAILY_WINDOW_DAYS - 1, Math.max(0, index));
+  }
+
+  private async dailyGeminiMicros(
+    windowStart: Date,
+    now: Date,
+  ): Promise<number[]> {
+    const rows = await this.prisma.apiUsageEvent.findMany({
+      where: { service: 'gemini', createdAt: { gte: windowStart, lt: now } },
+      select: {
+        inputTokens: true,
+        outputTokens: true,
+        cachedTokens: true,
+        model: true,
+        mode: true,
+        createdAt: true,
+      },
+    });
+    const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
+    for (const row of rows) {
+      buckets[this.dayBucket(row.createdAt, windowStart)] += geminiCostMicros({
+        model: row.model ?? undefined,
+        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
+        inputTokens: row.inputTokens ?? 0,
+        outputTokens: row.outputTokens ?? 0,
+        cachedTokens: row.cachedTokens ?? 0,
+      });
+    }
+    return buckets;
+  }
+
+  private async dailyPlacesMicros(
+    windowStart: Date,
+    now: Date,
+  ): Promise<number[]> {
+    const rows = await this.prisma.apiUsageEvent.findMany({
+      where: {
+        service: 'google_places',
+        createdAt: { gte: windowStart, lt: now },
+      },
+      select: { skuTier: true, requestCount: true, createdAt: true },
+    });
+    const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
+    for (const row of rows) {
+      buckets[this.dayBucket(row.createdAt, windowStart)] +=
+        placesCostMicrosPerCall(row.skuTier ?? null) * (row.requestCount ?? 0);
+    }
+    return buckets;
+  }
+
+  private async dailyTomtomMicros(
+    windowStart: Date,
+    now: Date,
+  ): Promise<number[]> {
+    const rows = await this.prisma.apiUsageEvent.findMany({
+      where: { service: 'tomtom', createdAt: { gte: windowStart, lt: now } },
+      select: { requestCount: true, createdAt: true },
+    });
+    const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
+    for (const row of rows) {
+      buckets[this.dayBucket(row.createdAt, windowStart)] +=
+        (row.requestCount ?? 0) * tomtomCostMicrosPerDraw;
+    }
+    return buckets;
   }
 
   private async geminiMicros(start: Date, end: Date): Promise<number> {
@@ -199,16 +423,334 @@ export class OpsSummaryService {
     return (agg._sum.requestCount ?? 0) * tomtomCostMicrosPerDraw;
   }
 
-  private async collectionPulse(now: Date): Promise<OpsSummary['collection']> {
+  // -------------------------------------------------------------- vendors
+
+  private async vendorsSection(
+    now: Date,
+    spendCore: SpendCore,
+    unitCostRows: UnitCostRowLite[],
+  ): Promise<OpsSummary['vendors']> {
+    const geminiMtd = spendCore.monthToDateByService.gemini ?? 0;
+    const backstopLimitMicros = this.geminiBackstopLimitMicros(unitCostRows);
+
+    return {
+      gemini: {
+        mtdMicros: geminiMtd,
+        backstopLimitMicros,
+        percentOfBackstop:
+          backstopLimitMicros !== null && backstopLimitMicros > 0
+            ? Math.round((geminiMtd / backstopLimitMicros) * 1000) / 10
+            : null,
+      },
+      tomtom: {
+        mtdMicros: spendCore.monthToDateByService.tomtom ?? 0,
+        credit: await this.tomtomCredit(now, spendCore.dailyTomtomMicros),
+      },
+      googlePlaces: {
+        mtdMicros: spendCore.monthToDateByService.google_places ?? 0,
+      },
+      anomalies: this.governanceAnomalies(now),
+    };
+  }
+
+  /** Tier-3 ceiling: the live gemini.monthlySpend pool limit when a
+   *  governance graph is present, else the persisted measured-derived
+   *  backstop row (workClass 'backstop.gemini', unit 'month') — the same
+   *  number governance itself boots from. Null when neither exists. */
+  private geminiBackstopLimitMicros(
+    unitCostRows: UnitCostRowLite[],
+  ): number | null {
+    if (this.governance) {
+      try {
+        return this.governance.pools.poolStatus('gemini.monthlySpend').limit;
+      } catch {
+        // Pool not registered in this graph — fall through to the row.
+      }
+    }
+    const row = unitCostRows.find(
+      (r) => r.workClass === 'backstop.gemini' && r.unit === 'month',
+    );
+    return row !== undefined ? Math.round(row.microUsdPerUnit) : null;
+  }
+
+  /** Prepaid credit is invisible to the TomTom API, so the balance is an
+   *  owner-declared fact (env, set from the top-up receipt) minus MEASURED
+   *  priced burn since the declaration — never an invented number. Unset
+   *  env = "not declared", full stop. */
+  private async tomtomCredit(
+    now: Date,
+    dailyTomtomMicros: number[],
+  ): Promise<OpsSummary['vendors']['tomtom']['credit']> {
+    const creditUsd = Number(process.env.TOMTOM_PREPAID_CREDIT_USD);
+    const declaredAtRaw = process.env.TOMTOM_CREDIT_DECLARED_AT;
+    const declaredAt =
+      declaredAtRaw !== undefined && declaredAtRaw !== ''
+        ? new Date(declaredAtRaw)
+        : null;
+    const declared =
+      Number.isFinite(creditUsd) &&
+      creditUsd > 0 &&
+      declaredAt !== null &&
+      !Number.isNaN(declaredAt.getTime());
+    if (!declared || declaredAt === null) {
+      return {
+        declared: false,
+        creditMicros: null,
+        declaredAt: null,
+        burnSinceDeclaredMicros: null,
+        remainingMicros: null,
+        estDaysLeft: null,
+      };
+    }
+
+    const burnSinceDeclaredMicros = await this.tomtomMicros(declaredAt, now);
+    const remainingMicros = tomtomCreditRemainingMicros(
+      creditUsd,
+      burnSinceDeclaredMicros,
+    );
+    const trailingBurnMicros = dailyTomtomMicros
+      .slice(-TRAILING_BURN_DAYS)
+      .reduce((a, b) => a + b, 0);
+    const dailyRateMicros = trailingBurnMicros / TRAILING_BURN_DAYS;
+    const estDaysLeft =
+      dailyRateMicros > 0
+        ? Math.max(0, Math.floor(remainingMicros / dailyRateMicros))
+        : null;
+
+    return {
+      declared: true,
+      creditMicros: Math.round(creditUsd * 1_000_000),
+      declaredAt: declaredAt.toISOString(),
+      burnSinceDeclaredMicros,
+      remainingMicros,
+      estDaysLeft,
+    };
+  }
+
+  /** Only currently-broken governance facts: a poisoned pool window, or a
+   *  campaign grant pool fully exhausted. Healthy pools contribute nothing
+   *  (no bars — the caps are backstops, not a dashboard centerpiece). */
+  private governanceAnomalies(now: Date): OpsSummary['vendors']['anomalies'] {
+    if (!this.governance) {
+      return [];
+    }
+    const anomalies: OpsSummary['vendors']['anomalies'] = [];
+    for (const pool of this.governance.pools.listRegistered()) {
+      let status: {
+        used: number;
+        limit: number;
+        poisonedForMs: number | null;
+      };
+      try {
+        status = this.governance.pools.poolStatus(pool.name, now);
+      } catch {
+        continue;
+      }
+      if (status.poisonedForMs !== null && status.poisonedForMs > 0) {
+        anomalies.push({
+          kind: 'pool_poisoned',
+          name: pool.name,
+          detail: `pool poisoned for another ${Math.ceil(
+            status.poisonedForMs / 60_000,
+          )}m (vendor 429 honored globally)`,
+        });
+      }
+      if (
+        pool.window.kind === 'grant' &&
+        status.limit > 0 &&
+        status.used >= status.limit
+      ) {
+        anomalies.push({
+          kind: 'grant_exhausted',
+          name: pool.name,
+          detail: `grant exhausted (${status.used}/${status.limit} micro-USD consumed)`,
+        });
+      }
+    }
+    return anomalies;
+  }
+
+  // --------------------------------------------------------------- places
+
+  private async placesSection(
+    now: Date,
+  ): Promise<Array<Omit<OpsSummary['places'][number], 'estLlmSpendMicros'>>> {
     const since = new Date(now.getTime() - MS_PER_DAY);
-    const [docs24h, entities24h] = await Promise.all([
+    let sources: Array<{ handle: string; anchor_place_name: string | null }> =
+      [];
+    let docs: Array<{
+      community: string;
+      docs_total: bigint;
+      docs_24h: bigint;
+    }> = [];
+    let entities: Array<{ community: string; entities: bigint }> = [];
+    try {
+      [sources, docs, entities] = await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{ handle: string; anchor_place_name: string | null }>
+        >`
+          SELECT s.handle, p.name AS anchor_place_name
+          FROM sources s
+          LEFT JOIN places p ON p.place_id = s.anchor_place_id
+          WHERE s.platform = 'reddit'
+          ORDER BY s.handle
+        `,
+        this.prisma.$queryRaw<
+          Array<{ community: string; docs_total: bigint; docs_24h: bigint }>
+        >`
+          SELECT lower(community) AS community,
+                 COUNT(*) AS docs_total,
+                 COUNT(*) FILTER (WHERE collected_at >= ${since}) AS docs_24h
+          FROM collection_source_documents
+          WHERE community IS NOT NULL
+          GROUP BY lower(community)
+        `,
+        this.prisma.$queryRaw<Array<{ community: string; entities: bigint }>>`
+          SELECT lower(d.community) AS community,
+                 COUNT(DISTINCT e.entity_id) AS entities
+          FROM core_restaurant_entity_events e
+          JOIN collection_source_documents d
+            ON d.document_id = e.source_document_id
+          WHERE d.community IS NOT NULL
+          GROUP BY lower(d.community)
+        `,
+      ]);
+    } catch {
+      // A read failure must never take the whole dashboard down — the
+      // Places card just renders empty this refresh.
+    }
+
+    const docsByCommunity = new Map<
+      string,
+      { total: number; last24h: number }
+    >();
+    for (const row of docs) {
+      docsByCommunity.set(row.community, {
+        total: Number(row.docs_total),
+        last24h: Number(row.docs_24h),
+      });
+    }
+    const entitiesByCommunity = new Map<string, number>();
+    for (const row of entities) {
+      entitiesByCommunity.set(row.community, Number(row.entities));
+    }
+
+    return sources.map((source) => {
+      const key = source.handle.toLowerCase();
+      const docCounts = docsByCommunity.get(key) ?? { total: 0, last24h: 0 };
+      return {
+        community: source.handle,
+        anchorPlaceName: source.anchor_place_name,
+        docsTotal: docCounts.total,
+        docs24h: docCounts.last24h,
+        entitiesAttributed: entitiesByCommunity.get(key) ?? 0,
+      };
+    });
+  }
+
+  // -------------------------------------------------------------- sources
+
+  private async sourcesSection(now: Date): Promise<OpsSummary['sources']> {
+    let heartbeats: CollectorHeartbeat[] = [];
+    let laneTimes: Array<{
+      source_id: string;
+      lane: string;
+      due_at: Date;
+      last_ran_at: Date | null;
+    }> = [];
+    try {
+      [heartbeats, laneTimes] = await Promise.all([
+        this.registry.collectorHeartbeats(now),
+        this.prisma.$queryRaw<
+          Array<{
+            source_id: string;
+            lane: string;
+            due_at: Date;
+            last_ran_at: Date | null;
+          }>
+        >`
+          SELECT l.source_id, l.lane, l.due_at, l.last_ran_at
+          FROM source_collection_lanes l
+          WHERE l.enabled
+        `,
+      ]);
+    } catch {
+      // A read failure must never take the whole dashboard down — the
+      // Sources card just renders empty this refresh.
+    }
+    const timesByKey = new Map<
+      string,
+      { due_at: Date; last_ran_at: Date | null }
+    >();
+    for (const row of laneTimes) {
+      timesByKey.set(`${row.source_id} ${row.lane}`, row);
+    }
+
+    return heartbeats.map((beat): OpsSummary['sources'][number] => {
+      const times = timesByKey.get(`${beat.sourceId} ${beat.lane}`);
+      const red =
+        beat.normalizedLateness > 1 ||
+        beat.outputCollapsed ||
+        beat.pendingWindowStale ||
+        (beat.expectedBatchesShortfall ?? 0) > 0 ||
+        beat.coverageGapDetected;
+      return {
+        handle: beat.handle,
+        lane: beat.lane,
+        state: beat.costBreached ? 'cost_paused' : red ? 'red' : 'ok',
+        normalizedLateness: beat.normalizedLateness,
+        lastRanAt: times?.last_ran_at ? times.last_ran_at.toISOString() : null,
+        nextDueAt: times?.due_at ? times.due_at.toISOString() : null,
+        lastOutputDocs: beat.lastOutputDocs,
+        outputDocsBaseline: beat.outputDocsBaseline,
+        lastCostMicros: beat.lastCostMicros,
+      };
+    });
+  }
+
+  // ------------------------------------------------------------- pipeline
+
+  private async pipelineCore(
+    now: Date,
+  ): Promise<Omit<OpsSummary['pipeline'], 'unackedAlerts'>> {
+    const since = new Date(now.getTime() - MS_PER_DAY);
+    const [
+      docs24h,
+      entities24h,
+      extractionRuns24h,
+      extractionFailed24h,
+      batchJobsPending,
+      batchJobsIngested24h,
+    ] = await Promise.all([
       this.prisma.sourceDocument
         .count({ where: { collectedAt: { gte: since } } })
         .catch(() => 0),
       this.prisma.restaurantEntityEvent
         .count({ where: { createdAt: { gte: since } } })
         .catch(() => 0),
+      this.prisma.extractionRun
+        .count({ where: { startedAt: { gte: since } } })
+        .catch(() => 0),
+      this.prisma.extractionRun
+        .count({ where: { status: 'failed', startedAt: { gte: since } } })
+        .catch(() => 0),
+      this.prisma.llmBatchJob
+        .count({ where: { ingestedAt: null } })
+        .catch(() => 0),
+      this.prisma.llmBatchJob
+        .count({ where: { ingestedAt: { gte: since } } })
+        .catch(() => 0),
     ]);
-    return { docs24h, entities24h, drainPending: null };
+    return {
+      docs24h,
+      entities24h,
+      extractionRuns24h,
+      extractionFailed24h,
+      batchJobsPending,
+      batchJobsIngested24h,
+      // V1 behavior kept: no drain-backlog instrument exists yet — an honest
+      // "—" beats a fabricated number (no-fake-estimates law).
+      drainPending: null,
+    };
   }
 }

@@ -133,7 +133,11 @@ export class OpsAlertsService implements OnModuleDestroy {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          from: 'alerts@craveapp.ai',
+          // OPS_ALERT_FROM lets the owner switch to a verified-domain sender;
+          // the resend.dev onboarding sender works without domain
+          // verification, so alerts flow out of the box.
+          from:
+            process.env.OPS_ALERT_FROM ?? 'Crave Ops <onboarding@resend.dev>',
           to: [to],
           subject: `[CRITICAL] ${params.title}`,
           text: params.body,
