@@ -4,6 +4,14 @@ import { PoolRegistry, type PoolDenial } from './pool-registry';
 import { PrismaPoolConsumptionStore } from './pool-consumption.store';
 import { PrismaService } from '../../../prisma/prisma.service';
 
+/** '<vendor>.<resource>'-shaped pool name for a campaign's §14.6 grant —
+ *  mirrors spend-campaign.service.ts's private campaignPoolName (kept
+ *  local rather than exported/imported to avoid a governance <-> shared
+ *  circular import; it's a one-line naming convention, not logic). */
+function campaignPoolName(campaignId: string): string {
+  return `campaign.${campaignId}`;
+}
+
 /** §24.4 item 4 / §24.6 K1: the work_class the nightly backstop derivation
  *  writes to spend_unit_costs (SpendAnalyticsService.refreshBackstop). Read
  *  here at boot only — see the gemini.monthlySpend registration comment. */
@@ -35,7 +43,17 @@ export class GovernanceService implements OnModuleInit {
     // through to Postgres and loaded at boot — a restart can never reset the
     // TomTom month ledgers. perMinute pools stay memory-only (see the
     // registry header for the §16-classified split).
-    this.pools = new PoolRegistry(store);
+    this.pools = new PoolRegistry(store, (poolName, error) => {
+      this.logger.error(
+        'DURABLE POOL FLUSH FAILED — a crash before the next successful flush loses this delta',
+        {
+          poolName,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+    });
     // TomTom pool facts: geocode + reverse geocode 20,000/month each — the
     // cheap pool (free-tier vendor fact, K4). Month windows are hard-closed
     // on store failure by law (§14.5).
@@ -186,6 +204,89 @@ export class GovernanceService implements OnModuleInit {
       }),
     );
     await this.applyDerivedGeminiBackstop();
+    await this.reRegisterCampaignGrants();
+  }
+
+  /**
+   * §24 red team finding 4 ("restart-safe campaigns"): pool grants (§14.6)
+   * are registered ONLY at approve()-time, in-memory — a process restart
+   * forgets every live campaign's grant pool entirely, so the FIRST
+   * recordSpend after a restart throws PoolRegistrationError (pool not
+   * registered) instead of metering. Re-register a grant pool for every
+   * campaign still in a dispatchable state ('approved'/'running') at boot,
+   * sized the same way approve() sizes it (estimateMicros x
+   * (1 + toleranceFraction)), then immediately meter() the campaign's
+   * spentMicros-to-date so the pool's remaining capacity reflects reality,
+   * not a fresh zero. Pilots (estimateMicros null — §24.2) have no envelope
+   * to re-register, same as approve() never minting one for them. Non-fatal
+   * per-row (mirrors applyDerivedGeminiBackstop): a bad row must not fail
+   * boot, only skip that one campaign's grant.
+   */
+  private async reRegisterCampaignGrants(): Promise<void> {
+    let rows: Array<{
+      campaignId: string;
+      estimateMicros: bigint | null;
+      toleranceFraction: number | null;
+      spentMicros: bigint;
+    }>;
+    try {
+      rows = await this.prisma.spendCampaign.findMany({
+        where: { state: { in: ['approved', 'running'] } },
+        select: {
+          campaignId: true,
+          estimateMicros: true,
+          toleranceFraction: true,
+          spentMicros: true,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        'Campaign grant re-registration read failed at boot (non-fatal)',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+      return;
+    }
+    for (const row of rows) {
+      if (row.estimateMicros === null || row.toleranceFraction === null) {
+        continue; // Pilot campaign — no envelope, nothing to re-register.
+      }
+      try {
+        const envelopeMicros = Math.round(
+          Number(row.estimateMicros) * (1 + row.toleranceFraction),
+        );
+        const poolName = campaignPoolName(row.campaignId);
+        this.pools.register({
+          name: poolName,
+          credential: 'campaign',
+          window: { kind: 'grant', amount: envelopeMicros },
+          failPolicy: { kind: 'hardClosed' },
+          reservationTtlMs: 60_000,
+        });
+        const spentMicros = Number(row.spentMicros);
+        if (spentMicros > 0) {
+          await this.pools.meter(poolName, spentMicros);
+        }
+        this.logger.info('Campaign grant re-registered at boot', {
+          campaignId: row.campaignId,
+          envelopeMicros,
+          spentMicros,
+        });
+      } catch (error) {
+        this.logger.warn(
+          'Campaign grant re-registration failed for one campaign (skipped, boot continues)',
+          {
+            campaignId: row.campaignId,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          },
+        );
+      }
+    }
   }
 
   /**

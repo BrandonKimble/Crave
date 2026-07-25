@@ -85,6 +85,41 @@ function buildPrisma() {
           return Promise.resolve(updated);
         },
       ),
+      /** Mirrors Postgres updateMany semantics closely enough for the
+       *  recordSpend atomic-increment + guarded state-flip fix (§24 red
+       *  team finding 5): a `state: { in: [...] }` filter and a
+       *  `spentMicros: { increment: N }` write; matches count 0 when the
+       *  WHERE no longer holds (already flipped by another writer). */
+      updateMany: jest.fn(
+        ({
+          where,
+          data,
+        }: {
+          where: {
+            campaignId: string;
+            state?: { in: string[] };
+          };
+          data: Record<string, unknown>;
+        }) => {
+          const existing = campaigns.get(where.campaignId);
+          if (
+            !existing ||
+            (where.state && !where.state.in.includes(existing.state as string))
+          ) {
+            return Promise.resolve({ count: 0 });
+          }
+          const { spentMicros, ...rest } = data as {
+            spentMicros?: { increment?: number };
+          } & Record<string, unknown>;
+          const updated = { ...existing, ...rest };
+          if (spentMicros && typeof spentMicros.increment === 'number') {
+            updated.spentMicros =
+              (existing.spentMicros as bigint) + BigInt(spentMicros.increment);
+          }
+          campaigns.set(where.campaignId, updated);
+          return Promise.resolve({ count: 1 });
+        },
+      ),
     },
   };
 }
@@ -230,5 +265,106 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
       governance.pools.measureDrift('gemini.reddit_extraction'),
     ).toBeCloseTo(0.9);
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('completed');
+  });
+
+  it('§24 red team finding 1: isDispatchable is true only for approved/running, false for breached/missing', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const governance = buildGovernance();
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      governance,
+    );
+    const estimate = await service.prepareEstimate({
+      name: 'archive:test',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 100,
+    });
+    // awaiting_approval: not yet dispatchable.
+    expect(await service.isDispatchable(estimate.campaignId)).toBe(false);
+
+    await service.approve(estimate.campaignId, estimate.estimateHash);
+    expect(await service.isDispatchable(estimate.campaignId)).toBe(true);
+
+    // Push it into 'breached'.
+    await service.recordSpend(estimate.campaignId, 1300);
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
+    expect(await service.isDispatchable(estimate.campaignId)).toBe(false);
+
+    // Unknown campaign id: fail closed, never fail open.
+    expect(await service.isDispatchable('does-not-exist')).toBe(false);
+  });
+
+  it('§24 red team finding 5: a guarded state flip cannot resurrect running over an already-breached row', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const governance = buildGovernance();
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      governance,
+    );
+    const estimate = await service.prepareEstimate({
+      name: 'archive:test',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 100, // estimate 1000 micro-USD; envelope 1250.
+    });
+    await service.approve(estimate.campaignId, estimate.estimateHash);
+
+    // Simulate the row already having flipped to 'breached' out from under
+    // a stale in-flight caller (e.g. a concurrent recordSpend that already
+    // won the race) — a guarded updateMany targeting
+    // state IN ('approved','running') must match ZERO rows here, so the
+    // spentMicros increment for THIS call is skipped rather than
+    // clobbering the breach back to 'running'.
+    const row = prisma._campaigns.get(estimate.campaignId)!;
+    prisma._campaigns.set(estimate.campaignId, {
+      ...row,
+      state: 'breached',
+      breachNote: 'already breached by another writer',
+    });
+
+    // recordSpend's top-of-function findUnique sees state==='breached' and
+    // typed-refuses before ever reaching the guarded updateMany — proving
+    // the guard is defense-in-depth, and the row stays 'breached'.
+    await expect(
+      service.recordSpend(estimate.campaignId, 1),
+    ).rejects.toBeInstanceOf(CampaignBreachedError);
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
+  });
+
+  it('recordSpend increments spentMicros atomically across sequential calls (no lost updates)', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const governance = buildGovernance();
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      governance,
+    );
+    const estimate = await service.prepareEstimate({
+      name: 'archive:test',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 1000, // estimate 10_000; envelope 12_500 — plenty of room.
+    });
+    await service.approve(estimate.campaignId, estimate.estimateHash);
+
+    await service.recordSpend(estimate.campaignId, 100);
+    await service.recordSpend(estimate.campaignId, 200);
+    await service.recordSpend(estimate.campaignId, 300);
+
+    expect(prisma._campaigns.get(estimate.campaignId)?.spentMicros).toBe(
+      BigInt(600),
+    );
   });
 });

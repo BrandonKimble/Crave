@@ -157,6 +157,27 @@ export class UsageLedgerService implements OnModuleDestroy {
       return;
     }
     try {
+      // §24 red team finding 6 ("NaN spend must not vanish"): geminiCostMicros
+      // now sanitizes NaN token fields to 0 rather than propagating NaN into
+      // a silent no-op meter (`micros <= 0` below is falsy for NaN too, so a
+      // malformed event used to under-meter with ZERO visibility). Warn once
+      // per malformed event so the under-metering is LOUD, not silent.
+      if (
+        (event.inputTokens !== undefined &&
+          !Number.isFinite(event.inputTokens)) ||
+        (event.outputTokens !== undefined &&
+          !Number.isFinite(event.outputTokens)) ||
+        (event.cachedTokens !== undefined &&
+          !Number.isFinite(event.cachedTokens))
+      ) {
+        this.logger.warn('Malformed token counts — spend under-metered', {
+          operation: event.operation,
+          caller: event.caller,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens,
+          cachedTokens: event.cachedTokens,
+        });
+      }
       const micros = geminiCostMicros(event);
       if (micros <= 0) {
         return;

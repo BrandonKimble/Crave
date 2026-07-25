@@ -20,6 +20,13 @@ export interface BatchJob {
   /** Correlation id for a keyword collection cycle (optional) */
   cycleId?: string;
 
+  /** §24.3 Leg C: when this batch's gemini extraction spend belongs to an
+   *  owner-approved Tier 1 campaign, its id — threaded through to
+   *  gemini-batch resumeContext (extraction-pipeline.service.ts) so
+   *  UsageLedgerService can attribute the ACTUAL spend once the batch
+   *  completes (gemini-batch.service.ts's pollOne). */
+  campaignId?: string;
+
   /** Type of collection this batch belongs to */
   collectionType: 'chronological' | 'archive' | 'keyword';
 

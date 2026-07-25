@@ -36,6 +36,29 @@ describe('geminiCostMicros (K4 vendor rates, fetched 2026-07-24)', () => {
     expect(unknown).toBe(1_500_000); // $1.50/M input, the 3.5-flash rate
   });
 
+  it('§24 red team finding 6: NaN token fields sanitize to 0 micros, never NaN (spend must not vanish)', () => {
+    expect(
+      geminiCostMicros({
+        model: 'gemini-3-flash-preview',
+        mode: 'interactive',
+        inputTokens: NaN,
+        outputTokens: NaN,
+        cachedTokens: NaN,
+      }),
+    ).toBe(0);
+    // A NaN input alongside a valid output still prices the valid part —
+    // one malformed field doesn't erase the whole event's spend.
+    expect(
+      geminiCostMicros({
+        model: 'gemini-3-flash-preview',
+        mode: 'interactive',
+        inputTokens: NaN,
+        outputTokens: 1_000_000, // $3.00/M
+        cachedTokens: 0,
+      }),
+    ).toBe(3_000_000);
+  });
+
   it('vendor month reset is the next PST month start plus grace', () => {
     // 2026-07-24T13:00Z → PST is 05:00 Jul 24 → reset Aug 1 00:00 PST
     // = Aug 1 08:00Z, +1h grace = Aug 1 09:00Z.

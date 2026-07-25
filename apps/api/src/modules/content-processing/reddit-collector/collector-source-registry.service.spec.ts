@@ -274,6 +274,7 @@ describe('recordLaneCost (§24.5 Leg B write path)', () => {
     paused: boolean;
     baseline: number;
     dev: number;
+    breached: boolean;
   }) {
     const prisma = {
       $queryRaw: jest.fn().mockResolvedValue([returning]),
@@ -294,11 +295,12 @@ describe('recordLaneCost (§24.5 Leg B write path)', () => {
     };
   }
 
-  it('a breach LOUDLY logs the numbers (LANE COST BREACH)', async () => {
+  it('a breach on an ELASTIC lane (keyword) LOUDLY logs and pauses', async () => {
     const { service, logger } = buildForRecord({
       paused: true,
       baseline: 100_000,
       dev: 1_000,
+      breached: true,
     });
     await service.recordLaneCost('src-1', 'keyword', 900_000);
     expect(logger.error).toHaveBeenCalledWith(
@@ -316,8 +318,42 @@ describe('recordLaneCost (§24.5 Leg B write path)', () => {
       paused: false,
       baseline: 100_000,
       dev: 1_000,
+      breached: false,
     });
     await service.recordLaneCost('src-1', 'keyword', 101_000);
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it('a breach on the LOSS-HORIZON lane (chronological) escalates instead of pausing (red team 2026-07-24)', async () => {
+    const { service, logger } = buildForRecord({
+      paused: false, // SQL never sets cost_paused for chronological
+      baseline: 100_000,
+      dev: 1_000,
+      breached: true,
+    });
+    await service.recordLaneCost('src-1', 'chronological', 900_000);
+    expect(logger.error).toHaveBeenCalledWith(
+      'LANE COST BREACH (ESCALATED — loss-horizon lane keeps running)',
+      expect.objectContaining({
+        sourceId: 'src-1',
+        lane: 'chronological',
+        costMicros: 900_000,
+      }),
+    );
+    expect(logger.error).not.toHaveBeenCalledWith(
+      'LANE COST BREACH — paused pending owner eyes',
+      expect.anything(),
+    );
+  });
+
+  it('a non-breaching chronological tick logs nothing', async () => {
+    const { service, logger } = buildForRecord({
+      paused: false,
+      baseline: 100_000,
+      dev: 1_000,
+      breached: false,
+    });
+    await service.recordLaneCost('src-1', 'chronological', 101_000);
     expect(logger.error).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService, buildCauseChain } from '../../../shared';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
 import { GovernanceService } from '../governance/governance.service';
+import { SpendCampaignService } from '../shared/spend-campaign.service';
 
 export interface BatchSubmitItem {
   /** Caller's stable key for this item (e.g. the chunk id). */
@@ -112,6 +113,7 @@ export class GeminiBatchService implements OnModuleDestroy {
     loggerService: LoggerService,
     private readonly usageLedger: UsageLedgerService,
     private readonly governance: GovernanceService,
+    private readonly spendCampaigns: SpendCampaignService,
   ) {
     this.logger = loggerService.setContext('GeminiBatchService');
     this.genAI = new GoogleGenAI({
@@ -158,6 +160,32 @@ export class GeminiBatchService implements OnModuleDestroy {
       throw new Error(
         'LLM spend budget closed (gemini.monthlySpend Tier-3 backstop) — batch submission refused locally; work stays queued',
       );
+    }
+    // §24 red team finding 1 ("a breach must stop work"): when this batch
+    // belongs to a Tier 1 campaign (resumeContext.campaignId), refuse BEFORE
+    // any vendor call unless the campaign is still dispatchable
+    // ('approved'/'running'). Without this, a breached campaign's envelope
+    // stops METERING further spend (recordSpend refuses) but nothing had
+    // ever stopped NEW batches from being submitted in the first place —
+    // the vendor call already happened by the time the campaign found out.
+    // Same pattern as the Tier-3 gate above: typed refusal, work stays
+    // queued (the caller's enqueue layer retries once the campaign resumes).
+    const campaignId =
+      params.resumeContext &&
+      typeof params.resumeContext === 'object' &&
+      'campaignId' in params.resumeContext &&
+      typeof (params.resumeContext as Record<string, unknown>).campaignId ===
+        'string'
+        ? ((params.resumeContext as Record<string, unknown>)
+            .campaignId as string)
+        : undefined;
+    if (campaignId) {
+      const dispatchable = await this.spendCampaigns.isDispatchable(campaignId);
+      if (!dispatchable) {
+        throw new Error(
+          `campaign breached — batch submission refused; work stays queued (campaignId ${campaignId})`,
+        );
+      }
     }
     // State machine (each state has exactly ONE owner that moves it — audit §3):
     //   persisting -> pending -> submitting -> submitted -> succeeded

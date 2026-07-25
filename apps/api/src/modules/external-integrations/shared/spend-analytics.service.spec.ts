@@ -58,7 +58,11 @@ function buildPrisma(params: {
         return Promise.resolve(value);
       }),
     },
-    spendUnitCost: { upsert, findMany: jest.fn().mockResolvedValue([]) },
+    spendUnitCost: {
+      upsert,
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
   };
 }
 
@@ -341,27 +345,53 @@ describe('SpendAnalyticsService.logSpendTelemetry (§24.4 item 6)', () => {
  * §24.4 item 4: the nightly backstop re-derivation must write the
  * measured backstop row and, when a live GovernanceService is present,
  * apply it immediately via PoolRegistry.resetLimit.
+ *
+ * RED-TEAM FIX 2026-07-24 (finding 3 — "the backstop must not chase a
+ * runaway"): the baseline is now the MEDIAN of the 30 daily totals x 30
+ * (not their raw sum), and growth is clamped to
+ * min(derived, previousLimit x BACKSTOP_MULTIPLE). refreshBackstop now
+ * issues one apiUsageEvent.findMany call PER trailing day (30 calls) plus
+ * one spendUnitCost.findUnique for the prior row.
  */
 describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)', () => {
   const WINDOW_START = new Date('2026-06-24T03:40:00Z');
 
-  it('writes backstop.gemini as BACKSTOP_MULTIPLE(3) x trailing measured spend and resets the live pool', async () => {
-    const trailingInputTokens = 4_000; // cost = 4000 * 0.25 = 1000 micros
+  function buildBackstopPrisma(
+    dailyInputTokens: number,
+    priorMicroUsdPerUnit: number | null,
+  ) {
     const upsert = jest.fn().mockResolvedValue(undefined);
-    const prisma = {
-      apiUsageEvent: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            inputTokens: trailingInputTokens,
-            outputTokens: 0,
-            cachedTokens: 0,
-            model: MODEL,
-            mode: 'interactive',
-          },
-        ]),
+    const findUnique = jest
+      .fn()
+      .mockResolvedValue(
+        priorMicroUsdPerUnit === null
+          ? null
+          : { microUsdPerUnit: priorMicroUsdPerUnit },
+      );
+    return {
+      prisma: {
+        apiUsageEvent: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              inputTokens: dailyInputTokens,
+              outputTokens: 0,
+              cachedTokens: 0,
+              model: MODEL,
+              mode: 'interactive',
+            },
+          ]),
+        },
+        spendUnitCost: { upsert, findUnique },
       },
-      spendUnitCost: { upsert },
+      upsert,
+      findUnique,
     };
+  }
+
+  it('writes backstop.gemini as BACKSTOP_MULTIPLE(3) x the MEDIAN daily spend x 30, and resets the live pool (no prior row: unclamped)', async () => {
+    // Flat 1000 micros/day for all 30 days -> median = 1000 -> trailing =
+    // 30_000 -> derived = 30_000 * 3 = 90_000.
+    const { prisma, upsert } = buildBackstopPrisma(4_000, null);
     const poolStatus = jest.fn().mockReturnValue({ limit: 300_000_000 });
     const resetLimit = jest.fn();
     const governance = { pools: { poolStatus, resetLimit } };
@@ -386,27 +416,42 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
     expect(call.where).toEqual({
       workClass_unit: { workClass: 'backstop.gemini', unit: 'month' },
     });
-    expect(call.create.microUsdPerUnit).toBe(3_000); // 1000 * BACKSTOP_MULTIPLE(3)
+    expect(call.create.microUsdPerUnit).toBe(90_000);
     expect(call.create.sampleUnits).toBe(30);
-    expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 3_000);
+    expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 90_000);
   });
 
   it('does not touch the pool when the derived limit already matches (no-op re-derivation)', async () => {
-    const trailingInputTokens = 4_000; // cost = 1000 micros -> derived 3000
-    const prisma = {
-      apiUsageEvent: {
-        findMany: jest.fn().mockResolvedValue([
-          {
-            inputTokens: trailingInputTokens,
-            outputTokens: 0,
-            cachedTokens: 0,
-            model: MODEL,
-            mode: 'interactive',
-          },
-        ]),
+    const { prisma } = buildBackstopPrisma(4_000, null); // derived -> 90_000
+    const resetLimit = jest.fn();
+    const governance = {
+      pools: {
+        poolStatus: jest.fn().mockReturnValue({ limit: 90_000 }),
+        resetLimit,
       },
-      spendUnitCost: { upsert: jest.fn().mockResolvedValue(undefined) },
     };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn() } as never,
+      governance as never,
+    );
+
+    await (
+      service as unknown as {
+        refreshBackstop(start: Date, end: Date, now: Date): Promise<void>;
+      }
+    ).refreshBackstop(WINDOW_START, WINDOW_END, WINDOW_END);
+
+    expect(resetLimit).not.toHaveBeenCalled();
+  });
+
+  it('RED-PROOF: a 10x spike month does NOT 10x the backstop in one derivation — growth clamps at previousLimit x BACKSTOP_MULTIPLE(3)', async () => {
+    // Every trailing day now costs 10_000 micros (10x the 1_000/day used
+    // above) -> median = 10_000 -> trailing = 300_000 -> naive derived =
+    // 300_000 * 3 = 900_000 (a 300x jump from a previous limit of 3_000).
+    // The clamp must cap growth at previousLimit(3_000) * 3 = 9_000.
+    const { prisma, upsert } = buildBackstopPrisma(40_000, 3_000);
     const resetLimit = jest.fn();
     const governance = {
       pools: {
@@ -427,6 +472,41 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
       }
     ).refreshBackstop(WINDOW_START, WINDOW_END, WINDOW_END);
 
-    expect(resetLimit).not.toHaveBeenCalled();
+    const call = (upsert.mock.calls as unknown[][])[0][0] as {
+      create: { microUsdPerUnit: number };
+    };
+    expect(call.create.microUsdPerUnit).toBe(9_000); // clamped, NOT 900_000
+    expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 9_000);
+  });
+
+  it('shrinking is unclamped: a derived limit below the previous limit applies immediately', async () => {
+    // Flat 1_000/day -> derived 90_000, well below a previous limit of
+    // 500_000 -- shrinking must pass straight through (min() lets it).
+    const { prisma, upsert } = buildBackstopPrisma(4_000, 500_000);
+    const resetLimit = jest.fn();
+    const governance = {
+      pools: {
+        poolStatus: jest.fn().mockReturnValue({ limit: 500_000 }),
+        resetLimit,
+      },
+    };
+    const service = new SpendAnalyticsService(
+      prisma as never,
+      stubLogger() as never,
+      { recordLaneCost: jest.fn() } as never,
+      governance as never,
+    );
+
+    await (
+      service as unknown as {
+        refreshBackstop(start: Date, end: Date, now: Date): Promise<void>;
+      }
+    ).refreshBackstop(WINDOW_START, WINDOW_END, WINDOW_END);
+
+    const call = (upsert.mock.calls as unknown[][])[0][0] as {
+      create: { microUsdPerUnit: number };
+    };
+    expect(call.create.microUsdPerUnit).toBe(90_000);
+    expect(resetLimit).toHaveBeenCalledWith('gemini.monthlySpend', 90_000);
   });
 });

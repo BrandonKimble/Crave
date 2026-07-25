@@ -147,7 +147,20 @@ export class PoolRegistry {
   /** Grant pools: capacity registered at boot; store `granted` adds on top. */
   private readonly grantBase = new Map<string, number>();
 
-  constructor(private readonly store?: PoolConsumptionStore) {}
+  constructor(
+    private readonly store?: PoolConsumptionStore,
+    /** §24 red team finding 9 ("loud durable-flush failure"): flushDurable
+     *  used to swallow a store write failure into `confirmed = false`
+     *  silently — correct for the NEXT reserve() (fails closed, §14.5), but
+     *  a crash before the next successful flush loses the unpersisted
+     *  delta with no signal anyone ever saw. Optional so callers that don't
+     *  care (most tests) pay nothing; governance.service.ts wires a
+     *  logger.error callback. */
+    private readonly onDurableFlushFailure?: (
+      poolName: string,
+      error: unknown,
+    ) => void,
+  ) {}
 
   register(config: PoolConfig): void {
     if (this.pools.has(config.name)) {
@@ -541,8 +554,9 @@ export class PoolRegistry {
     try {
       await this.store.add(poolName, state.windowKey, { consumed: delta });
       state.unpersisted -= delta;
-    } catch {
+    } catch (error) {
       state.confirmed = false;
+      this.onDurableFlushFailure?.(poolName, error);
     }
   }
 

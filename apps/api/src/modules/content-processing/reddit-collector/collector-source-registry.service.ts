@@ -119,6 +119,15 @@ const COST_BREACH_K = 3;
  * plain unit test without a database. A change to either copy that isn't
  * mirrored in the other is the bug this duplication exists to catch —
  * treat them as one piece of logic transcribed twice, not two designs.
+ *
+ * This is the lane-AGNOSTIC breach verdict + baseline/dev math only
+ * (`paused` here means "this tick's cost breached the band", not "the lane
+ * was actually paused"). The PAUSE DECISION is lane-aware and lives only in
+ * recordLaneCost's SQL: pausing the chronological lane converts a money
+ * anomaly into PERMANENT data loss (reddit's ≤1000-post listing window —
+ * see collector-pacer's chronologicalDerivedIntervalDays), so a
+ * lane==='chronological' breach ESCALATES (loud log, keeps running) instead
+ * of pausing; elastic lanes (keyword, future others) still pause as before.
  */
 export function evaluateCostBreach(
   costMicros: number,
@@ -470,6 +479,17 @@ export class CollectorSourceRegistryService {
    * breach branch of the CASE only evaluates once cost_baseline_micros IS
    * NOT NULL, and that branch is what sets cost_paused; the bootstrap
    * branch (baseline IS NULL) always writes cost_paused = false.
+   *
+   * LOSS-HORIZON LAW (red team 2026-07-24): pausing lane==='chronological'
+   * would convert a money anomaly into PERMANENT data loss (reddit's
+   * ≤1000-post listing window means missed chronological ticks can never be
+   * backfilled — see collector-pacer's chronologicalDerivedIntervalDays), so
+   * a chronological breach ESCALATES (loud error, cost_paused stays false,
+   * the lane keeps running) instead of pausing. Elastic lanes (keyword and
+   * future others) pause as before — the `prior` CTE snapshots the row
+   * BEFORE this UPDATE so the breach comparison always uses the baseline the
+   * lane actually had going into this tick, independent of the lane-gating
+   * on the write.
    */
   async recordLaneCost(
     sourceId: string,
@@ -477,34 +497,64 @@ export class CollectorSourceRegistryService {
     costMicros: number,
   ): Promise<void> {
     const rows = await this.prisma.$queryRaw<
-      Array<{ paused: boolean; baseline: number; dev: number }>
+      Array<{
+        paused: boolean;
+        baseline: number;
+        dev: number;
+        breached: boolean;
+      }>
     >`
-      UPDATE source_collection_lanes
+      WITH prior AS (
+        SELECT cost_baseline_micros, cost_baseline_dev_micros
+        FROM source_collection_lanes
+        WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+      )
+      UPDATE source_collection_lanes l
       SET last_cost_micros = ${BigInt(Math.round(costMicros))},
           cost_baseline_dev_micros = CASE
-            WHEN cost_baseline_micros IS NULL THEN 0::float8
-            ELSE cost_baseline_dev_micros * ${1 - COST_BASELINE_ALPHA}
-                 + ABS(${costMicros}::float8 - cost_baseline_micros)
+            WHEN prior.cost_baseline_micros IS NULL THEN 0::float8
+            ELSE prior.cost_baseline_dev_micros * ${1 - COST_BASELINE_ALPHA}
+                 + ABS(${costMicros}::float8 - prior.cost_baseline_micros)
                    * ${COST_BASELINE_ALPHA}
           END,
           cost_paused = CASE
-            WHEN cost_baseline_micros IS NULL THEN false
+            WHEN prior.cost_baseline_micros IS NULL THEN false
+            WHEN ${lane} = 'chronological' THEN false
             ELSE ${costMicros}::float8
-                 > cost_baseline_micros
-                   + ${COST_BREACH_K} * COALESCE(cost_baseline_dev_micros, 0)
+                 > prior.cost_baseline_micros
+                   + ${COST_BREACH_K} * COALESCE(prior.cost_baseline_dev_micros, 0)
           END,
           cost_baseline_micros = CASE
-            WHEN cost_baseline_micros IS NULL THEN ${costMicros}::float8
-            ELSE cost_baseline_micros * ${1 - COST_BASELINE_ALPHA}
+            WHEN prior.cost_baseline_micros IS NULL THEN ${costMicros}::float8
+            ELSE prior.cost_baseline_micros * ${1 - COST_BASELINE_ALPHA}
                  + ${costMicros}::float8 * ${COST_BASELINE_ALPHA}
           END,
           updated_at = now()
-      WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
-      RETURNING cost_paused AS paused, cost_baseline_micros AS baseline,
-                cost_baseline_dev_micros AS dev
+      FROM prior
+      WHERE l.source_id = ${sourceId}::uuid AND l.lane = ${lane}
+      RETURNING l.cost_paused AS paused, l.cost_baseline_micros AS baseline,
+                l.cost_baseline_dev_micros AS dev,
+                (prior.cost_baseline_micros IS NOT NULL AND ${costMicros}::float8
+                  > prior.cost_baseline_micros
+                    + ${COST_BREACH_K} * COALESCE(prior.cost_baseline_dev_micros, 0)
+                ) AS breached
     `;
     const result = rows[0];
-    if (result?.paused) {
+    if (!result) {
+      return;
+    }
+    if (result.breached && lane === 'chronological') {
+      this.logger.error(
+        'LANE COST BREACH (ESCALATED — loss-horizon lane keeps running)',
+        {
+          sourceId,
+          lane,
+          costMicros,
+          baselineMicros: result.baseline,
+          deviationMicros: result.dev,
+        },
+      );
+    } else if (result.paused) {
       this.logger.error('LANE COST BREACH — paused pending owner eyes', {
         sourceId,
         lane,

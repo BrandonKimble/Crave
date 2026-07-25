@@ -56,14 +56,27 @@ export interface GeminiUsageTokens {
   cachedTokens?: number;
 }
 
+/** §24 red team finding 6 ("NaN spend must not vanish"): a finite-or-zero
+ *  coercion for one token field. Without this, a NaN token count (a
+ *  malformed vendor response, a bad upstream sum) propagates through the
+ *  arithmetic below to a NaN cost — and `micros <= 0` guards elsewhere
+ *  (usage-ledger's meterGeminiSpend, spend-campaign's recordSpend) treat
+ *  NaN as falsy-ish and SILENTLY no-op the meter, spending real vendor
+ *  dollars with zero record. Coercing to 0 here makes the failure LOUD
+ *  instead: usage-ledger.meterGeminiSpend warns once per malformed event
+ *  (the metering under-counts visibly rather than vanishing silently). */
+function finiteOrZero(value: number | undefined): number {
+  return Number.isFinite(value) ? (value as number) : 0;
+}
+
 /** Micro-USD (1e-6 USD) cost of one usage event, from actual token counts.
  *  inputTokens is the FULL prompt count (cached included) as the vendor
  *  reports it; cached tokens re-price the cached share, they don't add. */
 export function geminiCostMicros(usage: GeminiUsageTokens): number {
   const rates = GEMINI_RATES[usage.model ?? ''] ?? UNKNOWN_MODEL_RATES;
-  const cached = Math.max(0, usage.cachedTokens ?? 0);
-  const uncachedIn = Math.max(0, (usage.inputTokens ?? 0) - cached);
-  const out = Math.max(0, usage.outputTokens ?? 0);
+  const cached = Math.max(0, finiteOrZero(usage.cachedTokens));
+  const uncachedIn = Math.max(0, finiteOrZero(usage.inputTokens) - cached);
+  const out = Math.max(0, finiteOrZero(usage.outputTokens));
   const usd =
     (uncachedIn * rates.input +
       cached * rates.cachedInput +

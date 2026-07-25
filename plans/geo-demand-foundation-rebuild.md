@@ -941,7 +941,18 @@ while doing exactly its job — caps conflate "what work should cost" with
   output collapse does today. Self-calibrating: the band is the lane's own
   measured history; a lane's first ticks can never false-RED (no baseline
   yet). Symmetric: anomalously HIGH spend per tick is the alarm; low spend
-  is already covered by output collapse.
+  is already covered by output collapse. **What actually shipped (§24 red
+  team, 2026-07-24):** keyword carries the full band today (breach pauses
+  the lane, as designed above). Chronological is the ONE deliberate
+  exception to "pauses THAT LANE": because reddit's listing window is
+  ≤1000 posts, pausing chronological converts a money anomaly into
+  PERMANENT, unrecoverable data loss, so a chronological breach ESCALATES
+  (loud error, lane keeps running) instead of pausing — the loss-horizon
+  law overrides the pause law for that one lane. Enrichment, drain, and
+  search-time interactive-LLM bands are DEFERRED pending their attribution
+  joins (no per-tick cost-to-lane join exists for them yet, the same gap
+  §24.2's architecture note already flags for anything besides the
+  gemini-batch reddit-extraction join).
 - **Tier 3 — CATASTROPHE BACKSTOPS (never felt in healthy operation).**
   Monthly dollar pools survive with a demotion and a law: limit =
   BACKSTOP_MULTIPLE × the trailing measured monthly spend (re-derived
@@ -950,7 +961,16 @@ while doing exactly its job — caps conflate "what work should cost" with
   (K1; initial 3 — "a bug may cost at most two extra months"). A backstop
   firing is by definition an incident, never scheduling. Vendor-truth
   reflexes stay at the outermost ring: rate-header alignment, 429/cap
-  poisoning to the vendor's own reset.
+  poisoning to the vendor's own reset. **Derivation detail (§24 red team,
+  2026-07-24):** "trailing measured monthly spend" is the MEDIAN of the
+  last 30 daily spend totals × 30 (not their raw sum/mean) — a median
+  resists a run of ~15 runaway days dragging the baseline up with them —
+  and the backstop's OWN growth is clamped to
+  min(derived, previousLimit × BACKSTOP_MULTIPLE): it may grow at most ×3
+  per re-derivation, so a sustained runaway raises the backstop
+  geometrically slower than it raises spend, and the "at most two extra
+  months" promise degrades gracefully instead of silently tracking the
+  runaway upward. Shrinking stays unclamped.
 
 ## §24.2 The unit-cost table (measured, never invented)
 

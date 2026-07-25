@@ -380,6 +380,34 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       expect(registry.poolStatus('tomtom.scarcePolygons', t0).used).toBe(5);
     });
 
+    it('a FAILED write-through invokes onDurableFlushFailure (§24 red team finding 9 — the failure must be LOUD)', async () => {
+      const store = new FakeConsumptionStore();
+      const onDurableFlushFailure = jest.fn();
+      const registry = new PoolRegistry(store, onDurableFlushFailure);
+      registry.register(monthPool());
+      await registry.ensureWindow('tomtom.scarcePolygons', t0);
+      const res = registry.reserve('tomtom.scarcePolygons', 5, 'us-seed', t0);
+      expect(res.admitted).toBe(true);
+      store.failing = true;
+      if (res.admitted) await registry.reconcile(res.reservationId, 5, t0);
+      expect(onDurableFlushFailure).toHaveBeenCalledTimes(1);
+      expect(onDurableFlushFailure).toHaveBeenCalledWith(
+        'tomtom.scarcePolygons',
+        expect.any(Error),
+      );
+    });
+
+    it('a SUCCESSFUL write-through never invokes onDurableFlushFailure', async () => {
+      const store = new FakeConsumptionStore();
+      const onDurableFlushFailure = jest.fn();
+      const registry = new PoolRegistry(store, onDurableFlushFailure);
+      registry.register(monthPool());
+      await registry.ensureWindow('tomtom.scarcePolygons', t0);
+      const res = registry.reserve('tomtom.scarcePolygons', 5, 'us-seed', t0);
+      if (res.admitted) await registry.reconcile(res.reservationId, 5, t0);
+      expect(onDurableFlushFailure).not.toHaveBeenCalled();
+    });
+
     it('perMinute pools NEVER touch the store (§16 split: restart loses ≤1 minute — by design)', async () => {
       const store = new FakeConsumptionStore();
       const registry = new PoolRegistry(store);

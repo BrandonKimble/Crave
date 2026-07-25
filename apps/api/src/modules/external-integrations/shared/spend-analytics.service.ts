@@ -74,6 +74,20 @@ const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
  */
 const SPEND_TELEMETRY_WARN_K = 3;
 
+/** Median of a numeric array (even-length: mean of the two middle values).
+ *  Used by refreshBackstop instead of a mean so a run of ~15 runaway days
+ *  cannot single-handedly drag the trailing baseline up with them. */
+function median(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
+  }
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
 @Injectable()
 export class SpendAnalyticsService {
   private readonly logger: LoggerService;
@@ -408,7 +422,7 @@ export class SpendAnalyticsService {
         ON ei.extraction_run_id = (j.resume_context ->> 'extractionRunId')::uuid
       JOIN collection_extraction_input_documents eid ON eid.input_id = ei.input_id
       JOIN collection_source_documents d ON d.document_id = eid.document_id
-      JOIN sources s ON s.platform = 'reddit' AND s.handle = d.community
+      JOIN sources s ON s.platform = 'reddit' AND lower(s.handle) = lower(d.community)
       WHERE e.service = 'gemini'
         AND e.caller = 'gemini-batch.collection_extraction'
         AND e.created_at >= ${windowStart}
@@ -490,16 +504,33 @@ export class SpendAnalyticsService {
    * alone is enough — governance.service.ts's own boot reads it next
    * restart. §16: BACKSTOP_MULTIPLE is the only owner number here; the
    * trailing spend it multiplies is 100% measured.
+   *
+   * RED-TEAM FIX 2026-07-24 (§24 red team finding 3 — "the backstop must not
+   * chase a runaway"): the trailing baseline is the MEDIAN of the last 30
+   * daily spend totals × 30, not their mean/sum — a median resists up to
+   * ~15 runaway days skewing the base (a mean would already have "learned"
+   * the runaway as normal by the time it derives). Growth is additionally
+   * CLAMPED: newLimit = min(derived, previousLimit × BACKSTOP_MULTIPLE) —
+   * the backstop may grow at most ×3 (the SAME K1 that prices the multiple
+   * itself) per night, so a sustained runaway raises the backstop
+   * geometrically SLOWER than it raises spend, and the §24.1 promise ("a bug
+   * costs at most two extra months") degrades gracefully instead of
+   * silently tracking the runaway upward. Shrinking is unclamped — safety
+   * tightens freely, only growth is bounded.
    */
   private async refreshBackstop(
     windowStart: Date,
     windowEnd: Date,
     now: Date,
   ): Promise<void> {
-    const trailingSpendMicros = await this.totalGeminiSpendMicros(
-      windowStart,
-      windowEnd,
-    );
+    const dailyTotals: number[] = [];
+    for (let i = 0; i < UNIT_COST_WINDOW_DAYS; i++) {
+      const start = new Date(windowStart.getTime() + i * MS_PER_DAY);
+      const end = new Date(start.getTime() + MS_PER_DAY);
+      dailyTotals.push(await this.totalGeminiSpendMicros(start, end));
+    }
+    const medianDailyMicros = median(dailyTotals);
+    const trailingSpendMicros = medianDailyMicros * UNIT_COST_WINDOW_DAYS;
     const derivedLimitMicros = Math.round(
       trailingSpendMicros * BACKSTOP_MULTIPLE,
     );
@@ -508,6 +539,20 @@ export class SpendAnalyticsService {
       // the env-seeded boot value stands (§24.4 item 4).
       return;
     }
+    const priorRow = await this.prisma.spendUnitCost.findUnique({
+      where: {
+        workClass_unit: {
+          workClass: GEMINI_BACKSTOP_WORK_CLASS,
+          unit: 'month',
+        },
+      },
+    });
+    const previousLimitMicros =
+      priorRow !== null ? Math.round(priorRow.microUsdPerUnit) : null;
+    const clampedLimitMicros =
+      previousLimitMicros !== null
+        ? Math.min(derivedLimitMicros, previousLimitMicros * BACKSTOP_MULTIPLE)
+        : derivedLimitMicros;
     await this.prisma.spendUnitCost.upsert({
       where: {
         workClass_unit: {
@@ -518,13 +563,13 @@ export class SpendAnalyticsService {
       create: {
         workClass: GEMINI_BACKSTOP_WORK_CLASS,
         unit: 'month',
-        microUsdPerUnit: derivedLimitMicros,
+        microUsdPerUnit: clampedLimitMicros,
         sampleUnits: UNIT_COST_WINDOW_DAYS,
         windowStart,
         windowEnd,
       },
       update: {
-        microUsdPerUnit: derivedLimitMicros,
+        microUsdPerUnit: clampedLimitMicros,
         sampleUnits: UNIT_COST_WINDOW_DAYS,
         windowStart,
         windowEnd,
@@ -536,18 +581,21 @@ export class SpendAnalyticsService {
         const before = this.governance.pools.poolStatus(
           'gemini.monthlySpend',
         ).limit;
-        if (before !== derivedLimitMicros) {
+        if (before !== clampedLimitMicros) {
           this.governance.pools.resetLimit(
             'gemini.monthlySpend',
-            derivedLimitMicros,
+            clampedLimitMicros,
           );
           this.logger.info(
             'gemini.monthlySpend backstop re-derived (live process)',
             {
               beforeUsd: Math.round(before / 10_000) / 100,
-              afterUsd: Math.round(derivedLimitMicros / 10_000) / 100,
-              trailingSpendUsd: Math.round(trailingSpendMicros / 10_000) / 100,
+              afterUsd: Math.round(clampedLimitMicros / 10_000) / 100,
+              derivedUsd: Math.round(derivedLimitMicros / 10_000) / 100,
+              trailingSpendMedianBasisUsd:
+                Math.round(trailingSpendMicros / 10_000) / 100,
               backstopMultiple: BACKSTOP_MULTIPLE,
+              growthClamped: clampedLimitMicros < derivedLimitMicros,
             },
           );
         }

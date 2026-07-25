@@ -1541,3 +1541,66 @@ warn deleted. 767/767 green. Known follow-ups by design: TomTom/Places
 price tables (K4 fetch like gemini's), chronological-lane cost
 attribution (needs a lane tag on source documents), campaign gates on
 future onboarding scripts as they're written.
+
+### §24 red team (3-lens, 2026-07-24)
+
+A 3-lens adversarial pass over the executed §24 legs found 11 real gaps.
+All fixed same-day, minimal + §16-disciplined; 784/784 green (baseline
+767 + 17 new/updated specs).
+
+1. **Breach didn't stop NEW work.** `SpendCampaignService.recordSpend`
+   refused further spend once a campaign was 'breached', but nothing
+   stopped `GeminiBatchService.submit` from dispatching a NEW batch
+   against a breached campaign — the vendor call already happened by the
+   time the campaign found out. Fix: `SpendCampaignService.isDispatchable`
+   (one findUnique, state ∈ {approved, running}) consulted at the TOP of
+   `submit`, before any DB row or vendor call, mirroring the existing
+   Tier-3 gate.
+2. **Loss-horizon lane could pause.** `recordLaneCost` paused ANY lane on
+   a cost breach — but pausing `chronological` converts a money anomaly
+   into PERMANENT data loss (reddit's ≤1000-post window). Fix: a
+   chronological breach now ESCALATES (loud error, keeps running); elastic
+   lanes (keyword, future others) still pause.
+3. **Backstop could chase a runaway.** `refreshBackstop` derived the
+   trailing baseline from the raw SUM of the window — a runaway month
+   would inflate its OWN backstop in one derivation. Fix: baseline is now
+   the MEDIAN of 30 daily totals × 30 (resists ~15 runaway days), and
+   growth is clamped to min(derived, previousLimit × BACKSTOP_MULTIPLE) —
+   at most ×3 growth per re-derivation; shrinking stays unclamped.
+4. **Campaign grants didn't survive a restart.** Pool grants are
+   registered only at `approve()`-time, in-memory — a restart forgot every
+   live campaign's grant, so the first `recordSpend` after a restart threw
+   instead of metering. Fix: `GovernanceService.onModuleInit` gained
+   `reRegisterCampaignGrants()` — re-registers + re-meters every
+   approved/running campaign's grant at boot, non-fatal per-row.
+5. **recordSpend had a lost-update race.** Read-modify-write on
+   `spentMicros` let two concurrent writers each drop the other's delta.
+   Fix: atomic `{ increment }`, plus the breach state flip guarded via
+   `updateMany({ where: { state: { in: [...] } } })` so a stale writer can
+   never resurrect 'running' over 'breached'.
+6. **NaN token counts silently under-metered.** A malformed vendor
+   response could NaN through `geminiCostMicros` to a `micros <= 0`
+   no-op — spend vanished with zero signal. Fix: per-field
+   finite-or-zero coercion in `geminiCostMicros`, plus a
+   `usage-ledger.meterGeminiSpend` warn ("malformed token counts — spend
+   under-metered") so the failure is loud.
+7. **Case-sensitive lane-cost join.** `attributeLaneCosts` joined
+   `s.handle = d.community` without normalization — a case mismatch
+   silently dropped that source's attribution. Fix: `lower()` both sides.
+8. **Ambiguous hash.** `hashEstimate` joined fields with `'|'` —
+   structurally ambiguous (a `|` inside a field value collides two
+   different estimates onto the same hash). Fix: sha256 over
+   `JSON.stringify([...fixed order...])`.
+9. **Silent durable-flush failure.** `PoolRegistry.flushDurable` caught a
+   store write failure into `confirmed = false` with no signal — a crash
+   before the next successful flush loses the delta unseen. Fix: optional
+   `onDurableFlushFailure` callback, wired to `logger.error` in
+   `GovernanceService`.
+10. **No operator seam to resume a paused lane.** `resumeLane` existed
+    with zero callers. Fix: `apps/api/scripts/resume-lane.ts` (modeled on
+    `onboard-subreddit.ts`), prints before/after cost fields.
+11. **Pilot ceiling comment overstated enforcement.** `preparePilot`'s
+    doc implied the service bounds pilot spend by unit count; it only ever
+    sees micro-USD deltas. Fix: comments rewritten to name the calling
+    script's loop (e.g. `--max-posts`) as the actual enforcement point —
+    a documented deferral, not a silent gap.

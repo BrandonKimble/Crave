@@ -120,9 +120,17 @@ function campaignPoolName(campaignId: string): string {
   return `campaign.${campaignId}`;
 }
 
-/** Canonical estimate payload hash (§24.3): sha256 over a FIXED key order —
- *  never JSON.stringify(obj) directly, whose key order is not guaranteed
- *  stable across engines/refactors. */
+/**
+ * Canonical estimate payload hash (§24.3): sha256 over a FIXED-ORDER ARRAY,
+ * JSON-serialized — never a raw '|'.join(...) string (§24 red team finding
+ * 8: a '|'-joined string is structurally AMBIGUOUS — e.g. workClass
+ * "a|1" + unit "b" hashes identically to workClass "a" + unit "1|b"; a JSON
+ * array of the SAME fixed field order is unambiguous because JSON escapes
+ * its own delimiters). NOTE: this changes hashes for any campaign still
+ * 'awaiting_approval' under the old '|'-join scheme — re-run prepareEstimate
+ * for those (the spend_campaigns table is empty-ish in practice; no data
+ * migration was written for this).
+ */
 function hashEstimate(payload: {
   workClass: string;
   unit: string;
@@ -131,14 +139,14 @@ function hashEstimate(payload: {
   estimateMicros: number;
   toleranceFraction: number;
 }): string {
-  const canonical = [
+  const canonical = JSON.stringify([
     payload.workClass,
     payload.unit,
     payload.unitCount,
     payload.microUsdPerUnit,
     payload.estimateMicros,
     payload.toleranceFraction,
-  ].join('|');
+  ]);
   return createHash('sha256').update(canonical).digest('hex');
 }
 
@@ -241,6 +249,14 @@ export class SpendCampaignService {
    * chose). No grant pool is minted — recordSpend for a pilot accumulates
    * spentMicros with no envelope to breach against (nothing to compare it
    * to yet).
+   *
+   * §24 red team finding 11 (pilot ceiling honesty): unitCount here is a
+   * DECLARED bound this service RECORDS, not one it ENFORCES — recordSpend
+   * only ever sees micro-USD deltas, never a unit count, so it structurally
+   * cannot stop a pilot after N units. Enforcement of the unit bound lives
+   * in the CALLING script's own loop (e.g. seed-archive --max-posts stops
+   * dispatching once it has seen max-posts documents) — a documented
+   * deferral pending a unit-aware recordSpend, not a silent gap.
    */
   async preparePilot(
     params: PrepareEstimateParams,
@@ -323,12 +339,43 @@ export class SpendCampaignService {
   }
 
   /**
+   * §24 red team finding 1 ("a breach must stop work"): a single findUnique
+   * state check so callers that dispatch NEW work for a campaign (e.g.
+   * GeminiBatchService.submit) can refuse BEFORE any vendor call, instead of
+   * only stopping spend after the fact via recordSpend. Dispatchable =
+   * 'approved' or 'running' — the same two states recordSpend accepts;
+   * 'breached'/'draft'/'awaiting_approval'/'completed'/'re_awaiting' all
+   * refuse. A missing campaign row is also non-dispatchable (fail closed,
+   * never fail open on a typo'd id).
+   */
+  async isDispatchable(campaignId: string): Promise<boolean> {
+    const row = await this.prisma.spendCampaign.findUnique({
+      where: { campaignId },
+      select: { state: true },
+    });
+    return row?.state === 'approved' || row?.state === 'running';
+  }
+
+  /**
    * §24.1(e): meter actual spend into the campaign's grant. A pilot
    * campaign (no estimate/envelope) just accumulates spentMicros — there is
    * nothing to breach against yet. A priced campaign whose grant denies
    * (exhausted) flips 'breached' with a LOUD error carrying actual vs
    * projected, and further recordSpend calls for a breached campaign are
    * typed-refused (CampaignBreachedError) — callers re-queue the work.
+   *
+   * §24 red team finding 5 ("recordSpend race"): the old read-modify-write
+   * (findUnique -> compute newSpentMicros in JS -> update) let two
+   * concurrent recordSpend calls both read the same spentMicros and each
+   * write back their own read+delta, silently dropping one delta (classic
+   * lost update). The increment is now an ATOMIC `{ increment }` — Postgres
+   * serializes it, so concurrent writers compose correctly. The breach
+   * state flip is additionally GUARDED via updateMany's WHERE
+   * (state IN ('approved','running')): a stale writer that read the row
+   * before another writer breached it can no longer resurrect 'running'
+   * over 'breached' — its update simply matches zero rows. The in-memory
+   * pool meter (governance.pools) stays the LIVE breach detector, unchanged
+   * — this guard only protects the DB row's bookkeeping from clobbering.
    */
   async recordSpend(campaignId: string, micros: number): Promise<void> {
     if (!Number.isFinite(micros) || micros <= 0) {
@@ -350,13 +397,16 @@ export class SpendCampaignService {
       );
     }
     const roundedMicros = Math.round(micros);
-    const newSpentMicros = row.spentMicros + BigInt(roundedMicros);
 
-    // Pilot campaign (no estimate/envelope): accumulate only.
+    // Pilot campaign (no estimate/envelope): atomic accumulate only. This
+    // service never sees the pilot's unit count here, only a micro-USD
+    // delta — enforcing the caller-declared unit bound (§24 red team
+    // finding 11) is the calling SCRIPT's job (e.g. --max-posts stops its
+    // own dispatch loop), a documented deferral, not an oversight.
     if (row.estimateMicros === null) {
-      await this.prisma.spendCampaign.update({
-        where: { campaignId },
-        data: { spentMicros: newSpentMicros, state: 'running' },
+      await this.prisma.spendCampaign.updateMany({
+        where: { campaignId, state: { in: ['approved', 'running'] } },
+        data: { spentMicros: { increment: roundedMicros }, state: 'running' },
       });
       return;
     }
@@ -380,10 +430,10 @@ export class SpendCampaignService {
         projectedEnvelopeMicros: status.limit,
         unitCount: row.unitCount,
       });
-      await this.prisma.spendCampaign.update({
-        where: { campaignId },
+      await this.prisma.spendCampaign.updateMany({
+        where: { campaignId, state: { in: ['approved', 'running'] } },
         data: {
-          spentMicros: newSpentMicros,
+          spentMicros: { increment: roundedMicros },
           state: 'breached',
           breachNote,
         },
@@ -391,9 +441,9 @@ export class SpendCampaignService {
       return;
     }
 
-    await this.prisma.spendCampaign.update({
-      where: { campaignId },
-      data: { spentMicros: newSpentMicros, state: 'running' },
+    await this.prisma.spendCampaign.updateMany({
+      where: { campaignId, state: { in: ['approved', 'running'] } },
+      data: { spentMicros: { increment: roundedMicros }, state: 'running' },
     });
   }
 
