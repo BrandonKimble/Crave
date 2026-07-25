@@ -481,9 +481,11 @@ export class SpendAnalyticsService {
       where: { collectedAt: createdWindow },
     });
 
-    // gemini.relevance_gate / document
+    // gemini.relevance_gate / document — tombstone verdicts written by the
+    // orphan-parent sweep cost $0 and would deflate the measured rate's
+    // denominator; only LLM-judged verdicts count.
     const verdictCount = await this.prisma.collectionRelevanceVerdict.count({
-      where: { judgedAt: createdWindow },
+      where: { judgedAt: createdWindow, model: { not: 'orphan-parent-sweep' } },
     });
     if (verdictCount >= MIN_SAMPLE_UNITS) {
       const gateSpend = await this.geminiSpendMicrosForCallers(

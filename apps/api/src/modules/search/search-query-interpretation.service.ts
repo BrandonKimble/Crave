@@ -813,6 +813,14 @@ export class SearchQueryInterpretationService {
         return {
           restaurantAttributes: [selectedEntry],
         };
+      case EntityType.ingredient:
+        // Ingredient rows joined autocomplete 2026-07-25 (owner ruling): the
+        // tap submits the ingredient-scoped skip-LLM search, whose include
+        // clause unions contained-in (evidence/canon) with dishes NAMED the
+        // ingredient — the "octopus" discovery surface.
+        return {
+          ingredients: [selectedEntry],
+        };
       default:
         return entities;
     }

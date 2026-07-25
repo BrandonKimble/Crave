@@ -2043,3 +2043,20 @@ the worker's existing 25-post batch granularity (§16 documented reuse).
 Healing batches count in expectedBatches so §10 reconciliation stays
 honest. 871 tests green (+7 RED-proof: heal, tombstone, no-retry,
 no-op, transient-failure paths).
+
+## 2026-07-25 — Adversarial review of the fix delta (the red team red-teamed)
+
+Fresh hostile review of ff9e5165 + 1b712006 (fixes are unreviewed code).
+Cleared as solid with proof: LIKE 't3\_%' escaping (proven against real
+Postgres), §10 expectedBatches accounting incl. healing batches +
+legit-zero-with-healing cursor path, tombstone key alignment end-to-end,
+places-promotion metering restructure (no double-meter, finally cannot
+swallow), pricedGeminiRow's 7 call-site shapes, no import cycles, both
+new ops scripts, deploy.sh retry. Three accepted-cost notes: sweep
+anti-join runs every tick (indexed, bounded — acceptable at scale),
+healing batches embed full LLMPost payloads in Redis (precedented by
+replay), infinite gentle retry on transient parent-fetch failures
+(pool-governed, 25/tick). Three fixes applied: tombstone verdicts
+excluded from the relevance-gate rate denominator; batchJobsPending no
+longer counts terminal failed relics; healed parent fetches folded into
+the §14.7 drift pair's actual side. 871 tests green.

@@ -829,7 +829,9 @@ export class OpsSummaryService {
           return 0;
         }),
       this.prisma.llmBatchJob
-        .count({ where: { ingestedAt: null } })
+        // Terminal failures are not "pending" — without this filter the
+        // July-11-era failed relics inflate the card forever.
+        .count({ where: { ingestedAt: null, status: { not: 'failed' } } })
         .catch((error: unknown) => {
           this.warnSwallowed('pipeline.batchJobsPending', error);
           return 0;

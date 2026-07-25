@@ -343,6 +343,9 @@ export class SearchOrchestrationService {
       case 'restaurant_attribute':
         entities.restaurantAttributes = [selectedEntry];
         break;
+      case 'ingredient':
+        entities.ingredients = [selectedEntry];
+        break;
       default:
         return null;
     }

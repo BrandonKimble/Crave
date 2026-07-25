@@ -1581,9 +1581,10 @@ enum EntityType {
   food
   food_attribute
   restaurant_attribute
-  /// Ingredient vocabulary (burrata, pork, miso). NEVER a dish surface: kept
-  /// out of dish autocomplete/siblings/polls by type. Linked from connections
-  /// (source evidence) and from food entities (synthesized canonical set).
+  /// Ingredient vocabulary (burrata, pork, miso). Not a dish: kept out of
+  /// siblings/polls by type; JOINED autocomplete 2026-07-25 (owner ruling —
+  /// discovery surface; same-named food rows win the panel seat). Linked from
+  /// connections (source evidence) and food entities (synthesized canon).
   ingredient
 
   @@map("entity_type")

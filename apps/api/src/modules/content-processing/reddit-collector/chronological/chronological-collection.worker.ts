@@ -306,6 +306,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
           advanceCursor: true,
           outputDocs: 0,
           declaredRequests: job.data.declaredRequests,
+          healedParentFetches: healedParents.length,
         });
         return {
           success: true,
@@ -442,6 +443,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         advanceCursor: false,
         outputDocs: posts.length,
         declaredRequests: job.data.declaredRequests,
+        healedParentFetches: healedParents.length,
       });
       this.logger.info('Staged pending window after queuing batches', {
         correlationId,
@@ -561,6 +563,11 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     advanceCursor: boolean;
     outputDocs: number;
     declaredRequests?: number;
+    /** Orphan-parent heals this tick — each was a real governed by-id fetch
+     *  the declared estimate could not have known about; folded into the
+     *  actual side of the §14.7 drift pair so healing ticks don't read as
+     *  under-actual. */
+    healedParentFetches?: number;
   }): Promise<void> {
     if (!params.sourceId) {
       return;
@@ -583,7 +590,9 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         params.outputDocs,
       );
       if (typeof params.declaredRequests === 'number') {
-        const actualRequests = Math.max(1, Math.ceil(params.outputDocs / 100));
+        const actualRequests =
+          Math.max(1, Math.ceil(params.outputDocs / 100)) +
+          (params.healedParentFetches ?? 0);
         this.governance.pools.recordActualPair(
           REDDIT_POOL_NAME,
           'collector.chronological',

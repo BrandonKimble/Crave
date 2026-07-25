@@ -751,17 +751,19 @@ export class AutocompleteService {
     // ENTITY-LANE EXCEPTION (ratified): internal order stays evidence-tier-
     // first with the band-clamped demand re-rank INSIDE tiers — RRF fuses the
     // lanes but never breaks tier ordering within the entity lane itself.
-    const entityLane = scoredEntities
-      .filter(
-        ({ candidate }) => !this.isAttributeType(candidate.match.entityType),
-      )
-      .sort(
-        (a, b) =>
-          b.score - a.score ||
-          b.candidate.textStrength - a.candidate.textStrength ||
-          a.candidate.match.name.localeCompare(b.candidate.match.name),
-      )
-      .map(({ candidate }) => candidate);
+    const entityLane = this.dropShadowedIngredientMatches(
+      scoredEntities
+        .filter(
+          ({ candidate }) => !this.isAttributeType(candidate.match.entityType),
+        )
+        .sort(
+          (a, b) =>
+            b.score - a.score ||
+            b.candidate.textStrength - a.candidate.textStrength ||
+            a.candidate.match.name.localeCompare(b.candidate.match.name),
+        )
+        .map(({ candidate }) => candidate),
+    );
 
     const attributeLane = this.rankAttributeLane(
       scoredEntities
@@ -1281,6 +1283,28 @@ export class AutocompleteService {
     return viewRecency * 0.7 + viewFrequency * 0.3;
   }
 
+  /**
+   * Name-collision rule for ingredient rows (728 names exist as BOTH food
+   * and ingredient entities — "burrata"): the FOOD row keeps the seat. Two
+   * identical-looking rows with different tap behavior is the confusion;
+   * the food row's dish results are the primary intent for a name that IS
+   * a dish, and the typed-submit path still reaches the full union.
+   */
+  private dropShadowedIngredientMatches(
+    candidates: LaneCandidate[],
+  ): LaneCandidate[] {
+    const nonIngredientNames = new Set(
+      candidates
+        .filter((c) => c.match.entityType !== EntityType.ingredient)
+        .map((c) => c.match.name.trim().toLowerCase()),
+    );
+    return candidates.filter(
+      (c) =>
+        c.match.entityType !== EntityType.ingredient ||
+        !nonIngredientNames.has(c.match.name.trim().toLowerCase()),
+    );
+  }
+
   private resolveEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
     const hasExplicitTypes =
       Boolean(dto.entityType) || Boolean(dto.entityTypes?.length);
@@ -1289,14 +1313,19 @@ export class AutocompleteService {
         ? dto.entityTypes
         : dto.entityType
           ? [dto.entityType]
-          : [EntityType.food, EntityType.restaurant];
+          : // Ingredient rows joined the panel 2026-07-25 (owner ruling —
+            // the "octopus"/"jalapeño" discovery surface). Same-named food
+            // rows win the seat: see dropShadowedIngredientMatches.
+            [EntityType.food, EntityType.restaurant, EntityType.ingredient];
     const filtered = requested.filter(
       (entityType) => !this.isAttributeType(entityType),
     );
     if (filtered.length > 0) {
       return filtered;
     }
-    return hasExplicitTypes ? [] : [EntityType.food, EntityType.restaurant];
+    return hasExplicitTypes
+      ? []
+      : [EntityType.food, EntityType.restaurant, EntityType.ingredient];
   }
 
   private resolveAttributeEntityTypes(
