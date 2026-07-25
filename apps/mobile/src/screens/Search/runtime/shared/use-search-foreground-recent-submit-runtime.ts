@@ -109,33 +109,29 @@ export const useSearchForegroundRecentSubmitRuntime = ({
 
   const handleRecentlyViewedFoodPress = React.useCallback(
     (item: RecentlyViewedFood) => {
-      const trimmedValue = item.restaurantName.trim();
-      if (!trimmedValue) {
+      // Refit layer 2 correctness item (plans/suggest-ideal-shape.md): a
+      // recently-viewed FOOD tap lands on the DISH — a typed selected-entity
+      // search for the food (the skip-LLM lane the autocomplete food row already
+      // uses) — not the restaurant profile the row used to open. The entity
+      // identity write handles the recent-search upsert at world-present.
+      const foodName = item.foodName.trim();
+      if (!foodName) {
         return;
       }
-      submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
-      pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
-      openRestaurantProfilePreview(item.restaurantId, trimmedValue);
-      deferRecentSearchUpsert({
-        queryText: trimmedValue,
-        selectedEntityId: item.restaurantId,
-        selectedEntityType: 'restaurant',
-        statusPreview: item.statusPreview ?? null,
-      });
-      void runRestaurantEntitySearch({
-        restaurantId: item.restaurantId,
-        restaurantName: trimmedValue,
-        submissionSource: 'recent',
-        typedPrefix: item.foodName,
-      });
+      submitPreparationRuntime.prepareRecentIntentSubmit(foodName);
+      pendingRestaurantSelectionRef.current = null;
+      void submitSearch(
+        {
+          selectedEntity: { entityId: item.foodId, entityType: 'food' },
+          submission: {
+            source: 'recent',
+            context: { typedPrefix: foodName, matchType: 'entity' },
+          },
+        },
+        foodName
+      );
     },
-    [
-      deferRecentSearchUpsert,
-      openRestaurantProfilePreview,
-      pendingRestaurantSelectionRef,
-      runRestaurantEntitySearch,
-      submitPreparationRuntime,
-    ]
+    [pendingRestaurantSelectionRef, submitPreparationRuntime, submitSearch]
   );
 
   return React.useMemo(

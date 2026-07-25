@@ -19,8 +19,8 @@ const MIN_DENSE_QUERY_LENGTH = 3;
 // max() of non-commensurate lane scores. The gaps are wide enough that the
 // downstream popularity/affinity boost (≤1.35×) only re-ranks WITHIN a tier,
 // never across it: a prefix (0.9) can never lose to an infix/fuzzy hit no matter
-// how popular. `weak` (levenshtein-only — the ham/rum class) and `phonetic`
-// (dmetaphone) are dropped from type-ahead entirely (undefined ⇒ filtered).
+// how popular. `weak` (levenshtein-only — the ham/rum class) is dropped from
+// type-ahead entirely (undefined ⇒ filtered).
 const EVIDENCE_CONFIDENCE: Partial<Record<TextMatchEvidence, number>> = {
   exact: 1.0,
   prefix: 0.9, // name starts with what you typed — the strongest type-ahead signal
@@ -74,7 +74,7 @@ export class EntitySearchService {
       const evidence = c.sparseEvidence ?? 'embedding';
       const confidence = EVIDENCE_CONFIDENCE[evidence];
       if (confidence === undefined) {
-        return []; // weak / phonetic → not a type-ahead suggestion
+        return []; // weak → not a type-ahead suggestion
       }
       return [
         {

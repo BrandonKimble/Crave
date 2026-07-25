@@ -67,7 +67,6 @@ export const useSearchAutocompleteRequestEffectRuntime = ({
     cancelAutocomplete,
     setSuggestions,
     setShowSuggestions,
-    clearAutocompleteSuggestions,
     writeAutocompleteCache,
     requestStateRuntime,
     bounds,

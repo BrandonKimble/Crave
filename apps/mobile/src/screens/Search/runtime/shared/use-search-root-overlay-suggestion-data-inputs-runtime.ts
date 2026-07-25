@@ -13,6 +13,7 @@ export const useSearchRootOverlaySuggestionDataInputsRuntime = ({
   return React.useMemo(
     () => ({
       suggestionDisplaySuggestions: suggestionRuntime.suggestionDisplaySuggestions,
+      suggestionHighlightQuery: suggestionRuntime.suggestionHighlightQueryDisplay,
       recentSearchesDisplay: suggestionRuntime.recentSearchesDisplay,
       recentlyViewedRestaurantsDisplay: suggestionRuntime.recentlyViewedRestaurantsDisplay,
       recentlyViewedFoodsDisplay: suggestionRuntime.recentlyViewedFoodsDisplay,
@@ -22,6 +23,7 @@ export const useSearchRootOverlaySuggestionDataInputsRuntime = ({
       suggestionRuntime.recentlyViewedFoodsDisplay,
       suggestionRuntime.recentlyViewedRestaurantsDisplay,
       suggestionRuntime.suggestionDisplaySuggestions,
+      suggestionRuntime.suggestionHighlightQueryDisplay,
     ]
   );
 };

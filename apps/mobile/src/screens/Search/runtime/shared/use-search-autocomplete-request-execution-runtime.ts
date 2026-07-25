@@ -3,6 +3,7 @@ import React from 'react';
 import { logger } from '../../../../utils';
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { Coordinate, MapBounds } from '../../../../types';
+import { setSearchAutocompleteError } from './search-autocomplete-error-store';
 import {
   normalizeAutocompleteQuery,
   writeAutocompleteSuggestions,
@@ -18,7 +19,6 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
   cancelAutocomplete,
   setSuggestions,
   setShowSuggestions,
-  clearAutocompleteSuggestions,
   writeAutocompleteCache,
   requestStateRuntime,
   bounds,
@@ -37,7 +37,6 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
-  clearAutocompleteSuggestions: () => void;
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
   requestStateRuntime: ReturnType<typeof useSearchAutocompleteRequestStateRuntime>;
   bounds: MapBounds | null;
@@ -75,6 +74,9 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
         if (isLatestSuppressed || !requestStateRuntime.latestSuggestionScreenActiveRef.current) {
           return;
         }
+        // Never-blank rule (c): an adopted successful response clears any prior
+        // failure notice — no-matches ([]) is now a distinct, honest state.
+        setSearchAutocompleteError(false);
         writeAutocompleteCache(trimmed, matches);
         writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, matches);
       })
@@ -94,7 +96,11 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
         logger.warn('Autocomplete request failed', {
           message: error instanceof Error ? error.message : 'unknown error',
         });
-        clearAutocompleteSuggestions();
+        // Never-blank rules (b)+(c) (plans/suggest-ideal-shape.md refit layer 2):
+        // a failure KEEPS whatever list is showing (no clear-to-blank) and raises
+        // the error bit — the panel renders a quiet "couldn't load" row only when
+        // it has nothing else to show.
+        setSearchAutocompleteError(true);
       });
 
     return () => {
@@ -104,7 +110,6 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
     };
   }, [
     cancelAutocomplete,
-    clearAutocompleteSuggestions,
     requestStateRuntime,
     runAutocomplete,
     setShowSuggestions,

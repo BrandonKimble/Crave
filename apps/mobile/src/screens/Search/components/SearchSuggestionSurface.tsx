@@ -49,6 +49,7 @@ type SearchSuggestionSurfaceProps = {
   shouldRenderAutocompleteSection: boolean;
   shouldRenderRecentSection: boolean;
   suggestionDisplaySuggestions: AutocompleteMatch[];
+  suggestionHighlightQuery: string;
   recentSearchesDisplay: RecentSearch[];
   recentlyViewedRestaurantsDisplay: RecentlyViewedRestaurant[];
   recentlyViewedFoodsDisplay: RecentlyViewedFood[];
@@ -90,6 +91,7 @@ const SearchSuggestionSurface = ({
   shouldRenderAutocompleteSection,
   shouldRenderRecentSection,
   suggestionDisplaySuggestions,
+  suggestionHighlightQuery,
   recentSearchesDisplay,
   recentlyViewedRestaurantsDisplay,
   recentlyViewedFoodsDisplay,
@@ -194,6 +196,7 @@ const SearchSuggestionSurface = ({
                 showAutocomplete={shouldRenderAutocompleteSection}
                 showRecent={shouldRenderRecentSection}
                 suggestions={suggestionDisplaySuggestions}
+                highlightQuery={suggestionHighlightQuery}
                 recentSearches={recentSearchesDisplay}
                 recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
                 recentlyViewedFoods={recentlyViewedFoodsDisplay}

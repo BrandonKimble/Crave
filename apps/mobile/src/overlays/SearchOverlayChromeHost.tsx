@@ -20,6 +20,7 @@ import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-autho
 type SearchOverlaySuggestionSurfaceFrozenProps = Pick<
   SearchOverlayChromeSuggestionSurfaceProps,
   | 'suggestionDisplaySuggestions'
+  | 'suggestionHighlightQuery'
   | 'recentSearchesDisplay'
   | 'recentlyViewedRestaurantsDisplay'
   | 'recentlyViewedFoodsDisplay'
@@ -96,6 +97,7 @@ const SearchOverlaySuggestionSurfaceHost = React.memo(
       React.useMemo<SearchOverlaySuggestionSurfaceFrozenProps>(
         () => ({
           suggestionDisplaySuggestions: suggestionSurfaceProps.suggestionDisplaySuggestions,
+          suggestionHighlightQuery: suggestionSurfaceProps.suggestionHighlightQuery,
           recentSearchesDisplay: suggestionSurfaceProps.recentSearchesDisplay,
           recentlyViewedRestaurantsDisplay: suggestionSurfaceProps.recentlyViewedRestaurantsDisplay,
           recentlyViewedFoodsDisplay: suggestionSurfaceProps.recentlyViewedFoodsDisplay,
@@ -105,6 +107,7 @@ const SearchOverlaySuggestionSurfaceHost = React.memo(
           suggestionSurfaceProps.recentlyViewedFoodsDisplay,
           suggestionSurfaceProps.recentlyViewedRestaurantsDisplay,
           suggestionSurfaceProps.suggestionDisplaySuggestions,
+          suggestionSurfaceProps.suggestionHighlightQuery,
         ]
       );
     if (!shouldFreezeSuggestionSurfaceForRunOne) {
@@ -118,6 +121,7 @@ const SearchOverlaySuggestionSurfaceHost = React.memo(
       <SearchSuggestionSurface
         {...suggestionSurfaceProps}
         suggestionDisplaySuggestions={suggestionSurfacePropsForRender.suggestionDisplaySuggestions}
+        suggestionHighlightQuery={suggestionSurfacePropsForRender.suggestionHighlightQuery}
         recentSearchesDisplay={suggestionSurfacePropsForRender.recentSearchesDisplay}
         recentlyViewedRestaurantsDisplay={
           suggestionSurfacePropsForRender.recentlyViewedRestaurantsDisplay

@@ -68,6 +68,10 @@ export type SearchSuggestionVisibilityRuntime = {
   shouldRenderRecentSection: boolean;
   shouldShowAutocompleteSpinnerInBar: boolean;
   suggestionDisplaySuggestions: AutocompleteMatch[];
+  /** Refit layer 2 (match highlighting): the query the DISPLAYED suggestions were
+   *  produced for — rides the submit-transition hold with them so held rows keep
+   *  a consistent bold split during the close animation. */
+  suggestionHighlightQueryDisplay: string;
   recentSearchesDisplay: RecentSearch[];
   recentlyViewedRestaurantsDisplay: RecentlyViewedRestaurant[];
   recentlyViewedFoodsDisplay: RecentlyViewedFood[];
@@ -258,6 +262,7 @@ export type SearchSuggestionHoldEffectsRuntime = {
 
 export type SearchSuggestionHeldDisplayRuntimeArgs = Pick<
   SearchSuggestionHoldRuntimeArgs,
+  | 'query'
   | 'suggestions'
   | 'recentSearches'
   | 'recentlyViewedRestaurants'
@@ -290,6 +295,7 @@ export type SearchSuggestionHoldRuntime = {
   shouldRenderRecentSection: boolean;
   shouldShowAutocompleteSpinnerInBar: boolean;
   suggestionDisplaySuggestions: AutocompleteMatch[];
+  suggestionHighlightQueryDisplay: string;
   recentSearchesDisplay: RecentSearch[];
   recentlyViewedRestaurantsDisplay: RecentlyViewedRestaurant[];
   recentlyViewedFoodsDisplay: RecentlyViewedFood[];

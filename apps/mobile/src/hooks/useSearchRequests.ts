@@ -262,7 +262,7 @@ export const useSearchRequests = () => {
 
   const runAutocomplete = React.useCallback(
     (query: string, options: RunAutocompleteOptions = {}) =>
-      new Promise<AutocompleteMatch[]>((resolve) => {
+      new Promise<AutocompleteMatch[]>((resolve, reject) => {
         const requestAttemptId = ++autocompleteAttemptSeqRef.current;
         const debounceMs = options.debounceMs ?? 0; // Instant autocomplete like Google
         logPerfScenarioSearchRequestLifecycle({
@@ -330,7 +330,11 @@ export const useSearchRequests = () => {
                 queryLength: query.trim().length,
                 ...getRunSearchErrorFields(error),
               });
-              resolve([]);
+              // Never-blank rule (c) (plans/suggest-ideal-shape.md refit layer 2):
+              // a GENUINE failure rejects so the caller can show an error state —
+              // resolving [] here made network errors indistinguishable from
+              // no-matches. Aborts (both branches above) still resolve [] quietly.
+              reject(error instanceof Error ? error : new Error('Autocomplete request failed'));
             }
           } finally {
             if (autocompleteControllerRef.current === controller) {

@@ -3609,11 +3609,10 @@ export class SearchService {
     ]);
 
     // Expansion widens the ACTUAL result set, so it must admit only strong
-    // lexical evidence. `weak` (levenshtein-only — the ham/rum class) and
-    // `phonetic` (dmetaphone) collisions otherwise leak wrong entities into
-    // results on equal footing with exact matches; `fuzzy` must clear a
-    // similarity floor. (Precision gate; the co-inclusion/dense recall path is
-    // separate.)
+    // lexical evidence. `weak` (levenshtein-only — the ham/rum class)
+    // collisions otherwise leak wrong entities into results on equal footing
+    // with exact matches; `fuzzy` must clear a similarity floor. (Precision
+    // gate; the co-inclusion/dense recall path is separate.)
     // 'contains' is STRONG for expansion: the same-token menu-variant class
     // ("al pastor taco" for "taco") measured 94% wanted. 'edit' needs a floor
     // (≈1 edit on a 4+ letter word) — looser edits are typo junk.

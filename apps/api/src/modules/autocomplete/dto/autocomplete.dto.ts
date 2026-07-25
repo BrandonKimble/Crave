@@ -65,8 +65,8 @@ export class AutocompleteMatchDto {
   matchType?: 'entity' | 'query' | 'poll' | 'user';
   // Person rows (user lane): the handle shown under the display name.
   username?: string | null;
-  // How this entity matched (exact / prefix / name / alias / fuzzy / phonetic /
-  // embedding). Forwarded from the recall core so the client can distinguish an
+  // How this entity matched (exact / prefix / contains / name / alias / fuzzy /
+  // edit / embedding). Forwarded from the recall core so the client can distinguish an
   // exact hit from a weak guess — the signal the profile-jump gate needs. Absent
   // for non-entity rows (query suggestions, polls) and injected personal lanes.
   evidenceTier?: TextMatchEvidence;

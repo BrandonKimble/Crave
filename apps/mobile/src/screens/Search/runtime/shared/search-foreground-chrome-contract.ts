@@ -75,6 +75,7 @@ export type SearchForegroundSuggestionPanelInputs = Pick<
 export type SearchForegroundSuggestionDataInputs = Pick<
   SearchForegroundChromeSuggestionSurfaceProps,
   | 'suggestionDisplaySuggestions'
+  | 'suggestionHighlightQuery'
   | 'recentSearchesDisplay'
   | 'recentlyViewedRestaurantsDisplay'
   | 'recentlyViewedFoodsDisplay'

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { Counter, Histogram } from 'prom-client';
@@ -29,52 +30,98 @@ import {
 } from '../signals/signal-demand-read.service';
 import type { SignalKind } from '../signals/signals.service';
 
-// §16 CLASSIFICATION (full-plan pass 2026-07-24 — this module predates the
-// Constants Constitution; classified in place rather than left naked):
-// - Slot counts / limits / min-lengths below = K1 owner sentences (how many
-//   rows a surface shows, how many slots each lane reserves, how short a
-//   query may be) — product choices the eye re-ratifies, never measured.
+// §16 CLASSIFICATION (suggest refit 2026-07-24 — the owner-ratified ideal
+// shape, plans/suggest-ideal-shape.md). The pre-constitution holdovers this
+// header used to flag (the 0.6/0.3/0.1 attribute weights, the 0.4 similarity
+// floors, the naked ×1.35, the env lane-weight multipliers, and the 0.5
+// query-score floor) are DELETED, not ratified: every lane now ranks its own
+// candidates rank-only with type-appropriate signals, and lanes fuse by
+// unweighted reciprocal-rank fusion. What remains, by class:
+// - Slot counts / limits / min-length gates = K1 owner sentences (product
+//   choices the eye re-ratifies, never measured). The slot caps and intent
+//   gates cite "K1 RATIFIED 2026-07-24 §18-8b(e)".
+// - RRF_K = the published RRF constant (Cormack et al. 2009) — a literature
+//   fact, not a tuned weight.
 // - Windows (90d support) = K1 attention-window sentences.
-// - The 0.6/0.3/0.1 attribute-lane WEIGHTS and the 0.4 similarity
-//   thresholds are PRE-CONSTITUTION HOLDOVERS: unratified hand-set blends
-//   of exactly the kind §16 killed in the old rollup. Added to the §18
-//   item-1 ratify list (2026-07-24) — owner ratifies as K1 sentences or
-//   the lanes get re-derived (per-lane percentile normalization, the §11
-//   pattern) when autocomplete is next touched. Flagged, not hidden.
-const DEFAULT_LIMIT = 8;
-const MIN_QUERY_LENGTH = 1;
+// - Evidence-tier ordinals = derivation (order-only) from the matcher's tier
+//   ladder; magnitudes never leave the ordinal, so it cannot act as a weight.
+const DEFAULT_LIMIT = 8; // K1 RATIFIED 2026-07-24 §18-8b(e): panel shows ≤ 8 rows
+const MIN_QUERY_LENGTH = 1; // K1: suggest engages from the first character
+// Query-suggestion STRIP composition (a separate UI surface from the panel):
+// personal-first seating inside the ≤3-row strip. K1 owner sentences — they
+// shape the strip ONLY, never the cross-lane panel blend.
 const PERSONAL_QUERY_RESERVED_SLOTS = 2;
 const GLOBAL_QUERY_RESERVED_SLOTS = 1;
-const ATTRIBUTE_RESERVED_SLOTS = 1;
-const ATTRIBUTE_SUPPORT_WINDOW_DAYS = 90;
-const ATTRIBUTE_TYPED_SEARCH_WEIGHT = 0.6;
-const ATTRIBUTE_SELECTION_WEIGHT = 0.3;
-const ATTRIBUTE_CORPUS_WEIGHT = 0.1;
+// Recall breadth for the attribute-lane fetch (how many candidates we ask the
+// matcher for, NOT how many we show) — structural plumbing, latency-bounded.
+const ATTRIBUTE_RECALL_FLOOR = 6;
+const ATTRIBUTE_SUPPORT_WINDOW_DAYS = 90; // K1 attention-window sentence
 const ATTRIBUTE_LANE_RUNTIME_READY = true;
-// Poll lane (§8.1): polls compete in the OVERFLOW pool — zero reserved slots, so
-// they surface only when they out-score leftover entity/query candidates. Gated to
-// longer queries + a min question match so they don't flood food searches.
-const POLL_LANE_MIN_QUERY_LENGTH = 3;
+// Poll lane (§8.1): polls compete through the cross-lane fusion — zero
+// reserved slots. Gated to longer queries so they don't flood food searches.
+const POLL_LANE_MIN_QUERY_LENGTH = 3; // K1 intent gate (ratified): trigram matching is meaningless under 3 chars
 // User lane (person rows, owner-scoped 2026-07-10: persons only — lists deliberately out):
 // username/displayName prefix or word-similarity; taps push the userProfile page.
-const USER_LANE_MIN_QUERY_LENGTH = 2;
-const USER_LANE_MIN_SIMILARITY = 0.4;
-const USER_LANE_MAX_CANDIDATES = 3;
-const POLL_LANE_MIN_SIMILARITY = 0.4;
-const POLL_LANE_MAX_CANDIDATES = 3;
+const USER_LANE_MIN_QUERY_LENGTH = 2; // K1 intent gate (ratified)
+const USER_LANE_MAX_CANDIDATES = 3; // K1 RATIFIED 2026-07-24 §18-8b(e): ≤ 3 person rows
+const POLL_LANE_MAX_CANDIDATES = 3; // K1 RATIFIED 2026-07-24 §18-8b(e): ≤ 3 poll rows
+// Unweighted reciprocal-rank fusion constant, k = 60 — the published value
+// from the original RRF paper (Cormack et al. 2009). Used both INSIDE the
+// attribute lane (fusing its three sub-rankings) and ACROSS lanes (fusing
+// lane ranks). §16 class: published-literature constant, not a tuned weight.
+const RRF_K = 60;
 const REQUEST_DURATION_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5];
 const REQUEST_DB_DURATION_BUCKETS = [
   0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8,
 ];
 type CacheResult = 'hit' | 'miss' | 'skipped';
 
+// Cross-lane tie-break (a): text-match strength as an ORDINAL over the
+// matcher's evidence-tier ladder (exact→prefix→contains→name/alias→fuzzy/
+// edit→embedding). §16 class: derivation, ORDER ONLY — the integers are rank
+// positions on the ladder, never magnitudes, so they cannot act as weights.
+// Rows whose evidence is structural-by-construction (query suggestions,
+// injected favorites/viewed, user/poll prefix hits are all literal prefix
+// matches of the typed text) borrow the ladder position their match shape
+// earns, not a hand score.
+const EVIDENCE_TIER_STRENGTH: Record<string, number> = {
+  exact: 7,
+  prefix: 6,
+  contains: 5,
+  name: 4,
+  alias: 4,
+  fuzzy: 3,
+  edit: 3,
+  embedding: 2,
+};
+
+/**
+ * One row inside a lane's internal ranking. The lane's ORDER is the ranking
+ * signal handed to cross-lane RRF; the fields below are the only tie-break
+ * facts (compared lexicographically, never blended):
+ * (a) textStrength — evidence-tier ordinal,
+ * (b) favorite/viewed/affinity — the requesting user's OWN engagement facts
+ *     with this exact row,
+ * (c) popularity — the global demand fact.
+ */
+type LaneCandidate = {
+  match: AutocompleteMatchDto;
+  textStrength: number;
+  favorite: boolean;
+  viewed: boolean;
+  affinity: number;
+  popularity: number;
+};
+
+// The three attribute-lane support signals, RAW (facts/derivations, no
+// normalization — the lane consumes them rank-only via RRF):
+// - typedSearchSupport: demand score of 'search' acts on the attribute,
+// - autocompleteSelectionSupport: demand score of 'autocomplete_selection' acts,
+// - corpusUsefulness: breadth × selectivity derivation over the corpus.
 type AttributeSupportScore = {
   typedSearchSupport: number;
   autocompleteSelectionSupport: number;
   corpusUsefulness: number;
-  rankSupport: number;
-  corpusConnectionCount: number;
-  corpusSelectivity: number;
 };
 
 function clamp01(value: number): number {
@@ -93,7 +140,6 @@ export class AutocompleteService {
   private readonly redis: Redis;
   private readonly cacheTtlSeconds: number;
   private readonly cacheRedisKeyPrefix: string;
-  private readonly weightConfidence: number;
   private readonly weightGlobalPopularity: number;
   private readonly weightUserAffinity: number;
   private readonly favoriteBoost: number;
@@ -101,14 +147,11 @@ export class AutocompleteService {
   private readonly viewRecencyDecayDays: number;
   private readonly viewFrequencyCap: number;
   private readonly querySuggestionMax: number;
-  private readonly querySuggestionPersonalBoost: number;
   private readonly querySuggestionMinGlobalCount: number;
   private readonly querySuggestionMinUserCount: number;
   private readonly attributeLaneEnabled: boolean;
   private readonly pollLaneEnabled: boolean;
-  private readonly pollLaneWeight: number;
   private readonly userLaneEnabled: boolean;
-  private readonly userLaneWeight: number;
   private readonly requestDurationHistogram: Histogram<string>;
   private readonly requestDbDurationHistogram: Histogram<string>;
   private readonly cacheLookupsCounter: Counter<string>;
@@ -134,20 +177,26 @@ export class AutocompleteService {
     );
     this.cacheRedisKeyPrefix = this.resolveEnvString(
       'AUTOCOMPLETE_CACHE_REDIS_PREFIX',
-      'autocomplete:v2',
+      // v3: refit 2026-07-24 changed panel ordering semantics (RRF fusion);
+      // the bump keeps ≤60s of pre-refit orderings from serving mixed.
+      'autocomplete:v3',
     );
-    // Ranking weights tuned once during the autocomplete red-team; they are
-    // product tuning, not env config (2026-07-11 fold-in: formerly
-    // AUTOCOMPLETE_* env knobs whose .env lines restated these values).
-    this.weightConfidence = 0.5;
+    // ENTITY-LANE within-tier re-rank boosts. §16: pre-constitution hand
+    // weights, KEPT under the ratified entity-lane exception (2026-07-24):
+    // the structural band clamp in calculateLexicalFirstEntityScore confines
+    // them INSIDE one evidence tier, so they can only reorder rows whose text
+    // evidence already ties — never promote weaker evidence over stronger.
+    // Phase C (post-launch calibrated tap re-ranking) is their retirement path.
     this.weightGlobalPopularity = 0.35;
     this.weightUserAffinity = 0.1;
     this.favoriteBoost = 0.05;
     this.viewAffinityWeight = 0.08;
     this.viewRecencyDecayDays = 30;
     this.viewFrequencyCap = 10;
+    // K1 RATIFIED 2026-07-24 §18-8b(e): query-suggestion strip shows ≤ 3.
     this.querySuggestionMax = 3;
-    this.querySuggestionPersonalBoost = 0.05;
+    // Evidence gates (K1 sentences): a global suggestion needs 3 distinct
+    // actors; your own single past query is enough for a personal one.
     this.querySuggestionMinGlobalCount = 3;
     this.querySuggestionMinUserCount = 1;
     this.attributeLaneEnabled =
@@ -157,17 +206,9 @@ export class AutocompleteService {
       'AUTOCOMPLETE_ENABLE_POLL_LANE',
       true,
     );
-    this.pollLaneWeight = this.resolveEnvNumber(
-      'AUTOCOMPLETE_WEIGHT_POLL_LANE',
-      0.9,
-    );
     this.userLaneEnabled = this.resolveEnvBoolean(
       'AUTOCOMPLETE_ENABLE_USER_LANE',
       true,
-    );
-    this.userLaneWeight = this.resolveEnvNumber(
-      'AUTOCOMPLETE_WEIGHT_USER_LANE',
-      0.9,
     );
     this.requestDurationHistogram = metricsService.getHistogram({
       name: 'autocomplete_request_duration_seconds',
@@ -229,6 +270,8 @@ export class AutocompleteService {
       cacheResult = cacheLookup.result;
       this.cacheLookupsCounter.inc({ result: cacheLookup.result });
       if (cacheLookup.response) {
+        // A cache-hit serve is still an impression the LTR bootstrap needs.
+        this.logImpressions(normalizedQuery, cacheLookup.response);
         return cacheLookup.response;
       }
 
@@ -278,7 +321,7 @@ export class AutocompleteService {
                 this.entitySearchService.searchAttributeAutocompleteEntities(
                   normalizedQuery,
                   attributeEntityTypes,
-                  Math.max(limit, ATTRIBUTE_RESERVED_SLOTS * 6),
+                  Math.max(limit, ATTRIBUTE_RECALL_FLOOR),
                 ),
               (seconds) => {
                 totalDbDurationSeconds += seconds;
@@ -372,6 +415,7 @@ export class AutocompleteService {
         querySuggestions: ranked.querySuggestionTexts,
       };
 
+      this.logImpressions(normalizedQuery, response);
       await this.setInCache(cacheKey, response);
 
       return response;
@@ -530,8 +574,8 @@ export class AutocompleteService {
     const { entityMatches, querySuggestions, user, limit, normalizedQuery } =
       params;
 
-    // Poll lane runs in parallel with the entity/popularity DB work; it joins the
-    // overflow pool below (zero reserved slots, §8.1).
+    // Poll lane runs in parallel with the entity/popularity DB work; it joins
+    // the cross-lane RRF fusion below (zero reserved slots, §8.1).
     const pollCandidatesPromise = this.fetchPollMatches(
       normalizedQuery,
       limit,
@@ -582,9 +626,6 @@ export class AutocompleteService {
     const attributeSupport = await this.loadAttributeSupport(entityMatches);
 
     const scoredEntities = entityMatches.flatMap((match) => {
-      const attributeSupportScore = this.isAttributeType(match.entityType)
-        ? (attributeSupport.get(match.entityId) ?? this.emptyAttributeSupport())
-        : null;
       const popularity = globalScores.get(match.entityId) ?? 0;
       const affinity = affinityScores.get(match.entityId) ?? 0;
       const isFavorite = favoriteSet.has(match.entityId);
@@ -610,37 +651,43 @@ export class AutocompleteService {
         return [];
       }
 
-      const score =
-        attributeSupportScore !== null
-          ? this.calculateAttributeScore({
-              confidence: match.confidence,
-              support: attributeSupportScore,
-            })
-          : this.calculateLexicalFirstEntityScore({
-              confidence: match.confidence,
-              boost:
-                popularityBoost + affinityBoost + favoriteBoost + viewedBoost,
-            });
+      // Entity-lane internal order only (attributes rank via their own RRF in
+      // rankAttributeLane; the fused list ignores this score entirely).
+      const score = this.isAttributeType(match.entityType)
+        ? 0
+        : this.calculateLexicalFirstEntityScore({
+            confidence: match.confidence,
+            boost:
+              popularityBoost + affinityBoost + favoriteBoost + viewedBoost,
+          });
 
-      return [
-        {
-          match: {
-            ...match,
-            badges: {
-              ...match.badges,
-              favorite: isFavorite || match.badges?.favorite,
-              viewed: isViewed || match.badges?.viewed,
-            },
+      const candidate: LaneCandidate = {
+        match: {
+          ...match,
+          badges: {
+            ...match.badges,
+            favorite: isFavorite || match.badges?.favorite,
+            viewed: isViewed || match.badges?.viewed,
           },
-          score,
         },
-      ];
+        textStrength: this.textStrengthOf(match),
+        favorite: isFavorite || Boolean(match.badges?.favorite),
+        viewed: isViewed || Boolean(match.badges?.viewed),
+        affinity,
+        popularity,
+      };
+
+      return [{ candidate, score }];
     });
 
     const existingNames = new Set(
-      scoredEntities.map(({ match }) => match.name.toLowerCase()),
+      scoredEntities.map(({ candidate }) => candidate.match.name.toLowerCase()),
     );
 
+    // QUERY LANE — rank-only. No constructed score: the suggestion service
+    // already orders personal rows by the user's own recency/count and global
+    // rows by distinct-actor demand; that order (laneRank) IS the ranking.
+    // The min-count acceptance gates are the lane's evidence sentences.
     const acceptedQueryCandidates = querySuggestions
       .flatMap((suggestion, laneRank) => {
         const text = suggestion.text.trim();
@@ -653,16 +700,6 @@ export class AutocompleteService {
           : [];
       })
       .map(({ suggestion, laneRank, text }) => {
-        const score =
-          this.weightConfidence +
-          this.normalizePopularity(suggestion.globalCount) *
-            this.weightGlobalPopularity +
-          this.normalizePopularity(suggestion.userCount) *
-            this.weightUserAffinity +
-          (suggestion.source === 'personal'
-            ? this.querySuggestionPersonalBoost
-            : 0);
-
         const match: AutocompleteMatchDto = {
           entityId: `query:${text.toLowerCase()}`,
           entityType: 'query',
@@ -677,18 +714,35 @@ export class AutocompleteService {
               : undefined,
         };
 
-        return { match, score, laneRank };
+        const candidate: LaneCandidate = {
+          match,
+          // A suggestion is a literal prefix completion of the typed text —
+          // structural prefix evidence, not a hand score.
+          textStrength: EVIDENCE_TIER_STRENGTH.prefix,
+          favorite: false,
+          viewed: false,
+          // Tie-break facts: your own use-count of this exact query, and its
+          // global distinct-actor demand.
+          affinity: suggestion.userCount,
+          popularity: suggestion.globalCount,
+        };
+
+        return { candidate, laneRank };
       });
 
     const compareQueryLaneOrder = (
-      a: { score: number; laneRank: number },
-      b: { score: number; laneRank: number },
-    ) => a.laneRank - b.laneRank || b.score - a.score;
+      a: { laneRank: number },
+      b: { laneRank: number },
+    ) => a.laneRank - b.laneRank;
     const personalQueryCandidates = acceptedQueryCandidates
-      .filter(({ match }) => match.querySuggestionSource === 'personal')
+      .filter(
+        ({ candidate }) => candidate.match.querySuggestionSource === 'personal',
+      )
       .sort(compareQueryLaneOrder);
     const globalQueryCandidates = acceptedQueryCandidates
-      .filter(({ match }) => match.querySuggestionSource === 'global')
+      .filter(
+        ({ candidate }) => candidate.match.querySuggestionSource === 'global',
+      )
       .sort(compareQueryLaneOrder);
     // The query-suggestion STRIP (a separate UI surface from the main list) is the
     // ONLY consumer of the reserved-slot ordering: seat the user's own recent
@@ -714,60 +768,99 @@ export class AutocompleteService {
     const pollCandidates = await pollCandidatesPromise;
     const userCandidates = await userCandidatesPromise;
 
+    // ENTITY-LANE EXCEPTION (ratified): internal order stays evidence-tier-
+    // first with the band-clamped demand re-rank INSIDE tiers — RRF fuses the
+    // lanes but never breaks tier ordering within the entity lane itself.
+    const entityLane = scoredEntities
+      .filter(
+        ({ candidate }) => !this.isAttributeType(candidate.match.entityType),
+      )
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.candidate.textStrength - a.candidate.textStrength ||
+          a.candidate.match.name.localeCompare(b.candidate.match.name),
+      )
+      .map(({ candidate }) => candidate);
+
+    const attributeLane = this.rankAttributeLane(
+      scoredEntities
+        .filter(({ candidate }) =>
+          this.isAttributeType(candidate.match.entityType),
+        )
+        .map(({ candidate }) => candidate),
+      attributeSupport,
+    );
+
+    // One query lane: personal (own recency/count) first, then global
+    // (distinct-actor demand) — rank-only, item 3 of the ratified refit.
+    const queryLane = [
+      ...personalQueryCandidates,
+      ...globalQueryCandidates,
+    ].map(({ candidate }) => candidate);
+
     const finalMatches = this.mergeAutocompleteLanes({
-      entityCandidates: scoredEntities
-        .filter(({ match }) => !this.isAttributeType(match.entityType))
-        .sort((a, b) => b.score - a.score),
-      attributeCandidates: scoredEntities
-        .filter(({ match }) => this.isAttributeType(match.entityType))
-        .sort((a, b) => b.score - a.score),
-      personalQueryCandidates,
-      globalQueryCandidates,
-      pollCandidates,
-      userCandidates,
+      // Lane order is the FINAL structural tie-break ("a same-rank user/poll
+      // row never displaces an entity"), applied only after evidence,
+      // own-engagement, and popularity all tie.
+      lanes: [
+        entityLane,
+        attributeLane,
+        queryLane,
+        pollCandidates,
+        userCandidates,
+      ],
       limit,
     });
 
     const querySuggestionTexts = querySuggestionStrip.map(
-      (candidate) => candidate.match.name,
+      ({ candidate }) => candidate.match.name,
     );
 
     return { matches: finalMatches, querySuggestionTexts };
   }
 
+  /**
+   * CROSS-LANE FUSION (ratified refit 2026-07-24): unweighted RRF over lane
+   * ranks. Each lane hands over its own internal ordering; a row's fused
+   * score is Σ 1/(RRF_K + rankInLane) across the lanes it appears in — no
+   * cross-family weights, ever. Ties (same rank across lanes) break on the
+   * only type-neutral facts: (a) evidence-tier strength, (b) the requesting
+   * user's OWN engagement with that exact row (favorite → viewed → affinity,
+   * lexicographic — never blended), (c) global popularity, then lane order
+   * (entity first — a same-rank user/poll row never displaces an entity) and
+   * name for determinism. The FULL query lane enters (never the
+   * strip-truncated subset); the reserved-slot constants shape only the
+   * separate query-suggestion strip upstream.
+   */
   private mergeAutocompleteLanes(params: {
-    entityCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
-    attributeCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
-    personalQueryCandidates: Array<{
-      match: AutocompleteMatchDto;
-      score: number;
-    }>;
-    globalQueryCandidates: Array<{
-      match: AutocompleteMatchDto;
-      score: number;
-    }>;
-    pollCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
-    userCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
+    lanes: LaneCandidate[][];
     limit: number;
   }): AutocompleteMatchDto[] {
-    // FLOOR, NOT MANDATE (owner directive): every lane's candidates compete in ONE
-    // global score sort. A lane's suggestion appears only if it out-scores the
-    // others — we never seat a weak lane-top ahead of a stronger candidate from
-    // another lane, and never force a slot just to fill a bucket.
-    // Every lane — including the FULL query lane (not the strip-truncated subset) —
-    // enters this sort unshaped; the reserved-slot constants shape only the separate
-    // query-suggestion strip upstream, never this cross-lane blend.
+    const fused: Array<{
+      candidate: LaneCandidate;
+      rrf: number;
+      laneIndex: number;
+    }> = [];
+    params.lanes.forEach((lane, laneIndex) => {
+      lane.forEach((candidate, rank) => {
+        fused.push({ candidate, rrf: 1 / (RRF_K + rank + 1), laneIndex });
+      });
+    });
+    fused.sort(
+      (a, b) =>
+        b.rrf - a.rrf ||
+        b.candidate.textStrength - a.candidate.textStrength ||
+        Number(b.candidate.favorite) - Number(a.candidate.favorite) ||
+        Number(b.candidate.viewed) - Number(a.candidate.viewed) ||
+        b.candidate.affinity - a.candidate.affinity ||
+        b.candidate.popularity - a.candidate.popularity ||
+        a.laneIndex - b.laneIndex ||
+        a.candidate.match.name.localeCompare(b.candidate.match.name),
+    );
     const finalMatches: AutocompleteMatchDto[] = [];
     const seen = new Set<string>();
-    const ranked = [
-      ...params.entityCandidates,
-      ...params.attributeCandidates,
-      ...params.personalQueryCandidates,
-      ...params.globalQueryCandidates,
-      ...params.pollCandidates,
-      ...params.userCandidates,
-    ].sort((a, b) => b.score - a.score);
-    for (const candidate of ranked) {
+    for (const { candidate } of fused) {
       if (finalMatches.length >= params.limit) {
         break;
       }
@@ -782,17 +875,79 @@ export class AutocompleteService {
   }
 
   /**
-   * Poll lane (§8.1): active polls in the current viewport scope whose question matches
-   * the query. Zero reserved slots — these join the overflow pool and surface only
-   * when they out-score leftover entity/query candidates. v1 ranks on question
-   * text match (word-similarity + substring); entity-in-poll match and recency
-   * weighting are future refinements.
+   * ATTRIBUTE LANE internal ranking (ratified refit 2026-07-24): the three
+   * support signals — typed-demand, selection-demand, corpus usefulness —
+   * are incomparable families, so they fuse as three independent RANKINGS
+   * via unweighted RRF (replaces the deleted 0.6/0.3/0.1 blend × 1.35).
+   * A candidate absent from a sub-ranking (zero signal) contributes nothing
+   * to it. Ties (e.g. zero support everywhere) break on evidence strength,
+   * then name for determinism. Show/hide stays with the structural
+   * isStrongAttributeCandidate gate — support never decides visibility.
+   */
+  private rankAttributeLane(
+    candidates: LaneCandidate[],
+    support: Map<string, AttributeSupportScore>,
+  ): LaneCandidate[] {
+    const signals: Array<(s: AttributeSupportScore) => number> = [
+      (s) => s.typedSearchSupport,
+      (s) => s.autocompleteSelectionSupport,
+      (s) => s.corpusUsefulness,
+    ];
+    const fusedById = new Map<string, number>();
+    for (const read of signals) {
+      const ranked = candidates
+        .map((candidate) => ({
+          candidate,
+          value: read(
+            support.get(candidate.match.entityId) ??
+              this.emptyAttributeSupport(),
+          ),
+        }))
+        .filter(({ value }) => value > 0)
+        .sort(
+          (a, b) =>
+            b.value - a.value ||
+            a.candidate.match.name.localeCompare(b.candidate.match.name),
+        );
+      ranked.forEach(({ candidate }, rank) => {
+        const id = candidate.match.entityId;
+        fusedById.set(id, (fusedById.get(id) ?? 0) + 1 / (RRF_K + rank + 1));
+      });
+    }
+    return [...candidates].sort(
+      (a, b) =>
+        (fusedById.get(b.match.entityId) ?? 0) -
+          (fusedById.get(a.match.entityId) ?? 0) ||
+        b.textStrength - a.textStrength ||
+        a.match.name.localeCompare(b.match.name),
+    );
+  }
+
+  /**
+   * Evidence-tier ordinal for a lane row. Rows without a matcher tier are the
+   * injected personal lanes (favorites/viewed), which match by literal name
+   * prefix — structural prefix evidence by construction.
+   */
+  private textStrengthOf(match: AutocompleteMatchDto): number {
+    if (match.evidenceTier) {
+      return EVIDENCE_TIER_STRENGTH[match.evidenceTier] ?? 0;
+    }
+    return EVIDENCE_TIER_STRENGTH.prefix;
+  }
+
+  /**
+   * Poll lane (§8.1, refit 2026-07-24): active polls in the current viewport
+   * scope whose question matches the query. Rank-only, no similarity floor:
+   * prefix-tier first (question starts with the query), then word-similarity
+   * order, capped at the K1 slots (≤ 3). A weak match can appear only when
+   * fewer than 3 better ones exist — the honest meaning the deleted 0.4
+   * floor was reaching for.
    */
   private async fetchPollMatches(
     normalizedQuery: string,
     limit: number,
     bounds: MapBoundsDto | null,
-  ): Promise<Array<{ match: AutocompleteMatchDto; score: number }>> {
+  ): Promise<LaneCandidate[]> {
     // Leg 2 markets extermination: the lane's old market_key scope (fed by the
     // per-search market election) is DEAD. Scope is now the §2.6 ground law
     // directly — polls of places whose ground intersects the viewport (same
@@ -808,11 +963,21 @@ export class AutocompleteService {
     }
     const take = Math.max(1, Math.min(limit, POLL_LANE_MAX_CANDIDATES));
     const likePattern = `%${normalizedQuery}%`;
+    const prefixPattern = `${normalizedQuery}%`;
+    // Membership is structural: the question contains the typed text, or
+    // shares at least one trigram with it (word_similarity > 0) — "matched at
+    // all", not a hand threshold. Rank order does the rest.
     const rows = await this.prisma.$queryRaw<
-      Array<{ poll_id: string; question: string; sim: number }>
+      Array<{
+        poll_id: string;
+        question: string;
+        sim: number;
+        is_prefix: boolean;
+      }>
     >(Prisma.sql`
       SELECT p.poll_id, p.question,
-             word_similarity(${normalizedQuery}, p.question) AS sim
+             word_similarity(${normalizedQuery}, p.question) AS sim,
+             (p.question ILIKE ${prefixPattern}) AS is_prefix
       FROM polls p
       WHERE p.state::text = 'active'
         AND p.place_id IS NOT NULL
@@ -824,36 +989,55 @@ export class AutocompleteService {
         )
         AND (
           p.question ILIKE ${likePattern}
-          OR word_similarity(${normalizedQuery}, p.question) >= ${POLL_LANE_MIN_SIMILARITY}
+          OR word_similarity(${normalizedQuery}, p.question) > 0
         )
-      ORDER BY sim DESC, launched_at DESC NULLS LAST
+      ORDER BY is_prefix DESC, sim DESC, launched_at DESC NULLS LAST
       LIMIT ${take}
     `);
-    return rows.map((row) => {
-      const sim = clamp01(Number(row.sim) || 0);
-      const match: AutocompleteMatchDto = {
-        entityId: row.poll_id,
-        entityType: 'poll',
-        name: row.question,
-        aliases: [],
-        confidence: Number(sim.toFixed(2)),
-        matchType: 'poll',
-      };
-      return { match, score: sim * this.pollLaneWeight };
-    });
+    return (
+      rows
+        .map((row) => ({
+          row,
+          sim: clamp01(Number(row.sim) || 0),
+          isPrefix: Boolean(row.is_prefix),
+        }))
+        // Re-assert the lane contract in code (prefix tier first, then
+        // similarity rank) so it holds regardless of driver row order.
+        .sort(
+          (a, b) => Number(b.isPrefix) - Number(a.isPrefix) || b.sim - a.sim,
+        )
+        .slice(0, take)
+        .map(({ row, sim, isPrefix }) => ({
+          match: {
+            entityId: row.poll_id,
+            entityType: 'poll' as const,
+            name: row.question,
+            aliases: [],
+            confidence: Number(sim.toFixed(2)),
+            matchType: 'poll' as const,
+          },
+          textStrength: isPrefix
+            ? EVIDENCE_TIER_STRENGTH.prefix
+            : EVIDENCE_TIER_STRENGTH.fuzzy,
+          favorite: false,
+          viewed: false,
+          affinity: 0,
+          popularity: 0,
+        }))
+    );
   }
 
   /**
-   * User lane (person rows): people by username/displayName prefix or word
-   * similarity. Same floor-not-mandate contract as every lane — user rows
-   * compete in the one global score sort, never seated ahead of stronger
-   * candidates. A tap pushes the userProfile page (client routes matchType
-   * 'user' through the pushScene arm).
+   * User lane (person rows, refit 2026-07-24): people by username/displayName
+   * prefix or word similarity. Rank-only, no similarity floor: prefix-tier
+   * first, then word-similarity order, capped at the K1 slots (≤ 3). A weak
+   * match can appear only when fewer than 3 better ones exist. A tap pushes
+   * the userProfile page (client routes matchType 'user' through pushScene).
    */
   private async fetchUserMatches(
     normalizedQuery: string,
     limit: number,
-  ): Promise<Array<{ match: AutocompleteMatchDto; score: number }>> {
+  ): Promise<LaneCandidate[]> {
     if (
       !this.userLaneEnabled ||
       normalizedQuery.trim().length < USER_LANE_MIN_QUERY_LENGTH
@@ -862,6 +1046,8 @@ export class AutocompleteService {
     }
     const take = Math.max(1, Math.min(limit, USER_LANE_MAX_CANDIDATES));
     const prefixPattern = `${normalizedQuery}%`;
+    // Membership is structural: name starts with the query, or shares at
+    // least one trigram with it (sim > 0) — "matched at all", no threshold.
     const rows = await this.prisma.$queryRaw<
       Array<{
         user_id: string;
@@ -883,26 +1069,48 @@ export class AutocompleteService {
         FROM users
         WHERE username IS NOT NULL OR display_name IS NOT NULL
       ) candidates
-      WHERE is_prefix OR sim >= ${USER_LANE_MIN_SIMILARITY}
+      WHERE is_prefix OR sim > 0
       ORDER BY is_prefix DESC, sim DESC
       LIMIT ${take}
     `);
-    return rows.map((row) => {
-      const sim = clamp01(Number(row.sim) || 0);
-      // Prefix hits rank at the prefix band (0.9) like entity prefixes; pure
-      // similarity hits carry their similarity — evidence-first, mirroring polls.
-      const confidence = row.is_prefix ? Math.max(0.9, sim) : sim;
-      const match: AutocompleteMatchDto = {
-        entityId: row.user_id,
-        entityType: 'user',
-        name: row.display_name?.trim() || row.username || 'Crave member',
-        aliases: row.username ? [row.username] : [],
-        confidence: Number(confidence.toFixed(2)),
-        matchType: 'user',
-        username: row.username,
-      };
-      return { match, score: confidence * this.userLaneWeight };
-    });
+    return (
+      rows
+        .map((row) => ({
+          row,
+          sim: clamp01(Number(row.sim) || 0),
+          isPrefix: Boolean(row.is_prefix),
+        }))
+        // Re-assert the lane contract in code (prefix tier first, then
+        // similarity rank) so it holds regardless of driver row order.
+        .sort(
+          (a, b) => Number(b.isPrefix) - Number(a.isPrefix) || b.sim - a.sim,
+        )
+        .slice(0, take)
+        .map(({ row, sim, isPrefix }) => {
+          // Display-only confidence: prefix hits carry the prefix band (0.9,
+          // the matcher's EVIDENCE_CONFIDENCE table); similarity hits carry
+          // their similarity. Ranking never reads this field.
+          const confidence = isPrefix ? Math.max(0.9, sim) : sim;
+          return {
+            match: {
+              entityId: row.user_id,
+              entityType: 'user' as const,
+              name: row.display_name?.trim() || row.username || 'Crave member',
+              aliases: row.username ? [row.username] : [],
+              confidence: Number(confidence.toFixed(2)),
+              matchType: 'user' as const,
+              username: row.username,
+            },
+            textStrength: isPrefix
+              ? EVIDENCE_TIER_STRENGTH.prefix
+              : EVIDENCE_TIER_STRENGTH.fuzzy,
+            favorite: false,
+            viewed: false,
+            affinity: 0,
+            popularity: 0,
+          };
+        })
+    );
   }
 
   private calculateLexicalFirstEntityScore(params: {
@@ -946,21 +1154,11 @@ export class AutocompleteService {
     return params.normalizedQuery.trim().length >= 4;
   }
 
-  private calculateAttributeScore(params: {
-    confidence: number;
-    support: AttributeSupportScore;
-  }): number {
-    return clamp01(params.confidence) * params.support.rankSupport * 1.35;
-  }
-
   private emptyAttributeSupport(): AttributeSupportScore {
     return {
       typedSearchSupport: 0,
       autocompleteSelectionSupport: 0,
       corpusUsefulness: 0,
-      rankSupport: 0,
-      corpusConnectionCount: 0,
-      corpusSelectivity: 0,
     };
   }
 
@@ -1037,32 +1235,18 @@ export class AutocompleteService {
     const supportById = new Map<string, AttributeSupportScore>();
 
     for (const attributeId of attributeIds) {
-      const typedDemand = typedRows.get(attributeId) ?? 0;
-      const selectedDemand = selectedRows.get(attributeId) ?? 0;
-      const corpus = corpusById.get(attributeId) ?? {
-        connectionCount: 0,
-        totalRestaurantCount: 0,
-      };
-      const typedSearchSupport =
-        this.normalizeAttributeDemandSupport(typedDemand);
-      const autocompleteSelectionSupport =
-        this.normalizeAttributeDemandSupport(selectedDemand);
-      const corpusUsefulness = this.normalizeAttributeCorpusUsefulness(corpus);
-      const rankSupport =
-        ATTRIBUTE_TYPED_SEARCH_WEIGHT * typedSearchSupport +
-        ATTRIBUTE_SELECTION_WEIGHT * autocompleteSelectionSupport +
-        ATTRIBUTE_CORPUS_WEIGHT * corpusUsefulness;
-
+      // RAW facts/derivations — the lane consumes these rank-only (RRF over
+      // the three sub-rankings in rankAttributeLane), so no normalization and
+      // no blended rankSupport exist anymore (refit 2026-07-24).
       supportById.set(attributeId, {
-        typedSearchSupport,
-        autocompleteSelectionSupport,
-        corpusUsefulness,
-        rankSupport,
-        corpusConnectionCount: corpus.connectionCount,
-        corpusSelectivity:
-          corpus.totalRestaurantCount > 0
-            ? corpus.connectionCount / corpus.totalRestaurantCount
-            : 0,
+        typedSearchSupport: typedRows.get(attributeId) ?? 0,
+        autocompleteSelectionSupport: selectedRows.get(attributeId) ?? 0,
+        corpusUsefulness: this.normalizeAttributeCorpusUsefulness(
+          corpusById.get(attributeId) ?? {
+            connectionCount: 0,
+            totalRestaurantCount: 0,
+          },
+        ),
       });
     }
 
@@ -1078,13 +1262,6 @@ export class AutocompleteService {
       kinds,
       windowDays: ATTRIBUTE_SUPPORT_WINDOW_DAYS,
     });
-  }
-
-  private normalizeAttributeDemandSupport(score: number): number {
-    if (!Number.isFinite(score) || score <= 0) {
-      return 0;
-    }
-    return clamp01(score / 4);
   }
 
   private normalizeAttributeCorpusUsefulness(params: {
@@ -1229,18 +1406,6 @@ export class AutocompleteService {
     return Math.min(value, 50) / 50;
   }
 
-  private resolveEnvNumber(key: string, fallback: number): number {
-    const raw = process.env[key];
-    if (raw === undefined) {
-      return fallback;
-    }
-    const value = Number(raw);
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    return value;
-  }
-
   private resolveEnvInt(key: string, fallback: number): number {
     const raw = process.env[key];
     if (raw === undefined) {
@@ -1291,6 +1456,61 @@ export class AutocompleteService {
     }:${scopeKey}:${scopePlaceKey}:attrs-${
       attributeLaneEnabled ? 'on' : 'off'
     }:${queryToken}`;
+  }
+
+  /**
+   * IMPRESSION INSTRUMENTATION (ratified refit 2026-07-24, layer-1 item 5):
+   * one structured info line per served request — the durable impression side
+   * of the (impression, tap) pairs post-launch calibrated LTR bootstraps
+   * from (taps already land as autocomplete_selection signals). DELIBERATE
+   * INTERIM: logs only, no new tables or signal kinds in this pass. Query
+   * text is hashed (not stored raw) so the row id is stable and joinable
+   * without keeping free text in the log line.
+   */
+  private logImpressions(
+    normalizedQuery: string,
+    response: AutocompleteResponseDto,
+  ): void {
+    try {
+      const rows = response.matches.map((match, position) => ({
+        lane: this.laneOf(match),
+        entityType: String(match.entityType),
+        entityRef:
+          match.matchType === 'query'
+            ? this.hashQueryText(match.name)
+            : match.entityId,
+        position,
+        evidenceTier: match.evidenceTier ?? null,
+      }));
+      const strip = (response.querySuggestions ?? []).map((text, position) => ({
+        lane: 'query_strip',
+        entityType: 'query',
+        entityRef: this.hashQueryText(text),
+        position,
+        evidenceTier: null,
+      }));
+      this.logger.info('autocomplete_impressions', {
+        event: 'autocomplete_impressions',
+        queryLength: normalizedQuery.length,
+        rows: [...rows, ...strip],
+      });
+    } catch {
+      // Instrumentation must never fail a request.
+    }
+  }
+
+  private laneOf(match: AutocompleteMatchDto): string {
+    if (match.matchType === 'query') return 'query';
+    if (match.matchType === 'poll') return 'poll';
+    if (match.matchType === 'user') return 'user';
+    return this.isAttributeType(match.entityType) ? 'attribute' : 'entity';
+  }
+
+  private hashQueryText(text: string): string {
+    return createHash('sha256')
+      .update(text.trim().toLowerCase())
+      .digest('hex')
+      .slice(0, 16);
   }
 
   private elapsedSeconds(start: bigint): number {

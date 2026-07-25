@@ -1709,3 +1709,64 @@ tomtom_vendor_throttle + tomtom_pool_hot (≥80% before day 20 — the prepaid
 credit proxy), lane_red. Migration applied to BOTH DBs. 802 tests green
 (785 baseline + 17 new, incl. RED-provable tomtom_pool_hot). Grafana relic
 (docker-compose.observability.yml) recommended for retirement.
+
+## 2026-07-25 — Ops dashboard V2 + grafana retirement + resend live
+
+Grafana stack retired: observability/ + docker-compose.observability.yml
+deleted (panel ideas mined first: per-source throughput, queue depth,
+error rate → reframed owner-first in V2). In-code prom-client
+instrumentation deliberately KEPT (woven through llm rate limiter /
+entity resolution / search — invasive to strip, zero-cost to keep,
+/metrics 404s in prod). Dashboard V2: Spend (month-position bar w/
+prorated-expectation tick + 30d area sparkline), Vendor position card
+REPLACES pool bars (gemini MTD vs backstop ceiling; tomtom owner-declared
+prepaid credit — TOMTOM_PREPAID_CREDIT_USD + TOMTOM_CREDIT_DECLARED_AT
+envs — minus measured burn, est. days left from trailing-7d; anomalies
+only when poisoned/exhausted), Places cards (docs/entities/est-LLM-spend
+per anchor place; engagement = explicit post-launch placeholder),
+Sources lane table, Pipeline card. RESEND_API_KEY set on both services;
+OPS_ALERT_FROM defaults to onboarding@resend.dev (craveapp.ai not yet
+verified in Resend — [] domains). 812 tests green. Plan §25 records the
+owner's ID-first chronological lever (deferred: trigger = reservation
+denials; real arrival data says single-account ceiling is O(hundreds) of
+markets, not 10). Railway env purge: api 241→114, worker 238→111 vars.
+
+### Suggest refit SHIPPED — Phases A (fusion) + B (presentation), 2026-07-24
+
+Phase A (api): the cross-lane score bridges are DEAD — 0.6/0.3/0.1
+attribute blend + naked ×1.35, both 0.4 similarity floors, poll/user env
+lane weights, the query lanes' 0.5-confidence-floor scoring, and the /4
+demand normalization all deleted. Replacements: attribute lane =
+unweighted RRF (k=60, the published Cormack et al. constant) over its
+three raw sub-rankings; user/poll lanes = prefix-tier-first +
+similarity rank-only, capped at the ratified 3/3 slots (asserted in TS,
+not just SQL order); query lanes rank-only (personal recency, global
+distinct actors); cross-lane fusion = RRF over lane ranks with
+deterministic tie-breaks (evidence tier → own engagement → popularity →
+lane order (entity first — "people/polls never displace a same-rank
+entity") → name). Entity lane keeps its band-clamped tier-first internal
+order (ratified exception, Phase-C retirement note). Impressions: one
+structured log line per SERVED request (cache hits included; query
+sha256/16) — the deliberate logs-only interim for post-launch LTR.
+Cache prefix bumped v2→v3. First-ever autocomplete spec suite (10
+RED-able specs discriminating against the old blend by construction).
+Matcher untouched except stale-comment fixes; flagged for a future
+migration: DB-only dead trgm indexes idx_entities_name_trgm +
+idx_entities_name (the latter schema-modeled — needs a schema pass).
+
+Phase B (mobile): match highlighting (bold the predictive completion;
+held-transition rows freeze their bold split with the display data);
+type-differentiated rows (attribute Sparkles + vibe/attribute labels,
+poll/person labels) with existing provenance only (deliberately did NOT
+render location counts — the §7 "See locations chip owns that" decree
+respected); never-blank rules (prefix-cache placeholder filtered to
+query-containing rows, previous list held while loading, failures reject
+into a quiet error row distinct from no-matches); recently-viewed FOOD
+tap now lands on the DISH via the typed selected-entity lane; zero-state
+= existing client recents + the intent-naming placeholder "Dish,
+restaurant, or vibe…". Needs-api list recorded: mention-count/
+neighborhood provenance fields; empty-query support for server-side
+zero-state.
+
+Verified by the parent session: api 822/822, mobile 411/411, builds
+clean, tsc = the 2 known pre-existing errors, API restarted, smoke 200.

@@ -2,6 +2,8 @@ import React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import { AUTOCOMPLETE_CACHE_TTL_MS } from '../../constants/search';
+import { filterAutocompletePlaceholderMatches } from './search-autocomplete-placeholder-filter';
+import { setSearchAutocompleteError } from './search-autocomplete-error-store';
 
 type CachedAutocompleteEntry = {
   matches: AutocompleteMatch[];
@@ -53,6 +55,9 @@ export const useSearchAutocompleteCacheRuntime = ({
   }, [cacheScopeKey]);
 
   const clearAutocompleteSuggestions = React.useCallback(() => {
+    // Never-blank rule (c): clearing the panel (query wiped / panel closed) also
+    // retires any pending "couldn't load" notice — it belongs to the old query.
+    setSearchAutocompleteError(false);
     writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, []);
   }, [setShowSuggestions, setSuggestions]);
 
@@ -78,8 +83,7 @@ export const useSearchAutocompleteCacheRuntime = ({
       }
 
       const staleKeys: string[] = [];
-      let bestPrefixKey: string | null = null;
-      let bestPrefixEntry: CachedAutocompleteEntry | null = null;
+      const prefixCandidates: Array<{ key: string; entry: CachedAutocompleteEntry }> = [];
       for (const [key, entry] of autocompleteCacheRef.current.entries()) {
         if (now - entry.updatedAtMs > AUTOCOMPLETE_CACHE_TTL_MS) {
           staleKeys.push(key);
@@ -88,27 +92,38 @@ export const useSearchAutocompleteCacheRuntime = ({
         if (normalized === key || !normalized.startsWith(key)) {
           continue;
         }
-        if (bestPrefixKey && key.length <= bestPrefixKey.length) {
-          continue;
-        }
-        bestPrefixKey = key;
-        bestPrefixEntry = entry;
+        prefixCandidates.push({ key, entry });
       }
 
       staleKeys.forEach((key) => {
         autocompleteCacheRef.current.delete(key);
       });
 
-      if (!bestPrefixKey || !bestPrefixEntry) {
-        return null;
+      // Never-blank rule (a) (plans/suggest-ideal-shape.md refit layer 2): a
+      // prefix entry only serves as a placeholder AFTER a client-side filter to
+      // rows whose text still contains the typed query — the old unfiltered
+      // placeholder flashed stale rows. Longest matching prefix wins; when its
+      // filtered set is empty, shorter prefixes get a turn; when nothing
+      // survives, return null so the caller keeps the PREVIOUS list while the
+      // fresh request loads (rule b: never blank the panel on a keystroke).
+      prefixCandidates.sort((left, right) => right.key.length - left.key.length);
+      for (const candidate of prefixCandidates) {
+        const filteredMatches = filterAutocompletePlaceholderMatches(
+          candidate.entry.matches,
+          normalized
+        );
+        if (filteredMatches.length === 0) {
+          continue;
+        }
+        autocompleteCacheRef.current.delete(candidate.key);
+        autocompleteCacheRef.current.set(candidate.key, candidate.entry);
+        return {
+          matches: filteredMatches,
+          isExactMatch: false,
+        };
       }
 
-      autocompleteCacheRef.current.delete(bestPrefixKey);
-      autocompleteCacheRef.current.set(bestPrefixKey, bestPrefixEntry);
-      return {
-        matches: bestPrefixEntry.matches,
-        isExactMatch: false,
-      };
+      return null;
     },
     []
   );

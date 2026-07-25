@@ -63,6 +63,7 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     });
   const heldDisplayRuntime: SearchSuggestionHeldDisplayRuntime =
     useSearchSuggestionHeldDisplayRuntime({
+      query: args.query,
       suggestions: args.suggestions,
       recentSearches: args.recentSearches,
       recentlyViewedRestaurants: args.recentlyViewedRestaurants,
@@ -97,6 +98,7 @@ export const useSearchSuggestionPresentationPlaneRuntime = ({
     shouldRenderRecentSection: heldDisplayRuntime.shouldRenderRecentSection,
     shouldShowAutocompleteSpinnerInBar: heldDisplayRuntime.shouldShowAutocompleteSpinnerInBar,
     suggestionDisplaySuggestions: heldDisplayRuntime.suggestionDisplaySuggestions,
+    suggestionHighlightQueryDisplay: heldDisplayRuntime.suggestionHighlightQueryDisplay,
     recentSearchesDisplay: heldDisplayRuntime.recentSearchesDisplay,
     recentlyViewedRestaurantsDisplay: heldDisplayRuntime.recentlyViewedRestaurantsDisplay,
     recentlyViewedFoodsDisplay: heldDisplayRuntime.recentlyViewedFoodsDisplay,

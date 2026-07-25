@@ -166,7 +166,9 @@ const SearchOverlayHeaderChrome = ({
         <SearchHeader
           value={headerVisualModel.displayQuery}
           displayValue={headerVisualModel.displayQuery}
-          placeholder="What are you craving?"
+          // Refit layer 2 zero-state (plans/suggest-ideal-shape.md): the
+          // placeholder NAMES the accepted intents. K1 feel copy.
+          placeholder="Dish, restaurant, or vibe…"
           loading={shouldShowAutocompleteSpinnerInBar}
           onChangeText={handleQueryChange}
           onSubmit={handleSubmit}

@@ -7,6 +7,7 @@ import type {
 } from './use-search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHeldDisplayRuntime = ({
+  query,
   suggestions,
   recentSearches,
   recentlyViewedRestaurants,
@@ -28,6 +29,11 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
   const suggestionDisplaySuggestions = isSuggestionHoldActive
     ? submitTransitionHold.suggestions
     : suggestions;
+  // Refit layer 2 (match highlighting): the bold split must track the SAME query
+  // the displayed rows were fetched for — held rows keep the held query.
+  const suggestionHighlightQueryDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.query
+    : query;
   const recentSearchesDisplay = isSuggestionHoldActive
     ? submitTransitionHold.recentSearches
     : recentSearches;
@@ -60,6 +66,7 @@ export const useSearchSuggestionHeldDisplayRuntime = ({
     shouldRenderRecentSection,
     shouldShowAutocompleteSpinnerInBar,
     suggestionDisplaySuggestions,
+    suggestionHighlightQueryDisplay,
     recentSearchesDisplay,
     recentlyViewedRestaurantsDisplay,
     recentlyViewedFoodsDisplay,

@@ -60,7 +60,7 @@ const LINKER_FALLBACK_FLOORS = { absolute: 0.82, singleton: 0.65 };
 // (cardinality is the answer — "joes" → Joe's Pizza + Trader Joe's) instead of
 // silently argmax-picking whichever row came back first.
 const LINKER_TIE_EPSILON = 0.001;
-// Only genuine lexical evidence is link-eligible — never a weak/phonetic/dense-only
+// Only genuine lexical evidence is link-eligible — never a weak/dense-only
 // collision (the ham/rum class); those must not nominate a link.
 const LINK_ELIGIBLE_EVIDENCE = new Set<string>([
   'exact',
