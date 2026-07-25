@@ -146,3 +146,12 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - listDetail: "Add places" (restaurant lists) / "Add dish" (dish lists,
   copy TBD) → search mode → immediate add, no toolkit detour. Dish-add
   search shape (dish-scoped vs restaurant-first) = A/B at build.
+
+## Gallery arrangement: Bookmarks home vs Profile are INTENTIONALLY independent (owner, 2026-07-25)
+
+Bookmarks home = the user's private workspace: free-form reorder ("moving
+apps around your phone"), no pinning. Profile = the public presentation:
+pinning curates what floats first. A red team flagged the two arrangement
+rule-sets as duplicated code to unify — owner ruled the surfaces are
+independently controlled BY DESIGN; any shared-helper extraction is a
+product decision to revisit deliberately, not a cleanup.

@@ -26,7 +26,8 @@ export interface DishKnowledgeSummary {
  *
  * Runs per NEW dish (knowledgeSynthesizedAt stamp), batched ~20 dishes per
  * LLM call. Cron flag-gated (DISH_KNOWLEDGE_SYNTHESIS_ENABLED) + manual
- * script; same pattern as the sibling-edge builder.
+ * script (scripts/run-dish-knowledge-synthesis.ts — dry-run by default);
+ * same pattern as the sibling-edge builder.
  */
 @Injectable()
 export class DishKnowledgeSynthesisService {
@@ -167,8 +168,16 @@ export class DishKnowledgeSynthesisService {
     name: string,
   ): Promise<{ entityId: string; created: boolean }> {
     const normalized = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    // Alias-aware lookup: the collection pipeline's resolver banks losing
+    // surfaces as aliases on the winning ingredient row — a knowledge-pass
+    // surface that matches an alias must reuse that row, not mint a variant
+    // the resolver would have merged. (Ingredients stay first-class: same
+    // alias contract as every other entity type.)
     const existing = await this.prisma.entity.findFirst({
-      where: { type: EntityType.ingredient, name: normalized },
+      where: {
+        type: EntityType.ingredient,
+        OR: [{ name: normalized }, { aliases: { has: normalized } }],
+      },
       select: { entityId: true },
     });
     if (existing) {

@@ -60,4 +60,34 @@ describe('splitSuggestionMatchSegments', () => {
   it('empty display text: no segments', () => {
     expect(splitSuggestionMatchSegments('pi', '')).toEqual([]);
   });
+
+  it('accent-folded: unaccented query highlights accented text, original preserved', () => {
+    expect(splitSuggestionMatchSegments('cafe', 'Café du Monde')).toEqual([
+      { text: 'Café', isMatch: true },
+      { text: ' du Monde', isMatch: false },
+    ]);
+  });
+
+  it('accent-folded both ways: accented query highlights unaccented text', () => {
+    expect(splitSuggestionMatchSegments('café', 'Cafe Deluxe')).toEqual([
+      { text: 'Cafe', isMatch: true },
+      { text: ' Deluxe', isMatch: false },
+    ]);
+  });
+
+  it('mixed accents mid-word: jalapeno finds jalapeño with exact index mapping', () => {
+    expect(splitSuggestionMatchSegments('jalapeno', 'Spicy Jalapeño Poppers')).toEqual([
+      { text: 'Spicy ', isMatch: false },
+      { text: 'Jalapeño', isMatch: true },
+      { text: ' Poppers', isMatch: false },
+    ]);
+  });
+
+  it('emoji/astral text never corrupts segment boundaries', () => {
+    expect(splitSuggestionMatchSegments('taco', '🌮 Taco Truck')).toEqual([
+      { text: '🌮 ', isMatch: false },
+      { text: 'Taco', isMatch: true },
+      { text: ' Truck', isMatch: false },
+    ]);
+  });
 });

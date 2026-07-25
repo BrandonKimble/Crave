@@ -12,17 +12,45 @@ export type SuggestionMatchSegment = {
 };
 
 /**
- * Case-insensitive, non-overlapping, left-to-right occurrence split. When the
- * query is empty or never occurs (fuzzy/semantic rows), the whole text comes
- * back as ONE non-match segment — `hasSuggestionMatchSegments` tells renderers
- * whether a typed-vs-completion distinction exists at all (no distinction means
- * no bolding, not an all-bold title).
+ * Diacritic-folding character normalizer with a 1:1 length guarantee: each
+ * input character maps to exactly ONE output character, so an index into the
+ * folded haystack is an index into the original display text. Characters
+ * whose fold would change length (rare — ß, İ) keep their lowercased self
+ * (or themselves), trading their foldability for index safety.
+ */
+const foldChar = (char: string): string => {
+  const folded = char.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  if (folded.length === 1) {
+    return folded;
+  }
+  const lowered = char.toLowerCase();
+  return lowered.length === 1 ? lowered : char;
+};
+
+/** Shared case+accent fold for suggestion-surface text comparison (also used
+ *  by the placeholder cache filter so filter and highlight agree on what
+ *  "matches"). 1:1 length-preserving — see foldChar. */
+export const foldSuggestionText = (value: string): string => {
+  let folded = '';
+  for (const char of value) {
+    folded += foldChar(char);
+  }
+  return folded;
+};
+
+/**
+ * Case- and accent-insensitive, non-overlapping, left-to-right occurrence
+ * split ("cafe" highlights inside "Café du Monde"). When the query is empty
+ * or never occurs (fuzzy/semantic rows), the whole text comes back as ONE
+ * non-match segment — `hasSuggestionMatchSegments` tells renderers whether a
+ * typed-vs-completion distinction exists at all (no distinction means no
+ * bolding, not an all-bold title).
  */
 export const splitSuggestionMatchSegments = (
   query: string,
   displayText: string
 ): SuggestionMatchSegment[] => {
-  const normalizedQuery = query.trim().toLowerCase();
+  const normalizedQuery = foldSuggestionText(query.trim());
   if (!displayText) {
     return [];
   }
@@ -30,7 +58,7 @@ export const splitSuggestionMatchSegments = (
     return [{ text: displayText, isMatch: false }];
   }
 
-  const normalizedText = displayText.toLowerCase();
+  const normalizedText = foldSuggestionText(displayText);
   const segments: SuggestionMatchSegment[] = [];
   let cursor = 0;
   while (cursor < displayText.length) {

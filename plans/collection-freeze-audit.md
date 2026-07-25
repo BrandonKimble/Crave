@@ -68,8 +68,17 @@ SourceDocument AND events), full `rawPayload` retention (author etc. recoverable
 - [x] Google spend isolated from all contract changes (skip-guard + merge-safe).
 - [x] Re-extraction mechanics proven (active-run re-pointing; batch backfill path).
 - [x] Raw evidence complete (inputPayload + rawOutput + full rawPayload per source).
-- [ ] Owner confirms `ingredients` contract is final (his design, other session).
-- [ ] Dish-knowledge synthesis e2e on the seed corpus (post-load pass rehearsal).
+- [x] `ingredients` contract confirmed final (owner-delegated, 2026-07-25 red
+      team): connection.ingredients = source-faithful per-restaurant evidence
+      (only from evidenceType:'ingredient' events); entity.canonicalIngredients
+      = world-knowledge contents of the dish AS NAMED (composition law).
+      Schema comments, service, prompt, and the search read (evidence OR
+      knowledge for include, NOT-both for exclude) all agree.
+- [x] Dish-knowledge synthesis rehearsal run 2026-07-25 (new manual lever:
+      `scripts/run-dish-knowledge-synthesis.ts`, dry-run default). 20 dishes,
+      1 LLM call: sensible ingredient sets, composition law respected
+      ("kibbeh"→lamb vs "beef kibbeh"→beef), junk names ("freeze","meat bag")
+      honestly got EMPTY lists — no invented knowledge. Eyeballed, passed.
 
 **Verdict: the contract is freeze-ready.** The load decision is now purely about
 data usefulness and the ~$200–400 one-time Google spend — which the staged cost
