@@ -1,4 +1,6 @@
 import React from 'react';
+
+import { registerBoundaryFactsProjection } from './sceneScrollStateRegistry';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
 import { Platform } from 'react-native';
 
@@ -188,6 +190,22 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     ]
   );
 
+  // RED TEAM 2 slice 3: this host's live boundary-fact SVs are THE projection the
+  // presentation driver reloads per frame flip (projectSceneBoundaryFacts).
+  React.useEffect(
+    () =>
+      registerBoundaryFactsProjection({
+        maxScrollOffset: scrollRuntime.maxScrollOffset,
+        scrollViewportHeight: scrollRuntime.scrollViewportHeight,
+        boundaryFactsKnown: scrollRuntime.boundaryFactsKnown,
+      }),
+    [
+      scrollRuntime.boundaryFactsKnown,
+      scrollRuntime.maxScrollOffset,
+      scrollRuntime.scrollViewportHeight,
+    ]
+  );
+
   const bodyScrollRuntime = React.useMemo<BottomSheetSceneStackBodyScrollRuntime>(
     () => ({
       shouldEnableScroll: scrollRuntime.shouldEnableScroll,
@@ -199,12 +217,14 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
       primaryListOnScroll: scrollRuntime.primaryListOnScroll,
       secondaryListOnScroll: scrollRuntime.secondaryListOnScroll,
       scrollOffset: scrollRuntime.scrollOffset,
+      contentOverscroll: scrollRuntime.contentOverscroll,
     }),
     [
       scrollRuntime.ScrollComponent,
       scrollRuntime.primaryListOnScroll,
       scrollRuntime.primaryScrollViewOnScroll,
       scrollRuntime.scrollOffset,
+      scrollRuntime.contentOverscroll,
       scrollRuntime.secondaryListOnScroll,
       scrollRuntime.shouldEnableScroll,
       scrollRuntime.shouldEnableScrollShared,

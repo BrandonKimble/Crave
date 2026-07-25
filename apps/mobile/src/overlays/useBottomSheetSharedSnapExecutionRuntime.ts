@@ -6,6 +6,7 @@ import {
   runOnUI,
   useAnimatedReaction,
   withSpring,
+  useSharedValue,
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 
@@ -105,6 +106,33 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
 }: UseBottomSheetSharedSnapExecutionRuntimeArgs): BottomSheetSharedSnapExecutionResult => {
   void isSearchResultsSheet;
 
+  // MOUNT-STABLE CALLBACKS (red team 2): snap-number props re-created
+  // resolveDestination/startSpring per presented scene, which re-minted the sheet
+  // pans downstream (the stale-relations disease). Worklets read SV mirrors instead.
+  const expandedSnapMirror = useSharedValue(expandedSnap);
+  const middleSnapMirror = useSharedValue(middleSnap);
+  const collapsedSnapMirror = useSharedValue(collapsedSnap);
+  const hiddenSnapMirror = useSharedValue(hiddenSnap ?? Number.NaN);
+  const preventSwipeDismissMirror = useSharedValue(preventSwipeDismiss);
+  React.useEffect(() => {
+    expandedSnapMirror.value = expandedSnap;
+    middleSnapMirror.value = middleSnap;
+    collapsedSnapMirror.value = collapsedSnap;
+    hiddenSnapMirror.value = hiddenSnap ?? Number.NaN;
+    preventSwipeDismissMirror.value = preventSwipeDismiss;
+  }, [
+    collapsedSnap,
+    collapsedSnapMirror,
+    expandedSnap,
+    expandedSnapMirror,
+    hiddenSnap,
+    hiddenSnapMirror,
+    middleSnap,
+    middleSnapMirror,
+    preventSwipeDismiss,
+    preventSwipeDismissMirror,
+  ]);
+
   const snapCandidates = React.useMemo(() => {
     const points = [expandedSnap, middleSnap, collapsedSnap];
     if (typeof hiddenSnap === 'number' && !preventSwipeDismiss) {
@@ -124,16 +152,19 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
 
   const resolveRuntimeSnapValues = React.useCallback(() => {
     'worklet';
-    const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
-    const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnap;
-    const runtimeCollapsedSnap = runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
+    const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnapMirror.value;
+    const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnapMirror.value;
+    const runtimeCollapsedSnap =
+      runtimeConfigValues?.collapsedSnap.value ?? collapsedSnapMirror.value;
     const runtimeHiddenSnap = runtimeConfigValues
       ? runtimeConfigValues.hasHiddenSnap.value
         ? runtimeConfigValues.hiddenSnap.value
         : undefined
-      : hiddenSnap;
+      : Number.isNaN(hiddenSnapMirror.value)
+        ? undefined
+        : hiddenSnapMirror.value;
     const runtimePreventSwipeDismiss =
-      runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismiss;
+      runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismissMirror.value;
     return {
       expanded: runtimeExpandedSnap,
       middle: runtimeMiddleSnap,
@@ -142,11 +173,11 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       preventSwipeDismiss: runtimePreventSwipeDismiss,
     };
   }, [
-    collapsedSnap,
-    expandedSnap,
-    hiddenSnap,
-    middleSnap,
-    preventSwipeDismiss,
+    collapsedSnapMirror,
+    expandedSnapMirror,
+    hiddenSnapMirror,
+    middleSnapMirror,
+    preventSwipeDismissMirror,
     runtimeConfigValues,
   ]);
 

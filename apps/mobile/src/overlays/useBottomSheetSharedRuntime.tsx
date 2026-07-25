@@ -281,6 +281,14 @@ export const useBottomSheetSharedRuntime = ({
   // fallback shared value is used only when no external scrollOffsetValue was provided.
   const fallbackScrollOffset = useSharedValue(0);
   const scrollOffset = scrollOffsetValue ?? fallbackScrollOffset;
+  // THE BOUNDARY-PHYSICS VALUE (boundary-physics law §1): <0 past the list top, >0 past
+  // the bottom, 0 inside. Native bounce stays OFF forever — the runtime owns everything
+  // beyond a boundary. Slice 1 mints the value and signs consumers up (plate follows a
+  // negative offset); the physics writers (pans + momentum edge) land in later slices.
+  const contentOverscroll = useSharedValue(0);
+  const maxScrollOffset = useSharedValue(0);
+  const scrollViewportHeight = useSharedValue(0);
+  const boundaryFactsKnown = useSharedValue(false);
   const scrollTopOffset = useSharedValue(0);
   const primaryScrollOffset = useSharedValue(0);
   const secondaryScrollOffset = useSharedValue(0);
@@ -322,6 +330,10 @@ export const useBottomSheetSharedRuntime = ({
 
   const { primaryListOnScroll, secondaryListOnScroll, primaryScrollViewOnScroll } =
     useBottomSheetSharedScrollEventsRuntime({
+      maxScrollOffset,
+      scrollViewportHeight,
+      boundaryFactsKnown,
+      contentOverscroll,
       activePrimaryList,
       isInMomentum,
       onMomentumBeginJS,
@@ -398,6 +410,10 @@ export const useBottomSheetSharedRuntime = ({
 
   const gestures = useBottomSheetSharedGestureRuntime({
     gestureEnabled,
+    contentOverscroll,
+    maxScrollOffset,
+    scrollViewportHeight,
+    boundaryFactsKnown,
     preventSwipeDismiss,
     expandedSnap,
     middleSnap,
@@ -442,6 +458,11 @@ export const useBottomSheetSharedRuntime = ({
   const scrollContainerRuntime = useBottomSheetSharedScrollContainerRuntime({
     expandPanGesture: gestures.expandPan,
     collapsePanGesture: gestures.collapsePan,
+    overscrollPanGesture: gestures.overscrollPan,
+    contentOverscroll,
+    maxScrollOffset,
+    scrollViewportHeight,
+    boundaryFactsKnown,
     shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });
@@ -468,6 +489,10 @@ export const useBottomSheetSharedRuntime = ({
         publicationRuntime.effectiveShowsVerticalScrollIndicator,
       scrollHeaderHeight: publicationRuntime.scrollHeaderHeight,
       scrollOffset,
+      contentOverscroll,
+      maxScrollOffset,
+      scrollViewportHeight,
+      boundaryFactsKnown,
       onHeaderLayout: publicationRuntime.onHeaderLayout,
       onScrollHeaderLayout: publicationRuntime.onScrollHeaderLayout,
       primaryListOnScroll,

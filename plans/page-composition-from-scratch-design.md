@@ -1537,3 +1537,25 @@ begins; the rig is an instrument, never the acceptance.
 Baseline gates: tsc/jest 396, invariants 30/30, matrix 21/21, results scroll clean.
 GROUND-TRUTH CHECK PENDING: the owner verifies polls/results/lists/profile feel
 restored (stable, fast, no shake) before anything new lands.
+
+## THE UN-REVERT + THE GROUND-TRUTH RESET (2026-07-24)
+Owner's baseline check delivered the arc's missing ground truth:
+1. THE NATIVE BOUNCE WAS FELT AND WANTED ("the overscroll bounce we implemented that
+   felt native") — the arc's core reached the owner and worked. Revert overshot.
+2. THE SHAKE (down-drag) and THE POLLS BOOT-FREEZE exist ON THE PRE-ARC BASELINE —
+   they are PRE-EXISTING bugs the arc never caused and arc-focused fixes could never
+   remove. This resolves the "five fixes changed nothing" paradox: the two felt
+   issues were never the arc's.
+ACTION: scroll/gesture files restored to the final arc state (cc6f0b59 — all writer
+laws, immutable pans, per-scene facts, native physics), with the lag suspects fixed
+during re-land: all probes stripped; the config-sync reaction now writes-on-change
+only (it fired per frame with unconditional 6-SV writes — the likely lag).
+Gates: tsc/jest 396, matrix 21/21, invariants 30/30.
+NEXT (the real remaining bugs, now correctly framed as BASELINE issues):
+- THE SHAKE: down-drag sheet-grab oscillation — attribute on this state with a
+  sheetY-writer trace (who writes sheetY during a collapse drag; two-writer check
+  between collapse onChange and any spring/settle path).
+- THE POLLS BOOT-FREEZE: scroll locked until a scene hop "unfreezes" it — attribute
+  shouldEnableScrollShared at boot for the polls leg (visible/listScrollEnabled/
+  interactionEnabled at the docked-polls initial presentation) + first-touch
+  arbitration on the boot-mounted container.

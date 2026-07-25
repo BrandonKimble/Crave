@@ -89,8 +89,7 @@ const PageListBody = ({
 };
 
 // THE LENGTH LAW (skeleton-sheet spec §4, owner 2026-07-18): the pending face FILLS
-// the body's floored scroll box (BottomSheetScrollContainer's short-page floor =
-// viewport + SHORT_PAGE_SCROLL_ROOM_PX) and never extends past it — the material
+// the body's scroll box and never extends past it — the material
 // renders absolutely inside and CLIPS, so its row count can never lengthen the
 // scroll. A pending page scrolls exactly like any short page: bounded, normal.
 const pendingSurfaceStyle = { flex: 1, alignSelf: 'stretch', overflow: 'hidden' } as const;

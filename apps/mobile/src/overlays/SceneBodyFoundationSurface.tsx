@@ -6,7 +6,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import Reanimated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import MaskedHoleOverlay, { type MaskedHole } from '../components/MaskedHoleOverlay';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
@@ -128,6 +128,7 @@ export const useIsInsideSceneFoundationSurface = (): boolean =>
 type SceneBodyWhitePlateProps = {
   store: FrostCutoutStore;
   scrollOffset: SharedValue<number>;
+  contentOverscroll: SharedValue<number>;
   frameHeight: number;
 };
 
@@ -135,6 +136,7 @@ type SceneBodyWhitePlateProps = {
 const SceneBodyWhitePlate: React.FC<SceneBodyWhitePlateProps> = ({
   store,
   scrollOffset,
+  contentOverscroll,
   frameHeight,
 }) => {
   const holes = React.useSyncExternalStore(store.subscribe, store.getHoles);
@@ -146,9 +148,18 @@ const SceneBodyWhitePlate: React.FC<SceneBodyWhitePlateProps> = ({
   const plateHeight = Math.ceil(holesMaxY) + frameHeight * 2;
   const maxTranslate = Math.max(plateHeight - frameHeight, 0);
 
+  // BOUNDARY-PHYSICS SIGN-UP (law §4): the interior offset stays clamped to [0, max],
+  // and the runtime-owned overscroll ADDS on top — a negative overscroll translates the
+  // plate DOWN with the rubber-banding content, so FrostCutout holes track their boxes
+  // through an overscroll by construction (the old ≥0 floor detached them).
   const translateStyle = useAnimatedStyle(
     () => ({
-      transform: [{ translateY: -Math.min(Math.max(scrollOffset.value, 0), maxTranslate) }],
+      transform: [
+        {
+          translateY:
+            -Math.min(Math.max(scrollOffset.value, 0), maxTranslate) - contentOverscroll.value,
+        },
+      ],
     }),
     [maxTranslate]
   );
@@ -175,6 +186,9 @@ const SceneBodyWhitePlate: React.FC<SceneBodyWhitePlateProps> = ({
 export type SceneBodyFoundationSurfaceProps = {
   /** The scene body lane's live scroll offset (shared scroll container / list). */
   scrollOffset: SharedValue<number>;
+  /** Boundary-physics law §1: runtime-owned overscroll. Optional — hosts outside the
+   *  sheet runtime (none today) get an inert zero. */
+  contentOverscroll?: SharedValue<number>;
   /**
    * The scene this lane paints — provided over `SceneStripLawContext` so strip
    * components can assert the foundation's `strip:` declaration (the load-bearing
@@ -188,10 +202,13 @@ export type SceneBodyFoundationSurfaceProps = {
 
 export const SceneBodyFoundationSurface: React.FC<SceneBodyFoundationSurfaceProps> = ({
   scrollOffset,
+  contentOverscroll,
   sceneKey = null,
   style,
   children,
 }) => {
+  const fallbackContentOverscroll = useSharedValue(0);
+  const resolvedContentOverscroll = contentOverscroll ?? fallbackContentOverscroll;
   const rootRef = React.useRef<View>(null);
   const storeRef = React.useRef<FrostCutoutStore | null>(null);
   if (storeRef.current == null) {
@@ -285,7 +302,12 @@ export const SceneBodyFoundationSurface: React.FC<SceneBodyFoundationSurfaceProp
   return (
     <View ref={rootRef} collapsable={false} style={style} onLayout={handleLayout}>
       <View pointerEvents="none" style={styles.whiteLayerRoot}>
-        <SceneBodyWhitePlate store={store} scrollOffset={scrollOffset} frameHeight={frameHeight} />
+        <SceneBodyWhitePlate
+          store={store}
+          scrollOffset={scrollOffset}
+          contentOverscroll={resolvedContentOverscroll}
+          frameHeight={frameHeight}
+        />
       </View>
       <SceneFrostCutoutContext.Provider value={contextValue}>
         <SceneStripLawContext.Provider value={sceneKey}>{children}</SceneStripLawContext.Provider>
