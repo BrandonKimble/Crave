@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger as WinstonLogger } from 'winston';
+import * as Sentry from '@sentry/nestjs';
 import {
   isHttpError,
   getErrorMessage,
@@ -91,6 +92,43 @@ export class LoggerService {
   error(message: string, error?: unknown, metadata?: LogMetadata): void {
     const errorMetadata = this.buildErrorMetadata(error, metadata);
     this.logger.error(message, this.sanitizeMetadata(errorMetadata));
+    this.captureToSentry(message, error, metadata);
+  }
+
+  /**
+   * THE crash-reporting seam (2026-07-25): everything the codebase considers
+   * an error-level event — HTTP 500s (GlobalExceptionFilter logs them here),
+   * cron/background catches, boot failures — flows through this one method,
+   * so Sentry capture lives here and nowhere else. No filter-ordering
+   * fragility, no per-callsite wiring. No-op unless Sentry.init ran
+   * (SENTRY_DSN set in main.ts). Never attaches email or request bodies —
+   * the context tag + structured metadata are the debugging surface.
+   */
+  private captureToSentry(
+    message: string,
+    error?: unknown,
+    metadata?: LogMetadata,
+  ): void {
+    try {
+      if (!Sentry.isInitialized()) {
+        return;
+      }
+      const extra: Record<string, unknown> = { ...(metadata ?? {}) };
+      const tags: Record<string, string> = {};
+      if (this.contextName) {
+        tags.logger_context = this.contextName;
+      }
+      if (error instanceof Error) {
+        Sentry.captureException(error, { extra: { ...extra, message }, tags });
+      } else {
+        if (error !== undefined) {
+          extra.error = error;
+        }
+        Sentry.captureMessage(message, { level: 'error', extra, tags });
+      }
+    } catch {
+      // Crash reporting must never take down the thing it reports on.
+    }
   }
 
   /**

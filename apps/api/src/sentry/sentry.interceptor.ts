@@ -12,7 +12,6 @@ import type { FastifyRequest } from 'fastify';
 interface AuthenticatedRequest extends FastifyRequest {
   user?: {
     userId?: string;
-    email?: string;
   };
 }
 
@@ -28,12 +27,10 @@ export class SentryInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const { method, url } = request;
 
-    // Set user context for all requests
+    // User context = the opaque userId ONLY (support lookup key) — never
+    // email or any other PII.
     if (request.user) {
-      Sentry.setUser({
-        id: request.user.userId,
-        email: request.user.email,
-      });
+      Sentry.setUser({ id: request.user.userId });
     }
 
     // Start a span for this request

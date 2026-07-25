@@ -2,6 +2,11 @@
 // IMPORTANT: This must be the FIRST import to patch react-native before anything else loads
 import './src/polyfills/react-native-codegen';
 import 'react-native-gesture-handler';
+import {
+  captureHandledError,
+  initializeCrashReporting,
+  wrapRootComponent,
+} from './src/observability/crash-reporting';
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -68,6 +73,9 @@ const queryClient = new QueryClient({
       if ((error as { isEntitlementLapse?: boolean })?.isEntitlementLapse) {
         return;
       }
+      // The failure chokepoint is also the crash-reporting seam: the user
+      // sees the one standard modal, support sees the actual error.
+      captureHandledError(error, { seam: 'mutation-chokepoint' });
       announceFailureIfOnline();
     },
   }),
@@ -98,7 +106,12 @@ SplashScreen.setOptions({
   duration: 280,
 });
 
-export default function App() {
+// Crash reporting first: init before any module can throw at runtime, and the
+// root wrap adds the JS error boundary + touch breadcrumbs. No-op without
+// EXPO_PUBLIC_SENTRY_DSN (see src/observability/crash-reporting.ts).
+initializeCrashReporting();
+
+function App() {
   const isBannerVisible = useSystemStatusStore(
     (state) => state.isOffline || Boolean(state.serviceIssue)
   );
@@ -177,6 +190,8 @@ export default function App() {
     </QueryClientProvider>
   );
 }
+
+export default wrapRootComponent(App);
 
 const styles = StyleSheet.create({
   gestureRoot: {

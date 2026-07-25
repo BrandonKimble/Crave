@@ -1,35 +1,23 @@
 import { Module, Global } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { SentryExceptionFilter } from './sentry.filter';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { SentryInterceptor } from './sentry.interceptor';
 
 /**
- * Sentry Module
+ * Sentry Module — performance spans only.
  *
- * Provides global error tracking and performance monitoring via Sentry.
+ * ERROR CAPTURE DOES NOT LIVE HERE. The one capture seam is
+ * LoggerService.error (shared/logging/logger.service.ts): HTTP 500s reach it
+ * via GlobalExceptionFilter's logError, cron/background failures via their
+ * own catch-and-log. A second global @Catch() filter used to sit here — it
+ * was DEAD CODE (Nest runs exactly one matching global filter, and
+ * GlobalExceptionFilter won) and its "re-throw to the next filter" design
+ * described a chain Nest doesn't have. Do not reintroduce a Sentry filter.
  *
- * Features:
- * - Automatic exception capture with user/request context
- * - Performance monitoring with request spans
- * - Breadcrumbs for debugging
- * - Filters out 4xx client errors (expected behavior)
- *
- * Configuration:
- * - SENTRY_DSN: Your Sentry project DSN
- * - SENTRY_ENVIRONMENT: production, staging, development
- * - SENTRY_RELEASE: Version string for release tracking
- *
- * Note: Sentry.init() is called in main.ts before the app starts.
+ * Sentry.init() runs in main.ts before the app starts (SENTRY_DSN-gated).
  */
 @Global()
 @Module({
   providers: [
-    // Exception filter to capture errors
-    {
-      provide: APP_FILTER,
-      useClass: SentryExceptionFilter,
-    },
-    // Interceptor for performance monitoring
     {
       provide: APP_INTERCEPTOR,
       useClass: SentryInterceptor,

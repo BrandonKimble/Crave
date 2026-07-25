@@ -187,20 +187,28 @@ export class GlobalExceptionFilter implements ExceptionFilter, OnModuleInit {
       ip: request.ip,
       statusCode: errorDetails.status,
       errorCode: errorDetails.errorCode,
+      // Support lookup key on 500s (flows to Sentry via the logger seam).
+      // Opaque id only — never email.
+      userId: (request as { user?: { userId?: string } }).user?.userId,
     };
 
-    if (exception instanceof AppException) {
-      // Log operational errors at warn level
+    // Level by STATUS, never by exception class: any 5xx is an error-level
+    // event (and error level IS the Sentry seam — LoggerService.error
+    // captures). A typed AppException carrying a 500 must not hide at warn.
+    const isServerError = errorDetails.status >= 500;
+    if (exception instanceof AppException && !isServerError) {
+      // Operational 4xx: expected behavior, warn only.
       this.logger.warn(exception.message, {
         ...logContext,
         ...exception.getLogContext(),
       });
-    } else if (exception instanceof HttpException) {
-      // Log HTTP exceptions at warn level
+    } else if (exception instanceof HttpException && !isServerError) {
       this.logger.warn(exception.message, {
         ...logContext,
         stack: exception.stack,
       });
+    } else if (exception instanceof Error && isServerError) {
+      this.logger.error(exception.message, exception, logContext);
     } else {
       // Log unexpected errors at error level with full stack trace
       this.logger.error(
