@@ -36,7 +36,16 @@ export const RITUAL_LOCAL_HOUR = 9;
  *  answers — the participation level at which polls demonstrably produce
  *  strong content. SELF-ERASING via the estimator registry; measured
  *  globally, refined per-place (hierarchical). Prior value 15 is in the
- *  ratified §4 text; self-erasure RATIFIED with the priors docket 2026-07-19. */
+ *  ratified §4 text; self-erasure RATIFIED with the priors docket 2026-07-19.
+ *
+ *  RE-EXAMINED 2026-07-24 (owner offered the chance to change it; kept):
+ *  no measurement can set it (the data it stands in for is the data polls
+ *  create), any replacement is an equal guess, and its error is BOUNDED —
+ *  the controller corrects within ≤2 Sundays (fixture-proven) and the
+ *  hierarchical read replaces it at the FIRST real answers anywhere. The
+ *  sentence it encodes: "a poll deserves roughly a dozen-strong audience's
+ *  worth of attention before the system seeds it." Changing 15 without
+ *  evidence would be tuning theater. */
 export const VIABILITY_PRIOR = 15;
 
 /** K2 (prior strength, inventoried): one pseudo-observation — the weakest

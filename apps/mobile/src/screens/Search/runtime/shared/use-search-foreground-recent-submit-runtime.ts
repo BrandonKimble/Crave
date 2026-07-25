@@ -109,17 +109,21 @@ export const useSearchForegroundRecentSubmitRuntime = ({
 
   const handleRecentlyViewedFoodPress = React.useCallback(
     (item: RecentlyViewedFood) => {
-      // Refit layer 2 correctness item (plans/suggest-ideal-shape.md): a
-      // recently-viewed FOOD tap lands on the DISH — a typed selected-entity
-      // search for the food (the skip-LLM lane the autocomplete food row already
-      // uses) — not the restaurant profile the row used to open. The entity
-      // identity write handles the recent-search upsert at world-present.
+      // VIEWED-vs-SEARCHED split (owner-ratified 2026-07-24): a recently-
+      // VIEWED dish reproduces the dish-card tap it came from — the dish's
+      // search world presents AND this restaurant's profile auto-opens
+      // inside it (pendingRestaurantSelection, the same mechanism every
+      // world-present selection uses). That contextual open IS today's
+      // dish deep-link foundation; when profiles are finished, the
+      // dish-anchor scroll rides this same path. Recently-SEARCHED dishes
+      // (typed + tapped the autocomplete dish row) live in the recent-
+      // searches section and re-run the plain dish search there.
       const foodName = item.foodName.trim();
       if (!foodName) {
         return;
       }
       submitPreparationRuntime.prepareRecentIntentSubmit(foodName);
-      pendingRestaurantSelectionRef.current = null;
+      pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
       void submitSearch(
         {
           selectedEntity: { entityId: item.foodId, entityType: 'food' },

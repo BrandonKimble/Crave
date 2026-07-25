@@ -330,11 +330,11 @@ export const useSearchRequests = () => {
                 queryLength: query.trim().length,
                 ...getRunSearchErrorFields(error),
               });
-              // Never-blank rule (c) (plans/suggest-ideal-shape.md refit layer 2):
-              // a GENUINE failure rejects so the caller can show an error state —
-              // resolving [] here made network errors indistinguishable from
-              // no-matches. Aborts (both branches above) still resolve [] quietly.
-              reject(error instanceof Error ? error : new Error('Autocomplete request failed'));
+              // Failures resolve [] quietly BY STANDARD (owner, 2026-07-24):
+              // the api client reports service failures to the
+              // SystemStatusBanner — the app's one network-trouble channel;
+              // the panel just holds its last list (never-blank rule b).
+              resolve([]);
             }
           } finally {
             if (autocompleteControllerRef.current === controller) {

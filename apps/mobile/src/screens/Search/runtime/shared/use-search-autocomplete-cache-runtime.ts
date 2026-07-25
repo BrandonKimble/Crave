@@ -3,7 +3,6 @@ import React from 'react';
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import { AUTOCOMPLETE_CACHE_TTL_MS } from '../../constants/search';
 import { filterAutocompletePlaceholderMatches } from './search-autocomplete-placeholder-filter';
-import { setSearchAutocompleteError } from './search-autocomplete-error-store';
 
 type CachedAutocompleteEntry = {
   matches: AutocompleteMatch[];
@@ -55,9 +54,6 @@ export const useSearchAutocompleteCacheRuntime = ({
   }, [cacheScopeKey]);
 
   const clearAutocompleteSuggestions = React.useCallback(() => {
-    // Never-blank rule (c): clearing the panel (query wiped / panel closed) also
-    // retires any pending "couldn't load" notice — it belongs to the old query.
-    setSearchAutocompleteError(false);
     writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, []);
   }, [setShowSuggestions, setSuggestions]);
 

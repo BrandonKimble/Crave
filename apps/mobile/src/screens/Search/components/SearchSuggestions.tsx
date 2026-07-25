@@ -22,7 +22,6 @@ import type {
   RecentlyViewedRestaurant,
 } from '../../../services/search';
 import { logPerfScenarioSearchRequestLifecycle } from '../../../perf/perf-scenario-attribution';
-import { useSearchAutocompleteError } from '../runtime/shared/search-autocomplete-error-store';
 import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 import {
   hasSuggestionMatchSegments,
@@ -100,10 +99,6 @@ const summarizeRenderedAutocompleteMatches = (
 // relevant to the user"). Attribute rows keep the distinct Sparkles icon so
 // they stop rendering identically to dishes.
 
-// Never-blank rule (c): the quiet one-line failure notice, distinct from
-// no-matches. K1 feel copy.
-const AUTOCOMPLETE_ERROR_COPY = "Couldn't load suggestions";
-
 const testIdSafeName = (name: string): string =>
   name
     .trim()
@@ -143,8 +138,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   onPressRecentlyViewedMore,
   style,
 }) => {
-  const hasAutocompleteError = useSearchAutocompleteError();
-
   if (!visible) {
     return null;
   }
@@ -152,8 +145,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
   // Never-blank rule (c): only when there is truly nothing better to show — a
   // list (even a stale placeholder) always outranks the failure notice.
-  const shouldShowAutocompleteErrorRow =
-    showAutocomplete && suggestions.length === 0 && hasAutocompleteError;
   const recentSearchesToRender = recentSearches.slice(0, RECENT_SEARCH_PREVIEW_LIMIT);
   const shouldRenderRecentSearchesSection = showRecent && recentSearchesToRender.length > 0;
   const recentlyViewedDeduped = React.useMemo(
@@ -244,9 +235,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             const isViewed = Boolean(match.badges?.viewed);
             const isAttribute =
               match.entityType === 'food_attribute' || match.entityType === 'restaurant_attribute';
-            // Refit layer 2 (match highlighting): bold the predictive completion —
-            // the typed span renders regular, everything the engine added renders
-            // bold. No-match rows (fuzzy/semantic) keep a uniform regular title.
+            // Match highlighting (Spotify-style, owner-corrected 2026-07-24):
+            // the MATCHED portion renders muted gray, the completion regular —
+            // the eye reads what the engine added, not what it already typed.
             const titleSegments = splitSuggestionMatchSegments(highlightQuery, match.name);
             const shouldEmphasizeCompletion = hasSuggestionMatchSegments(titleSegments);
             const statusLine =
@@ -302,8 +293,8 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                               key={`${segmentIndex}-${segment.text}`}
                               style={
                                 segment.isMatch
-                                  ? styles.autocompletePrimaryText
-                                  : [styles.autocompletePrimaryText, styles.autocompleteCompletion]
+                                  ? [styles.autocompletePrimaryText, styles.autocompleteMatched]
+                                  : styles.autocompletePrimaryText
                               }
                             >
                               {segment.text}
@@ -336,14 +327,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               </TouchableOpacity>
             );
           })}
-        </View>
-      ) : null}
-
-      {shouldShowAutocompleteErrorRow ? (
-        <View style={styles.autocompleteErrorRow} testID="autocomplete-error-row">
-          <Text style={styles.autocompleteErrorText} numberOfLines={1}>
-            {AUTOCOMPLETE_ERROR_COPY}
-          </Text>
         </View>
       ) : null}
 
@@ -533,22 +516,17 @@ const styles = StyleSheet.create({
   },
   // Match highlighting: the predictive completion is the bold span. Semibold
   // (not heavier) — K1 feel: emphasis without shouting (§16 K1).
-  autocompleteCompletion: {
-    fontWeight: '600',
+  // Match highlighting, Spotify-style (owner-corrected 2026-07-24): the text
+  // MATCHING what's typed renders in the app's muted meta gray; the
+  // completion stays regular black — no bolding. K1 feel choice.
+  autocompleteMatched: {
+    color: '#64748b',
   },
   // Type label: one step below the meta line (13) so it reads as metadata, in
   // the existing muted meta color — K1 feel sentence, not a measured number
   // (§16 K1).
   // Error row sits in a standard row seat (ROW_HEIGHT) in the muted meta color —
   // quiet by design (§16 K1).
-  autocompleteErrorRow: {
-    height: ROW_HEIGHT,
-    justifyContent: 'center',
-  },
-  autocompleteErrorText: {
-    fontSize: FONT_SIZES.body,
-    color: '#64748b',
-  },
   autocompleteTextGroup: {
     flex: 1,
     justifyContent: 'center',
