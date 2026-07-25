@@ -2,10 +2,10 @@ import { Injectable, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
-import { geminiCostMicros } from './gemini-pricing';
+import { pricedGeminiRow } from './gemini-pricing';
 import {
   placesCostMicrosPerCall,
-  tomtomCostMicrosPerDraw,
+  tomtomBlendedCostMicrosPerDraw,
 } from './vendor-pricing';
 import { CollectorSourceRegistryService } from '../../content-processing/reddit-collector/collector-source-registry.service';
 import { GovernanceService } from '../governance/governance.service';
@@ -99,8 +99,10 @@ const TOMTOM_POOL_HOT_DAY_OF_MONTH = 20;
 
 /** Median of a numeric array (even-length: mean of the two middle values).
  *  Used by refreshBackstop instead of a mean so a run of ~15 runaway days
- *  cannot single-handedly drag the trailing baseline up with them. */
-function median(values: number[]): number {
+ *  cannot single-handedly drag the trailing baseline up with them.
+ *  Exported as THE one median: ops-summary re-exports it as `medianOf` for
+ *  its expectation math + RED-provable specs. */
+export function median(values: number[]): number {
   if (values.length === 0) {
     return 0;
   }
@@ -147,19 +149,6 @@ export class SpendAnalyticsService {
         },
       });
     }
-  }
-
-  /** Read: the current unit-cost table (§24.2's "queryable live" leg). */
-  async unitCosts(): Promise<UnitCostRow[]> {
-    const rows = await this.prisma.spendUnitCost.findMany();
-    return rows.map((row) => ({
-      workClass: row.workClass,
-      unit: row.unit,
-      microUsdPerUnit: row.microUsdPerUnit,
-      sampleUnits: Number(row.sampleUnits),
-      windowStart: row.windowStart,
-      windowEnd: row.windowEnd,
-    }));
   }
 
   /**
@@ -212,7 +201,7 @@ export class SpendAnalyticsService {
     // the caller sees consistent with what lands in spend_unit_costs).
     const dedupedByKey = new Map<string, UnitCostRow>();
     for (const row of results) {
-      dedupedByKey.set(`${row.workClass} ${row.unit}`, row);
+      dedupedByKey.set(`${row.workClass}\u0000${row.unit}`, row);
     }
     const deduped = [...dedupedByKey.values()];
 
@@ -290,15 +279,7 @@ export class SpendAnalyticsService {
     let totalDocs = 0;
     let unjoinedCostMicros = 0;
     for (const row of rows) {
-      const costMicros = geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.input_tokens === null ? 0 : Number(row.input_tokens),
-        outputTokens:
-          row.output_tokens === null ? 0 : Number(row.output_tokens),
-        cachedTokens:
-          row.cached_tokens === null ? 0 : Number(row.cached_tokens),
-      });
+      const costMicros = pricedGeminiRow(row);
       const docCount = row.doc_count === null ? 0 : Number(row.doc_count);
       if (docCount > 0) {
         totalCostMicros += costMicros;
@@ -371,20 +352,14 @@ export class SpendAnalyticsService {
     });
     let costMicros = 0;
     for (const row of rows) {
-      costMicros += geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.inputTokens ?? 0,
-        outputTokens: row.outputTokens ?? 0,
-        cachedTokens: row.cachedTokens ?? 0,
-      });
+      costMicros += pricedGeminiRow(row);
     }
     return { costMicros, eventCount: rows.length };
   }
 
   /**
    * §24.2(b) tomtom-per-draw, now PRICED (vendor-pricing.ts's
-   * tomtomCostMicrosPerDraw, K1-sourced $2.50/1,000 requests — "VERIFY
+   * tomtomBlendedCostMicrosPerDraw, K1-sourced $2.50/1,000 requests — "VERIFY
    * AGAINST FIRST TOMTOM INVOICE"). The ledger does not yet distinguish
    * which pool (cheapGeocode vs scarcePolygons) a tomtom draw belongs to —
    * no recording site threads a pool-specific operation/caller today — so
@@ -415,7 +390,7 @@ export class SpendAnalyticsService {
       {
         workClass: 'tomtom.searchFamily',
         unit: 'draw',
-        microUsdPerUnit: tomtomCostMicrosPerDraw,
+        microUsdPerUnit: tomtomBlendedCostMicrosPerDraw,
         sampleUnits,
         windowStart,
         windowEnd,
@@ -631,13 +606,7 @@ export class SpendAnalyticsService {
     });
     let total = 0;
     for (const row of rows) {
-      total += geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.inputTokens ?? 0,
-        outputTokens: row.outputTokens ?? 0,
-        cachedTokens: row.cachedTokens ?? 0,
-      });
+      total += pricedGeminiRow(row);
     }
     return total;
   }
@@ -664,7 +633,7 @@ export class SpendAnalyticsService {
       {
         workClass: 'tomtom.searchFamily',
         unit: 'draw',
-        microUsdPerUnit: tomtomCostMicrosPerDraw,
+        microUsdPerUnit: tomtomBlendedCostMicrosPerDraw,
         sampleUnits: 0,
         windowStart,
         windowEnd,
@@ -729,21 +698,13 @@ export class SpendAnalyticsService {
 
     const bySourceLane = new Map<string, number>();
     for (const row of rows) {
-      const costMicros = geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.input_tokens === null ? 0 : Number(row.input_tokens),
-        outputTokens:
-          row.output_tokens === null ? 0 : Number(row.output_tokens),
-        cachedTokens:
-          row.cached_tokens === null ? 0 : Number(row.cached_tokens),
-      });
-      const key = `${row.source_id} ${row.lane}`;
+      const costMicros = pricedGeminiRow(row);
+      const key = `${row.source_id}\u0000${row.lane}`;
       bySourceLane.set(key, (bySourceLane.get(key) ?? 0) + costMicros);
     }
 
     for (const [key, costMicros] of bySourceLane) {
-      const [sourceId, lane] = key.split(' ');
+      const [sourceId, lane] = key.split('\u0000');
       await this.registry
         .recordLaneCost(sourceId, lane, Math.round(costMicros))
         .catch((error: unknown) => {
@@ -779,13 +740,7 @@ export class SpendAnalyticsService {
     });
     let total = 0;
     for (const row of rows) {
-      total += geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.inputTokens ?? 0,
-        outputTokens: row.outputTokens ?? 0,
-        cachedTokens: row.cachedTokens ?? 0,
-      });
+      total += pricedGeminiRow(row);
     }
     return total;
   }
@@ -1044,6 +999,14 @@ export class SpendAnalyticsService {
    * the ops dashboard without waiting for a human to query
    * collectorHeartbeats by hand. Dedupe per (lane, day) — a persistently
    * RED lane pages once a day, not once per nightly tick's specific cause.
+   */
+  /**
+   * DELIBERATELY NARROWER than the ops-summary dashboard's red predicate
+   * (ops-summary.service.ts, the `red` computation in its sources mapping):
+   * this ALERT path fires only on durable conditions — output collapse,
+   * stale fetched window, expected-batches shortfall. Transient lateness
+   * (normalizedLateness) and coverage-gap detection stay dashboard-only:
+   * they self-heal on the next run and would spam the owner as alerts.
    */
   private async checkLaneReds(now: Date): Promise<void> {
     let heartbeats: Awaited<

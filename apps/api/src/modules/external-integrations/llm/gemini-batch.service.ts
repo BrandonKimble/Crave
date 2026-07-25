@@ -85,6 +85,18 @@ const TERMINAL: Partial<Record<string, 'succeeded' | 'failed'>> = {
  * Gemini's inlined responses come back IN REQUEST ORDER, which is how items
  * are mapped back (itemIndex); itemKey additionally rides along for callers.
  */
+/** §24.3: campaign id (if any) rides in resumeContext, stashed at submit()
+ *  time (extraction-pipeline.service.ts). One extraction, both read sites
+ *  (submit-time dispatchability gate + terminal-success metering). */
+function campaignIdFromResumeContext(ctx: unknown): string | undefined {
+  return ctx &&
+    typeof ctx === 'object' &&
+    'campaignId' in ctx &&
+    typeof (ctx as Record<string, unknown>).campaignId === 'string'
+    ? ((ctx as Record<string, unknown>).campaignId as string)
+    : undefined;
+}
+
 @Injectable()
 export class GeminiBatchService implements OnModuleDestroy {
   private readonly logger: LoggerService;
@@ -170,15 +182,7 @@ export class GeminiBatchService implements OnModuleDestroy {
     // the vendor call already happened by the time the campaign found out.
     // Same pattern as the Tier-3 gate above: typed refusal, work stays
     // queued (the caller's enqueue layer retries once the campaign resumes).
-    const campaignId =
-      params.resumeContext &&
-      typeof params.resumeContext === 'object' &&
-      'campaignId' in params.resumeContext &&
-      typeof (params.resumeContext as Record<string, unknown>).campaignId ===
-        'string'
-        ? ((params.resumeContext as Record<string, unknown>)
-            .campaignId as string)
-        : undefined;
+    const campaignId = campaignIdFromResumeContext(params.resumeContext);
     if (campaignId) {
       const dispatchable = await this.spendCampaigns.isDispatchable(campaignId);
       if (!dispatchable) {
@@ -506,15 +510,9 @@ export class GeminiBatchService implements OnModuleDestroy {
       where: { jobId },
       select: { resumeContext: true },
     });
-    const campaignId =
-      resumeContextRow?.resumeContext &&
-      typeof resumeContextRow.resumeContext === 'object' &&
-      'campaignId' in resumeContextRow.resumeContext &&
-      typeof (resumeContextRow.resumeContext as Record<string, unknown>)
-        .campaignId === 'string'
-        ? ((resumeContextRow.resumeContext as Record<string, unknown>)
-            .campaignId as string)
-        : undefined;
+    const campaignId = campaignIdFromResumeContext(
+      resumeContextRow?.resumeContext,
+    );
 
     // Idempotent by dedupeKey (one row per job): a crash/retry re-record is
     // skipped at the unique index, so ordering vs the status flip no longer

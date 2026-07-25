@@ -1,5 +1,8 @@
 # Archive Collection — Efficiency & Cost Handoff
 
+**SUPERSEDED** — see [geo-demand-foundation-rebuild.md](geo-demand-foundation-rebuild.md)
+§12: the §5 open questions below are all settled there.
+
 **Date:** 2026-07-06
 **Purpose:** (1) a durable record of the archive data work done this session, and
 (2) a springboard for the **next** session, whose real topic is: _what is the

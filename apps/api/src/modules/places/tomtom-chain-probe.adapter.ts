@@ -505,7 +505,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   ): Promise<
     | {
         kind: 'ok';
-        result: TomtomGeocodeResult;
         results: TomtomGeocodeResult[];
       }
     | { kind: 'denied' | 'miss' }
@@ -554,7 +553,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       );
       return { kind: 'miss' };
     }
-    return { kind: 'ok', result: results[0], results };
+    return { kind: 'ok', results };
   }
 
   /**

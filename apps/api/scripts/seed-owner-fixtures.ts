@@ -35,7 +35,6 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  */
 
 const OWNER_EMAIL = 'kimble.brandonm@gmail.com';
-const MARKET_KEY = 'region-us-tx-austin';
 
 type Friend = { email: string; username: string; displayName: string };
 const FRIENDS: Friend[] = [

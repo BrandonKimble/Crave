@@ -584,8 +584,8 @@ export class CollectorSourceRegistryService {
   }
 
   /** Operator seam (§24.1 Tier 2): clear a paused lane's breach flag so it
-   *  re-enters listDueLanes. No caller wiring yet — ops scripts drive this
-   *  later, once an owner has looked at the numbers logged at breach time. */
+   *  re-enters listDueLanes. Driven by scripts/resume-lane.ts, once an
+   *  owner has looked at the numbers logged at breach time. */
   async resumeLane(sourceId: string, lane: string): Promise<void> {
     await this.prisma.$executeRaw`
       UPDATE source_collection_lanes

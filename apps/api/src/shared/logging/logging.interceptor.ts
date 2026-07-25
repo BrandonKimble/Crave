@@ -183,7 +183,7 @@ export class LoggingInterceptor implements NestInterceptor {
    * Determine if logging should be skipped for certain endpoints
    */
   private shouldSkipLogging(url: string): boolean {
-    const skipPatterns = ['/health', '/metrics', '/favicon.ico', '/_status'];
+    const skipPatterns = ['/health', '/favicon.ico', '/_status'];
     return skipPatterns.some((pattern) => url.includes(pattern));
   }
 

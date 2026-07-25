@@ -1,5 +1,8 @@
 # Suggest / Autocomplete — the from-scratch ideal shape (proposal, 2026-07-24)
 
+**STATUS: SHIPPED 2026-07-24** — Phases A+B ratified + implemented; see
+rebuild-execution-ledger.
+
 Produced by the ultracode teardown study: 5 code-anatomy agents (full maps of
 autocomplete.service.ts, the shared matcher, the demand substrate, the mobile
 surface, and the decision history), 5 web-research agents (QAC frontier,

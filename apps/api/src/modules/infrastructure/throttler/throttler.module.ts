@@ -20,7 +20,6 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
  *
  * Excluded from rate limiting:
  * - /health/* - Health check endpoints
- * - /metrics - Prometheus metrics
  * - /billing/webhooks/* - Payment provider webhooks
  */
 @Module({
@@ -76,9 +75,6 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
 
           // Skip health checks
           if (url.startsWith('/health')) return true;
-
-          // Skip metrics endpoint
-          if (url.startsWith('/metrics')) return true;
 
           // Skip webhooks (they have their own auth)
           if (url.includes('/webhooks/')) return true;

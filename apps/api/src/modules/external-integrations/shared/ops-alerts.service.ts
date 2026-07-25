@@ -39,7 +39,6 @@ export interface OpsAlertRow {
 export class OpsAlertsService implements OnModuleDestroy {
   private readonly pending = new Set<Promise<unknown>>();
   private readonly logger: LoggerService;
-  private emailTransportLogged = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -48,7 +47,6 @@ export class OpsAlertsService implements OnModuleDestroy {
     this.logger = loggerService.setContext('OpsAlertsService');
     if (!process.env.RESEND_API_KEY) {
       this.logger.info('email transport unconfigured');
-      this.emailTransportLogged = true;
     }
   }
 

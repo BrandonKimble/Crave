@@ -14,7 +14,7 @@ import { PoolRegistry } from '../external-integrations/governance/pool-registry'
  * month-position color thresholds.
  */
 
-const TOMTOM_MICROS_PER_DRAW = 3_240; // vendor-pricing tomtomCostMicrosPerDraw
+const TOMTOM_MICROS_PER_DRAW = 3_240; // vendor-pricing tomtomBlendedCostMicrosPerDraw
 
 interface PrismaOverrides {
   tomtomDailyRows?: Array<{ requestCount: number; createdAt: Date }>;

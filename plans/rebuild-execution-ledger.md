@@ -1987,3 +1987,41 @@ build pipeline when release builds exist; that's the launch-time follow-up.
 OWNER: create a second Sentry project (react-native) and set its DSN as
 EXPO_PUBLIC_SENTRY_DSN (mobile .env.local slot is commented in place; prod
 build env later). Commit: this arc. Suites 861 api / 409 mobile green.
+
+## 2026-07-25 — FINAL RED TEAM (three parallel audits + fix batch, all applied)
+
+Scope: plans-vs-reality (master plan §1-§25 + ledger spot-check + adjacent
+plans), recent-surfaces hygiene, repo-wide cruft. 20 verified findings
+fixed in one batch; 864 tests green.
+
+Behavioral: (1) seed-coarse-polygons completed its campaign BEFORE the
+drain could spend — stamped backlog would be permanently undrainable +
+bogus ~$0 drift pair; complete() removed, scripts/complete-campaign.ts is
+the operator verb (prod unaffected: existing queue rows predate stamping).
+(2) places-promotion miss/wrong-entity/no-rings draws escaped the campaign
+envelope — metering now on every exit (RED-proof spec). (3)
+resumeAfterBreach had no caller — scripts/resume-campaign.ts added.
+(4) identity onboarding schema-error shim fabricated "completed" profiles
+on DB errors (masked the P2022 trap) — deleted, fail hard. (5) deploy.sh
+retry was unreachable under set -e — fixed.
+
+Cruft: all /metrics scaffolding deleted (main.ts CSP preHandler, prefix
+exclude, 2 log skips, throttler rule); dead unitCosts()/snapshotCounters()/
+emailTransportLogged/forwardGeocodeMatch.result; NUL bytes in
+spend-analytics (file was un-greppable); blended tomtom rate renamed
+honest; pricedGeminiRow + median + campaignIdFromResumeContext dedupe;
+COLLECTION_JOBS_ENABLED no-op switch → real one; dead package script /
+MARKET_KEY consts / LegacySearchResponse / 2025-09 TODO deleted;
+.env.example purged of lies. Docs: suggest-ideal-shape SHIPPED header,
+archive-efficiency SUPERSEDED, freeze-audit HISTORICAL, §22 gains the
+crons→pacer-lanes trigger-deferral (~20 @Cron jobs stay, deliberately).
+Stale-comment truth fixes: pool-registry in-memory contradiction,
+score-calibration §10 note, resumeLane wiring, lane-red asymmetry doc.
+
+Prod-side pass: first live ops alert (foodnyc chronological output-collapse)
+is honest-but-benign — EWMA baseline burst-contaminated by the archive
+catch-up (640 vs ~20/tick), self-heals in ~a week. Extraction tail fully
+attributed: 601 gate-rejected (by design) + 687 orphan comments (parents
+outside the listing window, never judged — small design gap, candidate
+§10 follow-up: on-demand parent fetch for orphans). 14 failed batch jobs
+are Jul-11-era terminal relics.

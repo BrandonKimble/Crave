@@ -30,9 +30,9 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  *      collectors + enrichment crons in the running API), not a seed script.
  *      Optional dev fixtures: yarn polls:seed-fixtures.
  *
- * If a legacy market row is ever needed (coverage gating still reads the
- * markets table until the §10/§11 engine re-key), provision it manually via
- * scripts/onboard-market.ts.
+ * The market system is fully gone (exterminated 2026-07-22): sources own
+ * coverage now — there is no markets table to provision and no
+ * onboard-market script.
  *
  * What this deliberately does NOT do:
  *  - No TomTom draws. The §1 "$50 TomTom polygons" are TIER-2 geometry: seeded

@@ -42,10 +42,12 @@ export interface SourceActivity {
  * source's observed-coverage interval with the window, in days (min 1 so a
  * brand-new room never divides by zero).
  *
- * COVERAGE DERIVATION (interim, OWNER-RATIFY-adjacent): §10's first-class
- * coverage-interval rows are not built yet (ledger: advance-at-extraction +
- * expectedBatches reconciler pending), so the interval is DERIVED from facts
- * that already prove observation:
+ * COVERAGE DERIVATION (interim, OWNER-RATIFY-adjacent): §10's coverage
+ * machinery EXISTS now (the hourly expectedBatches reconciler + the
+ * coveredThrough watermarks in collector-source-registry.service.ts /
+ * collection-evidence.service.ts), but this calibration still derives its
+ * interval from facts that already prove observation (the watermark rows
+ * are lane-cursor bookkeeping, not a queryable coverage-interval table):
  *   from    = least(source.createdAt, earliest document) — an archive seed
  *             observed those past days; a poll_surface room exists (and is
  *             observed, being push-complete) from source creation.

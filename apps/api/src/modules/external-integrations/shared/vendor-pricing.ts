@@ -36,9 +36,11 @@ export const tomtomCheapCostMicrosPerDraw = Math.round(
   (1.0 * EUR_TO_USD * 1_000_000) / 1_000,
 ); // €1.00/1k → 1,080 micro-USD/draw
 
-/** Back-compat blended alias for callers that don't split draw kinds —
- *  priced at the SCARCE (higher) rate: over-meter, never vanish. */
-export const tomtomCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
+/** Honest UNSPLITTABLE-LEDGER blended rate: the usage ledger records TomTom
+ *  draws without distinguishing cheap (geocode) from scarce (polygon) kinds,
+ *  so ledger-derived cost readers price EVERY draw at the scarce (higher)
+ *  rate — over-meter, never vanish. */
+export const tomtomBlendedCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
 
 /**
  * Google Places API (New), entry-tier per-1,000-requests pricing (K4,

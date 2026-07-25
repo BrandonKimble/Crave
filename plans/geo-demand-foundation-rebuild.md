@@ -888,6 +888,13 @@ pressure); every-boundary pacer ordering (first real cross-class
 contention); grant-minting flow (manual pool rows until a fleet);
 multi-app sharding (≥10 engines).
 
+Also trigger-DEFERRED (added 2026-07-25, truth over aspiration): the §21.2
+"all recurring verbs = pacer lanes, no crons" unification was never executed
+— ~20 @Cron jobs remain, institutionalized by stop-crons.ts. Trigger: a
+recurring verb that needs per-source pacing or backpressure @Cron cannot
+express. The collector already rides the pacer; the remaining crons are
+fixed-cadence and harmless, and none should be rebuilt ahead of the trigger.
+
 **Value-ordered cut**: 1. search Legs 1–2 (parallel, start now) · 2. Phase A
 minimum: places DAG + US seed + signals dual-write + redirects/actors +
 Estimator registry (readers off) + TomTom pools governed FIRST (the one

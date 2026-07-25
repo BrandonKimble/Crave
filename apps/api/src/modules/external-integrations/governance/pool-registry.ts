@@ -21,9 +21,11 @@
  * process restart can never reset a month ledger (the recorded over-spend
  * gap). perMinute pools stay in-memory by design (restart loses ≤1 minute of
  * window — harmless; no DB I/O on the per-request hot path), and the
- * declared-vs-actual draw ledger stays in-memory too (drift is statistical;
- * a durable ledger is the §18.5 ops-readers leg). Reservations are never
- * stored — seconds-scale, TTL-expiring (§14.2).
+ * declared-vs-actual draw ledger stays IN-MEMORY BY DESIGN (drift is
+ * statistical; a restart just restarts the sample). Durable persistence of
+ * the draw ledger is trigger-deferred — the trigger being an actual need
+ * for drift samples to survive restarts (§18.5 closed without it).
+ * Reservations are never stored — seconds-scale, TTL-expiring (§14.2).
  *
  * Store-failure law (§14.5): a durable pool whose window the store cannot
  * CONFIRM (boot load failed, write-through failed, or the window rolled and
@@ -539,7 +541,8 @@ export class PoolRegistry {
     }
   }
 
-  /** The persisted declared-vs-actual stream — the drift instrument (§14.7). */
+  /** The IN-MEMORY declared-vs-actual stream — the drift instrument (§14.7).
+   *  Not persisted; see the header's durability note (trigger-deferred). */
   readDrawLedger(): readonly DrawRecord[] {
     return this.drawLedger;
   }

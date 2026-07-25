@@ -1,5 +1,9 @@
 # Collection Freeze Audit — the green light for archive loads
 
+**HISTORICAL** — the markets references below are era artifacts (the market
+system was exterminated 2026-07-22), and the archive loads this audit gated
+have long since run.
+
 **Date:** 2026-07-08. Purpose: classify every piece of the collection contract by
 what a future change would cost, and drive the "would force re-paying real money"
 list to zero. Companion to [archive-prefilter-pipeline.md](archive-prefilter-pipeline.md).

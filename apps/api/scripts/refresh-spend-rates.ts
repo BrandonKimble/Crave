@@ -16,7 +16,7 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  */
 async function main() {
   const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ['warn', 'error'],
+    logger: ['error', 'warn'],
   });
   stopCronsForScript(app);
   const analytics = app.get(SpendAnalyticsService);

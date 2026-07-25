@@ -7,10 +7,11 @@ import {
   CollectorSourceRegistryService,
   type CollectorHeartbeat,
 } from '../content-processing/reddit-collector/collector-source-registry.service';
-import { geminiCostMicros } from '../external-integrations/shared/gemini-pricing';
+import { pricedGeminiRow } from '../external-integrations/shared/gemini-pricing';
+import { median } from '../external-integrations/shared/spend-analytics.service';
 import {
   placesCostMicrosPerCall,
-  tomtomCostMicrosPerDraw,
+  tomtomBlendedCostMicrosPerDraw,
 } from '../external-integrations/shared/vendor-pricing';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -35,18 +36,10 @@ const MONTH_POSITION_HOT_RATIO = 1.3;
 
 export type MonthPositionColor = 'blue' | 'yellow' | 'red';
 
-/** Median (even length: mean of middle two). Exported for the expectation
- *  math's RED-provable tests. */
-export function medianOf(values: number[]): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
-}
+/** Median (even length: mean of middle two). The ONE implementation lives
+ *  in spend-analytics.service.ts; re-exported here under the name the
+ *  expectation math's RED-provable tests use. */
+export const medianOf = median;
 
 /**
  * Expectation v2 (2026-07-25 — the owner's ±20-30% complaint): expected
@@ -426,13 +419,8 @@ export class OpsSummaryService {
     });
     const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
     for (const row of rows) {
-      buckets[this.dayBucket(row.createdAt, windowStart)] += geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.inputTokens ?? 0,
-        outputTokens: row.outputTokens ?? 0,
-        cachedTokens: row.cachedTokens ?? 0,
-      });
+      buckets[this.dayBucket(row.createdAt, windowStart)] +=
+        pricedGeminiRow(row);
     }
     return buckets;
   }
@@ -467,7 +455,7 @@ export class OpsSummaryService {
     const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
     for (const row of rows) {
       buckets[this.dayBucket(row.createdAt, windowStart)] +=
-        (row.requestCount ?? 0) * tomtomCostMicrosPerDraw;
+        (row.requestCount ?? 0) * tomtomBlendedCostMicrosPerDraw;
     }
     return buckets;
   }
@@ -485,13 +473,7 @@ export class OpsSummaryService {
     });
     let total = 0;
     for (const row of rows) {
-      total += geminiCostMicros({
-        model: row.model ?? undefined,
-        mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
-        inputTokens: row.inputTokens ?? 0,
-        outputTokens: row.outputTokens ?? 0,
-        cachedTokens: row.cachedTokens ?? 0,
-      });
+      total += pricedGeminiRow(row);
     }
     return total;
   }
@@ -514,7 +496,7 @@ export class OpsSummaryService {
       where: { service: 'tomtom', createdAt: { gte: start, lt: end } },
       _sum: { requestCount: true },
     });
-    return (agg._sum.requestCount ?? 0) * tomtomCostMicrosPerDraw;
+    return (agg._sum.requestCount ?? 0) * tomtomBlendedCostMicrosPerDraw;
   }
 
   // -------------------------------------------------------------- vendors
@@ -784,6 +766,10 @@ export class OpsSummaryService {
 
     return heartbeats.map((beat): OpsSummary['sources'][number] => {
       const times = timesByKey.get(`${beat.sourceId} ${beat.lane}`);
+      // Broader than spend-analytics' checkLaneReds ALERT predicate on
+      // purpose: the dashboard also shows transient lateness + coverage
+      // gaps; alerts stay restricted to durable conditions (see the
+      // checkLaneReds doc comment).
       const red =
         beat.normalizedLateness > 1 ||
         beat.outputCollapsed ||

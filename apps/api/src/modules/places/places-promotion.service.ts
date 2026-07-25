@@ -87,6 +87,9 @@ import {
  */
 export const HEADER_ANSWER_MEMORY_TTL_MS = NEGATIVE_OBSERVATION_TTL_MS;
 
+/** §16 K4-derived: 2 vendor calls per item ÷ ~5 QPS vendor window → 500ms. */
+const VENDOR_QPS_SPACING_MS = 500;
+
 /**
  * §16 DERIVED — per-tick drain read bound: the scarce pool's monthly budget
  * (tomtom.scarcePolygons, §16 K1 owner price-tag in governance.service) is
@@ -96,9 +99,6 @@ export const HEADER_ANSWER_MEMORY_TTL_MS = NEGATIVE_OBSERVATION_TTL_MS;
  * (paid_seed enqueues ~23k rows at once) — it is not a pacing knob. What
  * changes it: the owner re-pricing the scarce pool, never tuning.
  */
-export /** §16 K4-derived: 2 vendor calls per item ÷ ~5 QPS vendor window → 500ms. */
-const VENDOR_QPS_SPACING_MS = 500;
-
 const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
 
 /**
@@ -316,7 +316,7 @@ export class PlacesPromotionService {
       // tagged with a non-dispatchable campaign (breached/not yet approved)
       // is skipped — stays queued, retried once the campaign resumes —
       // WITHOUT spending a pool draw on work whose budget is closed.
-      const campaignId = (item as { campaignId?: string | null }).campaignId;
+      const campaignId = item.campaignId;
       if (campaignId && this.spendCampaigns) {
         const dispatchable =
           await this.spendCampaigns.isDispatchable(campaignId);
@@ -343,9 +343,61 @@ export class PlacesPromotionService {
     }
   }
 
+  /**
+   * §24 Task 3 metering wrapper: EVERY exit of the vendor flow with
+   * consumed draws (promoted, consumed-draw miss, wrong-entity reject,
+   * no-rings, transport error) meters those draws against the item's
+   * campaign envelope — a real vendor draw must never escape the campaign
+   * budget just because the item didn't promote.
+   */
   private async promoteOne(
     item: PlaceGeometryPromotion,
     now: Date,
+  ): Promise<DrainOutcome> {
+    const draws = { cheap: 0, scarce: 0 };
+    try {
+      return await this.promoteOneUnmetered(item, now, draws);
+    } finally {
+      await this.meterCampaignSpend(item, draws);
+    }
+  }
+
+  /**
+   * §24 Task 3: envelope = budget. Pool admission (rate/backstop) already
+   * governed the draws; this meters them against the campaign's budget, if
+   * the item carries one. Never blocks the outcome itself — a campaign
+   * breach here just flips the campaign's state for the NEXT item's
+   * isDispatchable check.
+   */
+  private async meterCampaignSpend(
+    item: PlaceGeometryPromotion,
+    draws: { cheap: number; scarce: number },
+  ): Promise<void> {
+    const campaignId = item.campaignId;
+    const spendMicros =
+      draws.cheap * tomtomCheapCostMicrosPerDraw +
+      draws.scarce * tomtomScarceCostMicrosPerDraw;
+    if (!campaignId || !this.spendCampaigns || spendMicros <= 0) {
+      return;
+    }
+    await this.spendCampaigns
+      .recordSpend(campaignId, spendMicros)
+      .catch((error: unknown) => {
+        this.logger.warn('Campaign spend recording failed (outcome stands)', {
+          placeId: item.placeId,
+          campaignId,
+          error:
+            error instanceof Error
+              ? { message: error.message }
+              : { message: String(error) },
+        });
+      });
+  }
+
+  private async promoteOneUnmetered(
+    item: PlaceGeometryPromotion,
+    now: Date,
+    draws: { cheap: number; scarce: number },
   ): Promise<DrainOutcome> {
     const place = await this.prisma.place.findUnique({
       where: { placeId: item.placeId },
@@ -374,11 +426,9 @@ export class PlacesPromotionService {
       return 'promoted';
     }
 
-    // §24 Task 3: count of vendor draws ACTUALLY consumed this call (not
-    // pool denials, which never reach the vendor) — the basis for
-    // recordSpend on a successful promotion below.
-    let cheapDrawsThisCall = 0;
-    let scarceDrawsThisCall = 0;
+    // §24 Task 3: `draws` counts vendor draws ACTUALLY consumed this call
+    // (not pool denials, which never reach the vendor) — metered against
+    // the campaign envelope by the promoteOne wrapper on EVERY exit.
 
     // Step 1 — the stable TomTom geometry id. tomtom-provider places carry
     // it as providerPlaceId (§1 identity law); census-seeded places (GEOID
@@ -413,11 +463,11 @@ export class PlacesPromotionService {
         return 'stop'; // cheap pool not-now — NOT an attempt; next window
       }
       if (resolved.kind === 'miss') {
-        cheapDrawsThisCall += 1;
+        draws.cheap += 1;
         await this.recordAttempt(item.placeId, now);
         return 'attempted';
       }
-      cheapDrawsThisCall += 1;
+      draws.cheap += 1;
       geometryId = resolved.geometryId;
       await this.prisma.placeGeometryPromotion.update({
         where: { placeId: item.placeId },
@@ -448,11 +498,11 @@ export class PlacesPromotionService {
       return 'stop';
     }
     if (polygon.kind === 'miss') {
-      scarceDrawsThisCall += 1;
+      draws.scarce += 1;
       await this.recordAttempt(item.placeId, now);
       return 'attempted';
     }
-    scarceDrawsThisCall += 1;
+    draws.scarce += 1;
 
     // §2.5 WRONG-ENTITY GUARD: the vendor sometimes resolves a name to a
     // much smaller feature (observed seed run: San Antonio TX → a 1×2km
@@ -517,32 +567,6 @@ export class PlacesPromotionService {
       trigger: item.trigger,
       geometryId,
     });
-    // §24 Task 3: envelope = budget. Pool admission (rate/backstop) already
-    // governed this draw above; this meters it against the campaign's
-    // budget, if the item carries one. Never blocks the promotion itself —
-    // a campaign breach here just flips the campaign's state for the NEXT
-    // item's isDispatchable check.
-    const campaignId = (item as { campaignId?: string | null }).campaignId;
-    const spendMicros =
-      cheapDrawsThisCall * tomtomCheapCostMicrosPerDraw +
-      scarceDrawsThisCall * tomtomScarceCostMicrosPerDraw;
-    if (campaignId && this.spendCampaigns && spendMicros > 0) {
-      await this.spendCampaigns
-        .recordSpend(campaignId, spendMicros)
-        .catch((error: unknown) => {
-          this.logger.warn(
-            'Campaign spend recording failed (promotion stands)',
-            {
-              placeId: item.placeId,
-              campaignId,
-              error:
-                error instanceof Error
-                  ? { message: error.message }
-                  : { message: String(error) },
-            },
-          );
-        });
-    }
     return 'promoted';
   }
 

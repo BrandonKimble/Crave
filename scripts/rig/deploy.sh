@@ -36,7 +36,9 @@ deploy_one() {
   local svc="$1" attempt out
   for attempt in 1 2; do
     echo "==> Deploying $svc (attempt $attempt) ..."
-    out="$(railway up --service "$svc" --ci 2>&1 | tail -1)"
+    # `|| true`: under `set -euo pipefail` a non-zero railway exit would kill
+    # the script HERE, before the retry loop ever sees the failure.
+    out="$(railway up --service "$svc" --ci 2>&1 | tail -1 || true)"
     if [[ "$out" == *"Deploy complete"* ]]; then
       echo "==> $svc: Deploy complete"
       return 0

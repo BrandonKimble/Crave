@@ -86,6 +86,33 @@ export function geminiCostMicros(usage: GeminiUsageTokens): number {
   return Math.round(discounted * 1_000_000);
 }
 
+/** One priced ledger row: the shared row→micros mapping for every
+ *  findMany/queryRaw → loop → geminiCostMicros summation site (ops-summary,
+ *  spend-analytics). Accepts both the prisma camelCase select shape and the
+ *  raw-SQL snake_case shape (whose counts may arrive as bigint). */
+export function pricedGeminiRow(row: {
+  model?: string | null;
+  mode?: string | null;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedTokens?: number | null;
+  input_tokens?: number | bigint | null;
+  output_tokens?: number | bigint | null;
+  cached_tokens?: number | bigint | null;
+}): number {
+  const num = (
+    camel: number | null | undefined,
+    snake: number | bigint | null | undefined,
+  ): number => (camel != null ? camel : snake != null ? Number(snake) : 0);
+  return geminiCostMicros({
+    model: row.model ?? undefined,
+    mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
+    inputTokens: num(row.inputTokens, row.input_tokens),
+    outputTokens: num(row.outputTokens, row.output_tokens),
+    cachedTokens: num(row.cachedTokens, row.cached_tokens),
+  });
+}
+
 /**
  * K4 vendor fact: the AI Studio monthly spend cap resets on the first day
  * of each month, PST (the console says so verbatim), with ~10min

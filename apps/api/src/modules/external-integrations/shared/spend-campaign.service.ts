@@ -26,7 +26,7 @@ import { OpsAlertsService } from './ops-alerts.service';
  * |drift| naturally exceeds it — there is no code path that special-cases
  * "first campaign" beyond measureDrift legitimately returning null.
  */
-const ENVELOPE_BOOTSTRAP_TOLERANCE = 0.25;
+export const ENVELOPE_BOOTSTRAP_TOLERANCE = 0.25;
 
 export type SpendCampaignState =
   | 'draft'
@@ -170,7 +170,7 @@ function campaignPoolName(campaignId: string): string {
  * for those (the spend_campaigns table is empty-ish in practice; no data
  * migration was written for this).
  */
-function hashEstimate(payload: {
+export function hashEstimate(payload: {
   workClass: string;
   unit: string;
   unitCount: number;

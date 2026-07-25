@@ -401,13 +401,15 @@ async function main(): Promise<void> {
       `Seed complete. Promotion backlog: ${backlog} rows — drains through ` +
         `the governed pools (scarce budget = the §16 K1 owner price-tag).`,
     );
-    await spendCampaigns.complete(campaignId).catch((error: unknown) => {
-      console.warn(
-        `  (campaign ${campaignId} not completed: ${
-          error instanceof Error ? error.message : String(error)
-        })`,
-      );
-    });
+    // Do NOT complete() here: this script only ENQUEUES; all spend happens
+    // later via the hourly drain, which gates on isDispatchable(campaignId)
+    // — a completed campaign would leave the backlog permanently
+    // undrainable and feed a bogus ~$0 actual into measureDrift.
+    console.log(
+      `Campaign ${campaignId} stays approved while the drain works the ` +
+        `backlog. When the backlog is empty, complete it via ` +
+        `scripts/complete-campaign.ts --campaign-id ${campaignId}`,
+    );
   } finally {
     await app.close();
   }

@@ -85,8 +85,4 @@ export class KeywordSearchMetricsService implements OnModuleInit {
       jobsFailed: this.counters.jobsFailed,
     });
   }
-
-  snapshotCounters(): Record<string, number> {
-    return { ...this.counters };
-  }
 }

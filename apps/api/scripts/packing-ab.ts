@@ -6,7 +6,6 @@ process.env.PROCESS_ROLE ||= 'all';
 // Force interactive extraction, no background collection machinery.
 delete process.env.COLLECTION_LLM_MODE;
 process.env.LLM_BATCH_POLL_ENABLED = 'false';
-process.env.COLLECTION_JOBS_ENABLED = 'false';
 process.env.COLLECTION_SCHEDULER_ENABLED = 'false';
 
 import * as fs from 'fs';

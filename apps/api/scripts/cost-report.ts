@@ -3,7 +3,7 @@ process.env.PROCESS_ROLE = 'all';
 // Report-only process: it must never compete for the batch lifecycle
 // (single-writer, audit §6).
 process.env.LLM_BATCH_POLL_ENABLED = 'false';
-process.env.COLLECTION_JOBS_ENABLED = 'false';
+process.env.COLLECTION_SCHEDULER_ENABLED = 'false';
 
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';

@@ -363,16 +363,6 @@ export interface SearchResponse {
   metadata: SearchResponseMetadata;
 }
 
-/** @deprecated Use SearchResponse with dishes instead */
-export interface LegacySearchResponse {
-  format: QueryFormat;
-  plan: QueryPlan;
-  food: FoodResult[];
-  restaurants?: RestaurantResult[];
-  sqlPreview?: string | null;
-  metadata: SearchResponseMetadata;
-}
-
 export interface Coordinate {
   lat: number;
   lng: number;

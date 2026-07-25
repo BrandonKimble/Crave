@@ -30,7 +30,6 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
  *
  *   yarn polls:seed-fixtures
  */
-const MARKET_KEY = process.env.TEST_POLL_MARKET_KEY ?? 'region-us-ny-new-york';
 
 type SeedPoll = {
   topicType: PollTopicType;

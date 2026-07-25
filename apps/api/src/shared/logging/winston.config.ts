@@ -213,7 +213,7 @@ export const requestLoggingConfig = {
   colorize: false,
   // Skip logging for health check endpoints
   skip: (req: { url?: string }) => {
-    return req.url?.includes('/health') || req.url?.includes('/metrics');
+    return req.url?.includes('/health');
   },
   // Custom request/response logging
   requestWhitelist: ['url', 'method', 'httpVersion', 'originalUrl', 'query'],

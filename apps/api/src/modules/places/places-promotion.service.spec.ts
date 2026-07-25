@@ -78,6 +78,8 @@ function makeHarness(options: {
   fetchPolygon?: jest.Mock;
   /** Wave-6 item 1b: pg_try_advisory_lock outcome (default acquired). */
   lockAcquired?: boolean;
+  /** §24 Task 3: optional campaign-envelope mock (isDispatchable/recordSpend). */
+  spendCampaigns?: { isDispatchable: jest.Mock; recordSpend: jest.Mock };
 }) {
   const executeRawCalls: Array<{ sql: string; values: unknown[] }> = [];
   const prisma = {
@@ -136,6 +138,7 @@ function makeHarness(options: {
     prisma as never,
     probe as never,
     logger,
+    options.spendCampaigns as never,
   );
   return { service, prisma, probe, executeRawCalls };
 }
@@ -348,6 +351,97 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         "date_trunc('month', last_attempt_at)",
       );
       expect(String(drainSelect.sql)).toContain('promoted_at IS NULL');
+    });
+  });
+
+  describe('campaign envelope metering (§24 Task 3)', () => {
+    it('a consumed-draw MISS still meters its draws into the campaign — real spend never escapes the envelope', async () => {
+      // Cheap step resolves (1 cheap draw), scarce step misses (1 scarce
+      // draw): the item is NOT promoted, but both draws hit the vendor and
+      // must be metered against the campaign budget.
+      const fetchPolygon = jest.fn().mockResolvedValue({ kind: 'miss' });
+      const spendCampaigns = {
+        isDispatchable: jest.fn().mockResolvedValue(true),
+        recordSpend: jest.fn().mockResolvedValue(undefined),
+      };
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow({ campaignId: 'camp-1' })],
+        fetchPolygon,
+        spendCampaigns,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      // Not promoted (miss path)…
+      expect(prisma.place.update).not.toHaveBeenCalled();
+      // …but the campaign was still charged for the consumed draws.
+      expect(spendCampaigns.recordSpend).toHaveBeenCalledTimes(1);
+      const [campaignId, micros] = spendCampaigns.recordSpend.mock.calls[0];
+      expect(campaignId).toBe('camp-1');
+      expect(micros).toBeGreaterThan(0);
+    });
+
+    it('a wrong-entity rejection meters its draws into the campaign', async () => {
+      // Non-trivial place bbox with a tiny returned polygon → wrong-entity
+      // reject ('attempted'), after 1 cheap + 1 scarce consumed draw.
+      const tinyPolygon = {
+        type: 'FeatureCollection' as const,
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [
+                [
+                  [0, 0],
+                  [0, 0.001],
+                  [0.001, 0.001],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      };
+      const fetchPolygon = jest
+        .fn()
+        .mockResolvedValue({ kind: 'ok', geojson: tinyPolygon });
+      const spendCampaigns = {
+        isDispatchable: jest.fn().mockResolvedValue(true),
+        recordSpend: jest.fn().mockResolvedValue(undefined),
+      };
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow({ campaignId: 'camp-1' })],
+        place: makePlaceRow({
+          bboxMinLat: 0,
+          bboxMinLng: 0,
+          bboxMaxLat: 1,
+          bboxMaxLng: 1,
+        }),
+        fetchPolygon,
+        spendCampaigns,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      expect(prisma.place.update).not.toHaveBeenCalled();
+      expect(spendCampaigns.recordSpend).toHaveBeenCalledTimes(1);
+      expect(spendCampaigns.recordSpend.mock.calls[0][1]).toBeGreaterThan(0);
+    });
+
+    it('a non-dispatchable campaign skips the item without any draw or spend', async () => {
+      const fetchPolygon = jest.fn();
+      const resolveGeometryId = jest.fn();
+      const spendCampaigns = {
+        isDispatchable: jest.fn().mockResolvedValue(false),
+        recordSpend: jest.fn(),
+      };
+      const { service } = makeHarness({
+        queueRows: [makeQueueRow({ campaignId: 'camp-1' })],
+        fetchPolygon,
+        resolveGeometryId,
+        spendCampaigns,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      expect(fetchPolygon).not.toHaveBeenCalled();
+      expect(resolveGeometryId).not.toHaveBeenCalled();
+      expect(spendCampaigns.recordSpend).not.toHaveBeenCalled();
     });
   });
 

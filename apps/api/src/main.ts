@@ -144,21 +144,6 @@ async function bootstrap() {
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
-  fastifyAdapter.getInstance().addHook('preHandler', async (req, reply) => {
-    if (req.raw.url?.startsWith('/metrics')) {
-      const headers = reply.getHeaders();
-      if ('content-security-policy' in headers) {
-        reply.raw.removeHeader('content-security-policy');
-      }
-      if ('x-content-type-options' in headers) {
-        reply.raw.removeHeader('x-content-type-options');
-      }
-      if ('x-frame-options' in headers) {
-        reply.raw.removeHeader('x-frame-options');
-      }
-    }
-  });
-
   // Enhanced CORS configuration
   app.enableCors({
     origin: isProd ? false : true, // Disable CORS in prod, allow all in dev
@@ -191,14 +176,7 @@ async function bootstrap() {
   // Prefix all routes with /api/v1 (API versioning for future-proofing)
   // This allows us to introduce breaking changes in /api/v2 without affecting existing clients
   app.setGlobalPrefix('api/v1', {
-    exclude: [
-      'metrics',
-      'health',
-      'health/live',
-      'health/ready',
-      'privacy',
-      'terms',
-    ],
+    exclude: ['health', 'health/live', 'health/ready', 'privacy', 'terms'],
   });
 
   // Enable graceful shutdown hooks

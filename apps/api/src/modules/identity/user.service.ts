@@ -240,42 +240,19 @@ export class UserService {
         ? null
         : JSON.stringify(dto.answers as Prisma.InputJsonValue);
 
-    try {
-      await this.prisma.$executeRaw`
-        UPDATE "users"
-        SET
-          "onboarding_status" = 'completed'::"onboarding_status",
-          "onboarding_completed_at" = NOW(),
-          "onboarding_version" = ${dto.onboardingVersion},
-          "onboarding_selected_city" = ${selectedCity},
-          "onboarding_preview_city" = ${previewCity},
-          "onboarding_responses" = ${responses}::jsonb
-        WHERE "user_id" = ${userId}::uuid
-      `;
+    await this.prisma.$executeRaw`
+      UPDATE "users"
+      SET
+        "onboarding_status" = 'completed'::"onboarding_status",
+        "onboarding_completed_at" = NOW(),
+        "onboarding_version" = ${dto.onboardingVersion},
+        "onboarding_selected_city" = ${selectedCity},
+        "onboarding_preview_city" = ${previewCity},
+        "onboarding_responses" = ${responses}::jsonb
+      WHERE "user_id" = ${userId}::uuid
+    `;
 
-      return this.getProfile(userId);
-    } catch (error) {
-      if (!this.isMissingOnboardingSchemaError(error)) {
-        throw error;
-      }
-
-      this.logger.warn(
-        'Onboarding schema columns missing; returning development fallback onboarding profile',
-        { userId },
-      );
-
-      const profile = await this.getProfile(userId);
-      return {
-        ...profile,
-        onboarding: {
-          status: 'completed',
-          completedAt: new Date().toISOString(),
-          onboardingVersion: dto.onboardingVersion,
-          selectedCity,
-          previewCity,
-        },
-      };
-    }
+    return this.getProfile(userId);
   }
 
   /** W4 fix: the "Polls" stat MUST agree with the profile Polls section
@@ -392,31 +369,19 @@ export class UserService {
   private async getOnboardingProfileRow(
     userId: string,
   ): Promise<OnboardingProfileRow> {
-    try {
-      const rows = await this.prisma.$queryRaw<OnboardingProfileRow[]>`
-        SELECT
-          "onboarding_status" AS "onboardingStatus",
-          "onboarding_completed_at" AS "onboardingCompletedAt",
-          "onboarding_version" AS "onboardingVersion",
-          "onboarding_selected_city" AS "onboardingSelectedCity",
-          "onboarding_preview_city" AS "onboardingPreviewCity"
-        FROM "users"
-        WHERE "user_id" = ${userId}::uuid
-        LIMIT 1
-      `;
+    const rows = await this.prisma.$queryRaw<OnboardingProfileRow[]>`
+      SELECT
+        "onboarding_status" AS "onboardingStatus",
+        "onboarding_completed_at" AS "onboardingCompletedAt",
+        "onboarding_version" AS "onboardingVersion",
+        "onboarding_selected_city" AS "onboardingSelectedCity",
+        "onboarding_preview_city" AS "onboardingPreviewCity"
+      FROM "users"
+      WHERE "user_id" = ${userId}::uuid
+      LIMIT 1
+    `;
 
-      return rows[0] ?? DEFAULT_ONBOARDING_PROFILE_ROW;
-    } catch (error) {
-      if (!this.isMissingOnboardingSchemaError(error)) {
-        throw error;
-      }
-
-      this.logger.warn(
-        'Onboarding schema columns missing; falling back to default onboarding profile',
-        { userId },
-      );
-      return DEFAULT_ONBOARDING_PROFILE_ROW;
-    }
+    return rows[0] ?? DEFAULT_ONBOARDING_PROFILE_ROW;
   }
 
   private resolveAuthIdentifier(claims: ClerkJwtClaims): string | undefined {
@@ -542,24 +507,6 @@ export class UserService {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
-  }
-
-  private isMissingOnboardingSchemaError(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
-      return false;
-    }
-
-    const message = typeof error.message === 'string' ? error.message : '';
-    return (
-      message.includes('onboarding_status') ||
-      message.includes('onboarding_responses') ||
-      message.includes('"onboarding_status" does not exist') ||
-      message.includes('type "onboarding_status" does not exist') ||
-      message.includes('onboarding_completed_at') ||
-      message.includes('onboarding_version') ||
-      message.includes('onboarding_selected_city') ||
-      message.includes('onboarding_preview_city')
-    );
   }
 
   private buildOnboardingProfile(

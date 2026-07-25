@@ -17,12 +17,6 @@ const GOVERNANCE_REQUEUE_DELAY_MS = 60_000;
  * Keyword Batch Processing Worker
  *
  * Processes keyword-search collection batches via the shared batch processor.
- *
- * TODO: REFACTOR OPPORTUNITY - Common LLM Processing Pipeline
- * This worker should eventually share steps 2-5 with other collection workers
- * (filter/transform, chunk, LLM processing, UnifiedProcessingService).
- * The key difference: Keyword workers get posts via keyword search APIs and
- * feed into the same LLM pipeline as chronological workers.
  */
 @Processor('keyword-batch-processing-queue')
 @Injectable()
