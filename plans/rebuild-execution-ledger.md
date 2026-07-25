@@ -1937,3 +1937,21 @@ image (constants/onboarding.ts); Clerk dashboard toggles; App Store privacy
 label; 5 stray remote branches (clean-taskmaster, codex/backend-search-market-split,
 codex/frontend-runtime-ui-split, fix/map-lod-wiggle-dismiss, simone-system) —
 delete after confirming.
+
+## 2026-07-25 — Discovery-curve red team: the ceiling is real and Austin proves it
+
+Owner red-teamed the Heaps power-law projection ("it goes up forever — I
+expected flattening"). Correct: refit with a stretched-exponential
+saturating model C(n)=U(1−e^−(n/τ)^γ). The decisive validation: fitted to
+Austin's own discovery data ALONE, the model recovers ceiling U=4,700 —
+exactly the researched Austin active-restaurant universe (4,400–4,700;
+ratio 1.00–1.07, rmse ±21 restaurants). A 3-year archive discovers ~the
+full Google-active universe and then flattens; churn/noise effects are
+inside the calibration because Austin's run spanned them. NYC (universe
+~17.6–18.2k Google-active; DOHMH permits 28k as the loose upper bound):
+projected NEW restaurants for the full archive = ~12.1–12.5k (vs 32k
+power-law, 61k blanket ratio). Estimate lineage for archive:foodnyc:
+$3,633 (blanket) → $2,462 (power-law) → $1,668 all-in / $2,085 envelope
+(campaign 20a5e369, ceiling-calibrated). Each prior draft deleted
+unapproved. Rates themselves still conservative (interactive_pipeline
+measured on blurred data, shrinks as tags accumulate).
