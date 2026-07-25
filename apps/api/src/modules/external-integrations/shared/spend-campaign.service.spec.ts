@@ -494,4 +494,56 @@ describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifes
     });
     expect(second.estimateHash).not.toBe(first.estimateHash);
   });
+
+  it('RED-proof: resumeAfterBreach works in a FRESH process (breached pools are not boot-rehydrated — it must self-register the grant pool)', async () => {
+    const prisma = buildPrisma();
+    prisma._unitCosts.set('gemini.reddit_extraction::document', {
+      microUsdPerUnit: 10,
+    });
+    const firstGovernance = buildGovernance();
+    const service = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      firstGovernance,
+    );
+    const estimate = await service.prepareEstimate({
+      name: 'archive:test',
+      workClass: 'gemini.reddit_extraction',
+      unit: 'document',
+      unitCount: 100,
+    });
+    await service.approve(estimate.campaignId, estimate.estimateHash);
+    await service.recordSpend(estimate.campaignId, 5000); // breach (envelope 1250)
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
+
+    // Fresh process: NEW registry with NO campaign pool registered (boot
+    // rehydration skips breached campaigns) — the old code threw
+    // PoolRegistrationError here, making the recovery path unrunnable.
+    const freshService = new SpendCampaignService(
+      prisma as never,
+      stubLogger() as never,
+      buildOpsAlerts().mock,
+      buildGovernance(),
+    );
+    const rate = 10;
+    const estimateMicros = Math.round(100 * rate);
+    const resumed = await freshService.resumeAfterBreach(
+      estimate.campaignId,
+      // hash the fresh service will recompute (bootstrap tolerance 0.25)
+      await (async () => {
+        const { hashEstimate } = await import('./spend-campaign.service');
+        return hashEstimate({
+          workClass: 'gemini.reddit_extraction',
+          unit: 'document',
+          unitCount: 100,
+          microUsdPerUnit: rate,
+          estimateMicros,
+          toleranceFraction: 0.25,
+        });
+      })(),
+    );
+    expect(resumed.campaignId).toBe(estimate.campaignId);
+    expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('approved');
+  });
 });

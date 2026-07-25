@@ -717,7 +717,31 @@ export class SpendCampaignService {
     );
     const governance = this.requireGovernance();
     const poolName = campaignPoolName(campaignId);
-    const status = governance.pools.poolStatus(poolName);
+    // A BREACHED campaign's grant pool is NOT boot-rehydrated (rehydration
+    // filters to approved/running), so in a fresh process — which is exactly
+    // where the ops resume script runs — the pool doesn't exist yet.
+    // Register it first, mirroring reRegisterCampaignGrants' shape (old
+    // envelope + spent-to-date), then top up to the refined envelope below.
+    let status: ReturnType<typeof governance.pools.poolStatus>;
+    try {
+      status = governance.pools.poolStatus(poolName);
+    } catch {
+      const oldEnvelopeMicros = Math.round(
+        Number(row.estimateMicros ?? estimateMicros) *
+          (1 + (row.toleranceFraction ?? toleranceFraction)),
+      );
+      governance.pools.register({
+        name: poolName,
+        credential: 'campaign',
+        window: { kind: 'grant', amount: oldEnvelopeMicros },
+        reservationTtlMs: 60_000,
+      });
+      const spentMicros = Number(row.spentMicros);
+      if (spentMicros > 0) {
+        await governance.pools.meter(poolName, spentMicros);
+      }
+      status = governance.pools.poolStatus(poolName);
+    }
     const topUp = Math.max(0, newEnvelopeMicros - status.limit);
     if (topUp > 0) {
       await governance.pools.mintGrant(poolName, topUp);

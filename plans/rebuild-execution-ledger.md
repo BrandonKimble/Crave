@@ -2060,3 +2060,25 @@ replay), infinite gentle retry on transient parent-fetch failures
 excluded from the relevance-gate rate denominator; batchJobsPending no
 longer counts terminal failed relics; healed parent fetches folded into
 the §14.7 drift pair's actual side. 871 tests green.
+
+## 2026-07-26 — Adversarial review of the fix batch itself (patches-on-patches check)
+
+The final red team's OWN output got a hostile second review (fixes
+introduce bugs). Verdict: the batch held — places-promotion metering,
+user.service shim removal, pricedGeminiRow across all 7 call-site shapes,
+median re-export (no cycle), deploy.sh, orphan-sweep SQL escaping +
+id-format loop-closure + expectedBatches accounting all verified solid;
+batchJobsPending already correct in HEAD. ONE real catch:
+resumeAfterBreach was UNRUNNABLE in the only context that matters — a
+fresh process — because breached campaigns are excluded from boot grant
+rehydration, so the pool didn't exist and poolStatus threw. Fixed:
+resumeAfterBreach self-registers the grant pool (old envelope +
+spent-to-date, mirroring rehydration) before topping up; RED-proof spec
+drives breach → fresh registry → resume. Two accepted-with-eyes-open
+notes recorded by the reviewer: script-context drift tolerance always
+reads bootstrap (in-memory draw ledger, documented); orphan sweep can
+re-fetch ≤25 parents if a tick dies between fetch and queueing (bounded,
+only under an already-RED failure). Owner's abstractions-smell audit:
+extensions consistently compose (manifest, curve override, orphan heal
+all rode existing machinery); named smells are all recorded deferrals
+with triggers (§22/§25), not compensation layers. 876 tests green.
