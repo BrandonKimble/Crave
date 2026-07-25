@@ -1894,3 +1894,46 @@ approved in-month (burst-robust; mean→median diverges ~11× under the burst
 fixture). 857 tests green. Archive-file fact recorded: FoodNYC dump ends
 2025-12-31 → Jan–May 2026 hole until a fresher dump is downloaded; owner
 holding the NYC archive run for that.
+
+## 2026-07-25 — FINAL COMPREHENSIVE RED TEAM (owner-ordered) + fix batch (a7f0d014)
+
+Five reviewers + sub-audits over: suggest refit impl, past plans completion,
+app-side surfaces, ops/spend/deploy (report-only), open-items census. Verdicts:
+no abandoned-midway plans; spend governance matches ledger point-for-point;
+suggest refit matches the ratified plan (key trace: viewed-dish profile
+auto-open NOT suppressed — panel/focus flags clear synchronously before submit).
+
+FIXED (commit a7f0d014): dead flat-favorites vertical deleted end-to-end
+(mobile hook/service → API service/endpoints/dto → UserFavorite model +
+drop-table migration 20260725190000, drift-path applied) — and the real bug it
+hid: autocomplete's favorites lane read userFavorite, which NOTHING wrote (the
+live system is favorite_list_items) — silently empty forever; rewired to lists
+(restaurant + connection→food). railway.worker.json startCommand removed
+(shell-less exec: "PROCESS_ROLE=worker" was argv, not env; PROCESS_ROLE is a
+Railway service var; worker now runs the Dockerfile migrate-on-boot CMD like
+api — mirrors d4311748). Onboarding example.com → legalLinks constants.
+prisma.service FIXME scaffold deleted. includeSimilar moved into
+packages/shared (augmentation + stale "API branch not on main" TODOs deleted;
+now always sent explicitly — API DTO accepts it). BookmarksPanel share routed
+through the universal share modal (silent-catch raw Share.share deleted).
+Polls dead styles + unused feed-runtime return fields removed. Autocomplete
+fusion JSDoc corrected (lane-partitioned first-wins dedupe, not summed RRF).
+marketsInView claim verified false (grep-zero; agent naming slip).
+Suites: api 855 green, mobile 409 green; :3000 rebuilt+restarted, health 200.
+
+REPORTED, not fixed (deliberate): ops dashboard zero-vs-null in placesSection +
+silent catch-to-empty pattern + ops-alerts dedupe-key convention (other
+session's §24 surface — report-only); ProfileSectionsBody vs BookmarksPanel
+gallery-grouping duplication (med extraction risk, not urgent);
+suggestion-highlight lacks diacritic folding (graceful degrade); impression
+info-log volume + unsalted sha256 prefix (known: de-identification, not
+anonymization); onboardingStore v1→v2 migrate shim (load-bearing until v1
+retired); mobile tsc has 2 pre-existing map-surface type errors (excluded
+surface, untouched).
+
+OWNER-ONLY ITEMS: real Terms URL still Apple stdEULA placeholder pending
+hosted terms (privacy → craveapp.ai/privacy is live); onboarding placeholder
+image (constants/onboarding.ts); Clerk dashboard toggles; App Store privacy
+label; 5 stray remote branches (clean-taskmaster, codex/backend-search-market-split,
+codex/frontend-runtime-ui-split, fix/map-lod-wiggle-dismiss, simone-system) —
+delete after confirming.
