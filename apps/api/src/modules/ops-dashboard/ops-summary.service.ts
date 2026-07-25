@@ -270,7 +270,15 @@ export class OpsSummaryService {
         ...pipelineCore,
         unackedAlerts: unacknowledgedCount,
       },
-      campaigns,
+      // Prisma returns BIGINT columns as BigInt, which JSON.stringify
+      // rejects — surfaced by the first real spend_campaigns row (an empty
+      // table serialized fine). Map to plain numbers at the payload edge.
+      campaigns: campaigns.map((row) => ({
+        ...row,
+        spentMicros: row.spentMicros === null ? null : Number(row.spentMicros),
+        estimateMicros:
+          row.estimateMicros === null ? null : Number(row.estimateMicros),
+      })),
       alerts: { latest: alerts, unacknowledgedCount },
     };
   }
