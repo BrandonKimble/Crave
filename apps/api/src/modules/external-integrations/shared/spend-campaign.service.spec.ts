@@ -269,7 +269,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
-      buildOpsAlerts(),
+      buildOpsAlerts().mock,
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -301,7 +301,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
-      buildOpsAlerts(),
+      buildOpsAlerts().mock,
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -334,7 +334,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
-      buildOpsAlerts(),
+      buildOpsAlerts().mock,
       governance,
     );
     const estimate = await service.prepareEstimate({
@@ -376,7 +376,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     const service = new SpendCampaignService(
       prisma as never,
       stubLogger() as never,
-      buildOpsAlerts(),
+      buildOpsAlerts().mock,
       governance,
     );
     const estimate = await service.prepareEstimate({
