@@ -45,8 +45,15 @@ echo "==> Recreating local db '$LOCAL_DB' (dropping the stale copy) ..."
 dropdb --if-exists "$LOCAL_DB"
 createdb "$LOCAL_DB"
 
+# Prod runs the timescaledb-ha image; its extensions don't exist in the local
+# Postgres. Filter every timescale TOC entry out of the restore (we use none
+# of it — plain tables only) so pg_restore exits clean instead of tripping
+# set -e on ignorable errors.
+TOC="$DUMP_DIR/toc.filtered"
+pg_restore -l "$DUMP_FILE" | grep -viE 'timescaledb|_timescaledb|continuous_agg' > "$TOC"
+
 echo "==> Restore: pre-data ..."
-pg_restore -d "$LOCAL_DB" --section=pre-data --no-owner --no-privileges "$DUMP_FILE"
+pg_restore -d "$LOCAL_DB" -L "$TOC" --section=pre-data --no-owner --no-privileges "$DUMP_FILE"
 
 echo "==> Capturing + dropping the validate_entity_references CHECKs ..."
 # These CHECKs call validate_entity_references() (same-table forward refs) and
@@ -65,7 +72,7 @@ while IFS=$'\t' read -r tbl name def; do
 done < "$CHECKS_TSV"
 
 echo "==> Restore: data (this is the long part) ..."
-pg_restore -d "$LOCAL_DB" --section=data --no-owner --no-privileges "$DUMP_FILE"
+pg_restore -d "$LOCAL_DB" -L "$TOC" --section=data --no-owner --no-privileges "$DUMP_FILE"
 
 echo "==> Re-adding the captured CHECKs NOT VALID ..."
 while IFS=$'\t' read -r tbl name def; do
@@ -76,8 +83,18 @@ done < "$CHECKS_TSV"
 
 echo "==> Restore: post-data (indexes; HNSW rebuilt serially) ..."
 psql -d "$LOCAL_DB" -c "SET maintenance_work_mem = '128MB';" >/dev/null
-pg_restore -d "$LOCAL_DB" --section=post-data --no-owner --no-privileges -j 1 "$DUMP_FILE"
+pg_restore -d "$LOCAL_DB" -L "$TOC" --section=post-data --no-owner --no-privileges -j 1 "$DUMP_FILE"
 
+# HARD verification — an "exit 0" with an empty database is the failure mode
+# this guard exists for (bitten 2026-07-25: set -e + ignorable extension
+# errors aborted the data section silently).
+DOCS=$(psql -d "$LOCAL_DB" -t -A -c "SELECT count(*) FROM collection_source_documents;")
+ENTS=$(psql -d "$LOCAL_DB" -t -A -c "SELECT count(*) FROM core_entities;")
+if [[ "$DOCS" -eq 0 || "$ENTS" -eq 0 ]]; then
+  echo "FAILED: restore verified EMPTY (docs=$DOCS entities=$ENTS) — inspect the pg_restore output above." >&2
+  exit 1
+fi
+echo "==> Verified: $DOCS documents, $ENTS entities."
 echo "==> Done. Local '$LOCAL_DB' now mirrors prod as of this dump."
 echo "    Reminder: local api (yarn start / node dist/main) + sim .env.local"
 echo "    switched to http://localhost:3000/api/v1 = full local mode."

@@ -1831,3 +1831,21 @@ worker/api need SIGNAL_AUDIT_HMAC_KEY at next deploy.
 
 api 829/829 + mobile 409/409 green; migration verified via direct reads;
 API restarted; smoke 200.
+
+## 2026-07-25 — Auto-migrate at boot + local refresh proven + NYC campaign prepared
+
+Migrations now apply themselves at container boot (Dockerfile CMD sh -c
+"prisma migrate deploy && node main"); proven live by applying another
+session's pending 20260725120000_vote_integrity_launch on first run.
+Two traps burned + fixed: railway.json startCommand OVERRIDES Dockerfile
+CMD and is exec'd WITHOUT a shell ("&&" becomes argv → container exits 0
+after migrate, healthcheck fails) — startCommand deleted, CMD is the one
+start path. refresh-local-db-from-prod.sh hardened after a silent-empty
+restore (set -e tripped on ignorable timescale-extension errors): TOC
+now filtered of timescale entries, plus a HARD non-empty verification
+(the "exit 0 with empty DB" mode is the one it guards). Local refreshed:
+70,600 docs / 20,562 entities. NYC archive campaign PREPARED not started
+(8a1b5fec: 518,797 docs × 429.97µ$ = $223.07, envelope $278.84) — the
+campaign governs extraction only; measured all-in month rate (~$2.77/1k
+docs incl. gate/matching) projects ~$1.4k total, gated by the $500 AI
+Studio cap → owner must raise the cap or stage the load before approving.
