@@ -202,45 +202,10 @@ export class RestaurantEntityMergeService {
     // collection_on_demand_ask_events) need NO rekey — user-act history lives
     // in the immutable signals ledger, resolved through entity_redirects at
     // read (the redirect row is written by the merge flow itself).
-    await this.rehomeUserFavorites(tx, canonicalId, duplicateId);
     await this.rehomeFavoriteListRestaurantItems(tx, canonicalId, duplicateId);
     await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
     await this.rehomeDemandScoringCandidates(tx, canonicalId, duplicateId);
-  }
-
-  private async rehomeUserFavorites(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const duplicateFavorites = await tx.userFavorite.findMany({
-      where: { entityId: duplicateId },
-      select: { favoriteId: true, userId: true },
-    });
-
-    for (const favorite of duplicateFavorites) {
-      const conflicting = await tx.userFavorite.findFirst({
-        where: {
-          userId: favorite.userId,
-          entityId: canonicalId,
-          favoriteId: { not: favorite.favoriteId },
-        },
-        select: { favoriteId: true },
-      });
-
-      if (conflicting) {
-        await tx.userFavorite.delete({
-          where: { favoriteId: favorite.favoriteId },
-        });
-        continue;
-      }
-
-      await tx.userFavorite.update({
-        where: { favoriteId: favorite.favoriteId },
-        data: { entityId: canonicalId },
-      });
-    }
   }
 
   private async rehomeFavoriteListRestaurantItems(

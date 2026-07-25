@@ -23,6 +23,7 @@ import { Text, Button } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
+import { TERMS_URL, PRIVACY_URL } from '../constants/legalLinks';
 import {
   onboardingSteps,
   getSingleChoiceLabel,
@@ -1289,13 +1290,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   };
 
   const openTerms = React.useCallback(() => {
-    // TODO: Replace with actual Terms of Service URL
-    void Linking.openURL('https://example.com/terms');
+    void Linking.openURL(TERMS_URL);
   }, []);
 
   const openPrivacy = React.useCallback(() => {
-    // TODO: Replace with actual Privacy Policy URL
-    void Linking.openURL('https://example.com/privacy');
+    void Linking.openURL(PRIVACY_URL);
   }, []);
 
   const renderAccount = (step: Extract<OnboardingStep, { type: 'account' }>) => {

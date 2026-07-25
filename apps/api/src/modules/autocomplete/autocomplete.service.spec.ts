@@ -127,7 +127,7 @@ function createHarness(overrides: HarnessOverrides = {}) {
   });
   const prisma = {
     $queryRaw: queryRaw,
-    userFavorite: { findMany: jest.fn().mockResolvedValue([]) },
+    favoriteListItem: { findMany: jest.fn().mockResolvedValue([]) },
     entity: { findMany: jest.fn().mockResolvedValue([]) },
   };
   const searchQuerySuggestionService = {

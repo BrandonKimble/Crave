@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { FavoritesController } from './favorites.controller';
-import { FavoritesService } from './favorites.service';
 import { FavoriteListsService } from './favorite-lists.service';
 import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
 import { ListResultsAssembler } from './favorite-list-results.assembler';
@@ -30,7 +29,6 @@ import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.ser
     FavoritesShareController,
   ],
   providers: [
-    FavoritesService,
     FavoriteListsService,
     FavoriteListAccessPolicy,
     ListResultsAssembler,

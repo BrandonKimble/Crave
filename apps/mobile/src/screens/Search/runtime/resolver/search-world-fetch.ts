@@ -76,12 +76,9 @@ const attachTupleScopeToPayload = (
   if (filters.priceLevels.length > 0) {
     payload.priceLevels = [...filters.priceLevels];
   }
-  // TODO(shared-types): send ALWAYS-EXPLICITLY once the API include-similar contract is
-  // live on main (false suppresses env-default silent dense widening); today's backend
-  // rejects unknown properties, so attach only when true.
-  if (filters.includeSimilar) {
-    payload.includeSimilar = true;
-  }
+  // Always sent explicitly — false suppresses the server's env-default silent
+  // dense widening (include-similar contract, packages/shared search types).
+  payload.includeSimilar = filters.includeSimilar;
   if (filters.rising) {
     payload.risingActive = true;
   }

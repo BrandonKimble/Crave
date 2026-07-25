@@ -1402,11 +1402,6 @@ const styles = StyleSheet.create({
   // The white body layer sits BELOW the header band so the header plate's grab-handle + close
   // cutouts see through to the shared frosty foundation (not white). The header plate's 3px
   // overlap covers the seam at the top. (Frost foundation → this white layer → thread content.)
-  headerActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   headerShareButton: {
     padding: 6,
   },
@@ -1657,13 +1652,6 @@ const styles = StyleSheet.create({
   mentionPrefix: {
     color: ACCENT,
     fontWeight: '600',
-  },
-  entitySpan: {
-    color: ACCENT,
-    fontWeight: '600',
-  },
-  entitySpanLink: {
-    textDecorationLine: 'underline',
   },
   commentRowNested: {
     borderTopWidth: 0,

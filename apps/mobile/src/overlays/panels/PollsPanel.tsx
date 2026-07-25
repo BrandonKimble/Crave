@@ -164,11 +164,7 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
   const daysLeft = isActive ? formatDaysLeft(poll.closesAt) : null;
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.pollCard,
-        isActive && styles.pollCardActive,
-        pressed && styles.pollCardPressed,
-      ]}
+      style={({ pressed }) => [styles.pollCard, pressed && styles.pollCardPressed]}
       onPress={() => onPress(poll)}
       accessibilityRole="button"
     >
@@ -619,10 +615,6 @@ export const usePollsPanelListSceneParts = (): {
     initialSnapPoint,
     mode = 'docked',
     currentSnap,
-    navBarTop = 0,
-    navBarHeight = 0,
-    searchBarTop = 0,
-    snapPoints: snapPointsOverride,
     interactionRef,
   } = usePollsSceneBodyState();
   const shouldSubscribeDataLane = currentSnap !== 'hidden';
@@ -633,10 +625,6 @@ export const usePollsPanelListSceneParts = (): {
     mode,
     currentSnap,
     initialSnapPoint,
-    navBarTop,
-    navBarHeight,
-    searchBarTop,
-    snapPoints: snapPointsOverride,
     interactionRef,
   });
   usePollsPanelHeaderModelPublication({
@@ -810,9 +798,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingRight: 10,
   },
-  loader: {
-    marginTop: 12,
-  },
   loaderCentered: {
     marginTop: 12,
     alignSelf: 'center',
@@ -826,7 +811,6 @@ const styles = StyleSheet.create({
     borderBottomColor: BORDER,
     alignSelf: 'stretch',
   },
-  pollCardActive: {},
   pollCardPressed: { opacity: 0.85 },
   pollCardHeader: {
     flexDirection: 'row',

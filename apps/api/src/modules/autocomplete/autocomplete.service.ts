@@ -28,6 +28,17 @@ import {
 } from '../signals/signal-demand-read.service';
 import type { SignalKind } from '../signals/signals.service';
 
+/** Row shape of the favorites read (favorite_list_items under the user's own
+ *  lists): restaurant saves vs dish saves (connection → food entity). */
+interface FavoriteListItemMatchRow {
+  restaurantId: string | null;
+  restaurant: { name: string; aliases: string[] } | null;
+  connection: {
+    foodId: string;
+    food: { name: string; aliases: string[] };
+  } | null;
+}
+
 // §16 CLASSIFICATION (suggest refit 2026-07-24 — the owner-ratified ideal
 // shape, plans/suggest-ideal-shape.md). The pre-constitution holdovers this
 // header used to flag (the 0.6/0.3/0.1 attribute weights, the 0.4 similarity
@@ -409,26 +420,40 @@ export class AutocompleteService {
   }> {
     const tasks: Array<Promise<unknown>> = [];
 
-    const favoritesTask = this.prisma.userFavorite.findMany({
-      where: {
-        userId: user.userId,
-        entityType: { in: entityTypes },
-        entity: {
-          is: {
-            name: { startsWith: normalizedQuery, mode: 'insensitive' },
-          },
-        },
-      },
-      select: {
-        entityId: true,
-        entityType: true,
-        entity: { select: { name: true, aliases: true } },
-      },
-      take: 20,
-    });
-    tasks.push(favoritesTask);
-
+    // Favorites live in the list system (favorite_list_items under the user's
+    // own lists): restaurant saves carry restaurantId, dish saves carry a
+    // connection whose food entity is the suggestable subject.
     const includeRestaurants = entityTypes.includes(EntityType.restaurant);
+    const includeFoods = entityTypes.includes(EntityType.food);
+    const namePrefix = {
+      name: { startsWith: normalizedQuery, mode: 'insensitive' as const },
+    };
+    const favoriteBranches = [
+      ...(includeRestaurants ? [{ restaurant: { is: namePrefix } }] : []),
+      ...(includeFoods
+        ? [{ connection: { is: { food: { is: namePrefix } } } }]
+        : []),
+    ];
+    const favoritesTask = favoriteBranches.length
+      ? this.prisma.favoriteListItem.findMany({
+          where: {
+            list: { is: { ownerUserId: user.userId } },
+            OR: favoriteBranches,
+          },
+          select: {
+            restaurantId: true,
+            restaurant: { select: { name: true, aliases: true } },
+            connection: {
+              select: {
+                foodId: true,
+                food: { select: { name: true, aliases: true } },
+              },
+            },
+          },
+          take: 20,
+        })
+      : Promise.resolve([] as FavoriteListItemMatchRow[]);
+    tasks.push(favoritesTask);
     // READER CUT (§22 item 6): "viewed" suggestions read the signals ledger
     // (kind = entity_view), not the dying user_restaurant_views table.
     const viewedTask = includeRestaurants
@@ -441,23 +466,48 @@ export class AutocompleteService {
     tasks.push(viewedTask);
 
     const [favoriteRows, viewedRows] = (await Promise.all(tasks)) as [
-      Array<{
-        entityId: string;
-        entityType: EntityType;
-        entity: { name: string; aliases: string[] };
-      }>,
+      FavoriteListItemMatchRow[],
       ViewedRestaurantNameMatch[],
     ];
 
-    const favorites: AutocompleteMatchDto[] = favoriteRows.map((row) => ({
-      entityId: row.entityId,
-      entityType: row.entityType,
-      name: row.entity.name,
-      confidence: 0.65,
-      aliases: row.entity.aliases ?? [],
-      matchType: 'entity',
-      badges: { favorite: true },
-    }));
+    const prefixMatches = (name: string | undefined): boolean =>
+      Boolean(name?.toLowerCase().startsWith(normalizedQuery.toLowerCase()));
+
+    const favoritesById = new Map<string, AutocompleteMatchDto>();
+    for (const row of favoriteRows) {
+      if (
+        includeRestaurants &&
+        row.restaurantId &&
+        row.restaurant &&
+        prefixMatches(row.restaurant.name)
+      ) {
+        favoritesById.set(row.restaurantId, {
+          entityId: row.restaurantId,
+          entityType: EntityType.restaurant,
+          name: row.restaurant.name,
+          confidence: 0.65,
+          aliases: row.restaurant.aliases ?? [],
+          matchType: 'entity',
+          badges: { favorite: true },
+        });
+      }
+      if (
+        includeFoods &&
+        row.connection?.food &&
+        prefixMatches(row.connection.food.name)
+      ) {
+        favoritesById.set(row.connection.foodId, {
+          entityId: row.connection.foodId,
+          entityType: EntityType.food,
+          name: row.connection.food.name,
+          confidence: 0.65,
+          aliases: row.connection.food.aliases ?? [],
+          matchType: 'entity',
+          badges: { favorite: true },
+        });
+      }
+    }
+    const favorites = Array.from(favoritesById.values());
 
     const viewed: AutocompleteMatchDto[] = viewedRows.map((row) => ({
       entityId: row.restaurantId,
@@ -517,17 +567,35 @@ export class AutocompleteService {
           )
         : Promise.resolve(new Map<string, number>()),
       user?.userId && entityIds.length
-        ? this.prisma.userFavorite.findMany({
-            where: { userId: user.userId, entityId: { in: entityIds } },
-            select: { entityId: true },
+        ? this.prisma.favoriteListItem.findMany({
+            where: {
+              list: { is: { ownerUserId: user.userId } },
+              OR: [
+                { restaurantId: { in: entityIds } },
+                { connection: { is: { foodId: { in: entityIds } } } },
+              ],
+            },
+            select: {
+              restaurantId: true,
+              connection: { select: { foodId: true } },
+            },
           })
-        : Promise.resolve([] as { entityId: string }[]),
+        : Promise.resolve(
+            [] as Array<{
+              restaurantId: string | null;
+              connection: { foodId: string } | null;
+            }>,
+          ),
       user?.userId && restaurantIds.length
         ? this.signalDemandRead.restaurantViewStats(user.userId, restaurantIds)
         : Promise.resolve([] as RestaurantViewStatsRow[]),
     ]);
 
-    const favoriteSet = new Set(favorites.map((fav) => fav.entityId));
+    const favoriteSet = new Set(
+      favorites
+        .map((fav) => fav.restaurantId ?? fav.connection?.foodId)
+        .filter((id): id is string => Boolean(id)),
+    );
     const viewByRestaurantId = new Map(
       views.map((row) => [
         row.restaurantId,
@@ -735,7 +803,10 @@ export class AutocompleteService {
   /**
    * CROSS-LANE FUSION (ratified refit 2026-07-24): unweighted RRF over lane
    * ranks. Each lane hands over its own internal ordering; a row's fused
-   * score is Σ 1/(RRF_K + rankInLane) across the lanes it appears in — no
+   * score is 1/(RRF_K + rankInLane) for its lane — lanes are partitioned by
+   * ID namespace, so a candidate never appears in two lanes (the dedupe below
+   * keeps the best entry rather than summing; if a future lane ever shares
+   * IDs with another, revisit with true multi-list accumulation) — no
    * cross-family weights, ever. Ties (same rank across lanes) break on the
    * only type-neutral facts: (a) evidence-tier strength, (b) the requesting
    * user's OWN engagement with that exact row (favorite → viewed → affinity,

@@ -50,7 +50,6 @@ model Entity {
   pollTopicRestaurantTargets          PollTopic[]                 @relation("PollTopicTargetRestaurant")
   pollTopicFoodAttributeTargets       PollTopic[]                 @relation("PollTopicTargetFoodAttribute")
   pollTopicRestaurantAttributeTargets PollTopic[]                 @relation("PollTopicTargetRestaurantAttribute")
-  userFavorites                       UserFavorite[]
   favoriteListItems                   FavoriteListItem[]
   demandScoringCandidates             DemandScoringCandidate[]
   locations                           RestaurantLocation[]        @relation("RestaurantLocations")
@@ -110,7 +109,6 @@ model RestaurantLocation {
   restaurant       Entity    @relation("RestaurantLocations", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   primaryFor       Entity?   @relation("PrimaryLocation")
 
-  savedFavorites UserFavorite[]
   savedListItems FavoriteListItem[]
 
   @@index([restaurantId], map: "idx_restaurant_locations_restaurant")
@@ -435,15 +433,15 @@ model SpendCampaign {
 /// SAME dedupe key so the createMany({skipDuplicates:true}) write is a
 /// no-op on repeats instead of paging the owner every tick.
 model OpsAlert {
-  alertId   String    @id @default(dbgenerated("gen_random_uuid()")) @map("alert_id") @db.Uuid
+  alertId        String    @id @default(dbgenerated("gen_random_uuid()")) @map("alert_id") @db.Uuid
   /// 'info' | 'warn' | 'critical'.
-  severity  String    @db.VarChar(16)
+  severity       String    @db.VarChar(16)
   /// Stable machine key, e.g. 'campaign_breached', 'lane_cost_paused'.
-  kind      String    @db.VarChar(64)
-  title     String    @db.VarChar(200)
-  body      String
-  dedupeKey String?   @unique @map("dedupe_key") @db.VarChar(128)
-  createdAt DateTime  @default(now()) @map("created_at")
+  kind           String    @db.VarChar(64)
+  title          String    @db.VarChar(200)
+  body           String
+  dedupeKey      String?   @unique @map("dedupe_key") @db.VarChar(128)
+  createdAt      DateTime  @default(now()) @map("created_at")
   acknowledgedAt DateTime? @map("acknowledged_at")
 
   @@map("ops_alerts")
@@ -1011,26 +1009,6 @@ model DemandScoringCandidate {
   @@map("demand_scoring_candidates")
 }
 
-model UserFavorite {
-  favoriteId String              @id @default(dbgenerated("gen_random_uuid()")) @map("favorite_id") @db.Uuid
-  userId     String              @map("user_id") @db.Uuid
-  entityId   String              @map("entity_id") @db.Uuid
-  entityType EntityType          @map("entity_type")
-  /// Location-centric interaction (master plan §7): a favorite saves the
-  /// SPECIFIC location it was saved from. Save flows always supply it;
-  /// null degrades to the nearest-in-view location at render.
-  locationId String?             @map("location_id") @db.Uuid
-  createdAt  DateTime            @default(now()) @map("created_at")
-  updatedAt  DateTime            @updatedAt @map("updated_at")
-  user       User                @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  entity     Entity              @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
-  location   RestaurantLocation? @relation(fields: [locationId], references: [locationId], onDelete: SetNull)
-
-  @@unique([userId, entityId], map: "user_favorites_user_entity_unique")
-  @@index([userId], map: "idx_user_favorites_user")
-  @@map("user_favorites")
-}
-
 model User {
   userId                   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
   email                    String                     @unique @db.VarChar(255)
@@ -1057,7 +1035,6 @@ model User {
   accessGrants             AccessGrant[]
   photos                   Photo[]
   photoReports             PhotoReport[]
-  favorites                UserFavorite[]
   favoriteLists            FavoriteList[]
   favoriteListItems        FavoriteListItem[]
   listCollaborations       FavoriteListCollaborator[] @relation("FavoriteListCollaboratorUser")
@@ -2049,10 +2026,10 @@ model SignalDemandRebuildState {
 
 // Pseudonymous actor mapping — the severable deletion story (§3).
 model SignalActor {
-  actorId   String   @id @default(dbgenerated("gen_random_uuid()")) @map("actor_id") @db.Uuid
-  userId    String?  @unique @map("user_id") @db.Uuid
-  deviceKey String?  @unique @map("device_key") @db.VarChar(128)
-  createdAt DateTime @default(now()) @map("created_at")
+  actorId    String    @id @default(dbgenerated("gen_random_uuid()")) @map("actor_id") @db.Uuid
+  userId     String?   @unique @map("user_id") @db.Uuid
+  deviceKey  String?   @unique @map("device_key") @db.VarChar(128)
+  createdAt  DateTime  @default(now()) @map("created_at")
   /// Flag-flip seam for confirmed sybil rings; read-side filtering lands with
   /// the first ring — plans/vote-integrity-ladder.md.
   excludedAt DateTime? @map("excluded_at") @db.Timestamptz(6)

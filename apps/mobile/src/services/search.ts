@@ -33,8 +33,8 @@ export interface StructuredSearchRequest {
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
   priceLevels?: number[];
-  // TODO(shared-types): part of the include-similar contract (see types/search.ts).
-  // Always sent explicitly — false suppresses the server's silent dense widening.
+  // Include-similar contract (packages/shared search types). Always sent
+  // explicitly — false suppresses the server's silent dense widening.
   includeSimilar?: boolean;
   risingActive?: boolean;
   /** SEE-LOCATIONS mode discriminator: with exactly one restaurant entity id,

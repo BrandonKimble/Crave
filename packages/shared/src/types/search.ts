@@ -403,6 +403,9 @@ export interface NaturalSearchRequest {
   minimumVotes?: number;
   risingActive?: boolean;
   pagination?: Pagination;
+  /** Explicit value overrides the server env default; false suppresses
+   *  silent dense widening (similar-results pooling). */
+  includeSimilar?: boolean;
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
 }

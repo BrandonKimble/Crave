@@ -77,6 +77,10 @@ called out per row. All groups DONE:
   `search-query-suggestion.service.ts` minGlobalDistinctUsers=3). All 11 .env
   values equaled the code defaults; no drift. Env reads removed. The
   cache/lane AUTOCOMPLETE\_\* keys (env-absent, override-only) untouched.
+  _UPDATE 2026-07-25: the constructor-literal block itself was later DELETED
+  by the suggest refit (plans/suggest-ideal-shape.md) — lane weights/floors
+  are gone entirely, replaced by rank-only RRF fusion; the file's §16 header
+  documents the surviving constants._
 - **SEARCH\_\* knob block** — DONE. Page sizes/result limit →
   `search.service.ts` DEFAULT_PAGE_SIZE 25 / MAX_PAGE_SIZE 100 /
   DEFAULT_RESULT_LIMIT 100 (env values restated them; resolve\* helpers now
