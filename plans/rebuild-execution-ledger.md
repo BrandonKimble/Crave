@@ -1693,3 +1693,19 @@ ratification of the proposal; phases A/B are days-sized.
 
 785 api green (other-session §24 spend tests included), build clean, API
 restarted.
+
+## 2026-07-24 — Owner ops dashboard + alert infrastructure (task #14)
+
+`/ops` on the api service: token-guarded (OPS_DASH_TOKEN, 404 when unset,
+constant-time compare) self-contained dark HTML dashboard + `GET
+/ops/api/summary` + `POST /ops/api/alerts/:id/ack`. New `ops_alerts` table
+(dedupe_key UNIQUE = alert-storm collapse) + @Global OpsAlertsService with
+Resend email scaffold (activates when RESEND_API_KEY is set; OPS_ALERT_EMAIL
+env, no contact info in code). Eight emitters wired at the real chokepoints:
+campaign_breached (critical), lane_cost_paused / lane_cost_escalated
+(chronological = critical), gemini_vendor_cap + gemini_backstop (critical,
+month-deduped), spend_above_expectation (warn, day-deduped),
+tomtom_vendor_throttle + tomtom_pool_hot (≥80% before day 20 — the prepaid
+credit proxy), lane_red. Migration applied to BOTH DBs. 802 tests green
+(785 baseline + 17 new, incl. RED-provable tomtom_pool_hot). Grafana relic
+(docker-compose.observability.yml) recommended for retirement.

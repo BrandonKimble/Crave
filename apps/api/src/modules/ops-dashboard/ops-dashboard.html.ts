@@ -207,7 +207,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
     document.querySelectorAll('.ack-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-id');
-        fetchJson('/ops/api/alerts/' + id + '/ack', { method: 'POST' }).then(load);
+        fetchJson(opsBase + '/api/alerts/' + id + '/ack', { method: 'POST' }).then(load);
       });
     });
   }
@@ -265,6 +265,10 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
       '<div class="stat-row"><span class="stat-label">Drain pending</span><span class="stat-value">' + (collection.drainPending === null ? '—' : collection.drainPending) + '</span></div>';
   }
 
+  // The app serves under a global prefix (/api/v1); derive it from wherever
+  // this page is actually mounted so the API calls follow the same prefix.
+  var opsBase = location.pathname.replace(/[/]+$/, '');
+
   function fetchJson(url, opts) {
     opts = opts || {};
     opts.headers = Object.assign({}, opts.headers, { 'x-ops-token': token });
@@ -275,7 +279,7 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   }
 
   function load() {
-    fetchJson('/ops/api/summary').then(function (data) {
+    fetchJson(opsBase + '/api/summary').then(function (data) {
       renderSpend(data.spend);
       renderAlerts(data.alerts);
       renderCampaigns(data.campaigns);
