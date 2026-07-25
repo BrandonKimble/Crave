@@ -1955,3 +1955,35 @@ $3,633 (blanket) → $2,462 (power-law) → $1,668 all-in / $2,085 envelope
 (campaign 20a5e369, ceiling-calibrated). Each prior draft deleted
 unapproved. Rates themselves still conservative (interactive_pipeline
 measured on blurred data, shrinks as tags accumulate).
+
+## 2026-07-25 — Crash reporting (owner-ordered) + red team of it
+
+ONE-SEAM DESIGN. API: capture lives ONLY in LoggerService.error — 500s reach
+it via GlobalExceptionFilter's logError, cron/background failures via their
+own catch-and-log. Red team of the PRE-EXISTING api Sentry wiring found the
+SentryExceptionFilter was DEAD CODE (two global @Catch() filters; Nest runs
+one — GlobalExceptionFilter won; the "re-throw to next filter" chain doesn't
+exist) — deleted, not fixed. Second find: logError leveled by exception CLASS
+so an AppException 500 logged warn and would never capture — now level =
+status>=500. PII: email removed everywhere; opaque userId only (support key).
+6 RED-able seam specs. DSN already set locally + Railway api/worker.
+
+Mobile: @sentry/react-native 8.20 (pod-linked; dev client rebuilt, fresh
+binary verified, cold-boot clean). src/observability/crash-reporting.ts owns
+the PRIVACY CONTRACT — no setUser EVER (App Store label: Diagnostics NOT
+linked to identity; adding identity is a label-flipping product decision),
+sendDefaultPii false, crash-only (tracesSampleRate 0, no replay), beforeSend
+strips user. Sentry.wrap = JS error boundary + touch breadcrumbs; the
+mutation-failure chokepoint (App.tsx MutationCache) also captures — user
+sees the one standard modal, support sees the actual error. Strict no-op
+without EXPO_PUBLIC_SENTRY_DSN.
+
+KNOWN LIMITATIONS (documented, deliberate): import-time module crashes on
+mobile predate init (init runs at App.tsx module body — moving earlier would
+reorder the load-bearing codegen polyfill; not worth it); prod symbolication
+(JS sourcemaps + dSYM upload) is NOT wired — needs sentry-cli in the release
+build pipeline when release builds exist; that's the launch-time follow-up.
+
+OWNER: create a second Sentry project (react-native) and set its DSN as
+EXPO_PUBLIC_SENTRY_DSN (mobile .env.local slot is commented in place; prod
+build env later). Commit: this arc. Suites 861 api / 409 mobile green.
