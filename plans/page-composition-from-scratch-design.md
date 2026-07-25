@@ -1697,3 +1697,51 @@ U5. FlashList virtualization with a large leading spacer (viewport calculations)
 - Every platform event field gets a RED-capable probe before anything trusts it
   (velocity/contentSize/Native-callbacks lore).
 - Each slice: tsc/jest/matrix + owner acceptance; pathspec commits.
+
+## 8. THE TOOL STACK, QUESTIONED (each layer: verdict + escape hatch)
+
+**UIScrollView (via RN ScrollView) — THE BET, and the right one.** The design's core
+move is betting everything on the one physics engine that is provably native-feeling
+(it IS the native feel). Questioned alternative: hand-rolled physics — rejected (§1).
+BUT React Native's WRAPPER is lossy: no targetContentOffset override (the exact iOS
+API for custom snap destinations), quirky contentInset semantics, no deceleration
+introspection. Unknowns U2/U3 live in this gap. ESCAPE HATCH (pre-approved by this
+design): a ~100-line native module exposing scrollViewWillEndDragging's
+targetContentOffset + inset control on the SAME UIScrollView — keeps the
+architecture, upgrades fidelity. We do NOT accept wrapper limitations as design
+limitations.
+
+**FlashList v2 — KEPT where it earns its seat, demoted from sacred.** Its only value
+is cell recycling for LONG lists (results, polls). The track design is deliberately
+list-library-agnostic: any library that rides a standard ScrollView and yields
+renderScrollComponent works. U1/U5 (leading spacer + virtualization with offset
+ranges) are FlashList's exam; if v2 fights the spacer, the ladder is (a) animated
+contentInset instead of an in-content spacer, (b) a different recycler (LegendList /
+FlatList) for the prototype, (c) plain ScrollView. NOTE: most foundation scenes
+(settings, profile, notifications) don't need recycling AT ALL — plain ScrollView
+tracks are simpler and drop a dependency class; only long feeds justify FlashList.
+
+**RNGH — retained, but demoted to trivial duty.** After the ONE TRACK, RNGH's entire
+role is the header grab pan + ordinary taps: zero relations, zero manual-activation
+state machines, zero cross-handler negotiation. Its dangerous surface (the relation
+web) is exactly what the design deletes. Lore stands: its Native-gesture callbacks
+don't fire — nothing may depend on them.
+
+**Reanimated — retained as THE derivation engine, distrusted as an event source.**
+Worklet derivations from τ (sheet transform, plate, divider, pins) are precisely what
+it is best at. Its scroll-EVENT payloads are proven liars (velocity null, contentSize
+null) — the design consumes only contentOffset (proven) and derives everything else.
+The detent-snap spring (U3) may use worklet scrollTo; if fidelity disappoints, the
+native-module hatch above owns snapping at the UIScrollView delegate level.
+
+**UISheetPresentationController (Apple's own sheet) — questioned and rejected, but
+it VALIDATES the model.** Apple's sheet with scrollingExpandsWhenScrolledToEdge is
+literally the ONE TRACK boundary law shipped by the platform vendor — proof the
+model is the native ideal. Rejected because it cannot host this app's world: map
+composition behind, custom detents + persistent multi-scene stack inside one
+surface, frost/cutout materials, and future Android parity. We implement the same
+law on our own surface.
+
+**Expo dev-client / Metro — unchanged**, but the prototype adds a device check to
+U4: velocity continuity gets verified on REAL hardware, not only the simulator (the
+sim's HID timing has already misled this arc once).
