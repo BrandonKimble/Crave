@@ -111,6 +111,18 @@ category card in the dish list, with a real score. Foundation now; UI later.
   presentation deferred — owner will design the card).
 - Values check: a category-only restaurant with huge consensus MUST be able
   to rank high (the "best burgers, no named burger" case).
+- SCORING RESOLUTION (owner dialogue 2026-07-26): category cards PERSIST
+  after dishes exist (category-vs-dish praise asymmetry is information —
+  the "order any pasta with confidence" value). Each claim counts ONCE at
+  restaurant rollup (dedupe by mention key — verify; pre-fix reality:
+  support mentions duplicated onto N dishes = N-counted, AND category-only
+  claims counted ZERO until first dish; both wrong, both fixed by exactly-
+  once rollup + category items). Category card score = its own direct
+  category claims. Dishes KEEP the equal-boost replay for ranking (verified:
+  support attaches to every dish under the category; differentiation only
+  via specific callouts) but direct vs support stay separate counts on the
+  wire (columns already exist) so display never inflates named-vote counts.
+  NO distribution/splitting (a new dish would steal score from siblings).
 
 ## Phase 5 — Prove, then replay
 
