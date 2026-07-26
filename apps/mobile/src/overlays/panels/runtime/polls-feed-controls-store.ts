@@ -53,17 +53,17 @@ export type PollsFeedControlsState = {
   liveCount: number | null;
   /**
    * §6 place slicer (SelectorChip): 'all' or a placeId from `placeOptions`.
-   * CLIENT-SIDE slice this leg — selecting filters the LOADED pages in the feed
-   * runtime, so this key is deliberately EXCLUDED from the press-edge
-   * subscription's control diff (no network refresh). Server-side slicing is a
-   * later leg; when it lands, placeFilter joins the control diff (and the seam's
-   * baseline snapshot) and the client filter dies.
+   * A NETWORK control since the server-side slicing cut: selecting a place
+   * sends `placeFilterId` on the feed query (DAG-subtree slice, server-truth),
+   * so this key IS in the press-edge control diff and in the seam's baseline
+   * snapshot. The old client-side loaded-pages filter is dead.
    */
   placeFilter: string;
   /**
-   * Slicer options — NOT a control: the BODY (feed controller) writes them when a
-   * slice lands/appends (places present in the loaded pages, ranked by content
-   * contribution); the chrome reads them. Writes never fire the press edge.
+   * Slicer options — NOT a control: the BODY (feed controller) writes them when
+   * a slice lands (the response's server-truth `placeOptions`: membership
+   * places ranked by content contribution); the chrome reads them. Writes
+   * never fire the press edge.
    */
   placeOptions: PollFeedPlaceOption[];
   setFeedState: (value: 'active' | 'closed') => void;
@@ -94,8 +94,9 @@ export const usePollsFeedControlsStore = create<PollsFeedControlsState>((set) =>
 
 /** Snapshot selector for non-React readers (the feed controller's commit runner). */
 export const getPollsFeedControlsSnapshot = () => {
-  const { feedState, feedSort, feedType, feedTime } = usePollsFeedControlsStore.getState();
-  return { feedState, feedSort, feedType, feedTime };
+  const { feedState, feedSort, feedType, feedTime, placeFilter } =
+    usePollsFeedControlsStore.getState();
+  return { feedState, feedSort, feedType, feedTime, placeFilter };
 };
 
 export type PollsFeedControlsSnapshot = ReturnType<typeof getPollsFeedControlsSnapshot>;
@@ -128,13 +129,14 @@ export const subscribeToPollsFeedControlChanges = (listener: () => void): (() =>
     if (isRestoringControls) {
       return;
     }
-    // placeFilter is deliberately absent: it slices the loaded pages client-side
-    // (§6 slicer, this leg) and must not schedule a network commit.
+    // placeFilter is a NETWORK control (server-side DAG-subtree slicing):
+    // changing it refetches through the same seam as the other controls.
     if (
       state.feedState !== previous.feedState ||
       state.feedSort !== previous.feedSort ||
       state.feedType !== previous.feedType ||
-      state.feedTime !== previous.feedTime
+      state.feedTime !== previous.feedTime ||
+      state.placeFilter !== previous.placeFilter
     ) {
       listener();
     }

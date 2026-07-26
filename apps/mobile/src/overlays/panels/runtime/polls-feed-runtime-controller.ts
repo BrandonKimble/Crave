@@ -49,33 +49,6 @@ const logBootstrap = (data: Record<string, unknown>): void => {
 };
 
 /**
- * §6 slicer options: places present in the LOADED feed pages, ranked by content
- * contribution (count of polls contributed), name as the deterministic tiebreak.
- */
-const derivePlaceOptions = (polls: readonly Poll[]): PollFeedPlaceOption[] => {
-  const byPlaceId = new Map<string, PollFeedPlaceOption>();
-  for (const poll of polls) {
-    if (!poll.placeId || !poll.placeName) {
-      continue;
-    }
-    const existing = byPlaceId.get(poll.placeId);
-    if (existing) {
-      existing.pollCount += 1;
-    } else {
-      byPlaceId.set(poll.placeId, {
-        placeId: poll.placeId,
-        placeName: poll.placeName,
-        pollCount: 1,
-      });
-    }
-  }
-  return [...byPlaceId.values()].sort(
-    (left, right) =>
-      right.pollCount - left.pollCount || left.placeName.localeCompare(right.placeName)
-  );
-};
-
-/**
  * The honest resolution of one refresh (leg 5 failure path): the content-toggle
  * runner must be able to FAIL when the slice it committed did not land — a runner
  * that swallows its own error makes the engine's 'failed' edge unreachable and
@@ -197,9 +170,11 @@ export const usePollsFeedRuntimeController = ({
 
   /**
    * Publish one settled slice composite: the list, the §2 header verdict, the §6
-   * promise state, the "Live · N" count, and the slicer options (places present in
-   * the loaded pages). Also reconciles a stale place filter — a selected place that
-   * left the loaded set snaps the slicer back to All.
+   * promise state, the "Live · N" count, and the slicer options (the response's
+   * SERVER-TRUTH `placeOptions` — viewport-membership places ranked by content
+   * contribution). Also reconciles a stale place filter — a selected place the
+   * new response's options no longer contain snaps the slicer back to All
+   * (a control write, so the press edge refetches the unfiltered feed).
    */
   const publishFeedSlice = React.useCallback(
     (params: {
@@ -207,6 +182,7 @@ export const usePollsFeedRuntimeController = ({
       headerPlaceName: string | null;
       promise: PollFeedPromise | null;
       nextCursor: string | null;
+      placeOptions: PollFeedPlaceOption[];
     }) => {
       loadedPollsRef.current = params.polls;
       nextCursorRef.current = params.nextCursor;
@@ -223,7 +199,7 @@ export const usePollsFeedRuntimeController = ({
       if (feedStateRef.current === 'active') {
         controls.setLiveCount(params.polls.length);
       }
-      const placeOptions = derivePlaceOptions(params.polls);
+      const placeOptions = params.placeOptions;
       controls.setPlaceOptions(placeOptions);
       if (
         controls.placeFilter !== POLL_FEED_PLACE_FILTER_ALL &&
@@ -247,6 +223,9 @@ export const usePollsFeedRuntimeController = ({
         return null;
       }
       lastRequestedBoundsRef.current = bounds;
+      // §6 place slicer: a NETWORK control since the server-side cut — read
+      // live off the store (same freshness contract as the feed*Refs).
+      const placeFilter = usePollsFeedControlsStore.getState().placeFilter;
       // Wave-2 §3: sort is never null (New is the stated default, not an omission);
       // the time period is folded INTO Top — it is only sent when Top is the sort.
       return {
@@ -257,6 +236,7 @@ export const usePollsFeedRuntimeController = ({
         ...(feedSortRef.current === 'top' && feedTimeRef.current !== 'all_time'
           ? { time: feedTimeRef.current }
           : {}),
+        ...(placeFilter !== POLL_FEED_PLACE_FILTER_ALL ? { placeFilterId: placeFilter } : {}),
         ...(cursor ? { cursor } : {}),
       };
     },
@@ -338,6 +318,7 @@ export const usePollsFeedRuntimeController = ({
           headerPlaceName: response.header.placeName,
           promise: response.promise,
           nextCursor: response.nextCursor,
+          placeOptions: response.placeOptions,
         });
         if (retryAttempt > 0) {
           logBootstrap({ phase: 'feed-retry-recovered', attempt: retryAttempt });
@@ -413,6 +394,7 @@ export const usePollsFeedRuntimeController = ({
           // The promise is a FIRST-PAGE cold-start state; an append never creates one.
           promise: null,
           nextCursor: response.nextCursor,
+          placeOptions: response.placeOptions,
         });
       } catch (error) {
         // A failed page is quiet: the loaded list stands, the cursor stands, the next

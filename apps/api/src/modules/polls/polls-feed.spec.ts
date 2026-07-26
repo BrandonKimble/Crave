@@ -11,6 +11,7 @@
  */
 import 'reflect-metadata';
 import { PollsService } from './polls.service';
+import { ViewportVerdictService } from '../places/viewport-verdict.service';
 
 const TOWN = '11111111-1111-1111-1111-111111111111';
 const STATE = '44444444-4444-4444-4444-444444444444';
@@ -69,6 +70,27 @@ function createHarness(options: {
         const roots = values[0] as string[];
         const ids = [...new Set([...roots, ...(options.descendants ?? [])])];
         return Promise.resolve(ids.map((place_id) => ({ place_id })));
+      }
+      if (sql.includes('GROUP BY p.place_id, pl.name')) {
+        // buildPlaceOptions: GROUP BY place over the membership set, joined
+        // to names (fake rows are all 'active' → inside the LIVE+CLOSED
+        // universe). Zero-poll places simply produce no row.
+        const placeIds = values[0] as string[];
+        const counts = new Map<string, number>();
+        for (const row of options.pollTable) {
+          if (row.place_id && placeIds.includes(row.place_id)) {
+            counts.set(row.place_id, (counts.get(row.place_id) ?? 0) + 1);
+          }
+        }
+        return Promise.resolve(
+          [...counts.entries()]
+            .filter(([place_id]) => placeNames.has(place_id))
+            .map(([place_id, poll_count]) => ({
+              place_id,
+              name: placeNames.get(place_id),
+              poll_count,
+            })),
+        );
       }
       if (sql.includes('ORDER BY p.created_at DESC')) {
         // The 'new'-sort page query. Filter template param order:
@@ -177,6 +199,17 @@ function createHarness(options: {
     ),
   };
 
+  const placesPromotions = {
+    enqueue: jest.fn().mockResolvedValue(undefined),
+    noteHeaderAnswer: jest.fn(),
+  };
+  // The REAL shared seam (Job: one law, one implementation) wired over the
+  // same fakes — the feed exercises the extracted composition end-to-end.
+  const viewportVerdict = new ViewportVerdictService(
+    prisma as never,
+    placesCatalog as never,
+    placesPromotions as never,
+  );
   const service = new PollsService(
     prisma as never,
     createLogger() as never,
@@ -188,10 +221,8 @@ function createHarness(options: {
     {} as never, // entityTextSearch
     { record: jest.fn() } as never, // signals
     placesCatalog as never,
-    {
-      enqueue: jest.fn().mockResolvedValue(undefined),
-      noteHeaderAnswer: jest.fn(),
-    } as never, // placesPromotions
+    placesPromotions as never,
+    viewportVerdict,
   );
   return { service, prisma, placesCatalog };
 }
@@ -375,6 +406,112 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
     const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
     expect(response.header).toEqual({ placeName: null });
     expect(response.promise).toBeNull();
+  });
+
+  it('placeOptions: membership places ranked by pollCount desc / name asc; zero-poll places ABSENT', async () => {
+    const now = Date.now();
+    const EMPTY_TOWN = '77777777-7777-7777-7777-777777777777';
+    const { service } = createHarness({
+      pollTable: [
+        // 2 polls in the descendant neighborhood, 1 in the town itself.
+        {
+          poll_id: pollId(1),
+          place_id: NEIGHBORHOOD,
+          market_key: null,
+          created_at: new Date(now - 1000),
+        },
+        {
+          poll_id: pollId(2),
+          place_id: NEIGHBORHOOD,
+          market_key: null,
+          created_at: new Date(now - 2000),
+        },
+        {
+          poll_id: pollId(3),
+          place_id: TOWN,
+          market_key: null,
+          created_at: new Date(now - 3000),
+        },
+      ],
+      placesInView: [
+        TOWN_IN_VIEW,
+        // In view, a member — but carries ZERO polls: never listed.
+        {
+          placeId: EMPTY_TOWN,
+          name: 'Hutto',
+          coverageOfView: 0.1,
+          placeArea: 0.5,
+        },
+      ],
+      descendants: [NEIGHBORHOOD],
+    });
+
+    const response = await service.queryPolls({ bounds: VIEW_BOUNDS });
+    expect((response as { placeOptions: unknown }).placeOptions).toEqual([
+      { placeId: NEIGHBORHOOD, name: 'Old Town', pollCount: 2 },
+      { placeId: TOWN, name: 'Round Rock', pollCount: 1 },
+    ]);
+  });
+
+  it('placeFilterId slices the feed to the DAG SUBTREE: a poll in a CHILD place appears when filtering by the parent; a SIBLING place is excluded — while placeOptions stays unfiltered', async () => {
+    const now = Date.now();
+    const SIBLING = '88888888-8888-8888-8888-888888888888';
+    const table: FakePollRow[] = [
+      {
+        poll_id: pollId(1),
+        place_id: TOWN, // the filter place itself
+        market_key: null,
+        created_at: new Date(now - 1000),
+      },
+      {
+        poll_id: pollId(2),
+        place_id: NEIGHBORHOOD, // CHILD of TOWN (subtree member)
+        market_key: null,
+        created_at: new Date(now - 2000),
+      },
+      {
+        poll_id: pollId(3),
+        place_id: SIBLING, // in the viewport membership, NOT in the subtree
+        market_key: null,
+        created_at: new Date(now - 3000),
+      },
+    ];
+    const { service } = createHarness({
+      pollTable: table,
+      placesInView: [
+        TOWN_IN_VIEW,
+        {
+          placeId: SIBLING,
+          name: 'Pflugerville',
+          coverageOfView: 0.15,
+          placeArea: 0.8,
+        },
+      ],
+      descendants: [NEIGHBORHOOD],
+    });
+
+    // RED-provable both ways: unfiltered feed carries the sibling…
+    const unfiltered = await service.queryPolls({ bounds: VIEW_BOUNDS });
+    expect(
+      (unfiltered.polls as Array<{ pollId: string }>).map((p) => p.pollId),
+    ).toEqual([pollId(1), pollId(2), pollId(3)]);
+
+    // …the parent-filtered feed keeps self + child and drops the sibling.
+    const filtered = await service.queryPolls({
+      bounds: VIEW_BOUNDS,
+      placeFilterId: TOWN,
+    });
+    expect(
+      (filtered.polls as Array<{ pollId: string }>).map((p) => p.pollId),
+    ).toEqual([pollId(1), pollId(2)]);
+
+    // The selector options are computed over the UNFILTERED membership, so
+    // the sibling never vanishes from its own selector.
+    expect(
+      (
+        filtered as { placeOptions: Array<{ placeId: string }> }
+      ).placeOptions.map((option) => option.placeId),
+    ).toEqual(expect.arrayContaining([TOWN, NEIGHBORHOOD, SIBLING]));
   });
 
   it('no view (no bounds, no legacy marketKey) → empty renderable envelope', async () => {

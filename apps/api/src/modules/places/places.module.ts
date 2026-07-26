@@ -20,6 +20,7 @@ import { PlacesPromotionService } from './places-promotion.service';
 import { PlacesReconcilerService } from './places-reconciler.service';
 import { TomtomChainProbeAdapter } from './tomtom-chain-probe.adapter';
 import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
+import { ViewportVerdictService } from './viewport-verdict.service';
 
 @Module({
   // forwardRef: IdentityModule reaches back here via NotificationsModule →
@@ -37,6 +38,7 @@ import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
     PlacesCatalogService,
     PlacesPromotionService,
     PlacesReconcilerService,
+    ViewportVerdictService,
     // The real governed adapter (§2 sketch mechanics on the cheap pool).
     // Pool denials and config faults THROW — the reconciler logs and skips,
     // and crucially does NOT write a negative observation for ground the
@@ -59,6 +61,7 @@ import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
     PlacesCatalogService,
     PlacesPromotionService,
     PlacesReconcilerService,
+    ViewportVerdictService,
   ],
 })
 export class PlacesModule {}

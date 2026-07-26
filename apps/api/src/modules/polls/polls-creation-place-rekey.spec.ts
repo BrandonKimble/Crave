@@ -88,6 +88,7 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     { record: jest.fn(), bboxFromPlace: jest.fn() } as never, // signals
     placesCatalog as never,
     placesPromotions as never,
+    {} as never, // viewportVerdict (feed-only; unused in this spec)
   );
   return { service, prisma, placesCatalog, placesPromotions };
 }

@@ -119,12 +119,23 @@ export type PollFeedPromise = {
  * cursor pagination. The header carries the §2 subjecthood verdict — null renders
  * the first-class "Polls in this area".
  */
+/** One §6 place-slicer option: a membership place carrying feed content,
+ *  ranked server-side by contribution (LIVE+CLOSED poll count). */
+export type PollFeedPlaceOptionRow = {
+  placeId: string;
+  placeName: string;
+  pollCount: number;
+};
+
 export type PollQueryResponse = {
   header: { placeName: string | null };
   promise: PollFeedPromise | null;
   polls: Poll[];
   /** Opaque keyset cursor for the next page; null = end of feed. */
   nextCursor: string | null;
+  /** §6 place slicer — SERVER-TRUTH options over the viewport membership
+   *  (zero-poll places never present; unaffected by placeFilterId). */
+  placeOptions: PollFeedPlaceOptionRow[];
 };
 
 export type PollFeedSort = 'new' | 'top' | 'trending';
@@ -142,6 +153,9 @@ export type PollQueryPayload = {
   sort?: PollFeedSort;
   type?: PollFeedType;
   time?: PollFeedTime;
+  /** §6 place slicer (server-truth): slice the feed to this place's DAG
+   *  subtree (self + descendants). Omit for the unfiltered feed. */
+  placeFilterId?: string;
 };
 
 export type CreatePollPayload = {
@@ -201,6 +215,36 @@ const normalizePollFeedPromise = (value: unknown): PollFeedPromise | null => {
   return null;
 };
 
+const normalizePlaceOptions = (value: unknown): PollFeedPlaceOptionRow[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const options: PollFeedPlaceOptionRow[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') {
+      continue;
+    }
+    const row = entry as {
+      placeId?: unknown;
+      name?: unknown;
+      placeName?: unknown;
+      pollCount?: unknown;
+    };
+    // The API row says `name`; accept `placeName` too so the client type is
+    // the single mobile vocabulary word.
+    const placeName =
+      typeof row.name === 'string'
+        ? row.name
+        : typeof row.placeName === 'string'
+          ? row.placeName
+          : null;
+    if (typeof row.placeId === 'string' && placeName && typeof row.pollCount === 'number') {
+      options.push({ placeId: row.placeId, placeName, pollCount: row.pollCount });
+    }
+  }
+  return options;
+};
+
 const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
@@ -219,6 +263,7 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
         promise: normalizePollFeedPromise(anyPayload.promise),
         polls: normalizePollList(anyPayload.polls),
         nextCursor: typeof anyPayload.nextCursor === 'string' ? anyPayload.nextCursor : null,
+        placeOptions: normalizePlaceOptions(anyPayload.placeOptions),
       };
     }
   }
@@ -228,6 +273,7 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
     promise: null,
     polls: normalizePollList(payload),
     nextCursor: null,
+    placeOptions: [],
   };
 };
 

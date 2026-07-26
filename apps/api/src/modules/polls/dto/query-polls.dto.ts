@@ -5,6 +5,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
   ValidateNested,
@@ -78,6 +79,16 @@ export class QueryPollsDto {
   @IsOptional()
   @IsString()
   cursor?: string;
+
+  /**
+   * §6 place slicer (server-truth): constrain the feed to this place's DAG
+   * SUBTREE (self + descendants), intersected with the viewport membership.
+   * Omit for the unfiltered feed. `placeOptions` in the response is ALWAYS
+   * computed over the unfiltered membership.
+   */
+  @IsOptional()
+  @IsUUID()
+  placeFilterId?: string;
 
   /**
    * Page size — a DTO-validated client choice (§16), bounded HERE at the API

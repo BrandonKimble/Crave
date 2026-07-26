@@ -103,6 +103,7 @@ function createHarness(
       enqueue: jest.fn().mockResolvedValue(undefined),
       noteHeaderAnswer: jest.fn(),
     } as never, // placesPromotions
+    {} as never, // viewportVerdict (feed-only; unused in this spec)
   );
   const internals = service as unknown as {
     rebuildPollLeaderboard: (pollId: string) => Promise<void>;

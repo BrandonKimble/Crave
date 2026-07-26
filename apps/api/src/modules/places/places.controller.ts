@@ -14,6 +14,7 @@ import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { PlacesInViewQueryDto } from './dto/places-in-view.dto';
 import { PlacesCatalogService, placeParentIds } from './places-catalog.service';
+import { ViewportVerdictService } from './viewport-verdict.service';
 
 /**
  * The catalog SLICE read (header subject-store design, ratified 2026-07-21):
@@ -44,7 +45,34 @@ import { PlacesCatalogService, placeParentIds } from './places-catalog.service';
 @Controller('places')
 @UseGuards(ClerkAuthGuard)
 export class PlacesController {
-  constructor(private readonly catalog: PlacesCatalogService) {}
+  constructor(
+    private readonly catalog: PlacesCatalogService,
+    private readonly viewportVerdict: ViewportVerdictService,
+  ) {}
+
+  /**
+   * The standalone viewport→place-verdict read (home's header): the SAME
+   * §2/§2.5 law composition the polls feed runs (ViewportVerdictService is
+   * the one implementation). Nulls when the viewport resolves to no covering
+   * place — the client renders its "this area" copy.
+   */
+  @Get('viewport-verdict')
+  @RateLimitTier('default')
+  async viewportVerdictRead(
+    @Query() query: PlacesInViewQueryDto,
+  ): Promise<{ placeId: string | null; placeName: string | null }> {
+    if (query.minLat > query.maxLat) {
+      // Latitude is not circular — this shape is malformed, not wrap.
+      throw new BadRequestException('minLat must be <= maxLat');
+    }
+    const verdict = await this.viewportVerdict.resolveViewportVerdict(
+      query.toBbox(),
+    );
+    return {
+      placeId: verdict.headerPlace?.placeId ?? null,
+      placeName: verdict.headerPlace?.name ?? null,
+    };
+  }
 
   @Get('in-view')
   @RateLimitTier('default')

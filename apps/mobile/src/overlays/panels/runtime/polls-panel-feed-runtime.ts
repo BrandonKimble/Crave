@@ -7,7 +7,7 @@ import type {
   PollsPanelInitialSnapPoint,
   UsePollsPanelSpecOptions,
 } from './polls-panel-runtime-contract';
-import { POLL_FEED_PLACE_FILTER_ALL, usePollsFeedControlsStore } from './polls-feed-controls-store';
+import { usePollsFeedControlsStore } from './polls-feed-controls-store';
 import { usePollsFeedRuntimeController } from './polls-feed-runtime-controller';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
 import { useViewportSubjectState } from '../../../store/viewport-subject-store';
@@ -68,7 +68,6 @@ export const usePollsPanelFeedRuntime = ({
   const feedSort = usePollsFeedControlsStore((state) => state.feedSort);
   const feedType = usePollsFeedControlsStore((state) => state.feedType);
   const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
-  const placeFilter = usePollsFeedControlsStore((state) => state.placeFilter);
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const initialSnap: PollsPanelInitialSnapPoint =
@@ -76,15 +75,11 @@ export const usePollsPanelFeedRuntime = ({
   const resolvedSnap = currentSnap ?? initialSnap;
   const headerAction: 'create' | 'close' =
     resolvedSnap === 'collapsed' || resolvedSnap === 'hidden' ? 'create' : 'close';
-  // §6 place slicer — CLIENT-SIDE slice of the loaded pages (render-time; server-side
-  // slicing is a later leg — see polls-feed-controls-store.placeFilter).
-  const visiblePolls = React.useMemo(
-    () =>
-      placeFilter === POLL_FEED_PLACE_FILTER_ALL
-        ? polls
-        : polls.filter((poll) => poll.placeId === placeFilter),
-    [placeFilter, polls]
-  );
+  // §6 place slicer — SERVER-SIDE since the placeFilterId cut: the filter is a
+  // NETWORK control (polls-feed-controls-store diff → refetch with
+  // placeFilterId), so the loaded pages ARE the sliced feed. No render-time
+  // client filter remains.
+  const visiblePolls = polls;
   // HEADER SUBJECT-STORE (ratified 2026-07-21): the client subject store is the
   // TITLE AUTHORITY — the same §2 law run on-device against the sliding catalog
   // slice, committed via settle+dwell hysteresis. The feed response's

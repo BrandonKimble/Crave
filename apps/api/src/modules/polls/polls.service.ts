@@ -48,20 +48,9 @@ import {
 } from './poll-timing';
 import { PlacesCatalogService } from '../places/places-catalog.service';
 import { PlacesPromotionService } from '../places/places-promotion.service';
-import {
-  descendantPlaceIds,
-  isSubdivisionOrBigger,
-} from '../places/place-dag-read';
-import {
-  GeoBbox,
-  bboxArea,
-  bboxCenter,
-  isTooBigForView,
-} from '@crave-search/shared';
-import {
-  FeedPlaceCandidate,
-  resolveFeedMembership,
-} from './poll-feed-membership';
+import { descendantPlaceIds } from '../places/place-dag-read';
+import { ViewportVerdictService } from '../places/viewport-verdict.service';
+import { GeoBbox, bboxCenter } from '@crave-search/shared';
 import {
   PollFeedCursor,
   decodePollFeedCursor,
@@ -133,6 +122,7 @@ export class PollsService {
     private readonly signals: SignalsService,
     private readonly placesCatalog: PlacesCatalogService,
     private readonly placesPromotions: PlacesPromotionService,
+    private readonly viewportVerdict: ViewportVerdictService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -216,16 +206,36 @@ export class PollsService {
         polls: [],
         nextCursor: null,
         promiseEligible: false,
+        placeOptions: [],
       });
     }
 
-    const membership = await this.resolveViewportMembership(view);
+    // THE shared viewport→place-verdict seam (ViewportVerdictService): the
+    // same placesInView + resolveFeedMembership + resolveHeaderPlace
+    // composition home consumes via GET /places/viewport-verdict.
+    const verdict = await this.viewportVerdict.resolveViewportVerdict(view);
+
+    // §6 place slicer: options are computed over the UNFILTERED membership
+    // (so the selected place never vanishes from its own selector), ranked by
+    // content contribution across the feed's whole status universe
+    // (LIVE + CLOSED — the span of PollListState).
+    const placeOptions = await this.buildPlaceOptions(verdict.placeIds);
+
+    // Server-truth place slice: constrain the feed to the filter place's DAG
+    // SUBTREE (self + descendants) intersected with the viewport membership.
+    let feedPlaceIds = verdict.placeIds;
+    if (query.placeFilterId && feedPlaceIds.length) {
+      const subtree = new Set(
+        await descendantPlaceIds(this.prisma, [query.placeFilterId]),
+      );
+      feedPlaceIds = feedPlaceIds.filter((placeId) => subtree.has(placeId));
+    }
 
     const page = await this.queryFeedPage({
       state: targetState,
       mode: targetMode,
       launchedAfter,
-      placeIds: membership.placeIds,
+      placeIds: feedPlaceIds,
       sort,
       limit,
       cursor,
@@ -233,13 +243,49 @@ export class PollsService {
     const polls = await this.hydrateFeedPolls(page.pollIds, viewerUserId);
 
     return this.buildFeedResponse({
-      headerPlaceName: membership.headerPlaceName,
+      headerPlaceName: verdict.headerPlace?.name ?? null,
       polls,
       nextCursor: page.nextCursor,
       // §6 cold-start promise: first page, zero polls, but the viewport DOES
       // resolve to a place (a seeded town) — the copy is mobile's.
       promiseEligible: cursor === null && polls.length === 0,
+      placeOptions,
     });
+  }
+
+  /**
+   * §6 place-slicer options: GROUP BY place over the viewport membership set,
+   * across the feed's full status universe (active + closed — every state the
+   * Live/Results toggle can show). Zero-poll places never appear; rank is
+   * pollCount desc, name asc (deterministic tiebreak).
+   */
+  private async buildPlaceOptions(
+    placeIds: string[],
+  ): Promise<Array<{ placeId: string; name: string; pollCount: number }>> {
+    if (!placeIds.length) {
+      return [];
+    }
+    const counts = await this.prisma.$queryRaw<
+      Array<{ place_id: string; name: string; poll_count: bigint | number }>
+    >(Prisma.sql`
+      SELECT p.place_id, pl.name, COUNT(*) AS poll_count
+      FROM polls p
+      JOIN places pl ON pl.place_id = p.place_id
+      WHERE p.place_id = ANY(${placeIds}::uuid[])
+        AND p.state::text = ANY(${[PollState.active, PollState.closed] as string[]}::text[])
+      GROUP BY p.place_id, pl.name
+    `);
+    return counts
+      .map((row) => ({
+        placeId: row.place_id,
+        name: row.name,
+        pollCount: Number(row.poll_count),
+      }))
+      .sort(
+        (left, right) =>
+          right.pollCount - left.pollCount ||
+          left.name.localeCompare(right.name),
+      );
   }
 
   /**
@@ -268,57 +314,6 @@ export class PollsService {
       }
     }
     return null;
-  }
-
-  /** §6/§2/§4: in-view membership + header verdict + descendant expansion. */
-  private async resolveViewportMembership(view: GeoBbox): Promise<{
-    placeIds: string[];
-    headerPlaceName: string | null;
-  }> {
-    const placesInView = await this.placesCatalog.placesInView(view);
-    const candidates: FeedPlaceCandidate[] = placesInView.map((entry) => ({
-      placeId: entry.place.placeId,
-      name: entry.place.name,
-      bbox: entry.bbox,
-      coverageOfView: entry.coverageOfView,
-      placeArea: entry.placeArea,
-      parentPlaceIds: entry.parentPlaceIds,
-    }));
-    // §4 feed half: only OVER-SCALE candidates ever need the structural
-    // subdivision+ judgment (a handful of ancestors per view).
-    const viewArea = bboxArea(view);
-    const bigPlaceIds = new Set<string>();
-    for (const candidate of candidates) {
-      if (
-        isTooBigForView(viewArea, candidate.placeArea) &&
-        (await isSubdivisionOrBigger(this.prisma, candidate.placeId))
-      ) {
-        bigPlaceIds.add(candidate.placeId);
-      }
-    }
-    const membership = resolveFeedMembership(view, candidates, bigPlaceIds);
-    if (membership.resolution.kind === 'place') {
-      // §2(e) tier-2 promotion: the polls feed header answering from this
-      // place counts toward its "frequent header-answering" earned moment.
-      this.placesPromotions.noteHeaderAnswer(
-        membership.resolution.place.placeId,
-      );
-    }
-    const descendants = membership.subjectPlaceIds.length
-      ? await descendantPlaceIds(this.prisma, membership.subjectPlaceIds)
-      : [];
-    // §4 feed half holds through descendant expansion too: a §2.5 subject
-    // can itself be an over-scale subdivision+ dominator (state-scale zoom),
-    // and the subtree read echoes its roots — subtract the structurally big
-    // over-scale places from the final membership so their polls stay
-    // feed-at-that-zoom only.
-    const placeIds = [
-      ...new Set([...membership.memberPlaceIds, ...descendants]),
-    ].filter((placeId) => !bigPlaceIds.has(placeId));
-    return {
-      placeIds,
-      headerPlaceName: membership.headerPlaceName,
-    };
   }
 
   /**
@@ -525,8 +520,9 @@ export class PollsService {
     polls: unknown[];
     nextCursor: string | null;
     promiseEligible: boolean;
+    placeOptions: Array<{ placeId: string; name: string; pollCount: number }>;
   }) {
-    const { headerPlaceName, polls, nextCursor } = params;
+    const { headerPlaceName, polls, nextCursor, placeOptions } = params;
     const promise =
       params.promiseEligible && headerPlaceName
         ? // Typed state only — "Polls drop Sundays — this town's first
@@ -538,6 +534,9 @@ export class PollsService {
       promise,
       polls,
       nextCursor,
+      // §6 place slicer (server-truth): membership places carrying content,
+      // ranked by contribution — zero-poll places never listed.
+      placeOptions,
     };
   }
 

@@ -2106,3 +2106,22 @@ live (reverseGeocode entityType=Neighbourhood at 40.787,-73.9754 →
 distinct NYC neighborhoods + 42 Austin on a coarse grid (undercount by
 construction) — the header law resolves neighborhoods as attention
 sketches them into the catalog (32 in catalog today).
+
+## 2026-07-26 — Place-verdict seam + server-truth poll place-selector
+
+Home-prep item 2 + the §6 selector's deferred server leg, one build.
+(1) ViewportVerdictService (places module) — the byte-identical
+extraction of the polls feed's membership composition (placesInView →
+over-scale set → resolveFeedMembership/resolveHeaderPlace →
+noteHeaderAnswer → descendant expansion); polls' private copy DELETED,
+queryPolls calls the shared service; GET /places/viewport-verdict is the
+standalone endpoint home consumes; feed response shape unchanged.
+(2) polls/query now returns placeOptions (GROUP BY over the UNFILTERED
+membership, active+closed, ranked count desc/name asc, zero-count never
+emitted) + accepts placeFilterId constraining the feed to the place's
+DAG subtree (descendantPlaceIds CTE) — server-truth filtering replaces
+the loaded-pages client slice; mobile chip options come from the
+response, placeFilter joined the network-control diff ("later leg"
+carve-outs removed), stale filter auto-resets off response options.
+RED-proof: subtree filter keeps self+child, drops sibling; options
+unaffected by the active filter. api 882 / mobile 416 green.
