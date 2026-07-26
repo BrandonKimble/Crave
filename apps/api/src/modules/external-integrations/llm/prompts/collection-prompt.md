@@ -624,6 +624,8 @@ Outputs
 - Standalone cuisine/style (restaurant-only)
   - "Ravi Kabab is the best Indian in the area." -> `food`: null, `food_categories`: null, `is_menu_item: false`; "indian" rides as an attribute on both sides.
   - "Go here for great comfort food." (no dish named) -> `food`: null, `food_categories`: null, `is_menu_item: false`; "comfort food" lands on `restaurant_attributes`.
+  - THE "for <noun>" TEMPLATE TRAP — the noun after "for" is not automatically the dish; run the ORDER test on it, never the sentence shape: "Clinton St for pancakes" -> `food`: "pancakes" ("I'll have pancakes" works). "Saravanaa Bhavan remains goated for breakfast" -> `food`: null, `food_categories`: null ("I'll have a breakfast" fails — meal-period; it rides on `restaurant_attributes`). Identical template, opposite outcomes.
+  - Never inject a meal-period into a real dish's categories: "Clinton St for pancakes" (in a breakfast-ish thread) -> `food_categories`: ["pancakes"] — NOT ["pancakes", "breakfast"]; meal-periods are attributes, never categories (4.3), no matter what the surrounding lines discuss.
 - Mixed sentiment (emit only positive dish)
   - "PSA: the ribs suck. The brisket is good." -> emit "brisket" (positive); do not emit "ribs".
 - Inherited itemhood in concise follow-ups (when unambiguous)

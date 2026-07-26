@@ -791,10 +791,95 @@ export class UnifiedProcessingService implements OnModuleInit {
     return result;
   }
 
+  /**
+   * NAMESPACE GATE (2026-07-26 leakage root cause): the model occasionally
+   * emits attribute-vocabulary words (meal-periods/styles — 'breakfast',
+   * 'comfort food') in `food`/`food_categories` despite §3.5/§4.3, and
+   * minting had NO validation — the leak became live food entities
+   * ('breakfast' × 258 category events). Deterministic, DATA-DRIVEN (no
+   * word lists): a food-lane string whose normalized name is an ACTIVE
+   * attribute entity is dropped from the food lane — UNLESS a same-named
+   * food entity has real dish evidence (connections), which exempts
+   * legitimately dual words ('cocktails' has menu-item evidence; drinks
+   * are orderable and belong in the food namespace). Dropped strings are
+   * warn-logged; the attribute side of the mention is untouched (the model
+   * emits attributes separately when appropriate).
+   */
+  private async gateFoodNamespaceLeaks(
+    llmOutput: EnrichedLLMOutputStructure,
+  ): Promise<void> {
+    const candidates = new Set<string>();
+    for (const mention of llmOutput.mentions) {
+      if (typeof mention.food === 'string' && mention.food) {
+        candidates.add(mention.food.trim().toLowerCase());
+      }
+      if (Array.isArray(mention.food_categories)) {
+        for (const c of mention.food_categories) {
+          if (typeof c === 'string' && c)
+            candidates.add(c.trim().toLowerCase());
+        }
+      }
+    }
+    if (!candidates.size) return;
+    const names = Array.from(candidates);
+    const gatedRows = await this.prismaService.$queryRaw<
+      Array<{ name: string }>
+    >`
+      SELECT DISTINCT lower(a.name) AS name
+      FROM core_entities a
+      WHERE a.type IN ('food_attribute'::entity_type, 'restaurant_attribute'::entity_type)
+        AND a.status = 'active'
+        AND lower(a.name) = ANY(${names})
+        AND NOT EXISTS (
+          SELECT 1
+          FROM core_entities f
+          JOIN core_restaurant_items i ON i.food_id = f.entity_id
+          WHERE f.type = 'food' AND lower(f.name) = lower(a.name)
+        )
+    `;
+    if (!gatedRows.length) return;
+    const gated = new Set(gatedRows.map((r) => r.name));
+    for (const mention of llmOutput.mentions) {
+      if (
+        typeof mention.food === 'string' &&
+        gated.has(mention.food.trim().toLowerCase())
+      ) {
+        this.logger.warn(
+          'Namespace gate: attribute word emitted as food — dropped',
+          {
+            operation: 'food_namespace_gate',
+            word: mention.food,
+            mentionTempId: mention.temp_id,
+          },
+        );
+        mention.food = null;
+      }
+      if (Array.isArray(mention.food_categories)) {
+        const kept = mention.food_categories.filter((c) => {
+          const drop =
+            typeof c === 'string' && gated.has(c.trim().toLowerCase());
+          if (drop) {
+            this.logger.warn(
+              'Namespace gate: attribute word emitted as food_category — dropped',
+              {
+                operation: 'food_namespace_gate',
+                word: c,
+                mentionTempId: mention.temp_id,
+              },
+            );
+          }
+          return !drop;
+        });
+        mention.food_categories = kept.length ? kept : null;
+      }
+    }
+  }
+
   private async resolveEntitiesForOutput(
     llmOutput: EnrichedLLMOutputStructure,
     engineId: string | null,
   ): Promise<BatchResolutionResult> {
+    await this.gateFoodNamespaceLeaks(llmOutput);
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
       engineId,
     });
