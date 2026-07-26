@@ -129,19 +129,41 @@ export function TrackSheetPage<Item>({
     },
     [attachToTag]
   );
+  const pendingSnapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
     if (commandsRef == null) {
       return;
     }
     commandsRef.current = {
-      snapToTau: (tauTarget, animated = true) => {
-        listInstanceRef.current?.scrollToOffset?.({ offset: tauTarget, animated });
+      // RETRYING SNAP (anti-trap, 2026-07-26): a scrollToOffset issued before the
+      // recycler lays out is a silent no-op — the sheet sat at τ=0 while the OLD
+      // sheet rendered the same page above it, and every visual check read the
+      // wrong layer. Retry until τ actually reaches the target (or attempts cap).
+      snapToTau: (tauTarget) => {
+        if (pendingSnapTimer.current != null) {
+          clearTimeout(pendingSnapTimer.current);
+          pendingSnapTimer.current = null;
+        }
+        // Native spring settle (TrackScrollKit snapTo) — retry until τ moves
+        // (a pre-attach call is a no-op; the recycler may still be mounting).
+        let attempts = 0;
+        const trySnap = () => {
+          physics.snapToTau(tauTarget);
+          attempts += 1;
+          if (attempts < 12 && Math.abs(tau.value - tauTarget) > 1) {
+            pendingSnapTimer.current = setTimeout(trySnap, 200);
+          }
+        };
+        trySnap();
       },
     };
     return () => {
+      if (pendingSnapTimer.current != null) {
+        clearTimeout(pendingSnapTimer.current);
+      }
       commandsRef.current = null;
     };
-  }, [commandsRef]);
+  }, [commandsRef, physics, tau]);
 
   const listHeader = React.useMemo(
     () => (
@@ -185,6 +207,7 @@ export function TrackSheetPage<Item>({
         style={[
           styles.sheetClip,
           { backgroundColor: surfaceColor, height: SCREEN.height },
+          debugHud && styles.debugEdge,
           sheetClipStyle,
         ]}
       >
@@ -253,6 +276,9 @@ const styles = StyleSheet.create({
     right: 0,
   },
   divider: { height: 1, backgroundColor: '#e2e8f0' },
+  // Layer marker (debug builds of the parallel host): the TrackSheet surface is
+  // the one with the amber top edge — never confuse it with the old sheet again.
+  debugEdge: { borderTopWidth: 3, borderTopColor: '#f59e0b' },
   hud: {
     position: 'absolute',
     bottom: 40,

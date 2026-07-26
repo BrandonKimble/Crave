@@ -39,6 +39,10 @@
 /// Releases whose native target lands below this bound get detent-targeted.
 @property (nonatomic, assign) CGFloat snapRegionEnd;
 @property (nonatomic, copy) NSArray<NSNumber *> *snapOffsets;
+- (void)startSpringOn:(UIScrollView *)scrollView
+             toTarget:(double)target
+                fromY:(double)y0
+            velocityY:(double)v0;
 @end
 
 static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
@@ -329,6 +333,34 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.snapRegionEnd = regionEnd != nil ? regionEnd.doubleValue : -1;
     proxy.snapOffsets = config[@"snapOffsets"] ?: @[];
     resolve(@(YES));
+  }];
+}
+
+// Programmatic settle: drive the SAME critically damped native spring the
+// physics uses for detents/rubber — scene-switch snaps feel identical to
+// gesture-born settles (and JS-side scrollToOffset through animated wrappers
+// proved unreliable).
+RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
+                  offset:(nonnull NSNumber *)offset)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      return;
+    }
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    if (proxy == nil) {
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
+                          animated:YES];
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [proxy startSpringOn:scrollView
+                  toTarget:offset.doubleValue
+                     fromY:scrollView.contentOffset.y
+                 velocityY:0];
+    });
   }];
 }
 

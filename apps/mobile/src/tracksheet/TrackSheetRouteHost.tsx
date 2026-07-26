@@ -114,6 +114,10 @@ export const TrackSheetRouteHost: React.FC = () => {
 };
 
 const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneOverride }) => {
+  React.useEffect(() => {
+    console.log('[TRACKHOST] surface mounted');
+    return () => console.log('[TRACKHOST] surface unmounted');
+  }, []);
   // RUNG 2 — REAL GEOMETRY + LIVE SCENE: the canonical snap points come from the
   // startup geometry seed (the same routeOverlaySnapPoints the production sheet
   // rides), and the presented scene tracks the PresentationFrame — tab presses

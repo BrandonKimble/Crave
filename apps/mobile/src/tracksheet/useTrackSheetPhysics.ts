@@ -48,6 +48,8 @@ export type TrackSheetPhysics = {
   onScroll: ReturnType<typeof useAnimatedScrollHandler>;
   /** Ref callback target: the component whose subtree holds the UIScrollView. */
   attachToTag: (tag: number | null) => void;
+  /** Programmatic settle to a τ — rides the same native critically damped spring. */
+  snapToTau: (tau: number) => void;
 };
 
 const SPACER_EPSILON = 0.5;
@@ -124,6 +126,13 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
       }
     };
   }, []);
+  const snapToTau = React.useCallback((tauTarget: number) => {
+    const physics = NativeModules.TrackScrollPhysics;
+    const tag = attachedTagRef.current;
+    if (physics?.snapTo != null && tag != null) {
+      physics.snapTo(tag, tauTarget);
+    }
+  }, []);
   const reassertAttach = React.useCallback(() => {
     const tag = attachedTagRef.current;
     if (tag != null) {
@@ -160,5 +169,6 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
     sheetTopY,
     onScroll,
     attachToTag,
+    snapToTau,
   };
 };

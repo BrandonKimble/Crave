@@ -2070,3 +2070,23 @@ each is verified on the track host:
 - Everything else the old sheet does (grab-handle promote tap, header nav
   action, scene ready gates, origin-scroll restore, keyboard modes) is
   inventory to port or consciously retire — never silently drop.
+
+RUNG 3 SLICE 2 — WIP STATE (2026-07-26, honest ledger):
+LANDED: (a) mounted-body adapter — all 12 registry scenes render their REAL
+bodies direct (ListsMountedSceneBody etc., no registry wrapper — its residency
+boundary painted hidden prewarm legs visibly outside the old host's contexts);
+(b) home parts page; (c) ONE persistent UnifiedTrackScenePage (no per-scene
+remounts — Fabric unmount assert on teardown; host now hides, never unmounts);
+(d) native snapTo in TrackScrollKit (programmatic settles ride the SAME
+critically damped spring; JS scrollToOffset through animated wrappers is
+unreliable — RED-proven); (e) amber top-edge layer marker on the debug surface
+(the two-identical-sheets anti-attribution trap cost a full round: the
+"working page" was the OLD sheet, mine sat unseated beneath).
+RED (next slice): the seat still doesn't land — (1) the snap effect fires only
+on scene CHANGE (re-show/re-enable never re-seats; make seating re-assert on
+attach + geometry-ready); (2) getSearchStartupGeometrySeed read once pre-layout
+(cached memo) — read live or subscribe; (3) verify with the amber marker that
+MY sheet (not production's) renders the real body seated at expanded.
+NOISE LOG: recurring dev crashes are PRE-EXISTING (ReanimatedModule
+installTurboModule assert on some reloads; snap-law posture-seat violation
+LogBox from the OLD system's nav-switch settle recording — owner triage).
