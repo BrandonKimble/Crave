@@ -2118,3 +2118,18 @@ track-truth (rendered scene = live presented scene at its seat; all lanes on).
 AMBER-VERIFIED: Lists renders its FULL real page (grids, strip, title) seated
 expanded on the track. Rung-4 note: derive shouldRenderExpandedContent from τ
 for collapsed postures instead of constant true.
+
+RUNG 3 — SCENE SWEEP PROGRESS (2026-07-26 late):
+- PROFILE: REAL on the track, amber-verified, after the BODY INSET fix
+  (mounted cells now carry OVERLAY_HORIZONTAL_PADDING — production applies it
+  via the body-content runtime; profile rendered edge-to-edge without it).
+  Finding: the stats band's FROST TINT is muted — FrostCutout registers into a
+  null foundation context on the track host; the scene foundation surface
+  (white plate + cutout store) belongs INSIDE TrackSheetPage (rung 4 item).
+- SETTINGS (child scene): REAL on the track via pushRoute → frame; seated
+  τ=H (snapLock 'expanded' satisfied by the simplified rule).
+- MISSING CHROME: the host-owned HeaderNavAction (back/X) is not in the track
+  chrome yet — child scenes can't be exited from the track host. Port it next.
+- Sim-driving hazard logged: tapping by coordinates while a scene switch is in
+  flight lands on the OLD scene's rows (opened Replay-onboarding by accident;
+  onboarding slide 1's back control doesn't exit — recovered via reload).

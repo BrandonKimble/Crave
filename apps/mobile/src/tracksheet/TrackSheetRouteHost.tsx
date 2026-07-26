@@ -2,6 +2,7 @@ import React from 'react';
 import { Dimensions, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import type { OverlayKey } from '../overlays/types';
@@ -305,7 +306,9 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         headerHeight={64}
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
-        rowSurfaceStyle={scene === 'polls' ? styles.rowSurface : undefined}
+        rowSurfaceStyle={
+          scene === 'polls' || MOUNTED_TRACK_SCENES.has(scene) ? styles.rowSurface : undefined
+        }
         debugHud
         commandsRef={commandsRef}
         seatTau={seatTau}
@@ -343,7 +346,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fallbackTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
-  rowSurface: { paddingHorizontal: 16 },
+  // Production's body inset (useBottomSheetSceneStackBodyContentRuntime applies
+  // OVERLAY_HORIZONTAL_PADDING via the transport) — mounted bodies expect it.
+  rowSurface: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 20, gap: 12 },
   rowDot: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#cbd5e1' },
   rowLine: { flex: 1, height: 12, borderRadius: 6, backgroundColor: '#e2e8f0' },
