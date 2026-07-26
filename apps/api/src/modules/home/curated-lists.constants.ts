@@ -10,40 +10,29 @@
  */
 
 /**
- * K1-UNRATIFIED (suggested 5): minimum items for a list to materialize at
+ * K1-RATIFIED 2026-07-26 (owner): minimum items for a list to materialize at
  * all — the "a list must be EARNED by data" floor (charter decision 2; the
- * no-fake-estimates law applied to curation). No measured basis exists yet
- * for what reads as credible; 5 is the smallest count that doesn't read as
- * a stub. Owner to ratify.
+ * no-fake-estimates law applied to curation). 5 is the smallest count that
+ * doesn't read as a stub.
  */
 export const MIN_VIABLE_LIST_ITEMS = 5;
 
 /**
- * K1-UNRATIFIED (suggested 25): cap on materialized items per list. Purely
- * a payload/quality knob (rank quality decays with depth); not measured.
+ * K1-RATIFIED 2026-07-26 (owner): cap on materialized items per list. Purely
+ * a payload/quality knob (rank quality decays with depth).
  */
 export const MAX_LIST_ITEMS = 25;
 
-/**
- * K1-UNRATIFIED (suggested 8): how many top-mention cuisines get a best-of
- * list per city. Cuisine RANKING is measured (mention volume); the cut
- * count is an owner shelf-size choice.
- */
-export const MAX_CUISINE_LISTS_PER_CITY = 8;
+// UNCAPPED (owner-ratified 2026-07-26): the per-city cuisine/dish shelf caps
+// (MAX_CUISINE_LISTS_PER_CITY / MAX_DISH_LISTS_PER_CITY, both 8) are GONE —
+// every cuisine/dish that clears MIN_VIABLE_LIST_ITEMS earns its list.
 
 /**
- * K1-UNRATIFIED (suggested 8): how many top-mention dishes get a monthly
- * best-of list per city. Same shape as the cuisine cut.
- */
-export const MAX_DISH_LISTS_PER_CITY = 8;
-
-/**
- * K1-UNRATIFIED (suggested 3): hidden-gems evidence floor — minimum mention
+ * K1-RATIFIED 2026-07-26 (owner): hidden-gems evidence floor — minimum mention
  * volume for a below-median restaurant to qualify (below the floor the
  * score itself rests on too little testimony to headline a list). The score
  * pipeline pins no mention-count floor constant (its A_ref/A_floor pins are
- * activity-lane calibrations, not per-entity evidence counts), so this is
- * an owner knob until measured.
+ * activity-lane calibrations, not per-entity evidence counts).
  */
 export const HIDDEN_GEMS_EVIDENCE_FLOOR = 3;
 

@@ -203,24 +203,24 @@ export class RestaurantEntityMergeService {
     // collection_on_demand_ask_events) need NO rekey — user-act history lives
     // in the immutable signals ledger, resolved through entity_redirects at
     // read (the redirect row is written by the merge flow itself).
-    await this.rehomeFavoriteListRestaurantItems(tx, canonicalId, duplicateId);
+    await this.rehomeUserListRestaurantItems(tx, canonicalId, duplicateId);
     await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
     await this.rehomeDemandScoringCandidates(tx, canonicalId, duplicateId);
   }
 
-  private async rehomeFavoriteListRestaurantItems(
+  private async rehomeUserListRestaurantItems(
     tx: Prisma.TransactionClient,
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    const sourceItems = await tx.favoriteListItem.findMany({
+    const sourceItems = await tx.userListItem.findMany({
       where: { restaurantId: duplicateId },
       select: { itemId: true, listId: true },
     });
 
     for (const item of sourceItems) {
-      const conflicting = await tx.favoriteListItem.findFirst({
+      const conflicting = await tx.userListItem.findFirst({
         where: {
           listId: item.listId,
           restaurantId: canonicalId,
@@ -230,13 +230,13 @@ export class RestaurantEntityMergeService {
       });
 
       if (conflicting) {
-        await tx.favoriteListItem.delete({
+        await tx.userListItem.delete({
           where: { itemId: item.itemId },
         });
         continue;
       }
 
-      await tx.favoriteListItem.update({
+      await tx.userListItem.update({
         where: { itemId: item.itemId },
         data: { restaurantId: canonicalId },
       });
@@ -577,19 +577,19 @@ export class RestaurantEntityMergeService {
     // reader resolves dead connections to the survivor via entity_redirects +
     // (food, restaurant) at read (SignalDemandReadService.recentlyViewedFoods)
     // — no per-merge rekey of view rows exists anymore.
-    await this.rehomeFavoriteListItemConnections(
+    await this.rehomeUserListItemConnections(
       tx,
       sourceConnectionId,
       targetConnectionId,
     );
   }
 
-  private async rehomeFavoriteListItemConnections(
+  private async rehomeUserListItemConnections(
     tx: Prisma.TransactionClient,
     sourceConnectionId: string,
     targetConnectionId: string,
   ): Promise<void> {
-    const sourceItems = await tx.favoriteListItem.findMany({
+    const sourceItems = await tx.userListItem.findMany({
       where: { connectionId: sourceConnectionId },
       select: {
         itemId: true,
@@ -598,7 +598,7 @@ export class RestaurantEntityMergeService {
     });
 
     for (const item of sourceItems) {
-      const conflicting = await tx.favoriteListItem.findFirst({
+      const conflicting = await tx.userListItem.findFirst({
         where: {
           listId: item.listId,
           connectionId: targetConnectionId,
@@ -608,13 +608,13 @@ export class RestaurantEntityMergeService {
       });
 
       if (conflicting) {
-        await tx.favoriteListItem.delete({
+        await tx.userListItem.delete({
           where: { itemId: item.itemId },
         });
         continue;
       }
 
-      await tx.favoriteListItem.update({
+      await tx.userListItem.update({
         where: { itemId: item.itemId },
         data: { connectionId: targetConnectionId },
       });

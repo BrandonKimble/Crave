@@ -524,7 +524,7 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
 
   it('list: blocked OWNER pair resolves unavailable even when share-enabled', async () => {
     const { resolver, prisma } = makeResolver({
-      favoriteList: {
+      userList: {
         findUnique: jest.fn().mockResolvedValue({
           name: 'Tacos',
           itemCount: 3,
@@ -542,7 +542,7 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
 
   it('list: an available preview carries listType (mouth 4 — the client runs the list WORLD)', async () => {
     const { resolver } = makeResolver({
-      favoriteList: {
+      userList: {
         findUnique: jest.fn().mockResolvedValue({
           name: 'Taco crawl',
           itemCount: 8,

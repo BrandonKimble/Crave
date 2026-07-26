@@ -6,10 +6,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { FavoriteListsService } from './favorite-lists.service';
-import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
-import { ListResultsAssembler } from './favorite-list-results.assembler';
-import { FavoriteListMapper } from './favorite-list.mappers';
+import { UserListsService } from './user-lists.service';
+import { UserListAccessPolicy } from './user-list-access.policy';
+import { ListResultsAssembler } from './user-list-results.assembler';
+import { UserListMapper } from './user-list.mappers';
 
 /**
  * W1 data-layer contracts beyond raw access (w1-listdetail spec B.1.2-B.1.6):
@@ -87,7 +87,7 @@ function makeHarness(opts: {
     opts.collaboratorCreate ?? jest.fn().mockResolvedValue({});
   const listUpdate = jest.fn().mockResolvedValue({});
   const prisma: any = {
-    favoriteList: {
+    userList: {
       // findFirst assigned below (honest predicate over the fixtures)
       findFirst: jest.fn(),
       findMany: jest.fn((args: any) =>
@@ -103,7 +103,7 @@ function makeHarness(opts: {
       ),
       update: listUpdate,
     },
-    favoriteListCollaborator: {
+    userListCollaborator: {
       findUnique: jest.fn((args: any) => {
         const key = args.where.listId_userId;
         return Promise.resolve(
@@ -115,8 +115,8 @@ function makeHarness(opts: {
       deleteMany: collaboratorDeleteMany,
       create: collaboratorCreate,
     },
-    favoriteListShareEvent: { create: shareEventCreate },
-    favoriteListItem: {
+    userListShareEvent: { create: shareEventCreate },
+    userListItem: {
       findMany: jest.fn((args: any) => {
         const list = lists.find((l) => l.listId === args.where.listId);
         return Promise.resolve(
@@ -133,7 +133,7 @@ function makeHarness(opts: {
     ),
   };
   // fix findFirst: simpler honest impl
-  prisma.favoriteList.findFirst = jest.fn((args: any) => {
+  prisma.userList.findFirst = jest.fn((args: any) => {
     const hit = lists.find(
       (l) =>
         (!args.where.listId || l.listId === args.where.listId) &&
@@ -179,7 +179,7 @@ function makeHarness(opts: {
       ),
     ),
   };
-  const access = new FavoriteListAccessPolicy(prisma as never, blocks as never);
+  const access = new UserListAccessPolicy(prisma as never, blocks as never);
   const assemblerPrisma = {
     $queryRaw: jest.fn(() => Promise.resolve([{ restaurantId: R1 }])),
   };
@@ -187,8 +187,8 @@ function makeHarness(opts: {
     executor as never,
     assemblerPrisma as never,
   );
-  const mapper = new FavoriteListMapper(prisma as never, logger as never);
-  const service = new FavoriteListsService(
+  const mapper = new UserListMapper(prisma as never, logger as never);
+  const service = new UserListsService(
     prisma as never,
     access,
     assembler,
@@ -303,9 +303,7 @@ describe('visibility canon (owner 2026-07-12): visibility = discovery, never acc
     prisma.entity = {
       findUnique: jest.fn().mockResolvedValue({ entityId: R1 }),
     };
-    prisma.favoriteListItem.create = jest
-      .fn()
-      .mockResolvedValue({ itemId: 'x' });
+    prisma.userListItem.create = jest.fn().mockResolvedValue({ itemId: 'x' });
     await expect(
       service.addItem(COLLABORATOR, LIST_ID, { restaurantId: R1 } as never),
     ).resolves.toMatchObject({ itemId: 'x' });
@@ -370,9 +368,7 @@ describe('collaborators (spec B.1.3)', () => {
     prisma.entity = {
       findUnique: jest.fn().mockResolvedValue({ entityId: R1 }),
     };
-    prisma.favoriteListItem.create = jest
-      .fn()
-      .mockResolvedValue({ itemId: 'x' });
+    prisma.userListItem.create = jest.fn().mockResolvedValue({ itemId: 'x' });
     await expect(
       service.addItem(COLLABORATOR, LIST_ID, { restaurantId: R1 } as never),
     ).resolves.toMatchObject({ itemId: 'x' });
@@ -720,7 +716,7 @@ describe('score-gap resilience on the home lists read (red-team finding 4)', () 
       }),
     ];
     const { service, prisma } = makeHarness({
-      lists: [makeList({ items, systemKind: null, pinned: false })],
+      lists: [makeList({ items, kind: 'standard', pinned: false })],
     });
     // Only R1 has a public score; R2 is the data gap.
     prisma.publicEntityScore.findMany = jest

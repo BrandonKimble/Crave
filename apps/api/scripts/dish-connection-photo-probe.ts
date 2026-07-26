@@ -47,8 +47,8 @@ async function main(): Promise<void> {
     `
     select distinct l.name as list_name, c.connection_id, c.restaurant_id,
            r.name as restaurant, f.name as dish
-    from favorite_list_items li
-    join favorite_lists l on l.list_id = li.list_id and l.list_type = 'dish'
+    from user_list_items li
+    join user_lists l on l.list_id = li.list_id and l.list_type = 'dish'
     join users u on u.user_id = l.owner_user_id
       and u.email = 'kimble.brandonm@gmail.com'
     join core_restaurant_items c on c.connection_id = li.connection_id

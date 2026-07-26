@@ -8,12 +8,12 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export class AddFavoriteListItemDto {
-  @ValidateIf((value: AddFavoriteListItemDto) => !value.connectionId)
+export class AddUserListItemDto {
+  @ValidateIf((value: AddUserListItemDto) => !value.connectionId)
   @IsUUID()
   restaurantId?: string;
 
-  @ValidateIf((value: AddFavoriteListItemDto) => !value.restaurantId)
+  @ValidateIf((value: AddUserListItemDto) => !value.restaurantId)
   @IsUUID()
   connectionId?: string;
 

@@ -4,14 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type FavoriteList } from '@prisma/client';
+import { Prisma, type UserList } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
 
-export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
+export type UserListViewerRole = 'owner' | 'collaborator' | 'viewer';
 
 export type ListAccessRow = Pick<
-  FavoriteList,
+  UserList,
   'listId' | 'ownerUserId' | 'shareSlug' | 'shareEnabled'
 >;
 
@@ -19,7 +19,7 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The favorite-list capability law (RT-18 slug-as-capability + the
+ * The user-list capability law (RT-18 slug-as-capability + the
  * visibility canon, owner 2026-07-12), in ONE home:
  *
  * - Read: owner OR collaborator OR presented-shareSlug-matches (the slug IS
@@ -35,7 +35,7 @@ const UUID_RE =
  *   collaborator — indistinguishable from sharing having been revoked.
  */
 @Injectable()
-export class FavoriteListAccessPolicy {
+export class UserListAccessPolicy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly blocks: UserBlockService,
@@ -58,18 +58,17 @@ export class FavoriteListAccessPolicy {
     list: ListAccessRow,
     viewerUserId: string | null,
     presentedSlug?: string,
-  ): Promise<FavoriteListViewerRole> {
+  ): Promise<UserListViewerRole> {
     if (viewerUserId && list.ownerUserId === viewerUserId) {
       return 'owner';
     }
     if (viewerUserId) {
-      const collaborator =
-        await this.prisma.favoriteListCollaborator.findUnique({
-          where: {
-            listId_userId: { listId: list.listId, userId: viewerUserId },
-          },
-          select: { userId: true },
-        });
+      const collaborator = await this.prisma.userListCollaborator.findUnique({
+        where: {
+          listId_userId: { listId: list.listId, userId: viewerUserId },
+        },
+        select: { userId: true },
+      });
       if (collaborator) {
         return 'collaborator';
       }
@@ -92,13 +91,13 @@ export class FavoriteListAccessPolicy {
 
   /** Mutation grant: owner or collaborator only — never the slug. */
   async assertOwnerOrCollaborator(
-    list: Pick<FavoriteList, 'listId' | 'ownerUserId'>,
+    list: Pick<UserList, 'listId' | 'ownerUserId'>,
     userId: string,
   ): Promise<void> {
     if (list.ownerUserId === userId) {
       return;
     }
-    const collaborator = await this.prisma.favoriteListCollaborator.findUnique({
+    const collaborator = await this.prisma.userListCollaborator.findUnique({
       where: { listId_userId: { listId: list.listId, userId } },
       select: { userId: true },
     });
@@ -133,7 +132,7 @@ export class FavoriteListAccessPolicy {
       ? `opened:${shareSlug}:${viewerUserId}`
       : `opened:${shareSlug}:${new Date().toISOString().slice(0, 10)}`;
     try {
-      await this.prisma.favoriteListShareEvent.create({
+      await this.prisma.userListShareEvent.create({
         data: {
           listId,
           shareSlug,

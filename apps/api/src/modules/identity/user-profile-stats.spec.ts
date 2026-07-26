@@ -56,10 +56,10 @@ const makeService = (opts: {
         ),
       ),
     },
-    favoriteList: {
+    userList: {
       count: jest.fn().mockResolvedValue(opts.lists ?? 0),
     },
-    favoriteListItem: {
+    userListItem: {
       count: jest.fn().mockResolvedValue(opts.favorites ?? 0),
     },
   };
@@ -120,10 +120,10 @@ describe('UserService profile stats == live counts (W4 pattern, all stats)', () 
     const profile = await service.getPublicProfile(USER);
     expect(profile.stats.favoriteListsCount).toBe(4);
     expect(profile.stats.favoritesTotalCount).toBe(17);
-    expect(prisma.favoriteList.count).toHaveBeenCalledWith({
+    expect(prisma.userList.count).toHaveBeenCalledWith({
       where: { ownerUserId: USER },
     });
-    expect(prisma.favoriteListItem.count).toHaveBeenCalledWith({
+    expect(prisma.userListItem.count).toHaveBeenCalledWith({
       where: { list: { ownerUserId: USER } },
     });
   });

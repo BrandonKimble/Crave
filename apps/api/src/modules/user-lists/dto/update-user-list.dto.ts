@@ -1,4 +1,4 @@
-import { FavoriteListVisibility } from '@prisma/client';
+import { UserListVisibility } from '@prisma/client';
 import {
   IsBoolean,
   IsEnum,
@@ -8,7 +8,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-export class UpdateFavoriteListDto {
+export class UpdateUserListDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -21,8 +21,8 @@ export class UpdateFavoriteListDto {
   description?: string;
 
   @IsOptional()
-  @IsEnum(FavoriteListVisibility)
-  visibility?: FavoriteListVisibility;
+  @IsEnum(UserListVisibility)
+  visibility?: UserListVisibility;
 
   /** Profile-gallery pin (page-registry §8.14 long-press modal). */
   @IsOptional()

@@ -68,7 +68,7 @@
 --   user_restaurant_views.restaurant_id / user_food_views.food_id         view telemetry
 --   user_entity_view_events.entity_id / context_restaurant_id             view telemetry
 --   user_favorites.entity_id / user_favorite_events.entity_id             favorites (unique user+entity -> ON CONFLICT skip)
---   favorite_list_items.restaurant_id                                     list membership (unique list+restaurant -> skip)
+--   user_list_items.restaurant_id                                     list membership (unique list+restaurant -> skip)
 --   collection_on_demand_requests.entity_id / collection_on_demand_ask_events.entity_id   on-demand lane
 --   core_entities.restaurant_attributes (uuid[]) / core_restaurant_items.categories,food_attributes (uuid[])  attribute refs
 --   core_entities.primary_location_id                                     NOT touched (winner keeps its own primary location;
@@ -327,9 +327,9 @@ DELETE FROM user_favorites f USING user_favorites keep, _merge_map m
 WHERE f.entity_id = m.loser AND keep.entity_id = m.winner AND keep.user_id = f.user_id;
 UPDATE user_favorites f SET entity_id = m.winner FROM _merge_map m WHERE f.entity_id = m.loser;
 UPDATE user_favorite_events f SET entity_id = m.winner FROM _merge_map m WHERE f.entity_id = m.loser;
-DELETE FROM favorite_list_items i USING favorite_list_items keep, _merge_map m
+DELETE FROM user_list_items i USING user_list_items keep, _merge_map m
 WHERE i.restaurant_id = m.loser AND keep.restaurant_id = m.winner AND keep.list_id = i.list_id;
-UPDATE favorite_list_items i SET restaurant_id = m.winner FROM _merge_map m WHERE i.restaurant_id = m.loser;
+UPDATE user_list_items i SET restaurant_id = m.winner FROM _merge_map m WHERE i.restaurant_id = m.loser;
 
 -- A16. On-demand lane.
 UPDATE collection_on_demand_requests r SET entity_id = m.winner FROM _merge_map m WHERE r.entity_id = m.loser;

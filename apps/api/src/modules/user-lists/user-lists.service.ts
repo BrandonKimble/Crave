@@ -6,43 +6,43 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  FavoriteListType,
-  FavoriteListVisibility,
-  type FavoriteList,
-  type FavoriteListItem,
+  UserListType,
+  UserListVisibility,
+  type UserList,
+  type UserListItem,
   Prisma,
 } from '@prisma/client';
 import type { SearchResponse } from '@crave-search/shared';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateFavoriteListDto } from './dto/create-favorite-list.dto';
-import { UpdateFavoriteListDto } from './dto/update-favorite-list.dto';
-import { AddFavoriteListItemDto } from './dto/add-favorite-list-item.dto';
-import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
-import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
-import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
-import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
+import { CreateUserListDto } from './dto/create-user-list.dto';
+import { UpdateUserListDto } from './dto/update-user-list.dto';
+import { AddUserListItemDto } from './dto/add-user-list-item.dto';
+import { UpdateUserListItemDto } from './dto/update-user-list-item.dto';
+import { ShareUserListDto } from './dto/share-user-list.dto';
+import { ListUserListsDto } from './dto/list-user-lists.dto';
+import { UserListResultsDto } from './dto/user-list-results.dto';
 import {
-  FavoriteListAccessPolicy,
-  type FavoriteListViewerRole,
-} from './favorite-list-access.policy';
+  UserListAccessPolicy,
+  type UserListViewerRole,
+} from './user-list-access.policy';
 import {
   ListResultsAssembler,
-  type FavoriteListSort,
+  type UserListSort,
   type ListResultsSource,
-} from './favorite-list-results.assembler';
+} from './user-list-results.assembler';
 import {
-  FavoriteListMapper,
+  UserListMapper,
   hasCustomOrder,
-  type FavoriteListWithDetailItems,
-} from './favorite-list.mappers';
-import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.service';
+  type UserListWithDetailItems,
+} from './user-list.mappers';
+import { UserListTileGalleryService } from './user-list-tile-gallery.service';
 import { SignalsService } from '../signals/signals.service';
 
-export type { FavoriteListViewerRole, FavoriteListSort };
+export type { UserListViewerRole, UserListSort };
 
 /** The person-rows shape (matches user-follow's select). */
-export type FavoriteListPersonDto = {
+export type UserListPersonDto = {
   userId: string;
   username: string | null;
   displayName: string | null;
@@ -61,29 +61,40 @@ const PERSON_SELECT = {
  * the union of the target user's lists of one type, run through the SAME
  * executor path. `all:restaurants` / `all:dishes`.
  */
-const VIRTUAL_ALL_IDS: Record<string, FavoriteListType> = {
-  'all:restaurants': FavoriteListType.restaurant,
-  'all:dishes': FavoriteListType.dish,
+const VIRTUAL_ALL_IDS: Record<string, UserListType> = {
+  'all:restaurants': UserListType.restaurant,
+  'all:dishes': UserListType.dish,
 };
 
 /**
+ * The kind law (owner-ratified 2026-07-26, Spotify Liked-Songs model): every
+ * user has at most ONE kind='favorites' list — the heart verb's landing spot.
+ * It is LAZILY created on first use (ensureFavoritesList), is a REAL list in
+ * every other way (shareable, viewable, reorderable), and differs only in
+ * that it cannot be deleted and its kind is immutable (no mutation path
+ * accepts kind). Enforced by the partial unique index user_lists_owner_kind.
+ */
+export const FAVORITES_LIST_KIND = 'favorites';
+const FAVORITES_LIST_NAME = 'Favorites';
+
+/**
  * Favorite lists orchestration + CRUD. The natural seams live elsewhere:
- * access law in FavoriteListAccessPolicy, the results/query engine in
- * ListResultsAssembler, DTO projection in FavoriteListMapper.
+ * access law in UserListAccessPolicy, the results/query engine in
+ * ListResultsAssembler, DTO projection in UserListMapper.
  */
 @Injectable()
-export class FavoriteListsService {
+export class UserListsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly access: FavoriteListAccessPolicy,
+    private readonly access: UserListAccessPolicy,
     private readonly resultsAssembler: ListResultsAssembler,
-    private readonly mapper: FavoriteListMapper,
-    private readonly tileGallery: FavoriteListTileGalleryService,
+    private readonly mapper: UserListMapper,
+    private readonly tileGallery: UserListTileGalleryService,
     private readonly signals: SignalsService,
   ) {}
 
-  async listForUser(userId: string, query: ListFavoriteListsDto) {
-    const lists = await this.prisma.favoriteList.findMany({
+  async listForUser(userId: string, query: ListUserListsDto) {
+    const lists = await this.prisma.userList.findMany({
       where: {
         ownerUserId: userId,
         listType: query.listType,
@@ -151,8 +162,8 @@ export class FavoriteListsService {
    */
   private orderHomeLists<
     T extends Pick<
-      FavoriteList,
-      'listId' | 'systemKind' | 'position' | 'createdAt' | 'updatedAt'
+      UserList,
+      'listId' | 'kind' | 'position' | 'createdAt' | 'updatedAt'
     >,
   >(lists: T[]): T[] {
     // Wave-2 §2: system defaults are REGULAR lists — no pinned prefix. Every list
@@ -179,12 +190,12 @@ export class FavoriteListsService {
         );
   }
 
-  async listPublicForUser(userId: string, query: ListFavoriteListsDto) {
-    const lists = await this.prisma.favoriteList.findMany({
+  async listPublicForUser(userId: string, query: ListUserListsDto) {
+    const lists = await this.prisma.userList.findMany({
       where: {
         ownerUserId: userId,
         listType: query.listType,
-        visibility: FavoriteListVisibility.public,
+        visibility: UserListVisibility.public,
       },
       include: {
         items: {
@@ -233,7 +244,7 @@ export class FavoriteListsService {
    * "Yours" = owner OR collaborator (full-parity co-editors see the note).
    */
   async listMembershipsForEntity(userId: string, entityId: string) {
-    const items = await this.prisma.favoriteListItem.findMany({
+    const items = await this.prisma.userListItem.findMany({
       where: {
         OR: [{ restaurantId: entityId }, { connectionId: entityId }],
         list: {
@@ -249,7 +260,7 @@ export class FavoriteListsService {
         listId: true,
         note: true,
         list: {
-          select: { name: true, listType: true, systemKind: true },
+          select: { name: true, listType: true, kind: true },
         },
       },
     });
@@ -258,7 +269,9 @@ export class FavoriteListsService {
       listId: item.listId,
       listName: item.list.name,
       listType: item.list.listType,
-      systemKind: item.list.systemKind,
+      kind: item.list.kind,
+      // @deprecated wire alias (pre-kind mobile): 'standard' spelled null.
+      systemKind: item.list.kind === 'standard' ? null : item.list.kind,
       note: item.note,
     }));
   }
@@ -285,7 +298,7 @@ export class FavoriteListsService {
                  PARTITION BY li.list_id
                  ORDER BY COUNT(*) DESC, COALESCE(er.city, ecr.city) ASC
                ) AS rn
-        FROM favorite_list_items li
+        FROM user_list_items li
         LEFT JOIN core_entities er ON er.entity_id = li.restaurant_id
         LEFT JOIN core_restaurant_items c ON c.connection_id = li.connection_id
         LEFT JOIN core_entities ecr ON ecr.entity_id = c.restaurant_id
@@ -306,7 +319,7 @@ export class FavoriteListsService {
    */
   async getListForUser(userId: string, listId: string, shareSlug?: string) {
     this.access.assertConcreteListId(listId);
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       include: {
         items: {
@@ -353,7 +366,7 @@ export class FavoriteListsService {
   async getListResults(
     userId: string,
     listId: string,
-    dto: FavoriteListResultsDto,
+    dto: UserListResultsDto,
   ): Promise<SearchResponse> {
     const source = await this.resolveResultsSource(userId, listId, dto);
     return this.resultsAssembler.run(source, dto);
@@ -370,7 +383,7 @@ export class FavoriteListsService {
   async listCitiesForList(
     userId: string,
     listId: string,
-    dto: FavoriteListResultsDto,
+    dto: UserListResultsDto,
   ): Promise<
     Array<{ placeId: string; name: string; restaurantCount: number }>
   > {
@@ -422,14 +435,14 @@ export class FavoriteListsService {
   private async resolveResultsSource(
     userId: string,
     listId: string,
-    dto: FavoriteListResultsDto,
+    dto: UserListResultsDto,
   ): Promise<ListResultsSource> {
     const virtualType = VIRTUAL_ALL_IDS[listId];
     if (virtualType) {
       return this.buildVirtualAllSource(userId, listId, virtualType, dto);
     }
     this.access.assertConcreteListId(listId);
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       include: {
         items: {
@@ -471,11 +484,11 @@ export class FavoriteListsService {
   private async buildVirtualAllSource(
     userId: string,
     labelId: string,
-    listType: FavoriteListType,
-    dto: FavoriteListResultsDto,
+    listType: UserListType,
+    dto: UserListResultsDto,
   ): Promise<ListResultsSource> {
     const targetUserId = dto.targetUserId ?? userId;
-    const lists = await this.prisma.favoriteList.findMany({
+    const lists = await this.prisma.userList.findMany({
       where:
         targetUserId === userId
           ? { ownerUserId: userId, listType }
@@ -484,7 +497,7 @@ export class FavoriteListsService {
             {
               ownerUserId: targetUserId,
               listType,
-              visibility: FavoriteListVisibility.public,
+              visibility: UserListVisibility.public,
             },
       orderBy: { position: 'asc' },
       include: {
@@ -525,7 +538,7 @@ export class FavoriteListsService {
   }
 
   async getSharedList(shareSlug: string) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       // RT-18: match on the slug ALONE so a dead slug (sharing turned off)
       // is distinguishable — 410 {state:'private'} vs a plain 404 for a slug
       // that never existed / was rotated away. Visibility is never consulted:
@@ -565,21 +578,21 @@ export class FavoriteListsService {
     return this.buildListDetail(list, 'viewer');
   }
 
-  async createList(userId: string, dto: CreateFavoriteListDto) {
-    const maxPosition = await this.prisma.favoriteList.aggregate({
+  async createList(userId: string, dto: CreateUserListDto) {
+    const maxPosition = await this.prisma.userList.aggregate({
       where: { ownerUserId: userId },
       _max: { position: true },
     });
 
-    let list: FavoriteList;
+    let list: UserList;
     try {
-      list = await this.prisma.favoriteList.create({
+      list = await this.prisma.userList.create({
         data: {
           ownerUserId: userId,
           name: dto.name.trim(),
           description: dto.description?.trim() || null,
           listType: dto.listType,
-          visibility: dto.visibility ?? FavoriteListVisibility.private,
+          visibility: dto.visibility ?? UserListVisibility.private,
           position: (maxPosition._max.position ?? 0) + 1,
         },
       });
@@ -596,8 +609,8 @@ export class FavoriteListsService {
     return list;
   }
 
-  async updateList(userId: string, listId: string, dto: UpdateFavoriteListDto) {
-    const list = await this.prisma.favoriteList.findFirst({
+  async updateList(userId: string, listId: string, dto: UpdateUserListDto) {
+    const list = await this.prisma.userList.findFirst({
       where: { listId, ownerUserId: userId },
     });
     if (!list) {
@@ -609,7 +622,7 @@ export class FavoriteListsService {
     // only removes the list from the owner's profile — share links stay live
     // and collaborator seats survive until the owner revokes them
     // individually (disableShare / removeCollaborator).
-    return this.prisma.favoriteList.update({
+    return this.prisma.userList.update({
       where: { listId },
       data: {
         name: dto.name?.trim() ?? undefined,
@@ -625,41 +638,147 @@ export class FavoriteListsService {
   }
 
   async updateListPosition(userId: string, listId: string, position: number) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId, ownerUserId: userId },
       select: { listId: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
-    return this.prisma.favoriteList.update({
+    return this.prisma.userList.update({
       where: { listId },
       data: { position },
     });
   }
 
   async deleteList(userId: string, listId: string) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId, ownerUserId: userId },
-      select: { listId: true, itemCount: true },
+      select: { listId: true, itemCount: true, kind: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
     // Wave-2 §2: Been/Want-to-go (and the dish-side pair) are REGULAR lists —
     // default-CREATED per user, but renamable, movable, and deletable like any
-    // other list. The systemKind permanence guard is deleted; systemKind survives
-    // only as provisioning provenance (the once-ever (owner, systemKind) unique).
+    // other list; their kind survives only as provisioning provenance. The ONE
+    // undeletable list is the favorites-kind list (kind law 2026-07-26).
+    if (list.kind === FAVORITES_LIST_KIND) {
+      throw new ConflictException({
+        code: 'FAVORITES_LIST_UNDELETABLE',
+        message: 'The Favorites list cannot be deleted',
+      });
+    }
 
-    await this.prisma.favoriteList.delete({
+    await this.prisma.userList.delete({
       where: { listId },
     });
   }
 
-  async addItem(userId: string, listId: string, dto: AddFavoriteListItemDto) {
+  /**
+   * Idempotent lazy creation of the user's ONE kind='favorites' list.
+   * A concurrent first-heart race loses the insert on the partial unique
+   * (user_lists_owner_kind) and resolves by refetch. A pre-existing STANDARD
+   * list literally named 'Favorites' collides on (owner, listType, name) —
+   * loud 409, never a silent mis-target.
+   */
+  async ensureFavoritesList(userId: string): Promise<UserList> {
+    const existing = await this.prisma.userList.findFirst({
+      where: { ownerUserId: userId, kind: FAVORITES_LIST_KIND },
+    });
+    if (existing) {
+      return existing;
+    }
+    const maxPosition = await this.prisma.userList.aggregate({
+      where: { ownerUserId: userId },
+      _max: { position: true },
+    });
+    try {
+      return await this.prisma.userList.create({
+        data: {
+          ownerUserId: userId,
+          name: FAVORITES_LIST_NAME,
+          // Hearts land on PLACES: the favorites list is restaurant-typed, and
+          // a dish-triggered heart resolves to the dish's restaurant through
+          // the addItem side-flip (§8.8) — one list, no dish/restaurant split.
+          listType: UserListType.restaurant,
+          visibility: UserListVisibility.private,
+          kind: FAVORITES_LIST_KIND,
+          position: (maxPosition._max.position ?? 0) + 1,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const raced = await this.prisma.userList.findFirst({
+          where: { ownerUserId: userId, kind: FAVORITES_LIST_KIND },
+        });
+        if (raced) {
+          return raced;
+        }
+        throw new ConflictException({
+          code: 'FAVORITES_NAME_TAKEN',
+          message: `A list named "${FAVORITES_LIST_NAME}" already exists`,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /** The heart verb: ensure-then-add into the favorites-kind list. Idempotent
+   *  — re-hearting an already-hearted place returns the existing item. */
+  async addFavoriteItem(userId: string, dto: AddUserListItemDto) {
+    const list = await this.ensureFavoritesList(userId);
+    return this.addItem(userId, list.listId, dto, { idempotent: true });
+  }
+
+  /**
+   * Unheart by TARGET (the client knows what it hearted, not the itemId).
+   * Same selector body as the add; a connection target resolves to its
+   * restaurant (the favorites list is restaurant-typed). Idempotent: removing
+   * a never-hearted target is a no-op.
+   */
+  async removeFavoriteItemByTarget(userId: string, dto: AddUserListItemDto) {
+    if (!dto.restaurantId && !dto.connectionId) {
+      throw new BadRequestException('Missing list item target');
+    }
+    if (dto.restaurantId && dto.connectionId) {
+      throw new BadRequestException('Only one list item target is allowed');
+    }
+    const list = await this.ensureFavoritesList(userId);
+    let restaurantId = dto.restaurantId ?? null;
+    if (!restaurantId && dto.connectionId) {
+      const connection = await this.prisma.connection.findUnique({
+        where: { connectionId: dto.connectionId },
+        select: { restaurantId: true },
+      });
+      if (!connection) {
+        throw new NotFoundException('Connection not found');
+      }
+      restaurantId = connection.restaurantId;
+    }
+    const result = await this.prisma.userListItem.deleteMany({
+      where: { listId: list.listId, restaurantId },
+    });
+    if (result.count > 0) {
+      await this.prisma.userList.update({
+        where: { listId: list.listId },
+        data: { itemCount: { decrement: result.count } },
+      });
+    }
+  }
+
+  async addItem(
+    userId: string,
+    listId: string,
+    dto: AddUserListItemDto,
+    opts?: { idempotent?: boolean },
+  ) {
     // Full-parity collaborators (spec B.1.3): item mutations are
     // owner-OR-collaborator, never slug-granted.
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       select: { listId: true, ownerUserId: true, listType: true },
     });
@@ -682,7 +801,7 @@ export class FavoriteListsService {
     // to the restaurant side targets the RESTAURANT OF THE TRIGGERING DISH.
     // The client only carries the connectionId, so a connection target on a
     // restaurant list resolves server-side to that connection's restaurant.
-    if (list.listType === FavoriteListType.restaurant && connectionId) {
+    if (list.listType === UserListType.restaurant && connectionId) {
       const connection = await this.prisma.connection.findUnique({
         where: { connectionId },
         select: { restaurantId: true },
@@ -694,12 +813,12 @@ export class FavoriteListsService {
       connectionId = null;
     }
 
-    if (list.listType === FavoriteListType.restaurant && !restaurantId) {
+    if (list.listType === UserListType.restaurant && !restaurantId) {
       throw new BadRequestException(
         'Restaurant list items require a restaurant',
       );
     }
-    if (list.listType === FavoriteListType.dish && !connectionId) {
+    if (list.listType === UserListType.dish && !connectionId) {
       throw new BadRequestException('Dish list items require a connection');
     }
 
@@ -760,14 +879,14 @@ export class FavoriteListsService {
       }
     }
 
-    const maxPosition = await this.prisma.favoriteListItem.aggregate({
+    const maxPosition = await this.prisma.userListItem.aggregate({
       where: { listId },
       _max: { position: true },
     });
 
-    let item: FavoriteListItem;
+    let item: UserListItem;
     try {
-      item = await this.prisma.favoriteListItem.create({
+      item = await this.prisma.userListItem.create({
         data: {
           listId,
           addedByUserId: userId,
@@ -783,12 +902,23 @@ export class FavoriteListsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
+        if (opts?.idempotent) {
+          // Heart-verb idempotency: re-hearting returns the existing item.
+          const existing = await this.prisma.userListItem.findFirst({
+            where: restaurantId
+              ? { listId, restaurantId }
+              : { listId, connectionId },
+          });
+          if (existing) {
+            return existing;
+          }
+        }
         throw new BadRequestException('Item already exists in list');
       }
       throw error;
     }
 
-    await this.prisma.favoriteList.update({
+    await this.prisma.userList.update({
       where: { listId },
       data: { itemCount: { increment: 1 } },
     });
@@ -822,9 +952,9 @@ export class FavoriteListsService {
     userId: string,
     listId: string,
     itemId: string,
-    dto: UpdateFavoriteListItemDto,
+    dto: UpdateUserListItemDto,
   ) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       select: { listId: true, ownerUserId: true },
     });
@@ -833,7 +963,7 @@ export class FavoriteListsService {
     }
     await this.access.assertOwnerOrCollaborator(list, userId);
 
-    const result = await this.prisma.favoriteListItem.updateMany({
+    const result = await this.prisma.userListItem.updateMany({
       where: { itemId, listId },
       data: {
         ...(dto.position !== undefined ? { position: dto.position } : {}),
@@ -850,7 +980,7 @@ export class FavoriteListsService {
   }
 
   async removeItem(userId: string, listId: string, itemId: string) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       select: { listId: true, ownerUserId: true },
     });
@@ -858,14 +988,14 @@ export class FavoriteListsService {
       throw new NotFoundException('Favorite list not found');
     }
     await this.access.assertOwnerOrCollaborator(list, userId);
-    const result = await this.prisma.favoriteListItem.deleteMany({
+    const result = await this.prisma.userListItem.deleteMany({
       where: { itemId, listId },
     });
     if (result.count === 0) {
       return;
     }
 
-    await this.prisma.favoriteList.update({
+    await this.prisma.userList.update({
       where: { listId },
       data: { itemCount: { decrement: 1 } },
     });
@@ -883,7 +1013,7 @@ export class FavoriteListsService {
    * (finding 3), never a 500.
    */
   async reorderItems(userId: string, listId: string, orderedItemIds: string[]) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       select: { listId: true, ownerUserId: true },
     });
@@ -892,7 +1022,7 @@ export class FavoriteListsService {
     }
     await this.access.assertOwnerOrCollaborator(list, userId);
 
-    const currentItems = await this.prisma.favoriteListItem.findMany({
+    const currentItems = await this.prisma.userListItem.findMany({
       where: { listId },
       orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
       select: { itemId: true },
@@ -918,7 +1048,7 @@ export class FavoriteListsService {
     try {
       await this.prisma.$transaction(
         finalOrder.map((itemId, index) =>
-          this.prisma.favoriteListItem.update({
+          this.prisma.userListItem.update({
             where: { itemId },
             data: { position: index + 1 },
           }),
@@ -948,10 +1078,10 @@ export class FavoriteListsService {
     listId: string,
     shareSlug?: string,
   ): Promise<{
-    owner: FavoriteListPersonDto;
-    collaborators: FavoriteListPersonDto[];
+    owner: UserListPersonDto;
+    collaborators: UserListPersonDto[];
   }> {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       include: {
         owner: { select: PERSON_SELECT },
@@ -979,7 +1109,7 @@ export class FavoriteListsService {
    * gets the same 410 {state:'private'} (§8.6 — the block never leaks).
    */
   async joinCollaborators(userId: string, listId: string, shareSlug: string) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       select: {
         listId: true,
@@ -999,7 +1129,7 @@ export class FavoriteListsService {
     }
     await this.access.assertNotBlockedPair(userId, list.ownerUserId);
     try {
-      await this.prisma.favoriteListCollaborator.create({
+      await this.prisma.userListCollaborator.create({
         data: {
           listId,
           userId,
@@ -1025,7 +1155,7 @@ export class FavoriteListsService {
     listId: string,
     targetUserId: string,
   ) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId },
       select: { listId: true, ownerUserId: true },
     });
@@ -1037,7 +1167,7 @@ export class FavoriteListsService {
       // Fail-closed: a non-owner may only remove THEMSELVES; leak nothing.
       throw new NotFoundException('Favorite list not found');
     }
-    const result = await this.prisma.favoriteListCollaborator.deleteMany({
+    const result = await this.prisma.userListCollaborator.deleteMany({
       where: { listId, userId: targetUserId },
     });
     if (result.count === 0) {
@@ -1045,8 +1175,8 @@ export class FavoriteListsService {
     }
   }
 
-  async enableShare(userId: string, listId: string, dto: ShareFavoriteListDto) {
-    const list = await this.prisma.favoriteList.findFirst({
+  async enableShare(userId: string, listId: string, dto: ShareUserListDto) {
+    const list = await this.prisma.userList.findFirst({
       where: { listId, ownerUserId: userId },
     });
     if (!list) {
@@ -1061,7 +1191,7 @@ export class FavoriteListsService {
     // Visibility canon: sharing mints/returns the link CAPABILITY and never
     // mutates visibility (discovery) — a private (unlisted) list stays
     // shareable without being flipped onto the profile.
-    const updated = await this.prisma.favoriteList.update({
+    const updated = await this.prisma.userList.update({
       where: { listId },
       data: {
         shareSlug,
@@ -1069,7 +1199,7 @@ export class FavoriteListsService {
       },
     });
 
-    await this.prisma.favoriteListShareEvent.create({
+    await this.prisma.userListShareEvent.create({
       data: {
         listId,
         shareSlug,
@@ -1085,21 +1215,21 @@ export class FavoriteListsService {
   }
 
   async disableShare(userId: string, listId: string) {
-    const list = await this.prisma.favoriteList.findFirst({
+    const list = await this.prisma.userList.findFirst({
       where: { listId, ownerUserId: userId },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
 
-    const updated = await this.prisma.favoriteList.update({
+    const updated = await this.prisma.userList.update({
       where: { listId },
       data: {
         shareEnabled: false,
       },
     });
 
-    await this.prisma.favoriteListShareEvent.create({
+    await this.prisma.userListShareEvent.create({
       data: {
         listId,
         shareSlug: updated.shareSlug ?? undefined,
@@ -1109,8 +1239,8 @@ export class FavoriteListsService {
   }
 
   private async buildListDetail(
-    list: FavoriteListWithDetailItems,
-    viewerRole: FavoriteListViewerRole,
+    list: UserListWithDetailItems,
+    viewerRole: UserListViewerRole,
   ) {
     // The detail is owner/collaborator/slug-granted (never the public
     // profile), so the full 'owner' projection — including the slug the
@@ -1122,10 +1252,10 @@ export class FavoriteListsService {
     );
     // defaultSort (spec B.1.2 / registry §8.14): the saver's ranking is the
     // default whenever a custom order exists; otherwise crave-score 'best'.
-    const defaultSort: FavoriteListSort = hasCustomOrder(list.items)
+    const defaultSort: UserListSort = hasCustomOrder(list.items)
       ? 'custom'
       : 'best';
-    if (list.listType === FavoriteListType.restaurant) {
+    if (list.listType === UserListType.restaurant) {
       const restaurantItems = list.items.filter((item) => item.restaurant);
       const results = await this.mapper.mapRestaurantResults(restaurantItems);
       return { list: summary, viewerRole, defaultSort, restaurants: results };
@@ -1138,7 +1268,7 @@ export class FavoriteListsService {
   private async generateUniqueShareSlug(): Promise<string> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const slug = this.generateShareSlug();
-      const existing = await this.prisma.favoriteList.findFirst({
+      const existing = await this.prisma.userList.findFirst({
         where: { shareSlug: slug },
         select: { listId: true },
       });

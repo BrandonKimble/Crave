@@ -352,7 +352,7 @@ async function main(): Promise<void> {
       listId: string,
       items: { restaurantId?: string; connectionId?: string }[],
     ): Promise<void> {
-      await prisma.favoriteListItem.createMany({
+      await prisma.userListItem.createMany({
         data: items.map((it, i) => ({
           listId,
           addedByUserId: owner.userId,
@@ -362,8 +362,8 @@ async function main(): Promise<void> {
         })),
         skipDuplicates: true,
       });
-      const count = await prisma.favoriteListItem.count({ where: { listId } });
-      await prisma.favoriteList.update({
+      const count = await prisma.userListItem.count({ where: { listId } });
+      await prisma.userList.update({
         where: { listId },
         data: { itemCount: count },
       });
@@ -371,7 +371,7 @@ async function main(): Promise<void> {
 
     const systemList = async (systemKind: string) =>
       (
-        await prisma.favoriteList.findUniqueOrThrow({
+        await prisma.userList.findUniqueOrThrow({
           where: {
             ownerUserId_systemKind: { ownerUserId: owner.userId, systemKind },
           },
@@ -400,7 +400,7 @@ async function main(): Promise<void> {
       })),
     );
 
-    const customRestaurant = await prisma.favoriteList.upsert({
+    const customRestaurant = await prisma.userList.upsert({
       where: {
         ownerUserId_listType_name: {
           ownerUserId: owner.userId,
@@ -424,7 +424,7 @@ async function main(): Promise<void> {
       })),
     );
 
-    const customDish = await prisma.favoriteList.upsert({
+    const customDish = await prisma.userList.upsert({
       where: {
         ownerUserId_listType_name: {
           ownerUserId: owner.userId,

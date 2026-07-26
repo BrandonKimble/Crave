@@ -180,7 +180,7 @@ export class FoodDedupeMergeService {
           where: { connectionId: connection.connectionId },
           data: { connectionId: surviving.connectionId },
         });
-        await tx.favoriteListItem.updateMany({
+        await tx.userListItem.updateMany({
           where: { connectionId: connection.connectionId },
           data: { connectionId: surviving.connectionId },
         });

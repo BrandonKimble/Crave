@@ -1,4 +1,4 @@
-import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.service';
+import { UserListTileGalleryService } from './user-list-tile-gallery.service';
 
 /**
  * The 2x2 tile-gallery law (wave2 §7): top-4 restaurants by crave rank —
@@ -25,9 +25,9 @@ function makeService(params: {
   items: ItemRow[];
   scores: Map<string, { displayScore: number }>;
   topPhotos: Map<string, StubPhoto>;
-}): FavoriteListTileGalleryService {
+}): UserListTileGalleryService {
   const prisma = {
-    favoriteListItem: { findMany: () => Promise.resolve(params.items) },
+    userListItem: { findMany: () => Promise.resolve(params.items) },
   };
   const mapper = {
     loadPublicScores: () => Promise.resolve(params.scores),
@@ -47,7 +47,7 @@ function makeService(params: {
         countsByConnection: new Map(),
       }),
   };
-  return new FavoriteListTileGalleryService(
+  return new UserListTileGalleryService(
     prisma as never,
     mapper as never,
     photoRead as never,
@@ -85,7 +85,7 @@ const photo = (id: string) => ({
   urls: { thumb: `thumb-${id}` },
 });
 
-describe('FavoriteListTileGalleryService', () => {
+describe('UserListTileGalleryService', () => {
   it('orders slots by crave rank when the list has no custom order', async () => {
     // Insertion order == position order (no custom order); crave rank must win.
     const service = makeService({

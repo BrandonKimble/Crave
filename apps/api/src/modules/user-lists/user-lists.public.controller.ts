@@ -7,8 +7,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import { FavoriteListsService } from './favorite-lists.service';
-import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
+import { UserListsService } from './user-lists.service';
+import { ListUserListsDto } from './dto/list-user-lists.dto';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { UserBlockService } from '../identity/user-block.service';
@@ -17,9 +17,9 @@ import { CurrentUser } from '../../shared';
 // Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
 @AllowUnentitled()
 @Controller('users')
-export class FavoritesPublicController {
+export class UserListsPublicController {
   constructor(
-    private readonly favoriteListsService: FavoriteListsService,
+    private readonly userListsService: UserListsService,
     private readonly blocks: UserBlockService,
   ) {}
 
@@ -32,7 +32,7 @@ export class FavoritesPublicController {
   @UseGuards(OptionalClerkAuthGuard)
   async listPublicLists(
     @Param('userId', ParseUUIDPipe) userId: string,
-    @Query() query: ListFavoriteListsDto,
+    @Query() query: ListUserListsDto,
     @CurrentUser() viewer?: User | null,
   ) {
     if (
@@ -41,6 +41,6 @@ export class FavoritesPublicController {
     ) {
       return [];
     }
-    return this.favoriteListsService.listPublicForUser(userId, query);
+    return this.userListsService.listPublicForUser(userId, query);
   }
 }

@@ -1,4 +1,4 @@
-import { FavoriteListType, FavoriteListVisibility } from '@prisma/client';
+import { UserListType, UserListVisibility } from '@prisma/client';
 import {
   IsEnum,
   IsOptional,
@@ -7,7 +7,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-export class CreateFavoriteListDto {
+export class CreateUserListDto {
   @IsString()
   @MinLength(1)
   @MaxLength(120)
@@ -18,10 +18,10 @@ export class CreateFavoriteListDto {
   @MaxLength(500)
   description?: string;
 
-  @IsEnum(FavoriteListType)
-  listType!: FavoriteListType;
+  @IsEnum(UserListType)
+  listType!: UserListType;
 
   @IsOptional()
-  @IsEnum(FavoriteListVisibility)
-  visibility?: FavoriteListVisibility;
+  @IsEnum(UserListVisibility)
+  visibility?: UserListVisibility;
 }

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { FavoriteListType, Prisma } from '@prisma/client';
+import { UserListType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type {
   FilterClause,
@@ -9,21 +9,21 @@ import type {
 } from '@crave-search/shared';
 import { SearchQueryExecutor } from '../search/search-query.executor';
 import type { SearchQueryRequestDto } from '../search/dto/search-query.dto';
-import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
-import type { FavoriteListItemDetail } from './favorite-list.mappers';
+import { UserListResultsDto } from './dto/user-list-results.dto';
+import type { UserListItemDetail } from './user-list.mappers';
 
-export type FavoriteListSort = 'custom' | 'best' | 'recent';
+export type UserListSort = 'custom' | 'best' | 'recent';
 
 /** The parameterized source the assembler runs over (concrete or virtual). */
 export type ListResultsSource = {
   /** metadata label — the concrete listId or the virtual id. */
   labelId: string;
-  listType: FavoriteListType;
-  items: FavoriteListItemDetail[];
+  listType: UserListType;
+  items: UserListItemDetail[];
   updatedAtMs: number;
   /** virtual sources cannot have a custom order. */
   allowCustomSort: boolean;
-  defaultSort: FavoriteListSort;
+  defaultSort: UserListSort;
 };
 
 /**
@@ -39,7 +39,7 @@ export type ListResultsSource = {
  * builder clause. The executor INNER-JOINs scores/locations, so score-less or
  * un-geocoded favorites are silently dropped — surfaced via droppedItemCount.
  *
- * Access is resolved BEFORE this runs (FavoriteListAccessPolicy); this class
+ * Access is resolved BEFORE this runs (UserListAccessPolicy); this class
  * knows nothing about viewers.
  */
 @Injectable()
@@ -51,18 +51,18 @@ export class ListResultsAssembler {
 
   async run(
     source: ListResultsSource,
-    dto: FavoriteListResultsDto,
+    dto: UserListResultsDto,
   ): Promise<SearchResponse> {
-    const isRestaurantAxis = source.listType === FavoriteListType.restaurant;
+    const isRestaurantAxis = source.listType === UserListType.restaurant;
 
-    const sort: FavoriteListSort = dto.sort ?? source.defaultSort;
+    const sort: UserListSort = dto.sort ?? source.defaultSort;
     if (sort === 'custom' && !source.allowCustomSort) {
       throw new BadRequestException(
         'Custom sort requires a concrete list (the virtual All list has no custom order)',
       );
     }
 
-    const axisIdOf = (item: FavoriteListItemDetail): string | null =>
+    const axisIdOf = (item: UserListItemDetail): string | null =>
       isRestaurantAxis ? item.restaurantId : item.connectionId;
 
     // Items arrive position-asc per list; explicit sorts re-derive the order.
@@ -179,7 +179,7 @@ export class ListResultsAssembler {
     // The saver's note projects onto the axis rows (spec B.1.5) — first-wins
     // across the virtual union.
     const noteByAxisId = new Map<string, string>();
-    // W1 edit mode: each axis row also carries the FavoriteListItem id backing
+    // W1 edit mode: each axis row also carries the UserListItem id backing
     // it (first-wins across the virtual union, same law as the note) so the
     // client can build the drag-save's orderedItemIds without a second read.
     const itemIdByAxisId = new Map<string, string>();
@@ -188,7 +188,7 @@ export class ListResultsAssembler {
     // the search-center-selected sibling. First-wins, same law as the note.
     const savedLocationByAxisId = new Map<
       string,
-      NonNullable<FavoriteListItemDetail['location']>
+      NonNullable<UserListItemDetail['location']>
     >();
     for (const item of source.items) {
       const id = axisIdOf(item);
@@ -368,7 +368,7 @@ export class ListResultsAssembler {
             savedLocationByAxisId.get(dish.connectionId),
           ),
           note: noteByAxisId.get(dish.connectionId) ?? null,
-          favoriteListItemId: itemIdByAxisId.get(dish.connectionId) ?? null,
+          userListItemId: itemIdByAxisId.get(dish.connectionId) ?? null,
         }));
     const restaurants = isRestaurantAxis
       ? orderExplicitly(exec.restaurants, (r) => r.restaurantId).map(
@@ -378,8 +378,7 @@ export class ListResultsAssembler {
               savedLocationByAxisId.get(restaurant.restaurantId),
             ),
             note: noteByAxisId.get(restaurant.restaurantId) ?? null,
-            favoriteListItemId:
-              itemIdByAxisId.get(restaurant.restaurantId) ?? null,
+            userListItemId: itemIdByAxisId.get(restaurant.restaurantId) ?? null,
           }),
         )
       : exec.restaurants;

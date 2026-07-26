@@ -28,9 +28,9 @@ import {
 } from '../signals/signal-demand-read.service';
 import type { SignalKind } from '../signals/signals.service';
 
-/** Row shape of the favorites read (favorite_list_items under the user's own
+/** Row shape of the favorites read (user_list_items under the user's own
  *  lists): restaurant saves vs dish saves (connection → food entity). */
-interface FavoriteListItemMatchRow {
+interface UserListItemMatchRow {
   restaurantId: string | null;
   restaurant: { name: string; aliases: string[] } | null;
   connection: {
@@ -420,7 +420,7 @@ export class AutocompleteService {
   }> {
     const tasks: Array<Promise<unknown>> = [];
 
-    // Favorites live in the list system (favorite_list_items under the user's
+    // Favorites live in the list system (user_list_items under the user's
     // own lists): restaurant saves carry restaurantId, dish saves carry a
     // connection whose food entity is the suggestable subject.
     const includeRestaurants = entityTypes.includes(EntityType.restaurant);
@@ -435,7 +435,7 @@ export class AutocompleteService {
         : []),
     ];
     const favoritesTask = favoriteBranches.length
-      ? this.prisma.favoriteListItem.findMany({
+      ? this.prisma.userListItem.findMany({
           where: {
             list: { is: { ownerUserId: user.userId } },
             OR: favoriteBranches,
@@ -452,7 +452,7 @@ export class AutocompleteService {
           },
           take: 20,
         })
-      : Promise.resolve([] as FavoriteListItemMatchRow[]);
+      : Promise.resolve([] as UserListItemMatchRow[]);
     tasks.push(favoritesTask);
     // READER CUT (§22 item 6): "viewed" suggestions read the signals ledger
     // (kind = entity_view), not the dying user_restaurant_views table.
@@ -466,7 +466,7 @@ export class AutocompleteService {
     tasks.push(viewedTask);
 
     const [favoriteRows, viewedRows] = (await Promise.all(tasks)) as [
-      FavoriteListItemMatchRow[],
+      UserListItemMatchRow[],
       ViewedRestaurantNameMatch[],
     ];
 
@@ -567,7 +567,7 @@ export class AutocompleteService {
           )
         : Promise.resolve(new Map<string, number>()),
       user?.userId && entityIds.length
-        ? this.prisma.favoriteListItem.findMany({
+        ? this.prisma.userListItem.findMany({
             where: {
               list: { is: { ownerUserId: user.userId } },
               OR: [

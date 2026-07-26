@@ -190,7 +190,7 @@ function createHarness(options: {
     connection: {
       findMany: jest.fn(() => Promise.resolve(options.connections ?? [])),
     },
-    favoriteList: {
+    userList: {
       aggregate: jest.fn().mockResolvedValue({ _max: { position: 4 } }),
       create: jest.fn(
         ({
@@ -205,7 +205,7 @@ function createHarness(options: {
       ),
       update: jest.fn().mockResolvedValue({}),
     },
-    favoriteListItem: {
+    userListItem: {
       createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     publicEntityScore: {
@@ -513,7 +513,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
   });
 });
 
-describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's lists", () => {
+describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's lists", () => {
   const restaurantItems = [
     {
       rank: 1,
@@ -554,8 +554,8 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
         }),
       ],
     });
-    const saved = await service.saveListToFavorites(uuid(1), USER);
-    expect(prisma.favoriteList.create).toHaveBeenCalledWith({
+    const saved = await service.saveListToUserLists(uuid(1), USER);
+    expect(prisma.userList.create).toHaveBeenCalledWith({
       data: {
         ownerUserId: USER,
         name: 'Hidden gems of Austin',
@@ -563,7 +563,7 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
         position: 5,
       },
     });
-    expect(prisma.favoriteListItem.createMany).toHaveBeenCalledWith({
+    expect(prisma.userListItem.createMany).toHaveBeenCalledWith({
       data: [
         {
           restaurantId: uuid(10),
@@ -579,7 +579,7 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
         },
       ],
     });
-    expect(prisma.favoriteList.update).toHaveBeenCalledWith({
+    expect(prisma.userList.update).toHaveBeenCalledWith({
       where: { listId: saved.listId },
       data: { itemCount: 2 },
     });
@@ -638,8 +638,8 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
         { connectionId: uuid(40), restaurantId: uuid(30), foodId: uuid(20) },
       ],
     });
-    const saved = await service.saveListToFavorites(uuid(1), USER);
-    expect(prisma.favoriteListItem.createMany).toHaveBeenCalledWith({
+    const saved = await service.saveListToUserLists(uuid(1), USER);
+    expect(prisma.userListItem.createMany).toHaveBeenCalledWith({
       data: [
         {
           connectionId: uuid(40),
@@ -663,7 +663,7 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
       ],
     });
     await expect(
-      service.saveListToFavorites(uuid(1), USER),
+      service.saveListToUserLists(uuid(1), USER),
     ).rejects.toMatchObject({ name: 'NotFoundException' });
   });
 
@@ -678,7 +678,7 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
         }),
       ],
     });
-    prisma.favoriteList.create.mockImplementationOnce(() =>
+    prisma.userList.create.mockImplementationOnce(() =>
       Promise.reject(
         new Prisma.PrismaClientKnownRequestError('duplicate', {
           code: 'P2002',
@@ -686,7 +686,7 @@ describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's 
         }),
       ),
     );
-    const saved = await service.saveListToFavorites(uuid(1), USER);
+    const saved = await service.saveListToUserLists(uuid(1), USER);
     expect(saved.name).toBe('Hidden gems of Austin (copy)');
   });
 });

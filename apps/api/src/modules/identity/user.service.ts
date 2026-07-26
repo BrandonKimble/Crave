@@ -21,7 +21,7 @@ import { UserProfileDto } from './dto/user-profile.dto';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
-import { FavoriteListProvisioningService } from '../favorites/favorite-list-provisioning.service';
+import { UserListProvisioningService } from '../user-lists/user-list-provisioning.service';
 
 type OnboardingProfileRow = {
   onboardingStatus: UserOnboardingProfile['status'] | null;
@@ -51,7 +51,7 @@ export class UserService {
     private readonly userStats: UserStatsService,
     private readonly clerkAuth: ClerkAuthService,
     private readonly entitlements: EntitlementService,
-    private readonly favoriteListProvisioning: FavoriteListProvisioningService,
+    private readonly userListProvisioning: UserListProvisioningService,
   ) {
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
@@ -150,7 +150,7 @@ export class UserService {
     // Auto-created default lists (page-registry §8.7): same self-healing
     // seam as userStats.ensure — idempotent per sync, so existing users are
     // backfilled on their next sign-in with no separate script.
-    await this.favoriteListProvisioning.ensureDefaultLists(user.userId);
+    await this.userListProvisioning.ensureDefaultLists(user.userId);
 
     // Reverse trial (app-owned, NOT a store trial — store trials can't be
     // extended, and photo/invite rewards must be able to extend this):
@@ -286,9 +286,9 @@ export class UserService {
    *  profile section lists, so stat == section by construction:
    *  - followers  → user_follows.followingUserId (idx_user_follows_following)
    *  - following  → user_follows.followerUserId  (idx_user_follows_follower)
-   *  - lists      → favorite_lists.ownerUserId   (idx_favorite_lists_owner)
-   *  - favorites  → favorite_list_items via owned lists (idx_favorite_lists_owner
-   *                 + idx_favorite_list_items_list)
+   *  - lists      → user_lists.ownerUserId   (idx_user_lists_owner)
+   *  - favorites  → user_list_items via owned lists (idx_user_lists_owner
+   *                 + idx_user_list_items_list)
    *  Five extra indexed counts per profile read — fine at launch scale.
    *  pollsContributedCount = live distinct endorsed-or-commented polls. */
   private async buildProfileStats(userId: string) {
@@ -304,8 +304,8 @@ export class UserService {
       this.countContributedPolls(userId),
       this.prisma.userFollow.count({ where: { followingUserId: userId } }),
       this.prisma.userFollow.count({ where: { followerUserId: userId } }),
-      this.prisma.favoriteList.count({ where: { ownerUserId: userId } }),
-      this.prisma.favoriteListItem.count({
+      this.prisma.userList.count({ where: { ownerUserId: userId } }),
+      this.prisma.userListItem.count({
         where: { list: { ownerUserId: userId } },
       }),
     ]);

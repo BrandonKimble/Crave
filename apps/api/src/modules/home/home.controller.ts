@@ -59,6 +59,6 @@ export class HomeController {
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
   ): Promise<{ listId: string; name: string; itemCount: number }> {
-    return this.homeFeed.saveListToFavorites(listId, user.userId);
+    return this.homeFeed.saveListToUserLists(listId, user.userId);
   }
 }

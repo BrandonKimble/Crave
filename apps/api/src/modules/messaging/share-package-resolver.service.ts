@@ -64,7 +64,7 @@ export class SharePackageResolverService {
 
     switch (kind) {
       case SharedEntityKind.list: {
-        const list = await this.prisma.favoriteList.findUnique({
+        const list = await this.prisma.userList.findUnique({
           where: { listId: id },
           select: {
             name: true,

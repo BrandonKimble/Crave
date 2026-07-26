@@ -17,7 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-export class FavoriteListResultsUserLocationDto {
+export class UserListResultsUserLocationDto {
   @IsLatitude()
   lat!: number;
 
@@ -25,7 +25,7 @@ export class FavoriteListResultsUserLocationDto {
   lng!: number;
 }
 
-export class FavoriteListResultsPaginationDto {
+export class UserListResultsPaginationDto {
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
@@ -48,11 +48,11 @@ export class FavoriteListResultsPaginationDto {
  * the list's own extent, so omitting bounds avoids silently dropping off-screen
  * favorites.
  */
-export class FavoriteListResultsDto {
+export class UserListResultsDto {
   @IsOptional()
   @ValidateNested()
-  @Type(() => FavoriteListResultsUserLocationDto)
-  userLocation?: FavoriteListResultsUserLocationDto;
+  @Type(() => UserListResultsUserLocationDto)
+  userLocation?: UserListResultsUserLocationDto;
 
   @IsOptional()
   @IsBoolean()
@@ -84,8 +84,8 @@ export class FavoriteListResultsDto {
 
   @IsOptional()
   @ValidateNested()
-  @Type(() => FavoriteListResultsPaginationDto)
-  pagination?: FavoriteListResultsPaginationDto;
+  @Type(() => UserListResultsPaginationDto)
+  pagination?: UserListResultsPaginationDto;
 
   /**
    * RT-18 slug-as-capability: non-owner/non-collaborator access requires

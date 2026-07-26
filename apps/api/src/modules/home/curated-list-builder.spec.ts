@@ -19,6 +19,7 @@ import { CuratedListBuilderService } from './curated-list-builder.service';
 import {
   HIDDEN_GEMS_EVIDENCE_FLOOR,
   MIN_VIABLE_LIST_ITEMS,
+  RECIPE_CUISINE_BEST_PREFIX,
   RECIPE_HIDDEN_GEMS,
   RECIPE_TRENDING,
   RECIPE_WEEKLY_TASTING,
@@ -235,7 +236,7 @@ function createHarness(options: {
     user: {
       findMany: jest.fn(() => Promise.resolve(options.users ?? [])),
     },
-    favoriteListItem: {
+    userListItem: {
       findMany: jest.fn(() =>
         Promise.resolve(options.engagedFavoriteItems ?? []),
       ),
@@ -304,6 +305,48 @@ describe('CuratedListBuilderService — recipe laws', () => {
     expect(trending[0].itemCount).toBe(MIN_VIABLE_LIST_ITEMS);
     // Ranked by the score's rising component, descending.
     expect(trending[0].items[0].entityId).toBe(uuid(MIN_VIABLE_LIST_ITEMS));
+  });
+
+  it('UNCAPPED RECIPES (owner-ratified 2026-07-26): a 9th viable cuisine materializes — RED under the old MAX_CUISINE_LISTS_PER_CITY=8 cap', async () => {
+    // 9 cuisines, each with exactly MIN_VIABLE_LIST_ITEMS member restaurants.
+    // Under the deleted cap (slice(0, 8)) the lowest-volume cuisine was cut;
+    // uncapped, every min-viable cuisine earns its list.
+    const cuisineCount = 9;
+    const attrIds = Array.from({ length: cuisineCount }, (_, c) =>
+      uuid(900 + c),
+    );
+    const restaurants: RestaurantFixture[] = [];
+    attrIds.forEach((attrId, c) => {
+      for (let m = 0; m < MIN_VIABLE_LIST_ITEMS; m += 1) {
+        restaurants.push(
+          restaurant(100 + c * 10 + m, {
+            restaurant_attributes: [attrId],
+            // Distinct volumes so cuisine ranking (and the old cap's cut
+            // point) is deterministic: cuisine 0 loudest, cuisine 8 quietest.
+            mention_volume: 100 - c * 10,
+          }),
+        );
+      }
+    });
+    const { service, store } = createHarness({
+      restaurants,
+      cuisineAttributeIds: attrIds,
+      attributeEntities: attrIds.map((entityId, c) => ({
+        entityId,
+        name: `Cuisine ${c}`,
+        aliases: [],
+      })),
+    });
+    await service.buildAll(NOW);
+    const cuisineLists = store.filter((row) =>
+      row.recipeKey.startsWith(RECIPE_CUISINE_BEST_PREFIX),
+    );
+    // The RED-provable bit: 9 > the old cap of 8. The 9th (quietest) cuisine
+    // is present by identity, not just by count.
+    expect(cuisineLists).toHaveLength(cuisineCount);
+    expect(cuisineLists.map((row) => row.recipeKey)).toContain(
+      `${RECIPE_CUISINE_BEST_PREFIX}${attrIds[cuisineCount - 1]}`,
+    );
   });
 
   it('HIDDEN GEMS excludes above-median-mention entities AND sub-evidence-floor rows', async () => {

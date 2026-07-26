@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
-import { FavoriteListsService } from './favorite-lists.service';
-import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
-import { ListResultsAssembler } from './favorite-list-results.assembler';
-import { FavoriteListMapper } from './favorite-list.mappers';
+import { UserListsService } from './user-lists.service';
+import { UserListAccessPolicy } from './user-list-access.policy';
+import { ListResultsAssembler } from './user-list-results.assembler';
+import { UserListMapper } from './user-list.mappers';
 
 /**
  * W3 profile Lists view contracts (page-registry §8.12/§8.14/§8.15):
@@ -24,7 +24,7 @@ function makeList(overrides: any = {}) {
     position: 0,
     shareSlug: null,
     shareEnabled: false,
-    systemKind: null,
+    kind: 'standard',
     pinned: false,
     createdAt: new Date('2026-07-01T00:00:00Z'),
     updatedAt: new Date('2026-07-01T00:00:00Z'),
@@ -35,7 +35,7 @@ function makeList(overrides: any = {}) {
 
 function makeService(lists: any[], cityRows: any[] = []) {
   const prisma: any = {
-    favoriteList: { findMany: jest.fn().mockResolvedValue(lists) },
+    userList: { findMany: jest.fn().mockResolvedValue(lists) },
     publicEntityScore: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue(cityRows),
   };
@@ -43,11 +43,11 @@ function makeService(lists: any[], cityRows: any[] = []) {
     setContext: () => ({ log: jest.fn(), warn: jest.fn(), error: jest.fn() }),
   } as any;
   const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
-  const service = new FavoriteListsService(
+  const service = new UserListsService(
     prisma,
-    new FavoriteListAccessPolicy(prisma, blocks as never),
+    new UserListAccessPolicy(prisma, blocks as never),
     new ListResultsAssembler({} as never, {} as never),
-    new FavoriteListMapper(prisma, logger),
+    new UserListMapper(prisma, logger),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
     {
       record: () => undefined,
@@ -62,7 +62,7 @@ describe('listPublicForUser (profile Lists view, §8.14/§8.15)', () => {
   it('reads public lists only', async () => {
     const { prisma, service } = makeService([]);
     await service.listPublicForUser(OWNER, {});
-    const where = prisma.favoriteList.findMany.mock.calls[0][0].where;
+    const where = prisma.userList.findMany.mock.calls[0][0].where;
     expect(where.visibility).toBe('public');
     expect(where.ownerUserId).toBe(OWNER);
     // No city query for zero lists.

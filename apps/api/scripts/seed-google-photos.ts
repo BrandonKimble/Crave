@@ -60,8 +60,8 @@ async function getCandidates(): Promise<Candidate[]> {
     ),
     owner_list_restaurants as (
       select distinct coalesce(li.restaurant_id, c.restaurant_id) as entity_id
-      from favorite_list_items li
-      join favorite_lists l on l.list_id = li.list_id
+      from user_list_items li
+      join user_lists l on l.list_id = li.list_id
       join users u on u.user_id = l.owner_user_id
       left join core_restaurant_items c on c.connection_id = li.connection_id
       where u.email = 'kimble.brandonm@gmail.com'

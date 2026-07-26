@@ -24,9 +24,9 @@ import { UserBlockService } from './user-block.service';
 import { UserReportService } from './user-report.service';
 import { ClosenessService } from './closeness.service';
 // Favorites-domain code, but PROVIDED here: the signup provisioning seam is
-// UserService.syncFromClerkClaims, and FavoritesModule imports IdentityModule
+// UserService.syncFromClerkClaims, and UserListsModule imports IdentityModule
 // — providing it in favorites would be a module cycle.
-import { FavoriteListProvisioningService } from '../favorites/favorite-list-provisioning.service';
+import { UserListProvisioningService } from '../user-lists/user-list-provisioning.service';
 
 @Module({
   imports: [
@@ -53,7 +53,7 @@ import { FavoriteListProvisioningService } from '../favorites/favorite-list-prov
     UserBlockService,
     UserReportService,
     ClosenessService,
-    FavoriteListProvisioningService,
+    UserListProvisioningService,
   ],
   exports: [
     ClerkAuthService,
@@ -70,7 +70,7 @@ import { FavoriteListProvisioningService } from '../favorites/favorite-list-prov
     UserFollowService,
     UserBlockService,
     ClosenessService,
-    FavoriteListProvisioningService,
+    UserListProvisioningService,
   ],
 })
 export class IdentityModule {}

@@ -13,7 +13,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { FavoriteListType, Prisma } from '@prisma/client';
+import { UserListType, Prisma } from '@prisma/client';
 import { GeoBbox } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -349,7 +349,7 @@ export class HomeFeedService {
    * copied count. Name conflict on the caller's (owner, type, name) unique
    * retries once with a " (copy)" suffix.
    */
-  async saveListToFavorites(
+  async saveListToUserLists(
     listId: string,
     userId: string,
   ): Promise<{ listId: string; name: string; itemCount: number }> {
@@ -361,11 +361,9 @@ export class HomeFeedService {
       throw new NotFoundException('Curated list not found');
     }
     const listType =
-      list.listType === 'dish'
-        ? FavoriteListType.dish
-        : FavoriteListType.restaurant;
+      list.listType === 'dish' ? UserListType.dish : UserListType.restaurant;
     const connectionIdByItemKey =
-      listType === FavoriteListType.dish
+      listType === UserListType.dish
         ? await this.resolveDishConnectionIds(list.items)
         : new Map<string, string>();
     const rows = list.items.flatMap(
@@ -376,7 +374,7 @@ export class HomeFeedService {
         connectionId?: string;
         position: number;
       }> => {
-        if (listType === FavoriteListType.dish) {
+        if (listType === UserListType.dish) {
           const connectionId = item.restaurantId
             ? connectionIdByItemKey.get(`${item.restaurantId}:${item.entityId}`)
             : undefined;
@@ -386,13 +384,13 @@ export class HomeFeedService {
       },
     );
 
-    const maxPosition = await this.prisma.favoriteList.aggregate({
+    const maxPosition = await this.prisma.userList.aggregate({
       where: { ownerUserId: userId },
       _max: { position: true },
     });
     const position = (maxPosition._max.position ?? 0) + 1;
     const createList = (name: string) =>
-      this.prisma.favoriteList.create({
+      this.prisma.userList.create({
         data: { ownerUserId: userId, name, listType, position },
       });
     let created: { listId: string; name: string };
@@ -419,14 +417,14 @@ export class HomeFeedService {
       }
     }
     if (rows.length) {
-      await this.prisma.favoriteListItem.createMany({
+      await this.prisma.userListItem.createMany({
         data: rows.map((row) => ({
           ...row,
           listId: created.listId,
           addedByUserId: userId,
         })),
       });
-      await this.prisma.favoriteList.update({
+      await this.prisma.userList.update({
         where: { listId: created.listId },
         data: { itemCount: rows.length },
       });

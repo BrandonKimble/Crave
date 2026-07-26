@@ -1,14 +1,14 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { NotFoundException } from '@nestjs/common';
 import {
-  FavoriteListProvisioningService,
+  UserListProvisioningService,
   SYSTEM_DEFAULT_LISTS,
-  systemKindRank,
-} from './favorite-list-provisioning.service';
-import { FavoriteListsService } from './favorite-lists.service';
-import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
-import { ListResultsAssembler } from './favorite-list-results.assembler';
-import { FavoriteListMapper } from './favorite-list.mappers';
+  kindRank,
+} from './user-list-provisioning.service';
+import { UserListsService } from './user-lists.service';
+import { UserListAccessPolicy } from './user-list-access.policy';
+import { ListResultsAssembler } from './user-list-results.assembler';
+import { UserListMapper } from './user-list.mappers';
 
 /**
  * Auto-created default lists (page-registry §8.7) + save-sheet flip
@@ -29,7 +29,7 @@ const logger: any = {
   debug: jest.fn(),
 };
 
-describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
+describe('UserListProvisioningService.ensureDefaultLists', () => {
   function makeHarness(existingKinds: string[]) {
     const createMany = jest
       .fn()
@@ -37,16 +37,14 @@ describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
         Promise.resolve({ count: args.data.length }),
       );
     const prisma: any = {
-      favoriteList: {
+      userList: {
         findMany: jest
           .fn()
-          .mockResolvedValue(
-            existingKinds.map((systemKind) => ({ systemKind })),
-          ),
+          .mockResolvedValue(existingKinds.map((kind) => ({ kind }))),
         createMany,
       },
     };
-    const service = new FavoriteListProvisioningService(
+    const service = new UserListProvisioningService(
       prisma as never,
       logger as never,
     );
@@ -59,7 +57,7 @@ describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
     expect(createMany).toHaveBeenCalledTimes(1);
     const args = createMany.mock.calls[0][0];
     expect(args.skipDuplicates).toBe(true);
-    expect(args.data.map((row: any) => row.systemKind)).toEqual([
+    expect(args.data.map((row: any) => row.kind)).toEqual([
       'been',
       'want_to_go',
       'tried',
@@ -76,7 +74,7 @@ describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
 
   it('is idempotent: a fully provisioned user writes nothing', async () => {
     const { service, createMany } = makeHarness(
-      SYSTEM_DEFAULT_LISTS.map((entry) => entry.systemKind),
+      SYSTEM_DEFAULT_LISTS.map((entry) => entry.kind),
     );
     await service.ensureDefaultLists(OWNER);
     expect(createMany).not.toHaveBeenCalled();
@@ -86,14 +84,14 @@ describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
     const { service, createMany } = makeHarness(['been', 'tried']);
     await service.ensureDefaultLists(OWNER);
     const args = createMany.mock.calls[0][0];
-    expect(args.data.map((row: any) => row.systemKind)).toEqual([
+    expect(args.data.map((row: any) => row.kind)).toEqual([
       'want_to_go',
       'want_to_try',
     ]);
   });
 });
 
-describe('system-default guards + home ordering (FavoriteListsService)', () => {
+describe('system-default guards + home ordering (UserListsService)', () => {
   function makeService(overrides: {
     lists?: any[];
     connection?: { restaurantId: string } | null;
@@ -104,7 +102,7 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
         Promise.resolve({ itemId: 'new-item', ...args.data }),
       );
     const prisma: any = {
-      favoriteList: {
+      userList: {
         findFirst: jest.fn((args: any) =>
           Promise.resolve(
             (overrides.lists ?? []).find(
@@ -116,7 +114,7 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
         update: jest.fn().mockResolvedValue({}),
         delete: jest.fn().mockResolvedValue({}),
       },
-      favoriteListItem: {
+      userListItem: {
         aggregate: jest.fn().mockResolvedValue({ _max: { position: 0 } }),
         create: itemCreate,
       },
@@ -141,11 +139,11 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       publicEntityScore: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
-    const service = new FavoriteListsService(
+    const service = new UserListsService(
       prisma as never,
-      new FavoriteListAccessPolicy(prisma as never, blocks as never),
+      new UserListAccessPolicy(prisma as never, blocks as never),
       new ListResultsAssembler({} as never, {} as never),
-      new FavoriteListMapper(prisma as never, logger as never),
+      new UserListMapper(prisma as never, logger as never),
       { loadTileImages: () => Promise.resolve(new Map()) } as never,
       {
         record: () => undefined,
@@ -165,7 +163,7 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
     visibility: 'private',
     itemCount: 0,
     position: 1,
-    systemKind: null,
+    kind: null,
     shareSlug: null,
     shareEnabled: false,
     createdAt: new Date('2026-07-01T00:00:00Z'),
@@ -176,16 +174,16 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
 
   it('deleteList deletes a system default too (wave-2 §2: default-created, not special)', async () => {
     const { service, prisma } = makeService({
-      lists: [baseList({ systemKind: 'been', name: 'Been' })],
+      lists: [baseList({ kind: 'been', name: 'Been' })],
     });
     await service.deleteList(OWNER, LIST_ID);
-    expect(prisma.favoriteList.delete).toHaveBeenCalled();
+    expect(prisma.userList.delete).toHaveBeenCalled();
   });
 
   it('deleteList still deletes a user list', async () => {
     const { service, prisma } = makeService({ lists: [baseList()] });
     await service.deleteList(OWNER, LIST_ID);
-    expect(prisma.favoriteList.delete).toHaveBeenCalled();
+    expect(prisma.userList.delete).toHaveBeenCalled();
   });
 
   it('listForUser has NO pinned system prefix (wave-2 §2): recently-updated across ALL lists when no custom order', async () => {
@@ -194,14 +192,14 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       lists: [
         // positions match creation order (no custom order); updatedAt decides.
         mk('s1', {
-          systemKind: 'been',
+          kind: 'been',
           name: 'Been',
           position: 1,
           createdAt: new Date('2026-06-01T00:00:00Z'),
           updatedAt: new Date('2026-07-05T00:00:00Z'),
         }),
         mk('s2', {
-          systemKind: 'want_to_go',
+          kind: 'want_to_go',
           name: 'Want to go',
           position: 2,
           createdAt: new Date('2026-06-01T00:01:00Z'),
@@ -238,7 +236,7 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       lists: [
         // created s1 then u1, but s1 moved BELOW u1 = custom order set, and honored.
         mk('s1', {
-          systemKind: 'been',
+          kind: 'been',
           name: 'Been',
           position: 2,
           createdAt: new Date('2026-06-01T00:00:00Z'),
@@ -283,11 +281,11 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
     expect(result.map((row: any) => row.listId)).toEqual(['u2', 'u1']);
   });
 
-  it('systemKindRank orders been < want_to_go < tried < want_to_try < user lists', () => {
-    expect(systemKindRank('been')).toBeLessThan(systemKindRank('want_to_go'));
-    expect(systemKindRank('want_to_go')).toBeLessThan(systemKindRank('tried'));
-    expect(systemKindRank('tried')).toBeLessThan(systemKindRank('want_to_try'));
-    expect(systemKindRank(null)).toBe(Number.MAX_SAFE_INTEGER);
+  it('kindRank orders been < want_to_go < tried < want_to_try < user lists', () => {
+    expect(kindRank('been')).toBeLessThan(kindRank('want_to_go'));
+    expect(kindRank('want_to_go')).toBeLessThan(kindRank('tried'));
+    expect(kindRank('tried')).toBeLessThan(kindRank('want_to_try'));
+    expect(kindRank(null)).toBe(Number.MAX_SAFE_INTEGER);
   });
 
   it('addItem on a RESTAURANT list resolves a connection target to its restaurant (save-sheet flip)', async () => {

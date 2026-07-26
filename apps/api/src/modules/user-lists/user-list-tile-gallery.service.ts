@@ -5,7 +5,7 @@ import {
   PhotoReadService,
   PhotoStripItemDto,
 } from '../photos/photo-read.service';
-import { FavoriteListMapper, hasCustomOrder } from './favorite-list.mappers';
+import { UserListMapper, hasCustomOrder } from './user-list.mappers';
 
 /** One 2x2 home-tile slot (wave2 §7, plans/media-images-ledger.md §3):
  *  slots fill TL(0)→TR(1)→BL(2)→BR(3). Default lists are sparse-at-the-end
@@ -14,7 +14,7 @@ import { FavoriteListMapper, hasCustomOrder } from './favorite-list.mappers';
  *  keeps its slot EMPTY (deliberate incompleteness: the placeholder shows
  *  what's left to shoot). The client must place tiles by `slot`, never by
  *  array index (BookmarksPanel's bySlot map already does). */
-export interface FavoriteListTileImageDto {
+export interface UserListTileImageDto {
   slot: 0 | 1 | 2 | 3;
   restaurantId: string;
   photoId: string;
@@ -50,23 +50,23 @@ const TILE_SLOTS = 4;
  * haven't shot this one yet").
  */
 @Injectable()
-export class FavoriteListTileGalleryService {
+export class UserListTileGalleryService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly mapper: FavoriteListMapper,
+    private readonly mapper: UserListMapper,
     private readonly photoRead: PhotoReadService,
   ) {}
 
   async loadTileImages(
     lists: TileGalleryListRef[],
-  ): Promise<Map<string, FavoriteListTileImageDto[]>> {
-    const result = new Map<string, FavoriteListTileImageDto[]>();
+  ): Promise<Map<string, UserListTileImageDto[]>> {
+    const result = new Map<string, UserListTileImageDto[]>();
     if (!lists.length) {
       return result;
     }
     const listById = new Map(lists.map((list) => [list.listId, list]));
 
-    const items = await this.prisma.favoriteListItem.findMany({
+    const items = await this.prisma.userListItem.findMany({
       where: { listId: { in: lists.map((list) => list.listId) } },
       select: {
         listId: true,
@@ -144,7 +144,7 @@ export class FavoriteListTileGalleryService {
         return scoreOf(b) - scoreOf(a);
       });
 
-      const tiles: FavoriteListTileImageDto[] = [];
+      const tiles: UserListTileImageDto[] = [];
       const seenRestaurants = new Set<string>();
       let slot = 0;
       for (const item of ordered) {
@@ -166,7 +166,7 @@ export class FavoriteListTileGalleryService {
           continue;
         }
         tiles.push({
-          slot: slot as FavoriteListTileImageDto['slot'],
+          slot: slot as UserListTileImageDto['slot'],
           restaurantId,
           photoId: topPhoto.photoId,
           thumbUrl: topPhoto.urls.thumb,

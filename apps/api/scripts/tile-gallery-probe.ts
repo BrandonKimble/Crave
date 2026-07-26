@@ -2,8 +2,8 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { CloudinaryService } from '../src/modules/photos/cloudinary.service';
 import { PhotoReadService } from '../src/modules/photos/photo-read.service';
-import { FavoriteListMapper } from '../src/modules/favorites/favorite-list.mappers';
-import { FavoriteListTileGalleryService } from '../src/modules/favorites/favorite-list-tile-gallery.service';
+import { UserListMapper } from '../src/modules/user-lists/user-list.mappers';
+import { UserListTileGalleryService } from '../src/modules/user-lists/user-list-tile-gallery.service';
 
 /** Composite probe (no Nest bootstrap): run the REAL tile-gallery service
  *  against the live dev DB for the owner's lists and print the slots. */
@@ -34,13 +34,13 @@ const config = {
 async function main(): Promise<void> {
   const cloudinary = new CloudinaryService(config as never, logger as never);
   const photoRead = new PhotoReadService(prisma as never, cloudinary);
-  const mapper = new FavoriteListMapper(prisma as never, logger as never);
-  const service = new FavoriteListTileGalleryService(
+  const mapper = new UserListMapper(prisma as never, logger as never);
+  const service = new UserListTileGalleryService(
     prisma as never,
     mapper,
     photoRead,
   );
-  const lists = await prisma.favoriteList.findMany({
+  const lists = await prisma.userList.findMany({
     where: { owner: { email: 'kimble.brandonm@gmail.com' } },
     select: {
       listId: true,

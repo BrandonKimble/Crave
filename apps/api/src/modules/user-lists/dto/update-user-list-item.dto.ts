@@ -7,7 +7,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 
-export class UpdateFavoriteListItemDto {
+export class UpdateUserListItemDto {
   @IsOptional()
   @IsInt()
   @Min(0)

@@ -5,7 +5,7 @@ import { ArrayNotEmpty, IsArray, IsUUID } from 'class-validator';
  * (w1-listdetail spec B.1.4). Must be EXACTLY the current membership
  * (set equality is enforced server-side).
  */
-export class ReorderFavoriteListItemsDto {
+export class ReorderUserListItemsDto {
   @IsArray()
   @ArrayNotEmpty()
   @IsUUID(undefined, { each: true })

@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { GoneException, NotFoundException } from '@nestjs/common';
-import { FavoriteListsService } from './favorite-lists.service';
-import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
-import { ListResultsAssembler } from './favorite-list-results.assembler';
-import { FavoriteListMapper } from './favorite-list.mappers';
+import { UserListsService } from './user-lists.service';
+import { UserListAccessPolicy } from './user-list-access.policy';
+import { ListResultsAssembler } from './user-list-results.assembler';
+import { UserListMapper } from './user-list.mappers';
 
 /**
  * RT-18 "the slug IS the capability" contract (w1-listdetail-structural-spec.md
@@ -80,7 +80,7 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
   };
   const shareEventCreate = jest.fn().mockResolvedValue({});
   const prisma = {
-    favoriteList: {
+    userList: {
       findFirst: jest.fn((args: any) =>
         Promise.resolve(matches(args.where) ? { ...list } : null),
       ),
@@ -89,7 +89,7 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
       ),
       update: jest.fn().mockResolvedValue({}),
     },
-    favoriteListCollaborator: {
+    userListCollaborator: {
       findUnique: jest.fn((args: any) => {
         const key = args.where.listId_userId;
         const hit =
@@ -105,8 +105,8 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
         .mockResolvedValue({ count: collaboratorIds.length }),
       create: jest.fn().mockResolvedValue({}),
     },
-    favoriteListShareEvent: { create: shareEventCreate },
-    favoriteListItem: {
+    userListShareEvent: { create: shareEventCreate },
+    userListItem: {
       findMany: jest.fn().mockResolvedValue([]),
       aggregate: jest.fn().mockResolvedValue({ _max: { position: 0 } }),
     },
@@ -141,11 +141,11 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
     executeDual: jest.fn(),
   };
   const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
-  const service = new FavoriteListsService(
+  const service = new UserListsService(
     prisma as never,
-    new FavoriteListAccessPolicy(prisma as never, blocks as never),
+    new UserListAccessPolicy(prisma as never, blocks as never),
     new ListResultsAssembler(executor as never, {} as never),
-    new FavoriteListMapper(prisma as never, logger as never),
+    new UserListMapper(prisma as never, logger as never),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
     {
       record: () => undefined,

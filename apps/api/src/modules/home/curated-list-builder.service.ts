@@ -33,8 +33,6 @@ import {
   ICON_HIDDEN_GEMS,
   ICON_TRENDING,
   ICON_WEEKLY_TASTING,
-  MAX_CUISINE_LISTS_PER_CITY,
-  MAX_DISH_LISTS_PER_CITY,
   MAX_LIST_ITEMS,
   MIN_VIABLE_LIST_ITEMS,
   ONBOARDING_CUISINE_ATTRIBUTE_NAMES,
@@ -231,8 +229,9 @@ export class CuratedListBuilderService {
         volume: members.reduce((sum, row) => sum + row.mention_volume, 0),
       }))
       .filter(({ members }) => members.length >= MIN_VIABLE_LIST_ITEMS)
-      .sort((a, b) => b.volume - a.volume)
-      .slice(0, MAX_CUISINE_LISTS_PER_CITY);
+      // UNCAPPED (owner-ratified 2026-07-26): every cuisine that clears the
+      // min-viable gate earns its list; volume order is presentation only.
+      .sort((a, b) => b.volume - a.volume);
     return ranked.flatMap(({ attrId, members }) => {
       const attribute = attributeNames.get(attrId);
       if (!attribute) {
@@ -282,8 +281,9 @@ export class CuratedListBuilderService {
         volume: rows.reduce((sum, row) => sum + row.mention_count, 0),
       }))
       .filter(({ rows }) => rows.length >= MIN_VIABLE_LIST_ITEMS)
-      .sort((a, b) => b.volume - a.volume)
-      .slice(0, MAX_DISH_LISTS_PER_CITY);
+      // UNCAPPED (owner-ratified 2026-07-26): every dish that clears the
+      // min-viable gate earns its monthly list.
+      .sort((a, b) => b.volume - a.volume);
     return ranked.map(({ rows }) => {
       const sorted = [...rows]
         .sort((a, b) => b.percentile_rank - a.percentile_rank)
@@ -455,7 +455,7 @@ export class CuratedListBuilderService {
    * honestly skipped — no fake city inference).
    *
    * 'Untried' proxy (weakest honest one available, documented): the user has
-   * NO favorite-list item on the connection/restaurant AND no signals-ledger
+   * NO user-list item on the connection/restaurant AND no signals-ledger
    * act (favorite_added / entity_view) on the food, restaurant, or
    * connection subject via their signal actor. There is no consumption
    * ledger; view/save absence is the closest measured stand-in.
@@ -715,7 +715,7 @@ export class CuratedListBuilderService {
   /**
    * Subjects the user already engaged with, via the signals ledger (their
    * pseudonymous actor) — the 'untried' exclusion set. Favorite-list saves
-   * are read from favorite_list_items directly (connection + restaurant).
+   * are read from user_list_items directly (connection + restaurant).
    */
   private async engagedSubjectIds(
     userId: string,
@@ -735,7 +735,7 @@ export class CuratedListBuilderService {
           AND s.kind IN ('favorite_added', 'entity_view')
           AND s.subject_id = ANY(${unique}::uuid[])
       `),
-      this.prisma.favoriteListItem.findMany({
+      this.prisma.userListItem.findMany({
         where: {
           list: { ownerUserId: userId },
           OR: [

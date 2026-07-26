@@ -148,7 +148,7 @@ async function upsertList(
   visibility: 'public' | 'private',
   useOwnPhotos = false,
 ): Promise<string> {
-  const list = await prisma.favoriteList.upsert({
+  const list = await prisma.userList.upsert({
     where: { ownerUserId_listType_name: { ownerUserId, listType, name } },
     update: {},
     create: { ownerUserId, name, listType, visibility, useOwnPhotos },
@@ -162,7 +162,7 @@ async function fillList(
   ownerUserId: string,
   items: { restaurantId?: string; connectionId?: string }[],
 ): Promise<number> {
-  await prisma.favoriteListItem.createMany({
+  await prisma.userListItem.createMany({
     data: items.map((it, i) => ({
       listId,
       addedByUserId: ownerUserId,
@@ -172,8 +172,8 @@ async function fillList(
     })),
     skipDuplicates: true,
   });
-  const count = await prisma.favoriteListItem.count({ where: { listId } });
-  await prisma.favoriteList.update({
+  const count = await prisma.userListItem.count({ where: { listId } });
+  await prisma.userList.update({
     where: { listId },
     data: { itemCount: count },
   });
@@ -319,7 +319,7 @@ async function seedOwnPhotos(ownerUserId: string): Promise<void> {
     true,
   );
   // Ensure the flag sticks even if the list pre-existed unflagged.
-  await prisma.favoriteList.update({
+  await prisma.userList.update({
     where: { listId: myShots },
     data: { useOwnPhotos: true },
   });
@@ -343,8 +343,8 @@ async function linkConnectionPhotos(ownerUserId: string): Promise<void> {
   >(
     `
     select distinct c.connection_id, c.restaurant_id, r.name
-    from favorite_list_items li
-    join favorite_lists l on l.list_id = li.list_id and l.list_type = 'dish'
+    from user_list_items li
+    join user_lists l on l.list_id = li.list_id and l.list_type = 'dish'
     join core_restaurant_items c on c.connection_id = li.connection_id
     join core_entities r on r.entity_id = c.restaurant_id
     where l.owner_user_id = '${ownerUserId}'::uuid

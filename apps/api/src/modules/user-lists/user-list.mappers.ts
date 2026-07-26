@@ -1,9 +1,9 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import {
   CraveScoreSubjectType,
-  FavoriteListType,
-  type FavoriteList,
-  type FavoriteListItem,
+  UserListType,
+  type UserList,
+  type UserListItem,
   type PublicEntityScore,
   Prisma,
   type RestaurantLocation,
@@ -19,22 +19,27 @@ import { LoggerService } from '../../shared';
 
 /**
  * DTO mappers + score hydration for favorite lists. Pure projection lives
- * here — access law lives in FavoriteListAccessPolicy, the results/query
- * engine in ListResultsAssembler, orchestration in FavoriteListsService.
+ * here — access law lives in UserListAccessPolicy, the results/query
+ * engine in ListResultsAssembler, orchestration in UserListsService.
  */
 
 /** Which surface the summary is being built for (finding 1: shareSlug is a
  *  CAPABILITY — it must never ride a public-profile read). */
-export type FavoriteListSummaryAudience = 'owner' | 'publicProfile';
+export type UserListSummaryAudience = 'owner' | 'publicProfile';
 
-export type FavoriteListSummary = {
+export type UserListSummary = {
   listId: string;
   name: string;
   description?: string | null;
-  listType: FavoriteListType;
-  visibility: FavoriteList['visibility'];
+  listType: UserListType;
+  visibility: UserList['visibility'];
   itemCount: number;
   position: number;
+  /** The kind law (2026-07-26): 'standard' | 'favorites' | the four
+   *  signup-default kinds. Favorites is the one heart-target list. */
+  kind: string;
+  /** @deprecated wire alias for pre-kind mobile clients: kind, with
+   *  'standard' spelled null (the old system_kind shape). */
   systemKind: string | null;
   /** Profile-gallery pin (§8.12/§8.14) — owner curation, floats first there. */
   pinned: boolean;
@@ -74,12 +79,12 @@ export type FavoritePublicScore = Pick<
   'subjectId' | 'displayScore' | 'percentileRank' | 'rising'
 >;
 
-export type FavoriteListScoreMaps = {
+export type UserListScoreMaps = {
   restaurantScores: Map<string, FavoritePublicScore>;
   connectionScores: Map<string, FavoritePublicScore>;
 };
 
-export type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
+export type UserListItemDetail = Prisma.UserListItemGetPayload<{
   include: {
     location: true;
     restaurant: { include: { primaryLocation: true } };
@@ -92,18 +97,18 @@ export type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
   };
 }>;
 
-export type FavoriteListWithDetailItems = FavoriteList & {
-  items: FavoriteListItemDetail[];
+export type UserListWithDetailItems = UserList & {
+  items: UserListItemDetail[];
 };
 
-export type FavoriteListScoreSubjectSource = {
+export type UserListScoreSubjectSource = {
   items: Array<{
     restaurantId?: string | null;
     connectionId?: string | null;
   }>;
 };
 
-export type FavoriteListSummarySource = FavoriteList & {
+export type UserListSummarySource = UserList & {
   items: Array<{
     itemId: string;
     restaurantId?: string | null;
@@ -130,7 +135,7 @@ export type FavoriteListSummarySource = FavoriteList & {
  * reorder/explicit position write perturbs them.
  */
 export function hasCustomOrder(
-  items: Array<Pick<FavoriteListItem, 'itemId' | 'position' | 'createdAt'>>,
+  items: Array<Pick<UserListItem, 'itemId' | 'position' | 'createdAt'>>,
 ): boolean {
   const byPosition = [...items].sort(
     (a, b) =>
@@ -146,21 +151,21 @@ export function hasCustomOrder(
 }
 
 @Injectable()
-export class FavoriteListMapper {
+export class UserListMapper {
   private readonly logger: LoggerService;
 
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
   ) {
-    this.logger = loggerService.setContext('FavoriteListMapper');
+    this.logger = loggerService.setContext('UserListMapper');
   }
 
   buildListSummary(
-    list: FavoriteListSummarySource,
-    scores: FavoriteListScoreMaps,
-    audience: FavoriteListSummaryAudience,
-  ): FavoriteListSummary {
+    list: UserListSummarySource,
+    scores: UserListScoreMaps,
+    audience: UserListSummaryAudience,
+  ): UserListSummary {
     // Finding 4: one score-less entity must never 500 the whole lists read —
     // the preview item is skipped (loud single-line log) and the summary
     // survives.
@@ -168,7 +173,7 @@ export class FavoriteListMapper {
     const previewItems = list.items
       .map((item) => {
         if (
-          list.listType === FavoriteListType.restaurant &&
+          list.listType === UserListType.restaurant &&
           item.restaurantId &&
           item.restaurant
         ) {
@@ -185,7 +190,7 @@ export class FavoriteListMapper {
           };
         }
         if (
-          list.listType === FavoriteListType.dish &&
+          list.listType === UserListType.dish &&
           item.connectionId &&
           item.connection
         ) {
@@ -211,7 +216,7 @@ export class FavoriteListMapper {
       );
     }
 
-    const summary: FavoriteListSummary = {
+    const summary: UserListSummary = {
       listId: list.listId,
       name: list.name,
       description: list.description,
@@ -219,7 +224,8 @@ export class FavoriteListMapper {
       visibility: list.visibility,
       itemCount: list.itemCount,
       position: list.position,
-      systemKind: list.systemKind,
+      kind: list.kind,
+      systemKind: list.kind === 'standard' ? null : list.kind,
       pinned: list.pinned,
       useOwnPhotos: list.useOwnPhotos,
       updatedAt: list.updatedAt,
@@ -233,8 +239,8 @@ export class FavoriteListMapper {
   }
 
   async loadPreviewScoreMaps(
-    lists: FavoriteListScoreSubjectSource[],
-  ): Promise<FavoriteListScoreMaps> {
+    lists: UserListScoreSubjectSource[],
+  ): Promise<UserListScoreMaps> {
     const restaurantIds = new Set<string>();
     const connectionIds = new Set<string>();
     lists.forEach((list) => {
@@ -310,7 +316,7 @@ export class FavoriteListMapper {
   }
 
   async mapRestaurantResults(
-    items: FavoriteListItemDetail[],
+    items: UserListItemDetail[],
   ): Promise<RestaurantResult[]> {
     const results: RestaurantResult[] = [];
     const restaurantScores = await this.loadPublicScores(
@@ -414,7 +420,7 @@ export class FavoriteListMapper {
         locations: locationResult ? [locationResult] : [],
         locationCount: locationResult ? 1 : 0,
         // Detail-path parity with the results path (spec B.1.5): the saver's
-        // note + the backing FavoriteListItem id ride every axis row.
+        // note + the backing UserListItem id ride every axis row.
         note: item.note ?? null,
         favoriteListItemId: item.itemId,
       });
@@ -423,7 +429,7 @@ export class FavoriteListMapper {
     return results;
   }
 
-  async mapFoodResults(items: FavoriteListItemDetail[]): Promise<FoodResult[]> {
+  async mapFoodResults(items: UserListItemDetail[]): Promise<FoodResult[]> {
     const results: FoodResult[] = [];
     const connectionScores = await this.loadPublicScores(
       CraveScoreSubjectType.connection,

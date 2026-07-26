@@ -14,26 +14,26 @@ import {
 import type { User } from '@prisma/client';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
-import { FavoriteListsService } from './favorite-lists.service';
-import { CreateFavoriteListDto } from './dto/create-favorite-list.dto';
-import { UpdateFavoriteListDto } from './dto/update-favorite-list.dto';
-import { AddFavoriteListItemDto } from './dto/add-favorite-list-item.dto';
-import { UpdateFavoriteListPositionDto } from './dto/update-favorite-list-position.dto';
-import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
-import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
-import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
-import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
-import { JoinFavoriteListCollaboratorsDto } from './dto/join-favorite-list-collaborators.dto';
-import { ReorderFavoriteListItemsDto } from './dto/reorder-favorite-list-items.dto';
+import { UserListsService } from './user-lists.service';
+import { CreateUserListDto } from './dto/create-user-list.dto';
+import { UpdateUserListDto } from './dto/update-user-list.dto';
+import { AddUserListItemDto } from './dto/add-user-list-item.dto';
+import { UpdateUserListPositionDto } from './dto/update-user-list-position.dto';
+import { UpdateUserListItemDto } from './dto/update-user-list-item.dto';
+import { ShareUserListDto } from './dto/share-user-list.dto';
+import { ListUserListsDto } from './dto/list-user-lists.dto';
+import { UserListResultsDto } from './dto/user-list-results.dto';
+import { JoinUserListCollaboratorsDto } from './dto/join-user-list-collaborators.dto';
+import { ReorderUserListItemsDto } from './dto/reorder-user-list-items.dto';
 
 @Controller('favorites')
 @UseGuards(ClerkAuthGuard)
-export class FavoritesController {
-  constructor(private readonly favoriteListsService: FavoriteListsService) {}
+export class UserListsController {
+  constructor(private readonly userListsService: UserListsService) {}
 
   @Get('lists')
-  listLists(@CurrentUser() user: User, @Query() query: ListFavoriteListsDto) {
-    return this.favoriteListsService.listForUser(user.userId, query);
+  listLists(@CurrentUser() user: User, @Query() query: ListUserListsDto) {
+    return this.userListsService.listForUser(user.userId, query);
   }
 
   // Red-team W2 (page-registry §8.4): the viewer's lists containing an entity
@@ -44,15 +44,36 @@ export class FavoritesController {
     @CurrentUser() user: User,
     @Param('entityId', ParseUUIDPipe) entityId: string,
   ) {
-    return this.favoriteListsService.listMembershipsForEntity(
+    return this.userListsService.listMembershipsForEntity(
       user.userId,
       entityId,
     );
   }
 
   @Post('lists')
-  createList(@CurrentUser() user: User, @Body() dto: CreateFavoriteListDto) {
-    return this.favoriteListsService.createList(user.userId, dto);
+  createList(@CurrentUser() user: User, @Body() dto: CreateUserListDto) {
+    return this.userListsService.createList(user.userId, dto);
+  }
+
+  // ── The heart verb (kind law 2026-07-26) ──────────────────────────────────
+  // Static 'lists/favorites/...' routes MUST be declared before the
+  // 'lists/:listId/...' param routes (registration order is match order; the
+  // UUID pipe would 400 'favorites'). Ensure-then-add/remove: the favorites-
+  // kind list is lazily created on first heart. Bodies are the normal
+  // add-item selector (restaurantId XOR connectionId [+ locationId, note]).
+  @Post('lists/favorites/items')
+  addFavoriteItem(@CurrentUser() user: User, @Body() dto: AddUserListItemDto) {
+    return this.userListsService.addFavoriteItem(user.userId, dto);
+  }
+
+  // Unheart by TARGET (same selector body — the client doesn't know itemIds).
+  @Delete('lists/favorites/items')
+  @HttpCode(204)
+  removeFavoriteItem(
+    @CurrentUser() user: User,
+    @Body() dto: AddUserListItemDto,
+  ) {
+    return this.userListsService.removeFavoriteItemByTarget(user.userId, dto);
   }
 
   @Get('lists/:listId')
@@ -62,11 +83,7 @@ export class FavoritesController {
     // RT-18: shared reads present the slug (query param on the GET).
     @Query('shareSlug') shareSlug?: string,
   ) {
-    return this.favoriteListsService.getListForUser(
-      user.userId,
-      listId,
-      shareSlug,
-    );
+    return this.userListsService.getListForUser(user.userId, listId, shareSlug);
   }
 
   // No ParseUUIDPipe: also accepts the virtual All ids
@@ -75,9 +92,9 @@ export class FavoritesController {
   getListResults(
     @CurrentUser() user: User,
     @Param('listId') listId: string,
-    @Body() dto: FavoriteListResultsDto,
+    @Body() dto: UserListResultsDto,
   ) {
-    return this.favoriteListsService.getListResults(user.userId, listId, dto);
+    return this.userListsService.getListResults(user.userId, listId, dto);
   }
 
   // City-chip vocabulary (§8.16 "sliced by city"): the distinct catalog
@@ -87,13 +104,9 @@ export class FavoritesController {
   listCitiesForList(
     @CurrentUser() user: User,
     @Param('listId') listId: string,
-    @Body() dto: FavoriteListResultsDto,
+    @Body() dto: UserListResultsDto,
   ) {
-    return this.favoriteListsService.listCitiesForList(
-      user.userId,
-      listId,
-      dto,
-    );
+    return this.userListsService.listCitiesForList(user.userId, listId, dto);
   }
 
   @Get('lists/:listId/collaborators')
@@ -102,7 +115,7 @@ export class FavoritesController {
     @Param('listId', ParseUUIDPipe) listId: string,
     @Query('shareSlug') shareSlug?: string,
   ) {
-    return this.favoriteListsService.getCollaborators(
+    return this.userListsService.getCollaborators(
       user.userId,
       listId,
       shareSlug,
@@ -113,9 +126,9 @@ export class FavoritesController {
   joinCollaborators(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
-    @Body() dto: JoinFavoriteListCollaboratorsDto,
+    @Body() dto: JoinUserListCollaboratorsDto,
   ) {
-    return this.favoriteListsService.joinCollaborators(
+    return this.userListsService.joinCollaborators(
       user.userId,
       listId,
       dto.shareSlug,
@@ -129,7 +142,7 @@ export class FavoritesController {
     @Param('listId', ParseUUIDPipe) listId: string,
     @Param('userId', ParseUUIDPipe) targetUserId: string,
   ) {
-    return this.favoriteListsService.removeCollaborator(
+    return this.userListsService.removeCollaborator(
       user.userId,
       listId,
       targetUserId,
@@ -140,9 +153,9 @@ export class FavoritesController {
   reorderListItems(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
-    @Body() dto: ReorderFavoriteListItemsDto,
+    @Body() dto: ReorderUserListItemsDto,
   ) {
-    return this.favoriteListsService.reorderItems(
+    return this.userListsService.reorderItems(
       user.userId,
       listId,
       dto.orderedItemIds,
@@ -153,18 +166,18 @@ export class FavoritesController {
   updateList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
-    @Body() dto: UpdateFavoriteListDto,
+    @Body() dto: UpdateUserListDto,
   ) {
-    return this.favoriteListsService.updateList(user.userId, listId, dto);
+    return this.userListsService.updateList(user.userId, listId, dto);
   }
 
   @Patch('lists/:listId/position')
   updateListPosition(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
-    @Body() dto: UpdateFavoriteListPositionDto,
+    @Body() dto: UpdateUserListPositionDto,
   ) {
-    return this.favoriteListsService.updateListPosition(
+    return this.userListsService.updateListPosition(
       user.userId,
       listId,
       dto.position,
@@ -175,9 +188,9 @@ export class FavoritesController {
   addListItem(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
-    @Body() dto: AddFavoriteListItemDto,
+    @Body() dto: AddUserListItemDto,
   ) {
-    return this.favoriteListsService.addItem(user.userId, listId, dto);
+    return this.userListsService.addItem(user.userId, listId, dto);
   }
 
   @Patch('lists/:listId/items/:itemId')
@@ -185,14 +198,9 @@ export class FavoritesController {
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
-    @Body() dto: UpdateFavoriteListItemDto,
+    @Body() dto: UpdateUserListItemDto,
   ) {
-    return this.favoriteListsService.updateItem(
-      user.userId,
-      listId,
-      itemId,
-      dto,
-    );
+    return this.userListsService.updateItem(user.userId, listId, itemId, dto);
   }
 
   @Delete('lists/:listId/items/:itemId')
@@ -202,16 +210,16 @@ export class FavoritesController {
     @Param('listId', ParseUUIDPipe) listId: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
   ) {
-    return this.favoriteListsService.removeItem(user.userId, listId, itemId);
+    return this.userListsService.removeItem(user.userId, listId, itemId);
   }
 
   @Post('lists/:listId/share')
   enableShare(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
-    @Body() dto: ShareFavoriteListDto,
+    @Body() dto: ShareUserListDto,
   ) {
-    return this.favoriteListsService.enableShare(user.userId, listId, dto);
+    return this.userListsService.enableShare(user.userId, listId, dto);
   }
 
   @Delete('lists/:listId/share')
@@ -220,7 +228,7 @@ export class FavoritesController {
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
   ) {
-    return this.favoriteListsService.disableShare(user.userId, listId);
+    return this.userListsService.disableShare(user.userId, listId);
   }
 
   @Delete('lists/:listId')
@@ -229,6 +237,6 @@ export class FavoritesController {
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
   ) {
-    return this.favoriteListsService.deleteList(user.userId, listId);
+    return this.userListsService.deleteList(user.userId, listId);
   }
 }
