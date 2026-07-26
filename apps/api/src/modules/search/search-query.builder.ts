@@ -88,6 +88,9 @@ interface ParsedFilters {
   restaurantAttributeIds: string[];
   foodIds: string[];
   foodTextExpansionIds: string[];
+  /** Same-named ingredient twins of the query foods — ORed into the food
+   *  clause as containment (evidence + canon tiers). */
+  twinIngredientIds: string[];
   foodAttributeIds: string[];
   ingredientIds: string[];
   excludedIngredientIds: string[];
@@ -800,6 +803,7 @@ LIMIT ${pagination.take};`.trim();
       ),
       foodIds: this.collectEntityIds(connectionFilters, EntityScope.FOOD),
       foodTextExpansionIds: directives?.primaryFoodAttributeTextFoodIds ?? [],
+      twinIngredientIds: directives?.twinIngredientIds ?? [],
       foodAttributeIds: this.collectEntityIds(
         connectionFilters,
         EntityScope.FOOD_ATTRIBUTE,
@@ -1021,11 +1025,29 @@ LIMIT ${pagination.take};`.trim();
         // per-food edge table (derived_food_category_edges) and arrives here as
         // extra food ids — the per-connection `c.categories &&` arm is gone
         // (per-mention arrays made membership a coin flip per connection).
+        // Name-containment variants also arrive as extra food ids (the
+        // 2026-07-25 failsafe). Twin-ingredient union: when the query food's
+        // name is also an ingredient ("burrata"), dishes CONTAINING it
+        // qualify too — OR of the same two containment tiers the ingredient
+        // clause uses.
         const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
-        conditions.push(Prisma.sql`(${foodIdClause})`);
-        conditionPreview.push(
-          `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
-        );
+        if (filters.twinIngredientIds.length) {
+          const containment = this.buildEffectiveIngredientsClause(
+            filters.twinIngredientIds,
+            'include',
+          );
+          conditions.push(
+            Prisma.sql`((${foodIdClause}) OR ${containment.sql})`,
+          );
+          conditionPreview.push(
+            `((c.food_id = ANY(${this.formatUuidArray(filters.foodIds)})) OR ${containment.preview})`,
+          );
+        } else {
+          conditions.push(Prisma.sql`(${foodIdClause})`);
+          conditionPreview.push(
+            `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
+          );
+        }
       }
 
       if (filters.foodAttributeIds.length) {
@@ -1110,11 +1132,29 @@ LIMIT ${pagination.take};`.trim();
         // per-food edge table (derived_food_category_edges) and arrives here as
         // extra food ids — the per-connection `c.categories &&` arm is gone
         // (per-mention arrays made membership a coin flip per connection).
+        // Name-containment variants also arrive as extra food ids (the
+        // 2026-07-25 failsafe). Twin-ingredient union: when the query food's
+        // name is also an ingredient ("burrata"), dishes CONTAINING it
+        // qualify too — OR of the same two containment tiers the ingredient
+        // clause uses.
         const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
-        conditions.push(Prisma.sql`(${foodIdClause})`);
-        conditionPreview.push(
-          `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
-        );
+        if (filters.twinIngredientIds.length) {
+          const containment = this.buildEffectiveIngredientsClause(
+            filters.twinIngredientIds,
+            'include',
+          );
+          conditions.push(
+            Prisma.sql`((${foodIdClause}) OR ${containment.sql})`,
+          );
+          conditionPreview.push(
+            `((c.food_id = ANY(${this.formatUuidArray(filters.foodIds)})) OR ${containment.preview})`,
+          );
+        } else {
+          conditions.push(Prisma.sql`(${foodIdClause})`);
+          conditionPreview.push(
+            `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
+          );
+        }
       }
 
       if (filters.foodAttributeIds.length) {

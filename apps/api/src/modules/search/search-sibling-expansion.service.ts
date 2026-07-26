@@ -133,4 +133,87 @@ export class SearchSiblingExpansionService {
       return [];
     }
   }
+
+  /**
+   * NAME-CONTAINMENT FAILSAFE (owner ruling 2026-07-25, data-proven): of
+   * 9,472 variant/base name-containment pairs in the corpus, only 4,112
+   * carried a derived category edge — 57% of name-evident relationships
+   * ("carbonara udon" → carbonara, "octopus tacos" → octopus) were invisible
+   * to id+edge recall. A hungry customer typing "carbonara" wants anything
+   * carbonara-shaped; the dish literally SAYING the word is the strongest
+   * possible evidence. Word-boundary containment (space-padded LIKE — no
+   * regex injection surface), base names ≥ 4 chars, BASE ids only (the same
+   * one-hop law as categories: never expand an expansion). Fails open to [].
+   */
+  async getNameContainmentVariantFoodIds(
+    baseFoodIds: string[],
+  ): Promise<string[]> {
+    const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
+    if (!ids.length) return [];
+    try {
+      const rows = await this.prisma.$queryRaw<{ foodId: string }[]>(
+        Prisma.sql`
+          SELECT DISTINCT v.entity_id AS "foodId"
+          FROM core_entities v
+          JOIN core_entities b
+            ON b.entity_id = ANY(${ids}::uuid[])
+           AND length(b.name) >= 4
+           AND v.entity_id <> b.entity_id
+           AND (' ' || lower(v.name) || ' ') LIKE ('%' || ' ' || lower(b.name) || ' ' || '%')
+          WHERE v.type = 'food'::entity_type
+            AND v.status = 'active'::entity_status
+        `,
+      );
+      const exclude = new Set(ids);
+      return rows.map((r) => r.foodId).filter((id) => !exclude.has(id));
+    } catch (error) {
+      this.logger.warn('Name-containment variant read failed (failing open)', {
+        baseCount: ids.length,
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+      return [];
+    }
+  }
+
+  /**
+   * TWIN-INGREDIENT UNION (owner ruling 2026-07-25): a food search whose
+   * name also exists as an ingredient entity ("burrata") must union in
+   * contained-as-ingredient dishes — the customer who taps burrata is happy
+   * with the pizza that contains it. Returns the same-named ingredient
+   * entity ids (name or alias equality, both directions); the query builder
+   * ORs their containment (evidence + canon tiers) into the food clause.
+   */
+  async getSameNamedIngredientIds(baseFoodIds: string[]): Promise<string[]> {
+    const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
+    if (!ids.length) return [];
+    try {
+      const rows = await this.prisma.$queryRaw<{ ingredientId: string }[]>(
+        Prisma.sql`
+          SELECT DISTINCT i.entity_id AS "ingredientId"
+          FROM core_entities i
+          JOIN core_entities b ON b.entity_id = ANY(${ids}::uuid[])
+          WHERE i.type = 'ingredient'::entity_type
+            AND i.status = 'active'::entity_status
+            AND (
+              lower(i.name) = lower(b.name)
+              OR lower(b.name) IN (SELECT lower(a) FROM unnest(i.aliases) a)
+              OR lower(i.name) IN (SELECT lower(a) FROM unnest(b.aliases) a)
+            )
+        `,
+      );
+      return rows.map((r) => r.ingredientId);
+    } catch (error) {
+      this.logger.warn('Twin-ingredient read failed (failing open)', {
+        baseCount: ids.length,
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+      return [];
+    }
+  }
 }

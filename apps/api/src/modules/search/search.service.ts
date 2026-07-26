@@ -116,6 +116,9 @@ interface PlanExpansionState {
   // getCategoryMemberFoodIds). Replaces the per-connection `c.categories &&`
   // SQL arm — membership is resolved at plan time from the per-food edge table.
   categoryMemberFoodIds: string[];
+  /** Same-named ingredient entities of the query foods (twin union — the
+   *  builder ORs their containment into the food clause). */
+  twinIngredientIds: string[];
   // Graded relatedness of every widened food id to the QUERY entity, on one
   // calibrated scale: siblings carry CEILING-NORMALIZED cosine (cosine ÷ the
   // query dish's closest-sibling cosine — comparable across queries, unlike raw
@@ -403,11 +406,23 @@ export class SearchService {
     {
       const anchorFoodIds = this.collectEntityIds(request.entities.food);
       if (anchorFoodIds.length) {
-        const [categoryMemberFoodIds, siblingMatches] = await Promise.all([
+        const [
+          edgeMemberFoodIds,
+          nameVariantFoodIds,
+          twinIngredientIds,
+          siblingMatches,
+        ] = await Promise.all([
           // Category members apply on EVERY search (they replace the old
           // per-connection `c.categories &&` SQL arm) — one-hop: resolved
           // from the exact query foods only.
           this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
+          // Name-containment failsafe (owner ruling 2026-07-25): 57% of
+          // name-evident variants lacked a category edge — a dish literally
+          // SAYING the word is instance evidence, same tier as edges.
+          this.siblingExpansion.getNameContainmentVariantFoodIds(anchorFoodIds),
+          // Twin-ingredient union: "burrata" the food also means dishes
+          // CONTAINING burrata (the builder ORs containment in).
+          this.siblingExpansion.getSameNamedIngredientIds(anchorFoodIds),
           this.siblingsWanted(request, 'preProbe')
             ? this.siblingExpansion.getSiblingFoodIds(
                 anchorFoodIds,
@@ -415,8 +430,15 @@ export class SearchService {
               )
             : Promise.resolve([] as { siblingId: string; relevance: number }[]),
         ]);
+        const categoryMemberFoodIds = Array.from(
+          new Set([...edgeMemberFoodIds, ...nameVariantFoodIds]),
+        );
         const denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
-        if (categoryMemberFoodIds.length || denseSiblingFoodIds.length) {
+        if (
+          categoryMemberFoodIds.length ||
+          denseSiblingFoodIds.length ||
+          twinIngredientIds.length
+        ) {
           const relevanceByFoodId: Record<string, number> = {};
           for (const id of categoryMemberFoodIds) relevanceByFoodId[id] = 1;
           for (const s of siblingMatches)
@@ -428,6 +450,7 @@ export class SearchService {
             foodIdsFromPrimaryFoodAttributeText: [],
             denseSiblingFoodIds,
             categoryMemberFoodIds,
+            twinIngredientIds,
             relevanceByFoodId,
           };
           if (this.debugMode !== 'off') {
@@ -561,6 +584,9 @@ export class SearchService {
           planExpansion?.categoryMemberFoodIds ?? [];
         planExpansion = {
           ...expansionResult,
+          // Twins are seeded pre-probe only — the lexical expansionResult
+          // carries [], so preserve the seeded set.
+          twinIngredientIds: planExpansion?.twinIngredientIds ?? [],
           denseSiblingFoodIds: Array.from(
             new Set([
               ...seededSiblings,
@@ -1776,7 +1802,12 @@ export class SearchService {
       exactFoodIds.length > 0 &&
       constraints.ids.foodIds.length > exactFoodIds.length;
 
-    if (!hasPrimaryFoodAttributeQuery && !widened) {
+    const twinIngredientIds = planExpansion?.twinIngredientIds ?? [];
+    if (
+      !hasPrimaryFoodAttributeQuery &&
+      !widened &&
+      !twinIngredientIds.length
+    ) {
       return undefined;
     }
 
@@ -1788,6 +1819,9 @@ export class SearchService {
           : undefined,
       exactFoodIds: widened ? exactFoodIds : undefined,
       sectionedRanking: widened || undefined,
+      twinIngredientIds: twinIngredientIds.length
+        ? twinIngredientIds
+        : undefined,
     };
   }
 
@@ -1902,6 +1936,7 @@ export class SearchService {
         return;
       }
       const widened: PlanExpansionState = {
+        twinIngredientIds: params.planExpansion?.twinIngredientIds ?? [],
         foodIds: params.planExpansion?.foodIds ?? [],
         foodAttributeIds: params.planExpansion?.foodAttributeIds ?? [],
         restaurantAttributeIds:
@@ -3671,6 +3706,7 @@ export class SearchService {
     }
 
     const expansion: PlanExpansionState = {
+      twinIngredientIds: [],
       foodIds,
       foodAttributeIds,
       restaurantAttributeIds,

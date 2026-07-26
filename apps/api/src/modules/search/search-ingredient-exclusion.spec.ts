@@ -148,6 +148,30 @@ describe('ingredient exclusion lane (compiler → builder)', () => {
     expect(preview).not.toContain('same-name-or-alias');
   });
 
+  it('twin-ingredient union: food clause ORs containment when directives carry twins', () => {
+    const plan = compileQueryPlanFromConstraints(buildConstraints({}));
+    const builder = new SearchQueryBuilder();
+    const { preview } = builder.buildDishQuery({
+      plan,
+      pagination: { skip: 0, take: 10 },
+      searchCenter: null,
+      directives: { twinIngredientIds: [INCLUDE_ID] },
+    });
+    expect(preview).toContain(
+      `(c.food_id = ANY(ARRAY['${FOOD_ID}']::uuid[])) OR`,
+    );
+    expect(preview).toContain(
+      `c.ingredients && ARRAY['${INCLUDE_ID}']::uuid[]`,
+    );
+  });
+
+  it('twin-ingredient union: absent without directives (plain id clause)', () => {
+    const plan = compileQueryPlanFromConstraints(buildConstraints({}));
+    const preview = dishPreviewFor(plan);
+    expect(preview).toContain(`(c.food_id = ANY(ARRAY['${FOOD_ID}']::uuid[]))`);
+    expect(preview).not.toContain('c.ingredients &&');
+  });
+
   it('emits no ingredient SQL when both lanes are empty', () => {
     const plan = compileQueryPlanFromConstraints(buildConstraints({}));
     const preview = dishPreviewFor(plan);

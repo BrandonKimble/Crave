@@ -15,4 +15,11 @@ export interface SearchExecutionDirectives {
    */
   exactFoodIds?: string[];
   sectionedRanking?: boolean;
+  /**
+   * Twin-ingredient union (owner ruling 2026-07-25): same-named ingredient
+   * entities of the query foods — the food clause ORs their containment
+   * (evidence + canon tiers), so "burrata" the food also returns the pizza
+   * that CONTAINS burrata.
+   */
+  twinIngredientIds?: string[];
 }
