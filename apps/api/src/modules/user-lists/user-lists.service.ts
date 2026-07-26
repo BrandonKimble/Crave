@@ -747,7 +747,16 @@ export class UserListsService {
     if (dto.restaurantId && dto.connectionId) {
       throw new BadRequestException('Only one list item target is allowed');
     }
-    const list = await this.ensureFavoritesList(userId);
+    // TRUE no-op law: unhearting when no favorites list exists must not
+    // lazily CREATE one (red-team 2026-07-26 — ensureFavoritesList here
+    // provisioned empty favorites lists as a side effect of stale unhearts).
+    const list = await this.prisma.userList.findFirst({
+      where: { ownerUserId: userId, kind: FAVORITES_LIST_KIND },
+      select: { listId: true },
+    });
+    if (!list) {
+      return { removed: false };
+    }
     let restaurantId = dto.restaurantId ?? null;
     if (!restaurantId && dto.connectionId) {
       const connection = await this.prisma.connection.findUnique({

@@ -7,7 +7,7 @@ import type { UserListViewerRole } from '../../services/user-lists';
  * row affordances RENDER from this model; no panel re-derives per-source behavior.
  *
  * Sources:
- * - 'favorites'  — a favorite_lists row (own, collaborator, or viewed via profile/
+ * - 'favorites'  — a user_lists row (own, collaborator, or viewed via profile/
  *                  share slug). Role does the work: owner unlocks curation verbs,
  *                  owner/collaborator unlock reorder + add-photo.
  * - 'curated'    — an app-curated list (GET /home/lists/:id). Read-only projection:

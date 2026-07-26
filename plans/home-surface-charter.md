@@ -70,3 +70,41 @@ from loved cuisines, refreshes Mondays) · global monthly rotation ("Best
 breakfast taco in Austin — July") · programmatic cover art: photo collages
 
 - per-list-type color extraction from existing Cloudinary assets.
+
+## Open items registry (2026-07-26 — the durable deferral log)
+
+Every item here is DELIBERATELY deferred with its trigger; nothing below is
+forgotten work.
+
+1. Result-row Save pills show no live hearted-state — needs ONE batched
+   membership read for the visible rows (per-row reads would be dishonest
+   jank). Trigger: first UX polish pass post sim-verification.
+2. No one-tap dish heart on dish surfaces — the hook/routes support it;
+   the affordance placement is a design decision. Same trigger as (1).
+3. Send-in-app (messaging) share for curated lists — the share-package
+   resolver speaks user-list ids only; extend it to curated ids. Trigger:
+   messaging share usage exists.
+4. Programmatic list artwork (photo collage + color extraction) — V2;
+   V1 is the ratified cutout+icon system.
+5. Curated recipes/cron ground-up scrutiny + onboarding-seeded
+   personalization (first-session made-for-you + first Weekly Tasting from
+   the revamped onboarding answers) — THE NEXT ORDERED LEG; starts as a
+   design conversation with the owner.
+6. Sim visual pass for the whole arc (cutout seams under rubber-band,
+   house icon, shelves, plus-modal, pinned Favorites) — blocked on the
+   owner's one-time sim sign-in after the Clerk live-key cutover.
+7. Strip action-row still on raw MaskedHoleOverlay (non-scrolling,
+   renderWhenEmpty — deliberately left); unify onto CutoutBand only if it
+   ever needs the edge illusion.
+8. Server favorite* HTTP route paths (@Controller('favorites')) kept for
+   client compatibility — rename to /lists/* alongside a mobile release
+   once the app ships through a store channel.
+9. The 8-per-axis shelf caps are GONE (earn-it); the /home/feed response
+   carries EVERY earned shelf with no shelf-count bound or pagination —
+   dormant at 2 cities, real at a 40-cuisine metro (red team 2026-07-26).
+   Trigger: before onboarding a large-cuisine-roster city, add a feed
+   presentation bound or lazy shelf loading (presentation concern, not a
+   data cap — earn-it stays).
+10. Add an API spec asserting a synthetic (non-UUID) connectionId from the
+    curated adapter's composite fallback is REJECTED loudly, never
+    mis-targeted (red team follow-up).
