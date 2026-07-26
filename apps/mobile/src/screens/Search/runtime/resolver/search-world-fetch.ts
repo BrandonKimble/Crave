@@ -62,6 +62,9 @@ export type SearchWorldFetchEnv = {
       cityPlaceId?: string | null;
     }
   ) => Promise<SearchResponse | null>;
+  /** Curated lists (list identity, source 'curated'): the SAME choreography with the
+   *  curated read as the fetch seam — the endpoint takes no slice params. */
+  getCuratedListResults: (listId: string) => Promise<SearchResponse | null>;
 };
 
 const attachTupleScopeToPayload = (
@@ -157,6 +160,10 @@ export const createSearchWorldFetcher =
       }
       attachTupleScopeToPayload(payload, tuple, userLocation);
       response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+    } else if (identity.kind === 'list' && identity.source === 'curated') {
+      // Curated lists ride the IDENTICAL list-world lane (plot + fitAll + reveal);
+      // only the fetch seam differs. The curated read takes no slice params.
+      response = await env.getCuratedListResults(identity.listId);
     } else if (identity.kind === 'list') {
       response = await env.getFavoritesListResults(identity.listId, {
         openNow: tuple.filterVariant.openNow || undefined,

@@ -49,6 +49,12 @@ export type SearchQueryIdentity =
        *  identityKey and equality (same viewer + same list = same world regardless
        *  of which capability opened it). */
       shareSlug?: string | null;
+      /** List-detail choreography leg: which BACKING STORE the list lives in.
+       *  'curated' = app-curated (GET /home/lists/:id, read-only projection);
+       *  absent/null = favorites. Identity-relevant — a curated id and a
+       *  favorites id are different namespaces, so the same uuid under the two
+       *  sources is two different worlds. */
+      source?: 'curated' | null;
     }
   | {
       kind: 'entity';
@@ -182,7 +188,8 @@ export const areSearchQueryIdentitiesEqual = (
         a.displayTitle === other.displayTitle &&
         a.listId === other.listId &&
         a.listType === other.listType &&
-        (a.targetUserId ?? null) === (other.targetUserId ?? null)
+        (a.targetUserId ?? null) === (other.targetUserId ?? null) &&
+        (a.source ?? null) === (other.source ?? null)
       );
     }
     case 'entity': {
@@ -309,7 +316,7 @@ export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
       : identity.kind === 'shortcut'
         ? `shortcut:${identity.shortcutTab}`
         : identity.kind === 'list'
-          ? `list:${identity.listId}:${identity.listType}${identity.targetUserId != null ? `:u:${identity.targetUserId}` : ''}`
+          ? `list:${identity.listId}:${identity.listType}${identity.targetUserId != null ? `:u:${identity.targetUserId}` : ''}${identity.source === 'curated' ? ':curated' : ''}`
           : identity.kind === 'entity'
             ? `entity:${identity.entityType}:${identity.entityId}${identity.seeLocations ? ':seelocations' : ''}`
             : identity.kind === 'profileSeed'

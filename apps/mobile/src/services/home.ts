@@ -18,6 +18,10 @@ export type CuratedListDetailItem = {
   rank: number;
   entityId: string;
   restaurantId: string | null;
+  /** Dish items: the resolved Connection id (server-resolved via the
+   *  (restaurantId, foodId) unique — the same read the dish search uses).
+   *  Null when no connection row exists; restaurant items always null. */
+  connectionId: string | null;
   label: string;
   subLabel: string | null;
   latitude: number | null;
@@ -53,6 +57,15 @@ export const fetchHomeFeed = async (bounds: MapBounds): Promise<HomeFeedResponse
     },
   });
   return normalizeHomeFeedResponse(response.data);
+};
+
+/** Save-a-copy (list-detail verbs, curated canSaveCopy): POST /home/lists/:id/save
+ *  copies the curated list's CURRENT items into a new favorites list the caller owns. */
+export const saveCuratedListToMyLists = async (
+  listId: string
+): Promise<{ listId: string; name: string }> => {
+  const response = await api.post<{ listId: string; name: string }>(`/home/lists/${listId}/save`);
+  return response.data;
 };
 
 export const fetchCuratedListDetail = async (

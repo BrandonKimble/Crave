@@ -9,6 +9,8 @@ import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
 import { favoriteListsService, type FavoriteListType } from '../../../services/favorite-lists';
+import { fetchCuratedListDetail } from '../../../services/home';
+import { mapCuratedDetailToSearchResponse } from '../../../services/curated-list-adapter';
 import type { SegmentValue } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
@@ -186,6 +188,8 @@ type SearchSubmitOwner = {
     displayTitle: string;
     targetUserId?: string | null;
     shareSlug?: string | null;
+    /** 'curated' = app-curated list — same choreography, curated fetch seam. */
+    source?: 'curated' | null;
     slice?: {
       sort?: 'custom' | 'best' | 'recent';
       openNow?: boolean;
@@ -400,6 +404,8 @@ const useSearchSubmitOwner = ({
         shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
         getFavoritesListResults: (listId, options) =>
           favoriteListsService.getListResults(listId, options),
+        getCuratedListResults: async (listId) =>
+          mapCuratedDetailToSearchResponse(await fetchCuratedListDetail(listId)),
       }),
       now: () => globalThis.performance?.now?.() ?? Date.now(),
       deriveWorldForTuple: createSearchWorldDerivation({ userLocationRef }),
@@ -409,6 +415,8 @@ const useSearchSubmitOwner = ({
         shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
         getFavoritesListResults: (listId, options) =>
           favoriteListsService.getListResults(listId, options),
+        getCuratedListResults: async (listId) =>
+          mapCuratedDetailToSearchResponse(await fetchCuratedListDetail(listId)),
       }),
       onWorldPresented: (args) => worldPresentedEffectsRef.current(args),
     });

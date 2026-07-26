@@ -15,11 +15,11 @@ import type { CuratedListDetailItem, CuratedListDetailResponse } from './home';
  * payload cannot supply (hours → open-now, priceLevel → price) mean those
  * strip controls are HIDDEN for curated lists, never faked.
  *
- * KNOWN PAYLOAD GAP: dish-type curated items carry (foodId, restaurantId) but
- * NOT the resolved connectionId; the composite `${restaurantId}:${entityId}`
- * stands in as ROW IDENTITY only. A save from such a row fails loud at the API
- * (announcer), never silently corrupts — closing the gap needs connectionId in
- * the curated payload.
+ * Dish rows carry the server-resolved connectionId (the (restaurantId, foodId)
+ * unique — same read the dish search uses), so hearts/saves on curated dish rows
+ * work. When the server found no connection row the composite
+ * `${restaurantId}:${entityId}` stands in as ROW IDENTITY only; a save from such
+ * a row fails loud at the API (announcer), never silently corrupts.
  */
 export const resolveCuratedListType = (listType: string): FavoriteListType =>
   listType === 'dish' ? 'dish' : 'restaurant';
@@ -63,8 +63,9 @@ const mapCuratedItemToRestaurantResult = (item: CuratedListDetailItem): Restaura
 });
 
 const mapCuratedItemToFoodResult = (item: CuratedListDetailItem): FoodResult => ({
-  // PAYLOAD GAP (see module doc): composite row identity, not a real connectionId.
-  connectionId: `${item.restaurantId ?? 'unknown'}:${item.entityId}`,
+  // Server-resolved connectionId when the connection row exists (see module doc);
+  // composite row-identity stand-in otherwise.
+  connectionId: item.connectionId ?? `${item.restaurantId ?? 'unknown'}:${item.entityId}`,
   foodId: item.entityId,
   foodName: item.label,
   foodAliases: [],
@@ -72,7 +73,7 @@ const mapCuratedItemToFoodResult = (item: CuratedListDetailItem): FoodResult => 
   restaurantName: item.subLabel ?? '',
   restaurantAliases: [],
   scoreSubjectType: 'connection',
-  scoreSubjectId: `${item.restaurantId ?? 'unknown'}:${item.entityId}`,
+  scoreSubjectId: item.connectionId ?? `${item.restaurantId ?? 'unknown'}:${item.entityId}`,
   craveScore: item.craveScore ?? 0,
   ...(item.craveScoreExact != null ? { craveScoreExact: item.craveScoreExact } : {}),
   rising: item.rising,
@@ -104,6 +105,10 @@ export const mapCuratedDetailToSearchResponse = (
     dishes,
     restaurants,
     metadata: {
+      // The world constructor requires a request identity; the curated read has no
+      // server searchRequestId, so the projection's identity is the build fact itself
+      // (listId + builtAt) — deterministic, never invented.
+      searchRequestId: `curated:${detail.listId}:${detail.builtAt}`,
       totalFoodResults: dishes.length,
       totalRestaurantResults: restaurants.length,
       queryExecutionTimeMs: 0,

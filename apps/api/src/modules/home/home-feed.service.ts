@@ -8,8 +8,12 @@
  * lists at read time by filtering the city lists' restaurant items to the
  * header place's ground (no extra materialization).
  */
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { FavoriteListType, Prisma } from '@prisma/client';
 import { GeoBbox } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -52,6 +56,11 @@ export interface CuratedListDetailItem {
   rank: number;
   entityId: string;
   restaurantId: string | null;
+  /** Dish items: the resolved Connection id ((restaurantId, foodId) unique —
+   *  the same read the dish search uses); null when no connection row exists.
+   *  Restaurant items: always null. Lets client hearts/saves on curated dish
+   *  rows speak the real connection vocabulary. */
+  connectionId: string | null;
   label: string;
   subLabel: string | null;
   latitude: number | null;
@@ -267,28 +276,10 @@ export class HomeFeedService {
       // Dish items: (restaurantId, foodId) resolves the Connection — the
       // same dish→restaurant model the search read uses; the connection
       // carries the ranked public score.
-      const pairs = list.items
-        .filter((item) => item.restaurantId)
-        .map((item) => ({
-          restaurantId: item.restaurantId as string,
-          foodId: item.entityId,
-        }));
-      const connections = pairs.length
-        ? await this.prisma.connection.findMany({
-            where: { OR: pairs },
-            select: { connectionId: true, restaurantId: true, foodId: true },
-          })
-        : [];
-      connectionIdByItemKey = new Map(
-        connections.map((row) => [
-          `${row.restaurantId}:${row.foodId}`,
-          row.connectionId,
-        ]),
-      );
-      scores = await this.loadScores(
-        'connection',
-        connections.map((row) => row.connectionId),
-      );
+      connectionIdByItemKey = await this.resolveDishConnectionIds(list.items);
+      scores = await this.loadScores('connection', [
+        ...connectionIdByItemKey.values(),
+      ]);
     } else {
       scores = await this.loadScores(
         'restaurant',
@@ -306,6 +297,7 @@ export class HomeFeedService {
           rank: item.rank,
           entityId: item.entityId,
           restaurantId: item.restaurantId,
+          connectionId: connectionId ?? null,
           label: item.entity.name,
           subLabel: item.restaurant?.name ?? null,
           latitude: toNumberOrNull(item.restaurant?.latitude),
@@ -320,6 +312,7 @@ export class HomeFeedService {
         rank: item.rank,
         entityId: item.entityId,
         restaurantId: null,
+        connectionId: null,
         label: item.entity.name,
         subLabel: item.entity.city,
         latitude: toNumberOrNull(item.entity.latitude),
@@ -347,7 +340,130 @@ export class HomeFeedService {
     };
   }
 
+  /**
+   * Save-a-copy (list-detail verbs leg, Job 2): copy the curated list's CURRENT
+   * items into a NEW favorites list owned by the caller. Access mirrors the
+   * detail read (global lists, or the caller's own personal list) — a foreign
+   * personal list 404s. Items that cannot be expressed as favorites rows (dish
+   * items with no resolvable connection) are skipped; itemCount is the honest
+   * copied count. Name conflict on the caller's (owner, type, name) unique
+   * retries once with a " (copy)" suffix.
+   */
+  async saveListToFavorites(
+    listId: string,
+    userId: string,
+  ): Promise<{ listId: string; name: string; itemCount: number }> {
+    const list = await this.prisma.curatedList.findFirst({
+      where: { listId, OR: [{ scope: 'global' }, { ownerUserId: userId }] },
+      include: { items: { orderBy: { rank: 'asc' } } },
+    });
+    if (!list) {
+      throw new NotFoundException('Curated list not found');
+    }
+    const listType =
+      list.listType === 'dish'
+        ? FavoriteListType.dish
+        : FavoriteListType.restaurant;
+    const connectionIdByItemKey =
+      listType === FavoriteListType.dish
+        ? await this.resolveDishConnectionIds(list.items)
+        : new Map<string, string>();
+    const rows = list.items.flatMap(
+      (
+        item,
+      ): Array<{
+        restaurantId?: string;
+        connectionId?: string;
+        position: number;
+      }> => {
+        if (listType === FavoriteListType.dish) {
+          const connectionId = item.restaurantId
+            ? connectionIdByItemKey.get(`${item.restaurantId}:${item.entityId}`)
+            : undefined;
+          return connectionId ? [{ connectionId, position: item.rank }] : [];
+        }
+        return [{ restaurantId: item.entityId, position: item.rank }];
+      },
+    );
+
+    const maxPosition = await this.prisma.favoriteList.aggregate({
+      where: { ownerUserId: userId },
+      _max: { position: true },
+    });
+    const position = (maxPosition._max.position ?? 0) + 1;
+    const createList = (name: string) =>
+      this.prisma.favoriteList.create({
+        data: { ownerUserId: userId, name, listType, position },
+      });
+    let created: { listId: string; name: string };
+    try {
+      created = await createList(list.title);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        try {
+          created = await createList(`${list.title} (copy)`);
+        } catch (retryError) {
+          if (
+            retryError instanceof Prisma.PrismaClientKnownRequestError &&
+            retryError.code === 'P2002'
+          ) {
+            throw new BadRequestException('List name already exists');
+          }
+          throw retryError;
+        }
+      } else {
+        throw error;
+      }
+    }
+    if (rows.length) {
+      await this.prisma.favoriteListItem.createMany({
+        data: rows.map((row) => ({
+          ...row,
+          listId: created.listId,
+          addedByUserId: userId,
+        })),
+      });
+      await this.prisma.favoriteList.update({
+        where: { listId: created.listId },
+        data: { itemCount: rows.length },
+      });
+    }
+    return {
+      listId: created.listId,
+      name: created.name,
+      itemCount: rows.length,
+    };
+  }
+
   // ---------- internals ----------
+
+  /** Dish items → Connection ids via the (restaurantId, foodId) unique — ONE
+   *  resolution law for the detail read and the save copy. */
+  private async resolveDishConnectionIds(
+    items: Array<{ entityId: string; restaurantId: string | null }>,
+  ): Promise<Map<string, string>> {
+    const pairs = items
+      .filter((item) => item.restaurantId)
+      .map((item) => ({
+        restaurantId: item.restaurantId as string,
+        foodId: item.entityId,
+      }));
+    const connections = pairs.length
+      ? await this.prisma.connection.findMany({
+          where: { OR: pairs },
+          select: { connectionId: true, restaurantId: true, foodId: true },
+        })
+      : [];
+    return new Map(
+      connections.map((row) => [
+        `${row.restaurantId}:${row.foodId}`,
+        row.connectionId,
+      ]),
+    );
+  }
 
   /** Distinct cities that carry GLOBAL curated content (name-joined). */
   private async listCities(): Promise<

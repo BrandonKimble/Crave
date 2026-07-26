@@ -4,6 +4,7 @@ import { STRIP_BAND_BOTTOM_SPACER_HEIGHT } from '../../toggles/toggle-strip-metr
 import { Pressable, StyleSheet, View } from 'react-native';
 import { setClipboardString } from '../../utils/clipboard';
 import {
+  Bookmark,
   Eye,
   EyeOff,
   Images,
@@ -33,7 +34,7 @@ import { buildEditModeActionRow } from '../../toggles/EditModeActionRow';
 import { PRICE_LEVEL_SYMBOLS } from '../../constants/pricing';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
-import { showShareModal } from '../../components/share-modal-store';
+import { SHARE_BASE_URL, showShareModal } from '../../components/share-modal-store';
 import {
   ReorderableRows,
   useIsScreenReaderEnabled,
@@ -98,7 +99,8 @@ import {
   getMarkerColorForRestaurant,
 } from '../../screens/Search/utils/marker-lod';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
-import { fetchCuratedListDetail } from '../../services/home';
+import { fetchCuratedListDetail, saveCuratedListToMyLists } from '../../services/home';
+import { deriveListDetailVerbs } from './list-detail-verbs';
 import {
   mapCuratedDetailToFavoriteListDetail,
   mapCuratedDetailToSearchResponse,
@@ -150,8 +152,6 @@ const VIRTUAL_LIST_TYPE_BY_ID: Record<string, FavoriteListType> = {
   'all:restaurants': 'restaurant',
   'all:dishes': 'dish',
 };
-
-const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 
 const isPrivateGoneError = (error: unknown): boolean =>
   axios.isAxiosError(error) &&
@@ -1002,7 +1002,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       // parse is dead. Guards the mismatch window (previous world's data still mounted
       // under this panel while its own world resolves).
       const identity = snapshot.resultsQueryIdentity;
-      return identity?.kind === 'list' && identity.listId === resolvedListId
+      return identity?.kind === 'list' &&
+        identity.listId === resolvedListId &&
+        (identity.source ?? null) === (isCurated ? 'curated' : null)
         ? snapshot.results
         : null;
     }
@@ -1147,6 +1149,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                 title: metaQuery.data?.list.name ?? warmTitle ?? '',
                 ...(targetUserId != null ? { targetUserId } : {}),
                 ...(shareSlug != null ? { shareSlug } : {}),
+                ...(isCurated ? { source: 'curated' as const } : {}),
                 slice: {
                   // Carry sort ONLY when it's an explicit non-default choice — a sort
                   // equal to the list's own defaultSort is the ABSENCE of a choice, and
@@ -1190,6 +1193,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       contentSeam,
       defaultSort,
       dispatchLaunchIntent,
+      isCurated,
       listType,
       metaQuery.data?.list.name,
       queryClient,
@@ -1389,10 +1393,16 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   }, [invalidateRoster, isJoining, resolvedListId, shareSlug]);
 
   // ─── Edit mode (§8.11 within-list half) ────────────────────────────────────────────────────
-  const canEdit = !isVirtualAll && (viewerRole === 'owner' || viewerRole === 'collaborator');
-  // §7.1: add-tile on the photo strip exists only in the viewer's OWN lists —
-  // role-based, and the virtual All list (role 'owner') qualifies too.
-  const canAddPhoto = viewerRole === 'owner' || viewerRole === 'collaborator';
+  // Job 2: ONE source-agnostic capability model — own / profile / curated derive
+  // from {source, viewerRole, isVirtualAll}; the ellipsis menu and row affordances
+  // render from it (list-detail-verbs.ts).
+  const verbs = deriveListDetailVerbs({
+    source: isCurated ? 'curated' : 'favorites',
+    viewerRole,
+    isVirtualAll,
+  });
+  const canEdit = verbs.canReorder;
+  const canAddPhoto = verbs.canAddPhoto;
 
   const response = worldServesResults ? worldResults : (resultsQuery.data ?? null);
 
@@ -1485,15 +1495,35 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     closeActiveRoute();
   }, [closeActiveRoute, queryClient, resolvedListId]);
 
-  // The §2 ellipsis menu (AppModal 'menu' variant — the restyled list modal), plus the
-  // leg-9 Rename seat. Share for every role; the curation rows are owner-only.
+  // Save-a-copy (curated verbs.canSaveCopy): POST /home/lists/:id/save copies the
+  // curated list's CURRENT items into a new favorites list the viewer owns.
+  const handleSaveCopy = React.useCallback(async () => {
+    if (resolvedListId == null) {
+      return;
+    }
+    try {
+      await saveCuratedListToMyLists(resolvedListId);
+    } catch {
+      announceFailureIfOnline();
+      return;
+    }
+    await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+    showAppModal({
+      title: 'Saved to your lists',
+      message: 'You now own a copy — find it on your Lists page.',
+      actions: [{ label: 'OK', style: 'default' }],
+    });
+  }, [queryClient, resolvedListId]);
+
+  // The §2 ellipsis menu (AppModal 'menu' variant — the restyled list modal), rendered
+  // FROM THE VERBS MODEL (Job 2): one menu for own / profile / curated lists — each
+  // row appears iff its capability flag is on; no per-source menu forks.
   const openHeaderMenu = React.useCallback(() => {
     const detail = metaQuery.data;
     if (detail == null || resolvedListId == null) {
       return;
     }
     const list = detail.list;
-    const isOwner = viewerRole === 'owner';
     const isPublic = list.visibility === 'public';
     const usesOwnPhotos = list.useOwnPhotos === true;
     const isPinned = list.pinned === true;
@@ -1501,31 +1531,62 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       title: list.name,
       variant: 'menu',
       actions: [
-        {
-          label: 'Share',
-          icon: <Share2 size={19} color="#0f172a" strokeWidth={2} />,
-          onPress: () =>
-            showShareModal({
-              kind: 'list',
-              id: resolvedListId,
-              title: list.name,
-              listShareSlug: list.shareEnabled ? (list.shareSlug ?? null) : null,
-              listOwnedByViewer: isOwner,
-            }),
-        },
-        ...(isOwner
+        ...(verbs.canShare
+          ? [
+              {
+                label: 'Share',
+                icon: <Share2 size={19} color="#0f172a" strokeWidth={2} />,
+                onPress: () =>
+                  showShareModal(
+                    isCurated
+                      ? {
+                          kind: 'list' as const,
+                          id: resolvedListId,
+                          title: list.name,
+                          listSource: 'curated' as const,
+                          listType: list.listType,
+                        }
+                      : {
+                          kind: 'list' as const,
+                          id: resolvedListId,
+                          title: list.name,
+                          listShareSlug: list.shareEnabled ? (list.shareSlug ?? null) : null,
+                          listOwnedByViewer: viewerRole === 'owner',
+                        }
+                  ),
+              },
+            ]
+          : []),
+        ...(verbs.canSaveCopy
+          ? [
+              {
+                label: 'Save to my lists',
+                icon: <Bookmark size={19} color="#0f172a" strokeWidth={2} />,
+                onPress: () => void handleSaveCopy(),
+              },
+            ]
+          : []),
+        ...(verbs.canEditMeta
           ? [
               {
                 label: 'Edit',
                 icon: <Pencil size={19} color="#0f172a" strokeWidth={2} />,
                 onPress: openListEdit,
               },
+            ]
+          : []),
+        ...(verbs.canDelete
+          ? [
               {
                 label: 'Delete',
                 style: 'destructive' as const,
                 icon: <Trash2 size={19} color="#ef4444" strokeWidth={2} />,
                 onPress: () => void handleDeleteList(),
               },
+            ]
+          : []),
+        ...(verbs.canToggleProfileVisibility
+          ? [
               {
                 label: isPublic ? 'Remove from profile' : 'Add to profile',
                 icon: isPublic ? (
@@ -1535,11 +1596,19 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                 ),
                 onPress: () => void runListUpdate({ visibility: isPublic ? 'private' : 'public' }),
               },
+            ]
+          : []),
+        ...(verbs.canTogglePhotoSource
+          ? [
               {
                 label: usesOwnPhotos ? 'Use Crave photos' : 'Use your photos',
                 icon: <Images size={19} color="#0f172a" strokeWidth={2} />,
                 onPress: () => void runListUpdate({ useOwnPhotos: !usesOwnPhotos }),
               },
+            ]
+          : []),
+        ...(verbs.canPin
+          ? [
               {
                 label: isPinned ? 'Unpin from profile' : 'Pin on profile',
                 icon: isPinned ? (
@@ -1553,16 +1622,26 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           : []),
       ],
     });
-  }, [handleDeleteList, metaQuery.data, openListEdit, resolvedListId, runListUpdate, viewerRole]);
+  }, [
+    handleDeleteList,
+    handleSaveCopy,
+    isCurated,
+    metaQuery.data,
+    openListEdit,
+    resolvedListId,
+    runListUpdate,
+    verbs,
+    viewerRole,
+  ]);
 
   // Publish the header seat for THIS entry (Title + Extras read the topmost entry's seat).
   const openHeaderMenuRef = React.useRef(openHeaderMenu);
   openHeaderMenuRef.current = openHeaderMenu;
   const entryId = entry?.entryId ?? null;
-  // Curated lists get no ellipsis menu (its actions — share slug, edit, delete,
-  // profile visibility — are favorites-list verbs; a curated share flow is a
-  // follow-up, not a fake).
-  const hasHeaderMenu = !isVirtualAll && !isCurated && metaQuery.data != null;
+  // The menu exists whenever ANY verb is on and the meta resolved — curated lists
+  // included (Share via /cl + Save-to-my-lists); virtual All has no row-backed verbs.
+  const hasMenuVerbs = verbs.canShare || verbs.canSaveCopy || verbs.canEditMeta || verbs.canDelete;
+  const hasHeaderMenu = hasMenuVerbs && metaQuery.data != null;
   React.useEffect(() => {
     if (entryId == null) {
       return undefined;

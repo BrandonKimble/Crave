@@ -38,6 +38,9 @@ export type EntityRef = {
   /** Lists only: the list owner's userId when opening from ANOTHER user's surface
    *  (profile gallery) — scopes virtual-All unions and viewer-role resolution. */
   targetUserId?: string | null;
+  /** Lists only: 'curated' = an app-curated list (home shelves) — the listWorld
+   *  composite rides the SAME choreography with the curated fetch seam. */
+  listSource?: 'curated' | null;
 };
 
 export type EntityRefAction =
@@ -60,6 +63,9 @@ export type EntityRefAction =
       targetUserId?: string | null;
       /** RT-18 access material (slug opens) — rides to the world fetch, never identity. */
       shareSlug?: string | null;
+      /** 'curated' = app-curated list — same composite, curated fetch seam. Identity-
+       *  relevant (curated ids and favorites ids are different namespaces). */
+      source?: 'curated' | null;
       /** Strip 'world' flip: a re-slice dispatch carries the new slice — the launch
        *  writes it into filterVariant (cause list_reslice), so the reconciler re-slices
        *  the world (map + cards). Absent on the initial enter (server defaults apply). */
@@ -98,6 +104,7 @@ export const resolveEntityRefAction = (ref: EntityRef): EntityRefAction => {
           listType: ref.listType,
           title: ref.label,
           targetUserId: ref.targetUserId ?? null,
+          source: ref.listSource ?? null,
         };
       }
       if (__DEV__) {

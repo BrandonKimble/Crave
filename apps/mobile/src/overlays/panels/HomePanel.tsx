@@ -23,7 +23,8 @@ import type { MapBounds } from '../../types';
 import { logger } from '../../utils';
 import type { TrackSheetListProps } from '../../tracksheet/TrackSheetPage';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
+import { resolveCuratedListType } from '../../services/curated-list-adapter';
 import { useHomeFeedStore, useHomeSceneStateStore } from './runtime/home-feed-store';
 import { shouldRefetchPollsFeedForSettledBounds } from './runtime/polls-feed-refetch-edge';
 import {
@@ -385,17 +386,22 @@ export const HOME_SCENE_LIST_BODY_ADMISSION_POLICY = {
 export const useHomeShelfListProps = (): TrackSheetListProps<HomeShelfRow> => {
   const feed = useHomeFeedStore((state) => state.feed);
   const status = useHomeFeedStore((state) => state.status);
-  const { pushRoute } = useAppOverlayRouteController();
+  const executeEntityRefAction = useEntityRefActionExecutor();
 
   const handleOpenList = React.useCallback(
     (list: HomeShelfList) => {
-      pushRoute('listDetail', {
-        listId: list.listId,
-        title: list.title,
-        source: 'curated',
+      // List-detail choreography leg: a curated open rides THE listWorld composite
+      // (push + the list's search world — pins, fitAll, reveal), exactly the path
+      // own-list and profile-list taps take; only the fetch seam differs (source).
+      executeEntityRefAction({
+        entityId: list.listId,
+        entityType: 'list',
+        label: list.title,
+        listType: resolveCuratedListType(list.listType),
+        listSource: 'curated',
       });
     },
-    [pushRoute]
+    [executeEntityRefAction]
   );
   const handlePickCity = React.useCallback((city: HomeFeedCity) => {
     // Pick-a-city = a map jump (the feed follows the viewport once the camera

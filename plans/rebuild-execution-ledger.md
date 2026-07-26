@@ -2199,3 +2199,35 @@ already on ToggleStrip; FrostedFilterStrip exists only in stale docs.
 api 896 / mobile 433 tests green; tsc zero new errors. Sim pass blocked
 at the auth wall (Clerk key cutover invalidated the session — owner
 signs in, then the live pass completes).
+
+## 2026-07-26 — Naming canon, cutout shelves, and the unified list choreography
+
+Naming: root tab = "Home" (house icon; scene key stays 'search' — recorded
+why), canonical domain = LISTS (bookmarks scene family renamed ~70 files,
+grep-proven, deep-link alias kept; server favorite_lists naming deferred
+deliberately), polls tab wears the historical horizontal-bars PollIcon.
+Shelf cards are TRUE CUTOUTS now — the strip's exact mechanism mirrored
+(MaskedHoleOverlay plate inside the scroll content + FrostCutout punch
+through the foundation plate + the infinite-edge overscroll illusion:
+material extends a full viewport past both content ends at negative
+offset) with title bottom-left in the well and the caption-gray dot-fact
+sub-line below (agent also recorded a simplification finding: the edge
+illusion needs no mask math in principle — two flanking panes suffice —
+not applied). Choreography: the audit's best outcome — own/profile lists
+ALREADY rode the search flow's desired-tuple → reconciler → fitAll →
+reveal law; curated lists now ride the IDENTICAL path via a source
+discriminator on the list query identity (worldKey namespaced, fetch
+seam routed, zero downstream forks) — HomePanel's policy-bypass push
+deleted; a live bug found+fixed (curated projection lacked
+searchRequestId). One verbs model derives every ellipsis across
+own/collaborator/profile/curated (capability table in
+list-detail-verbs.ts); curated share = /cl deep link through the
+universal share modal; POST /home/lists/:id/save copies a curated list
+into the caller's lists (dish rows via resolved connections, honest
+skip + count). connectionId added to the curated detail payload — hearts
+on curated dish rows work. Owner decisions recorded: chip-jump viewport
+is KEPT (no restore teleports), K1 constants ratified at 5/25/8/3 (8s
+flagged as a surface-length knob to revisit post-launch). api 900 /
+mobile 455 green. Deferred: send-in-app for curated ids; sim visual pass
+awaits owner sign-in post Clerk cutover; curated recipe/cron + onboarding
+seeding scrutiny is the NEXT ordered leg.

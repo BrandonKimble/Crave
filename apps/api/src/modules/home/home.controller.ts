@@ -9,6 +9,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -48,5 +49,16 @@ export class HomeController {
     @Param('listId', ParseUUIDPipe) listId: string,
   ): Promise<CuratedListDetailResponse> {
     return this.homeFeed.getListDetail(listId, user.userId);
+  }
+
+  /** Save-a-copy (list-detail verbs leg): copy the curated list's current items
+   *  into a new favorites list owned by the caller. */
+  @Post('lists/:listId/save')
+  @RateLimitTier('default')
+  saveList(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+  ): Promise<{ listId: string; name: string; itemCount: number }> {
+    return this.homeFeed.saveListToFavorites(listId, user.userId);
   }
 }

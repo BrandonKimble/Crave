@@ -90,6 +90,9 @@ export const useSearchStructuredSubmitOwner = ({
       targetUserId?: string | null;
       /** RT-18 access material for shared reads (slug opens) — never identity. */
       shareSlug?: string | null;
+      /** 'curated' = app-curated list — identity-relevant (different id namespace);
+       *  routes the resolver's fetch to the curated read. */
+      source?: 'curated' | null;
       /** Strip 'world' flip: a re-slice carries the new slice; absent = initial enter
        *  (server defaults). Its presence flips the write cause to list_reslice, which
        *  the reconciler classifies as a variant_rerun (same identity, new filters). */
@@ -118,6 +121,7 @@ export const useSearchStructuredSubmitOwner = ({
             displayTitle: params.displayTitle,
             targetUserId: params.targetUserId ?? null,
             shareSlug: params.shareSlug ?? null,
+            source: params.source ?? null,
           },
           tab: params.listType === 'dish' ? 'dishes' : 'restaurants',
           filterVariant: {

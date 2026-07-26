@@ -2089,7 +2089,15 @@ class AppRouteSheetHostAuthorityController {
       }
       return;
     }
-    if (activeSemanticOverlayKey === 'lists' || activeSemanticOverlayKey === 'profile') {
+    if (
+      activeSemanticOverlayKey === 'lists' ||
+      activeSemanticOverlayKey === 'profile' ||
+      activeSemanticOverlayKey === 'home'
+    ) {
+      // 'home' joined the seat scenes with the home-surface work (it carries the
+      // HOME seat) but fell through to the unconditional recorder below, so every
+      // programmatic settle tripped the snap-session's __DEV__ contract assert.
+      // Same law as lists/profile: gesture settles write, programmatic ones read.
       // Two-posture write contract (plans/root-snap-law.md §Leg 2): the CONTENT seat records
       // only user-gesture settles. Programmatic arrivals (the postureSeat snapTo, search-flow
       // hides) READ the seat, never write it — that gate is what makes the ledger-laundering

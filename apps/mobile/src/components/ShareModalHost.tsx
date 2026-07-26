@@ -156,7 +156,7 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   // Lists without a known slug enable share on demand (owner path — the same
   // service the W3F long-press Share action used).
   const resolveLinkUrl = React.useCallback(async (): Promise<string> => {
-    if (config.kind === 'list' && !config.listShareSlug) {
+    if (config.kind === 'list' && config.listSource !== 'curated' && !config.listShareSlug) {
       const enabled = await favoriteListsService.enableShare(config.id);
       const path = buildShareLinkPath({ ...config, listShareSlug: enabled.shareSlug });
       if (path == null) {
@@ -178,7 +178,7 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   // on an already-linkable config runs straight through.
   const confirmEnableShareThen = React.useCallback(
     (run: () => void) => {
-      if (config.kind === 'list' && !config.listShareSlug) {
+      if (config.kind === 'list' && config.listSource !== 'curated' && !config.listShareSlug) {
         showAppModal({
           title: 'Share this list?',
           message:
@@ -268,7 +268,11 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   // Hidden (not failing) rows: comment has no public URL; a non-owned list
   // with no known slug can't mint one (enableShare is owner-only).
   const hasLink = shareConfigCanResolveLink(config);
-  const showSendSection = targetsQuery.isPending || targets.length > 0;
+  // Curated lists: the messaging share-package resolver speaks favorites list ids
+  // only, so send-in-app is HIDDEN (never a failing fake) — link rows carry the /cl
+  // public URL instead. Wiring curated ids into the resolver is a follow-up.
+  const showSendSection =
+    config.listSource !== 'curated' && (targetsQuery.isPending || targets.length > 0);
 
   return (
     <View testID="share-modal">

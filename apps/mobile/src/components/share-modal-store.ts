@@ -35,6 +35,12 @@ export type ShareModalConfig = {
    *  before minting; non-owner + no slug → the link rows are hidden entirely
    *  (send-in-app remains). */
   listOwnedByViewer?: boolean;
+  /** Lists only: 'curated' = an app-curated (home) list — the public link is the
+   *  /cl/<listId> lane (no slug, no enable-on-demand); absent = favorites. */
+  listSource?: 'curated' | null;
+  /** Curated lists only: the list's side — rides the /cl link's `type` param so the
+   *  deep link reconstructs the exact listWorld composite. */
+  listType?: 'restaurant' | 'dish';
 };
 
 export const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
@@ -49,6 +55,18 @@ export const buildShareLinkPath = (config: ShareModalConfig): string | null => {
   const link = ((): Exclude<ParsedDesireLink, { kind: 'none' }> | null => {
     switch (config.kind) {
       case 'list':
+        if (config.listSource === 'curated') {
+          return {
+            kind: 'entityAction',
+            action: {
+              kind: 'listWorld',
+              listId: config.id,
+              listType: config.listType ?? 'restaurant',
+              title: config.title ?? '',
+              source: 'curated',
+            },
+          };
+        }
         return config.listShareSlug
           ? { kind: 'sharedList', shareSlug: config.listShareSlug }
           : null;
@@ -96,7 +114,7 @@ export const shareConfigCanResolveLink = (config: ShareModalConfig): boolean => 
   if (!shareKindHasPublicLink(config.kind)) {
     return false;
   }
-  if (config.kind === 'list' && config.listShareSlug == null) {
+  if (config.kind === 'list' && config.listSource !== 'curated' && config.listShareSlug == null) {
     return config.listOwnedByViewer === true;
   }
   return true;

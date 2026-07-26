@@ -9,6 +9,7 @@
  *    from LIVE joins, dish rows resolving their connection score).
  */
 import 'reflect-metadata';
+import { Prisma } from '@prisma/client';
 import { HomeFeedService } from './home-feed.service';
 import { MIN_VIABLE_LIST_ITEMS } from './curated-lists.constants';
 
@@ -188,6 +189,24 @@ function createHarness(options: {
     },
     connection: {
       findMany: jest.fn(() => Promise.resolve(options.connections ?? [])),
+    },
+    favoriteList: {
+      aggregate: jest.fn().mockResolvedValue({ _max: { position: 4 } }),
+      create: jest.fn(
+        ({
+          data,
+        }: {
+          data: { ownerUserId: string; name: string; listType: string };
+        }) =>
+          Promise.resolve({
+            listId: 'ffffffff-ffff-ffff-ffff-000000000001',
+            ...data,
+          }),
+      ),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    favoriteListItem: {
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     publicEntityScore: {
       findMany: jest.fn(
@@ -407,6 +426,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
         rank: 1,
         entityId: uuid(10),
         restaurantId: null,
+        connectionId: null,
         label: 'Quiet Corner',
         subLabel: 'Austin',
         latitude: 30.27,
@@ -465,6 +485,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
         rank: 1,
         entityId: uuid(20),
         restaurantId: uuid(30),
+        connectionId: uuid(40),
         label: 'Breakfast Taco',
         subLabel: 'Taco Haus',
         latitude: 30.3,
@@ -489,5 +510,183 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
     await expect(service.getListDetail(uuid(1), USER)).rejects.toMatchObject({
       name: 'NotFoundException',
     });
+  });
+});
+
+describe("HomeFeedService.saveListToFavorites — save-a-copy into the caller's lists", () => {
+  const restaurantItems = [
+    {
+      rank: 1,
+      entityId: uuid(10),
+      restaurantId: null,
+      entity: {
+        entityId: uuid(10),
+        name: 'Quiet Corner',
+        city: 'Austin',
+        latitude: 30.27,
+        longitude: -97.74,
+      },
+      restaurant: null,
+    },
+    {
+      rank: 2,
+      entityId: uuid(11),
+      restaurantId: null,
+      entity: {
+        entityId: uuid(11),
+        name: 'Second Spot',
+        city: 'Austin',
+        latitude: 30.3,
+        longitude: -97.7,
+      },
+      restaurant: null,
+    },
+  ];
+
+  it('creates a list OWNED by the caller and copies the current items (rank → position)', async () => {
+    const { service, prisma } = createHarness({
+      headerPlace: null,
+      lists: [
+        globalList(1, 'hidden_gems', {
+          title: 'Hidden gems of Austin',
+          itemCount: 2,
+          items: restaurantItems,
+        }),
+      ],
+    });
+    const saved = await service.saveListToFavorites(uuid(1), USER);
+    expect(prisma.favoriteList.create).toHaveBeenCalledWith({
+      data: {
+        ownerUserId: USER,
+        name: 'Hidden gems of Austin',
+        listType: 'restaurant',
+        position: 5,
+      },
+    });
+    expect(prisma.favoriteListItem.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          restaurantId: uuid(10),
+          position: 1,
+          listId: saved.listId,
+          addedByUserId: USER,
+        },
+        {
+          restaurantId: uuid(11),
+          position: 2,
+          listId: saved.listId,
+          addedByUserId: USER,
+        },
+      ],
+    });
+    expect(prisma.favoriteList.update).toHaveBeenCalledWith({
+      where: { listId: saved.listId },
+      data: { itemCount: 2 },
+    });
+    expect(saved).toEqual({
+      listId: saved.listId,
+      name: 'Hidden gems of Austin',
+      itemCount: 2,
+    });
+  });
+
+  it('dish list: rows copy by resolved CONNECTION; unresolvable items are skipped and the count stays honest', async () => {
+    const { service, prisma } = createHarness({
+      headerPlace: null,
+      lists: [
+        globalList(1, 'dish_best:food-1', {
+          listType: 'dish',
+          itemCount: 2,
+          items: [
+            {
+              rank: 1,
+              entityId: uuid(20),
+              restaurantId: uuid(30),
+              entity: {
+                entityId: uuid(20),
+                name: 'Breakfast Taco',
+                city: null,
+                latitude: null,
+                longitude: null,
+              },
+              restaurant: {
+                entityId: uuid(30),
+                name: 'Taco Haus',
+                latitude: 30.3,
+                longitude: -97.7,
+              },
+            },
+            {
+              // No connection row resolves for this pair — inexpressible as a
+              // favorites row, skipped rather than faked.
+              rank: 2,
+              entityId: uuid(21),
+              restaurantId: uuid(31),
+              entity: {
+                entityId: uuid(21),
+                name: 'Mystery Dish',
+                city: null,
+                latitude: null,
+                longitude: null,
+              },
+              restaurant: null,
+            },
+          ],
+        }),
+      ],
+      connections: [
+        { connectionId: uuid(40), restaurantId: uuid(30), foodId: uuid(20) },
+      ],
+    });
+    const saved = await service.saveListToFavorites(uuid(1), USER);
+    expect(prisma.favoriteListItem.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          connectionId: uuid(40),
+          position: 1,
+          listId: saved.listId,
+          addedByUserId: USER,
+        },
+      ],
+    });
+    expect(saved.itemCount).toBe(1);
+  });
+
+  it("another user's personal list 404s — save grants no access the read would not", async () => {
+    const { service } = createHarness({
+      headerPlace: null,
+      lists: [
+        globalList(1, 'your_weekly_tasting', {
+          scope: 'personal',
+          ownerUserId: uuid(77),
+        }),
+      ],
+    });
+    await expect(
+      service.saveListToFavorites(uuid(1), USER),
+    ).rejects.toMatchObject({ name: 'NotFoundException' });
+  });
+
+  it('a name conflict on the caller\'s (owner, type, name) unique retries once with a " (copy)" suffix', async () => {
+    const { service, prisma } = createHarness({
+      headerPlace: null,
+      lists: [
+        globalList(1, 'hidden_gems', {
+          title: 'Hidden gems of Austin',
+          itemCount: 2,
+          items: restaurantItems,
+        }),
+      ],
+    });
+    prisma.favoriteList.create.mockImplementationOnce(() =>
+      Promise.reject(
+        new Prisma.PrismaClientKnownRequestError('duplicate', {
+          code: 'P2002',
+          clientVersion: 'test',
+        }),
+      ),
+    );
+    const saved = await service.saveListToFavorites(uuid(1), USER);
+    expect(saved.name).toBe('Hidden gems of Austin (copy)');
   });
 });

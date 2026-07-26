@@ -40,6 +40,23 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     // write) and the reconciler presents the world under the pushed child.
     if (activeMainIntent.type === 'entityAction' && activeMainIntent.action.kind === 'listWorld') {
       const action = activeMainIntent.action;
+      // Deep-link lane (/cl/<id> — curated share links): the executor pushes listDetail
+      // BEFORE dispatching, but a link-borne listWorld arrives with no child pushed.
+      // Push it here so the stamp below lands on the listDetail entry, not on whatever
+      // scene happened to be active at link time.
+      // Executor opens and the slug lane both guarantee a live listDetail entry (the
+      // slug entry carries no listId param, so match on the KEY, not the id).
+      const activeEntry =
+        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute;
+      if (activeEntry?.key !== 'listDetail') {
+        pushRoute('listDetail', {
+          listId: action.listId,
+          title: action.title,
+          worldBacked: true,
+          ...(action.targetUserId != null ? { targetUserId: action.targetUserId } : {}),
+          ...(action.source === 'curated' ? { source: 'curated' as const } : {}),
+        });
+      }
       // Leg 4 (design §1.3): THE launch chokepoint stamps the world identity onto the
       // entry the world presents into (the active entry — the executor pushed it, or
       // the slug lane resolved into it). Every mouth inherits the session fact with
@@ -51,6 +68,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
         displayTitle: action.title,
         targetUserId: action.targetUserId ?? null,
         shareSlug: action.shareSlug ?? null,
+        source: action.source ?? null,
       });
       void launchListSearchResults({
         listId: action.listId,
@@ -58,6 +76,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
         displayTitle: action.title,
         targetUserId: action.targetUserId ?? null,
         shareSlug: action.shareSlug ?? null,
+        source: action.source ?? null,
         slice: action.slice,
       });
       consumeActiveMainIntent();

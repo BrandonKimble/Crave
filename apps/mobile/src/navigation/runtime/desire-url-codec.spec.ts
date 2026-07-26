@@ -33,6 +33,28 @@ const ROUND_TRIP_CASES: LiveLink[] = [
     action: { kind: 'pushScene', scene: 'userProfile', params: { userId: 'u-alice' } },
   },
   { kind: 'sharedList', shareSlug: 'sunny-tacos-9f' },
+  // Curated list share links (/cl — list-detail choreography leg): the link IS the
+  // listWorld composite the in-app curated tap dispatches.
+  {
+    kind: 'entityAction',
+    action: {
+      kind: 'listWorld',
+      listId: 'cl-1',
+      listType: 'dish',
+      title: 'Best Tacos',
+      source: 'curated',
+    },
+  },
+  {
+    kind: 'entityAction',
+    action: {
+      kind: 'listWorld',
+      listId: 'cl-2',
+      listType: 'restaurant',
+      title: '',
+      source: 'curated',
+    },
+  },
   { kind: 'naturalSearch', query: 'best khachapuri & wine' },
   { kind: 'shortcutSearch', shortcutTab: 'restaurants' },
   { kind: 'polls', pollId: 'poll-1' },

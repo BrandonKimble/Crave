@@ -8,6 +8,7 @@
 //   /e/<entityType>/<entityId>?label=…      entity desire (skip-LLM)
 //   /u/<userId>                             user profile push
 //   /l/<shareSlug>                          SHARED list (async getShared resolution)
+//   /cl/<listId>?type=<restaurant|dish>&title=…  CURATED list (app-curated; listWorld composite)
 //   /q/<query>                              natural search desire
 //   /s/<dishes|restaurants>                 viewport shortcut desire
 //   /p/<pollId>             and  /polls
@@ -107,6 +108,21 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
             },
           }
         : { kind: 'none' };
+    case 'cl':
+      // Curated list share link — parses straight to the listWorld composite the
+      // in-app curated tap dispatches (same choreography, no extra intent lane).
+      return a
+        ? {
+            kind: 'entityAction',
+            action: {
+              kind: 'listWorld',
+              listId: safeDecode(a),
+              listType: params.get('type') === 'dish' ? 'dish' : 'restaurant',
+              title: params.get('title') ?? '',
+              source: 'curated',
+            },
+          }
+        : { kind: 'none' };
     case 'l':
       return a
         ? {
@@ -163,6 +179,20 @@ export const serializeDesireLinkToPath = (
           throw new Error(
             '[DESIRE-URL] listDetail push has no public URL — share lists via the sharedList slug'
           );
+        case 'listWorld': {
+          if (action.source === 'curated') {
+            const query = [
+              action.listType === 'dish' ? 'type=dish' : null,
+              action.title ? `title=${encodeURIComponent(action.title)}` : null,
+            ]
+              .filter(Boolean)
+              .join('&');
+            return `/cl/${encodeSegment(action.listId)}${query ? `?${query}` : ''}`;
+          }
+          throw new Error(
+            '[DESIRE-URL] favorites listWorld has no public URL — share lists via the sharedList slug'
+          );
+        }
       }
       break;
     }

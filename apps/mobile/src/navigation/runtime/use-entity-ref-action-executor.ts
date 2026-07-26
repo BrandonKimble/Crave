@@ -40,6 +40,7 @@ export const useEntityRefActionExecutor = (): ((ref: EntityRef) => void) => {
           title: action.title,
           worldBacked: true,
           ...(action.targetUserId != null ? { targetUserId: action.targetUserId } : {}),
+          ...(action.source === 'curated' ? { source: 'curated' as const } : {}),
         });
         dispatchLaunchIntent({ type: 'entityAction', action });
         return;
