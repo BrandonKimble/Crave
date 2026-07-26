@@ -41,7 +41,46 @@
 @property (nonatomic, copy) NSArray<NSNumber *> *snapOffsets;
 @end
 
+static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
+
 @implementation TrackScrollDelegateProxy
+
+// DURABLE ATTACH (the FlashList lesson): Fabric re-sets the scroll view's
+// delegate on many commits — recyclers do it constantly, and a fast flick beats
+// any JS-timed re-assert. The proxy therefore re-wraps ITSELF: it KVO-observes
+// the delegate slot and rejoins the chain the instant anything replaces it.
+- (void)beginObservingDelegateOf:(UIScrollView *)scrollView
+{
+  [scrollView addObserver:self
+               forKeyPath:@"delegate"
+                  options:NSKeyValueObservingOptionNew
+                  context:kTrackDelegateKVOContext];
+}
+
+- (void)endObservingDelegateOf:(UIScrollView *)scrollView
+{
+  @try {
+    [scrollView removeObserver:self forKeyPath:@"delegate" context:kTrackDelegateKVOContext];
+  } @catch (__unused NSException *e) {
+  }
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary *)change
+                       context:(void *)context
+{
+  if (context != kTrackDelegateKVOContext) {
+    [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
+    return;
+  }
+  UIScrollView *scrollView = (UIScrollView *)object;
+  id<UIScrollViewDelegate> current = scrollView.delegate;
+  if (current != nil && current != (id<UIScrollViewDelegate>)self) {
+    self.original = current;
+    scrollView.delegate = self; // re-fires KVO; the guard above ends the recursion
+  }
+}
 
 - (BOOL)respondsToSelector:(SEL)aSelector
 {
@@ -271,10 +310,10 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
       proxy.original = scrollView.delegate;
       objc_setAssociatedObject(scrollView, kTrackProxyKey, proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
       scrollView.delegate = proxy;
+      // Durable: the proxy re-wraps itself whenever Fabric replaces the delegate
+      // (recyclers replace it constantly; JS-timed re-asserts lose the race).
+      [proxy beginObservingDelegateOf:scrollView];
     } else if (scrollView.delegate != proxy) {
-      // React (Fabric) re-set the delegate after we proxied — re-wrap the NEW
-      // delegate so the proxy rejoins the chain. attach() is therefore
-      // RE-ASSERTIVE and safe to call per-gesture from JS.
       proxy.original = scrollView.delegate;
       scrollView.delegate = proxy;
     }
@@ -303,6 +342,7 @@ RCT_EXPORT_METHOD(detach:(nonnull NSNumber *)reactTag)
     }
     TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
     if (proxy != nil) {
+      [proxy endObservingDelegateOf:scrollView];
       scrollView.delegate = proxy.original;
       objc_setAssociatedObject(scrollView, kTrackProxyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }

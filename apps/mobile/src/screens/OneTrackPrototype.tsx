@@ -10,6 +10,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
+
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import Reanimated, {
   interpolate,
@@ -51,9 +53,28 @@ const COLLAPSED_TOP = Math.round(SCREEN.height * 0.85);
 const H = COLLAPSED_TOP - EXPANDED_TOP;
 const DETENT_TAUS = [0, COLLAPSED_TOP - MIDDLE_TOP, H];
 const ROW_COUNT = 40;
+const ROW_DATA = Array.from({ length: ROW_COUNT }, (_, index) => index);
 const ROW_HEIGHT = 76;
 
 const AnimatedScrollView = Reanimated.ScrollView;
+// U5 — THE FLASHLIST EXAM: the track's list layer must be a real recycler. Same
+// track, same hatch; the spacer rides as ListHeaderComponent. MVCP is DISABLED
+// (re-sortable feeds anchor the old top row and scroll the chrome away — banked
+// lesson) — on the one track the spacer means offset 0 is SHEET-collapsed, and
+// any MVCP anchoring would fight sheet travel.
+const AnimatedFlashList = Reanimated.createAnimatedComponent(
+  FlashList as unknown as React.ComponentClass<Record<string, unknown>>
+);
+// THE VIRTUALIZATION LAW (U5, RED-proven): FlashList's own recycler handler rides
+// the INNER scroll component's onScroll — with a bare inner ScrollView, Reanimated's
+// outer worklet interception starves it and cells stop materializing (blank viewport
+// at deep τ). The production cure: the inner scroll component must itself be an
+// Animated ScrollView (renderScrollComponent), so the recycler's JS handler and the
+// worklet stream coexist — exactly BottomSheetScrollContainer's shape.
+const TrackScrollComponent = React.forwardRef<Reanimated.ScrollView, Record<string, unknown>>(
+  (props, ref) => <Reanimated.ScrollView {...props} ref={ref} />
+);
+TrackScrollComponent.displayName = 'TrackScrollComponent';
 
 // Docked strip band (production composition, miniaturized): a WHITE PLATE with
 // chip-shaped holes punched through to the frost — the same MaskedHoleOverlay the
@@ -91,7 +112,7 @@ export const OneTrackPrototype: React.FC = () => {
 };
 
 const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const scrollRef = useAnimatedRef<Reanimated.ScrollView>();
+  const scrollRef = React.useRef<FlashList<number> | null>(null);
   // THE TOP-EDGE DIP (owner-confirmed gap): the H boundary is synthesized mid-flight,
   // so UIScrollView clamps instead of bouncing (the bottom edge, engine-known from
   // gesture start, bounces natively). Until the native-module hatch makes H an
@@ -112,14 +133,36 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     if (physics?.attach == null) {
       return;
     }
-    const tag = findNodeHandle(scrollRef.current as unknown as React.Component);
-    if (tag == null) {
-      return;
-    }
-    physics
-      .attach(tag, { ballisticEdge: H, snapRegionEnd: H, snapOffsets: DETENT_TAUS })
-      .then(() => setNativeHatch(true))
-      .catch(() => setNativeHatch(false));
+    // Recyclers mount their inner UIScrollView a beat after first render — the
+    // attach RETRIES until the DFS finds it (and the per-drag re-assert keeps it).
+    let cancelled = false;
+    const tryAttach = (attempt: number) => {
+      if (cancelled) {
+        return;
+      }
+      const tag = findNodeHandle(scrollRef.current as unknown as React.Component);
+      if (tag == null) {
+        if (attempt < 10) {
+          setTimeout(() => tryAttach(attempt + 1), 150);
+        }
+        return;
+      }
+      physics
+        .attach(tag, { ballisticEdge: H, snapRegionEnd: H, snapOffsets: DETENT_TAUS })
+        .then(() => {
+          console.log(`[TRACKDBG] attach ok (attempt ${attempt})`);
+          setNativeHatch(true);
+        })
+        .catch((e: unknown) => {
+          if (attempt < 10) {
+            setTimeout(() => tryAttach(attempt + 1), 150);
+          } else {
+            console.log(`[TRACKDBG] attach FAILED: ${String(e)}`);
+            setNativeHatch(false);
+          }
+        });
+    };
+    tryAttach(0);
     const emitter = new NativeEventEmitter(physics);
     const arrival = emitter.addListener('trackTopArrival', ({ velocity, overshoot }) => {
       // Debug probe only: the bounce is NATIVE now. The module catches the
@@ -131,8 +174,12 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       );
     });
     return () => {
+      cancelled = true;
       arrival.remove();
-      physics.detach?.(tag);
+      const tag = findNodeHandle(scrollRef.current as unknown as React.Component);
+      if (tag != null) {
+        physics.detach?.(tag);
+      }
     };
   }, [pendingDipVelocity, scrollRef, topDip]);
   const nativeHatchRef = React.useRef(nativeHatch);
@@ -204,7 +251,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           best = detent;
         }
       }
-      scrollRef.current?.scrollTo({ y: best, animated: true });
+      scrollRef.current?.scrollToOffset({ offset: best, animated: true });
     },
     [scrollRef]
   );
@@ -336,6 +383,37 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     opacity: ballisticFromList.value ? 1 : 0,
   }));
 
+  // The track's content, recycler edition: spacer (sheet travel region) + the
+  // sheet's top cap ride as the list header; every row paints on sheet white;
+  // the footer extends the surface past the last row.
+  const listHeader = React.useMemo(
+    () => (
+      <View>
+        <View style={{ height: H }} pointerEvents="none" />
+        <Reanimated.View style={[styles.overscrollBleed, bleedStyle]} pointerEvents="none" />
+        <View style={styles.sheetCap} />
+      </View>
+    ),
+    [bleedStyle]
+  );
+  const listFooter = React.useMemo(() => <View style={styles.sheetFooter} />, []);
+  const renderRow = React.useCallback(
+    ({ item }: { item: number }) => (
+      <View style={styles.rowCell}>
+        <View style={styles.row}>
+          <View style={styles.rowBadge}>
+            <Text style={styles.rowBadgeText}>{item + 1}</Text>
+          </View>
+          <View style={styles.rowLines}>
+            <View style={styles.rowLineWide} />
+            <View style={styles.rowLineNarrow} />
+          </View>
+        </View>
+      </View>
+    ),
+    []
+  );
+
   return (
     <View style={styles.root} pointerEvents="auto">
       {/* Fake map backdrop (the frost world behind) */}
@@ -344,38 +422,24 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
       {/* THE TRACK: one fullscreen native scroll. Content = transparent spacer(H)
           then the sheet content — the sheet IS where content begins. */}
-      <AnimatedScrollView
+      <AnimatedFlashList
         ref={scrollRef}
         style={StyleSheet.absoluteFill}
         contentContainerStyle={{ paddingTop: EXPANDED_TOP }}
+        data={ROW_DATA}
+        renderItem={renderRow}
+        getItemType={() => 'row'}
+        drawDistance={SCREEN.height}
+        maintainVisibleContentPosition={{ disabled: true }}
+        renderScrollComponent={TrackScrollComponent}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
         showsVerticalScrollIndicator={false}
         bounces
         alwaysBounceVertical
         scrollEventThrottle={16}
         onScroll={onScroll}
-        animatedProps={clampProps}
-      >
-        {/* spacer region [0,H): transparent — the map shows through; dragging here
-            IS the sheet grab (it's just scrolling). */}
-        <View style={{ height: H }} pointerEvents="none" />
-        {/* the sheet content (dip-translated on ballistic top arrival) */}
-        <Reanimated.View style={dipStyle}>
-        <Reanimated.View style={[styles.overscrollBleed, bleedStyle]} pointerEvents="none" />
-        <View style={styles.sheetBody}>
-          {Array.from({ length: ROW_COUNT }, (_, index) => (
-            <View key={index} style={styles.row}>
-              <View style={styles.rowBadge}>
-                <Text style={styles.rowBadgeText}>{index + 1}</Text>
-              </View>
-              <View style={styles.rowLines}>
-                <View style={styles.rowLineWide} />
-                <View style={styles.rowLineNarrow} />
-              </View>
-            </View>
-          ))}
-        </View>
-        </Reanimated.View>
-      </AnimatedScrollView>
+      />
 
       {/* World mask: map-replica above the sheet top — content never shows here. */}
       <Reanimated.View style={[styles.worldMask, worldMaskStyle]} pointerEvents="none">
@@ -443,14 +507,16 @@ const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, zIndex: 9999 },
   map: { ...StyleSheet.absoluteFillObject, backgroundColor: '#dce7dd' },
   mapDim: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b3d2e' },
-  sheetBody: {
-    minHeight: SCREEN.height,
+  sheetCap: {
+    height: 122,
     backgroundColor: '#ffffff',
     borderTopLeftRadius: SHEET_CORNER_RADIUS,
     borderTopRightRadius: SHEET_CORNER_RADIUS,
-    paddingTop: 122,
-    paddingHorizontal: 16,
   },
+  rowCell: { backgroundColor: '#ffffff', paddingHorizontal: 16 },
+  // Short: a screen-tall footer read as a blank page when a hard flick reached
+  // the track's end (the "virtualization failure" that wasn't — U5 red herring).
+  sheetFooter: { height: 160, backgroundColor: '#ffffff' },
   header: {
     position: 'absolute',
     top: 0,

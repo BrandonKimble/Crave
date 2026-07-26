@@ -1910,3 +1910,25 @@ Done in the prototype, using the REAL production pieces:
   alone drew a straight line and made the sheet read square.
 Verified: deep scroll τ=1807 — rows swallow at the band edge, chips still show
 frost, corners rounded, world clean above the header.
+
+### U5 PASSED — FlashList rides the one track (2026-07-26)
+
+The prototype's list layer is now FlashList 2.0.2 (real recycler) and every
+physics gate re-verified on it: continuous grab, detent spring, ballistic wall,
+crossing-intercept rubber (native spring), rows materialized at every offset
+after hard ballistic journeys. Three laws earned:
+- DURABLE ATTACH: Fabric re-sets the scroll delegate constantly under a
+  recycler; a fast flick beats any JS-timed re-assert (RED: sheet collapsed
+  through H with no arrival). The proxy now KVO-observes the delegate slot and
+  re-wraps ITSELF the instant anything replaces it. attach() is one-shot
+  durable; retries cover the recycler's late scrollview mount.
+- THE VIRTUALIZATION WIRING: the recycler's own handler rides the INNER scroll
+  component — use renderScrollComponent = Animated ScrollView (production's
+  BottomSheetScrollContainer shape) so the worklet stream and the recycler's JS
+  handler coexist.
+- MVCP DISABLED on the track (offset 0 = sheet collapsed; anchoring fights
+  sheet travel).
+RED HERRING RECORDED: the "blank viewport at deep tau" was the prototype's own
+screen-tall white footer at the legitimate end of the track — the recycler was
+fine (internal-handler probe: events flowed at every offset; rows 26-33 painted
+at tau=2523). Footer shortened.
