@@ -2000,3 +2000,21 @@ THE RUNGS:
 4. Off-track states: header-grab input surface (deep-scrolled list + sheet
    motion), snapLock, edit locks, posture memory on the track.
 5. Flip the flag default, delete the old system, grep-invariant the corpse.
+
+### RUNG 1 LANDED + FINDINGS (2026-07-26)
+
+TrackSheetRouteHost (dev deep link crave://tracksheet-host?on=1&scene=<key>)
+mounted at the seam (AppOverlayRouteHost, dev-only), rendering TrackSheetPage
+with real calculateSnapPoints geometry and the scene's registry Title/Strip
+inside ChromeProbeBoundary (a context-needing chrome component is a FINDING
+rendered in place, not a crash). Findings so far:
+- FINDING 1: registry chrome (PollsPanel Title) throws "useAppRouteSceneRuntime
+  must be used within AppRouteSceneRuntimeProvider" even at the AppOverlayRouteHost
+  seam — the provider mounts BELOW the seam. Rung 1b: locate
+  AppRouteSceneRuntimeProvider's mount and either mount the parallel host inside
+  it or provide the runtime to the parallel host explicitly.
+- BLOCKER (pre-existing, NOT tracksheet): the app's main launch route is stuck
+  unready this session ("Main launch route readiness timeout", mapLoaded:false,
+  destination:null — toast visible since 12:37, long before the kit). The shell
+  renders white; on-device verification of registry chrome waits on a healthy
+  boot (fresh install or map/token check).

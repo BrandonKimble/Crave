@@ -1,4 +1,6 @@
 import React from 'react';
+
+import { TrackSheetRouteHost } from '../tracksheet/TrackSheetRouteHost';
 import { StyleSheet, View } from 'react-native';
 import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type { RouteShellSceneInputLane } from '../navigation/runtime/app-route-scene-runtime';
@@ -150,6 +152,7 @@ const AppOverlayRouteHost = ({
           routeSheetSnapSessionActions={routeSheetSnapSessionActions}
         />
         <SearchResultsExternalPreMeasureHost />
+        {__DEV__ ? <TrackSheetRouteHost /> : null}
       </>
     </View>
   );
