@@ -8,8 +8,8 @@ import Reanimated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
-  scrollTo as reanimatedScrollTo,
   useDerivedValue,
+  withSpring,
 } from 'react-native-reanimated';
 
 // ─── THE ONE TRACK — feel prototype (design doc "THE ONE TRACK", build law §7) ──────
@@ -77,6 +77,19 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   // ballistic ⇒ lower bound H (momentum bounces at the list top, never collapses
   // the sheet). contentInset.top = -H makes offset H the native bounce edge.
   const ballisticClamp = useSharedValue(false);
+  // THE TOP-EDGE DIP (owner-confirmed gap): the H boundary is synthesized mid-flight,
+  // so UIScrollView clamps instead of bouncing (the bottom edge, engine-known from
+  // gesture start, bounces natively). Until the native-module hatch makes H an
+  // engine-known edge at willEndDragging time, ballistic arrival at H converts its
+  // velocity into a synthesized dip on the same native constants (critically damped,
+  // the rebound the owner already accepted in the earlier arc).
+  const topDip = useSharedValue(0);
+  const dipFired = useSharedValue(false);
+  // Ballistic energy accounting: with the inset bound armed, UIScrollView RE-TARGETS
+  // its deceleration to end exactly at H (eased arrival, v≈0) — so the dip velocity
+  // must be computed AT RELEASE from the standard decel model (projection = v·0.499
+  // for the normal rate), i.e. the speed the flick WOULD have carried through H.
+  const pendingDipVelocity = useSharedValue(0);
   const [tauReadout, setTauReadout] = React.useState('τ=0');
 
   const publishReadout = React.useCallback((value: number, phase: string) => {
@@ -100,17 +113,39 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   const lastTau = useSharedValue(0);
   const lastDelta = useSharedValue(0);
+  const prevDelta = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler(
     {
       onScroll: (event) => {
         const next = event.contentOffset.y;
+        prevDelta.value = lastDelta.value;
         lastDelta.value = next - lastTau.value;
         lastTau.value = next;
         tau.value = next;
+        // Ballistic arrival at the list top: fire the dip once per episode. Arrival
+        // speed derives from our own offset deltas (event.velocity is a proven liar).
+        if (
+          ballisticClamp.value &&
+          !dragging.value &&
+          !dipFired.value &&
+          pendingDipVelocity.value > 0 &&
+          next <= H + 1
+        ) {
+          dipFired.value = true;
+          topDip.value = withSpring(0, {
+            mass: 1,
+            stiffness: 170,
+            damping: 26,
+            velocity: pendingDipVelocity.value,
+          });
+          pendingDipVelocity.value = 0;
+        }
       },
       onBeginDrag: () => {
         dragging.value = true;
         ballisticClamp.value = false;
+        dipFired.value = false;
+        topDip.value = 0;
         runOnJS(publishReadout)(tau.value, 'drag');
       },
       onEndDrag: (event) => {
@@ -124,9 +159,24 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           runOnJS(publishReadout)(releasedTau, 'snap');
         } else {
           // List region: free native momentum, but the lower bound flips to H so
-          // an arriving flick BOUNCES at the list top (owner case a).
+          // an arriving flick stops at the list top (owner case a) — and if the
+          // release energy WOULD have overshot H, bank the through-edge velocity
+          // for the synthesized dip on arrival (v_arr = v·√(1 − d/p), constant-decel
+          // model with projection p = v·0.499 at the normal rate).
           ballisticClamp.value = true;
-          runOnJS(publishReadout)(releasedTau, 'ballistic(clamp@H)');
+          const releaseVelocity = Math.max(-lastDelta.value, -prevDelta.value) * 60;
+          const distanceToEdge = releasedTau - H;
+          const projection = releaseVelocity * 0.499;
+          if (releaseVelocity > 0 && projection > distanceToEdge) {
+            pendingDipVelocity.value =
+              releaseVelocity * Math.sqrt(Math.max(0, 1 - distanceToEdge / projection));
+          } else {
+            pendingDipVelocity.value = 0;
+          }
+          runOnJS(publishReadout)(
+            releasedTau,
+            `ballistic v=${Math.round(releaseVelocity)} bank=${Math.round(pendingDipVelocity.value)}`
+          );
         }
       },
       onMomentumEnd: () => {
@@ -142,6 +192,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
   // DERIVATIONS (each a pure function of τ — the model's §2 list, miniaturized):
   const sheetTopY = useDerivedValue(() => EXPANDED_TOP + Math.max(0, H - tau.value));
+  const dipStyle = useAnimatedStyle(() => ({ transform: [{ translateY: topDip.value }] }));
   const headerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTopY.value }],
   }));
@@ -174,7 +225,8 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         {/* spacer region [0,H): transparent — the map shows through; dragging here
             IS the sheet grab (it's just scrolling). */}
         <View style={{ height: H }} pointerEvents="none" />
-        {/* the sheet content */}
+        {/* the sheet content (dip-translated on ballistic top arrival) */}
+        <Reanimated.View style={dipStyle}>
         <View style={styles.sheetBody}>
           <View style={styles.stripRow}>
             {['Sort', 'Restaurants', 'Dishes', 'Open now'].map((label, index) => (
@@ -197,6 +249,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </View>
           ))}
         </View>
+        </Reanimated.View>
       </AnimatedScrollView>
 
       {/* Pinned header chrome — a τ-derivation riding ABOVE the track (input surface

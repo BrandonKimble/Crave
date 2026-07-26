@@ -1759,3 +1759,28 @@ Known simplifications: scrollTo native ease for detent snaps (not our spring —
 velocity from own delta tracking (event.velocity lies); U1 off-track state (header-
 grab with deep list) not in this slice; U5 (FlashList) deliberately excluded.
 OWNER FEEL PASS = the gate for everything next.
+
+### ONE TRACK prototype — top-edge dip investigation (in flight, 2026-07-25)
+OWNER GROUND TRUTH: bottom edge bounces natively (engine-known edge — momentum
+carries, rubber-band works); TOP edge (H) hard-stops regardless of momentum; also
+noted: no visible overscroll AREA at the sheet edge (prototype artifact — the real
+integration must let the sheet SURFACE stretch so the dip gap stays sheet-colored).
+ROOT MECHANISM (probe-proven): the endDrag inset flip makes UIScrollView RE-TARGET
+its deceleration to end exactly at H with eased arrival (v≈0) — so no arrival energy
+exists to bounce with; the bottom edge bounces because its decel target lands BEYOND
+the edge. Pre-arming the inset is FORBIDDEN (it would rubber-resist the finger-down
+grab through H — breaks 1:1).
+CURRENT APPROACH: bank the through-edge velocity AT RELEASE from the decel model
+(projection p = v·0.499 at normal rate; v_arr = v·√(1−d/p)) into pendingDipVelocity;
+fire a critically-damped dip (170/26, the accepted constants) on arrival ≤H+1.
+STATUS: dip fires but only ~4pt deep — the banked velocity is suspected ~0 at
+endDrag (lastDelta/prevDelta may be stale/small at the endDrag event; needs the HUD
+bank readout — a probe is in the tree showing `ballistic v=.. bank=..` but the
+momentumEnd 'settled' publish overwrites it before it can be read; make the bank
+value persistent in the HUD or log it). NEXT STEPS: (1) persist bank readout →
+attribute whether release-velocity sampling or the spring is at fault; (2) if
+endDrag deltas are unreliable, sample release velocity from a ring of recent
+(offset,timestamp) pairs; (3) the native-module hatch (willEndDragging) remains the
+purity endgame — it would give REAL native bounce at H and delete this synthesis
+entirely. Uncommitted prototype edits in tree: OneTrackPrototype.tsx (energy model +
+HUD probe).
