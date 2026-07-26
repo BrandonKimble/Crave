@@ -141,6 +141,15 @@ category card in the dish list, with a real score. Foundation now; UI later.
   presentation deferred — owner will design the card).
 - Values check: a category-only restaurant with huge consensus MUST be able
   to rank high (the "best burgers, no named burger" case).
+- ROLLUP VERIFIED (2026-07-26, public-crave-score.service.ts ~815-940):
+  restaurant score is built from RESTAURANT-LEVEL praise events deduped per
+  (restaurant, mention_key) — it does NOT sum dish mentions, so support
+  duplication across N dishes never multiplies restaurant acclaim. Dish
+  scores are per-connection by design (the equal boost). Category items
+  therefore score automatically through the dish machinery with NO
+  double-count channel at restaurant level. The only same-claim-twice
+  surface is within the dish list (category item + supported dishes) —
+  covered by direct-vs-support display honesty below.
 - SCORING RESOLUTION (owner dialogue 2026-07-26): category cards PERSIST
   after dishes exist (category-vs-dish praise asymmetry is information —
   the "order any pasta with confidence" value). Each claim counts ONCE at
