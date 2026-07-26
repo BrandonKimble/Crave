@@ -95,8 +95,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           collapsedTop: COLLAPSED_TOP,
           detentTops: [EXPANDED_TOP, MIDDLE_TOP, COLLAPSED_TOP],
         }}
-        header={header}
-        headerHeight={68}
+        title={header}
         dockedStrip={{
           height: 54,
           backdrop: stripBackdrop,
@@ -119,7 +118,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </>
           ),
         }}
-        list={{ data: ROW_DATA, renderItem: renderRow }}
+        list={{ data: ROW_DATA, renderItem: renderRow } as never}
         rowSurfaceStyle={styles.rowSurface}
         debugHud
       />

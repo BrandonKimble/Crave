@@ -1,7 +1,27 @@
 import React from 'react';
-import { Dimensions, StyleSheet, View, type ViewStyle } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
-import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
+import Reanimated, {
+  interpolate,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated';
+
+import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
+import HeaderNavAction from '../overlays/HeaderNavAction';
+import {
+  OVERLAY_GRAB_HANDLE_HEIGHT,
+  OVERLAY_GRAB_HANDLE_PADDING_TOP,
+  OVERLAY_GRAB_HANDLE_RADIUS,
+  OVERLAY_GRAB_HANDLE_WIDTH,
+  OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+  OVERLAY_HEADER_PADDING_BOTTOM,
+  OVERLAY_HEADER_ROW_MARGIN_TOP,
+  OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_TAB_HEADER_HEIGHT,
+} from '../overlays/overlay-chrome-metrics';
 
 import {
   useTrackSheetPhysics,
@@ -66,10 +86,17 @@ export type TrackSheetCommands = {
 
 export type TrackSheetPageProps<Item> = {
   geometry: TrackSheetGeometry;
-  /** Header chrome content (title row). Rendered at the surface top. */
-  header: React.ReactNode;
-  /** Height of the header block (pt) — content starts below it at rest. */
-  headerHeight: number;
+  /** Title-slot content (left side of the header row). */
+  title: React.ReactNode;
+  /** Extras rendered LEFT of the nav action in the action group. */
+  headerExtras?: React.ReactNode;
+  /** plus↔X progress SV (0=plus,1=X); null hides the nav action + its cutout. */
+  navActionProgress?: SharedValue<number> | null;
+  onNavActionPress?: () => void;
+  navActionLabel?: string;
+  /** Grab handle (production: 40x3.25 cutout to the frost; tap promotes). */
+  grabHandleHidden?: boolean;
+  onGrabHandlePress?: () => void;
   /** Docked strip band with cutouts (chrome-pinned; rows vanish beneath it). */
   dockedStrip?: Omit<TrackSheetDockedStripProps, 'children'> & { children: React.ReactNode };
   /** In-list leader content — scrolls away with the page (in-list strip mode). */
@@ -96,8 +123,13 @@ export type TrackSheetPageProps<Item> = {
 
 export function TrackSheetPage<Item>({
   geometry,
-  header,
-  headerHeight,
+  title,
+  headerExtras,
+  navActionProgress = null,
+  onNavActionPress,
+  navActionLabel = 'Close',
+  grabHandleHidden = false,
+  onGrabHandlePress,
   dockedStrip,
   listLeader,
   footerHeight = 160,
@@ -112,7 +144,41 @@ export function TrackSheetPage<Item>({
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
-  const chromeHeight = headerHeight + (dockedStrip?.height ?? 0);
+  // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
+  // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
+  const chromeHeight =
+    OVERLAY_TAB_HEADER_HEIGHT +
+    (dockedStrip != null
+      ? dockedStrip.height + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM
+      : 0);
+
+  // THE HEADER CUTOUT PLATE (inventory §1.5): white plate with the grab-handle
+  // slot and the close-circle punched through to the frost beneath.
+  const plateHoles = React.useMemo(() => {
+    const holes: { x: number; y: number; width: number; height: number; borderRadius: number }[] =
+      [];
+    if (!grabHandleHidden) {
+      holes.push({
+        x: (SCREEN.width - OVERLAY_GRAB_HANDLE_WIDTH) / 2,
+        y: OVERLAY_GRAB_HANDLE_PADDING_TOP,
+        width: OVERLAY_GRAB_HANDLE_WIDTH,
+        height: OVERLAY_GRAB_HANDLE_HEIGHT,
+        borderRadius: OVERLAY_GRAB_HANDLE_RADIUS,
+      });
+    }
+    if (navActionProgress != null) {
+      const headerRowY =
+        OVERLAY_GRAB_HANDLE_PADDING_TOP + OVERLAY_GRAB_HANDLE_HEIGHT + OVERLAY_HEADER_ROW_MARGIN_TOP;
+      holes.push({
+        x: SCREEN.width - OVERLAY_HORIZONTAL_PADDING - OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+        y: headerRowY,
+        width: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+        height: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+        borderRadius: OVERLAY_HEADER_CLOSE_BUTTON_SIZE / 2,
+      });
+    }
+    return holes;
+  }, [grabHandleHidden, navActionProgress]);
 
   // ── Derivations (pure functions of τ / sheetTopY) ──
   const sheetClipStyle = useAnimatedStyle(() => ({
@@ -271,6 +337,11 @@ export function TrackSheetPage<Item>({
           sheetClipStyle,
         ]}
       >
+        {/* THE ONE FROST (inventory §4): constant opacity, never animated —
+            every cutout in the chrome reveals this surface. */}
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <FrostedGlassBackground />
+        </View>
         <Reanimated.View style={[styles.trackCounter, trackCounterStyle]}>
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
@@ -299,12 +370,47 @@ export function TrackSheetPage<Item>({
           />
         </Reanimated.View>
 
-        {/* Chrome: sheet material pinned at the surface top. */}
-        <View style={styles.chrome} pointerEvents="box-none">
-          <View style={{ height: headerHeight }} pointerEvents="box-none">
-            {header}
+        {/* Chrome: sheet material pinned at the surface top. TOUCH-OPAQUE
+            (inventory + owner law): a touch on the chrome NEVER reaches the
+            track — the header can not scroll the list through itself. */}
+        <View style={styles.chrome} pointerEvents="auto">
+          <MaskedHoleOverlay
+            holes={plateHoles}
+            backgroundColor={surfaceColor}
+            renderWhenEmpty
+            style={styles.chromePlate}
+          />
+          <View style={styles.grabWrapper}>
+            <Pressable
+              onPress={onGrabHandlePress}
+              hitSlop={10}
+              accessibilityLabel="Expand sheet"
+              disabled={onGrabHandlePress == null}
+            >
+              <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
+            </Pressable>
           </View>
-          {dockedStrip != null ? <TrackSheetDockedStrip {...dockedStrip} /> : null}
+          <View style={styles.headerRow}>
+            <View style={styles.titleSlot}>{title}</View>
+            <View style={styles.actionGroup}>
+              {headerExtras}
+              {navActionProgress != null && onNavActionPress != null ? (
+                <HeaderNavAction
+                  progress={navActionProgress}
+                  onPress={onNavActionPress}
+                  accessibilityLabel={navActionLabel}
+                />
+              ) : null}
+            </View>
+          </View>
+          {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
+          <View style={styles.headerBottomPad} />
+          {dockedStrip != null ? (
+            <>
+              <TrackSheetDockedStrip {...dockedStrip} />
+              <View style={[styles.stripSpacer, { backgroundColor: surfaceColor }]} />
+            </>
+          ) : null}
           <Reanimated.View style={[styles.divider, dividerStyle]} />
         </View>
       </Reanimated.View>
@@ -336,7 +442,30 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  divider: { height: 1, backgroundColor: '#e2e8f0' },
+  chromePlate: { ...StyleSheet.absoluteFillObject },
+  grabWrapper: { alignItems: 'center', paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP },
+  grabHandle: {
+    width: OVERLAY_GRAB_HANDLE_WIDTH,
+    height: OVERLAY_GRAB_HANDLE_HEIGHT,
+    borderRadius: OVERLAY_GRAB_HANDLE_RADIUS,
+    // Transparent: the plate hole shows the frost through the handle slot.
+    backgroundColor: 'transparent',
+  },
+  grabHandleHidden: { opacity: 0 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: OVERLAY_HEADER_ROW_MARGIN_TOP,
+    marginBottom: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    height: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+  },
+  titleSlot: { flex: 1, minWidth: 0, marginRight: 12, flexDirection: 'row', alignItems: 'center' },
+  actionGroup: { flexDirection: 'row', alignItems: 'center' },
+  headerBottomPad: { height: OVERLAY_HEADER_PADDING_BOTTOM },
+  stripSpacer: { height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM, width: '100%' },
+  divider: { height: 1, backgroundColor: '#f1f5f9' },
   // Layer marker (debug builds of the parallel host): the TrackSheet surface is
   // the one with the amber top edge — never confuse it with the old sheet again.
   debugEdge: { borderTopWidth: 3, borderTopColor: '#f59e0b' },

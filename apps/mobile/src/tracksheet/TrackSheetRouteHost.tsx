@@ -1,7 +1,10 @@
 import React from 'react';
 import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
+
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -208,39 +211,43 @@ const useTrackScenePageChrome = (
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
   const Strip = descriptor?.Strip;
-  // Host-owned close for CHILD scenes (minimal stand-in for the full plus↔X
-  // HeaderNavAction — chrome-parity item for rung 4). Root scenes get none.
-  const { closeActiveRoute } = useAppOverlayRouteController();
+  // Rung-4 chrome parity: the kit renders the production chrome (cutout plate,
+  // grab handle, HeaderNavAction). The host supplies title + action wiring.
+  const { closeActiveRoute, promoteActiveSheet } = useAppOverlayRouteController();
   const isChildScene = !ROOT_TRACK_SCENES.has(scene);
-  const header = React.useMemo(
-    () => (
-      <View style={styles.headerRow} pointerEvents="box-none">
-        {Title != null ? (
-          <ChromeProbeBoundary label={`${scene}.Title`}>
-            <Title />
-          </ChromeProbeBoundary>
-        ) : (
-          <Text style={styles.fallbackTitle}>{scene}</Text>
-        )}
-        {isChildScene ? (
-          <Pressable
-            onPress={closeActiveRoute}
-            style={styles.closeAction}
-            hitSlop={12}
-            testID="tracksheet-close"
-          >
-            <Text style={styles.closeActionText}>×</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    ),
-    [Title, closeActiveRoute, isChildScene, scene]
+  const navActionProgress = useSharedValue(isChildScene ? 1 : 0);
+  React.useEffect(() => {
+    // Inventory §1.4: 220ms out-cubic; source = scene role (child → X).
+    navActionProgress.value = withTiming(isChildScene ? 1 : 0, {
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [isChildScene, navActionProgress]);
+  const onNavActionPress = React.useCallback(() => {
+    if (isChildScene) {
+      closeActiveRoute();
+    }
+    // Root create actions (plus) wire per-scene in a later slice.
+  }, [closeActiveRoute, isChildScene]);
+  const title = React.useMemo(
+    () =>
+      Title != null ? (
+        <ChromeProbeBoundary label={`${scene}.Title`}>
+          <Title />
+        </ChromeProbeBoundary>
+      ) : (
+        <Text style={styles.fallbackTitle}>{scene}</Text>
+      ),
+    [Title, scene]
   );
+  const onGrabHandlePress = React.useCallback(() => {
+    promoteActiveSheet({ snap: 'middle' });
+  }, [promoteActiveSheet]);
   const dockedStrip = React.useMemo(
     () =>
       Strip != null
         ? {
-            height: 54,
+            height: TOGGLE_STRIP_BAND_HEIGHT,
             children: (
               <ChromeProbeBoundary label={`${scene}.Strip`}>
                 <Strip />
@@ -258,7 +265,17 @@ const useTrackScenePageChrome = (
     }),
     [snapPoints]
   );
-  return { commandsRef, header, dockedStrip, geometry, seatTau };
+  return {
+    commandsRef,
+    title,
+    dockedStrip,
+    geometry,
+    seatTau,
+    navActionProgress,
+    onNavActionPress,
+    isChildScene,
+    onGrabHandlePress,
+  };
 };
 
 /** RUNG 3 — the ONE persistent scene page. Both list-parts hooks run
@@ -268,10 +285,17 @@ const useTrackScenePageChrome = (
  *   mounted-registry scenes → the registry body as a one-item track body;
  *   anything else → placeholder rows. */
 const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints, entry }) => {
-  const { commandsRef, header, dockedStrip, geometry, seatTau } = useTrackScenePageChrome(
-    scene,
-    snapPoints
-  );
+  const {
+    commandsRef,
+    title,
+    dockedStrip,
+    geometry,
+    seatTau,
+    navActionProgress,
+    onNavActionPress,
+    isChildScene,
+    onGrabHandlePress,
+  } = useTrackScenePageChrome(scene, snapPoints);
   const pollsParts = usePollsPanelListSceneParts();
   const homeParts = useHomePanelListSceneParts();
 
@@ -387,13 +411,18 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     <View style={styles.root} pointerEvents="box-none">
       <TrackSheetPage
         geometry={geometry}
-        header={header}
-        headerHeight={64}
+        title={title}
+        navActionProgress={isChildScene ? navActionProgress : null}
+        onNavActionPress={onNavActionPress}
+        grabHandleHidden={scene === 'settings'}
+        onGrabHandlePress={onGrabHandlePress}
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
         listLeader={renderListLeader((list as { leader?: unknown }).leader)}
         rowSurfaceStyle={
-          scene === 'polls' || (MOUNTED_TRACK_SCENES.has(scene) && !UNPADDED_BODY_SCENES.has(scene))
+          publishedBody?.surfaceKind === 'list' ||
+          scene === 'polls' ||
+          (MOUNTED_TRACK_SCENES.has(scene) && !UNPADDED_BODY_SCENES.has(scene))
             ? styles.rowSurface
             : undefined
         }
