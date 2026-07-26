@@ -562,61 +562,10 @@ export class AttributeOntologyService {
    * (food) or `core_entities.restaurant_attributes` (restaurant) — those are the
    * only array columns that hold an attribute id, so re-pointing is type-scoped.
    */
-  /**
-   * DETERMINISTIC DISH-NOUN GATE (2026-07-26 ramen root cause): the
-   * adjudicator's "not an attribute: a dish..." rule is LLM judgment and
-   * provably non-deterministic (it rejected food_attribute 'ramen' and
-   * approved restaurant_attribute 'ramen'). Identity collisions are not a
-   * judgment call: a candidate attribute whose normalized name equals an
-   * ACTIVE food entity's name is re-routed from promotion to rejection
-   * here, in code, before the plan applies. LLM judgment remains for
-   * everything fuzzier.
-   */
-  private async rerouteFoodNameCollisions(
-    plan: CanonicalizationPlan,
-  ): Promise<void> {
-    if (!plan.promotions.length) return;
-    const ids = plan.promotions.map((p) => p.entityId);
-    const collisions = await this.prisma.$queryRaw<
-      Array<{ entityId: string; name: string }>
-    >`
-      SELECT a.entity_id AS "entityId", a.name
-      FROM core_entities a
-      WHERE a.entity_id = ANY(${ids}::uuid[])
-        AND EXISTS (
-          SELECT 1 FROM core_entities f
-          WHERE f.type = 'food' AND f.status = 'active'
-            AND lower(regexp_replace(f.name, '\\s+', ' ', 'g')) =
-                lower(regexp_replace(a.name, '\\s+', ' ', 'g'))
-        )
-    `;
-    if (!collisions.length) return;
-    const collidingIds = new Set(collisions.map((c) => c.entityId));
-    plan.promotions = plan.promotions.filter(
-      (p) => !collidingIds.has(p.entityId),
-    );
-    for (const collision of collisions) {
-      plan.rejections.push({
-        entityId: collision.entityId,
-        name: collision.name,
-        reason: 'name collides with an active food entity (deterministic gate)',
-      });
-      this.logger.warn(
-        'Attribute candidate collides with an active food name — auto-rejected',
-        {
-          operation: 'attribute_food_name_collision_gate',
-          entityId: collision.entityId,
-          name: collision.name,
-        },
-      );
-    }
-  }
-
   async applyPlan(
     plan: CanonicalizationPlan,
     options: { apply: boolean } = { apply: false },
   ): Promise<ApplyResult> {
-    await this.rerouteFoodNameCollisions(plan);
     this.assertPlanConsistent(plan);
 
     const counts: ApplyResult = {
