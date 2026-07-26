@@ -191,7 +191,7 @@ describe('toggle-strip-consequence seam', () => {
     it('settleMs: 0 with a synchronous runner degenerates cleanly: exit and enter collapse into ONE call stack', () => {
       const seam = createToggleStripConsequenceSeam<Kind>({
         consequence: 'content',
-        surfaceName: 'bookmarks-home',
+        surfaceName: 'lists-home',
         settleMs: 0,
       });
       const runner = jest.fn(); // synchronous client re-slice (the store write already happened)

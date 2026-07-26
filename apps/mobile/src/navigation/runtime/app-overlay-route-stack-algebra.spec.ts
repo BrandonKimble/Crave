@@ -221,7 +221,7 @@ describe('resolveSessionDismissPlan (the ONE dismiss-shape decision)', () => {
   });
 
   test('session on a non-search root → popToRoot', () => {
-    const base = setRootRouteState(bootState(), 'bookmarks');
+    const base = setRootRouteState(bootState(), 'lists');
     const s2 = pushRouteState(base, 'search');
     expect(resolveSessionDismissPlan(s2)).toEqual({ kind: 'popToRoot' });
   });

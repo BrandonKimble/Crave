@@ -23,7 +23,7 @@ import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 //
 // Root-vs-child derives from the posture-seat declaration (the compile-forced per-scene
 // registry field — the same source of truth the snap law and nav rows derive from): a
-// scene with a seat is a root page (polls/bookmarks/profile; search never gates), so a
+// scene with a seat is a root page (polls/lists/profile; search never gates), so a
 // future scene classifies itself by construction.
 
 const isRootNavScene = (sceneKey: OverlayKey): boolean =>

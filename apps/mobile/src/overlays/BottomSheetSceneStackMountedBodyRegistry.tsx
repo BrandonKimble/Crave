@@ -2,7 +2,7 @@ import React from 'react';
 
 import type { SearchRouteMountedSceneBodyKey } from './searchOverlayRouteHostContract';
 import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
-import { BookmarksMountedSceneBody } from './panels/BookmarksPanel';
+import { ListsMountedSceneBody } from './panels/ListsPanel';
 import { ProfileMountedSceneBody } from './panels/ProfilePanel';
 import { SaveListMountedSceneBody } from './panels/SaveListPanel';
 import { PostPhotosPanelBody } from './panels/PostPhotosPanel';
@@ -21,7 +21,7 @@ import { ShellVisibilityBoundary } from './ShellVisibilityBoundary';
 /**
  * W1 slice 1 (C2): a mounted CHILD body receives ITS route entry as a prop — entryId + params
  * flow from the entry-keyed mount unit, never from useTopMostRouteEntryForScene (topmost-per-
- * key breaks with two live entries of one key). Root bodies (bookmarks/profile) stay prop-less
+ * key breaks with two live entries of one key). Root bodies (lists/profile) stay prop-less
  * singletons; `entry` is optional so the legacy singleton render path stays byte-identical.
  */
 export type MountedSceneBodyProps = {
@@ -32,7 +32,7 @@ export type MountedSceneBodyProps = {
 const MOUNTED_BODY_BY_KEY: Partial<
   Record<SearchRouteMountedSceneBodyKey, React.ComponentType<MountedSceneBodyProps>>
 > = {
-  bookmarks: BookmarksMountedSceneBody,
+  lists: ListsMountedSceneBody,
   profile: ProfileMountedSceneBody,
   saveList: SaveListMountedSceneBody,
   userProfile: UserProfileMountedSceneBody,

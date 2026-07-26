@@ -71,7 +71,7 @@ export const extendActiveRootFromNavReTap = ({
 }): void => {
   promoteActiveSheet({ snap: 'expanded' });
   // Seat routing: home's carrier scene is 'polls' (the docked feed IS home's sheet); every
-  // other tab writes its own scene (bookmarks/profile → the content seat, polls → home seat).
+  // other tab writes its own scene (lists/profile → the content seat, polls → home seat).
   const seatSceneKey = targetSceneKey === 'search' ? HOME_SEAT_CARRIER_SCENE_KEY : targetSceneKey;
   routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
     sceneKey: seatSceneKey,

@@ -2,7 +2,7 @@
 // THE one entity→action policy. Every surface that renders a tappable entity (poll comment
 // spans, favorites rows, autocomplete rows, notifications) resolves what a tap MEANS through
 // this single function; the per-surface dispatch forks it replaces were the policy encoded
-// 4× (PollDetailPanel span fork, bookmarks/profile row copies, the selectedEntityId
+// 4× (PollDetailPanel span fork, lists/profile row copies, the selectedEntityId
 // submission triplication, the launch-intent restaurant arm).
 //
 // The action vocabulary is SEMANTIC, not mechanical:

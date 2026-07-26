@@ -34,7 +34,7 @@ export type OriginScrollLane = {
 // child anchor (the only non-null anchor any current path produces), and `scroll` /
 // `segment` / `sceneParams` are degenerate.
 export type OriginSnapshot = {
-  /** TRUE scene identity (search|polls|pollDetail|bookmarks|profile) — NOT root-collapsed. */
+  /** TRUE scene identity (search|polls|pollDetail|lists|profile) — NOT root-collapsed. */
   sceneKey: OverlayKey;
   /** {pollId} | {profileUserId,...} | null (home). Degenerate (null) in P0. */
   sceneParams?: OverlayRouteParamsMap[OverlayKey] | null;

@@ -53,7 +53,7 @@ export const useProfilePanelBodyModelRuntime = ({
   const userId = profile?.userId ?? null;
 
   // Return-to-origin foundation — profile publishes its rich live state (scroll lane + active
-  // section) through THE SHARED publication primitive (one hook call; bookmarks uses the same hook
+  // section) through THE SHARED publication primitive (one hook call; lists uses the same hook
   // scroll-only). The hook reads the live shared scroll itself; profile supplies the live section
   // getter. Own profile is the SELF-DEFAULT, param-less re-root, so it does NOT publish
   // sceneParams (its absence === a null self-default — byte-identical to today); a future

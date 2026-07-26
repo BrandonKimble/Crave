@@ -9,7 +9,7 @@ export const resolveRouteOverlayBottomNavIndex = (
   switch (overlayKey) {
     case 'polls':
       return 1;
-    case 'bookmarks':
+    case 'lists':
       return 2;
     case 'profile':
       return 3;

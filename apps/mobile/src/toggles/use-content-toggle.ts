@@ -20,7 +20,7 @@ import {
  *   resolution snaps the new cards in (`phase` back to 'settled').
  * - The body renders NOTHING while `phase === 'awaiting'` — bare white under the
  *   strip; never a skeleton, never a stale empty-state message.
- * - Module-scope surfaces whose press edge lives in chrome components (bookmarks)
+ * - Module-scope surfaces whose press edge lives in chrome components (lists)
  *   use `createToggleStripConsequenceSeam` directly and, if their slice is
  *   synchronous (`settleMs: 0`), never observably leave 'settled'.
  */

@@ -1,6 +1,7 @@
 import type { HomeFeedResponse } from '../../../services/home';
 import {
   buildHomeShelfRows,
+  composeHomeShelfCardSubline,
   homeShelfRowItemType,
   homeShelfRowKeyExtractor,
 } from './home-shelf-rows';
@@ -64,5 +65,20 @@ describe('home shelf rows (section composition + getItemType)', () => {
     expect(homeShelfRowItemType(shelfRow)).not.toBe(homeShelfRowItemType(pickerRow));
     expect(homeShelfRowKeyExtractor(shelfRow)).toBe('best_of');
     expect(homeShelfRowKeyExtractor(pickerRow)).toBe('city_picker');
+  });
+
+  it('card sub-line: middle-dot separated FACTS — count noun by listType, subtitle when present', () => {
+    expect(
+      composeHomeShelfCardSubline({ listType: 'restaurant', itemCount: 12, subtitle: 'Austin' })
+    ).toBe('12 spots · Austin');
+    expect(
+      composeHomeShelfCardSubline({ listType: 'restaurant', itemCount: 1, subtitle: null })
+    ).toBe('1 spot');
+    expect(composeHomeShelfCardSubline({ listType: 'dish', itemCount: 1, subtitle: null })).toBe(
+      '1 dish'
+    );
+    expect(composeHomeShelfCardSubline({ listType: 'dish', itemCount: 3, subtitle: 'Tacos' })).toBe(
+      '3 dishes · Tacos'
+    );
   });
 });

@@ -3,7 +3,9 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 
 import { Text } from '../../components';
+import MaskedHoleOverlay from '../../components/MaskedHoleOverlay';
 import { SceneLoadingSurface } from '../../components/skeletons';
+import { FrostCutout } from '../SceneBodyFoundationSurface';
 import { colors as themeColors } from '../../constants/theme';
 import { resolveCuratedListIcon } from '../../constants/curated-list-icons';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
@@ -26,6 +28,7 @@ import { useHomeFeedStore, useHomeSceneStateStore } from './runtime/home-feed-st
 import { shouldRefetchPollsFeedForSettledBounds } from './runtime/polls-feed-refetch-edge';
 import {
   buildHomeShelfRows,
+  composeHomeShelfCardSubline,
   homeShelfRowItemType,
   homeShelfRowKeyExtractor,
   type HomeShelfRow,
@@ -33,7 +36,6 @@ import {
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { requestMapCameraFlyToBbox } from '../../store/map-camera-command-store';
 
-const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
 // ─── Persistent header (home-surface-charter §1): the Title renders the SAME feed
@@ -54,71 +56,94 @@ registerPersistentHeaderDescriptor('home', {
   Title: HomePersistentHeaderTitle,
 });
 
-// ─── Card visual (owner-ratified V1): cutout-language card — rounded rect, a
-// cutout-look icon well (the toggle-strip cutout vocabulary rendered with plain
-// Views — the masked machinery is overkill for an opaque card), title, subtitle,
-// item count. NO photos.
+// ─── Card visual (owner-ratified V2 — TRUE CUTOUTS): each card WELL is a real
+// hole punched through the row's white material to the shared frost, the exact
+// toggle-strip composition:
+//   1. The row band wraps in `FrostCutout` — on this foundation-plated scene it
+//      punches a band-height hole in the scene's white plate, so the row's own
+//      material sits on honest frost (never white-on-white).
+//   2. The row paints its OWN white material as a `MaskedHoleOverlay` INSIDE the
+//      horizontal scroll content (so it scrolls WITH the cards), with one rounded
+//      hole per card well — frost shows through the wells.
+//   3. INFINITE-EDGE ILLUSION (the strip's mechanism, verbatim): the material
+//      extends a full viewport width past both ends of the content and sits at
+//      `left: -overscrollMargin`, so no rubber-band overscroll can ever reveal a
+//      hard white edge. Native ScrollView `alwaysBounceHorizontal` = the strip's
+//      rubber-band feel.
+// Card text (owner-specified, Spotify pattern): TITLE inside the well,
+// bottom-left; SUB-LINE below the well, OUTSIDE it, on the white material —
+// caption size (the toggle-strip chip label scale), standard subtext gray,
+// middle-dot separated facts. NO photos, no invented facts.
 const HOME_CARD_WIDTH = 168;
+const HOME_CARD_WELL_HEIGHT = 116;
+const HOME_CARD_WELL_RADIUS = 14;
+const HOME_CARD_GAP = 10;
+// Matches the strip's HOLE_RADIUS_BOOST — the window reads cleanly on frost.
+const HOME_WELL_RADIUS_BOOST = 1;
+// Vertical mask overshoot past the band (clipped by the band) so the foundation
+// plate's punched hole can never show a rounding hairline (the strip's
+// rowHeight + STRIP_GAP lesson).
+const HOME_MASK_OVERSHOOT = 8;
 
-const HomeListCard = React.memo(
-  ({ list, onPress }: { list: HomeShelfList; onPress: (list: HomeShelfList) => void }) => {
-    const Icon = resolveCuratedListIcon(list.iconKey);
-    const countLabel = `${list.itemCount} ${
-      list.listType === 'dish'
-        ? list.itemCount === 1
-          ? 'dish'
-          : 'dishes'
-        : list.itemCount === 1
-          ? 'spot'
-          : 'spots'
-    }`;
-    return (
+type HomeWellRect = { x: number; y: number; width: number; height: number };
+
+/** One card cell: the cutout WELL (icon centered, title bottom-left INSIDE) +
+ *  the sub-line BELOW the well on the material. Reports its well rect (content
+ *  coordinates) so the row can punch the hole. */
+const HomeCutoutCard = React.memo(
+  ({
+    wellKey,
+    icon,
+    title,
+    subline,
+    accessibilityLabel,
+    testID,
+    onPress,
+    onWellLayout,
+  }: {
+    wellKey: string;
+    icon: React.ReactNode;
+    title: string;
+    subline: string | null;
+    accessibilityLabel: string;
+    testID: string;
+    onPress: () => void;
+    onWellLayout: (key: string, rect: HomeWellRect) => void;
+  }) => (
+    <View
+      style={styles.cardCell}
+      onLayout={(event) => {
+        const { x, y } = event.nativeEvent.layout;
+        // The well sits at the cell's top; fixed geometry, measured x/y.
+        onWellLayout(wellKey, {
+          x,
+          y,
+          width: HOME_CARD_WIDTH,
+          height: HOME_CARD_WELL_HEIGHT,
+        });
+      }}
+    >
       <Pressable
-        style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-        onPress={() => onPress(list)}
+        style={({ pressed }) => [styles.cardWell, pressed && styles.cardPressed]}
+        onPress={onPress}
         accessibilityRole="button"
-        accessibilityLabel={`Open list ${list.title}`}
-        testID={`home-list-card-${list.listId}`}
+        accessibilityLabel={accessibilityLabel}
+        testID={testID}
       >
-        <View style={styles.cardIconWell}>
-          <Icon size={22} color={themeColors.primary} strokeWidth={2} />
-        </View>
+        <View style={styles.cardWellIcon}>{icon}</View>
         <Text variant="subtitle" weight="semibold" style={styles.cardTitle} numberOfLines={2}>
-          {list.title}
-        </Text>
-        {list.subtitle ? (
-          <Text variant="caption" style={styles.cardSubtitle} numberOfLines={2}>
-            {list.subtitle}
-          </Text>
-        ) : null}
-        <Text variant="caption" style={styles.cardCount}>
-          {countLabel}
+          {title}
         </Text>
       </Pressable>
-    );
-  }
-);
-HomeListCard.displayName = 'HomeListCard';
-
-const HomeCityCard = React.memo(
-  ({ city, onPress }: { city: HomeFeedCity; onPress: (city: HomeFeedCity) => void }) => (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => onPress(city)}
-      accessibilityRole="button"
-      accessibilityLabel={`Explore ${city.name}`}
-      testID={`home-city-card-${city.placeId}`}
-    >
-      <View style={styles.cardIconWell}>
-        <MapPin size={22} color={themeColors.primary} strokeWidth={2} />
-      </View>
-      <Text variant="subtitle" weight="semibold" style={styles.cardTitle} numberOfLines={2}>
-        {city.name}
-      </Text>
-    </Pressable>
+      {subline ? (
+        <Text variant="caption" style={styles.cardSubline} numberOfLines={1}>
+          {subline}
+        </Text>
+      ) : null}
+    </View>
   )
 );
-HomeCityCard.displayName = 'HomeCityCard';
+HomeCutoutCard.displayName = 'HomeCutoutCard';
 
 const HomeShelfRowView = React.memo(
   ({
@@ -129,26 +154,138 @@ const HomeShelfRowView = React.memo(
     row: HomeShelfRow;
     onOpenList: (list: HomeShelfList) => void;
     onPickCity: (city: HomeFeedCity) => void;
-  }) => (
-    <View style={styles.shelfSection}>
-      <Text variant="subtitle" weight="semibold" style={styles.shelfTitle}>
-        {row.title}
-      </Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.shelfScrollContent}
-      >
-        {row.kind === 'shelf'
-          ? row.shelf.lists.map((list) => (
-              <HomeListCard key={list.listId} list={list} onPress={onOpenList} />
-            ))
-          : row.cities.map((city) => (
-              <HomeCityCard key={city.placeId} city={city} onPress={onPickCity} />
-            ))}
-      </ScrollView>
-    </View>
-  )
+  }) => {
+    const [viewportWidth, setViewportWidth] = React.useState(0);
+    const [bandSize, setBandSize] = React.useState({ width: 0, height: 0 });
+    const [wellMap, setWellMap] = React.useState<Record<string, HomeWellRect>>({});
+
+    const handleWellLayout = React.useCallback((key: string, rect: HomeWellRect) => {
+      setWellMap((prev) => {
+        const existing = prev[key];
+        if (
+          existing != null &&
+          Math.abs(existing.x - rect.x) < 0.5 &&
+          Math.abs(existing.y - rect.y) < 0.5 &&
+          existing.width === rect.width &&
+          existing.height === rect.height
+        ) {
+          return prev;
+        }
+        return { ...prev, [key]: rect };
+      });
+    }, []);
+
+    const cardKeys = React.useMemo(
+      () =>
+        row.kind === 'shelf'
+          ? row.shelf.lists.map((list) => list.listId)
+          : row.cities.map((city) => city.placeId),
+      [row]
+    );
+
+    // The infinite-edge illusion, byte-identical to the strip's mask geometry:
+    // the material runs a full viewport width past both content ends.
+    const overscrollMargin = Math.max(OVERLAY_HORIZONTAL_PADDING, viewportWidth);
+    const maskWidth = Math.max(viewportWidth, bandSize.width + overscrollMargin * 2);
+    const maskHeight = bandSize.height > 0 ? bandSize.height + HOME_MASK_OVERSHOOT : 0;
+    const maskedHoles = React.useMemo(
+      () =>
+        cardKeys
+          .map((key) => wellMap[key])
+          .filter((rect): rect is HomeWellRect => rect != null)
+          .map((rect) => ({
+            x: rect.x + overscrollMargin,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            borderRadius: HOME_CARD_WELL_RADIUS + HOME_WELL_RADIUS_BOOST,
+          })),
+      [cardKeys, wellMap, overscrollMargin]
+    );
+
+    return (
+      <View style={styles.shelfSection}>
+        <Text variant="subtitle" weight="semibold" style={styles.shelfTitle}>
+          {row.title}
+        </Text>
+        {/* Punches the band out of the scene's foundation white plate — the row's
+            material sits on real frost (backdrop honesty, the strip's law). */}
+        <FrostCutout>
+          <View
+            style={styles.shelfBand}
+            onLayout={(event) => {
+              const width = event.nativeEvent.layout.width;
+              setViewportWidth((prev) => (Math.abs(prev - width) < 0.5 ? prev : width));
+            }}
+          >
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              alwaysBounceHorizontal
+              directionalLockEnabled
+              contentContainerStyle={styles.shelfScrollContent}
+            >
+              <View
+                style={styles.shelfBandContent}
+                onLayout={(event) => {
+                  const { width, height } = event.nativeEvent.layout;
+                  setBandSize((prev) =>
+                    Math.abs(prev.width - width) < 0.5 && Math.abs(prev.height - height) < 0.5
+                      ? prev
+                      : { width, height }
+                  );
+                }}
+              >
+                {bandSize.width > 0 && maskedHoles.length > 0 ? (
+                  <MaskedHoleOverlay
+                    pointerEvents="none"
+                    holes={maskedHoles}
+                    backgroundColor={SURFACE}
+                    style={[
+                      styles.shelfMaterial,
+                      { width: maskWidth, height: maskHeight, left: -overscrollMargin },
+                    ]}
+                  />
+                ) : null}
+                <View style={styles.shelfCardRow}>
+                  {row.kind === 'shelf'
+                    ? row.shelf.lists.map((list) => {
+                        const Icon = resolveCuratedListIcon(list.iconKey);
+                        return (
+                          <HomeCutoutCard
+                            key={list.listId}
+                            wellKey={list.listId}
+                            icon={<Icon size={24} color={themeColors.primary} strokeWidth={2} />}
+                            title={list.title}
+                            subline={composeHomeShelfCardSubline(list)}
+                            accessibilityLabel={`Open list ${list.title}`}
+                            testID={`home-list-card-${list.listId}`}
+                            onPress={() => onOpenList(list)}
+                            onWellLayout={handleWellLayout}
+                          />
+                        );
+                      })
+                    : row.cities.map((city) => (
+                        <HomeCutoutCard
+                          key={city.placeId}
+                          wellKey={city.placeId}
+                          icon={<MapPin size={24} color={themeColors.primary} strokeWidth={2} />}
+                          title={city.name}
+                          subline={null}
+                          accessibilityLabel={`Explore ${city.name}`}
+                          testID={`home-city-card-${city.placeId}`}
+                          onPress={() => onPickCity(city)}
+                          onWellLayout={handleWellLayout}
+                        />
+                      ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </FrostCutout>
+      </View>
+    );
+  }
 );
 HomeShelfRowView.displayName = 'HomeShelfRowView';
 
@@ -381,40 +518,69 @@ const styles = StyleSheet.create({
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     marginBottom: 10,
   },
+  // The band clips the material's vertical overshoot (the strip's band pattern).
+  shelfBand: {
+    width: '100%',
+    overflow: 'hidden',
+  },
   shelfScrollContent: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    gap: 10,
   },
-  card: {
+  shelfBandContent: {
+    position: 'relative',
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'flex-start',
+  },
+  // The row's white material (MaskedHoleOverlay) — absolute INSIDE the scroll
+  // content so it rides the horizontal scroll; extends `overscrollMargin` past
+  // both ends (inline width/left) for the infinite-edge illusion.
+  shelfMaterial: {
+    position: 'absolute',
+    top: 0,
+    zIndex: 1,
+  },
+  shelfCardRow: {
+    position: 'relative',
+    zIndex: 2,
+    flexDirection: 'row',
+    columnGap: HOME_CARD_GAP,
+  },
+  cardCell: {
     width: HOME_CARD_WIDTH,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    padding: 12,
-    gap: 6,
+  },
+  // The well is a HOLE — no background of its own; frost shows through.
+  cardWell: {
+    width: HOME_CARD_WIDTH,
+    height: HOME_CARD_WELL_HEIGHT,
+    borderRadius: HOME_CARD_WELL_RADIUS,
+    overflow: 'hidden',
   },
   cardPressed: {
-    opacity: 0.85,
+    opacity: 0.7,
   },
-  // The cutout-look icon well: the strip-cutout visual vocabulary (a punched
-  // rounded window showing the muted ground) rendered as an opaque well.
-  cardIconWell: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: themeColors.background,
+  // Icon centered in the upper region, clear of the bottom-left title.
+  cardWellIcon: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 34,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
+  // Spotify pattern: title INSIDE the well, pinned bottom-left.
   cardTitle: {
+    position: 'absolute',
+    left: 10,
+    right: 10,
+    bottom: 8,
     color: themeColors.textPrimary,
   },
-  cardSubtitle: {
-    color: themeColors.textBody,
-  },
-  cardCount: {
+  // The sub-line lives BELOW the well, on the white material: caption scale (the
+  // toggle-strip chip label size, TYPE_SCALE.caption 13pt), standard subtext gray.
+  cardSubline: {
+    marginTop: 6,
     color: themeColors.textMuted,
   },
   emptyState: {

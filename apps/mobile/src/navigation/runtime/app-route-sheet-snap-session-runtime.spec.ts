@@ -17,16 +17,16 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe(HOME_SEAT_SEED_SNAP);
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe(CONTENT_SEAT_SEED_SNAP);
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('bookmarks')).toBe(CONTENT_SEAT_SEED_SNAP);
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('lists')).toBe(CONTENT_SEAT_SEED_SNAP);
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('profile')).toBe(CONTENT_SEAT_SEED_SNAP);
     expect(HOME_SEAT_SEED_SNAP).toBe('collapsed');
     expect(CONTENT_SEAT_SEED_SNAP).toBe('expanded');
   });
 
-  it('seat membership: home = the docked home scene, content = polls/bookmarks/profile, children/search = none', () => {
+  it('seat membership: home = the docked home scene, content = polls/lists/profile, children/search = none', () => {
     expect(resolveSheetPostureSeat('home')).toBe('home');
     expect(resolveSheetPostureSeat('polls')).toBe('content');
-    expect(resolveSheetPostureSeat('bookmarks')).toBe('content');
+    expect(resolveSheetPostureSeat('lists')).toBe('content');
     expect(resolveSheetPostureSeat('profile')).toBe('content');
     expect(resolveSheetPostureSeat('search')).toBeNull();
     expect(resolveSheetPostureSeat('pollDetail')).toBeNull();
@@ -68,12 +68,12 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
   it('the content seat is ONE shared posture (favorites drag is profile posture too)', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
     runtime.actions.recordRouteSceneSheetSettle({
-      sceneKey: 'bookmarks',
+      sceneKey: 'lists',
       snap: 'middle',
       writer: 'gesture',
     });
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('profile')).toBe('middle');
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('bookmarks')).toBe('middle');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('lists')).toBe('middle');
   });
 
   it('CONTRACT: a programmatic seat write is dropped with a loud __DEV__ error', () => {
@@ -100,13 +100,11 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
     try {
       const runtime = createAppRouteSheetSnapSessionRuntime();
       runtime.actions.recordRouteSceneSheetSettle({
-        sceneKey: 'bookmarks',
+        sceneKey: 'lists',
         snap: 'hidden',
         writer: 'gesture',
       });
-      expect(runtime.actions.getRouteSceneSwitchSceneSnap('bookmarks')).toBe(
-        CONTENT_SEAT_SEED_SNAP
-      );
+      expect(runtime.actions.getRouteSceneSwitchSceneSnap('lists')).toBe(CONTENT_SEAT_SEED_SNAP);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[snap-law]'));
     } finally {
       errorSpy.mockRestore();
@@ -117,11 +115,11 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
   it('named writers (origin restore / product intents) may write seats', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
     runtime.actions.recordRouteSceneSheetSettle({
-      sceneKey: 'bookmarks',
+      sceneKey: 'lists',
       snap: 'middle',
       writer: 'named',
     });
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('bookmarks')).toBe('middle');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('lists')).toBe('middle');
     runtime.actions.recordRouteSceneSheetSettle({
       sceneKey: 'polls',
       snap: 'collapsed',
@@ -197,7 +195,7 @@ describe('resolveSearchLaunchOriginSnap (seat-backed origin capture)', () => {
   it('content overlays read the ONE shared content seat', () => {
     expect(
       resolveSearchLaunchOriginSnap({
-        overlay: 'bookmarks',
+        overlay: 'lists',
         homeSeatSnap: 'collapsed',
         contentSeatSnap: 'middle',
       })

@@ -88,7 +88,7 @@ export type ToggleStripConsequenceDeclaration<TKind extends string> =
        * teardown) does NOT restore — the next present refetches against the live
        * control values. The restore implementation must not re-enter the press edge
        * (suppress its own control-change listeners). Surfaces whose slices are
-       * synchronous client re-slices (bookmarks) cannot fail and declare nothing.
+       * synchronous client re-slices (lists) cannot fail and declare nothing.
        */
       captureControlBaseline?: () => () => void;
     } & CommonDeclaration<TKind>);

@@ -26,7 +26,7 @@ type SceneScrollState = {
   // One-shot dismiss-return restore (return-to-origin-foundation-design.md §Restore / P3):
   // staged by the restore path, consumed exactly once by the scene's cold re-mount.
   pendingRestore: number | null;
-  // Imperative scroll handle for MOUNTED-SCROLL scenes (bookmarks et al) — the mounted body
+  // Imperative scroll handle for MOUNTED-SCROLL scenes (lists et al) — the mounted body
   // renders inside the shared container it does not own; drag-reorder edge auto-scroll etc.
   // reach that scroll through this narrow handle instead of a transport-threaded ref.
   scrollHandle: OverlaySceneScrollHandle | null;

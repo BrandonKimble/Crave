@@ -15,7 +15,7 @@ import {
 const MUTATION = {
   kind: 'push' as const,
   targetSceneKey: 'listDetail' as const,
-  sourceSceneKey: 'bookmarks' as const,
+  sourceSceneKey: 'lists' as const,
   entryId: null,
 };
 

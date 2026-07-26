@@ -1,7 +1,4 @@
-import type {
-  OverlayKey,
-  OverlayRouteEntry,
-} from '../navigation/runtime/app-overlay-route-types';
+import type { OverlayKey, OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 
 /** The residency-managed key space: the sheet scenes plus 'search' (the one
@@ -25,9 +22,9 @@ export const RESIDENCY_MANAGED_SCENES: readonly ResidencyManagedSceneKey[] = [
   // flags until the runtime-governance merge).
   'profile',
   // Slice 4 (the bridge's pair — both sides of the owner's worst transition cross
-  // together): bookmarks (root tab, singleton path) + listDetail (the first
+  // together): lists (root tab, singleton path) + listDetail (the first
   // MULTI-ENTRY managed scene — identity-keyed resident units below).
-  'bookmarks',
+  'lists',
   'listDetail',
   // Slice 6 (the census sweep — every registry child joins; search/polls/restaurant
   // stay bespoke until their own slices): entity scenes get content identity;
@@ -75,7 +72,10 @@ export const RESIDENT_UNIT_RETENTION_LIMIT = 3;
  *    fall back to entryId: no cross-entry reuse until the slug resolves to a listId.
  *  - single-identity leaves: one unit per scene. */
 export const residentUnitIdentityOf = (entry: OverlayRouteEntry): string | null => {
-  const params = entry.params as Record<string, Record<string, unknown> | undefined> | null | undefined;
+  const params = entry.params as
+    | Record<string, Record<string, unknown> | undefined>
+    | null
+    | undefined;
   switch (entry.key) {
     case 'listDetail': {
       const listId = params?.listDetail?.listId;

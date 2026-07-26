@@ -25,7 +25,7 @@ import { Text } from './ui/Text';
  * (inactive) and white (active-on-pill) layer. Travel is distance-aware linear
  * `withTiming` (34–150ms per segment-width). Decoupled from the search runtime and
  * the frosted-glass hole-punch overlay, so it drops onto any (incl. white) surface.
- * Consumers: polls feed Live/Results, bookmarks Restaurants/Dishes, profile
+ * Consumers: polls feed Live/Results, lists Restaurants/Dishes, profile
  * Created/Contributed/Favorites. Every improvement to the toggle mechanism lands
  * HERE, once — pages never hand-roll segment rows.
  *

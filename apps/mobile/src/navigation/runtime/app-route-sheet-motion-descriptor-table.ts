@@ -242,7 +242,7 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
   // 2026-07-02 per-tab rememberedDetent rows (owner-ratified deletion: tabs now share ONE seat).
   // The rows themselves are DERIVED from the scene-policy registry's exhaustive `postureSeat`
   // field (root-snap-law.md §Leg 3): a new root page declared there gets its row by
-  // construction — no hand-maintained target list to forget (today: search/polls/bookmarks/
+  // construction — no hand-maintained target list to forget (today: search/polls/lists/
   // profile).
   ...APP_ROUTE_SCENE_KEYS.filter((sceneKey) => resolveNavTargetPostureSeat(sceneKey) != null).map(
     (sceneKey): SheetMotionDescriptorRow => ({
@@ -331,7 +331,7 @@ export const lookupDefaultSheetMotionDescriptorRow = (
  *
  * 'postureSeat' (two-posture law): snap to the TARGET side's seat. The seat read goes through
  * resolveSceneRememberedSnap, whose snap-session backing routes polls → the HOME seat and
- * bookmarks/profile → the ONE content seat ('search' as a nav target IS home — the docked
+ * lists/profile → the ONE content seat ('search' as a nav target IS home — the docked
  * presentation — so it aliases to the polls seat here). Collapsed is a first-class remembered
  * posture; only hidden (dismissed docked scene) / unset fall to the side's cold-start seed —
  * which for home is also the sanctioned docked resurrect posture.

@@ -23,7 +23,7 @@ export type AppRouteStaticSceneDescriptorRuntime = {
   dispose: () => void;
 };
 
-type StaticTabSceneKey = 'bookmarks' | 'profile';
+type StaticTabSceneKey = 'lists' | 'profile';
 // Stub-pass child scenes (plans/page-registry.md §1) — static descriptors with placeholder bodies.
 type StaticStubChildSceneKey =
   | 'userProfile'
@@ -47,9 +47,9 @@ const STATIC_SCENE_SCROLL_CONTENT_INSETS = {
 // scroll container) so the scroll↔sheet handoff works — no per-scene over-scroll config needed.
 // NOTE: no per-transport contentSurfaceStyle white here anymore — the foundation white layer
 // (scene-foundation-spec `bodySurface: 'white'` → SceneBodyFoundationSurface) paints every sheet
-// scene's white plate at the body lane; the old bookmarks/profile transport white was the
+// scene's white plate at the body lane; the old lists/profile transport white was the
 // per-scene hack it replaces.
-const BOOKMARKS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
+const LISTS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
 };
 
@@ -258,14 +258,14 @@ class AppRouteStaticSceneDescriptorController {
       sceneBodyTransport: DM_SESSION_BODY_TRANSPORT,
     });
     sceneInputLane.publishRouteSceneDescriptor({
-      sceneKey: 'bookmarks',
+      sceneKey: 'lists',
       shellSpec: createStaticTabShellSpec({
-        sceneKey: 'bookmarks',
+        sceneKey: 'lists',
         sceneLayout,
       }),
-      sceneChrome: createMountedChrome('bookmarks'),
-      sceneBodyContent: createMountedBody('bookmarks'),
-      sceneBodyTransport: BOOKMARKS_BODY_TRANSPORT,
+      sceneChrome: createMountedChrome('lists'),
+      sceneBodyContent: createMountedBody('lists'),
+      sceneBodyTransport: LISTS_BODY_TRANSPORT,
       sceneBodyAdmissionPolicy: STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY,
     });
     sceneInputLane.publishRouteSceneDescriptor({

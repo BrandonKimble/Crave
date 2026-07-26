@@ -75,10 +75,10 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
 
 // Return-to-origin foundation — TOP-LEVEL-RICH dismiss seam (the LAST gap).
 //
-// A favorites-as-search dismiss back to a TOP-LEVEL-RICH origin (bookmarks / profile)
+// A favorites-as-search dismiss back to a TOP-LEVEL-RICH origin (lists / profile)
 // used to paint BLANK: the close path emitted `terminalDismiss search→polls`
 // (preserveOutgoingUntilSettle, presenting the dismissing search handoff for its sheet
-// slide), and the boundary restore then re-rooted `polls→bookmarks` swapImmediately —
+// slide), and the boundary restore then re-rooted `polls→lists` swapImmediately —
 // SUPERSEDING the in-flight terminalDismiss before it settled, which left a NATIVE
 // presentation latch on the (now torn-down) outgoing handoff → blank until a fresh switch.
 // Four JS-side refresh fixes failed; it must be fixed STRUCTURALLY by ELIMINATING the
@@ -87,7 +87,7 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
 // supersede).
 //
 // `isTopLevelRichSeededOrigin` is the SAME richness gate restorePendingOrigin reads,
-// further scoped to SEEDED re-root targets (bookmarks / profile) — scenes that paint their own
+// further scoped to SEEDED re-root targets (lists / profile) — scenes that paint their own
 // skeleton shell on frame 1, so a swapImmediately re-root reveals cleanly with no held outgoing.
 // It is NOT a degenerate home origin (those short-circuit to the byte-identical home switch
 // BEFORE this branch) and NOT a re-pushable CHILD origin (a poll-discussion comment, which keeps
@@ -97,7 +97,7 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
 // EXPLICITLY for any target in this set (it no longer relies on the target also being listed in
 // `SEEDED_FORWARD_OPEN_SCENES` in app-route-scene-transition-policy-runtime.ts). The policy set
 // still governs the FORWARD-open handoff for these scenes; this set is the dismiss-restore axis.
-const SEEDED_TOP_LEVEL_RESTORE_TARGETS = new Set<OverlayKey>(['bookmarks', 'profile']);
+const SEEDED_TOP_LEVEL_RESTORE_TARGETS = new Set<OverlayKey>(['lists', 'profile']);
 
 const resolveRestoreRootOverlay = (snapshot: OriginSnapshot): OverlayKey =>
   snapshot.sceneKey === DOCKED_SCENE_KEY ? 'search' : snapshot.sceneKey;
@@ -330,7 +330,7 @@ export class AppRouteOverlaySessionStateController {
 
   // Return-to-origin foundation — the (sceneKey, live detent) of the active origin at
   // trigger time. sceneKey stays the ROOT overlay key (the collapsed scene identity:
-  // search|polls|bookmarks|profile), byte-equivalent to the old createCurrentOriginContext
+  // search|polls|lists|profile), byte-equivalent to the old createCurrentOriginContext
   // `rootOverlay`; the TRUE child-scene generalization (pollDetail/restaurant) is a later
   // phase. The detent is the LIVE snap (resolveSearchLaunchOriginSnap), not hard-coded.
   private resolveLiveOriginIdentity(): { sceneKey: OverlayKey; detent: TabOverlaySnap } {
@@ -344,13 +344,12 @@ export class AppRouteOverlaySessionStateController {
         overlay: sceneKey,
         homeSeatSnap:
           this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(DOCKED_SCENE_KEY),
-        contentSeatSnap:
-          this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('bookmarks'),
+        contentSeatSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('lists'),
       }),
     };
   }
 
-  // Return-to-origin foundation (P3) — RICH capture for a scrollable scene (bookmarks; profile
+  // Return-to-origin foundation (P3) — RICH capture for a scrollable scene (lists; profile
   // joins in P5). The degenerate base carries the correct sceneKey + LIVE detent
   // (resolveLiveOriginIdentity, the same source home uses); onto it we merge the scene's OWN
   // live scroll lane(s), pulled from the scene live-state registry (the panel published a
@@ -360,7 +359,7 @@ export class AppRouteOverlaySessionStateController {
   // scrolled) yields an empty scroll lane → still a valid rich top-level origin (non-root
   // sceneKey), never the degenerate-home short-circuit. The optional segment + sceneParams
   // getters carry the SEGMENTED-scene axes: the profile publisher (P5) populates both (active
-  // sub-tab + profileUserId); bookmarks publishes neither (they stay null).
+  // sub-tab + profileUserId); lists publishes neither (they stay null).
   private captureRichSceneOrigin(sceneKey: OverlayKey): OriginSnapshot {
     const { detent } = this.resolveLiveOriginIdentity();
     const base = degenerateSnapshot(sceneKey, detent);
@@ -498,7 +497,7 @@ export class AppRouteOverlaySessionStateController {
     // (byte-identical to today's param-less profile re-root). The home emission never reaches
     // here, so the golden assertion's "no routeParams on home" contract is untouched.
     const restoreRouteParams = snapshot.sceneParams != null ? snapshot.sceneParams : null;
-    // A top-level-rich SEEDED restore target (bookmarks/profile) sets its content handoff
+    // A top-level-rich SEEDED restore target (lists/profile) sets its content handoff
     // EXPLICITLY — swapImmediately/skeleton-first — so the single-switch dismiss can NEVER orphan a
     // content plane regardless of the transition policy's SEEDED_FORWARD_OPEN_SCENES membership
     // (which used to be the sole, prose-coupled authority for that — the supersede→blank this seam
@@ -528,7 +527,7 @@ export class AppRouteOverlaySessionStateController {
   // profile body-model runtime (the single segment owner) consumes it once on activation and
   // segment-selects BEFORE applying the scroll restore (the offset is only meaningful against
   // the captured segment's row extent). A null segment clears any stale pending — a no-op for
-  // bookmarks (publishes no segment).
+  // lists (publishes no segment).
   private seedSceneRestoreState(snapshot: OriginSnapshot): void {
     const scrollLanes = snapshot.scroll ?? [];
     for (const lane of scrollLanes) {

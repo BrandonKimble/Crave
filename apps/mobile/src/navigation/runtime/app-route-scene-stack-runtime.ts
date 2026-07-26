@@ -90,7 +90,7 @@ import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-st
 type Listener = () => void;
 
 type AppRouteStaticSceneMountState = {
-  bookmarksBootstrapped: boolean;
+  listsBootstrapped: boolean;
   dockedScenePrewarmed: boolean;
   profileBootstrapped: boolean;
   inactiveTabsPrewarmed: boolean;
@@ -101,7 +101,7 @@ type AppRouteStaticSceneMountState = {
 };
 
 type AppRouteStaticSceneMountSnapshot = {
-  bookmarksShouldMount: boolean;
+  listsShouldMount: boolean;
   dockedSceneShouldMount: boolean;
   profileShouldMount: boolean;
   residentShellsShouldMount: boolean;
@@ -186,7 +186,7 @@ const areOverlayKeyArraysEqual = (
   left.length === right.length && left.every((sceneKey, index) => sceneKey === right[index]);
 
 const createAppRouteStaticSceneMountState = (): AppRouteStaticSceneMountState => ({
-  bookmarksBootstrapped: false,
+  listsBootstrapped: false,
   dockedScenePrewarmed: false,
   profileBootstrapped: false,
   inactiveTabsPrewarmed: false,
@@ -211,10 +211,10 @@ const resolveAppRouteStaticSceneMount = ({
 } => {
   let nextState = state;
 
-  if (activeSceneKey === 'bookmarks' && !nextState.bookmarksBootstrapped) {
+  if (activeSceneKey === 'lists' && !nextState.listsBootstrapped) {
     nextState = {
       ...nextState,
-      bookmarksBootstrapped: true,
+      listsBootstrapped: true,
     };
   }
 
@@ -235,7 +235,7 @@ const resolveAppRouteStaticSceneMount = ({
   if (!nextState.inactiveTabsPrewarmed && areStaticTabScenesReady && transitionPhase === 'idle') {
     nextState = {
       ...nextState,
-      bookmarksBootstrapped: true,
+      listsBootstrapped: true,
       profileBootstrapped: true,
       inactiveTabsPrewarmed: true,
     };
@@ -258,7 +258,7 @@ const resolveAppRouteStaticSceneMount = ({
   return {
     state: nextState,
     snapshot: {
-      bookmarksShouldMount: nextState.bookmarksBootstrapped || activeSceneKey === 'bookmarks',
+      listsShouldMount: nextState.listsBootstrapped || activeSceneKey === 'lists',
       dockedSceneShouldMount: nextState.dockedScenePrewarmed || activeSceneKey === DOCKED_SCENE_KEY,
       profileShouldMount: nextState.profileBootstrapped || activeSceneKey === 'profile',
       residentShellsShouldMount: nextState.residentShellsPrewarmed,
@@ -847,7 +847,7 @@ const orderMountedSceneKeys = (
   APP_ROUTE_SCENE_STACK_KEYS.filter((sceneKey) => sceneKeys.has(sceneKey));
 
 const areStaticTabSceneInputsReady = (sceneInputAuthority: AppRouteSceneInputAuthority): boolean =>
-  sceneInputAuthority.getSceneInputSnapshot('bookmarks')?.shellSpec != null &&
+  sceneInputAuthority.getSceneInputSnapshot('lists')?.shellSpec != null &&
   sceneInputAuthority.getSceneInputSnapshot('profile')?.shellSpec != null;
 
 const isDockedSceneInputReady = (sceneInputAuthority: AppRouteSceneInputAuthority): boolean =>
@@ -894,8 +894,8 @@ const resolveMountedSceneKeys = ({
   appendRouteSceneKey({ mountedSceneKeys, sceneKey: pendingSceneKey });
   appendRouteSceneKey({ mountedSceneKeys, sceneKey: handoffSceneKey });
 
-  if (staticSceneMountSnapshot.bookmarksShouldMount) {
-    mountedSceneKeys.add('bookmarks');
+  if (staticSceneMountSnapshot.listsShouldMount) {
+    mountedSceneKeys.add('lists');
   }
 
   if (staticSceneMountSnapshot.dockedSceneShouldMount) {
@@ -2217,7 +2217,7 @@ class AppRouteSceneStackLayerStateController {
     // legacy transition-settle edge (phase idle + isInteractive + interactive-key match + the
     // 350ms quiet timer) that hard-swap/instant commits reach late or, when a settle plane's
     // completer is missed, never. Scoped by the descriptor's prewarmRetainedMountedBody flag
-    // (the static tabs' always-warm signature: bookmarks/profile), so polls keeps its
+    // (the static tabs' always-warm signature: lists/profile), so polls keeps its
     // transition-window data-lane pause and non-retained scenes keep today's timing. Idle legs
     // are untouched (isActive false ⇒ inert); activation stays STICKY via
     // retainedExpandedContentSceneKeys, so the warm Fav→Profile→Fav round-trip is unchanged.

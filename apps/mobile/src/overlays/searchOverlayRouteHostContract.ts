@@ -53,7 +53,7 @@ export type SearchRouteSceneSecondaryListTransportPublication = {
 };
 
 export type SearchRouteMountedSceneBodyKey =
-  | 'bookmarks'
+  | 'lists'
   | 'home'
   | 'polls'
   | 'profile'
@@ -70,7 +70,7 @@ export type SearchRouteMountedSceneBodyKey =
   | 'dmSession';
 
 export type SearchRouteMountedSceneChromeKey =
-  | 'bookmarks'
+  | 'lists'
   | 'home'
   | 'polls'
   | 'profile'

@@ -4,7 +4,7 @@
  *
  * `scene-foundation-spec.ts` declares per scene whether (and where) a toggle strip
  * exists: `strip: 'none' | 'in-list' | 'header'`. Leg-1 found that field was a DEAD
- * LAW — zero consumers, and Bookmarks declared `'none'` while rendering two strips.
+ * LAW — zero consumers, and Lists declared `'none'` while rendering two strips.
  * A law that cannot show RED is not a law. This module is the consumer:
  *
  * - `SceneBodyFoundationSurface` provides the scene key over `SceneStripLawContext`

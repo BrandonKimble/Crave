@@ -92,7 +92,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'searchChrome',
   },
   // Polls demotion (home-surface-charter): a regular content tab page now — chrome
-  // preserved like bookmarks; the docked searchChrome posture moved to 'home'.
+  // preserved like lists; the docked searchChrome posture moved to 'home'.
   polls: {
     role: 'topLevel',
     productSceneKey: 'polls',
@@ -104,9 +104,9 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
   },
-  bookmarks: {
+  lists: {
     role: 'topLevel',
-    productSceneKey: 'bookmarks',
+    productSceneKey: 'lists',
     parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
@@ -140,7 +140,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   saveList: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile'],
+    parentSceneKeys: ['search', 'lists', 'profile'],
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
@@ -307,7 +307,7 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'search',
   'home',
   'polls',
-  'bookmarks',
+  'lists',
   'profile',
   'saveList',
   'pollCreation',
@@ -327,7 +327,7 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
 
 export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
   'saveList',
-  'bookmarks',
+  'lists',
   'profile',
   // stub-pass scenes (append-only — order is mount order)
   'userProfile',
@@ -466,7 +466,7 @@ export type OverlayRouteParamsMap = {
   sheetHost?: undefined;
   /** Home takes no params — the shelves derive from the viewport. */
   home?: undefined;
-  bookmarks?: undefined;
+  lists?: undefined;
   polls?: {
     pollId?: string | null;
   };

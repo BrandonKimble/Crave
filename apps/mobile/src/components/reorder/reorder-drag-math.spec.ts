@@ -23,7 +23,7 @@ const base: DragFrameInput = {
   minTranslationY: Number.NEGATIVE_INFINITY,
 };
 
-// The bookmarks slot map (ledger §Leg 5 walkthrough): 2 columns, cellWidth 180 +
+// The lists slot map (ledger §Leg 5 walkthrough): 2 columns, cellWidth 180 +
 // gap 12 → columnStride 192; rowHeight 180 + gap 12 → rowStride 192 (the rowHeight
 // input IS the stride). Slot index = row × 2 + col.
 const grid: DragFrameInput = {
@@ -213,7 +213,7 @@ describe('computeDragFrame — variable-height slot map (listDetail rich rows)',
   });
 });
 
-describe('computeDragFrame — 2-column slot map (bookmarks grid)', () => {
+describe('computeDragFrame — 2-column slot map (lists grid)', () => {
   it('THE cross-column drag (ledger walkthrough): slot 5 → slot 2 up-left one stride each', () => {
     const frame = computeDragFrame({ ...grid, translationY: -192, translationX: -192 });
     // row = 2 + round(−192/192) = 1; col = 1 + round(−192/192) = 0 → 1×2+0 = 2.

@@ -11,7 +11,7 @@ export type OverlayKey =
   | 'sheetHost'
   | 'home'
   | 'polls'
-  | 'bookmarks'
+  | 'lists'
   | 'profile'
   | 'restaurant'
   | 'saveList'

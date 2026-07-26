@@ -5,9 +5,9 @@ import type { SharedValue } from 'react-native-reanimated';
 import type { FavoriteListType } from '../../../services/favorite-lists';
 
 /**
- * THE BOOKMARKS HOME CONTROL STATE (leg 3 — plans/toggle-strip-rebuild-ledger.md §5).
+ * THE LISTS HOME CONTROL STATE (leg 3 — plans/toggle-strip-rebuild-ledger.md §5).
  *
- * listType / sortMode used to be useState inside BookmarksDataSurface — body-tree
+ * listType / sortMode used to be useState inside ListsDataSurface — body-tree
  * state, which is why the strip was trapped inside the display:none-gated data
  * surface. With the strip on the persistent-header mount the controls are CHROME:
  * the header strip (chrome) writes here, the data surface (body) reads here.
@@ -20,9 +20,9 @@ import type { FavoriteListType } from '../../../services/favorite-lists';
  * against the live session. Same one-way law: the body writes the seat, the strip
  * reads it.
  */
-export type BookmarksSortMode = 'recent' | 'custom';
+export type ListsSortMode = 'recent' | 'custom';
 
-export type BookmarksEditSeat = {
+export type ListsEditSeat = {
   isEditing: boolean;
   /** False when there is nothing to reorder (rows = 0) — the chip citizen exits. */
   canEnterEdit: boolean;
@@ -40,16 +40,16 @@ export type BookmarksEditSeat = {
   saveEdit: () => void;
 };
 
-export type BookmarksHomeControlsState = {
+export type ListsHomeControlsState = {
   listType: FavoriteListType;
-  sortMode: BookmarksSortMode;
-  editSeat: BookmarksEditSeat | null;
+  sortMode: ListsSortMode;
+  editSeat: ListsEditSeat | null;
   setListType: (value: FavoriteListType) => void;
-  setSortMode: (value: BookmarksSortMode) => void;
-  setEditSeat: (seat: BookmarksEditSeat | null) => void;
+  setSortMode: (value: ListsSortMode) => void;
+  setEditSeat: (seat: ListsEditSeat | null) => void;
 };
 
-export const useBookmarksHomeControlsStore = create<BookmarksHomeControlsState>((set) => ({
+export const useListsHomeControlsStore = create<ListsHomeControlsState>((set) => ({
   listType: 'restaurant',
   sortMode: 'recent',
   editSeat: null,

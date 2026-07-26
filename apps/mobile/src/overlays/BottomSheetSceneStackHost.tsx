@@ -703,7 +703,7 @@ const SceneStackBodyFrameHost = React.memo(
     // animated opacity on the native views — so the NEXT hard-swap (non-transitioning)
     // presentation of that leg rendered plate + body at the RETAINED opacity 0: correct
     // persistent header, bodyNull:false, activity flags all green, pure frost (the exact
-    // observed signature; repro = Favorites → Search [holds out:'bookmarks'] → Favorites).
+    // observed signature; repro = Favorites → Search [holds out:'lists'] → Favorites).
     // Keeping the styles attached makes the layers' opacity a LIVE function of (player,
     // legRole) on every commit: at rest the player's token-null branch pins paintAck=1/
     // settleRamp=1 ⇒ incoming=1 / idle=0, continuously repairing any retained value. The

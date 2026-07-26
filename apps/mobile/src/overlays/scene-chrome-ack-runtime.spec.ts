@@ -27,8 +27,8 @@ describe('scene-chrome-ack-runtime', () => {
 
   it('the store is single-valued (last committed scene wins)', () => {
     recordSceneChromeAck('polls');
-    recordSceneChromeAck('bookmarks');
-    expect(getSceneChromeAckSceneKey()).toBe('bookmarks');
+    recordSceneChromeAck('lists');
+    expect(getSceneChromeAckSceneKey()).toBe('lists');
   });
 });
 
@@ -54,7 +54,7 @@ describe('computeSceneChromeHeight (L1)', () => {
 
   it('header-strip scenes add exactly the declared band + spacer', () => {
     const strip = computeSceneChromeHeight('polls');
-    expect(computeSceneChromeHeight('bookmarks')).toBe(strip);
+    expect(computeSceneChromeHeight('lists')).toBe(strip);
     expect(strip - base).toBeCloseTo(
       TOGGLE_STRIP_BAND_HEIGHT + HEADER_STRIP_BOTTOM_SPACER_HEIGHT,
       5

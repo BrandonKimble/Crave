@@ -12,7 +12,7 @@ import type { OverlayKey } from './types';
 // ─── Edit-mode SESSION primitive (leg 10 step 6; charter §6 owner clarification) ─────────────
 //
 // The ONE declarable mode-session every reorder-editing surface uses — extracted from the
-// hand-rolled ListDetail/Bookmarks copies the leg-9 proving ground flagged (primitive defect
+// hand-rolled ListDetail/Lists copies the leg-9 proving ground flagged (primitive defect
 // #2). A surface DECLARES the session; the primitive owns, uniformly:
 //
 //   • the pure order/history session (order · history · historyIndex; undo/redo; live
@@ -25,7 +25,7 @@ import type { OverlayKey } from './types';
 //     with the house strip-morph duration — feed it straight to ToggleStrip's actionProgress.
 //
 // Geometry stays with the surface: ListDetail declares 1-column variable-height rich rows
-// (ReorderableRows variableHeights), Bookmarks' 2-column tile grid is the same declaration
+// (ReorderableRows variableHeights), Lists' 2-column tile grid is the same declaration
 // with grid geometry. Save/persistence also stays with the surface (the PATCH vocabulary is
 // per-API); call `exit()` after a successful save.
 

@@ -47,7 +47,7 @@ describe('resolveHeaderNavAction (PF chrome clock)', () => {
   });
 
   // Leg 9 (wave-2 §2 conformance): a LIVE edit session shows the X on ANY scene — the home
-  // My-ranking edit on bookmarks (topLevel) must not keep a live create plus mid-edit.
+  // My-ranking edit on lists (topLevel) must not keep a live create plus mid-edit.
   it('a live edit session shows the X on EVERY scene, topLevel included', () => {
     for (const key of ALL_KEYS) {
       expect({ key, action: resolveHeaderNavAction(key, true) }).toEqual({
@@ -118,7 +118,7 @@ describe('edit-session liveness re-mints the PresentationFrame', () => {
       expect(frames[frames.length - 1]?.isChildSceneRevealed).toBe(false);
 
       // Scene-scoped law: a live session on ANOTHER scene never leaks into this one.
-      const otherSceneRelease = publishEditSessionLive('bookmarks');
+      const otherSceneRelease = publishEditSessionLive('lists');
       expect(controller.getPresentationFrame().isChildSceneRevealed).toBe(false);
       otherSceneRelease();
     } finally {
@@ -160,7 +160,7 @@ describe('extendActiveRootFromNavReTap', () => {
   it('content-side re-tap writes the content seat', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
     extendActiveRootFromNavReTap({
-      targetSceneKey: 'bookmarks',
+      targetSceneKey: 'lists',
       promoteActiveSheet: jest.fn(),
       routeSheetSnapSessionActions: runtime.actions,
     });

@@ -112,7 +112,7 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
   mountedEntryUnits,
   activeEntryId,
 }: SceneStackBodyContentProps): React.ReactNode => {
-  // P3 return-to-origin scroll RESTORE for the mounted-scroll path (bookmarks). Gate on
+  // P3 return-to-origin scroll RESTORE for the mounted-scroll path (lists). Gate on
   // isActive && hasActivatedExpandedContent:
   //   • isActive — the static tab bodies are RETAINED (never unmounted once bootstrapped), so a
   //     dismiss-return is NOT a cold re-mount; the only signal that flips on the return is the
@@ -373,15 +373,15 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     if (hasFoundationWhiteLayer) {
       return (
         <SceneScrollFactsSceneKeyContext.Provider value={sceneKey ?? null}>
-        <SceneBodyFoundationSurface
-          scrollOffset={bodyScrollRuntime.scrollOffset}
-          contentOverscroll={bodyScrollRuntime.contentOverscroll}
-          // hasFoundationWhiteLayer ⇒ a spec row exists ⇒ sceneKey IS a SheetSceneKey.
-          sceneKey={sceneKey as SheetSceneKey}
-          style={sceneSurfaceStyle}
-        >
-          {sceneBodyInner}
-        </SceneBodyFoundationSurface>
+          <SceneBodyFoundationSurface
+            scrollOffset={bodyScrollRuntime.scrollOffset}
+            contentOverscroll={bodyScrollRuntime.contentOverscroll}
+            // hasFoundationWhiteLayer ⇒ a spec row exists ⇒ sceneKey IS a SheetSceneKey.
+            sceneKey={sceneKey as SheetSceneKey}
+            style={sceneSurfaceStyle}
+          >
+            {sceneBodyInner}
+          </SceneBodyFoundationSurface>
         </SceneScrollFactsSceneKeyContext.Provider>
       );
     }

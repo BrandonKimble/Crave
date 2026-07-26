@@ -5,7 +5,7 @@ import type { OverlayKey } from '../../overlays/types';
 // The owner's law (wave-2 §2 / wave-3 §1b): "edit mode is a CHILD PAGE wherever it lives —
 // nav bar transitions out, no tab-switching mid-edit, the header X acts as Cancel." On a scene
 // whose ROUTE role is already 'child' (listDetail) the PresentationFrame's chrome clock derives
-// that for free; on a topLevel scene (bookmarks — the home My-ranking edit) the role derivation
+// that for free; on a topLevel scene (lists — the home My-ranking edit) the role derivation
 // alone leaves the tab bar up and the LIVE red plus in the header mid-edit.
 //
 // So edit-session liveness is a DERIVATION INPUT to the frame's chrome clock, published here:

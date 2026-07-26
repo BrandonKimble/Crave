@@ -31,11 +31,11 @@ import {
 } from '../../toggles/toggle-strip-layout-cache';
 import { buildEditModeActionRow } from '../../toggles/EditModeActionRow';
 import {
-  useBookmarksHomeControlsStore,
-  type BookmarksEditSeat,
-  type BookmarksSortMode,
-} from './runtime/bookmarks-home-controls-store';
-import { commitBookmarksHomeSliceToggle } from './runtime/bookmarks-home-content-toggle';
+  useListsHomeControlsStore,
+  type ListsEditSeat,
+  type ListsSortMode,
+} from './runtime/lists-home-controls-store';
+import { commitListsHomeSliceToggle } from './runtime/lists-home-content-toggle';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { showShareModal } from '../../components/share-modal-store';
 import { SegmentedToggle } from '../../components/SegmentedToggle';
@@ -100,8 +100,8 @@ const BOOKMARK_LIST_TYPE_OPTIONS = [
 const BOOKMARK_SORT_OPTIONS = [
   { value: 'recent', label: 'Recent' },
   { value: 'custom', label: 'My ranking' },
-] as const satisfies readonly { value: BookmarksSortMode; label: string }[];
-const BOOKMARK_SORT_LABEL_BY_VALUE: Record<BookmarksSortMode, string> = {
+] as const satisfies readonly { value: ListsSortMode; label: string }[];
+const BOOKMARK_SORT_LABEL_BY_VALUE: Record<ListsSortMode, string> = {
   recent: 'Recent',
   custom: 'My ranking',
 };
@@ -109,7 +109,7 @@ const BOOKMARK_SORT_LABEL_BY_VALUE: Record<BookmarksSortMode, string> = {
 /** Wave-2 §2: system defaults are REGULAR lists — one uniform ordering, no pinned prefix. */
 const sortListsForDisplay = (
   lists: readonly FavoriteListSummary[],
-  sortMode: BookmarksSortMode
+  sortMode: ListsSortMode
 ): FavoriteListSummary[] =>
   sortMode === 'custom'
     ? [...lists].sort((a, b) => a.position - b.position)
@@ -129,7 +129,7 @@ const chunkFavoriteLists = (
 // Sparse slots render as quiet placeholders; the API fills from the top-left.
 const TILE_GALLERY_SLOTS = [0, 1, 2, 3] as const;
 
-const BookmarksTileGallery = React.memo(({ item }: { item: FavoriteListSummary }) => {
+const ListsTileGallery = React.memo(({ item }: { item: FavoriteListSummary }) => {
   const bySlot = new Map((item.tileImages ?? []).map((image) => [image.slot, image]));
   return (
     <View style={styles.tileGallery} accessibilityLabel={`${item.name} photos`}>
@@ -159,9 +159,9 @@ const BookmarksTileGallery = React.memo(({ item }: { item: FavoriteListSummary }
   );
 });
 
-BookmarksTileGallery.displayName = 'BookmarksTileGallery';
+ListsTileGallery.displayName = 'ListsTileGallery';
 
-type BookmarksListTileProps = {
+type ListsListTileProps = {
   item: FavoriteListSummary;
   onPress: (list: FavoriteListSummary) => void;
   onOpenMenu: (list: FavoriteListSummary) => void;
@@ -172,7 +172,7 @@ type BookmarksListTileProps = {
   isActiveDrag?: boolean;
 };
 
-const BookmarksListTile = React.memo(
+const ListsListTile = React.memo(
   ({
     item,
     onPress,
@@ -180,7 +180,7 @@ const BookmarksListTile = React.memo(
     tileHeight,
     editHandleGesture = null,
     isActiveDrag = false,
-  }: BookmarksListTileProps) => {
+  }: ListsListTileProps) => {
     const isEditingTile = editHandleGesture != null;
     // Edit mode: the ellipsis seat becomes the grab handle (§1.1 — center-right is
     // the handle's home, wave-3 §3.2's freed region on cards).
@@ -193,7 +193,7 @@ const BookmarksListTile = React.memo(
           <View
             style={styles.tileMenuButton}
             accessibilityLabel="Drag to reorder"
-            testID={`bookmarks-tile-handle-${item.listId}`}
+            testID={`lists-tile-handle-${item.listId}`}
           >
             <GripVertical size={18} color={SEGMENT_TEXT} />
           </View>
@@ -224,7 +224,7 @@ const BookmarksListTile = React.memo(
           isActiveDrag && styles.tileActiveDrag,
         ]}
       >
-        <BookmarksTileGallery item={item} />
+        <ListsTileGallery item={item} />
         <View style={styles.tileFooter}>
           <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
             {item.name}
@@ -236,23 +236,23 @@ const BookmarksListTile = React.memo(
   }
 );
 
-BookmarksListTile.displayName = 'BookmarksListTile';
+ListsListTile.displayName = 'ListsListTile';
 
 // ─── §8.14: the pinned synthetic ALL tile (one per side, above the system lists) ─────
-type BookmarksAllTileProps = {
+type ListsAllTileProps = {
   listType: FavoriteListType;
   onPress: (listType: FavoriteListType) => void;
   /** Edit mode: rendered and pinned in place, but not a navigation target. */
   disabled?: boolean;
 };
 
-const BookmarksAllTile = React.memo(({ listType, onPress, disabled }: BookmarksAllTileProps) => (
+const ListsAllTile = React.memo(({ listType, onPress, disabled }: ListsAllTileProps) => (
   <Pressable
     onPress={() => onPress(listType)}
     disabled={disabled}
     accessibilityRole="button"
     accessibilityLabel={listType === 'restaurant' ? 'All restaurants' : 'All dishes'}
-    testID="bookmarks-all-tile"
+    testID="lists-all-tile"
     style={({ pressed }) => [styles.allTile, pressed && !disabled && styles.tilePressed]}
   >
     <Text variant="body" weight="semibold" style={styles.allTileTitle} numberOfLines={1}>
@@ -262,7 +262,7 @@ const BookmarksAllTile = React.memo(({ listType, onPress, disabled }: BookmarksA
   </Pressable>
 ));
 
-BookmarksAllTile.displayName = 'BookmarksAllTile';
+ListsAllTile.displayName = 'ListsAllTile';
 
 // ─── The home strip (leg 3 header mount): [Edit] · Sort · Restaurants/Dishes ────────
 // Wave-3 §1.1/§2.1: the Edit chip is BACK as a STRIP CITIZEN — a keyed conditional
@@ -270,15 +270,15 @@ BookmarksAllTile.displayName = 'BookmarksAllTile';
 // siblings by real layout — the snap was the chip not being a citizen at all), and
 // it reads as a CLEAN CUTOUT (no pill-in-a-window). The action row while editing is
 // the shared edit action row against the body-published seat.
-const bookmarksStripCacheSeat = createToggleStripCacheSeat();
+const listsStripCacheSeat = createToggleStripCacheSeat();
 
-const BookmarksEditChip = ({ onPress }: { onPress: () => void }) => (
+const ListsEditChip = ({ onPress }: { onPress: () => void }) => (
   <Pressable
     onPress={onPress}
     accessibilityRole="button"
     accessibilityLabel="Edit list order"
     style={styles.editChip}
-    testID="bookmarks-edit-toggle"
+    testID="lists-edit-toggle"
   >
     <Pencil size={14} color={TILE_TEXT} strokeWidth={2} />
     <Text variant="caption" weight="semibold" style={styles.editChipText}>
@@ -287,16 +287,16 @@ const BookmarksEditChip = ({ onPress }: { onPress: () => void }) => (
   </Pressable>
 );
 
-const BookmarksHomeStrip = React.memo(() => {
-  const listType = useBookmarksHomeControlsStore((state) => state.listType);
-  const sortMode = useBookmarksHomeControlsStore((state) => state.sortMode);
-  const setListType = useBookmarksHomeControlsStore((state) => state.setListType);
-  const setSortMode = useBookmarksHomeControlsStore((state) => state.setSortMode);
-  const editSeat = useBookmarksHomeControlsStore((state) => state.editSeat);
+const ListsHomeStrip = React.memo(() => {
+  const listType = useListsHomeControlsStore((state) => state.listType);
+  const sortMode = useListsHomeControlsStore((state) => state.sortMode);
+  const setListType = useListsHomeControlsStore((state) => state.setListType);
+  const setSortMode = useListsHomeControlsStore((state) => state.setSortMode);
+  const editSeat = useListsHomeControlsStore((state) => state.editSeat);
 
   // Owner decision (leg 3): scrollX resets on re-present — the header strip unmounts
   // exactly when the scene stops being presented; layout stays warm.
-  React.useEffect(() => () => clearToggleStripCacheScrollX(bookmarksStripCacheSeat), []);
+  React.useEffect(() => () => clearToggleStripCacheScrollX(listsStripCacheSeat), []);
 
   const optionSelectorOpenKey = useOptionSelectorOpenKey();
 
@@ -304,7 +304,7 @@ const BookmarksHomeStrip = React.memo(() => {
     <ToggleStrip
       placement="header"
       backdrop="chrome-frost"
-      cacheSeat={bookmarksStripCacheSeat}
+      cacheSeat={listsStripCacheSeat}
       actionRow={
         editSeat != null && editSeat.isEditing
           ? buildEditModeActionRow({
@@ -316,24 +316,24 @@ const BookmarksHomeStrip = React.memo(() => {
               canRedo: editSeat.canRedo,
               hasEverEdited: editSeat.hasEverEdited,
               isSaving: editSeat.isSaving,
-              testIDPrefix: 'bookmarks',
+              testIDPrefix: 'lists',
             })
           : null
       }
       actionProgress={editSeat?.actionProgress}
-      testID="bookmarks-strip"
+      testID="lists-strip"
     >
       {editSeat != null && editSeat.canEnterEdit && sortMode === 'custom' ? (
-        <BookmarksEditChip key="edit" onPress={editSeat.enterEdit} />
+        <ListsEditChip key="edit" onPress={editSeat.enterEdit} />
       ) : null}
       <SelectorChip
         key="sort"
         label={BOOKMARK_SORT_LABEL_BY_VALUE[sortMode]}
         active={sortMode !== 'recent'}
-        expanded={optionSelectorOpenKey === 'bookmarks-sort'}
+        expanded={optionSelectorOpenKey === 'lists-sort'}
         onPress={() =>
           toggleOptionSelector({
-            key: 'bookmarks-sort',
+            key: 'lists-sort',
             title: 'Sort',
             options: BOOKMARK_SORT_OPTIONS,
             value: sortMode,
@@ -341,13 +341,13 @@ const BookmarksHomeStrip = React.memo(() => {
               // Leg 4: the store write IS the synchronous re-slice; the content seam
               // (settleMs 0) adds the uniform declaration + gap instrumentation.
               setSortMode(value);
-              commitBookmarksHomeSliceToggle('sort_mode');
+              commitListsHomeSliceToggle('sort_mode');
             },
-            testID: 'bookmarks-sort-sheet',
+            testID: 'lists-sort-sheet',
           })
         }
         accessibilityLabel="Sort lists"
-        testID="bookmarks-sort-toggle"
+        testID="lists-sort-toggle"
       />
       <SegmentedToggle
         key="list-type"
@@ -355,18 +355,18 @@ const BookmarksHomeStrip = React.memo(() => {
         value={listType}
         onChange={(value) => {
           setListType(value);
-          commitBookmarksHomeSliceToggle('list_type');
+          commitListsHomeSliceToggle('list_type');
         }}
         accessibilityLabel="Toggle between restaurant and dish lists"
-        testID="bookmarks-list-type-toggle"
+        testID="lists-list-type-toggle"
       />
     </ToggleStrip>
   );
 });
 
-BookmarksHomeStrip.displayName = 'BookmarksHomeStrip';
+ListsHomeStrip.displayName = 'ListsHomeStrip';
 
-type BookmarksSceneBodyProps = {
+type ListsSceneBodyProps = {
   listType: FavoriteListType;
   lists: readonly FavoriteListSummary[];
   isEditing: boolean;
@@ -381,7 +381,7 @@ type BookmarksSceneBodyProps = {
   onOpenAll: (listType: FavoriteListType) => void;
 };
 
-const BookmarksSceneBody = React.memo(
+const ListsSceneBody = React.memo(
   ({
     listType,
     lists,
@@ -395,7 +395,7 @@ const BookmarksSceneBody = React.memo(
     onListPress,
     onOpenMenu,
     onOpenAll,
-  }: BookmarksSceneBodyProps) => {
+  }: ListsSceneBodyProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
 
@@ -413,7 +413,7 @@ const BookmarksSceneBody = React.memo(
 
     const renderEditTile = React.useCallback(
       (item: FavoriteListSummary, context: ReorderGridRenderContext) => (
-        <BookmarksListTile
+        <ListsListTile
           item={item}
           onPress={onListPress}
           onOpenMenu={onOpenMenu}
@@ -429,7 +429,7 @@ const BookmarksSceneBody = React.memo(
     // component renders RESOLVED items only (present/appending by construction).
     const listContent = (
       <View onLayout={handleGridLayout}>
-        <BookmarksAllTile listType={listType} onPress={onOpenAll} disabled={isEditing} />
+        <ListsAllTile listType={listType} onPress={onOpenAll} disabled={isEditing} />
         {isEditing && tileHeight > 0 ? (
           // §1.1: the primitive re-declared with 2-col TILE geometry — the same
           // tiles, now absolutely slotted by the grid's drag math.
@@ -446,7 +446,7 @@ const BookmarksSceneBody = React.memo(
               onDragStateChange={onDragStateChange}
               accessibilityMode={isScreenReaderEnabled}
               scrollAdapter={scrollAdapter}
-              testIDPrefix="bookmarks-edit"
+              testIDPrefix="lists-edit"
             />
           </View>
         ) : (
@@ -455,7 +455,7 @@ const BookmarksSceneBody = React.memo(
               <View key={`row-${rowIndex}`} style={styles.gridRow}>
                 {row.map((item) => (
                   <View key={item.listId} style={styles.gridCell}>
-                    <BookmarksListTile
+                    <ListsListTile
                       item={item}
                       onPress={onListPress}
                       onOpenMenu={onOpenMenu}
@@ -476,7 +476,7 @@ const BookmarksSceneBody = React.memo(
             onPress={onOpenCreate}
             style={styles.newListCard}
             accessibilityRole="button"
-            testID="bookmarks-new-list"
+            testID="lists-new-list"
           >
             <Plus size={18} color={SEGMENT_TEXT} />
             <Text variant="body" style={styles.newListText}>
@@ -487,7 +487,7 @@ const BookmarksSceneBody = React.memo(
       </View>
     );
     const profiledListContent = onProfilerRender ? (
-      <React.Profiler id="BookmarksSceneBody:list" onRender={onProfilerRender}>
+      <React.Profiler id="ListsSceneBody:list" onRender={onProfilerRender}>
         {listContent}
       </React.Profiler>
     ) : (
@@ -498,22 +498,22 @@ const BookmarksSceneBody = React.memo(
   }
 );
 
-BookmarksSceneBody.displayName = 'BookmarksSceneBody';
+ListsSceneBody.displayName = 'ListsSceneBody';
 
 // THE CONTENT SLOT (THE PAGE L2 collection body): receives the RESOLVED lists — the
 // query edge never reaches here. Interaction machinery (edit session, menus, create)
 // operates on resolved data by construction.
-const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSummary[] }) => {
+const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummary[] }) => {
   const lists = items;
   const onProfilerRender = useSearchOverlayProfilerRender();
   const executeEntityRefAction = useEntityRefActionExecutor();
   const queryClient = useQueryClient();
   // Leg 3: control state (listType / sortMode) lives in the module store — the
   // header strip (chrome) writes it, this body reads it.
-  const listType = useBookmarksHomeControlsStore((state) => state.listType);
-  const sortMode = useBookmarksHomeControlsStore((state) => state.sortMode);
-  const setSortMode = useBookmarksHomeControlsStore((state) => state.setSortMode);
-  const setEditSeat = useBookmarksHomeControlsStore((state) => state.setEditSeat);
+  const listType = useListsHomeControlsStore((state) => state.listType);
+  const sortMode = useListsHomeControlsStore((state) => state.sortMode);
+  const setSortMode = useListsHomeControlsStore((state) => state.setSortMode);
+  const setEditSeat = useListsHomeControlsStore((state) => state.setEditSeat);
 
   const { promoteActiveSheet } = useAppOverlayRouteController();
   const sortedLists = React.useMemo(() => sortListsForDisplay(lists, sortMode), [lists, sortMode]);
@@ -530,7 +530,7 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
   // lane (§1b: a NAMED product intent — the posture seat is legitimately written to
   // expanded, and exit performs NO restore; the sheet STAYS extended).
   const editSession = useEditModeSession({
-    sceneKey: 'bookmarks',
+    sceneKey: 'lists',
     entryId: null,
     onEnter: () => promoteActiveSheet({ snap: 'expanded' }),
     discardMessage: 'Your new list order has not been saved.',
@@ -591,7 +591,7 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
 
   // Publish the EDIT SEAT the header strip renders (body writes, chrome reads).
   React.useEffect(() => {
-    const seat: BookmarksEditSeat = {
+    const seat: ListsEditSeat = {
       isEditing,
       canEnterEdit: lists.length > 0,
       canUndo: editSession.canUndo,
@@ -628,7 +628,7 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
     if (!isEditing) {
       return null;
     }
-    const handle = getOverlaySceneScrollHandle('bookmarks');
+    const handle = getOverlaySceneScrollHandle('lists');
     if (handle == null) {
       return null;
     }
@@ -654,10 +654,10 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
   const openCreate = React.useCallback(() => {
     showListEdit({
       mode: 'create',
-      listType: useBookmarksHomeControlsStore.getState().listType,
+      listType: useListsHomeControlsStore.getState().listType,
     });
   }, []);
-  React.useEffect(() => registerHeaderCreateAction('bookmarks', openCreate), [openCreate]);
+  React.useEffect(() => registerHeaderCreateAction('lists', openCreate), [openCreate]);
 
   const handleOpenAll = React.useCallback(
     (side: FavoriteListType) => {
@@ -820,7 +820,7 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
   );
 
   const dataSurface = (
-    <BookmarksSceneBody
+    <ListsSceneBody
       listType={listType}
       lists={sortedLists}
       isEditing={isEditing}
@@ -839,7 +839,7 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
   );
 
   return onProfilerRender ? (
-    <React.Profiler id="BookmarksContent" onRender={onProfilerRender}>
+    <React.Profiler id="ListsContent" onRender={onProfilerRender}>
       {dataSurface}
     </React.Profiler>
   ) : (
@@ -847,10 +847,10 @@ const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSu
   );
 });
 
-BookmarksContent.displayName = 'BookmarksContent';
+ListsContent.displayName = 'ListsContent';
 
 // The DECLARED empty view — only correct once the collection RESOLVES empty.
-const BookmarksEmpty = () => (
+const ListsEmpty = () => (
   <View style={styles.emptyState}>
     <Text variant="body" style={styles.emptyText}>
       No lists yet
@@ -858,27 +858,27 @@ const BookmarksEmpty = () => (
   </View>
 );
 
-// THE DECLARATION (L2): bookmarks is a COLLECTION body — the full closed enum over
+// THE DECLARATION (L2): lists is a COLLECTION body — the full closed enum over
 // the favorites collection; the grid/edit composition owns only resolved items.
-const BOOKMARKS_PAGE_BODY: PageCollectionBodySpec<FavoriteListSummary> = {
+const LISTS_PAGE_BODY: PageCollectionBodySpec<FavoriteListSummary> = {
   kind: 'collection',
-  scene: 'bookmarks',
-  Content: BookmarksContent,
+  scene: 'lists',
+  Content: ListsContent,
   // insetX 0: the mounted body renders inside the transport's 20px-inset container —
   // the holes must not re-inset (the double-inset jump class).
   placeholder: { count: 3, insetX: 0 },
-  Empty: BookmarksEmpty,
+  Empty: ListsEmpty,
 };
 
 // THE PAGE CONTROLLER — the query + the state derivation; slots never see the edge.
-const useBookmarksPageBody = (): PageBodyState<FavoriteListSummary> => {
+const useListsPageBody = (): PageBodyState<FavoriteListSummary> => {
   const queryClient = useQueryClient();
   const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
     useBottomSheetSceneStackBodyRenderActivity();
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
-  const listType = useBookmarksHomeControlsStore((state) => state.listType);
+  const listType = useListsHomeControlsStore((state) => state.listType);
   const queryEnabled = !isSystemUnavailable && shouldSubscribeDataLane;
   const listsQuery = useFavoriteLists({
     listType,
@@ -915,18 +915,18 @@ const useBookmarksPageBody = (): PageBodyState<FavoriteListSummary> => {
   });
 };
 
-export const BookmarksMountedSceneBody = React.memo(() => {
+export const ListsMountedSceneBody = React.memo(() => {
   const onProfilerRender = useSearchOverlayProfilerRender();
-  // P3 return-to-origin: publish the bookmarks scene's live scroll lane so a favorites-from-
-  // bookmarks reveal captures the scroll offset to return to on dismiss.
-  useOriginSceneScrollPublication('bookmarks');
+  // P3 return-to-origin: publish the lists scene's live scroll lane so a favorites-from-
+  // lists reveal captures the scroll offset to return to on dismiss.
+  useOriginSceneScrollPublication('lists');
   // THE PAGE L2: ONE tree, always visible — the dual-tree (full-body transition
   // skeleton OVER a display:none prewarmed body) is DELETED; the shell paints the
   // closed states in place.
-  const mountedBody = <PageBodyShell spec={BOOKMARKS_PAGE_BODY} state={useBookmarksPageBody()} />;
+  const mountedBody = <PageBodyShell spec={LISTS_PAGE_BODY} state={useListsPageBody()} />;
 
   return onProfilerRender ? (
-    <React.Profiler id="BookmarksMountedSceneBody" onRender={onProfilerRender}>
+    <React.Profiler id="ListsMountedSceneBody" onRender={onProfilerRender}>
       {mountedBody}
     </React.Profiler>
   ) : (
@@ -934,25 +934,25 @@ export const BookmarksMountedSceneBody = React.memo(() => {
   );
 });
 
-BookmarksMountedSceneBody.displayName = 'BookmarksMountedSceneBody';
+ListsMountedSceneBody.displayName = 'ListsMountedSceneBody';
 
-// P3 persistent header (page-switch-master-plan.md §6-P3): the bookmarks header CONTENT mounts
+// P3 persistent header (page-switch-master-plan.md §6-P3): the lists header CONTENT mounts
 // inside the hoisted PersistentSheetHeaderHost, NOT inside this panel — the close (X) semantics
 // come from the overlay route controller (reachable anywhere under the app providers). The
 // grab-handle tap is the shared promote handler.
-const BookmarksPersistentHeaderTitle = React.memo(() => (
+const ListsPersistentHeaderTitle = React.memo(() => (
   <View style={styles.headerTextGroup}>
     <ChromeTitleText>{toSingleLineText('Lists')}</ChromeTitleText>
   </View>
 ));
 
-BookmarksPersistentHeaderTitle.displayName = 'BookmarksPersistentHeaderTitle';
+ListsPersistentHeaderTitle.displayName = 'ListsPersistentHeaderTitle';
 
 // Module-scope registration (house pattern — origin-scene-live-state-registry). The header
 // action is the HOST-OWNED HeaderNavAction (leg 6 §4) — no per-scene Action slot.
-registerPersistentHeaderDescriptor('bookmarks', {
-  Title: BookmarksPersistentHeaderTitle,
-  Strip: BookmarksHomeStrip,
+registerPersistentHeaderDescriptor('lists', {
+  Title: ListsPersistentHeaderTitle,
+  Strip: ListsHomeStrip,
 });
 
 const styles = StyleSheet.create({

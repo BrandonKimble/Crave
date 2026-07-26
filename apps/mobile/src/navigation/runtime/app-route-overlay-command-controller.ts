@@ -72,7 +72,7 @@ const areCommandSnapshotsEqual = (
 const APP_ROUTE_TOP_LEVEL_PRODUCT_SCENE_KEYS: ReadonlySet<OverlayKey> = new Set<OverlayKey>([
   'search',
   'polls',
-  'bookmarks',
+  'lists',
   'profile',
 ]);
 

@@ -5,7 +5,7 @@ import { consumePendingOverlayScrollRestore } from './sceneScrollStateRegistry';
 
 // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore step 5/6).
 //
-// Scroll RESTORE for a MOUNTED-SCROLL scene (bookmarks). The dismiss restore path stages a
+// Scroll RESTORE for a MOUNTED-SCROLL scene (lists). The dismiss restore path stages a
 // one-shot pending scroll offset for the scene's lane (keyed by sceneIdentityKey == sceneKey
 // for the static mounted tabs) BEFORE the scene re-roots. This hook applies it:
 //

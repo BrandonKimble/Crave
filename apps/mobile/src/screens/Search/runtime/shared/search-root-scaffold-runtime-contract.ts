@@ -17,7 +17,7 @@ export type SearchOverlayStoreRuntime = {
   activeOverlayKey: OverlayKey;
   rootOverlay: OverlayKey;
   isSearchOverlay: boolean;
-  showBookmarksOverlay: boolean;
+  showListsOverlay: boolean;
   showPollsOverlay: boolean;
   showProfileOverlay: boolean;
   getIdentitySnapshot: () => Pick<
@@ -25,7 +25,7 @@ export type SearchOverlayStoreRuntime = {
     | 'activeOverlayKey'
     | 'rootOverlay'
     | 'isSearchOverlay'
-    | 'showBookmarksOverlay'
+    | 'showListsOverlay'
     | 'showPollsOverlay'
     | 'showProfileOverlay'
   >;

@@ -43,7 +43,7 @@ const SignInScreen: React.FC = () => {
             Sign back into Crave Search
           </Text>
           <Text variant="body" style={styles.subtitle}>
-            Pick up your polls, bookmarks, and drops instantly.
+            Pick up your polls, lists, and drops instantly.
           </Text>
           <View style={styles.buttonGroup}>
             <Pressable

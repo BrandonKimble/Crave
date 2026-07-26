@@ -34,7 +34,7 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
   search: paramlessSceneParamsEqual,
   sheetHost: paramlessSceneParamsEqual,
   home: paramlessSceneParamsEqual,
-  bookmarks: paramlessSceneParamsEqual,
+  lists: paramlessSceneParamsEqual,
   price: paramlessSceneParamsEqual,
   scoreInfo: paramlessSceneParamsEqual,
   notifications: paramlessSceneParamsEqual,

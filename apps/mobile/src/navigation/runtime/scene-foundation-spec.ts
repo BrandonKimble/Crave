@@ -87,9 +87,9 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     snapLock: 'none',
     bodySurface: 'white',
   },
-  bookmarks: {
+  lists: {
     skeleton: { rowType: 'tile' },
-    // Leg 3: migrated to the persistent-header extension mount (BookmarksHomeStrip —
+    // Leg 3: migrated to the persistent-header extension mount (ListsHomeStrip —
     // ONE ToggleStrip whose action-row slot carries the edit morph). The leg-2
     // 'in-list' row described the hand-rolled two-strip morph, deleted with it.
     strip: 'header',

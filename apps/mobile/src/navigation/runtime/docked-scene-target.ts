@@ -8,12 +8,7 @@
 // imports to this file.
 import type { OverlayKey } from '../../overlays/types';
 
-export type AppOverlayTopLevelProductRouteKey =
-  | 'search'
-  | 'home'
-  | 'polls'
-  | 'bookmarks'
-  | 'profile';
+export type AppOverlayTopLevelProductRouteKey = 'search' | 'home' | 'polls' | 'lists' | 'profile';
 
 /**
  * Every top-level product scene, in canonical order. The single source for the
@@ -25,7 +20,7 @@ export type AppOverlayTopLevelProductRouteKey =
 export const ALL_TOP_LEVEL_SCENE_KEYS: readonly AppOverlayTopLevelProductRouteKey[] = [
   'search',
   'home',
-  'bookmarks',
+  'lists',
   'profile',
   'polls',
 ];

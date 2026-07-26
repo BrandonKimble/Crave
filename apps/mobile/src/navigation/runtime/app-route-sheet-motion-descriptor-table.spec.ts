@@ -14,7 +14,7 @@
 // INTENTIONAL TUNE 2026-07-02 (owner decision): 'rememberedDetent' upgraded from live-shared
 // detent (preserveLiveY when the shared sheet sat usable) to TRUE PER-PAGE memory — snapTo the
 // TARGET scene's own remembered detent when usable (middle/expanded), else the fallback. The
-// oracle's bookmarks/profile branch and the sweep's snap dimension were updated in-change.
+// oracle's lists/profile branch and the sweep's snap dimension were updated in-change.
 //
 // INTENTIONAL TUNE 2026-07-12 (owner ratified — THE TWO-POSTURE LAW, plans/root-snap-law.md
 // §Leg 2): topLevelSwitch now resolves to the TARGET side's posture seat ('postureSeat'):
@@ -50,7 +50,7 @@ const SCENE_KEY_DOMAIN = {
   search: true,
   sheetHost: true,
   polls: true,
-  bookmarks: true,
+  lists: true,
   profile: true,
   home: true,
   restaurant: true,
@@ -80,7 +80,7 @@ const LEGACY_SCENE_KEYS: readonly OverlayKey[] = [
   'search',
   'sheetHost',
   'polls',
-  'bookmarks',
+  'lists',
   'profile',
   'restaurant',
   'saveList',
@@ -179,12 +179,12 @@ const legacyOracleSheetMotionPlan = ({
       // unset fall to the side's cold-start seed (home collapsed, content expanded).
       // 2026-07-26 intentional amendment (home-surface-charter Job 3): polls demoted to a
       // CONTENT page — the home side is search (+ the 'home' docked scene, outside this
-      // legacy domain); polls joins bookmarks/profile on the content seat.
+      // legacy domain); polls joins lists/profile on the content seat.
       const isHomeSide = targetSceneKey === 'search';
       if (
         isHomeSide ||
         targetSceneKey === 'polls' ||
-        targetSceneKey === 'bookmarks' ||
+        targetSceneKey === 'lists' ||
         targetSceneKey === 'profile'
       ) {
         const isUsableSeatSnap =

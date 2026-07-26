@@ -104,12 +104,7 @@ const resolveRouteSceneSwitchSnapTarget = ({
 
 const SHARED_SHEET_HOST_SCENE_KEY: OverlayKey = 'sheetHost';
 
-const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>([
-  'search',
-  'polls',
-  'bookmarks',
-  'profile',
-]);
+const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>(['search', 'polls', 'lists', 'profile']);
 
 // Derived from the central metadata (role 'child' on the shared physical sheet)
 // — adding such a scene needs only its metadata entry, with no hand-edit here.
@@ -144,17 +139,17 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // (resolveDefaultSheetMotionPlan) still applies; only the CONTENT handoff flips from
 // held-outgoing crossfade to skeleton-first swapImmediately.
 //
-// Return-to-origin foundation (cover-orphan blank fix): `bookmarks` is now SEEDED. A
-// topLevelSwitch into bookmarks — a plain bookmarks forward-open OR a favorites-as-search
-// dismiss that re-roots to the captured bookmarks origin — has NO usable content-readiness
-// gate: bookmarks is absent from SCENE_READINESS_CONTRACT_BY_TARGET (→ EMPTY contract,
+// Return-to-origin foundation (cover-orphan blank fix): `lists` is now SEEDED. A
+// topLevelSwitch into lists — a plain lists forward-open OR a favorites-as-search
+// dismiss that re-roots to the captured lists origin — has NO usable content-readiness
+// gate: lists is absent from SCENE_READINESS_CONTRACT_BY_TARGET (→ EMPTY contract,
 // requiredContentGates:[]), so the arm site mints contentReadinessTransactionId=null and
 // NEVER links the 'content' plane to any readiness signal. Left on the default
 // `preserveOutgoingUntilSettle`, such a switch armed a content plane that could only complete
 // via the 600ms SCENE_READINESS_LIVENESS_MS watchdog — and resolveTransitionSheetPresentation-
 // SceneKey kept presenting the HELD outgoing handoff (the dismissing search surface) for that
-// whole window, so the incoming bookmarks body got no render gate → BLANK. Like the other
-// seeded scenes, BookmarksPanel paints its OWN shell on frame 1 (SceneLoadingSurface
+// whole window, so the incoming lists body got no render gate → BLANK. Like the other
+// seeded scenes, ListsPanel paints its OWN shell on frame 1 (SceneLoadingSurface
 // rowType="tile" while `!sceneReady || isListsLoading`), so it must hard-swap to that skeleton:
 // swapImmediately → no held outgoing → no 'content' plane → skeleton-first, fills when data
 // lands. Mirrors `profile` (also a seeded topLevelSwitch target with an empty content
@@ -162,7 +157,7 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 //
 // P4 instant switch (page-switch-master-plan.md §6-P4): `polls` is now SEEDED for nav-switch
 // targets. The polls leg is ALWAYS-MOUNTED with a live body from boot (the docked home),
-// so a topLevelSwitch into it (nav-tab press from bookmarks/profile/search) has nothing to
+// so a topLevelSwitch into it (nav-tab press from lists/profile/search) has nothing to
 // crossfade toward — holding the outgoing feed only delays the press-up→content flip; the
 // skeleton fallback covers any cold gap. swapImmediately → the switch hard-swaps in the same
 // frame, exactly like the other nav pages. This branch only ever sees polls via
@@ -191,7 +186,7 @@ const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'saveList',
   'profile',
   'restaurant',
-  'bookmarks',
+  'lists',
   'polls',
   'search',
   // Stub-pass child scenes (plans/page-registry.md §1): static mounted placeholder bodies paint

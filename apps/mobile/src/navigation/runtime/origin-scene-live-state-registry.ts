@@ -11,7 +11,7 @@ import type { OriginScrollLane } from '../../overlays/searchRouteSessionTypes';
 //
 // So each rich scene publishes a tiny LIVE-STATE PUBLICATION here (functions that read its
 // live scroll/segment at call time), keyed by sceneKey. The overlay-session controller
-// registers the BOOKMARKS / PROFILE capture providers that merge this live rich state onto
+// registers the LISTS / PROFILE capture providers that merge this live rich state onto
 // the degenerate base (which already carries the correct sceneKey + LIVE detent). Keeping
 // detent resolution in the controller (it owns the sheet-snap session) and scroll/segment in
 // the scene keeps the layering clean.

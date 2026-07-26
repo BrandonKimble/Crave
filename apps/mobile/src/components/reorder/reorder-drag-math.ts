@@ -35,7 +35,7 @@ export type DragFrameInput = {
    * the 1-D era; the grid passes measuredRowHeight + gap.
    */
   rowHeight: number;
-  /** Slot-map shape: 1 = the classic row stack; 2 = the bookmarks tile grid. */
+  /** Slot-map shape: 1 = the classic row stack; 2 = the lists tile grid. */
   columns: number;
   /** Horizontal slot stride (cell width INCLUDING inter-column gap). Unused when columns === 1. */
   columnStride: number;

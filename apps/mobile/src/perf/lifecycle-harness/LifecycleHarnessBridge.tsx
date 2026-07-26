@@ -23,7 +23,7 @@ import type { OverlayKey } from '../../overlays/types';
  * legs register at THEIR owning runtimes — this bridge only carries the verbs
  * whose dependencies are the route/coordinator contexts.
  */
-const SHEET_SNAP_SCENES: OverlayKey[] = ['search', 'polls', 'bookmarks', 'profile'];
+const SHEET_SNAP_SCENES: OverlayKey[] = ['search', 'polls', 'lists', 'profile'];
 
 export const LifecycleHarnessBridge: React.FC = () => {
   const routeSceneRuntime = useAppRouteSceneRuntime();

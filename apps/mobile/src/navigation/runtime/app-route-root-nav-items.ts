@@ -9,8 +9,13 @@ import type { OverlayKey } from '../../overlays/types';
  * `postureSeat` in app-route-scene-policy-registry.ts turns that sweep RED.
  */
 export const APP_ROOT_NAV_ITEMS = [
-  { key: 'search', label: 'Search' },
+  // The user-facing root page is "Home" (map + search bar + docked home surface),
+  // but the runtime key stays 'search' DELIBERATELY: the key names the
+  // search-anchored root architecture, not the page label. A docked 'home' scene
+  // key already exists (DOCKED_SCENE_KEY), so renaming this key would collide /
+  // be incoherent. Do not "fix" the key to match the label.
+  { key: 'search', label: 'Home' },
   { key: 'polls', label: 'Polls' },
-  { key: 'bookmarks', label: 'Lists' },
+  { key: 'lists', label: 'Lists' },
   { key: 'profile', label: 'Profile' },
 ] as const satisfies readonly { key: OverlayKey; label: string }[];

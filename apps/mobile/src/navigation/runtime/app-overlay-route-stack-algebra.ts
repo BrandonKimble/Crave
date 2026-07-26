@@ -337,7 +337,7 @@ export type SessionDismissPlan =
 // Leg 4 (phase-1 design §1.3): a SESSION is any entry that presents a world — the
 // pushed 'search' results entry (session by scene identity), or any entry a world
 // identity was STAMPED onto at the launch chokepoint (entry.desire). The old
-// search-key-only scan classified [bookmarks, listDetail(world)] as session-less and
+// search-key-only scan classified [lists, listDetail(world)] as session-less and
 // fell through to terminalHome — the owner-repro'd [NAV-CONTRACT] bark.
 const isWorldBearingEntry = (entry: OverlayRouteEntry | undefined): boolean =>
   entry != null && (entry.key === 'search' || entry.desire != null);

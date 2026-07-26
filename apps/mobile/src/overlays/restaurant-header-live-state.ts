@@ -6,7 +6,7 @@ import type { RestaurantOverlayData } from './restaurantRoutePanelContract';
 // live-state publication. The persistent header's Title/Action/grab components mount OUTSIDE the
 // restaurant panel (inside the hoisted PersistentSheetHeaderHost chrome) and therefore cannot
 // read the panel's props. The restaurant presentation, however, has TWO producers (the
-// parent-scoped global-restaurant draft opened from polls/bookmarks/profile, and the
+// parent-scoped global-restaurant draft opened from polls/lists/profile, and the
 // search-scoped control-selection snapshot the search runtime seeds), and the ONE place the
 // winner is resolved — including the freeze-retain semantics the header must honor — is
 // RestaurantRouteSceneInputHost (`parent ?? search`, mirroring its published scene descriptor).

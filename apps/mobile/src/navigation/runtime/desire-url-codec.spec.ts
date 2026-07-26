@@ -87,7 +87,7 @@ describe('desire-url-codec', () => {
     });
   });
 
-  it('parses the emitted share-link format verbatim (BookmarksPanel outbound)', () => {
+  it('parses the emitted share-link format verbatim (ListsPanel outbound)', () => {
     expect(parseDesireLink('https://crave-search.app/l/sunny-tacos-9f')).toEqual({
       kind: 'sharedList',
       shareSlug: 'sunny-tacos-9f',

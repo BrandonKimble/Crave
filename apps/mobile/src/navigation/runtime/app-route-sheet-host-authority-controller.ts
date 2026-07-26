@@ -1006,7 +1006,7 @@ class AppRouteSheetHostAuthorityController {
     //     open from the docked feed holds outgoing='polls' because the PREVIOUS frame already
     //     presented 'polls').
     //   • isDockedLane     := frame.laneKind === 'docked' (replaces the
-    //     boundary-committed force + the stale-nav deny-list band-aid; a bookmarks/profile or
+    //     boundary-committed force + the stale-nav deny-list band-aid; a lists/profile or
     //     child target IS 'top-level'/'child' in the frame, structurally).
     //   • activeSemanticOverlayKey := the semantic key OF the frame-selected shell (presented,
     //     or the held outgoing under the R3 shell rule) — 'polls' in the docked lane.
@@ -2089,7 +2089,7 @@ class AppRouteSheetHostAuthorityController {
       }
       return;
     }
-    if (activeSemanticOverlayKey === 'bookmarks' || activeSemanticOverlayKey === 'profile') {
+    if (activeSemanticOverlayKey === 'lists' || activeSemanticOverlayKey === 'profile') {
       // Two-posture write contract (plans/root-snap-law.md §Leg 2): the CONTENT seat records
       // only user-gesture settles. Programmatic arrivals (the postureSeat snapTo, search-flow
       // hides) READ the seat, never write it — that gate is what makes the ledger-laundering

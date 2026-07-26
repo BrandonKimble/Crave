@@ -64,7 +64,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
-  // Polls demotion: a regular content page (mirrors bookmarks' seat + chrome).
+  // Polls demotion: a regular content page (mirrors lists' seat + chrome).
   polls: {
     sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
@@ -75,7 +75,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     postureSeat: 'content',
     chromePolicy: { kind: 'preserve' },
   },
-  bookmarks: {
+  lists: {
     sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],

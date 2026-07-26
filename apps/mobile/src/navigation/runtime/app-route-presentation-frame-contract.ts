@@ -112,7 +112,7 @@ export const EMPTY_PRESENTATION_FRAME: PresentationFrame = {
  * presented scene): a live edit session makes the scene a CHILD PAGE wherever it lives
  * (wave-2 §2), so the plus rotates to the X — which the session primitive's registered
  * close-override then answers as CANCEL (discard-confirm when dirty). Without it, a topLevel
- * edit surface (the home My-ranking edit on bookmarks) keeps a LIVE create plus mid-edit.
+ * edit surface (the home My-ranking edit on lists) keeps a LIVE create plus mid-edit.
  */
 export const resolveHeaderNavAction = (
   presentedSceneKey: OverlayKey | null,
@@ -138,7 +138,7 @@ export const resolveHeaderNavAction = (
  *
  * Leg 9 — `isEditSessionLiveOnTopOfStack`: a live edit session is CHILD-PAGE tenure on any
  * scene (wave-2 §2 "nav bar transitions out … no tab-switching mid-edit"), so the nav also
- * leaves while a topLevel scene (bookmarks' home edit) holds a live session. Role-child
+ * leaves while a topLevel scene (lists' home edit) holds a live session. Role-child
  * scenes are unaffected (already true). Exit restores the pure role derivation.
  */
 export const resolveIsChildSceneRevealed = (
@@ -180,7 +180,7 @@ export type ResolvePresentationLaneKindInput = {
 /**
  * THE single laneKind formula — the one place the docked decision is made. Transcribed for
  * EXACT behavioral parity from resolveIsDockedLane (native-overlay-target-authorities
- * :345-390), whose body this replaces; the old scattered child/bookmarks/profile deny checks are
+ * :345-390), whose body this replaces; the old scattered child/lists/profile deny checks are
  * structural here (a child target is DENIED the docked lane structurally; a non-search
  * top-level target IS 'top-level'), not band-aids applied per consumer.
  */
@@ -193,7 +193,7 @@ export const resolvePresentationLaneKind = ({
   const isChildTarget =
     resolvedTargetSceneKey != null &&
     getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
-  // Parity note: the original formula deny-listed exactly bookmarks|profile as non-search
+  // Parity note: the original formula deny-listed exactly lists|profile as non-search
   // top-level targets the lane must never force the docked scene over (the favorite↔poll nav
   // swap fix). Now DERIVED from route metadata: any top-level product scene that is neither
   // the search root nor the docked target — a future top-level scene cannot silently miss it.

@@ -58,7 +58,7 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
 
   test('(d) root/topLevel/shell scenes resolve NULL units (singleton-per-key legacy path)', () => {
     const { stack } = drillStack();
-    (['search', 'polls', 'bookmarks', 'profile', 'sheetHost'] as const).forEach((key) => {
+    (['search', 'polls', 'lists', 'profile', 'sheetHost'] as const).forEach((key) => {
       expect(
         resolveMountedSceneEntryUnits({
           sceneKey: key,
@@ -70,7 +70,7 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     });
   });
 
-  test('L3 residency: a managed scene\'s LAST unit survives its entry popping (resident, not remounted)', () => {
+  test("L3 residency: a managed scene's LAST unit survives its entry popping (resident, not remounted)", () => {
     const root = entry('search');
     const notif = entry('notifications');
     const withNotif = [root, notif];

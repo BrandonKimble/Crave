@@ -64,9 +64,14 @@ export const usePerfScenarioOverlaySceneCommand = ({
           }, POLL_CHILD_COMMIT_DELAY_MS);
           return true;
         case 'search':
-        case 'bookmarks':
+        case 'lists':
         case 'profile':
           command.setRootRoute(scene as OverlayKey);
+          return true;
+        // ALIAS: external deep links (Maestro flows, saved perf URLs) may still say
+        // 'bookmarks' — the pre-rename scene key. Accept the old string, emit 'lists'.
+        case 'bookmarks':
+          command.setRootRoute('lists');
           return true;
         default:
           // Metadata-driven fallback: any registered switchable scene is drivable without a

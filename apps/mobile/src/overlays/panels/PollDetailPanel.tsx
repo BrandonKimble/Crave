@@ -875,7 +875,7 @@ export const usePollDetailPanelSpec = ({
   //
   // Degrade-gracefully contract: a missing/reordered/deleted anchor (resolveAnchorNodeIndex → -1)
   // does NOTHING (the thread stays at top), never throws. Generalizes to a list-card anchor for
-  // bookmarks/profile — same shape: resolve a stable domain id → index against the CURRENT data,
+  // lists/profile — same shape: resolve a stable domain id → index against the CURRENT data,
   // scrollToIndex(viewPosition), flash. Only the id→index resolver differs.
   const contentReady = visible && !loading && threadTree.length > 0;
   React.useEffect(() => {

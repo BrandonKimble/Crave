@@ -181,7 +181,7 @@ export const registerToggleStripSeatResetListener = (
  * THE SEEDED-HOLE PRUNE (leg 4 — orchestrator red-team finding): the strip seeds its
  * hole map from the cache on mount so a remount paints cutouts on frame one, but a
  * cached hole whose control is NOT rendered this presentation (a conditional chip —
- * bookmarks' Edit chip exists only while sort = Custom) would never re-register AND
+ * lists' Edit chip exists only while sort = Custom) would never re-register AND
  * never unregister (unregistration is the mounted slot's unmount cleanup): a phantom
  * see-through window floating in the white plate, forever. The correct point is the
  * SEED, not a later sweep: a hole is the shadow of a rendered control, so the seed is

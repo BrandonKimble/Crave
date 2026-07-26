@@ -110,7 +110,7 @@ export const useSearchRouteSwitchPostCommitRuntime = ({
     const isForegroundOverlaySwitchTarget = (sceneKey: OverlayKey | null): boolean =>
       sceneKey === 'search' ||
       sceneKey === 'polls' ||
-      sceneKey === 'bookmarks' ||
+      sceneKey === 'lists' ||
       sceneKey === 'profile';
     const maybeCaptureCleanup = (transitionState: RouteSceneSwitchTransitionState): void => {
       const transitionContract = transitionState.transitionContract;

@@ -6,7 +6,22 @@ import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRunt
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import type { OverlayKey } from '../overlays/types';
 import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
+import {
+  EditProfileMountedSceneBody,
+  FollowListMountedSceneBody,
+  ListDetailMountedSceneBody,
+  NotificationsMountedSceneBody,
+  SettingsMountedSceneBody,
+  UserProfileMountedSceneBody,
+} from '../overlays/panels/ChildScenePanels';
+import { ListsMountedSceneBody } from '../overlays/panels/ListsPanel';
+import { DmSessionPanelBody, MessagesInboxPanelBody } from '../overlays/panels/MessagingPanels';
+import { PostPhotosPanelBody } from '../overlays/panels/PostPhotosPanel';
+import { ProfileMountedSceneBody } from '../overlays/panels/ProfilePanel';
+import { SaveListMountedSceneBody } from '../overlays/panels/SaveListPanel';
+import { useHomePanelListSceneParts } from '../overlays/panels/HomePanel';
 import { usePollsPanelListSceneParts } from '../overlays/panels/PollsPanel';
+import type { SearchRouteMountedSceneBodyKey } from '../overlays/searchOverlayRouteHostContract';
 import {
   TrackSheetPage,
   type TrackSheetCommands,
@@ -79,10 +94,23 @@ export const TrackSheetRouteHost: React.FC = () => {
     return () => sub.remove();
   }, []);
 
-  if (!state.on) {
+  // HIDE, never unmount: tearing the track down mid-session hit a Fabric
+  // mounting-coordinator assert (unregisterViewComponentDescriptor SIGABRT).
+  // The surface mounts once on first enable and then only toggles visibility —
+  // which is also the production shape (one persistent sheet surface).
+  const everOnRef = React.useRef(false);
+  everOnRef.current = everOnRef.current || state.on;
+  if (!everOnRef.current) {
     return null;
   }
-  return <TrackSheetRouteSurface scene={state.scene} />;
+  return (
+    <View
+      style={[StyleSheet.absoluteFill, !state.on && styles.hidden]}
+      pointerEvents={state.on ? 'box-none' : 'none'}
+    >
+      <TrackSheetRouteSurface scene={state.scene} />
+    </View>
+  );
 };
 
 const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneOverride }) => {
@@ -90,19 +118,33 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // startup geometry seed (the same routeOverlaySnapPoints the production sheet
   // rides), and the presented scene tracks the PresentationFrame — tab presses
   // switch this host's chrome exactly as they switch the production sheet's.
-  const snapPoints = React.useMemo(
-    () => getSearchStartupGeometrySeed().routeOverlaySnapPoints,
-    []
-  );
+  const snapPoints = React.useMemo(() => getSearchStartupGeometrySeed().routeOverlaySnapPoints, []);
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const scene = frame.activeSceneKey ?? sceneOverride;
 
-  // RUNG 3 — REAL BODIES, scene by scene: migrated scenes render their real
-  // body-content spec through TrackSheetPage; the rest ride the placeholder.
-  const ScenePage = scene === 'polls' ? PollsTrackScenePage : PlaceholderTrackScenePage;
-  return <ScenePage key={scene} scene={scene} snapPoints={snapPoints} />;
+  // RUNG 3 — REAL BODIES through ONE PERSISTENT PAGE: the track surface never
+  // remounts (production shape; remount churn hit a Fabric unmount assert) —
+  // scene switches swap chrome + body content inside UnifiedTrackScenePage.
+  return <UnifiedTrackScenePage scene={scene} snapPoints={snapPoints} />;
 };
+
+// The mounted-body registry's scene set (searchOverlayRouteHostContract) minus
+// the list-parts scenes and search (owns its dual-band composition — LAST).
+const MOUNTED_TRACK_SCENES = new Set<OverlayKey>([
+  'lists',
+  'profile',
+  'saveList',
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'postPhotos',
+  'messagesInbox',
+  'dmSession',
+]);
 
 type TrackScenePageProps = {
   scene: OverlayKey;
@@ -110,7 +152,10 @@ type TrackScenePageProps = {
 };
 
 /** Shared chrome + page assembly for every scene page. */
-const useTrackScenePageChrome = (scene: OverlayKey, snapPoints: TrackScenePageProps['snapPoints']) => {
+const useTrackScenePageChrome = (
+  scene: OverlayKey,
+  snapPoints: TrackScenePageProps['snapPoints']
+) => {
   const commandsRef = React.useRef<TrackSheetCommands | null>(null);
   const trackH = snapPoints.collapsed - snapPoints.expanded;
   React.useEffect(() => {
@@ -160,30 +205,66 @@ const useTrackScenePageChrome = (scene: OverlayKey, snapPoints: TrackScenePagePr
   return { commandsRef, header, dockedStrip, geometry };
 };
 
-/** RUNG 3, scene 1: the REAL polls feed — the scene's own body-content spec
- * (usePollsPanelListSceneParts: real data lane, PollCard renderers, pagination,
- * empty/loading choreography) riding the one track. */
-const PollsTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
+/** RUNG 3 — the ONE persistent scene page. Both list-parts hooks run
+ * unconditionally (their data lanes are snap-gated internally); the presented
+ * scene picks which content the persistent FlashList renders:
+ *   polls/home → the scene's real body-content spec;
+ *   mounted-registry scenes → the registry body as a one-item track body;
+ *   anything else → placeholder rows. */
+const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
   const { commandsRef, header, dockedStrip, geometry } = useTrackScenePageChrome(scene, snapPoints);
-  const { sceneBodyContent, sceneBodyTransport } = usePollsPanelListSceneParts();
+  const pollsParts = usePollsPanelListSceneParts();
+  const homeParts = useHomePanelListSceneParts();
+
+  const renderMountedBody = React.useCallback(() => {
+    // DIRECT bodies, no registry wrapper: the wrapper's residency boundary
+    // renders hidden prewarm legs which, without the old host's shell-liveness
+    // context, painted VISIBLY below the live body (the phantom duplicate).
+    const Body = MOUNTED_BODY_COMPONENTS[scene as SearchRouteMountedSceneBodyKey];
+    if (Body == null) {
+      return null;
+    }
+    return (
+      <ChromeProbeBoundary label={`${scene}.body`}>
+        <Body />
+      </ChromeProbeBoundary>
+    );
+  }, [scene]);
+  const renderPlaceholderRow = React.useCallback(
+    ({ item }: { item: unknown }) => (
+      <View style={styles.row}>
+        <View style={styles.rowDot} />
+        <View style={styles.rowLine} />
+        <Text style={styles.rowIndex}>{String((item as number) + 1)}</Text>
+      </View>
+    ),
+    []
+  );
+
   const list = React.useMemo(() => {
-    if (sceneBodyContent.surfaceKind !== 'list') {
-      return { data: [], renderItem: () => null };
+    const partsFor = scene === 'polls' ? pollsParts : scene === 'home' ? homeParts : null;
+    if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
+      const spec = partsFor.sceneBodyContent;
+      return {
+        data: spec.data,
+        renderItem: spec.renderItem,
+        keyExtractor: spec.keyExtractor,
+        ListEmptyComponent: spec.ListEmptyComponent,
+        ItemSeparatorComponent: spec.ItemSeparatorComponent,
+        extraData: spec.extraData,
+        onEndReached: spec.onEndReached,
+        onEndReachedThreshold: spec.onEndReachedThreshold,
+      };
+    }
+    if (MOUNTED_TRACK_SCENES.has(scene)) {
+      return { data: [scene], renderItem: renderMountedBody };
     }
     return {
-      data: sceneBodyContent.data,
-      renderItem: sceneBodyContent.renderItem,
-      keyExtractor: sceneBodyContent.keyExtractor,
-      ListEmptyComponent: sceneBodyContent.ListEmptyComponent,
-      ItemSeparatorComponent: sceneBodyContent.ItemSeparatorComponent,
-      extraData: sceneBodyContent.extraData,
-      onEndReached: sceneBodyContent.onEndReached,
-      onEndReachedThreshold: sceneBodyContent.onEndReachedThreshold,
+      data: PLACEHOLDER_ROWS,
+      renderItem: renderPlaceholderRow,
     };
-  }, [sceneBodyContent]);
-  // Pagination's real trigger: the transport's user-scroll-activity signal.
-  const onUserScroll = sceneBodyTransport.onUserListScrollActivity;
-  void onUserScroll; // wired in the follow-up slice (needs τ→list-offset mapping)
+  }, [homeParts, pollsParts, renderMountedBody, renderPlaceholderRow, scene]);
+
   return (
     <View style={styles.root} pointerEvents="box-none">
       <TrackSheetPage
@@ -192,7 +273,7 @@ const PollsTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints 
         headerHeight={64}
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
-        rowSurfaceStyle={styles.rowSurface}
+        rowSurfaceStyle={scene === 'polls' ? styles.rowSurface : undefined}
         debugHud
         commandsRef={commandsRef}
       />
@@ -200,37 +281,28 @@ const PollsTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints 
   );
 };
 
-const PlaceholderTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
-  const { commandsRef, header, dockedStrip, geometry } = useTrackScenePageChrome(scene, snapPoints);
-  const rows = React.useMemo(() => Array.from({ length: 30 }, (_, index) => index), []);
-  const renderRow = React.useCallback(
-    ({ item }: { item: number }) => (
-      <View style={styles.row}>
-        <View style={styles.rowDot} />
-        <View style={styles.rowLine} />
-        <Text style={styles.rowIndex}>{item + 1}</Text>
-      </View>
-    ),
-    []
-  );
-  return (
-    <View style={styles.root} pointerEvents="box-none">
-      <TrackSheetPage
-        geometry={geometry}
-        header={header}
-        headerHeight={64}
-        dockedStrip={dockedStrip}
-        list={{ data: rows, renderItem: renderRow }}
-        rowSurfaceStyle={styles.rowSurface}
-        debugHud
-        commandsRef={commandsRef}
-      />
-    </View>
-  );
+const PLACEHOLDER_ROWS = Array.from({ length: 30 }, (_, index) => index);
+
+const MOUNTED_BODY_COMPONENTS: Partial<
+  Record<SearchRouteMountedSceneBodyKey, React.ComponentType>
+> = {
+  lists: ListsMountedSceneBody,
+  profile: ProfileMountedSceneBody,
+  saveList: SaveListMountedSceneBody,
+  userProfile: UserProfileMountedSceneBody,
+  listDetail: ListDetailMountedSceneBody,
+  followList: FollowListMountedSceneBody,
+  notifications: NotificationsMountedSceneBody,
+  settings: SettingsMountedSceneBody,
+  editProfile: EditProfileMountedSceneBody,
+  postPhotos: PostPhotosPanelBody,
+  messagesInbox: MessagesInboxPanelBody,
+  dmSession: DmSessionPanelBody,
 };
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, zIndex: 91 },
+  hidden: { opacity: 0 },
   headerRow: {
     flex: 1,
     backgroundColor: '#ffffff',

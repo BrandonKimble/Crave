@@ -73,7 +73,7 @@ export type PageListBandSpec = PageBandTemplate & {
 /** THE legal shell-band constructor: checks Component/keyOf against the band's item
  *  type at the declaration site, then erases — a band whose row component disagrees
  *  with its keyOf is a compile error where the band is written. */
-export const defineListBand = <TItem,>(band: {
+export const defineListBand = <TItem>(band: {
   key: string;
   keyOf: (item: TItem, index: number) => string;
   estimatedRowHeight?: number;
@@ -99,8 +99,7 @@ type PageBandTemplateInput = {
   Empty?: React.ComponentType;
 };
 
-export const defineBandTemplate = <TBand extends PageBandTemplateInput>(band: TBand): TBand =>
-  band;
+export const defineBandTemplate = <TBand extends PageBandTemplateInput>(band: TBand): TBand => band;
 
 export type PageListBodySpec = {
   kind: 'list';
@@ -113,7 +112,7 @@ export type PageListBodySpec = {
   bands: readonly [PageListBandSpec, ...PageListBandSpec[]];
 };
 
-/** A COLLECTION body (bookmarks): the full closed enum over one resolved collection,
+/** A COLLECTION body (lists): the full closed enum over one resolved collection,
  *  but the present face is a COMPOSITION (tile grid, edit-mode reorder, interleaved
  *  affordances) rather than per-row slots — the Content slot receives the resolved
  *  items and owns the arrangement; load states never reach it. */
@@ -164,7 +163,7 @@ export type PageBodySpec<TItem> =
  * while not pending is still pending (a settled query with no data has nothing to
  * present).
  */
-export const resolvePageBodyListState = <TItem,>(args: {
+export const resolvePageBodyListState = <TItem>(args: {
   isPending: boolean;
   isError: boolean;
   /** Human noun for the failure modal ("your notifications"). */
@@ -191,7 +190,7 @@ export const resolvePageBodyListState = <TItem,>(args: {
  *  with null data is an error by law (an entity page with nothing to show failed —
  *  this is exactly the old hand-rolled `!isPending && data == null` gate, now
  *  unrepresentable to get wrong). */
-export const resolvePageContentBodyState = <TData,>(args: {
+export const resolvePageContentBodyState = <TData>(args: {
   isPending: boolean;
   isError: boolean;
   what: string;

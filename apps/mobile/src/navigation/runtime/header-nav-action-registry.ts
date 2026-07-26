@@ -7,7 +7,7 @@ import type { OverlayKey } from '../../overlays/types';
 //
 //   • CREATE (parents, plus): page-specific create shortcuts. Route-level creates
 //     (polls → pushRoute('pollCreation')) live in the host's fallback map; creates that open
-//     PANEL-INTERNAL flows (bookmarks' new-list form is BookmarksPanel state) register here.
+//     PANEL-INTERNAL flows (lists' new-list form is ListsPanel state) register here.
 //     Pressing an unwired plus is a LOUD dev bark, never a silent no-op.
 //   • CLOSE (children/search, X): the host's default is the canonical pop-to-origin dismiss
 //     (closeActiveRoute). Scenes whose close is a SESSION verb register an override —

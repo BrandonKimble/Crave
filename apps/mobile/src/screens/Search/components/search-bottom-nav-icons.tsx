@@ -1,41 +1,56 @@
 import React from 'react';
-import { BarChart2, Heart } from 'lucide-react-native';
+import { Heart } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 
-export type SearchBottomNavItemKey = 'search' | 'polls' | 'bookmarks' | 'profile';
+export type SearchBottomNavItemKey = 'search' | 'polls' | 'lists' | 'profile';
 
 export const SEARCH_BOTTOM_NAV_ICON_RENDERERS: Record<
   SearchBottomNavItemKey,
   (color: string, active: boolean) => React.ReactNode
 > = {
+  // The root tab is the app's HOME page (map + search + docked home surface):
+  // a heroicons house — solid when active (matching the profile tab's pattern).
   search: (color: string, active: boolean) => {
-    const holeRadius = active ? 4.2 : 3.2;
-    const pinPath =
-      'M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0';
-    const holePath = `M12 10m-${holeRadius},0a${holeRadius},${holeRadius} 0 1,0 ${
-      holeRadius * 2
-    },0a${holeRadius},${holeRadius} 0 1,0 -${holeRadius * 2},0`;
+    if (active) {
+      return (
+        <Svg width={24} height={24} viewBox="0 0 24 24" fill={color} stroke="none">
+          <Path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z" />
+          <Path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z" />
+        </Svg>
+      );
+    }
     return (
-      <Svg width={24} height={24} viewBox="0 0 24 24">
+      <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
         <Path
-          d={`${pinPath} ${holePath}`}
-          fill={active ? color : 'none'}
-          stroke={color}
-          strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          fillRule="evenodd"
-          clipRule="evenodd"
+          d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-6.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
         />
       </Svg>
     );
   },
-  // Polls demotion (home-surface-charter Job 3): poll iconography = the candidate
-  // bars — a bar-chart glyph, bolder stroke when active.
+  // Polls: the app's historical poll mark — bar-chart bars rotated 90° into
+  // horizontal result bars (same design as the in-card PollIcon in
+  // screens/Search/components/metric-icons.tsx, re-drawn here so nav chrome
+  // never imports screen-component internals). Bolder stroke when active.
   polls: (color: string, active: boolean) => (
-    <BarChart2 size={24} color={color} strokeWidth={active ? 2.8 : 2} />
+    <Svg
+      width={24}
+      height={24}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={color}
+      strokeWidth={active ? 2.8 : 2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ transform: [{ rotate: '90deg' }] }}
+    >
+      <Path d="M5 21v-6" />
+      <Path d="M12 21V3" />
+      <Path d="M19 21V9" />
+    </Svg>
   ),
-  bookmarks: (color: string, active: boolean) => (
+  lists: (color: string, active: boolean) => (
     <Heart size={24} color={color} strokeWidth={active ? 0 : 2} fill={active ? color : 'none'} />
   ),
   profile: (color: string, active: boolean) => {

@@ -60,7 +60,7 @@ export const snapPointForState = (
 /**
  * Shared snap point calculation used by all overlay sheets.
  * This ensures consistent positioning across results sheet, restaurant overlay,
- * bookmarks overlay, polls overlay, and profile overlay.
+ * lists overlay, polls overlay, and profile overlay.
  */
 export const calculateSnapPoints = (
   screenHeight: number,

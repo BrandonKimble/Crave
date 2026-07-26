@@ -348,7 +348,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
 
   // THE single carrier-producer of the docked decision for every native-overlay output
   // (navigation / display / pollsVisibility / visibility / sheetPolicy snapshots). The old
-  // formula (eligibility × results_dismissing × fresh-target child/bookmarks/profile deny-list
+  // formula (eligibility × results_dismissing × fresh-target child/lists/profile deny-list
   // × search root × dismissed/restore-intent) now lives VERBATIM in resolvePresentationLaneKind
   // (app-route-presentation-frame-contract.ts), computed ONCE by AppRouteSceneSwitchController;
   // this reads the committed frame so every downstream contract field stays in lockstep with
@@ -595,9 +595,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const rootOverlayKey = routeSceneSwitchSnapshot.routeState.rootOverlayKey;
     return {
       routeChromeOverlayMode:
-        rootOverlayKey === 'bookmarks' || rootOverlayKey === 'profile'
-          ? 'expandedMiddle'
-          : 'search',
+        rootOverlayKey === 'lists' || rootOverlayKey === 'profile' ? 'expandedMiddle' : 'search',
     };
   };
 
@@ -611,12 +609,12 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       routeScenePolicySnapshot.shouldSuppressSearchAndTabSheetsForForegroundEditing &&
       (routeActiveSceneKey === 'search' ||
         routeActiveSceneKey === DOCKED_SCENE_KEY ||
-        routeActiveSceneKey === 'bookmarks' ||
+        routeActiveSceneKey === 'lists' ||
         routeActiveSceneKey === 'profile');
     const shouldSuppressTabOverlaySheetForSuggestions =
       routeScenePolicySnapshot.shouldSuppressTabSheetsForSuggestions &&
       (routeActiveSceneKey === DOCKED_SCENE_KEY ||
-        routeActiveSceneKey === 'bookmarks' ||
+        routeActiveSceneKey === 'lists' ||
         routeActiveSceneKey === 'profile');
     const shouldSuppressIdleSearchOverlaySheet =
       routeActiveSceneKey === 'search' &&
