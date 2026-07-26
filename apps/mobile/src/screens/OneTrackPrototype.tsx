@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import Reanimated, {
   interpolate,
   runOnJS,
@@ -53,6 +54,16 @@ const ROW_COUNT = 40;
 const ROW_HEIGHT = 76;
 
 const AnimatedScrollView = Reanimated.ScrollView;
+
+// Docked strip band (production composition, miniaturized): a WHITE PLATE with
+// chip-shaped holes punched through to the frost — the same MaskedHoleOverlay the
+// header cutout plate / cutout skeletons use. Rows scrolling under the band vanish
+// behind the plate; the chips read as windows straight through to the frost.
+const STRIP_LABELS = ['Sort', 'Restaurants', 'Dishes', 'Open now'];
+const STRIP_BAND_HEIGHT = 54;
+const STRIP_PAD_X = 16;
+const STRIP_PAD_Y = 11;
+const SHEET_CORNER_RADIUS = 24;
 
 export const OneTrackPrototype: React.FC = () => {
   const [visible, setVisible] = React.useState(false);
@@ -150,6 +161,29 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   // never sheet travel. Finger-down lifts it (sub-H is the grab again).
   const ballisticFromList = useSharedValue(false);
   const [tauReadout, setTauReadout] = React.useState('τ=0');
+  const [chipHoles, setChipHoles] = React.useState<
+    { x: number; y: number; width: number; height: number; borderRadius: number }[]
+  >([]);
+  const chipRectsRef = React.useRef(
+    new Map<number, { x: number; y: number; width: number; height: number }>()
+  );
+  const onChipLayout = React.useCallback((index: number, e: { nativeEvent: { layout: { x: number; y: number; width: number; height: number } } }) => {
+    chipRectsRef.current.set(index, e.nativeEvent.layout);
+    if (chipRectsRef.current.size === STRIP_LABELS.length) {
+      setChipHoles(
+        Array.from(chipRectsRef.current.entries())
+          .sort(([a2], [b2]) => a2 - b2)
+          .map(([, rect]) => ({
+            // onLayout x/y are parent-relative and already include the row padding.
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            borderRadius: rect.height / 2,
+          }))
+      );
+    }
+  }, []);
 
   const lastReleasePhaseRef = React.useRef('');
   const publishReadout = React.useCallback((value: number, phase: string) => {
@@ -328,15 +362,6 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <Reanimated.View style={dipStyle}>
         <Reanimated.View style={[styles.overscrollBleed, bleedStyle]} pointerEvents="none" />
         <View style={styles.sheetBody}>
-          <View style={styles.stripRow}>
-            {['Sort', 'Restaurants', 'Dishes', 'Open now'].map((label, index) => (
-              <View key={label} style={[styles.chip, index === 1 && styles.chipActive]}>
-                <Text style={[styles.chipText, index === 1 && styles.chipTextActive]}>
-                  {label}
-                </Text>
-              </View>
-            ))}
-          </View>
           {Array.from({ length: ROW_COUNT }, (_, index) => (
             <View key={index} style={styles.row}>
               <View style={styles.rowBadge}>
@@ -360,11 +385,49 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       {/* Pinned header chrome — a τ-derivation riding ABOVE the track (input surface
           2's home; in the prototype it only closes + reads out). */}
       <Reanimated.View style={[styles.header, headerStyle]} pointerEvents="box-none">
+        {/* Corner ears: map-replica quarter-corner fillers — the sheet's rounded
+            top corners stay rounded even while content slides beneath the chrome
+            (the notches outside the radius are world, not sheet). */}
+        <View style={[styles.cornerEar, styles.cornerEarLeft]} pointerEvents="none">
+          <View style={[styles.cornerEarRing, styles.cornerEarRingLeft]} />
+          <Reanimated.View
+            style={[styles.cornerEarRing, styles.cornerEarRingLeft, styles.cornerEarRingDim, backdropStyle]}
+          />
+        </View>
+        <View style={[styles.cornerEar, styles.cornerEarRight]} pointerEvents="none">
+          <View style={[styles.cornerEarRing, styles.cornerEarRingRight]} />
+          <Reanimated.View
+            style={[styles.cornerEarRing, styles.cornerEarRingRight, styles.cornerEarRingDim, backdropStyle]}
+          />
+        </View>
         <View style={styles.headerCard}>
           <Text style={styles.headerTitle}>One Track</Text>
           <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
             <Text style={styles.closeText}>×</Text>
           </Pressable>
+        </View>
+        {/* Docked strip band: frost replica under a WHITE PLATE with chip holes —
+            the production cutout composition (MaskedHoleOverlay), miniaturized.
+            Rows scrolling beneath vanish behind the plate; the chips are windows
+            straight through to the frost. */}
+        <View style={styles.stripBand} pointerEvents="none">
+          <View style={styles.stripFrost} />
+          <Reanimated.View style={[styles.stripFrostDim, backdropStyle]} />
+          <View style={styles.stripFrostWash} />
+          <MaskedHoleOverlay holes={chipHoles} backgroundColor="#ffffff" renderWhenEmpty />
+          <View style={styles.stripRow}>
+            {STRIP_LABELS.map((label, index) => (
+              <View
+                key={label}
+                onLayout={(e) => onChipLayout(index, e)}
+                style={[styles.chip, index === 1 && styles.chipActive]}
+              >
+                <Text style={[styles.chipText, index === 1 && styles.chipTextActive]}>
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
         </View>
         <Reanimated.View style={[styles.divider, dividerStyle]} />
       </Reanimated.View>
@@ -383,9 +446,9 @@ const styles = StyleSheet.create({
   sheetBody: {
     minHeight: SCREEN.height,
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 64,
+    borderTopLeftRadius: SHEET_CORNER_RADIUS,
+    borderTopRightRadius: SHEET_CORNER_RADIUS,
+    paddingTop: 122,
     paddingHorizontal: 16,
   },
   header: {
@@ -434,13 +497,44 @@ const styles = StyleSheet.create({
   },
   closeText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
   divider: { height: 1, backgroundColor: '#e2e8f0' },
-  stripRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+  stripBand: { height: STRIP_BAND_HEIGHT, overflow: 'hidden' },
+  stripFrost: { ...StyleSheet.absoluteFillObject, backgroundColor: '#dce7dd' },
+  stripFrostDim: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b3d2e' },
+  stripFrostWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.45)' },
+  stripRow: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: STRIP_PAD_X,
+    paddingTop: STRIP_PAD_Y,
+  },
+  cornerEar: {
+    position: 'absolute',
+    top: 0,
+    width: SHEET_CORNER_RADIUS,
+    height: SHEET_CORNER_RADIUS,
+    overflow: 'hidden',
+    zIndex: 2,
+  },
+  cornerEarLeft: { left: 0 },
+  cornerEarRight: { right: 0 },
+  cornerEarRing: {
+    position: 'absolute',
+    width: SHEET_CORNER_RADIUS * 4,
+    height: SHEET_CORNER_RADIUS * 4,
+    borderRadius: SHEET_CORNER_RADIUS * 2,
+    borderWidth: SHEET_CORNER_RADIUS,
+    borderColor: '#dce7dd',
+  },
+  cornerEarRingLeft: { left: -SHEET_CORNER_RADIUS, top: -SHEET_CORNER_RADIUS },
+  cornerEarRingRight: { left: -SHEET_CORNER_RADIUS * 2, top: -SHEET_CORNER_RADIUS },
+  cornerEarRingDim: { borderColor: '#0b3d2e' },
   chip: {
     height: 32,
-    borderRadius: 8,
+    borderRadius: 16,
     paddingHorizontal: 12,
     justifyContent: 'center',
-    backgroundColor: '#f1f5f9',
+    backgroundColor: 'transparent',
   },
   chipActive: { backgroundColor: '#f43f5e' },
   chipText: { fontSize: 14, fontWeight: '600', color: '#0f172a' },

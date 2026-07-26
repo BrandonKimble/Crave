@@ -1891,3 +1891,22 @@ prototype artifacts with real-implementation laws):
   white extending above the content top), never the content's own edge.
   Phase-derived: exists only while ballistic-from-list; parked in the spacer
   region it is off-screen in every other phase.
+
+### PRODUCTION SURFACE COMPOSITION MERGED (2026-07-26)
+
+Owner: merge the shipped app's surface trickery with the one-track physics.
+Done in the prototype, using the REAL production pieces:
+- DOCKED STRIP CUTOUTS: the strip band is the production composition
+  miniaturized — frost replica under a WHITE PLATE with chip-shaped holes
+  punched via MaskedHoleOverlay (the same component the header cutout plate and
+  cutout skeletons use). Rows scrolling beneath vanish behind the plate; the
+  chips are windows straight through to the frost. Gotcha: onLayout x/y are
+  parent-relative and already include row padding — adding the padding again
+  double-offsets the holes.
+- CORNER EARS: map-replica quarter-corner fillers (ring trick: oversized
+  borderWidth ring clipped to a 24x24 box) pinned at the sheet's top corners so
+  the rounded radius reads rounded even while content slides beneath the
+  chrome — the notches outside the radius are world, not sheet. The world mask
+  alone drew a straight line and made the sheet read square.
+Verified: deep scroll τ=1807 — rows swallow at the band edge, chips still show
+frost, corners rounded, world clean above the header.
