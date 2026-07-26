@@ -663,7 +663,22 @@ export class RestaurantEntityMergeService {
    * lever: scripts/merge-duplicate-restaurants.ts (report / --apply).
    */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
-  async sweepSameNameDuplicates(): Promise<{ merged: number; held: number }> {
+  async sweepSameNameDuplicatesCron(): Promise<void> {
+    await this.sweepSameNameDuplicates({ apply: true });
+  }
+
+  async sweepSameNameDuplicates(
+    options: { apply: boolean } = { apply: true },
+  ): Promise<{
+    merged: number;
+    held: number;
+    decisions: Array<{
+      name: string;
+      verdict: 'merge' | 'hold';
+      canonicalId?: string;
+      duplicateId?: string;
+    }>;
+  }> {
     const groups = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
@@ -676,6 +691,12 @@ export class RestaurantEntityMergeService {
     `;
     let merged = 0;
     let held = 0;
+    const decisions: Array<{
+      name: string;
+      verdict: 'merge' | 'hold';
+      canonicalId?: string;
+      duplicateId?: string;
+    }> = [];
     for (const group of groups) {
       const details = await this.prisma.$queryRaw<
         Array<{
@@ -733,6 +754,7 @@ export class RestaurantEntityMergeService {
       }
       if (!mergeable) {
         held += 1;
+        decisions.push({ name: group.name, verdict: 'hold' });
         continue;
       }
       const aGrounded = a.place_ids.length > 0;
@@ -745,6 +767,16 @@ export class RestaurantEntityMergeService {
           : b.mention_count > a.mention_count
             ? [b.entity_id, a.entity_id]
             : [a.entity_id, b.entity_id];
+      decisions.push({
+        name: group.name,
+        verdict: 'merge',
+        canonicalId,
+        duplicateId,
+      });
+      if (!options.apply) {
+        merged += 1;
+        continue;
+      }
       try {
         const canonical = await this.prisma.entity.findUniqueOrThrow({
           where: { entityId: canonicalId },
@@ -769,10 +801,11 @@ export class RestaurantEntityMergeService {
     if (merged || held) {
       this.logger.warn('Same-name duplicate sweep result', {
         operation: 'same_name_duplicate_sweep',
+        apply: options.apply,
         merged,
         held,
       });
     }
-    return { merged, held };
+    return { merged, held, decisions };
   }
 }
