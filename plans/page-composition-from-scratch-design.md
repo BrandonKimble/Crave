@@ -2110,3 +2110,11 @@ DEV IRRITANTS FIXED (owner directive: fix everything that surfaces):
   dev-client URL even when the cold launch already connected — the in-process
   JS reload re-installed TurboModules. The nudge is now conditional on Metro
   seeing no traffic from the fresh boot.
+
+RUNG 3 SLICE 4 — THE ACTIVATION BRIDGE (2026-07-26): mounted bodies gate data
+lanes on the old host's activity contexts (all-false defaults = blank bodies).
+The track host now provides BodyData/BodyRender/BodyIsActive contexts with
+track-truth (rendered scene = live presented scene at its seat; all lanes on).
+AMBER-VERIFIED: Lists renders its FULL real page (grids, strip, title) seated
+expanded on the track. Rung-4 note: derive shouldRenderExpandedContent from τ
+for collapsed postures instead of constant true.

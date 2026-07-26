@@ -7,6 +7,11 @@ import { usePresentationFrame } from '../navigation/runtime/use-presentation-fra
 import type { OverlayKey } from '../overlays/types';
 import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
 import {
+  BottomSheetSceneStackBodyDataActivityContext,
+  BottomSheetSceneStackBodyIsActiveContext,
+  BottomSheetSceneStackBodyRenderActivityContext,
+} from '../overlays/BottomSheetSceneStackBodyActivityContext';
+import {
   EditProfileMountedSceneBody,
   FollowListMountedSceneBody,
   ListDetailMountedSceneBody,
@@ -232,10 +237,29 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     if (Body == null) {
       return null;
     }
+    // THE ACTIVATION BRIDGE: mounted bodies gate their data lanes on the old
+    // host's activity contexts (all-false defaults left lists blank on the
+    // track). On the track host the rendered scene IS the live presented scene
+    // at its seat — activity is true by construction. (Rung 4 derives
+    // shouldRenderExpandedContent from τ for collapsed postures.)
+    const activity = {
+      sceneKey: scene,
+      shouldAttachMountedContent: true,
+      shouldRunDataLane: true,
+      shouldSubscribeDataLane: true,
+      shouldRenderExpandedContent: true,
+      hasActivatedExpandedContent: true,
+    };
     return (
-      <ChromeProbeBoundary label={`${scene}.body`}>
-        <Body />
-      </ChromeProbeBoundary>
+      <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
+        <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
+          <BottomSheetSceneStackBodyIsActiveContext.Provider value={true}>
+            <ChromeProbeBoundary label={`${scene}.body`}>
+              <Body />
+            </ChromeProbeBoundary>
+          </BottomSheetSceneStackBodyIsActiveContext.Provider>
+        </BottomSheetSceneStackBodyRenderActivityContext.Provider>
+      </BottomSheetSceneStackBodyDataActivityContext.Provider>
     );
   }, [scene]);
   const renderPlaceholderRow = React.useCallback(
