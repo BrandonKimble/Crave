@@ -28,6 +28,11 @@ target 'cravesearch' do
   # source the tests cover — no drift, no parallel copy.
   pod 'MapLodKit', :path => 'MapLodKit'
 
+  # THE ONE TRACK native hatch (plans/page-composition-from-scratch-design.md sec 8):
+  # phase-dependent scroll bounds + detent targeting at the UIScrollView delegate
+  # level - the two things RN's wrapper hides. Local pod, same rail as MapLodKit.
+  pod 'TrackScrollKit', :path => 'TrackScrollKit'
+
   use_frameworks! :linkage => podfile_properties['ios.useFrameworks'].to_sym if podfile_properties['ios.useFrameworks']
   use_frameworks! :linkage => ENV['USE_FRAMEWORKS'].to_sym if ENV['USE_FRAMEWORKS']
 

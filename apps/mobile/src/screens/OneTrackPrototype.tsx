@@ -1,5 +1,15 @@
 import React from 'react';
-import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Dimensions,
+  findNodeHandle,
+  Linking,
+  NativeEventEmitter,
+  NativeModules,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import Reanimated, {
   interpolate,
   runOnJS,
@@ -71,12 +81,6 @@ export const OneTrackPrototype: React.FC = () => {
 
 const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const scrollRef = useAnimatedRef<Reanimated.ScrollView>();
-  const tau = useSharedValue(0);
-  const dragging = useSharedValue(false);
-  // THE PHASE-DEPENDENT BOUND (boundary law): finger down ⇒ full track [0,end];
-  // ballistic ⇒ lower bound H (momentum bounces at the list top, never collapses
-  // the sheet). contentInset.top = -H makes offset H the native bounce edge.
-  const ballisticClamp = useSharedValue(false);
   // THE TOP-EDGE DIP (owner-confirmed gap): the H boundary is synthesized mid-flight,
   // so UIScrollView clamps instead of bouncing (the bottom edge, engine-known from
   // gesture start, bounces natively). Until the native-module hatch makes H an
@@ -90,10 +94,67 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   // must be computed AT RELEASE from the standard decel model (projection = v·0.499
   // for the normal rate), i.e. the speed the flick WOULD have carried through H.
   const pendingDipVelocity = useSharedValue(0);
+
+  const [nativeHatch, setNativeHatch] = React.useState(false);
+  React.useEffect(() => {
+    const physics = NativeModules.TrackScrollPhysics;
+    if (physics?.attach == null) {
+      return;
+    }
+    const tag = findNodeHandle(scrollRef.current as unknown as React.Component);
+    if (tag == null) {
+      return;
+    }
+    physics
+      .attach(tag, { ballisticEdge: H, snapRegionEnd: H, snapOffsets: DETENT_TAUS })
+      .then(() => setNativeHatch(true))
+      .catch(() => setNativeHatch(false));
+    const emitter = new NativeEventEmitter(physics);
+    const arrival = emitter.addListener('trackTopArrival', ({ velocity }) => {
+      // UIKit's OWN release velocity, decel-adjusted to the edge (the one number
+      // every JS reconstruction lied about). The dip fires on arrival at H.
+      console.log(`[TRACKDBG] topArrival v=${Math.round(velocity)}pt/s`);
+      pendingDipVelocity.value = velocity;
+    });
+    return () => {
+      arrival.remove();
+      physics.detach?.(tag);
+    };
+  }, [pendingDipVelocity, scrollRef]);
+  const nativeHatchRef = React.useRef(nativeHatch);
+  nativeHatchRef.current = nativeHatch;
+  const reassertHatch = React.useCallback(() => {
+    const physics = NativeModules.TrackScrollPhysics;
+    const tag = findNodeHandle(scrollRef.current as unknown as React.Component);
+    if (physics?.attach != null && tag != null) {
+      physics
+        .attach(tag, { ballisticEdge: H, snapRegionEnd: H, snapOffsets: DETENT_TAUS })
+        .catch(() => undefined);
+    }
+  }, [scrollRef]);
+  const nativeHatchSV = useSharedValue(false);
+  React.useEffect(() => {
+    nativeHatchSV.value = nativeHatch;
+  }, [nativeHatch, nativeHatchSV]);
+  const tau = useSharedValue(0);
+  const dragging = useSharedValue(false);
+  // THE PHASE-DEPENDENT BOUND (boundary law): finger down ⇒ full track [0,end];
+  // ballistic ⇒ lower bound H (momentum bounces at the list top, never collapses
+  // the sheet). contentInset.top = -H makes offset H the native bounce edge.
+  const ballisticClamp = useSharedValue(false);
+  // Phase gate for the derivations: a ballistic release from the list region means
+  // any sub-H excursion is the NATIVE BOUNCE (overscroll area — header stays pinned),
+  // never sheet travel. Finger-down lifts it (sub-H is the grab again).
+  const ballisticFromList = useSharedValue(false);
   const [tauReadout, setTauReadout] = React.useState('τ=0');
 
+  const lastReleasePhaseRef = React.useRef('');
   const publishReadout = React.useCallback((value: number, phase: string) => {
-    setTauReadout(`τ=${Math.round(value)}  H=${H}  ${phase}`);
+    if (phase.startsWith('native-hatch') || phase.startsWith('ballistic') || phase === 'snap') {
+      lastReleasePhaseRef.current = phase;
+    }
+    const suffix = phase === 'settled' ? `settled [${lastReleasePhaseRef.current}]` : phase;
+    setTauReadout(`τ=${Math.round(value)}  H=${H}  ${suffix}`);
   }, []);
 
   const snapToDetent = React.useCallback(
@@ -129,9 +190,12 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           !dragging.value &&
           !dipFired.value &&
           pendingDipVelocity.value > 0 &&
-          next <= H + 1
+          next <= H + 3
         ) {
           dipFired.value = true;
+          // Nudge off exact zero: withSpring(to=0) from value 0 can early-exit as
+          // "settled" and swallow the initial velocity (Reanimated completion check).
+          topDip.value = 0.5;
           topDip.value = withSpring(0, {
             mass: 1,
             stiffness: 170,
@@ -142,14 +206,25 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         }
       },
       onBeginDrag: () => {
+        runOnJS(reassertHatch)();
         dragging.value = true;
         ballisticClamp.value = false;
+        ballisticFromList.value = false;
         dipFired.value = false;
         topDip.value = 0;
         runOnJS(publishReadout)(tau.value, 'drag');
       },
       onEndDrag: (event) => {
         dragging.value = false;
+        ballisticFromList.value = event.contentOffset.y >= H;
+        if (nativeHatchSV.value) {
+          ballisticClamp.value = event.contentOffset.y >= H;
+          // THE NATIVE HATCH OWNS THE RELEASE: bounds + detent targeting happen in
+          // scrollViewWillEndDragging (engine-known edge => REAL bounce at H; detents
+          // ride targetContentOffset). The JS synthesis below is fallback-only.
+          runOnJS(publishReadout)(event.contentOffset.y, 'native-hatch');
+          return;
+        }
         const releasedTau = event.contentOffset.y;
         if (releasedTau < H) {
           // Spacer region: the detent snap owns the release (native decel would
@@ -183,7 +258,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         runOnJS(publishReadout)(tau.value, 'settled');
       },
     },
-    [publishReadout, snapToDetent]
+    [publishReadout, reassertHatch, snapToDetent]
   );
 
   const clampProps = useAnimatedProps(() => ({
@@ -191,7 +266,9 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   }));
 
   // DERIVATIONS (each a pure function of τ — the model's §2 list, miniaturized):
-  const sheetTopY = useDerivedValue(() => EXPANDED_TOP + Math.max(0, H - tau.value));
+  const sheetTopY = useDerivedValue(() =>
+    ballisticFromList.value ? EXPANDED_TOP : EXPANDED_TOP + Math.max(0, H - tau.value)
+  );
   const dipStyle = useAnimatedStyle(() => ({ transform: [{ translateY: topDip.value }] }));
   const headerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTopY.value }],

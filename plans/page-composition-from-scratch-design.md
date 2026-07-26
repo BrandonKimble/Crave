@@ -1784,3 +1784,26 @@ endDrag deltas are unreliable, sample release velocity from a ring of recent
 purity endgame — it would give REAL native bounce at H and delete this synthesis
 entirely. Uncommitted prototype edits in tree: OneTrackPrototype.tsx (energy model +
 HUD probe).
+
+### THE NATIVE HATCH SHIPPED — the top rubber-band is REAL (2026-07-25)
+TrackScrollKit (local pod, ios/TrackScrollKit): a delegate-proxy module over the real
+UIScrollView of any RN scroll view (Fabric-proof, recycler-proof). It owns exactly
+what only native can know:
+- willBeginDragging lifts the ballistic bound (finger = full 1:1 track through H);
+- willEndDragging (sync, pre-decel) installs the H bound, detent-targets releases in
+  the sheet region via targetContentOffset (velocity-aware for free), and emits
+  trackTopArrival with UIKIT'S OWN release velocity decel-adjusted to the edge —
+  the one trustworthy velocity in the system;
+- attach() is RE-ASSERTIVE (re-wraps when Fabric replaces the delegate; JS re-asserts
+  per drag start) — the delegate-replacement failure mode is self-healing.
+JS: the dip is a τ-derivation-adjacent spring (170/26) driven by the emitted
+velocity; fires on arrival ≤H+3.
+PLATFORM LORE BANKED (three-and-counting Reanimated/UIKit traps):
+- UIScrollView NEVER bounces at an inset-synthesized minimum — decel re-targets with
+  ease (RED-proven at willEndDragging timing). Real bounce only at content edges.
+- Fabric replaces scroll delegates after attach — proxies must re-assert.
+- Reanimated withSpring(to) from value==to EARLY-EXITS and SWALLOWS initial velocity
+  — nudge off zero before velocity springs (this hid the dip through FOUR rounds).
+MEASURED: flick → 84pt dip below the pinned header with a clean critically-damped
+return (video trajectory 660→804px→rest). Detents + continuous grab + no-collapse +
+bottom native bounce all hold. OWNER FEEL PASS NEXT: crave://one-track-proto?show=1.

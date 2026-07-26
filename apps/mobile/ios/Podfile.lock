@@ -3212,6 +3212,8 @@ PODS:
     - libwebp (~> 1.0)
     - SDWebImage/Core (~> 5.17)
   - SocketRocket (0.7.1)
+  - TrackScrollKit (0.1.0):
+    - React-Core
   - Turf (4.0.0)
   - Yoga (0.0.0)
   - ZXingObjC/Core (3.6.9)
@@ -3338,6 +3340,7 @@ DEPENDENCIES:
   - RNSVG (from `../../../node_modules/react-native-svg`)
   - RNWorklets (from `../../../node_modules/react-native-worklets`)
   - SocketRocket (~> 0.7.1)
+  - TrackScrollKit (from `TrackScrollKit`)
   - Yoga (from `../../../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -3591,6 +3594,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native-svg"
   RNWorklets:
     :path: "../../../node_modules/react-native-worklets"
+  TrackScrollKit:
+    :path: TrackScrollKit
   Yoga:
     :path: "../../../node_modules/react-native/ReactCommon/yoga"
 
@@ -3724,10 +3729,11 @@ SPEC CHECKSUMS:
   SDWebImageSVGCoder: 15a300a97ec1c8ac958f009c02220ac0402e936c
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  TrackScrollKit: 5b32479234233cfb9ce36f56747e11ca8dccc16f
   Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   Yoga: 728df40394d49f3f471688747cf558158b3a3bd1
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: b48412372c6e8fdfc1905b95f7be6ce5beb1c1fd
+PODFILE CHECKSUM: aaae773b8ec5f652aed75b1c880cd0656980768e
 
 COCOAPODS: 1.16.2
