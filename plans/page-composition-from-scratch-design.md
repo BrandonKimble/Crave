@@ -1965,3 +1965,38 @@ box-none or it eats the grab (chrome overlays the track).
 NEXT (migration ladder): header-grab input surface for off-track states,
 then scene-by-scene strangler onto TrackSheetPage, then delete the old
 gesture system.
+
+### PRODUCTION MIGRATION MAP (2026-07-26) — the strangler ladder
+
+Owner mandate: TrackSheet is the standard everywhere; delete the old system.
+Architecture facts (mapped from code):
+- THE SEAM: AppOverlayRouteHost → SearchOverlayRouteSheetSurfaceHost →
+  SearchRouteSheetFrameHost → SearchRouteSceneStackBottomSheetSurfaceHost
+  (assembly + GestureDetector + BottomSheetSceneStackHost, 1856 LOC). The sheet
+  is ONE SURFACE shared by all scenes — physics migrates as a HOST SWAP, not
+  per-scene body swaps. Scenes then migrate INTO the new host as bodies.
+- SCENES: 17 (scene-foundation-spec.ts). Strip modes in spec: 'header' (polls,
+  bookmarks), 'in-list' (listDetail), 'none' (rest); search/results owns its
+  dual-band composition. Header titles via registerPersistentHeaderDescriptor →
+  app-route-persistent-header-registry (PersistentSheetHeaderHost renders).
+  Profile uses FrostCutout (6 sites).
+- GEOMETRY: sheetUtils.calculateSnapPoints (expanded=searchBarTop/inset,
+  middle=max(exp+96, 40%), collapsed=navBarOffset−headerHeight, hidden=h+80).
+- SNAP DRIVERS: app-route-sheet-motion-descriptor-table (from,to,kind → rule),
+  snap session posture memory, promoteActiveSheet verbs, snapLock (settings).
+- DELETE LIST (once strangled): useBottomSheetShared* family (9 runtimes),
+  BottomSheetScrollContainer, BottomSheetWithFlashList, sceneScrollStateRegistry
+  + friends, sheetUtils spring configs, the assembly.
+
+THE RUNGS:
+1. TrackSheetRouteHost (dev-flagged parallel host at the seam): TrackSheetPage
+   with real calculateSnapPoints geometry + persistent-header-registry titles +
+   scene-spec strip modes; scenes render via a body adapter (real bodies where
+   cheap, placeholder where not). Flag: dev deep link. Old host untouched.
+2. Scene switching: wire requestOverlaySwitch/promoteActiveSheet to track
+   commands (τ targets = detent taus; hidden = clip translate off-screen).
+3. Migrate bodies scene-by-scene into TrackSheet bodies (polls first — header
+   strip flagship; search/results LAST — owns dual-band composition).
+4. Off-track states: header-grab input surface (deep-scrolled list + sheet
+   motion), snapLock, edit locks, posture memory on the track.
+5. Flip the flag default, delete the old system, grep-invariant the corpse.
