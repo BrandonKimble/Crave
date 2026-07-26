@@ -1,7 +1,8 @@
 import React from 'react';
-import { Dimensions, Linking, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
@@ -143,6 +144,14 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
 
 // The mounted-body registry's scene set (searchOverlayRouteHostContract) minus
 // the list-parts scenes and search (owns its dual-band composition — LAST).
+const ROOT_TRACK_SCENES = new Set<OverlayKey>([
+  'home',
+  'polls',
+  'lists',
+  'profile',
+  'search',
+] as OverlayKey[]);
+
 const MOUNTED_TRACK_SCENES = new Set<OverlayKey>([
   'lists',
   'profile',
@@ -177,6 +186,10 @@ const useTrackScenePageChrome = (
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
   const Strip = descriptor?.Strip;
+  // Host-owned close for CHILD scenes (minimal stand-in for the full plus↔X
+  // HeaderNavAction — chrome-parity item for rung 4). Root scenes get none.
+  const { closeActiveRoute } = useAppOverlayRouteController();
+  const isChildScene = !ROOT_TRACK_SCENES.has(scene);
   const header = React.useMemo(
     () => (
       <View style={styles.headerRow} pointerEvents="box-none">
@@ -187,9 +200,19 @@ const useTrackScenePageChrome = (
         ) : (
           <Text style={styles.fallbackTitle}>{scene}</Text>
         )}
+        {isChildScene ? (
+          <Pressable
+            onPress={closeActiveRoute}
+            style={styles.closeAction}
+            hitSlop={12}
+            testID="tracksheet-close"
+          >
+            <Text style={styles.closeActionText}>×</Text>
+          </Pressable>
+        ) : null}
       </View>
     ),
-    [Title, scene]
+    [Title, closeActiveRoute, isChildScene, scene]
   );
   const dockedStrip = React.useMemo(
     () =>
@@ -312,6 +335,9 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         debugHud
         commandsRef={commandsRef}
         seatTau={seatTau}
+        onUserListScrollActivity={
+          scene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined
+        }
       />
     </View>
   );
@@ -349,6 +375,18 @@ const styles = StyleSheet.create({
   // Production's body inset (useBottomSheetSceneStackBodyContentRuntime applies
   // OVERLAY_HORIZONTAL_PADDING via the transport) — mounted bodies expect it.
   rowSurface: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
+  closeAction: {
+    position: 'absolute',
+    right: 16,
+    top: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeActionText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 20, gap: 12 },
   rowDot: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#cbd5e1' },
   rowLine: { flex: 1, height: 12, borderRadius: 6, backgroundColor: '#e2e8f0' },

@@ -52,11 +52,23 @@ export type TrackSheetPhysics = {
   snapToTau: (tau: number) => void;
   /** Fires after each successful native attach (seat re-assertion hook). */
   subscribeAttached: (listener: () => void) => () => void;
+  /** Written by the page's onContentSizeChange (scroll events carry no contentSize). */
+  contentHeight: SharedValue<number>;
 };
 
 const SPACER_EPSILON = 0.5;
 
-export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPhysics => {
+export type TrackSheetPhysicsOptions = {
+  /** Production pagination signal (sceneBodyTransport.onUserListScrollActivity):
+   * fired from real user scrolls in the LIST region with the list-space offset
+   * (τ−H) and distance-from-end. Throttled; JS thread. */
+  onUserListScrollActivity?: (offsetY: number, distanceFromEnd: number) => void;
+};
+
+export const useTrackSheetPhysics = (
+  geometry: TrackSheetGeometry,
+  options?: TrackSheetPhysicsOptions
+): TrackSheetPhysics => {
   const trackH = geometry.collapsedTop - geometry.expandedTop;
   const detentTaus = React.useMemo(
     () => geometry.detentTops.map((top) => geometry.collapsedTop - top).sort((a, b) => a - b),
@@ -66,6 +78,11 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
   const tau = useSharedValue(0);
   const dragging = useSharedValue(false);
   const ballisticFromList = useSharedValue(false);
+  /** Track content height (written by the page's onContentSizeChange — the
+   * scroll event's contentSize is NULL in Reanimated events, banked lore). */
+  const contentHeight = useSharedValue(0);
+  const lastActivityAt = useSharedValue(0);
+  const onUserListScrollActivity = options?.onUserListScrollActivity;
 
   const sheetTopY = useDerivedValue(() =>
     ballisticFromList.value
@@ -156,6 +173,20 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
     {
       onScroll: (event) => {
         tau.value = event.contentOffset.y;
+        if (
+          onUserListScrollActivity != null &&
+          event.contentOffset.y > trackH &&
+          contentHeight.value > 0
+        ) {
+          const now = Date.now();
+          if (now - lastActivityAt.value >= 120) {
+            lastActivityAt.value = now;
+            const offsetY = event.contentOffset.y - trackH;
+            const distanceFromEnd =
+              contentHeight.value - (event.contentOffset.y + event.layoutMeasurement.height);
+            runOnJS(onUserListScrollActivity)(offsetY, distanceFromEnd);
+          }
+        }
       },
       onBeginDrag: () => {
         // Belt-and-braces: KVO already keeps the proxy wrapped; a JS re-assert
@@ -169,7 +200,7 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
         ballisticFromList.value = event.contentOffset.y >= trackH - SPACER_EPSILON;
       },
     },
-    [reassertAttach, trackH]
+    [contentHeight, lastActivityAt, onUserListScrollActivity, reassertAttach, trackH]
   );
 
   return {
@@ -183,5 +214,6 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
     attachToTag,
     snapToTau,
     subscribeAttached,
+    contentHeight,
   };
 };

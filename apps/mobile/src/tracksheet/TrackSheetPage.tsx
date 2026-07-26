@@ -3,7 +3,11 @@ import { Dimensions, StyleSheet, View, type ViewStyle } from 'react-native';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Reanimated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
 
-import { useTrackSheetPhysics, type TrackSheetGeometry } from './useTrackSheetPhysics';
+import {
+  useTrackSheetPhysics,
+  type TrackSheetGeometry,
+  type TrackSheetPhysicsOptions,
+} from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip, type TrackSheetDockedStripProps } from './TrackSheetStrip';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -86,6 +90,8 @@ export type TrackSheetPageProps<Item> = {
    * CANCELLED the moment the user grabs the track (a seat is a target, never a
    * lock). null = no opinion (leave τ where it is). */
   seatTau?: number | null;
+  /** Production pagination signal (sceneBodyTransport.onUserListScrollActivity). */
+  onUserListScrollActivity?: TrackSheetPhysicsOptions['onUserListScrollActivity'];
 };
 
 export function TrackSheetPage<Item>({
@@ -101,8 +107,9 @@ export function TrackSheetPage<Item>({
   debugHud = false,
   commandsRef,
   seatTau = null,
+  onUserListScrollActivity,
 }: TrackSheetPageProps<Item>): React.ReactElement {
-  const physics = useTrackSheetPhysics(geometry);
+  const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
   const chromeHeight = headerHeight + (dockedStrip?.height ?? 0);
@@ -238,6 +245,13 @@ export function TrackSheetPage<Item>({
     [renderItem, rowSurfaceStyle, surfaceColor]
   );
 
+  const handleContentSizeChange = React.useCallback(
+    (_width: number, height: number) => {
+      physics.contentHeight.value = height;
+    },
+    [physics.contentHeight]
+  );
+
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
     if (!debugHud) {
@@ -281,6 +295,7 @@ export function TrackSheetPage<Item>({
             alwaysBounceVertical
             scrollEventThrottle={16}
             onScroll={onScroll}
+            onContentSizeChange={handleContentSizeChange}
           />
         </Reanimated.View>
 
