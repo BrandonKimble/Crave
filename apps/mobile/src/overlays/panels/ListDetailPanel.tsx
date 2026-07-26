@@ -54,7 +54,7 @@ import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-au
 import type { OverlayRouteEntry } from '../../navigation/runtime/app-overlay-route-types';
 import { areOverlayRoutesEqual } from '../../navigation/runtime/app-overlay-route-stack-algebra';
 import type { RouteOverlayNavigationSnapshot } from '../../navigation/runtime/route-overlay-navigation-snapshot-contract';
-import { favoriteListKeys } from '../../hooks/use-favorite-lists';
+import { userListKeys } from '../../hooks/use-user-lists';
 import {
   getSearchSurfaceRuntime,
   selectSearchSurfaceVisualPolicy,
@@ -67,13 +67,13 @@ import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-c
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
 import {
-  favoriteListsService,
-  type FavoriteListCollaborators,
-  type FavoriteListDetail,
-  type FavoriteListSort,
-  type FavoriteListType,
-  type FavoriteListViewerRole,
-} from '../../services/favorite-lists';
+  userListsService,
+  type UserListCollaborators,
+  type UserListDetail,
+  type UserListSort,
+  type UserListType,
+  type UserListViewerRole,
+} from '../../services/user-lists';
 import { usersService } from '../../services/users';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../types';
 // The person atoms + the modal itself live with the ROOT host (leg 12) — the panel
@@ -102,7 +102,7 @@ import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-
 import { fetchCuratedListDetail, saveCuratedListToMyLists } from '../../services/home';
 import { deriveListDetailVerbs } from './list-detail-verbs';
 import {
-  mapCuratedDetailToFavoriteListDetail,
+  mapCuratedDetailToUserListDetail,
   mapCuratedDetailToSearchResponse,
 } from '../../services/curated-list-adapter';
 
@@ -148,7 +148,7 @@ type ListDetailParams = {
   worldBacked?: boolean | null;
 };
 
-const VIRTUAL_LIST_TYPE_BY_ID: Record<string, FavoriteListType> = {
+const VIRTUAL_LIST_TYPE_BY_ID: Record<string, UserListType> = {
   'all:restaurants': 'restaurant',
   'all:dishes': 'dish',
 };
@@ -158,12 +158,12 @@ const isPrivateGoneError = (error: unknown): boolean =>
   (error.response?.status === 410 ||
     (error.response?.data as { state?: string } | undefined)?.state === 'private');
 
-const SORT_LABELS: Record<Exclude<FavoriteListSort, 'custom'>, string> = {
+const SORT_LABELS: Record<Exclude<UserListSort, 'custom'>, string> = {
   best: 'Best',
   recent: 'Recently added',
 };
 
-const resolveCustomSortLabel = (viewerRole: FavoriteListViewerRole | undefined): string =>
+const resolveCustomSortLabel = (viewerRole: UserListViewerRole | undefined): string =>
   viewerRole === 'owner' || viewerRole === 'collaborator' ? 'My ranking' : 'Their ranking';
 
 /** Pre-measure estimate for the variable-height edit rows (rich row ≈ header + strip + note). */
@@ -255,7 +255,7 @@ const CollaboratorStackChip = ({
   roster,
   onPress,
 }: {
-  roster: FavoriteListCollaborators;
+  roster: UserListCollaborators;
   onPress: () => void;
 }) => {
   const visible = roster.collaborators.slice(0, MAX_VISIBLE_COLLABORATORS);
@@ -340,7 +340,7 @@ const StateBody = ({ message, testID }: { message: string; testID: string }) => 
 type ListDetailRichRow = {
   /** The row's stable entity key (restaurantId / connectionId). */
   key: string;
-  /** The FavoriteListItem id backing the row (the reorder PATCH vocabulary). */
+  /** The UserListItem id backing the row (the reorder PATCH vocabulary). */
   itemId: string | null;
 } & ({ kind: 'restaurant'; restaurant: RestaurantResult } | { kind: 'dish'; dish: FoodResult });
 
@@ -349,7 +349,7 @@ type ListDetailRichRow = {
 // state, world reads, and collaborator/list commands live controller-side and arrive
 // as data + commands. A pending/failed branch has no state left to express here.
 type ListDetailSliceData = {
-  effectiveSort: FavoriteListSort;
+  effectiveSort: UserListSort;
   openNow: boolean;
   priceLevel: number | null;
   cityPlaceId: string | null;
@@ -357,7 +357,7 @@ type ListDetailSliceData = {
   cityChipLabel: string;
   applySlice: (
     patch: {
-      sort?: FavoriteListSort;
+      sort?: UserListSort;
       openNow?: boolean;
       priceLevel?: number | null;
       cityPlaceId?: string | null;
@@ -370,9 +370,9 @@ type ListDetailSliceData = {
 type ListDetailReadyData = {
   kind: 'ready';
   resolvedListId: string;
-  listType: FavoriteListType;
-  viewerRole: FavoriteListViewerRole | undefined;
-  defaultSort: FavoriteListSort;
+  listType: UserListType;
+  viewerRole: UserListViewerRole | undefined;
+  defaultSort: UserListSort;
   isVirtualAll: boolean;
   /** Curated lists (viewer-only projection): the results endpoint takes no
    *  slice params (no hours/price in the payload), so the strip renders
@@ -381,7 +381,7 @@ type ListDetailReadyData = {
   canEdit: boolean;
   canAddPhoto: boolean;
   response: SearchResponse;
-  roster: FavoriteListCollaborators | null;
+  roster: UserListCollaborators | null;
   entryId: string | null;
   showJoinAffordance: boolean;
   isJoining: boolean;
@@ -516,7 +516,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
     }
     setIsSavingOrder(true);
     try {
-      await favoriteListsService.reorderItems(data.resolvedListId, orderedItemIds as string[]);
+      await userListsService.reorderItems(data.resolvedListId, orderedItemIds as string[]);
     } catch {
       setIsSavingOrder(false);
       // Honest copy: the visible rows can be a subset of the list's membership, so a
@@ -658,7 +658,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
   const customSortLabel = resolveCustomSortLabel(data.viewerRole);
   const sortChipLabel =
     data.slice.effectiveSort === 'custom' ? customSortLabel : SORT_LABELS[data.slice.effectiveSort];
-  const sortOptions: Array<{ value: FavoriteListSort; label: string }> = [
+  const sortOptions: Array<{ value: UserListSort; label: string }> = [
     ...(hasCustomSortOption ? [{ value: 'custom' as const, label: customSortLabel }] : []),
     { value: 'best' as const, label: SORT_LABELS.best },
     { value: 'recent' as const, label: SORT_LABELS.recent },
@@ -911,29 +911,26 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     enabled: hasIdentity && !isVirtualAll,
     staleTime: 60_000,
     retry: (failureCount, error) => !isPrivateGoneError(error) && failureCount < 2,
-    queryFn: async (): Promise<FavoriteListDetail> => {
+    queryFn: async (): Promise<UserListDetail> => {
       // Curated source (home Job 2): the SAME meta shape, fetched from the
       // curated read — the panel's data seam is the ONLY fork.
       if (isCurated && listIdParam != null) {
-        return mapCuratedDetailToFavoriteListDetail(await fetchCuratedListDetail(listIdParam));
+        return mapCuratedDetailToUserListDetail(await fetchCuratedListDetail(listIdParam));
       }
       return listIdParam != null
-        ? favoriteListsService.get(listIdParam, { shareSlug })
-        : favoriteListsService.getShared(shareSlug as string);
+        ? userListsService.get(listIdParam, { shareSlug })
+        : userListsService.getShared(shareSlug as string);
     },
   });
 
   const resolvedListId = isVirtualAll
     ? listIdParam
     : (listIdParam ?? metaQuery.data?.list.listId ?? null);
-  const listType: FavoriteListType | null =
-    virtualListType ?? metaQuery.data?.list.listType ?? null;
-  const viewerRole: FavoriteListViewerRole | undefined = isVirtualAll
+  const listType: UserListType | null = virtualListType ?? metaQuery.data?.list.listType ?? null;
+  const viewerRole: UserListViewerRole | undefined = isVirtualAll
     ? 'owner'
     : metaQuery.data?.viewerRole;
-  const defaultSort: FavoriteListSort = isVirtualAll
-    ? 'best'
-    : (metaQuery.data?.defaultSort ?? 'best');
+  const defaultSort: UserListSort = isVirtualAll ? 'best' : (metaQuery.data?.defaultSort ?? 'best');
 
   const slugResolvedListId = !worldBackedParam && shareSlug != null ? resolvedListId : null;
   const slugResolvedListType = slugResolvedListId != null ? listType : null;
@@ -971,8 +968,8 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // Sort strip (§8.14, role-gated): everyone gets the Sort control — the saver's ranking
   // ('custom') is offered when a custom order exists AND, for owner/collaborator, always
   // (selecting it with no custom order yet = insertion order, the edit mode's entry point).
-  const [sortOverride, setSortOverride] = React.useState<FavoriteListSort | null>(null);
-  const effectiveSort: FavoriteListSort = sortOverride ?? defaultSort;
+  const [sortOverride, setSortOverride] = React.useState<UserListSort | null>(null);
+  const effectiveSort: UserListSort = sortOverride ?? defaultSort;
   // Leg 9 (§2b): Open now joins the strip — already plumbed through the list results read.
   const [openNow, setOpenNow] = React.useState(false);
   // Leg 10 (defect #4 closed): Price joins the strip — the list-results API now takes
@@ -1074,7 +1071,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           await fetchCuratedListDetail(resolvedListId as string)
         );
       }
-      return favoriteListsService.getListResults(resolvedListId as string, {
+      return userListsService.getListResults(resolvedListId as string, {
         shareSlug,
         sort: effectiveSort,
         openNow: openNow || undefined,
@@ -1108,7 +1105,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const applySlice = React.useCallback(
     (
       patch: {
-        sort?: FavoriteListSort;
+        sort?: UserListSort;
         openNow?: boolean;
         priceLevel?: number | null;
         cityPlaceId?: string | null;
@@ -1176,7 +1173,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             ],
             staleTime: 60_000,
             queryFn: async (): Promise<SearchResponse> =>
-              favoriteListsService.getListResults(resolvedListId, {
+              userListsService.getListResults(resolvedListId, {
                 shareSlug,
                 sort: slice.sort,
                 openNow: slice.openNow || undefined,
@@ -1213,8 +1210,8 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     enabled: canReadCollaborators,
     staleTime: 60_000,
     retry: 1,
-    queryFn: async (): Promise<FavoriteListCollaborators> =>
-      favoriteListsService.getCollaborators(resolvedListId as string, { shareSlug }),
+    queryFn: async (): Promise<UserListCollaborators> =>
+      userListsService.getCollaborators(resolvedListId as string, { shareSlug }),
   });
   const meQuery = useQuery({
     queryKey: ['me'],
@@ -1240,7 +1237,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           setInviteState('unavailable');
           return;
         }
-        const enabled = await favoriteListsService.enableShare(resolvedListId);
+        const enabled = await userListsService.enableShare(resolvedListId);
         slug = enabled.shareSlug;
         await queryClient.invalidateQueries({ queryKey: ['listDetail', resolvedListId] });
       }
@@ -1279,7 +1276,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         return;
       }
       try {
-        await favoriteListsService.removeCollaborator(resolvedListId, userId);
+        await userListsService.removeCollaborator(resolvedListId, userId);
       } catch {
         announceFailureIfOnline();
         return;
@@ -1295,7 +1292,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       return;
     }
     try {
-      await favoriteListsService.removeCollaborator(resolvedListId, myUserId);
+      await userListsService.removeCollaborator(resolvedListId, myUserId);
     } catch {
       announceFailureIfOnline();
       return;
@@ -1381,7 +1378,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     }
     setIsJoining(true);
     try {
-      await favoriteListsService.joinCollaborators(resolvedListId, shareSlug);
+      await userListsService.joinCollaborators(resolvedListId, shareSlug);
     } catch {
       setIsJoining(false);
       announceFailureIfOnline();
@@ -1415,7 +1412,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     enabled: isVirtualAll && resolvedListId != null,
     staleTime: 300_000,
     queryFn: () =>
-      favoriteListsService.listCities(resolvedListId as string, {
+      userListsService.listCities(resolvedListId as string, {
         shareSlug,
         targetUserId,
       }),
@@ -1444,17 +1441,17 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       queryClient.invalidateQueries({
         queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
       }),
-      queryClient.invalidateQueries({ queryKey: favoriteListKeys.all }),
+      queryClient.invalidateQueries({ queryKey: userListKeys.all }),
     ]);
   }, [listIdParam, queryClient, shareSlug]);
 
   const runListUpdate = React.useCallback(
-    async (payload: Parameters<typeof favoriteListsService.update>[1]) => {
+    async (payload: Parameters<typeof userListsService.update>[1]) => {
       if (resolvedListId == null) {
         return;
       }
       try {
-        await favoriteListsService.update(resolvedListId, payload);
+        await userListsService.update(resolvedListId, payload);
       } catch {
         announceFailureIfOnline();
         return;
@@ -1486,12 +1483,12 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       return;
     }
     try {
-      await favoriteListsService.remove(resolvedListId);
+      await userListsService.remove(resolvedListId);
     } catch {
       announceFailureIfOnline();
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+    await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     closeActiveRoute();
   }, [closeActiveRoute, queryClient, resolvedListId]);
 
@@ -1507,7 +1504,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       announceFailureIfOnline();
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+    await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     showAppModal({
       title: 'Saved to your lists',
       message: 'You now own a copy — find it on your Lists page.',

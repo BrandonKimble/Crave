@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { NaturalSearchRequest } from '../../../types';
-import type { FavoriteListType } from '../../../services/favorite-lists';
+import type { UserListType } from '../../../services/user-lists';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import {
@@ -83,7 +83,7 @@ export const useSearchStructuredSubmitOwner = ({
   const launchListSearchResults = React.useCallback(
     async (params: {
       listId: string;
-      listType: FavoriteListType;
+      listType: UserListType;
       displayTitle: string;
       /** The list owner when opened from ANOTHER user's surface — identity-relevant
        *  (scopes virtual-All unions / viewer-role resolution). */

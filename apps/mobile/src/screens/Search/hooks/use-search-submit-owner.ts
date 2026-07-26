@@ -8,7 +8,7 @@ import {
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
-import { favoriteListsService, type FavoriteListType } from '../../../services/favorite-lists';
+import { userListsService, type UserListType } from '../../../services/user-lists';
 import { fetchCuratedListDetail } from '../../../services/home';
 import { mapCuratedDetailToSearchResponse } from '../../../services/curated-list-adapter';
 import type { SegmentValue } from '../constants/search';
@@ -184,7 +184,7 @@ type SearchSubmitOwner = {
   /** Wave-4 §3: the list-world half of the listWorld composite (favorites-as-search). */
   launchListSearchResults: (params: {
     listId: string;
-    listType: import('../../../services/favorite-lists').FavoriteListType;
+    listType: import('../../../services/user-lists').UserListType;
     displayTitle: string;
     targetUserId?: string | null;
     shareSlug?: string | null;
@@ -403,7 +403,7 @@ const useSearchSubmitOwner = ({
         userLocationRef,
         shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
         getFavoritesListResults: (listId, options) =>
-          favoriteListsService.getListResults(listId, options),
+          userListsService.getListResults(listId, options),
         getCuratedListResults: async (listId) =>
           mapCuratedDetailToSearchResponse(await fetchCuratedListDetail(listId)),
       }),
@@ -414,7 +414,7 @@ const useSearchSubmitOwner = ({
         userLocationRef,
         shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
         getFavoritesListResults: (listId, options) =>
-          favoriteListsService.getListResults(listId, options),
+          userListsService.getListResults(listId, options),
         getCuratedListResults: async (listId) =>
           mapCuratedDetailToSearchResponse(await fetchCuratedListDetail(listId)),
       }),

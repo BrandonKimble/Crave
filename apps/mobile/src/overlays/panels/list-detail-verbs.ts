@@ -1,4 +1,4 @@
-import type { FavoriteListViewerRole } from '../../services/favorite-lists';
+import type { UserListViewerRole } from '../../services/user-lists';
 
 /**
  * THE list-verbs model (list-detail choreography leg, Job 2): one source-agnostic
@@ -42,7 +42,7 @@ export const deriveListDetailVerbs = ({
   isVirtualAll,
 }: {
   source: ListDetailVerbSource;
-  viewerRole: FavoriteListViewerRole | undefined;
+  viewerRole: UserListViewerRole | undefined;
   isVirtualAll: boolean;
 }): ListDetailVerbs => {
   if (source === 'curated') {

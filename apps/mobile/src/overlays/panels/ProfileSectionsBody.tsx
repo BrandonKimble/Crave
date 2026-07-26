@@ -17,8 +17,8 @@ import {
   type UserProfileCommentRow,
   type UserProfilePollRow,
 } from '../../services/polls';
-import { favoriteListsService, type FavoriteListSummary } from '../../services/favorite-lists';
-import { favoriteListKeys } from '../../hooks/use-favorite-lists';
+import { userListsService, type UserListSummary } from '../../services/user-lists';
+import { userListKeys } from '../../hooks/use-user-lists';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
@@ -86,10 +86,10 @@ type ListsGallery = {
 };
 
 type GalleryTile =
-  | { kind: 'list'; list: FavoriteListSummary }
+  | { kind: 'list'; list: UserListSummary }
   | { kind: 'all'; listType: 'restaurant' | 'dish' };
 
-const buildListsGallery = (lists: FavoriteListSummary[]): ListsGallery => {
+const buildListsGallery = (lists: UserListSummary[]): ListsGallery => {
   const pinned = lists.filter((list) => list.pinned === true);
   const unpinned = lists.filter((list) => list.pinned !== true);
   const pinnedTiles: GalleryTile[] = pinned.map((list) => ({ kind: 'list' as const, list }));
@@ -208,7 +208,7 @@ export const ProfileSectionsBody = React.memo(
       queryKey: ['userProfileLists', userId],
       enabled: enabled && activeSection === 'lists',
       staleTime: 60_000,
-      queryFn: () => favoriteListsService.listPublic({ userId }),
+      queryFn: () => userListsService.listPublic({ userId }),
     });
     const photosQuery = useQuery({
       queryKey: ['userProfileFoodLog', userId],
@@ -221,21 +221,21 @@ export const ProfileSectionsBody = React.memo(
     const invalidateListSurfaces = React.useCallback(() => {
       void queryClient.invalidateQueries({ queryKey: ['userProfileLists', userId] });
       // The home lists surface shares the rows (pinned/share/existence changed).
-      void queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      void queryClient.invalidateQueries({ queryKey: userListKeys.all });
     }, [queryClient, userId]);
 
     const handleTogglePin = React.useCallback(
-      (list: FavoriteListSummary) => {
+      (list: UserListSummary) => {
         const next = list.pinned !== true;
         // Optimistic flip in the profile-gallery cache; the refetch re-sorts
         // (server order = pins first) and is the settled truth.
-        queryClient.setQueryData<FavoriteListSummary[]>(['userProfileLists', userId], (rows) =>
+        queryClient.setQueryData<UserListSummary[]>(['userProfileLists', userId], (rows) =>
           rows?.map((row) => (row.listId === list.listId ? { ...row, pinned: next } : row))
         );
-        favoriteListsService
+        userListsService
           .update(list.listId, { pinned: next })
           .catch(() => {
-            queryClient.setQueryData<FavoriteListSummary[]>(['userProfileLists', userId], (rows) =>
+            queryClient.setQueryData<UserListSummary[]>(['userProfileLists', userId], (rows) =>
               rows?.map((row) =>
                 row.listId === list.listId ? { ...row, pinned: list.pinned === true } : row
               )
@@ -249,7 +249,7 @@ export const ProfileSectionsBody = React.memo(
       [invalidateListSurfaces, queryClient, userId]
     );
 
-    const handleShareList = React.useCallback((list: FavoriteListSummary) => {
+    const handleShareList = React.useCallback((list: UserListSummary) => {
       // W3: the universal share modal owns list sharing (its copy-link row does
       // the enableShare-on-demand this handler used to do inline).
       showShareModal({
@@ -263,7 +263,7 @@ export const ProfileSectionsBody = React.memo(
     }, []);
 
     const handleDeleteList = React.useCallback(
-      (list: FavoriteListSummary) => {
+      (list: UserListSummary) => {
         showAppModal({
           title: 'Delete this list?',
           message: `“${list.name}” and its saves will be removed. This cannot be undone.`,
@@ -274,7 +274,7 @@ export const ProfileSectionsBody = React.memo(
               style: 'destructive',
               testID: 'user-profile-list-delete-confirm',
               onPress: () => {
-                favoriteListsService
+                userListsService
                   .remove(list.listId)
                   .then(() => {
                     invalidateListSurfaces();
@@ -293,7 +293,7 @@ export const ProfileSectionsBody = React.memo(
     );
 
     const handleListLongPress = React.useCallback(
-      (list: FavoriteListSummary) => {
+      (list: UserListSummary) => {
         const actions: AppModalAction[] = [
           {
             label: list.pinned === true ? 'Unpin from profile' : 'Pin to profile',

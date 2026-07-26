@@ -25,7 +25,7 @@ export type ShareModalConfig = {
   title?: string;
   /** Lists only: the already-known share slug (skips the enable-on-demand
    *  round-trip). Omit/null when unknown — copy-link enables share on demand
-   *  via favoriteListsService.enableShare (owner path, same as the W3F
+   *  via userListsService.enableShare (owner path, same as the W3F
    *  long-press Share action). */
   listShareSlug?: string | null;
   /** Lists only: whether the VIEWER owns the list. Enable-on-demand is an

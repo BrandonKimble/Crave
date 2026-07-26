@@ -6,13 +6,13 @@
 // Root-host pattern (score-info-store / collaborator-modal-store): panels call
 // showListEdit(); the root ListEditHost renders the sheet viewport-anchored.
 
-import type { FavoriteListType, FavoriteListVisibility } from '../services/favorite-lists';
+import type { UserListType, UserListVisibility } from '../services/user-lists';
 
 export type ListEditPayload =
   | {
       mode: 'create';
       /** The side the new list belongs to (the home toggle's current side). */
-      listType: FavoriteListType;
+      listType: UserListType;
     }
   | {
       mode: 'edit';
@@ -20,7 +20,7 @@ export type ListEditPayload =
       /** Prefill. */
       name: string;
       description: string | null;
-      visibility: FavoriteListVisibility;
+      visibility: UserListVisibility;
     };
 
 type Listener = () => void;

@@ -1,12 +1,12 @@
 import type { FoodResult, RestaurantResult, SearchResponse } from '../types';
-import type { FavoriteListDetail, FavoriteListType } from './favorite-lists';
+import type { UserListDetail, UserListType } from './user-lists';
 import type { CuratedListDetailItem, CuratedListDetailResponse } from './home';
 
 /**
  * Curated-list → ListDetail adapters (home-surface-charter Job 2): the app-
  * curated detail (GET /home/lists/:id) deliberately mirrors the favorites
  * detail vocabulary with viewerRole 'viewer'; these pure mappers express it in
- * the EXACT shapes ListDetailPanel already consumes (FavoriteListDetail meta +
+ * the EXACT shapes ListDetailPanel already consumes (UserListDetail meta +
  * a SearchResponse results body), so the panel is REUSED with a source
  * discriminator instead of cloned.
  *
@@ -21,17 +21,18 @@ import type { CuratedListDetailItem, CuratedListDetailResponse } from './home';
  * `${restaurantId}:${entityId}` stands in as ROW IDENTITY only; a save from such
  * a row fails loud at the API (announcer), never silently corrupts.
  */
-export const resolveCuratedListType = (listType: string): FavoriteListType =>
+export const resolveCuratedListType = (listType: string): UserListType =>
   listType === 'dish' ? 'dish' : 'restaurant';
 
-export const mapCuratedDetailToFavoriteListDetail = (
+export const mapCuratedDetailToUserListDetail = (
   detail: CuratedListDetailResponse
-): FavoriteListDetail => ({
+): UserListDetail => ({
   list: {
     listId: detail.listId,
     name: detail.title,
     description: detail.subtitle,
     listType: resolveCuratedListType(detail.listType),
+    kind: 'standard',
     visibility: 'public',
     itemCount: detail.itemCount,
     position: 0,

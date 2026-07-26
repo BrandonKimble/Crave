@@ -6,6 +6,7 @@ import {
   Eye,
   EyeOff,
   GripVertical,
+  Heart,
   Images,
   Pencil,
   Pin,
@@ -45,11 +46,12 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import {
-  favoriteListsService,
-  type FavoriteListSummary,
-  type FavoriteListType,
-} from '../../services/favorite-lists';
-import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
+  userListsService,
+  type UserListSummary,
+  type UserListType,
+} from '../../services/user-lists';
+import { useUserLists, userListKeys } from '../../hooks/use-user-lists';
+import { sortListsForDisplay } from './lists-display-order';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-action-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
@@ -88,7 +90,7 @@ const TILE_PLACEHOLDER_BG = '#eef1f5';
 const BOOKMARK_LIST_TYPE_OPTIONS = [
   { value: 'restaurant', label: 'Restaurants' },
   { value: 'dish', label: 'Dishes' },
-] as const satisfies readonly { value: FavoriteListType; label: string }[];
+] as const satisfies readonly { value: UserListType; label: string }[];
 
 // ─── Edit mode (page-registry §8.11 — home half; wave-3 §1.1 RESTORED) ──────────────
 // The owner never wanted home edit deleted — list CONTENTS aren't editable from home,
@@ -106,19 +108,13 @@ const BOOKMARK_SORT_LABEL_BY_VALUE: Record<ListsSortMode, string> = {
   custom: 'My ranking',
 };
 
-/** Wave-2 §2: system defaults are REGULAR lists — one uniform ordering, no pinned prefix. */
-const sortListsForDisplay = (
-  lists: readonly FavoriteListSummary[],
-  sortMode: ListsSortMode
-): FavoriteListSummary[] =>
-  sortMode === 'custom'
-    ? [...lists].sort((a, b) => a.position - b.position)
-    : [...lists].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+// Display ordering (incl. the pinned favorites-kind law) lives in
+// lists-display-order.ts — pure, spec-covered.
 
-const chunkFavoriteLists = (
-  lists: readonly FavoriteListSummary[]
-): readonly (readonly FavoriteListSummary[])[] => {
-  const rows: FavoriteListSummary[][] = [];
+const chunkUserLists = (
+  lists: readonly UserListSummary[]
+): readonly (readonly UserListSummary[])[] => {
+  const rows: UserListSummary[][] = [];
   for (let index = 0; index < lists.length; index += 2) {
     rows.push(lists.slice(index, index + 2));
   }
@@ -129,7 +125,7 @@ const chunkFavoriteLists = (
 // Sparse slots render as quiet placeholders; the API fills from the top-left.
 const TILE_GALLERY_SLOTS = [0, 1, 2, 3] as const;
 
-const ListsTileGallery = React.memo(({ item }: { item: FavoriteListSummary }) => {
+const ListsTileGallery = React.memo(({ item }: { item: UserListSummary }) => {
   const bySlot = new Map((item.tileImages ?? []).map((image) => [image.slot, image]));
   return (
     <View style={styles.tileGallery} accessibilityLabel={`${item.name} photos`}>
@@ -162,9 +158,9 @@ const ListsTileGallery = React.memo(({ item }: { item: FavoriteListSummary }) =>
 ListsTileGallery.displayName = 'ListsTileGallery';
 
 type ListsListTileProps = {
-  item: FavoriteListSummary;
-  onPress: (list: FavoriteListSummary) => void;
-  onOpenMenu: (list: FavoriteListSummary) => void;
+  item: UserListSummary;
+  onPress: (list: UserListSummary) => void;
+  onOpenMenu: (list: UserListSummary) => void;
   /** Fixed tile height (uniform grid geometry — read AND edit render the same tile). */
   tileHeight: number;
   /** Edit mode: the instant-lift handle gesture seated where the ellipsis lives. */
@@ -226,6 +222,9 @@ const ListsListTile = React.memo(
       >
         <ListsTileGallery item={item} />
         <View style={styles.tileFooter}>
+          {item.kind === 'favorites' ? (
+            <Heart size={16} color={SEGMENT_TEXT} style={styles.tileHeartGlyph} />
+          ) : null}
           <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
             {item.name}
           </Text>
@@ -240,8 +239,8 @@ ListsListTile.displayName = 'ListsListTile';
 
 // ─── §8.14: the pinned synthetic ALL tile (one per side, above the system lists) ─────
 type ListsAllTileProps = {
-  listType: FavoriteListType;
-  onPress: (listType: FavoriteListType) => void;
+  listType: UserListType;
+  onPress: (listType: UserListType) => void;
   /** Edit mode: rendered and pinned in place, but not a navigation target. */
   disabled?: boolean;
 };
@@ -367,18 +366,18 @@ const ListsHomeStrip = React.memo(() => {
 ListsHomeStrip.displayName = 'ListsHomeStrip';
 
 type ListsSceneBodyProps = {
-  listType: FavoriteListType;
-  lists: readonly FavoriteListSummary[];
+  listType: UserListType;
+  lists: readonly UserListSummary[];
   isEditing: boolean;
-  editOrderedLists: readonly FavoriteListSummary[];
+  editOrderedLists: readonly UserListSummary[];
   onReorder: (fromIndex: number, toIndex: number) => void;
   onDragStateChange: (isDragging: boolean) => void;
   isScreenReaderEnabled: boolean;
   scrollAdapter: ReorderScrollAdapter | null;
   onOpenCreate: () => void;
-  onListPress: (list: FavoriteListSummary) => void;
-  onOpenMenu: (list: FavoriteListSummary) => void;
-  onOpenAll: (listType: FavoriteListType) => void;
+  onListPress: (list: UserListSummary) => void;
+  onOpenMenu: (list: UserListSummary) => void;
+  onOpenAll: (listType: UserListType) => void;
 };
 
 const ListsSceneBody = React.memo(
@@ -397,7 +396,7 @@ const ListsSceneBody = React.memo(
     onOpenAll,
   }: ListsSceneBodyProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
+    const listRows = React.useMemo(() => chunkUserLists(lists), [lists]);
 
     // §2.4 bleed + §1.1 grid geometry: the grid bleeds edge-to-edge (the toggle-strip
     // law) and self-measures, so the edit grid's slot math uses the SAME cell rects
@@ -412,7 +411,7 @@ const ListsSceneBody = React.memo(
       cellWidth > 0 ? Math.round(cellWidth * TILE_GALLERY_RATIO) + TILE_FOOTER_HEIGHT : 0;
 
     const renderEditTile = React.useCallback(
-      (item: FavoriteListSummary, context: ReorderGridRenderContext) => (
+      (item: UserListSummary, context: ReorderGridRenderContext) => (
         <ListsListTile
           item={item}
           onPress={onListPress}
@@ -503,7 +502,7 @@ ListsSceneBody.displayName = 'ListsSceneBody';
 // THE CONTENT SLOT (THE PAGE L2 collection body): receives the RESOLVED lists — the
 // query edge never reaches here. Interaction machinery (edit session, menus, create)
 // operates on resolved data by construction.
-const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummary[] }) => {
+const ListsContent = React.memo(({ items }: { items: readonly UserListSummary[] }) => {
   const lists = items;
   const onProfilerRender = useSearchOverlayProfilerRender();
   const executeEntityRefAction = useEntityRefActionExecutor();
@@ -518,7 +517,7 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
   const { promoteActiveSheet } = useAppOverlayRouteController();
   const sortedLists = React.useMemo(() => sortListsForDisplay(lists, sortMode), [lists, sortMode]);
   const listsById = React.useMemo(() => {
-    const byId = new Map<string, FavoriteListSummary>();
+    const byId = new Map<string, UserListSummary>();
     for (const list of lists) {
       byId.set(list.listId, list);
     }
@@ -571,20 +570,18 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
       const updates = session.order
         .map((listId, index) => ({ list: listsByIdRef.current.get(listId), position: index }))
         .filter(
-          (entry): entry is { list: FavoriteListSummary; position: number } =>
+          (entry): entry is { list: UserListSummary; position: number } =>
             entry.list != null && entry.list.position !== entry.position
         );
       await Promise.all(
-        updates.map(({ list, position }) =>
-          favoriteListsService.updatePosition(list.listId, position)
-        )
+        updates.map(({ list, position }) => userListsService.updatePosition(list.listId, position))
       );
     } catch {
       setIsSavingOrder(false);
       announceFailureIfOnline();
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+    await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     setSortMode('custom');
     exitEditMode();
   }, [exitEditMode, isSavingOrder, queryClient, setSortMode]);
@@ -640,13 +637,13 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
     };
   }, [isEditing]);
 
-  const editOrderedLists = React.useMemo<FavoriteListSummary[]>(() => {
+  const editOrderedLists = React.useMemo<UserListSummary[]>(() => {
     if (editSession.order == null) {
       return [];
     }
     return editSession.order
       .map((listId) => listsById.get(listId))
-      .filter((list): list is FavoriteListSummary => list != null);
+      .filter((list): list is UserListSummary => list != null);
   }, [editSession.order, listsById]);
 
   // §4: EVERY create path opens the ONE listEdit panel (create mode carries the
@@ -660,7 +657,7 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
   React.useEffect(() => registerHeaderCreateAction('lists', openCreate), [openCreate]);
 
   const handleOpenAll = React.useCallback(
-    (side: FavoriteListType) => {
+    (side: UserListType) => {
       // Wave-4 §3 (audit mouth #2): the per-side All opens through THE policy — the
       // listWorld composite (push + the list's search world), no more policy bypass.
       executeEntityRefAction({
@@ -674,7 +671,7 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
   );
 
   const handleListPress = React.useCallback(
-    (list: FavoriteListSummary) => {
+    (list: UserListSummary) => {
       // S-D.2 + wave-4 §3: the tap's meaning resolves through THE entity policy —
       // with listType present this is the listWorld COMPOSITE (push + the list's
       // search world: map pins + choreography), the restored favorites-as-search.
@@ -688,7 +685,7 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
     [executeEntityRefAction]
   );
 
-  const handleShare = React.useCallback((list: FavoriteListSummary) => {
+  const handleShare = React.useCallback((list: UserListSummary) => {
     // One share surface app-wide: the universal share modal (it handles the
     // not-yet-shared case by minting the slug itself).
     showShareModal({
@@ -701,56 +698,56 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
   }, []);
 
   const handleToggleVisibility = React.useCallback(
-    async (list: FavoriteListSummary) => {
+    async (list: UserListSummary) => {
       const nextVisibility = list.visibility === 'public' ? 'private' : 'public';
       try {
-        await favoriteListsService.update(list.listId, { visibility: nextVisibility });
+        await userListsService.update(list.listId, { visibility: nextVisibility });
       } catch {
         announceFailureIfOnline();
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     },
     [queryClient]
   );
 
   const handleToggleUseOwnPhotos = React.useCallback(
-    async (list: FavoriteListSummary) => {
+    async (list: UserListSummary) => {
       try {
-        await favoriteListsService.update(list.listId, {
+        await userListsService.update(list.listId, {
           useOwnPhotos: list.useOwnPhotos !== true,
         });
       } catch {
         announceFailureIfOnline();
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     },
     [queryClient]
   );
 
   const handleTogglePin = React.useCallback(
-    async (list: FavoriteListSummary) => {
+    async (list: UserListSummary) => {
       try {
-        await favoriteListsService.update(list.listId, { pinned: list.pinned !== true });
+        await userListsService.update(list.listId, { pinned: list.pinned !== true });
       } catch {
         announceFailureIfOnline();
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     },
     [queryClient]
   );
 
   const handleDelete = React.useCallback(
-    async (list: FavoriteListSummary) => {
+    async (list: UserListSummary) => {
       try {
-        await favoriteListsService.remove(list.listId);
+        await userListsService.remove(list.listId);
       } catch {
         announceFailureIfOnline();
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     },
     [queryClient]
   );
@@ -759,7 +756,7 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
   // no color blocks, no separators, no Cancel row (swipe/backdrop dismisses).
   // Wave-3 §4: the "Edit" row (list metadata) opens the ONE listEdit panel.
   const openListMenu = React.useCallback(
-    (list: FavoriteListSummary) => {
+    (list: UserListSummary) => {
       const isPublic = list.visibility === 'public';
       const usesOwnPhotos = list.useOwnPhotos === true;
       const isPinned = list.pinned === true;
@@ -784,12 +781,18 @@ const ListsContent = React.memo(({ items }: { items: readonly FavoriteListSummar
             icon: <Share2 size={19} color={TILE_TEXT} />,
             onPress: () => void handleShare(list),
           },
-          {
-            label: 'Delete',
-            style: 'destructive',
-            icon: <Trash2 size={19} color="#ef4444" />,
-            onPress: () => void handleDelete(list),
-          },
+          // Favorites-as-kind: the one-per-user favorites list is UNDELETABLE
+          // (server-guarded) — the menu doesn't offer what the API refuses.
+          ...(list.kind === 'favorites'
+            ? []
+            : [
+                {
+                  label: 'Delete',
+                  style: 'destructive' as const,
+                  icon: <Trash2 size={19} color="#ef4444" />,
+                  onPress: () => void handleDelete(list),
+                },
+              ]),
           {
             label: isPublic ? 'Remove from profile' : 'Add to profile',
             icon: isPublic ? (
@@ -860,7 +863,7 @@ const ListsEmpty = () => (
 
 // THE DECLARATION (L2): lists is a COLLECTION body — the full closed enum over
 // the favorites collection; the grid/edit composition owns only resolved items.
-const LISTS_PAGE_BODY: PageCollectionBodySpec<FavoriteListSummary> = {
+const LISTS_PAGE_BODY: PageCollectionBodySpec<UserListSummary> = {
   kind: 'collection',
   scene: 'lists',
   Content: ListsContent,
@@ -871,7 +874,7 @@ const LISTS_PAGE_BODY: PageCollectionBodySpec<FavoriteListSummary> = {
 };
 
 // THE PAGE CONTROLLER — the query + the state derivation; slots never see the edge.
-const useListsPageBody = (): PageBodyState<FavoriteListSummary> => {
+const useListsPageBody = (): PageBodyState<UserListSummary> => {
   const queryClient = useQueryClient();
   const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
     useBottomSheetSceneStackBodyRenderActivity();
@@ -880,7 +883,7 @@ const useListsPageBody = (): PageBodyState<FavoriteListSummary> => {
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const listType = useListsHomeControlsStore((state) => state.listType);
   const queryEnabled = !isSystemUnavailable && shouldSubscribeDataLane;
-  const listsQuery = useFavoriteLists({
+  const listsQuery = useUserLists({
     listType,
     enabled: queryEnabled,
     subscribed: queryEnabled,
@@ -888,12 +891,8 @@ const useListsPageBody = (): PageBodyState<FavoriteListSummary> => {
   // Retained-data law (kept from the old surface): an in-flight refetch or an errored
   // refetch with RETAINED data keeps presenting the data — pending/error only with
   // nothing to show; 'No lists yet' only once the query RESOLVES empty.
-  const retainedListsRef = React.useRef<Partial<Record<FavoriteListType, FavoriteListSummary[]>>>(
-    {}
-  );
-  const cachedLists = queryClient.getQueryData<FavoriteListSummary[]>(
-    favoriteListKeys.list(listType)
-  );
+  const retainedListsRef = React.useRef<Partial<Record<UserListType, UserListSummary[]>>>({});
+  const cachedLists = queryClient.getQueryData<UserListSummary[]>(userListKeys.list(listType));
   const lists = listsQuery.data ?? cachedLists ?? retainedListsRef.current[listType] ?? null;
   React.useEffect(() => {
     if (listsQuery.data != null) {
@@ -904,7 +903,7 @@ const useListsPageBody = (): PageBodyState<FavoriteListSummary> => {
   const refetchLists = React.useCallback(() => {
     void listsQuery.refetch();
   }, [listsQuery]);
-  return resolvePageBodyListState<FavoriteListSummary>({
+  return resolvePageBodyListState<UserListSummary>({
     // Activation (hasActivatedExpandedContent) is a STATE input: until the scene
     // expands the body paints the material — never a tree swap (the old dual-tree).
     isPending: !hasActivatedExpandedContent || !queryEnabled || (listsQuery.isLoading && !hasData),
@@ -1032,6 +1031,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 4,
+  },
+  tileHeartGlyph: {
+    marginRight: 6,
   },
   tileTitle: {
     color: TILE_TEXT,

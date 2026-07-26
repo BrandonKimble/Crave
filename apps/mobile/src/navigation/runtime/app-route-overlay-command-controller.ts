@@ -1,6 +1,6 @@
 import type React from 'react';
 
-import type { FavoriteListType } from '../../services/favorite-lists';
+import type { UserListType } from '../../services/user-lists';
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type {
   AppOverlaySaveListTarget,
@@ -15,7 +15,7 @@ type Listener = () => void;
 
 export type AppRouteSaveSheetState = {
   visible: boolean;
-  listType: FavoriteListType;
+  listType: UserListType;
   target: AppOverlaySaveListTarget | null;
   parentSceneKey: AppOverlayTopLevelProductRouteKey | null;
   ownerSceneKey: AppOverlayTopLevelProductRouteKey | null;
@@ -237,7 +237,7 @@ class AppRouteOverlayCommandController {
     openerRouteKey,
     routeInstanceId,
   }: {
-    listType: FavoriteListType;
+    listType: UserListType;
     target: AppOverlaySaveListTarget;
     ownerSceneKey?: AppOverlayTopLevelProductRouteKey | null;
     parentSceneKey?: AppOverlayTopLevelProductRouteKey | null;

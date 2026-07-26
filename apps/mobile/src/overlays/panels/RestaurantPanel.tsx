@@ -41,6 +41,7 @@ import {
   useRestaurantHeaderLiveState,
 } from '../restaurant-header-live-state';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
+import { useFavoriteHeart } from '../../hooks/use-favorite-heart';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { RestaurantHoursCard } from '../../features/restaurant-hours/RestaurantHoursCard';
@@ -907,10 +908,8 @@ const RestaurantPersistentHeaderExtras = React.memo(
     const headerState = useRestaurantHeaderLiveState();
     const data = headerState?.data ?? null;
     const restaurant = data?.restaurant ?? null;
-    const isFavorite = data?.isFavorite ?? false;
     const restaurantName = restaurant?.restaurantName ?? '';
     const restaurantId = restaurant?.restaurantId ?? '';
-    const onToggleFavorite = headerState?.onToggleFavorite;
     const extrasOpacityStyle = useAnimatedStyle(
       () => ({ opacity: transitionProgress.value }),
       [transitionProgress]
@@ -921,12 +920,23 @@ const RestaurantPersistentHeaderExtras = React.memo(
     // the heart save carries that location so ListDetail pins exactly it.
     const focusedLocationId =
       restaurant?.displayLocation?.locationId ?? restaurant?.restaurantLocationId ?? null;
+    // Favorites-as-kind rewire: the heart is now the ONE-TAP heart verb
+    // against the kind='favorites' list (POST/DELETE /favorites/lists/
+    // favorites/items). BEFORE it opened the save-list sheet via
+    // onToggleFavorite → handleRestaurantSavePress (which never saved
+    // anywhere by itself); the sheet remains reachable from the card Save
+    // pills and still offers Favorites as its pinned first option.
+    const { isFavorite, toggle: toggleHeart } = useFavoriteHeart({
+      entityId: restaurantId || null,
+      locationId: focusedLocationId,
+      entityKind: 'restaurant',
+    });
     const handleToggleFavorite = React.useCallback(() => {
       if (!restaurantId) {
         return;
       }
-      onToggleFavorite?.(restaurantId, focusedLocationId);
-    }, [focusedLocationId, onToggleFavorite, restaurantId]);
+      void toggleHeart();
+    }, [restaurantId, toggleHeart]);
 
     // W3 universal share modal replaces the ad-hoc OS share sheet (the sheet is
     // still reachable inside the modal as the "Share via…" row).

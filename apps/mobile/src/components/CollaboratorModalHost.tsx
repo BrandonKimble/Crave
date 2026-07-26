@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Check, Link as LucideLink, MoreHorizontal, Plus, Share2 } from 'lucide-react-native';
 
 import OverlayModalSheet from '../overlays/OverlayModalSheet';
-import type { FavoriteListPerson } from '../services/favorite-lists';
+import type { UserListPerson } from '../services/user-lists';
 import { Text } from './ui/Text';
 import { MonogramAvatar } from './MonogramAvatar';
 import {
@@ -14,10 +14,10 @@ import {
 } from './collaborator-modal-store';
 
 // ─── Shared person atoms (the collaborator chip on ListDetail uses these too) ────────────────
-export const personDisplayName = (person: FavoriteListPerson): string =>
+export const personDisplayName = (person: UserListPerson): string =>
   person.displayName?.trim() || person.username?.trim() || 'Crave member';
 
-export const PersonAvatar = ({ person, size }: { person: FavoriteListPerson; size: number }) => (
+export const PersonAvatar = ({ person, size }: { person: UserListPerson; size: number }) => (
   <MonogramAvatar
     seed={person.userId}
     title={personDisplayName(person)}
@@ -36,7 +36,7 @@ const CollaboratorPersonRow = ({
   onKick,
   onLeave,
 }: {
-  person: FavoriteListPerson;
+  person: UserListPerson;
   badge: string | null;
   canKick: boolean;
   canLeave: boolean;

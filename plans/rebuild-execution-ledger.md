@@ -2231,3 +2231,23 @@ flagged as a surface-length knob to revisit post-launch). api 900 /
 mobile 455 green. Deferred: send-in-app for curated ids; sim visual pass
 awaits owner sign-in post Clerk cutover; curated recipe/cron + onboarding
 seeding scrutiny is the NEXT ordered leg.
+
+## 2026-07-26 — Favorites becomes a KIND; user_lists canon; CutoutBand; house icon
+
+Server: favorite_lists→user_lists family (HTTP routes unchanged), kind
+law (partial unique; 'favorites' lazily created on first heart;
+undeletable; system_kind canonicalized into kind). Migration ordering
+bug caught on local apply (old NULLs-distinct unique had to drop BEFORE
+the NULL→'standard' fill) — fixed, commented load-bearing; prod migrated
+clean (64 lists carried). Recipes UNCAPPED; 5/25/3 K1-RATIFIED. Mobile
+audit: the heart was NEVER a one-tap toggle (dead isFavorite wiring) —
+now real via useFavoriteHeart → heart routes; SaveListPanel shows a
+permanent Favorites row above New list; Lists page pins favorites,
+Delete omitted; service layer renamed to user-lists (17 importers).
+CutoutBand: ONE implementation of the infinite-edge illusion consumed by
+strip AND shelves (1px seam overlap into an 8px hole-free apron),
+geometry identity spec-proven; visuals await the sim. Home tab = lucide
+House. The api agent died at a session limit at ~95%: recovered by
+assessing the tree (913 tests already green) + 2 lint fixes + the
+migration reorder — a dead agent's tree must be ASSESSED, never assumed
+lost. api 913 / mobile 477 green.

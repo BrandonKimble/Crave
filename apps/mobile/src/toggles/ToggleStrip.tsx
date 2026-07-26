@@ -22,6 +22,7 @@ import Reanimated, {
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { TOGGLE_STRIP_BAND_HEIGHT } from './toggle-strip-metrics';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
+import CutoutBandMaterial from '../components/CutoutBandMaterial';
 import {
   FrostCutout,
   useIsInsideSceneFoundationSurface,
@@ -65,8 +66,9 @@ import {
  *    horizontal alignment is SCROLLABLE contentInset only. A mount cannot cap the
  *    band into a padded box through the API; a padded PARENT is a dev CONTRACT bark
  *    (band narrower than the window).
- * 3. VISUALLY INFINITE OVERSCROLL — the mask plate extends a full viewport width past
- *    both ends of the content; no rubber-band can reveal a frost edge.
+ * 3. VISUALLY INFINITE OVERSCROLL — the white material runs a full viewport width past
+ *    both ends of the content (shared CutoutBandMaterial: masked plate over the content
+ *    extent + plain flanking panes); no rubber-band can reveal a frost edge.
  * 4. REAL PHYSICS + WARM RESTORE — native rubber-band scroll; layout AND settled
  *    scrollX restore through the engine-owned cache seat (`toggle-strip-layout-cache`).
  *    ScrollX restore is the one place the engine deliberately EXCEEDS the shipped
@@ -577,21 +579,20 @@ export function ToggleStrip({
     () => (holes.length ? Math.max(...holes.map((hole) => hole.x + hole.width)) : 0),
     [holes]
   );
-  // Extend the mask far past the viewport on both sides so scrolling/bouncing never
-  // reveals a hard frost edge — the white always runs off both ends.
-  const overscrollMargin = Math.max(contentInset, viewportWidth);
-  const maskWidth = Math.max(viewportWidth, maxHoleExtent + overscrollMargin * 2);
+  // The material must run far past the viewport on both sides so scrolling/bouncing
+  // never reveals a hard frost edge — CutoutBandMaterial owns that illusion (masked
+  // plate over the content extent + plain flanking panes; cutout-band-geometry.ts).
   const maskHeight = rowHeight > 0 ? rowHeight + STRIP_GAP : 0;
   const maskedHoles = React.useMemo(
     () =>
       holes.map((hole) => ({
-        x: hole.x + overscrollMargin,
+        x: hole.x,
         y: hole.y,
         width: hole.width,
         height: hole.height,
         borderRadius: (hole.borderRadius ?? holeBorderRadius) + HOLE_RADIUS_BOOST,
       })),
-    [holes, holeBorderRadius, overscrollMargin]
+    [holes, holeBorderRadius]
   );
   // Action holes register in actionRowContent coordinates (padding already shifts
   // child x) and the action mask absolute-fills that same box — shared frame, no
@@ -757,19 +758,14 @@ export function ToggleStrip({
               >
                 <View style={styles.toggleRow}>
                   {contentRowWidth > 0 && rowHeight > 0 && maskedHoles.length > 0 ? (
-                    <MaskedHoleOverlay
-                      pointerEvents="none"
+                    <CutoutBandMaterial
                       holes={maskedHoles}
-                      backgroundColor={surfaceColor}
-                      style={[
-                        styles.maskOverlay,
-                        {
-                          width: maskWidth,
-                          height: maskHeight,
-                          top: 0,
-                          left: -overscrollMargin,
-                        },
-                      ]}
+                      contentExtent={maxHoleExtent}
+                      viewportWidth={viewportWidth}
+                      edgeInset={contentInset}
+                      height={maskHeight}
+                      surfaceColor={surfaceColor}
+                      zIndex={1}
                     />
                   ) : null}
                   <HoleRegistryContext.Provider value={toggleHoleRegistry}>
@@ -870,12 +866,6 @@ const styles = StyleSheet.create({
     // Clips the control while a citizen's width grows/shrinks (entry/exit morph);
     // inert at rest — every control draws inside its own box.
     overflow: 'hidden',
-  },
-  maskOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 1,
   },
   actionLayer: {
     ...StyleSheet.absoluteFillObject,

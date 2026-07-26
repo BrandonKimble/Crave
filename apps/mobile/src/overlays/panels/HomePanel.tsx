@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 
 import { Text } from '../../components';
-import MaskedHoleOverlay from '../../components/MaskedHoleOverlay';
+import CutoutBandMaterial from '../../components/CutoutBandMaterial';
 import { SceneLoadingSurface } from '../../components/skeletons';
 import { FrostCutout } from '../SceneBodyFoundationSurface';
 import { colors as themeColors } from '../../constants/theme';
@@ -63,14 +63,14 @@ registerPersistentHeaderDescriptor('home', {
 //   1. The row band wraps in `FrostCutout` — on this foundation-plated scene it
 //      punches a band-height hole in the scene's white plate, so the row's own
 //      material sits on honest frost (never white-on-white).
-//   2. The row paints its OWN white material as a `MaskedHoleOverlay` INSIDE the
+//   2. The row paints its OWN white material as a `CutoutBandMaterial` INSIDE the
 //      horizontal scroll content (so it scrolls WITH the cards), with one rounded
-//      hole per card well — frost shows through the wells.
-//   3. INFINITE-EDGE ILLUSION (the strip's mechanism, verbatim): the material
-//      extends a full viewport width past both ends of the content and sits at
-//      `left: -overscrollMargin`, so no rubber-band overscroll can ever reveal a
-//      hard white edge. Native ScrollView `alwaysBounceHorizontal` = the strip's
-//      rubber-band feel.
+//      mask hole per card well — frost shows through the wells.
+//   3. INFINITE-EDGE ILLUSION (the strip's mechanism, SHARED — CutoutBandMaterial):
+//      the material runs a full viewport width past both ends of the content
+//      (masked plate over the content extent + plain flanking panes), so no
+//      rubber-band overscroll can ever reveal a hard white edge. Native ScrollView
+//      `alwaysBounceHorizontal` = the strip's rubber-band feel.
 // Card text (owner-specified, Spotify pattern): TITLE inside the well,
 // bottom-left; SUB-LINE below the well, OUTSIDE it, on the white material —
 // caption size (the toggle-strip chip label scale), standard subtext gray,
@@ -184,10 +184,9 @@ const HomeShelfRowView = React.memo(
       [row]
     );
 
-    // The infinite-edge illusion, byte-identical to the strip's mask geometry:
-    // the material runs a full viewport width past both content ends.
-    const overscrollMargin = Math.max(OVERLAY_HORIZONTAL_PADDING, viewportWidth);
-    const maskWidth = Math.max(viewportWidth, bandSize.width + overscrollMargin * 2);
+    // The infinite-edge illusion — the strip's shared mechanism (CutoutBandMaterial):
+    // masked plate over the content extent + plain flanking panes running a full
+    // viewport width past both content ends.
     const maskHeight = bandSize.height > 0 ? bandSize.height + HOME_MASK_OVERSHOOT : 0;
     const maskedHoles = React.useMemo(
       () =>
@@ -195,13 +194,13 @@ const HomeShelfRowView = React.memo(
           .map((key) => wellMap[key])
           .filter((rect): rect is HomeWellRect => rect != null)
           .map((rect) => ({
-            x: rect.x + overscrollMargin,
+            x: rect.x,
             y: rect.y,
             width: rect.width,
             height: rect.height,
             borderRadius: HOME_CARD_WELL_RADIUS + HOME_WELL_RADIUS_BOOST,
           })),
-      [cardKeys, wellMap, overscrollMargin]
+      [cardKeys, wellMap]
     );
 
     return (
@@ -238,14 +237,14 @@ const HomeShelfRowView = React.memo(
                 }}
               >
                 {bandSize.width > 0 && maskedHoles.length > 0 ? (
-                  <MaskedHoleOverlay
-                    pointerEvents="none"
+                  <CutoutBandMaterial
                     holes={maskedHoles}
-                    backgroundColor={SURFACE}
-                    style={[
-                      styles.shelfMaterial,
-                      { width: maskWidth, height: maskHeight, left: -overscrollMargin },
-                    ]}
+                    contentExtent={bandSize.width}
+                    viewportWidth={viewportWidth}
+                    edgeInset={OVERLAY_HORIZONTAL_PADDING}
+                    height={maskHeight}
+                    surfaceColor={SURFACE}
+                    zIndex={1}
                   />
                 ) : null}
                 <View style={styles.shelfCardRow}>
@@ -538,14 +537,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     alignSelf: 'flex-start',
   },
-  // The row's white material (MaskedHoleOverlay) — absolute INSIDE the scroll
-  // content so it rides the horizontal scroll; extends `overscrollMargin` past
-  // both ends (inline width/left) for the infinite-edge illusion.
-  shelfMaterial: {
-    position: 'absolute',
-    top: 0,
-    zIndex: 1,
-  },
+  // The row's white material (CutoutBandMaterial) renders absolute INSIDE the
+  // scroll content so it rides the horizontal scroll; the infinite-edge illusion
+  // (material past both ends) is owned by the shared primitive.
   shelfCardRow: {
     position: 'relative',
     zIndex: 2,

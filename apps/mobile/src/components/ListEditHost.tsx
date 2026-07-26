@@ -11,8 +11,8 @@ import {
   type ListEditPayload,
 } from './list-edit-store';
 import { colors as themeColors } from '../constants/theme';
-import { favoriteListKeys } from '../hooks/use-favorite-lists';
-import { favoriteListsService, type FavoriteListVisibility } from '../services/favorite-lists';
+import { userListKeys } from '../hooks/use-user-lists';
+import { userListsService, type UserListVisibility } from '../services/user-lists';
 import OverlayModalSheet from '../overlays/OverlayModalSheet';
 import SquircleSpinner from './SquircleSpinner';
 
@@ -29,7 +29,7 @@ const SUBTLE = '#64748b';
 type FormState = {
   name: string;
   description: string;
-  visibility: FavoriteListVisibility;
+  visibility: UserListVisibility;
 };
 
 const initialFormFor = (payload: ListEditPayload): FormState =>
@@ -55,14 +55,14 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
     setIsSaving(true);
     try {
       if (payload.mode === 'create') {
-        await favoriteListsService.create({
+        await userListsService.create({
           name,
           description: form.description.trim() || undefined,
           listType: payload.listType,
           visibility: form.visibility,
         });
       } else {
-        await favoriteListsService.update(payload.listId, {
+        await userListsService.update(payload.listId, {
           name,
           description: form.description.trim(),
           visibility: form.visibility,
@@ -73,7 +73,7 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
       announceFailureIfOnline();
       return;
     }
-    await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+    await queryClient.invalidateQueries({ queryKey: userListKeys.all });
     if (payload.mode === 'edit') {
       await queryClient.invalidateQueries({ queryKey: ['listDetail', payload.listId] });
     }
@@ -109,7 +109,7 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
           Visibility
         </Text>
         <View style={styles.visibilityToggle}>
-          {(['private', 'public'] as FavoriteListVisibility[]).map((value) => {
+          {(['private', 'public'] as UserListVisibility[]).map((value) => {
             const isActive = form.visibility === value;
             return (
               <Pressable

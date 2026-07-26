@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import type { SharedValue } from 'react-native-reanimated';
 
-import type { FavoriteListType } from '../../../services/favorite-lists';
+import type { UserListType } from '../../../services/user-lists';
 
 /**
  * THE LISTS HOME CONTROL STATE (leg 3 — plans/toggle-strip-rebuild-ledger.md §5).
@@ -41,10 +41,10 @@ export type ListsEditSeat = {
 };
 
 export type ListsHomeControlsState = {
-  listType: FavoriteListType;
+  listType: UserListType;
   sortMode: ListsSortMode;
   editSeat: ListsEditSeat | null;
-  setListType: (value: FavoriteListType) => void;
+  setListType: (value: UserListType) => void;
   setSortMode: (value: ListsSortMode) => void;
   setEditSeat: (seat: ListsEditSeat | null) => void;
 };

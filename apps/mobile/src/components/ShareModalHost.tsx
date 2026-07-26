@@ -16,7 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
 import OverlayModalSheet from '../overlays/OverlayModalSheet';
-import { favoriteListsService } from '../services/favorite-lists';
+import { userListsService } from '../services/user-lists';
 import { messagingService, type ConversationPeer } from '../services/messaging';
 import { announceFailureIfOnline, showAppModal } from './app-modal-store';
 import {
@@ -157,7 +157,7 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   // service the W3F long-press Share action used).
   const resolveLinkUrl = React.useCallback(async (): Promise<string> => {
     if (config.kind === 'list' && config.listSource !== 'curated' && !config.listShareSlug) {
-      const enabled = await favoriteListsService.enableShare(config.id);
+      const enabled = await userListsService.enableShare(config.id);
       const path = buildShareLinkPath({ ...config, listShareSlug: enabled.shareSlug });
       if (path == null) {
         throw new Error('no share path');

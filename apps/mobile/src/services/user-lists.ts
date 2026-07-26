@@ -1,22 +1,36 @@
 import api from './api';
 import type { Coordinate, FoodResult, RestaurantResult, SearchResponse } from '../types';
 
-export type FavoriteListType = 'restaurant' | 'dish';
-export type FavoriteListVisibility = 'public' | 'private';
+export type UserListType = 'restaurant' | 'dish';
+export type UserListVisibility = 'public' | 'private';
+/**
+ * Favorites-as-kind model: 'favorites' is the one-per-user, undeletable
+ * heart-target list (lazily created server-side on first heart); the four
+ * signup defaults keep their kinds; everything else is 'standard'.
+ */
+export type UserListKind =
+  | 'standard'
+  | 'favorites'
+  | 'been'
+  | 'want_to_go'
+  | 'tried'
+  | 'want_to_try';
 
-export interface FavoriteListPreviewItem {
+export interface UserListPreviewItem {
   itemId: string;
   label: string;
   subLabel?: string | null;
   craveScore: number;
 }
 
-export interface FavoriteListSummary {
+export interface UserListSummary {
   listId: string;
   name: string;
   description?: string | null;
-  listType: FavoriteListType;
-  visibility: FavoriteListVisibility;
+  listType: UserListType;
+  visibility: UserListVisibility;
+  /** Favorites-as-kind: rides every summary/detail payload. */
+  kind: UserListKind;
   itemCount: number;
   position: number;
   /**
@@ -35,81 +49,80 @@ export interface FavoriteListSummary {
   shareEnabled: boolean;
   shareSlug?: string | null;
   updatedAt: string;
-  previewItems: FavoriteListPreviewItem[];
+  previewItems: UserListPreviewItem[];
   /**
    * Wave-3 §1.2 (API live since wave-2 §7): the home-tile 2x2 gallery — top photo of
    * each of the list's top-4 restaurants, slots TL(0)→TR(1)→BL(2)→BR(3), sparse at
    * the end (client renders placeholders). Present on the owner home read.
    */
-  tileImages?: FavoriteListTileImage[];
+  tileImages?: UserListTileImage[];
 }
 
-export interface FavoriteListTileImage {
+export interface UserListTileImage {
   slot: 0 | 1 | 2 | 3;
   restaurantId: string;
   photoId: string;
   thumbUrl: string;
 }
 
-export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
-export type FavoriteListSort = 'custom' | 'best' | 'recent';
+export type UserListViewerRole = 'owner' | 'collaborator' | 'viewer';
+export type UserListSort = 'custom' | 'best' | 'recent';
 
 /** Collaborator roster person (spec B.1.3 — PERSON_SELECT on the API). */
-export interface FavoriteListPerson {
+export interface UserListPerson {
   userId: string;
   username: string | null;
   displayName: string | null;
   avatarUrl: string | null;
 }
 
-export interface FavoriteListCollaborators {
-  owner: FavoriteListPerson;
-  collaborators: FavoriteListPerson[];
+export interface UserListCollaborators {
+  owner: UserListPerson;
+  collaborators: UserListPerson[];
 }
 
-export interface FavoriteListDetail {
-  list: FavoriteListSummary;
+export interface UserListDetail {
+  list: UserListSummary;
   /** RT-18/W1: resolved against owner/collaborator/slug-capability grants. */
-  viewerRole?: FavoriteListViewerRole;
+  viewerRole?: UserListViewerRole;
   /** §8.14: 'custom' iff a custom order exists — the saver's ranking is the default. */
-  defaultSort?: FavoriteListSort;
+  defaultSort?: UserListSort;
   restaurants?: RestaurantResult[];
   dishes?: FoodResult[];
 }
 
 /** One "your list contains this entity" row (§8.4 Overview saved-note block). */
-export interface FavoriteListEntityMembership {
+export interface UserListEntityMembership {
   itemId: string;
   listId: string;
   listName: string;
-  listType: FavoriteListType;
+  listType: UserListType;
+  /** Favorites-as-kind: 'favorites' rows are the heart-state source of truth. */
+  kind: UserListKind;
   systemKind: string | null;
   note: string | null;
 }
 
-export const favoriteListsService = {
+export const userListsService = {
   async list(params: {
-    listType?: FavoriteListType;
-    visibility?: FavoriteListVisibility;
-  }): Promise<FavoriteListSummary[]> {
-    const response = await api.get<FavoriteListSummary[]>('/favorites/lists', { params });
+    listType?: UserListType;
+    visibility?: UserListVisibility;
+  }): Promise<UserListSummary[]> {
+    const response = await api.get<UserListSummary[]>('/favorites/lists', { params });
     return response.data;
   },
   async listPublic(params: {
     userId: string;
-    listType?: FavoriteListType;
-  }): Promise<FavoriteListSummary[]> {
-    const response = await api.get<FavoriteListSummary[]>(
-      `/users/${params.userId}/favorites/lists`,
-      {
-        params: { listType: params.listType },
-      }
-    );
+    listType?: UserListType;
+  }): Promise<UserListSummary[]> {
+    const response = await api.get<UserListSummary[]>(`/users/${params.userId}/favorites/lists`, {
+      params: { listType: params.listType },
+    });
     return response.data;
   },
-  async get(listId: string, opts?: { shareSlug?: string | null }): Promise<FavoriteListDetail> {
+  async get(listId: string, opts?: { shareSlug?: string | null }): Promise<UserListDetail> {
     // RT-18: a non-owner/non-collaborator read must PRESENT the slug (the capability).
-    const response = await api.get<FavoriteListDetail>(`/favorites/lists/${listId}`, {
+    const response = await api.get<UserListDetail>(`/favorites/lists/${listId}`, {
       params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined,
     });
     return response.data;
@@ -132,7 +145,7 @@ export const favoriteListsService = {
       /** RT-18 slug-as-capability: shared reads present the slug. */
       shareSlug?: string | null;
       /** Row ordering (W1 §8.14). Omitted = the list's defaultSort. */
-      sort?: FavoriteListSort;
+      sort?: UserListSort;
       /** Virtual All ids only: whose public lists to union. */
       targetUserId?: string | null;
     }
@@ -170,17 +183,17 @@ export const favoriteListsService = {
       ? (raw as Array<{ placeId: string; name: string; restaurantCount: number }>)
       : [];
   },
-  async getShared(shareSlug: string): Promise<FavoriteListDetail> {
-    const response = await api.get<FavoriteListDetail>(`/favorites/lists/share/${shareSlug}`);
+  async getShared(shareSlug: string): Promise<UserListDetail> {
+    const response = await api.get<UserListDetail>(`/favorites/lists/share/${shareSlug}`);
     return response.data;
   },
   async create(payload: {
     name: string;
     description?: string;
-    listType: FavoriteListType;
-    visibility?: FavoriteListVisibility;
-  }): Promise<FavoriteListSummary> {
-    const response = await api.post<FavoriteListSummary>('/favorites/lists', payload);
+    listType: UserListType;
+    visibility?: UserListVisibility;
+  }): Promise<UserListSummary> {
+    const response = await api.post<UserListSummary>('/favorites/lists', payload);
     return response.data;
   },
   async update(
@@ -188,14 +201,14 @@ export const favoriteListsService = {
     payload: {
       name?: string;
       description?: string;
-      visibility?: FavoriteListVisibility;
+      visibility?: UserListVisibility;
       /** §8.14 profile pin (owner-only). */
       pinned?: boolean;
       /** Wave-2 §2 "Use your photos" (owner-only). */
       useOwnPhotos?: boolean;
     }
-  ): Promise<FavoriteListSummary> {
-    const response = await api.patch<FavoriteListSummary>(`/favorites/lists/${listId}`, payload);
+  ): Promise<UserListSummary> {
+    const response = await api.patch<UserListSummary>(`/favorites/lists/${listId}`, payload);
     return response.data;
   },
   async updatePosition(listId: string, position: number): Promise<void> {
@@ -222,6 +235,29 @@ export const favoriteListsService = {
     return response.data;
   },
   /**
+   * Heart verb (Spotify Liked-Songs model): ensure-then-add against the user's
+   * kind='favorites' list — the server LAZILY creates it on first use. Same
+   * body shape as addItem, no listId (the kind IS the address).
+   */
+  async addFavoriteItem(payload: {
+    restaurantId?: string;
+    connectionId?: string;
+    locationId?: string;
+    note?: string;
+  }) {
+    const response = await api.post('/favorites/lists/favorites/items', payload);
+    return response.data;
+  },
+  /** Unheart: remove from the user's kind='favorites' list. */
+  async removeFavoriteItem(payload: {
+    restaurantId?: string;
+    connectionId?: string;
+    locationId?: string;
+  }) {
+    const response = await api.delete('/favorites/lists/favorites/items', { data: payload });
+    return response.data;
+  },
+  /**
    * Batch drag-save (W1 edit mode): orderedItemIds must be EXACTLY the list's
    * current membership (the API enforces set equality — loud contract).
    */
@@ -231,8 +267,8 @@ export const favoriteListsService = {
   async getCollaborators(
     listId: string,
     opts?: { shareSlug?: string | null }
-  ): Promise<FavoriteListCollaborators> {
-    const response = await api.get<FavoriteListCollaborators>(
+  ): Promise<UserListCollaborators> {
+    const response = await api.get<UserListCollaborators>(
       `/favorites/lists/${listId}/collaborators`,
       { params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined }
     );
@@ -270,8 +306,8 @@ export const favoriteListsService = {
    * Red-team W2 (page-registry §8.4 Overview element 1): the viewer's lists
    * containing an entity (restaurant or dish connection), incl. saved notes.
    */
-  async entityMemberships(entityId: string): Promise<FavoriteListEntityMembership[]> {
-    const response = await api.get<FavoriteListEntityMembership[]>(
+  async entityMemberships(entityId: string): Promise<UserListEntityMembership[]> {
+    const response = await api.get<UserListEntityMembership[]>(
       `/favorites/entities/${entityId}/memberships`
     );
     return response.data;

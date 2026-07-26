@@ -9,7 +9,7 @@ import { openPhotoReportModal } from '../../components/photos/CardPhotoStrip';
 import { pushPhotoEvent } from '../../components/photos/photo-events-buffer';
 import { photosService, type PhotoStripItemDto } from '../../services/photos';
 import { fetchRestaurantMentions, type RestaurantMentionCard } from '../../services/polls';
-import { favoriteListsService } from '../../services/favorite-lists';
+import { userListsService } from '../../services/user-lists';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
@@ -296,7 +296,7 @@ export const RestaurantMentionsView: React.FC<{
 export const RestaurantSavedNote: React.FC<{ restaurantId: string }> = ({ restaurantId }) => {
   const membershipsQuery = useQuery({
     queryKey: ['entityMemberships', restaurantId],
-    queryFn: () => favoriteListsService.entityMemberships(restaurantId),
+    queryFn: () => userListsService.entityMemberships(restaurantId),
     enabled: Boolean(restaurantId),
     staleTime: 30_000,
   });

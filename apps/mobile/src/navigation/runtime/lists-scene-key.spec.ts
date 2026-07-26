@@ -1,7 +1,7 @@
 // The bookmarks → lists CANONICAL-LANGUAGE rename pins (owner decision 2026-07-26):
 // the saved-lists domain's scene/page key is 'lists' everywhere in mobile code. A
 // stray 'bookmarks' scene key reappearing (half-revert, stale merge) turns these RED.
-// Server-side names (favorite_lists, services/favorite-lists.ts) deliberately keep
+// Server-side names (favorite_lists, services/user-lists.ts) deliberately keep
 // their own naming — that is a separate later decision, not this spec's business.
 import { ALL_TOP_LEVEL_SCENE_KEYS } from './docked-scene-target';
 import { APP_OVERLAY_ROUTE_METADATA_BY_KEY } from './app-overlay-route-types';

@@ -7,11 +7,11 @@
 // anchors to the scrollable body's CONTENT box, so on a long list the sheet
 // lands at content-bottom, offscreen (leg-12 sim RED on ListDetail).
 
-import type { FavoriteListCollaborators, FavoriteListViewerRole } from '../services/favorite-lists';
+import type { UserListCollaborators, UserListViewerRole } from '../services/user-lists';
 
 export type CollaboratorModalPayload = {
-  roster: FavoriteListCollaborators;
-  viewerRole: FavoriteListViewerRole | undefined;
+  roster: UserListCollaborators;
+  viewerRole: UserListViewerRole | undefined;
   myUserId: string | null;
   inviteState: 'idle' | 'copied' | 'unavailable';
   onCopyInvite: () => void;

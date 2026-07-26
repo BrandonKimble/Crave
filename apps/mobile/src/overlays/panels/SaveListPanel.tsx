@@ -9,12 +9,12 @@ import { colors as themeColors } from '../../constants/theme';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
 import {
-  favoriteListsService,
-  type FavoriteListSummary,
-  type FavoriteListType,
-  type FavoriteListVisibility,
-} from '../../services/favorite-lists';
-import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
+  userListsService,
+  type UserListType,
+  type UserListVisibility,
+} from '../../services/user-lists';
+import { useUserLists, userListKeys } from '../../hooks/use-user-lists';
+import { buildSaveListRows, dispatchSaveForRow, type SaveListRowModel } from './save-list-model';
 import { useBottomSheetSceneStackBodyDataActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
@@ -37,7 +37,7 @@ type ListFormState = {
   mode: 'hidden' | 'create';
   name: string;
   description: string;
-  visibility: FavoriteListVisibility;
+  visibility: UserListVisibility;
 };
 
 const selectSaveSheetListType = (snapshot: AppRouteOverlayCommandSnapshot) =>
@@ -58,18 +58,18 @@ type SaveSheetSideListener = () => void;
 const VISIBILITY_OPTIONS = [
   { label: 'Private', value: 'private' },
   { label: 'Public', value: 'public' },
-] as const satisfies readonly { label: string; value: FavoriteListVisibility }[];
+] as const satisfies readonly { label: string; value: UserListVisibility }[];
 
 const SIDE_SWITCH_OPTIONS = [
   { label: 'Restaurants', value: 'restaurant' },
   { label: 'Dishes', value: 'dish' },
-] as const satisfies readonly { label: string; value: FavoriteListType }[];
+] as const satisfies readonly { label: string; value: UserListType }[];
 
-let saveSheetSideOverride: FavoriteListType | null = null;
+let saveSheetSideOverride: UserListType | null = null;
 const saveSheetSideListeners = new Set<SaveSheetSideListener>();
 const saveSheetSideStore = {
-  get: (): FavoriteListType | null => saveSheetSideOverride,
-  set: (next: FavoriteListType | null): void => {
+  get: (): UserListType | null => saveSheetSideOverride,
+  set: (next: UserListType | null): void => {
     if (saveSheetSideOverride === next) {
       return;
     }
@@ -135,7 +135,7 @@ registerPersistentHeaderDescriptor('saveList', {
  *   restaurant; returns null (rows still browse, saving is disabled w/ hint).
  */
 const resolveTargetForSide = (
-  side: FavoriteListType,
+  side: UserListType,
   target: AppOverlaySaveListTarget | null
 ): { restaurantId?: string; connectionId?: string; locationId?: string } | null => {
   if (!target) {
@@ -158,10 +158,10 @@ const resolveTargetForSide = (
 };
 
 type SaveListRowProps = {
-  item: FavoriteListSummary;
+  item: SaveListRowModel;
   selected: boolean;
   note: string;
-  onSelect: (listId: string) => void;
+  onSelect: (rowId: string) => void;
   onNoteChange: (value: string) => void;
 };
 
@@ -169,17 +169,24 @@ const SaveListRow = React.memo(
   ({ item, selected, note, onSelect, onNoteChange }: SaveListRowProps) => (
     <View style={[styles.row, selected && styles.rowSelected]}>
       <Pressable
-        onPress={() => onSelect(item.listId)}
+        onPress={() => onSelect(item.rowId)}
         style={({ pressed }) => [styles.rowPressable, pressed && styles.rowPressed]}
         accessibilityRole="button"
         accessibilityState={{ selected }}
       >
+        {item.variant === 'favorites' ? (
+          <Feather name="heart" size={18} color={ACTIVE_TAB_COLOR} />
+        ) : null}
         <View style={styles.rowTextGroup}>
           <Text variant="body" weight="semibold" style={styles.rowTitle} numberOfLines={1}>
             {item.name}
           </Text>
           <Text variant="caption" style={styles.rowCount}>
-            {item.itemCount === 1 ? '1 item' : `${item.itemCount} items`}
+            {item.itemCount == null
+              ? 'Your hearted spots'
+              : item.itemCount === 1
+                ? '1 item'
+                : `${item.itemCount} items`}
           </Text>
         </View>
         <Feather
@@ -228,7 +235,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
   // and the in-flight latch. Render-time reset keyed on routeInstanceId (the
   // derived-state pattern — a NEW save funnel must not inherit the previous
   // one's flip/selection).
-  const [side, setSide] = React.useState<FavoriteListType>(triggerListType);
+  const [side, setSide] = React.useState<UserListType>(triggerListType);
   const [selectedListId, setSelectedListId] = React.useState<string | null>(null);
   const [note, setNote] = React.useState('');
   const [isSaving, setIsSaving] = React.useState(false);
@@ -253,7 +260,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
   );
 
   const queryEnabled = useDeferredSceneDataLane(shouldRunDataLane);
-  const listsQuery = useFavoriteLists({
+  const listsQuery = useUserLists({
     listType: side,
     enabled: queryEnabled,
     subscribed: queryEnabled,
@@ -263,6 +270,11 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
   const lists = listsQuery.data ?? [];
   const isListsLoading = !queryEnabled || (listsQuery.isLoading && lists.length === 0);
   const isListsError = listsQuery.isError && lists.length === 0;
+  // Favorites-as-kind rows: the permanent Favorites option rides FIRST (even
+  // with zero lists / no favorites-kind list yet), then the server-ordered rest.
+  const rows = React.useMemo(() => buildSaveListRows(lists), [lists]);
+  const favoritesRow = rows[0];
+  const regularRows = rows.slice(1);
 
   const sideTarget = resolveTargetForSide(side, target);
   const canSaveOnThisSide = sideTarget != null;
@@ -288,7 +300,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
     setFormState((prev) => ({ ...prev, description: value }));
   }, []);
 
-  const handleVisibilityChange = React.useCallback((value: FavoriteListVisibility) => {
+  const handleVisibilityChange = React.useCallback((value: UserListVisibility) => {
     setFormState((prev) => ({ ...prev, visibility: value }));
   }, []);
 
@@ -296,7 +308,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
     setFormState((prev) => ({ ...prev, mode: 'create' }));
   }, []);
 
-  const handleSideChange = React.useCallback((nextSide: FavoriteListType) => {
+  const handleSideChange = React.useCallback((nextSide: UserListType) => {
     setSide(nextSide);
     // A flipped side is a different list universe — the selection can't carry.
     setSelectedListId(null);
@@ -313,11 +325,13 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
       }
       setIsSaving(true);
       try {
-        await favoriteListsService.addItem(listId, {
+        // The favorites row dispatches the heart route (server lazily creates
+        // the kind='favorites' list); every other row is the generic add-item.
+        await dispatchSaveForRow(listId, {
           ...sideTarget,
           note: note.trim() ? note.trim() : undefined,
         });
-        await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+        await queryClient.invalidateQueries({ queryKey: userListKeys.all });
         await queryClient.invalidateQueries({ queryKey: ['entityMemberships'] });
         onClose();
       } finally {
@@ -340,17 +354,17 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
     }
     setIsSaving(true);
     try {
-      const created = await favoriteListsService.create({
+      const created = await userListsService.create({
         name: formState.name,
         description: formState.description,
         listType: side,
         visibility: formState.visibility,
       });
-      await favoriteListsService.addItem(created.listId, {
+      await userListsService.addItem(created.listId, {
         ...sideTarget,
         note: note.trim() ? note.trim() : undefined,
       });
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      await queryClient.invalidateQueries({ queryKey: userListKeys.all });
       await queryClient.invalidateQueries({ queryKey: ['entityMemberships'] });
       resetForm();
       onClose();
@@ -376,6 +390,15 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
             : 'Nothing to save on this side.'}
         </Text>
       ) : null}
+      {/* Permanent Favorites option (Liked-Songs model): FIRST, above New list,
+          present even before the favorites-kind list materializes. */}
+      <SaveListRow
+        item={favoritesRow}
+        selected={selectedListId === favoritesRow.rowId}
+        note={note}
+        onSelect={handleSelectList}
+        onNoteChange={setNote}
+      />
       {formState.mode === 'hidden' ? (
         <Pressable onPress={handleOpenCreateForm} style={styles.newListRow}>
           <View style={styles.newListIcon}>
@@ -439,13 +462,13 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
         // transport's contentContainer, so no extra insetX (see the tile-grid
         // double-pad gotcha that used to live here).
         <SceneLoadingSurface rowType="history" insetX={0} />
-      ) : lists.length ? (
+      ) : regularRows.length ? (
         <View style={styles.rowList}>
-          {lists.map((item) => (
+          {regularRows.map((item) => (
             <SaveListRow
-              key={item.listId}
+              key={item.rowId}
               item={item}
-              selected={selectedListId === item.listId}
+              selected={selectedListId === item.rowId}
               note={note}
               onSelect={handleSelectList}
               onNoteChange={setNote}
