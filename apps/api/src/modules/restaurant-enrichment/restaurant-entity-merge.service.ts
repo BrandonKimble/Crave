@@ -667,10 +667,11 @@ export class RestaurantEntityMergeService {
     const groups = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
-      SELECT lower(name) AS name, array_agg(entity_id ORDER BY created_at) AS entity_ids
+      SELECT lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'gi')) AS name,
+             array_agg(entity_id ORDER BY created_at) AS entity_ids
       FROM core_entities
       WHERE type = 'restaurant' AND status = 'active'
-      GROUP BY lower(name)
+      GROUP BY lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'gi'))
       HAVING count(*) = 2
     `;
     let merged = 0;
@@ -681,21 +682,56 @@ export class RestaurantEntityMergeService {
           entity_id: string;
           mention_count: number;
           place_ids: string[];
+          domain: string | null;
+          communities: string[];
         }>
       >`
         SELECT e.entity_id,
                COALESCE((SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.restaurant_id = e.entity_id), 0)::int AS mention_count,
-               COALESCE((SELECT array_agg(DISTINCT l.google_place_id) FILTER (WHERE l.google_place_id IS NOT NULL) FROM core_restaurant_locations l WHERE l.restaurant_id = e.entity_id), '{}') AS place_ids
+               COALESCE((SELECT array_agg(DISTINCT l.google_place_id) FILTER (WHERE l.google_place_id IS NOT NULL) FROM core_restaurant_locations l WHERE l.restaurant_id = e.entity_id), '{}') AS place_ids,
+               e.canonical_domain AS domain,
+               COALESCE((SELECT array_agg(DISTINCT lower(d.community)) FILTER (WHERE d.community IS NOT NULL)
+                         FROM core_restaurant_entity_events ev
+                         JOIN collection_source_documents d ON d.document_id = ev.source_document_id
+                         WHERE ev.restaurant_id = e.entity_id), '{}') AS communities
         FROM core_entities e
         WHERE e.entity_id = ANY(${group.entity_ids}::uuid[])
         ORDER BY e.created_at
       `;
       if (details.length !== 2) continue;
       const [a, b] = details;
+      // EVIDENCE HIERARCHY (Phase 3.3 — replaces the place-id-disjointness
+      // proxy, which is the EXPECTED state for legitimate chain branches):
+      // 1. same registrable domain = one operating business → merge
+      //    (aggregator domains like chowbus.com NEVER count as identity);
+      // 2. both grounded, both with their OWN distinct non-aggregator
+      //    domains → two businesses → hold;
+      // 3. otherwise (any ungrounded/domainless side): same-metro corpus
+      //    overlap → pre-enrichment duplicate → merge; disjoint metros with
+      //    zero shared evidence → hold for the enrichment-time resolver.
+      const isAggregator = (d: string | null): boolean =>
+        !!d &&
+        /chowbus|doordash|ubereats|grubhub|toasttab|squareup|square\.site|clover|linktr/.test(
+          d,
+        );
+      const domainOf = (x: { domain: string | null }): string | null =>
+        x.domain && !isAggregator(x.domain) ? x.domain.toLowerCase() : null;
+      const domainA = domainOf(a);
+      const domainB = domainOf(b);
       const sharedPlaceId = a.place_ids.some((p) => b.place_ids.includes(p));
-      const bothGroundedDisjoint =
-        a.place_ids.length > 0 && b.place_ids.length > 0 && !sharedPlaceId;
-      if (bothGroundedDisjoint) {
+      const sharedCommunity = a.communities.some((c) =>
+        b.communities.includes(c),
+      );
+      let mergeable: boolean;
+      if (sharedPlaceId || (domainA && domainB && domainA === domainB)) {
+        mergeable = true;
+      } else if (domainA && domainB) {
+        mergeable = false; // two distinct owned domains = two businesses
+      } else {
+        mergeable =
+          sharedCommunity || (!a.communities.length && !b.communities.length);
+      }
+      if (!mergeable) {
         held += 1;
         continue;
       }
