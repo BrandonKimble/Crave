@@ -175,6 +175,41 @@ export class PollEntitySeedService {
       });
 
     const created = await this.prisma.$transaction(async (tx) => {
+      // CROSS-PATH DUPLICATE FIX (Phase 3.1, plans/extraction-ideal-shape-
+      // execution.md): this path used to check ONLY google_place_id — a
+      // reddit-created ungrounded entity with the same name was invisible,
+      // minting the duplicate (the jollibee hole). Same advisory-lock
+      // discipline as the reddit creation path, then a case-insensitive
+      // name check: a same-name active entity ADOPTS this verified place
+      // as a new location (creation-time's only shared evidence is the
+      // name; the enrichment-time conflict resolver and the nightly sweep
+      // own the finer distinct-business judgment with domain evidence).
+      const resolvedName = String(entityData.name ?? name);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:restaurant:${resolvedName.toLowerCase()}`}))`;
+      const sameName = await tx.entity.findFirst({
+        where: {
+          type: EntityType.restaurant,
+          status: 'active',
+          name: { equals: resolvedName, mode: 'insensitive' },
+        },
+        select: { entityId: true, name: true },
+      });
+      if (sameName) {
+        const locationData = this.restaurantEnrichment.buildLocationCreateInput(
+          sameName.entityId,
+          match.place,
+        );
+        await tx.restaurantLocation.create({ data: locationData });
+        this.logger.info(
+          'Poll input matched existing restaurant by name — attached location',
+          { entityId: sameName.entityId, placeId },
+        );
+        return {
+          entityId: sameName.entityId,
+          name: sameName.name,
+          adopted: true,
+        };
+      }
       const entity = await tx.entity.create({ data: entityData });
       const locationData = this.restaurantEnrichment.buildLocationCreateInput(
         entity.entityId,
@@ -189,8 +224,12 @@ export class PollEntitySeedService {
           primaryLocation: { connect: { locationId: location.locationId } },
         },
       });
-      return entity;
+      return { entityId: entity.entityId, name: entity.name, adopted: false };
     });
+
+    if (created.adopted) {
+      return { entityId: created.entityId, name: created.name, created: false };
+    }
 
     this.logger.info('Created restaurant from poll input', {
       entityId: created.entityId,
