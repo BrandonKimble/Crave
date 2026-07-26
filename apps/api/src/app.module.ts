@@ -27,6 +27,7 @@ import { FavoritesModule } from './modules/favorites/favorites.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { HistoryModule } from './modules/history/history.module';
 import { PlacesModule } from './modules/places/places.module';
+import { HomeModule } from './modules/home/home.module';
 import { OpsDashboardModule } from './modules/ops-dashboard/ops-dashboard.module';
 import { IntegrityModule } from './modules/integrity/integrity.module';
 // Production readiness modules
@@ -96,6 +97,8 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     HistoryModule,
     // Place Catalog DAG + naming reconciler (geo-demand rebuild §1/§2)
     PlacesModule,
+    // HOME surface: app-curated lists (builder + feed reads)
+    HomeModule,
     OpsDashboardModule,
     IntegrityModule,
     // Production readiness: Health checks for Railway/container orchestration

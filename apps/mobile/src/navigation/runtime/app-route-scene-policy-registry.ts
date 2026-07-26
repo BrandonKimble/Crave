@@ -49,20 +49,31 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
-  polls: {
+  // HOME — THE docked scene (took polls' old docked policy row verbatim).
+  home: {
     sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
     // Non-dismissable by swipe (like every other route sheet): a downward drag rubber-bands at
     // the docked bar (collapsed) instead of swiping the lane to hidden. The docked bar is a
-    // permanent fixture; the programmatic dismiss path (`requestReturnToSearchFromPolls` →
-    // `dismissDockedScene`) still works since explicit snap targets aren't bounded by the
-    // gesture upperBound.
+    // permanent fixture; the programmatic dismiss path (`dismissDockedScene`) still works
+    // since explicit snap targets aren't bounded by the gesture upperBound.
     canSwipeDismiss: false,
     snapPersistence: 'none',
     postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
+  },
+  // Polls demotion: a regular content page (mirrors bookmarks' seat + chrome).
+  polls: {
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
+    postureSeat: 'content',
+    chromePolicy: { kind: 'preserve' },
   },
   bookmarks: {
     sheetTargetGroup: SHEET_HOST_TARGET_GROUP,

@@ -2165,3 +2165,37 @@ ruling: claim strength qualifying broad nouns). Economics measured:
 targeted both-metro replay $3.36; full corpus $30.47 (unit cost
 $0.00042597/doc, n=68,579). AWAITING OWNER: ratify revision + ruling, pick
 replay scope. Baselines recorded as regression gates.
+
+## 2026-07-26 — HOME SURFACE SHIPPED (backend + mobile), polls demoted
+
+The charter built out end-to-end. API: curated_lists/curated_list_items
+(migration 20260726120000, NULLS NOT DISTINCT uniqueness), builder cron
+(6AM worker) with 5 global recipes + weekly personal rotator, all
+thresholds §16-classified (K1-UNRATIFIED: min-viable 5, max 25, 8 lists
+per axis, evidence floor 3 — owner to ratify); GET /home/feed (shared
+ViewportVerdictService, city rollup, made-for-you first, near_you derived
+at read behind the same gate) + GET /home/lists/:id (favorites-mirroring,
+viewerRole viewer). LIVE BUILD against the local mirror: 42 lists across
+Austin+NYC ("Best Brisket in Austin — July", "Date night in Austin",
+"Business lunch in New York"). Hidden-gems recipe was structurally empty
+(item-level mention sums → city median ZERO); root-caused and re-derived:
+volume = restaurant-level event count, median over the CREDIBLE
+population (≥ evidence floor) — 2,726 credible, median 5 — now
+materializes ("Hidden gems of Austin": Kochu Korean Eatery, Ten Seconds
+Noodle House…); discriminating RED-proof fixture (the prod tail shape)
+added. Mobile: home scene registered (compile-driven checklist),
+shelf body = vertical FlashList of horizontal cutout-icon card rows,
+exported as exact TrackSheetListProps (the first real track body when
+rung 3 opens), header = resolvedCity ("Explore" when null), city-picker/
+empty/failure states honest; ListDetail REUSED for curated lists via a
+source discriminator + adapter (strip hidden not faked; curated dish rows
+lack connectionId — save fails loud, server follow-up); DOCKED_SCENE_KEY
+'polls'→'home' (the designed one-constant demotion), polls joined the tab
+bar (visibility law rewritten to root-authority so the feed survives
+child pushes), place chip = camera JUMP via new map-camera-command store
+(momentary, no filter state — feed follows the map; placeFilterId param
+kept server-side). Strip conversion: nothing to convert — polls was
+already on ToggleStrip; FrostedFilterStrip exists only in stale docs.
+api 896 / mobile 433 tests green; tsc zero new errors. Sim pass blocked
+at the auth wall (Clerk key cutover invalidated the session — owner
+signs in, then the live pass completes).

@@ -15,7 +15,6 @@ describe('polls-feed-controls-store — restore suppression', () => {
       feedSort: 'new',
       feedType: 'all',
       feedTime: 'all_time',
-      placeFilter: 'all',
     });
   });
 
@@ -27,24 +26,12 @@ describe('polls-feed-controls-store — restore suppression', () => {
     unsubscribe();
   });
 
-  it('placeFilter is a NETWORK control (server-side slicing) - writing it fires the press edge', () => {
-    const listener = jest.fn();
-    const unsubscribe = subscribeToPollsFeedControlChanges(listener);
-    usePollsFeedControlsStore.getState().setPlaceFilter('11111111-1111-1111-1111-111111111111');
-    expect(listener).toHaveBeenCalledTimes(1);
-    unsubscribe();
-  });
-
-  it('placeFilter rides the seam baseline snapshot (leg 5 revert covers the slicer)', () => {
+  it('Job 4: there is NO placeFilter control — the snapshot carries only the four controls', () => {
+    // RED-provable inverse of the old network-control pin: place selection is a
+    // camera jump now; a placeFilter key reappearing here means the filter came back.
     const baseline = getPollsFeedControlsSnapshot();
-    expect(baseline).toHaveProperty('placeFilter');
-    usePollsFeedControlsStore.getState().setPlaceFilter('22222222-2222-2222-2222-222222222222');
-    const listener = jest.fn();
-    const unsubscribe = subscribeToPollsFeedControlChanges(listener);
-    restorePollsFeedControls(baseline);
-    expect(usePollsFeedControlsStore.getState().placeFilter).toBe(baseline.placeFilter);
-    expect(listener).not.toHaveBeenCalled();
-    unsubscribe();
+    expect(baseline).not.toHaveProperty('placeFilter');
+    expect(Object.keys(baseline).sort()).toEqual(['feedSort', 'feedState', 'feedTime', 'feedType']);
   });
 
   it('placeOptions is metadata, not a control - writing it never fires the press edge', () => {

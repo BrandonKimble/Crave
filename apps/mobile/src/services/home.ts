@@ -1,0 +1,63 @@
+import api from './api';
+import type { MapBounds } from '../types';
+import type { HomeFeedCity, HomeFeedResponse } from './home-types';
+import { normalizeHomeFeedResponse } from './home-feed-normalize';
+
+/**
+ * HOME feed reads (home-surface-charter): GET /home/feed resolves the
+ * viewport to the containing live city server-side (the SAME shared
+ * ViewportVerdictService composition the polls feed rides — no separate
+ * verdict fetch client-side) and returns the curated shelves.
+ */
+export type { HomeFeedCity, HomeFeedResponse, HomeShelf, HomeShelfList } from './home-types';
+export { normalizeHomeFeedResponse } from './home-feed-normalize';
+
+/** Curated list detail (GET /home/lists/:id) — mirrors the favorites detail
+ *  vocabulary with viewerRole always 'viewer'. */
+export type CuratedListDetailItem = {
+  rank: number;
+  entityId: string;
+  restaurantId: string | null;
+  label: string;
+  subLabel: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  craveScore: number | null;
+  craveScoreExact: number | null;
+  rising: number | null;
+};
+
+export type CuratedListDetailResponse = {
+  listId: string;
+  title: string;
+  subtitle: string | null;
+  iconKey: string;
+  listType: string;
+  recipeKey: string;
+  rotationKey: string;
+  scope: string;
+  city: HomeFeedCity;
+  itemCount: number;
+  builtAt: string;
+  viewerRole: 'viewer';
+  items: CuratedListDetailItem[];
+};
+
+export const fetchHomeFeed = async (bounds: MapBounds): Promise<HomeFeedResponse> => {
+  const response = await api.get('/home/feed', {
+    params: {
+      minLat: bounds.southWest.lat,
+      minLng: bounds.southWest.lng,
+      maxLat: bounds.northEast.lat,
+      maxLng: bounds.northEast.lng,
+    },
+  });
+  return normalizeHomeFeedResponse(response.data);
+};
+
+export const fetchCuratedListDetail = async (
+  listId: string
+): Promise<CuratedListDetailResponse> => {
+  const response = await api.get<CuratedListDetailResponse>(`/home/lists/${listId}`);
+  return response.data;
+};

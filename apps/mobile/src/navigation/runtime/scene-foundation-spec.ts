@@ -64,6 +64,17 @@ export type SceneFoundationSpec = {
 };
 
 export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> = {
+  // HOME (home-surface-charter): shelves of curated-list cards — tile skeleton,
+  // NO filter strip on home by design (strip: 'none').
+  home: {
+    skeleton: { rowType: 'tile' },
+    strip: 'none',
+    failure: 'announcer',
+    header: 'persistent',
+    grabHandle: 'visible',
+    snapLock: 'none',
+    bodySurface: 'white',
+  },
   polls: {
     skeleton: { rowType: 'restaurant' },
     // Leg 3: migrated to the persistent-header extension mount (PollsFeedStrip,

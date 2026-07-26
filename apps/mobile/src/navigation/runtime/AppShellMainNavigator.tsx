@@ -10,8 +10,10 @@ import { AppRouteSheetHostRuntimeProvider } from './AppRouteSheetHostRuntimeProv
 import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { createAppRoutePollsSceneInputController } from './app-route-polls-scene-input-controller';
+import { createAppRouteHomeSceneInputController } from './app-route-home-scene-input-controller';
 import { useAppRouteDynamicSceneInputWritersRuntime } from './use-app-route-dynamic-scene-input-writers-runtime';
 import { useAppRoutePollsSceneInputWriterRuntime } from './use-app-route-polls-scene-input-writer-runtime';
+import { useAppRouteHomeSceneInputWriterRuntime } from './use-app-route-home-scene-input-writer-runtime';
 import { usePerfScenarioOverlaySceneCommand } from '../../perf/use-perf-scenario-overlay-scene-command';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -47,13 +49,21 @@ const AppRouteSceneInputWritersRuntimeHost = React.memo(
       const pollsSceneInputController = createAppRoutePollsSceneInputController({
         routeSceneRuntime,
       });
+      const homeSceneInputController = createAppRouteHomeSceneInputController({
+        routeSceneRuntime,
+      });
 
       return () => {
         pollsSceneInputController.dispose();
+        homeSceneInputController.dispose();
       };
     }, [routeSceneRuntime]);
 
     useAppRoutePollsSceneInputWriterRuntime({
+      routeSceneRuntime,
+    });
+
+    useAppRouteHomeSceneInputWriterRuntime({
       routeSceneRuntime,
     });
 

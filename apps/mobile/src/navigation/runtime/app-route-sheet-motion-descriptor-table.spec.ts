@@ -52,6 +52,7 @@ const SCENE_KEY_DOMAIN = {
   polls: true,
   bookmarks: true,
   profile: true,
+  home: true,
   restaurant: true,
   saveList: true,
   price: true,
@@ -176,8 +177,16 @@ const legacyOracleSheetMotionPlan = ({
       // 2026-07-12 intentional tune (see header): the TWO-POSTURE LAW. Every root page snaps
       // to its side's posture seat; collapsed is a first-class remembered posture; hidden/
       // unset fall to the side's cold-start seed (home collapsed, content expanded).
-      const isHomeSide = targetSceneKey === 'search' || targetSceneKey === 'polls';
-      if (isHomeSide || targetSceneKey === 'bookmarks' || targetSceneKey === 'profile') {
+      // 2026-07-26 intentional amendment (home-surface-charter Job 3): polls demoted to a
+      // CONTENT page — the home side is search (+ the 'home' docked scene, outside this
+      // legacy domain); polls joins bookmarks/profile on the content seat.
+      const isHomeSide = targetSceneKey === 'search';
+      if (
+        isHomeSide ||
+        targetSceneKey === 'polls' ||
+        targetSceneKey === 'bookmarks' ||
+        targetSceneKey === 'profile'
+      ) {
         const isUsableSeatSnap =
           rememberedSceneSnap === 'collapsed' ||
           rememberedSceneSnap === 'middle' ||

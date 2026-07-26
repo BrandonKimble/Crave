@@ -33,6 +33,7 @@ const paramlessSceneParamsEqual = (): boolean => true;
 const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
   search: paramlessSceneParamsEqual,
   sheetHost: paramlessSceneParamsEqual,
+  home: paramlessSceneParamsEqual,
   bookmarks: paramlessSceneParamsEqual,
   price: paramlessSceneParamsEqual,
   scoreInfo: paramlessSceneParamsEqual,
@@ -76,6 +77,7 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
   userProfile: (left, right) => left.userId === right.userId,
   listDetail: (left, right) =>
     left.listId === right.listId &&
+    left.source === right.source &&
     left.shareSlug === right.shareSlug &&
     left.targetUserId === right.targetUserId &&
     left.joinIntent === right.joinIntent,

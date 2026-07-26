@@ -78,6 +78,21 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     sheetPolicy: 'routeShell',
     chromePolicy: 'preserve',
   },
+  // HOME (home-surface-charter): THE docked scene — presents under the search root
+  // (DOCKED_SCENE_KEY), searchChrome like the old polls-as-docked posture.
+  home: {
+    role: 'topLevel',
+    productSceneKey: 'home',
+    parentSceneKeys: [],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: false,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'searchChrome',
+  },
+  // Polls demotion (home-surface-charter): a regular content tab page now — chrome
+  // preserved like bookmarks; the docked searchChrome posture moved to 'home'.
   polls: {
     role: 'topLevel',
     productSceneKey: 'polls',
@@ -87,7 +102,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     sceneInput: true,
     staticSceneInput: false,
     sheetPolicy: 'sharedPhysicalSheet',
-    chromePolicy: 'searchChrome',
+    chromePolicy: 'preserve',
   },
   bookmarks: {
     role: 'topLevel',
@@ -290,6 +305,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
 
 export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'search',
+  'home',
   'polls',
   'bookmarks',
   'profile',
@@ -328,6 +344,7 @@ export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
 export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
   'search',
   'restaurant',
+  'home',
   'polls',
   'pollCreation',
   'pollDetail',
@@ -447,6 +464,8 @@ export const createPollDetailChildRouteParams = (
 export type OverlayRouteParamsMap = {
   search?: undefined;
   sheetHost?: undefined;
+  /** Home takes no params — the shelves derive from the viewport. */
+  home?: undefined;
   bookmarks?: undefined;
   polls?: {
     pollId?: string | null;
@@ -509,6 +528,9 @@ export type OverlayRouteParamsMap = {
   // never identity; targetUserId scopes the virtual All to another user's public lists.
   listDetail?: {
     listId?: string | null;
+    /** Home-surface Job 2: 'curated' = an app-curated list (GET /home/lists/:id,
+     *  viewerRole 'viewer'); absent/null = a favorites list (the default). */
+    source?: 'curated' | null;
     shareSlug?: string | null;
     targetUserId?: string | null;
     /** True only when the entry came from an invite-intent link (crave://l/<slug>?join=1). */

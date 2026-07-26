@@ -98,6 +98,11 @@ import {
   getMarkerColorForRestaurant,
 } from '../../screens/Search/utils/marker-lod';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
+import { fetchCuratedListDetail } from '../../services/home';
+import {
+  mapCuratedDetailToFavoriteListDetail,
+  mapCuratedDetailToSearchResponse,
+} from '../../services/curated-list-adapter';
 
 // ─── listDetail — the REAL page body (W1 slices 4/8/9;
 // plans/w1-listdetail-structural-spec.md §A.3 / §C.4 / §C.8 / §C.9) ──────────────────────────
@@ -127,6 +132,9 @@ import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-
 
 type ListDetailParams = {
   listId?: string | null;
+  /** Home-surface Job 2: 'curated' = app-curated list (GET /home/lists/:id) —
+   *  the data seam swaps fetchers; the page shell is fully reused. */
+  source?: 'curated' | null;
   shareSlug?: string | null;
   targetUserId?: string | null;
   joinIntent?: boolean | null;
@@ -366,6 +374,10 @@ type ListDetailReadyData = {
   viewerRole: FavoriteListViewerRole | undefined;
   defaultSort: FavoriteListSort;
   isVirtualAll: boolean;
+  /** Curated lists (viewer-only projection): the results endpoint takes no
+   *  slice params (no hours/price in the payload), so the strip renders
+   *  WITHOUT those controls rather than faking them. */
+  isCurated: boolean;
   canEdit: boolean;
   canAddPhoto: boolean;
   response: SearchResponse;
@@ -699,109 +711,116 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
       </View>
 
       {/* §2b: the strip PRIMITIVE's in-list mount — full-bleed band, content aligned by
-          contentInset (the transport carries no horizontal inset for this scene). */}
-      <View style={styles.stripBlock}>
-        <ToggleStrip
-          placement="in-list"
-          backdrop="plated-body"
-          cacheSeat={listDetailStripCacheSeat}
-          contentInset={OVERLAY_HORIZONTAL_PADDING}
-          actionRow={
-            isEditing
-              ? buildEditModeActionRow({
-                  onCancelEdit: exitEditMode,
-                  onUndo: editSession.undo,
-                  onRedo: editSession.redo,
-                  onSaveEdit: () => void handleSaveOrder(),
-                  canUndo: editSession.canUndo,
-                  canRedo: editSession.canRedo,
-                  hasEverEdited: editSession.hasEverEdited,
-                  isSaving: isSavingOrder,
-                  testIDPrefix: 'list-detail',
-                })
-              : null
-          }
-          actionProgress={editSession.actionProgress}
-          testID="list-detail-strip"
-        >
-          {data.canEdit && rowCount > 0 && data.slice.effectiveSort === 'custom' ? (
-            <ListDetailEditChip key="edit" onPress={enterEditMode} />
-          ) : null}
-          <SelectorChip
-            key="sort"
-            label={sortChipLabel}
-            active={data.slice.effectiveSort !== data.defaultSort}
-            expanded={optionSelectorOpenKey === LIST_DETAIL_SORT_SELECTOR_KEY}
-            onPress={() =>
-              toggleOptionSelector({
-                key: LIST_DETAIL_SORT_SELECTOR_KEY,
-                title: 'Sort',
-                options: sortOptions,
-                value: data.slice.effectiveSort,
-                onSelect: (value) => data.slice.applySlice({ sort: value }, 'sort'),
-                testID: 'list-detail-sort-sheet',
-              })
+          contentInset (the transport carries no horizontal inset for this scene).
+          Curated lists render NO strip: the curated read takes no slice params
+          (no hours/price in the payload) — controls are hidden, never faked. */}
+      {data.isCurated ? null : (
+        <View style={styles.stripBlock}>
+          <ToggleStrip
+            placement="in-list"
+            backdrop="plated-body"
+            cacheSeat={listDetailStripCacheSeat}
+            contentInset={OVERLAY_HORIZONTAL_PADDING}
+            actionRow={
+              isEditing
+                ? buildEditModeActionRow({
+                    onCancelEdit: exitEditMode,
+                    onUndo: editSession.undo,
+                    onRedo: editSession.redo,
+                    onSaveEdit: () => void handleSaveOrder(),
+                    canUndo: editSession.canUndo,
+                    canRedo: editSession.canRedo,
+                    hasEverEdited: editSession.hasEverEdited,
+                    isSaving: isSavingOrder,
+                    testIDPrefix: 'list-detail',
+                  })
+                : null
             }
-            testID="list-detail-sort-chip"
-          />
-          <FilterChip
-            key="open-now"
-            label="Open now"
-            active={data.slice.openNow}
-            onPress={() => data.slice.applySlice({ openNow: !data.slice.openNow }, 'open_now')}
-            testID="list-detail-open-now-chip"
-          />
-          {/* Leg 10 (defect #4): Price — VALUE-displayed when overridden (§2 chip law). */}
-          <SelectorChip
-            key="price"
-            label={
-              data.slice.priceLevel != null
-                ? (PRICE_LEVEL_SYMBOLS[data.slice.priceLevel] ?? 'Price')
-                : 'Price'
-            }
-            active={data.slice.priceLevel != null}
-            expanded={optionSelectorOpenKey === LIST_DETAIL_PRICE_SELECTOR_KEY}
-            onPress={() =>
-              toggleOptionSelector({
-                key: LIST_DETAIL_PRICE_SELECTOR_KEY,
-                title: 'Price',
-                options: PRICE_OPTIONS,
-                value: data.slice.priceLevel == null ? 'any' : String(data.slice.priceLevel),
-                onSelect: (value) =>
-                  data.slice.applySlice(
-                    { priceLevel: value === 'any' ? null : Number(value) },
-                    'price'
-                  ),
-                testID: 'list-detail-price-sheet',
-              })
-            }
-            testID="list-detail-price-chip"
-          />
-
-          {data.isVirtualAll ? (
-            // §8.16 "sliced by city": City — VALUE-displayed when overridden
-            // (§2 chip law); options derived from the unsliced rows (self-provisioning).
+            actionProgress={editSession.actionProgress}
+            testID="list-detail-strip"
+          >
+            {data.canEdit && rowCount > 0 && data.slice.effectiveSort === 'custom' ? (
+              <ListDetailEditChip key="edit" onPress={enterEditMode} />
+            ) : null}
             <SelectorChip
-              key="city"
-              label={data.slice.cityChipLabel}
-              active={data.slice.cityPlaceId != null}
-              expanded={optionSelectorOpenKey === LIST_DETAIL_CITY_SELECTOR_KEY}
+              key="sort"
+              label={sortChipLabel}
+              active={data.slice.effectiveSort !== data.defaultSort}
+              expanded={optionSelectorOpenKey === LIST_DETAIL_SORT_SELECTOR_KEY}
               onPress={() =>
                 toggleOptionSelector({
-                  key: LIST_DETAIL_CITY_SELECTOR_KEY,
-                  title: 'City',
-                  options: [{ value: 'any', label: 'All cities' }, ...data.slice.cityOptions],
-                  value: data.slice.cityPlaceId ?? 'any',
-                  onSelect: (value) =>
-                    data.slice.applySlice({ cityPlaceId: value === 'any' ? null : value }, 'city'),
-                  testID: 'list-detail-city-sheet',
+                  key: LIST_DETAIL_SORT_SELECTOR_KEY,
+                  title: 'Sort',
+                  options: sortOptions,
+                  value: data.slice.effectiveSort,
+                  onSelect: (value) => data.slice.applySlice({ sort: value }, 'sort'),
+                  testID: 'list-detail-sort-sheet',
                 })
               }
-              testID="list-detail-city-chip"
+              testID="list-detail-sort-chip"
             />
-          ) : null}
-        </ToggleStrip>
-      </View>
+            <FilterChip
+              key="open-now"
+              label="Open now"
+              active={data.slice.openNow}
+              onPress={() => data.slice.applySlice({ openNow: !data.slice.openNow }, 'open_now')}
+              testID="list-detail-open-now-chip"
+            />
+            {/* Leg 10 (defect #4): Price — VALUE-displayed when overridden (§2 chip law). */}
+            <SelectorChip
+              key="price"
+              label={
+                data.slice.priceLevel != null
+                  ? (PRICE_LEVEL_SYMBOLS[data.slice.priceLevel] ?? 'Price')
+                  : 'Price'
+              }
+              active={data.slice.priceLevel != null}
+              expanded={optionSelectorOpenKey === LIST_DETAIL_PRICE_SELECTOR_KEY}
+              onPress={() =>
+                toggleOptionSelector({
+                  key: LIST_DETAIL_PRICE_SELECTOR_KEY,
+                  title: 'Price',
+                  options: PRICE_OPTIONS,
+                  value: data.slice.priceLevel == null ? 'any' : String(data.slice.priceLevel),
+                  onSelect: (value) =>
+                    data.slice.applySlice(
+                      { priceLevel: value === 'any' ? null : Number(value) },
+                      'price'
+                    ),
+                  testID: 'list-detail-price-sheet',
+                })
+              }
+              testID="list-detail-price-chip"
+            />
+
+            {data.isVirtualAll ? (
+              // §8.16 "sliced by city": City — VALUE-displayed when overridden
+              // (§2 chip law); options derived from the unsliced rows (self-provisioning).
+              <SelectorChip
+                key="city"
+                label={data.slice.cityChipLabel}
+                active={data.slice.cityPlaceId != null}
+                expanded={optionSelectorOpenKey === LIST_DETAIL_CITY_SELECTOR_KEY}
+                onPress={() =>
+                  toggleOptionSelector({
+                    key: LIST_DETAIL_CITY_SELECTOR_KEY,
+                    title: 'City',
+                    options: [{ value: 'any', label: 'All cities' }, ...data.slice.cityOptions],
+                    value: data.slice.cityPlaceId ?? 'any',
+                    onSelect: (value) =>
+                      data.slice.applySlice(
+                        { cityPlaceId: value === 'any' ? null : value },
+                        'city'
+                      ),
+                    testID: 'list-detail-city-sheet',
+                  })
+                }
+                testID="list-detail-city-chip"
+              />
+            ) : null}
+          </ToggleStrip>
+        </View>
+      )}
 
       {/* Wave-3 §2.8 root fix: the rows are the ResultCard primitive, which carries its
           own 20px gutter (styles.resultItem) — wrapping them in pageBlock DOUBLED the
@@ -859,6 +878,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const params: ListDetailParams | null =
     entry?.key === 'listDetail' ? ((entry.params ?? {}) as ListDetailParams) : null;
   const listIdParam = typeof params?.listId === 'string' ? params.listId : null;
+  const isCurated = params?.source === 'curated';
   const shareSlug = typeof params?.shareSlug === 'string' ? params.shareSlug : null;
   const targetUserId = typeof params?.targetUserId === 'string' ? params.targetUserId : null;
   const joinIntent = params?.joinIntent === true;
@@ -884,14 +904,23 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // meta through the share endpoint, which also yields the concrete listId for results.
   // Virtual All lists have no stored row: meta is synthesized below, the query stays off.
   const metaQuery = useQuery({
-    queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+    queryKey: [
+      'listDetail',
+      isCurated ? `curated:${listIdParam}` : (listIdParam ?? `slug:${shareSlug}`),
+    ],
     enabled: hasIdentity && !isVirtualAll,
     staleTime: 60_000,
     retry: (failureCount, error) => !isPrivateGoneError(error) && failureCount < 2,
-    queryFn: async (): Promise<FavoriteListDetail> =>
-      listIdParam != null
+    queryFn: async (): Promise<FavoriteListDetail> => {
+      // Curated source (home Job 2): the SAME meta shape, fetched from the
+      // curated read — the panel's data seam is the ONLY fork.
+      if (isCurated && listIdParam != null) {
+        return mapCuratedDetailToFavoriteListDetail(await fetchCuratedListDetail(listIdParam));
+      }
+      return listIdParam != null
         ? favoriteListsService.get(listIdParam, { shareSlug })
-        : favoriteListsService.getShared(shareSlug as string),
+        : favoriteListsService.getShared(shareSlug as string);
+    },
   });
 
   const resolvedListId = isVirtualAll
@@ -1021,7 +1050,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const resultsQuery = useQuery({
     queryKey: [
       'listDetailResults',
-      resolvedListId,
+      isCurated ? `curated:${resolvedListId}` : resolvedListId,
       effectiveSort,
       openNow,
       priceLevel,
@@ -1035,15 +1064,23 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     // gate below fires only on the true first load (no placeholder yet).
     placeholderData: (previous: SearchResponse | undefined) => previous,
     retry: (failureCount, error) => !isPrivateGoneError(error) && failureCount < 2,
-    queryFn: async (): Promise<SearchResponse> =>
-      favoriteListsService.getListResults(resolvedListId as string, {
+    queryFn: async (): Promise<SearchResponse> => {
+      // Curated source: rank-ordered projection of the SAME curated read — the
+      // endpoint takes no slice params (the strip hides those controls).
+      if (isCurated) {
+        return mapCuratedDetailToSearchResponse(
+          await fetchCuratedListDetail(resolvedListId as string)
+        );
+      }
+      return favoriteListsService.getListResults(resolvedListId as string, {
         shareSlug,
         sort: effectiveSort,
         openNow: openNow || undefined,
         priceLevels: priceLevel != null ? [priceLevel] : undefined,
         cityPlaceId,
         targetUserId,
-      }),
+      });
+    },
   });
 
   // ─── Content-toggle seam (leg 9 §2b): press-up choreography for the strip's slices ────────
@@ -1165,7 +1202,8 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   );
 
   // ─── Collaborators (§8.1): roster query + chip + modal state ──────────────────────────────
-  const canReadCollaborators = !isVirtualAll && resolvedListId != null && metaQuery.data != null;
+  const canReadCollaborators =
+    !isVirtualAll && !isCurated && resolvedListId != null && metaQuery.data != null;
   const collaboratorsQuery = useQuery({
     queryKey: ['listCollaborators', resolvedListId],
     enabled: canReadCollaborators,
@@ -1521,7 +1559,10 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const openHeaderMenuRef = React.useRef(openHeaderMenu);
   openHeaderMenuRef.current = openHeaderMenu;
   const entryId = entry?.entryId ?? null;
-  const hasHeaderMenu = !isVirtualAll && metaQuery.data != null;
+  // Curated lists get no ellipsis menu (its actions — share slug, edit, delete,
+  // profile visibility — are favorites-list verbs; a curated share flow is a
+  // follow-up, not a fake).
+  const hasHeaderMenu = !isVirtualAll && !isCurated && metaQuery.data != null;
   React.useEffect(() => {
     if (entryId == null) {
       return undefined;
@@ -1564,6 +1605,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           viewerRole,
           defaultSort,
           isVirtualAll,
+          isCurated,
           canEdit,
           canAddPhoto,
           response,

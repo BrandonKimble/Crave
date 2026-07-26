@@ -15,11 +15,12 @@ type UseSearchRoutePollsSceneStateRuntimeArgs = {
   dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
   commandState: {
     pollsSheetSnap: OverlaySheetSnap;
-    isDockedSceneDismissed: boolean;
   };
   overlayVisibilityState: {
-    isSearchOverlay: boolean;
-    isDockedLane: boolean;
+    /** Polls demotion (home-surface-charter Job 3): polls is a regular tab —
+     *  presented ⟺ the polls route is the active root (children on top keep
+     *  the root, so the feed stays live under pollDetail exactly as before). */
+    isPollsRoot: boolean;
   };
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
 };
@@ -46,22 +47,18 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   const mode: PollsPanelMode = 'docked';
+  // Content page now: opens at the content seat (expanded); the collapsed
+  // docked-bar initial is history.
   const initialSnapPoint: PollsPanelInitialSnapPoint = 'collapsed';
   const physicalPollsSheetSnap = commandState.pollsSheetSnap;
-  const hasDockedSceneRestoreDemand = dockedSceneRestoreIntent != null;
-  const isDockedLane =
-    overlayVisibilityState.isSearchOverlay && overlayVisibilityState.isDockedLane;
-  const isDockedSceneVisible =
-    isDockedLane &&
-    (hasDockedSceneRestoreDemand ||
-      (!commandState.isDockedSceneDismissed && physicalPollsSheetSnap !== 'hidden'));
+  const isPollsVisible = overlayVisibilityState.isPollsRoot && physicalPollsSheetSnap !== 'hidden';
   const currentSnap: OverlaySheetSnap =
-    hasDockedSceneRestoreDemand && physicalPollsSheetSnap === 'hidden'
+    dockedSceneRestoreIntent != null && physicalPollsSheetSnap === 'hidden'
       ? dockedSceneRestoreIntent.snap
       : physicalPollsSheetSnap;
 
   return {
-    visible: isDockedSceneVisible,
+    visible: isPollsVisible,
     interactionRef,
     params: pollOverlayParams,
     mode,

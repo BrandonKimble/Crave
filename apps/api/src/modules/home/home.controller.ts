@@ -1,0 +1,52 @@
+/**
+ * HOME surface reads (plans/home-surface-charter.md): the shelves feed and
+ * the curated-list detail. Auth posture mirrors polls/places: ClerkAuthGuard
+ * on the controller, default rate tier per read.
+ */
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import type { User } from '@prisma/client';
+import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
+import { CurrentUser } from '../../shared';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
+import { PlacesInViewQueryDto } from '../places/dto/places-in-view.dto';
+import {
+  CuratedListDetailResponse,
+  HomeFeedResponse,
+  HomeFeedService,
+} from './home-feed.service';
+
+@Controller('home')
+@UseGuards(ClerkAuthGuard)
+export class HomeController {
+  constructor(private readonly homeFeed: HomeFeedService) {}
+
+  @Get('feed')
+  @RateLimitTier('default')
+  getFeed(
+    @CurrentUser() user: User,
+    @Query() query: PlacesInViewQueryDto,
+  ): Promise<HomeFeedResponse> {
+    if (query.minLat > query.maxLat) {
+      // Latitude is not circular — this shape is malformed, not wrap.
+      throw new BadRequestException('minLat must be <= maxLat');
+    }
+    return this.homeFeed.getFeed(query.toBbox(), user.userId);
+  }
+
+  @Get('lists/:listId')
+  @RateLimitTier('default')
+  getList(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+  ): Promise<CuratedListDetailResponse> {
+    return this.homeFeed.getListDetail(listId, user.userId);
+  }
+}

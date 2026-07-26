@@ -1,8 +1,8 @@
 import React from 'react';
-import { Heart } from 'lucide-react-native';
+import { BarChart2, Heart } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 
-export type SearchBottomNavItemKey = 'search' | 'bookmarks' | 'profile';
+export type SearchBottomNavItemKey = 'search' | 'polls' | 'bookmarks' | 'profile';
 
 export const SEARCH_BOTTOM_NAV_ICON_RENDERERS: Record<
   SearchBottomNavItemKey,
@@ -30,6 +30,11 @@ export const SEARCH_BOTTOM_NAV_ICON_RENDERERS: Record<
       </Svg>
     );
   },
+  // Polls demotion (home-surface-charter Job 3): poll iconography = the candidate
+  // bars — a bar-chart glyph, bolder stroke when active.
+  polls: (color: string, active: boolean) => (
+    <BarChart2 size={24} color={color} strokeWidth={active ? 2.8 : 2} />
+  ),
   bookmarks: (color: string, active: boolean) => (
     <Heart size={24} color={color} strokeWidth={active ? 0 : 2} fill={active ? color : 'none'} />
   ),

@@ -14,7 +14,7 @@ import {
   type SearchRouteSceneLayoutState,
 } from '../../overlays/searchRouteSceneLayoutContract';
 import type { OverlaySheetSnap } from '../../overlays/types';
-import type { RouteOverlayDockedSceneVisibilitySnapshot } from './route-overlay-display-snapshot-contract';
+import type { RouteOverlayRootSnapshot } from './route-overlay-display-snapshot-contract';
 import type {
   AppRouteSceneChromePublication,
   AppRouteSceneStackShellSpec,
@@ -40,12 +40,16 @@ const POLLS_MOUNTED_SCENE_CHROME: AppRouteSceneChromePublication = {
   mountedChromeKey: 'polls',
 };
 
+// Polls demotion (home-surface-charter Job 3): polls is a regular tab now — the
+// navigation fact that matters is WHICH ROOT is active (the root survives child
+// pushes, so the feed stays live under pollDetail). The docked-lane visibility
+// subscription moved to the home controller with the docked seat itself.
 const selectPollsRouteNavigationState = (
-  snapshot: RouteOverlayDockedSceneVisibilitySnapshot
+  snapshot: RouteOverlayRootSnapshot
 ): Pick<AppRoutePollsRouteStateRuntime, 'isSearchOverlay' | 'isDockedLane' | 'rootOverlayKey'> => ({
   isSearchOverlay: snapshot.isSearchOverlay,
-  isDockedLane: snapshot.isDockedLane,
-  rootOverlayKey: 'search',
+  isDockedLane: false,
+  rootOverlayKey: snapshot.rootOverlayKey,
 });
 
 const selectPollsPayloadState = (
@@ -69,19 +73,9 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private readonly disposers: ListenerDisposer[] = [];
 
   private readonly requestReturnToSearchFromPolls = (): void => {
-    if (this.pollsRouteState.isSearchOverlay && this.pollsRouteState.isDockedLane) {
-      this.routeSceneRuntime.routeSheetSnapSessionActions.dismissDockedScene();
-      this.routeSceneRuntime.routeOverlayTransitionActions.requestOverlaySwitch({
-        targetSceneKey: 'search',
-        sheetTransitionKind: 'terminalDismiss',
-        sheetOpenerSource: 'systemDismiss',
-        sheetMotion: { kind: 'hide' },
-        dockedSceneRestoreSnap: null,
-      });
-      return;
-    }
     // Two-posture law: leaving the polls page for home lands at HOME's remembered posture
-    // (the verb derives the motion from the home seat; no forced collapsed).
+    // (the verb derives the motion from the home seat; no forced collapsed). The old
+    // docked-lane dismiss branch died with the demotion (home owns the docked lane).
     this.routeSceneRuntime.routeSearchCommandActions.returnAppSearchRouteToDockedSearch();
   };
 
@@ -99,9 +93,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
 
   constructor(private readonly routeSceneRuntime: AppRouteSceneRuntime) {
     this.pollsRouteState = {
-      ...selectPollsRouteNavigationState(
-        routeSceneRuntime.routeOverlayDockedSceneVisibilityAuthority.getSnapshot()
-      ),
+      ...selectPollsRouteNavigationState(routeSceneRuntime.routeOverlayRootAuthority.getSnapshot()),
       ...selectPollsPayloadState(routeSceneRuntime.scenePayloadAuthority.getSnapshot()),
     };
     this.sceneLayout =
@@ -117,9 +109,9 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       EMPTY_APP_ROUTE_POLLS_DYNAMIC_SCENE_INPUT_RUNTIME;
 
     this.disposers.push(
-      routeSceneRuntime.routeOverlayDockedSceneVisibilityAuthority.registerTarget({
-        attributionLabel: 'AppRoutePollsSceneInputDockedSceneVisibility',
-        syncDockedSceneVisibilitySnapshot: (snapshot) => {
+      routeSceneRuntime.routeOverlayRootAuthority.registerTarget({
+        attributionLabel: 'AppRoutePollsSceneInputRootOverlay',
+        syncRootSnapshot: (snapshot) => {
           this.setPollsRouteNavigationState(selectPollsRouteNavigationState(snapshot));
         },
       }),
@@ -270,11 +262,9 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       dockedSceneRestoreIntent: this.pollsRouteState.dockedSceneRestoreIntent,
       commandState: {
         pollsSheetSnap: this.pollsSheetSnap,
-        isDockedSceneDismissed: this.sheetSessionState.isDockedSceneDismissed,
       },
       overlayVisibilityState: {
-        isSearchOverlay: this.pollsRouteState.isSearchOverlay,
-        isDockedLane: this.pollsRouteState.isDockedLane,
+        isPollsRoot: this.pollsRouteState.rootOverlayKey === 'polls',
       },
       interactionRef: this.dynamicSceneInputRuntime.searchInteractionRef,
     });

@@ -20,7 +20,6 @@ import {
   restorePollsFeedControls,
   subscribeToPollsFeedControlChanges,
   usePollsFeedControlsStore,
-  POLL_FEED_PLACE_FILTER_ALL,
   type PollFeedPlaceOption,
 } from './polls-feed-controls-store';
 import { shouldRefetchPollsFeedForSettledBounds } from './polls-feed-refetch-edge';
@@ -199,14 +198,9 @@ export const usePollsFeedRuntimeController = ({
       if (feedStateRef.current === 'active') {
         controls.setLiveCount(params.polls.length);
       }
-      const placeOptions = params.placeOptions;
-      controls.setPlaceOptions(placeOptions);
-      if (
-        controls.placeFilter !== POLL_FEED_PLACE_FILTER_ALL &&
-        !placeOptions.some((option) => option.placeId === controls.placeFilter)
-      ) {
-        controls.setPlaceFilter(POLL_FEED_PLACE_FILTER_ALL);
-      }
+      // Job 4: no placeFilter reconcile — place selection is a momentary camera
+      // jump, never persistent control state.
+      controls.setPlaceOptions(params.placeOptions);
     },
     [setHeaderPlaceName, setPollFeedLoadFailed, setPolls, setPromise]
   );
@@ -223,11 +217,10 @@ export const usePollsFeedRuntimeController = ({
         return null;
       }
       lastRequestedBoundsRef.current = bounds;
-      // §6 place slicer: a NETWORK control since the server-side cut — read
-      // live off the store (same freshness contract as the feed*Refs).
-      const placeFilter = usePollsFeedControlsStore.getState().placeFilter;
       // Wave-2 §3: sort is never null (New is the stated default, not an omission);
       // the time period is folded INTO Top — it is only sent when Top is the sort.
+      // Job 4: NO placeFilterId — place selection flies the camera and the feed
+      // follows the viewport (the api param survives server-side, unsent).
       return {
         bounds,
         state: feedStateRef.current,
@@ -236,7 +229,6 @@ export const usePollsFeedRuntimeController = ({
         ...(feedSortRef.current === 'top' && feedTimeRef.current !== 'all_time'
           ? { time: feedTimeRef.current }
           : {}),
-        ...(placeFilter !== POLL_FEED_PLACE_FILTER_ALL ? { placeFilterId: placeFilter } : {}),
         ...(cursor ? { cursor } : {}),
       };
     },

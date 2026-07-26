@@ -22,16 +22,13 @@ import type { PollFeedSort, PollFeedTime, PollFeedType } from '../../../services
  * Lifetime: module scope ≈ the old behavior (the polls scene body is retain-mounted,
  * so its useState already lived for the app session).
  */
-/** One §6 slicer option: a place present in the loaded feed pages, ranked by contribution. */
+/** One §6 place option: a place present in the loaded feed pages, ranked by contribution. */
 export type PollFeedPlaceOption = {
   placeId: string;
   placeName: string;
   /** Content contribution: how many loaded polls this place contributed. */
   pollCount: number;
 };
-
-/** The place slicer's rest value — no slice applied. */
-export const POLL_FEED_PLACE_FILTER_ALL = 'all';
 
 export type PollsFeedControlsState = {
   feedState: 'active' | 'closed';
@@ -52,18 +49,13 @@ export type PollsFeedControlsState = {
    */
   liveCount: number | null;
   /**
-   * §6 place slicer (SelectorChip): 'all' or a placeId from `placeOptions`.
-   * A NETWORK control since the server-side slicing cut: selecting a place
-   * sends `placeFilterId` on the feed query (DAG-subtree slice, server-truth),
-   * so this key IS in the press-edge control diff and in the seam's baseline
-   * snapshot. The old client-side loaded-pages filter is dead.
-   */
-  placeFilter: string;
-  /**
-   * Slicer options — NOT a control: the BODY (feed controller) writes them when
+   * Place options — NOT a control: the BODY (feed controller) writes them when
    * a slice lands (the response's server-truth `placeOptions`: membership
    * places ranked by content contribution); the chrome reads them. Writes
-   * never fire the press edge.
+   * never fire the press edge. Owner-ratified Job 4 (2026-07-26): selecting a
+   * place is a CAMERA JUMP now (fly the map; the feed follows the viewport) —
+   * there is no persistent placeFilter control and no placeFilterId on the
+   * outbound payload (the api param survives server-side, unsent).
    */
   placeOptions: PollFeedPlaceOption[];
   setFeedState: (value: 'active' | 'closed') => void;
@@ -71,7 +63,6 @@ export type PollsFeedControlsState = {
   setFeedType: (value: PollFeedType) => void;
   setFeedTime: (value: PollFeedTime) => void;
   setLiveCount: (value: number | null) => void;
-  setPlaceFilter: (value: string) => void;
   setPlaceOptions: (value: PollFeedPlaceOption[]) => void;
 };
 
@@ -81,22 +72,19 @@ export const usePollsFeedControlsStore = create<PollsFeedControlsState>((set) =>
   feedType: 'all',
   feedTime: 'all_time',
   liveCount: null,
-  placeFilter: POLL_FEED_PLACE_FILTER_ALL,
   placeOptions: [],
   setFeedState: (value) => set({ feedState: value }),
   setFeedSort: (value) => set({ feedSort: value }),
   setFeedType: (value) => set({ feedType: value }),
   setFeedTime: (value) => set({ feedTime: value }),
   setLiveCount: (value) => set({ liveCount: value }),
-  setPlaceFilter: (value) => set({ placeFilter: value }),
   setPlaceOptions: (value) => set({ placeOptions: value }),
 }));
 
 /** Snapshot selector for non-React readers (the feed controller's commit runner). */
 export const getPollsFeedControlsSnapshot = () => {
-  const { feedState, feedSort, feedType, feedTime, placeFilter } =
-    usePollsFeedControlsStore.getState();
-  return { feedState, feedSort, feedType, feedTime, placeFilter };
+  const { feedState, feedSort, feedType, feedTime } = usePollsFeedControlsStore.getState();
+  return { feedState, feedSort, feedType, feedTime };
 };
 
 export type PollsFeedControlsSnapshot = ReturnType<typeof getPollsFeedControlsSnapshot>;
@@ -129,14 +117,13 @@ export const subscribeToPollsFeedControlChanges = (listener: () => void): (() =>
     if (isRestoringControls) {
       return;
     }
-    // placeFilter is a NETWORK control (server-side DAG-subtree slicing):
-    // changing it refetches through the same seam as the other controls.
+    // Job 4: place selection is a CAMERA JUMP, not a control — placeOptions and
+    // liveCount are metadata; only the four true controls fire the press edge.
     if (
       state.feedState !== previous.feedState ||
       state.feedSort !== previous.feedSort ||
       state.feedType !== previous.feedType ||
-      state.feedTime !== previous.feedTime ||
-      state.placeFilter !== previous.placeFilter
+      state.feedTime !== previous.feedTime
     ) {
       listener();
     }

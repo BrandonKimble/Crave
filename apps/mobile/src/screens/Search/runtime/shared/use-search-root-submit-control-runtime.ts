@@ -2,6 +2,7 @@ import React from 'react';
 import { Dimensions } from 'react-native';
 
 import useSearchSubmitOwnerValue from '../../hooks/use-search-submit-owner';
+import { registerMapCameraBboxFlyHandler } from '../../../../store/map-camera-command-store';
 import { commitFitAllCamera, resolveWorldFitSafeRegion } from '../camera/resolve-fit-all-camera';
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
@@ -111,6 +112,41 @@ export const useSearchRootSubmitControlRuntime = ({
       stateFoundationLane.rootSuggestionRuntime,
     ]
   );
+  // THE public bbox fly seam (home-surface Job 4): non-search surfaces (polls
+  // place chip, home city picker) command the camera through the SAME fitAll
+  // executor list worlds ride — a bbox fits as its two diagonal corners. This
+  // runtime hook's effects fire (it is a real committed runtime), so the
+  // module-scope registration lives here, next to the arbiter it needs.
+  React.useEffect(
+    () =>
+      registerMapCameraBboxFlyHandler((bbox) => {
+        const window = Dimensions.get('window');
+        const searchBarBottomPx =
+          rootOverlayFoundationRuntime.rootOverlaySessionSurfaceRuntime.searchBarTop +
+          (stateFoundationLane.rootSuggestionRuntime.searchBarFrame?.height ?? 0);
+        const safeRegion = resolveWorldFitSafeRegion({
+          mapWidthPx: window.width,
+          mapHeightPx: window.height,
+          searchBarBottomPx,
+          sheetMiddleTopPx: sharedSheetSnapPoints.middle,
+        });
+        return commitFitAllCamera({
+          arbiter: cameraIntentArbiter,
+          members: [
+            { latitude: bbox.minLat, longitude: bbox.minLng },
+            { latitude: bbox.maxLat, longitude: bbox.maxLng },
+          ],
+          safeRegion,
+        });
+      }),
+    [
+      cameraIntentArbiter,
+      rootOverlayFoundationRuntime.rootOverlaySessionSurfaceRuntime,
+      sharedSheetSnapPoints,
+      stateFoundationLane.rootSuggestionRuntime,
+    ]
+  );
+
   const runtimePorts = useSearchRootSubmitRuntimePorts({
     sessionCoreLane,
     stateFoundationLane,

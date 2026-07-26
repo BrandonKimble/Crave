@@ -9,6 +9,7 @@ import type {
 export type OverlayKey =
   | 'search'
   | 'sheetHost'
+  | 'home'
   | 'polls'
   | 'bookmarks'
   | 'profile'

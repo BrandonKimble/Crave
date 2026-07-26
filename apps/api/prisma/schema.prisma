@@ -59,6 +59,8 @@ model Entity {
   restaurantEntitySignals             RestaurantEntitySignal[]    @relation("RestaurantEntitySignalRestaurant")
   restaurantEntitySignalTargets       RestaurantEntitySignal[]    @relation("RestaurantEntitySignalTarget")
   primaryLocation                     RestaurantLocation?         @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
+  curatedListItems                    CuratedListItem[]           @relation("CuratedListItemEntity")
+  curatedListItemRestaurants          CuratedListItem[]           @relation("CuratedListItemRestaurant")
 
   @@index([type], map: "idx_entities_type")
   @@index([type, status], map: "idx_entities_type_status")
@@ -1055,6 +1057,7 @@ model User {
   pollEndorsements         PollEndorsement[]
   conversationParticipants ConversationParticipant[]
   messagesSent             Message[]                  @relation("MessagesSent")
+  curatedLists             CuratedList[]
 
   @@index([email], map: "idx_users_email")
   @@index([username], map: "idx_users_username")
@@ -1881,6 +1884,7 @@ model Place {
   providerPlaceId   String?   @map("provider_place_id") @db.VarChar(128)
   createdAt         DateTime  @default(now()) @map("created_at")
   promotedAt        DateTime? @map("promoted_at")
+  curatedLists      CuratedList[]
 
   // Identity law: silent-fork prevention. The REAL unique constraint is a raw
   // expression index (migration 20260720050000): UNIQUE (country_code,
@@ -2084,6 +2088,70 @@ model Source {
   @@unique([platform, handle], map: "sources_platform_handle_key")
   @@index([anchorPlaceId], map: "idx_sources_anchor_place")
   @@map("sources")
+}
+
+// ============ HOME SURFACE: app-curated lists (plans/home-surface-charter.md) ============
+
+/// MATERIALIZED app-curated lists — one row per (city, recipe, rotation,
+/// owner). Global lists (scope 'global', ownerUserId NULL) are rebuilt on
+/// the recipe's cadence (daily / monthly); personal made-for-you lists
+/// (scope 'personal') are per-user weekly rotations. Content floors at CITY
+/// (charter decision 2) — cityPlaceId is always a live-city place (a place
+/// with collection sources anchored). The REAL uniqueness constraint is a
+/// raw expression index (migration 20260726120000): UNIQUE (city_place_id,
+/// recipe_key, rotation_key, owner_user_id) NULLS NOT DISTINCT — owner NULL
+/// (global) must dedupe like a value, which Prisma's @@unique cannot
+/// express (Place precedent). Do not add @@unique here.
+model CuratedList {
+  listId      String            @id @default(dbgenerated("gen_random_uuid()")) @map("list_id") @db.Uuid
+  cityPlaceId String            @map("city_place_id") @db.Uuid
+  /// Recipe identity, e.g. 'cuisine_best:<attributeId>', 'dish_best:<foodId>',
+  /// 'trending', 'hidden_gems', 'date_night', 'your_weekly_tasting'.
+  recipeKey   String            @map("recipe_key") @db.VarChar(128)
+  /// 'global' | 'personal'.
+  scope       String            @db.VarChar(16)
+  ownerUserId String?           @map("owner_user_id") @db.Uuid
+  /// 'restaurant' | 'dish' — mirrors FavoriteListType so ListDetail reuse
+  /// is trivial (stored as varchar: a derived table, not the favorites enum).
+  listType    String            @map("list_type") @db.VarChar(16)
+  title       String            @db.VarChar(200)
+  subtitle    String?           @db.VarChar(300)
+  /// V1 artwork = icon key + theme (cutout style), NO photos (ratified).
+  iconKey     String            @map("icon_key") @db.VarChar(64)
+  /// Recipe-decided cadence label: monthly '2026-07', weekly '2026-W30',
+  /// daily '2026-07-26'. Supersede = delete other rotations in the same tx.
+  rotationKey String            @map("rotation_key") @db.VarChar(16)
+  builtAt     DateTime          @default(now()) @map("built_at")
+  itemCount   Int               @map("item_count")
+  city        Place             @relation(fields: [cityPlaceId], references: [placeId], onDelete: Cascade)
+  owner       User?             @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
+  items       CuratedListItem[]
+
+  @@index([cityPlaceId, scope], map: "idx_curated_lists_city_scope")
+  @@index([ownerUserId], map: "idx_curated_lists_owner")
+  @@map("curated_lists")
+}
+
+/// Ranked members of a curated list. NO snapshot display fields — the read
+/// path joins live entity/score data (a stale name/score snapshot would
+/// violate the derived-read law; the builder's rotation cadence bounds
+/// staleness of MEMBERSHIP only). For dish lists entityId = the FOOD entity
+/// and restaurantId = the restaurant serving it (the pair resolves the
+/// Connection via its (restaurantId, foodId) unique — how search models
+/// dish→restaurant). For restaurant lists restaurantId is NULL.
+model CuratedListItem {
+  listId       String      @map("list_id") @db.Uuid
+  rank         Int
+  entityId     String      @map("entity_id") @db.Uuid
+  restaurantId String?     @map("restaurant_id") @db.Uuid
+  list         CuratedList @relation(fields: [listId], references: [listId], onDelete: Cascade)
+  entity       Entity      @relation("CuratedListItemEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+  restaurant   Entity?     @relation("CuratedListItemRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
+
+  @@id([listId, rank])
+  @@index([entityId], map: "idx_curated_list_items_entity")
+  @@index([restaurantId], map: "idx_curated_list_items_restaurant")
+  @@map("curated_list_items")
 }
 
 /// §4 supply-controller state per place: the learned frontier, its phase

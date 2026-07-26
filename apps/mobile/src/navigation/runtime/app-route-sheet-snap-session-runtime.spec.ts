@@ -15,15 +15,17 @@ import { resolveSearchLaunchOriginSnap } from './app-route-session-utils';
 describe('two-posture snap session (root-snap-law leg 2)', () => {
   it('cold start seeds: home collapsed, content expanded, shared across content pages', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe(HOME_SEAT_SEED_SNAP);
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe(HOME_SEAT_SEED_SNAP);
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe(CONTENT_SEAT_SEED_SNAP);
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('bookmarks')).toBe(CONTENT_SEAT_SEED_SNAP);
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('profile')).toBe(CONTENT_SEAT_SEED_SNAP);
     expect(HOME_SEAT_SEED_SNAP).toBe('collapsed');
     expect(CONTENT_SEAT_SEED_SNAP).toBe('expanded');
   });
 
-  it('seat membership: home = polls, content = bookmarks/profile, children/search = none', () => {
-    expect(resolveSheetPostureSeat('polls')).toBe('home');
+  it('seat membership: home = the docked home scene, content = polls/bookmarks/profile, children/search = none', () => {
+    expect(resolveSheetPostureSeat('home')).toBe('home');
+    expect(resolveSheetPostureSeat('polls')).toBe('content');
     expect(resolveSheetPostureSeat('bookmarks')).toBe('content');
     expect(resolveSheetPostureSeat('profile')).toBe('content');
     expect(resolveSheetPostureSeat('search')).toBeNull();
@@ -38,13 +40,13 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
       snap: 'middle',
       source: 'gesture',
     });
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('middle');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe('middle');
     runtime.actions.settleRouteScenePollsSnap({
       rootOverlayKey: 'search',
       snap: 'collapsed',
       source: 'gesture',
     });
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('collapsed');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe('collapsed');
   });
 
   it('LAUNDERING IS DEAD: a programmatic polls settle never overwrites the home seat', () => {
@@ -60,7 +62,7 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
       snap: 'collapsed',
       source: 'programmatic',
     });
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('middle');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe('middle');
   });
 
   it('the content seat is ONE shared posture (favorites drag is profile posture too)', () => {
@@ -131,14 +133,14 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
   it('dismissDockedScene hides the home seat; a gesture settle resurrects the memory', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
     runtime.actions.dismissDockedScene();
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('hidden');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe('hidden');
     expect(runtime.authority.getSnapshot().isDockedSceneDismissed).toBe(true);
     runtime.actions.settleRouteScenePollsSnap({
       rootOverlayKey: 'search',
       snap: 'collapsed',
       source: 'gesture',
     });
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('collapsed');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe('collapsed');
     expect(runtime.authority.getSnapshot().isDockedSceneDismissed).toBe(false);
   });
 
@@ -152,7 +154,7 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
     });
     // The flag clears (resurrect landing) even though the seat write is gesture-only.
     expect(runtime.authority.getSnapshot().isDockedSceneDismissed).toBe(false);
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('hidden');
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe('hidden');
   });
 
   it('child/search-session facts record for any writer (unchanged per-scene ledger)', () => {
@@ -170,7 +172,7 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
     });
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('search')).toBe('middle');
     // ...and never bleed into the seats.
-    expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe(HOME_SEAT_SEED_SNAP);
+    expect(runtime.actions.getRouteSceneSwitchSceneSnap('home')).toBe(HOME_SEAT_SEED_SNAP);
   });
 });
 
@@ -185,7 +187,7 @@ describe('resolveSearchLaunchOriginSnap (seat-backed origin capture)', () => {
     ).toBe('middle');
     expect(
       resolveSearchLaunchOriginSnap({
-        overlay: 'polls',
+        overlay: 'home',
         homeSeatSnap: 'hidden',
         contentSeatSnap: 'expanded',
       })

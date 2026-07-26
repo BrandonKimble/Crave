@@ -8,7 +8,12 @@
 // imports to this file.
 import type { OverlayKey } from '../../overlays/types';
 
-export type AppOverlayTopLevelProductRouteKey = 'search' | 'polls' | 'bookmarks' | 'profile';
+export type AppOverlayTopLevelProductRouteKey =
+  | 'search'
+  | 'home'
+  | 'polls'
+  | 'bookmarks'
+  | 'profile';
 
 /**
  * Every top-level product scene, in canonical order. The single source for the
@@ -19,6 +24,7 @@ export type AppOverlayTopLevelProductRouteKey = 'search' | 'polls' | 'bookmarks'
  */
 export const ALL_TOP_LEVEL_SCENE_KEYS: readonly AppOverlayTopLevelProductRouteKey[] = [
   'search',
+  'home',
   'bookmarks',
   'profile',
   'polls',
@@ -28,10 +34,11 @@ export const ALL_TOP_LEVEL_SCENE_KEYS: readonly AppOverlayTopLevelProductRouteKe
  * THE scene the docked lane presents — the one scene that presents under the
  * search root whenever the search sheet dismisses; restorable after dismissal;
  * not a tab. Changing this constant re-targets the persistent docked surface
- * (e.g. polls → home). No lane/runtime code may name the docked scene
- * directly — everything reads this constant.
+ * (the designed one-constant retarget: polls → home landed 2026-07-26). No
+ * lane/runtime code may name the docked scene directly — everything reads
+ * this constant. Polls is a regular tab page now; home is the docked surface.
  */
-export const DOCKED_SCENE_KEY = 'polls' satisfies AppOverlayTopLevelProductRouteKey;
+export const DOCKED_SCENE_KEY = 'home' satisfies AppOverlayTopLevelProductRouteKey;
 
 // Compile-time guard: the docked scene must remain a valid OverlayKey.
 const _dockedSceneIsOverlayKey: OverlayKey = DOCKED_SCENE_KEY;

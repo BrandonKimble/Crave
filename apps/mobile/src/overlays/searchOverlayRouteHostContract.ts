@@ -54,6 +54,7 @@ export type SearchRouteSceneSecondaryListTransportPublication = {
 
 export type SearchRouteMountedSceneBodyKey =
   | 'bookmarks'
+  | 'home'
   | 'polls'
   | 'profile'
   | 'saveList'
@@ -70,6 +71,7 @@ export type SearchRouteMountedSceneBodyKey =
 
 export type SearchRouteMountedSceneChromeKey =
   | 'bookmarks'
+  | 'home'
   | 'polls'
   | 'profile'
   | 'saveList'

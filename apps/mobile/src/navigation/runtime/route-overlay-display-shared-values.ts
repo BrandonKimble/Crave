@@ -7,20 +7,8 @@ export type RouteOverlayDisplaySharedValueTargets = {
   activeTabIndexValue: SharedValue<number>;
 };
 
-export const resolveRouteOverlayBottomNavIndex = (
-  overlayKey: OverlayKey | null | undefined
-): number => {
-  switch (overlayKey) {
-    case 'bookmarks':
-      return 1;
-    case 'profile':
-      return 2;
-    case 'search':
-    case 'polls':
-    default:
-      return 0;
-  }
-};
+export { resolveRouteOverlayBottomNavIndex } from './route-overlay-bottom-nav-index';
+import { resolveRouteOverlayBottomNavIndex } from './route-overlay-bottom-nav-index';
 
 const syncRouteOverlayDisplaySharedValuesOnUI = (
   activeTabIndexValue: SharedValue<number>,

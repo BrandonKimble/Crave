@@ -42,10 +42,8 @@ import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-
 import { getViewportSubjectState } from '../../store/viewport-subject-store';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { PollCandidateBars } from './PollCandidateBars';
-import {
-  POLL_FEED_PLACE_FILTER_ALL,
-  usePollsFeedControlsStore,
-} from './runtime/polls-feed-controls-store';
+import { usePollsFeedControlsStore } from './runtime/polls-feed-controls-store';
+import { executePollsPlaceJump } from './runtime/polls-place-jump';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
@@ -411,24 +409,17 @@ const PollsFeedStrip = React.memo(() => {
   const feedType = usePollsFeedControlsStore((state) => state.feedType);
   const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
   const liveCount = usePollsFeedControlsStore((state) => state.liveCount);
-  const placeFilter = usePollsFeedControlsStore((state) => state.placeFilter);
   const placeOptions = usePollsFeedControlsStore((state) => state.placeOptions);
   const setFeedState = usePollsFeedControlsStore((state) => state.setFeedState);
   const setFeedSort = usePollsFeedControlsStore((state) => state.setFeedSort);
   const setFeedType = usePollsFeedControlsStore((state) => state.setFeedType);
   const setFeedTime = usePollsFeedControlsStore((state) => state.setFeedTime);
-  const setPlaceFilter = usePollsFeedControlsStore((state) => state.setPlaceFilter);
-  // §6 place slicer options: 'All' + the places present in the LOADED pages, ranked
-  // by content contribution (the body computes + writes them; chrome only renders).
+  // §6 place options (server truth, kept): the places present under the viewport,
+  // ranked by content contribution (the body writes them; chrome only renders).
   const placeSelectorOptions = React.useMemo(
-    () => [
-      { value: POLL_FEED_PLACE_FILTER_ALL, label: 'All' },
-      ...placeOptions.map((option) => ({ value: option.placeId, label: option.placeName })),
-    ],
+    () => placeOptions.map((option) => ({ value: option.placeId, label: option.placeName })),
     [placeOptions]
   );
-  const selectedPlaceLabel =
-    placeOptions.find((option) => option.placeId === placeFilter)?.placeName ?? 'All';
   // §3 "Live · N": dynamic live-poll count (metadata dot) inside the segment itself.
   const feedStateOptions = React.useMemo(
     () =>
@@ -485,31 +476,32 @@ const PollsFeedStrip = React.memo(() => {
         testID="poll-feed-type-toggle"
       />
       {placeOptions.length >= 2 ? (
-        // §6 place slicer (same SelectorChip primitive): slices the LOADED pages
-        // client-side (server-side slicing is a later leg — the filter then joins
-        // the control diff and the seam baseline). A conditional strip citizen:
-        // with fewer than two contributing places there is nothing to slice.
-        // NOTE: the ratified spec's searchable sheet + subdivision section headers
-        // need sheet machinery OptionSelectorSheet does not have (flat option
-        // cards, no search, no sections) — deferred with the sheet upgrade.
+        // §6 place chip = a JUMP now (owner-ratified Job 4): selecting a place
+        // FLIES THE MAP there — the feed follows the viewport naturally (no
+        // placeFilterId is sent). Momentary: the chip has no selected state and
+        // its label stays at the noun rest presentation.
         <SelectorChip
           key="place"
-          label={selectedPlaceLabel}
-          active={placeFilter !== POLL_FEED_PLACE_FILTER_ALL}
+          label="Place"
+          active={false}
           expanded={optionSelectorOpenKey === 'poll-feed-place'}
           onPress={() =>
             toggleOptionSelector({
               key: 'poll-feed-place',
               title: 'Place',
               options: placeSelectorOptions,
-              value: placeFilter,
-              onSelect: (value) => setPlaceFilter(value),
+              value: '',
+              onSelect: (value) =>
+                executePollsPlaceJump({
+                  placeId: value,
+                  slice: getViewportSubjectState().slice,
+                }),
               accentColor: ACCENT,
               testID: 'poll-feed-place-sheet',
             })
           }
           accentColor={ACCENT}
-          accessibilityLabel="Slice polls by place"
+          accessibilityLabel="Jump the map to a place"
           testID="poll-feed-place-toggle"
         />
       ) : null}

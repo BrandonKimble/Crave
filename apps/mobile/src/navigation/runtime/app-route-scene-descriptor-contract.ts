@@ -49,6 +49,7 @@ export type AppRouteSceneSecondaryListTransportPublication = {
 
 export type AppRouteMountedSceneBodyKey =
   | 'bookmarks'
+  | 'home'
   | 'polls'
   | 'profile'
   | 'saveList'
@@ -65,6 +66,7 @@ export type AppRouteMountedSceneBodyKey =
 
 export type AppRouteMountedSceneChromeKey =
   | 'bookmarks'
+  | 'home'
   | 'polls'
   | 'profile'
   | 'saveList'

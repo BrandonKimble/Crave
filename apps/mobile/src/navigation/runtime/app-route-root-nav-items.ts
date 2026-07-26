@@ -10,6 +10,7 @@ import type { OverlayKey } from '../../overlays/types';
  */
 export const APP_ROOT_NAV_ITEMS = [
   { key: 'search', label: 'Search' },
+  { key: 'polls', label: 'Polls' },
   { key: 'bookmarks', label: 'Lists' },
   { key: 'profile', label: 'Profile' },
 ] as const satisfies readonly { key: OverlayKey; label: string }[];
