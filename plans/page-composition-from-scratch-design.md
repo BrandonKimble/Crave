@@ -2142,3 +2142,17 @@ out by my stray "Replay onboarding" tap (that action calls signOut) — the
 sim sits at onboarding's auth step; sign in once to resume on-device
 verification (notifications, listDetail in-list strip, messaging, close-
 action behavior).
+
+RUNG 3 — SWEEP STATE (2026-07-26 evening, post sign-in):
+LISTDETAIL FULLY REAL on the track: route-entry wiring (frame.activeEntryId →
+route stack) feeds child bodies their params; full ranked list loads; in-list
+strip renders edge-to-edge after excluding listDetail from the blanket body
+inset (ToggleStrip band law); host-owned × close verified (returns to Lists).
+Strip-law bark remaining: 'plated-body' backdrop finds no
+SceneBodyFoundationSurface in the kit — the foundation surface (white plate +
+FrostCutout store) inside TrackSheetPage is THE next kit slice (also fixes
+profile's muted stats tint).
+VERIFIED REAL ON TRACK SO FAR: polls, home(shelves spec), lists, profile,
+settings, listDetail. REMAINING: notifications, messaging pair, saveList,
+userProfile, followList, editProfile, postPhotos, pollDetail/pollCreation
+(list-parts scenes not yet mapped), search LAST.
