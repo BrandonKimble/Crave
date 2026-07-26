@@ -50,6 +50,8 @@ export type TrackSheetPhysics = {
   attachToTag: (tag: number | null) => void;
   /** Programmatic settle to a τ — rides the same native critically damped spring. */
   snapToTau: (tau: number) => void;
+  /** Fires after each successful native attach (seat re-assertion hook). */
+  subscribeAttached: (listener: () => void) => () => void;
 };
 
 const SPACER_EPSILON = 0.5;
@@ -73,6 +75,13 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
 
   // ── Native hatch attach (durable; retries cover a recycler's late mount) ──
   const attachedTagRef = React.useRef<number | null>(null);
+  const attachedListenersRef = React.useRef(new Set<() => void>());
+  const subscribeAttached = React.useCallback((listener: () => void) => {
+    attachedListenersRef.current.add(listener);
+    return () => {
+      attachedListenersRef.current.delete(listener);
+    };
+  }, []);
   const attachToTag = React.useCallback(
     (tag: number | null) => {
       const physics = NativeModules.TrackScrollPhysics;
@@ -90,6 +99,9 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
             ballisticEdge: trackH,
             snapRegionEnd: trackH,
             snapOffsets: detentTaus,
+          })
+          .then(() => {
+            attachedListenersRef.current.forEach((listener) => listener());
           })
           .catch(() => {
             attempt += 1;
@@ -170,5 +182,6 @@ export const useTrackSheetPhysics = (geometry: TrackSheetGeometry): TrackSheetPh
     onScroll,
     attachToTag,
     snapToTau,
+    subscribeAttached,
   };
 };

@@ -122,7 +122,9 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // startup geometry seed (the same routeOverlaySnapPoints the production sheet
   // rides), and the presented scene tracks the PresentationFrame — tab presses
   // switch this host's chrome exactly as they switch the production sheet's.
-  const snapPoints = React.useMemo(() => getSearchStartupGeometrySeed().routeOverlaySnapPoints, []);
+  // LIVE geometry: computed per render (cheap) — a boot-time memo froze
+  // pre-layout values and mis-seated the sheet.
+  const snapPoints = getSearchStartupGeometrySeed().routeOverlaySnapPoints;
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const scene = frame.activeSceneKey ?? sceneOverride;
@@ -162,10 +164,9 @@ const useTrackScenePageChrome = (
 ) => {
   const commandsRef = React.useRef<TrackSheetCommands | null>(null);
   const trackH = snapPoints.collapsed - snapPoints.expanded;
-  React.useEffect(() => {
-    // Simplified posture rule (full motion-descriptor table = rung 4).
-    commandsRef.current?.snapToTau(scene === 'home' ? 0 : trackH);
-  }, [scene, trackH]);
+  // THE SEAT is declarative now: simplified posture rule (full motion-descriptor
+  // table = rung 4) expressed as a target τ the page re-asserts itself.
+  const seatTau = scene === 'home' ? 0 : trackH;
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
@@ -206,7 +207,7 @@ const useTrackScenePageChrome = (
     }),
     [snapPoints]
   );
-  return { commandsRef, header, dockedStrip, geometry };
+  return { commandsRef, header, dockedStrip, geometry, seatTau };
 };
 
 /** RUNG 3 — the ONE persistent scene page. Both list-parts hooks run
@@ -216,7 +217,10 @@ const useTrackScenePageChrome = (
  *   mounted-registry scenes → the registry body as a one-item track body;
  *   anything else → placeholder rows. */
 const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
-  const { commandsRef, header, dockedStrip, geometry } = useTrackScenePageChrome(scene, snapPoints);
+  const { commandsRef, header, dockedStrip, geometry, seatTau } = useTrackScenePageChrome(
+    scene,
+    snapPoints
+  );
   const pollsParts = usePollsPanelListSceneParts();
   const homeParts = useHomePanelListSceneParts();
 
@@ -280,6 +284,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         rowSurfaceStyle={scene === 'polls' ? styles.rowSurface : undefined}
         debugHud
         commandsRef={commandsRef}
+        seatTau={seatTau}
       />
     </View>
   );

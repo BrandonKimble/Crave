@@ -2090,3 +2090,23 @@ MY sheet (not production's) renders the real body seated at expanded.
 NOISE LOG: recurring dev crashes are PRE-EXISTING (ReanimatedModule
 installTurboModule assert on some reloads; snap-law posture-seat violation
 LogBox from the OLD system's nav-switch settle recording — owner triage).
+
+RUNG 3 SLICE 3 — THE SEAT LANDS (2026-07-26): declarative seatTau on
+TrackSheetPage (re-asserts on prop change + native attach + retries through
+recycler races; a finger cancels it — a seat is a target, never a lock), live
+geometry (per-render seed read; the boot memo froze pre-layout values).
+VERIFIED with the amber marker: results placeholder seats expanded at boot;
+polls seats expanded with its REAL page (title/strip/empty card) on tab press;
+lists seats with real chrome. NEW FRONTIER (next slice): mounted bodies read
+the OLD system's activation state (hasActivatedExpandedContent / currentSnap) —
+lists' body renders blank on the track host because activation never fires
+without the old sheet; bridge activation from the track (τ-derived) or force it
+for track scenes.
+DEV IRRITANTS FIXED (owner directive: fix everything that surfaces):
+- snap-law LogBox: 'home' joined the posture-seat scenes (home-surface work)
+  but recordRouteSceneSnapFact's fall-through still recorded PROGRAMMATIC
+  settles for it — now gesture-gated exactly like lists/profile.
+- ReanimatedModule installTurboModule SIGABRT: reload-dev-client.sh nudged the
+  dev-client URL even when the cold launch already connected — the in-process
+  JS reload re-installed TurboModules. The nudge is now conditional on Metro
+  seeing no traffic from the fresh boot.

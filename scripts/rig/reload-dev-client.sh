@@ -51,9 +51,24 @@ boot_and_check() {
   # prior dirty boot's error stays in any tail window — counts only grow on a NEW error).
   local errors_before errors_after
   errors_before=$(tail -c 800000 "$METRO_LOG" 2>/dev/null | grep -ac "ReferenceError" || true)
+  local metro_size_before
+  metro_size_before=$(stat -f%z "$METRO_LOG" 2>/dev/null || echo 0)
   xcrun simctl launch "$UDID" "$APP_ID" >/dev/null 2>&1 || true
-  sleep 2
-  xcrun simctl openurl "$UDID" "$DEV_CLIENT_URL"
+  # Only nudge through the dev-client URL if the cold launch did NOT already
+  # start loading a bundle on its own. Nudging an already-connecting client
+  # forces an IN-PROCESS JS reload, which re-installs TurboModules and trips
+  # Reanimated's installTurboModule assert on some boots (SIGABRT).
+  local connected=false
+  for _ in 1 2 3 4 5 6; do
+    sleep 1
+    if [[ "$(stat -f%z "$METRO_LOG" 2>/dev/null || echo 0)" -gt "$metro_size_before" ]]; then
+      connected=true
+      break
+    fi
+  done
+  if [[ "$connected" != "true" ]]; then
+    xcrun simctl openurl "$UDID" "$DEV_CLIENT_URL"
+  fi
   sleep 10
   errors_after=$(tail -c 800000 "$METRO_LOG" 2>/dev/null | grep -ac "ReferenceError" || true)
   [[ "$errors_after" -le "$errors_before" ]]

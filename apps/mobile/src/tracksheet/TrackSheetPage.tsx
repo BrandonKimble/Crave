@@ -81,6 +81,11 @@ export type TrackSheetPageProps<Item> = {
   debugHud?: boolean;
   /** Imperative commands (scene-switch snaps etc.) — filled on mount. */
   commandsRef?: React.MutableRefObject<TrackSheetCommands | null>;
+  /** THE SEAT (declarative): the desired resting τ. Re-asserted until reached —
+   * on prop change, on native attach, and through recycler-mount races — and
+   * CANCELLED the moment the user grabs the track (a seat is a target, never a
+   * lock). null = no opinion (leave τ where it is). */
+  seatTau?: number | null;
 };
 
 export function TrackSheetPage<Item>({
@@ -95,6 +100,7 @@ export function TrackSheetPage<Item>({
   rowSurfaceStyle,
   debugHud = false,
   commandsRef,
+  seatTau = null,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry);
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
@@ -129,6 +135,46 @@ export function TrackSheetPage<Item>({
     },
     [attachToTag]
   );
+  // ── THE SEAT: declarative re-asserting settle ──
+  const seatTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    if (seatTau == null) {
+      return;
+    }
+    let cancelled = false;
+    let attempts = 0;
+    const assertSeat = () => {
+      if (cancelled) {
+        return;
+      }
+      // The user's grab outranks the seat — never fight a finger.
+      if (physics.dragging.value) {
+        return;
+      }
+      if (Math.abs(tau.value - seatTau) <= 1) {
+        return;
+      }
+      physics.snapToTau(seatTau);
+      attempts += 1;
+      if (attempts < 15) {
+        seatTimerRef.current = setTimeout(assertSeat, 250);
+      }
+    };
+    assertSeat();
+    // Re-assert on every successful native attach (recycler mount races).
+    const unsubscribe = physics.subscribeAttached(() => {
+      attempts = 0;
+      assertSeat();
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      if (seatTimerRef.current != null) {
+        clearTimeout(seatTimerRef.current);
+      }
+    };
+  }, [physics, seatTau, tau]);
+
   const pendingSnapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
     if (commandsRef == null) {
