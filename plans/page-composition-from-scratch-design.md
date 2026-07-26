@@ -2018,3 +2018,12 @@ rendered in place, not a crash). Findings so far:
   destination:null — toast visible since 12:37, long before the kit). The shell
   renders white; on-device verification of registry chrome waits on a healthy
   boot (fresh install or map/token check).
+
+RUNG 1 VERIFIED ON LIVE APP (2026-07-26, post owner boot-fix): the parallel
+host renders the polls scene's REAL registry chrome — "Polls in Austin" Title +
+the real PollsFeedStrip — over the real map, no context errors (the earlier
+provider throw was the App-root mount; the seam mount sits inside
+AppRouteSceneRuntimeProvider). Note: recurring "[snap-law] CONTRACT VIOLATION:
+programmatic settle attempted to write the home posture seat" barks are the OLD
+system's own (my host never touches snap writers) — pre-existing noise to
+triage separately.
