@@ -40,8 +40,38 @@ FOOD side (extraction minted them as foods). A gate that auto-rejects the
 attribute side would destroy real vocabulary — Phase 2a as first committed
 was WRONG and was reverted (c26d74da reverted).
 
-CORRECTED DESIGN — the deterministic part is the CONSTRAINT, the direction
-is one deliberate judgment per word:
+RE-ALIGNED 2026-07-26 (owner challenge: "isn't the root issue that ramen
+gets added in the first place?" — CONFIRMED, prior design was after-the-
+fact deletion). Data reframe: the "junk food twins" are mostly the CATEGORY
+VOCABULARY working as designed (categories live as food-type rows:
+'breakfast' has 258 food_category events). The REAL root = CROSS-NAMESPACE
+EMISSION LEAKAGE, twice-mirrored: dish nouns leak into attributes
+(ramen-as-attribute — §2.5 priming, fixed in Phase 1) and meal-periods/
+styles leak into food_categories DESPITE §4.3's explicit ban ('breakfast'
+258×, 'cocktails' 183×). Resolution then mints entities from whatever
+array a word arrives in — no namespace validation at the door.
+
+ROOT-FIX ORDER (replaces the old design below):
+0. REVERSE-ENGINEER the §4.3 violation with real inputPayloads (same method
+   as carbonara udon): why does the model emit 'breakfast'/'cocktails' in
+   food_categories? Hypotheses to test, not assume: composition splitting
+   ("breakfast tacos" → categories ["breakfast"]), venue-level phrasing
+   ("great breakfast spot"), drink terms (cocktails) lacking a home. Fix
+   the instruction with Phase-1-style tightening.
+1. NAMESPACE GATE AT RESOLUTION (prevention, not cleanup): before minting
+   an entity from an emission array, validate the namespace — a term
+   arriving in food_categories that exists as an active attribute (or
+   matches the attribute vocabulary) is ROUTED/refused at the door, and
+   vice versa; violations logged loudly. No entity is ever born in the
+   wrong namespace.
+2. Cleanup of the existing leak becomes MECHANICAL consequence of the
+   corrected namespace rules (rehome miscategorized evidence; archive
+   empty husks), not a judgment sweep.
+3. Directional orderable-item adjudication survives only for the residue
+   where both namespaces have a genuine claim — likely near-empty.
+
+OLD DESIGN (superseded, kept for context) — the deterministic part is the
+CONSTRAINT, the direction is one deliberate judgment per word:
 1. INVARIANT (deterministic, code): no normalized name may be ACTIVE as
    both a food and an attribute. Enforce at adjudication promotion AND at
    food-entity creation: a collision doesn't auto-resolve — it enqueues a
