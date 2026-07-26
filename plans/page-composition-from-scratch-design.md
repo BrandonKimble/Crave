@@ -1835,3 +1835,28 @@ Two follow-on laws, both RED-proven this round:
 
 Measured: v=2974–4593pt/s at the crossing, overshoot 16–64pt (frame granularity),
 settle τ=623=H exactly. Awaiting the thumb pass.
+
+### THE NATIVE SPRING (2026-07-26) — the bounce IS the track
+
+The crossing intercept's remaining patch-halves are gone. TrackScrollKit now owns
+the entire top-bounce trajectory: on the H-crossing it kills the deceleration and
+drives contentOffset itself along a critically damped rubber spring
+(x(t) = (x0 + (v0 + ωx0)t)e^{-ωt}, ω=√170, CADisplayLink). τ genuinely dips
+below H and returns — every derivation stays a pure function of the one track
+variable. Deleted: the JS topDip motion source on the hatch path, the overshoot
+frame suppression (the frame is truth now), the 0.4s edge hold. Finger-down
+cancels the spring (the finger owns the track).
+
+NEW LORE (10), probe-proven with a per-frame trace: direct `contentOffset`
+property writes DO NOT stop a live deceleration — decel=1 persisted 0.7s while
+two writers fought frame-by-frame (spring wrote its curve, the engine wrote its
+own ~40pt away, and the engine's survivor carried the offset to the middle
+detent after the spring ended). Only `setContentOffset:animated:NO` kills the
+deceleration (decel=1 → 0 in the trace). The spring issues one same-offset kill
+at start and uses setContentOffset:animated:NO per tick.
+
+Measured after the fix: single writer (decel=0 throughout), dip 113pt @
+2901pt/s, monotone critically damped return, settle exactly τ=H=623. Dev-HUD
+note: the readout's 'settled' line publishes at momentumEnd (which fires
+mid-bounce when the decel is killed) so it can show a stale τ — the trace and
+resting frame are the truth.

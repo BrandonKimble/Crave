@@ -22,10 +22,17 @@
 @property (nonatomic, assign) BOOL ballisticArmed;
 @property (nonatomic, assign) CGFloat lastOffsetY;
 @property (nonatomic, assign) CFTimeInterval lastTimestamp;
-/// Post-intercept edge hold: residual offset writers (the surviving decel curve,
-/// Fabric state re-sync) keep nudging the offset off H after the stop — measured
-/// +41pt @ 4000pt/s. Until this deadline, the edge is authoritative.
-@property (nonatomic, assign) CFTimeInterval edgeHoldUntil;
+/// THE NATIVE SPRING — after the crossing, the module OWNS the offset: a
+/// critically damped spring on the overscroll depth x = edge - y, driven by a
+/// CADisplayLink writing contentOffset every frame. The bounce lives in the one
+/// track variable itself (tau really dips below H and returns); no JS transform,
+/// no bridge hop in the motion path, no edge hold.
+@property (nonatomic, strong) CADisplayLink *springLink;
+@property (nonatomic, weak) UIScrollView *springScrollView;
+@property (nonatomic, assign) CFTimeInterval springStart;
+@property (nonatomic, assign) double springX0;
+@property (nonatomic, assign) double springV0;
+@property (nonatomic, assign) double springLastX;
 /// The list-top boundary (H) in content-offset space; < 0 disables.
 @property (nonatomic, assign) CGFloat ballisticEdge;
 /// Releases whose native target lands below this bound get detent-targeted.
@@ -51,9 +58,10 @@
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
 {
-  // FINGER DOWN: full 1:1 track (the continuous grab); any armed intercept dies.
+  // FINGER DOWN: full 1:1 track (the continuous grab); any armed intercept or
+  // in-flight bounce dies — the finger owns the track from here.
   self.ballisticArmed = NO;
-  self.edgeHoldUntil = 0;
+  [self stopSpring];
   if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0) {
     UIEdgeInsets inset = scrollView.contentInset;
     inset.top = 0;
@@ -113,33 +121,77 @@
     const CFTimeInterval now = CACurrentMediaTime();
     if (y < edge) {
       // THE CROSSING: measure the true instantaneous velocity from the last two
-      // native frames, stop the engine dead ON the edge, and hand velocity +
-      // overshoot to the rubber spring — one continuous motion through H.
+      // native frames and hand the track to the native spring FROM THIS EXACT
+      // position and speed — one continuous motion through H, one variable.
+      // This frame is truth (tau really is below H now), so it forwards normally.
       const CFTimeInterval dt = MAX(now - self.lastTimestamp, 1.0 / 240.0);
       const double v = (self.lastOffsetY - y) / dt; // pt/s toward the edge
       const double overshoot = edge - y;
       self.ballisticArmed = NO;
-      self.edgeHoldUntil = now + 0.4;
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge) animated:NO];
+      [self startSpringOn:scrollView overshoot:overshoot velocity:MAX(v, 0)];
       if (self.onTopArrival != nil && v > 0) {
         self.onTopArrival(v, overshoot);
       }
-      // Do NOT forward this overshoot frame: the snap above already ran a nested
-      // didScroll(edge) that reached React, and forwarding the (older) sub-edge
-      // frame AFTER it would leave every JS derivation resting on a stale y.
-      return;
     } else {
       self.lastOffsetY = y;
       self.lastTimestamp = now;
     }
   }
-  if (edge >= 0 && !scrollView.tracking && CACurrentMediaTime() < self.edgeHoldUntil &&
-      fabs(scrollView.contentOffset.y - edge) > 0.5) {
-    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge) animated:NO];
-  }
   if ([self.original respondsToSelector:@selector(scrollViewDidScroll:)]) {
     [self.original scrollViewDidScroll:scrollView];
   }
+}
+
+#pragma mark Native rubber spring (critically damped, stiffness 170 / mass 1)
+
+// Overscroll depth x(t) for a critically damped spring returning to 0 from
+// x0 with inward velocity v0:  x(t) = (x0 + (v0 + w*x0) t) e^{-w t},  w = sqrt(k).
+static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
+
+- (void)startSpringOn:(UIScrollView *)scrollView overshoot:(double)x0 velocity:(double)v0
+{
+  [self stopSpring];
+  // KILL THE DECELERATION FIRST (probe-proven 2026-07-26): direct contentOffset
+  // property writes do NOT stop a live deceleration — the engine keeps writing its
+  // own curve every frame and wins after the spring ends. Only
+  // setContentOffset:animated:NO kills it (decel=1 -> 0 in the trace). Same
+  // offset, so the kill itself moves nothing.
+  [scrollView setContentOffset:scrollView.contentOffset animated:NO];
+  self.springScrollView = scrollView;
+  self.springStart = CACurrentMediaTime();
+  self.springX0 = x0;
+  self.springV0 = v0;
+  self.springLastX = x0;
+  self.springLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(springTick:)];
+  [self.springLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+}
+
+- (void)stopSpring
+{
+  [self.springLink invalidate];
+  self.springLink = nil;
+  self.springScrollView = nil;
+}
+
+- (void)springTick:(CADisplayLink *)link
+{
+  UIScrollView *scrollView = self.springScrollView;
+  if (scrollView == nil) {
+    [self stopSpring];
+    return;
+  }
+  const double t = CACurrentMediaTime() - self.springStart;
+  const double w = kTrackSpringOmega;
+  const double x = (self.springX0 + (self.springV0 + w * self.springX0) * t) * exp(-w * t);
+  const double speed = fabs(x - self.springLastX) / MAX(link.duration, 1.0 / 240.0);
+  self.springLastX = x;
+  const CGFloat edge = self.ballisticEdge;
+  if ((x < 0.25 && speed < 8.0) || t > 2.0) {
+    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge) animated:NO];
+    [self stopSpring];
+    return;
+  }
+  [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge - x) animated:NO];
 }
 
 @end

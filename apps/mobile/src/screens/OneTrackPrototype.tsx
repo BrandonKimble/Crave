@@ -111,16 +111,13 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       .catch(() => setNativeHatch(false));
     const emitter = new NativeEventEmitter(physics);
     const arrival = emitter.addListener('trackTopArrival', ({ velocity, overshoot }) => {
-      // THE CROSSING HANDOFF (velocity-continuity law): the proxy let the native
-      // deceleration run HOT into H, stopped the engine dead on the edge, and handed
-      // us the measured instantaneous velocity plus the frame's overshoot. The dip
-      // spring starts EXACTLY where and as fast as the engine left off — one
-      // continuous motion, no settle-then-jerk.
+      // Debug probe only: the bounce is NATIVE now. The module catches the
+      // H-crossing and drives contentOffset itself along the rubber curve, so tau
+      // genuinely dips below H and returns — every derivation reads the one track
+      // variable; there is no JS motion source on the ballistic top edge.
       console.log(
-        `[TRACKDBG] topArrival v=${Math.round(velocity)}pt/s overshoot=${Math.round(overshoot)}pt`
+        `[TRACKDBG] topArrival v=${Math.round(velocity)}pt/s overshoot=${Math.round(overshoot)}pt (native spring)`
       );
-      topDip.value = Math.max(overshoot, 0.5);
-      topDip.value = withSpring(0, { mass: 1, stiffness: 170, damping: 26, velocity });
     });
     return () => {
       arrival.remove();
