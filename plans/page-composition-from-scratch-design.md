@@ -2156,3 +2156,22 @@ VERIFIED REAL ON TRACK SO FAR: polls, home(shelves spec), lists, profile,
 settings, listDetail. REMAINING: notifications, messaging pair, saveList,
 userProfile, followList, editProfile, postPhotos, pollDetail/pollCreation
 (list-parts scenes not yet mapped), search LAST.
+
+### THE NESTED-SCROLL DIAGNOSIS (owner feel report, 2026-07-26 late)
+
+Owner: "pages still have double scroll / handoff issues — feels not fully cut
+over." BOTH readings correct, recorded as law:
+1. FLAG OFF = OLD SYSTEM ENTIRELY. The track host is parallel + dev-flagged;
+   production pages keep the old runtimes (and their diseases) until rung 5.
+   Feel verdicts on the normal app are verdicts on the OLD system.
+2. FLAG ON: scenes whose bodies embed their OWN scrollable (listDetail's and
+   pollDetail's internal FlashLists; any internally-scrolling body) are a
+   NESTED SCROLL INSIDE THE TRACK — the double-scroll disease reborn inside
+   the new host. The mounted-body adapter is scaffolding, correct ONLY for
+   bodies whose height is content-bound (inner ScrollViews collapse and the
+   track owns all motion — lists/profile/settings verified this way).
+THE CONVERSION LAW (finishing rung 3): every scrollable scene's rows must BE
+the track's rows — a body-content 'list' spec consumed by TrackSheetPage (the
+polls/home path). Conversion queue: listDetail → pollDetail → any body that
+binds its inner list to viewport height. A grep-invariant lands with rung 5:
+no FlashList/ScrollView may render INSIDE a track cell with bounded height.
