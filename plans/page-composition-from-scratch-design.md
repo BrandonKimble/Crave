@@ -2185,3 +2185,14 @@ Grep across panels: pollDetail is the ONLY body embedding a virtualized list
 banked chat-list law). The conversion queue is therefore exactly: pollDetail
 (design note: a per-scene MVCP-enabled track mode, or thread rows as track
 rows with append anchoring). Everything else verified single-scroll.
+
+POLLDETAIL CONVERTED VIA THE LANE (2026-07-26 evening): the scene input lane
+(route-scene-input-lane-runtime) is the GENERIC track body path — writers
+already publish every list scene's body spec app-wide; the track host is just
+another lane reader (sceneInputAuthority now exposed on AppRouteSceneRuntime).
+Verified on-sim: full poll card (ListHeaderComponent → list leader) + thread
+as track rows, seated τ=H, single scroll. The last nested-scroll scene is
+gone. Remaining pollDetail parity (rung 4, see acceptance inventory §6):
+compose chin (ListChromeComponent + keyboard lift), anchor-restore listRef,
+Extras share button. THE ACCEPTANCE INVENTORY for all rung-4/5 exactness now
+lives in plans/tracksheet-old-sheet-acceptance-inventory.md.
