@@ -29,20 +29,39 @@ File: apps/api/src/modules/external-integrations/llm/prompts/collection-prompt.m
 OPERATIONAL: prompt edit self-invalidates the Gemini cache at NEXT BOOT
 (full-text fingerprint) — rebuild+restart required; prod via deploy.
 
-## Phase 2 — Attribute integrity (deterministic, no emission prompt changes)
+## Phase 2 — Attribute/food collision integrity (REDESIGNED 2026-07-26 after
+## dry-run falsified the direction-blind gate)
 
-Evidence: adjudicator's dish-noun rule is LLM-judgment-only and provably
-non-deterministic (rejected food_attribute 'ramen', approved
-restaurant_attribute 'ramen'). 261 attribute entities collide with food
-names (pho, sushi, hot pot, tacos, wings, burger, pizza...).
-1. Deterministic gate in the attribute-ontology path (attribute creation +
-   adjudication promotion): candidate attribute whose normalized name
-   equals an ACTIVE food entity name → auto-reject/archive, logged. LLM
-   judgment remains for fuzzy cases only.
-2. One-time archive pass over the 261 collisions (script, report-first,
-   --apply; archive the attribute entity + strip its id from
-   food_attributes arrays / restaurant_attributes arrays via projection
-   rebuild for affected restaurants).
+DISCOVERY (scripts/archive-dish-named-attributes.ts dry-run): collisions
+are BIDIRECTIONAL junk. 'ramen' = legit food, junk attribute twin. But
+'vegetarian', 'breakfast', 'brunch', 'sweet', 'sour', 'comfort food',
+'bakery', 'bar', 'cocktails' = LEGIT attributes whose junk twin is on the
+FOOD side (extraction minted them as foods). A gate that auto-rejects the
+attribute side would destroy real vocabulary — Phase 2a as first committed
+was WRONG and was reverted (c26d74da reverted).
+
+CORRECTED DESIGN — the deterministic part is the CONSTRAINT, the direction
+is one deliberate judgment per word:
+1. INVARIANT (deterministic, code): no normalized name may be ACTIVE as
+   both a food and an attribute. Enforce at adjudication promotion AND at
+   food-entity creation: a collision doesn't auto-resolve — it enqueues a
+   DIRECTIONAL adjudication.
+2. DIRECTIONAL adjudication (one-shot per word, durable): the orderable-
+   item test decides the word's true home — "can a diner order this as an
+   item?" ramen/pho/tacos/wings → food (archive attribute twin);
+   vegetarian/breakfast/sweet/comfort food/bakery → property (archive the
+   junk FOOD twin + rehome its evidence sensibly or drop if junk-only).
+   Implement as a small placement-prompt extension with BOTH sides'
+   usage evidence in context; result recorded once (the archived twin is
+   the durable memory — resolution reuses tombstones as sinks).
+3. Cleanup pass runs the directional adjudication over today's ~53 active
+   collisions (14 food_attribute + 39 restaurant_attribute) + their food
+   twins; scripts/archive-dish-named-attributes.ts becomes the lever but
+   MUST use the directional decision, never blanket-archive one side.
+NOTE: archiving a junk FOOD twin needs care — check connections/mentions
+attached to it (e.g. 'breakfast'-as-food may hold real banked category
+evidence that belongs on the category graph instead). Study before
+executing; same abstraction-first law.
 
 ## Phase 3 — Duplicate identity, timing-honest
 
