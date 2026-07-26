@@ -28,6 +28,16 @@ fi
 perl -pi -e "s|^EXPO_PUBLIC_API_URL=.*|EXPO_PUBLIC_API_URL=$URL|" apps/mobile/.env.local
 echo "==> $(grep '^EXPO_PUBLIC_API_URL' apps/mobile/.env.local)"
 
+# Auth must match the api the sim talks to (2026-07-26 Clerk cutover):
+# prod api validates LIVE-instance tokens → pk_live line active in .env.local;
+# local api validates TEST-instance tokens → comment it so .env's pk_test wins.
+if [[ "$URL" == "$PROD_URL" ]]; then
+  perl -pi -e "s|^# *(EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_.*)|\$1|" apps/mobile/.env.local
+else
+  perl -pi -e "s|^(EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_.*)|# \$1|" apps/mobile/.env.local
+fi
+echo "==> clerk: $(grep 'EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live' apps/mobile/.env.local || echo '(test key from .env)')"
+
 echo "==> Restarting Metro (env inlines at Metro start) ..."
 lsof -ti tcp:8081 -sTCP:LISTEN | xargs kill 2>/dev/null || true
 sleep 1
