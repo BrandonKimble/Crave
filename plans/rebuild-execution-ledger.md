@@ -2151,3 +2151,17 @@ Also this date: exclusion parsing confirmed fully LLM-based (language-
 agnostic, zero hardcoded negation words); Clerk prod cutover completed
 (Google OAuth custom creds, redirect URL via API, waitlist→public,
 sim-target now toggles pk_live/pk_test with the api target).
+
+## 2026-07-26 — FULL AUSTIN EXTRACTION AUDIT (owner-ordered) — plans/austin-extraction-audit.md
+
+Three parallel measurement passes, all real counts / measured unit costs.
+VERDICT: the loss concentrates in MENU-ITEM LABELING (67.5% of stranded
+mentions carry strong serving claims; ~half suppressed BY DESIGN — broad
+nouns never earn is_menu_item regardless of claim strength — the rest =
+fan-out list context loss). Attributes and categories are far healthier
+than the earlier alarm (marker floors 5.1%/3.4% are mostly noise; category
+co-emission 99.4%). Prompt revision PROPOSED (5 surgical edits + 1 product
+ruling: claim strength qualifying broad nouns). Economics measured:
+targeted both-metro replay $3.36; full corpus $30.47 (unit cost
+$0.00042597/doc, n=68,579). AWAITING OWNER: ratify revision + ruling, pick
+replay scope. Baselines recorded as regression gates.
