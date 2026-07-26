@@ -1,4 +1,5 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { DemandSubjectKind, Prisma, Entity } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -648,5 +649,94 @@ export class RestaurantEntityMergeService {
       return Math.min(a, b);
     }
     return a ?? b ?? undefined;
+  }
+
+  /**
+   * SAME-NAME DUPLICATE SWEEP (2026-07-26 root cause: a check-then-act race
+   * in entity creation — now advisory-locked — plus a places path that never
+   * consulted the reddit-created entity left 51 same-name active pairs).
+   * SAFE RULE: hold only when BOTH sides are place-grounded with disjoint
+   * place ids (genuinely two physical businesses); any ungrounded side is a
+   * pre-enrichment duplicate of the same corpus stream. Canonical = the
+   * grounded side when exactly one is grounded (it carries enrichment),
+   * else the more-evidenced side. Idempotent; cheap at zero dupes. Manual
+   * lever: scripts/merge-duplicate-restaurants.ts (report / --apply).
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async sweepSameNameDuplicates(): Promise<{ merged: number; held: number }> {
+    const groups = await this.prisma.$queryRaw<
+      Array<{ name: string; entity_ids: string[] }>
+    >`
+      SELECT lower(name) AS name, array_agg(entity_id ORDER BY created_at) AS entity_ids
+      FROM core_entities
+      WHERE type = 'restaurant' AND status = 'active'
+      GROUP BY lower(name)
+      HAVING count(*) = 2
+    `;
+    let merged = 0;
+    let held = 0;
+    for (const group of groups) {
+      const details = await this.prisma.$queryRaw<
+        Array<{
+          entity_id: string;
+          mention_count: number;
+          place_ids: string[];
+        }>
+      >`
+        SELECT e.entity_id,
+               COALESCE((SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.restaurant_id = e.entity_id), 0)::int AS mention_count,
+               COALESCE((SELECT array_agg(DISTINCT l.google_place_id) FILTER (WHERE l.google_place_id IS NOT NULL) FROM core_restaurant_locations l WHERE l.restaurant_id = e.entity_id), '{}') AS place_ids
+        FROM core_entities e
+        WHERE e.entity_id = ANY(${group.entity_ids}::uuid[])
+        ORDER BY e.created_at
+      `;
+      if (details.length !== 2) continue;
+      const [a, b] = details;
+      const sharedPlaceId = a.place_ids.some((p) => b.place_ids.includes(p));
+      const bothGroundedDisjoint =
+        a.place_ids.length > 0 && b.place_ids.length > 0 && !sharedPlaceId;
+      if (bothGroundedDisjoint) {
+        held += 1;
+        continue;
+      }
+      const aGrounded = a.place_ids.length > 0;
+      const bGrounded = b.place_ids.length > 0;
+      const [canonicalId, duplicateId] =
+        aGrounded !== bGrounded
+          ? aGrounded
+            ? [a.entity_id, b.entity_id]
+            : [b.entity_id, a.entity_id]
+          : b.mention_count > a.mention_count
+            ? [b.entity_id, a.entity_id]
+            : [a.entity_id, b.entity_id];
+      try {
+        const canonical = await this.prisma.entity.findUniqueOrThrow({
+          where: { entityId: canonicalId },
+        });
+        const duplicate = await this.prisma.entity.findUniqueOrThrow({
+          where: { entityId: duplicateId },
+        });
+        await this.mergeDuplicateRestaurant({
+          canonical,
+          duplicate,
+          canonicalUpdate: {},
+        });
+        merged += 1;
+      } catch (error) {
+        this.logger.error('Same-name duplicate merge failed', error, {
+          operation: 'same_name_duplicate_sweep',
+          canonicalId,
+          duplicateId,
+        });
+      }
+    }
+    if (merged || held) {
+      this.logger.warn('Same-name duplicate sweep result', {
+        operation: 'same_name_duplicate_sweep',
+        merged,
+        held,
+      });
+    }
+    return { merged, held };
   }
 }

@@ -1,4 +1,5 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Connection, EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -76,6 +77,10 @@ type RestaurantItemProjection = {
 
 @Injectable()
 export class ProjectionRebuildService implements OnModuleInit {
+  /** Repair-sweep batch size — structural plumbing (transaction size bound),
+   *  not a behavior knob. */
+  private static readonly REPAIR_BATCH_SIZE = 100;
+
   private logger!: LoggerService;
 
   constructor(
@@ -729,5 +734,64 @@ export class ProjectionRebuildService implements OnModuleInit {
     }
 
     return Array.from(new Set(affectedConnectionIds));
+  }
+
+  /**
+   * ORPHANED-PROJECTION REPAIR SWEEP (root cause 2026-07-26): the post-commit
+   * rebuildForRestaurants call can fail after events are durably written
+   * (timeout/restart/deadlock), permanently stranding restaurants as
+   * mentions-with-no-connection — 2,220 found on first audit ('carbonara
+   * udon' had 3 mentions, zero connections, hence zero category edges).
+   * Idempotent and cheap when there is nothing to repair; runs nightly on
+   * the worker (bootstrap stops crons elsewhere). No env flag: this is
+   * correctness self-healing, not spend.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async repairOrphanedProjections(): Promise<{ repaired: number }> {
+    const orphans = await this.prismaService.$queryRaw<
+      Array<{ restaurantId: string }>
+    >`
+      SELECT DISTINCT ev.restaurant_id AS "restaurantId"
+      FROM core_restaurant_entity_events ev
+      JOIN core_entities e
+        ON e.entity_id = ev.restaurant_id AND e.status = 'active'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM core_restaurant_items i
+        WHERE i.restaurant_id = ev.restaurant_id
+      )
+    `;
+    if (!orphans.length) {
+      return { repaired: 0 };
+    }
+    this.logger.warn('Orphaned projections found — repairing', {
+      operation: 'projection_orphan_repair',
+      count: orphans.length,
+    });
+    let repaired = 0;
+    for (
+      let offset = 0;
+      offset < orphans.length;
+      offset += ProjectionRebuildService.REPAIR_BATCH_SIZE
+    ) {
+      const batch = orphans
+        .slice(offset, offset + ProjectionRebuildService.REPAIR_BATCH_SIZE)
+        .map((o) => o.restaurantId);
+      try {
+        await this.rebuildForRestaurants(batch);
+        repaired += batch.length;
+      } catch (error) {
+        // logger.error IS the Sentry seam — a failing repair batch is loud.
+        this.logger.error('Orphaned-projection repair batch failed', error, {
+          operation: 'projection_orphan_repair',
+          batchSize: batch.length,
+        });
+      }
+    }
+    this.logger.info('Orphaned-projection repair complete', {
+      operation: 'projection_orphan_repair',
+      repaired,
+      of: orphans.length,
+    });
+    return { repaired };
   }
 }

@@ -727,16 +727,32 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
 
     if (databaseResult.affectedRestaurantIds.length > 0) {
-      const rebuildResult =
-        await this.projectionRebuildService.rebuildForRestaurants(
-          databaseResult.affectedRestaurantIds,
+      // Post-commit projection: the events above are durable — a rebuild
+      // failure here must not fail the batch (that stranded 2,220
+      // restaurants as mentions-with-no-connection before the 2026-07-26
+      // root-cause). logger.error IS the Sentry seam, and the nightly
+      // repairOrphanedProjections sweep re-materializes anything missed.
+      try {
+        const rebuildResult =
+          await this.projectionRebuildService.rebuildForRestaurants(
+            databaseResult.affectedRestaurantIds,
+          );
+        databaseResult.affectedConnectionIds = [
+          ...new Set([
+            ...(databaseResult.affectedConnectionIds ?? []),
+            ...rebuildResult.connectionIds,
+          ]),
+        ];
+      } catch (error) {
+        this.logger.error(
+          'Projection rebuild failed post-commit — repair sweep will heal',
+          error,
+          {
+            operation: 'projection_rebuild_post_commit',
+            restaurantCount: databaseResult.affectedRestaurantIds.length,
+          },
         );
-      databaseResult.affectedConnectionIds = [
-        ...new Set([
-          ...(databaseResult.affectedConnectionIds ?? []),
-          ...rebuildResult.connectionIds,
-        ]),
-      ];
+      }
     }
 
     // New entities may include pending (quarantined) attributes — schedule the
@@ -1406,9 +1422,16 @@ export class UnifiedProcessingService implements OnModuleInit {
             // global (name, type) check; no market/presence lane, and no
             // skip for engineless communities. Geometric presence (locations
             // vs place grounds) is derived at read, never stamped.
+            // RACE FIX (2026-07-26 dupes root cause): the check-then-act
+            // window let two concurrent batches create the same (name, type)
+            // twice (burnt bean company: 3h apart, same day). An advisory
+            // xact lock on the identity key serializes creators of the SAME
+            // name; unrelated names don't contend. Find is case-insensitive
+            // to match tier-1 resolution semantics.
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${canonicalName.toLowerCase()}`}))`;
             const existing = await tx.entity.findFirst({
               where: {
-                name: canonicalName,
+                name: { equals: canonicalName, mode: 'insensitive' },
                 type: entityType,
               },
               select: {
@@ -1904,12 +1927,18 @@ export class UnifiedProcessingService implements OnModuleInit {
         if (attributeEntityId) {
           foodAttributeIds.push(attributeEntityId);
         } else {
-          this.logger.debug('Food attribute entity not resolved', {
-            batchId,
-            tempId,
-            attribute: attr,
-            mentionTempId: mention.temp_id,
-          });
+          // Vocabulary-miss = silently dropped evidence (attributes audit
+          // 2026-07-26: part of the 40% zero-attribute connection gap).
+          // Warn-level so the miss RATE is operator-visible in logs.
+          this.logger.warn(
+            'Food attribute entity not resolved — evidence dropped',
+            {
+              batchId,
+              tempId,
+              attribute: attr,
+              mentionTempId: mention.temp_id,
+            },
+          );
         }
       }
 
