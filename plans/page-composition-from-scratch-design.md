@@ -1879,3 +1879,15 @@ chosen detent from the true release velocity. One closed form serves both moves
 (signed displacement about a target); one physics system owns every release.
 
 Verified: same release now lands τ=623 exactly, list at top, unscrolled.
+
+### WORLD MASK + OVERSCROLL BLEED (2026-07-26) — surface derivations
+
+Owner's pass confirmed physics; caught two missing SURFACE derivations (both
+prototype artifacts with real-implementation laws):
+- THE WORLD MASK: the region above the sheet's top edge IS the map — scroll
+  content may never surface there. A map-replica cover (same color + same
+  animated dim) spans [0, sheetTopY): pure derivation, invisible as a layer.
+- THE OVERSCROLL BLEED: what a top bounce reveals is SHEET MATERIAL (solid
+  white extending above the content top), never the content's own edge.
+  Phase-derived: exists only while ballistic-from-list; parked in the spacer
+  region it is off-screen in every other phase.

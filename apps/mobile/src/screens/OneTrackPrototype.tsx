@@ -290,6 +290,17 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(tau.value, [0, H], [0.15, 0.55], 'clamp'),
   }));
+  // THE WORLD MASK: the region above the sheet's top edge IS the map — scroll
+  // content may never surface there. A map-replica cover from y=0 down to the
+  // sheet top (pure derivation of sheetTopY; replicates map + dim exactly so
+  // it is invisible as a layer).
+  const worldMaskStyle = useAnimatedStyle(() => ({ height: sheetTopY.value }));
+  // THE OVERSCROLL BLEED: during a ballistic bounce the sheet's surface streches
+  // above its content top — the reveal is SHEET MATERIAL (solid white), never
+  // the content's edge. Phase-derived: only exists while ballistic-from-list.
+  const bleedStyle = useAnimatedStyle(() => ({
+    opacity: ballisticFromList.value ? 1 : 0,
+  }));
 
   return (
     <View style={styles.root} pointerEvents="auto">
@@ -315,6 +326,7 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         <View style={{ height: H }} pointerEvents="none" />
         {/* the sheet content (dip-translated on ballistic top arrival) */}
         <Reanimated.View style={dipStyle}>
+        <Reanimated.View style={[styles.overscrollBleed, bleedStyle]} pointerEvents="none" />
         <View style={styles.sheetBody}>
           <View style={styles.stripRow}>
             {['Sort', 'Restaurants', 'Dishes', 'Open now'].map((label, index) => (
@@ -339,6 +351,11 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         </View>
         </Reanimated.View>
       </AnimatedScrollView>
+
+      {/* World mask: map-replica above the sheet top — content never shows here. */}
+      <Reanimated.View style={[styles.worldMask, worldMaskStyle]} pointerEvents="none">
+        <Reanimated.View style={[styles.worldMaskDim, backdropStyle]} />
+      </Reanimated.View>
 
       {/* Pinned header chrome — a τ-derivation riding ABOVE the track (input surface
           2's home; in the prototype it only closes + reads out). */}
@@ -376,6 +393,23 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+  },
+  worldMask: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+    backgroundColor: '#dce7dd',
+  },
+  worldMaskDim: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b3d2e' },
+  overscrollBleed: {
+    position: 'absolute',
+    top: -600,
+    height: 600,
+    left: 0,
+    right: 0,
+    backgroundColor: '#ffffff',
   },
   headerCard: {
     marginHorizontal: 0,
