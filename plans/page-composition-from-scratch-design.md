@@ -1945,3 +1945,23 @@ overscroll bleed: white surface background makes the bounce reveal sheet
 material for free; corners are real borderRadius; touches above the sheet fall
 through to the world (correct input geometry). Header chrome moved INSIDE the
 surface (it IS sheet material) — no separate translate.
+
+### THE TRACKSHEET KIT (2026-07-26) — the sheet-page standard extracted
+
+apps/mobile/src/tracksheet/ — the baked-in standard the owner mandated:
+- useTrackSheetPhysics: the one-track physics as a hook (τ, sheetTopY,
+  ballistic phase, durable native-hatch attach with recycler retries).
+- TrackSheetPage: the standard page — sheet clip surface + counter-positioned
+  FlashList track + chrome (header, optional docked cutout strip, divider
+  fade) + surface-colored rows/cap/footer. Strip permutations: dockedStrip
+  (cutout band), listLeader (in-list content), or neither.
+- TrackSheetDockedStrip/TrackSheetStripCutout: the production cutout
+  composition generalized — cutouts measureLayout against the band
+  (nesting-proof), plate holes via MaskedHoleOverlay.
+OneTrackPrototype is now the kit's first consumer (~190 lines of pure page
+authoring). Verified on-sim: collapsed→deep-list in one gesture, cutouts,
+chrome swallow, corners. Lesson: header content must be pointerEvents
+box-none or it eats the grab (chrome overlays the track).
+NEXT (migration ladder): header-grab input surface for off-track states,
+then scene-by-scene strangler onto TrackSheetPage, then delete the old
+gesture system.
