@@ -30,9 +30,10 @@
 @property (nonatomic, strong) CADisplayLink *springLink;
 @property (nonatomic, weak) UIScrollView *springScrollView;
 @property (nonatomic, assign) CFTimeInterval springStart;
-@property (nonatomic, assign) double springX0;
+@property (nonatomic, assign) double springTarget;
+@property (nonatomic, assign) double springD0;
 @property (nonatomic, assign) double springV0;
-@property (nonatomic, assign) double springLastX;
+@property (nonatomic, assign) double springLastD;
 /// The list-top boundary (H) in content-offset space; < 0 disables.
 @property (nonatomic, assign) CGFloat ballisticEdge;
 /// Releases whose native target lands below this bound get detent-targeted.
@@ -99,17 +100,25 @@
     return;
   }
 
-  if (self.snapOffsets.count > 0 && targetContentOffset->y < self.snapRegionEnd) {
-    // SHEET REGION release: detent-target via the platform's own snap API. The
-    // native target already encodes velocity (UIKit's deceleration projection),
-    // so "nearest detent to the target" IS the velocity-aware choice.
+  if (self.snapOffsets.count > 0 && releaseY < self.snapRegionEnd) {
+    // SHEET REGION release — two laws in one move:
+    //   THE BALLISTIC WALL: momentum born in the sheet region may never cross H.
+    //   Riding targetContentOffset let a fast release project PAST H and pour its
+    //   momentum straight into list scrolling with no finger down.
+    //   THE SNAPPY SETTLE: UIKit's deceleration toward a detent is a long lazy
+    //   ease; detents settle on the SAME critically damped spring as the top
+    //   rubber — one physics system for every release, velocity-continuous from
+    //   the finger's true release speed.
+    // Velocity-aware detent choice: UIKit's own projection, clamped to <= H.
+    const double projected = MIN(targetContentOffset->y, self.snapRegionEnd);
     CGFloat best = self.snapOffsets.firstObject.doubleValue;
     for (NSNumber *offset in self.snapOffsets) {
-      if (fabs(offset.doubleValue - targetContentOffset->y) < fabs(best - targetContentOffset->y)) {
+      if (fabs(offset.doubleValue - projected) < fabs(best - projected)) {
         best = offset.doubleValue;
       }
     }
-    targetContentOffset->y = best;
+    targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
+    [self startSpringOn:scrollView toTarget:best fromY:releaseY velocityY:velocity.y * 1000.0];
   }
 }
 
@@ -128,7 +137,10 @@
       const double v = (self.lastOffsetY - y) / dt; // pt/s toward the edge
       const double overshoot = edge - y;
       self.ballisticArmed = NO;
-      [self startSpringOn:scrollView overshoot:overshoot velocity:MAX(v, 0)];
+      // Unified spring: displacement d = y - H is -overshoot, dy/dt is -v (offset
+      // decreasing through the edge) — the rubber return falls out of the same
+      // closed form as the detent settle.
+      [self startSpringOn:scrollView toTarget:edge fromY:y velocityY:-MAX(v, 0)];
       if (self.onTopArrival != nil && v > 0) {
         self.onTopArrival(v, overshoot);
       }
@@ -144,11 +156,16 @@
 
 #pragma mark Native rubber spring (critically damped, stiffness 170 / mass 1)
 
-// Overscroll depth x(t) for a critically damped spring returning to 0 from
-// x0 with inward velocity v0:  x(t) = (x0 + (v0 + w*x0) t) e^{-w t},  w = sqrt(k).
+// Signed displacement d(t) = y(t) - target for a critically damped spring:
+//   d(t) = (d0 + (v0 + w*d0) t) e^{-w t},  w = sqrt(stiffness/mass) = sqrt(170).
+// One closed form serves both moves: the top rubber (d0 = -overshoot, v0 < 0)
+// and the detent settle (d0 = release displacement, v0 = release velocity).
 static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
 
-- (void)startSpringOn:(UIScrollView *)scrollView overshoot:(double)x0 velocity:(double)v0
+- (void)startSpringOn:(UIScrollView *)scrollView
+             toTarget:(double)target
+                fromY:(double)y0
+            velocityY:(double)v0
 {
   [self stopSpring];
   // KILL THE DECELERATION FIRST (probe-proven 2026-07-26): direct contentOffset
@@ -159,9 +176,10 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   [scrollView setContentOffset:scrollView.contentOffset animated:NO];
   self.springScrollView = scrollView;
   self.springStart = CACurrentMediaTime();
-  self.springX0 = x0;
+  self.springTarget = target;
+  self.springD0 = y0 - target;
   self.springV0 = v0;
-  self.springLastX = x0;
+  self.springLastD = y0 - target;
   self.springLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(springTick:)];
   [self.springLink addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
 }
@@ -182,16 +200,15 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   }
   const double t = CACurrentMediaTime() - self.springStart;
   const double w = kTrackSpringOmega;
-  const double x = (self.springX0 + (self.springV0 + w * self.springX0) * t) * exp(-w * t);
-  const double speed = fabs(x - self.springLastX) / MAX(link.duration, 1.0 / 240.0);
-  self.springLastX = x;
-  const CGFloat edge = self.ballisticEdge;
-  if ((x < 0.25 && speed < 8.0) || t > 2.0) {
-    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge) animated:NO];
+  const double d = (self.springD0 + (self.springV0 + w * self.springD0) * t) * exp(-w * t);
+  const double speed = fabs(d - self.springLastD) / MAX(link.duration, 1.0 / 240.0);
+  self.springLastD = d;
+  if ((fabs(d) < 0.25 && speed < 8.0) || t > 2.0) {
+    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, self.springTarget) animated:NO];
     [self stopSpring];
     return;
   }
-  [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge - x) animated:NO];
+  [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, self.springTarget + d) animated:NO];
 }
 
 @end

@@ -1860,3 +1860,22 @@ Measured after the fix: single writer (decel=0 throughout), dip 113pt @
 note: the readout's 'settled' line publishes at momentumEnd (which fires
 mid-bounce when the decel is killed) so it can show a stale τ — the trace and
 resting frame are the truth.
+
+### THE BALLISTIC WALL + SNAPPY SETTLE (2026-07-26)
+
+Owner's thumb pass on the native spring found two seams, one root:
+detent settles rode UIKit's deceleration via targetContentOffset — (a) a long
+lazy ease between detents ("slow gliding"), and (b) a fast sheet release whose
+projection landed PAST H matched no detent clamp at all, so the release
+momentum poured straight through H into list scrolling with no finger down
+(probe: release y=340 @ 2351pt/s → UIKit target 1509, i.e. 886pt into the list).
+
+THE LAW: the finger may cross H; momentum may not — in either direction.
+List-born ballistics stop at H (the rubber, already shipped). Sheet-born
+ballistics now settle on the SAME critically damped native spring: the
+sheet-region release branch clamps UIKit's projection to <= H for the detent
+choice, zeroes the native deceleration (target = releaseY), and springs to the
+chosen detent from the true release velocity. One closed form serves both moves
+(signed displacement about a target); one physics system owns every release.
+
+Verified: same release now lands τ=623 exactly, list at top, unscrolled.
