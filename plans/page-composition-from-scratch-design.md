@@ -1932,3 +1932,16 @@ RED HERRING RECORDED: the "blank viewport at deep tau" was the prototype's own
 screen-tall white footer at the legitimate end of the track — the recycler was
 fine (internal-handler probe: events flowed at every offset; rows 26-33 painted
 at tau=2523). Footer shortened.
+
+### THE SHEET CLIP (2026-07-26) — production-real surface shape
+
+The world-mask REPLICA cannot exist in production (behind the sheet is the live
+map). The ideal shape, validated in the prototype: the sheet is a ROUNDED
+CLIPPING SURFACE translated to sheetTopY, with the fullscreen track COUNTER-
+POSITIONED inside it (translateY: -sheetTopY) so content stays screen-fixed
+while the surface clips. Both terms derive from the same τ on the UI thread —
+lock-step by construction. This DELETED the world mask, the corner ears AND the
+overscroll bleed: white surface background makes the bounce reveal sheet
+material for free; corners are real borderRadius; touches above the sheet fall
+through to the world (correct input geometry). Header chrome moved INSIDE the
+surface (it IS sheet material) — no separate translate.

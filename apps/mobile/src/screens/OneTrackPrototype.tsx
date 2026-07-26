@@ -112,7 +112,7 @@ export const OneTrackPrototype: React.FC = () => {
 };
 
 const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const scrollRef = React.useRef<FlashList<number> | null>(null);
+  const scrollRef = React.useRef<{ scrollToOffset: (opts: { offset: number; animated?: boolean }) => void } | null>(null);
   // THE TOP-EDGE DIP (owner-confirmed gap): the H boundary is synthesized mid-flight,
   // so UIScrollView clamps instead of bouncing (the bottom edge, engine-known from
   // gesture start, bounces natively). Until the native-module hatch makes H an
@@ -371,16 +371,19 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(tau.value, [0, H], [0.15, 0.55], 'clamp'),
   }));
-  // THE WORLD MASK: the region above the sheet's top edge IS the map — scroll
-  // content may never surface there. A map-replica cover from y=0 down to the
-  // sheet top (pure derivation of sheetTopY; replicates map + dim exactly so
-  // it is invisible as a layer).
-  const worldMaskStyle = useAnimatedStyle(() => ({ height: sheetTopY.value }));
-  // THE OVERSCROLL BLEED: during a ballistic bounce the sheet's surface streches
-  // above its content top — the reveal is SHEET MATERIAL (solid white), never
-  // the content's edge. Phase-derived: only exists while ballistic-from-list.
-  const bleedStyle = useAnimatedStyle(() => ({
-    opacity: ballisticFromList.value ? 1 : 0,
+  // THE SHEET CLIP (the production-real shape — replaces the world-mask replica,
+  // the corner ears AND the overscroll bleed): the sheet is a ROUNDED, CLIPPING
+  // SURFACE whose top edge rides sheetTopY; the fullscreen track is COUNTER-
+  // POSITIONED inside it so content stays screen-fixed while the surface clips.
+  // Both terms derive from the same τ on the UI thread — lock-step by
+  // construction. White surface background = the overscroll reveal is sheet
+  // material for free; rounded corners are real corners; touches above the
+  // sheet fall through to the world (correct input geometry).
+  const sheetClipStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTopY.value }],
+  }));
+  const trackCounterStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -sheetTopY.value }],
   }));
 
   // The track's content, recycler edition: spacer (sheet travel region) + the
@@ -390,11 +393,10 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     () => (
       <View>
         <View style={{ height: H }} pointerEvents="none" />
-        <Reanimated.View style={[styles.overscrollBleed, bleedStyle]} pointerEvents="none" />
         <View style={styles.sheetCap} />
       </View>
     ),
-    [bleedStyle]
+    []
   );
   const listFooter = React.useMemo(() => <View style={styles.sheetFooter} />, []);
   const renderRow = React.useCallback(
@@ -420,80 +422,62 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <View style={styles.map} />
       <Reanimated.View style={[styles.mapDim, backdropStyle]} pointerEvents="none" />
 
-      {/* THE TRACK: one fullscreen native scroll. Content = transparent spacer(H)
-          then the sheet content — the sheet IS where content begins. */}
-      <AnimatedFlashList
-        ref={scrollRef}
-        style={StyleSheet.absoluteFill}
-        contentContainerStyle={{ paddingTop: EXPANDED_TOP }}
-        data={ROW_DATA}
-        renderItem={renderRow}
-        getItemType={() => 'row'}
-        drawDistance={SCREEN.height}
-        maintainVisibleContentPosition={{ disabled: true }}
-        renderScrollComponent={TrackScrollComponent}
-        ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
-        showsVerticalScrollIndicator={false}
-        bounces
-        alwaysBounceVertical
-        scrollEventThrottle={16}
-        onScroll={onScroll}
-      />
-
-      {/* World mask: map-replica above the sheet top — content never shows here. */}
-      <Reanimated.View style={[styles.worldMask, worldMaskStyle]} pointerEvents="none">
-        <Reanimated.View style={[styles.worldMaskDim, backdropStyle]} />
-      </Reanimated.View>
-
-      {/* Pinned header chrome — a τ-derivation riding ABOVE the track (input surface
-          2's home; in the prototype it only closes + reads out). */}
-      <Reanimated.View style={[styles.header, headerStyle]} pointerEvents="box-none">
-        {/* Corner ears: map-replica quarter-corner fillers — the sheet's rounded
-            top corners stay rounded even while content slides beneath the chrome
-            (the notches outside the radius are world, not sheet). */}
-        <View style={[styles.cornerEar, styles.cornerEarLeft]} pointerEvents="none">
-          <View style={[styles.cornerEarRing, styles.cornerEarRingLeft]} />
-          <Reanimated.View
-            style={[styles.cornerEarRing, styles.cornerEarRingLeft, styles.cornerEarRingDim, backdropStyle]}
+      {/* THE SHEET SURFACE: rounded clip riding sheetTopY; the fullscreen track
+          counter-positioned inside stays screen-fixed while the surface clips.
+          Header chrome lives at the surface's top — it IS sheet material. */}
+      <Reanimated.View style={[styles.sheetClip, sheetClipStyle]}>
+        <Reanimated.View style={[styles.trackCounter, trackCounterStyle]}>
+          <AnimatedFlashList
+            ref={scrollRef as unknown as React.Ref<React.Component>}
+            style={StyleSheet.absoluteFill}
+            contentContainerStyle={{ paddingTop: EXPANDED_TOP }}
+            data={ROW_DATA}
+            renderItem={renderRow}
+            getItemType={() => 'row'}
+            drawDistance={SCREEN.height}
+            maintainVisibleContentPosition={{ disabled: true }}
+            renderScrollComponent={TrackScrollComponent}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={listFooter}
+            showsVerticalScrollIndicator={false}
+            bounces
+            alwaysBounceVertical
+            scrollEventThrottle={16}
+            onScroll={onScroll}
           />
-        </View>
-        <View style={[styles.cornerEar, styles.cornerEarRight]} pointerEvents="none">
-          <View style={[styles.cornerEarRing, styles.cornerEarRingRight]} />
-          <Reanimated.View
-            style={[styles.cornerEarRing, styles.cornerEarRingRight, styles.cornerEarRingDim, backdropStyle]}
-          />
-        </View>
-        <View style={styles.headerCard}>
-          <Text style={styles.headerTitle}>One Track</Text>
-          <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
-            <Text style={styles.closeText}>×</Text>
-          </Pressable>
-        </View>
-        {/* Docked strip band: frost replica under a WHITE PLATE with chip holes —
-            the production cutout composition (MaskedHoleOverlay), miniaturized.
-            Rows scrolling beneath vanish behind the plate; the chips are windows
-            straight through to the frost. */}
-        <View style={styles.stripBand} pointerEvents="none">
-          <View style={styles.stripFrost} />
-          <Reanimated.View style={[styles.stripFrostDim, backdropStyle]} />
-          <View style={styles.stripFrostWash} />
-          <MaskedHoleOverlay holes={chipHoles} backgroundColor="#ffffff" renderWhenEmpty />
-          <View style={styles.stripRow}>
-            {STRIP_LABELS.map((label, index) => (
-              <View
-                key={label}
-                onLayout={(e) => onChipLayout(index, e)}
-                style={[styles.chip, index === 1 && styles.chipActive]}
-              >
-                <Text style={[styles.chipText, index === 1 && styles.chipTextActive]}>
-                  {label}
-                </Text>
-              </View>
-            ))}
+        </Reanimated.View>
+
+        {/* Header chrome at the surface top (sheet material, clipped with it). */}
+        <View style={styles.headerInSurface} pointerEvents="box-none">
+          <View style={styles.headerCard}>
+            <Text style={styles.headerTitle}>One Track</Text>
+            <Pressable onPress={onClose} style={styles.closeButton} hitSlop={12}>
+              <Text style={styles.closeText}>×</Text>
+            </Pressable>
           </View>
+          {/* Docked strip band: frost replica under a WHITE PLATE with chip holes —
+              the production cutout composition (MaskedHoleOverlay). */}
+          <View style={styles.stripBand} pointerEvents="none">
+            <View style={styles.stripFrost} />
+            <Reanimated.View style={[styles.stripFrostDim, backdropStyle]} />
+            <View style={styles.stripFrostWash} />
+            <MaskedHoleOverlay holes={chipHoles} backgroundColor="#ffffff" renderWhenEmpty />
+            <View style={styles.stripRow}>
+              {STRIP_LABELS.map((label, index) => (
+                <View
+                  key={label}
+                  onLayout={(e) => onChipLayout(index, e)}
+                  style={[styles.chip, index === 1 && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, index === 1 && styles.chipTextActive]}>
+                    {label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+          <Reanimated.View style={[styles.divider, dividerStyle]} />
         </View>
-        <Reanimated.View style={[styles.divider, dividerStyle]} />
       </Reanimated.View>
 
       <View style={styles.readout} pointerEvents="none">
@@ -517,28 +501,23 @@ const styles = StyleSheet.create({
   // Short: a screen-tall footer read as a blank page when a hard flick reached
   // the track's end (the "virtualization failure" that wasn't — U5 red herring).
   sheetFooter: { height: 160, backgroundColor: '#ffffff' },
-  header: {
+  sheetClip: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-  },
-  worldMask: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    height: SCREEN.height,
     overflow: 'hidden',
-    backgroundColor: '#dce7dd',
+    borderTopLeftRadius: SHEET_CORNER_RADIUS,
+    borderTopRightRadius: SHEET_CORNER_RADIUS,
+    backgroundColor: '#ffffff',
   },
-  worldMaskDim: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b3d2e' },
-  overscrollBleed: {
+  trackCounter: { ...StyleSheet.absoluteFillObject },
+  headerInSurface: {
     position: 'absolute',
-    top: -600,
-    height: 600,
+    top: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#ffffff',
   },
   headerCard: {
     marginHorizontal: 0,
@@ -574,27 +553,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: STRIP_PAD_X,
     paddingTop: STRIP_PAD_Y,
   },
-  cornerEar: {
-    position: 'absolute',
-    top: 0,
-    width: SHEET_CORNER_RADIUS,
-    height: SHEET_CORNER_RADIUS,
-    overflow: 'hidden',
-    zIndex: 2,
-  },
-  cornerEarLeft: { left: 0 },
-  cornerEarRight: { right: 0 },
-  cornerEarRing: {
-    position: 'absolute',
-    width: SHEET_CORNER_RADIUS * 4,
-    height: SHEET_CORNER_RADIUS * 4,
-    borderRadius: SHEET_CORNER_RADIUS * 2,
-    borderWidth: SHEET_CORNER_RADIUS,
-    borderColor: '#dce7dd',
-  },
-  cornerEarRingLeft: { left: -SHEET_CORNER_RADIUS, top: -SHEET_CORNER_RADIUS },
-  cornerEarRingRight: { left: -SHEET_CORNER_RADIUS * 2, top: -SHEET_CORNER_RADIUS },
-  cornerEarRingDim: { borderColor: '#0b3d2e' },
   chip: {
     height: 32,
     borderRadius: 16,
