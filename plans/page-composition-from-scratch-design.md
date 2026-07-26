@@ -1807,3 +1807,31 @@ PLATFORM LORE BANKED (three-and-counting Reanimated/UIKit traps):
 MEASURED: flick → 84pt dip below the pinned header with a clean critically-damped
 return (video trajectory 660→804px→rest). Detents + continuous grab + no-collapse +
 bottom native bounce all hold. OWNER FEEL PASS NEXT: crave://one-track-proto?show=1.
+
+### THE CROSSING INTERCEPT (2026-07-26) — velocity-continuous top rubber-band
+
+The owner's thumb caught the flaw in the inset-bound top edge: "a slow down and
+then jerk up." Mechanism (lore #4): bounding the track at release makes UIKit
+RE-TARGET its deceleration to end AT H with an ease-out (visible v→0), and the
+dip spring then launched with the banked would-have-carried velocity — two
+sequential motion sources with a velocity discontinuity at the handover.
+
+THE LAW: never bound the track during ballistic flight. The proxy ARMS at
+willEndDragging (release in list region) and lets the decel run HOT; on the exact
+didScroll frame the offset crosses H it measures the true instantaneous velocity
+from the last two native frames, stops the engine dead on the edge
+(setContentOffset, non-animated — decel confirmed dead, decel=0 in the probe),
+and hands {velocity, overshoot} to JS; the dip spring starts AT the overshoot
+with the measured velocity — one continuous motion through the edge.
+
+Two follow-on laws, both RED-proven this round:
+- SUPPRESS THE OVERSHOOT FRAME: the snap's nested didScroll(edge) reaches React
+  first; forwarding the older sub-edge frame afterwards leaves every JS
+  derivation resting on a stale y (HUD read τ = H − overshoot while the real
+  offset was H). The intercept branch returns without forwarding.
+- EDGE HOLD: for 0.4s post-intercept the edge is authoritative — any non-tracking
+  offset write off H is snapped back (guards against residual writers; lifts on
+  finger-down).
+
+Measured: v=2974–4593pt/s at the crossing, overshoot 16–64pt (frame granularity),
+settle τ=623=H exactly. Awaiting the thumb pass.

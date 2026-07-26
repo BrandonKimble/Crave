@@ -1,5 +1,6 @@
 #import "TrackScrollPhysics.h"
 
+#import <QuartzCore/QuartzCore.h>
 #import <React/RCTUIManager.h>
 #import <React/RCTUIManagerUtils.h>
 #import <UIKit/UIKit.h>
@@ -13,10 +14,18 @@
 /// event stream is untouched.
 @interface TrackScrollDelegateProxy : NSObject <UIScrollViewDelegate>
 @property (nonatomic, weak) id<UIScrollViewDelegate> original;
-/// Called when a ballistic release will arrive at the top bound, with the velocity
-/// (pt/s, positive toward the edge) the flick would carry THROUGH it - UIKit's own
-/// delegate velocity adjusted by the deceleration model over the remaining distance.
-@property (nonatomic, copy) void (^onTopArrival)(double velocityPtsPerSecond);
+/// Called at the exact frame a ballistic scroll CROSSES the top bound, with the
+/// measured instantaneous velocity (pt/s toward the edge, from the last two native
+/// frames) and the overshoot already past the edge - so the JS rubber spring starts
+/// exactly where and as fast as the engine left off (velocity-continuous bounce).
+@property (nonatomic, copy) void (^onTopArrival)(double velocityPtsPerSecond, double overshootPts);
+@property (nonatomic, assign) BOOL ballisticArmed;
+@property (nonatomic, assign) CGFloat lastOffsetY;
+@property (nonatomic, assign) CFTimeInterval lastTimestamp;
+/// Post-intercept edge hold: residual offset writers (the surviving decel curve,
+/// Fabric state re-sync) keep nudging the offset off H after the stop — measured
+/// +41pt @ 4000pt/s. Until this deadline, the edge is authoritative.
+@property (nonatomic, assign) CFTimeInterval edgeHoldUntil;
 /// The list-top boundary (H) in content-offset space; < 0 disables.
 @property (nonatomic, assign) CGFloat ballisticEdge;
 /// Releases whose native target lands below this bound get detent-targeted.
@@ -42,8 +51,9 @@
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
 {
-  // FINGER DOWN ⇒ the full track: lift the ballistic bound so the drag can travel
-  // 1:1 from deep list through H into sheet travel (the continuous grab).
+  // FINGER DOWN: full 1:1 track (the continuous grab); any armed intercept dies.
+  self.ballisticArmed = NO;
+  self.edgeHoldUntil = 0;
   if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0) {
     UIEdgeInsets inset = scrollView.contentInset;
     inset.top = 0;
@@ -70,29 +80,14 @@
   const CGFloat releaseY = scrollView.contentOffset.y;
 
   if (edge >= 0 && releaseY >= edge) {
-    // velocity.y < 0 means content moving toward the top edge. UIKit gives pt/ms.
-    const CGFloat vTowardEdge = -velocity.y * 1000.0; // pt/s toward the edge
-    const CGFloat distance = releaseY - edge;
-    const CGFloat rate = scrollView.decelerationRate;
-    const CGFloat projection = vTowardEdge > 0 ? (vTowardEdge / 1000.0) * rate / (1.0 - rate) : 0;
-    if (self.onTopArrival != nil && vTowardEdge > 0 && projection > distance) {
-      const double arrival = vTowardEdge * sqrt(MAX(0.0, 1.0 - distance / MAX(projection, 0.0001)));
-      self.onTopArrival(arrival);
-    }
-    // BALLISTIC PHASE, released in the list region: install the bound NOW —
-    // synchronously, before UIKit configures deceleration — so H is an
-    // engine-known edge and momentum arriving there bounces NATIVELY (identical
-    // in kind to the bottom edge). This is the whole reason this module exists:
-    // the same inset applied from JS after the end-drag event clamps instead.
-    UIEdgeInsets inset = scrollView.contentInset;
-    if (inset.top != -edge) {
-      inset.top = -edge;
-      scrollView.contentInset = inset;
-    }
-    // Never let the (pre-bound) native target rest inside the sheet region.
-    if (targetContentOffset->y < edge) {
-      targetContentOffset->y = edge;
-    }
+    // BALLISTIC RELEASE IN THE LIST REGION: do NOT bound the track here — bounding
+    // makes UIKit re-target and EASE into H (v->0), and any bounce synthesized after
+    // that reads as settle-then-jerk. Instead ARM the crossing intercept: the decel
+    // runs HOT toward its natural target, and scrollViewDidScroll catches the exact
+    // frame the offset crosses H with its true instantaneous velocity.
+    self.ballisticArmed = YES;
+    self.lastOffsetY = releaseY;
+    self.lastTimestamp = CACurrentMediaTime();
     return;
   }
 
@@ -107,6 +102,43 @@
       }
     }
     targetContentOffset->y = best;
+  }
+}
+
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+  const CGFloat edge = self.ballisticEdge;
+  if (self.ballisticArmed && edge >= 0 && !scrollView.tracking && scrollView.decelerating) {
+    const CGFloat y = scrollView.contentOffset.y;
+    const CFTimeInterval now = CACurrentMediaTime();
+    if (y < edge) {
+      // THE CROSSING: measure the true instantaneous velocity from the last two
+      // native frames, stop the engine dead ON the edge, and hand velocity +
+      // overshoot to the rubber spring — one continuous motion through H.
+      const CFTimeInterval dt = MAX(now - self.lastTimestamp, 1.0 / 240.0);
+      const double v = (self.lastOffsetY - y) / dt; // pt/s toward the edge
+      const double overshoot = edge - y;
+      self.ballisticArmed = NO;
+      self.edgeHoldUntil = now + 0.4;
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge) animated:NO];
+      if (self.onTopArrival != nil && v > 0) {
+        self.onTopArrival(v, overshoot);
+      }
+      // Do NOT forward this overshoot frame: the snap above already ran a nested
+      // didScroll(edge) that reached React, and forwarding the (older) sub-edge
+      // frame AFTER it would leave every JS derivation resting on a stale y.
+      return;
+    } else {
+      self.lastOffsetY = y;
+      self.lastTimestamp = now;
+    }
+  }
+  if (edge >= 0 && !scrollView.tracking && CACurrentMediaTime() < self.edgeHoldUntil &&
+      fabs(scrollView.contentOffset.y - edge) > 0.5) {
+    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, edge) animated:NO];
+  }
+  if ([self.original respondsToSelector:@selector(scrollViewDidScroll:)]) {
+    [self.original scrollViewDidScroll:scrollView];
   }
 }
 
@@ -178,8 +210,10 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
       scrollView.delegate = proxy;
     }
     __weak TrackScrollPhysics *weakSelf = self;
-    proxy.onTopArrival = ^(double velocityPtsPerSecond) {
-      [weakSelf sendEventWithName:@"trackTopArrival" body:@{ @"velocity": @(velocityPtsPerSecond) }];
+    proxy.onTopArrival = ^(double velocityPtsPerSecond, double overshootPts) {
+      [weakSelf sendEventWithName:@"trackTopArrival"
+                             body:@{ @"velocity": @(velocityPtsPerSecond),
+                                     @"overshoot": @(overshootPts) }];
     };
     NSNumber *edge = config[@"ballisticEdge"];
     NSNumber *regionEnd = config[@"snapRegionEnd"];

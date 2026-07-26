@@ -110,17 +110,23 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       .then(() => setNativeHatch(true))
       .catch(() => setNativeHatch(false));
     const emitter = new NativeEventEmitter(physics);
-    const arrival = emitter.addListener('trackTopArrival', ({ velocity }) => {
-      // UIKit's OWN release velocity, decel-adjusted to the edge (the one number
-      // every JS reconstruction lied about). The dip fires on arrival at H.
-      console.log(`[TRACKDBG] topArrival v=${Math.round(velocity)}pt/s`);
-      pendingDipVelocity.value = velocity;
+    const arrival = emitter.addListener('trackTopArrival', ({ velocity, overshoot }) => {
+      // THE CROSSING HANDOFF (velocity-continuity law): the proxy let the native
+      // deceleration run HOT into H, stopped the engine dead on the edge, and handed
+      // us the measured instantaneous velocity plus the frame's overshoot. The dip
+      // spring starts EXACTLY where and as fast as the engine left off — one
+      // continuous motion, no settle-then-jerk.
+      console.log(
+        `[TRACKDBG] topArrival v=${Math.round(velocity)}pt/s overshoot=${Math.round(overshoot)}pt`
+      );
+      topDip.value = Math.max(overshoot, 0.5);
+      topDip.value = withSpring(0, { mass: 1, stiffness: 170, damping: 26, velocity });
     });
     return () => {
       arrival.remove();
       physics.detach?.(tag);
     };
-  }, [pendingDipVelocity, scrollRef]);
+  }, [pendingDipVelocity, scrollRef, topDip]);
   const nativeHatchRef = React.useRef(nativeHatch);
   nativeHatchRef.current = nativeHatch;
   const reassertHatch = React.useCallback(() => {
@@ -262,7 +268,15 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   );
 
   const clampProps = useAnimatedProps(() => ({
-    contentInset: { top: ballisticClamp.value ? -H : 0, bottom: 0, left: 0, right: 0 },
+    // Fallback-only bound: in native-hatch mode the track is NEVER inset-bounded —
+    // the proxy's crossing intercept owns the top edge (bounding would make UIKit
+    // re-target and EASE into H, the settle-then-jerk the owner rejected).
+    contentInset: {
+      top: ballisticClamp.value && !nativeHatchSV.value ? -H : 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+    },
   }));
 
   // DERIVATIONS (each a pure function of τ — the model's §2 list, miniaturized):
