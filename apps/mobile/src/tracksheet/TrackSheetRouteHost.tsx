@@ -6,6 +6,7 @@ import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteCont
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
+import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
 import type { OverlayKey } from '../overlays/types';
 import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
 import {
@@ -136,10 +137,26 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const scene = frame.activeSceneKey ?? sceneOverride;
 
+  // THE ENTRY: child bodies receive their route entry (params — listId etc.)
+  // exactly like the registry mount unit passes it (W1 slice 1). Resolve the
+  // frame's activeEntryId against the live route stack.
+  const activeEntry = React.useMemo(() => {
+    if (frame.activeEntryId == null) {
+      return null;
+    }
+    const routeState = sceneRuntime.routeSceneSwitchRuntime.getRouteState();
+    return (
+      routeState.overlayRouteStack.find((entry) => entry.entryId === frame.activeEntryId) ??
+      (routeState.activeOverlayRoute.entryId === frame.activeEntryId
+        ? routeState.activeOverlayRoute
+        : null)
+    );
+  }, [frame.activeEntryId, sceneRuntime]);
+
   // RUNG 3 — REAL BODIES through ONE PERSISTENT PAGE: the track surface never
   // remounts (production shape; remount churn hit a Fabric unmount assert) —
   // scene switches swap chrome + body content inside UnifiedTrackScenePage.
-  return <UnifiedTrackScenePage scene={scene} snapPoints={snapPoints} />;
+  return <UnifiedTrackScenePage scene={scene} snapPoints={snapPoints} entry={activeEntry} />;
 };
 
 // The mounted-body registry's scene set (searchOverlayRouteHostContract) minus
@@ -151,6 +168,10 @@ const ROOT_TRACK_SCENES = new Set<OverlayKey>([
   'profile',
   'search',
 ] as OverlayKey[]);
+
+// Scenes whose bodies own their insets (in-list strips must bleed edge-to-edge —
+// the ToggleStrip band law barks inside any padded mount).
+const UNPADDED_BODY_SCENES = new Set<OverlayKey>(['listDetail'] as OverlayKey[]);
 
 const MOUNTED_TRACK_SCENES = new Set<OverlayKey>([
   'lists',
@@ -170,6 +191,7 @@ const MOUNTED_TRACK_SCENES = new Set<OverlayKey>([
 type TrackScenePageProps = {
   scene: OverlayKey;
   snapPoints: ReturnType<typeof getSearchStartupGeometrySeed>['routeOverlaySnapPoints'];
+  entry?: OverlayRouteEntry | null;
 };
 
 /** Shared chrome + page assembly for every scene page. */
@@ -245,7 +267,7 @@ const useTrackScenePageChrome = (
  *   polls/home → the scene's real body-content spec;
  *   mounted-registry scenes → the registry body as a one-item track body;
  *   anything else → placeholder rows. */
-const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
+const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints, entry }) => {
   const { commandsRef, header, dockedStrip, geometry, seatTau } = useTrackScenePageChrome(
     scene,
     snapPoints
@@ -279,13 +301,13 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
           <BottomSheetSceneStackBodyIsActiveContext.Provider value={true}>
             <ChromeProbeBoundary label={`${scene}.body`}>
-              <Body />
+              <Body entry={entry ?? undefined} />
             </ChromeProbeBoundary>
           </BottomSheetSceneStackBodyIsActiveContext.Provider>
         </BottomSheetSceneStackBodyRenderActivityContext.Provider>
       </BottomSheetSceneStackBodyDataActivityContext.Provider>
     );
-  }, [scene]);
+  }, [entry, scene]);
   const renderPlaceholderRow = React.useCallback(
     ({ item }: { item: unknown }) => (
       <View style={styles.row}>
@@ -330,7 +352,9 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
         rowSurfaceStyle={
-          scene === 'polls' || MOUNTED_TRACK_SCENES.has(scene) ? styles.rowSurface : undefined
+          scene === 'polls' || (MOUNTED_TRACK_SCENES.has(scene) && !UNPADDED_BODY_SCENES.has(scene))
+            ? styles.rowSurface
+            : undefined
         }
         debugHud
         commandsRef={commandsRef}
@@ -346,7 +370,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
 const PLACEHOLDER_ROWS = Array.from({ length: 30 }, (_, index) => index);
 
 const MOUNTED_BODY_COMPONENTS: Partial<
-  Record<SearchRouteMountedSceneBodyKey, React.ComponentType>
+  Record<SearchRouteMountedSceneBodyKey, React.ComponentType<{ entry?: OverlayRouteEntry | null }>>
 > = {
   lists: ListsMountedSceneBody,
   profile: ProfileMountedSceneBody,
