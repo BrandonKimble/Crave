@@ -28,6 +28,41 @@ export const useClerkOAuth = (strategy: OAuthStrategy) => {
           unsafeMetadata: params?.unsafeMetadata,
         });
         const createdSessionId = result.createdSessionId ?? '';
+        if (!createdSessionId) {
+          // Production-instance diagnosis (2026-07-26): the flow can finish
+          // the browser leg yet mint no session when the live instance holds
+          // an unmet sign-up requirement. Name the requirement, loudly.
+          const signIn = result.signIn as
+            | {
+                status?: string | null;
+                firstFactorVerification?: {
+                  status?: string | null;
+                  error?: { code?: string; message?: string } | null;
+                };
+              }
+            | undefined;
+          const signUp = result.signUp as
+            | {
+                status?: string | null;
+                missingFields?: string[];
+                unverifiedFields?: string[];
+              }
+            | undefined;
+          logger.error(
+            'OAuth flow incomplete — no session minted',
+            JSON.stringify({
+              strategy,
+              authSessionType:
+                (result.authSessionResult as { type?: string } | undefined)?.type ?? null,
+              signInStatus: signIn?.status ?? null,
+              firstFactorStatus: signIn?.firstFactorVerification?.status ?? null,
+              firstFactorError: signIn?.firstFactorVerification?.error?.code ?? null,
+              signUpStatus: signUp?.status ?? null,
+              signUpMissingFields: signUp?.missingFields ?? null,
+              signUpUnverifiedFields: signUp?.unverifiedFields ?? null,
+            })
+          );
+        }
         return {
           authSessionResult: result.authSessionResult,
           createdSessionId,
