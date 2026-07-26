@@ -2175,3 +2175,13 @@ the track's rows — a body-content 'list' spec consumed by TrackSheetPage (the
 polls/home path). Conversion queue: listDetail → pollDetail → any body that
 binds its inner list to viewport height. A grep-invariant lands with rung 5:
 no FlashList/ScrollView may render INSIDE a track cell with bounded height.
+
+CORRECTION (verified in code, 2026-07-26): the earlier scene map misclassified
+listDetail — it has NO internal FlashList ("rows ride the leg's shared
+mounted-scroll container"); its rows are content-bound views, so it is ALREADY
+track-pure under the mounted adapter (matches the clean on-sim scroll).
+Grep across panels: pollDetail is the ONLY body embedding a virtualized list
+(13 FlashList refs — the chat-style thread, which also wants MVCP ON per the
+banked chat-list law). The conversion queue is therefore exactly: pollDetail
+(design note: a per-scene MVCP-enabled track mode, or thread rows as track
+rows with append anchoring). Everything else verified single-scroll.
