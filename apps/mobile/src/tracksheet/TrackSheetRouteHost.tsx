@@ -275,6 +275,33 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
   const pollsParts = usePollsPanelListSceneParts();
   const homeParts = useHomePanelListSceneParts();
 
+  // THE LANE PATH (pollDetail conversion, generalized): scenes that PUBLISH a
+  // 'list' body spec through the scene input lane (pollDetail, pollCreation,
+  // restaurant, …) render those rows AS TRACK ROWS — the writers already run
+  // app-wide, so the track host is just another lane reader. This is what
+  // makes nested scrollables structurally unnecessary.
+  const sceneRuntime = useAppRouteSceneRuntime();
+  const inputAuthority = sceneRuntime.sceneInputAuthority;
+  const subscribeBody = React.useCallback(
+    (listener: () => void) => {
+      try {
+        return inputAuthority.subscribeSceneBody(
+          scene as Parameters<typeof inputAuthority.subscribeSceneBody>[0],
+          listener
+        );
+      } catch {
+        return () => undefined;
+      }
+    },
+    [inputAuthority, scene]
+  );
+  const getBodySnapshot = React.useCallback(
+    () => inputAuthority.getSceneInputSnapshot(scene),
+    [inputAuthority, scene]
+  );
+  const publishedInput = React.useSyncExternalStore(subscribeBody, getBodySnapshot);
+  const publishedBody = publishedInput?.sceneBodyContent ?? null;
+
   const renderMountedBody = React.useCallback(() => {
     // DIRECT bodies, no registry wrapper: the wrapper's residency boundary
     // renders hidden prewarm legs which, without the old host's shell-liveness
@@ -320,6 +347,19 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
   );
 
   const list = React.useMemo(() => {
+    if (publishedBody != null && publishedBody.surfaceKind === 'list') {
+      return {
+        leader: publishedBody.ListHeaderComponent ?? null,
+        data: publishedBody.data,
+        renderItem: publishedBody.renderItem,
+        keyExtractor: publishedBody.keyExtractor,
+        ListEmptyComponent: publishedBody.ListEmptyComponent,
+        ItemSeparatorComponent: publishedBody.ItemSeparatorComponent,
+        extraData: publishedBody.extraData,
+        onEndReached: publishedBody.onEndReached,
+        onEndReachedThreshold: publishedBody.onEndReachedThreshold,
+      };
+    }
     const partsFor = scene === 'polls' ? pollsParts : scene === 'home' ? homeParts : null;
     if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
       const spec = partsFor.sceneBodyContent;
@@ -341,7 +381,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
       data: PLACEHOLDER_ROWS,
       renderItem: renderPlaceholderRow,
     };
-  }, [homeParts, pollsParts, renderMountedBody, renderPlaceholderRow, scene]);
+  }, [homeParts, pollsParts, publishedBody, renderMountedBody, renderPlaceholderRow, scene]);
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -351,6 +391,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         headerHeight={64}
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
+        listLeader={renderListLeader((list as { leader?: unknown }).leader)}
         rowSurfaceStyle={
           scene === 'polls' || (MOUNTED_TRACK_SCENES.has(scene) && !UNPADDED_BODY_SCENES.has(scene))
             ? styles.rowSurface
@@ -368,6 +409,18 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
 };
 
 const PLACEHOLDER_ROWS = Array.from({ length: 30 }, (_, index) => index);
+
+// Published specs carry ListHeaderComponent as element OR component type.
+const renderListLeader = (leader: unknown): React.ReactNode => {
+  if (leader == null) {
+    return null;
+  }
+  if (React.isValidElement(leader)) {
+    return leader;
+  }
+  const Leader = leader as React.ComponentType;
+  return <Leader />;
+};
 
 const MOUNTED_BODY_COMPONENTS: Partial<
   Record<SearchRouteMountedSceneBodyKey, React.ComponentType<{ entry?: OverlayRouteEntry | null }>>

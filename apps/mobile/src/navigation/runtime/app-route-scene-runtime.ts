@@ -16,6 +16,7 @@ import {
   type RouteShellSceneTransitionAuthority,
   type RouteShellSceneInputLane,
 } from './app-route-scene-foundation-runtime';
+import type { AppRouteSceneInputAuthority } from './app-route-scene-input-registry';
 import {
   createAppRouteSceneStackRuntime,
   type AppRouteSceneStackLayerFrameAuthority,
@@ -159,6 +160,10 @@ export type AppRouteSceneRuntime = {
   sceneFrameAuthority: AppRouteSceneStackLayerFrameAuthority;
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
   sceneInputLane: RouteShellSceneInputLane;
+  /** READ side of the scene input lane (TrackSheet host consumes published
+   * scene bodies generically — pollDetail etc.; the old host reads via the
+   * scene-stack runtime instead). */
+  sceneInputAuthority: AppRouteSceneInputAuthority;
   dispose: () => void;
 };
 
@@ -301,6 +306,7 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     sceneFrameAuthority: routeSceneStackRuntime.sceneFrameAuthority,
     sceneStackSurfaceAuthority: routeSceneStackRuntime.sceneStackSurfaceAuthority,
     sceneInputLane: routeSceneFoundationRuntime.sceneInputLane,
+    sceneInputAuthority: routeSceneFoundationRuntime.sceneInputAuthority,
     dispose: () => {
       routeSharedSheetPresentationRuntime.dispose();
       routeSceneDisplayTargetRegistry.dispose();
