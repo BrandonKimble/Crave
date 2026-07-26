@@ -2049,3 +2049,24 @@ Host refactor: per-scene TrackScenePage components + shared chrome hook;
 migrated scenes get real bodies, the rest ride the placeholder. Deferred in
 this slice: onUserListScrollActivity pagination bridge (needs τ→list-offset
 mapping = τ−H), transport scroll props, secondaryList.
+
+### MIGRATION ACCEPTANCE CONTRACTS (owner directive 2026-07-26)
+
+The old sheet's hard-earned integration behavior is PART OF THE DEFINITION OF
+DONE for the TrackSheet migration — rungs 4/5 cannot flip the default until
+each is verified on the track host:
+- NAV EXCLUSION: the sheet↔nav interplay (collapsed seat aligned to the nav
+  cutout via navBarTopForSnaps/navBarCutoutHeight; nav hide/show choreography;
+  bottomNavHiddenTranslateY) — geometry already flows from the same seed, the
+  BEHAVIORAL contract (when nav hides, how the sheet seats against it) must be
+  re-verified scene by scene.
+- SNAP/MOTION RULES: the full app-route-sheet-motion-descriptor-table
+  (from,to,transitionKind → snapTo|promoteAtLeast|preserveLiveY|hide|
+  rememberedDetent|postureSeat), posture-seat session memory, snapLock
+  (settings pinned expanded), edit locks.
+- SEARCH FLOWS: search/results owns its dual-band composition + enter/exit
+  transactions (results enter, query flows, origin-scene scroll return);
+  migrates LAST and only against these contracts.
+- Everything else the old sheet does (grab-handle promote tap, header nav
+  action, scene ready gates, origin-scroll restore, keyboard modes) is
+  inventory to port or consciously retire — never silently drop.
