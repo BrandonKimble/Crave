@@ -2210,3 +2210,11 @@ input surface from the ONE TRACK design §4; today header drags are inert),
 divider z-order above strip, root-scene create (plus) actions, sheetTranslateY
 publication bridge (search chrome/scrim riders), motion-descriptor snaps,
 FrostCutout foundation surface for body content.
+
+RUNG 4 OPEN (2026-07-26 night): header-grab pan fires with correct targets but
+the native scroll ALSO receives chrome-region touches (double-writer trace in
+ledger; scrollTo ignored during touch-tracking). Likely ideal fix: NATIVE
+geometry arbitration — TrackScrollKit proxy rejects pan-begins whose touch
+starts inside the chrome band (gestureRecognizerShouldBegin), making the
+chrome the second input surface BY CONSTRUCTION rather than by view-layer
+hit-blocking. Seat latch (userOwnsPosture) landed: seats never fight gestures.
