@@ -2125,3 +2125,29 @@ response, placeFilter joined the network-control diff ("later leg"
 carve-outs removed), stale filter auto-resets off response options.
 RED-proof: subtree filter keeps self+child, drops sibling; options
 unaffected by the active filter. api 882 / mobile 416 green.
+
+## 2026-07-26 — Extraction root causes (owner-ordered investigation) + fixes (5dcfbf6f)
+
+Three data-proven mechanisms behind the search-recall red team's findings:
+(1) DUPLICATE RESTAURANTS = check-then-act race (no lock, no unique key;
+burnt bean company twins 3h apart) + places path never consulting the
+reddit entity. FIXED: advisory xact lock + case-insensitive guard at
+creation; nightly sweepSameNameDuplicates cron (3AM) — HOLD only when both
+sides grounded with disjoint place ids; local run merged 49 / held 2.
+(2) STRANDED PROJECTIONS = post-commit rebuild failures orphaned
+mention-bearing restaurants. FIXED: rebuild call catches loudly (Sentry
+seam) + nightly repairOrphanedProjections cron (4AM); local run
+re-materialized 3,446 restaurants.
+(3) The DEEPER carbonara-udon layer: LLM under-labels dish-at-restaurant
+claims as passing mentions ("the three places I've had carbonara udon" →
+zero connections; only menu_item claims build connections BY CONTRACT) —
+16,396 stranded events. NOT hot-fixed: collection-prompt revision =
+primary target of the FULL AUSTIN EXTRACTION AUDIT (with: attribute
+emission recall — vocab misses now warn-level; category emission per
+mention; duplicate-rate regression gate). Re-extraction economics priced
+by the staged-cost machinery when that audit runs. The name-containment
+failsafe bridges these gaps at query time meanwhile.
+Also this date: exclusion parsing confirmed fully LLM-based (language-
+agnostic, zero hardcoded negation words); Clerk prod cutover completed
+(Google OAuth custom creds, redirect URL via API, waitlist→public,
+sim-target now toggles pk_live/pk_test with the api target).
