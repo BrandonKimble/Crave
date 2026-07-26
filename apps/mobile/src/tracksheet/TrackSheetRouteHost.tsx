@@ -6,7 +6,12 @@ import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRunt
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import type { OverlayKey } from '../overlays/types';
 import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
-import { TrackSheetPage, type TrackSheetCommands } from './TrackSheetPage';
+import { usePollsPanelListSceneParts } from '../overlays/panels/PollsPanel';
+import {
+  TrackSheetPage,
+  type TrackSheetCommands,
+  type TrackSheetPageProps,
+} from './TrackSheetPage';
 
 // ─── TrackSheetRouteHost — migration RUNG 1 (dev-flagged parallel host) ────────
 //
@@ -93,19 +98,29 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const scene = frame.activeSceneKey ?? sceneOverride;
 
-  // SCENE-SWITCH SNAP (rung 2, simplified posture rule; full motion-descriptor
-  // table lands in rung 4): content scenes seat expanded, home seats collapsed.
-  // The frame subscription IS the switch signal.
+  // RUNG 3 — REAL BODIES, scene by scene: migrated scenes render their real
+  // body-content spec through TrackSheetPage; the rest ride the placeholder.
+  const ScenePage = scene === 'polls' ? PollsTrackScenePage : PlaceholderTrackScenePage;
+  return <ScenePage key={scene} scene={scene} snapPoints={snapPoints} />;
+};
+
+type TrackScenePageProps = {
+  scene: OverlayKey;
+  snapPoints: ReturnType<typeof getSearchStartupGeometrySeed>['routeOverlaySnapPoints'];
+};
+
+/** Shared chrome + page assembly for every scene page. */
+const useTrackScenePageChrome = (scene: OverlayKey, snapPoints: TrackScenePageProps['snapPoints']) => {
   const commandsRef = React.useRef<TrackSheetCommands | null>(null);
   const trackH = snapPoints.collapsed - snapPoints.expanded;
   React.useEffect(() => {
+    // Simplified posture rule (full motion-descriptor table = rung 4).
     commandsRef.current?.snapToTau(scene === 'home' ? 0 : trackH);
   }, [scene, trackH]);
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
   const Strip = descriptor?.Strip;
-
   const header = React.useMemo(
     () => (
       <View style={styles.headerRow} pointerEvents="box-none">
@@ -120,7 +135,73 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
     ),
     [Title, scene]
   );
+  const dockedStrip = React.useMemo(
+    () =>
+      Strip != null
+        ? {
+            height: 54,
+            children: (
+              <ChromeProbeBoundary label={`${scene}.Strip`}>
+                <Strip />
+              </ChromeProbeBoundary>
+            ),
+          }
+        : undefined,
+    [Strip, scene]
+  );
+  const geometry = React.useMemo(
+    () => ({
+      expandedTop: snapPoints.expanded,
+      collapsedTop: snapPoints.collapsed,
+      detentTops: [snapPoints.expanded, snapPoints.middle, snapPoints.collapsed],
+    }),
+    [snapPoints]
+  );
+  return { commandsRef, header, dockedStrip, geometry };
+};
 
+/** RUNG 3, scene 1: the REAL polls feed — the scene's own body-content spec
+ * (usePollsPanelListSceneParts: real data lane, PollCard renderers, pagination,
+ * empty/loading choreography) riding the one track. */
+const PollsTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
+  const { commandsRef, header, dockedStrip, geometry } = useTrackScenePageChrome(scene, snapPoints);
+  const { sceneBodyContent, sceneBodyTransport } = usePollsPanelListSceneParts();
+  const list = React.useMemo(() => {
+    if (sceneBodyContent.surfaceKind !== 'list') {
+      return { data: [], renderItem: () => null };
+    }
+    return {
+      data: sceneBodyContent.data,
+      renderItem: sceneBodyContent.renderItem,
+      keyExtractor: sceneBodyContent.keyExtractor,
+      ListEmptyComponent: sceneBodyContent.ListEmptyComponent,
+      ItemSeparatorComponent: sceneBodyContent.ItemSeparatorComponent,
+      extraData: sceneBodyContent.extraData,
+      onEndReached: sceneBodyContent.onEndReached,
+      onEndReachedThreshold: sceneBodyContent.onEndReachedThreshold,
+    };
+  }, [sceneBodyContent]);
+  // Pagination's real trigger: the transport's user-scroll-activity signal.
+  const onUserScroll = sceneBodyTransport.onUserListScrollActivity;
+  void onUserScroll; // wired in the follow-up slice (needs τ→list-offset mapping)
+  return (
+    <View style={styles.root} pointerEvents="box-none">
+      <TrackSheetPage
+        geometry={geometry}
+        header={header}
+        headerHeight={64}
+        dockedStrip={dockedStrip}
+        list={list as TrackSheetPageProps<unknown>['list']}
+        rowSurfaceStyle={styles.rowSurface}
+        debugHud
+        commandsRef={commandsRef}
+      />
+    </View>
+  );
+};
+
+const PlaceholderTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints }) => {
+  const { commandsRef, header, dockedStrip, geometry } = useTrackScenePageChrome(scene, snapPoints);
   const rows = React.useMemo(() => Array.from({ length: 30 }, (_, index) => index), []);
   const renderRow = React.useCallback(
     ({ item }: { item: number }) => (
@@ -132,29 +213,13 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
     ),
     []
   );
-
   return (
     <View style={styles.root} pointerEvents="box-none">
       <TrackSheetPage
-        geometry={{
-          expandedTop: snapPoints.expanded,
-          collapsedTop: snapPoints.collapsed,
-          detentTops: [snapPoints.expanded, snapPoints.middle, snapPoints.collapsed],
-        }}
+        geometry={geometry}
         header={header}
         headerHeight={64}
-        dockedStrip={
-          Strip != null
-            ? {
-                height: 54,
-                children: (
-                  <ChromeProbeBoundary label={`${scene}.Strip`}>
-                    <Strip />
-                  </ChromeProbeBoundary>
-                ),
-              }
-            : undefined
-        }
+        dockedStrip={dockedStrip}
         list={{ data: rows, renderItem: renderRow }}
         rowSurfaceStyle={styles.rowSurface}
         debugHud

@@ -2039,3 +2039,13 @@ RUNG 2 LANDED (2026-07-26): real geometry + live scene switching.
 - Z-order: host sits at zIndex 91 (above the production sheet stack at 90,
   below the nav silhouette). Verified: Polls tab → chrome swap + track snap to
   expanded with real nav below.
+
+RUNG 3 SLICE 1 — POLLS RIDES THE TRACK (2026-07-26): the scene's real
+body-content spec (usePollsPanelListSceneParts — data lane, PollCard renderers,
+empty/loading choreography, pagination fields) renders through TrackSheetPage.
+Verified: parallel host shows the identical page to production (title, strip,
+"Polls drop Sundays" empty card from the scene's own ListEmptyComponent).
+Host refactor: per-scene TrackScenePage components + shared chrome hook;
+migrated scenes get real bodies, the rest ride the placeholder. Deferred in
+this slice: onUserListScrollActivity pagination bridge (needs τ→list-offset
+mapping = τ−H), transport scroll props, secondaryList.
