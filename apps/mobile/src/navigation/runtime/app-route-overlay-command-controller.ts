@@ -37,7 +37,7 @@ export type AppRouteOverlayCommandActions = {
   requestSearchHeaderActionFollowCollapse: () => void;
   setSaveSheetState: (next: React.SetStateAction<AppRouteSaveSheetState>) => void;
   restoreSaveSheetState: (state: AppRouteSaveSheetState) => void;
-  restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   // locationId = the in-context location the save trigger rendered (master
   // plan §7) — rides the save-sheet target into the add payloads.
   getDishSaveHandler: (connectionId: string, locationId?: string | null) => () => void;
@@ -143,9 +143,9 @@ class AppRouteOverlayCommandController {
         routeInstanceId: state.routeInstanceId,
       });
     },
-    restoreDockedPolls: ({ snap } = {}) => {
+    restoreDockedScene: ({ snap } = {}) => {
       const resolvedSnap = snap ?? 'collapsed';
-      this.routeOverlayRouteCommandRuntime.restoreDockedPolls({ snap: resolvedSnap });
+      this.routeOverlayRouteCommandRuntime.restoreDockedScene({ snap: resolvedSnap });
     },
     getDishSaveHandler: (connectionId, locationId) => {
       // Cache key includes the location: the same connection can render at a

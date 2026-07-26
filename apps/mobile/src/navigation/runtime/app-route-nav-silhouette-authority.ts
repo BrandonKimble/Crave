@@ -1,4 +1,5 @@
 import React from 'react';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import { PixelRatio } from 'react-native';
 import { useDerivedValue, type DerivedValue, type SharedValue } from 'react-native-reanimated';
 
@@ -22,13 +23,13 @@ export const APP_ROUTE_NAV_HIDE_MIN = 24;
 
 export type AppRouteNavSilhouetteSheetExclusionMode =
   | 'none'
-  | 'dockedPersistentPoll'
+  | 'dockedScene'
   | 'staticPersistent'
   | 'animatedSearchTransition';
 
 export const APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE = {
   none: 0,
-  dockedPersistentPoll: 1,
+  dockedScene: 1,
   staticPersistent: 2,
   animatedSearchTransition: 3,
 } as const;
@@ -144,8 +145,8 @@ const resolveAppRouteNavSilhouetteMode = ({
   if (!overlaySheetPolicy?.overlaySheetApplyNavBarCutout) {
     return 'none';
   }
-  if (activeSemanticOverlayKey === 'search' || activeSemanticOverlayKey === 'polls') {
-    return 'dockedPersistentPoll';
+  if (activeSemanticOverlayKey === 'search' || activeSemanticOverlayKey === DOCKED_SCENE_KEY) {
+    return 'dockedScene';
   }
   return 'staticPersistent';
 };
@@ -168,8 +169,8 @@ const resolveAppRouteNavSilhouetteModeValue = (
   switch (mode) {
     case 'animatedSearchTransition':
       return APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.animatedSearchTransition;
-    case 'dockedPersistentPoll':
-      return APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll;
+    case 'dockedScene':
+      return APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedScene;
     case 'staticPersistent':
       return APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.staticPersistent;
     case 'none':
@@ -199,8 +200,8 @@ export const resolveAppRouteNavSilhouetteModeFromValue = (
   switch (modeValue) {
     case APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.animatedSearchTransition:
       return 'animatedSearchTransition';
-    case APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll:
-      return 'dockedPersistentPoll';
+    case APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedScene:
+      return 'dockedScene';
     case APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.staticPersistent:
       return 'staticPersistent';
     case APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.none:
@@ -225,7 +226,7 @@ const isPersistentAppRouteNavSilhouetteMode = (
   mode: AppRouteNavSilhouetteSheetExclusionMode
 ): boolean => {
   'worklet';
-  return mode === 'dockedPersistentPoll' || mode === 'staticPersistent';
+  return mode === 'dockedScene' || mode === 'staticPersistent';
 };
 
 const resolveAppRouteNavSilhouetteEffectiveNavTranslateY = ({

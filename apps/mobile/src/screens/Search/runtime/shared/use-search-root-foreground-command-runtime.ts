@@ -39,13 +39,13 @@ export const useSearchRootForegroundCommandRuntime = ({
     stateFoundationLane;
   const { routeOverlaySessionSnapshotRef, rootSharedSheetRuntimeLane, routeSearchCommandActions } =
     rootOverlayFoundationRuntime;
-  // S4b: the reconciler derives the docked-polls enter-transition variant as a VIEW
+  // S4b: the reconciler derives the docked enter-transition variant as a VIEW
   // INPUT at transition time (the trigger no longer passes it).
   React.useEffect(
     () =>
       registerSearchReconcilerViewInputs({
-        getDockedPollsFlag: () =>
-          routeOverlaySessionSnapshotRef.current.shouldShowDockedPolls === true,
+        getDockedSceneFlag: () =>
+          routeOverlaySessionSnapshotRef.current.shouldShowDockedScene === true,
       }),
     [routeOverlaySessionSnapshotRef]
   );
@@ -87,7 +87,7 @@ export const useSearchRootForegroundCommandRuntime = ({
         isLoadingMore: rootDataPlaneRuntime.resultsArrivalState.isLoadingMore,
         isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
         isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
-        shouldShowDockedPollsRef: routeOverlaySessionSnapshotRef,
+        shouldShowDockedSceneRef: routeOverlaySessionSnapshotRef,
         suppressAutocompleteResults: autocompleteRuntime.suppressAutocompleteResults,
         cancelAutocomplete: requestStatusRuntime.cancelAutocomplete,
         dismissSearchKeyboard: suggestionInteractionRuntime.dismissSearchKeyboard,

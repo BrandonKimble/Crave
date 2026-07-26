@@ -5,7 +5,7 @@
 
 import {
   CONTENT_SEAT_SEED_SNAP,
-  DOCKED_POLLS_RESURRECT_SNAP,
+  DOCKED_SCENE_RESURRECT_SNAP,
   HOME_SEAT_SEED_SNAP,
   createAppRouteSheetSnapSessionRuntime,
   resolveSheetPostureSeat,
@@ -128,30 +128,30 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('collapsed');
   });
 
-  it('dismissDockedPolls hides the home seat; a gesture settle resurrects the memory', () => {
+  it('dismissDockedScene hides the home seat; a gesture settle resurrects the memory', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
-    runtime.actions.dismissDockedPolls();
+    runtime.actions.dismissDockedScene();
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('hidden');
-    expect(runtime.authority.getSnapshot().isDockedPollsDismissed).toBe(true);
+    expect(runtime.authority.getSnapshot().isDockedSceneDismissed).toBe(true);
     runtime.actions.settleRouteScenePollsSnap({
       rootOverlayKey: 'search',
       snap: 'collapsed',
       source: 'gesture',
     });
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('collapsed');
-    expect(runtime.authority.getSnapshot().isDockedPollsDismissed).toBe(false);
+    expect(runtime.authority.getSnapshot().isDockedSceneDismissed).toBe(false);
   });
 
   it('dismissed-flag arms still run on programmatic settles (lane semantics, not memory)', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
-    runtime.actions.dismissDockedPolls();
+    runtime.actions.dismissDockedScene();
     runtime.actions.settleRouteScenePollsSnap({
       rootOverlayKey: 'search',
       snap: 'collapsed',
       source: 'programmatic',
     });
     // The flag clears (resurrect landing) even though the seat write is gesture-only.
-    expect(runtime.authority.getSnapshot().isDockedPollsDismissed).toBe(false);
+    expect(runtime.authority.getSnapshot().isDockedSceneDismissed).toBe(false);
     expect(runtime.actions.getRouteSceneSwitchSceneSnap('polls')).toBe('hidden');
   });
 
@@ -175,7 +175,7 @@ describe('two-posture snap session (root-snap-law leg 2)', () => {
 });
 
 describe('resolveSearchLaunchOriginSnap (seat-backed origin capture)', () => {
-  it('home overlays read the home seat; dismissed docked polls capture the resurrect posture', () => {
+  it('home overlays read the home seat; dismissed docked scene capture the resurrect posture', () => {
     expect(
       resolveSearchLaunchOriginSnap({
         overlay: 'search',
@@ -189,7 +189,7 @@ describe('resolveSearchLaunchOriginSnap (seat-backed origin capture)', () => {
         homeSeatSnap: 'hidden',
         contentSeatSnap: 'expanded',
       })
-    ).toBe(DOCKED_POLLS_RESURRECT_SNAP);
+    ).toBe(DOCKED_SCENE_RESURRECT_SNAP);
   });
 
   it('content overlays read the ONE shared content seat', () => {

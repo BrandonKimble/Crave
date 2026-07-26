@@ -918,7 +918,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   }, [isRouteReady, publishMainMapReadinessSignal, routeState?.destination, startupCamera]);
 
   // §9.4: startup-polls readiness is NOT part of the launch-ready predicate — the app reveals
-  // home when the map is ready; the docked polls feed shows its own skeleton until polls resolve.
+  // home when the map is ready; the docked scene (polls) feed shows its own skeleton until polls resolve.
   React.useEffect(() => {
     if (
       !isRouteReady ||
@@ -1016,7 +1016,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   }, [startLocationWatch]);
 
   // §9.4: the reveal gate never waits on startup polls — a failed/slow polls load must NEVER
-  // hold the splash. The docked polls scene skeletons until the feed runtime resolves polls.
+  // hold the splash. The docked scene (polls) skeletons until the feed runtime resolves polls.
   //
   // KNOWN-OPEN (observed once, UNATTRIBUTED — don't chase without a repro): a dev-client-RELOAD
   // boot frosted with the map-readiness signals never re-firing on a reused native map view

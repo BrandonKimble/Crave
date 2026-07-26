@@ -11,7 +11,7 @@ type UseSearchRootSearchSceneSurfacePanelStateRuntimeArgs = {
   searchHydrationRuntimeState: ReturnType<typeof useSearchResultsPanelHydrationRuntimeState>;
   searchResultsRuntimeState: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>;
   resolvedResultsRuntime: ReturnType<typeof useSearchResultsPanelRetainedResultsRuntime>;
-  searchSheetContentLaneKind: 'results_live' | 'results_closing' | 'persistent_poll';
+  searchSheetContentLaneKind: 'results_live' | 'results_closing' | 'docked_scene';
   allowsInteractionLoadingState: boolean;
 };
 
@@ -23,7 +23,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
   searchSheetContentLaneKind,
   allowsInteractionLoadingState,
 }: UseSearchRootSearchSceneSurfacePanelStateRuntimeArgs) => {
-  const shouldSuppressResultsSurface = searchSheetContentLaneKind === 'persistent_poll';
+  const shouldSuppressResultsSurface = searchSheetContentLaneKind === 'docked_scene';
   const hasResolvedResults =
     !shouldSuppressResultsSurface &&
     (resolvedResultsRuntime.resolvedResults != null ||

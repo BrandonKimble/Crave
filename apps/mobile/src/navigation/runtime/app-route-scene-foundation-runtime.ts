@@ -17,7 +17,7 @@ import type {
 import type {
   RouteOverlayDisplaySnapshot,
   RouteOverlayChromeModeSnapshot,
-  RouteOverlayPollsVisibilitySnapshot,
+  RouteOverlayDockedSceneVisibilitySnapshot,
   RouteOverlayRootSnapshot,
 } from './route-overlay-display-snapshot-contract';
 import type { RouteOverlaySheetPolicySnapshot } from './route-overlay-sheet-policy-snapshot-contract';
@@ -76,10 +76,12 @@ export type RouteShellOverlayDisplayAuthority = {
   registerSharedValues: (values: RouteOverlayDisplaySharedValueTargets) => () => void;
 };
 
-export type RouteShellOverlayPollsVisibilityAuthority = {
-  getSnapshot: () => RouteOverlayPollsVisibilitySnapshot;
+export type RouteShellOverlayDockedSceneVisibilityAuthority = {
+  getSnapshot: () => RouteOverlayDockedSceneVisibilitySnapshot;
   registerTarget: (target: {
-    syncPollsVisibilitySnapshot: (snapshot: RouteOverlayPollsVisibilitySnapshot) => void;
+    syncDockedSceneVisibilitySnapshot: (
+      snapshot: RouteOverlayDockedSceneVisibilitySnapshot
+    ) => void;
     attributionLabel: string;
   }) => () => void;
 };
@@ -117,7 +119,7 @@ export type AppRouteSceneFoundationRuntime = {
   routeOverlayIdentityAuthority: RouteShellOverlayIdentityAuthority;
   routeOverlayRootAuthority: RouteShellOverlayRootAuthority;
   routeOverlayDisplayAuthority: RouteShellOverlayDisplayAuthority;
-  routeOverlayPollsVisibilityAuthority: RouteShellOverlayPollsVisibilityAuthority;
+  routeOverlayDockedSceneVisibilityAuthority: RouteShellOverlayDockedSceneVisibilityAuthority;
   routeOverlayChromeModeAuthority: RouteShellOverlayChromeModeAuthority;
   routeOverlaySheetPolicyAuthority: RouteShellOverlaySheetPolicyAuthority;
   routeSheetHostSurfaceAuthority: RouteShellSheetHostSurfaceAuthority;
@@ -171,8 +173,8 @@ export const createAppRouteSceneFoundationRuntime = ({
     routeOverlayIdentityAuthority: nativeOverlayTargetAuthorities.routeOverlayIdentityAuthority,
     routeOverlayRootAuthority: nativeOverlayTargetAuthorities.routeOverlayRootAuthority,
     routeOverlayDisplayAuthority: nativeOverlayTargetAuthorities.routeOverlayDisplayAuthority,
-    routeOverlayPollsVisibilityAuthority:
-      nativeOverlayTargetAuthorities.routeOverlayPollsVisibilityAuthority,
+    routeOverlayDockedSceneVisibilityAuthority:
+      nativeOverlayTargetAuthorities.routeOverlayDockedSceneVisibilityAuthority,
     routeOverlayChromeModeAuthority: nativeOverlayTargetAuthorities.routeOverlayChromeModeAuthority,
     routeOverlaySheetPolicyAuthority:
       nativeOverlayTargetAuthorities.routeSheetHostSheetPolicyAuthority,

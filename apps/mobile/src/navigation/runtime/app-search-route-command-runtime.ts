@@ -1,6 +1,6 @@
 import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import {
-  DOCKED_POLLS_RESURRECT_SNAP,
+  DOCKED_SCENE_RESURRECT_SNAP,
   HOME_SEAT_CARRIER_SCENE_KEY,
 } from './app-route-sheet-snap-session-runtime';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
@@ -27,15 +27,15 @@ export type AppSearchRouteCommandActions = {
 };
 
 // S-C.5 item 4b VERDICT (probe 2026-07-10, plans/s-c5-restaurant-stack-fact.md): this pair is
-// LOAD-BEARING, not derivable. A home dismissal RESURRECTS user-dismissed docked polls by
+// LOAD-BEARING, not derivable. A home dismissal RESURRECTS user-dismissed docked scene by
 // design; without the explicit un-dismiss the settle-side clear is CIRCULAR (a dismissed lane
 // never presents, so the polls sheet never settles collapsed, so the flag never clears) and
 // the home lands with the stale results banner docked. ONE named intent, two callers (this
 // verb + the no-origin clear-lane restore).
-export const primeDockedPollsForHomeLanding = (
+export const primeDockedSceneForHomeLanding = (
   routeSheetSnapSessionActions: Pick<
     AppRouteSheetSnapSessionActions,
-    'recordRouteSceneSheetSettle' | 'setIsDockedPollsDismissed'
+    'recordRouteSceneSheetSettle' | 'setIsDockedSceneDismissed'
   >
 ): void => {
   // NAMED product intent — one of the sanctioned HOME-seat writers (two-posture write
@@ -45,7 +45,7 @@ export const primeDockedPollsForHomeLanding = (
     snap: 'collapsed',
     writer: 'named',
   });
-  routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
+  routeSheetSnapSessionActions.setIsDockedSceneDismissed(false);
 };
 
 /**
@@ -123,7 +123,7 @@ export const createAppSearchRouteCommandActions = ({
   }: {
     sourceSceneKey?: OverlayKey;
   } = {}): void => {
-    primeDockedPollsForHomeLanding(routeSheetSnapSessionActions);
+    primeDockedSceneForHomeLanding(routeSheetSnapSessionActions);
     // S-C.3-B: dismissing a session POPS the stack back to the surviving search#home root
     // ([search#home, search#session] → [search#home]). Proven by the [SC3B] probe: the old
     // explicit setRoot here was what destroyed the home entry before the golden home
@@ -131,7 +131,7 @@ export const createAppSearchRouteCommandActions = ({
     //
     // S-C.4 item 3 (ONE-SWITCH home dismissal): the switch targets 'search' — the docked HOME
     // — directly, instead of the old 'polls' intermediate + a second topLevelSwitch→search
-    // re-emission at the finalize boundary. Docked polls is a presentation MODE of the search
+    // re-emission at the finalize boundary. The docked scene is a presentation MODE of the search
     // root (the PF laneKind formula presents 'polls' beneath the search root on its own);
     // terminalDismiss arms no content plane regardless of target (resolveMotionPlanes), so the
     // {cards,nativeMarkerFrame,sheet} readiness contract for 'search' never gates this switch.
@@ -164,7 +164,7 @@ export const createAppSearchRouteCommandActions = ({
       sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
       contentHandoff: 'preserveOutgoingUntilSettle',
       routeAction: 'popToRoot',
-      dockedPollsRestoreSnap: 'collapsed',
+      dockedSceneRestoreSnap: 'collapsed',
     });
   };
 
@@ -173,13 +173,15 @@ export const createAppSearchRouteCommandActions = ({
     // no sheetMotion here; the descriptor table's 'postureSeat' rule reads the home seat (a
     // dismissed/hidden docked feed falls to the sanctioned resurrect posture). The restore
     // intent re-presents a dismissed docked lane, mirroring the nav-tab press.
-    const isPollsSheetPhysicallyHidden =
+    const isDockedSceneSheetPhysicallyHidden =
       routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls') === 'hidden';
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
-      dockedPollsRestoreSnap: isPollsSheetPhysicallyHidden ? DOCKED_POLLS_RESURRECT_SNAP : null,
+      dockedSceneRestoreSnap: isDockedSceneSheetPhysicallyHidden
+        ? DOCKED_SCENE_RESURRECT_SNAP
+        : null,
     });
   };
 

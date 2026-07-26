@@ -1,6 +1,6 @@
 import type { OverlayKey } from '../../overlays/types';
 import type {
-  RouteSceneSwitchDockedPollsRestoreIntent,
+  RouteSceneSwitchDockedSceneRestoreIntent,
   RouteSceneSwitchPollsParams,
 } from './app-overlay-route-transition-contract';
 import type { UsePollsPanelSpecOptions } from '../../overlays/panels/runtime/polls-panel-runtime-contract';
@@ -38,17 +38,17 @@ export const selectAppRoutePollsDynamicSceneInputRuntime = (
 
 export type AppRoutePollsRouteStateRuntime = {
   isSearchOverlay: boolean;
-  isPersistentPollLane: boolean;
+  isDockedLane: boolean;
   rootOverlayKey: OverlayKey | null;
   activePollsParams: RouteSceneSwitchPollsParams | null;
-  dockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
 };
 
 export type AppRouteSceneSheetSessionInputState = {
-  isDockedPollsDismissed: boolean;
+  isDockedSceneDismissed: boolean;
 };
 
 export const areAppRouteSceneSheetSessionInputStatesEqual = (
   left: AppRouteSceneSheetSessionInputState,
   right: AppRouteSceneSheetSessionInputState
-): boolean => left.isDockedPollsDismissed === right.isDockedPollsDismissed;
+): boolean => left.isDockedSceneDismissed === right.isDockedSceneDismissed;

@@ -155,9 +155,9 @@ export const useSearchRouteSearchSceneModelOwner = ({
       routeSearchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
     searchScenePanelSurfaceRenderRuntime: routeSearchScenePanelSurfaceRenderRuntime,
   });
-  // P5: the shouldPublishResultsPageBundle persistent-poll gate is DELETED — the bundle
+  // P5: the shouldPublishResultsPageBundle docked-scene gate is DELETED — the bundle
   // publishes whenever this model owner is mounted, so the search leg is never headerless/null
-  // (SR1 unscoped): at home (docked-polls lane) the leg is idle/invisible but stays WARM, and a
+  // (SR1 unscoped): at home (docked lane) the leg is idle/invisible but stays WARM, and a
   // mid-motion presentation of 'search' finds a real page instead of frost. The bundle has no
   // header lane — the results header rides the persistent-header registry
   // (search-results-header-live-state.tsx); the page frame reserves the header lane instead.

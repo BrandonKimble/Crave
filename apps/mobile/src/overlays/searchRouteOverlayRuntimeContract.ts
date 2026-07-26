@@ -21,7 +21,7 @@ export const EMPTY_SEARCH_ROUTE_VISUAL_STATE = {
   navBarCutoutIsHiding: false,
   navTranslateY: { value: 0 },
   navSilhouetteSheetExclusionModeValue: {
-    value: APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll,
+    value: APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedScene,
   },
 } as unknown as SearchRouteHostVisualState;
 

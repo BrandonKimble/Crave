@@ -93,7 +93,7 @@ export type RouteSceneSwitchRouteAction =
 
 export type RouteSceneSwitchRouteParams = OverlayRouteParamsMap[OverlayKey];
 
-export type RouteSceneSwitchDockedPollsRestoreIntent = {
+export type RouteSceneSwitchDockedSceneRestoreIntent = {
   snap: Exclude<BottomSheetSnap, 'hidden'>;
   token: number;
 };
@@ -127,7 +127,7 @@ export type RouteSceneSwitchTransitionContract = {
   freezeClassification: SearchFreezeClassification;
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;
-  dockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
   isInteractive: boolean;
 };
 
@@ -144,7 +144,7 @@ export type RouteSceneSwitchRequestInput = {
   contentHandoff?: RouteSceneSwitchSheetContentHandoff;
   cameraIntent?: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget?: RouteSceneSwitchChromeVisibilityTarget;
-  dockedPollsRestoreSnap?: Exclude<BottomSheetSnap, 'hidden'> | null;
+  dockedSceneRestoreSnap?: Exclude<BottomSheetSnap, 'hidden'> | null;
   routeAction?: RouteSceneSwitchRouteAction;
   /** popToEntry target: pop until this entry is top-of-stack (S-C.3 pop-to-origin verb). */
   routeEntryId?: string;

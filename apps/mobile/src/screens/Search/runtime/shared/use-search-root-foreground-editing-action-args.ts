@@ -25,7 +25,7 @@ type SearchRootForegroundEditingActionArgs = Pick<
   | 'beginSuggestionCloseHold'
   | 'requestSearchPresentationIntent'
   | 'beginCloseSearch'
-  | 'restoreDockedPolls'
+  | 'restoreDockedScene'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
   | 'setShowSuggestions'

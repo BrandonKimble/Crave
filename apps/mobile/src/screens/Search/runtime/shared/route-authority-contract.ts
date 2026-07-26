@@ -5,7 +5,7 @@ export type {
   RouteShellOverlayDisplayAuthority as RouteOverlayDisplayAuthority,
   RouteShellOverlayIdentityAuthority as RouteOverlayIdentityAuthority,
   RouteShellOverlayNavigationAuthority as RouteOverlayNavigationAuthority,
-  RouteShellOverlayPollsVisibilityAuthority as RouteOverlayPollsVisibilityAuthority,
+  RouteShellOverlayDockedSceneVisibilityAuthority as RouteOverlayPollsVisibilityAuthority,
   RouteShellOverlayRootAuthority as RouteOverlayRootAuthority,
   RouteShellOverlaySheetPolicyAuthority as RouteOverlaySheetPolicyAuthority,
   RouteShellOverlayVisibilityAuthority as RouteOverlayVisibilityAuthority,

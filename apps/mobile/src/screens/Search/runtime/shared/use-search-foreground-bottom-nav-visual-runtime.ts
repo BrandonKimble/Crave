@@ -37,7 +37,7 @@ import { useIsChildSceneRevealed } from '../../../../navigation/runtime/use-pres
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
-  selectIsPersistentPollHandoffCommitted,
+  selectIsDockedSceneHandoffCommitted,
   selectIsSearchResultsSurfaceOwner,
   selectIsTransitionOwnedResultsExit,
   selectSearchSurfaceVisualPolicy,
@@ -67,7 +67,7 @@ type SearchNavCutoutLockstepProofSample = ReturnType<
   navCutoutProofEdge:
     | 'submit_hide_midpoint'
     | 'dismiss_pre_boundary_return'
-    | 'persistent_poll_handoff';
+    | 'docked_scene_handoff';
   navCutoutProofProgress: number;
 };
 
@@ -102,8 +102,7 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     areSearchSurfaceVisualPoliciesEqual
   );
   const isTransitionOwnedResultsExit = selectIsTransitionOwnedResultsExit(surfaceVisualPolicy);
-  const isPersistentPollHandoffCommitted =
-    selectIsPersistentPollHandoffCommitted(surfaceVisualPolicy);
+  const isDockedSceneHandoffCommitted = selectIsDockedSceneHandoffCommitted(surfaceVisualPolicy);
   const isSearchResultsSurfaceOwner = selectIsSearchResultsSurfaceOwner(surfaceVisualPolicy);
   const isResultsClosing =
     searchSheetContentLaneKind === 'results_closing' || isTransitionOwnedResultsExit;
@@ -112,7 +111,7 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     inputMode !== 'editing' &&
     (backdropTarget === 'results' || isSearchResultsSurfaceOwner) &&
     surfaceVisualPolicy.phase !== 'results_dismissing' &&
-    !isPersistentPollHandoffCommitted;
+    !isDockedSceneHandoffCommitted;
   const shouldStartBottomNavHiddenForResultsMotion = shouldHideBottomNavForSearchResultsMotion;
   const shouldHideBottomNavForSuggestionSurface = isSuggestionPanelActive;
   // Nav-out is DERIVED (trigger-nav ideal §4.1): the nav leaves whenever the top-of-stack
@@ -129,7 +128,7 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
   // A scene riding the shareable nav-push intent (e.g. poll detail) must hold the
   // animatedSearchTransition clip not just while the intent is live but THROUGH the
   // close animation — until the nav has fully slid back home. If we reverted the clip
-  // the instant the intent drops, the dockedPersistentPoll hard clip would snap back to
+  // the instant the intent drops, the dockedScene hard clip would snap back to
   // the nav top while the nav is still mid-slide, flashing the map below. We latch on
   // when the intent arrives and clear it (below) once the nav settles. Scoped to the
   // intent so suggestion-surface nav hides never trip it.
@@ -217,12 +216,12 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     );
     // While a scene holds the shareable nav-push intent, ride the exact clip the
     // search-results sheet uses (animatedSearchTransition): the sheet grows full-screen
-    // and the dockedPersistentPoll hard clip at the nav top lifts (no hard edge / no map
+    // and the dockedScene hard clip at the nav top lifts (no hard edge / no map
     // peeking below). Only override the docked-poll base — search/results already supply
     // animatedSearchTransition, and other modes (none/static) aren't poll-surface clips.
     if (
       isExternalNavPushTransitionActive &&
-      baseModeValue === APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll
+      baseModeValue === APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedScene
     ) {
       return APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.animatedSearchTransition;
     }
@@ -322,13 +321,13 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
         sheetClippedFromNavBody: true,
         singleNavSilhouetteHost: true,
         noMapThroughNavSilhouetteOverlap: false,
-        loadingResultsSettledSheetExclusionMode: isPersistentPollHandoffCommitted
-          ? 'dockedPersistentPoll applies committed inverse nav silhouette mask'
+        loadingResultsSettledSheetExclusionMode: isDockedSceneHandoffCommitted
+          ? 'dockedScene applies committed inverse nav silhouette mask'
           : 'animatedSearchTransition projects inverse sheet mask from nav silhouette',
         searchSurfaceBottomBandOwner: surfaceVisualPolicy.bottomBandOwner,
-        searchSurfaceCanReleasePersistentPolls: surfaceVisualPolicy.canReleasePersistentPolls,
+        searchSurfaceCanReleaseDockedScene: surfaceVisualPolicy.canReleaseDockedScene,
         searchSurfacePhase: surfaceVisualPolicy.phase,
-        searchSurfacePersistentPollHandoffCommitted: isPersistentPollHandoffCommitted,
+        searchSurfaceDockedSceneHandoffCommitted: isDockedSceneHandoffCommitted,
         sheetExclusionMode: sample.sheetExclusionMode,
         sheetClipUsesNavProgress: true,
         sheetClipUsesSilhouettePath: true,
@@ -351,12 +350,12 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
       activeScenarioConfig,
       backdropTarget,
       isResultsClosing,
-      isPersistentPollHandoffCommitted,
+      isDockedSceneHandoffCommitted,
       navMotionTarget,
       shouldHideBottomNavForSearchResultsMotion,
       shouldStartBottomNavHiddenForResultsMotion,
       surfaceVisualPolicy.bottomBandOwner,
-      surfaceVisualPolicy.canReleasePersistentPolls,
+      surfaceVisualPolicy.canReleaseDockedScene,
       surfaceVisualPolicy.phase,
     ]
   );
@@ -389,14 +388,14 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
         isResultsClosing &&
         surfaceVisualPolicy.phase === 'results_dismissing' &&
         surfaceVisualPolicy.bottomBandOwner === 'results_header' &&
-        !surfaceVisualPolicy.canReleasePersistentPolls;
-      const isPersistentPollHandoff =
+        !surfaceVisualPolicy.canReleaseDockedScene;
+      const isDockedSceneHandoff =
         !sample.navBarCutoutIsHiding &&
         surfaceVisualPolicy.phase === 'results_dismissing' &&
-        surfaceVisualPolicy.bottomBandOwner === 'persistent_polls' &&
-        surfaceVisualPolicy.canReleasePersistentPolls &&
+        surfaceVisualPolicy.bottomBandOwner === 'docked_scene' &&
+        surfaceVisualPolicy.canReleaseDockedScene &&
         navCutoutProofProgress >= 0.9;
-      if (!isSubmitHideMidpoint && !isDismissPreBoundaryReturn && !isPersistentPollHandoff) {
+      if (!isSubmitHideMidpoint && !isDismissPreBoundaryReturn && !isDockedSceneHandoff) {
         return null;
       }
       return {
@@ -406,11 +405,11 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
           ? ('submit_hide_midpoint' as const)
           : isDismissPreBoundaryReturn
             ? ('dismiss_pre_boundary_return' as const)
-            : ('persistent_poll_handoff' as const),
+            : ('docked_scene_handoff' as const),
         navCutoutProofProgress,
-        searchSurfaceCanReleasePersistentPollsSample: surfaceVisualPolicy.canReleasePersistentPolls,
+        searchSurfaceCanReleaseDockedSceneSample: surfaceVisualPolicy.canReleaseDockedScene,
         searchSurfacePhaseSample: surfaceVisualPolicy.phase,
-        searchSurfacePersistentPollHandoffCommittedSample: isPersistentPollHandoffCommitted,
+        searchSurfaceDockedSceneHandoffCommittedSample: isDockedSceneHandoffCommitted,
       };
     },
     (next, previous) => {
@@ -423,10 +422,10 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
         next.navBarCutoutIsHiding === previous.navBarCutoutIsHiding &&
         next.isResultsClosingSample === previous.isResultsClosingSample &&
         next.searchSurfacePhaseSample === previous.searchSurfacePhaseSample &&
-        next.searchSurfaceCanReleasePersistentPollsSample ===
-          previous.searchSurfaceCanReleasePersistentPollsSample &&
-        next.searchSurfacePersistentPollHandoffCommittedSample ===
-          previous.searchSurfacePersistentPollHandoffCommittedSample
+        next.searchSurfaceCanReleaseDockedSceneSample ===
+          previous.searchSurfaceCanReleaseDockedSceneSample &&
+        next.searchSurfaceDockedSceneHandoffCommittedSample ===
+          previous.searchSurfaceDockedSceneHandoffCommittedSample
       ) {
         return;
       }
@@ -440,10 +439,10 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
       navSilhouetteMotionRuntime.navBarCutoutProgress,
       navSilhouetteMotionRuntime.navTranslateY,
       isResultsClosing,
-      isPersistentPollHandoffCommitted,
+      isDockedSceneHandoffCommitted,
       isSearchResultsSurfaceOwner,
       shouldHideBottomNavForSearchResultsMotion,
-      surfaceVisualPolicy.canReleasePersistentPolls,
+      surfaceVisualPolicy.canReleaseDockedScene,
       surfaceVisualPolicy.bottomBandOwner,
       surfaceVisualPolicy.phase,
       surfaceVisualPolicy.sheetClipMode,

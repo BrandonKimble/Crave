@@ -75,7 +75,7 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     exactMatchWriter: readModelPolicyWriters.exactMatch,
     readModelProjection: readModelPolicyWriters.projection,
     shouldRetainCommittedResultsForPolicy:
-      routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind !== 'persistent_poll',
+      routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind !== 'docked_scene',
   });
 
   return {

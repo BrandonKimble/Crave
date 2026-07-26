@@ -1,5 +1,6 @@
 import type { OverlayKey } from '../../overlays/types';
 import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 
 // ─── THE PRESENTATION FRAME (page-switch-master-plan.md §1 + §9) ─────────────────────────────
 //
@@ -13,7 +14,7 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 // longer disagree; the desync class is deleted structurally.
 //
 // LIFECYCLE (§9.1 R1-AMENDED): identity fields (switchId / active / presented / outgoing) are
-// switch-static. laneKind's inputs can mutate WITHOUT a switch (a docked-polls gesture dismiss;
+// switch-static. laneKind's inputs can mutate WITHOUT a switch (a docked gesture dismiss;
 // the search surface's results_dismissing release), so the controller subscribes to those inputs
 // and RE-MINTS the frame with a bumped `revision` — still the one writer, never a consumer-side
 // re-derivation.
@@ -24,21 +25,21 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 // capture lives with the entry-origin capture delegate), never on the PF.
 //
 // DIVERGENCE RULES (§9.1 R3-AMENDED): steady-state presented≠active is legal ONLY for
-// laneKind==='docked-polls' (the polls feed docked under the search-root home). TRANSIENT
+// laneKind==='docked' (the docked scene — today the polls feed — under the search-root home). TRANSIENT
 // divergence is legal only via `outgoingSceneKey` during an in-flight switch, bounded by
 // switchId + settle.
 
 // S-B slice 2: the 'child' arm is DELETED. Child targets resolve 'top-level'; the structural
-// "a child target must never ride the docked-polls lane" rule lives as the explicit
+// "a child target must never ride the docked lane" rule lives as the explicit
 // isChildTarget deny inside the formula below. (Nav-out now rides the PF itself — the
 // `isChildSceneRevealed` field below; the separate nav-out-derivation-store is deleted.)
-export type PresentationLaneKind = 'top-level' | 'docked-polls';
+export type PresentationLaneKind = 'top-level' | 'docked';
 
 // ─── PF CHROME CLOCK (child-transition primitive §2.1, leg 6) ────────────────────────────────
 // The header's one host-owned action control: parents show the red plus ('create'),
 // children — and the search results session, role-wise a dismissable child of home —
-// show the black X ('close'). Derived from the PRESENTED scene so the docked-polls
-// lane (presented 'polls' under the search root) correctly shows the polls plus.
+// show the black X ('close'). Derived from the PRESENTED scene so the docked
+// lane (presented DOCKED_SCENE_KEY under the search root) correctly shows that scene's plus.
 export type PresentationHeaderNavAction = 'create' | 'close';
 
 export type PresentationFrame = {
@@ -49,8 +50,8 @@ export type PresentationFrame = {
   /** ROUTE truth. Drives the header title + the nav index. Null only before the first commit. */
   activeSceneKey: OverlayKey | null;
   /**
-   * The leg that PAINTS. == the fresh resolved target, except laneKind==='docked-polls' where it
-   * is 'polls' (the one legal steady-state divergence). Null only before the first commit.
+   * The leg that PAINTS. == the fresh resolved target, except laneKind==='docked' where it
+   * is DOCKED_SCENE_KEY (the one legal steady-state divergence). Null only before the first commit.
    */
   presentedSceneKey: OverlayKey | null;
   /**
@@ -148,20 +149,20 @@ export const resolveIsChildSceneRevealed = (
   (isEditSessionLiveOnTopOfStack ||
     getAppOverlayRouteMetadata(topOfStackSceneKey).role === 'child');
 
-// ─── Lane inputs (the docked-polls formula's mutable feeds) ──────────────────────────────────
+// ─── Lane inputs (the docked formula's mutable feeds) ──────────────────────────────────
 //
 // Primitive booleans so this contract stays decoupled from the search-surface / policy /
 // snap-session types. The wiring layer (which owns those authorities) registers a provider +
 // change subscription with the controller; the controller re-mints on change (R1-AMENDED).
 export type PresentationLaneInputs = {
-  /** routeScenePolicySnapshot.isPersistentPollLaneEligible */
-  isPersistentPollLaneEligible: boolean;
+  /** routeScenePolicySnapshot.isDockedLaneEligible */
+  isDockedLaneEligible: boolean;
   /** surfaceVisualPolicy.phase === 'results_dismissing' */
   isResultsDismissing: boolean;
-  /** surfaceVisualPolicy.canReleasePersistentPolls */
-  canReleasePersistentPolls: boolean;
-  /** sheetSessionSnapshot.isDockedPollsDismissed */
-  isDockedPollsDismissed: boolean;
+  /** surfaceVisualPolicy.canReleaseDockedScene */
+  canReleaseDockedScene: boolean;
+  /** sheetSessionSnapshot.isDockedSceneDismissed */
+  isDockedSceneDismissed: boolean;
 };
 
 export type ResolvePresentationLaneKindInput = {
@@ -172,60 +173,65 @@ export type ResolvePresentationLaneKindInput = {
    */
   resolvedTargetSceneKey: OverlayKey | null;
   rootOverlayKey: OverlayKey | null;
-  hasActiveDockedPollsRestoreIntent: boolean;
+  hasActiveDockedSceneRestoreIntent: boolean;
   laneInputs: PresentationLaneInputs;
 };
 
 /**
- * THE single laneKind formula — the one place the docked-polls decision is made. Transcribed for
- * EXACT behavioral parity from resolveIsPersistentPollLane (native-overlay-target-authorities
+ * THE single laneKind formula — the one place the docked decision is made. Transcribed for
+ * EXACT behavioral parity from resolveIsDockedLane (native-overlay-target-authorities
  * :345-390), whose body this replaces; the old scattered child/bookmarks/profile deny checks are
- * structural here (a child target is DENIED the docked-polls lane structurally; a non-search
+ * structural here (a child target is DENIED the docked lane structurally; a non-search
  * top-level target IS 'top-level'), not band-aids applied per consumer.
  */
 export const resolvePresentationLaneKind = ({
   resolvedTargetSceneKey,
   rootOverlayKey,
-  hasActiveDockedPollsRestoreIntent,
+  hasActiveDockedSceneRestoreIntent,
   laneInputs,
 }: ResolvePresentationLaneKindInput): PresentationLaneKind => {
   const isChildTarget =
     resolvedTargetSceneKey != null &&
     getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
   // Parity note: the original formula deny-listed exactly bookmarks|profile as non-search
-  // top-level targets the lane must never force 'polls' over (the favorite↔poll nav swap fix).
+  // top-level targets the lane must never force the docked scene over (the favorite↔poll nav
+  // swap fix). Now DERIVED from route metadata: any top-level product scene that is neither
+  // the search root nor the docked target — a future top-level scene cannot silently miss it.
   const isNonSearchTopLevelTarget =
-    resolvedTargetSceneKey === 'bookmarks' || resolvedTargetSceneKey === 'profile';
-  const isSurfacePersistentPollCommitted =
-    laneInputs.isResultsDismissing && laneInputs.canReleasePersistentPolls;
-  const isPersistentPollLaneEligible =
-    (laneInputs.isPersistentPollLaneEligible && !laneInputs.isResultsDismissing) ||
-    isSurfacePersistentPollCommitted ||
+    resolvedTargetSceneKey != null &&
+    resolvedTargetSceneKey !== 'search' &&
+    resolvedTargetSceneKey !== DOCKED_SCENE_KEY &&
+    getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'topLevel';
+  const isSurfaceDockedSceneCommitted =
+    laneInputs.isResultsDismissing && laneInputs.canReleaseDockedScene;
+  const isDockedLaneEligible =
+    (laneInputs.isDockedLaneEligible && !laneInputs.isResultsDismissing) ||
+    isSurfaceDockedSceneCommitted ||
     // S-C.5 lane-input attribution (2026-07-10, plans/s-c5-restaurant-stack-fact.md): a home
-    // dismissal CARRYING the docked-polls restore intent admits the lane immediately — the
-    // switch itself declares polls shall present at the landing. Under the old two-switch
-    // dance polls presented as switch 1's TARGET scene, which fed the dismiss transaction's
+    // dismissal CARRYING the docked restore intent admits the lane immediately — the
+    // switch itself declares the docked scene shall present at the landing. Under the old two-switch
+    // dance the docked scene (polls) presented as switch 1's TARGET scene, which fed the dismiss transaction's
     // poll-readiness weld; the one-switch dismissal made the lane the ONLY mount path, and
-    // without this arm a swipe-dismissed docked-polls entry state DEADLOCKS (lane needs
-    // release, release needs poll readiness, readiness needs the lane to mount polls). The
+    // without this arm a swipe-dismissed docked entry state DEADLOCKS (lane needs
+    // release, release needs poll readiness, readiness needs the lane to mount the docked scene). The
     // release gates still gate the FINALIZE — this only restores the old mount timing.
-    (laneInputs.isResultsDismissing && hasActiveDockedPollsRestoreIntent);
-  const isDockedPollsLane =
+    (laneInputs.isResultsDismissing && hasActiveDockedSceneRestoreIntent);
+  const isDockedSceneLane =
     !isChildTarget &&
     !isNonSearchTopLevelTarget &&
     rootOverlayKey === 'search' &&
-    isPersistentPollLaneEligible &&
-    (!laneInputs.isDockedPollsDismissed ||
-      hasActiveDockedPollsRestoreIntent ||
-      isSurfacePersistentPollCommitted);
-  return isDockedPollsLane ? 'docked-polls' : 'top-level';
+    isDockedLaneEligible &&
+    (!laneInputs.isDockedSceneDismissed ||
+      hasActiveDockedSceneRestoreIntent ||
+      isSurfaceDockedSceneCommitted);
+  return isDockedSceneLane ? 'docked' : 'top-level';
 };
 
 /** The leg that paints for a given lane + fresh target (the one legal steady divergence). */
 export const resolvePresentedSceneKey = (
   laneKind: PresentationLaneKind,
   resolvedTargetSceneKey: OverlayKey | null
-): OverlayKey | null => (laneKind === 'docked-polls' ? 'polls' : resolvedTargetSceneKey);
+): OverlayKey | null => (laneKind === 'docked' ? DOCKED_SCENE_KEY : resolvedTargetSceneKey);
 
 // ─── Supersede rule (§9.1 R2-AMENDED) ────────────────────────────────────────────────────────
 //

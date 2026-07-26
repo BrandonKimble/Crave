@@ -1,9 +1,9 @@
 export type RouteOverlayCommandInputSnapshot = {
-  isDockedPollsDismissed: boolean;
-  isDockedPollsRestoreActive: boolean;
+  isDockedSceneDismissed: boolean;
+  isDockedSceneRestoreActive: boolean;
 };
 
 export const EMPTY_ROUTE_OVERLAY_COMMAND_INPUT_SNAPSHOT: RouteOverlayCommandInputSnapshot = {
-  isDockedPollsDismissed: false,
-  isDockedPollsRestoreActive: false,
+  isDockedSceneDismissed: false,
+  isDockedSceneRestoreActive: false,
 };

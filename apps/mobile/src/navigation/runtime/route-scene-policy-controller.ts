@@ -145,30 +145,31 @@ export class RouteScenePolicyController {
 
   private computeRouteScenePolicySnapshot(): RouteScenePolicySnapshot {
     const { foregroundState } = this.searchSceneForegroundPolicyInputs;
-    const { sheetContentLaneKind, shouldRenderRouteSheetSurface } = this.searchSceneSheetPolicyInputs;
-    const isPersistentPollLaneEligible =
-      sheetContentLaneKind === 'persistent_poll' || sheetContentLaneKind === 'results_closing';
+    const { sheetContentLaneKind, shouldRenderRouteSheetSurface } =
+      this.searchSceneSheetPolicyInputs;
+    const isDockedLaneEligible =
+      sheetContentLaneKind === 'docked_scene' || sheetContentLaneKind === 'results_closing';
     const foregroundActivity = foregroundState.isCloseTransitionActive
       ? 'resultsClosing'
-      : isPersistentPollLaneEligible
-      ? 'persistentPoll'
-      : foregroundState.inputMode === 'editing'
-      ? 'editing'
-      : foregroundState.isSuggestionPanelActive
-      ? 'suggestions'
-      : foregroundState.isSearchLoading
-      ? 'loading'
-      : foregroundState.isSearchSessionActive || shouldRenderRouteSheetSurface
-      ? 'results'
-      : 'idle';
+      : isDockedLaneEligible
+        ? 'dockedScene'
+        : foregroundState.inputMode === 'editing'
+          ? 'editing'
+          : foregroundState.isSuggestionPanelActive
+            ? 'suggestions'
+            : foregroundState.isSearchLoading
+              ? 'loading'
+              : foregroundState.isSearchSessionActive || shouldRenderRouteSheetSurface
+                ? 'results'
+                : 'idle';
     const shouldSuppressSearchAndTabSheetsForForegroundEditing =
       foregroundState.inputMode === 'editing';
     const shouldSuppressTabSheetsForSuggestions =
       foregroundState.isSuggestionPanelActive &&
-      (sheetContentLaneKind !== 'persistent_poll' ? shouldRenderRouteSheetSurface : true);
+      (sheetContentLaneKind !== 'docked_scene' ? shouldRenderRouteSheetSurface : true);
     const chromeSurfaceTarget =
-      foregroundActivity === 'idle' || foregroundActivity === 'persistentPoll'
-        ? 'polls'
+      foregroundActivity === 'idle' || foregroundActivity === 'dockedScene'
+        ? 'dockedScene'
         : 'results';
 
     return {
@@ -176,7 +177,7 @@ export class RouteScenePolicyController {
       ...this.searchSceneForegroundPolicyInputs,
       foregroundActivity,
       chromeSurfaceTarget,
-      isPersistentPollLaneEligible,
+      isDockedLaneEligible,
       shouldSuppressSearchAndTabSheetsForForegroundEditing,
       shouldSuppressTabSheetsForSuggestions,
       closeHandoffFreezeClassification: resolveSearchCloseHandoffFreezeClassification({

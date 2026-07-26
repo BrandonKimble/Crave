@@ -138,18 +138,18 @@ export class RouteSceneVisibilityPolicyController implements RouteSceneVisibilit
     const foregroundActivity = isCloseTransitionActive
       ? 'resultsClosing'
       : inputMode === 'editing'
-      ? 'editing'
-      : previousActivity === 'editing' || previousActivity === 'resultsClosing'
-      ? 'idle'
-      : previousActivity;
+        ? 'editing'
+        : previousActivity === 'editing' || previousActivity === 'resultsClosing'
+          ? 'idle'
+          : previousActivity;
     const transitionVisibility: RouteSceneTransitionVisibilitySnapshot = {
       ...previous,
       inputMode,
       isCloseTransitionActive,
       foregroundActivity,
       chromeSurfaceTarget:
-        foregroundActivity === 'idle' || foregroundActivity === 'persistentPoll'
-          ? 'polls'
+        foregroundActivity === 'idle' || foregroundActivity === 'dockedScene'
+          ? 'dockedScene'
           : 'results',
       closeHandoffFreezeClassification: resolveSearchCloseHandoffFreezeClassification({
         isCloseHandoffActive: isCloseTransitionActive,

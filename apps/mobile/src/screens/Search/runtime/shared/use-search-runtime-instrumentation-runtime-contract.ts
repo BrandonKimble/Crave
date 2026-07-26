@@ -54,7 +54,7 @@ export type SubmitShortcutScenarioCommandInput = {
   targetTab: 'dishes' | 'restaurants';
   label: string;
   preserveSheetState: boolean;
-  transitionFromDockedPolls: boolean;
+  transitionFromDockedScene: boolean;
   forceFreshBounds?: boolean;
 };
 

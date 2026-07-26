@@ -10,7 +10,7 @@ import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-f
 
 type UseSearchForegroundQuerySubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
-  'submitRuntime' | 'query' | 'isSuggestionPanelActive' | 'shouldShowDockedPollsRef'
+  'submitRuntime' | 'query' | 'isSuggestionPanelActive' | 'shouldShowDockedSceneRef'
 > & {
   // The autocomplete suggestion list currently shown under the input, so a typed
   // Return can be promoted to the same profile-jump the tap path uses when it
@@ -49,7 +49,7 @@ export const useSearchForegroundQuerySubmitRuntime = ({
 
     submitPreparationRuntime.prepareSubmitChrome();
     // S-A: the presentation flags are gone — the reconciler derives the intent from the
-    // tuple delta; docked-polls is a view input read at enter time.
+    // tuple delta; docked is a view input read at enter time.
     void submitSearch();
   }, [handleSuggestionPress, query, submitPreparationRuntime, submitSearch, suggestions]);
 

@@ -3,7 +3,7 @@ import { requestPushPermissionIfEligible } from './push-permission';
 
 // ─── W3 messaging client (plans/w3-messaging-design.md §3.2) ─────────────────────────────────
 // isRequest / frozen / unreadCount are SERVER-derived flags shipped on the DTO —
-// the client never re-derives them (the resolveIsPersistentPollLane lesson).
+// the client never re-derives them (the resolveIsDockedLane lesson).
 
 export type SharedEntityKind = 'list' | 'restaurant' | 'dish' | 'poll' | 'comment' | 'user_profile';
 

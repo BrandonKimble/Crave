@@ -132,7 +132,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         targetTab: 'restaurants',
         label: 'Best restaurants',
         preserveSheetState: false,
-        transitionFromDockedPolls: true,
+        transitionFromDockedScene: true,
         forceFreshBounds: false,
       }),
     []

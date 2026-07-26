@@ -5,7 +5,7 @@ import {
   type RouteShellOverlayRootAuthority,
   type RouteShellOverlayDisplayAuthority,
   type RouteShellOverlayChromeModeAuthority,
-  type RouteShellOverlayPollsVisibilityAuthority,
+  type RouteShellOverlayDockedSceneVisibilityAuthority,
   type RouteShellOverlaySheetPolicyAuthority,
   type RouteShellOverlayVisibilityAuthority,
   type RouteShellSheetHostSurfaceAuthority,
@@ -94,7 +94,7 @@ export type {
   RouteShellOverlayNavigationAuthority,
   RouteShellOverlayIdentityAuthority,
   RouteShellOverlayRootAuthority,
-  RouteShellOverlayPollsVisibilityAuthority,
+  RouteShellOverlayDockedSceneVisibilityAuthority,
   RouteShellOverlaySheetPolicyAuthority,
   RouteShellOverlayVisibilityAuthority,
   RouteShellSheetHostSurfaceAuthority,
@@ -118,7 +118,7 @@ export type AppRouteSceneRuntime = {
   routeOverlayIdentityAuthority: RouteShellOverlayIdentityAuthority;
   routeOverlayRootAuthority: RouteShellOverlayRootAuthority;
   routeOverlayDisplayAuthority: RouteShellOverlayDisplayAuthority;
-  routeOverlayPollsVisibilityAuthority: RouteShellOverlayPollsVisibilityAuthority;
+  routeOverlayDockedSceneVisibilityAuthority: RouteShellOverlayDockedSceneVisibilityAuthority;
   routeOverlayChromeModeAuthority: RouteShellOverlayChromeModeAuthority;
   routeOverlaySheetPolicyAuthority: RouteShellOverlaySheetPolicyAuthority;
   routeSheetHostSurfaceAuthority: RouteShellSheetHostSurfaceAuthority;
@@ -257,8 +257,8 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeOverlayIdentityAuthority: routeSceneFoundationRuntime.routeOverlayIdentityAuthority,
     routeOverlayRootAuthority: routeSceneFoundationRuntime.routeOverlayRootAuthority,
     routeOverlayDisplayAuthority: routeSceneFoundationRuntime.routeOverlayDisplayAuthority,
-    routeOverlayPollsVisibilityAuthority:
-      routeSceneFoundationRuntime.routeOverlayPollsVisibilityAuthority,
+    routeOverlayDockedSceneVisibilityAuthority:
+      routeSceneFoundationRuntime.routeOverlayDockedSceneVisibilityAuthority,
     routeOverlayChromeModeAuthority: routeSceneFoundationRuntime.routeOverlayChromeModeAuthority,
     routeOverlaySheetPolicyAuthority: routeSceneFoundationRuntime.routeOverlaySheetPolicyAuthority,
     routeSheetHostSurfaceAuthority: routeSceneFoundationRuntime.routeSheetHostSurfaceAuthority,

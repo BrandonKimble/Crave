@@ -158,7 +158,7 @@ export const useResultsPresentationCloseActionsRuntime = ({
   );
 
   // S-C.5 item 1 — THE TERMINAL EXECUTOR (home-root dismissals): the ONE terminalDismiss
-  // switch pops the session and lands the docked home directly (docked polls = presentation
+  // switch pops the session and lands the docked home directly (docked scene = presentation
   // mode of the search root); the dismiss-transaction choreography it arms owns the sheet
   // slide + the native map wire exit. Outgoing scene derives from the stack fact.
   const executeTerminalHomeDismiss = React.useCallback(() => {

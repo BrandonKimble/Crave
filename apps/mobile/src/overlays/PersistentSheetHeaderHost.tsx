@@ -67,7 +67,7 @@ export const PersistentSheetHeaderHost: React.FC<{
   const { promoteActiveSheet } = useAppOverlayRouteController();
   // PRESENTED truth drives the header (presentedSceneKey first, activeSceneKey fallback): the
   // header must title WHAT THE SHEET IS PAINTING, and presentedSceneKey is the leg that paints.
-  // The one legal steady divergence is the docked-polls lane — route/activeSceneKey is 'search'
+  // The one legal steady divergence is the docked lane — route/activeSceneKey is 'search'
   // while the sheet presents the polls feed — and presented-first is exactly what shows the polls
   // header there. activeSceneKey only backstops the frames where no presented key exists yet.
   // §Q redo T1d (ledger O-1/P-14): during a FREEZE-MODE dismissal the chrome is part of

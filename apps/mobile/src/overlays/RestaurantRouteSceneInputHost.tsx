@@ -287,7 +287,7 @@ const RestaurantRouteSceneInputHost = ({
     return (
       policy.phase === 'results_dismissing' &&
       policy.outgoingSheetSceneKey === 'restaurant' &&
-      !policy.canReleasePersistentPolls
+      !policy.canReleaseDockedScene
     );
   }, Object.is);
   const shouldUseSearchRestaurant =

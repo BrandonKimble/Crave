@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
 import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
 
@@ -8,14 +9,14 @@ type Listener = () => void;
 
 // ─── THE TWO-POSTURE LAW (owner, 2026-07-12 — plans/root-snap-law.md §Leg 2) ─────────────────
 // The app has exactly TWO root sheet postures, each remembering wherever the user's FINGER
-// last put it: HOME's (the search root's docked-polls presentation) and ONE SHARED posture for
+// last put it: HOME's (the search root's docked presentation) and ONE SHARED posture for
 // every other root page. Switching tabs never moves the sheet except when crossing between
 // home and the rest, where each side's remembered seat is restored (the descriptor table's
 // 'postureSeat' rule). Cold start: home collapsed, content seat expanded.
 //
 // WRITE CONTRACT (gesture-only memory): seat writers are exactly (a) user-gesture settles,
-// (b) the origin-restore seam, (c) named product intents (primeDockedPollsForHomeLanding /
-// dismissDockedPolls). Programmatic settles READ seats but never write them — a programmatic
+// (b) the origin-restore seam, (c) named product intents (primeDockedSceneForHomeLanding /
+// dismissDockedScene). Programmatic settles READ seats but never write them — a programmatic
 // writer reaching a seat write is a contract violation (loud __DEV__ error + dropped write),
 // which makes the 2026-07-12 ledger-laundering bug class structurally unrepeatable.
 export type RouteSheetSeatWriter = 'gesture' | 'named' | 'programmatic';
@@ -24,15 +25,15 @@ export type RouteSheetSeatWriter = 'gesture' | 'named' | 'programmatic';
 export const HOME_SEAT_SEED_SNAP: Exclude<OverlaySheetSnap, 'hidden'> = 'collapsed';
 export const CONTENT_SEAT_SEED_SNAP: Exclude<OverlaySheetSnap, 'hidden'> = 'expanded';
 
-/** The ONE sanctioned resurrect posture for user-dismissed docked polls (product moment). */
-export const DOCKED_POLLS_RESURRECT_SNAP = 'collapsed' as const;
+/** The ONE sanctioned resurrect posture for user-dismissed docked scene (product moment). */
+export const DOCKED_SCENE_RESURRECT_SNAP = 'collapsed' as const;
 
 /**
- * STRUCTURAL FACT (declared once): home's sheet CARRIER is the docked-polls scene — when home
+ * STRUCTURAL FACT (declared once): home's sheet CARRIER is the docked scene — when home
  * is presented, the scene fronting the shared sheet is 'polls', never 'search' (the 'search'
  * scene key is the results sheet, whose facts are search-session-scoped, not a root posture).
  */
-export const HOME_SEAT_CARRIER_SCENE_KEY: OverlayKey = 'polls';
+export const HOME_SEAT_CARRIER_SCENE_KEY: OverlayKey = DOCKED_SCENE_KEY;
 
 /**
  * Which posture seat a scene presents at as a NAV-PAGE (topLevelSwitch) target. DERIVED from
@@ -58,8 +59,8 @@ export const resolveSheetPostureSeat = (sceneKey: OverlayKey): 'home' | 'content
 };
 
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
-  isDockedPollsDismissed: boolean;
-  /** HOME's remembered posture ('hidden' = docked polls physically dismissed). */
+  isDockedSceneDismissed: boolean;
+  /** HOME's remembered posture ('hidden' = docked scene physically dismissed). */
   homeSeatSnap: OverlaySheetSnap;
   /** The ONE shared posture of every non-home root page (never hidden). */
   contentSeatSnap: Exclude<OverlaySheetSnap, 'hidden'>;
@@ -75,8 +76,8 @@ export type AppRouteSheetSnapSessionAuthority = {
 };
 
 export type AppRouteSheetSnapSessionActions = {
-  setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
-  dismissDockedPolls: () => void;
+  setIsDockedSceneDismissed: (next: React.SetStateAction<boolean>) => void;
+  dismissDockedScene: () => void;
   /**
    * The ONE snap-fact write. `writer` is REQUIRED so every call site declares which sanctioned
    * seat writer it is; 'programmatic' targeting a posture seat is dropped with a __DEV__ error
@@ -105,7 +106,7 @@ export type AppRouteSheetSnapSessionRuntime = {
 };
 
 const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
-  isDockedPollsDismissed: false,
+  isDockedSceneDismissed: false,
   homeSeatSnap: HOME_SEAT_SEED_SNAP,
   contentSeatSnap: CONTENT_SEAT_SEED_SNAP,
   sceneSheetSnaps: {},
@@ -149,13 +150,13 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
   };
 
   public readonly actions: AppRouteSheetSnapSessionActions = {
-    setIsDockedPollsDismissed: (next) => {
+    setIsDockedSceneDismissed: (next) => {
       this.commit({
-        isDockedPollsDismissed: resolveStateUpdate(this.snapshot.isDockedPollsDismissed, next),
+        isDockedSceneDismissed: resolveStateUpdate(this.snapshot.isDockedSceneDismissed, next),
       });
     },
-    dismissDockedPolls: () => {
-      this.dismissDockedPolls();
+    dismissDockedScene: () => {
+      this.dismissDockedScene();
     },
     recordRouteSceneSheetSettle: (args) => {
       this.recordRouteSceneSheetSettle(args);
@@ -264,9 +265,9 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     });
   }
 
-  private dismissDockedPolls(): void {
+  private dismissDockedScene(): void {
     this.commit({
-      isDockedPollsDismissed: true,
+      isDockedSceneDismissed: true,
       homeSeatSnap: 'hidden',
     });
   }
@@ -296,21 +297,21 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     source?: SearchRouteSceneSnapMeta['source'];
   }): void {
     // Gesture-only seat memory (two-posture law): the HOME seat records only what the user's
-    // finger did. The isDockedPollsDismissed flag arms below stay on EVERY settle — they are
+    // finger did. The isDockedSceneDismissed flag arms below stay on EVERY settle — they are
     // lane-dismissal semantics, not posture memory. This gate is what killed the laundering
     // bug (a programmatic collapsed arrival used to overwrite the remembered posture).
     if (source === 'gesture') {
       this.recordRouteSceneSheetSettle({
-        sceneKey: 'polls',
+        sceneKey: HOME_SEAT_CARRIER_SCENE_KEY,
         snap,
         writer: 'gesture',
       });
     }
     if (source === 'gesture' && snap !== 'hidden') {
-      this.actions.setIsDockedPollsDismissed(false);
+      this.actions.setIsDockedSceneDismissed(false);
     }
     if (snap === 'collapsed') {
-      this.actions.setIsDockedPollsDismissed(false);
+      this.actions.setIsDockedSceneDismissed(false);
     }
     if (snap !== 'hidden') {
       return;
@@ -321,7 +322,7 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     if (source !== 'gesture') {
       return;
     }
-    this.dismissDockedPolls();
+    this.dismissDockedScene();
   }
 }
 

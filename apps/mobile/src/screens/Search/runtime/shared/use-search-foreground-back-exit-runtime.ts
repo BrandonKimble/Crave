@@ -14,7 +14,7 @@ type UseSearchForegroundBackExitRuntimeArgs = Pick<
   | 'shouldTreatSearchAsResults'
   | 'showPollsOverlay'
   | 'cancelAutocomplete'
-  | 'restoreDockedPolls'
+  | 'restoreDockedScene'
   | 'suppressAutocompleteResults'
   | 'setQuery'
   | 'setIsAutocompleteSuppressed'
@@ -38,7 +38,7 @@ export const useSearchForegroundBackExitRuntime = ({
   shouldTreatSearchAsResults,
   showPollsOverlay,
   cancelAutocomplete,
-  restoreDockedPolls,
+  restoreDockedScene,
   suppressAutocompleteResults,
   setQuery,
   setIsAutocompleteSuppressed,
@@ -64,7 +64,7 @@ export const useSearchForegroundBackExitRuntime = ({
       cancelAutocomplete();
       setIsAutocompleteSuppressed(false);
       if (!showPollsOverlay && !isSearchLoading) {
-        restoreDockedPolls();
+        restoreDockedScene();
       }
     }
   }, [
@@ -73,7 +73,7 @@ export const useSearchForegroundBackExitRuntime = ({
     isSearchLoading,
     isSearchSessionActive,
     query,
-    restoreDockedPolls,
+    restoreDockedScene,
     searchSessionQueryRef,
     setIsAutocompleteSuppressed,
     setQuery,

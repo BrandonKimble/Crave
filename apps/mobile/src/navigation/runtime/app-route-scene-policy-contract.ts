@@ -15,9 +15,9 @@ export type AppRouteSceneForegroundActivity =
   | 'loading'
   | 'results'
   | 'resultsClosing'
-  | 'persistentPoll';
+  | 'dockedScene';
 
-export type AppRouteChromeSurfaceTarget = 'results' | 'polls';
+export type AppRouteChromeSurfaceTarget = 'results' | 'dockedScene';
 
 export const EMPTY_APP_ROUTE_SCENE_FOREGROUND_STATE: AppRouteSceneForegroundState = {
   inputMode: 'idle',
@@ -49,7 +49,7 @@ export type RouteScenePolicySnapshot = AppRouteSceneSheetPolicyInputs &
   AppRouteSceneForegroundPolicyInputs & {
     foregroundActivity: AppRouteSceneForegroundActivity;
     chromeSurfaceTarget: AppRouteChromeSurfaceTarget;
-    isPersistentPollLaneEligible: boolean;
+    isDockedLaneEligible: boolean;
     shouldSuppressSearchAndTabSheetsForForegroundEditing: boolean;
     shouldSuppressTabSheetsForSuggestions: boolean;
     closeHandoffFreezeClassification: SearchFreezeClassification;
@@ -59,8 +59,8 @@ export const EMPTY_ROUTE_SCENE_POLICY_SNAPSHOT: RouteScenePolicySnapshot = {
   ...EMPTY_APP_ROUTE_SCENE_SHEET_POLICY_INPUTS,
   ...EMPTY_APP_ROUTE_SCENE_FOREGROUND_POLICY_INPUTS,
   foregroundActivity: 'idle',
-  chromeSurfaceTarget: 'polls',
-  isPersistentPollLaneEligible: false,
+  chromeSurfaceTarget: 'dockedScene',
+  isDockedLaneEligible: false,
   shouldSuppressSearchAndTabSheetsForForegroundEditing: false,
   shouldSuppressTabSheetsForSuggestions: false,
   closeHandoffFreezeClassification: 'none',
@@ -96,7 +96,7 @@ export const areRouteScenePolicySnapshotsEqual = (
   left.shouldRenderRouteSheetSurface === right.shouldRenderRouteSheetSurface &&
   left.foregroundActivity === right.foregroundActivity &&
   left.chromeSurfaceTarget === right.chromeSurfaceTarget &&
-  left.isPersistentPollLaneEligible === right.isPersistentPollLaneEligible &&
+  left.isDockedLaneEligible === right.isDockedLaneEligible &&
   left.shouldSuppressSearchAndTabSheetsForForegroundEditing ===
     right.shouldSuppressSearchAndTabSheetsForForegroundEditing &&
   left.shouldSuppressTabSheetsForSuggestions === right.shouldSuppressTabSheetsForSuggestions &&

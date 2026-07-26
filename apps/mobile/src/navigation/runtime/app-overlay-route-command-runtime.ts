@@ -42,7 +42,7 @@ export type AppOverlayRouteCommandRuntime = {
   // alias kept so existing call sites need no churn.
   revealRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
-  restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   collapseActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   // The shared HEADER-TAP / grab-handle press (owner req 2026-07-02): tapping the persistent
   // header PROMOTES the sheet up to at least middle when it sits below middle, and is a no-op
@@ -219,14 +219,14 @@ export const createAppOverlayRouteCommandRuntime = ({
     updateRoute: (overlay, params) => {
       routeSceneSwitchRuntime.updateRouteState(overlay, params);
     },
-    restoreDockedPolls: ({ snap = 'collapsed' } = {}) => {
+    restoreDockedScene: ({ snap = 'collapsed' } = {}) => {
       requestRouteSceneSwitch({
         targetSceneKey: 'search',
         routeAction: 'setRoot',
         sheetTransitionKind: 'topLevelSwitch',
         sheetOpenerSource: 'routeCommand',
         sheetMotion: { kind: 'snapTo', snap },
-        dockedPollsRestoreSnap: snap,
+        dockedSceneRestoreSnap: snap,
       });
     },
     collapseActiveSheet: ({ snap = 'collapsed' } = {}) => {

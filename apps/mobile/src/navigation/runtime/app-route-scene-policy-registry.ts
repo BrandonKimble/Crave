@@ -23,7 +23,7 @@ export type AppRouteSheetScenePolicy = {
   /**
    * TWO-POSTURE LAW membership (plans/root-snap-law.md §Leg 2/§Leg 3): which posture seat this
    * scene presents at when it is a NAV-PAGE (topLevelSwitch) target. 'home' = the search root's
-   * docked-polls posture; 'content' = the ONE shared posture of every other root page; null =
+   * docked posture; 'content' = the ONE shared posture of every other root page; null =
    * not a root page (children/modals never resolve through a posture seat). This field is the
    * SINGLE source of truth the seat resolver AND the descriptor table's topLevelSwitch rows
    * derive from — a new root page declares its seat HERE (the exhaustive Record makes skipping
@@ -57,7 +57,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     // Non-dismissable by swipe (like every other route sheet): a downward drag rubber-bands at
     // the docked bar (collapsed) instead of swiping the lane to hidden. The docked bar is a
     // permanent fixture; the programmatic dismiss path (`requestReturnToSearchFromPolls` →
-    // `dismissDockedPolls`) still works since explicit snap targets aren't bounded by the
+    // `dismissDockedScene`) still works since explicit snap targets aren't bounded by the
     // gesture upperBound.
     canSwipeDismiss: false,
     snapPersistence: 'none',

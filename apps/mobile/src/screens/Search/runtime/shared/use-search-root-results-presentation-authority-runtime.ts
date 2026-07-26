@@ -55,14 +55,14 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       resultsSurfacePolicyController?.updateShellFacts({
         hasActiveSearchContent: change.hasActiveSearchContent,
         closeLaneState: change.closeTransitionState,
-        holdPersistentPollLane: change.holdPersistentPollLane,
+        holdDockedLane: change.holdDockedLane,
         surfaceVisualPolicy: change.surfaceVisualPolicy,
       });
       const policyFacts = sessionCoreLane.resultsPresentationAuthority.readPolicyFactsSnapshot(
         sessionCoreLane.searchRuntimeBus.getPolicyFactsSnapshot()
       );
       const laneKind = change.searchSheetContentLane.kind;
-      if (laneKind === 'persistent_poll') {
+      if (laneKind === 'docked_scene') {
         const transportSnapshot =
           sessionCoreLane.resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
         const activeRedrawTransactionId =
@@ -71,13 +71,13 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
           transportSnapshot.snapshotKind !== 'results_enter' &&
           activeRedrawTransactionId == null
         ) {
-          deferMountedResultsCleanupUntilAfterDismiss('search_sheet_content_lane_persistent_poll');
+          deferMountedResultsCleanupUntilAfterDismiss('search_sheet_content_lane_docked_scene');
         }
       }
       resultsSurfacePolicyController?.updatePanelInputs({
         renderPolicy: policyFacts.renderPolicy,
         allowsInteractionLoadingState:
-          laneKind !== 'results_closing' && laneKind !== 'persistent_poll',
+          laneKind !== 'results_closing' && laneKind !== 'docked_scene',
         isSearchLoading: sessionCoreLane.searchRuntimeBus.getState().isSearchLoading,
         freezeClassification: policyFacts.freezeClassification,
         shouldUsePlaceholderRows: false,

@@ -13,7 +13,7 @@ import {
 export type ResultsPresentationPolicyFactsShellInputs = {
   hasActiveSearchContent: boolean;
   closeTransitionState: SearchCloseTransitionState;
-  holdPersistentPollLane: boolean;
+  holdDockedLane: boolean;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
 };
 
@@ -33,7 +33,7 @@ export type ResultsPresentationPolicyFactsSnapshot = ResultsPresentationPolicyFa
 export type ResultsPresentationPolicyFactsLaneChange = {
   hasActiveSearchContent: boolean;
   closeTransitionState: SearchCloseTransitionState;
-  holdPersistentPollLane: boolean;
+  holdDockedLane: boolean;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   searchSheetContentLane: SearchSheetContentLane;
 };
@@ -67,7 +67,7 @@ const UNRESOLVED_PANEL_INPUTS: ResultsPresentationPolicyFactsSnapshot['unresolve
 const createSnapshot = ({
   hasActiveSearchContent,
   closeTransitionState,
-  holdPersistentPollLane,
+  holdDockedLane,
   surfaceVisualPolicy,
   policyFacts,
 }: ResultsPresentationPolicyFactsShellInputs & {
@@ -81,7 +81,7 @@ const createSnapshot = ({
   return {
     hasActiveSearchContent,
     closeTransitionState,
-    holdPersistentPollLane,
+    holdDockedLane,
     surfaceVisualPolicy,
     searchSheetContentLane,
     sheetContentLaneKind: searchSheetContentLane.kind,
@@ -98,7 +98,7 @@ const areShellInputsEqual = (
 ): boolean =>
   current.hasActiveSearchContent === next.hasActiveSearchContent &&
   current.closeTransitionState === next.closeTransitionState &&
-  current.holdPersistentPollLane === next.holdPersistentPollLane &&
+  current.holdDockedLane === next.holdDockedLane &&
   current.surfaceVisualPolicy === next.surfaceVisualPolicy &&
   current.policyFacts === next.policyFacts;
 
@@ -110,7 +110,7 @@ export const createResultsPresentationPolicyFactsController = ({
   const initialInputs = {
     hasActiveSearchContent: false,
     closeTransitionState: null,
-    holdPersistentPollLane: false,
+    holdDockedLane: false,
     surfaceVisualPolicy: EMPTY_SEARCH_SURFACE_VISUAL_POLICY,
     policyFacts,
   };
@@ -125,7 +125,7 @@ export const createResultsPresentationPolicyFactsController = ({
         pendingSearchSheetContentLaneChange = {
           hasActiveSearchContent: snapshot.hasActiveSearchContent,
           closeTransitionState: snapshot.closeTransitionState,
-          holdPersistentPollLane: snapshot.holdPersistentPollLane,
+          holdDockedLane: snapshot.holdDockedLane,
           surfaceVisualPolicy: snapshot.surfaceVisualPolicy,
           searchSheetContentLane: snapshot.searchSheetContentLane,
         };

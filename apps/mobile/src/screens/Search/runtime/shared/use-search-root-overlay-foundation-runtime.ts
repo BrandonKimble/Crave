@@ -20,18 +20,18 @@ import type { PresentationFrame } from '../../../../navigation/runtime/app-route
 import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 
 // Thin adapter over the committed PresentationFrame (page-switch-master-plan.md §9.2 site 5):
-// the docked-polls decision is read from the frame's laneKind — the old parallel
-// `isSearchOverlay && isPersistentPollLane` re-derivation off the polls-visibility snapshot is
-// the same formula (laneKind==='docked-polls' already requires the search root), now sourced
+// the docked decision is read from the frame's laneKind — the old parallel
+// `isSearchOverlay && isDockedLane` re-derivation off the polls-visibility snapshot is
+// the same formula (laneKind==='docked' already requires the search root), now sourced
 // from the one writer. Consumers of the session-snapshot shape are unchanged.
 const selectRouteOverlaySessionSnapshot = (
   frame: PresentationFrame
 ): AppRouteOverlaySessionSnapshot => {
-  const isDockedPollsLane = frame.laneKind === 'docked-polls';
+  const isDockedSceneLane = frame.laneKind === 'docked';
   return {
-    shouldShowDockedPollsTarget: isDockedPollsLane,
-    shouldShowDockedPolls: isDockedPollsLane,
-    shouldShowPollsSheet: isDockedPollsLane,
+    shouldShowDockedSceneTarget: isDockedSceneLane,
+    shouldShowDockedScene: isDockedSceneLane,
+    shouldShowPollsSheet: isDockedSceneLane,
   };
 };
 

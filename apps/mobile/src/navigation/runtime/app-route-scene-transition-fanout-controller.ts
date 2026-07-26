@@ -28,7 +28,7 @@ const resolveAppRouteSceneSwitchSnapshot = (
   transitionToken: state.transitionToken,
   transitionContract: state.transitionContract,
   activePollsParams: state.activePollsParams,
-  activeDockedPollsRestoreIntent: state.activeDockedPollsRestoreIntent,
+  activeDockedSceneRestoreIntent: state.activeDockedSceneRestoreIntent,
   isInteractive: state.isInteractive,
   routeState: state.routeState,
 });
@@ -44,7 +44,7 @@ const resolveAppRouteSceneTransitionSnapshot = (
   transitionToken: state.transitionToken,
   transitionContract: state.transitionContract,
   activePollsParams: state.activePollsParams,
-  activeDockedPollsRestoreIntent: state.activeDockedPollsRestoreIntent,
+  activeDockedSceneRestoreIntent: state.activeDockedSceneRestoreIntent,
   isInteractive: state.isInteractive,
   routeState: state.routeState,
 });
@@ -67,7 +67,7 @@ const resolveAppRouteScenePayloadSnapshot = (
   state: RouteSceneSwitchTransitionState
 ): AppRouteScenePayloadSnapshot => ({
   activePollsParams: state.activePollsParams,
-  activeDockedPollsRestoreIntent: state.activeDockedPollsRestoreIntent,
+  activeDockedSceneRestoreIntent: state.activeDockedSceneRestoreIntent,
 });
 
 const resolveAppRouteSceneInteractivitySnapshot = (
@@ -89,7 +89,7 @@ const areAppRouteSceneSwitchSnapshotsEqual = (
   left.transitionToken === right.transitionToken &&
   left.transitionContract === right.transitionContract &&
   left.activePollsParams === right.activePollsParams &&
-  left.activeDockedPollsRestoreIntent === right.activeDockedPollsRestoreIntent &&
+  left.activeDockedSceneRestoreIntent === right.activeDockedSceneRestoreIntent &&
   left.isInteractive === right.isInteractive &&
   left.routeState === right.routeState;
 
@@ -105,7 +105,7 @@ const areAppRouteSceneTransitionSnapshotsEqual = (
   left.transitionToken === right.transitionToken &&
   left.transitionContract === right.transitionContract &&
   left.activePollsParams === right.activePollsParams &&
-  left.activeDockedPollsRestoreIntent === right.activeDockedPollsRestoreIntent &&
+  left.activeDockedSceneRestoreIntent === right.activeDockedSceneRestoreIntent &&
   left.isInteractive === right.isInteractive &&
   left.routeState === right.routeState;
 
@@ -128,7 +128,7 @@ const areAppRouteScenePayloadSnapshotsEqual = (
   right: AppRouteScenePayloadSnapshot
 ): boolean =>
   left.activePollsParams === right.activePollsParams &&
-  left.activeDockedPollsRestoreIntent === right.activeDockedPollsRestoreIntent;
+  left.activeDockedSceneRestoreIntent === right.activeDockedSceneRestoreIntent;
 
 const areAppRouteSceneInteractivitySnapshotsEqual = (
   left: AppRouteSceneInteractivitySnapshot,

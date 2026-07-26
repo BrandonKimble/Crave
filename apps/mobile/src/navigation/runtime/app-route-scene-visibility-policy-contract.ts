@@ -58,7 +58,7 @@ export const EMPTY_ROUTE_SCENE_TRANSITION_VISIBILITY_SNAPSHOT: RouteSceneTransit
     inputMode: 'idle',
     isCloseTransitionActive: false,
     foregroundActivity: 'idle',
-    chromeSurfaceTarget: 'polls',
+    chromeSurfaceTarget: 'dockedScene',
     closeHandoffFreezeClassification: 'none',
   };
 
@@ -71,7 +71,7 @@ export const EMPTY_ROUTE_SCENE_SHEET_POLICY_VISIBILITY_SNAPSHOT: RouteSceneSheet
 
 export const EMPTY_ROUTE_SCENE_CHROME_SURFACE_VISIBILITY_SNAPSHOT: RouteSceneChromeSurfaceVisibilitySnapshot =
   {
-    chromeSurfaceTarget: 'polls',
+    chromeSurfaceTarget: 'dockedScene',
   };
 
 export const EMPTY_ROUTE_SCENE_VISIBILITY_POLICY_SNAPSHOT: RouteSceneVisibilityPolicySnapshot = {

@@ -10,12 +10,12 @@ export type RouteOverlayDisplaySnapshot = {
   displayedRootOverlayKey: OverlayKey | null;
   displayedSceneKey: OverlayKey | null;
   isSearchOverlay: boolean;
-  isPersistentPollLane: boolean;
+  isDockedLane: boolean;
 };
 
-export type RouteOverlayPollsVisibilitySnapshot = {
+export type RouteOverlayDockedSceneVisibilitySnapshot = {
   isSearchOverlay: boolean;
-  isPersistentPollLane: boolean;
+  isDockedLane: boolean;
 };
 
 export type RouteOverlayChromeMode = 'search' | 'expandedMiddle';

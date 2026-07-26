@@ -1,6 +1,6 @@
 import type { OverlayKey } from '../../overlays/types';
 import type {
-  RouteSceneSwitchDockedPollsRestoreIntent,
+  RouteSceneSwitchDockedSceneRestoreIntent,
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchTransitionContract,
   RouteSceneSwitchTransitionPhase,
@@ -16,7 +16,7 @@ export type AppRouteSceneSwitchSnapshot = {
   transitionToken: number;
   transitionContract: RouteSceneSwitchTransitionContract | null;
   activePollsParams: RouteSceneSwitchPollsParams | null;
-  activeDockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  activeDockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
   isInteractive: boolean;
   routeState: RouteSceneSwitchRouteStateSnapshot;
 };
@@ -30,7 +30,7 @@ export type AppRouteSceneTransitionSnapshot = {
   transitionToken: number;
   transitionContract: RouteSceneSwitchTransitionContract | null;
   activePollsParams: RouteSceneSwitchPollsParams | null;
-  activeDockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  activeDockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
   isInteractive: boolean;
   routeState: RouteSceneSwitchRouteStateSnapshot;
 };
@@ -49,7 +49,7 @@ export type AppRouteSceneActivitySnapshot = {
 
 export type AppRouteScenePayloadSnapshot = {
   activePollsParams: RouteSceneSwitchPollsParams | null;
-  activeDockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  activeDockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
 };
 
 export type AppRouteSceneInteractivitySnapshot = {

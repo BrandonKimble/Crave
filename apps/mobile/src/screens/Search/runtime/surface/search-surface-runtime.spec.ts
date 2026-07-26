@@ -82,7 +82,7 @@ describe('dismiss choreography release (bottom boundary AND nav return)', () => 
     markAllPollPartsReady(runtime, id);
     runtime.commitDismissBoundary(id);
     const heldPolicy = selectSearchSurfaceVisualPolicy(runtime.getSnapshot());
-    expect(heldPolicy.canReleasePersistentPolls).toBe(false);
+    expect(heldPolicy.canReleaseDockedScene).toBe(false);
     expect(heldPolicy.sheetClipMode).toBe('animatedSearchTransition');
     expect(heldPolicy.bottomBandOwner).toBe('results_header');
     // committedAtMs (the release stamp) must not be minted yet either.
@@ -90,9 +90,9 @@ describe('dismiss choreography release (bottom boundary AND nav return)', () => 
 
     runtime.markBottomNavReturnReady(id);
     const releasedPolicy = selectSearchSurfaceVisualPolicy(runtime.getSnapshot());
-    expect(releasedPolicy.canReleasePersistentPolls).toBe(true);
-    expect(releasedPolicy.sheetClipMode).toBe('dockedPersistentPoll');
-    expect(releasedPolicy.bottomBandOwner).toBe('persistent_polls');
+    expect(releasedPolicy.canReleaseDockedScene).toBe(true);
+    expect(releasedPolicy.sheetClipMode).toBe('dockedScene');
+    expect(releasedPolicy.bottomBandOwner).toBe('docked_scene');
     expect(runtime.getSnapshot().dismissTransaction?.committedAtMs).not.toBeNull();
   });
 });

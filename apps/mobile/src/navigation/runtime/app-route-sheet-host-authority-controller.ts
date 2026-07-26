@@ -116,7 +116,7 @@ type AppRouteSheetHostNativeRuntimeInput = {
   routeSheetFrameHostAuthority: AppRouteSheetHostSurfaceFrameAuthority;
 };
 
-// P2: the nav `isPersistentPollLane` scalar is gone from this selector — the lane decision is
+// P2: the nav `isDockedLane` scalar is gone from this selector — the lane decision is
 // PF.laneKind (read in getResolvedSurfaceInput); lane changes wake this controller via the
 // PresentationFrame re-mint subscription, not the lagging nav mirror.
 type SheetHostNavigationSelectorSnapshot = {
@@ -174,7 +174,7 @@ type AppRouteSheetHostResolvedSurfaceInput = {
   incomingSceneKey: OverlayKey | null;
   contentTransitionToken: number | null;
   initialSheetY: number;
-  isPersistentPollLane: boolean;
+  isDockedLane: boolean;
   // True during a forward-open's PRE-PUBLISH hold (the target shell hasn't landed yet, so the
   // visible feed is held as the outgoing). A programmatic snap recorded in this window is the
   // transient INSTANT-COVER snap mis-attributed to the held scene — it must NOT persist.
@@ -321,7 +321,7 @@ const resolveSnapPersistenceKey = ({
   }
 };
 
-const isDockedPollsSearchSurface = ({
+const isDockedSceneSearchSurface = ({
   activeSemanticOverlayKey,
   rootOverlayKey,
   overlayRouteScope,
@@ -333,7 +333,7 @@ const isDockedPollsSearchSurface = ({
   rootOverlayKey === 'search' &&
   overlayRouteScope.overlayRouteStackLength <= 1;
 
-const isExplicitlyDismissedDockedPollsRoot = (
+const isExplicitlyDismissedDockedSceneRoot = (
   resolvedSurfaceInput: Pick<
     AppRouteSheetHostResolvedSurfaceInput,
     'rootOverlayKey' | 'overlayRouteScope'
@@ -342,7 +342,7 @@ const isExplicitlyDismissedDockedPollsRoot = (
 ): boolean =>
   resolvedSurfaceInput.rootOverlayKey === 'search' &&
   resolvedSurfaceInput.overlayRouteScope.overlayRouteStackLength <= 1 &&
-  sheetSnapSessionSnapshot.isDockedPollsDismissed &&
+  sheetSnapSessionSnapshot.isDockedSceneDismissed &&
   sheetSnapSessionSnapshot.homeSeatSnap === 'hidden';
 
 const normalizePolicyInitialSnap = (
@@ -366,7 +366,7 @@ const resolveSharedSheetInteractionPolicy = ({
   'activeSemanticOverlayKey' | 'activeShellSpec' | 'overlayRouteScope' | 'rootOverlayKey'
 >): AppRouteSheetHostInteractionPolicy => {
   if (
-    isDockedPollsSearchSurface({
+    isDockedSceneSearchSurface({
       activeSemanticOverlayKey,
       rootOverlayKey,
       overlayRouteScope,
@@ -749,7 +749,7 @@ class AppRouteSheetHostAuthorityController {
       // fan-out snapshots already synced — recomputing on that path HERE would mix a fresh
       // frame with the fan-out's not-yet-synced snapshots (the exact cross-cadence race P2
       // deletes). Only a re-mint (same switchId, bumped revision — a lane-input change without
-      // a switch, e.g. the docked-polls gesture dismiss or the results_dismissing release)
+      // a switch, e.g. the docked gesture dismiss or the results_dismissing release)
       // fires no other dispatch, so it alone recomputes here. A switch-mint always bumps
       // switchId (new transitionToken ⇒ fan-out switch snapshot inequality ⇒ the listener
       // above fires), and a same-switch in-flight mint keeps revision constant, so this
@@ -999,13 +999,13 @@ class AppRouteSheetHostAuthorityController {
     // is REPLACED by reads from the ONE committed frame. Mapping (old → f(frame)):
     //   • displayedSceneKey        := frame.presentedSceneKey, except the R3 shell hold below.
     //   • incomingSceneKey         := frame.presentedSceneKey (the leg that paints; 'polls'
-    //     under laneKind==='docked-polls' — the deleted searchHost/boundary/poll-lane forcings
+    //     under laneKind==='docked' — the deleted searchHost/boundary/poll-lane forcings
     //     are structural in the frame's laneKind formula now).
     //   • outgoingSceneKey         := frame.outgoingSceneKey (the R2 supersede-correct held leg;
     //     replaces resolvePreservedOutgoingSheetSceneKey AND the 'polls' relabel — a forward
     //     open from the docked feed holds outgoing='polls' because the PREVIOUS frame already
     //     presented 'polls').
-    //   • isPersistentPollLane     := frame.laneKind === 'docked-polls' (replaces the
+    //   • isDockedLane     := frame.laneKind === 'docked' (replaces the
     //     boundary-committed force + the stale-nav deny-list band-aid; a bookmarks/profile or
     //     child target IS 'top-level'/'child' in the frame, structurally).
     //   • activeSemanticOverlayKey := the semantic key OF the frame-selected shell (presented,
@@ -1015,7 +1015,7 @@ class AppRouteSheetHostAuthorityController {
     const transitionContract = routeSceneSwitchSnapshot.transitionContract;
     const presentedSceneKey = presentationFrame.presentedSceneKey;
     const heldOutgoingSceneKey = presentationFrame.outgoingSceneKey;
-    const effectiveIsPersistentPollLane = presentationFrame.laneKind === 'docked-polls';
+    const effectiveIsDockedLane = presentationFrame.laneKind === 'docked';
     // R3 SHELL RULE (§9.1): the sheet SHELL follows the OUTGOING frame on a dismiss transition
     // and the TARGET on a forward open. `isForwardOpenIntent` = a held outgoing whose switch
     // RISES the sheet (visible, not terminalDismiss) — every dismiss stays byte-identical:
@@ -1040,11 +1040,11 @@ class AppRouteSheetHostAuthorityController {
     // carry it (route state stays 'search'; there is no transition contract). Pre-boundary the
     // shell keeps the frozen outgoing sheet scene ('search' results / 'restaurant' for a
     // profile-origin dismiss) exactly as before; at the boundary the lane inputs flip the
-    // frame's laneKind to 'docked-polls' and presented takes over. Explicitly NOT part of the
+    // frame's laneKind to 'docked' and presented takes over. Explicitly NOT part of the
     // deleted route-switch cascade (search query flows are out of P2 scope).
     const searchDismissHeldSceneKey =
       surfaceVisualPolicy.phase === 'results_dismissing' &&
-      !surfaceVisualPolicy.canReleasePersistentPolls
+      !surfaceVisualPolicy.canReleaseDockedScene
         ? surfaceVisualPolicy.outgoingSheetSceneKey
         : null;
     // Shell hold = the route-switch held leg (dismiss: whole hold; forward open: only the
@@ -1140,7 +1140,7 @@ class AppRouteSheetHostAuthorityController {
       incomingSceneKey,
       contentTransitionToken,
       initialSheetY,
-      isPersistentPollLane: effectiveIsPersistentPollLane,
+      isDockedLane: effectiveIsDockedLane,
       isForwardOpenHold: isForwardOpenIntent && !isForwardOpenCrossfade,
       isRenderable,
       overlayRouteScope,
@@ -1543,7 +1543,7 @@ class AppRouteSheetHostAuthorityController {
       const nextSheetYValue = nextSnapshot.motionStateEntry?.sheetYValue ?? null;
       const shouldSeedIncomingSheetPosition =
         resolvedSurfaceInput.surfaceVisualPolicy.phase === 'results_dismissing' &&
-        resolvedSurfaceInput.surfaceVisualPolicy.bottomBandOwner === 'persistent_polls' &&
+        resolvedSurfaceInput.surfaceVisualPolicy.bottomBandOwner === 'docked_scene' &&
         previousSheetYValue != null &&
         nextSheetYValue != null &&
         previousSheetYValue !== nextSheetYValue;
@@ -1724,7 +1724,7 @@ class AppRouteSheetHostAuthorityController {
       }
       const latestSurfaceInput = this.getResolvedSurfaceInput();
       const latestSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
-      if (isExplicitlyDismissedDockedPollsRoot(latestSurfaceInput, latestSnapSessionSnapshot)) {
+      if (isExplicitlyDismissedDockedSceneRoot(latestSurfaceInput, latestSnapSessionSnapshot)) {
         this.initialVisibleSnapDispatchKey = null;
         return;
       }
@@ -1743,8 +1743,8 @@ class AppRouteSheetHostAuthorityController {
 
   /**
    * The posture-seat boot read (two-posture law, plans/root-snap-law.md §Leg 4): a seat scene
-   * seeds/bootstraps at ITS seat (home seat for the docked-polls carrier, the ONE content seat
-   * for tab pages). A hidden home seat (user-dismissed docked polls) and every seatless scene
+   * seeds/bootstraps at ITS seat (home seat for the docked carrier, the ONE content seat
+   * for tab pages). A hidden home seat (user-dismissed docked scene) and every seatless scene
    * (children/modals/search results) return null — callers fall to the policy
    * `defaultFirstEntrySnap`, which for home equals the resurrect posture ('collapsed').
    */
@@ -1815,7 +1815,7 @@ class AppRouteSheetHostAuthorityController {
         return;
       }
       const sheetSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
-      if (isExplicitlyDismissedDockedPollsRoot(resolvedSurfaceInput, sheetSnapSessionSnapshot)) {
+      if (isExplicitlyDismissedDockedSceneRoot(resolvedSurfaceInput, sheetSnapSessionSnapshot)) {
         this.initialVisibleSnapDispatchKey = null;
         return;
       }
@@ -2064,7 +2064,7 @@ class AppRouteSheetHostAuthorityController {
     const { activeSemanticOverlayKey, rootOverlayKey } = resolvedSurfaceInput;
     if (activeSemanticOverlayKey === 'polls') {
       const transitionSnapshot = this.input.routeSceneTransitionAuthority.getSnapshot();
-      const activeDockedRestoreIntent = transitionSnapshot.activeDockedPollsRestoreIntent;
+      const activeDockedRestoreIntent = transitionSnapshot.activeDockedSceneRestoreIntent;
       // No transient-cover skip anymore (killed with the two-posture law): a forward-open
       // cover snap is programmatic, and programmatic settles never write the HOME seat — the
       // gesture gate inside settleRouteScenePollsSnap subsumes the old special case, and its
@@ -2075,14 +2075,14 @@ class AppRouteSheetHostAuthorityController {
         source: meta?.source,
       });
       if (meta?.source === 'gesture' && snap !== 'hidden') {
-        this.input.routeSceneSwitchActions.clearDockedPollsRestoreIntent();
+        this.input.routeSceneSwitchActions.clearDockedSceneRestoreIntent();
       }
       if (
         activeDockedRestoreIntent != null &&
         (snap === activeDockedRestoreIntent.snap || meta?.source === 'gesture') &&
         snap !== 'hidden'
       ) {
-        this.input.routeSceneSwitchActions.clearDockedPollsRestoreIntent(
+        this.input.routeSceneSwitchActions.clearDockedSceneRestoreIntent(
           activeDockedRestoreIntent.token,
           activeDockedRestoreIntent.snap
         );

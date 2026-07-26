@@ -69,14 +69,6 @@ interface ComparisonStep extends BaseStep {
   body?: string;
 }
 
-interface RatingStep extends BaseStep {
-  type: 'rating';
-  question: string;
-  helper?: string;
-  maxRating?: number;
-  required?: boolean;
-}
-
 type ChecklistStatus = 'pending' | 'complete';
 
 interface ProcessingStep extends BaseStep {
@@ -141,7 +133,6 @@ export type OnboardingStep =
   | MultiChoiceStep
   | LocationStep
   | ComparisonStep
-  | RatingStep
   | ProcessingStep
   | AccountStep
   | UsernameStep
@@ -149,10 +140,40 @@ export type OnboardingStep =
   | CarouselStep
   | NotificationStep;
 
+// Single source of truth for step ids. Consumers (recap, waitlist chips,
+// notification personalization, visibility rules) must reference these
+// constants — a hand-typed stale id string can then no longer compile once the
+// step is removed or renamed (the class of bug behind the dead
+// 'outing-types'/'ambiance' recap rows).
+export const STEP_IDS = {
+  hero: 'hero',
+  useCases: 'use-cases',
+  attribution: 'attribution',
+  diningFrequency: 'dining-frequency',
+  budget: 'budget',
+  decideHow: 'decide-how',
+  calendarGraph: 'calendar-graph',
+  cuisines: 'cuisines',
+  alwaysCraving: 'always-craving',
+  contexts: 'contexts',
+  dietaryNeeds: 'dietary-needs',
+  spice: 'spice',
+  spotYouLove: 'spot-you-love',
+  diningGoals: 'dining-goals',
+  notifications: 'notifications',
+  location: 'location',
+  waitlistInfo: 'waitlist-info',
+  accountLive: 'account-live',
+  accountWaitlist: 'account-waitlist',
+  username: 'username',
+} as const;
+
+export type OnboardingStepId = (typeof STEP_IDS)[keyof typeof STEP_IDS];
+
 export const onboardingSteps: OnboardingStep[] = [
   // PHASE 1: HOOK & EASY QUESTIONS (5 screens)
   {
-    id: 'hero',
+    id: STEP_IDS.hero,
     type: 'hero',
     title: 'Know what to order, not just where to go',
     description: "We rank dishes, not just restaurants—so you know what's worth ordering.",
@@ -161,7 +182,30 @@ export const onboardingSteps: OnboardingStep[] = [
     ctaLabel: 'Show me how',
   },
   {
-    id: 'attribution',
+    id: STEP_IDS.useCases,
+    type: 'carousel',
+    title: 'Crave works for every food decision',
+    slides: [
+      {
+        scenario: 'Planning where to eat',
+        visual: 'map-icon',
+        copy: 'Type “ramen” or “birthday dinner” and see ranked dishes with real vote counts.',
+      },
+      {
+        scenario: 'Stuck in line at a new spot',
+        visual: 'menu-icon',
+        copy: 'Open the menu view and get instant guidance on the top-performing dishes.',
+      },
+      {
+        scenario: 'Exploring a new neighborhood',
+        visual: 'explore-icon',
+        copy: "Drag the map anywhere—results follow the area you're looking at in real time.",
+      },
+    ],
+    ctaLabel: "Let's go",
+  },
+  {
+    id: STEP_IDS.attribution,
     type: 'single-choice',
     question: 'How did you hear about us?',
     options: [
@@ -171,6 +215,7 @@ export const onboardingSteps: OnboardingStep[] = [
       { id: 'instagram', label: 'Instagram' },
       { id: 'x-twitter', label: 'X (Twitter)' },
       { id: 'facebook', label: 'Facebook' },
+      { id: 'reddit', label: 'Reddit' },
       { id: 'google', label: 'Google' },
       { id: 'friend-family', label: 'Friend or family' },
       { id: 'other', label: 'Other' },
@@ -178,7 +223,27 @@ export const onboardingSteps: OnboardingStep[] = [
     required: false,
   },
   {
-    id: 'dining-frequency',
+    id: STEP_IDS.location,
+    type: 'location',
+    question: 'Where are you eating?',
+    helper: "Pick a live city or request yours—we'll tailor everything around it.",
+    allowedCities: [
+      { id: 'austin', label: '🤠 Austin', value: 'Austin' },
+      { id: 'new-york', label: '🗽 New York', value: 'New York' },
+    ],
+    placeholder: 'Enter your city',
+    required: true,
+    ctaLabel: 'Continue',
+  },
+  {
+    id: STEP_IDS.waitlistInfo,
+    type: 'summary',
+    title: "We're building your city next",
+    description:
+      'Crave is live in Austin and NYC today. Cities come off the waitlist in order of demand — save your spot, bring your friends, and when your city is ready we walk you through everything fresh.',
+  },
+  {
+    id: STEP_IDS.diningFrequency,
     type: 'single-choice',
     question: 'How often do you eat out?',
     helper: 'Helps us personalize your recommendations',
@@ -191,7 +256,7 @@ export const onboardingSteps: OnboardingStep[] = [
     required: true,
   },
   {
-    id: 'budget',
+    id: STEP_IDS.budget,
     type: 'single-choice',
     question: "What's your usual spend per person?",
     helper: 'Helps us personalize your recommendations',
@@ -204,37 +269,35 @@ export const onboardingSteps: OnboardingStep[] = [
     required: true,
   },
 
-  // PHASE 2: FINANCIAL PROOF (1 screen)
+  // PHASE 2: PAIN (name the broken toolkit, then price the pain)
   {
-    id: 'calendar-graph',
-    type: 'graph',
-    graphType: 'calendar-comparison',
-    title: 'Never waste money on disappointing meals',
-    ctaLabel: "Let's do it",
-  },
-
-  // PHASE 3: PERSONALIZATION (4 screens)
-  {
-    id: 'occasion-vibe',
+    id: STEP_IDS.decideHow,
     type: 'multi-choice',
-    question: 'What kind of experience are you planning?',
-    helper: 'Helps us personalize your recommendations',
+    question: 'How do you pick a spot today?',
+    helper: 'Pick everything you actually use',
     options: [
-      { id: 'date', label: '💕 Romantic date nights' },
-      { id: 'family', label: '👨‍👩‍👧 Family-friendly outings' },
-      { id: 'team', label: '👔 Business meals' },
-      { id: 'solo', label: '🍱 Quick solo meals' },
-      { id: 'friends', label: '🎉 Casual hangouts with friends' },
-      { id: 'adventure', label: '✨ Adventurous food discoveries' },
-      { id: 'upscale', label: '🍷 Upscale & refined dining' },
-      { id: 'chill', label: '🧘 Quiet & conversation-friendly' },
+      { id: 'google-maps', label: '🗺️ Google Maps ratings' },
+      { id: 'review-sites', label: '⭐ Yelp & review sites' },
+      { id: 'tiktok-ig', label: '📱 TikTok / Instagram' },
+      { id: 'ask-friends', label: '💬 Ask friends & group chats' },
+      { id: 'reddit-threads', label: '🧵 Reddit threads' },
+      { id: 'wander', label: '🚶 Wander in and hope' },
     ],
     required: true,
     minSelect: 1,
     ctaLabel: 'Continue',
   },
   {
-    id: 'cuisines',
+    id: STEP_IDS.calendarGraph,
+    type: 'graph',
+    graphType: 'calendar-comparison',
+    title: 'Never waste money on disappointing meals',
+    ctaLabel: "Let's do it",
+  },
+
+  // PHASE 3: TASTE PROFILE (the teaser's inputs — every answer feeds something real)
+  {
+    id: STEP_IDS.cuisines,
     type: 'multi-choice',
     question: 'What are you craving lately?',
     helper: 'Helps us personalize your recommendations. Pick at least 3.',
@@ -253,7 +316,7 @@ export const onboardingSteps: OnboardingStep[] = [
     ctaLabel: 'Looks delicious',
   },
   {
-    id: 'always-craving',
+    id: STEP_IDS.alwaysCraving,
     type: 'multi-choice',
     question: 'What are you always in the mood for?',
     helper: 'Your go-to orders—the dishes you never turn down. Pick a few.',
@@ -280,70 +343,88 @@ export const onboardingSteps: OnboardingStep[] = [
     ctaLabel: 'Continue',
   },
   {
-    id: 'dining-goals',
+    id: STEP_IDS.contexts,
+    type: 'multi-choice',
+    question: 'Which of these are you regularly picking spots for?',
+    helper: 'So Crave fits the ways you actually eat out.',
+    options: [
+      { id: 'date-nights', label: '💕 Date nights' },
+      { id: 'family', label: '👨‍👩‍👧 Family meals' },
+      { id: 'business', label: '👔 Business meals & clients' },
+      { id: 'group-hangs', label: '🎉 Group hangs' },
+      { id: 'solo-everyday', label: '🍱 Solo & everyday eats' },
+      { id: 'special-occasions', label: '🥂 Special occasions' },
+    ],
+    required: true,
+    minSelect: 1,
+    ctaLabel: 'Continue',
+  },
+  {
+    id: STEP_IDS.dietaryNeeds,
+    type: 'multi-choice',
+    question: 'Any dietary needs?',
+    helper: "We'll keep these front and center in your results. Skip if none.",
+    options: [
+      { id: 'vegetarian', label: '🥦 Vegetarian' },
+      { id: 'vegan', label: '🌱 Vegan' },
+      { id: 'pescatarian', label: '🐟 Pescatarian' },
+      { id: 'gluten-free', label: '🌾 Gluten-free' },
+      { id: 'dairy-free', label: '🥛 Dairy-free' },
+      { id: 'halal', label: '☪️ Halal' },
+      { id: 'kosher', label: '✡️ Kosher' },
+      { id: 'nut-allergy', label: '🥜 Nut allergy' },
+    ],
+    required: false,
+    ctaLabel: 'Continue',
+  },
+  {
+    id: STEP_IDS.spice,
+    type: 'single-choice',
+    question: 'How do you feel about heat?',
+    options: [
+      { id: 'mild', label: '🧊 Keep it mild' },
+      { id: 'medium', label: '🌶️ Some kick is good' },
+      { id: 'hot', label: '🌶️🌶️ The spicier the better' },
+      { id: 'extreme', label: '🔥 Bring the pain' },
+    ],
+    required: true,
+  },
+  {
+    id: STEP_IDS.spotYouLove,
+    type: 'multi-choice',
+    question: 'Name a spot you already love',
+    helper: 'One or two favorites, anywhere — it anchors your taste so day one feels right. Optional.',
+    options: [],
+    required: false,
+    allowCustomInput: true,
+    customPlaceholder: 'e.g. Franklin Barbecue, your corner ramen bar',
+    ctaLabel: 'Continue',
+  },
+  {
+    id: STEP_IDS.diningGoals,
     type: 'multi-choice',
     question: 'What matters most when you eat out?',
     helper: 'Helps us personalize your recommendations. Pick 2-3.',
     options: [
       { id: 'trending', label: '🔥 Trending & buzzy' },
       { id: 'reliable', label: '⭐ Reliable classics' },
-      { id: 'value', label: '💰 Great value' },
       { id: 'wow-factor', label: '✨ Show-stopping' },
       { id: 'healthy', label: '🥗 Healthy options' },
-      { id: 'dietary', label: '🌱 Dietary friendly' },
+      { id: 'hidden-gems', label: '💎 Hidden gems — surprise me' },
     ],
     required: true,
     minSelect: 2,
   },
+  // PHASE 4: CLOSE (notifications → city → account)
   {
-    id: 'barriers',
-    type: 'multi-choice',
-    question: 'What makes finding great food hard for you?',
-    helper: 'Pick all that apply',
-    options: [
-      { id: 'no-time', label: '⏰ Limited time to research' },
-      { id: 'dont-know-menus', label: "📋 Don't know what restaurants offer" },
-      { id: 'cant-afford-misses', label: "💸 Can't afford to gamble on mediocre spots" },
-      { id: 'review-fatigue', label: "🤷 Can't trust online reviews anymore" },
-      { id: 'new-neighborhoods', label: '📍 New to the area' },
-      { id: 'menu-paralysis', label: '😤 Too many options, hard to choose' },
-    ],
-    required: false,
-    ctaLabel: 'Continue',
-  },
-  // PHASE 4: DEMONSTRATION & COMMITMENT (3 shared screens)
-  {
-    id: 'use-cases',
-    type: 'carousel',
-    title: 'Crave works for every food decision',
-    slides: [
-      {
-        scenario: 'Planning where to eat',
-        visual: 'map-icon',
-        copy: 'Type “ramen” or “birthday dinner” and see ranked dishes with real vote counts.',
-      },
-      {
-        scenario: 'Stuck in line at a new spot',
-        visual: 'menu-icon',
-        copy: 'Open the menu view and get instant guidance on the top-performing dishes.',
-      },
-      {
-        scenario: 'Exploring a new neighborhood',
-        visual: 'explore-icon',
-        copy: "Drag the map anywhere—results follow the area you're looking at in real time.",
-      },
-    ],
-    ctaLabel: "Let's go",
-  },
-  {
-    id: 'notifications',
+    id: STEP_IDS.notifications,
     type: 'notification',
     title: "Get notified about dishes you'd care about",
     body: "We'll keep you updated on what's worth trying.",
     features: [
-      'Tuesday polls: Vote on "Best tacos" in 30 seconds',
-      'New spots: Dishes matching your taste just got added',
-      'Your saves: A bookmarked spot just jumped in rankings',
+      'Ranking moves: a dish you saved just climbed — or got dethroned',
+      'Weekly digest: what actually changed in your city this week',
+      'Tuesday polls: vote on "Best tacos" in 30 seconds',
     ],
     options: [
       { id: '2-3-week', label: '2-3 times per week', recommended: true },
@@ -353,50 +434,10 @@ export const onboardingSteps: OnboardingStep[] = [
     ],
     ctaLabel: 'Enable notifications',
   },
-  {
-    id: 'rating',
-    type: 'rating',
-    question: 'Excited to try Crave? Drop us a rating!',
-    helper: 'Early ratings help us grow and serve more cities. Totally optional.',
-    maxRating: 5,
-    required: false,
-    ctaLabel: 'Continue',
-  },
 
-  // PHASE 5: LOCATION & BRANCHING
+  // PHASE 5: WAITLIST PREVIEW + ACCOUNT
   {
-    id: 'location',
-    type: 'location',
-    question: 'Where are you eating?',
-    helper: "Pick a live city or request yours—we'll tailor everything around it.",
-    allowedCities: [
-      { id: 'austin', label: '🤠 Austin', value: 'Austin' },
-      { id: 'new-york', label: '🗽 New York', value: 'New York' },
-    ],
-    placeholder: 'Enter your city',
-    required: true,
-    ctaLabel: 'Continue',
-  },
-  {
-    id: 'waitlist-info',
-    type: 'summary',
-    title: "We're building your city next",
-    description:
-      'Crave is live in Austin and NYC today. Join the waitlist and get 5 free preview searches while we build your city.',
-  },
-  {
-    id: 'waitlist-preview',
-    type: 'single-choice',
-    question: 'Where do you want to preview?',
-    helper: 'Pick a live city to explore while we finish yours.',
-    options: [
-      { id: 'preview-austin', label: '🤠 Austin', detail: '5 free searches' },
-      { id: 'preview-new-york', label: '🗽 New York', detail: '5 free searches' },
-    ],
-    required: true,
-  },
-  {
-    id: 'account-live',
+    id: STEP_IDS.accountLive,
     type: 'account',
     title: 'Save your progress',
     description:
@@ -406,17 +447,17 @@ export const onboardingSteps: OnboardingStep[] = [
     ctaLabel: 'Create account',
   },
   {
-    id: 'account-waitlist',
+    id: STEP_IDS.accountWaitlist,
     type: 'account',
     title: 'Save your waitlist spot',
     description:
-      'Create an account to keep your preferences saved, get notified when your city launches, and use your 5 preview searches.',
+      'Create an account to save your waitlist spot — we notify you the day your city goes live, and your signup counts toward its build order.',
     disclaimer:
       "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Join waitlist',
   },
   {
-    id: 'username',
+    id: STEP_IDS.username,
     type: 'username',
     title: 'Pick your username',
     helper: 'This is how people find you. You can change it later.',
@@ -426,7 +467,7 @@ export const onboardingSteps: OnboardingStep[] = [
 ];
 
 // Helper to get readable label for a single-choice answer
-export const getSingleChoiceLabel = (stepId: string, value: string): string | undefined => {
+export const getSingleChoiceLabel = (stepId: OnboardingStepId, value: string): string | undefined => {
   const step = onboardingSteps.find((s) => s.id === stepId);
   if (!step || (step.type !== 'single-choice' && step.type !== 'location')) {
     return undefined;
@@ -443,7 +484,7 @@ export const getSingleChoiceLabel = (stepId: string, value: string): string | un
 };
 
 // Helper to get readable labels for multi-choice answers
-export const getMultiChoiceLabels = (stepId: string, values: string[]): string[] => {
+export const getMultiChoiceLabels = (stepId: OnboardingStepId, values: string[]): string[] => {
   const step = onboardingSteps.find((s) => s.id === stepId);
   if (!step || step.type !== 'multi-choice') {
     return [];

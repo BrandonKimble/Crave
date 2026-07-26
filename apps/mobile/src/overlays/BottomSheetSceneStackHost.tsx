@@ -1631,7 +1631,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
       // §9.1 SYNTHETIC ACK (evidence-based, pulled forward from P4): a WARM retained incoming leg
       // (body attached + painted before) never re-fires onLayout, so the real ack never arrives
       // and the paint-ack-gated swap would hold it invisible FOREVER (the stuck-blank the harness
-      // caught: rapid burst back to the warm docked-polls leg → empty sheet shell). Evidence says
+      // caught: rapid burst back to the warm docked leg → empty sheet shell). Evidence says
       // it is already painted — ack immediately, same semantics as the real paint it will never
       // send. A COLD incoming leg has no evidence and keeps the real onLayout-gated ack.
       // ACK EPOCH: keyed to the ARMED switch's id (the ref was written in this effect's own

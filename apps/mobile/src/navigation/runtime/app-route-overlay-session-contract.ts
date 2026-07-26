@@ -6,8 +6,8 @@ export type AppRouteSearchCloseRestoreOptions = {
 };
 
 export type AppRouteOverlaySessionSnapshot = {
-  shouldShowDockedPollsTarget: boolean;
-  shouldShowDockedPolls: boolean;
+  shouldShowDockedSceneTarget: boolean;
+  shouldShowDockedScene: boolean;
   shouldShowPollsSheet: boolean;
 };
 

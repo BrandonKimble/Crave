@@ -28,7 +28,7 @@ import {
   onboardingSteps,
   getSingleChoiceLabel,
   getMultiChoiceLabels,
-  type OnboardingStep,
+  type OnboardingStep, STEP_IDS,
 } from '../constants/onboarding';
 import {
   DEFAULT_ONBOARDING_STEP_ID,
@@ -300,24 +300,48 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       .join(' ');
   }, [isWaitlistSelection, locationValue]);
 
+  // Waitlist short track: non-live-city users get an honest, trimmed flow —
+  // city truth up front, then only the questions that feed city-seeding
+  // priorities (cuisines + go-to dishes), then the waitlist account.
+  const WAITLIST_HIDDEN_STEP_IDS = React.useMemo(
+    () =>
+      new Set<string>([
+        STEP_IDS.diningFrequency,
+        STEP_IDS.budget,
+        STEP_IDS.cuisines,
+        STEP_IDS.alwaysCraving,
+        STEP_IDS.decideHow,
+        STEP_IDS.calendarGraph,
+        STEP_IDS.contexts,
+        STEP_IDS.dietaryNeeds,
+        STEP_IDS.spice,
+        STEP_IDS.spotYouLove,
+        STEP_IDS.diningGoals,
+        STEP_IDS.notifications,
+      ]),
+    []
+  );
+
   const isStepVisible = React.useCallback(
     (step: OnboardingStep) => {
-      if (step.id === 'username') {
+      if (step.id === STEP_IDS.username) {
         return false;
       }
       if (
-        step.id === 'waitlist-info' ||
-        step.id === 'waitlist-preview' ||
-        step.id === 'account-waitlist'
+        step.id === STEP_IDS.waitlistInfo ||
+        step.id === STEP_IDS.accountWaitlist
       ) {
         return isWaitlistSelection;
       }
-      if (step.id === 'account-live') {
+      if (step.id === STEP_IDS.accountLive) {
         return isLiveCitySelection;
+      }
+      if (isWaitlistSelection && WAITLIST_HIDDEN_STEP_IDS.has(step.id)) {
+        return false;
       }
       return true;
     },
-    [isLiveCitySelection, isWaitlistSelection]
+    [WAITLIST_HIDDEN_STEP_IDS, isLiveCitySelection, isWaitlistSelection]
   );
 
   const findNextVisibleIndex = React.useCallback(
@@ -608,7 +632,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   );
 
   const budgetAmount = React.useMemo(() => {
-    const selection = answers.budget;
+    const selection = answers[STEP_IDS.budget];
     if (typeof selection === 'string' && selection in BUDGET_TO_AMOUNT) {
       return BUDGET_TO_AMOUNT[selection];
     }
@@ -616,7 +640,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   }, [answers]);
 
   const diningFrequencyPerMonth = React.useMemo(() => {
-    const selection = answers['dining-frequency'];
+    const selection = answers[STEP_IDS.diningFrequency];
     if (typeof selection === 'string' && FREQUENCY_TO_MONTHLY[selection]) {
       return FREQUENCY_TO_MONTHLY[selection];
     }
@@ -625,16 +649,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
 
   const regretGraphData = React.useMemo(() => {
     const frequencySelection =
-      typeof answers['dining-frequency'] === 'string'
-        ? (answers['dining-frequency'] as string)
+      typeof answers[STEP_IDS.diningFrequency] === 'string'
+        ? (answers[STEP_IDS.diningFrequency] as string)
         : undefined;
     const budgetSelection =
-      typeof answers.budget === 'string' ? (answers.budget as string) : undefined;
+      typeof answers[STEP_IDS.budget] === 'string' ? (answers[STEP_IDS.budget] as string) : undefined;
     const frequencyLabel = frequencySelection
-      ? getSingleChoiceLabel('dining-frequency', frequencySelection)
+      ? getSingleChoiceLabel(STEP_IDS.diningFrequency, frequencySelection)
       : undefined;
     const budgetLabel = budgetSelection
-      ? getSingleChoiceLabel('budget', budgetSelection)
+      ? getSingleChoiceLabel(STEP_IDS.budget, budgetSelection)
       : undefined;
     const monthlyMealsAverage = Math.max(1, Math.round(diningFrequencyPerMonth));
     const frequencyRange = frequencySelection ? FREQUENCY_RANGES[frequencySelection] : undefined;
@@ -734,7 +758,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   ]);
 
   React.useEffect(() => {
-    if (activeStep.id === 'calendar-graph') {
+    if (activeStep.id === STEP_IDS.calendarGraph) {
       triggerCalendarAnimation();
     }
     return () => {
@@ -767,13 +791,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       case 'location': {
         const value = answers[activeStep.id];
         return typeof value === 'string' && value.trim().length > 0;
-      }
-      case 'rating': {
-        const value = answers[activeStep.id];
-        if (!activeStep.required) {
-          return true;
-        }
-        return typeof value === 'number' && value > 0;
       }
       case 'notification': {
         const selected = answers[activeStep.id];
@@ -837,7 +854,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   );
 
   const renderSummary = (step: Extract<OnboardingStep, { type: 'summary' }>) => {
-    const isWaitlistSummary = step.id === 'waitlist-info';
+    const isWaitlistSummary = step.id === STEP_IDS.waitlistInfo;
     const waitlistDisplay = waitlistCityLabel || 'your city';
     const summaryTitle = isWaitlistSummary ? `We're building ${waitlistDisplay} next` : step.title;
     const summaryDescription = isWaitlistSummary
@@ -845,7 +862,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           .charAt(0)
           .toUpperCase()}${waitlistDisplay.slice(
           1
-        )} is coming soon. Join the waitlist and get 5 preview searches while we build it.`
+        )} comes off the waitlist by demand — save your spot, bring your friends, and we'll walk you through everything fresh the day it's ready.`
       : step.description;
 
     return (
@@ -918,7 +935,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   };
 
   const renderSingleChoice = (step: Extract<OnboardingStep, { type: 'single-choice' }>) => {
-    const centerContent = step.id === 'attribution';
+    const centerContent = step.id === STEP_IDS.attribution;
 
     return (
       <View style={[styles.choiceStep, centerContent && styles.choiceStepCentered]}>
@@ -1021,18 +1038,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     const requestValue = activeCity ? '' : rawValue;
     const requestedCity = requestValue.trim();
     const showWaitlistMessage = requestedCity.length > 0;
-    const budgetValue = typeof answers.budget === 'string' ? (answers.budget as string) : undefined;
-    const budgetLabel = budgetValue ? getSingleChoiceLabel('budget', budgetValue) : undefined;
-    const frequencyLabel =
-      typeof answers['dining-frequency'] === 'string'
-        ? getSingleChoiceLabel('dining-frequency', answers['dining-frequency'] as string)
-        : undefined;
-    const outingLabels = Array.isArray(answers['outing-types'])
-      ? getMultiChoiceLabels('outing-types', answers['outing-types'] as string[]).slice(0, 2)
-      : [];
-    const cuisineLabels = Array.isArray(answers.cuisines)
-      ? getMultiChoiceLabels('cuisines', answers.cuisines as string[]).slice(0, 3)
-      : [];
 
     return (
       <View>
@@ -1076,44 +1081,18 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               🚀 {requestedCity} is coming soon!
             </Text>
             <Text variant="body" style={styles.waitlistMessageText}>
-              You just told us what you crave ({cuisineLabels.join(', ') || 'top dishes'}), your
-              spend {budgetLabel ? `(~${budgetLabel})` : ''} and how often you go out{' '}
-              {frequencyLabel ? `(${frequencyLabel})` : ''}. Finish setup so we can point curated
-              drops, polls, and early alerts at {requestedCity} while we scout the neighborhoods
-              that matter to you.
+              The bigger a city's waitlist, the sooner we build it. Save your spot — and bring
+              your friends — and we'll tell you the moment {requestedCity} is ready.
             </Text>
-            {budgetLabel || frequencyLabel || outingLabels.length || cuisineLabels.length ? (
-              <View style={styles.waitlistPreferenceChips}>
-                {budgetLabel ? (
-                  <Text style={styles.waitlistPreferenceChip}>{budgetLabel} spend</Text>
-                ) : null}
-                {frequencyLabel ? (
-                  <Text style={styles.waitlistPreferenceChip}>{frequencyLabel}</Text>
-                ) : null}
-                {outingLabels.map((label) => (
-                  <Text key={label} style={styles.waitlistPreferenceChip}>
-                    {label}
-                  </Text>
-                ))}
-                {cuisineLabels.map((label) => (
-                  <Text key={label} style={styles.waitlistPreferenceChip}>
-                    {label}
-                  </Text>
-                ))}
-              </View>
-            ) : null}
             <View style={styles.waitlistBenefits}>
               <Text variant="caption" weight="semibold" style={styles.waitlistBenefitTitle}>
                 What you'll get:
               </Text>
               <Text variant="caption" style={styles.waitlistBenefitText}>
-                ✓ Early access notification the moment {requestedCity} goes live
+                ✓ First-day access the moment {requestedCity} goes live
               </Text>
               <Text variant="caption" style={styles.waitlistBenefitText}>
-                ✓ 2-3 free searches to explore Austin + NYC today (use search + saves freely)
-              </Text>
-              <Text variant="caption" style={styles.waitlistBenefitText}>
-                ✓ Your vote on which neighborhoods we rank first + tailored Tuesday polls
+                ✓ Your signup moves {requestedCity} up the build order
               </Text>
             </View>
           </View>
@@ -1157,41 +1136,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     </View>
   );
 
-  const renderRating = (step: Extract<OnboardingStep, { type: 'rating' }>) => {
-    const value = (answers[step.id] as number) ?? 0;
-    const max = step.maxRating ?? 5;
-    return (
-      <View>
-        <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
-          {step.question}
-        </Text>
-        {step.helper ? (
-          <Text variant="body" style={styles.helperText}>
-            {step.helper}
-          </Text>
-        ) : null}
-        <View style={styles.ratingRow}>
-          {Array.from({ length: max }).map((_, index) => {
-            const ratingValue = index + 1;
-            const isFilled = ratingValue <= value;
-            return (
-              <Pressable
-                key={ratingValue}
-                onPress={() => updateAnswer(step.id, ratingValue)}
-                style={styles.ratingStar}
-              >
-                <Text style={[styles.ratingStarText, isFilled && styles.ratingStarFilled]}>★</Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-    );
-  };
-
   const renderProcessing = (step: Extract<OnboardingStep, { type: 'processing' }>) => {
-    const budgetValue = typeof answers.budget === 'string' ? (answers.budget as string) : undefined;
-    const budgetDisplay = budgetValue ? getSingleChoiceLabel('budget', budgetValue) : 'Flexible';
+    const budgetValue = typeof answers[STEP_IDS.budget] === 'string' ? (answers[STEP_IDS.budget] as string) : undefined;
+    const budgetDisplay = budgetValue ? getSingleChoiceLabel(STEP_IDS.budget, budgetValue) : 'Flexible';
 
     const highlights = step.showSummary
       ? [
@@ -1202,19 +1149,29 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           {
             label: 'Cravings',
             value:
-              getMultiChoiceLabels('cuisines', answers.cuisines as string[]).join(', ') ||
+              getMultiChoiceLabels(STEP_IDS.cuisines, answers[STEP_IDS.cuisines] as string[]).join(', ') ||
               'Open to anything',
           },
           {
-            label: 'Vibe',
-            value: getSingleChoiceLabel('ambiance', answers.ambiance as string) ?? 'Any vibe',
+            label: 'Go-tos',
+            value:
+              getMultiChoiceLabels(STEP_IDS.alwaysCraving, answers[STEP_IDS.alwaysCraving] as string[]).join(
+                ', '
+              ) || 'Anything great',
           },
           {
-            label: 'Outings',
+            label: 'You choose for',
             value:
-              getMultiChoiceLabels('outing-types', answers['outing-types'] as string[]).join(
+              getMultiChoiceLabels(STEP_IDS.contexts, answers[STEP_IDS.contexts] as string[]).join(
                 ', '
-              ) || 'All types',
+              ) || 'Everyday eats',
+          },
+          {
+            label: 'Priorities',
+            value:
+              getMultiChoiceLabels(STEP_IDS.diningGoals, answers[STEP_IDS.diningGoals] as string[]).join(
+                ', '
+              ) || 'The best food, period',
           },
         ]
       : [];
@@ -1503,8 +1460,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       switch (step.graphType) {
         case 'calendar-comparison': {
           const frequencySelection =
-            typeof answers['dining-frequency'] === 'string'
-              ? (answers['dining-frequency'] as string)
+            typeof answers[STEP_IDS.diningFrequency] === 'string'
+              ? (answers[STEP_IDS.diningFrequency] as string)
               : undefined;
 
           // Map frequency ID to display label (preserving dashes)
@@ -1532,7 +1489,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               : 3.5;
 
           const budgetSelection =
-            typeof answers.budget === 'string' ? (answers.budget as string) : undefined;
+            typeof answers[STEP_IDS.budget] === 'string' ? (answers[STEP_IDS.budget] as string) : undefined;
 
           // Map budget ID to dollar range
           const budgetMap: Record<string, string> = {
@@ -1945,10 +1902,14 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
 
   const renderNotification = (step: Extract<OnboardingStep, { type: 'notification' }>) => {
     const selected = answers[step.id];
-    const barrierSelections = Array.isArray(answers.barriers) ? (answers.barriers as string[]) : [];
-    const notificationBody = barrierSelections.includes('no-time')
-      ? "You said finding time to research is hard. We'll do the work for you."
-      : barrierSelections.length === 0
+    const decideHowSelections = Array.isArray(answers[STEP_IDS.decideHow])
+      ? (answers[STEP_IDS.decideHow] as string[])
+      : [];
+    const usesReviewSites =
+      decideHowSelections.includes('google-maps') || decideHowSelections.includes('review-sites');
+    const notificationBody = usesReviewSites
+      ? "You said you rely on ratings and reviews. We'll ping you when rankings actually move instead."
+      : decideHowSelections.length === 0
         ? "We'll keep you updated on what's worth trying."
         : step.body;
     return (
@@ -2006,7 +1967,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
 
   const stepHasHeader = (step: OnboardingStep) => step.type !== 'hero';
   const stepShouldScroll = (step: OnboardingStep) =>
-    step.id === 'attribution' ||
+    step.id === STEP_IDS.attribution ||
     step.type === 'graph' ||
     step.type === 'carousel' ||
     step.type === 'location' ||
@@ -2026,8 +1987,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         return renderLocation(step);
       case 'comparison':
         return renderComparison(step);
-      case 'rating':
-        return renderRating(step);
       case 'processing':
         return renderProcessing(step);
       case 'account':
@@ -2753,24 +2712,6 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginTop: 16,
     textAlign: 'left',
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 8,
-  },
-  ratingStar: {
-    padding: 12,
-  },
-  ratingStarText: {
-    fontSize: FONT_SIZES.title,
-    lineHeight: LINE_HEIGHTS.title,
-    color: '#e2e8f0',
-  },
-  ratingStarFilled: {
-    color: '#fbbf24',
   },
   processingContainer: {
     gap: 16,

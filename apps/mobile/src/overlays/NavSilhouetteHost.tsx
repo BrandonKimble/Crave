@@ -3,14 +3,15 @@ import type { ProfilerOnRenderCallback } from 'react';
 import { PixelRatio, type LayoutChangeEvent } from 'react-native';
 import { useSharedValue } from 'react-native-reanimated';
 
-import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
+import { type OverlayKey } from '../navigation/runtime/app-overlay-route-types';
+import { DOCKED_SCENE_KEY } from '../navigation/runtime/docked-scene-target';
 import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type { RouteSceneSwitchTransitionActions } from '../navigation/runtime/app-route-scene-switch-controller';
 import type {
   AppRouteSheetSnapSessionActions,
   AppRouteSheetSnapSessionAuthority,
 } from '../navigation/runtime/app-route-sheet-snap-session-runtime';
-import { DOCKED_POLLS_RESURRECT_SNAP } from '../navigation/runtime/app-route-sheet-snap-session-runtime';
+import { DOCKED_SCENE_RESURRECT_SNAP } from '../navigation/runtime/app-route-sheet-snap-session-runtime';
 import { extendActiveRootFromNavReTap } from '../navigation/runtime/app-search-route-command-runtime';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { APP_ROOT_NAV_ITEMS } from '../navigation/runtime/app-route-root-nav-items';
@@ -170,20 +171,20 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
   const handleOverlaySelect = React.useCallback(
     (targetSceneKey: OverlayKey) => {
       const snapSessionSnapshot = routeSheetSnapSessionAuthority.getSnapshot();
-      const isPollsSheetPhysicallyHidden =
-        routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls') === 'hidden';
-      const shouldRestoreDockedPolls =
+      const isDockedSceneSheetPhysicallyHidden =
+        routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(DOCKED_SCENE_KEY) === 'hidden';
+      const shouldRestoreDockedScene =
         targetSceneKey === 'search' &&
-        (snapSessionSnapshot.isDockedPollsDismissed || isPollsSheetPhysicallyHidden);
+        (snapSessionSnapshot.isDockedSceneDismissed || isDockedSceneSheetPhysicallyHidden);
       // ─── NAV RE-TAP (wave-2 charter §4, leg 6): tapping the ACTIVE tab at its root is the
       // named product intent extendActiveRootFromNavReTap — the sheet pulls to FULLY EXTENDED
       // and the side's seat remembers it ('named' writer, snap-law category (c)). Extend-only:
       // promoteAtLeast('expanded') is inert at expanded, so a third tap does NOTHING (drag is
-      // the only way down). The docked-polls RESURRECT lane takes precedence for that press
+      // the only way down). The docked RESURRECT lane takes precedence for that press
       // (a dismissed/hidden feed re-presents at its declared posture, the existing flow below).
       const routeState = routeOverlayRouteCommandRuntime.getRouteState();
       const isActiveRootReTap =
-        !shouldRestoreDockedPolls &&
+        !shouldRestoreDockedScene &&
         routeState.overlayRouteStackLength === 1 &&
         routeState.activeOverlayRoute.key === targetSceneKey;
       if (isActiveRootReTap) {
@@ -194,16 +195,16 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
         });
         return;
       }
-      if (shouldRestoreDockedPolls) {
+      if (shouldRestoreDockedScene) {
         const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
         if (isPerfScenarioAttributionActive(scenarioConfig)) {
           logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-            event: 'persistent_polls_restore_nav_contract',
+            event: 'docked_scene_restore_nav_contract',
             navTarget: targetSceneKey,
             restoreRequested: true,
-            targetSnap: DOCKED_POLLS_RESURRECT_SNAP,
-            dismissedBeforePress: snapSessionSnapshot.isDockedPollsDismissed,
-            physicalHiddenBeforePress: isPollsSheetPhysicallyHidden,
+            targetSnap: DOCKED_SCENE_RESURRECT_SNAP,
+            dismissedBeforePress: snapSessionSnapshot.isDockedSceneDismissed,
+            physicalHiddenBeforePress: isDockedSceneSheetPhysicallyHidden,
           });
         }
       }
@@ -215,7 +216,7 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
         // rule (no sheetMotion here). The restore intent re-presents a dismissed docked lane
         // at the ONE declared resurrect posture — which is also the home seat's fallback for
         // a hidden seat, so intent and motion agree by construction.
-        dockedPollsRestoreSnap: shouldRestoreDockedPolls ? DOCKED_POLLS_RESURRECT_SNAP : null,
+        dockedSceneRestoreSnap: shouldRestoreDockedScene ? DOCKED_SCENE_RESURRECT_SNAP : null,
       });
     },
     [

@@ -52,7 +52,7 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
               : rootPrimitivesRuntime.searchState.query.trim()),
           targetTab: params.targetTab,
           preserveSheetState: params.preserveSheetState,
-          transitionFromDockedPolls: params.transitionFromDockedPolls,
+          transitionFromDockedScene: params.transitionFromDockedScene,
           entrySurface: params.entrySurface,
         });
       },

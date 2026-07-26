@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { RouteSceneSwitchDockedPollsRestoreIntent } from '../navigation/runtime/app-overlay-route-transition-contract';
+import type { RouteSceneSwitchDockedSceneRestoreIntent } from '../navigation/runtime/app-overlay-route-transition-contract';
 import type { SearchRouteSceneLayoutState } from './searchRouteSceneLayoutContract';
 import type {
   PollsPanelInitialSnapPoint,
@@ -12,14 +12,14 @@ import type { OverlaySheetSnap } from './types';
 type UseSearchRoutePollsSceneStateRuntimeArgs = {
   sceneLayout: SearchRouteSceneLayoutState;
   pollOverlayParams: UsePollsPanelSpecOptions['params'];
-  dockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
   commandState: {
     pollsSheetSnap: OverlaySheetSnap;
-    isDockedPollsDismissed: boolean;
+    isDockedSceneDismissed: boolean;
   };
   overlayVisibilityState: {
     isSearchOverlay: boolean;
-    isPersistentPollLane: boolean;
+    isDockedLane: boolean;
   };
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
 };
@@ -41,27 +41,27 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   sceneLayout,
   pollOverlayParams,
   commandState,
-  dockedPollsRestoreIntent,
+  dockedSceneRestoreIntent,
   overlayVisibilityState,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   const mode: PollsPanelMode = 'docked';
   const initialSnapPoint: PollsPanelInitialSnapPoint = 'collapsed';
   const physicalPollsSheetSnap = commandState.pollsSheetSnap;
-  const hasDockedPollsRestoreDemand = dockedPollsRestoreIntent != null;
-  const isPersistentPollLane =
-    overlayVisibilityState.isSearchOverlay && overlayVisibilityState.isPersistentPollLane;
-  const isPersistentPollsVisible =
-    isPersistentPollLane &&
-    (hasDockedPollsRestoreDemand ||
-      (!commandState.isDockedPollsDismissed && physicalPollsSheetSnap !== 'hidden'));
+  const hasDockedSceneRestoreDemand = dockedSceneRestoreIntent != null;
+  const isDockedLane =
+    overlayVisibilityState.isSearchOverlay && overlayVisibilityState.isDockedLane;
+  const isDockedSceneVisible =
+    isDockedLane &&
+    (hasDockedSceneRestoreDemand ||
+      (!commandState.isDockedSceneDismissed && physicalPollsSheetSnap !== 'hidden'));
   const currentSnap: OverlaySheetSnap =
-    hasDockedPollsRestoreDemand && physicalPollsSheetSnap === 'hidden'
-      ? dockedPollsRestoreIntent.snap
+    hasDockedSceneRestoreDemand && physicalPollsSheetSnap === 'hidden'
+      ? dockedSceneRestoreIntent.snap
       : physicalPollsSheetSnap;
 
   return {
-    visible: isPersistentPollsVisible,
+    visible: isDockedSceneVisible,
     interactionRef,
     params: pollOverlayParams,
     mode,
@@ -78,7 +78,7 @@ export const useSearchRoutePollsSceneStateRuntime = ({
   sceneLayout,
   pollOverlayParams,
   commandState,
-  dockedPollsRestoreIntent,
+  dockedSceneRestoreIntent,
   overlayVisibilityState,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
@@ -88,13 +88,13 @@ export const useSearchRoutePollsSceneStateRuntime = ({
         sceneLayout,
         pollOverlayParams,
         commandState,
-        dockedPollsRestoreIntent,
+        dockedSceneRestoreIntent,
         overlayVisibilityState,
         interactionRef,
       }),
     [
       commandState,
-      dockedPollsRestoreIntent,
+      dockedSceneRestoreIntent,
       interactionRef,
       overlayVisibilityState,
       pollOverlayParams,

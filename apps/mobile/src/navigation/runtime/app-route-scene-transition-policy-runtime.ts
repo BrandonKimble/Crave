@@ -3,7 +3,7 @@ import type { OverlayKey } from '../../overlays/types';
 import type {
   RouteSceneSwitchCameraIntent,
   RouteSceneSwitchChromeVisibilityTarget,
-  RouteSceneSwitchDockedPollsRestoreIntent,
+  RouteSceneSwitchDockedSceneRestoreIntent,
   RouteSceneSwitchMotionPlane,
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchRouteAction,
@@ -23,6 +23,7 @@ import {
   resolveAppRouteSceneSheetVisibilityTarget,
 } from './app-route-scene-policy-registry';
 import { selectOverlayRouteKeysWhere } from './app-overlay-route-types';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import {
   lookupDefaultSheetMotionDescriptorRow,
   lookupMandateSheetMotionDescriptorRow,
@@ -44,7 +45,7 @@ export type AppRouteSceneTransitionPolicyInput = {
   cameraIntent?: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget?: RouteSceneSwitchChromeVisibilityTarget;
   pollsParams?: RouteSceneSwitchPollsParams | null;
-  dockedPollsRestoreSnap?: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null;
+  dockedSceneRestoreSnap?: RouteSceneSwitchDockedSceneRestoreIntent['snap'] | null;
   routeAction?: RouteSceneSwitchRouteAction;
   routeEntryId?: string;
   routeParams?: RouteSceneSwitchRouteParams;
@@ -78,7 +79,7 @@ export type AppRouteSceneTransitionPlan = {
   freezeClassification: SearchFreezeClassification;
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;
-  dockedPollsRestoreSnap: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null;
+  dockedSceneRestoreSnap: RouteSceneSwitchDockedSceneRestoreIntent['snap'] | null;
   // Phase 2 — passed through so the controller's content-plane arm can link the
   // redraw transactionId (gate marks) to the minted settleToken. null for every
   // non-search-family switch.
@@ -160,7 +161,7 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // contract).
 //
 // P4 instant switch (page-switch-master-plan.md §6-P4): `polls` is now SEEDED for nav-switch
-// targets. The polls leg is ALWAYS-MOUNTED with a live body from boot (the docked-polls home),
+// targets. The polls leg is ALWAYS-MOUNTED with a live body from boot (the docked home),
 // so a topLevelSwitch into it (nav-tab press from bookmarks/profile/search) has nothing to
 // crossfade toward — holding the outgoing feed only delays the press-up→content flip; the
 // skeleton fallback covers any cold gap. swapImmediately → the switch hard-swaps in the same
@@ -475,22 +476,22 @@ const resolveCommittedRootRoute = ({
   if (routeAction === 'preserve') {
     return currentRootRouteKey;
   }
-  return targetSceneKey === 'polls' ? 'search' : targetSceneKey;
+  return targetSceneKey === DOCKED_SCENE_KEY ? 'search' : targetSceneKey;
 };
 
-const resolveDockedPollsRestoreSnap = ({
+const resolveDockedSceneRestoreSnap = ({
   targetSceneKey,
   snapTarget,
-  dockedPollsRestoreSnap,
+  dockedSceneRestoreSnap,
 }: {
   targetSceneKey: OverlayKey;
   snapTarget: BottomSheetSnap | null;
-  dockedPollsRestoreSnap: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null | undefined;
-}): RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null => {
-  if (dockedPollsRestoreSnap !== undefined) {
-    return dockedPollsRestoreSnap;
+  dockedSceneRestoreSnap: RouteSceneSwitchDockedSceneRestoreIntent['snap'] | null | undefined;
+}): RouteSceneSwitchDockedSceneRestoreIntent['snap'] | null => {
+  if (dockedSceneRestoreSnap !== undefined) {
+    return dockedSceneRestoreSnap;
   }
-  if (targetSceneKey !== 'polls') {
+  if (targetSceneKey !== DOCKED_SCENE_KEY) {
     return null;
   }
   if (snapTarget != null && snapTarget !== 'hidden') {
@@ -512,7 +513,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
   cameraIntent = PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
   chromeVisibilityTarget,
   pollsParams,
-  dockedPollsRestoreSnap,
+  dockedSceneRestoreSnap,
   routeAction = 'setRoot',
   routeEntryId,
   routeParams,
@@ -618,10 +619,10 @@ export const resolveAppRouteSceneTransitionPlan = ({
       contentHandoff: resolvedContentHandoff,
     }),
     pollsParams: targetSceneKey === 'polls' ? (pollsParams ?? null) : null,
-    dockedPollsRestoreSnap: resolveDockedPollsRestoreSnap({
+    dockedSceneRestoreSnap: resolveDockedSceneRestoreSnap({
       targetSceneKey,
       snapTarget: resolvedSheetSnapTarget,
-      dockedPollsRestoreSnap,
+      dockedSceneRestoreSnap,
     }),
     contentReadinessTransactionId: contentReadinessTransactionId ?? null,
   };

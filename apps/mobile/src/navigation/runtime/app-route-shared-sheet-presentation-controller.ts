@@ -14,7 +14,7 @@ export type AppRouteSharedSheetPresentationSnapshot = {
 
 export type AppRouteSharedSheetPresentationInput = {
   isSearchOverlay: boolean;
-  shouldShowDockedPollsTarget: boolean;
+  shouldShowDockedSceneTarget: boolean;
   getPollsSheetSnap: () => OverlaySheetSnap;
   navBarTopForSnaps: number;
   initialSharedSheetPosition: SheetPosition;
@@ -112,7 +112,7 @@ export class AppRouteSharedSheetPresentationController
 
   public prepareSharedSheetForSearchPresentation = (): boolean => {
     const input = this.input;
-    if (!input?.shouldShowDockedPollsTarget) {
+    if (!input?.shouldShowDockedSceneTarget) {
       return false;
     }
     const pollsSheetSnap = input.getPollsSheetSnap();

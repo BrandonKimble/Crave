@@ -49,17 +49,17 @@ type ResultsPresentationCloseTransitionStateRuntime = {
 
 type ReleaseReadyCloseSnapshot = Pick<
   SearchSurfaceVisualPolicySnapshot,
-  | 'canExposePersistentPolls'
-  | 'canReleasePersistentPolls'
+  | 'canExposeDockedScene'
+  | 'canReleaseDockedScene'
   | 'dismissBottomBoundaryReached'
   | 'pollBodyReady'
   | 'pollHeaderReady'
   | 'pollHostReady'
   | 'transactionId'
 > & {
-  arePersistentPollsBodyReady: boolean;
-  arePersistentPollsHeaderReady: boolean;
-  isPersistentPollHostReady: boolean;
+  isDockedSceneBodyReady: boolean;
+  isDockedSceneHeaderReady: boolean;
+  isDockedSceneHostReady: boolean;
   isResultsExitCollapsedSettled: boolean;
   isResultsExitMapSettled: boolean;
 };
@@ -68,18 +68,18 @@ const selectReleaseReadyCloseSnapshot = (
   policy: SearchSurfaceVisualPolicySnapshot,
   closeTransitionState: SearchCloseTransitionState
 ): ReleaseReadyCloseSnapshot | null => {
-  if (policy.phase !== 'results_dismissing' || !policy.canReleasePersistentPolls) {
+  if (policy.phase !== 'results_dismissing' || !policy.canReleaseDockedScene) {
     return null;
   }
   const isSameCloseIntent =
     closeTransitionState != null && closeTransitionState.closeIntentId === policy.transactionId;
   return {
-    arePersistentPollsBodyReady: policy.pollBodyReady,
-    arePersistentPollsHeaderReady: policy.pollHeaderReady,
-    canExposePersistentPolls: policy.canExposePersistentPolls,
-    canReleasePersistentPolls: policy.canReleasePersistentPolls,
+    isDockedSceneBodyReady: policy.pollBodyReady,
+    isDockedSceneHeaderReady: policy.pollHeaderReady,
+    canExposeDockedScene: policy.canExposeDockedScene,
+    canReleaseDockedScene: policy.canReleaseDockedScene,
     dismissBottomBoundaryReached: policy.dismissBottomBoundaryReached,
-    isPersistentPollHostReady: policy.pollHostReady,
+    isDockedSceneHostReady: policy.pollHostReady,
     isResultsExitCollapsedSettled: isSameCloseIntent && closeTransitionState.sheetCollapsedSettled,
     isResultsExitMapSettled: isSameCloseIntent && closeTransitionState.mapExitSettled,
     pollBodyReady: policy.pollBodyReady,
@@ -94,12 +94,12 @@ const areReleaseReadyCloseSnapshotsEqual = (
   right: ReleaseReadyCloseSnapshot | null
 ): boolean =>
   left?.transactionId === right?.transactionId &&
-  left?.arePersistentPollsBodyReady === right?.arePersistentPollsBodyReady &&
-  left?.arePersistentPollsHeaderReady === right?.arePersistentPollsHeaderReady &&
-  left?.canExposePersistentPolls === right?.canExposePersistentPolls &&
-  left?.canReleasePersistentPolls === right?.canReleasePersistentPolls &&
+  left?.isDockedSceneBodyReady === right?.isDockedSceneBodyReady &&
+  left?.isDockedSceneHeaderReady === right?.isDockedSceneHeaderReady &&
+  left?.canExposeDockedScene === right?.canExposeDockedScene &&
+  left?.canReleaseDockedScene === right?.canReleaseDockedScene &&
   left?.dismissBottomBoundaryReached === right?.dismissBottomBoundaryReached &&
-  left?.isPersistentPollHostReady === right?.isPersistentPollHostReady &&
+  left?.isDockedSceneHostReady === right?.isDockedSceneHostReady &&
   left?.isResultsExitCollapsedSettled === right?.isResultsExitCollapsedSettled &&
   left?.isResultsExitMapSettled === right?.isResultsExitMapSettled &&
   left?.pollBodyReady === right?.pollBodyReady &&
@@ -144,7 +144,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       // the terminal dance only serves HOME dismissals now (children/non-search roots pop
       // via entry origins in the dismiss selector), and the home restore rides the dismiss
       // verb's ONE terminalDismiss switch. Nothing to arm, nothing to flush at finalize.
-      shellLocalState.setHoldPersistentPollLane(false);
+      shellLocalState.setHoldDockedLane(false);
       shellLocalState.setBackdropTarget('default');
       shellLocalState.setInputMode('idle');
       routeSceneVisibilityPolicyRuntime.updateCloseTransitionActive(true);
@@ -191,7 +191,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         }
         getSearchSurfaceRuntime().completeDismissHandoff(closeIntentId);
         // S-C.4 item 3 step 2: NO restore emission here — the home landing already rode the
-        // dismiss verb's ONE terminalDismiss switch (targetSceneKey 'search', docked-polls
+        // dismiss verb's ONE terminalDismiss switch (targetSceneKey 'search', docked
         // mode). The old flush/default pair (and the ledger they read) is deleted; children
         // and non-search roots never reach this dance (the dismiss selector pops them).
         resetCloseTransition();
@@ -236,11 +236,11 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       const didReleaseAtCollapsedBoundary =
         options?.releasedAtCollapsedBoundary === true ||
         (collapsedBoundaryReachedAtMs != null &&
-          releaseReadyCloseSnapshot.arePersistentPollsBodyReady &&
-          releaseReadyCloseSnapshot.arePersistentPollsHeaderReady &&
-          releaseReadyCloseSnapshot.canExposePersistentPolls &&
-          releaseReadyCloseSnapshot.canReleasePersistentPolls &&
-          releaseReadyCloseSnapshot.isPersistentPollHostReady);
+          releaseReadyCloseSnapshot.isDockedSceneBodyReady &&
+          releaseReadyCloseSnapshot.isDockedSceneHeaderReady &&
+          releaseReadyCloseSnapshot.canExposeDockedScene &&
+          releaseReadyCloseSnapshot.canReleaseDockedScene &&
+          releaseReadyCloseSnapshot.isDockedSceneHostReady);
       const releasedAtMs =
         didReleaseAtCollapsedBoundary && collapsedBoundaryReachedAtMs != null
           ? collapsedBoundaryReachedAtMs
@@ -254,15 +254,15 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         const telemetryStartedAtMs = getPerfScenarioWorkNow();
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'results_dismiss_bottom_snap_handoff_contract',
-          arePersistentPollsBodyReady: releaseReadyCloseSnapshot.arePersistentPollsBodyReady,
-          arePersistentPollsHeaderReady: releaseReadyCloseSnapshot.arePersistentPollsHeaderReady,
-          canExposePersistentPolls: releaseReadyCloseSnapshot.canExposePersistentPolls,
-          canReleasePersistentPolls: releaseReadyCloseSnapshot.canReleasePersistentPolls,
+          isDockedSceneBodyReady: releaseReadyCloseSnapshot.isDockedSceneBodyReady,
+          isDockedSceneHeaderReady: releaseReadyCloseSnapshot.isDockedSceneHeaderReady,
+          canExposeDockedScene: releaseReadyCloseSnapshot.canExposeDockedScene,
+          canReleaseDockedScene: releaseReadyCloseSnapshot.canReleaseDockedScene,
           boundaryTrigger: 'collapsed_motion_plane_boundary',
-          isPersistentPollHostReady: releaseReadyCloseSnapshot.isPersistentPollHostReady,
+          isDockedSceneHostReady: releaseReadyCloseSnapshot.isDockedSceneHostReady,
           isResultsExitCollapsedSettled: releaseReadyCloseSnapshot.isResultsExitCollapsedSettled,
           isResultsExitMapSettled: releaseReadyCloseSnapshot.isResultsExitMapSettled,
-          persistentPollsSwitchAtBottomSnap: true,
+          dockedSceneSwitchAtBottomSnap: true,
           releaseDelayAfterCollapsedBoundaryMs,
           releasedAtCollapsedBoundary:
             didReleaseAtCollapsedBoundary ||
@@ -314,14 +314,14 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
           event: 'results_dismiss_collapsed_boundary_contract',
           boundaryTrigger: 'collapsed_reached',
           boundarySource: source,
-          persistentPollsPrepareAtBottomSnap: true,
-          persistentPollsSwitchAtBottomSnap: true,
+          dockedScenePrepareAtBottomSnap: true,
+          dockedSceneSwitchAtBottomSnap: true,
           snap,
           transactionId: activeCloseIntentId,
         });
       }
       getSearchSurfaceRuntime().commitDismissBoundary(activeCloseIntentId);
-      shellLocalState.setHoldPersistentPollLane(false);
+      shellLocalState.setHoldDockedLane(false);
       // Post-S-C.4 red team (state-runtime smell, adjudicated 2026-07-10): this outside
       // compute reads the RENDER-CAPTURED close state while the setState below uses the
       // functional form — they can diverge if another mark landed between render and this
@@ -440,7 +440,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       }
 
       resetCloseTransition();
-      shellLocalState.setHoldPersistentPollLane(false);
+      shellLocalState.setHoldDockedLane(false);
     },
     [getActiveCloseIntentId, resetCloseTransition, shellLocalState]
   );

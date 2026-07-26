@@ -28,7 +28,7 @@ import {
   stageTransitionTxnForCommittedSwitch,
 } from './transition-engine/transition-txn-stager';
 import type {
-  RouteSceneSwitchDockedPollsRestoreIntent,
+  RouteSceneSwitchDockedSceneRestoreIntent,
   RouteSceneSwitchMotionPlane,
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchRequestInput,
@@ -75,8 +75,8 @@ export type RouteSceneSwitchTransitionState = {
   pendingTargetSceneKey: OverlayKey | null;
   activePollsParams: RouteSceneSwitchPollsParams | null;
   pendingPollsParams: RouteSceneSwitchPollsParams | null;
-  activeDockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
-  pendingDockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  activeDockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
+  pendingDockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
   transitionToken: number;
   transitionContract: RouteSceneSwitchTransitionContract | null;
   routeState: RouteSceneSwitchRouteStateSnapshot;
@@ -148,9 +148,9 @@ export type RouteSceneSwitchTransitionActions = {
     settleToken: number,
     plane: RouteSceneSwitchMotionPlane
   ) => void;
-  clearDockedPollsRestoreIntent: (
+  clearDockedSceneRestoreIntent: (
     token?: number,
-    snap?: RouteSceneSwitchDockedPollsRestoreIntent['snap']
+    snap?: RouteSceneSwitchDockedSceneRestoreIntent['snap']
   ) => void;
   /**
    * PresentationFrame read (page-switch-master-plan.md §1/§9). Lives on the ACTIONS slice so
@@ -217,7 +217,7 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   /** Paint-ack sink, switchId-keyed (§9.1 R2): a late ack from a superseded switch is ignored. */
   commitPresentationPaintAck: (switchId: number) => void;
   /**
-   * The docked-polls lane inputs mutate WITHOUT a switch (gesture dismiss; results_dismissing
+   * The docked lane inputs mutate WITHOUT a switch (gesture dismiss; results_dismissing
    * release), so the wiring layer registers a live provider + change subscription and the
    * controller RE-MINTS the frame on change (§9.1 R1) — still the one writer.
    */
@@ -229,12 +229,12 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
 };
 
 // Pre-wiring lane inputs (the runtime provider registers the live feed at boot). All-false resolves
-// laneKind 'top-level' — inert until the docked-polls inputs are wired (same atomic phase).
+// laneKind 'top-level' — inert until the docked inputs are wired (same atomic phase).
 const DEFAULT_PRESENTATION_LANE_INPUTS: PresentationLaneInputs = {
-  isPersistentPollLaneEligible: false,
+  isDockedLaneEligible: false,
   isResultsDismissing: false,
-  canReleasePersistentPolls: false,
-  isDockedPollsDismissed: false,
+  canReleaseDockedScene: false,
+  isDockedSceneDismissed: false,
 };
 
 // Ack records older than this many switches are pruned — supersede only ever consults the
@@ -319,8 +319,8 @@ const INITIAL_ROUTE_SCENE_SWITCH_TRANSITION_STATE: RouteSceneSwitchTransitionSta
   pendingTargetSceneKey: null,
   activePollsParams: null,
   pendingPollsParams: null,
-  activeDockedPollsRestoreIntent: null,
-  pendingDockedPollsRestoreIntent: null,
+  activeDockedSceneRestoreIntent: null,
+  pendingDockedSceneRestoreIntent: null,
   transitionToken: 0,
   transitionContract: null,
   routeState: createRouteStateSnapshot({
@@ -343,8 +343,8 @@ const areTransitionStatesEqual = (
   left.pendingTargetSceneKey === right.pendingTargetSceneKey &&
   left.activePollsParams === right.activePollsParams &&
   left.pendingPollsParams === right.pendingPollsParams &&
-  left.activeDockedPollsRestoreIntent === right.activeDockedPollsRestoreIntent &&
-  left.pendingDockedPollsRestoreIntent === right.pendingDockedPollsRestoreIntent &&
+  left.activeDockedSceneRestoreIntent === right.activeDockedSceneRestoreIntent &&
+  left.pendingDockedSceneRestoreIntent === right.pendingDockedSceneRestoreIntent &&
   left.transitionToken === right.transitionToken &&
   left.transitionContract === right.transitionContract &&
   areRouteStateSnapshotsEqual(left.routeState, right.routeState);
@@ -402,7 +402,7 @@ const resolveRouteSceneSwitchNativeOverlayDispatchSelector = (
     state.activeSceneKey != null || state.transitionPhase !== 'idle',
     state.transitionContract?.committedRootRouteKey ?? null,
     state.transitionContract?.targetSceneKey ?? null,
-    state.activeDockedPollsRestoreIntent,
+    state.activeDockedSceneRestoreIntent,
     state.routeState.activeOverlayRoute,
     state.routeState.overlayRouteStack,
     state.routeState.rootOverlayKey,
@@ -420,12 +420,12 @@ const createTransitionContract = ({
   transitionPlan,
   transitionToken,
   settleToken,
-  dockedPollsRestoreIntent,
+  dockedSceneRestoreIntent,
 }: {
   transitionPlan: AppRouteSceneTransitionPlan;
   transitionToken: number;
   settleToken: number;
-  dockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null;
+  dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null;
 }): RouteSceneSwitchTransitionContract => ({
   sourceSceneKey: transitionPlan.sourceSceneKey,
   targetSceneKey: transitionPlan.targetSceneKey,
@@ -447,7 +447,7 @@ const createTransitionContract = ({
   freezeClassification: transitionPlan.freezeClassification,
   motionPlanes: transitionPlan.motionPlanes,
   pollsParams: transitionPlan.pollsParams,
-  dockedPollsRestoreIntent,
+  dockedSceneRestoreIntent,
   isInteractive: false,
 });
 
@@ -621,7 +621,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     };
   }
 
-  // Re-mint on a lane-input change WITHOUT a switch (gesture docked-polls dismiss; the
+  // Re-mint on a lane-input change WITHOUT a switch (gesture docked dismiss; the
   // results_dismissing release) — §9.1 R1. Same single writer; identity fields stay
   // switch-static, `revision` bumps. Delivery is immediate for runtime input changes (no batch is
   // in flight for a gesture) but DEFERRED at registration time (see registerPresentationLaneInputs).
@@ -650,7 +650,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const laneKind = resolvePresentationLaneKind({
       resolvedTargetSceneKey,
       rootOverlayKey: nextState.routeState.rootOverlayKey,
-      hasActiveDockedPollsRestoreIntent: nextState.activeDockedPollsRestoreIntent != null,
+      hasActiveDockedSceneRestoreIntent: nextState.activeDockedSceneRestoreIntent != null,
       laneInputs: this.presentationLaneInputsProvider?.() ?? DEFAULT_PRESENTATION_LANE_INPUTS,
     });
     const presentedSceneKey = resolvePresentedSceneKey(laneKind, resolvedTargetSceneKey);
@@ -716,7 +716,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       // ─── PF CHROME CLOCK (leg 6): nav-out + headerNavAction ride the frame so header
       // title/strip, nav-out start and plus↔X rotation start share ONE commit. Nav-out keys
       // on the top-of-stack ROUTE entry (parity with the deleted nav-out store's writer);
-      // the header action keys on the PRESENTED scene (docked-polls lane shows the polls plus).
+      // the header action keys on the PRESENTED scene (docked lane shows the polls plus).
       // Leg 9: edit-session liveness is a derivation input — a live session makes its scene a
       // child page (nav-out + close) wherever it lives; the liveness subscription re-mints.
       isChildSceneRevealed: resolveIsChildSceneRevealed(
@@ -1003,12 +1003,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   // plane held open no longer exists anywhere. The world reveal is the episode
   // TransitionTxn's join; the route reveal is the route txn's {paint, chrome} join.
 
-  public clearDockedPollsRestoreIntent(
+  public clearDockedSceneRestoreIntent(
     token?: number,
-    snap?: RouteSceneSwitchDockedPollsRestoreIntent['snap']
+    snap?: RouteSceneSwitchDockedSceneRestoreIntent['snap']
   ): void {
     const state = this.transitionState;
-    const activeIntent = state.activeDockedPollsRestoreIntent;
+    const activeIntent = state.activeDockedSceneRestoreIntent;
     if (!activeIntent) {
       return;
     }
@@ -1020,16 +1020,16 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     }
     this.setTransitionState(
       {
-        activeDockedPollsRestoreIntent: null,
-        pendingDockedPollsRestoreIntent: null,
+        activeDockedSceneRestoreIntent: null,
+        pendingDockedSceneRestoreIntent: null,
         transitionContract: state.transitionContract
           ? {
               ...state.transitionContract,
-              dockedPollsRestoreIntent: null,
+              dockedSceneRestoreIntent: null,
             }
           : null,
       },
-      'clearDockedPollsRestoreIntent'
+      'clearDockedSceneRestoreIntent'
     );
   }
 
@@ -1067,14 +1067,14 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         'pendingPollsParams' in partial
           ? (partial.pendingPollsParams ?? null)
           : current.pendingPollsParams,
-      activeDockedPollsRestoreIntent:
-        'activeDockedPollsRestoreIntent' in partial
-          ? (partial.activeDockedPollsRestoreIntent ?? null)
-          : current.activeDockedPollsRestoreIntent,
-      pendingDockedPollsRestoreIntent:
-        'pendingDockedPollsRestoreIntent' in partial
-          ? (partial.pendingDockedPollsRestoreIntent ?? null)
-          : current.pendingDockedPollsRestoreIntent,
+      activeDockedSceneRestoreIntent:
+        'activeDockedSceneRestoreIntent' in partial
+          ? (partial.activeDockedSceneRestoreIntent ?? null)
+          : current.activeDockedSceneRestoreIntent,
+      pendingDockedSceneRestoreIntent:
+        'pendingDockedSceneRestoreIntent' in partial
+          ? (partial.pendingDockedSceneRestoreIntent ?? null)
+          : current.pendingDockedSceneRestoreIntent,
       transitionToken: partial.transitionToken ?? current.transitionToken,
       transitionContract:
         'transitionContract' in partial
@@ -1164,7 +1164,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       this.pendingSceneStackDispatchSnapshot = nextSceneStackDispatchSnapshot;
     }
     // NO STRANDED PF FLUSH (final red-team shouldFix): public entry points that commit OUTSIDE
-    // the transaction wrappers (clearDockedPollsRestoreIntent today) used to mint the frame,
+    // the transaction wrappers (clearDockedSceneRestoreIntent today) used to mint the frame,
     // mark the pending flush, and notify NO ONE until an unrelated later flush — a
     // restore-intent clear could leave laneKind subscribers stale for a whole gesture. When no
     // wrapper is in flight (depth 0), deliver the PF here on the same cadence position it
@@ -1350,11 +1350,11 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const currentState = this.transitionState;
     const nextToken = currentState.transitionToken + 1;
     const settleToken = transitionPlan.settleToken ?? nextToken;
-    const dockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null =
-      transitionPlan.dockedPollsRestoreSnap == null
+    const dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null =
+      transitionPlan.dockedSceneRestoreSnap == null
         ? null
         : {
-            snap: transitionPlan.dockedPollsRestoreSnap,
+            snap: transitionPlan.dockedSceneRestoreSnap,
             token: nextToken,
           };
     const transitionContract = withSearchNavSwitchRuntimeAttribution(
@@ -1365,7 +1365,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
           transitionPlan,
           transitionToken: nextToken,
           settleToken,
-          dockedPollsRestoreIntent,
+          dockedSceneRestoreIntent,
         })
     );
     // §Q redo T1a: the transaction shadows this switch (stage+commit; trace only —
@@ -1414,8 +1414,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
             pendingTargetSceneKey: transitionPlan.targetSceneKey,
             activePollsParams: transitionPlan.pollsParams,
             pendingPollsParams: transitionPlan.pollsParams,
-            activeDockedPollsRestoreIntent: dockedPollsRestoreIntent,
-            pendingDockedPollsRestoreIntent: dockedPollsRestoreIntent,
+            activeDockedSceneRestoreIntent: dockedSceneRestoreIntent,
+            pendingDockedSceneRestoreIntent: dockedSceneRestoreIntent,
             transitionToken: nextToken,
             transitionContract,
             routeState,
@@ -1431,11 +1431,11 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   private commitRouteSceneSwitchIdleState(transitionPlan: AppRouteSceneTransitionPlan): number {
     const currentState = this.transitionState;
     const nextToken = currentState.transitionToken + 1;
-    const dockedPollsRestoreIntent: RouteSceneSwitchDockedPollsRestoreIntent | null =
-      transitionPlan.dockedPollsRestoreSnap == null
+    const dockedSceneRestoreIntent: RouteSceneSwitchDockedSceneRestoreIntent | null =
+      transitionPlan.dockedSceneRestoreSnap == null
         ? null
         : {
-            snap: transitionPlan.dockedPollsRestoreSnap,
+            snap: transitionPlan.dockedSceneRestoreSnap,
             token: nextToken,
           };
     // §Q redo T1a: the idle-committed (zero-plane) switch stages its transaction too —
@@ -1473,8 +1473,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
             pendingTargetSceneKey: null,
             activePollsParams: transitionPlan.pollsParams,
             pendingPollsParams: null,
-            activeDockedPollsRestoreIntent: dockedPollsRestoreIntent,
-            pendingDockedPollsRestoreIntent: null,
+            activeDockedSceneRestoreIntent: dockedSceneRestoreIntent,
+            pendingDockedSceneRestoreIntent: null,
             transitionToken: nextToken,
             transitionContract: null,
             routeState,
@@ -1524,8 +1524,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
               pendingTargetSceneKey: null,
               activePollsParams: state.pendingPollsParams,
               pendingPollsParams: null,
-              activeDockedPollsRestoreIntent: null,
-              pendingDockedPollsRestoreIntent: null,
+              activeDockedSceneRestoreIntent: null,
+              pendingDockedSceneRestoreIntent: null,
               transitionContract: null,
             },
             'completeRouteSceneSwitchTransition'

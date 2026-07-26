@@ -36,6 +36,34 @@ const MONTH_POSITION_HOT_RATIO = 1.3;
 
 export type MonthPositionColor = 'blue' | 'yellow' | 'red';
 
+/**
+ * Payload-edge BigInt sanitizer (CRAVE-1B): Prisma returns BIGINT/COUNT
+ * columns as BigInt, which JSON.stringify rejects — the first prod row in
+ * any such column 500s the whole dashboard (spend_campaigns did exactly
+ * this; a spot-mapped fix at one call site cannot protect the next column).
+ * Every summary payload passes through here ONCE, so no future BigInt can
+ * take the dashboard down. Exported pure for RED-provable tests.
+ */
+export function sanitizeBigInts<T>(value: T): T {
+  if (typeof value === 'bigint') {
+    return Number(value) as unknown as T;
+  }
+  if (Array.isArray(value)) {
+    return (value as unknown[]).map((item) =>
+      sanitizeBigInts(item),
+    ) as unknown as T;
+  }
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        sanitizeBigInts(entry),
+      ]),
+    ) as unknown as T;
+  }
+  return value;
+}
+
 /** Median (even length: mean of middle two). The ONE implementation lives
  *  in spend-analytics.service.ts; re-exported here under the name the
  *  expectation math's RED-provable tests use. */
@@ -231,6 +259,10 @@ export class OpsSummaryService {
   }
 
   async summary(now: Date = new Date()): Promise<OpsSummary> {
+    return sanitizeBigInts(await this.assembleSummary(now));
+  }
+
+  private async assembleSummary(now: Date): Promise<OpsSummary> {
     const [
       spendCore,
       campaigns,

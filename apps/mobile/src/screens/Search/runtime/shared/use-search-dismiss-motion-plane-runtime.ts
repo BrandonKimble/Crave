@@ -497,7 +497,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
         dismissTransaction.pollBodyReady &&
         dismissTransaction.pollHostReady &&
         dismissTransaction.bottomBoundaryReached &&
-        policy.canReleasePersistentPolls;
+        policy.canReleaseDockedScene;
       dismissMotionPollPageReadyForBoundary.value = isPollPageReadyForActiveDismiss ? 1 : 0;
       dismissMotionPollPageReleasedForBoundary.value = isPollPageReleasedForActiveDismiss ? 1 : 0;
 
@@ -556,7 +556,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
     dismissBoundaryReadiness.pollPageReadyForBoundary,
     dismissBoundaryReadiness.pollPageReleasedForBoundary,
     dismissBoundaryReadiness.transactionId,
-    surfaceVisualPolicy.canReleasePersistentPolls,
+    surfaceVisualPolicy.canReleaseDockedScene,
     surfaceVisualPolicy.phase,
     surfaceVisualPolicy.transactionId,
     syncMotionFromSurfaceSnapshot,

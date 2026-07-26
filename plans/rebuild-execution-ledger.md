@@ -2082,3 +2082,27 @@ only under an already-RED failure). Owner's abstractions-smell audit:
 extensions consistently compose (manifest, curve override, orphan heal
 all rode existing machinery); named smells are all recorded deferrals
 with triggers (§22/§25), not compensation layers. 876 tests green.
+
+## 2026-07-26 — Docked-lane generalization (home-page prep) + TomTom neighborhood proof
+
+Prep for the HOME surface (charter: plans/home-surface-charter.md). The
+persistent-page machinery re-derived from its requirement (one scene
+presents under the search root on sheet dismissal, restorable, not a tab)
+→ a single generic docked lane whose target is DATA: DOCKED_SCENE_KEY in
+the new LEAF module docked-scene-target.ts (imports nothing at runtime —
+load-bearing: hosting the constant in app-overlay-route-types produced a
+real boot-order TDZ ReferenceError through import cycles that tsc AND
+jest could not see; only the sim caught it). ~55 poll-named lane
+identifiers renamed to lane vocabulary across ~75 files; deny-list now
+metadata-derived; ALL_TOP_LEVEL_SCENE_KEYS single-sourced (7 sites);
+ADDING_A_SCENE.md + delete-gate regexes updated. Verified: tsc
+byte-identical to baseline, 413 mobile tests green, and ON-SIM: cold
+boot → docked polls under search root → expand (strip + cold-start
+promise) → dismiss → re-dock, plus a full search push with no
+origin-contract violation. Retargeting the persistent surface to home is
+now a one-constant change. ALSO: TomTom neighborhood capability PROVEN
+live (reverseGeocode entityType=Neighbourhood at 40.787,-73.9754 →
+"Upper West Side" + own bbox + geometry id) and grid-audited: 51
+distinct NYC neighborhoods + 42 Austin on a coarse grid (undercount by
+construction) — the header law resolves neighborhoods as attention
+sketches them into the catalog (32 in catalog today).

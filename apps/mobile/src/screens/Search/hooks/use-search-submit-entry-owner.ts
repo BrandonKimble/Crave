@@ -31,7 +31,7 @@ export type SearchSubmitInPlaceRerunIntentKind = Extract<
 
 // S-A (the great trigger deletion, 2026-07-10): the presentation flags are GONE from the
 // submit options. preserveSheetState/entrySurface/presentationIntentKind/
-// transitionFromDockedPolls were trigger-passed copies of facts the reconciler DERIVES
+// transitionFromDockedScene were trigger-passed copies of facts the reconciler DERIVES
 // from the tuple delta (classifySearchWorldTransition) — the enter foreground effects
 // already ran on the derived intent, so the trigger copies fed nothing but a validation
 // throw and the include-similar reset gate (now folded into the tuple write below). The

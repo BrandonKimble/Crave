@@ -18,7 +18,7 @@ export const useSearchResultsPanelRetainedResultsRuntime = ({
   searchSheetContentLane,
   retainedResultsWriter: providedRetainedResultsWriter,
 }: UseSearchResultsPanelRetainedResultsRuntimeArgs): SearchResultsPanelRetainedResultsRuntime => {
-  const shouldRetainCommittedResults = searchSheetContentLane.kind !== 'persistent_poll';
+  const shouldRetainCommittedResults = searchSheetContentLane.kind !== 'docked_scene';
   const localRetainedResultsController = React.useMemo(
     () => createSearchResultsRetainedResultsController<SearchResultsPayload>(results),
     []

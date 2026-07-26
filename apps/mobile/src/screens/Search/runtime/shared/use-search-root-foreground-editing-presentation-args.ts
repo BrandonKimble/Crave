@@ -11,7 +11,7 @@ type SearchRootForegroundEditingPresentationArgs = Pick<
   | 'beginSuggestionCloseHold'
   | 'requestSearchPresentationIntent'
   | 'beginCloseSearch'
-  | 'restoreDockedPolls'
+  | 'restoreDockedScene'
 >;
 
 type UseSearchRootForegroundEditingPresentationArgsArgs = {
@@ -35,12 +35,12 @@ export const useSearchRootForegroundEditingPresentationArgs = ({
       requestSearchPresentationIntent:
         resultsPresentationOwner.presentationActions.requestSearchPresentationIntent,
       beginCloseSearch: resultsPresentationOwner.presentationActions.beginCloseSearch,
-      restoreDockedPolls: routeOverlayCommandActions.restoreDockedPolls,
+      restoreDockedScene: routeOverlayCommandActions.restoreDockedScene,
     }),
     [
       resultsPresentationOwner.presentationActions.beginCloseSearch,
       resultsPresentationOwner.presentationActions.requestSearchPresentationIntent,
-      routeOverlayCommandActions.restoreDockedPolls,
+      routeOverlayCommandActions.restoreDockedScene,
       rootOverlayStoreRuntime.dismissTransientOverlays,
       rootSuggestionRuntime.beginSuggestionCloseHold,
     ]

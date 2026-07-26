@@ -9,7 +9,7 @@ export type RouteOverlayNavigationSnapshot = {
   rootOverlayKey: OverlayKey;
   overlayRouteStackLength: number;
   isSearchOverlay: boolean;
-  isPersistentPollLane: boolean;
+  isDockedLane: boolean;
 };
 
 export type RouteOverlayIdentitySnapshot = {
@@ -25,7 +25,7 @@ export const EMPTY_ROUTE_OVERLAY_NAVIGATION_SNAPSHOT: RouteOverlayNavigationSnap
   rootOverlayKey: 'search',
   overlayRouteStackLength: 1,
   isSearchOverlay: true,
-  isPersistentPollLane: false,
+  isDockedLane: false,
 };
 
 export const EMPTY_ROUTE_OVERLAY_IDENTITY_SNAPSHOT: RouteOverlayIdentitySnapshot = {

@@ -12,10 +12,11 @@ import {
 } from './route-entry-origin-capture-delegate';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import {
-  primeDockedPollsForHomeLanding,
+  primeDockedSceneForHomeLanding,
   type AppSearchRouteCommandActions,
 } from './app-search-route-command-runtime';
 import { type OverlayKey, getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import {
   type AppRouteOverlaySessionActions,
   type AppRouteOverlaySessionAuthority,
@@ -99,18 +100,18 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
 const SEEDED_TOP_LEVEL_RESTORE_TARGETS = new Set<OverlayKey>(['bookmarks', 'profile']);
 
 const resolveRestoreRootOverlay = (snapshot: OriginSnapshot): OverlayKey =>
-  snapshot.sceneKey === 'polls' ? 'search' : snapshot.sceneKey;
+  snapshot.sceneKey === DOCKED_SCENE_KEY ? 'search' : snapshot.sceneKey;
 
 const isDegenerateHomeOrigin = (snapshot: OriginSnapshot): boolean =>
   (snapshot.scroll == null || snapshot.scroll.length === 0) &&
   (snapshot.anchor ?? null) == null &&
   snapshot.sceneParams == null &&
-  (snapshot.sceneKey === 'search' || snapshot.sceneKey === 'polls') &&
+  (snapshot.sceneKey === 'search' || snapshot.sceneKey === DOCKED_SCENE_KEY) &&
   snapshot.detent === 'collapsed';
 
 // Return-to-origin foundation — GOLDEN ASSERTION (design §Home byte-identity proof).
 // The DEGENERATE home restore is the {polls,search}@collapsed deadlock seam: it MUST emit a
-// single `topLevelSwitch` to a root scene with `snapTo:collapsed` and the docked-polls
+// single `topLevelSwitch` to a root scene with `snapTo:collapsed` and the docked
 // restore, and NOTHING that would attach a sheet/content motion plane that didn't exist
 // before (no contentHandoff override, no routeAction, no routeParams, no chromeVisibilityTarget,
 // no cameraIntent). If a future edit attaches one of those to the home emission it would
@@ -130,7 +131,7 @@ const assertDegenerateHomeEmission = (
   if (!__DEV__) {
     return;
   }
-  const expectedDockedPollsRestoreSnap = expectedRoot === 'search' ? expectedDetent : null;
+  const expectedDockedSceneRestoreSnap = expectedRoot === 'search' ? expectedDetent : null;
   const violations: string[] = [];
   if (args.targetSceneKey !== expectedRoot) {
     violations.push(`targetSceneKey=${args.targetSceneKey} (expected ${expectedRoot})`);
@@ -143,10 +144,10 @@ const assertDegenerateHomeEmission = (
       `sheetMotion=${JSON.stringify(args.sheetMotion)} (expected snapTo:${expectedDetent})`
     );
   }
-  if (args.dockedPollsRestoreSnap !== expectedDockedPollsRestoreSnap) {
+  if (args.dockedSceneRestoreSnap !== expectedDockedSceneRestoreSnap) {
     violations.push(
-      `dockedPollsRestoreSnap=${String(args.dockedPollsRestoreSnap)} ` +
-        `(expected ${String(expectedDockedPollsRestoreSnap)})`
+      `dockedSceneRestoreSnap=${String(args.dockedSceneRestoreSnap)} ` +
+        `(expected ${String(expectedDockedSceneRestoreSnap)})`
     );
   }
   // Any of these would silently add a motion plane / content swap to home → deadlock-seam risk.
@@ -179,8 +180,8 @@ const assertDegenerateHomeEmission = (
 };
 
 const EMPTY_APP_ROUTE_OVERLAY_SESSION_SNAPSHOT: AppRouteOverlaySessionSnapshot = {
-  shouldShowDockedPollsTarget: false,
-  shouldShowDockedPolls: false,
+  shouldShowDockedSceneTarget: false,
+  shouldShowDockedScene: false,
   shouldShowPollsSheet: false,
 };
 
@@ -188,8 +189,8 @@ const areAppRouteOverlaySessionSnapshotsEqual = (
   left: AppRouteOverlaySessionSnapshot,
   right: AppRouteOverlaySessionSnapshot
 ): boolean =>
-  left.shouldShowDockedPollsTarget === right.shouldShowDockedPollsTarget &&
-  left.shouldShowDockedPolls === right.shouldShowDockedPolls &&
+  left.shouldShowDockedSceneTarget === right.shouldShowDockedSceneTarget &&
+  left.shouldShowDockedScene === right.shouldShowDockedScene &&
   left.shouldShowPollsSheet === right.shouldShowPollsSheet;
 
 export class AppRouteOverlaySessionStateController {
@@ -248,10 +249,10 @@ export class AppRouteOverlaySessionStateController {
       routeSheetSnapSessionAuthority.subscribe(() => {
         this.recompute(true);
       }),
-      // computeSnapshot PULL-reads getPresentationFrame().laneKind (the docked-polls formula),
+      // computeSnapshot PULL-reads getPresentationFrame().laneKind (the docked formula),
       // so this controller must also recompute on frame PUBLICATIONS — a results_dismissing
       // re-mint changes laneKind without touching the other subscribed authorities, which
-      // otherwise left shouldShowDockedPolls* stale until an unrelated poke. Disposal rides
+      // otherwise left shouldShowDockedScene* stale until an unrelated poke. Disposal rides
       // the shared unsubscribers sweep.
       routeSceneSwitchActions.subscribePresentationFrame(() => {
         this.recompute(true);
@@ -267,7 +268,7 @@ export class AppRouteOverlaySessionStateController {
         // resolveLiveOriginIdentity, which is ROOT-collapsed (it only knows the top-level
         // lanes). For a CHILD departure the ONE physical sheet's remembered snap for that
         // scene is its live detent — same bug class as the scroll-lane mis-keying, one field
-        // over. Root scenes keep the root resolution (it encodes the docked-polls nuances).
+        // over. Root scenes keep the root resolution (it encodes the docked nuances).
         if (getAppOverlayRouteMetadata(departingSceneKey).role !== 'child') {
           return captured;
         }
@@ -341,7 +342,8 @@ export class AppRouteOverlaySessionStateController {
       // the ONE shared content seat otherwise) — read through the seat-routed ledger getter.
       detent: resolveSearchLaunchOriginSnap({
         overlay: sceneKey,
-        homeSeatSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
+        homeSeatSnap:
+          this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(DOCKED_SCENE_KEY),
         contentSeatSnap:
           this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('bookmarks'),
       }),
@@ -382,7 +384,7 @@ export class AppRouteOverlaySessionStateController {
   }
 
   // Source-agnostic capture (S-C.4 item 4 — the provider registry is collapsed into this one
-  // rule): the HOME roots ('search'/'polls') capture the degenerate snapshot at their LIVE
+  // rule): the HOME roots ('search'/DOCKED_SCENE_KEY) capture the degenerate snapshot at their LIVE
   // detent — home is the degenerate origin by design, its scroll/segment restore rides the
   // remembered-snap machinery, never the origin snapshot. EVERY other scene captures rich:
   // captureRichSceneOrigin merges any published live scroll/segment onto the degenerate base
@@ -391,7 +393,7 @@ export class AppRouteOverlaySessionStateController {
   private buildCurrentOriginSnapshot(): OriginSnapshot {
     const { sceneKey, detent } = this.resolveLiveOriginIdentity();
     const captured =
-      sceneKey === 'search' || sceneKey === 'polls'
+      sceneKey === 'search' || sceneKey === DOCKED_SCENE_KEY
         ? degenerateSnapshot(sceneKey, detent)
         : this.captureRichSceneOrigin(sceneKey);
     return {
@@ -432,7 +434,7 @@ export class AppRouteOverlaySessionStateController {
     resolvedRootOverlay: OverlayKey,
     detent: Exclude<SearchOverlaySheetSnap, 'hidden'>
   ): void {
-    const shouldRestoreDockedPolls = resolvedRootOverlay === 'search';
+    const shouldRestoreDockedScene = resolvedRootOverlay === 'search';
     // S-C.3-B NOTE: the home emission needs NO pop arm — the stack pop happens at the
     // dismissal dance's FIRST switch (dismissAppSearchRouteResultsToHome, which used to
     // setRoot-collapse the stack; proven by the [SC3B] probe: this emission always ran on an
@@ -446,7 +448,7 @@ export class AppRouteOverlaySessionStateController {
       sheetTransitionKind: 'topLevelSwitch' as const,
       sheetOpenerSource: 'routeCommand' as const,
       sheetMotion: { kind: 'snapTo' as const, snap: detent },
-      dockedPollsRestoreSnap: shouldRestoreDockedPolls ? detent : null,
+      dockedSceneRestoreSnap: shouldRestoreDockedScene ? detent : null,
       ...(shouldPopSession ? { routeAction: 'popToRoot' as const } : null),
     };
     assertDegenerateHomeEmission(homeSwitchArgs, resolvedRootOverlay, detent, shouldPopSession);
@@ -482,7 +484,7 @@ export class AppRouteOverlaySessionStateController {
     // scene-key test.
     // S-C.3-B step 3b: the child re-push machinery is DELETED — a search launched from a
     // child PUSHES over it now, so the child ENTRY survives and dismissal pops back to it.
-    const shouldRestoreDockedPolls = resolvedRootOverlay === 'search';
+    const shouldRestoreDockedScene = resolvedRootOverlay === 'search';
     // P3 SCROLL + P5 SEGMENT restore (design §Restore step 5/6). SEED the captured scroll
     // lane(s) AND the active SEGMENT for the origin scene BEFORE the re-root commits, so the
     // scene re-mounts/re-activates with both axes already staged. The scene's own restore (gated
@@ -510,7 +512,7 @@ export class AppRouteOverlaySessionStateController {
       sheetMotion: { kind: 'snapTo', snap: snapshot.detent },
       ...(useSwapImmediately ? { contentHandoff: 'swapImmediately' as const } : {}),
       ...(restoreRouteParams != null ? { routeParams: restoreRouteParams } : {}),
-      dockedPollsRestoreSnap: shouldRestoreDockedPolls ? snapshot.detent : null,
+      dockedSceneRestoreSnap: shouldRestoreDockedScene ? snapshot.detent : null,
     });
   }
 
@@ -538,33 +540,33 @@ export class AppRouteOverlaySessionStateController {
   // ONE richness-gated restore verb (design §Restore step 7 + S-C.4 item 3 step 2): a captured
   // origin routes through restorePendingOrigin (degenerate home short-circuits to the golden
   // emission; rich re-roots directly); a NULL origin IS the degenerate home case — the docked-
-  // polls re-arm is its own state priming (the captured-origin path drives docked polls via the
-  // snapshot's dockedPollsRestoreSnap instead). Same funnel guarantee as before: the home
+  // polls re-arm is its own state priming (the captured-origin path drives the docked scene via the
+  // snapshot's dockedSceneRestoreSnap instead). Same funnel guarantee as before: the home
   // emission is byte-identical whether or not an origin was captured.
   private restoreSearchCloseOrigin(origin: OriginSnapshot | null): void {
     if (origin != null) {
       this.restorePendingOrigin(origin);
       return;
     }
-    primeDockedPollsForHomeLanding(this.routeSheetSnapSessionActions);
+    primeDockedSceneForHomeLanding(this.routeSheetSnapSessionActions);
     this.emitDegenerateHomeRestore('search', 'collapsed');
   }
 
   private computeSnapshot(): AppRouteOverlaySessionSnapshot {
     const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    // The docked-polls decision reads the committed PresentationFrame (page-switch-master-plan.md
+    // The docked decision reads the committed PresentationFrame (page-switch-master-plan.md
     // §9.2 site 5) — the old independent rootOverlayKey/chromeSurfaceTarget formula was the 5th
     // parallel derivation of "which scene is presented". laneKind already encodes the search
     // root + lane eligibility + dismissed/restore-intent gates; this controller's own session
     // flags stay layered on top exactly as before.
-    const shouldShowDockedPollsTarget =
-      this.routeSceneSwitchActions.getPresentationFrame().laneKind === 'docked-polls' &&
-      !sessionSnapshot.isDockedPollsDismissed;
+    const shouldShowDockedSceneTarget =
+      this.routeSceneSwitchActions.getPresentationFrame().laneKind === 'docked' &&
+      !sessionSnapshot.isDockedSceneDismissed;
 
     return {
-      shouldShowDockedPollsTarget,
-      shouldShowDockedPolls: shouldShowDockedPollsTarget,
-      shouldShowPollsSheet: shouldShowDockedPollsTarget,
+      shouldShowDockedSceneTarget,
+      shouldShowDockedScene: shouldShowDockedSceneTarget,
+      shouldShowPollsSheet: shouldShowDockedSceneTarget,
     };
   }
 }

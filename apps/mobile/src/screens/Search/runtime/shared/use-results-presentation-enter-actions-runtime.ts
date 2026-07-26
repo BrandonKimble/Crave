@@ -73,7 +73,7 @@ export const useResultsPresentationEnterActionsRuntime = ({
       const preserveSheetState = intent.preserveSheetState === true;
       const shouldPrepareShortcutSheetTransition =
         !preserveSheetState &&
-        (intent.transitionFromDockedPolls === true || intent.kind === 'shortcut_submit');
+        (intent.transitionFromDockedScene === true || intent.kind === 'shortcut_submit');
       const snapshot = createSearchSurfaceResultsEnterTransaction(
         intent.transactionId ?? nextSearchSurfaceResultsTransactionId(),
         resolveSearchSurfaceResultsEnterMutationKind(intent.kind),

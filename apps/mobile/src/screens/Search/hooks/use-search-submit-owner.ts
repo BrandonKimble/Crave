@@ -95,7 +95,7 @@ type SearchSubmitOwnerUiPorts = {
     operationToken: string;
     mode: SearchMode;
     preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
+    transitionFromDockedScene: boolean;
     targetTab: SegmentValue;
     submittedLabel?: string;
     entrySurface: SearchSubmitEntrySurface;
@@ -266,15 +266,15 @@ const useSearchSubmitOwner = ({
   >(() => {});
   enterForegroundEffectsRef.current = ({ intent, tuple, generation }) => {
     const busState = searchRuntimeBus.getState();
-    const dockedPolls =
+    const dockedScene =
       !intent.preserveSheetState &&
-      (getSearchReconcilerViewInputs()?.getDockedPollsFlag() ?? false);
+      (getSearchReconcilerViewInputs()?.getDockedSceneFlag() ?? false);
     onPresentationIntentStart?.({
       kind: intent.presentationIntentKind ?? 'initial_search',
       operationToken: `${buildSearchCardsWorldKey(tuple)}#g${generation}`,
       mode: selectSearchMode(busState),
       preserveSheetState: intent.preserveSheetState,
-      transitionFromDockedPolls: dockedPolls,
+      transitionFromDockedScene: dockedScene,
       targetTab: tuple.tab,
       submittedLabel: selectSubmittedQuery(busState) || undefined,
       entrySurface:

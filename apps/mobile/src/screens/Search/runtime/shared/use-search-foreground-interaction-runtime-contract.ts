@@ -116,7 +116,7 @@ export type SearchForegroundSubmitRuntimeArgs = {
   isLoadingMore: boolean;
   isSearchSessionActive: boolean;
   isSuggestionPanelActive: boolean;
-  shouldShowDockedPollsRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
+  shouldShowDockedSceneRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   dismissSearchKeyboard: () => void;
@@ -165,7 +165,7 @@ export type SearchForegroundEditingRuntimeArgs = {
   beginSuggestionCloseHold: (mode?: 'default' | 'submitting') => boolean;
   requestSearchPresentationIntent: (intent: { kind: 'focus_editing' | 'exit_editing' }) => void;
   beginCloseSearch: () => void;
-  restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;

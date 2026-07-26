@@ -1,4 +1,5 @@
 import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import {
   isDeferredPublicationScene,
   isResidencyManagedScene,
@@ -50,7 +51,7 @@ import {
   EMPTY_APP_ROUTE_SCENE_STACK_MOUNTED_SCENES_SNAPSHOT,
   EMPTY_APP_ROUTE_SCENE_STACK_SCENE_ACTIVITY_SNAPSHOT,
   EMPTY_APP_ROUTE_SCENE_STACK_SCENE_PRESENTATION_SNAPSHOT,
-  PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT,
+  DOCKED_SCENE_IDLE_SHEET_HEADER_RESTORATION_CONTRACT,
   type AppRouteSceneStackActiveChromeSnapshot,
   type AppRouteSceneStackBodySnapshot,
   type AppRouteSceneStackBodySurfaceAuthority,
@@ -90,7 +91,7 @@ type Listener = () => void;
 
 type AppRouteStaticSceneMountState = {
   bookmarksBootstrapped: boolean;
-  pollsPrewarmed: boolean;
+  dockedScenePrewarmed: boolean;
   profileBootstrapped: boolean;
   inactiveTabsPrewarmed: boolean;
   /** WARM-BEFORE-NAVIGATE (L3 A#6): the residency-managed shell set mounted at first
@@ -101,7 +102,7 @@ type AppRouteStaticSceneMountState = {
 
 type AppRouteStaticSceneMountSnapshot = {
   bookmarksShouldMount: boolean;
-  pollsShouldMount: boolean;
+  dockedSceneShouldMount: boolean;
   profileShouldMount: boolean;
   residentShellsShouldMount: boolean;
 };
@@ -186,7 +187,7 @@ const areOverlayKeyArraysEqual = (
 
 const createAppRouteStaticSceneMountState = (): AppRouteStaticSceneMountState => ({
   bookmarksBootstrapped: false,
-  pollsPrewarmed: false,
+  dockedScenePrewarmed: false,
   profileBootstrapped: false,
   inactiveTabsPrewarmed: false,
   residentShellsPrewarmed: false,
@@ -197,13 +198,13 @@ const resolveAppRouteStaticSceneMount = ({
   activeSceneKey,
   transitionPhase,
   areStaticTabScenesReady,
-  isPollsSceneReady,
+  isDockedSceneReady,
 }: {
   state: AppRouteStaticSceneMountState;
   activeSceneKey: OverlayKey | null;
   transitionPhase: RouteSceneSwitchTransitionPhase;
   areStaticTabScenesReady: boolean;
-  isPollsSceneReady: boolean;
+  isDockedSceneReady: boolean;
 }): {
   state: AppRouteStaticSceneMountState;
   snapshot: AppRouteStaticSceneMountSnapshot;
@@ -217,10 +218,10 @@ const resolveAppRouteStaticSceneMount = ({
     };
   }
 
-  if (!nextState.pollsPrewarmed && isPollsSceneReady && transitionPhase === 'idle') {
+  if (!nextState.dockedScenePrewarmed && isDockedSceneReady && transitionPhase === 'idle') {
     nextState = {
       ...nextState,
-      pollsPrewarmed: true,
+      dockedScenePrewarmed: true,
     };
   }
 
@@ -247,11 +248,7 @@ const resolveAppRouteStaticSceneMount = ({
   // compiling a shell. This is ALSO the mount-machinery expression of "shells never
   // evict": a managed child leg no longer unmounts when its last entry pops (the
   // resident-unit retention law needs the leg alive to retain units).
-  if (
-    !nextState.residentShellsPrewarmed &&
-    areStaticTabScenesReady &&
-    transitionPhase === 'idle'
-  ) {
+  if (!nextState.residentShellsPrewarmed && areStaticTabScenesReady && transitionPhase === 'idle') {
     nextState = {
       ...nextState,
       residentShellsPrewarmed: true,
@@ -262,7 +259,7 @@ const resolveAppRouteStaticSceneMount = ({
     state: nextState,
     snapshot: {
       bookmarksShouldMount: nextState.bookmarksBootstrapped || activeSceneKey === 'bookmarks',
-      pollsShouldMount: nextState.pollsPrewarmed || activeSceneKey === 'polls',
+      dockedSceneShouldMount: nextState.dockedScenePrewarmed || activeSceneKey === DOCKED_SCENE_KEY,
       profileShouldMount: nextState.profileBootstrapped || activeSceneKey === 'profile',
       residentShellsShouldMount: nextState.residentShellsPrewarmed,
     },
@@ -774,7 +771,11 @@ const shouldPrewarmSearchDismissPollDataLane = ({
   isMounted: boolean;
   sceneKey: OverlayKey;
 }): boolean => {
-  if (sceneKey !== 'polls' || !isMounted || !shouldRetainMountedSceneBody(bodyAdmissionPolicy)) {
+  if (
+    sceneKey !== DOCKED_SCENE_KEY ||
+    !isMounted ||
+    !shouldRetainMountedSceneBody(bodyAdmissionPolicy)
+  ) {
     return false;
   }
   const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
@@ -783,14 +784,14 @@ const shouldPrewarmSearchDismissPollDataLane = ({
     searchSurfaceSnapshot.activeBundle.kind === 'results' &&
     searchSurfaceSnapshot.dismissTransaction != null &&
     surfaceVisualPolicy.phase === 'results_dismissing' &&
-    !surfaceVisualPolicy.canReleasePersistentPolls
+    !surfaceVisualPolicy.canReleaseDockedScene
   );
 };
 
-const shouldSyncSearchDismissPollDataPrewarmScene = (
+const shouldSyncSearchDismissDockedSceneDataPrewarmScene = (
   mountedSceneKeys: readonly OverlayKey[]
 ): boolean => {
-  if (!mountedSceneKeys.includes('polls')) {
+  if (!mountedSceneKeys.includes(DOCKED_SCENE_KEY)) {
     return false;
   }
   const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
@@ -799,7 +800,7 @@ const shouldSyncSearchDismissPollDataPrewarmScene = (
     searchSurfaceSnapshot.activeBundle.kind === 'results' &&
     searchSurfaceSnapshot.dismissTransaction != null &&
     surfaceVisualPolicy.phase === 'results_dismissing' &&
-    !surfaceVisualPolicy.canReleasePersistentPolls
+    !surfaceVisualPolicy.canReleaseDockedScene
   );
 };
 
@@ -849,8 +850,8 @@ const areStaticTabSceneInputsReady = (sceneInputAuthority: AppRouteSceneInputAut
   sceneInputAuthority.getSceneInputSnapshot('bookmarks')?.shellSpec != null &&
   sceneInputAuthority.getSceneInputSnapshot('profile')?.shellSpec != null;
 
-const isPollsSceneInputReady = (sceneInputAuthority: AppRouteSceneInputAuthority): boolean =>
-  sceneInputAuthority.getSceneInputSnapshot('polls')?.shellSpec != null;
+const isDockedSceneInputReady = (sceneInputAuthority: AppRouteSceneInputAuthority): boolean =>
+  sceneInputAuthority.getSceneInputSnapshot(DOCKED_SCENE_KEY)?.shellSpec != null;
 
 // S-B slice 3a — child-leg LIFECYCLE (plans/s-b-entries-as-values.md design note): a child
 // leg's lifetime is its entry's lifetime in the route stack (+ the transition window while it
@@ -897,8 +898,8 @@ const resolveMountedSceneKeys = ({
     mountedSceneKeys.add('bookmarks');
   }
 
-  if (staticSceneMountSnapshot.pollsShouldMount) {
-    mountedSceneKeys.add('polls');
+  if (staticSceneMountSnapshot.dockedSceneShouldMount) {
+    mountedSceneKeys.add(DOCKED_SCENE_KEY);
   }
 
   if (staticSceneMountSnapshot.profileShouldMount) {
@@ -1033,7 +1034,7 @@ class AppRouteSceneStackLayerStateController {
 
   private readonly frameListeners = new Set<Listener>();
 
-  private lastPersistentPollHeaderRestorationContractKey: string | null = null;
+  private lastDockedSceneHeaderRestorationContractKey: string | null = null;
 
   private readonly unsubscribers: Array<() => void> = [];
 
@@ -1064,8 +1065,8 @@ class AppRouteSceneStackLayerStateController {
       },
       getScenePresentationAuthority: (sceneKey) => this.getScenePresentationAuthority(sceneKey),
       getSceneBodySurfaceAuthority: (sceneKey) => this.getSceneBodySurfaceAuthority(sceneKey),
-      replayPersistentPollHeaderRestorationContract: (source) =>
-        this.logPersistentPollHeaderRestorationContract(source, true),
+      replayDockedSceneHeaderRestorationContract: (source) =>
+        this.logDockedSceneHeaderRestorationContract(source, true),
     };
     this.sceneFrameAuthority = {
       subscribe: (listener) => this.subscribeFrame(listener),
@@ -1099,7 +1100,7 @@ class AppRouteSceneStackLayerStateController {
         }
       ),
       // PF re-mint coverage (§9.1 R1): laneKind's inputs can change WITHOUT a transition-state
-      // dispatch (docked-polls gesture dismiss; the results_dismissing release) — the controller
+      // dispatch (docked gesture dismiss; the results_dismissing release) — the controller
       // re-mints the frame and flushes it on the SAME dispatch-flush cadence (PF flushes first),
       // so this is the one delivery lane for frame changes the stack dispatch doesn't carry.
       routeSceneSwitchRuntime.subscribePresentationFrame(() => {
@@ -1121,20 +1122,20 @@ class AppRouteSceneStackLayerStateController {
           recomputeTransitionSlice(`sceneShell:${sceneKey}`);
         })
       ),
-      sceneInputAuthority.subscribeSceneShell('polls', () => {
-        if (this.staticSceneMountState.pollsPrewarmed) {
+      sceneInputAuthority.subscribeSceneShell(DOCKED_SCENE_KEY, () => {
+        if (this.staticSceneMountState.dockedScenePrewarmed) {
           return;
         }
         recomputeTransitionSlice('sceneShell:pollsPrewarm');
       }),
-      sceneInputAuthority.subscribeSceneBody('polls', () => {
-        if (this.staticSceneMountState.pollsPrewarmed) {
+      sceneInputAuthority.subscribeSceneBody(DOCKED_SCENE_KEY, () => {
+        if (this.staticSceneMountState.dockedScenePrewarmed) {
           return;
         }
         recomputeTransitionSlice('sceneBody:pollsPrewarm');
       }),
-      sceneInputAuthority.subscribeSceneChrome('polls', () => {
-        if (this.staticSceneMountState.pollsPrewarmed) {
+      sceneInputAuthority.subscribeSceneChrome(DOCKED_SCENE_KEY, () => {
+        if (this.staticSceneMountState.dockedScenePrewarmed) {
           return;
         }
         recomputeTransitionSlice('sceneChrome:pollsPrewarm');
@@ -1146,7 +1147,7 @@ class AppRouteSceneStackLayerStateController {
           if (getSearchSurfaceRuntime().getSnapshot().dismissTransaction == null) {
             return;
           }
-          this.logPersistentPollHeaderRestorationContract('searchSurfaceRuntime');
+          this.logDockedSceneHeaderRestorationContract('searchSurfaceRuntime');
         },
         areSearchSurfaceVisualPoliciesEqual
       )
@@ -1305,13 +1306,13 @@ class AppRouteSceneStackLayerStateController {
     return authority;
   }
 
-  private logPersistentPollHeaderRestorationContract(source: string, force = false): void {
-    const presentationSnapshot = this.getScenePresentationSnapshot('polls');
-    const bodySurfaceSnapshot = this.getSceneBodySurfaceSnapshot('polls');
+  private logDockedSceneHeaderRestorationContract(source: string, force = false): void {
+    const presentationSnapshot = this.getScenePresentationSnapshot(DOCKED_SCENE_KEY);
+    const bodySurfaceSnapshot = this.getSceneBodySurfaceSnapshot(DOCKED_SCENE_KEY);
     const headerEntry = presentationSnapshot.chromeSurfaces.header;
     const mountedBodyKey = this.getBodySurfaceMountedBodyKey(bodySurfaceSnapshot);
     const bodySurfaceKind = bodySurfaceSnapshot.contentEntry?.bodyContentSpec?.surfaceKind ?? null;
-    const expectedContract = PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT;
+    const expectedContract = DOCKED_SCENE_IDLE_SHEET_HEADER_RESTORATION_CONTRACT;
     const contentActivity = {
       shouldAttachMountedContent: bodySurfaceSnapshot.contentActivity.shouldAttachMountedContent,
       shouldRenderListBody: bodySurfaceSnapshot.contentActivity.shouldRenderListBody,
@@ -1326,11 +1327,11 @@ class AppRouteSceneStackLayerStateController {
     // The polls feed now renders as a `'list'` surface (the shared results-sheet
     // surface), so the dismiss handoff must treat a rendered list body as "ready"
     // just like the legacy mounted body — otherwise markPollPagePartReady never
-    // fires for the body/host and the search→docked-polls restore stalls.
+    // fires for the body/host and the search→docked restore stalls.
     const hasPollBody =
-      (mountedBodyKey === 'polls' && contentActivity.shouldAttachMountedContent) ||
+      (mountedBodyKey === DOCKED_SCENE_KEY && contentActivity.shouldAttachMountedContent) ||
       (bodySurfaceKind === 'list' && contentActivity.shouldRenderListBody);
-    const hasPollBodyContentLane =
+    const hasDockedSceneBodyContentLane =
       hasPollBody && contentActivity.shouldRunDataLane && contentActivity.shouldSubscribeDataLane;
     if (dismissTransaction != null) {
       if (hasMountedPollHeader) {
@@ -1341,14 +1342,14 @@ class AppRouteSceneStackLayerStateController {
         );
       }
       // DISMISS DEADLOCK FIX (2026-06-22): the body/host readiness gates required
-      // `hasPollBodyContentLane` = hasPollBody && shouldRunDataLane && shouldSubscribeDataLane. But
+      // `hasDockedSceneBodyContentLane` = hasPollBody && shouldRunDataLane && shouldSubscribeDataLane. But
       // shouldSubscribeDataLane (and shouldRunDataLane, which mirrors it) = `currentSnap !== 'hidden'`
-      // — false while the persistent-polls sheet is still hidden UNDER the closing results sheet. So
+      // — false while the docked-scene sheet is still hidden UNDER the closing results sheet. So
       // the gate could never open: the handoff that un-hides the polls sheet (→ subscribes the data
       // lane) was itself gated on the data lane already being subscribed. Result: pollBody/pollHost
       // never marked ready → completeDismissHandoff never fires → leftover "Best restaurants" sheet
       // and you can't start another search (attributed via [DISMISS-HOSTGATE] Metro logs:
-      // isMounted/hasMountedPollHeader true, hasPollBody true, but hasPollBodyContentLane stuck false).
+      // isMounted/hasMountedPollHeader true, hasPollBody true, but hasDockedSceneBodyContentLane stuck false).
       // The body-fix comment above already intended "treat a RENDERED list body as ready"; honor it by
       // gating on hasPollBody (the list body is mounted/rendered) — the data lane subscribes a beat
       // later once the handoff un-hides the sheet (brief poll-feed loading state, never a deadlock).
@@ -1372,7 +1373,7 @@ class AppRouteSceneStackLayerStateController {
       return;
     }
     const payload = {
-      event: 'persistent_polls_scene_header_restoration_contract',
+      event: 'docked_scene_header_restoration_contract',
       source,
       sheetContentLaneKind: expectedContract.sheetContentLaneKind,
       displayedSceneKey: expectedContract.displayedSceneKey,
@@ -1381,11 +1382,11 @@ class AppRouteSceneStackLayerStateController {
       headerSurfaceKind: headerEntry?.surfaceKind ?? null,
       mountedChromeKey: headerEntry?.mountedChromeKey ?? null,
       mountedBodyKey,
-      pollsHeaderChromeNonNull:
+      dockedSceneHeaderChromeNonNull:
         headerEntry?.surfaceKind === 'mounted' &&
         headerEntry.mountedChromeKey === expectedContract.mountedChromeKey,
-      pollsBodyMountedContentNonNull: mountedBodyKey === 'polls',
-      pollsBodyContentLaneActive: hasPollBodyContentLane,
+      dockedSceneBodyMountedContentNonNull: mountedBodyKey === DOCKED_SCENE_KEY,
+      dockedSceneBodyContentLaneActive: hasDockedSceneBodyContentLane,
       contentActivity,
       shouldAttachMountedContent: contentActivity.shouldAttachMountedContent,
       shouldRunDataLane: contentActivity.shouldRunDataLane,
@@ -1396,15 +1397,15 @@ class AppRouteSceneStackLayerStateController {
       isMounted: payload.isMounted,
       mountedBodyKey: payload.mountedBodyKey,
       mountedChromeKey: payload.mountedChromeKey,
-      pollsBodyContentLaneActive: payload.pollsBodyContentLaneActive,
+      dockedSceneBodyContentLaneActive: payload.dockedSceneBodyContentLaneActive,
       shouldAttachMountedContent: payload.shouldAttachMountedContent,
       shouldRunDataLane: payload.shouldRunDataLane,
       shouldSubscribeDataLane: payload.shouldSubscribeDataLane,
     });
-    if (!force && this.lastPersistentPollHeaderRestorationContractKey === contractKey) {
+    if (!force && this.lastDockedSceneHeaderRestorationContractKey === contractKey) {
       return;
     }
-    this.lastPersistentPollHeaderRestorationContractKey = contractKey;
+    this.lastDockedSceneHeaderRestorationContractKey = contractKey;
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, payload);
   }
 
@@ -1573,8 +1574,8 @@ class AppRouteSceneStackLayerStateController {
     } else {
       this.scenePresentationSnapshots.set(sceneKey, nextSnapshot);
     }
-    if (sceneKey === 'polls') {
-      this.logPersistentPollHeaderRestorationContract('syncScenePresentationSnapshot');
+    if (sceneKey === DOCKED_SCENE_KEY) {
+      this.logDockedSceneHeaderRestorationContract('syncScenePresentationSnapshot');
     }
     return true;
   }
@@ -1939,14 +1940,14 @@ class AppRouteSceneStackLayerStateController {
       );
       return false;
     }
-    if (sceneKey === 'search' || sceneKey === 'polls') {
+    if (sceneKey === 'search' || sceneKey === DOCKED_SCENE_KEY) {
       const areEntriesEqual =
         areSearchRouteSceneStackBodyContentEntriesEqual(left.contentEntry, right.contentEntry) &&
         areSearchRouteSceneStackBodyTransportEntriesEqual(
           left.transportEntry,
           right.transportEntry
         );
-      const shouldCompareDataLane = sceneKey === 'polls';
+      const shouldCompareDataLane = sceneKey === DOCKED_SCENE_KEY;
       const isEqual =
         areEntriesEqual &&
         (sceneKey === 'search' ||
@@ -2036,8 +2037,8 @@ class AppRouteSceneStackLayerStateController {
     } else {
       this.sceneBodySurfaceSnapshots.set(sceneKey, nextSnapshot);
     }
-    if (sceneKey === 'polls') {
-      this.logPersistentPollHeaderRestorationContract('syncSceneBodySurfaceSnapshot');
+    if (sceneKey === DOCKED_SCENE_KEY) {
+      this.logDockedSceneHeaderRestorationContract('syncSceneBodySurfaceSnapshot');
     }
     return true;
   }
@@ -2434,8 +2435,8 @@ class AppRouteSceneStackLayerStateController {
     appendActivitySceneKey({ sceneKeys: sceneKeysToCheck, sceneKey: interactiveSceneKey });
     appendActivitySceneKey({ sceneKeys: sceneKeysToCheck, sceneKey: previousHandoffSceneKey });
     appendActivitySceneKey({ sceneKeys: sceneKeysToCheck, sceneKey: handoffSceneKey });
-    if (shouldSyncSearchDismissPollDataPrewarmScene(mountedSceneKeys)) {
-      sceneKeysToCheck.add('polls');
+    if (shouldSyncSearchDismissDockedSceneDataPrewarmScene(mountedSceneKeys)) {
+      sceneKeysToCheck.add(DOCKED_SCENE_KEY);
     }
     const changedSceneKeys: OverlayKey[] = [];
 
@@ -2834,9 +2835,9 @@ class AppRouteSceneStackLayerStateController {
       return false;
     }
     if (
-      sheetPresentationSceneKey === 'polls' &&
-      !this.staticSceneMountState.pollsPrewarmed &&
-      !this.hasMountedSceneEntry('polls')
+      sheetPresentationSceneKey === DOCKED_SCENE_KEY &&
+      !this.staticSceneMountState.dockedScenePrewarmed &&
+      !this.hasMountedSceneEntry(DOCKED_SCENE_KEY)
     ) {
       return false;
     }
@@ -2880,8 +2881,8 @@ class AppRouteSceneStackLayerStateController {
       // outgoing-hold preserve branch is subsumed by frame.outgoingSceneKey, never re-derived.
       const sheetPresentationSceneKey = presentationFrame.presentedSceneKey;
       const activitySceneKey = sheetPresentationSceneKey ?? activeSceneKey;
-      // INTERACTIVE RULE (§9.1): the interactive scene is the presented leg ('polls' is already
-      // the presented key under laneKind==='docked-polls'); the input-owner is the OUTGOING leg
+      // INTERACTIVE RULE (§9.1): the interactive scene is the presented leg (DOCKED_SCENE_KEY is already
+      // the presented key under laneKind==='docked'); the input-owner is the OUTGOING leg
       // while a held window is open. Null presented = pre-first-commit; route truth stands in.
       const activityInteractiveSceneKey =
         sheetPresentationSceneKey == null
@@ -3043,8 +3044,8 @@ class AppRouteSceneStackLayerStateController {
             : resolvedRouteSceneSwitchSnapshot.handoffSceneKey;
         const sheetPresentationSceneKey = presentationFrame.presentedSceneKey;
         const activitySceneKey = sheetPresentationSceneKey ?? activeSceneKey;
-        // INTERACTIVE RULE (§9.1): the interactive scene is the presented leg ('polls' is
-        // already the presented key under laneKind==='docked-polls'); the input-owner is the
+        // INTERACTIVE RULE (§9.1): the interactive scene is the presented leg (DOCKED_SCENE_KEY is
+        // already the presented key under laneKind==='docked'); the input-owner is the
         // OUTGOING leg while a held window is open. Null presented = pre-first-commit.
         const activityInteractiveSceneKey =
           sheetPresentationSceneKey == null
@@ -3061,10 +3062,13 @@ class AppRouteSceneStackLayerStateController {
                 activeSceneKey: activitySceneKey,
                 transitionPhase: resolvedRouteSceneSwitchSnapshot.transitionPhase,
                 areStaticTabScenesReady,
-                isPollsSceneReady: isPollsSceneInputReady(sceneInputAuthority),
+                isDockedSceneReady: isDockedSceneInputReady(sceneInputAuthority),
               })
           );
-        if (staticSceneMountState.residentShellsPrewarmed && !this.staticSceneMountState.residentShellsPrewarmed) {
+        if (
+          staticSceneMountState.residentShellsPrewarmed &&
+          !this.staticSceneMountState.residentShellsPrewarmed
+        ) {
           scheduleResidentShellPrewarm();
         }
         this.staticSceneMountState = staticSceneMountState;

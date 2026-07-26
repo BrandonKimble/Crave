@@ -748,17 +748,11 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
   ],
   [
     'results_dismiss_bottom_snap_handoff_contract',
-    ['event', 'emittedAtMs', 'persistentPollsSwitchAtBottomSnap', 'snap', 'handoffTrigger'],
+    ['event', 'emittedAtMs', 'dockedSceneSwitchAtBottomSnap', 'snap', 'handoffTrigger'],
   ],
   [
     'results_dismiss_collapsed_boundary_contract',
-    [
-      'event',
-      'emittedAtMs',
-      'persistentPollsSwitchAtBottomSnap',
-      'handoffTrigger',
-      'handoffSource',
-    ],
+    ['event', 'emittedAtMs', 'dockedSceneSwitchAtBottomSnap', 'handoffTrigger', 'handoffSource'],
   ],
   [
     'results_dismiss_press_up_contract',

@@ -83,7 +83,7 @@ export type SearchSurfaceDismissTransaction = {
 
 export type SearchSurfaceSheetClipMode =
   | 'none'
-  | 'dockedPersistentPoll'
+  | 'dockedScene'
   | 'staticPersistent'
   | 'animatedSearchTransition';
 
@@ -99,10 +99,10 @@ export type SearchSurfaceVisualPolicySnapshot = {
   canAdmitResultsBody: boolean;
   shouldHoldResultsHeader: boolean;
   shouldHoldSearchDisplayForPollRestore: boolean;
-  canExposePersistentPolls: boolean;
-  canDisplayPersistentPollSubstrate: boolean;
-  canReleasePersistentPolls: boolean;
-  bottomBandOwner: 'persistent_polls' | 'results_header';
+  canExposeDockedScene: boolean;
+  canDisplayDockedSceneSubstrate: boolean;
+  canReleaseDockedScene: boolean;
+  bottomBandOwner: 'docked_scene' | 'results_header';
   sheetClipMode: SearchSurfaceSheetClipMode;
 };
 
@@ -118,11 +118,11 @@ export const EMPTY_SEARCH_SURFACE_VISUAL_POLICY: SearchSurfaceVisualPolicySnapsh
   canAdmitResultsBody: true,
   shouldHoldResultsHeader: false,
   shouldHoldSearchDisplayForPollRestore: false,
-  canExposePersistentPolls: false,
-  canDisplayPersistentPollSubstrate: false,
-  canReleasePersistentPolls: false,
-  bottomBandOwner: 'persistent_polls',
-  sheetClipMode: 'dockedPersistentPoll',
+  canExposeDockedScene: false,
+  canDisplayDockedSceneSubstrate: false,
+  canReleaseDockedScene: false,
+  bottomBandOwner: 'docked_scene',
+  sheetClipMode: 'dockedScene',
 };
 
 export const areSearchSurfaceVisualPoliciesEqual = (
@@ -140,9 +140,9 @@ export const areSearchSurfaceVisualPoliciesEqual = (
   left.canAdmitResultsBody === right.canAdmitResultsBody &&
   left.shouldHoldResultsHeader === right.shouldHoldResultsHeader &&
   left.shouldHoldSearchDisplayForPollRestore === right.shouldHoldSearchDisplayForPollRestore &&
-  left.canExposePersistentPolls === right.canExposePersistentPolls &&
-  left.canDisplayPersistentPollSubstrate === right.canDisplayPersistentPollSubstrate &&
-  left.canReleasePersistentPolls === right.canReleasePersistentPolls &&
+  left.canExposeDockedScene === right.canExposeDockedScene &&
+  left.canDisplayDockedSceneSubstrate === right.canDisplayDockedSceneSubstrate &&
+  left.canReleaseDockedScene === right.canReleaseDockedScene &&
   left.bottomBandOwner === right.bottomBandOwner &&
   left.sheetClipMode === right.sheetClipMode;
 
@@ -153,7 +153,7 @@ export const selectSearchSurfaceRouteGraphPolicy = (
 export type NavSilhouetteRuntimeProjection = {
   owner: 'poll_page' | 'results_page' | 'held_results_page';
   material: 'frosted';
-  bottomBandOwner: 'persistent_polls' | 'results_header';
+  bottomBandOwner: 'docked_scene' | 'results_header';
   sheetClipMode: SearchSurfaceSheetClipMode;
 };
 
@@ -176,17 +176,16 @@ export type SearchSurfaceRuntimeSnapshot = {
 // S-C.5 item 6a — NAMED bottom-band policy selectors (the nav-visual runtime's session-arm
 // formulas, moved beside the policy they read so the "who owns the bottom band" vocabulary
 // is testable and shared; world/camera L1-L5 will need the same answers).
-export const selectIsPersistentPollHandoffCommitted = (
+export const selectIsDockedSceneHandoffCommitted = (
   policy: SearchSurfaceVisualPolicySnapshot
 ): boolean =>
   policy.phase === 'results_dismissing' &&
-  policy.canReleasePersistentPolls &&
-  policy.bottomBandOwner === 'persistent_polls';
+  policy.canReleaseDockedScene &&
+  policy.bottomBandOwner === 'docked_scene';
 
 export const selectIsTransitionOwnedResultsExit = (
   policy: SearchSurfaceVisualPolicySnapshot
-): boolean =>
-  policy.phase === 'results_dismissing' && !selectIsPersistentPollHandoffCommitted(policy);
+): boolean => policy.phase === 'results_dismissing' && !selectIsDockedSceneHandoffCommitted(policy);
 
 export const selectIsSearchResultsSurfaceOwner = (
   policy: SearchSurfaceVisualPolicySnapshot
@@ -197,7 +196,7 @@ export const selectIsSearchResultsSurfaceOwner = (
 // The ONE derived fact for "the dismiss choreography has completed" — release means the
 // choreography is done, not "the sheet touched bottom": a bottom-snap dismiss reaches
 // the boundary at t0 (zero travel) while the nav is still sliding home; flipping to
-// dockedPersistentPoll then pins the effective navTranslateY to 0 and the mask animates
+// dockedScene then pins the effective navTranslateY to 0 and the mask animates
 // alone, exposing the map. Both the release policy and the commit stamp consume THIS
 // derivation so the two can never drift.
 export const isDismissChoreographyComplete = (
@@ -226,9 +225,9 @@ export const selectSearchSurfaceVisualPolicy = (
       canAdmitResultsBody: false,
       shouldHoldResultsHeader: false,
       shouldHoldSearchDisplayForPollRestore: false,
-      canExposePersistentPolls: false,
-      canDisplayPersistentPollSubstrate: false,
-      canReleasePersistentPolls: false,
+      canExposeDockedScene: false,
+      canDisplayDockedSceneSubstrate: false,
+      canReleaseDockedScene: false,
       bottomBandOwner: 'results_header',
       sheetClipMode: 'animatedSearchTransition',
     };
@@ -236,12 +235,12 @@ export const selectSearchSurfaceVisualPolicy = (
 
   const dismissTransaction = snapshot.dismissTransaction;
   if (dismissTransaction != null) {
-    const canDisplayPersistentPollSubstrate =
+    const canDisplayDockedSceneSubstrate =
       dismissTransaction.pollHeaderReady &&
       dismissTransaction.pollBodyReady &&
       dismissTransaction.pollHostReady;
-    const canReleasePersistentPolls =
-      canDisplayPersistentPollSubstrate && isDismissChoreographyComplete(dismissTransaction);
+    const canReleaseDockedScene =
+      canDisplayDockedSceneSubstrate && isDismissChoreographyComplete(dismissTransaction);
     return {
       transactionId: dismissTransaction.id,
       phase: 'results_dismissing',
@@ -251,16 +250,14 @@ export const selectSearchSurfaceVisualPolicy = (
       pollHostReady: dismissTransaction.pollHostReady,
       dismissBottomBoundaryReached: dismissTransaction.bottomBoundaryReached,
       bottomNavReturnReady: dismissTransaction.bottomNavReturnReady,
-      canAdmitResultsBody: !canReleasePersistentPolls,
-      shouldHoldResultsHeader: !canReleasePersistentPolls,
+      canAdmitResultsBody: !canReleaseDockedScene,
+      shouldHoldResultsHeader: !canReleaseDockedScene,
       shouldHoldSearchDisplayForPollRestore: false,
-      canExposePersistentPolls: canReleasePersistentPolls,
-      canDisplayPersistentPollSubstrate,
-      canReleasePersistentPolls,
-      bottomBandOwner: canReleasePersistentPolls ? 'persistent_polls' : 'results_header',
-      sheetClipMode: canReleasePersistentPolls
-        ? 'dockedPersistentPoll'
-        : 'animatedSearchTransition',
+      canExposeDockedScene: canReleaseDockedScene,
+      canDisplayDockedSceneSubstrate,
+      canReleaseDockedScene,
+      bottomBandOwner: canReleaseDockedScene ? 'docked_scene' : 'results_header',
+      sheetClipMode: canReleaseDockedScene ? 'dockedScene' : 'animatedSearchTransition',
     };
   }
 
@@ -371,8 +368,8 @@ const deriveNavSilhouetteProjection = (
   return {
     owner: 'poll_page',
     material: 'frosted',
-    bottomBandOwner: 'persistent_polls',
-    sheetClipMode: 'dockedPersistentPoll',
+    bottomBandOwner: 'docked_scene',
+    sheetClipMode: 'dockedScene',
   };
 };
 
@@ -1309,13 +1306,13 @@ export class SearchSurfaceRuntime {
     nextDismissTransaction: SearchSurfaceDismissTransaction,
     pollBundle = this.snapshot.pollBundle
   ): void {
-    const isReadyToReleasePersistentPolls =
+    const isReadyToReleaseDockedScene =
       nextDismissTransaction.pollHeaderReady &&
       nextDismissTransaction.pollBodyReady &&
       nextDismissTransaction.pollHostReady &&
       isDismissChoreographyComplete(nextDismissTransaction);
     const publishedDismissTransaction =
-      isReadyToReleasePersistentPolls && nextDismissTransaction.committedAtMs == null
+      isReadyToReleaseDockedScene && nextDismissTransaction.committedAtMs == null
         ? {
             ...nextDismissTransaction,
             committedAtMs: nowMs(),
@@ -1407,7 +1404,7 @@ export class SearchSurfaceRuntime {
       activeTransactionId,
       bottomBandOwner: 'results_header',
       canAdmitResultsBody: true,
-      canReleasePersistentPolls: false,
+      canReleaseDockedScene: false,
       outgoingResultsBodyAdmitted: true,
       outgoingResultsChromeHeld: true,
       outgoingResultsHeld: true,

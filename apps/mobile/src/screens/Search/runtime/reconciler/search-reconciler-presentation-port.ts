@@ -31,10 +31,10 @@ export const registerSearchReconcilerPresentationPort = (
 export const getSearchReconcilerPresentationPort = (): SearchReconcilerPresentationPort | null =>
   port;
 
-// View inputs the reconciler reads at transition time (the docked-polls flag drives the
+// View inputs the reconciler reads at transition time (the docked flag drives the
 // home-pill enter transition variant). Registered by the foreground command runtime.
 export type SearchReconcilerViewInputs = {
-  getDockedPollsFlag: () => boolean;
+  getDockedSceneFlag: () => boolean;
 };
 
 let viewInputs: SearchReconcilerViewInputs | null = null;

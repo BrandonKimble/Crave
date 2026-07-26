@@ -4,6 +4,7 @@ import type {
   SearchRouteSceneStackChromeEntry,
 } from '../../overlays/searchRouteSceneStackSheetContract';
 import type { OverlayKey } from '../../overlays/types';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import type { SceneEntryMountUnit } from './app-route-scene-entry-mounts';
 
 export type AppRouteSceneStackMountedScenesSnapshot = {
@@ -93,32 +94,32 @@ export type AppRouteSceneStackSurfaceAuthority = {
     sceneKey: OverlayKey
   ) => AppRouteSceneStackScenePresentationAuthority;
   getSceneBodySurfaceAuthority: (sceneKey: OverlayKey) => AppRouteSceneStackBodySurfaceAuthority;
-  replayPersistentPollHeaderRestorationContract: (source: string) => void;
+  replayDockedSceneHeaderRestorationContract: (source: string) => void;
 };
 
-export type PersistentPollIdleSheetHeaderRestorationContract = {
-  sheetContentLaneKind: 'persistent_poll';
-  displayedSceneKey: 'polls';
+export type DockedSceneIdleSheetHeaderRestorationContract = {
+  sheetContentLaneKind: 'docked_scene';
+  displayedSceneKey: typeof DOCKED_SCENE_KEY;
   overlaySheetVisible: true;
-  sheetPresentationSceneKey: 'polls';
+  sheetPresentationSceneKey: typeof DOCKED_SCENE_KEY;
   mountedChromeKey: NonNullable<SearchRouteSceneStackChromeEntry['mountedChromeKey']>;
-  pollsHeaderChromeNonNull: true;
-  pollsBodyContentLaneActive: true;
+  dockedSceneHeaderChromeNonNull: true;
+  dockedSceneBodyContentLaneActive: true;
   contentActivity: Pick<
     AppRouteSceneStackSceneActivitySnapshot,
     'shouldAttachMountedContent' | 'shouldRunDataLane' | 'shouldSubscribeDataLane'
   >;
 };
 
-export const PERSISTENT_POLL_IDLE_SHEET_HEADER_RESTORATION_CONTRACT: PersistentPollIdleSheetHeaderRestorationContract =
+export const DOCKED_SCENE_IDLE_SHEET_HEADER_RESTORATION_CONTRACT: DockedSceneIdleSheetHeaderRestorationContract =
   {
-    sheetContentLaneKind: 'persistent_poll',
-    displayedSceneKey: 'polls',
+    sheetContentLaneKind: 'docked_scene',
+    displayedSceneKey: DOCKED_SCENE_KEY,
     overlaySheetVisible: true,
-    sheetPresentationSceneKey: 'polls',
-    mountedChromeKey: 'polls',
-    pollsHeaderChromeNonNull: true,
-    pollsBodyContentLaneActive: true,
+    sheetPresentationSceneKey: DOCKED_SCENE_KEY,
+    mountedChromeKey: DOCKED_SCENE_KEY,
+    dockedSceneHeaderChromeNonNull: true,
+    dockedSceneBodyContentLaneActive: true,
     contentActivity: {
       shouldAttachMountedContent: true,
       shouldRunDataLane: true,

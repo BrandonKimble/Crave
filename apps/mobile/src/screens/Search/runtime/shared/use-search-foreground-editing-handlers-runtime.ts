@@ -21,7 +21,7 @@ export const useSearchForegroundEditingHandlersRuntime = ({
   beginSuggestionCloseHold,
   requestSearchPresentationIntent,
   beginCloseSearch,
-  restoreDockedPolls,
+  restoreDockedScene,
   searchSessionQueryRef,
   ...args
 }: SearchForegroundEditingRuntimeArgs): SearchForegroundInteractionEditingHandlers => {
@@ -60,7 +60,7 @@ export const useSearchForegroundEditingHandlersRuntime = ({
     cancelAutocomplete,
     beginSuggestionCloseHold,
     requestSearchPresentationIntent,
-    restoreDockedPolls,
+    restoreDockedScene,
     suppressAutocompleteResults: args.suppressAutocompleteResults,
     setIsSearchFocused: args.setIsSearchFocused,
     setIsSuggestionPanelActive: args.setIsSuggestionPanelActive,

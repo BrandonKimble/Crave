@@ -104,7 +104,7 @@ export const useAppRouteDynamicSceneInputWritersRuntime = ({
     authority: routeSceneRuntime.routeSheetSnapSessionAuthority,
     selector: React.useCallback(
       (snapshot): AppRouteSceneSheetSessionInputState => ({
-        isDockedPollsDismissed: snapshot.isDockedPollsDismissed,
+        isDockedSceneDismissed: snapshot.isDockedSceneDismissed,
       }),
       []
     ),

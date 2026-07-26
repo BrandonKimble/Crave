@@ -27,7 +27,7 @@ export const useSearchRootSearchSceneInteractionLoadingPolicyRuntime = ({
     () =>
       hasActiveToggleInteraction &&
       searchSheetContentLaneKind !== 'results_closing' &&
-      searchSheetContentLaneKind !== 'persistent_poll',
+      searchSheetContentLaneKind !== 'docked_scene',
     [hasActiveToggleInteraction, searchSheetContentLaneKind]
   );
 };

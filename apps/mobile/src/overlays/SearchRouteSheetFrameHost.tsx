@@ -34,7 +34,7 @@ const isPersistentNavBodyExclusionMode = (
 ): boolean => {
   'worklet';
   return (
-    modeValue === APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll ||
+    modeValue === APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedScene ||
     modeValue === APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.staticPersistent
   );
 };
@@ -190,7 +190,7 @@ export const SearchRouteSheetFrameHost = React.memo(
       const startupGeometrySeed = getSearchStartupGeometrySeed();
       return {
         exclusionModeValue: {
-          value: APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll,
+          value: APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedScene,
         },
         navBarHeight: startupGeometrySeed.bottomNavHeight,
         navBarTop: startupGeometrySeed.navBarTopForSnaps,

@@ -20,7 +20,7 @@ type UseSearchForegroundExitEditingRuntimeArgs = Pick<
   | 'cancelAutocomplete'
   | 'beginSuggestionCloseHold'
   | 'requestSearchPresentationIntent'
-  | 'restoreDockedPolls'
+  | 'restoreDockedScene'
   | 'suppressAutocompleteResults'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
@@ -51,7 +51,7 @@ export const useSearchForegroundExitEditingRuntime = ({
   cancelAutocomplete,
   beginSuggestionCloseHold,
   requestSearchPresentationIntent,
-  restoreDockedPolls,
+  restoreDockedScene,
   suppressAutocompleteResults,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
@@ -91,7 +91,7 @@ export const useSearchForegroundExitEditingRuntime = ({
     shouldTreatSearchAsResults,
     showPollsOverlay,
     cancelAutocomplete,
-    restoreDockedPolls,
+    restoreDockedScene,
     suppressAutocompleteResults,
     setQuery,
     setIsAutocompleteSuppressed,

@@ -89,7 +89,8 @@ const resolveRouteChromeTransitionConfig = ({
     return buildExpandedMiddleChromeSnaps(searchBarTop, insetsTop);
   }
   const shouldUsePollsChrome =
-    routeChromeOverlayState.routeChromeOverlayMode === 'search' && chromeSurfaceTarget === 'polls';
+    routeChromeOverlayState.routeChromeOverlayMode === 'search' &&
+    chromeSurfaceTarget === 'dockedScene';
   if (shouldUsePollsChrome) {
     return buildExpandedMiddleChromeSnaps(searchBarTop, insetsTop);
   }

@@ -44,8 +44,8 @@ This is a principled rule, not a free choice:
   them, which requires a hook. Mount it at the app shell
   (`AppShellMainNavigator.tsx`) for a top-level scene, or
   `use-app-route-dynamic-scene-input-writers-runtime.tsx` for a child route.
-- **Scene with imperative, non-React lifecycle state** (rare — only the persistent
-  poll lane today) → a **controller class** publishes shell + chrome + manages the
+- **Scene with imperative, non-React lifecycle state** (rare — only the docked
+  lane's scene today) → a **controller class** publishes shell + chrome + manages the
   state; pair it with a writer for the `'list'` body. `polls` is this hybrid.
 
 Child scenes also need: a scene-state runtime + panel-spec hook + the writer, plus
@@ -176,9 +176,17 @@ press-up flip, (3) restarting quiet-window debounce, (4) cancelable consequence,
 extracted into a portable `declareToggle` core; status + work queue in
 `plans/page-foundation-codification.md` §4b).
 
-## 6. Persistent-poll-lane caveat
+## 6. Docked-lane caveat
 
-The docked polls lane is the one bespoke subsystem. Its search→docked dismiss
-handoff marks readiness off the polls body surface, so it is **surface-aware**
-(mounted OR list). If you change the polls body surface kind, re-check
-`logPersistentPollHeaderRestorationContract` in `app-route-scene-stack-runtime.ts`.
+The docked lane is the one bespoke subsystem: exactly one scene (the "docked
+scene") presents under the search root whenever the search sheet dismisses,
+restorable after dismissal — not a tab. Which scene that is lives in ONE
+registry constant, `DOCKED_SCENE_KEY` (`app-overlay-route-types.ts`, today
+`'polls'`); no lane/runtime code names the scene directly, so re-targeting the
+persistent surface (e.g. polls → home) is a one-constant change plus the new
+scene's own publication files.
+
+The lane's search→docked dismiss handoff marks readiness off the docked scene's
+body surface, so it is **surface-aware** (mounted OR list). If you change the
+docked scene's body surface kind, re-check
+`logDockedSceneHeaderRestorationContract` in `app-route-scene-stack-runtime.ts`.

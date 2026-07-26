@@ -17,7 +17,7 @@ export const EMPTY_ROUTE_SCENE_SWITCH_SNAPSHOT: RouteSceneSwitchSnapshot = {
   transitionToken: 0,
   transitionContract: null,
   activePollsParams: null,
-  activeDockedPollsRestoreIntent: null,
+  activeDockedSceneRestoreIntent: null,
   isInteractive: true,
   routeState: {
     activeOverlayRoute: ROOT_SEARCH_ROUTE_ENTRY,

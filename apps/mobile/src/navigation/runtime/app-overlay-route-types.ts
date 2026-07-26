@@ -7,7 +7,15 @@ import type { MapBounds } from '../../types';
 
 export type { OverlayKey } from '../../overlays/types';
 
-export type AppOverlayTopLevelProductRouteKey = 'search' | 'polls' | 'bookmarks' | 'profile';
+// Docked-scene constants live in the LEAF module docked-scene-target.ts (imports nothing
+// at runtime) — hosting them here produced a boot-order TDZ through this file's import
+// cycles. Import values from './docked-scene-target' directly; the type re-export below
+// is safe (erased at runtime).
+import {
+  ALL_TOP_LEVEL_SCENE_KEYS,
+  type AppOverlayTopLevelProductRouteKey,
+} from './docked-scene-target';
+export type { AppOverlayTopLevelProductRouteKey } from './docked-scene-target';
 
 export type AppOverlaySaveListType = 'restaurant' | 'dish';
 
@@ -106,7 +114,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   restaurant: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
@@ -175,7 +183,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   userProfile: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -186,7 +194,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   listDetail: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -197,7 +205,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   followList: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -208,7 +216,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   notifications: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -242,7 +250,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   postPhotos: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,

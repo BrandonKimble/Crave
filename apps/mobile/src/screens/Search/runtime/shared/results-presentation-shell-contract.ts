@@ -7,7 +7,7 @@ export type SearchHeaderChromeMode = 'default' | 'editing' | 'results';
 export type SearchSheetContentLane =
   | { kind: 'results_live' }
   | { kind: 'results_closing'; closeIntentId: string; targetSnap: 'collapsed' }
-  | { kind: 'persistent_poll' };
+  | { kind: 'docked_scene' };
 
 export type SearchCloseTransitionState = {
   closeIntentId: string;
@@ -24,7 +24,7 @@ export type SearchPresentationIntent =
       query: string;
       targetTab: 'restaurants' | 'dishes';
       preserveSheetState?: boolean;
-      transitionFromDockedPolls?: boolean;
+      transitionFromDockedScene?: boolean;
       entrySurface: SearchSubmitEntrySurface;
     }
   | {
@@ -33,7 +33,7 @@ export type SearchPresentationIntent =
       query: string;
       targetTab?: 'restaurants' | 'dishes';
       preserveSheetState?: boolean;
-      transitionFromDockedPolls?: boolean;
+      transitionFromDockedScene?: boolean;
       entrySurface: SearchSubmitEntrySurface;
     }
   | { kind: 'focus_editing' }

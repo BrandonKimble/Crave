@@ -80,7 +80,7 @@ export const useResultsPresentationShellRuntime = ({
   const policyFactsSnapshot = policyFactsControllerRef.current.updateShellFacts({
     hasActiveSearchContent,
     closeTransitionState: shellLocalState.searchCloseTransitionState,
-    holdPersistentPollLane: shellLocalState.holdPersistentPollLane,
+    holdDockedLane: shellLocalState.holdDockedLane,
     surfaceVisualPolicy,
     policyFacts: resultsPresentationAuthority.readPolicyFactsSnapshot(
       searchRuntimeBus.getPolicyFactsSnapshot()

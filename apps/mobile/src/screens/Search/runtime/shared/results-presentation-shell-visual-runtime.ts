@@ -12,8 +12,8 @@ export const resolveSearchSheetContentLane = ({
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
 }): SearchSheetContentLane => {
   if (surfaceVisualPolicy.phase === 'results_dismissing') {
-    if (surfaceVisualPolicy.canReleasePersistentPolls) {
-      return { kind: 'persistent_poll' };
+    if (surfaceVisualPolicy.canReleaseDockedScene) {
+      return { kind: 'docked_scene' };
     }
     return {
       kind: 'results_closing',
@@ -31,7 +31,7 @@ export const resolveSearchSheetContentLane = ({
     return { kind: 'results_live' };
   }
 
-  return { kind: 'persistent_poll' };
+  return { kind: 'docked_scene' };
 };
 
 export const resolveSearchHeaderVisualModel = ({

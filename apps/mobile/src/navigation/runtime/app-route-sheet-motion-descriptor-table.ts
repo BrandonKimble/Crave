@@ -61,11 +61,11 @@ export type SheetMotionDescriptorKind = RouteSceneSwitchSheetTransitionKind | '*
  *    detent when usable (middle/expanded — a collapsed parent memory would hide the content
  *    the child was opened from), else `fallbackSnap`.
  *  - 'postureSeat' (THE two-posture law, owner 2026-07-12): every nav-page switch snaps to the
- *    TARGET side's posture seat — home (search/polls → the docked-polls seat) or content (one
+ *    TARGET side's posture seat — home (search/polls → the docked seat) or content (one
  *    shared seat for every other root page). Same-side switches resolve to the detent the live
  *    sheet already sits at (zero motion — content pages swap in place); home↔content crossings
  *    restore the other side's remembered posture, collapsed included (it is a first-class home
- *    posture). An unusable seat (hidden = dismissed docked polls, or unset) falls to the side's
+ *    posture). An unusable seat (hidden = dismissed docked scene, or unset) falls to the side's
  *    cold-start seed: home 'collapsed', content 'expanded'. Zero per-row config by design.
  */
 export type SheetMotionDescriptorRule =
@@ -331,10 +331,10 @@ export const lookupDefaultSheetMotionDescriptorRow = (
  *
  * 'postureSeat' (two-posture law): snap to the TARGET side's seat. The seat read goes through
  * resolveSceneRememberedSnap, whose snap-session backing routes polls → the HOME seat and
- * bookmarks/profile → the ONE content seat ('search' as a nav target IS home — the docked-polls
+ * bookmarks/profile → the ONE content seat ('search' as a nav target IS home — the docked
  * presentation — so it aliases to the polls seat here). Collapsed is a first-class remembered
- * posture; only hidden (dismissed docked polls) / unset fall to the side's cold-start seed —
- * which for home is also the sanctioned docked-polls resurrect posture.
+ * posture; only hidden (dismissed docked scene) / unset fall to the side's cold-start seed —
+ * which for home is also the sanctioned docked resurrect posture.
  */
 export const materializeSheetMotionDescriptorRule = ({
   rule,

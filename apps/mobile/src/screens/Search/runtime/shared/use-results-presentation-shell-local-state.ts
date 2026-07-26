@@ -20,12 +20,12 @@ export type ResultsPresentationShellLocalState = {
   inputMode: SearchInputMode;
   displayQueryOverride: string;
   searchCloseTransitionState: SearchCloseTransitionState;
-  holdPersistentPollLane: boolean;
+  holdDockedLane: boolean;
   setBackdropTarget: React.Dispatch<React.SetStateAction<SearchBackdropTarget>>;
   setInputMode: React.Dispatch<React.SetStateAction<SearchInputMode>>;
   setDisplayQueryOverride: React.Dispatch<React.SetStateAction<string>>;
   setSearchCloseTransitionState: React.Dispatch<React.SetStateAction<SearchCloseTransitionState>>;
-  setHoldPersistentPollLane: React.Dispatch<React.SetStateAction<boolean>>;
+  setHoldDockedLane: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 export const useResultsPresentationShellLocalState = ({
@@ -43,7 +43,7 @@ export const useResultsPresentationShellLocalState = ({
   const [displayQueryOverride, setDisplayQueryOverride] = React.useState<string>('');
   const [searchCloseTransitionState, setSearchCloseTransitionState] =
     React.useState<SearchCloseTransitionState>(null);
-  const [holdPersistentPollLane, setHoldPersistentPollLane] = React.useState(false);
+  const [holdDockedLane, setHoldDockedLane] = React.useState(false);
 
   React.useEffect(() => {
     if (isSuggestionPanelActive && backdropTarget !== 'results' && inputMode !== 'editing') {
@@ -81,10 +81,10 @@ export const useResultsPresentationShellLocalState = ({
   ]);
 
   React.useEffect(() => {
-    if (holdPersistentPollLane && !hasActiveSearchContent) {
-      setHoldPersistentPollLane(false);
+    if (holdDockedLane && !hasActiveSearchContent) {
+      setHoldDockedLane(false);
     }
-  }, [hasActiveSearchContent, holdPersistentPollLane]);
+  }, [hasActiveSearchContent, holdDockedLane]);
 
   return React.useMemo(
     () => ({
@@ -92,19 +92,13 @@ export const useResultsPresentationShellLocalState = ({
       inputMode,
       displayQueryOverride,
       searchCloseTransitionState,
-      holdPersistentPollLane,
+      holdDockedLane,
       setBackdropTarget,
       setInputMode,
       setDisplayQueryOverride,
       setSearchCloseTransitionState,
-      setHoldPersistentPollLane,
+      setHoldDockedLane,
     }),
-    [
-      backdropTarget,
-      displayQueryOverride,
-      holdPersistentPollLane,
-      inputMode,
-      searchCloseTransitionState,
-    ]
+    [backdropTarget, displayQueryOverride, holdDockedLane, inputMode, searchCloseTransitionState]
   );
 };

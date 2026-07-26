@@ -14,7 +14,7 @@ import {
   type SearchRouteSceneLayoutState,
 } from '../../overlays/searchRouteSceneLayoutContract';
 import type { OverlaySheetSnap } from '../../overlays/types';
-import type { RouteOverlayPollsVisibilitySnapshot } from './route-overlay-display-snapshot-contract';
+import type { RouteOverlayDockedSceneVisibilitySnapshot } from './route-overlay-display-snapshot-contract';
 import type {
   AppRouteSceneChromePublication,
   AppRouteSceneStackShellSpec,
@@ -41,27 +41,24 @@ const POLLS_MOUNTED_SCENE_CHROME: AppRouteSceneChromePublication = {
 };
 
 const selectPollsRouteNavigationState = (
-  snapshot: RouteOverlayPollsVisibilitySnapshot
-): Pick<
-  AppRoutePollsRouteStateRuntime,
-  'isSearchOverlay' | 'isPersistentPollLane' | 'rootOverlayKey'
-> => ({
+  snapshot: RouteOverlayDockedSceneVisibilitySnapshot
+): Pick<AppRoutePollsRouteStateRuntime, 'isSearchOverlay' | 'isDockedLane' | 'rootOverlayKey'> => ({
   isSearchOverlay: snapshot.isSearchOverlay,
-  isPersistentPollLane: snapshot.isPersistentPollLane,
+  isDockedLane: snapshot.isDockedLane,
   rootOverlayKey: 'search',
 });
 
 const selectPollsPayloadState = (
   snapshot: AppRouteScenePayloadSnapshot
-): Pick<AppRoutePollsRouteStateRuntime, 'activePollsParams' | 'dockedPollsRestoreIntent'> => ({
+): Pick<AppRoutePollsRouteStateRuntime, 'activePollsParams' | 'dockedSceneRestoreIntent'> => ({
   activePollsParams: snapshot.activePollsParams,
-  dockedPollsRestoreIntent: snapshot.activeDockedPollsRestoreIntent,
+  dockedSceneRestoreIntent: snapshot.activeDockedSceneRestoreIntent,
 });
 
 const selectSheetSessionInputState = (
   snapshot: AppRouteSheetSnapSessionSnapshot
 ): AppRouteSceneSheetSessionInputState => ({
-  isDockedPollsDismissed: snapshot.isDockedPollsDismissed,
+  isDockedSceneDismissed: snapshot.isDockedSceneDismissed,
 });
 
 export type AppRoutePollsSceneInputController = {
@@ -72,14 +69,14 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private readonly disposers: ListenerDisposer[] = [];
 
   private readonly requestReturnToSearchFromPolls = (): void => {
-    if (this.pollsRouteState.isSearchOverlay && this.pollsRouteState.isPersistentPollLane) {
-      this.routeSceneRuntime.routeSheetSnapSessionActions.dismissDockedPolls();
+    if (this.pollsRouteState.isSearchOverlay && this.pollsRouteState.isDockedLane) {
+      this.routeSceneRuntime.routeSheetSnapSessionActions.dismissDockedScene();
       this.routeSceneRuntime.routeOverlayTransitionActions.requestOverlaySwitch({
         targetSceneKey: 'search',
         sheetTransitionKind: 'terminalDismiss',
         sheetOpenerSource: 'systemDismiss',
         sheetMotion: { kind: 'hide' },
-        dockedPollsRestoreSnap: null,
+        dockedSceneRestoreSnap: null,
       });
       return;
     }
@@ -103,7 +100,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   constructor(private readonly routeSceneRuntime: AppRouteSceneRuntime) {
     this.pollsRouteState = {
       ...selectPollsRouteNavigationState(
-        routeSceneRuntime.routeOverlayPollsVisibilityAuthority.getSnapshot()
+        routeSceneRuntime.routeOverlayDockedSceneVisibilityAuthority.getSnapshot()
       ),
       ...selectPollsPayloadState(routeSceneRuntime.scenePayloadAuthority.getSnapshot()),
     };
@@ -120,9 +117,9 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       EMPTY_APP_ROUTE_POLLS_DYNAMIC_SCENE_INPUT_RUNTIME;
 
     this.disposers.push(
-      routeSceneRuntime.routeOverlayPollsVisibilityAuthority.registerTarget({
-        attributionLabel: 'AppRoutePollsSceneInputPollsVisibility',
-        syncPollsVisibilitySnapshot: (snapshot) => {
+      routeSceneRuntime.routeOverlayDockedSceneVisibilityAuthority.registerTarget({
+        attributionLabel: 'AppRoutePollsSceneInputDockedSceneVisibility',
+        syncDockedSceneVisibilitySnapshot: (snapshot) => {
           this.setPollsRouteNavigationState(selectPollsRouteNavigationState(snapshot));
         },
       }),
@@ -169,12 +166,12 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private setPollsRouteNavigationState(
     nextState: Pick<
       AppRoutePollsRouteStateRuntime,
-      'isSearchOverlay' | 'isPersistentPollLane' | 'rootOverlayKey'
+      'isSearchOverlay' | 'isDockedLane' | 'rootOverlayKey'
     >
   ): void {
     if (
       this.pollsRouteState.isSearchOverlay === nextState.isSearchOverlay &&
-      this.pollsRouteState.isPersistentPollLane === nextState.isPersistentPollLane &&
+      this.pollsRouteState.isDockedLane === nextState.isDockedLane &&
       this.pollsRouteState.rootOverlayKey === nextState.rootOverlayKey
     ) {
       return;
@@ -189,12 +186,12 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   private setPollsPayloadState(
     nextState: Pick<
       AppRoutePollsRouteStateRuntime,
-      'activePollsParams' | 'dockedPollsRestoreIntent'
+      'activePollsParams' | 'dockedSceneRestoreIntent'
     >
   ): void {
     if (
       this.pollsRouteState.activePollsParams === nextState.activePollsParams &&
-      this.pollsRouteState.dockedPollsRestoreIntent === nextState.dockedPollsRestoreIntent
+      this.pollsRouteState.dockedSceneRestoreIntent === nextState.dockedSceneRestoreIntent
     ) {
       return;
     }
@@ -214,7 +211,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   }
 
   private setSheetSessionState(nextState: AppRouteSceneSheetSessionInputState): void {
-    if (this.sheetSessionState.isDockedPollsDismissed === nextState.isDockedPollsDismissed) {
+    if (this.sheetSessionState.isDockedSceneDismissed === nextState.isDockedSceneDismissed) {
       return;
     }
     this.sheetSessionState = nextState;
@@ -239,12 +236,12 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     this.recomputeAndPublish();
   }
 
-  private logPersistentPollRestoreStateContract(
+  private logDockedSceneRestoreStateContract(
     pollsSceneStateRuntime: SearchRoutePollsSceneStateRuntime
   ): void {
     if (
       !pollsSceneStateRuntime.visible ||
-      !this.pollsRouteState.isPersistentPollLane ||
+      !this.pollsRouteState.isDockedLane ||
       pollsSceneStateRuntime.currentSnap !== 'collapsed'
     ) {
       return;
@@ -254,10 +251,10 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       return;
     }
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-      event: 'persistent_polls_restore_state_contract',
+      event: 'docked_scene_restore_state_contract',
       currentSnap: pollsSceneStateRuntime.currentSnap,
-      hasDockedPollsRestoreIntent: this.pollsRouteState.dockedPollsRestoreIntent != null,
-      restoreIntentSnap: this.pollsRouteState.dockedPollsRestoreIntent?.snap ?? null,
+      hasDockedSceneRestoreIntent: this.pollsRouteState.dockedSceneRestoreIntent != null,
+      restoreIntentSnap: this.pollsRouteState.dockedSceneRestoreIntent?.snap ?? null,
       restoredToCollapsed: true,
       visible: pollsSceneStateRuntime.visible,
     });
@@ -270,14 +267,14 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
     const pollsSceneStateRuntime = createSearchRoutePollsSceneStateRuntime({
       sceneLayout: this.sceneLayout,
       pollOverlayParams: this.pollsRouteState.activePollsParams ?? undefined,
-      dockedPollsRestoreIntent: this.pollsRouteState.dockedPollsRestoreIntent,
+      dockedSceneRestoreIntent: this.pollsRouteState.dockedSceneRestoreIntent,
       commandState: {
         pollsSheetSnap: this.pollsSheetSnap,
-        isDockedPollsDismissed: this.sheetSessionState.isDockedPollsDismissed,
+        isDockedSceneDismissed: this.sheetSessionState.isDockedSceneDismissed,
       },
       overlayVisibilityState: {
         isSearchOverlay: this.pollsRouteState.isSearchOverlay,
-        isPersistentPollLane: this.pollsRouteState.isPersistentPollLane,
+        isDockedLane: this.pollsRouteState.isDockedLane,
       },
       interactionRef: this.dynamicSceneInputRuntime.searchInteractionRef,
     });
@@ -285,7 +282,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       pollsSceneStateRuntime,
     });
     this.publishPollsSceneDescriptor(pollsSceneStateRuntime);
-    this.logPersistentPollRestoreStateContract(pollsSceneStateRuntime);
+    this.logDockedSceneRestoreStateContract(pollsSceneStateRuntime);
   }
 
   private publishPollsSceneState({
@@ -308,7 +305,7 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       // but the grab-handle tap is now the shared promote-to-middle (owner req: dismiss ONLY from
       // the close X, and polls-as-home has no close). The programmatic path is KEPT intact pending
       // the owner's dismiss-model decision — if overlay-mode polls should regain a return-to-map
-      // affordance, wire this to a control; the handler + dismissDockedPolls path still work.
+      // affordance, wire this to a control; the handler + dismissDockedScene path still work.
       onRequestReturnToSearch: this.requestReturnToSearchFromPolls,
       interactionRef: pollsSceneStateRuntime.interactionRef,
     };

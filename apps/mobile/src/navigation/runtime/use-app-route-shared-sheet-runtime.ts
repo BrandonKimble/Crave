@@ -11,7 +11,7 @@ import type {
   AppRouteSharedSheetRuntimeOwner,
   AppRouteSharedSheetVisualBinding,
 } from './app-route-shared-sheet-runtime-contract';
-import { DOCKED_POLLS_RESURRECT_SNAP } from './app-route-sheet-snap-session-runtime';
+import { DOCKED_SCENE_RESURRECT_SNAP } from './app-route-sheet-snap-session-runtime';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import type { AppRouteOverlaySessionSnapshot } from './app-route-overlay-session-contract';
 import type { RouteOverlayRootSnapshot } from './route-overlay-display-snapshot-contract';
@@ -32,13 +32,13 @@ const areRouteOverlayMotionStatesEqual = (
 ): boolean => left.isSearchOverlay === right.isSearchOverlay;
 
 const selectRouteSharedSheetOverlaySessionState = (snapshot: AppRouteOverlaySessionSnapshot) => ({
-  shouldShowDockedPollsTarget: snapshot.shouldShowDockedPollsTarget,
+  shouldShowDockedSceneTarget: snapshot.shouldShowDockedSceneTarget,
 });
 
 const areRouteSharedSheetOverlaySessionStatesEqual = (
   left: ReturnType<typeof selectRouteSharedSheetOverlaySessionState>,
   right: ReturnType<typeof selectRouteSharedSheetOverlaySessionState>
-): boolean => left.shouldShowDockedPollsTarget === right.shouldShowDockedPollsTarget;
+): boolean => left.shouldShowDockedSceneTarget === right.shouldShowDockedSceneTarget;
 
 const getRouteHostOverlayGeometryInput = (
   snapshot: RouteHostOverlayGeometryBinding
@@ -51,21 +51,21 @@ const getRouteHostOverlayGeometryInput = (
 });
 
 const resolveInitialSharedSheetPosition = ({
-  shouldShowDockedPollsTarget,
+  shouldShowDockedSceneTarget,
   currentPollsSheetSnap,
 }: {
-  shouldShowDockedPollsTarget: boolean;
+  shouldShowDockedSceneTarget: boolean;
   currentPollsSheetSnap: OverlaySheetSnap;
 }): SheetPosition => {
-  if (!shouldShowDockedPollsTarget) {
+  if (!shouldShowDockedSceneTarget) {
     return 'hidden';
   }
   if (currentPollsSheetSnap !== 'hidden') {
     return currentPollsSheetSnap;
   }
-  // Home seat 'hidden' = user-dismissed docked polls; re-presenting is the ONE sanctioned
+  // Home seat 'hidden' = user-dismissed docked scene; re-presenting is the ONE sanctioned
   // resurrect product moment, always at the declared resurrect posture (two-posture law).
-  return DOCKED_POLLS_RESURRECT_SNAP;
+  return DOCKED_SCENE_RESURRECT_SNAP;
 };
 
 export const useAppRouteSharedSheetRuntime = ({
@@ -95,8 +95,8 @@ export const useAppRouteSharedSheetRuntime = ({
     [routeSceneRuntime.routeHostOverlayGeometryAuthority]
   );
   const initialSharedSheetPosition = resolveInitialSharedSheetPosition({
-    shouldShowDockedPollsTarget:
-      initialRouteSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
+    shouldShowDockedSceneTarget:
+      initialRouteSharedSheetOverlaySessionState.shouldShowDockedSceneTarget,
     currentPollsSheetSnap:
       routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
   });
@@ -169,16 +169,16 @@ export const useAppRouteSharedSheetRuntime = ({
           });
 
           const nextInitialSharedSheetPosition = resolveInitialSharedSheetPosition({
-            shouldShowDockedPollsTarget:
-              routeSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
+            shouldShowDockedSceneTarget:
+              routeSharedSheetOverlaySessionState.shouldShowDockedSceneTarget,
             currentPollsSheetSnap:
               routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
           });
 
           sharedSheetPresentationRuntime.syncInput({
             isSearchOverlay: routeOverlayMotionState.isSearchOverlay,
-            shouldShowDockedPollsTarget:
-              routeSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
+            shouldShowDockedSceneTarget:
+              routeSharedSheetOverlaySessionState.shouldShowDockedSceneTarget,
             getPollsSheetSnap,
             navBarTopForSnaps: routeHostOverlayGeometry.navBarTopForSnaps,
             initialSharedSheetPosition: nextInitialSharedSheetPosition,

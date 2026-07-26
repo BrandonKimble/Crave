@@ -1,9 +1,10 @@
 import type {
   RouteOverlayChromeModeSnapshot,
   RouteOverlayDisplaySnapshot,
-  RouteOverlayPollsVisibilitySnapshot,
+  RouteOverlayDockedSceneVisibilitySnapshot,
   RouteOverlayRootSnapshot,
 } from './route-overlay-display-snapshot-contract';
+import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import type { RouteOverlayVisibilitySnapshot } from './route-overlay-visibility-snapshot-contract';
 import {
   EMPTY_ROUTE_OVERLAY_IDENTITY_SNAPSHOT,
@@ -81,7 +82,7 @@ type ChromeModeOutputAuthority = {
 };
 
 type PollsVisibilityTarget = {
-  syncPollsVisibilitySnapshot: (snapshot: RouteOverlayPollsVisibilitySnapshot) => void;
+  syncDockedSceneVisibilitySnapshot: (snapshot: RouteOverlayDockedSceneVisibilitySnapshot) => void;
   attributionLabel: string;
 };
 
@@ -124,7 +125,7 @@ type RootOutputAuthority = {
 };
 
 type PollsVisibilityOutputAuthority = {
-  getSnapshot: () => RouteOverlayPollsVisibilitySnapshot;
+  getSnapshot: () => RouteOverlayDockedSceneVisibilitySnapshot;
   registerTarget: (target: PollsVisibilityTarget) => () => void;
 };
 
@@ -151,7 +152,7 @@ type NativeOverlayTargetSourceSnapshot = {
   sheetSessionSnapshot: RouteSceneSheetSessionSnapshot;
   /**
    * The committed PresentationFrame (page-switch-master-plan.md §1/§9) — the ONE
-   * "what's on screen" value, minted by AppRouteSceneSwitchController. The docked-polls
+   * "what's on screen" value, minted by AppRouteSceneSwitchController. The docked
    * lane + the displayed scene are read from here, never re-derived (§9.2 site 4).
    */
   presentationFrame: PresentationFrame;
@@ -219,7 +220,7 @@ type NativeOverlayTargetAuthorities = {
   routeOverlayRootAuthority: RootOutputAuthority;
   routeOverlayChromeModeAuthority: ChromeModeOutputAuthority;
   routeOverlayDisplayAuthority: DisplayOutputAuthority;
-  routeOverlayPollsVisibilityAuthority: PollsVisibilityOutputAuthority;
+  routeOverlayDockedSceneVisibilityAuthority: PollsVisibilityOutputAuthority;
   routeOverlayVisibilityAuthority: OutputAuthority<RouteOverlayVisibilitySnapshot>;
   routeSheetHostSurfaceAuthority: OutputAuthority<AppRouteSheetHostSurfaceSnapshot>;
   routeSheetHostNavigationAuthority: NavigationOutputAuthority;
@@ -249,7 +250,7 @@ const areNavigationSnapshotsEqual = (
   left.rootOverlayKey === right.rootOverlayKey &&
   left.overlayRouteStackLength === right.overlayRouteStackLength &&
   left.isSearchOverlay === right.isSearchOverlay &&
-  left.isPersistentPollLane === right.isPersistentPollLane;
+  left.isDockedLane === right.isDockedLane;
 
 const areIdentitySnapshotsEqual = (
   left: RouteOverlayIdentitySnapshot,
@@ -273,14 +274,13 @@ const areDisplaySnapshotsEqual = (
   left.displayedRootOverlayKey === right.displayedRootOverlayKey &&
   left.displayedSceneKey === right.displayedSceneKey &&
   left.isSearchOverlay === right.isSearchOverlay &&
-  left.isPersistentPollLane === right.isPersistentPollLane;
+  left.isDockedLane === right.isDockedLane;
 
 const arePollsVisibilitySnapshotsEqual = (
-  left: RouteOverlayPollsVisibilitySnapshot,
-  right: RouteOverlayPollsVisibilitySnapshot
+  left: RouteOverlayDockedSceneVisibilitySnapshot,
+  right: RouteOverlayDockedSceneVisibilitySnapshot
 ): boolean =>
-  left.isSearchOverlay === right.isSearchOverlay &&
-  left.isPersistentPollLane === right.isPersistentPollLane;
+  left.isSearchOverlay === right.isSearchOverlay && left.isDockedLane === right.isDockedLane;
 
 const areChromeModeSnapshotsEqual = (
   left: RouteOverlayChromeModeSnapshot,
@@ -319,7 +319,7 @@ const resolveRouteSceneSwitchSnapshotFromTransitionState = (
   transitionToken: state.transitionToken,
   transitionContract: state.transitionContract,
   activePollsParams: state.activePollsParams,
-  activeDockedPollsRestoreIntent: state.activeDockedPollsRestoreIntent,
+  activeDockedSceneRestoreIntent: state.activeDockedSceneRestoreIntent,
   isInteractive: state.isInteractive,
   routeState: state.routeState,
 });
@@ -346,18 +346,17 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     presentationFrame: routeSceneSwitchRuntime.getPresentationFrame(),
   });
 
-  // THE single carrier-producer of the docked-polls decision for every native-overlay output
+  // THE single carrier-producer of the docked decision for every native-overlay output
   // (navigation / display / pollsVisibility / visibility / sheetPolicy snapshots). The old
   // formula (eligibility × results_dismissing × fresh-target child/bookmarks/profile deny-list
   // × search root × dismissed/restore-intent) now lives VERBATIM in resolvePresentationLaneKind
   // (app-route-presentation-frame-contract.ts), computed ONCE by AppRouteSceneSwitchController;
   // this reads the committed frame so every downstream contract field stays in lockstep with
   // the one writer (page-switch-master-plan.md §9.2 site 4, §9.3).
-  const resolveIsPersistentPollLane = (
-    sourceSnapshot: NativeOverlayTargetSourceSnapshot
-  ): boolean => sourceSnapshot.presentationFrame.laneKind === 'docked-polls';
+  const resolveIsDockedLane = (sourceSnapshot: NativeOverlayTargetSourceSnapshot): boolean =>
+    sourceSnapshot.presentationFrame.laneKind === 'docked';
 
-  // §9.1 R1 — LANE-INPUT WIRING. This factory already owns all three docked-polls lane-input
+  // §9.1 R1 — LANE-INPUT WIRING. This factory already owns all three docked lane-input
   // sources (route-scene policy eligibility, the search-surface visual policy, the sheet snap
   // session), so it registers the live provider + change subscription with the scene-switch
   // controller; the controller re-mints the PresentationFrame on change — still the one writer,
@@ -368,11 +367,10 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       getSearchSurfaceRuntime().getSnapshot()
     );
     return {
-      isPersistentPollLaneEligible:
-        routeScenePolicyAuthority.getSnapshot().isPersistentPollLaneEligible,
+      isDockedLaneEligible: routeScenePolicyAuthority.getSnapshot().isDockedLaneEligible,
       isResultsDismissing: surfaceVisualPolicy.phase === 'results_dismissing',
-      canReleasePersistentPolls: surfaceVisualPolicy.canReleasePersistentPolls,
-      isDockedPollsDismissed: routeSheetSnapSessionAuthority.getSnapshot().isDockedPollsDismissed,
+      canReleaseDockedScene: surfaceVisualPolicy.canReleaseDockedScene,
+      isDockedSceneDismissed: routeSheetSnapSessionAuthority.getSnapshot().isDockedSceneDismissed,
     };
   };
   const unregisterPresentationLaneInputs = routeSceneSwitchRuntime.registerPresentationLaneInputs(
@@ -419,7 +417,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       routeState.overlayRouteStack,
       routeState.rootOverlayKey,
       routeState.overlayRouteStackLength,
-      resolveIsPersistentPollLane(sourceSnapshot),
+      resolveIsDockedLane(sourceSnapshot),
     ];
   };
 
@@ -449,7 +447,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       // The frame fields the display snapshot renders — keyed directly (not their upstream
       // transition-state inputs) so a frame publish can never be masked by an equal signature.
       sourceSnapshot.presentationFrame?.presentedSceneKey ?? null,
-      resolveIsPersistentPollLane(sourceSnapshot),
+      resolveIsDockedLane(sourceSnapshot),
     ];
   };
 
@@ -457,7 +455,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): NativeOverlayOutputSignature => {
     const routeState = sourceSnapshot.routeSceneSwitchSnapshot.routeState;
-    return [routeState.rootOverlayKey, resolveIsPersistentPollLane(sourceSnapshot)];
+    return [routeState.rootOverlayKey, resolveIsDockedLane(sourceSnapshot)];
   };
 
   const resolveSheetHostSurfaceSignature = (
@@ -480,27 +478,27 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sheetSessionSnapshot,
     presentationFrame,
   }: NativeOverlayTargetSourceSnapshot): NativeOverlayOutputSignature => [
-    // The sheet-policy snapshot reads the frame's docked-polls lane (header scene + suppression
+    // The sheet-policy snapshot reads the frame's docked lane (header scene + suppression
     // + the empty-policy gate) — key it directly so a frame publish always re-resolves.
-    presentationFrame.laneKind === 'docked-polls',
+    presentationFrame.laneKind === 'docked',
     routeSceneSwitchSnapshot.routeActiveSceneKey,
     routeSceneSwitchSnapshot.routeState.rootOverlayKey,
-    routeSceneSwitchSnapshot.activeDockedPollsRestoreIntent,
-    routeScenePolicySnapshot.isPersistentPollLaneEligible,
+    routeSceneSwitchSnapshot.activeDockedSceneRestoreIntent,
+    routeScenePolicySnapshot.isDockedLaneEligible,
     routeScenePolicySnapshot.shouldSuppressSearchAndTabSheetsForForegroundEditing,
     routeScenePolicySnapshot.shouldSuppressTabSheetsForSuggestions,
     routeScenePolicySnapshot.foregroundActivity,
     routeScenePolicySnapshot.shouldRenderRouteSheetSurface,
     routeScenePolicySnapshot.closeHandoffFreezeClassification,
-    surfaceVisualPolicy.canExposePersistentPolls,
-    surfaceVisualPolicy.canReleasePersistentPolls,
-    sheetSessionSnapshot.isDockedPollsDismissed,
+    surfaceVisualPolicy.canExposeDockedScene,
+    surfaceVisualPolicy.canReleaseDockedScene,
+    sheetSessionSnapshot.isDockedSceneDismissed,
   ];
 
   const resolveVisibilitySignature = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): NativeOverlayOutputSignature => [
-    resolveIsPersistentPollLane(sourceSnapshot) ||
+    resolveIsDockedLane(sourceSnapshot) ||
       sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
       sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle',
   ];
@@ -517,7 +515,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       rootOverlayKey: routeState.rootOverlayKey,
       overlayRouteStackLength: routeState.overlayRouteStackLength,
       isSearchOverlay: routeState.rootOverlayKey === 'search',
-      isPersistentPollLane: resolveIsPersistentPollLane(sourceSnapshot),
+      isDockedLane: resolveIsDockedLane(sourceSnapshot),
     };
   };
 
@@ -552,24 +550,24 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       displayedRootOverlayKey:
         routeSceneSwitchSnapshot.transitionContract?.committedRootRouteKey ??
         routeState.rootOverlayKey,
-      // The leg that PAINTS — read straight off the committed frame. The old local 'polls'
+      // The leg that PAINTS — read straight off the committed frame. The old local DOCKED_SCENE_KEY
       // forcing (+ its child-scene exception) is structural in presentedSceneKey: a child
       // target resolves laneKind 'child', so only the one legal steady divergence
-      // (docked-polls under the search root) presents 'polls' (§9.2 site 4).
+      // (docked under the search root) presents DOCKED_SCENE_KEY (§9.2 site 4).
       displayedSceneKey: presentationFrame.presentedSceneKey,
       isSearchOverlay: routeState.rootOverlayKey === 'search',
-      isPersistentPollLane: resolveIsPersistentPollLane(sourceSnapshot),
+      isDockedLane: resolveIsDockedLane(sourceSnapshot),
     };
   };
 
   const resolvePollsVisibilitySnapshot = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
-  ): RouteOverlayPollsVisibilitySnapshot => {
+  ): RouteOverlayDockedSceneVisibilitySnapshot => {
     const routeState = sourceSnapshot.routeSceneSwitchSnapshot.routeState;
-    const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
+    const isDockedLane = resolveIsDockedLane(sourceSnapshot);
     return {
-      isSearchOverlay: routeState.rootOverlayKey === 'search' && isPersistentPollLane,
-      isPersistentPollLane,
+      isSearchOverlay: routeState.rootOverlayKey === 'search' && isDockedLane,
+      isDockedLane,
     };
   };
 
@@ -577,7 +575,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlayVisibilitySnapshot => ({
     shouldRenderSearchOverlay:
-      resolveIsPersistentPollLane(sourceSnapshot) ||
+      resolveIsDockedLane(sourceSnapshot) ||
       sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey != null ||
       sourceSnapshot.routeSceneSwitchSnapshot.transitionPhase !== 'idle',
   });
@@ -608,23 +606,23 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   ): boolean => {
     const { routeSceneSwitchSnapshot, routeScenePolicySnapshot } = sourceSnapshot;
     const routeActiveSceneKey = routeSceneSwitchSnapshot.routeActiveSceneKey;
-    const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
+    const isDockedLane = resolveIsDockedLane(sourceSnapshot);
     const shouldSuppressOverlaySheetForForegroundEditing =
       routeScenePolicySnapshot.shouldSuppressSearchAndTabSheetsForForegroundEditing &&
       (routeActiveSceneKey === 'search' ||
-        routeActiveSceneKey === 'polls' ||
+        routeActiveSceneKey === DOCKED_SCENE_KEY ||
         routeActiveSceneKey === 'bookmarks' ||
         routeActiveSceneKey === 'profile');
     const shouldSuppressTabOverlaySheetForSuggestions =
       routeScenePolicySnapshot.shouldSuppressTabSheetsForSuggestions &&
-      (routeActiveSceneKey === 'polls' ||
+      (routeActiveSceneKey === DOCKED_SCENE_KEY ||
         routeActiveSceneKey === 'bookmarks' ||
         routeActiveSceneKey === 'profile');
     const shouldSuppressIdleSearchOverlaySheet =
       routeActiveSceneKey === 'search' &&
       routeScenePolicySnapshot.foregroundActivity === 'idle' &&
       !routeScenePolicySnapshot.shouldRenderRouteSheetSurface &&
-      !isPersistentPollLane;
+      !isDockedLane;
 
     return (
       shouldSuppressOverlaySheetForForegroundEditing ||
@@ -637,12 +635,12 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlaySheetPolicySnapshot => {
     const routeActiveSceneKey = sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey;
-    const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
+    const isDockedLane = resolveIsDockedLane(sourceSnapshot);
 
     // Leg 6 (§4 HeaderNavAction): overlayHeaderActionMode is DELETED — the header action is
     // host-owned, PF-derived. The null-scene gate is unchanged (the mode resolver's null arm
     // was exactly this condition).
-    if (!isPersistentPollLane && routeActiveSceneKey == null) {
+    if (!isDockedLane && routeActiveSceneKey == null) {
       return EMPTY_ROUTE_OVERLAY_SHEET_POLICY_SNAPSHOT;
     }
 
@@ -747,7 +745,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   };
 
   const syncPollsVisibilityTargets = (
-    snapshot: RouteOverlayPollsVisibilitySnapshot,
+    snapshot: RouteOverlayDockedSceneVisibilitySnapshot,
     operation = 'syncPollsVisibilityTargets'
   ): void => {
     if (pollsVisibilityTargets.size === 0) {
@@ -758,7 +756,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         withSearchNavSwitchRuntimeAttribution(
           'nativeOverlayTargets',
           `${operation}:${target.attributionLabel}`,
-          () => target.syncPollsVisibilitySnapshot(snapshot)
+          () => target.syncDockedSceneVisibilitySnapshot(snapshot)
         );
       });
     });
@@ -1128,7 +1126,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         };
       },
     },
-    routeOverlayPollsVisibilityAuthority: {
+    routeOverlayDockedSceneVisibilityAuthority: {
       getSnapshot: () => pollsVisibilitySnapshot,
       registerTarget: (target) => {
         pollsVisibilityTargets.add(target);
