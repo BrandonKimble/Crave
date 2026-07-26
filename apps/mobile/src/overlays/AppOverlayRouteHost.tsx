@@ -143,6 +143,7 @@ const AppOverlayRouteHost = ({
         <SearchOverlayRouteGateHost overlayGateHostAuthority={overlayGateHostAuthority}>
           <SearchOverlayRouteSheetSurfaceHost routeSheetHostRuntime={routeSheetHostRuntime} />
         </SearchOverlayRouteGateHost>
+        {__DEV__ ? <TrackSheetRouteHost /> : null}
         <NavSilhouetteHost
           overlayGateHostAuthority={overlayGateHostAuthority}
           overlayShellHostAuthority={overlayShellHostAuthority}
@@ -152,7 +153,6 @@ const AppOverlayRouteHost = ({
           routeSheetSnapSessionActions={routeSheetSnapSessionActions}
         />
         <SearchResultsExternalPreMeasureHost />
-        {__DEV__ ? <TrackSheetRouteHost /> : null}
       </>
     </View>
   );

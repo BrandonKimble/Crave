@@ -2027,3 +2027,15 @@ AppRouteSceneRuntimeProvider). Note: recurring "[snap-law] CONTRACT VIOLATION:
 programmatic settle attempted to write the home posture seat" barks are the OLD
 system's own (my host never touches snap writers) — pre-existing noise to
 triage separately.
+
+RUNG 2 LANDED (2026-07-26): real geometry + live scene switching.
+- Geometry: getSearchStartupGeometrySeed().routeOverlaySnapPoints (the
+  canonical production snap points; H=647.75 on this sim).
+- Scene: usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime) — the frame
+  subscription IS the switch signal; registry chrome swaps live on tab presses.
+- Snap: TrackSheetCommands.snapToTau on the kit (imperative, rides native
+  scroll animation); simplified posture rule (home=collapsed, content=expanded)
+  until the motion-descriptor table lands in rung 4.
+- Z-order: host sits at zIndex 91 (above the production sheet stack at 90,
+  below the nav silhouette). Verified: Polls tab → chrome swap + track snap to
+  expanded with real nav below.

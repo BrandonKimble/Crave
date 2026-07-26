@@ -55,6 +55,11 @@ export type TrackSheetListProps<Item> = Pick<
   | 'extraData'
 >;
 
+export type TrackSheetCommands = {
+  /** Programmatic settle to a τ (detent) — rides the native scroll animation. */
+  snapToTau: (tau: number, animated?: boolean) => void;
+};
+
 export type TrackSheetPageProps<Item> = {
   geometry: TrackSheetGeometry;
   /** Header chrome content (title row). Rendered at the surface top. */
@@ -74,6 +79,8 @@ export type TrackSheetPageProps<Item> = {
   rowSurfaceStyle?: ViewStyle;
   /** Dev HUD readout of τ. */
   debugHud?: boolean;
+  /** Imperative commands (scene-switch snaps etc.) — filled on mount. */
+  commandsRef?: React.MutableRefObject<TrackSheetCommands | null>;
 };
 
 export function TrackSheetPage<Item>({
@@ -87,6 +94,7 @@ export function TrackSheetPage<Item>({
   surfaceColor = '#ffffff',
   rowSurfaceStyle,
   debugHud = false,
+  commandsRef,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry);
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
@@ -104,8 +112,14 @@ export function TrackSheetPage<Item>({
     opacity: interpolate(tau.value - trackH, [0, 3, 14], [0, 0.35, 1], 'clamp'),
   }));
 
+  const listInstanceRef = React.useRef<{
+    scrollToOffset?: (opts: { offset: number; animated?: boolean }) => void;
+  } | null>(null);
   const setListRef = React.useCallback(
     (instance: React.Component | null) => {
+      listInstanceRef.current = instance as unknown as {
+        scrollToOffset?: (opts: { offset: number; animated?: boolean }) => void;
+      } | null;
       if (instance != null) {
         // findNodeHandle inside attach; the physics hook retries until the
         // recycler's UIScrollView exists.
@@ -115,6 +129,19 @@ export function TrackSheetPage<Item>({
     },
     [attachToTag]
   );
+  React.useEffect(() => {
+    if (commandsRef == null) {
+      return;
+    }
+    commandsRef.current = {
+      snapToTau: (tauTarget, animated = true) => {
+        listInstanceRef.current?.scrollToOffset?.({ offset: tauTarget, animated });
+      },
+    };
+    return () => {
+      commandsRef.current = null;
+    };
+  }, [commandsRef]);
 
   const listHeader = React.useMemo(
     () => (

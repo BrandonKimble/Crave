@@ -1,11 +1,12 @@
 import React from 'react';
 import { Dimensions, Linking, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import type { OverlayKey } from '../overlays/types';
-import { calculateSnapPoints } from '../overlays/sheetUtils';
-import { TrackSheetPage } from './TrackSheetPage';
+import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
+import { TrackSheetPage, type TrackSheetCommands } from './TrackSheetPage';
 
 // ─── TrackSheetRouteHost — migration RUNG 1 (dev-flagged parallel host) ────────
 //
@@ -79,22 +80,27 @@ export const TrackSheetRouteHost: React.FC = () => {
   return <TrackSheetRouteSurface scene={state.scene} />;
 };
 
-const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => {
-  const insets = useSafeAreaInsets();
-  // REAL production geometry: same function, live inputs. searchBarTop and
-  // navBarOffset approximations are rung-1 placeholders — rung 2 reads them
-  // from the shared sheet values runtime.
+const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneOverride }) => {
+  // RUNG 2 — REAL GEOMETRY + LIVE SCENE: the canonical snap points come from the
+  // startup geometry seed (the same routeOverlaySnapPoints the production sheet
+  // rides), and the presented scene tracks the PresentationFrame — tab presses
+  // switch this host's chrome exactly as they switch the production sheet's.
   const snapPoints = React.useMemo(
-    () =>
-      calculateSnapPoints(
-        SCREEN.height,
-        insets.top + 8,
-        insets.top,
-        SCREEN.height - 84,
-        96
-      ),
-    [insets.top]
+    () => getSearchStartupGeometrySeed().routeOverlaySnapPoints,
+    []
   );
+  const sceneRuntime = useAppRouteSceneRuntime();
+  const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
+  const scene = frame.activeSceneKey ?? sceneOverride;
+
+  // SCENE-SWITCH SNAP (rung 2, simplified posture rule; full motion-descriptor
+  // table lands in rung 4): content scenes seat expanded, home seats collapsed.
+  // The frame subscription IS the switch signal.
+  const commandsRef = React.useRef<TrackSheetCommands | null>(null);
+  const trackH = snapPoints.collapsed - snapPoints.expanded;
+  React.useEffect(() => {
+    commandsRef.current?.snapToTau(scene === 'home' ? 0 : trackH);
+  }, [scene, trackH]);
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
@@ -152,13 +158,14 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => {
         list={{ data: rows, renderItem: renderRow }}
         rowSurfaceStyle={styles.rowSurface}
         debugHud
+        commandsRef={commandsRef}
       />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: { ...StyleSheet.absoluteFillObject, zIndex: 9998 },
+  root: { ...StyleSheet.absoluteFillObject, zIndex: 91 },
   headerRow: {
     flex: 1,
     backgroundColor: '#ffffff',
