@@ -54,6 +54,9 @@ export type TrackSheetPhysics = {
   subscribeAttached: (listener: () => void) => () => void;
   /** Written by the page's onContentSizeChange (scroll events carry no contentSize). */
   contentHeight: SharedValue<number>;
+  /** Latches true on the first user gesture; the seat must not re-assert while
+   * set (a seat is a target, never a lock). Cleared by the page on seat change. */
+  userOwnsPosture: SharedValue<boolean>;
 };
 
 const SPACER_EPSILON = 0.5;
@@ -77,6 +80,7 @@ export const useTrackSheetPhysics = (
 
   const tau = useSharedValue(0);
   const dragging = useSharedValue(false);
+  const userOwnsPosture = useSharedValue(false);
   const ballisticFromList = useSharedValue(false);
   /** Track content height (written by the page's onContentSizeChange — the
    * scroll event's contentSize is NULL in Reanimated events, banked lore). */
@@ -189,6 +193,7 @@ export const useTrackSheetPhysics = (
         }
       },
       onBeginDrag: () => {
+        userOwnsPosture.value = true;
         // Belt-and-braces: KVO already keeps the proxy wrapped; a JS re-assert
         // per gesture costs nothing and covers a detach-race.
         runOnJS(reassertAttach)();
@@ -215,5 +220,6 @@ export const useTrackSheetPhysics = (
     snapToTau,
     subscribeAttached,
     contentHeight,
+    userOwnsPosture,
   };
 };

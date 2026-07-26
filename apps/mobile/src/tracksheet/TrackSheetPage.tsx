@@ -1,9 +1,14 @@
 import React from 'react';
 import { Dimensions, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   interpolate,
+  runOnJS,
+  scrollTo,
+  useAnimatedRef,
   useAnimatedStyle,
+  useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
 
@@ -60,11 +65,8 @@ const AnimatedFlashList = Reanimated.createAnimatedComponent(
 
 // THE VIRTUALIZATION LAW (U5): the recycler's own handler rides the INNER
 // scroll component's onScroll — the inner component must itself be Animated so
-// the worklet stream and the recycler's JS handler coexist.
-const TrackScrollComponent = React.forwardRef<Reanimated.ScrollView, Record<string, unknown>>(
-  (props, ref) => <Reanimated.ScrollView {...props} ref={ref} />
-);
-TrackScrollComponent.displayName = 'TrackScrollComponent';
+// the worklet stream and the recycler's JS handler coexist. The kit merges its
+// own animated ref in (the header-grab pan drives τ via scrollTo on it).
 
 export type TrackSheetListProps<Item> = Pick<
   FlashListProps<Item>,
@@ -142,7 +144,75 @@ export function TrackSheetPage<Item>({
   onUserListScrollActivity,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
-  const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
+  const { tau, trackH, sheetTopY, onScroll, attachToTag, detentTaus } = physics;
+
+  // Animated ref on the INNER scroll view — the header-grab pan's write channel.
+  const scrollAnimatedRef = useAnimatedRef<Reanimated.ScrollView>();
+  const TrackScrollComponent = React.useMemo(() => {
+    const Component = React.forwardRef<Reanimated.ScrollView, Record<string, unknown>>(
+      (props, ref) => (
+        <Reanimated.ScrollView
+          {...props}
+          ref={(node: Reanimated.ScrollView | null) => {
+            scrollAnimatedRef(node);
+            if (typeof ref === 'function') {
+              ref(node);
+            } else if (ref != null) {
+              (ref as React.MutableRefObject<Reanimated.ScrollView | null>).current = node;
+            }
+          }}
+        />
+      )
+    );
+    Component.displayName = 'TrackScrollComponent';
+    return Component;
+  }, [scrollAnimatedRef]);
+
+  // ── THE HEADER-GRAB INPUT SURFACE (ONE TRACK §4, second input surface) ──
+  // A pan on the touch-opaque chrome drives τ 1:1 within the SHEET REGION only
+  // ([0,H]); release picks the velocity-projected nearest detent on the same
+  // native spring. Geometry is the arbiter: chrome touches never reach the
+  // track, track touches never reach this pan. minDistance keeps taps (grab
+  // handle, nav action, strip chips) alive.
+  const grabStartTau = useSharedValue(0);
+  const snapToTauJS = physics.snapToTau;
+  const headerGrabPan = React.useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(8)
+        .onStart(() => {
+          'worklet';
+          console.log('[TRACKDBG] headerPan start tau=' + Math.round(tau.value));
+          physics.userOwnsPosture.value = true;
+          grabStartTau.value = tau.value;
+        })
+        .onUpdate((event) => {
+          'worklet';
+          const next = Math.min(trackH, Math.max(0, grabStartTau.value - event.translationY));
+          if (Math.round(event.translationY) % 50 === 0) {
+            console.log(
+              '[TRACKDBG] headerPan update next=' + Math.round(next) + ' tau=' + Math.round(tau.value)
+            );
+          }
+          scrollTo(scrollAnimatedRef, 0, next, false);
+        })
+        .onEnd((event) => {
+          'worklet';
+          // dτ/dt = −vy; UIKit-style projection then nearest detent in [0,H].
+          const projected = Math.min(
+            trackH,
+            Math.max(0, tau.value + -event.velocityY * 0.18)
+          );
+          let best = detentTaus[0] ?? 0;
+          for (const detent of detentTaus) {
+            if (Math.abs(detent - projected) < Math.abs(best - projected)) {
+              best = detent;
+            }
+          }
+          runOnJS(snapToTauJS)(best);
+        }),
+    [detentTaus, grabStartTau, physics.userOwnsPosture, scrollAnimatedRef, snapToTauJS, tau, trackH]
+  );
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
@@ -216,12 +286,15 @@ export function TrackSheetPage<Item>({
     }
     let cancelled = false;
     let attempts = 0;
+    // New seat target ⇒ the machine owns posture again until the next gesture.
+    physics.userOwnsPosture.value = false;
     const assertSeat = () => {
       if (cancelled) {
         return;
       }
-      // The user's grab outranks the seat — never fight a finger.
-      if (physics.dragging.value) {
+      // The user owns posture after ANY gesture — the seat never fights it
+      // (the attach-listener re-arm was re-seating over user drags).
+      if (physics.dragging.value || physics.userOwnsPosture.value) {
         return;
       }
       if (Math.abs(tau.value - seatTau) <= 1) {
@@ -373,6 +446,7 @@ export function TrackSheetPage<Item>({
         {/* Chrome: sheet material pinned at the surface top. TOUCH-OPAQUE
             (inventory + owner law): a touch on the chrome NEVER reaches the
             track — the header can not scroll the list through itself. */}
+        <GestureDetector gesture={headerGrabPan}>
         <View style={styles.chrome} pointerEvents="auto">
           <MaskedHoleOverlay
             holes={plateHoles}
@@ -413,6 +487,7 @@ export function TrackSheetPage<Item>({
           ) : null}
           <Reanimated.View style={[styles.divider, dividerStyle]} />
         </View>
+        </GestureDetector>
       </Reanimated.View>
 
       {debugHud ? (
