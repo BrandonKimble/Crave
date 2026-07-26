@@ -2196,3 +2196,17 @@ gone. Remaining pollDetail parity (rung 4, see acceptance inventory §6):
 compose chin (ListChromeComponent + keyboard lift), anchor-restore listRef,
 Extras share button. THE ACCEPTANCE INVENTORY for all rung-4/5 exactness now
 lives in plans/tracksheet-old-sheet-acceptance-inventory.md.
+
+RUNG 4 SLICE 1 — PRODUCTION CHROME IN THE KIT (2026-07-26 night): exact
+inventory metrics (OVERLAY_TAB_HEADER_HEIGHT 68.25 un-rounded; grab handle
+40x3.25 r2 as a CUTOUT to the ONE FrostedGlassBackground now mounted as the
+kit's base layer; headerRow 7/32/8 + block pad 10; strip band 32 + spacer 8;
+divider #f1f5f9); real HeaderNavAction (progress SV, 220ms out-cubic, child→X);
+grab tap → promoteActiveSheet(middle). OWNER LAWS LANDED: chrome is TOUCH-
+OPAQUE (verified: header drag moves nothing — the list is unreachable through
+the header) and the 20pt horizontal content inset applies to lane bodies too.
+NEXT (recorded): header-grab pan (drag on chrome moves the SHEET — the second
+input surface from the ONE TRACK design §4; today header drags are inert),
+divider z-order above strip, root-scene create (plus) actions, sheetTranslateY
+publication bridge (search chrome/scrim riders), motion-descriptor snaps,
+FrostCutout foundation surface for body content.
