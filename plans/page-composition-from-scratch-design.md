@@ -2133,3 +2133,12 @@ RUNG 3 — SCENE SWEEP PROGRESS (2026-07-26 late):
 - Sim-driving hazard logged: tapping by coordinates while a scene switch is in
   flight lands on the OLD scene's rows (opened Replay-onboarding by accident;
   onboarding slide 1's back control doesn't exit — recovered via reload).
+
+RUNG 3 SLICE 5 (2026-07-26): pagination bridge (τ−H offset + throttled
+distance-from-end via tracked content height) wired to polls' transport
+signal; host-owned close (×) on child-scene chrome (full plus↔X
+HeaderNavAction = rung-4 parity). BLOCKED ON OWNER: sim session got signed
+out by my stray "Replay onboarding" tap (that action calls signOut) — the
+sim sits at onboarding's auth step; sign in once to resume on-device
+verification (notifications, listDetail in-list strip, messaging, close-
+action behavior).
