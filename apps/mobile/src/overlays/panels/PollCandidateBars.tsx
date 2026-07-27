@@ -1,3 +1,7 @@
+import {
+  FrostCutout,
+  useIsInsideSceneFoundationSurface,
+} from '../SceneBodyFoundationSurface';
 import React from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -77,6 +81,7 @@ const PollCandidateBarRow = React.memo(
     onToggle,
   }: PollCandidateBarRowProps) => {
     const endorsed = candidate.currentUserEndorsed;
+    const insideFoundationSurface = useIsInsideSceneFoundationSurface();
     const label = candidate.name ?? 'Unknown';
     const pctLabel = `${Math.round(fraction * 100)}%`;
     const fillFraction = fraction > 0 ? Math.max(fraction, MIN_VISIBLE_FRACTION) : 0;
@@ -91,7 +96,16 @@ const PollCandidateBarRow = React.memo(
         accessibilityState={{ selected: endorsed }}
         accessibilityLabel={`${label}, ${pctLabel}${endorsed ? ', your pick' : ''}`}
       >
-        <View style={styles.barTrack} />
+        {/* THE BAR IS A CUTOUT (owner-planned): inside a foundation surface the
+            track punches through the white plate to the frost; the fill paints
+            over it. Outside a surface (legacy host) the painted track stands. */}
+        {insideFoundationSurface ? (
+          <FrostCutout borderRadius={BAR_RADIUS} style={StyleSheet.absoluteFillObject}>
+            <View style={StyleSheet.absoluteFillObject} />
+          </FrostCutout>
+        ) : (
+          <View style={styles.barTrack} />
+        )}
         <View
           style={[
             styles.barFill,

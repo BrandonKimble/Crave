@@ -146,17 +146,36 @@ const NavExcludedTrackSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => 
   // invisible when mounted without the frame host's init — reusing it needs a
   // study of its native impl, queued; the hard clip carries the contract
   // (sheet never covers nav) until then.
+  // The compose chin renders as a SIBLING of the clip — true viewport coords
+  // (the published chin's offsets assume a viewport-spanning container; inside
+  // the clip it landed mid-screen).
+  const sceneRuntime = useAppRouteSceneRuntime();
+  const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
+  const liveScene = frame.activeSceneKey ?? scene;
+  const chinInput = sceneRuntime.sceneInputAuthority.getSceneInputSnapshot(liveScene);
+  const chinBody = chinInput?.sceneBodyContent;
+  const listChrome =
+    chinBody != null && chinBody.surfaceKind === 'list'
+      ? renderListLeader(chinBody.ListChromeComponent ?? null)
+      : null;
   return (
-    <View
-      style={{
-        width: seed.windowWidth,
-        height: Math.max(0, seed.navBarTopForSnaps),
-        overflow: 'hidden',
-      }}
-      pointerEvents="box-none"
-    >
-      <TrackSheetRouteSurface scene={scene} />
-    </View>
+    <>
+      <View
+        style={{
+          width: seed.windowWidth,
+          height: Math.max(0, seed.navBarTopForSnaps),
+          overflow: 'hidden',
+        }}
+        pointerEvents="box-none"
+      >
+        <TrackSheetRouteSurface scene={scene} />
+      </View>
+      {listChrome != null ? (
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+          {listChrome}
+        </View>
+      ) : null}
+    </>
   );
 };
 
@@ -536,8 +555,21 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         onGrabHandlePress={onGrabHandlePress}
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
-        listLeader={renderListLeader((list as { leader?: unknown }).leader)}
-        listChrome={renderListLeader((list as { chrome?: unknown }).chrome)}
+        listLeader={
+          (list as { leader?: unknown }).leader != null ? (
+            <SceneBodyFoundationSurface
+              scrollOffset={zeroScrollOffset}
+              sceneKey={scene as SheetSceneKey}
+            >
+              {/* Lane leaders (poll card): white plate + FrostCutout support +
+                  the production content inset. */}
+              <View style={styles.mountedBodyInset}>
+                {renderListLeader((list as { leader?: unknown }).leader)}
+              </View>
+            </SceneBodyFoundationSurface>
+          ) : null
+        }
+
         rowSurfaceStyle={
           MOUNTED_TRACK_SCENES.has(scene)
             ? UNPADDED_BODY_SCENES.has(scene)

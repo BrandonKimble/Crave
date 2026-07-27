@@ -12,6 +12,7 @@ import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import HeaderNavAction from '../overlays/HeaderNavAction';
 import {
+  OVERLAY_CORNER_RADIUS,
   OVERLAY_GRAB_HANDLE_HEIGHT,
   OVERLAY_GRAB_HANDLE_PADDING_TOP,
   OVERLAY_GRAB_HANDLE_RADIUS,
@@ -53,7 +54,7 @@ import { TrackSheetDockedStrip, type TrackSheetDockedStripProps } from './TrackS
 // Omit both for a plain header sheet.
 
 const SCREEN = Dimensions.get('window');
-const SHEET_CORNER_RADIUS = 24;
+
 
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
@@ -131,9 +132,6 @@ export type TrackSheetPageProps<Item> = {
    * the detent). Feeds posture memory — seats are gesture-written only
    * (inventory §5.10). Programmatic settles never fire it. */
   onGestureSettle?: (detentTau: number) => void;
-  /** Sheet-frame chrome riding the CLIP (not the scroll): pollDetail's compose
-   * chin (ListChromeComponent) — positions itself against the sheet frame. */
-  listChrome?: React.ReactNode;
 };
 
 export function TrackSheetPage<Item>({
@@ -157,7 +155,6 @@ export function TrackSheetPage<Item>({
   onUserListScrollActivity,
   publicationBindings,
   onGestureSettle,
-  listChrome,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const chromeHeightForArbitration =
     OVERLAY_TAB_HEADER_HEIGHT +
@@ -211,7 +208,9 @@ export function TrackSheetPage<Item>({
     transform: [{ translateY: sheetTopY.value }],
   }));
   const trackCounterStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -sheetTopY.value }],
+    // Content stays screen-fixed inside the window: window top = clip top +
+    // chromeHeight, so the counter subtracts both.
+    transform: [{ translateY: -sheetTopY.value - chromeHeight }],
   }));
   const dividerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(tau.value - trackH, [0, 3, 14], [0, 0.35, 1], 'clamp'),
@@ -370,14 +369,14 @@ export function TrackSheetPage<Item>({
   const listHeader = React.useMemo(
     () => (
       <View>
-        {/* spacer region [0,H): the sheet-travel section of the track */}
-        <View style={{ height: trackH }} pointerEvents="none" />
-        {/* the surface cap under the chrome (content rest position) */}
-        <View style={{ height: chromeHeight, backgroundColor: surfaceColor }} />
+        {/* spacer region [0,H): the sheet-travel section of the track. The
+            content window starts below the chrome (production body-lane
+            shape) — no cap needed; content rest position = window top. */}
+        <View style={{ height: trackH + chromeHeight }} pointerEvents="none" />
         {listLeader}
       </View>
     ),
-    [chromeHeight, listLeader, surfaceColor, trackH]
+    [chromeHeight, listLeader, trackH]
   );
   const listFooter = React.useMemo(
     () => (
@@ -443,6 +442,7 @@ export function TrackSheetPage<Item>({
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <FrostedGlassBackground />
         </View>
+        <View style={[styles.contentWindow, { top: chromeHeight }]} pointerEvents="box-none">
         <Reanimated.View style={[styles.trackCounter, trackCounterStyle]}>
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
@@ -470,6 +470,7 @@ export function TrackSheetPage<Item>({
             onContentSizeChange={handleContentSizeChange}
           />
         </Reanimated.View>
+        </View>
 
         {/* Chrome: sheet material pinned at the surface top. TOUCH-OPAQUE
             (inventory + owner law): a touch on the chrome NEVER reaches the
@@ -518,12 +519,7 @@ export function TrackSheetPage<Item>({
           <Reanimated.View style={[styles.divider, dividerStyle]} />
         </View>
 
-        {/* Sheet-frame chrome (compose chin etc.) — rides the clip. */}
-        {listChrome != null ? (
-          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-            {listChrome}
-          </View>
-        ) : null}
+
       </Reanimated.View>
 
       {debugHud ? (
@@ -543,10 +539,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     overflow: 'hidden',
-    borderTopLeftRadius: SHEET_CORNER_RADIUS,
-    borderTopRightRadius: SHEET_CORNER_RADIUS,
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
   trackCounter: { ...StyleSheet.absoluteFillObject },
+  contentWindow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+  },
   chrome: {
     position: 'absolute',
     top: 0,
