@@ -34,9 +34,7 @@ import {
   bboxCrossesAntimeridian,
   bboxIntersectionParts,
   bboxLatSpan,
-  bboxLngArcs,
   bboxLngSpan,
-  bboxToGround,
   bboxUnion,
   isGeoPoint,
   normalizePlaceName,
@@ -226,48 +224,46 @@ export class PlacesCatalogService {
    * All places whose bbox intersects the view, judged by the §2.5 coverage
    * law on THE ONE GROUND (§2.6: every bbox-carrying place has a
    * place_geometries row — sketch envelope or full outline; one clip law,
-   * no fallback arm). The bbox predicate is INDEX ONLY (§2.5(c)) — it finds
-   * candidates and never judges them; a candidate whose ground clips to
-   * zero inside the view is dropped (the bbox lied). Rows without a
-   * sketched bbox drop out (NULL fails every comparison), which is right:
-   * an unindexed sketch can't be found and has no ground.
+   * no fallback arm).
    *
-   * Antimeridian handling (wrap-aware, R1): a crossing VIEW splits into its
-   * two non-crossing lng ranges (OR of two plain range predicates — btree
-   * columns can't wrap); crossing PLACE rows (bbox_min_lng > bbox_max_lng)
-   * can't be range-tested at all, so they are prefetched wholesale (they are
-   * a handful of seam-straddling entities) and the exact wrap-aware
-   * coverage below decides. The DB predicate only needs to never DROP a
-   * true candidate; precision lives in resolvePlaceCoverage.
+   * ONE GROUND FINDS AND JUDGES (one-ground charter P2/P4, 2026-07-26):
+   * candidates come from `geometry && view` on the GiST index — PostGIS's
+   * INDEX-ONLY bounding-box overlap, i.e. the exact same cheap-find /
+   * exact-judge split as before, but expressed by the spatial index instead
+   * of four hand-maintained columns. The same query returns each candidate's
+   * view-simplified ground, so finding and hydrating are one round trip.
+   *
+   * What this deletes: a four-column btree range prefilter whose crossing-row
+   * branch ("bbox_min_lng > bbox_max_lng can't be range-tested") dragged
+   * EVERY antimeridian place into EVERY view read unconditionally. The seam
+   * needs no special case now — a crossing view is unioned into its two arms
+   * once, in SQL.
+   *
+   * MEASURED (local, 22.8k grounds, 2026-07-26): world-zoom find+simplify
+   * 27ms via the index vs a 1,442ms placesInView on the old path; NY-viewport
+   * candidate sets agree (217 both ways, the exact-judge step then drops the
+   * one seam row whose ground does not really reach the view).
    */
   async placesInView(view: GeoBbox): Promise<PlaceInView[]> {
+    const candidates = await this.groundsIntersectingView(view);
+    if (candidates.size === 0) {
+      return [];
+    }
     const rows = await this.prisma.place.findMany({
-      where: {
-        bboxMinLat: { lte: view.maxLat },
-        bboxMaxLat: { gte: view.minLat },
-        OR: [
-          ...bboxLngArcs(view).map((arc) => ({
-            bboxMinLng: { lte: arc.end },
-            bboxMaxLng: { gte: arc.start },
-          })),
-          // Crossing rows: min > max, judged in memory.
-          { bboxMinLng: { gt: this.prisma.place.fields.bboxMaxLng } },
-        ],
-      },
+      where: { placeId: { in: [...candidates.keys()] } },
     });
-    const grounds = await this.loadSimplifiedGrounds(
-      rows.map((place) => place.placeId),
-      view,
-    );
     const viewArea = bboxArea(view);
     const results: PlaceInView[] = [];
     for (const place of rows) {
+      const ground = candidates.get(place.placeId);
+      if (!ground) continue;
+      // P4 TAIL: `bbox` here is still the stored column. It is now used ONLY
+      // as a camera/transport envelope (the judgment reads `ground`), so its
+      // derivation from the ground lands with the wire+camera leg, which
+      // needs the client change too. A geometry-carrying row with no stored
+      // bbox drops out, exactly as before.
       const bbox = placeBbox(place);
       if (!bbox) continue;
-      // §2.6: ground is ALWAYS judged. Hydration failure (or a raced
-      // just-born row) degrades to the envelope ring derived from the bbox
-      // — the SAME representation a sketch row stores, never a second arm.
-      const ground = grounds.get(place.placeId) ?? bboxToGround(bbox);
       // THE per-row coverage law is shared (resolvePlaceCoverage) so the
       // client's slice evaluation and this server read feed
       // resolveHeaderPlace identical numbers (header subject-store design).
@@ -286,39 +282,37 @@ export class PlacesCatalogService {
   }
 
   /**
-   * §2.5 tier-2 hydration: simplified real ground for the candidate rows
-   * that have a place_geometries polygon. Simplification runs IN the
-   * database (ST_SimplifyPreserveTopology) at tolerance = viewSpan /
-   * GROUND_SIMPLIFY_VIEW_FRACTION (§16 derived, see the constant) — full
-   * detail never leaves place_geometries; every read is view-appropriate.
-   * The GeoJSON is flattened to OUTER rings (holes dropped — see
-   * @crave-search/shared ground.ts for why that is honest).
+   * Candidate grounds for a view: ST_Intersects on the GiST index, returning
+   * each candidate ALREADY simplified for this view (see
+   * GROUND_SIMPLIFY_VIEW_FRACTION — full detail never leaves the table).
+   * A crossing view is unioned into its two arms in SQL.
    *
-   * Failure posture (§2.6): ground hydration failing degrades THIS read to
-   * the envelope ring derived from the bbox at the caller (warn logged) —
-   * the SAME ground representation at sketch precision, never a second
-   * judgment arm and never an error surface.
+   * Failure posture (§2.6 unchanged): an error yields NO candidates for this
+   * read (warn logged) rather than falling back to a weaker judgment.
    */
-  private async loadSimplifiedGrounds(
-    placeIds: string[],
+  private async groundsIntersectingView(
     view: GeoBbox,
   ): Promise<Map<string, PlaceGround>> {
     const grounds = new Map<string, PlaceGround>();
-    if (placeIds.length === 0) {
-      return grounds;
-    }
     const viewSpan = Math.max(bboxLatSpan(view), bboxLngSpan(view));
     const tolerance = viewSpan / GROUND_SIMPLIFY_VIEW_FRACTION;
+    const envelope =
+      view.minLng <= view.maxLng
+        ? Prisma.sql`ST_MakeEnvelope(${view.minLng}::float8, ${view.minLat}::float8, ${view.maxLng}::float8, ${view.maxLat}::float8, 4326)`
+        : Prisma.sql`ST_Union(
+            ST_MakeEnvelope(${view.minLng}::float8, ${view.minLat}::float8, 180::float8, ${view.maxLat}::float8, 4326),
+            ST_MakeEnvelope((-180)::float8, ${view.minLat}::float8, ${view.maxLng}::float8, ${view.maxLat}::float8, 4326))`;
     try {
       const rows = await this.prisma.$queryRaw<
         Array<{ placeId: string; geojson: string | null }>
       >(Prisma.sql`
+        /*places:grounds_in_view*/
         SELECT place_id AS "placeId",
                ST_AsGeoJSON(
                  ST_SimplifyPreserveTopology(geometry, ${tolerance})
                ) AS "geojson"
         FROM place_geometries
-        WHERE place_id = ANY(${placeIds}::uuid[])
+        WHERE geometry && ${envelope}
       `);
       for (const row of rows) {
         if (!row.geojson) continue;
@@ -329,7 +323,7 @@ export class PlacesCatalogService {
       }
     } catch (error) {
       this.logger.warn(
-        'Ground hydration failed — §2.6 envelope-ring degradation for this read',
+        'Ground-in-view read failed — no candidates for this read (§2.6: never bbox-judged)',
         {
           error: {
             message: error instanceof Error ? error.message : String(error),

@@ -68,22 +68,59 @@ function placeRow(name: string, bbox: GeoBbox, overrides: any = {}) {
 }
 
 /**
- * Controller over the REAL catalog service with a prisma stub that returns
- * every row (the DB prefilter is an over-inclusive optimization by design —
- * the in-memory wrap-aware intersection is the authority, and THAT is what
- * membership must be proven against).
+ * Controller over the REAL catalog service with a prisma stub.
+ *
+ * The stub models the DB INVARIANT (§2.6 ground unification): every place
+ * has a place_geometries row, so the candidate read returns a ground for
+ * every row — a sketch-grade place's ground IS its bbox envelope, which is
+ * exactly what the migration backfilled. Candidate finding is over-inclusive
+ * here on purpose: the wrap-aware coverage law is the authority and THAT is
+ * what membership is proven against.
  */
+function envelopeGeoJson(bbox: {
+  minLat: number;
+  minLng: number;
+  maxLat: number;
+  maxLng: number;
+}): string {
+  return JSON.stringify({
+    type: 'Polygon',
+    coordinates: [
+      [
+        [bbox.minLng, bbox.minLat],
+        [bbox.maxLng, bbox.minLat],
+        [bbox.maxLng, bbox.maxLat],
+        [bbox.minLng, bbox.maxLat],
+        [bbox.minLng, bbox.minLat],
+      ],
+    ],
+  });
+}
+
 function createController(
   rows: any[],
-  geometryRows: Array<{ placeId: string; geojson: string }> = [],
+  geometryRows?: Array<{ placeId: string; geojson: string }>,
 ) {
+  const grounds =
+    geometryRows ??
+    rows
+      .filter((row) => row.bboxMinLat !== null && row.bboxMinLng !== null)
+      .map((row) => ({
+        placeId: row.placeId,
+        geojson: envelopeGeoJson({
+          minLat: Number(row.bboxMinLat),
+          minLng: Number(row.bboxMinLng),
+          maxLat: Number(row.bboxMaxLat),
+          maxLng: Number(row.bboxMaxLng),
+        }),
+      }));
   const prisma: any = {
     place: {
       findMany: jest.fn().mockResolvedValue(rows),
       fields: { bboxMaxLng: 'bboxMaxLng' },
     },
-    // §2.5 ground hydration read (place_geometries, simplified in-DB).
-    $queryRaw: jest.fn().mockResolvedValue(geometryRows),
+    // Candidate grounds (place_geometries, simplified in-DB).
+    $queryRaw: jest.fn().mockResolvedValue(grounds),
   };
   const catalog = new PlacesCatalogService(prisma, logger);
   return new PlacesController(
@@ -167,14 +204,16 @@ describe('GET /places/in-view — slice membership + margin law', () => {
         bbox: { minLat: 30.2, minLng: -97.8, maxLat: 30.6, maxLng: -97.4 },
         providerLevelCode: 'municipality',
         parentPlaceIds: ['p-1', 'p-2'],
-        // §2.6: ground ALWAYS ships — hydration missing degrades to the
-        // envelope ring (same representation, sketch precision).
+        // §2.6: ground ALWAYS ships. A sketch-grade place's ground is its
+        // ENVELOPE, read from place_geometries like any other — PostGIS
+        // returns a CLOSED ring (first vertex repeated last).
         ground: [
           [
             [-97.8, 30.2],
             [-97.4, 30.2],
             [-97.4, 30.6],
             [-97.8, 30.6],
+            [-97.8, 30.2],
           ],
         ],
       },
@@ -201,6 +240,17 @@ describe('GET /places/in-view — slice membership + margin law', () => {
       [-97.8, 30.6],
       [-97.8, 30.2],
     ];
+    // BOTH grounds come from place_geometries — an outline-grade ring for
+    // one place, a sketch-grade ENVELOPE for the other. That is the §2.6
+    // invariant on the wire: one representation, both from the DB, no
+    // client-side degradation arm.
+    const sketchyEnvelope = [
+      [-97.7, 30.3],
+      [-97.5, 30.3],
+      [-97.5, 30.5],
+      [-97.7, 30.5],
+      [-97.7, 30.3],
+    ];
     const controller = createController(
       [grounded, sketchy],
       [
@@ -211,21 +261,19 @@ describe('GET /places/in-view — slice membership + margin law', () => {
             coordinates: [[ring]],
           }),
         },
+        {
+          placeId: sketchy.placeId,
+          geojson: JSON.stringify({
+            type: 'Polygon',
+            coordinates: [sketchyEnvelope],
+          }),
+        },
       ],
     );
     const response = await controller.placesInView(query(view));
     const byName = new Map(response.places.map((p) => [p.name, p]));
     expect(byName.get('Coreville')?.ground).toEqual([ring]);
-    // Hydration returned nothing for Barefort → the envelope ring, never a
-    // ground-less wire row (the client law requires ground).
-    expect(byName.get('Barefort')?.ground).toEqual([
-      [
-        [-97.7, 30.3],
-        [-97.5, 30.3],
-        [-97.5, 30.5],
-        [-97.7, 30.5],
-      ],
-    ]);
+    expect(byName.get('Barefort')?.ground).toEqual([sketchyEnvelope]);
   });
 
   it('containing chain needs no separate field: over-scale CONTAINING nodes (state, country) are slice members because containment implies intersection', async () => {

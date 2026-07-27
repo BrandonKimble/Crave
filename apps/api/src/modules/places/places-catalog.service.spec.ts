@@ -688,8 +688,23 @@ describe('PlacesCatalogService — §1 COUNTY-AXIS decision table (§18 item 8)'
 });
 
 describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
-  it('§2.6 envelope degradation: hydration returns nothing → the envelope RING judges (bbox-equal numbers, same representation) + deduped parent edges', async () => {
-    const half = makePlaceRow({
+  // ONE GROUND FINDS AND JUDGES (one-ground charter P2/P4): candidates come
+  // from ST_Intersects on the GiST index and arrive WITH their view-simplified
+  // ground. A place with no ground is not a candidate at all — there is no
+  // envelope-degradation arm any more, which is the §2.6 law stated plainly
+  // ("never bbox-judged") rather than an exception to it.
+  const RING_0_1 = [
+    [
+      [0, 0],
+      [1, 0],
+      [1, 1],
+      [0, 1],
+      [0, 0],
+    ],
+  ];
+
+  it('finds candidates by INTERSECTING GROUND and judges coverage on it (+ deduped parent edges)', async () => {
+    const town = makePlaceRow({
       name: 'West Town',
       bboxMinLat: 0,
       bboxMinLng: 0,
@@ -697,88 +712,67 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
       bboxMaxLng: 1,
       parentPlaceIds: ['p-1', 'p-1', 'p-2'],
     });
-    const { service, findMany } = makeHarness([]);
-    findMany.mockResolvedValue([half]);
+    const { service, findMany, queryRaw } = makeHarness([]);
+    queryRaw.mockResolvedValue([
+      {
+        placeId: town.placeId,
+        geojson: JSON.stringify({ type: 'Polygon', coordinates: RING_0_1 }),
+      },
+    ]);
+    findMany.mockResolvedValue([town]);
 
     const view = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 };
     const results = await service.placesInView(view);
 
+    const sql = queryRaw.mock.calls[0][0].sql as string;
+    expect(sql).toContain('/*places:grounds_in_view*/');
+    expect(sql).toContain('geometry && ');
     expect(results).toHaveLength(1);
     expect(results[0].coverageOfView).toBeCloseTo(0.5, 9);
-    // Cos-weighted area (place-geo): 1° × 1° × cos(midLat 0.5°).
     expect(results[0].placeArea).toBeCloseTo(
       Math.cos((0.5 * Math.PI) / 180),
       9,
     );
     expect(results[0].parentPlaceIds).toEqual(['p-1', 'p-2']);
-    // §2.6: ground is ALWAYS present — here the envelope ring derived from
-    // the bbox (sketch-grade representation), never undefined.
-    expect(results[0].ground).toEqual([
-      [
-        [0, 0],
-        [1, 0],
-        [1, 1],
-        [0, 1],
-      ],
-    ]);
   });
 
-  it('polygon = truth (§2.5(c)): a landed geometry judges coverage; the lying index bbox is demoted to candidate-finding', async () => {
-    const liar = makePlaceRow({
-      name: 'Mexico-ish',
-      bboxMinLat: -10,
-      bboxMinLng: -10,
-      bboxMaxLat: 10,
-      bboxMaxLng: 10, // bbox CONTAINS the view (coverage would be 1)
-    });
+  it('a ground read failure yields NO candidates for this read — never a weaker judgment', async () => {
     const { service, findMany, queryRaw } = makeHarness([]);
-    findMany.mockResolvedValue([liar]);
-    // Real ground: only the view's west half.
-    queryRaw.mockResolvedValue([
-      {
-        placeId: liar.placeId,
-        geojson: JSON.stringify({
-          type: 'Polygon',
-          coordinates: [
-            [
-              [-10, -10],
-              [0.5, -10],
-              [0.5, 10],
-              [-10, 10],
-              [-10, -10],
-            ],
-          ],
-        }),
-      },
-    ]);
-
-    const view = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
-    const results = await service.placesInView(view);
-    expect(results).toHaveLength(1);
-    expect(results[0].coverageOfView).toBeCloseTo(0.5, 6);
-    expect(results[0].ground).toBeDefined();
-    // The simplification tolerance is derived from the VIEW span (§16):
-    // span 1° / 512.
-    const [query] = queryRaw.mock.calls[queryRaw.mock.calls.length - 1];
-    expect(query.values).toContain(1 / 512);
-  });
-
-  it('ground hydration failure degrades to the bbox fallback (legal §2.5(f) degradation, never an error)', async () => {
-    const row = makePlaceRow({
-      name: 'Town',
-      bboxMinLat: 0,
-      bboxMinLng: 0,
-      bboxMaxLat: 1,
-      bboxMaxLng: 1,
-    });
-    const { service, findMany, queryRaw } = makeHarness([]);
-    findMany.mockResolvedValue([row]);
     queryRaw.mockRejectedValue(new Error('postgis down'));
 
-    const view = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
-    const results = await service.placesInView(view);
-    expect(results).toHaveLength(1);
-    expect(results[0].coverageOfView).toBeCloseTo(1, 6);
+    expect(
+      await service.placesInView({
+        minLat: 0,
+        minLng: 0,
+        maxLat: 1,
+        maxLng: 1,
+      }),
+    ).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('a CROSSING view unions its two arms in SQL (the seam is not a plain rectangle)', async () => {
+    const { service, queryRaw } = makeHarness([]);
+    queryRaw.mockResolvedValue([]);
+    await service.placesInView({
+      minLat: 0,
+      minLng: 179,
+      maxLat: 1,
+      maxLng: -179,
+    });
+    expect(queryRaw.mock.calls[0][0].sql as string).toContain('ST_Union');
+
+    const plain = makeHarness([]);
+    plain.queryRaw.mockResolvedValue([]);
+    await plain.service.placesInView({
+      minLat: 0,
+      minLng: -1,
+      maxLat: 1,
+      maxLng: 1,
+    });
+    expect(plain.queryRaw.mock.calls[0][0].sql as string).not.toContain(
+      'ST_Union',
+    );
   });
 });
 
