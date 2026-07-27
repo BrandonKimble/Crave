@@ -520,40 +520,68 @@ export class PlacesPromotionService {
     }
     draws.scarce += 1;
 
-    // §2.5 WRONG-ENTITY GUARD: the vendor sometimes resolves a name to a
-    // much smaller feature (observed seed run: San Antonio TX → a 1×2km
-    // fragment; 39/5826 rows). A polygon that spans <20% of the place's own
-    // bbox on BOTH axes (when that bbox is non-trivial) is a different
-    // entity, and persisting it would make the "real" ground a lie —
-    // sketch-grade envelope truth beats outline-grade fiction. Reject: the
-    // row stays sketch, the cached geometry id is cleared so a future pass
-    // re-resolves instead of refetching the same wrong feature.
-    const envelope = geojsonEnvelope(polygon.geojson);
-    // Wrap-aware spans (bug fixed 2026-07-26): the raw subtraction this
-    // replaces went NEGATIVE for a seam-straddling place, so `< 0.2 * span`
-    // was trivially true and the guard could reject a CORRECT polygon.
-    const placeBbox =
-      place.bboxMinLat !== null &&
-      place.bboxMinLng !== null &&
-      place.bboxMaxLat !== null &&
-      place.bboxMaxLng !== null
-        ? {
-            minLat: Number(place.bboxMinLat),
-            minLng: Number(place.bboxMinLng),
-            maxLat: Number(place.bboxMaxLat),
-            maxLng: Number(place.bboxMaxLng),
-          }
+    // WRONG-ENTITY GUARD — ANCHOR CONTAINMENT (one-ground charter, 2026-07-27).
+    //
+    // The question worth asking is the one the charter states: "does this
+    // polygon actually contain the spot we asked about?" The place's anchor
+    // (census internal point) is GUARANTEED to lie inside the real place, so
+    // a polygon that does not cover it is a different entity — full stop, at
+    // any size, in any country. Exact test, via PostGIS, before persisting.
+    //
+    // This REPLACES a span-ratio heuristic that only rejected polygons under
+    // 20% of the stored bbox on BOTH axes: a wrong entity of COMPARABLE size
+    // (the cross-border neighbour, the same-name town one county over) sailed
+    // straight through it. That heuristic was also the justification I gave
+    // for dropping the country gate — a guard that could not actually catch
+    // what I claimed. The span check survives ONLY where no anchor exists
+    // (52 rows): weaker evidence used only where stronger evidence is absent,
+    // never in preference to it.
+    const anchor =
+      place.centroidLat != null && place.centroidLng != null
+        ? { lat: Number(place.centroidLat), lng: Number(place.centroidLng) }
         : null;
-    const bboxLngSpan = placeBbox ? bboxLngSpanOf(placeBbox) : null;
-    const bboxLatSpan = placeBbox ? bboxLatSpanOf(placeBbox) : null;
-    if (
-      envelope &&
-      bboxLngSpan !== null &&
-      bboxLatSpan !== null &&
-      Math.max(bboxLngSpan, bboxLatSpan) > 0.05 &&
-      envelope.lngSpan < 0.2 * bboxLngSpan &&
-      envelope.latSpan < 0.2 * bboxLatSpan
-    ) {
+    let wrongEntity = false;
+    let rejectReason = '';
+    if (anchor) {
+      const [covers] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>(
+        Prisma.sql`
+          SELECT ST_Covers(
+                   ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
+                     polygon.geojson,
+                   )}::json->'features'->0->'geometry'), 4326),
+                   ST_SetSRID(ST_MakePoint(${anchor.lng}::float8, ${anchor.lat}::float8), 4326)
+                 ) AS ok
+        `,
+      );
+      wrongEntity = covers?.ok === false;
+      rejectReason = 'polygon does not contain the place anchor';
+    } else {
+      const envelope = geojsonEnvelope(polygon.geojson);
+      const placeBbox =
+        place.bboxMinLat !== null &&
+        place.bboxMinLng !== null &&
+        place.bboxMaxLat !== null &&
+        place.bboxMaxLng !== null
+          ? {
+              minLat: Number(place.bboxMinLat),
+              minLng: Number(place.bboxMinLng),
+              maxLat: Number(place.bboxMaxLat),
+              maxLng: Number(place.bboxMaxLng),
+            }
+          : null;
+      const lngSpan = placeBbox ? bboxLngSpanOf(placeBbox) : null;
+      const latSpan = placeBbox ? bboxLatSpanOf(placeBbox) : null;
+      wrongEntity = Boolean(
+        envelope &&
+          lngSpan !== null &&
+          latSpan !== null &&
+          Math.max(lngSpan, latSpan) > 0.05 &&
+          envelope.lngSpan < 0.2 * lngSpan &&
+          envelope.latSpan < 0.2 * latSpan,
+      );
+      rejectReason = 'anchorless place: polygon far smaller than stored extent';
+    }
+    if (wrongEntity) {
       await this.prisma.placeGeometryPromotion.update({
         where: { placeId: item.placeId },
         data: { providerBoundaryId: null },
@@ -562,8 +590,7 @@ export class PlacesPromotionService {
       this.logger.warn('WRONG-ENTITY polygon rejected (place stays sketch)', {
         placeId: item.placeId,
         geometryId,
-        polygonSpan: { lng: envelope.lngSpan, lat: envelope.latSpan },
-        bboxSpan: { lng: bboxLngSpan, lat: bboxLatSpan },
+        reason: rejectReason,
       });
       return 'attempted';
     }

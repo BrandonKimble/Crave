@@ -760,6 +760,18 @@ export class PlacesCatalogService {
       data.parentPlaceIds = { push: parentPlaceId };
     }
 
+    // COUNTY GAP-FILL lives HERE (moved 2026-07-27, red-team finding).
+    // It used to sit only in resolveIdentity's decision table, because the
+    // county was part of how identity was CHOSEN. Since P3 made the vendor
+    // geometry id the identity, the id-first path skips that table entirely
+    // — so for every observation carrying a vendor id (i.e. nearly all of
+    // them) the county axis silently stopped accruing. County is not an
+    // identity input any more; it is just another unknown scalar the merge
+    // fills, exactly like centroid/timeZone/localScriptAlias below. Same
+    // never-overwrite rule: a stored non-null county is never replaced.
+    if (!existing.county && node.county) {
+      data.county = normalizePlaceName(node.county);
+    }
     if (existing.centroidLat === null && node.centroid) {
       data.centroidLat = node.centroid.lat;
       data.centroidLng = node.centroid.lng;

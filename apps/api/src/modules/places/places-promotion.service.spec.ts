@@ -80,6 +80,8 @@ function makeHarness(options: {
   lockAcquired?: boolean;
   /** §24 Task 3: optional campaign-envelope mock (isDispatchable/recordSpend). */
   spendCampaigns?: { isDispatchable: jest.Mock; recordSpend: jest.Mock };
+  /** Anchor-containment guard outcome (default: the polygon covers it). */
+  polygonCoversAnchor?: boolean;
 }) {
   const executeRawCalls: Array<{ sql: string; values: unknown[] }> = [];
   const prisma = {
@@ -102,6 +104,11 @@ function makeHarness(options: {
         return Promise.resolve(
           options.hasGeometryAlready ? [{ placeId: PLACE_ID }] : [],
         );
+      }
+      // Anchor-containment guard: does the returned polygon cover the
+      // place's own interior anchor? Default true (the honest case).
+      if (sql.includes('ST_Covers')) {
+        return Promise.resolve([{ ok: options.polygonCoversAnchor ?? true }]);
       }
       return Promise.resolve([]);
     }),
@@ -392,6 +399,53 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       const [campaignId, micros] = spendCampaigns.recordSpend.mock.calls[0];
       expect(campaignId).toBe('camp-1');
       expect(micros).toBeGreaterThan(0);
+    });
+
+    it('ANCHOR CONTAINMENT: a polygon that does not cover the place anchor is rejected AT ANY SIZE', async () => {
+      // RED-proof for the guard that replaced the span-ratio heuristic. The
+      // old check only caught polygons under 20% of the stored bbox on BOTH
+      // axes, so a wrong entity of COMPARABLE size passed. Here the polygon
+      // is the same size as the place and still must be refused, because it
+      // does not contain the point we asked about.
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow()],
+        place: makePlaceRow({
+          centroidLat: 33.0,
+          centroidLng: -96.0,
+          bboxMinLat: 0,
+          bboxMinLng: 0,
+          bboxMaxLat: 1,
+          bboxMaxLng: 1,
+        }),
+        polygonCoversAnchor: false,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      // Rejected: never stamped as promoted, cached id cleared for a re-resolve.
+      expect(prisma.place.update).not.toHaveBeenCalled();
+      const cleared = prisma.placeGeometryPromotion.update.mock.calls.find(
+        (call: any) => call[0].data.providerBoundaryId === null,
+      );
+      expect(cleared).toBeDefined();
+    });
+
+    it('ANCHOR CONTAINMENT: a polygon covering the anchor is accepted (the guard is not just "reject everything")', async () => {
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow()],
+        place: makePlaceRow({
+          centroidLat: 33.0,
+          centroidLng: -96.0,
+          bboxMinLat: 0,
+          bboxMinLng: 0,
+          bboxMaxLat: 1,
+          bboxMaxLng: 1,
+        }),
+        polygonCoversAnchor: true,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      expect(prisma.place.update).toHaveBeenCalledWith({
+        where: { placeId: PLACE_ID },
+        data: { promotedAt: new Date('2026-07-20T00:00:00Z') },
+      });
     });
 
     it('a wrong-entity rejection meters its draws into the campaign', async () => {
