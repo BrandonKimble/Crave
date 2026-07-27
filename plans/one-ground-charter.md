@@ -91,11 +91,23 @@ OR ST_Covers` disjuncts (curated builder, home near-you) collapse to one
 `ST_Intersects` on the geometry index; delete the hand-written wrap arms and
 the crossing-row catch-alls; drop the partial bbox GiST expression index.
 
-**P3 — merge law compares grounds.** Delete `bboxUnion` / `widenBbox` /
-`bboxNear`. A merge candidate whose ground is DISJOINT from the stored ground
-is a different entity, full stop. This permanently kills the corruption class
-(no derived value can be widened across entities) — home-surface registry 13
-resolves here, at the root, rather than as a guard.
+**P3 — identity is the VENDOR ID, not the name.** LANDED 2026-07-26, and the
+answer turned out stronger than "compare grounds": TomTom stamps every entity
+with a STABLE geometry id (live-validated: identical across reverse and
+forward geocodes). So identity is exact and free — no name normalization, no
+county axis, no geometric comparison, no extra vendor call:
+
+- an observation carrying a vendor id matches the row with that id, directly;
+- a same-name candidate carrying a DIFFERENT id is disqualified (the vendor
+  says it is another entity) — the homonym is minted as its own place;
+- an id disagreement can no longer reach the merge, so the old
+  warn-and-widen-anyway branch is gone.
+  This is where the San Juan corruption class actually dies: names were never
+  identity ("Scotland" is a Georgia town AND a country), and the widen-only
+  union could only destroy an extent because a name collision let two entities
+  meet in the first place. Remaining P3 tail: `bboxUnion`/`widenBbox` survive
+  until P4 makes bbox derived — with identity exact, they can no longer merge
+  across entities.
 
 **P4 — bbox becomes derived, then unstored.** Camera/launch-position use
 `ST_Envelope`; `PlaceLike.bbox` leaves the wire (the client derives an

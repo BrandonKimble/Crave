@@ -475,11 +475,29 @@ export class PlacesCatalogService {
    *       adoption bait for the wrong county later.
    */
   private resolveIdentity(
-    candidates: Place[],
+    candidateRows: Place[],
     node: PlaceSketchNode,
   ): { row: Place; adoptCounty?: string } | { row: null } {
+    let candidates = candidateRows;
     if (candidates.length === 0) {
       return { row: null };
+    }
+    // DIFFERENT VENDOR ID = DIFFERENT ENTITY (one-ground charter P3): the
+    // id-first lookup upstream already matched an exact id, so any remaining
+    // name-candidate that carries a DIFFERENT id is provably not this place
+    // — the vendor says so. Disqualify it rather than let the name/county
+    // rules merge two entities (the defect that widened San Juan Municipio
+    // across 45° of longitude). A candidate with no stored id is still
+    // eligible: it simply has no vendor opinion yet.
+    if (node.providerPlaceId) {
+      candidates = candidates.filter(
+        (row) =>
+          row.providerPlaceId === null ||
+          row.providerPlaceId === node.providerPlaceId,
+      );
+      if (candidates.length === 0) {
+        return { row: null }; // all homonyms are other entities → mint ours
+      }
     }
     const observedCounty = node.county ? normalizePlaceName(node.county) : null;
     const sameCounty = (row: Place) =>
@@ -555,6 +573,22 @@ export class PlacesCatalogService {
     parentPlaceId: string | undefined,
   ): Promise<Place> {
     const name = normalizePlaceName(node.name);
+    // VENDOR ID IS THE IDENTITY (one-ground charter P3, 2026-07-26). The
+    // provider's geometry id is STABLE and per-entity (live-validated: the
+    // same id comes back from reverse and forward geocodes for the same
+    // entity), so when the observation carries one it answers identity
+    // EXACTLY — no name normalization, no county axis, no geometric
+    // comparison, no ambiguity. Names were never identity: "Scotland" is a
+    // town in Georgia AND a country; matching by name is what let two
+    // different entities merge and destroy each other's extent.
+    if (node.providerPlaceId) {
+      const byVendorId = await this.prisma.place.findFirst({
+        where: { providerPlaceId: node.providerPlaceId },
+      });
+      if (byVendorId) {
+        return this.mergeSketch(byVendorId, node, parentPlaceId);
+      }
+    }
     // Bounded re-resolution loop: every race (create-vs-create P2002,
     // adopt-vs-adopt on the same NULL-county row) settles by re-reading the
     // candidates — rows and counties only ever ACCRUE, so a re-run of the
@@ -695,13 +729,10 @@ export class PlacesCatalogService {
     if (node.providerPlaceId) {
       if (!existing.providerPlaceId) {
         data.providerPlaceId = node.providerPlaceId;
-      } else if (existing.providerPlaceId !== node.providerPlaceId) {
-        this.logger.warn('providerPlaceId disagreement on identity match', {
-          placeId: existing.placeId,
-          stored: existing.providerPlaceId,
-          observed: node.providerPlaceId,
-        });
       }
+      // An id DISAGREEMENT can no longer reach here: resolveIdentity
+      // disqualifies differently-id'd candidates and the id-first lookup
+      // matches exactly (one-ground charter P3). Nothing to reconcile.
     }
 
     if (parentPlaceId && !existing.parentPlaceIds.includes(parentPlaceId)) {

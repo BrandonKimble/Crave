@@ -81,6 +81,8 @@ function makeHarness(
   const findUnique = jest
     .fn()
     .mockImplementation(() => Promise.resolve(makePlaceRow()));
+  // P3 vendor-id-first identity lookup; null = no stored row carries this id.
+  const findFirst = jest.fn().mockResolvedValue(null);
   const executeRaw = jest.fn().mockResolvedValue(1);
   const queryRaw = jest.fn().mockResolvedValue([]);
   const prisma: any = {
@@ -91,6 +93,7 @@ function makeHarness(
       findMany,
       findUniqueOrThrow,
       findUnique,
+      findFirst,
       // Prisma field-reference stub (crossing-row branch of the WHEREs).
       fields: { bboxMaxLng: Symbol('bboxMaxLng') },
     },
@@ -109,6 +112,7 @@ function makeHarness(
     findMany,
     findUniqueOrThrow,
     findUnique,
+    findFirst,
     executeRaw,
     queryRaw,
     birthListener,
@@ -275,6 +279,61 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
 
     await service.sketchChain([{ ...austinNode, bbox: null }]);
 
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(update.mock.calls[0][0].data.providerPlaceId).toBe(
+      'tomtom-geom-austin',
+    );
+  });
+
+  // ── VENDOR ID IS THE IDENTITY (one-ground charter P3) ────────────────────
+  it('a matching vendor geometry id IS the identity — matched directly, no name/county rules consulted', async () => {
+    const stored = makePlaceRow({
+      name: 'Totally Different Name',
+      providerPlaceId: 'tomtom-geom-austin',
+    });
+    const { service, findFirst, findMany, create } = makeHarness([]);
+    findFirst.mockResolvedValue(stored);
+
+    const [resolved] = await service.sketchChain([
+      { ...austinNode, bbox: null },
+    ]);
+
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { providerPlaceId: 'tomtom-geom-austin' },
+    });
+    // Resolved to the id-matched row despite the name disagreeing entirely.
+    expect(resolved.placeId).toBe(stored.placeId);
+    // The name-candidate lookup never ran, and nothing was forked.
+    expect(findMany).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('a same-name homonym with a DIFFERENT vendor id is a different entity — minted, never merged (the San Juan class)', async () => {
+    // The defect this closes: "Scotland" the Georgia town and "Scotland"
+    // elsewhere share a name, so the name/county rules merged them and the
+    // widen-only bbox union destroyed both extents.
+    const otherEntity = makePlaceRow({
+      name: 'Austin',
+      providerPlaceId: 'tomtom-geom-SOMEWHERE-ELSE',
+    });
+    const { service, findFirst, create, update } = makeHarness([otherEntity]);
+    findFirst.mockResolvedValue(null); // no row carries OUR id yet
+
+    await service.sketchChain([{ ...austinNode, bbox: null }]);
+
+    // Minted as its own place; the homonym is untouched.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('an id-less stored row is still eligible (no vendor opinion yet) — it merges and adopts the id', async () => {
+    const idLess = makePlaceRow({ providerPlaceId: null });
+    const { service, findFirst, create, update } = makeHarness([idLess]);
+    findFirst.mockResolvedValue(null);
+
+    await service.sketchChain([{ ...austinNode, bbox: null }]);
+
+    expect(create).not.toHaveBeenCalled();
     expect(update).toHaveBeenCalledTimes(1);
     expect(update.mock.calls[0][0].data.providerPlaceId).toBe(
       'tomtom-geom-austin',
