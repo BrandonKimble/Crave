@@ -164,3 +164,26 @@ forgotten work.
     read as messy/crowded — the anti-goal); V2 artwork explores a cohesive
     commissioned/AI-consistent icon set beyond lucide. Trigger: the lists
     UX pass after the recipes/onboarding leg.
+15. BBOX DEMOTION (full audit 2026-07-26; two exhaustive sweeps — 45 api
+    sites + the whole client): bbox as JUDGE is already ~dead (client
+    coverage is polygon-only; server doctrine "polygon = truth, bbox =
+    index"), but (i) two raw-SQL disjuncts still let bbox silently judge
+    geometry-less places (curated-list-builder cityRestaurants + home-feed
+    nearYou `NOT EXISTS place_geometries OR ST_Covers`), (ii) 12 prefilter
+    sites hand-replicate wrap-aware bbox arms that a GiST ST_Intersects on
+    place_geometries replaces strictly better (kills the crossing-row
+    catch-alls + the partial-index wrap exclusion), (iii)
+    SubjectCandidate.bbox / FeedPlaceCandidate.bbox are dead wire payload —
+    deletable now. GENUINELY bbox-shaped, keep: fresh vendor observations
+    pre-polygon (the merge law's comparand — vendors ship boxes, not
+    outlines), negative probe regions ("searched here, found nothing"),
+    the promotion WRONG-ENTITY guard's independent extent witness (a
+    polygon cannot validate itself), the signals ledger's flat geo
+    envelope columns, camera fits (any geometry reduces to its envelope),
+    and the viewport itself. Latent non-wrap-aware bbox bugs found in
+    passing: tomtom-chain-probe anchor containment + candidate picking,
+    promotion envelope widen, launch-position bounds. TARGET STATE:
+    places.bbox becomes a DERIVED envelope of the place's ONE ground
+    (single writer, never merged) — which also kills item 13's corruption
+    at the root (a derived bbox cannot be widened across entities). Own
+    arc; do together with item 13.
