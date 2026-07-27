@@ -522,6 +522,21 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     []
   );
 
+  // ROWS ON THE FOUNDATION (owner report: home shelf boxes lost their
+  // cutouts): lane/list rows render in bare track cells, so a row's
+  // FrostCutout found no surface and silently rendered a plain box. Each row
+  // cell now carries its own foundation surface — holes measure against the
+  // cell (their own root), which is exactly right on the track since the cell
+  // IS the scrolling unit.
+  const wrapRowOnFoundation = React.useCallback(
+    (node: React.ReactNode) => (
+      <SceneBodyFoundationSurface scrollOffset={zeroScrollOffset} sceneKey={scene as SheetSceneKey}>
+        {node}
+      </SceneBodyFoundationSurface>
+    ),
+    [scene, zeroScrollOffset]
+  );
+
   const list = React.useMemo(() => {
     if (publishedBody != null && publishedBody.surfaceKind === 'list') {
       return {
@@ -548,9 +563,11 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
           : null;
     if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
       const spec = partsFor.sceneBodyContent;
+      const specRenderItem = spec.renderItem;
       return {
         data: spec.data,
-        renderItem: spec.renderItem,
+        renderItem: (info: Parameters<NonNullable<typeof specRenderItem>>[0]) =>
+          wrapRowOnFoundation(specRenderItem?.(info) ?? null),
         keyExtractor: spec.keyExtractor,
         ListEmptyComponent: spec.ListEmptyComponent,
         ItemSeparatorComponent: spec.ItemSeparatorComponent,
@@ -566,7 +583,15 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
       data: PLACEHOLDER_ROWS,
       renderItem: renderPlaceholderRow,
     };
-  }, [homeParts, pollsParts, publishedBody, renderMountedBody, renderPlaceholderRow, scene]);
+  }, [
+    homeParts,
+    pollsParts,
+    publishedBody,
+    renderMountedBody,
+    renderPlaceholderRow,
+    scene,
+    wrapRowOnFoundation,
+  ]);
 
   return (
     <View style={styles.root} pointerEvents="box-none">
