@@ -604,7 +604,7 @@ Outputs
 
 3. Assess itemhood evidence (aggregate; do not rely on a single cue)
    - Local tie: Dish and restaurant are linked in the same clause/sentence or an immediately adjacent reference (e.g., "at [restaurant]", "from here", "their/this/that [dish]", clear ordering verbs like "got/ordered/had/tried"). A clear combination suffices; not all signals are required.
-   - Specificity: The dish is specific enough that a typical diner could order it without additional specification (e.g., "duck carnitas tacos", "sesame noodles"), not just a broad type ("sushi", "pizza", "shawarma") unless the context makes it specific. **Context makes it specific exactly when the source names the dish itself — a named preparation or item ("carbonara udon", "taro nigiri", "udon" at a noodle house) — and ties it locally to the restaurant. A meal-period, cuisine, or serving modifier on a bare category noun ("breakfast tacos", "late-night pizza") does NOT make the category specific: the modifier narrows when or how, not which item.**
+   - Specificity — THE ONE TEST (3.0's order test at menu-line altitude): **could two different diners walk into THIS restaurant, each order "the X", and be handed the same thing?** If yes, X names one item and is specific — however plain the word, and with no modifier required ("babka", "rugelach", "tasting menu", "carbonara udon" all pass). If "the X" could mean five different plates the kitchen makes ("cakes", "cookies", "ramen", "udon", "shawarma", "sushi", "pizza"), X names a FAMILY, not an item — it stays a category until the source narrows it by the dish's own distinguishing feature (a filling, a variant name, a described preparation). Narrowing by cuisine, meal-period, or occasion is not narrowing: it says when or in what tradition, never which item ("breakfast tacos" is still the taco family). Family size is a fact about the restaurant's menu, not about the sentence's wording — judge the term, then the tie.
    - Coherence: If earlier text in the same input has already established a dish->restaurant pairing, concise follow-ups (e.g., "the tacos are insane", "this was incredible") may inherit itemhood when unambiguous.
 
 4. Decide outcome (be conservative when uncertain)
@@ -618,14 +618,18 @@ Outputs
 - Specific prepared item (`is_menu_item: true`)
   - "Duck carnitas tacos at Nixta were insane." -> `restaurant`: "nixta"; `food`: "duck carnitas tacos".
   - "Their sesame noodles are fantastic." (thread already about that restaurant) -> `food`: "sesame noodles".
+- One item vs a family (the specificity test in action)
+  - "I do enjoy Bread's babka." -> `is_menu_item: true` — a babka is one thing you walk out with; the bare name IS the order-name.
+  - "I spent $500 for two at Corima for the tasting menu." -> `is_menu_item: true` — one fixed offering, ordered and eaten.
+  - "Levain cookies!" / "Lady M cakes" -> `is_menu_item: false` — the shop makes many cookies and many cakes; the family name alone was never narrowed.
+  - "Raku has really delicious udon." -> `is_menu_item: false` (a udon-ya serves many udon); "the three places I've had carbonara udon" -> `is_menu_item: true` (one named variant).
 - Category or skip (`is_menu_item: false` or no dish mention)
   - "The sushi roll was pretty good." (no clear restaurant tie in local context) -> either skip, or treat as category if the restaurant is otherwise clearly in scope but the dish remains generic.
   - "Mixed shawarma platter. Maybe add falafel." (no restaurant tie, generic discussion) -> skip.
 - Standalone cuisine/style (restaurant-only)
   - "Ravi Kabab is the best Indian in the area." -> `food`: null, `food_categories`: null, `is_menu_item: false`; "indian" rides as an attribute on both sides.
   - "Go here for great comfort food." (no dish named) -> `food`: null, `food_categories`: null, `is_menu_item: false`; "comfort food" lands on `restaurant_attributes`.
-  - THE "for <noun>" TEMPLATE TRAP — the noun after "for" is not automatically the dish; run the ORDER test on it, never the sentence shape: "Clinton St for pancakes" -> `food`: "pancakes" ("I'll have pancakes" works). "Saravanaa Bhavan remains goated for breakfast" -> `food`: null, `food_categories`: null ("I'll have a breakfast" fails — meal-period; it rides on `restaurant_attributes`). Identical template, opposite outcomes.
-  - Never inject a meal-period into a real dish's categories: "Clinton St for pancakes" (in a breakfast-ish thread) -> `food_categories`: ["pancakes"] — NOT ["pancakes", "breakfast"]; meal-periods are attributes, never categories (4.3), no matter what the surrounding lines discuss.
+  - Sentence SHAPE never decides — the term does. "Clinton St for pancakes" -> `food`: "pancakes" (one item; two diners ordering "the pancakes" get the same plate). "Saravanaa Bhavan remains goated for breakfast" -> `food`: null, `food_categories`: null ("breakfast" is a meal-period, not an order-name; it rides on `restaurant_attributes`). Same template, opposite outcomes — and neither line's categories may absorb the other's meal-period (4.3).
 - Mixed sentiment (emit only positive dish)
   - "PSA: the ribs suck. The brisket is good." -> emit "brisket" (positive); do not emit "ribs".
 - Inherited itemhood in concise follow-ups (when unambiguous)
