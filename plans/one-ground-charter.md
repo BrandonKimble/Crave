@@ -109,9 +109,22 @@ county axis, no geometric comparison, no extra vendor call:
   until P4 makes bbox derived — with identity exact, they can no longer merge
   across entities.
 
-**P4 — bbox becomes derived, then unstored.** Camera/launch-position use
-`ST_Envelope`; `PlaceLike.bbox` leaves the wire (the client derives an
-envelope from `ground` for its two jumps); finally DROP the four columns.
+**P4 — bbox becomes derived, then unstored.**
+
+- P4a LANDED 2026-07-26: `placesInView`, the hot path, finds candidates with
+  `geometry && view` (PostGIS's INDEX-ONLY bbox overlap — the same cheap-find
+  /exact-judge split, expressed by the GiST index instead of four
+  hand-maintained columns) and returns each candidate's view-simplified
+  ground in the SAME query. The crossing-row catch-all is gone. Measured:
+  world-zoom find+simplify 27ms vs the 1,442ms the NY attribution recorded.
+  Ground-read failure now yields NO candidates rather than bbox envelopes —
+  the §2.6 law stated plainly.
+- P4 REMAINING: `PlaceInView.bbox` / `PlaceLike.bbox` is now purely a
+  CAMERA/transport envelope (nothing judges with it). Derive it from the
+  ground and drop it from the wire — needs the mobile leg (two jumps + the
+  launch-zoom derivation) in the same change. Then the merge law's
+  `bboxUnion`/`widenBbox`/`upsertSketchEnvelope` collapse into "the ground is
+  written once, the envelope is derived", and the four columns DROP.
 
 **P5 — the honest shapes.** Probe memory becomes point+radius; signals store
 placeId (+ point). Both are behavior improvements, not just cleanups.
