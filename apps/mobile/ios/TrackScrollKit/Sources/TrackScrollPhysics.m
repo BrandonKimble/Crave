@@ -45,6 +45,9 @@
 /// sheetTop derives from the track: chromeTopInset + max(0, edge − offset).
 @property (nonatomic, assign) CGFloat chromeTopInset;
 @property (nonatomic, assign) CGFloat chromeHeight;
+/// A drag born on the chrome IS a track drag bounded to the sheet region:
+/// while set, offsets clamp to [0, edge] and release always detent-settles.
+@property (nonatomic, assign) BOOL chromeGrab;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -108,9 +111,11 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
 {
-  // GEOMETRY ARBITRATION: reject drags born on the chrome. Toggling the pan
-  // recognizer cancels the in-flight gesture cleanly; the RNGH header pan
-  // (observing at the root) keeps the touch.
+  // THE HEADER GRAB IS THE TRACK (ground-up shape): a drag born on the chrome
+  // drives the SAME track, bounded to the sheet region — one engine, native
+  // finger tracking, and the release rides the existing detent spring. No
+  // second gesture system exists.
+  self.chromeGrab = NO;
   if (self.chromeHeight > 0) {
     UIPanGestureRecognizer *pan = scrollView.panGestureRecognizer;
     const CGPoint location = [pan locationInView:scrollView.window];
@@ -119,9 +124,7 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
     const CGFloat sheetTop =
         self.chromeTopInset + MAX(0, self.ballisticEdge - scrollView.contentOffset.y);
     if (startY >= sheetTop && startY < sheetTop + self.chromeHeight) {
-      pan.enabled = NO;
-      pan.enabled = YES;
-      return;
+      self.chromeGrab = YES;
     }
   }
   // FINGER DOWN: full 1:1 track (the continuous grab); any armed intercept or
@@ -152,6 +155,24 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
   const CGFloat edge = self.ballisticEdge;
   const CGFloat releaseY = scrollView.contentOffset.y;
+
+  if (self.chromeGrab) {
+    // Header release: always a sheet-region settle onto the detent spring —
+    // momentum from a chrome grab may never pour into list scrolling.
+    self.chromeGrab = NO;
+    const double vTrack = -velocity.y * 1000.0; // dτ/dt (pt/s)
+    const double projected =
+        MIN(edge, MAX(0, scrollView.contentOffset.y + vTrack * 0.18));
+    CGFloat best = self.snapOffsets.firstObject.doubleValue;
+    for (NSNumber *offset in self.snapOffsets) {
+      if (fabs(offset.doubleValue - projected) < fabs(best - projected)) {
+        best = offset.doubleValue;
+      }
+    }
+    targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
+    [self startSpringOn:scrollView toTarget:best fromY:releaseY velocityY:velocity.y * 1000.0];
+    return;
+  }
 
   if (edge >= 0 && releaseY >= edge) {
     // BALLISTIC RELEASE IN THE LIST REGION: do NOT bound the track here — bounding
@@ -190,6 +211,12 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
   const CGFloat edge = self.ballisticEdge;
+  // Chrome grab: the sheet region is the whole track for this gesture — a drag
+  // on the header can never scroll the list through itself.
+  if (self.chromeGrab && scrollView.tracking && edge >= 0 &&
+      scrollView.contentOffset.y > edge) {
+    scrollView.contentOffset = CGPointMake(scrollView.contentOffset.x, edge);
+  }
   if (self.ballisticArmed && edge >= 0 && !scrollView.tracking && scrollView.decelerating) {
     const CGFloat y = scrollView.contentOffset.y;
     const CFTimeInterval now = CACurrentMediaTime();

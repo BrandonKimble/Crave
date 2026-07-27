@@ -53,8 +53,6 @@ export type TrackSheetPhysics = {
   attachToTag: (tag: number | null) => void;
   /** Programmatic settle to a τ — rides the same native critically damped spring. */
   snapToTau: (tau: number) => void;
-  /** Direct offset write (header-grab drag channel). */
-  setTau: (tau: number) => void;
   /** Fires after each successful native attach (seat re-assertion hook). */
   subscribeAttached: (listener: () => void) => () => void;
   /** Written by the page's onContentSizeChange (scroll events carry no contentSize). */
@@ -166,13 +164,6 @@ export const useTrackSheetPhysics = (
       }
     };
   }, []);
-  const setTau = React.useCallback((tauTarget: number) => {
-    const physics = NativeModules.TrackScrollPhysics;
-    const tag = attachedTagRef.current;
-    if (physics?.setOffset != null && tag != null) {
-      physics.setOffset(tag, tauTarget);
-    }
-  }, []);
   const snapToTau = React.useCallback((tauTarget: number) => {
     const physics = NativeModules.TrackScrollPhysics;
     const tag = attachedTagRef.current;
@@ -237,7 +228,6 @@ export const useTrackSheetPhysics = (
       onScroll,
       attachToTag,
       snapToTau,
-      setTau,
       subscribeAttached,
       contentHeight,
       userOwnsPosture,
@@ -252,7 +242,6 @@ export const useTrackSheetPhysics = (
       onScroll,
       attachToTag,
       snapToTau,
-      setTau,
       subscribeAttached,
       contentHeight,
       userOwnsPosture,
