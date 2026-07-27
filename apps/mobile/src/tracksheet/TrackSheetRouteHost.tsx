@@ -2,11 +2,17 @@ import React from 'react';
 import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
+import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import {
+  runHeaderCloseAction,
+  runHeaderCreateAction,
+} from '../navigation/runtime/header-nav-action-registry';
 import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
+import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useAppRouteSharedSheetRuntimeOwner } from '../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
@@ -217,7 +223,7 @@ const useTrackScenePageChrome = (
   const Strip = descriptor?.Strip;
   // Rung-4 chrome parity: the kit renders the production chrome (cutout plate,
   // grab handle, HeaderNavAction). The host supplies title + action wiring.
-  const { closeActiveRoute, promoteActiveSheet } = useAppOverlayRouteController();
+  const { closeActiveRoute, promoteActiveSheet, pushRoute } = useAppOverlayRouteController();
   const isChildScene = !ROOT_TRACK_SCENES.has(scene);
   const navActionProgress = useSharedValue(isChildScene ? 1 : 0);
   React.useEffect(() => {
@@ -228,11 +234,19 @@ const useTrackScenePageChrome = (
     });
   }, [isChildScene, navActionProgress]);
   const onNavActionPress = React.useCallback(() => {
+    // Production semantics (PersistentSheetHeaderHost.handleNavActionPress):
+    // child → registered close override, else the route close; root → the
+    // scene's registered create action (plus), with the polls fallback.
     if (isChildScene) {
-      closeActiveRoute();
+      if (!runHeaderCloseAction(scene)) {
+        closeActiveRoute();
+      }
+      return;
     }
-    // Root create actions (plus) wire per-scene in a later slice.
-  }, [closeActiveRoute, isChildScene]);
+    if (!runHeaderCreateAction(scene) && scene === 'polls') {
+      pushRoute('pollCreation');
+    }
+  }, [closeActiveRoute, isChildScene, pushRoute, scene]);
   const title = React.useMemo(
     () =>
       Title != null ? (
@@ -346,6 +360,9 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
   const publishedInput = React.useSyncExternalStore(subscribeBody, getBodySnapshot);
   const publishedBody = publishedInput?.sceneBodyContent ?? null;
 
+  // Static SV: on the track the body CELL rides the scroll, so the foundation
+  // plate needs no counter-translation — holes track their boxes for free.
+  const zeroScrollOffset = useSharedValue(0);
   const renderMountedBody = React.useCallback(() => {
     // DIRECT bodies, no registry wrapper: the wrapper's residency boundary
     // renders hidden prewarm legs which, without the old host's shell-liveness
@@ -371,14 +388,31 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
       <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
         <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
           <BottomSheetSceneStackBodyIsActiveContext.Provider value={true}>
-            <ChromeProbeBoundary label={`${scene}.body`}>
-              <Body entry={entry ?? undefined} />
-            </ChromeProbeBoundary>
+            {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
+                profile stats / home bands punch through to the kit's frost;
+                the strip law sees its plate. Zero scroll offset: the cell
+                itself rides the track. */}
+            <SceneBodyFoundationSurface
+              scrollOffset={zeroScrollOffset}
+              sceneKey={scene as SheetSceneKey}
+            >
+              {/* padding INSIDE the surface so the white plate spans the full
+                  cell (padded-outside left frost gutters at the margins). */}
+              <View
+                style={
+                  UNPADDED_BODY_SCENES.has(scene) ? undefined : styles.mountedBodyInset
+                }
+              >
+                <ChromeProbeBoundary label={`${scene}.body`}>
+                  <Body entry={entry ?? undefined} />
+                </ChromeProbeBoundary>
+              </View>
+            </SceneBodyFoundationSurface>
           </BottomSheetSceneStackBodyIsActiveContext.Provider>
         </BottomSheetSceneStackBodyRenderActivityContext.Provider>
       </BottomSheetSceneStackBodyDataActivityContext.Provider>
     );
-  }, [entry, scene]);
+  }, [entry, scene, zeroScrollOffset]);
   const renderPlaceholderRow = React.useCallback(
     ({ item }: { item: unknown }) => (
       <View style={styles.row}>
@@ -432,7 +466,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
       <TrackSheetPage
         geometry={geometry}
         title={title}
-        navActionProgress={isChildScene ? navActionProgress : null}
+        navActionProgress={navActionProgress}
         onNavActionPress={onNavActionPress}
         grabHandleHidden={scene === 'settings'}
         onGrabHandlePress={onGrabHandlePress}
@@ -440,11 +474,13 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         list={list as TrackSheetPageProps<unknown>['list']}
         listLeader={renderListLeader((list as { leader?: unknown }).leader)}
         rowSurfaceStyle={
-          publishedBody?.surfaceKind === 'list' ||
-          scene === 'polls' ||
-          (MOUNTED_TRACK_SCENES.has(scene) && !UNPADDED_BODY_SCENES.has(scene))
-            ? styles.rowSurface
-            : undefined
+          MOUNTED_TRACK_SCENES.has(scene)
+            ? UNPADDED_BODY_SCENES.has(scene)
+              ? styles.mountedSurfaceUnpadded
+              : styles.mountedSurface
+            : publishedBody?.surfaceKind === 'list' || scene === 'polls'
+              ? styles.rowSurface
+              : undefined
         }
         debugHud
         commandsRef={commandsRef}
@@ -502,6 +538,11 @@ const styles = StyleSheet.create({
   // Production's body inset (useBottomSheetSceneStackBodyContentRuntime applies
   // OVERLAY_HORIZONTAL_PADDING via the transport) — mounted bodies expect it.
   rowSurface: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
+  // Mounted cells: the FOUNDATION plate is the white now — the cell must be
+  // transparent or cutout holes reveal cell-white instead of frost.
+  mountedSurface: { backgroundColor: 'transparent' },
+  mountedBodyInset: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
+  mountedSurfaceUnpadded: { backgroundColor: 'transparent' },
   closeAction: {
     position: 'absolute',
     right: 16,

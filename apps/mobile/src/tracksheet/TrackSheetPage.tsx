@@ -390,7 +390,11 @@ export function TrackSheetPage<Item>({
       <Reanimated.View
         style={[
           styles.sheetClip,
-          { backgroundColor: surfaceColor, height: SCREEN.height },
+          // TRANSPARENT surface: the frost must sample the MAP beneath the
+          // sheet (a white clip bg made the blur sample white — dead tint).
+          // The frost + white plates ARE the sheet material; the bounce reveal
+          // shows frost, production-true.
+          { height: SCREEN.height },
           debugHud && styles.debugEdge,
           sheetClipStyle,
         ]}
