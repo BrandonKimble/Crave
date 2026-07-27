@@ -131,6 +131,9 @@ export type TrackSheetPageProps<Item> = {
    * the detent). Feeds posture memory — seats are gesture-written only
    * (inventory §5.10). Programmatic settles never fire it. */
   onGestureSettle?: (detentTau: number) => void;
+  /** Sheet-frame chrome riding the CLIP (not the scroll): pollDetail's compose
+   * chin (ListChromeComponent) — positions itself against the sheet frame. */
+  listChrome?: React.ReactNode;
 };
 
 export function TrackSheetPage<Item>({
@@ -154,6 +157,7 @@ export function TrackSheetPage<Item>({
   onUserListScrollActivity,
   publicationBindings,
   onGestureSettle,
+  listChrome,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const chromeHeightForArbitration =
     OVERLAY_TAB_HEADER_HEIGHT +
@@ -513,6 +517,13 @@ export function TrackSheetPage<Item>({
           ) : null}
           <Reanimated.View style={[styles.divider, dividerStyle]} />
         </View>
+
+        {/* Sheet-frame chrome (compose chin etc.) — rides the clip. */}
+        {listChrome != null ? (
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+            {listChrome}
+          </View>
+        ) : null}
       </Reanimated.View>
 
       {debugHud ? (

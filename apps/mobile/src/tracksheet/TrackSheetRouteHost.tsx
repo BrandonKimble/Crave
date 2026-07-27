@@ -491,6 +491,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     if (publishedBody != null && publishedBody.surfaceKind === 'list') {
       return {
         leader: publishedBody.ListHeaderComponent ?? null,
+        chrome: publishedBody.ListChromeComponent ?? null,
         data: publishedBody.data,
         renderItem: publishedBody.renderItem,
         keyExtractor: publishedBody.keyExtractor,
@@ -536,6 +537,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
         listLeader={renderListLeader((list as { leader?: unknown }).leader)}
+        listChrome={renderListLeader((list as { chrome?: unknown }).chrome)}
         rowSurfaceStyle={
           MOUNTED_TRACK_SCENES.has(scene)
             ? UNPADDED_BODY_SCENES.has(scene)
