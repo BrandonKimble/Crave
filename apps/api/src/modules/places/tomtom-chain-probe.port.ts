@@ -85,6 +85,18 @@ export type GeometryIdentityNode = Pick<
    * first-result behavior.
    */
   bbox?: GeoBbox | null;
+  /**
+   * POINT IDENTITY (one-ground charter P0, 2026-07-26): a coordinate
+   * GUARANTEED to lie inside the real place — for census-seeded rows the
+   * Census internal point, stored as the place's centroid. When present the
+   * adapter resolves the geometry id by REVERSE-geocoding this point at the
+   * place's own level: the vendor answers with the entity that actually
+   * contains it, so there is no same-name ambiguity to disambiguate and no
+   * bbox comparison to make ("Switzerland, Baker FL" cannot resolve to
+   * Switzerland the country). Name matching is the FALLBACK for rows that
+   * carry no anchor.
+   */
+  anchor?: GeoPoint | null;
 };
 
 export interface TomtomChainProbe {

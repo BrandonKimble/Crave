@@ -448,8 +448,20 @@ export class PlacesPromotionService {
         subdivisionCode: place.subdivisionCode,
         countryCode: place.countryCode,
         providerLevelCode: place.providerLevelCode,
+        // POINT IDENTITY (one-ground charter P0): the census internal point
+        // (stored as the centroid) is guaranteed to lie inside the real
+        // place, so the vendor can be asked "what is HERE at this level"
+        // instead of being searched by name. Name matching is the fallback.
+        anchor:
+          place.centroidLat != null && place.centroidLng != null
+            ? {
+                lat: Number(place.centroidLat),
+                lng: Number(place.centroidLng),
+              }
+            : null,
         // §2.5 resolve-time validation: the place's own extent disambiguates
-        // vendor duplicate records (rank order is not identity).
+        // vendor duplicate records (rank order is not identity) — the
+        // name-matching fallback path only.
         bbox:
           place.bboxMinLat != null &&
           place.bboxMinLng != null &&

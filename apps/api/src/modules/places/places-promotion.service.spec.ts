@@ -219,6 +219,10 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         subdivisionCode: 'TX',
         countryCode: 'US',
         providerLevelCode: 'Municipality',
+        // POINT IDENTITY (one-ground charter P0): the fixture row carries no
+        // centroid, so the drain passes a null anchor and the adapter falls
+        // back to the name lookup.
+        anchor: null,
         // §2.5 resolve-time validation: the fixture row carries no bbox, so
         // the drain passes null (adapter falls back to first-result).
         bbox: null,

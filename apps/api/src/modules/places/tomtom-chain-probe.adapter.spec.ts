@@ -269,6 +269,91 @@ const IDENTITY_NODE = {
   providerLevelCode: 'Municipality',
 };
 
+describe('TomtomChainProbeAdapter — POINT IDENTITY (one-ground charter P0)', () => {
+  const ANCHORED_NODE = {
+    ...IDENTITY_NODE,
+    anchor: { lat: 33.36, lng: -96.07 },
+  };
+
+  it('an anchored node asks WHAT IS HERE (reverse, level-pinned) and never runs the name lookup', async () => {
+    const { adapter, calls, drawCalls } = buildAdapter({
+      reverseAddresses: [
+        {
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-by-point' } },
+        },
+      ],
+      // RED-proof: the name lookup would answer a DIFFERENT (wrong-twin) id.
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-wrong-twin' } },
+        },
+      ],
+    });
+    const result = await adapter.resolveGeometryId(ANCHORED_NODE);
+    expect(result).toEqual({ kind: 'ok', geometryId: 'geo-by-point' });
+    // Exactly one draw, and it is the reverse (point) call.
+    expect(drawCalls).toEqual([
+      { pool: 'tomtom.cheapGeocode', workClass: 'promotion-point-identity' },
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain('/reverseGeocode/33.36,-96.07');
+    expect(calls[0].params.entityType).toBe('Municipality');
+  });
+
+  it('a point answering ANOTHER country is a miss, and falls back to the name lookup', async () => {
+    const { adapter, calls } = buildAdapter({
+      reverseAddresses: [
+        {
+          address: { countryCode: 'MX' }, // border anchor answered across
+          dataSources: { geometry: { id: 'geo-across-border' } },
+        },
+      ],
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-by-name' } },
+        },
+      ],
+    });
+    expect(await adapter.resolveGeometryId(ANCHORED_NODE)).toEqual({
+      kind: 'ok',
+      geometryId: 'geo-by-name',
+    });
+    expect(calls).toHaveLength(2); // point tried, then name
+  });
+
+  it('a POOL DENIAL on the point call is typed not-now — it must NOT fall through to the name lookup', async () => {
+    const { adapter, calls } = buildAdapter({ denyPool: true });
+    expect(await adapter.resolveGeometryId(ANCHORED_NODE)).toEqual({
+      kind: 'denied',
+    });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('an anchorless node keeps the name lookup (the fallback path is intact)', async () => {
+    const { adapter, drawCalls } = buildAdapter({
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-wolfe' } },
+        },
+      ],
+    });
+    expect(await adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
+      kind: 'ok',
+      geometryId: 'geo-wolfe',
+    });
+    expect(drawCalls).toEqual([
+      { pool: 'tomtom.cheapGeocode', workClass: 'promotion' },
+    ]);
+  });
+});
+
 describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
   it('resolveGeometryId rides the CHEAP pool with the promotion workClass and county-qualified query', async () => {
     const { adapter, calls, drawCalls } = buildAdapter({

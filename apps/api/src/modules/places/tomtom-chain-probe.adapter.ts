@@ -456,6 +456,22 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   async resolveGeometryId(
     node: GeometryIdentityNode,
   ): Promise<GeometryIdResolution> {
+    // POINT IDENTITY FIRST (one-ground charter P0): when the place carries an
+    // anchor guaranteed to lie inside it (census internal point), ASK WHAT IS
+    // HERE rather than searching for a name and then guessing which duplicate
+    // is ours. The vendor answers with the entity containing the point, so
+    // ambiguity never arises: "Switzerland, Baker FL" cannot come back as
+    // Switzerland the country. Same cheap-pool cost as the name lookup it
+    // replaces (one draw), and it needs no bbox at all.
+    if (node.anchor) {
+      const resolved = await this.geometryIdAtPoint(node);
+      if (resolved.kind !== 'miss') {
+        return resolved; // ok | denied — a denial must not fall through
+      }
+      // A point miss (vendor names no entity of this level here) falls
+      // through to the name lookup: the census point and the vendor's
+      // coverage can legitimately disagree at this level.
+    }
     // BBOX-VALIDATED SELECTION (§2.5): the vendor keeps duplicate same-name
     // records ("San Antonio, TX" Municipality exists twice — 0.66° wide and
     // 0.012° wide) and query phrasing decides which ranks first, so rank is
@@ -486,6 +502,59 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       kind: 'ok',
       geometryId: chosen.dataSources!.geometry!.id!.trim(),
     };
+  }
+
+  /**
+   * POINT IDENTITY (one-ground charter P0): reverse-geocode the place's own
+   * interior anchor, filtered to the place's own level, and take the stable
+   * geometry id the vendor returns for the entity that CONTAINS that point.
+   * The country is verified (an anchor near a border can answer across it);
+   * the level is pinned by the request itself. One cheap-pool draw.
+   */
+  private async geometryIdAtPoint(
+    node: GeometryIdentityNode,
+  ): Promise<GeometryIdResolution> {
+    const anchor = node.anchor as GeoPoint;
+    const url = `${this.reverseBaseUrl}/${anchor.lat},${anchor.lng}.json`;
+    let response: AxiosResponse<TomtomReverseResponse> | null;
+    try {
+      response = await this.governance.draw(
+        'tomtom.cheapGeocode',
+        'promotion-point-identity',
+        () =>
+          firstValueFrom(
+            this.httpService.get<TomtomReverseResponse>(url, {
+              params: {
+                key: this.apiKey as string,
+                entityType: node.providerLevelCode,
+              },
+              timeout: this.timeoutMs,
+            }),
+          ),
+      );
+    } catch (error) {
+      if (this.poisonPoolOn429(error, 'tomtom.cheapGeocode')) {
+        return { kind: 'denied' };
+      }
+      throw error;
+    }
+    if (!response) {
+      return { kind: 'denied' };
+    }
+    const entry = (response.data?.addresses ?? [])[0];
+    const geometryId = entry?.dataSources?.geometry?.id?.trim();
+    if (!geometryId) {
+      return { kind: 'miss' };
+    }
+    const countryCode = entry?.address?.countryCode?.trim().toUpperCase();
+    if (countryCode && countryCode !== node.countryCode) {
+      // Border anchor answered across the line — not our entity.
+      this.logger.debug(
+        `geometryIdAtPoint: ${node.providerLevelCode} "${node.name}" answered ${countryCode} (want ${node.countryCode}) — miss`,
+      );
+      return { kind: 'miss' };
+    }
+    return { kind: 'ok', geometryId };
   }
 
   /**
