@@ -296,7 +296,7 @@ describe('TomtomChainProbeAdapter — POINT IDENTITY (one-ground charter P0)', (
     expect(result).toEqual({ kind: 'ok', geometryId: 'geo-by-point' });
     // Exactly one draw, and it is the reverse (point) call.
     expect(drawCalls).toEqual([
-      { pool: 'tomtom.cheapGeocode', workClass: 'promotion-point-identity' },
+      { pool: 'tomtom.reverseGeocode', workClass: 'promotion-point-identity' },
     ]);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toContain('/reverseGeocode/33.36,-96.07');
@@ -372,7 +372,7 @@ describe('TomtomChainProbeAdapter — POINT IDENTITY (one-ground charter P0)', (
       geometryId: 'geo-wolfe',
     });
     expect(drawCalls).toEqual([
-      { pool: 'tomtom.cheapGeocode', workClass: 'promotion' },
+      { pool: 'tomtom.geocode', workClass: 'promotion' },
     ]);
   });
 });
@@ -391,7 +391,7 @@ describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
     const result = await adapter.resolveGeometryId(IDENTITY_NODE);
     expect(result).toEqual({ kind: 'ok', geometryId: 'geo-wolfe' });
     expect(drawCalls).toEqual([
-      { pool: 'tomtom.cheapGeocode', workClass: 'promotion' },
+      { pool: 'tomtom.geocode', workClass: 'promotion' },
     ]);
     expect(calls[0].url).toContain(encodeURIComponent('Wolfe City, Hunt, TX'));
   });
@@ -565,22 +565,22 @@ describe('TomtomChainProbeAdapter — wave-6 item 2: 429 → poisonWindow', () =
     expect(poisonWindow).toHaveBeenCalledWith('tomtom.scarcePolygons', 5000);
   });
 
-  it('resolveGeometryId: a 429 without Retry-After poisons the CHEAP pool with the K4 per-second-window default', async () => {
+  it('resolveGeometryId: a 429 without Retry-After poisons the GEOCODE pool with the K4 per-second-window default', async () => {
     const { adapter, poisonWindow } = buildAdapter({
       httpFailure: { status: 429 },
     });
     expect(await adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
       kind: 'denied',
     });
-    expect(poisonWindow).toHaveBeenCalledWith('tomtom.cheapGeocode', 1000);
+    expect(poisonWindow).toHaveBeenCalledWith('tomtom.geocode', 1000);
   });
 
-  it('probe (reverse geocode): a 429 poisons the cheap pool and throws the pool-denied operational miss — never a negative observation', async () => {
+  it('probe (reverse geocode): a 429 poisons the REVERSE pool and throws the pool-denied operational miss — never a negative observation', async () => {
     const { adapter, poisonWindow } = buildAdapter({
       httpFailure: { status: 429, retryAfter: '2' },
     });
     await expect(adapter.probe(ANCHOR)).rejects.toThrow('tomtom_pool_denied');
-    expect(poisonWindow).toHaveBeenCalledWith('tomtom.cheapGeocode', 2000);
+    expect(poisonWindow).toHaveBeenCalledWith('tomtom.reverseGeocode', 2000);
   });
 
   it('a genuine vendor error (non-429) still throws — the drain records the attempt', async () => {

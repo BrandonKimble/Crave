@@ -143,7 +143,7 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
 
     // The store starts failing writes; the next reconcile's flush fails.
     consumptionStore.add.mockRejectedValue(new Error('store down'));
-    const res = service.pools.reserve('tomtom.cheapGeocode', 1, 'probe');
+    const res = service.pools.reserve('tomtom.reverseGeocode', 1, 'probe');
     expect(res.admitted).toBe(true);
     if (res.admitted) {
       await service.pools.reconcile(res.reservationId, 1);
@@ -155,11 +155,11 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
     expect(emitted.severity).toBe('critical');
     expect(emitted.kind).toBe('pool_bookkeeping_failure');
     expect(emitted.dedupeKey).toMatch(
-      /^pool_bookkeeping_failure:tomtom\.cheapGeocode:\d{4}-\d{2}-\d{2}T\d{2}$/,
+      /^pool_bookkeeping_failure:tomtom\.reverseGeocode:\d{4}-\d{2}-\d{2}T\d{2}$/,
     );
 
     // RED-provable hard-close: flush failure → the draw attempt refuses.
-    const denied = service.pools.reserve('tomtom.cheapGeocode', 1, 'probe');
+    const denied = service.pools.reserve('tomtom.reverseGeocode', 1, 'probe');
     expect(denied.admitted).toBe(false);
     if (!denied.admitted) {
       expect(denied.reason).toBe('storeFailure');
@@ -167,9 +167,9 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
 
     // Store recovers → ensureWindow flushes successfully → draws admit again.
     consumptionStore.add.mockResolvedValue(undefined);
-    await service.pools.ensureWindow('tomtom.cheapGeocode');
+    await service.pools.ensureWindow('tomtom.reverseGeocode');
     expect(
-      service.pools.reserve('tomtom.cheapGeocode', 1, 'probe').admitted,
+      service.pools.reserve('tomtom.reverseGeocode', 1, 'probe').admitted,
     ).toBe(true);
   });
 });

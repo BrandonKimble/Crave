@@ -358,7 +358,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     let response: AxiosResponse<TomtomReverseResponse> | null;
     try {
       response = await this.governance.draw(
-        'tomtom.cheapGeocode',
+        'tomtom.reverseGeocode',
         'chain-probe',
         () =>
           firstValueFrom(
@@ -374,7 +374,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
           ),
       );
     } catch (error) {
-      if (this.poisonPoolOn429(error, 'tomtom.cheapGeocode')) {
+      if (this.poisonPoolOn429(error, 'tomtom.reverseGeocode')) {
         // Same shape as a pool denial: operational miss (throw) so the
         // reconciler logs-and-skips — never a negative observation.
         throw new Error('tomtom_pool_denied');
@@ -519,7 +519,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     let response: AxiosResponse<TomtomReverseResponse> | null;
     try {
       response = await this.governance.draw(
-        'tomtom.cheapGeocode',
+        'tomtom.reverseGeocode',
         'promotion-point-identity',
         () =>
           firstValueFrom(
@@ -533,7 +533,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
           ),
       );
     } catch (error) {
-      if (this.poisonPoolOn429(error, 'tomtom.cheapGeocode')) {
+      if (this.poisonPoolOn429(error, 'tomtom.reverseGeocode')) {
         return { kind: 'denied' };
       }
       throw error;
@@ -596,24 +596,21 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     const url = `${this.geocodeBaseUrl}/${query}.json`;
     let response: AxiosResponse<TomtomGeocodeResponse> | null;
     try {
-      response = await this.governance.draw(
-        'tomtom.cheapGeocode',
-        workClass,
-        () =>
-          firstValueFrom(
-            this.httpService.get<TomtomGeocodeResponse>(url, {
-              params: {
-                key: this.apiKey as string,
-                entityTypeSet: node.providerLevelCode,
-                countrySet: node.countryCode,
-                limit,
-              },
-              timeout: this.timeoutMs,
-            }),
-          ),
+      response = await this.governance.draw('tomtom.geocode', workClass, () =>
+        firstValueFrom(
+          this.httpService.get<TomtomGeocodeResponse>(url, {
+            params: {
+              key: this.apiKey as string,
+              entityTypeSet: node.providerLevelCode,
+              countrySet: node.countryCode,
+              limit,
+            },
+            timeout: this.timeoutMs,
+          }),
+        ),
       );
     } catch (error) {
-      if (this.poisonPoolOn429(error, 'tomtom.cheapGeocode')) {
+      if (this.poisonPoolOn429(error, 'tomtom.geocode')) {
         return { kind: 'denied' }; // transient — NOT an attempt (wave-6 item 2)
       }
       throw error;

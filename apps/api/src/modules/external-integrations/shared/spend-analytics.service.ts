@@ -361,7 +361,7 @@ export class SpendAnalyticsService {
    * §24.2(b) tomtom-per-draw, now PRICED (vendor-pricing.ts's
    * tomtomBlendedCostMicrosPerDraw, K1-sourced $2.50/1,000 requests — "VERIFY
    * AGAINST FIRST TOMTOM INVOICE"). The ledger does not yet distinguish
-   * which pool (cheapGeocode vs scarcePolygons) a tomtom draw belongs to —
+   * which pool (geocode/reverseGeocode vs scarcePolygons) a tomtom draw belongs to —
    * no recording site threads a pool-specific operation/caller today — so
    * every tomtom request in the window is one work class,
    * 'tomtom.searchFamily' (both draws are Search-family calls at the same

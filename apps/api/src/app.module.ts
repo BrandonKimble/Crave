@@ -24,6 +24,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { AttributeOntologyModule } from './modules/attribute-ontology/attribute-ontology.module';
 import { PollsModule } from './modules/polls/polls.module';
 import { UserListsModule } from './modules/user-lists/user-lists.module';
+import { TeaserModule } from './modules/teaser/teaser.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { HistoryModule } from './modules/history/history.module';
 import { PlacesModule } from './modules/places/places.module';
@@ -93,6 +94,7 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     AttributeOntologyModule,
     PollsModule,
     UserListsModule,
+    TeaserModule,
     MessagingModule,
     HistoryModule,
     // Place Catalog DAG + naming reconciler (geo-demand rebuild §1/§2)

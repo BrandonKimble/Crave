@@ -72,50 +72,53 @@ export class GovernanceService implements OnModuleInit {
           .slice(0, 13)}`,
       });
     });
-    // TomTom pool facts: geocode + reverse geocode 20,000/month each — the
-    // cheap pool (free-tier vendor fact, K4). Month windows are hard-closed
-    // on store failure by law (§14.5).
-    // §16 on reservationTtlMs (all pools below): K3-shaped operational
-    // bounds, not product numbers — a TTL is "how long a leaked reservation
-    // may hold capacity before expiry reclaims it" (§14.2 leaks expire).
-    // Sized to the slowest honest act per pool (60s ≈ one synchronous call;
-    // 120s ≈ a paged/batched dispatch); pacer-derived refinement replaces
-    // them when the estimator-refresher lands (§22 deferred reader).
+    // ── TomTom pools (RESHAPED 2026-07-27, owner directive) ────────────────
+    //
+    // These were budget THROTTLES; they are now RUNAWAY BACKSTOPS. Owner
+    // 2026-07-27: "as far as price for TomTom stuff I don't care — the
+    // scarce limits were just to add context to what's free and what's not,
+    // not anything that needs stopping for." A ceiling that halts legitimate
+    // work to save single-digit dollars is a bug, not governance.
+    //
+    // TWO fixes in this reshape:
+    //
+    // 1. THE VENDOR'S SHAPE, NOT OURS. TomTom's free allowances are PER API
+    //    FAMILY: geocode and reverseGeocode get 20,000/month EACH
+    //    (vendor-verified, see vendor-pricing.ts). The old single
+    //    `tomtom.cheapGeocode` pool merged two independent allowances into
+    //    one bucket, so we self-blocked at 20k combined while the vendor
+    //    still had free capacity on both endpoints. One pool per real
+    //    resource is the honest model; a pool that models nothing real is
+    //    the bad abstraction.
+    //
+    // 2. THE LIMIT IS DERIVED, NOT PRICED. A polygon is fetched ONCE per
+    //    place and cached forever, so legitimate monthly draws are bounded
+    //    by the CATALOG SIZE (22,758 places today). Any month that exceeds
+    //    the whole catalog is re-fetching in a loop — pathological by
+    //    definition. The ceilings below sit far above that bound: they can
+    //    only ever catch a runaway, never real work. They stay hardClosed +
+    //    durable so a genuine loop still hits a wall within minutes.
+    //
+    // §16 on reservationTtlMs (all pools): K3-shaped operational bounds, not
+    // product numbers — "how long a leaked reservation may hold capacity
+    // before expiry reclaims it". 60s ≈ one synchronous call; 120s ≈ a
+    // paged/batched dispatch.
     this.pools.register({
-      name: 'tomtom.cheapGeocode',
+      name: 'tomtom.reverseGeocode',
       credential: 'default',
-      // REVERTED post-seed (2026-07-24): the one-time US polygon seed is
-      // 98.5% drained (22,424/22,758); the 334 stragglers are month-window
-      // vendor misses that retry trivially inside this standing limit.
-      window: { kind: 'perMonth', limit: 20_000 },
+      window: { kind: 'perMonth', limit: 250_000 },
       reservationTtlMs: 60_000,
     });
-    // §24.1 Tier 3 backstop (demoted 2026-07-24, §24.4 item 3 — NO
-    // functional change this leg): tomtom.cheapGeocode / scarcePolygons stay
-    // owner PRICE-TAGS, not re-derived backstops like gemini's, because no
-    // in-repo $-per-draw price table exists for TomTom yet (§24.2 —
-    // inventing one here would violate §16's no-fake-estimates law; that
-    // gap is tracked, not invented around). The drain's spend becomes a
-    // Tier-2 lane with its own cost baseline once that table lands; the
-    // month window here survives ONLY as the attempt-backoff clock for the
-    // 334 stragglers, unchanged — spend itself stays owner-governed until
-    // §24.2's TomTom price table exists.
-    //
-    // §16 K1 (owner price-tag): the scarce polygon pool is a PAID monthly
-    // budget, not a free-tier fact — ratified 2026-07-22 "off the free tier"
-    // (master plan §2.5(a)). RATE VERIFIED 2026-07-25 (docs.tomtom.com
-    // pricing modals): Search API family is €3.00/1k at our tier (≈$3.24 —
-    // the earlier ~$2.5/1k estimate was LOW), so 10,000/mo ≈ a ~$32/mo
-    // ceiling now (vendor-pricing.ts carries the split verified rates;
-    // cheap geocodes are FREE ≤20k/mo — our cheap pool sits inside the
-    // free tier). The pool stays hardClosed + durably stored, so the
-    // ceiling is structural. Adjusting the number = owner re-ratify.
+    this.pools.register({
+      name: 'tomtom.geocode',
+      credential: 'default',
+      window: { kind: 'perMonth', limit: 250_000 },
+      reservationTtlMs: 60_000,
+    });
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
-      // REVERTED post-seed (2026-07-24) to the standing ~$25/mo price-tag;
-      // the seed-month 25k raise served its one purpose.
-      window: { kind: 'perMonth', limit: 10_000 },
+      window: { kind: 'perMonth', limit: 250_000 },
       reservationTtlMs: 120_000,
     });
     // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM
