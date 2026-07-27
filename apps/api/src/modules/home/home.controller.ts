@@ -17,7 +17,7 @@ import type { User } from '@prisma/client';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
-import { PlacesInViewQueryDto } from '../places/dto/places-in-view.dto';
+import { HomeFeedQueryDto } from './dto/home-feed-query.dto';
 import {
   CuratedListDetailResponse,
   HomeFeedResponse,
@@ -33,13 +33,17 @@ export class HomeController {
   @RateLimitTier('default')
   getFeed(
     @CurrentUser() user: User,
-    @Query() query: PlacesInViewQueryDto,
+    @Query() query: HomeFeedQueryDto,
   ): Promise<HomeFeedResponse> {
     if (query.minLat > query.maxLat) {
       // Latitude is not circular — this shape is malformed, not wrap.
       throw new BadRequestException('minLat must be <= maxLat');
     }
-    return this.homeFeed.getFeed(query.toBbox(), user.userId);
+    return this.homeFeed.getFeed(
+      query.toBbox(),
+      user.userId,
+      query.pickedCityId,
+    );
   }
 
   @Get('lists/:listId')

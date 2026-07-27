@@ -142,6 +142,7 @@ model Connection {
   restaurant          Entity                  @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
   userListItems   UserListItem[]
   itemMentions        RestaurantItemMention[]
+  curatedListItems    CuratedListItem[]       @relation("CuratedListItemConnection")
 
   photos Photo[]
 
@@ -2147,13 +2148,21 @@ model CuratedListItem {
   rank         Int
   entityId     String      @map("entity_id") @db.Uuid
   restaurantId String?     @map("restaurant_id") @db.Uuid
+  /// Dish items: the Connection id, captured AT BUILD TIME (the builder's dish
+  /// reads come FROM core_restaurant_items, so the id is a build fact — never
+  /// re-derived at read time, never synthesized client-side). Restaurant
+  /// items: null. FK cascade: a deleted connection deletes its curated row,
+  /// so a dish item's connectionId can never dangle.
+  connectionId String?     @map("connection_id") @db.Uuid
   list         CuratedList @relation(fields: [listId], references: [listId], onDelete: Cascade)
   entity       Entity      @relation("CuratedListItemEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
   restaurant   Entity?     @relation("CuratedListItemRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
+  connection   Connection? @relation("CuratedListItemConnection", fields: [connectionId], references: [connectionId], onDelete: Cascade)
 
   @@id([listId, rank])
   @@index([entityId], map: "idx_curated_list_items_entity")
   @@index([restaurantId], map: "idx_curated_list_items_restaurant")
+  @@index([connectionId], map: "idx_curated_list_items_connection")
   @@map("curated_list_items")
 }
 

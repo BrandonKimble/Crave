@@ -369,12 +369,12 @@ async function main(): Promise<void> {
       });
     }
 
-    const systemList = async (systemKind: string) =>
+    // Kind law (lists rename 2026-07-26): non-standard kinds are unique per
+    // owner via the partial unique — findFirst is exact here.
+    const systemList = async (kind: string) =>
       (
-        await prisma.userList.findUniqueOrThrow({
-          where: {
-            ownerUserId_systemKind: { ownerUserId: owner.userId, systemKind },
-          },
+        await prisma.userList.findFirstOrThrow({
+          where: { ownerUserId: owner.userId, kind },
           select: { listId: true },
         })
       ).listId;

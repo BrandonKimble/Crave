@@ -56,10 +56,10 @@ export interface CuratedListDetailItem {
   rank: number;
   entityId: string;
   restaurantId: string | null;
-  /** Dish items: the resolved Connection id ((restaurantId, foodId) unique —
-   *  the same read the dish search uses); null when no connection row exists.
-   *  Restaurant items: always null. Lets client hearts/saves on curated dish
-   *  rows speak the real connection vocabulary. */
+  /** Dish items: the Connection id, a BUILD FACT stored on the curated row
+   *  (FK-cascaded, so it can never dangle). Restaurant items: null. Client
+   *  hearts/saves on curated dish rows always speak the real connection
+   *  vocabulary — no read-time resolution, no synthetic ids anywhere. */
   connectionId: string | null;
   label: string;
   subLabel: string | null;
@@ -111,15 +111,29 @@ export class HomeFeedService {
     this.logger = loggerService.setContext('HomeFeedService');
   }
 
-  async getFeed(view: GeoBbox, userId: string): Promise<HomeFeedResponse> {
+  async getFeed(
+    view: GeoBbox,
+    userId: string,
+    pickedCityId?: string,
+  ): Promise<HomeFeedResponse> {
     const [verdict, liveCities] = await Promise.all([
       this.viewportVerdict.resolveViewportVerdict(view),
       this.listCities(),
     ]);
     const cityIds = new Set(liveCities.map((city) => city.placeId));
-    const resolvedCityId = verdict.headerPlace
+    // The viewport verdict WINS whenever it honestly resolves to a live city.
+    // The explicit pick (a tapped pick-a-city card) is a SOFT FALLBACK for
+    // broader-than-city viewports only: a city-bbox camera fit leaves the
+    // city under the ⅔ header law (tall screens add big margins), so without
+    // this the tap would land the user right back on pick-a-city. Explicit
+    // user intent fills exactly that gap — it never overrides an honest
+    // city-level verdict, and an unknown/non-live pick is ignored.
+    const verdictCityId = verdict.headerPlace
       ? await this.rollupToListCity(verdict.headerPlace.placeId, cityIds)
       : null;
+    const resolvedCityId =
+      verdictCityId ??
+      (pickedCityId && cityIds.has(pickedCityId) ? pickedCityId : null);
     if (!resolvedCityId) {
       // Honest fallback: no containing city with content — the client shows
       // the pick-a-city shelf from liveCities.
@@ -263,41 +277,33 @@ export class HomeFeedService {
       throw new NotFoundException('Curated list not found');
     }
 
-    let scores: Map<
-      string,
-      {
-        displayScore: number;
-        percentileRank: number | null;
-        rising: number | null;
-      }
-    >;
-    let connectionIdByItemKey = new Map<string, string>();
-    if (list.listType === 'dish') {
-      // Dish items: (restaurantId, foodId) resolves the Connection — the
-      // same dish→restaurant model the search read uses; the connection
-      // carries the ranked public score.
-      connectionIdByItemKey = await this.resolveDishConnectionIds(list.items);
-      scores = await this.loadScores('connection', [
-        ...connectionIdByItemKey.values(),
-      ]);
-    } else {
-      scores = await this.loadScores(
-        'restaurant',
-        list.items.map((item) => item.entityId),
-      );
-    }
+    // Dish scores key on the STORED connection id (a build fact); restaurant
+    // scores on the entity id. No read-time (restaurantId, foodId) resolution
+    // exists anymore — the builder persists connectionId and the FK cascade
+    // keeps it live.
+    const scores =
+      list.listType === 'dish'
+        ? await this.loadScores(
+            'connection',
+            list.items.flatMap((item) =>
+              item.connectionId ? [item.connectionId] : [],
+            ),
+          )
+        : await this.loadScores(
+            'restaurant',
+            list.items.map((item) => item.entityId),
+          );
 
     const items: CuratedListDetailItem[] = list.items.map((item) => {
       if (list.listType === 'dish') {
-        const connectionId = item.restaurantId
-          ? connectionIdByItemKey.get(`${item.restaurantId}:${item.entityId}`)
+        const score = item.connectionId
+          ? scores.get(item.connectionId)
           : undefined;
-        const score = connectionId ? scores.get(connectionId) : undefined;
         return {
           rank: item.rank,
           entityId: item.entityId,
           restaurantId: item.restaurantId,
-          connectionId: connectionId ?? null,
+          connectionId: item.connectionId,
           label: item.entity.name,
           subLabel: item.restaurant?.name ?? null,
           latitude: toNumberOrNull(item.restaurant?.latitude),
@@ -362,10 +368,6 @@ export class HomeFeedService {
     }
     const listType =
       list.listType === 'dish' ? UserListType.dish : UserListType.restaurant;
-    const connectionIdByItemKey =
-      listType === UserListType.dish
-        ? await this.resolveDishConnectionIds(list.items)
-        : new Map<string, string>();
     const rows = list.items.flatMap(
       (
         item,
@@ -375,10 +377,11 @@ export class HomeFeedService {
         position: number;
       }> => {
         if (listType === UserListType.dish) {
-          const connectionId = item.restaurantId
-            ? connectionIdByItemKey.get(`${item.restaurantId}:${item.entityId}`)
-            : undefined;
-          return connectionId ? [{ connectionId, position: item.rank }] : [];
+          // Stored build fact; null only if a legacy row predates the
+          // connection_id column — such a row cannot express a user-list item.
+          return item.connectionId
+            ? [{ connectionId: item.connectionId, position: item.rank }]
+            : [];
         }
         return [{ restaurantId: item.entityId, position: item.rank }];
       },
@@ -437,31 +440,6 @@ export class HomeFeedService {
   }
 
   // ---------- internals ----------
-
-  /** Dish items → Connection ids via the (restaurantId, foodId) unique — ONE
-   *  resolution law for the detail read and the save copy. */
-  private async resolveDishConnectionIds(
-    items: Array<{ entityId: string; restaurantId: string | null }>,
-  ): Promise<Map<string, string>> {
-    const pairs = items
-      .filter((item) => item.restaurantId)
-      .map((item) => ({
-        restaurantId: item.restaurantId as string,
-        foodId: item.entityId,
-      }));
-    const connections = pairs.length
-      ? await this.prisma.connection.findMany({
-          where: { OR: pairs },
-          select: { connectionId: true, restaurantId: true, foodId: true },
-        })
-      : [];
-    return new Map(
-      connections.map((row) => [
-        `${row.restaurantId}:${row.foodId}`,
-        row.connectionId,
-      ]),
-    );
-  }
 
   /** Distinct cities that carry GLOBAL curated content (name-joined). */
   private async listCities(): Promise<

@@ -1,7 +1,7 @@
 /**
- * Curated-list → ListDetail adapters: dish rows must speak the REAL connection
- * vocabulary when the server resolved one (hearts/saves on curated dish rows
- * work); the composite stand-in survives only for rows with no connection.
+ * Curated-list → ListDetail adapters: dish rows speak the REAL connection
+ * vocabulary — the id is a build fact stored on the curated row. No synthetic
+ * ids exist anywhere: a legacy row without one is DROPPED, never faked.
  */
 import { mapCuratedDetailToSearchResponse } from './curated-list-adapter';
 import type { CuratedListDetailResponse } from './home';
@@ -40,14 +40,17 @@ const item = (
 });
 
 describe('curated-list-adapter — connectionId consumption on dish rows', () => {
-  it('a server-resolved connectionId becomes the row connectionId AND score subject', () => {
+  it('the stored build-time connectionId becomes the row connectionId AND score subject', () => {
     const response = mapCuratedDetailToSearchResponse(detail([item({ connectionId: 'conn-1' })]));
     expect(response.dishes[0].connectionId).toBe('conn-1');
     expect(response.dishes[0].scoreSubjectId).toBe('conn-1');
   });
 
-  it('no connection row → the composite stand-in survives as ROW IDENTITY only', () => {
-    const response = mapCuratedDetailToSearchResponse(detail([item({ connectionId: null })]));
-    expect(response.dishes[0].connectionId).toBe('rest-1:food-1');
+  it('a legacy dish row without a connectionId is DROPPED from the projection, never given a fake id', () => {
+    const response = mapCuratedDetailToSearchResponse(
+      detail([item({ connectionId: 'conn-1' }), item({ rank: 2, connectionId: null })])
+    );
+    expect(response.dishes).toHaveLength(1);
+    expect(response.dishes[0].connectionId).toBe('conn-1');
   });
 });

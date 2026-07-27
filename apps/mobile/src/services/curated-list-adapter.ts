@@ -15,11 +15,11 @@ import type { CuratedListDetailItem, CuratedListDetailResponse } from './home';
  * payload cannot supply (hours → open-now, priceLevel → price) mean those
  * strip controls are HIDDEN for curated lists, never faked.
  *
- * Dish rows carry the server-resolved connectionId (the (restaurantId, foodId)
- * unique — same read the dish search uses), so hearts/saves on curated dish rows
- * work. When the server found no connection row the composite
- * `${restaurantId}:${entityId}` stands in as ROW IDENTITY only; a save from such
- * a row fails loud at the API (announcer), never silently corrupts.
+ * Dish rows carry the connectionId the BUILDER stored at build time (an
+ * FK-cascaded fact — it can never dangle), so hearts/saves on curated dish
+ * rows always speak the real connection vocabulary. No synthetic ids exist:
+ * a dish row without a connectionId (impossible except a legacy row predating
+ * the column) is DROPPED from the projection rather than given a fake one.
  */
 export const resolveCuratedListType = (listType: string): UserListType =>
   listType === 'dish' ? 'dish' : 'restaurant';
@@ -63,10 +63,11 @@ const mapCuratedItemToRestaurantResult = (item: CuratedListDetailItem): Restaura
   totalDishCount: 0,
 });
 
-const mapCuratedItemToFoodResult = (item: CuratedListDetailItem): FoodResult => ({
-  // Server-resolved connectionId when the connection row exists (see module doc);
-  // composite row-identity stand-in otherwise.
-  connectionId: item.connectionId ?? `${item.restaurantId ?? 'unknown'}:${item.entityId}`,
+const mapCuratedItemToFoodResult = (
+  item: CuratedListDetailItem & { connectionId: string }
+): FoodResult => ({
+  // Build-time connectionId (see module doc) — real by construction.
+  connectionId: item.connectionId,
   foodId: item.entityId,
   foodName: item.label,
   foodAliases: [],
@@ -74,7 +75,7 @@ const mapCuratedItemToFoodResult = (item: CuratedListDetailItem): FoodResult => 
   restaurantName: item.subLabel ?? '',
   restaurantAliases: [],
   scoreSubjectType: 'connection',
-  scoreSubjectId: item.connectionId ?? `${item.restaurantId ?? 'unknown'}:${item.entityId}`,
+  scoreSubjectId: item.connectionId,
   craveScore: item.craveScore ?? 0,
   ...(item.craveScoreExact != null ? { craveScoreExact: item.craveScoreExact } : {}),
   rising: item.rising,
@@ -91,7 +92,15 @@ export const mapCuratedDetailToSearchResponse = (
   detail: CuratedListDetailResponse
 ): SearchResponse => {
   const listType = resolveCuratedListType(detail.listType);
-  const dishes = listType === 'dish' ? detail.items.map(mapCuratedItemToFoodResult) : [];
+  const dishes =
+    listType === 'dish'
+      ? detail.items
+          .filter(
+            (item): item is CuratedListDetailItem & { connectionId: string } =>
+              item.connectionId != null
+          )
+          .map(mapCuratedItemToFoodResult)
+      : [];
   const restaurants =
     listType === 'restaurant' ? detail.items.map(mapCuratedItemToRestaurantResult) : [];
   return {

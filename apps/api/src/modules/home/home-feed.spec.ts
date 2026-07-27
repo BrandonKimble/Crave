@@ -51,6 +51,7 @@ interface ListFixture {
     rank: number;
     entityId: string;
     restaurantId: string | null;
+    connectionId?: string | null;
     entity: {
       entityId: string;
       name: string;
@@ -75,11 +76,6 @@ function createHarness(options: {
   /** near_you raw rows: [listId, rank, name]. */
   nearYouRows?: Array<{ list_id: string; rank: number; name: string }>;
   previewItems?: Array<{ listId: string; entity: { name: string } }>;
-  connections?: Array<{
-    connectionId: string;
-    restaurantId: string;
-    foodId: string;
-  }>;
   scores?: Array<{
     subjectId: string;
     displayScore: number;
@@ -186,9 +182,6 @@ function createHarness(options: {
             .map((id) => ({ placeId: id, parentPlaceIds: parents[id] })),
         ),
       ),
-    },
-    connection: {
-      findMany: jest.fn(() => Promise.resolve(options.connections ?? [])),
     },
     userList: {
       aggregate: jest.fn().mockResolvedValue({ _max: { position: 4 } }),
@@ -375,6 +368,33 @@ describe('HomeFeedService.getFeed — the city-rollup shelves read', () => {
     expect(feed.shelves).toEqual([]);
     expect(feed.liveCities).toEqual([{ placeId: CITY, name: 'Austin' }]);
   });
+
+  it('explicit pick is a SOFT FALLBACK: it resolves a broader-than-city viewport, but never overrides an honest city verdict', async () => {
+    const OTHER_CITY = uuid(50);
+    const harness = () =>
+      createHarness({
+        // Broad viewport: header resolves a STATE with no live-city ancestor.
+        headerPlace: { placeId: uuid(60), name: 'Texas' },
+        parents: { [uuid(60)]: [] },
+        lists: [globalList(1, 'trending')],
+      });
+
+    // Broader-than-city + picked live city → the pick fills the gap.
+    const picked = await harness().service.getFeed(VIEW, USER, CITY);
+    expect(picked.resolvedCity).toEqual({ placeId: CITY, name: 'Austin' });
+
+    // A pick of an unknown/non-live city is ignored, not trusted.
+    const bogus = await harness().service.getFeed(VIEW, USER, OTHER_CITY);
+    expect(bogus.resolvedCity).toBeNull();
+
+    // An honest city-level verdict WINS over a stale pick.
+    const verdictWins = createHarness({
+      headerPlace: { placeId: CITY, name: 'Austin' },
+      lists: [globalList(1, 'trending')],
+    });
+    const feed = await verdictWins.service.getFeed(VIEW, USER, OTHER_CITY);
+    expect(feed.resolvedCity).toEqual({ placeId: CITY, name: 'Austin' });
+  });
 });
 
 describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
@@ -438,7 +458,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
     ]);
   });
 
-  it('dish list: (restaurantId, foodId) resolves the CONNECTION score; subLabel is the serving restaurant', async () => {
+  it('dish list: the STORED build-time connectionId keys the CONNECTION score; subLabel is the serving restaurant', async () => {
     const { service } = createHarness({
       headerPlace: null,
       lists: [
@@ -450,6 +470,7 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
               rank: 1,
               entityId: uuid(20), // the FOOD entity
               restaurantId: uuid(30),
+              connectionId: uuid(40), // build fact stored on the curated row
               entity: {
                 entityId: uuid(20),
                 name: 'Breakfast Taco',
@@ -466,9 +487,6 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
             },
           ],
         }),
-      ],
-      connections: [
-        { connectionId: uuid(40), restaurantId: uuid(30), foodId: uuid(20) },
       ],
       scores: [
         {
@@ -590,7 +608,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
     });
   });
 
-  it('dish list: rows copy by resolved CONNECTION; unresolvable items are skipped and the count stays honest', async () => {
+  it('dish list: rows copy by the STORED connectionId; legacy rows without one are skipped and the count stays honest', async () => {
     const { service, prisma } = createHarness({
       headerPlace: null,
       lists: [
@@ -602,6 +620,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
               rank: 1,
               entityId: uuid(20),
               restaurantId: uuid(30),
+              connectionId: uuid(40),
               entity: {
                 entityId: uuid(20),
                 name: 'Breakfast Taco',
@@ -617,11 +636,12 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
               },
             },
             {
-              // No connection row resolves for this pair — inexpressible as a
+              // Legacy row with no stored connectionId — inexpressible as a
               // favorites row, skipped rather than faked.
               rank: 2,
               entityId: uuid(21),
               restaurantId: uuid(31),
+              connectionId: null,
               entity: {
                 entityId: uuid(21),
                 name: 'Mystery Dish',
@@ -633,9 +653,6 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
             },
           ],
         }),
-      ],
-      connections: [
-        { connectionId: uuid(40), restaurantId: uuid(30), foodId: uuid(20) },
       ],
     });
     const saved = await service.saveListToUserLists(uuid(1), USER);

@@ -309,7 +309,9 @@ const useHomeFeedRuntime = (): void => {
       store.setStatus('loading');
     }
     try {
-      const feed = await fetchHomeFeed(bounds);
+      const feed = await fetchHomeFeed(bounds, {
+        pickedCityId: useHomeFeedStore.getState().pickedCityId,
+      });
       if (seq !== fetchSeqRef.current) {
         return; // superseded by a newer settle
       }
@@ -355,6 +357,19 @@ const useHomeFeedRuntime = (): void => {
       refetchIfSettledBoundsDiffer(); // settle-edge
     });
   }, [refreshHomeFeed, visible]);
+
+  // An explicit city pick refetches immediately — the camera jump usually
+  // also lands a settle-edge refetch (seq guard supersedes), but the pick
+  // must not depend on it (the jump is skipped when the catalog has no bbox).
+  React.useEffect(
+    () =>
+      useHomeFeedStore.subscribe((state, prev) => {
+        if (state.pickSeq !== prev.pickSeq && visible) {
+          void refreshHomeFeed();
+        }
+      }),
+    [refreshHomeFeed, visible]
+  );
 
   // Offline resume (foundation §A): reconnect fires one quiet in-place refresh.
   React.useEffect(
@@ -403,9 +418,11 @@ export const useHomeShelfListProps = (): TrackSheetListProps<HomeShelfRow> => {
     [executeEntityRefAction]
   );
   const handlePickCity = React.useCallback((city: HomeFeedCity) => {
-    // Pick-a-city = a map jump (the feed follows the viewport once the camera
-    // lands). The bbox comes from the catalog slice when available; the
-    // camera-command store no-ops honestly when the place is unknown.
+    // Pick-a-city = explicit intent + a map jump. The pick is recorded as the
+    // feed's soft fallback FIRST (a city-bbox fit leaves the city under the ⅔
+    // header law, so the landing viewport alone would bounce back to
+    // pick-a-city); the camera jump follows when the catalog knows the bbox.
+    useHomeFeedStore.getState().setPickedCity(city.placeId);
     const slice = getViewportSubjectState().slice;
     const place = slice?.find((candidate) => candidate.placeId === city.placeId) ?? null;
     if (place != null) {

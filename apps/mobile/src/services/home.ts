@@ -18,9 +18,9 @@ export type CuratedListDetailItem = {
   rank: number;
   entityId: string;
   restaurantId: string | null;
-  /** Dish items: the resolved Connection id (server-resolved via the
-   *  (restaurantId, foodId) unique — the same read the dish search uses).
-   *  Null when no connection row exists; restaurant items always null. */
+  /** Dish items: the Connection id, a BUILD FACT stored on the curated row
+   *  (FK-cascaded — can never dangle). Null only on legacy rows predating the
+   *  column; restaurant items always null. */
   connectionId: string | null;
   label: string;
   subLabel: string | null;
@@ -47,13 +47,19 @@ export type CuratedListDetailResponse = {
   items: CuratedListDetailItem[];
 };
 
-export const fetchHomeFeed = async (bounds: MapBounds): Promise<HomeFeedResponse> => {
+export const fetchHomeFeed = async (
+  bounds: MapBounds,
+  options?: { pickedCityId?: string | null }
+): Promise<HomeFeedResponse> => {
   const response = await api.get('/home/feed', {
     params: {
       minLat: bounds.southWest.lat,
       minLng: bounds.southWest.lng,
       maxLat: bounds.northEast.lat,
       maxLng: bounds.northEast.lng,
+      // Soft fallback only — the server's viewport verdict wins when it
+      // honestly resolves a live city (see home-feed-store.pickedCityId).
+      ...(options?.pickedCityId ? { pickedCityId: options.pickedCityId } : {}),
     },
   });
   return normalizeHomeFeedResponse(response.data);

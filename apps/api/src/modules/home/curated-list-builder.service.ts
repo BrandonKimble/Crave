@@ -81,7 +81,13 @@ interface ListDraft {
   subtitle: string | null;
   iconKey: string;
   rotationKey: string;
-  items: Array<{ entityId: string; restaurantId: string | null }>;
+  items: Array<{
+    entityId: string;
+    restaurantId: string | null;
+    /** Dish items: the connection id — a build fact straight from the dish
+     *  read (which selects FROM core_restaurant_items). Restaurant items: null. */
+    connectionId: string | null;
+  }>;
 }
 
 @Injectable()
@@ -301,6 +307,7 @@ export class CuratedListBuilderService {
         items: sorted.map((row) => ({
           entityId: row.food_id,
           restaurantId: row.restaurant_id,
+          connectionId: row.connection_id,
         })),
       };
     });
@@ -337,6 +344,7 @@ export class CuratedListBuilderService {
         items: rising.map((row) => ({
           entityId: row.entity_id,
           restaurantId: null,
+          connectionId: null,
         })),
       },
     ];
@@ -388,6 +396,7 @@ export class CuratedListBuilderService {
         items: gems.map((row) => ({
           entityId: row.entity_id,
           restaurantId: null,
+          connectionId: null,
         })),
       },
     ];
@@ -580,6 +589,7 @@ export class CuratedListBuilderService {
           items: sorted.map((row) => ({
             entityId: row.food_id,
             restaurantId: row.restaurant_id,
+            connectionId: row.connection_id,
           })),
         },
         now,
@@ -797,6 +807,7 @@ export class CuratedListBuilderService {
               rank: index + 1,
               entityId: item.entityId,
               restaurantId: item.restaurantId,
+              connectionId: item.connectionId,
             })),
           },
         },
@@ -806,7 +817,7 @@ export class CuratedListBuilderService {
 
   private rankByScore(
     members: CityRestaurantRow[],
-  ): Array<{ entityId: string; restaurantId: null }> {
+  ): Array<{ entityId: string; restaurantId: null; connectionId: null }> {
     return [...members]
       .sort(
         (a, b) =>
@@ -814,7 +825,11 @@ export class CuratedListBuilderService {
           b.display_score - a.display_score,
       )
       .slice(0, MAX_LIST_ITEMS)
-      .map((row) => ({ entityId: row.entity_id, restaurantId: null }));
+      .map((row) => ({
+        entityId: row.entity_id,
+        restaurantId: null,
+        connectionId: null,
+      }));
   }
 }
 

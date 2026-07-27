@@ -71,6 +71,17 @@ breakfast taco in Austin — July") · programmatic cover art: photo collages
 
 - per-list-type color extraction from existing Cloudinary assets.
 
+## Pick-a-city = explicit intent, soft fallback (decided in execution 2026-07-26)
+
+A tapped pick-a-city card records the pick and flies the camera to the city
+bbox. The pick rides every feed fetch as `pickedCityId`, a SOFT FALLBACK
+only: the viewport verdict wins whenever it honestly resolves a live city;
+the pick fills exactly the broader-than-city gap (a city-bbox camera fit
+leaves the city under the ⅔ header law on tall screens, so without it the
+tap landed straight back on pick-a-city — observed in the sim pass). No
+thresholds were invented and no verdict law changed; explicit user intent is
+the only new fact. Re-tapping the same city refetches (pickSeq edge).
+
 ## Open items registry (2026-07-26 — the durable deferral log)
 
 Every item here is DELIBERATELY deferred with its trigger; nothing below is
@@ -105,6 +116,21 @@ forgotten work.
    Trigger: before onboarding a large-cuisine-roster city, add a feed
    presentation bound or lazy shelf loading (presentation concern, not a
    data cap — earn-it stays).
-10. Add an API spec asserting a synthetic (non-UUID) connectionId from the
-    curated adapter's composite fallback is REJECTED loudly, never
-    mis-targeted (red team follow-up).
+10. ~~Synthetic connectionId composite fallback~~ — RESOLVED AT ROOT
+    2026-07-26 (owner-ordered): `curated_list_items.connection_id` is now a
+    BUILD FACT (migration 20260727010000; builder writes it, FK cascade keeps
+    it live, detail/save read it directly, the adapter's composite fallback
+    is deleted and a null-connection legacy dish row is dropped, never faked).
+    No synthetic ids exist anywhere to reject.
+11. Corrupt Puerto Rico municipio polygons (San Juan, Río Grande, Jayuya —
+    place_geometries areas 799–913, world-spanning garbage that "covers" any
+    viewport at 1.000). Currently benign for the finest-place law (their
+    areas are so huge the finest pick still wins) but they caused the
+    "Polls in Jayuya Municipio" headers over Miami and they inflate every
+    verdict's candidate set. Trigger: next geometry-pipeline touch — delete
+    or re-sketch those rows and add an area-sanity gate at sketch time.
+12. /home/feed verdict latency on the New York viewport: 14–17s observed
+    (sim pass 2026-07-26) vs ~1.5s for Austin — the coverage SQL against the
+    big NYC-area polygons (and the corrupt PR rows in the candidate set) is
+    the suspect. Attribute before fixing (per the attribution law).
+    Trigger: before NYC onboarding is real; likely falls out of (11).
