@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { TrackSheetRouteHost } from '../tracksheet/TrackSheetRouteHost';
+import { useTrackFlipState } from '../tracksheet/track-flip-store';
 import { StyleSheet, View } from 'react-native';
 import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type { RouteShellSceneInputLane } from '../navigation/runtime/app-route-scene-runtime';
@@ -130,6 +131,7 @@ const AppOverlayRouteHost = ({
   routeSheetSnapSessionActions,
   routeSheetHostRuntime,
 }: AppOverlayRouteHostRuntime) => {
+  const trackFlip = useTrackFlipState();
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
       <>
@@ -140,10 +142,15 @@ const AppOverlayRouteHost = ({
           overlayLocalRestaurantSheetHostAuthority={overlayLocalRestaurantSheetHostAuthority}
           routeSceneInputLane={routeSceneInputLane}
         />
-        <SearchOverlayRouteGateHost overlayGateHostAuthority={overlayGateHostAuthority}>
-          <SearchOverlayRouteSheetSurfaceHost routeSheetHostRuntime={routeSheetHostRuntime} />
-        </SearchOverlayRouteGateHost>
-        {__DEV__ ? <TrackSheetRouteHost /> : null}
+        {/* THE FLIP (rung 5): the old sheet system renders ONLY when the track
+            flip is off (crave://tracksheet-host?on=0 = emergency rollback).
+            Deletion of the old system follows after burn-in. */}
+        {trackFlip.on ? null : (
+          <SearchOverlayRouteGateHost overlayGateHostAuthority={overlayGateHostAuthority}>
+            <SearchOverlayRouteSheetSurfaceHost routeSheetHostRuntime={routeSheetHostRuntime} />
+          </SearchOverlayRouteGateHost>
+        )}
+        <TrackSheetRouteHost />
         <NavSilhouetteHost
           overlayGateHostAuthority={overlayGateHostAuthority}
           overlayShellHostAuthority={overlayShellHostAuthority}

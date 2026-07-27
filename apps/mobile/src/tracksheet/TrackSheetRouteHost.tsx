@@ -6,6 +6,12 @@ import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec'
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import {
+  getLiveTransitionTxn,
+  offerTransitionJoinInput,
+} from '../navigation/runtime/transition-engine/transition-transaction';
+import { recordSceneChromeAck } from '../overlays/scene-chrome-ack-runtime';
+import { setTrackFlipState, useTrackFlipState } from './track-flip-store';
+import {
   runHeaderCloseAction,
   runHeaderCreateAction,
 } from '../navigation/runtime/header-nav-action-registry';
@@ -88,22 +94,25 @@ const probeStyles = StyleSheet.create({
 });
 
 export const TrackSheetRouteHost: React.FC = () => {
-  const [state, setState] = React.useState<{ on: boolean; scene: OverlayKey }>({
-    on: false,
-    scene: 'polls' as OverlayKey,
-  });
+  // THE FLIP (rung 5): the track host is the DEFAULT. The deep link is the
+  // emergency rollback + debug-visuals toggle (see track-flip-store).
+  const state = useTrackFlipState();
 
   React.useEffect(() => {
     const handleUrl = (url: string | null) => {
       if (!url || !url.includes(DEEP_LINK_HOST)) {
         return;
       }
-      const on = /[?&]on=(1|true)/i.test(url);
-      const sceneMatch = /[?&]scene=([a-zA-Z]+)/.exec(url);
-      setState((prev) => ({
-        on: /[?&]on=(0|false)/i.test(url) ? false : on || !prev.on,
-        scene: (sceneMatch?.[1] as OverlayKey) ?? prev.scene,
-      }));
+      if (/[?&]on=(0|false)/i.test(url)) {
+        setTrackFlipState({ on: false });
+      } else if (/[?&]on=(1|true)/i.test(url)) {
+        setTrackFlipState({ on: true });
+      }
+      if (/[?&]debug=(1|true)/i.test(url)) {
+        setTrackFlipState({ debug: true });
+      } else if (/[?&]debug=(0|false)/i.test(url)) {
+        setTrackFlipState({ debug: false });
+      }
     };
     Linking.getInitialURL()
       .then(handleUrl)
@@ -114,13 +123,6 @@ export const TrackSheetRouteHost: React.FC = () => {
 
   // HIDE, never unmount: tearing the track down mid-session hit a Fabric
   // mounting-coordinator assert (unregisterViewComponentDescriptor SIGABRT).
-  // The surface mounts once on first enable and then only toggles visibility —
-  // which is also the production shape (one persistent sheet surface).
-  const everOnRef = React.useRef(false);
-  everOnRef.current = everOnRef.current || state.on;
-  if (!everOnRef.current) {
-    return null;
-  }
   return (
     <View
       // z at the SIBLING level: zIndex only competes among siblings, and the
@@ -129,7 +131,7 @@ export const TrackSheetRouteHost: React.FC = () => {
       style={[StyleSheet.absoluteFill, styles.hostAboveStack, !state.on && styles.hidden]}
       pointerEvents={state.on ? 'box-none' : 'none'}
     >
-      <NavExcludedTrackSurface scene={state.scene} />
+      <NavExcludedTrackSurface scene={'polls' as OverlayKey} />
     </View>
   );
 };
@@ -197,6 +199,19 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const scene = frame.activeSceneKey ?? sceneOverride;
+
+  // THE ACK BRIDGE (flip prerequisite, inventory §5.5): with the old host
+  // unmounted, THIS host records the chrome + paint acks that scene-switch
+  // transactions join on — otherwise every switch deadlocks. Layout effect
+  // (ack before the paint-visible frame); stale switchIds are rejected
+  // controller-side, so over-acking is harmless.
+  React.useLayoutEffect(() => {
+    recordSceneChromeAck(scene);
+    if (getLiveTransitionTxn()?.mutation.targetSceneKey === scene) {
+      offerTransitionJoinInput('paint');
+    }
+    sceneRuntime.routeSceneSwitchRuntime.commitPresentationPaintAck(frame.switchId);
+  }, [frame.switchId, scene, sceneRuntime]);
 
   // THE ENTRY: child bodies receive their route entry (params — listId etc.)
   // exactly like the registry mount unit passes it (W1 slice 1). Resolve the
@@ -399,6 +414,7 @@ const useTrackScenePageChrome = (
  *   mounted-registry scenes → the registry body as a one-item track body;
  *   anything else → placeholder rows. */
 const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoints, entry }) => {
+  const debugVisuals = useTrackFlipState().debug;
   const {
     commandsRef,
     title,
@@ -579,7 +595,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
               ? styles.rowSurface
               : undefined
         }
-        debugHud
+        debugHud={debugVisuals}
         commandsRef={commandsRef}
         seatTau={seatTau}
         publicationBindings={sharedSheetPublicationBindings}
