@@ -2238,3 +2238,25 @@ Owner directive: question everything, no second-rate abstractions. Result:
   user-owns-posture latch, native setOffset channel retired with the pan.
 Verified: header drag follows the finger natively and settles exactly on the
 middle detent; body drags follow + stay.
+
+RUNG 4 PROGRESS (2026-07-27 late):
+- PUBLICATION BRIDGE: kit publicationBindings mirror the track into the shared
+  sheet SVs. sheetScrollOffset BOUND (divider/origin riders). sheetTranslateY
+  HELD — RED: behavioral riders (dismiss plane, foreground-launch intent) read
+  a header drag as search-session motion and opened the suggestion surface;
+  rider audit required before binding (inventory §5.8 table).
+- GEOMETRY UNIFIED: host reads sharedSheetOwner.snapPoints (the live in-place-
+  synced production object) — one geometry for attach config + chrome + seats.
+- ROOT CREATE ACTIONS: HeaderNavAction on all scenes; create via
+  runHeaderCreateAction (+ polls fallback), child close via runHeaderCloseAction
+  override then closeActiveRoute.
+- THE REAL FOUNDATION IN THE KIT: mounted bodies render inside
+  SceneBodyFoundationSurface (zeroScrollOffset — the cell rides the track so
+  holes track for free; padding inside the surface so the plate spans the
+  cell). Sheet clip TRANSPARENT so the ONE frost samples the real MAP (white
+  clip bg deadened the tint). VERIFIED: profile stats band = true frost, full
+  width, production-identical.
+REMAINING rung 4: translateY rider audit → bind; motion-descriptor table
+snaps (replace home/content rule); pollDetail chin + anchor listRef; remaining
+scene eyeballs (notifications, messaging, saveList, userProfile, followList,
+editProfile, postPhotos); search LAST; then rung 5 flip + delete + invariants.
