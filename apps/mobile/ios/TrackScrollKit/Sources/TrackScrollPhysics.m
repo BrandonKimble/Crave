@@ -111,6 +111,9 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
 {
+  NSLog(@"[TRACKNATIVE] willBeginDragging offset=%.1f enabled=%d frame=%@",
+        scrollView.contentOffset.y, scrollView.scrollEnabled,
+        NSStringFromCGRect(scrollView.frame));
   // THE HEADER GRAB IS THE TRACK (ground-up shape): a drag born on the chrome
   // drives the SAME track, bounded to the sheet region — one engine, native
   // finger tracking, and the release rides the existing detent spring. No
@@ -210,6 +213,12 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
+  static int scrollTick = 0;
+  if (++scrollTick % 20 == 0) {
+    NSLog(@"[TRACKNATIVE] didScroll y=%.1f contentH=%.1f viewportH=%.1f",
+          scrollView.contentOffset.y, scrollView.contentSize.height,
+          scrollView.bounds.size.height);
+  }
   const CGFloat edge = self.ballisticEdge;
   // Chrome grab: the sheet region is the whole track for this gesture — a drag
   // on the header can never scroll the list through itself.

@@ -470,10 +470,18 @@ export function TrackSheetPage<Item>({
           />
         </Reanimated.View>
 
-        {/* Chrome: sheet material pinned at the surface top. TOUCH-OPAQUE
-            (inventory + owner law): a touch on the chrome NEVER reaches the
-            track — the header can not scroll the list through itself. */}
-        <View style={styles.chrome} pointerEvents="auto">
+        {/* Chrome: sheet material pinned at the surface top.
+            HIT-TRANSPARENT BY LAW (attribution 2026-07-27: `auto` swallowed
+            every chrome-region touch as a SIBLING of the scroll view — at
+            collapsed the whole visible sheet is chrome, so the sheet became
+            ungrabbable). box-none keeps taps alive on the chrome's own
+            controls (grab handle, nav action, strip chips) while drags fall
+            through to the track. The owner law — "you can never scroll the
+            list through the header" — is enforced NATIVELY by the chromeGrab
+            arbitration (a chrome-born drag is clamped to the sheet region),
+            which is the ONE TRACK design: geometry arbitrates, not view
+            layering. */}
+        <View style={styles.chrome} pointerEvents="box-none">
           {/* THE CHROME FROST SLAB: the chrome carries its own frosted glass
               beneath its plates — every cutout (grab, close, strip chips)
               shows real blur of whatever passes beneath (map or content), in
