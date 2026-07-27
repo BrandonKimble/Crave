@@ -123,10 +123,39 @@ export const TrackSheetRouteHost: React.FC = () => {
   }
   return (
     <View
-      style={[StyleSheet.absoluteFill, !state.on && styles.hidden]}
+      // z at the SIBLING level: zIndex only competes among siblings, and the
+      // production stack (z 90) is THIS wrapper's sibling — an inner z was
+      // silently losing whenever the sheets overlapped (anti-trap round 3).
+      style={[StyleSheet.absoluteFill, styles.hostAboveStack, !state.on && styles.hidden]}
       pointerEvents={state.on ? 'box-none' : 'none'}
     >
-      <TrackSheetRouteSurface scene={state.scene} />
+      <NavExcludedTrackSurface scene={state.scene} />
+    </View>
+  );
+};
+
+/** NAV EXCLUSION (inventory §5.1): the sheet subtree renders inside the same
+ * native mask the production frame host uses — the sheet is carved around the
+ * nav silhouette and hard-clipped at the nav top. Static persistent-mode props
+ * for now (nav hide choreography joins with the motion work). */
+const NavExcludedTrackSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => {
+  const seed = getSearchStartupGeometrySeed();
+  // HARD CLIP half of nav exclusion (inventory §5.1): the sheet subtree may
+  // never paint below the nav top. The native silhouette-curve mask
+  // (SearchRouteSheetNavExclusionMaskNativeView) made the whole surface
+  // invisible when mounted without the frame host's init — reusing it needs a
+  // study of its native impl, queued; the hard clip carries the contract
+  // (sheet never covers nav) until then.
+  return (
+    <View
+      style={{
+        width: seed.windowWidth,
+        height: Math.max(0, seed.navBarTopForSnaps),
+        overflow: 'hidden',
+      }}
+      pointerEvents="box-none"
+    >
+      <TrackSheetRouteSurface scene={scene} />
     </View>
   );
 };
@@ -230,6 +259,26 @@ const useTrackScenePageChrome = (
         ? snapPoints.collapsed - snapPoints.middle
         : 0;
 
+  // THE SETTLE OBSERVER → SESSION: gesture rests write posture memory with the
+  // production writer semantics (writer:'gesture'; the snap-law seats accept it).
+  const middleTau = snapPoints.collapsed - snapPoints.middle;
+  const onGestureSettle = React.useCallback(
+    (detentTau: number) => {
+      const snap =
+        Math.abs(detentTau - trackH) <= 2
+          ? ('expanded' as const)
+          : Math.abs(detentTau - middleTau) <= 2
+            ? ('middle' as const)
+            : ('collapsed' as const);
+      sceneRuntimeForSeat.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+        sceneKey: scene,
+        snap,
+        writer: 'gesture',
+      });
+    },
+    [middleTau, scene, sceneRuntimeForSeat, trackH]
+  );
+
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
   const Strip = descriptor?.Strip;
@@ -320,6 +369,7 @@ const useTrackScenePageChrome = (
     isChildScene,
     onGrabHandlePress,
     sharedSheetPublicationBindings,
+    onGestureSettle,
   };
 };
 
@@ -341,6 +391,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     isChildScene,
     onGrabHandlePress,
     sharedSheetPublicationBindings,
+    onGestureSettle,
   } = useTrackScenePageChrome(scene, snapPoints);
   const pollsParts = usePollsPanelListSceneParts();
   const homeParts = useHomePanelListSceneParts();
@@ -498,6 +549,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         commandsRef={commandsRef}
         seatTau={seatTau}
         publicationBindings={sharedSheetPublicationBindings}
+        onGestureSettle={onGestureSettle}
         onUserListScrollActivity={
           scene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined
         }
@@ -540,6 +592,7 @@ const MOUNTED_BODY_COMPONENTS: Partial<
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, zIndex: 91 },
   hidden: { opacity: 0 },
+  hostAboveStack: { zIndex: 91 },
   headerRow: {
     flex: 1,
     backgroundColor: '#ffffff',

@@ -127,6 +127,10 @@ export type TrackSheetPageProps<Item> = {
     sheetTranslateY?: SharedValue<number>;
     sheetScrollOffset?: SharedValue<number>;
   };
+  /** THE SETTLE OBSERVER: fires once per GESTURE-born rest on a detent (τ of
+   * the detent). Feeds posture memory — seats are gesture-written only
+   * (inventory §5.10). Programmatic settles never fire it. */
+  onGestureSettle?: (detentTau: number) => void;
 };
 
 export function TrackSheetPage<Item>({
@@ -149,6 +153,7 @@ export function TrackSheetPage<Item>({
   seatTau = null,
   onUserListScrollActivity,
   publicationBindings,
+  onGestureSettle,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const chromeHeightForArbitration =
     OVERLAY_TAB_HEADER_HEIGHT +
@@ -248,6 +253,36 @@ export function TrackSheetPage<Item>({
     },
     [boundScrollOffset, trackH]
   );
+
+  // ── THE SETTLE OBSERVER (gesture-written posture memory) ──
+  const onGestureSettleRef = React.useRef(onGestureSettle);
+  onGestureSettleRef.current = onGestureSettle;
+  React.useEffect(() => {
+    let lastTau = -1;
+    let lastReported = -1;
+    const timer = setInterval(() => {
+      if (onGestureSettleRef.current == null) {
+        return;
+      }
+      // Only GESTURE-born rests count; programmatic seats never write memory.
+      if (!physics.userOwnsPosture.value || physics.dragging.value) {
+        lastTau = -1;
+        return;
+      }
+      const current = physics.tau.value;
+      const stable = lastTau >= 0 && Math.abs(current - lastTau) <= 1;
+      lastTau = current;
+      if (!stable) {
+        return;
+      }
+      const detent = physics.detentTaus.find((d) => Math.abs(d - current) <= 2);
+      if (detent != null && detent !== lastReported) {
+        lastReported = detent;
+        onGestureSettleRef.current(detent);
+      }
+    }, 250);
+    return () => clearInterval(timer);
+  }, [physics]);
 
   // ── THE SEAT: declarative re-asserting settle ──
   const seatTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -436,11 +471,14 @@ export function TrackSheetPage<Item>({
             (inventory + owner law): a touch on the chrome NEVER reaches the
             track — the header can not scroll the list through itself. */}
         <View style={styles.chrome} pointerEvents="auto">
+          {/* Plate covers the HEADER BLOCK only — the strip band paints its
+              own plate, and anything beneath its holes must be FROST (a full-
+              chrome plate blocked the strip cutouts with white). */}
           <MaskedHoleOverlay
             holes={plateHoles}
             backgroundColor={surfaceColor}
             renderWhenEmpty
-            style={styles.chromePlate}
+            style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
           />
           <View style={styles.grabWrapper}>
             <Pressable
@@ -504,7 +542,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  chromePlate: { ...StyleSheet.absoluteFillObject },
+  chromePlate: { position: 'absolute', top: 0, left: 0, right: 0 },
   grabWrapper: { alignItems: 'center', paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP },
   grabHandle: {
     width: OVERLAY_GRAB_HANDLE_WIDTH,
