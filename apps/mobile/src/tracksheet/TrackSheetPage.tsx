@@ -8,6 +8,8 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import MaskedView from '@react-native-masked-view/masked-view';
+
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import HeaderNavAction from '../overlays/HeaderNavAction';
@@ -261,6 +263,9 @@ export function TrackSheetPage<Item>({
   React.useEffect(() => {
     let lastTau = -1;
     let lastReported = -1;
+    if (__DEV__) {
+      console.log('[TRACKDBG] settle observer armed');
+    }
     const timer = setInterval(() => {
       if (onGestureSettleRef.current == null) {
         return;
@@ -442,6 +447,20 @@ export function TrackSheetPage<Item>({
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <FrostedGlassBackground />
         </View>
+        {/* THE CHROME MASK (the chrome/track conflict's resolution): content
+            is hidden behind the chrome by PAINT — a CALayer mask, which does
+            NOT affect hit-testing — so the track keeps spanning the chrome
+            (a chrome drag is a track drag) while the chrome's frost samples
+            the MAP and its cutouts reveal frosted map, production-true. */}
+        <MaskedView
+          style={StyleSheet.absoluteFill}
+          maskElement={
+            <View style={styles.maskRoot}>
+              <View style={{ height: chromeHeight }} />
+              <View style={styles.maskVisible} />
+            </View>
+          }
+        >
         <Reanimated.View style={[styles.trackCounter, trackCounterStyle]}>
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
@@ -469,6 +488,7 @@ export function TrackSheetPage<Item>({
             onContentSizeChange={handleContentSizeChange}
           />
         </Reanimated.View>
+        </MaskedView>
 
         {/* Chrome: sheet material pinned at the surface top.
             HIT-TRANSPARENT BY LAW (attribution 2026-07-27: `auto` swallowed
@@ -556,6 +576,10 @@ const styles = StyleSheet.create({
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
   trackCounter: { ...StyleSheet.absoluteFillObject },
+  // Mask: transparent band over the chrome (content hidden there), opaque
+  // below (content visible). Colors are irrelevant — alpha is the mask.
+  maskRoot: { flex: 1, backgroundColor: 'transparent' },
+  maskVisible: { flex: 1, backgroundColor: '#000000' },
   chrome: {
     position: 'absolute',
     top: 0,
