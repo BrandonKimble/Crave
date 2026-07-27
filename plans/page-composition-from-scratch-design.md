@@ -2274,3 +2274,17 @@ REMAINING: scene eyeballs (notifications/messaging/saveList/userProfile/
 followList/editProfile/postPhotos), native mask study, anchor-restore listRef,
 search LAST, rung 5 (flip default, delete old system, grep-invariants,
 acceptance walk).
+
+### THE FLIP (2026-07-27) — rung 5 begins
+
+TrackSheet is the DEFAULT sheet system. Old host renders only when
+crave://tracksheet-host?on=0 (one-link rollback); ?debug=1 restores the amber
+layer marker + τ HUD. THE ACK BRIDGE carries scene-switch transactions
+(recordSceneChromeAck + offerTransitionJoinInput('paint') +
+commitPresentationPaintAck per presented frame, layout-effect timed).
+Verified post-flip: single sheet at home boot, tab switches flow, profile
+full parity. BURN-IN LIST (before deletion): all scenes eyeballed, search
+surface (still old-composition — renders under track when search active?
+VERIFY), translateY riders rewire, settle/motion polish, then DELETE the old
+system per the inventory delete list + grep-invariants (no old-runtime
+imports outside the rollback path, no nested scrollables in track cells).
