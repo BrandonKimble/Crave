@@ -886,23 +886,21 @@ LIMIT ${pagination.take};`.trim();
       'r.restaurant_attributes',
       filters.restaurantAttributeIds,
     );
-    const signalMatchSql = Prisma.sql`EXISTS (
-      SELECT 1
-      FROM core_restaurant_entity_signals res
-      WHERE res.restaurant_id = r.entity_id
-        AND ${this.buildInClause(
-          'res.entity_id',
-          filters.restaurantAttributeIds,
-        )}
-    )`;
-
+    // ONE ADMISSION RULE (2026-07-27, measured): this used to OR in a
+    // core_restaurant_entity_signals EXISTS, which made the RESTAURANT list
+    // admit places the DISH list rejected for the same attribute — the two
+    // sides of one search disagreeing about one restaurant. The signals
+    // table is a mention TALLY built for tags, not a claim: the stamped
+    // array holds 37,070 attributes with no signal row, while signals add
+    // only 16 rows of unique active coverage and carry 1,693 pointers to
+    // ARCHIVED (ontology-rejected) attributes. So the array is the claim,
+    // and both queries now read it — symmetric by removing the weaker
+    // path, not by spreading it.
     return {
-      sql: Prisma.sql`((${directMatchSql}) OR (${signalMatchSql}))`,
-      preview: `((r.restaurant_attributes && ${this.formatUuidArray(
+      sql: Prisma.sql`(${directMatchSql})`,
+      preview: `(r.restaurant_attributes && ${this.formatUuidArray(
         filters.restaurantAttributeIds,
-      )}) OR (EXISTS (SELECT 1 FROM core_restaurant_entity_signals res WHERE res.restaurant_id = r.entity_id AND res.entity_id = ANY(${this.formatUuidArray(
-        filters.restaurantAttributeIds,
-      )}))))`,
+      )})`,
     };
   }
 
