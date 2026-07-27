@@ -2260,3 +2260,17 @@ REMAINING rung 4: translateY rider audit → bind; motion-descriptor table
 snaps (replace home/content rule); pollDetail chin + anchor listRef; remaining
 scene eyeballs (notifications, messaging, saveList, userProfile, followList,
 editProfile, postPhotos); search LAST; then rung 5 flip + delete + invariants.
+
+RUNG 4 BATCH 3 (2026-07-27 night): settle observer (gesture→posture memory);
+strip cutouts unblocked (chrome plate = header block only); nav exclusion
+hard-clip half (native silhouette mask blanked the surface without frame-host
+init — study queued); sibling-level z (anti-trap #3 — amber+HUD is the ONLY
+accepted layer proof); pollDetail compose chin via the kit's listChrome slot
+(sheet-frame chrome). TRANSLATEY AUDIT VERDICT: the behavioral riders are
+entangled with the old runtime's session state machines — the translateY
+binding lands AT THE FLIP (rung 5) when those machines rewire to the track
+deliberately; visual-only riders (search chrome scale/scrim) ride along then.
+REMAINING: scene eyeballs (notifications/messaging/saveList/userProfile/
+followList/editProfile/postPhotos), native mask study, anchor-restore listRef,
+search LAST, rung 5 (flip default, delete old system, grep-invariants,
+acceptance walk).
