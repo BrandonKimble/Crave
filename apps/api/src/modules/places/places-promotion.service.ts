@@ -674,23 +674,33 @@ export class PlacesPromotionService {
     if (rows === 0) {
       return false; // no usable rings — caller treats as a miss
     }
-    // §2.5(c): bbox = INDEX only, and the index DERIVES from truth when
-    // truth lands — widen the places bbox to the polygon's envelope
-    // (grow-only, LEAST/GREATEST like the §1 merge law; COALESCE lets a
-    // bbox-less coarse-seed row — a country created purely for its polygon —
-    // gain its first index presence here). An over-wide envelope (a
-    // seam-straddling country) is safe by construction: the index only
-    // FINDS candidates, the polygon judges them.
+    // bbox is DERIVED FROM THE GROUND (one-ground charter P4, 2026-07-27):
+    // SET it to the polygon's envelope — do not GROW it.
+    //
+    // The old rule was grow-only (LEAST/GREATEST), because bbox was the
+    // candidate FINDER and shrinking it could drop rows. After P4a the
+    // finder is `geometry && view` on the GiST index, so bbox no longer
+    // finds anything — and grow-only had become pure residue that let a
+    // too-wide seed square (sqrt(ALAND), or a merge-damaged extent) outlive
+    // the real polygon forever. Measured on prod 2026-07-27: 8 promoted
+    // places still carried a rectangle disagreeing with their own ground.
+    //
+    // SEAM EXCEPTION (honest, not a special case): a geometry crossing the
+    // antimeridian is stored as two arms, so its PLANAR envelope is the
+    // whole world — not expressible as a plain min<max range. Those rows
+    // keep whatever they had (the min>max crossing convention); the ground
+    // is the truth for them either way. Detected by span, not by a flag.
     await this.prisma.$executeRaw(Prisma.sql`
       UPDATE places p SET
-        bbox_min_lat = LEAST(COALESCE(p.bbox_min_lat, ST_YMin(g.geometry)), ST_YMin(g.geometry)),
-        bbox_min_lng = LEAST(COALESCE(p.bbox_min_lng, ST_XMin(g.geometry)), ST_XMin(g.geometry)),
-        bbox_max_lat = GREATEST(COALESCE(p.bbox_max_lat, ST_YMax(g.geometry)), ST_YMax(g.geometry)),
-        bbox_max_lng = GREATEST(COALESCE(p.bbox_max_lng, ST_XMax(g.geometry)), ST_XMax(g.geometry))
+        bbox_min_lat = ST_YMin(g.geometry),
+        bbox_min_lng = ST_XMin(g.geometry),
+        bbox_max_lat = ST_YMax(g.geometry),
+        bbox_max_lng = ST_XMax(g.geometry)
       FROM place_geometries g
       WHERE g.place_id = p.place_id
         AND p.place_id = ${placeId}::uuid
         AND g.geometry IS NOT NULL
+        AND (ST_XMax(g.geometry) - ST_XMin(g.geometry)) < 180
     `);
     return true;
   }

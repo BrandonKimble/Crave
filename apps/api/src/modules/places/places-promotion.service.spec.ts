@@ -303,14 +303,25 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(persist!.values).toContain(JSON.stringify(POLYGON_GEOJSON));
 
       // §2.5(c): the index derives from truth — the places bbox widens to
-      // the landed polygon's envelope (grow-only; COALESCE seeds a bbox-less
-      // coarse row's first index presence).
-      const widen = executeRawCalls.find((call) =>
+      // the landed polygon's envelope — SET, not grown (one-ground charter
+      // P4). Grow-only existed because bbox was the candidate FINDER; after
+      // P4a the finder is the GiST index, so a too-wide seed square must not
+      // outlive the real polygon.
+      const derive = executeRawCalls.find((call) =>
         call.sql.includes('UPDATE places p SET'),
       );
-      expect(widen).toBeDefined();
-      expect(widen!.sql).toContain('GREATEST');
-      expect(widen!.sql).toContain('LEAST');
+      expect(derive).toBeDefined();
+      expect(derive!.sql).toContain('bbox_min_lat = ST_YMin(g.geometry)');
+      expect(derive!.sql).toContain('bbox_max_lng = ST_XMax(g.geometry)');
+      // RED-proof: the grow-only operators must be GONE, or a stale wide box
+      // survives its own ground (measured on prod: 8 such rows before this).
+      expect(derive!.sql).not.toContain('GREATEST');
+      expect(derive!.sql).not.toContain('LEAST');
+      // The seam exception is by SPAN, not a flag: a crossing geometry's
+      // planar envelope is the whole world and is left alone.
+      expect(derive!.sql).toContain(
+        '(ST_XMax(g.geometry) - ST_XMin(g.geometry)) < 180',
+      );
 
       // Promotion stamped on the queue row AND places.promoted_at.
       expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
