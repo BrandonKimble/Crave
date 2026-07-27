@@ -77,6 +77,7 @@ interface QueryResultRow {
   food_id: string;
   categories: string[];
   food_attributes: string[];
+  is_category_item?: boolean;
   mention_count: number;
   total_upvotes: number;
   last_mentioned_at: Date | null;
@@ -186,6 +187,7 @@ interface DishQueryRow {
   food_id: string;
   categories: string[];
   food_attributes: string[];
+  is_category_item?: boolean;
   mention_count: number;
   total_upvotes: number;
   last_mentioned_at: Date | null;
@@ -966,6 +968,7 @@ LIMIT 3
         connectionId: connection.connection_id,
         foodId: connection.food_id,
         foodName: connection.food_name,
+        isCategoryItem: connection.is_category_item === true,
         foodAliases: connection.food_aliases || [],
         restaurantId: connection.restaurant_id,
         restaurantName: connection.restaurant_name,

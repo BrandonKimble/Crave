@@ -89,6 +89,10 @@ export interface FoodResult {
   craveScore: number;
   // Sectioned relevancy: true = exact-match tier (section 1), false = widened
   // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
+  /** Phase 4: this row is a CATEGORY claim ("known for their burgers"),
+   *  not a specific dish — the client renders it as a category card. Its
+   *  score and evidence are real; only the presentation differs. */
+  isCategoryItem?: boolean;
   exactMatch?: boolean;
   // Graded relatedness to the query entity on one calibrated 0..1 scale
   // (1 = the thing you asked for or an instance of it; siblings carry
