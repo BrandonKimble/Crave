@@ -180,6 +180,18 @@ export type SearchHistoryEntry = {
   statusPreview?: RestaurantStatusPreviewDto | null;
 };
 
+/** Merge two relevance maps keeping the STRONGER signal per food id. */
+function mergeRelevanceMax(
+  base: Record<string, number>,
+  incoming: Record<string, number>,
+): Record<string, number> {
+  const merged: Record<string, number> = { ...base };
+  for (const [id, value] of Object.entries(incoming)) {
+    merged[id] = Math.max(merged[id] ?? 0, value);
+  }
+  return merged;
+}
+
 @Injectable()
 export class SearchService {
   private readonly logger: LoggerService;
@@ -609,10 +621,14 @@ export class SearchService {
               ...expansionResult.categoryMemberFoodIds,
             ]),
           ),
-          relevanceByFoodId: {
-            ...(planExpansion?.relevanceByFoodId ?? {}),
-            ...expansionResult.relevanceByFoodId,
-          },
+          // MAX-merge, never overwrite: a tier-0 category member that ALSO
+          // returns as a weak lexical match must keep its stronger
+          // relevance (a blind spread let 0.5 clobber 1.0 — display-only,
+          // but the number the client shows should be the best evidence).
+          relevanceByFoodId: mergeRelevanceMax(
+            planExpansion?.relevanceByFoodId ?? {},
+            expansionResult.relevanceByFoodId,
+          ),
         };
         expansionAnalysisMetadata = this.buildExpansionMetadata(
           strictCoverageCount,

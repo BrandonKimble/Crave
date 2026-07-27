@@ -147,8 +147,17 @@ export class SearchSiblingExpansionService {
    */
   async getNameContainmentVariantFoodIds(
     baseFoodIds: string[],
+    options: { maxAnchors?: number } = {},
   ): Promise<{ isVariantOf: string[]; mentionsIt: string[] }> {
-    const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
+    // Anchor cap mirrors the dense-sibling cut: this scan is O(foods x
+    // anchors) with no index assist (a word-boundary LIKE cannot use the
+    // trigram GIN), so an uncapped multi-food query would scale linearly
+    // with the catalogue. Cheap today (~9ms at 7.8k foods); the cap is
+    // what keeps it cheap at 10x.
+    const ids = Array.from(new Set(baseFoodIds.filter(Boolean))).slice(
+      0,
+      Math.max(1, options.maxAnchors ?? 3),
+    );
     if (!ids.length) return { isVariantOf: [], mentionsIt: [] };
     try {
       // HEAD-FINAL RULE (2026-07-27): English compound nouns are head-final,
