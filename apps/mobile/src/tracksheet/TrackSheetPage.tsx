@@ -3,8 +3,10 @@ import { Dimensions, Pressable, StyleSheet, View, type ViewStyle } from 'react-n
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Reanimated, {
   interpolate,
+  runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
+  useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
 
@@ -266,37 +268,40 @@ export function TrackSheetPage<Item>({
   );
 
   // ── THE SETTLE OBSERVER (gesture-written posture memory) ──
+  // UI-THREAD REACTION, never polling (jiggle fix, 2026-07-27): a 250ms JS
+  // interval reading physics during a spring animation stutters the motion —
+  // the sheet must never be sampled by the JS thread while it moves. This
+  // reaction fires once, on the frame the track comes to rest on a detent
+  // after a gesture.
   const onGestureSettleRef = React.useRef(onGestureSettle);
   onGestureSettleRef.current = onGestureSettle;
-  React.useEffect(() => {
-    let lastTau = -1;
-    let lastReported = -1;
-    if (__DEV__) {
-      console.log('[TRACKDBG] settle observer armed');
-    }
-    const timer = setInterval(() => {
-      if (onGestureSettleRef.current == null) {
+  const settleReportedTau = useSharedValue(-1);
+  const settleLastTau = useSharedValue(-1);
+  const reportSettle = React.useCallback((detentTau: number) => {
+    onGestureSettleRef.current?.(detentTau);
+  }, []);
+  useAnimatedReaction(
+    () => ({ value: tau.value, dragging: physics.dragging.value, owned: physics.userOwnsPosture.value }),
+    (current) => {
+      if (!current.owned || current.dragging) {
+        settleLastTau.value = -1;
         return;
       }
-      // Only GESTURE-born rests count; programmatic seats never write memory.
-      if (!physics.userOwnsPosture.value || physics.dragging.value) {
-        lastTau = -1;
-        return;
-      }
-      const current = physics.tau.value;
-      const stable = lastTau >= 0 && Math.abs(current - lastTau) <= 1;
-      lastTau = current;
+      const stable = settleLastTau.value >= 0 && Math.abs(current.value - settleLastTau.value) <= 0.5;
+      settleLastTau.value = current.value;
       if (!stable) {
         return;
       }
-      const detent = physics.detentTaus.find((d) => Math.abs(d - current) <= 2);
-      if (detent != null && detent !== lastReported) {
-        lastReported = detent;
-        onGestureSettleRef.current(detent);
+      for (const detent of physics.detentTaus) {
+        if (Math.abs(detent - current.value) <= 2 && settleReportedTau.value !== detent) {
+          settleReportedTau.value = detent;
+          runOnJS(reportSettle)(detent);
+          return;
+        }
       }
-    }, 250);
-    return () => clearInterval(timer);
-  }, [physics]);
+    },
+    [physics, reportSettle]
+  );
 
   // ── THE SEAT: declarative re-asserting settle ──
   const seatTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -444,7 +449,9 @@ export function TrackSheetPage<Item>({
     if (!debugHud) {
       return;
     }
-    const timer = setInterval(() => setHud(`τ=${Math.round(tau.value)}  H=${trackH}`), 250);
+    // Debug only, and slow: any JS-thread sampling of a moving sheet costs
+    // smoothness (this HUD is why motion looked jittery with debug=1).
+    const timer = setInterval(() => setHud(`τ=${Math.round(tau.value)}  H=${trackH}`), 1000);
     return () => clearInterval(timer);
   }, [debugHud, tau, trackH]);
 
