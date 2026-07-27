@@ -24,6 +24,7 @@
     "start:prod:worker": "PROCESS_ROLE=worker node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest --runInBand",
+    "test:db": "jest --runInBand --testPathIgnorePatterns=[] --testRegex \".*\\\\.integration\\\\.spec\\\\.ts$\"",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
@@ -128,6 +129,9 @@
       "^@crave-search/shared$": "<rootDir>/../../../packages/shared/src/index.ts"
     },
     "testRegex": ".*\\.spec\\.ts$",
+    "testPathIgnorePatterns": [
+      "\\.integration\\.spec\\.ts$"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
