@@ -82,6 +82,8 @@ function makeHarness(options: {
   spendCampaigns?: { isDispatchable: jest.Mock; recordSpend: jest.Mock };
   /** Anchor-containment guard outcome (default: the polygon covers it). */
   polygonCoversAnchor?: boolean;
+  /** Entity exclusivity: another place already holds this geometry id. */
+  entityClaimedByPlaceId?: string;
 }) {
   const executeRawCalls: Array<{ sql: string; values: unknown[] }> = [];
   const prisma = {
@@ -99,6 +101,15 @@ function makeHarness(options: {
       }
       if (sql.includes('FROM place_geometry_promotions')) {
         return Promise.resolve(options.queueRows ?? []);
+      }
+      // Entity exclusivity probe — MUST be matched before the generic
+      // place_geometries branch below (both queries name that table).
+      if (sql.includes('provider_boundary_id =')) {
+        return Promise.resolve(
+          options.entityClaimedByPlaceId
+            ? [{ placeId: options.entityClaimedByPlaceId }]
+            : [],
+        );
       }
       if (sql.includes('FROM place_geometries')) {
         return Promise.resolve(
@@ -399,6 +410,27 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       const [campaignId, micros] = spendCampaigns.recordSpend.mock.calls[0];
       expect(campaignId).toBe('camp-1');
       expect(micros).toBeGreaterThan(0);
+    });
+
+    it('ENTITY EXCLUSIVITY: a vendor entity already claimed by another place is refused BEFORE the scarce draw', async () => {
+      // Glen Echo Park MO (pop ~160) sits inside Normandy; TomTom models ONE
+      // municipality covering both, so both interior anchors honestly resolve
+      // to the same entity. The second claimant must stay sketch-grade rather
+      // than wear Normandy's outline — and must not spend a polygon draw
+      // discovering that.
+      const fetchPolygon = jest
+        .fn()
+        .mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON });
+      const { service, prisma } = makeHarness({
+        queueRows: [makeQueueRow()],
+        place: makePlaceRow({ centroidLat: 38.7, centroidLng: -90.29 }),
+        entityClaimedByPlaceId: PLACE_ID_2,
+        fetchPolygon,
+      });
+      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
+      // Refused before spending: no polygon fetched, never promoted.
+      expect(fetchPolygon).not.toHaveBeenCalled();
+      expect(prisma.place.update).not.toHaveBeenCalled();
     });
 
     it('ANCHOR CONTAINMENT: a polygon that does not cover the place anchor is rejected AT ANY SIZE', async () => {

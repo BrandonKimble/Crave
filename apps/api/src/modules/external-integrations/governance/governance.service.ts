@@ -74,51 +74,74 @@ export class GovernanceService implements OnModuleInit {
     });
     // ── TomTom pools (RESHAPED 2026-07-27, owner directive) ────────────────
     //
-    // These were budget THROTTLES; they are now RUNAWAY BACKSTOPS. Owner
-    // 2026-07-27: "as far as price for TomTom stuff I don't care — the
-    // scarce limits were just to add context to what's free and what's not,
-    // not anything that needs stopping for." A ceiling that halts legitimate
-    // work to save single-digit dollars is a bug, not governance.
+    // Owner 2026-07-27: "price for TomTom I don't care — the scarce limits
+    // were context for what's free vs not, not anything that needs stopping
+    // for." So these are no longer BUDGET throttles. A ceiling that halts
+    // legitimate work to save single-digit dollars is a bug; we hit exactly
+    // that (the whole US straggler backlog sat blocked behind a $32 tag).
     //
-    // TWO fixes in this reshape:
-    //
-    // 1. THE VENDOR'S SHAPE, NOT OURS. TomTom's free allowances are PER API
+    // 1. ONE POOL PER REAL RESOURCE. TomTom's free allowances are PER API
     //    FAMILY: geocode and reverseGeocode get 20,000/month EACH
-    //    (vendor-verified, see vendor-pricing.ts). The old single
-    //    `tomtom.cheapGeocode` pool merged two independent allowances into
-    //    one bucket, so we self-blocked at 20k combined while the vendor
-    //    still had free capacity on both endpoints. One pool per real
-    //    resource is the honest model; a pool that models nothing real is
-    //    the bad abstraction.
+    //    (vendor-verified, vendor-pricing.ts). The old single
+    //    `tomtom.cheapGeocode` merged two independent allowances into one
+    //    bucket and self-blocked at 20k combined while the vendor still had
+    //    free capacity on both. A pool that models nothing real is the bad
+    //    abstraction; these three model three actual vendor resources.
     //
-    // 2. THE LIMIT IS DERIVED, NOT PRICED. A polygon is fetched ONCE per
-    //    place and cached forever, so legitimate monthly draws are bounded
-    //    by the CATALOG SIZE (22,758 places today). Any month that exceeds
-    //    the whole catalog is re-fetching in a loop — pathological by
-    //    definition. The ceilings below sit far above that bound: they can
-    //    only ever catch a runaway, never real work. They stay hardClosed +
-    //    durable so a genuine loop still hits a wall within minutes.
+    // 2. THE NUMBERS ARE AN OWNER CHOICE, LABELLED AS ONE (§16 permits
+    //    facts, derivations, OR owner choices — what it forbids is dressing
+    //    a choice up as a derivation, which an earlier pass of this comment
+    //    did). These are CATASTROPHE backstops, not budgets. Sizing input,
+    //    stated so the owner can re-ratify with real information:
+    //      - legitimate work is catalog-bounded: a polygon is fetched ONCE
+    //        per place and cached forever, so the largest honest month is
+    //        one polygon per place. Catalog today: 22,778. The July seed
+    //        month actually drew 22,658 — i.e. the observed ceiling of real
+    //        work is ~1× catalog.
+    //      - 100,000 is ~4.4× that, leaving years of catalog growth.
+    //      - WORST-CASE EXPOSURE at the verified rates: polygons €3.00/1k →
+    //        ~$324/mo; geocode/reverseGeocode €1.00/1k beyond their free
+    //        20k → ~$86/mo each. Total ~$496/mo if all three ran flat out
+    //        for a month, which only a runaway could do.
     //
-    // §16 on reservationTtlMs (all pools): K3-shaped operational bounds, not
-    // product numbers — "how long a leaked reservation may hold capacity
-    // before expiry reclaims it". 60s ≈ one synchronous call; 120s ≈ a
-    // paged/batched dispatch.
+    // KNOWN BETTER SHAPE (not done here): a runaway burns a monthly quota in
+    // minutes and then blocks the rest of the month — the exact failure we
+    // just lived through. A PER-MINUTE ceiling derived from the vendor's own
+    // ~5 QPS (the K4 fact behind VENDOR_QPS_SPACING_MS) would stop a loop
+    // instantly and never touch the hourly drain's paced ~2/sec. The pool
+    // registry takes one window per pool, and the durable month machinery +
+    // the 80%-by-day-20 spend alert both read the month window, so switching
+    // shape is its own change. Logged in plans/one-ground-charter.md.
+    //
+    // §16 on reservationTtlMs: K3-shaped operational bounds — "how long a
+    // leaked reservation may hold capacity before expiry reclaims it".
+    // 60s ≈ one synchronous call; 120s ≈ a paged/batched dispatch.
+    const TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH = 100_000;
     this.pools.register({
       name: 'tomtom.reverseGeocode',
       credential: 'default',
-      window: { kind: 'perMonth', limit: 250_000 },
+      window: {
+        kind: 'perMonth',
+        limit: TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH,
+      },
       reservationTtlMs: 60_000,
     });
     this.pools.register({
       name: 'tomtom.geocode',
       credential: 'default',
-      window: { kind: 'perMonth', limit: 250_000 },
+      window: {
+        kind: 'perMonth',
+        limit: TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH,
+      },
       reservationTtlMs: 60_000,
     });
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
-      window: { kind: 'perMonth', limit: 250_000 },
+      window: {
+        kind: 'perMonth',
+        limit: TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH,
+      },
       reservationTtlMs: 120_000,
     });
     // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM

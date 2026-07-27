@@ -491,6 +491,44 @@ export class PlacesPromotionService {
       });
     }
 
+    // ENTITY EXCLUSIVITY (2026-07-27): one vendor entity belongs to at most
+    // ONE place. Enforced HERE, at the only moment it can be — before the
+    // scarce draw is spent.
+    //
+    // Why it is needed even with point identity: the vendor's granularity is
+    // coarser than the census's in places. Glen Echo Park MO (pop ~160) sits
+    // inside Normandy; TomTom models ONE municipality covering both, so both
+    // interior anchors honestly resolve to the same entity. Point identity
+    // did its job — the catalog's job is to refuse the second claim rather
+    // than dress Glen Echo Park in Normandy's outline. Same for the 165
+    // groups the old name matching produced (5 Alaska towns, one polygon).
+    //
+    // The refused place stays SKETCH-grade on its own census envelope, which
+    // is the honest answer: "the vendor does not model this place
+    // separately." First claimant keeps the entity — arbitrary but stable;
+    // no evidence exists here to rank two places that both genuinely sit
+    // inside one vendor entity.
+    const claimedByAnother = await this.prisma.$queryRaw<
+      Array<{ placeId: string }>
+    >(Prisma.sql`
+      SELECT place_id AS "placeId" FROM place_geometries
+      WHERE provider_boundary_id = ${geometryId}
+        AND place_id <> ${item.placeId}::uuid
+      LIMIT 1
+    `);
+    if (claimedByAnother.length > 0) {
+      await this.recordAttempt(item.placeId, now);
+      this.logger.warn(
+        'vendor entity already claimed by another place — staying sketch (the vendor does not model this place separately)',
+        {
+          placeId: item.placeId,
+          geometryId,
+          claimedBy: claimedByAnother[0].placeId,
+        },
+      );
+      return 'attempted';
+    }
+
     // Step 2 — the scarce polygon draw.
     let polygon: PolygonFetchResult;
     try {

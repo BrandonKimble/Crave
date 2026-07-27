@@ -1,5 +1,11 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
-import { IsArray, IsOptional, IsString, MaxLength, ArrayMaxSize } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ArrayMaxSize,
+} from 'class-validator';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 import { TeaserService } from './teaser.service';
 

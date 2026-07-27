@@ -81,11 +81,23 @@ const DISH_ID_LABELS: Record<string, string> = {
 /** contexts quiz id → mined restaurant-attribute names, in SELECTIVITY order
  *  (most differentiating first — 'good for groups' covers ~a quarter of a city,
  *  so it comes last; business/solo have no attribute and are omitted). */
-const CONTEXT_ATTR_NAMES: Array<{ contextId: string; attrName: string; frame: string }> = [
+const CONTEXT_ATTR_NAMES: Array<{
+  contextId: string;
+  attrName: string;
+  frame: string;
+}> = [
   { contextId: 'date-nights', attrName: 'romantic', frame: 'date-night' },
-  { contextId: 'special-occasions', attrName: 'celebratory', frame: 'special-occasion' },
+  {
+    contextId: 'special-occasions',
+    attrName: 'celebratory',
+    frame: 'special-occasion',
+  },
   { contextId: 'family', attrName: 'family-friendly', frame: 'family-dinner' },
-  { contextId: 'group-hangs', attrName: 'good for groups', frame: 'group-night' },
+  {
+    contextId: 'group-hangs',
+    attrName: 'good for groups',
+    frame: 'group-night',
+  },
 ];
 
 /** cuisines quiz id → restaurant-attribute name + display label. */
@@ -102,7 +114,14 @@ const CUISINE_ATTRS: Record<string, { attrName: string; label: string }> = {
 /** Live-city onboarding value → location city names in core_restaurant_locations. */
 const CITY_LOCATION_NAMES: Record<string, string[]> = {
   Austin: ['Austin'],
-  'New York': ['Manhattan', 'Brooklyn', 'Queens', 'Bronx', 'Staten Island', 'New York'],
+  'New York': [
+    'Manhattan',
+    'Brooklyn',
+    'Queens',
+    'Bronx',
+    'Staten Island',
+    'New York',
+  ],
 };
 
 /** Evidence floor for the teaser (the global evidence floor is unbuilt; the
@@ -114,7 +133,10 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 @Injectable()
 export class TeaserService {
-  private readonly cache = new Map<string, { at: number; payload: TeaserPreviewPayload | null }>();
+  private readonly cache = new Map<
+    string,
+    { at: number; payload: TeaserPreviewPayload | null }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -136,20 +158,29 @@ export class TeaserService {
     const orderedDishIds = dishIds.filter((id) => DISH_ID_TERMS[id]);
     for (const dishId of orderedDishIds) {
       const cacheKey = `${city}:${dishId}`;
-      base = await this.cached(cacheKey, () => this.dishPreview(city, cities, dishId));
+      base = await this.cached(cacheKey, () =>
+        this.dishPreview(city, cities, dishId),
+      );
       if (base) {
         break;
       }
     }
     if (!base) {
       // Fallback: the city's best dishes overall — always non-empty in a live city.
-      base = await this.cached(`${city}:__browse`, () => this.browsePreview(city, cities));
+      base = await this.cached(`${city}:__browse`, () =>
+        this.browsePreview(city, cities),
+      );
     }
     if (!base) {
       return null;
     }
 
-    const restaurants = await this.restaurantSet(city, cities, contextIds, cuisineIds);
+    const restaurants = await this.restaurantSet(
+      city,
+      cities,
+      contextIds,
+      cuisineIds,
+    );
     return { ...base, restaurants };
   }
 
@@ -162,25 +193,34 @@ export class TeaserService {
     contextIds: string[],
     cuisineIds: string[],
   ): Promise<TeaserRestaurantSet | null> {
-    const context = CONTEXT_ATTR_NAMES.find((entry) => contextIds.includes(entry.contextId));
+    const context = CONTEXT_ATTR_NAMES.find((entry) =>
+      contextIds.includes(entry.contextId),
+    );
     const cuisine = cuisineIds.map((id) => CUISINE_ATTRS[id]).find(Boolean);
     const key = `${city}:rs:${context?.contextId ?? '-'}:${cuisine?.attrName ?? '-'}`;
 
     const setPayload = await this.cachedRestaurantSet(key, async () => {
       if (context && cuisine) {
-        const rows = await this.topRestaurantsByAttrs(cities, [context.attrName, cuisine.attrName]);
+        const rows = await this.topRestaurantsByAttrs(cities, [
+          context.attrName,
+          cuisine.attrName,
+        ]);
         if (rows.length >= MIN_RESULTS) {
           return { kind: 'context' as const, frame: context.frame, rows };
         }
       }
       if (context) {
-        const rows = await this.topRestaurantsByAttrs(cities, [context.attrName]);
+        const rows = await this.topRestaurantsByAttrs(cities, [
+          context.attrName,
+        ]);
         if (rows.length >= MIN_RESULTS) {
           return { kind: 'context' as const, frame: context.frame, rows };
         }
       }
       if (cuisine) {
-        const rows = await this.topRestaurantsByAttrs(cities, [cuisine.attrName]);
+        const rows = await this.topRestaurantsByAttrs(cities, [
+          cuisine.attrName,
+        ]);
         if (rows.length >= MIN_RESULTS) {
           return { kind: 'cuisine' as const, frame: cuisine.label, rows };
         }
@@ -307,7 +347,9 @@ export class TeaserService {
   /** Exact name/alias match on active food entities, expanded one category hop
    *  (derived_food_category_edges), mirroring search's expansion law. */
   private async resolveFoodIds(terms: string[]): Promise<string[]> {
-    const rows = await this.prisma.$queryRaw<Array<{ entity_id: string }>>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ entity_id: string }>
+    >(Prisma.sql`
       SELECT e.entity_id
       FROM core_entities e
       WHERE e.type = 'food'
@@ -323,7 +365,9 @@ export class TeaserService {
     if (baseIds.length === 0) {
       return [];
     }
-    const members = await this.prisma.$queryRaw<Array<{ food_id: string }>>(Prisma.sql`
+    const members = await this.prisma.$queryRaw<
+      Array<{ food_id: string }>
+    >(Prisma.sql`
       SELECT DISTINCT food_id
       FROM derived_food_category_edges
       WHERE category_id = ANY(${baseIds}::uuid[])
@@ -331,7 +375,10 @@ export class TeaserService {
     return Array.from(new Set([...baseIds, ...members.map((m) => m.food_id)]));
   }
 
-  private connectionFilter(cities: string[], foodIds: string[] | null): Prisma.Sql {
+  private connectionFilter(
+    cities: string[],
+    foodIds: string[] | null,
+  ): Prisma.Sql {
     const foodClause = foodIds
       ? Prisma.sql`AND ci.food_id = ANY(${foodIds}::uuid[])`
       : Prisma.empty;
@@ -385,7 +432,9 @@ export class TeaserService {
     cities: string[],
     foodIds: string[] | null,
   ): Promise<number> {
-    const rows = await this.prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<
+      Array<{ count: bigint }>
+    >(Prisma.sql`
       SELECT count(*) AS count ${this.connectionFilter(cities, foodIds)}
     `);
     return Number(rows[0]?.count ?? 0);
