@@ -11,56 +11,58 @@ datasource db {
 }
 
 model Entity {
-  entityId                            String                      @id @default(dbgenerated("gen_random_uuid()")) @map("entity_id") @db.Uuid
-  name                                String                      @db.VarChar(255)
+  entityId                            String                        @id @default(dbgenerated("gen_random_uuid()")) @map("entity_id") @db.Uuid
+  name                                String                        @db.VarChar(255)
   type                                EntityType
-  status                              EntityStatus                @default(active)
-  canonicalDomain                     String?                     @map("canonical_domain") @db.VarChar(255)
-  aliases                             String[]                    @default([])
+  status                              EntityStatus                  @default(active)
+  canonicalDomain                     String?                       @map("canonical_domain") @db.VarChar(255)
+  aliases                             String[]                      @default([])
   /// KNOWLEDGE TIER (food entities only): synthesized canonical ingredient
   /// entity ids ("al pastor taco" -> pork, pineapple, ...). World knowledge,
   /// generated per dish by the offline synthesis pass — never testimony.
-  canonicalIngredients                String[]                    @default([]) @map("canonical_ingredients") @db.Uuid
+  canonicalIngredients                String[]                      @default([]) @map("canonical_ingredients") @db.Uuid
   /// Stamp for the offline dish-knowledge pass (canonical ingredients +
   /// established aliases). NULL = not yet synthesized.
-  knowledgeSynthesizedAt              DateTime?                   @map("knowledge_synthesized_at")
-  nameEmbedding                       Unsupported("vector(768)")? @map("name_embedding")
-  nameEmbeddingStale                  Boolean                     @default(false) @map("name_embedding_stale")
-  restaurantAttributes                String[]                    @default([]) @map("restaurant_attributes") @db.Uuid
-  latitude                            Decimal?                    @db.Decimal(10, 8)
-  longitude                           Decimal?                    @db.Decimal(11, 8)
-  address                             String?                     @db.VarChar(500)
-  restaurantMetadata                  Json?                       @map("restaurant_metadata")
-  primaryLocationId                   String?                     @unique @map("primary_location_id") @db.Uuid
-  lastUpdated                         DateTime                    @default(now()) @map("last_updated")
-  createdAt                           DateTime                    @default(now()) @map("created_at")
-  generalPraiseUpvotes                Int?                        @default(0) @map("general_praise_upvotes")
-  city                                String?                     @map("city") @db.VarChar(255)
-  region                              String?                     @map("region") @db.VarChar(255)
-  country                             String?                     @map("country") @db.VarChar(2)
-  postalCode                          String?                     @map("postal_code") @db.VarChar(32)
-  priceLevel                          Int?                        @map("price_level")
-  priceLevelUpdatedAt                 DateTime?                   @map("price_level_updated_at")
-  lastPolledAt                        DateTime?                   @map("last_polled_at")
-  foodConnections                     Connection[]                @relation("FoodEntity")
-  restaurantConnections               Connection[]                @relation("RestaurantEntity")
+  knowledgeSynthesizedAt              DateTime?                     @map("knowledge_synthesized_at")
+  nameEmbedding                       Unsupported("vector(768)")?   @map("name_embedding")
+  nameEmbeddingStale                  Boolean                       @default(false) @map("name_embedding_stale")
+  restaurantAttributes                String[]                      @default([]) @map("restaurant_attributes") @db.Uuid
+  latitude                            Decimal?                      @db.Decimal(10, 8)
+  longitude                           Decimal?                      @db.Decimal(11, 8)
+  address                             String?                       @db.VarChar(500)
+  restaurantMetadata                  Json?                         @map("restaurant_metadata")
+  primaryLocationId                   String?                       @unique @map("primary_location_id") @db.Uuid
+  lastUpdated                         DateTime                      @default(now()) @map("last_updated")
+  createdAt                           DateTime                      @default(now()) @map("created_at")
+  generalPraiseUpvotes                Int?                          @default(0) @map("general_praise_upvotes")
+  city                                String?                       @map("city") @db.VarChar(255)
+  region                              String?                       @map("region") @db.VarChar(255)
+  country                             String?                       @map("country") @db.VarChar(2)
+  postalCode                          String?                       @map("postal_code") @db.VarChar(32)
+  priceLevel                          Int?                          @map("price_level")
+  priceLevelUpdatedAt                 DateTime?                     @map("price_level_updated_at")
+  lastPolledAt                        DateTime?                     @map("last_polled_at")
+  foodConnections                     Connection[]                  @relation("FoodEntity")
+  restaurantConnections               Connection[]                  @relation("RestaurantEntity")
   onDemandRequests                    OnDemandRequest[]
-  restaurantPhotos                    Photo[]                     @relation("RestaurantPhotos")
-  pollTopicDishTargets                PollTopic[]                 @relation("PollTopicTargetDish")
-  pollTopicRestaurantTargets          PollTopic[]                 @relation("PollTopicTargetRestaurant")
-  pollTopicFoodAttributeTargets       PollTopic[]                 @relation("PollTopicTargetFoodAttribute")
-  pollTopicRestaurantAttributeTargets PollTopic[]                 @relation("PollTopicTargetRestaurantAttribute")
-  userListItems                   UserListItem[]
+  restaurantPhotos                    Photo[]                       @relation("RestaurantPhotos")
+  pollTopicDishTargets                PollTopic[]                   @relation("PollTopicTargetDish")
+  pollTopicRestaurantTargets          PollTopic[]                   @relation("PollTopicTargetRestaurant")
+  pollTopicFoodAttributeTargets       PollTopic[]                   @relation("PollTopicTargetFoodAttribute")
+  pollTopicRestaurantAttributeTargets PollTopic[]                   @relation("PollTopicTargetRestaurantAttribute")
+  userListItems                       UserListItem[]
   demandScoringCandidates             DemandScoringCandidate[]
-  locations                           RestaurantLocation[]        @relation("RestaurantLocations")
-  restaurantEvents                    RestaurantEvent[]           @relation("RestaurantEventRestaurant")
-  restaurantEntityEvents              RestaurantEntityEvent[]     @relation("RestaurantEntityEventRestaurant")
-  restaurantEntityEventTargets        RestaurantEntityEvent[]     @relation("RestaurantEntityEventTarget")
-  restaurantEntitySignals             RestaurantEntitySignal[]    @relation("RestaurantEntitySignalRestaurant")
-  restaurantEntitySignalTargets       RestaurantEntitySignal[]    @relation("RestaurantEntitySignalTarget")
-  primaryLocation                     RestaurantLocation?         @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
-  curatedListItems                    CuratedListItem[]           @relation("CuratedListItemEntity")
-  curatedListItemRestaurants          CuratedListItem[]           @relation("CuratedListItemRestaurant")
+  locations                           RestaurantLocation[]          @relation("RestaurantLocations")
+  restaurantEvents                    RestaurantEvent[]             @relation("RestaurantEventRestaurant")
+  restaurantEntityEvents              RestaurantEntityEvent[]       @relation("RestaurantEntityEventRestaurant")
+  restaurantEntityEventTargets        RestaurantEntityEvent[]       @relation("RestaurantEntityEventTarget")
+  restaurantEntitySignals             RestaurantEntitySignal[]      @relation("RestaurantEntitySignalRestaurant")
+  restaurantEntitySignalTargets       RestaurantEntitySignal[]      @relation("RestaurantEntitySignalTarget")
+  attributeEvidenceAsRestaurant       RestaurantAttributeEvidence[] @relation("RestaurantAttributeEvidenceRestaurant")
+  attributeEvidenceAsAttribute        RestaurantAttributeEvidence[] @relation("RestaurantAttributeEvidenceAttribute")
+  primaryLocation                     RestaurantLocation?           @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
+  curatedListItems                    CuratedListItem[]             @relation("CuratedListItemEntity")
+  curatedListItemRestaurants          CuratedListItem[]             @relation("CuratedListItemRestaurant")
 
   @@index([type], map: "idx_entities_type")
   @@index([type, status], map: "idx_entities_type_status")
@@ -146,7 +148,7 @@ model Connection {
   createdAt           DateTime                @default(now()) @map("created_at")
   food                Entity                  @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant          Entity                  @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
-  userListItems   UserListItem[]
+  userListItems       UserListItem[]
   itemMentions        RestaurantItemMention[]
   curatedListItems    CuratedListItem[]       @relation("CuratedListItemConnection")
 
@@ -735,6 +737,29 @@ model RestaurantEntityEvent {
   @@map("core_restaurant_entity_events")
 }
 
+/// Phase 4b: the rebuildable substrate for restaurant attributes. The
+/// `core_entities.restaurant_attributes` array is a merge-only accumulator
+/// that can never shrink, so re-extraction cannot correct a wrong attribute.
+/// Measured 2026-07-27: 77.7% of stamped attributes have NO reddit event
+/// behind them (Google enrichment + cuisine extraction), so the array cannot
+/// simply be derived from the event ledger — every source needs a place to
+/// state its claim. source_class records WHO says so; `observations` is
+/// confidence within that class. NO decay: an attribute is a
+/// characterization, not praise — correction comes from recomputation.
+model RestaurantAttributeEvidence {
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  attributeId  String   @map("attribute_id") @db.Uuid
+  sourceClass  String   @map("source_class")
+  observations Int      @default(1)
+  computedAt   DateTime @default(now()) @map("computed_at")
+  restaurant   Entity   @relation("RestaurantAttributeEvidenceRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
+  attribute    Entity   @relation("RestaurantAttributeEvidenceAttribute", fields: [attributeId], references: [entityId], onDelete: Cascade)
+
+  @@id([restaurantId, attributeId, sourceClass])
+  @@index([attributeId], map: "idx_restaurant_attribute_evidence_attr")
+  @@map("core_restaurant_attribute_evidence")
+}
+
 model RestaurantEntitySignal {
   restaurantId String     @map("restaurant_id") @db.Uuid
   entityId     String     @map("entity_id") @db.Uuid
@@ -1019,51 +1044,51 @@ model DemandScoringCandidate {
 }
 
 model User {
-  userId                   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
-  email                    String                     @unique @db.VarChar(255)
-  username                 String?                    @unique(map: "users_username_key") @db.Citext
-  displayName              String?                    @map("display_name") @db.VarChar(255)
-  avatarUrl                String?                    @map("avatar_url") @db.VarChar(2048)
-  usernameStatus           UsernameStatus             @default(unset) @map("username_status")
-  usernameUpdatedAt        DateTime?                  @map("username_updated_at")
-  onboardingStatus         OnboardingStatus           @default(not_started) @map("onboarding_status")
-  onboardingCompletedAt    DateTime?                  @map("onboarding_completed_at")
-  onboardingVersion        Int                        @default(1) @map("onboarding_version")
-  onboardingSelectedCity   String?                    @map("onboarding_selected_city") @db.VarChar(255)
-  onboardingPreviewCity    String?                    @map("onboarding_preview_city") @db.VarChar(255)
-  onboardingResponses      Json?                      @map("onboarding_responses")
-  createdAt                DateTime                   @default(now()) @map("created_at")
-  stripeCustomerId         String?                    @map("stripe_customer_id") @db.VarChar(255)
-  authProvider             AuthProvider               @default(clerk) @map("auth_provider")
-  authProviderUserId       String?                    @unique @map("auth_provider_user_id") @db.VarChar(255)
-  deletedAt                DateTime?                  @map("deleted_at")
-  lastSignInAt             DateTime?                  @map("last_sign_in_at")
-  revenueCatAppUserId      String?                    @unique @map("revenuecat_app_user_id") @db.VarChar(255)
-  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  userId                   String                    @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  email                    String                    @unique @db.VarChar(255)
+  username                 String?                   @unique(map: "users_username_key") @db.Citext
+  displayName              String?                   @map("display_name") @db.VarChar(255)
+  avatarUrl                String?                   @map("avatar_url") @db.VarChar(2048)
+  usernameStatus           UsernameStatus            @default(unset) @map("username_status")
+  usernameUpdatedAt        DateTime?                 @map("username_updated_at")
+  onboardingStatus         OnboardingStatus          @default(not_started) @map("onboarding_status")
+  onboardingCompletedAt    DateTime?                 @map("onboarding_completed_at")
+  onboardingVersion        Int                       @default(1) @map("onboarding_version")
+  onboardingSelectedCity   String?                   @map("onboarding_selected_city") @db.VarChar(255)
+  onboardingPreviewCity    String?                   @map("onboarding_preview_city") @db.VarChar(255)
+  onboardingResponses      Json?                     @map("onboarding_responses")
+  createdAt                DateTime                  @default(now()) @map("created_at")
+  stripeCustomerId         String?                   @map("stripe_customer_id") @db.VarChar(255)
+  authProvider             AuthProvider              @default(clerk) @map("auth_provider")
+  authProviderUserId       String?                   @unique @map("auth_provider_user_id") @db.VarChar(255)
+  deletedAt                DateTime?                 @map("deleted_at")
+  lastSignInAt             DateTime?                 @map("last_sign_in_at")
+  revenueCatAppUserId      String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
+  updatedAt                DateTime                  @updatedAt @map("updated_at")
   subscriptions            Subscription[]
   accessGrants             AccessGrant[]
   photos                   Photo[]
   photoReports             PhotoReport[]
-  userLists            UserList[]
-  userListItems        UserListItem[]
-  listCollaborations       UserListCollaborator[] @relation("UserListCollaboratorUser")
-  listCollaboratorInvites  UserListCollaborator[] @relation("UserListCollaboratorInviter")
+  userLists                UserList[]
+  userListItems            UserListItem[]
+  listCollaborations       UserListCollaborator[]    @relation("UserListCollaboratorUser")
+  listCollaboratorInvites  UserListCollaborator[]    @relation("UserListCollaboratorInviter")
   userNotifications        UserNotification[]
   onDemandRequestUsers     OnDemandRequestUser[]
   stats                    UserStats?
-  follows                  UserFollow[]               @relation("UserFollows")
-  followers                UserFollow[]               @relation("UserFollowers")
-  blocksAuthored           UserBlock[]                @relation("UserBlocksAuthored")
-  blocksReceived           UserBlock[]                @relation("UserBlocksReceived")
-  userReportsAuthored      UserReport[]               @relation("UserReportsAuthored")
-  userReportsReceived      UserReport[]               @relation("UserReportsReceived")
-  pollCommentReports       PollCommentReport[]        @relation("PollCommentReportsAuthored")
+  follows                  UserFollow[]              @relation("UserFollows")
+  followers                UserFollow[]              @relation("UserFollowers")
+  blocksAuthored           UserBlock[]               @relation("UserBlocksAuthored")
+  blocksReceived           UserBlock[]               @relation("UserBlocksReceived")
+  userReportsAuthored      UserReport[]              @relation("UserReportsAuthored")
+  userReportsReceived      UserReport[]              @relation("UserReportsReceived")
+  pollCommentReports       PollCommentReport[]       @relation("PollCommentReportsAuthored")
   usernameHistory          UsernameHistory[]
   pollComments             PollComment[]
   pollCommentLikes         PollCommentLike[]
   pollEndorsements         PollEndorsement[]
   conversationParticipants ConversationParticipant[]
-  messagesSent             Message[]                  @relation("MessagesSent")
+  messagesSent             Message[]                 @relation("MessagesSent")
   curatedLists             CuratedList[]
 
   @@index([email], map: "idx_users_email")
@@ -1233,16 +1258,16 @@ model UsernameHistory {
 }
 
 model UserList {
-  listId        String                     @id @default(dbgenerated("gen_random_uuid()")) @map("list_id") @db.Uuid
-  ownerUserId   String                     @map("owner_user_id") @db.Uuid
-  name          String                     @db.VarChar(120)
-  description   String?                    @db.VarChar(500)
+  listId        String                 @id @default(dbgenerated("gen_random_uuid()")) @map("list_id") @db.Uuid
+  ownerUserId   String                 @map("owner_user_id") @db.Uuid
+  name          String                 @db.VarChar(120)
+  description   String?                @db.VarChar(500)
   listType      UserListType           @map("list_type")
   visibility    UserListVisibility     @default(private) @map("visibility")
-  itemCount     Int                        @default(0) @map("item_count")
-  position      Int                        @default(0) @map("position")
-  shareSlug     String?                    @unique(map: "user_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
-  shareEnabled  Boolean                    @default(false) @map("share_enabled")
+  itemCount     Int                    @default(0) @map("item_count")
+  position      Int                    @default(0) @map("position")
+  shareSlug     String?                @unique(map: "user_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
+  shareEnabled  Boolean                @default(false) @map("share_enabled")
   /// LISTS canon (2026-07-26, Spotify Liked-Songs model): 'standard' = a
   /// normal user list; 'favorites' = the ONE lazily-created heart-target
   /// list (undeletable, kind-immutable, otherwise a real list);
@@ -1251,16 +1276,16 @@ model UserList {
   /// non-standard kinds is a PARTIAL unique index (not expressible in Prisma):
   /// user_lists_owner_kind ON (owner_user_id, kind) WHERE kind <> 'standard'
   /// — see migration 20260726120000_lists_rename_and_favorites_kind.
-  kind          String                     @default("standard") @db.VarChar(16)
+  kind          String                 @default("standard") @db.VarChar(16)
   /// Profile-gallery curation (page-registry §8.12/§8.14): owner-pinned lists
   /// float first on the PROFILE Lists view. Never affects the own-home order.
-  pinned        Boolean                    @default(false)
+  pinned        Boolean                @default(false)
   /// Wave-2 §2 "Use your photos": the list's tile gallery renders the owner's own
   /// photos (sparse, placeholder-filled) instead of the top-ranked restaurant photos.
-  useOwnPhotos  Boolean                    @default(false) @map("use_own_photos")
-  createdAt     DateTime                   @default(now()) @map("created_at")
-  updatedAt     DateTime                   @updatedAt @map("updated_at")
-  owner         User                       @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
+  useOwnPhotos  Boolean                @default(false) @map("use_own_photos")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  owner         User                   @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
   items         UserListItem[]
   shareEvents   UserListShareEvent[]
   collaborators UserListCollaborator[]
@@ -1288,7 +1313,7 @@ model UserListItem {
   position      Int                 @default(0) @map("position")
   createdAt     DateTime            @default(now()) @map("created_at")
   updatedAt     DateTime            @updatedAt @map("updated_at")
-  list          UserList        @relation(fields: [listId], references: [listId], onDelete: Cascade)
+  list          UserList            @relation(fields: [listId], references: [listId], onDelete: Cascade)
   addedByUser   User?               @relation(fields: [addedByUserId], references: [userId], onDelete: SetNull)
   restaurant    Entity?             @relation(fields: [restaurantId], references: [entityId], onDelete: Cascade)
   connection    Connection?         @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
@@ -1307,13 +1332,13 @@ model UserListItem {
 /// slug-capability-gated (the invite IS the share link); a private flip
 /// deletes every row (RT-18: private kills all shared access).
 model UserListCollaborator {
-  listId          String       @map("list_id") @db.Uuid
-  userId          String       @map("user_id") @db.Uuid
-  invitedByUserId String?      @map("invited_by_user_id") @db.Uuid
-  createdAt       DateTime     @default(now()) @map("created_at")
+  listId          String   @map("list_id") @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  invitedByUserId String?  @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
   list            UserList @relation(fields: [listId], references: [listId], onDelete: Cascade)
-  user            User         @relation("UserListCollaboratorUser", fields: [userId], references: [userId], onDelete: Cascade)
-  invitedByUser   User?        @relation("UserListCollaboratorInviter", fields: [invitedByUserId], references: [userId], onDelete: SetNull)
+  user            User     @relation("UserListCollaboratorUser", fields: [userId], references: [userId], onDelete: Cascade)
+  invitedByUser   User?    @relation("UserListCollaboratorInviter", fields: [invitedByUserId], references: [userId], onDelete: SetNull)
 
   // The composite id IS the spec's @@unique(listId,userId): join idempotency
   // rides this constraint (P2002 = already a member = success, RT-10 precedent).
@@ -1323,15 +1348,15 @@ model UserListCollaborator {
 }
 
 model UserListShareEvent {
-  eventId   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
-  listId    String                     @map("list_id") @db.Uuid
-  shareSlug String?                    @map("share_slug") @db.VarChar(64)
+  eventId   String                 @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  listId    String                 @map("list_id") @db.Uuid
+  shareSlug String?                @map("share_slug") @db.VarChar(64)
   eventType UserListShareEventType @map("event_type")
   /// RT-18 flood fix: unique write-dedupe key for 'opened' events —
   /// `opened:<slug>:<viewerUserId>` (authed) / `opened:<slug>:<YYYY-MM-DD>`
   /// (anon). P2002 = already counted = no-op. Null for created/revoked.
-  dedupeKey String?                    @unique(map: "user_list_share_events_dedupe_key") @map("dedupe_key") @db.VarChar(160)
-  createdAt DateTime                   @default(now()) @map("created_at")
+  dedupeKey String?                @unique(map: "user_list_share_events_dedupe_key") @map("dedupe_key") @db.VarChar(160)
+  createdAt DateTime               @default(now()) @map("created_at")
   list      UserList               @relation(fields: [listId], references: [listId], onDelete: Cascade)
 
   @@index([listId], map: "idx_user_list_share_events_list")
@@ -1864,14 +1889,14 @@ enum DemandScoringDecisionState {
 
 // §1 Place Catalog: containment DAG, open level codes, two-tier geometry.
 model Place {
-  placeId           String    @id @default(dbgenerated("gen_random_uuid()")) @map("place_id") @db.Uuid
-  name              String    @db.VarChar(255)
-  localScriptAlias  String?   @map("local_script_alias") @db.VarChar(255)
+  placeId           String        @id @default(dbgenerated("gen_random_uuid()")) @map("place_id") @db.Uuid
+  name              String        @db.VarChar(255)
+  localScriptAlias  String?       @map("local_script_alias") @db.VarChar(255)
   /// OPEN vocabulary (municipality, municipalitySubdivision, neighbourhood,
   /// county, subdivision, country, …) — stored, never switched on.
-  providerLevelCode String    @map("provider_level_code") @db.VarChar(64)
-  countryCode       String    @map("country_code") @db.VarChar(2)
-  subdivisionCode   String?   @map("subdivision_code") @db.VarChar(8)
+  providerLevelCode String        @map("provider_level_code") @db.VarChar(64)
+  countryCode       String        @map("country_code") @db.VarChar(2)
+  subdivisionCode   String?       @map("subdivision_code") @db.VarChar(8)
   /// COUNTY AXIS (§18 item 8, ratified 2026-07-19): the identity-law
   /// discriminator for same-name municipalities within one subdivision.
   /// Stores the provider's county-axis NAME normalized (TomTom
@@ -1880,22 +1905,27 @@ model Place {
   /// code, because no stable cross-provider county code exists. NULL =
   /// county unknown (gap-filled by later observations) or meaningless
   /// (nodes at/above the county rung — a state is not inside a county).
-  county            String?   @db.VarChar(128)
+  county            String?       @db.VarChar(128)
   /// DAG edges captured from the reverse-geocode chain at creation.
-  parentPlaceIds    String[]  @default([]) @map("parent_place_ids") @db.Uuid
-  centroidLat       Decimal?  @map("centroid_lat") @db.Decimal(10, 8)
-  centroidLng       Decimal?  @map("centroid_lng") @db.Decimal(11, 8)
-  bboxMinLat        Decimal?  @map("bbox_min_lat") @db.Decimal(10, 8)
-  bboxMinLng        Decimal?  @map("bbox_min_lng") @db.Decimal(11, 8)
-  bboxMaxLat        Decimal?  @map("bbox_max_lat") @db.Decimal(10, 8)
-  bboxMaxLng        Decimal?  @map("bbox_max_lng") @db.Decimal(11, 8)
-  timeZone          String?   @map("time_zone") @db.VarChar(64)
-  provider          String    @default("tomtom") @db.VarChar(32)
-  providerPlaceId   String?   @map("provider_place_id") @db.VarChar(128)
-  createdAt         DateTime  @default(now()) @map("created_at")
-  promotedAt        DateTime? @map("promoted_at")
+  parentPlaceIds    String[]      @default([]) @map("parent_place_ids") @db.Uuid
+  centroidLat       Decimal?      @map("centroid_lat") @db.Decimal(10, 8)
+  centroidLng       Decimal?      @map("centroid_lng") @db.Decimal(11, 8)
+  bboxMinLat        Decimal?      @map("bbox_min_lat") @db.Decimal(10, 8)
+  bboxMinLng        Decimal?      @map("bbox_min_lng") @db.Decimal(11, 8)
+  bboxMaxLat        Decimal?      @map("bbox_max_lat") @db.Decimal(10, 8)
+  bboxMaxLng        Decimal?      @map("bbox_max_lng") @db.Decimal(11, 8)
+  timeZone          String?       @map("time_zone") @db.VarChar(64)
+  provider          String        @default("tomtom") @db.VarChar(32)
+  providerPlaceId   String?       @map("provider_place_id") @db.VarChar(128)
+  createdAt         DateTime      @default(now()) @map("created_at")
+  promotedAt        DateTime?     @map("promoted_at")
   curatedLists      CuratedList[]
 
+  /// THE identity key (one-ground charter P3): the vendor's stable geometry
+  /// id. Unique because identity must BE unique — the write-time exclusivity
+  /// guard in PlacesPromotionService refuses a second claim on the same
+  /// vendor entity, and this index makes that invariant structural.
+  @@unique([providerPlaceId], map: "places_provider_place_id_key")
   // Identity law: silent-fork prevention. The REAL unique constraint is a raw
   // expression index (migration 20260720050000): UNIQUE (country_code,
   // subdivision_code, lower(county), provider_level_code, lower(name))
@@ -1908,11 +1938,6 @@ model Place {
   // MERGE LAW's decision (PlacesCatalogService.resolveIdentity), not the
   // index's.
   @@index([countryCode, subdivisionCode])
-  /// THE identity key (one-ground charter P3): the vendor's stable geometry
-  /// id. Unique because identity must BE unique — the write-time exclusivity
-  /// guard in PlacesPromotionService refuses a second claim on the same
-  /// vendor entity, and this index makes that invariant structural.
-  @@unique([providerPlaceId], map: "places_provider_place_id_key")
   /// GIN: the descendant subtree walk's @> join (place-dag-read) — without it
   /// a country-scale subject's expansion seq-scanned per recursion level
   /// (the 13–17s NY home-feed latency, attributed 2026-07-26).

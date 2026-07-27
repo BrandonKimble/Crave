@@ -181,3 +181,64 @@ category card in the dish list, with a real score. Foundation now; UI later.
 - Drift-path migrations only; rebuild+restart :3000 after; boot-test.
 - RED-able specs per phase; suites green before each commit; deploy via
   ./scripts/rig/deploy.sh.
+
+
+## Phase 4 — LANDED 2026-07-27 (9842cdf1, 26a17736)
+
+Category items ship: `core_restaurant_items.is_category_item` (migration
+20260727060000) + projection construction + wire flag on FoodResult.
+Verified live: 321 items over 25 category-heavy restaurants (Uchi Austin ->
+sushi 18 mentions; Little Deli -> pizza 15). Banking unchanged. A real dish
+occupying (restaurant, category) wins — nothing minted. Invariant: a
+category item never lists itself in `categories`.
+CONSUMER AUDIT DONE BY ME (a delegated pass was wrong twice: it claimed the
+attributes array has no readers — search reads it in RAW SQL — and it
+recommended filtering category items OUT of dish scoring/results/profile
+lists, which would defeat the owner's entire design). The ONE true
+double-count was the two restaurant vote-total CTEs, which SUM
+mention_count across ALL of a restaurant's connections — both now exclude
+category items. Everything else verified safe: EXISTS eligibility (which
+category items are MEANT to satisfy), praise rollup (deduped per source
+doc, separate table), signals (built from events), poll topics (entity
+ids), photos/list items (nullable FKs).
+
+## Phase 4b — FOUNDATION LANDED, REST SPECIFIED
+
+MEASUREMENT THAT SHAPES THE DESIGN (2026-07-27): of 46,740 stamped
+restaurant-attribute pairs, **36,340 (77.7%) have NO reddit event behind
+them** — they come from Google enrichment + cuisine extraction. So
+"derive the array from the event ledger" would DESTROY 77.7% of the data.
+(First attempt at this query was wrong — a LATERAL count(*) never returns
+NULL; corrected to `= 0`. Trust the corrected number.)
+
+LANDED: `core_restaurant_attribute_evidence` (migration 20260727070000) +
+Prisma model. Grain: (restaurant_id, attribute_id, source_class) with
+`observations` = confidence within that class. NO decay by design — an
+attribute is a characterization, not praise; a patio does not fade.
+Correction comes from RECOMPUTATION.
+
+REMAINING (in safe order — additive first, flip last):
+1. WRITE evidence from all four sources alongside today's array writes
+   (no behavior change): unified-processing (source_class
+   'reddit_evidence', observations = mention count), restaurant-location-
+   enrichment ('places_api'), restaurant-cuisine-extraction
+   ('cuisine_llm'), poll-entity-seed ('poll_seed'). The entity-merge union
+   path becomes 'entity_merge' or is dropped once evidence merges.
+2. VERIFY the evidence table reproduces the current array (set-compare per
+   restaurant; expect >= parity, since evidence can also correct).
+3. FLIP: rebuild `restaurant_attributes` from the evidence table in the
+   projection rebuild (mirroring replaceRestaurantEntitySignals), so the
+   array becomes derived and re-extraction can finally correct it.
+4. SEARCH VERIFICATION IS MANDATORY at the flip: search reads
+   `r.restaurant_attributes` in RAW SQL (search-query.builder.ts ~852,
+   595, 605) and autocomplete at ~1189 — the array is now the SOLE
+   admission path for restaurant-attribute search (the signals OR-branch
+   was removed 2026-07-27, c4574e8e).
+5. Free cleanup while there: the tags reader
+   (polls/restaurant-mentions.service.ts ~112) should filter
+   `entity.status = 'active'` — 4,769 signal rows point at archived
+   entities today (1,693 of them restaurant_attributes).
+TAGS CONSTRAINT (owner): the tags reader ranks top-30 by mentionCount
+ACROSS ALL entity types with no type filter — so signals must keep the
+(restaurant, entity) grain. Source class belongs as a COLUMN on the new
+evidence table, never as extra signal rows, or tag counts fracture.
