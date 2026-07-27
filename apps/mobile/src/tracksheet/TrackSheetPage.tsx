@@ -169,9 +169,17 @@ export function TrackSheetPage<Item>({
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
+  // NOT mirrored into the ref on every render: the ref is the monotonic
+  // accumulator and must only advance inside the handler.
   const [shortPageFill, setShortPageFill] = React.useState(0);
   const shortPageFillRef = React.useRef(0);
-  shortPageFillRef.current = shortPageFill;
+  // Fresh page ⇒ fresh measurement: the accumulator resets when the data
+  // identity changes, so a long page never inherits a short page's fill.
+  const listDataIdentity = list.data;
+  React.useEffect(() => {
+    shortPageFillRef.current = 0;
+    setShortPageFill(0);
+  }, [listDataIdentity]);
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
@@ -413,13 +421,20 @@ export function TrackSheetPage<Item>({
   const handleContentSizeChange = React.useCallback(
     (_width: number, height: number) => {
       physics.contentHeight.value = height;
+      // THE FILL IS MONOTONIC (thrash fix, 2026-07-27): the fill is derived
+      // from a measurement the fill itself changes — a feedback loop that
+      // oscillated content height MID-GESTURE (trace: 1702<->1522), and every
+      // shrink made UIKit clamp the offset, killing the drag. Grow-only makes
+      // the loop converge in one step by construction; the fill resets when
+      // the DATA identity changes (a new page measures fresh).
       const required = trackH + SCREEN.height;
-      const bare = height - shortPageFillRef.current;
-      const deficit = required - bare;
-      const nextFill = Math.max(0, Math.ceil(deficit));
-      if (Math.abs(nextFill - shortPageFillRef.current) > 1) {
-        setShortPageFill(nextFill);
+      const deficit = required - height;
+      if (deficit <= 1) {
+        return;
       }
+      const nextFill = shortPageFillRef.current + Math.ceil(deficit);
+      shortPageFillRef.current = nextFill;
+      setShortPageFill(nextFill);
     },
     [physics.contentHeight, trackH]
   );
