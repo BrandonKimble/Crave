@@ -2111,7 +2111,10 @@ export class RestaurantLocationEnrichmentService {
     }
   }
 
-  private normalizeWebsiteDomain(value: unknown): string | null {
+  /** THE domain normalizer — shared so every identity decision (enrichment
+   *  conflict resolution, the duplicate sweep, poll-path location adoption)
+   *  compares domains the same way. */
+  normalizeWebsiteDomain(value: unknown): string | null {
     const normalizedUrl = this.normalizeWebsiteUrl(value);
     if (!normalizedUrl) {
       return null;

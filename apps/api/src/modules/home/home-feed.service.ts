@@ -522,8 +522,9 @@ export class HomeFeedService {
   /**
    * The dynamic near-you shelf: when the header place is FINER than the
    * resolved city, filter the city's global RESTAURANT lists' items to
-   * restaurants inside the header place's ground at read time (bbox arms +
-   * ST_Covers when a polygon exists — same containment law as the builder).
+   * restaurants inside the header place's GROUND at read time (one
+   * ST_Covers on the GiST index — one-ground charter P1/P2; the bbox arms
+   * and the groundless-place fallback arm are gone).
    * A filtered list only appears when it passes the SAME min-viable gate —
    * a derived view, never a thin fake list.
    */
@@ -548,27 +549,14 @@ export class HomeFeedService {
       SELECT i.list_id, i.rank, e.name
       FROM curated_list_items i
       JOIN core_entities e ON e.entity_id = i.entity_id
-      JOIN places hp ON hp.place_id = ${headerPlace.placeId}::uuid
+      JOIN place_geometries hpg ON hpg.place_id = ${headerPlace.placeId}::uuid
       WHERE i.list_id = ANY(${restaurantLists.map((list) => list.listId)}::uuid[])
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
-        AND hp.bbox_min_lat IS NOT NULL
-        AND e.latitude BETWEEN hp.bbox_min_lat AND hp.bbox_max_lat
-        AND ((hp.bbox_min_lng <= hp.bbox_max_lng
-              AND e.longitude BETWEEN hp.bbox_min_lng AND hp.bbox_max_lng)
-             OR (hp.bbox_min_lng > hp.bbox_max_lng
-                 AND (e.longitude >= hp.bbox_min_lng OR e.longitude <= hp.bbox_max_lng)))
-        AND (NOT EXISTS (
-               SELECT 1 FROM place_geometries pg WHERE pg.place_id = hp.place_id
-             )
-             OR EXISTS (
-               SELECT 1 FROM place_geometries pg
-               WHERE pg.place_id = hp.place_id
-                 AND ST_Covers(
-                   pg.geometry,
-                   ST_SetSRID(ST_MakePoint(e.longitude::float8, e.latitude::float8), 4326)
-                 )
-             ))
+        AND ST_Covers(
+              hpg.geometry,
+              ST_SetSRID(ST_MakePoint(e.longitude::float8, e.latitude::float8), 4326)
+            )
       ORDER BY i.list_id, i.rank
     `);
     const byList = new Map<string, string[]>();

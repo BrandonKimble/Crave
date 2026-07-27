@@ -16,7 +16,7 @@ const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
 // COALESCE fallback arm). The old scoring_market_key → core_markets
 // ST_Covers key is DEAD.
 const TERRITORY_ORDER_SNIPPET =
-  "EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = fl.restaurant_id AND p.bbox_min_lat IS NOT NULL AND fl.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat AND ((p.bbox_min_lng <= p.bbox_max_lng AND fl.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng) OR (p.bbox_min_lng > p.bbox_max_lng AND (fl.longitude::numeric >= p.bbox_min_lng OR fl.longitude::numeric <= p.bbox_max_lng))) AND EXISTS (SELECT 1 FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(fl.longitude::float8, fl.latitude::float8), 4326)))) DESC";
+  "EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = fl.restaurant_id AND EXISTS (SELECT 1 FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(fl.longitude::float8, fl.latitude::float8), 4326)))) DESC";
 
 function buildPlan(): QueryPlan {
   return {

@@ -602,9 +602,17 @@ export class CuratedListBuilderService {
   // ---------- shared data reads ----------
 
   /**
-   * Scored restaurants located in the city: bbox containment (wrap-aware
-   * lng arms, same law as search's territory read) refined by the place
-   * polygon via ST_Covers when a Tier-2 geometry exists.
+   * Scored restaurants located in the city: THE GROUND decides, alone
+   * (one-ground charter P1/P2, 2026-07-26). The city's polygon ST_Covers the
+   * restaurant point — one predicate, served by the GiST index on
+   * place_geometries.geometry.
+   *
+   * What this replaces: wrap-aware bbox lng arms as a prefilter PLUS a
+   * `NOT EXISTS place_geometries OR ST_Covers(...)` disjunct whose first arm
+   * let the bbox silently judge a groundless place. That arm was already
+   * unreachable — the `bbox_min_lat IS NOT NULL` guard excluded the only
+   * groundless row — so this is a pure simplification, and the ground was
+   * always the real judge.
    */
   private cityRestaurants(cityPlaceId: string): Promise<CityRestaurantRow[]> {
     return this.prisma.$queryRaw<CityRestaurantRow[]>(Prisma.sql`
@@ -624,29 +632,16 @@ export class CuratedListBuilderService {
       FROM core_entities e
       JOIN core_public_entity_scores pes
         ON pes.subject_type = 'restaurant' AND pes.subject_id = e.entity_id
-      JOIN places p ON p.place_id = ${cityPlaceId}::uuid
+      JOIN place_geometries pg ON pg.place_id = ${cityPlaceId}::uuid
       LEFT JOIN core_restaurant_items c ON c.restaurant_id = e.entity_id
       WHERE e.type = 'restaurant'
         AND e.status = 'active'
         AND e.latitude IS NOT NULL
         AND e.longitude IS NOT NULL
-        AND p.bbox_min_lat IS NOT NULL
-        AND e.latitude BETWEEN p.bbox_min_lat AND p.bbox_max_lat
-        AND ((p.bbox_min_lng <= p.bbox_max_lng
-              AND e.longitude BETWEEN p.bbox_min_lng AND p.bbox_max_lng)
-             OR (p.bbox_min_lng > p.bbox_max_lng
-                 AND (e.longitude >= p.bbox_min_lng OR e.longitude <= p.bbox_max_lng)))
-        AND (NOT EXISTS (
-               SELECT 1 FROM place_geometries pg WHERE pg.place_id = p.place_id
-             )
-             OR EXISTS (
-               SELECT 1 FROM place_geometries pg
-               WHERE pg.place_id = p.place_id
-                 AND ST_Covers(
-                   pg.geometry,
-                   ST_SetSRID(ST_MakePoint(e.longitude::float8, e.latitude::float8), 4326)
-                 )
-             ))
+        AND ST_Covers(
+              pg.geometry,
+              ST_SetSRID(ST_MakePoint(e.longitude::float8, e.latitude::float8), 4326)
+            )
       GROUP BY e.entity_id, e.name, e.restaurant_attributes,
                pes.display_score, pes.percentile_rank, pes.rising
     `);

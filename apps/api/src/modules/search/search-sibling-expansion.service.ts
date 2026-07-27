@@ -147,13 +147,22 @@ export class SearchSiblingExpansionService {
    */
   async getNameContainmentVariantFoodIds(
     baseFoodIds: string[],
-  ): Promise<string[]> {
+  ): Promise<{ isVariantOf: string[]; mentionsIt: string[] }> {
     const ids = Array.from(new Set(baseFoodIds.filter(Boolean)));
-    if (!ids.length) return [];
+    if (!ids.length) return { isVariantOf: [], mentionsIt: [] };
     try {
-      const rows = await this.prisma.$queryRaw<{ foodId: string }[]>(
+      // HEAD-FINAL RULE (2026-07-27): English compound nouns are head-final,
+      // so the position of the query term decides what the variant IS.
+      // "chicago deep dish PIZZA" ends with the term -> it IS a pizza (tier 0,
+      // beside verified category members). "PIZZA sauce / dough / roll" only
+      // MENTIONS it -> a different head noun, so it is related-not-the-thing
+      // (tier 1, ranked after). No stoplist: grammar decides, not a word list.
+      const rows = await this.prisma.$queryRaw<
+        { foodId: string; headFinal: boolean }[]
+      >(
         Prisma.sql`
-          SELECT DISTINCT v.entity_id AS "foodId"
+          SELECT DISTINCT v.entity_id AS "foodId",
+                 (lower(v.name) LIKE ('%' || ' ' || lower(b.name))) AS "headFinal"
           FROM core_entities v
           JOIN core_entities b
             ON b.entity_id = ANY(${ids}::uuid[])
@@ -165,7 +174,17 @@ export class SearchSiblingExpansionService {
         `,
       );
       const exclude = new Set(ids);
-      return rows.map((r) => r.foodId).filter((id) => !exclude.has(id));
+      const isVariantOf = new Set<string>();
+      const mentionsIt = new Set<string>();
+      for (const row of rows) {
+        if (exclude.has(row.foodId)) continue;
+        (row.headFinal ? isVariantOf : mentionsIt).add(row.foodId);
+      }
+      for (const id of isVariantOf) mentionsIt.delete(id);
+      return {
+        isVariantOf: Array.from(isVariantOf),
+        mentionsIt: Array.from(mentionsIt),
+      };
     } catch (error) {
       this.logger.warn('Name-containment variant read failed (failing open)', {
         baseCount: ids.length,
@@ -174,7 +193,7 @@ export class SearchSiblingExpansionService {
             ? { message: error.message }
             : { message: String(error) },
       });
-      return [];
+      return { isVariantOf: [], mentionsIt: [] };
     }
   }
 

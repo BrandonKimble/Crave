@@ -192,17 +192,38 @@ export class PollEntitySeedService {
           status: 'active',
           name: { equals: resolvedName, mode: 'insensitive' },
         },
-        select: { entityId: true, name: true },
+        select: { entityId: true, name: true, canonicalDomain: true },
       });
-      if (sameName) {
+      // DOMAIN-FIRST (red team 2026-07-27): a shared NAME is not identity —
+      // the enrichment conflict resolver and the duplicate sweep both decide
+      // on domain, and the verified place in scope carries one. Adopting on
+      // bare name would write a wrong LOCATION row at ingest (worse than a
+      // duplicate entity: locations are what the map and see-locations mode
+      // render). Adopt only when the domains AGREE or one side is silent;
+      // two distinct owned domains mean two businesses -> create separately.
+      const placeDomain = this.restaurantEnrichment.normalizeWebsiteDomain(
+        match.place.websiteUri,
+      );
+      const existingDomain = this.restaurantEnrichment.normalizeWebsiteDomain(
+        sameName?.canonicalDomain,
+      );
+      const domainsConflict = Boolean(
+        placeDomain && existingDomain && placeDomain !== existingDomain,
+      );
+      if (sameName && !domainsConflict) {
         const locationData = this.restaurantEnrichment.buildLocationCreateInput(
           sameName.entityId,
           match.place,
         );
         await tx.restaurantLocation.create({ data: locationData });
         this.logger.info(
-          'Poll input matched existing restaurant by name — attached location',
-          { entityId: sameName.entityId, placeId },
+          'Poll input matched existing restaurant (name + domain agreement) — attached location',
+          {
+            entityId: sameName.entityId,
+            placeId,
+            placeDomain,
+            existingDomain,
+          },
         );
         return {
           entityId: sameName.entityId,

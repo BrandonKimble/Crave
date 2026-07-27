@@ -792,20 +792,22 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * NAMESPACE GATE (2026-07-26 leakage root cause): the model occasionally
-   * emits attribute-vocabulary words (meal-periods/styles — 'breakfast',
-   * 'comfort food') in `food`/`food_categories` despite §3.5/§4.3, and
-   * minting had NO validation — the leak became live food entities
-   * ('breakfast' × 258 category events). Deterministic, DATA-DRIVEN (no
-   * word lists): a food-lane string whose normalized name is an ACTIVE
-   * attribute entity is dropped from the food lane — UNLESS a same-named
-   * food entity has real dish evidence (connections), which exempts
-   * legitimately dual words ('cocktails' has menu-item evidence; drinks
-   * are orderable and belong in the food namespace). Dropped strings are
-   * warn-logged; the attribute side of the mention is untouched (the model
-   * emits attributes separately when appropriate).
+   * NAMESPACE COLLISION OBSERVER (2026-07-27, red-teamed down from a
+   * blocking gate). The leak it watches — attribute words ('breakfast')
+   * arriving in `food`/`food_categories` — is a SEMANTIC judgment, and the
+   * prompt now owns it via the order test (§3.0) applied at composition and
+   * itemhood altitude; the proven replay showed zero collisions on a real
+   * batch. A blocking gate here was WRONG twice over: a genuinely new dish
+   * whose name collides with an attribute ('bbq', 'brunch') could never
+   * survive its FIRST mention (the connections-exemption can only protect
+   * a term that already got through), and silently dropping emitted
+   * evidence violates the pipeline's never-lose-evidence doctrine
+   * (append-only ledger, archive-never-delete, banked support mentions).
+   * So this observes and warns — giving the miss RATE the operator needs —
+   * and mutates nothing. If the rate ever climbs, the fix belongs in the
+   * prompt, not in a post-hoc filter.
    */
-  private async gateFoodNamespaceLeaks(
+  private async observeFoodNamespaceCollisions(
     llmOutput: EnrichedLLMOutputStructure,
   ): Promise<void> {
     const candidates = new Set<string>();
@@ -838,39 +840,31 @@ export class UnifiedProcessingService implements OnModuleInit {
         )
     `;
     if (!gatedRows.length) return;
-    const gated = new Set(gatedRows.map((r) => r.name));
+    const colliding = new Set(gatedRows.map((r) => r.name));
     for (const mention of llmOutput.mentions) {
+      const hits: string[] = [];
       if (
         typeof mention.food === 'string' &&
-        gated.has(mention.food.trim().toLowerCase())
+        colliding.has(mention.food.trim().toLowerCase())
       ) {
+        hits.push(mention.food);
+      }
+      if (Array.isArray(mention.food_categories)) {
+        for (const c of mention.food_categories) {
+          if (typeof c === 'string' && colliding.has(c.trim().toLowerCase())) {
+            hits.push(c);
+          }
+        }
+      }
+      if (hits.length) {
         this.logger.warn(
-          'Namespace gate: attribute word emitted as food — dropped',
+          'Namespace collision: attribute-vocabulary word emitted in the food lane (observed, not altered)',
           {
-            operation: 'food_namespace_gate',
-            word: mention.food,
+            operation: 'food_namespace_collision',
+            words: hits,
             mentionTempId: mention.temp_id,
           },
         );
-        mention.food = null;
-      }
-      if (Array.isArray(mention.food_categories)) {
-        const kept = mention.food_categories.filter((c) => {
-          const drop =
-            typeof c === 'string' && gated.has(c.trim().toLowerCase());
-          if (drop) {
-            this.logger.warn(
-              'Namespace gate: attribute word emitted as food_category — dropped',
-              {
-                operation: 'food_namespace_gate',
-                word: c,
-                mentionTempId: mention.temp_id,
-              },
-            );
-          }
-          return !drop;
-        });
-        mention.food_categories = kept.length ? kept : null;
       }
     }
   }
@@ -879,7 +873,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     llmOutput: EnrichedLLMOutputStructure,
     engineId: string | null,
   ): Promise<BatchResolutionResult> {
-    await this.gateFoodNamespaceLeaks(llmOutput);
+    await this.observeFoodNamespaceCollisions(llmOutput);
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
       engineId,
     });

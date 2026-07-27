@@ -1455,12 +1455,12 @@ geographic_restaurants AS (
    * engine's member places when it has an engine (territory = derived
    * union; a member's ground geometrically covers its DAG descendants for a
    * point test), else its anchor place (engineless poll-bootstrapped towns).
-   * §2.5(c) under §2.6 GROUND UNIFICATION (C4 cut): the wrap-aware bbox
-   * test (min > max = wrapped, catalog convention) is the PREFILTER ONLY;
-   * THE ONE GROUND judges — ST_Covers(geometry, point) against the place's
-   * place_geometries row (sketch envelope or full outline, one law). A
-   * location inside a member's bbox overhang but outside its ground never
-   * wins the pin; a ground-less place (bbox-less birth) never judges.
+   * THE ONE GROUND judges, alone (one-ground charter P2, 2026-07-26):
+   * ST_Covers(geometry, point) joined straight onto place_geometries and
+   * served by its GiST index. The wrap-aware bbox prefilter this replaces
+   * hand-rolled the antimeridian arithmetic in raw SQL (one of four copies)
+   * for no gain — the ground was already the judge, and a place with no
+   * ground still never judges (the join simply finds nothing).
    */
   private buildDistanceOrder(
     searchCenter: { lat: number; lng: number } | null | undefined,
@@ -1476,15 +1476,6 @@ geographic_restaurants AS (
            ELSE ARRAY[src.anchor_place_id] END)
     WHERE pes.subject_type = 'restaurant'
       AND pes.subject_id = ${Prisma.raw(alias)}.restaurant_id
-      AND p.bbox_min_lat IS NOT NULL
-      AND ${Prisma.raw(alias)}.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat
-      AND (
-        (p.bbox_min_lng <= p.bbox_max_lng
-          AND ${Prisma.raw(alias)}.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng)
-        OR (p.bbox_min_lng > p.bbox_max_lng
-          AND (${Prisma.raw(alias)}.longitude::numeric >= p.bbox_min_lng
-            OR ${Prisma.raw(alias)}.longitude::numeric <= p.bbox_max_lng))
-      )
       AND EXISTS (
         SELECT 1 FROM place_geometries pgm
         WHERE pgm.place_id = p.place_id
@@ -1492,7 +1483,7 @@ geographic_restaurants AS (
                 ST_SetSRID(ST_MakePoint(${Prisma.raw(alias)}.longitude::float8,
                                         ${Prisma.raw(alias)}.latitude::float8), 4326)))
   ) DESC`;
-    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND p.bbox_min_lat IS NOT NULL AND ${alias}.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat AND ((p.bbox_min_lng <= p.bbox_max_lng AND ${alias}.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng) OR (p.bbox_min_lng > p.bbox_max_lng AND (${alias}.longitude::numeric >= p.bbox_min_lng OR ${alias}.longitude::numeric <= p.bbox_max_lng))) AND EXISTS (SELECT 1 FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(${alias}.longitude::float8, ${alias}.latitude::float8), 4326)))) DESC`;
+    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND EXISTS (SELECT 1 FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(${alias}.longitude::float8, ${alias}.latitude::float8), 4326)))) DESC`;
 
     if (
       !searchCenter ||

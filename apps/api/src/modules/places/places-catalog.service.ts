@@ -361,85 +361,27 @@ export class PlacesCatalogService {
    */
   async smallestContaining(target: GeoPoint | GeoBbox): Promise<Place | null> {
     const box = isGeoPoint(target) ? pointToBbox(target) : target;
-    // Wrap-aware prefilter (see placesInView): the plain range branch is the
-    // exact containment test for non-crossing rows against a non-crossing
-    // target (and merely over-inclusive otherwise); crossing rows are
-    // prefetched and judged in memory. bboxContains below screens the
-    // candidates; ground judges them.
-    const rows = await this.prisma.place.findMany({
-      where: {
-        bboxMinLat: { lte: box.minLat },
-        bboxMaxLat: { gte: box.maxLat },
-        OR: [
-          {
-            bboxMinLng: { lte: box.minLng },
-            bboxMaxLng: { gte: box.maxLng },
-          },
-          { bboxMinLng: { gt: this.prisma.place.fields.bboxMaxLng } },
-        ],
-      },
-    });
-    const candidates = rows.filter((place) => {
-      const bbox = placeBbox(place);
-      return bbox !== null && bboxContains(bbox, box);
-    });
-    if (candidates.length === 0) {
+    // ONE GROUND, ONE QUERY (one-ground charter P2, 2026-07-26): the law IS
+    // "the smallest ground that covers the target", so ask exactly that —
+    // ST_Covers on the GiST index, ordered by real ground area, name as the
+    // deterministic tiebreak. This replaces a bbox range prefilter + an
+    // in-memory bboxContains screen + a second verdict query, and removes
+    // the crossing-row CATCH-ALL that dragged EVERY antimeridian place into
+    // every containment read. A place with no ground still never judges —
+    // it simply isn't in place_geometries.
+    const placeId = await this.smallestCoveringPlaceId(box);
+    if (!placeId) {
       return null;
     }
-    const verdicts = await this.loadGroundContainmentVerdicts(
-      candidates.map((place) => place.placeId),
-      box,
-    );
-    let smallest: Place | null = null;
-    // Rank key: real ground area, smallest wins (§2.6 single-arm — every
-    // candidate is ground-judged; no tiers, no bbox ranking).
-    let smallestArea: number | null = null;
-    for (const place of candidates) {
-      const verdict = verdicts.get(place.placeId);
-      if (!verdict) {
-        // No ground row (bbox-less birth / transient error): not a judge-
-        // able container — excluded, never bbox-judged.
-        continue;
-      }
-      if (!verdict.covers) {
-        // Real ground refuses the target: the bbox overhang lied.
-        continue;
-      }
-      if (
-        smallestArea === null ||
-        verdict.groundArea < smallestArea ||
-        // Deterministic tiebreak on equal rank (name-stability flavor, §2).
-        (verdict.groundArea === smallestArea &&
-          smallest !== null &&
-          place.name.localeCompare(smallest.name) < 0)
-      ) {
-        smallest = place;
-        smallestArea = verdict.groundArea;
-      }
-    }
-    return smallest;
+    return this.prisma.place.findUnique({ where: { placeId } });
   }
 
   /**
-   * §2.5(c) ground verdicts for smallestContaining's candidates: ONE query
-   * over place_geometries (mirrors loadSimplifiedGrounds' shape — but NO
-   * simplification: ST_Covers on the full stored geometry is exact and
-   * cheap at candidate cardinalities). Wrap-aware target envelope (a
-   * crossing target box becomes the union of its two arms).
-   *
-   * Failure posture (§2.6): an error yields an empty verdict map (warn
-   * logged) — smallestContaining then honestly answers "no container"
-   * for THIS read rather than bbox-judging; consumers already tolerate a
-   * null place (transient, next read heals). Never a second judgment arm.
+   * The covering read itself. Failure posture (§2.6 unchanged): an error
+   * answers "no container" for THIS read (warn logged) rather than falling
+   * back to a weaker judgment — consumers already tolerate null.
    */
-  private async loadGroundContainmentVerdicts(
-    placeIds: string[],
-    box: GeoBbox,
-  ): Promise<Map<string, { covers: boolean; groundArea: number }>> {
-    const verdicts = new Map<string, { covers: boolean; groundArea: number }>();
-    if (placeIds.length === 0) {
-      return verdicts;
-    }
+  private async smallestCoveringPlaceId(box: GeoBbox): Promise<string | null> {
     const envelope =
       box.minLng <= box.maxLng
         ? Prisma.sql`ST_MakeEnvelope(${box.minLng}::float8, ${box.minLat}::float8, ${box.maxLng}::float8, ${box.maxLat}::float8, 4326)`
@@ -447,32 +389,29 @@ export class PlacesCatalogService {
             ST_MakeEnvelope(${box.minLng}::float8, ${box.minLat}::float8, 180::float8, ${box.maxLat}::float8, 4326),
             ST_MakeEnvelope((-180)::float8, ${box.minLat}::float8, ${box.maxLng}::float8, ${box.maxLat}::float8, 4326))`;
     try {
-      const rows = await this.prisma.$queryRaw<
-        Array<{ placeId: string; covers: boolean; groundArea: number }>
-      >(Prisma.sql`
-        SELECT place_id AS "placeId",
-               ST_Covers(geometry, ${envelope}) AS "covers",
-               ST_Area(geometry)::float8 AS "groundArea"
-        FROM place_geometries
-        WHERE place_id = ANY(${placeIds}::uuid[])
-      `);
-      for (const row of rows) {
-        verdicts.set(row.placeId, {
-          covers: row.covers,
-          groundArea: Number(row.groundArea),
-        });
-      }
+      const rows = await this.prisma.$queryRaw<Array<{ placeId: string }>>(
+        Prisma.sql`
+        /*places:smallest_containing*/
+        SELECT pg.place_id AS "placeId"
+        FROM place_geometries pg
+        JOIN places p ON p.place_id = pg.place_id
+        WHERE ST_Covers(pg.geometry, ${envelope})
+        ORDER BY ST_Area(pg.geometry) ASC, p.name ASC
+        LIMIT 1
+      `,
+      );
+      return rows[0]?.placeId ?? null;
     } catch (error) {
       this.logger.warn(
-        'Ground containment verdicts failed — no container answered for this read (§2.6: never bbox-judged)',
+        'Ground containment read failed — no container answered for this read (§2.6: never bbox-judged)',
         {
           error: {
             message: error instanceof Error ? error.message : String(error),
           },
         },
       );
+      return null;
     }
-    return verdicts;
   }
 
   /**

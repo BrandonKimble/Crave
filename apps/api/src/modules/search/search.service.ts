@@ -430,10 +430,18 @@ export class SearchService {
               )
             : Promise.resolve([] as { siblingId: string; relevance: number }[]),
         ]);
+        // Head-final name variants ARE the thing (tier 0 with verified
+        // category members); terms that merely mention the query food
+        // ("pizza sauce") are related, so they ride the tier-1 widened set.
         const categoryMemberFoodIds = Array.from(
-          new Set([...edgeMemberFoodIds, ...nameVariantFoodIds]),
+          new Set([...edgeMemberFoodIds, ...nameVariantFoodIds.isVariantOf]),
         );
-        const denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
+        const denseSiblingFoodIds = Array.from(
+          new Set([
+            ...siblingMatches.map((s) => s.siblingId),
+            ...nameVariantFoodIds.mentionsIt,
+          ]),
+        );
         if (
           categoryMemberFoodIds.length ||
           denseSiblingFoodIds.length ||
@@ -443,6 +451,8 @@ export class SearchService {
           for (const id of categoryMemberFoodIds) relevanceByFoodId[id] = 1;
           for (const s of siblingMatches)
             relevanceByFoodId[s.siblingId] = s.relevance;
+          for (const id of nameVariantFoodIds.mentionsIt)
+            relevanceByFoodId[id] = relevanceByFoodId[id] ?? 1;
           planExpansion = {
             foodIds: [],
             foodAttributeIds: [],
