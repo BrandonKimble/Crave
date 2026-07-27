@@ -2218,3 +2218,23 @@ geometry arbitration — TrackScrollKit proxy rejects pan-begins whose touch
 starts inside the chrome band (gestureRecognizerShouldBegin), making the
 chrome the second input surface BY CONSTRUCTION rather than by view-layer
 hit-blocking. Seat latch (userOwnsPosture) landed: seats never fight gestures.
+
+### HEADER GRAB IS THE TRACK + THE FILL LAW (2026-07-27, ground-up rebuild)
+
+Owner directive: question everything, no second-rate abstractions. Result:
+- THE HEADER GRAB IS THE TRACK: the RNGH header pan (second engine: per-frame
+  JS hops, separate release snap, ordering races) is DELETED. A chrome-born
+  drag drives the same native track bounded to [0,H] (TrackScrollKit
+  chromeGrab: begin-detection by touch geometry, per-frame clamp at H while
+  tracking, release ALWAYS detent-settles on the native spring). One engine,
+  native finger tracking, and the chrome stays touch-opaque for list
+  scrolling by the same geometry.
+- THE FILL LAW (recurring τ≈225 solved): UIKit clamps settles to
+  contentH − viewport, so SHORT PAGES silently forbade τ near H and every
+  spring settle was dragged back to the content edge (empty polls page).
+  TrackSheetPage guarantees contentH ≥ spacer(H) + viewport via a measured
+  footer fill — every detent reachable on every page BY CONSTRUCTION.
+- Also this arc: stable physics identity (the seat-fight feel bug), the
+  user-owns-posture latch, native setOffset channel retired with the pan.
+Verified: header drag follows the finger natively and settles exactly on the
+middle detent; body drags follow + stay.
