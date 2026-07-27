@@ -371,18 +371,18 @@ const useTrackScenePageChrome = (
     [Strip, scene]
   );
   const sharedSheetOwner2 = useAppRouteSharedSheetRuntimeOwner();
-  // RED-proven (2026-07-27): binding sheetTranslateY woke BEHAVIORAL riders —
-  // the dismiss-motion plane / search foreground-launch intent read the track's
-  // header drag as search-session motion and opened the suggestion surface.
-  // The old writer carried implicit session context; those riders must be
-  // audited scene-by-scene before translateY binds (acceptance inventory §5.8
-  // subscriber table). Until then only the safe reader set (divider, origin
-  // capture) gets its value via sheetScrollOffset.
+  // POST-FLIP: the track is the ONLY sheetTranslateY writer (the old runtime
+  // no longer renders), so the full binding is on — search chrome scale, the
+  // scrim, and the shortcut choreography ride the track (inventory §3). The
+  // pre-flip misfire (suggestion surface) was the OLD system's state machines
+  // reacting to a second writer; with one writer the semantics are the
+  // production ones. Behavioral riders stay on the burn-in watchlist.
   const sharedSheetPublicationBindings = React.useMemo(
     () => ({
+      sheetTranslateY: sharedSheetOwner2.sheetTranslateY,
       sheetScrollOffset: sharedSheetOwner2.sheetScrollOffset,
     }),
-    [sharedSheetOwner2.sheetScrollOffset]
+    [sharedSheetOwner2.sheetScrollOffset, sharedSheetOwner2.sheetTranslateY]
   );
   const geometry = React.useMemo(
     () => ({
@@ -537,7 +537,15 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         onEndReachedThreshold: publishedBody.onEndReachedThreshold,
       };
     }
-    const partsFor = scene === 'polls' ? pollsParts : scene === 'home' ? homeParts : null;
+    // The search-root scene IS the home surface (curated shelves) — the boot
+    // sheet. Its dual-band results composition migrates separately; until then
+    // the home shelves are the correct content (post-flip owner report).
+    const partsFor =
+      scene === 'polls'
+        ? pollsParts
+        : scene === 'home' || scene === 'search'
+          ? homeParts
+          : null;
     if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
       const spec = partsFor.sceneBodyContent;
       return {
