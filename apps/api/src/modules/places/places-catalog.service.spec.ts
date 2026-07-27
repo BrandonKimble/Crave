@@ -78,6 +78,9 @@ function makeHarness(
   const findUniqueOrThrow = jest
     .fn()
     .mockImplementation(() => Promise.resolve(makePlaceRow()));
+  const findUnique = jest
+    .fn()
+    .mockImplementation(() => Promise.resolve(makePlaceRow()));
   const executeRaw = jest.fn().mockResolvedValue(1);
   const queryRaw = jest.fn().mockResolvedValue([]);
   const prisma: any = {
@@ -87,6 +90,7 @@ function makeHarness(
       updateMany,
       findMany,
       findUniqueOrThrow,
+      findUnique,
       // Prisma field-reference stub (crossing-row branch of the WHEREs).
       fields: { bboxMaxLng: Symbol('bboxMaxLng') },
     },
@@ -104,6 +108,7 @@ function makeHarness(
     updateMany,
     findMany,
     findUniqueOrThrow,
+    findUnique,
     executeRaw,
     queryRaw,
     birthListener,
@@ -763,88 +768,64 @@ describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
 });
 
 describe('PlacesCatalogService.smallestContaining — §2/§3 containment read', () => {
-  it('picks the smallest-GROUND-area containing place (point = zero-area bbox; §2.6 every candidate is ground-judged)', async () => {
-    const city = makePlaceRow({
-      name: 'City',
-      bboxMinLat: 0,
-      bboxMinLng: 0,
-      bboxMaxLat: 1,
-      bboxMaxLng: 1,
-    });
-    const county = makePlaceRow({
-      name: 'County',
-      bboxMinLat: -1,
-      bboxMinLng: -1,
-      bboxMaxLat: 2,
-      bboxMaxLng: 2,
-    });
-    const { service, findMany, queryRaw } = makeHarness([]);
-    findMany.mockResolvedValue([county, city]);
-    queryRaw.mockResolvedValue([
-      { placeId: city.placeId, covers: true, groundArea: 1 },
-      { placeId: county.placeId, covers: true, groundArea: 9 },
-    ]);
+  // ONE GROUND, ONE QUERY (one-ground charter P2): the containment LAW now
+  // lives in SQL — `ST_Covers(geometry, envelope)` selects, `ORDER BY
+  // ST_Area(geometry) ASC` ranks, and a place absent from place_geometries is
+  // simply not a row. Those three facts are proven against the REAL database
+  // (verified 2026-07-26: a downtown-Austin point ranks Downtown Austin <
+  // Austin < Travis < Texas; a point in Austin's bbox corner but outside its
+  // polygon resolves to its true container, NOT Austin). What this unit layer
+  // can still prove honestly is the SHAPE of the read: the wrap-aware
+  // envelope, the single ordered query, and the failure posture.
+  it('issues ONE ordered ground query and hydrates the winner (no bbox prefilter, no crossing catch-all)', async () => {
+    const { service, queryRaw, findMany, findUnique } = makeHarness([]);
+    const winner = makePlaceRow({ name: 'Downtown' });
+    queryRaw.mockResolvedValue([{ placeId: winner.placeId }]);
+    findUnique.mockResolvedValue(winner);
 
     const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
-    expect(smallest?.name).toBe('City');
+    expect(smallest?.name).toBe('Downtown');
+    // The bbox range prefilter is GONE — no place.findMany in this read.
+    expect(findMany).not.toHaveBeenCalled();
+    const sql = queryRaw.mock.calls[0][0].sql as string;
+    expect(sql).toContain('/*places:smallest_containing*/');
+    expect(sql).toContain('ST_Covers');
+    expect(sql).toContain('ORDER BY ST_Area(pg.geometry) ASC');
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { placeId: winner.placeId },
+    });
   });
 
-  it('§2.5(c) C2 cut: real ground JUDGES — a target inside a neighbor bbox overhang but outside its ground resolves to the true container', async () => {
-    // The border case (El Paso / Juárez class): Overhang's bbox contains the
-    // target, but its GROUND (polygon) refuses it; True Town's ground covers
-    // it. Bbox-smallest would pick Overhang (smaller rectangle) — the
-    // polygon law must refuse it.
-    const overhang = makePlaceRow({
-      name: 'Overhang',
-      bboxMinLat: 0.4,
-      bboxMinLng: 0.4,
-      bboxMaxLat: 0.6,
-      bboxMaxLng: 0.6,
-    });
-    const trueTown = makePlaceRow({
-      name: 'TrueTown',
-      bboxMinLat: 0,
-      bboxMinLng: 0,
-      bboxMaxLat: 1,
-      bboxMaxLng: 1,
-    });
-    const { service, findMany, queryRaw } = makeHarness([]);
-    findMany.mockResolvedValue([overhang, trueTown]);
-    queryRaw.mockResolvedValue([
-      { placeId: overhang.placeId, covers: false, groundArea: 0.01 },
-      { placeId: trueTown.placeId, covers: true, groundArea: 0.8 },
-    ]);
-
-    const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
-    expect(smallest?.name).toBe('TrueTown');
+  it('no covering ground = no container (a place with no ground row is simply not a row)', async () => {
+    const { service, queryRaw, findUnique } = makeHarness([]);
+    queryRaw.mockResolvedValue([]);
+    expect(await service.smallestContaining({ lat: 0.5, lng: 0.5 })).toBeNull();
+    expect(findUnique).not.toHaveBeenCalled();
   });
 
-  it('§2.6 single-arm rank: a verdict-less candidate (no ground row — bbox-less birth) is EXCLUDED, never bbox-judged, even with the smaller bbox', async () => {
-    const covered = makePlaceRow({
-      name: 'CoveredCounty',
-      bboxMinLat: -1,
-      bboxMinLng: -1,
-      bboxMaxLat: 2,
-      bboxMaxLng: 2,
+  it('a CROSSING target envelope unions its two arms (the seam is not a plain rectangle)', async () => {
+    const { service, queryRaw } = makeHarness([]);
+    queryRaw.mockResolvedValue([]);
+    await service.smallestContaining({
+      minLat: 0,
+      minLng: 179,
+      maxLat: 1,
+      maxLng: -179,
     });
-    const groundless = makePlaceRow({
-      name: 'GroundlessTown',
-      bboxMinLat: 0.45,
-      bboxMinLng: 0.45,
-      bboxMaxLat: 0.55,
-      bboxMaxLng: 0.55,
+    const sql = queryRaw.mock.calls[0][0].sql as string;
+    expect(sql).toContain('ST_Union');
+    // RED-proof: a non-crossing target must NOT union.
+    const plain = makeHarness([]);
+    plain.queryRaw.mockResolvedValue([]);
+    await plain.service.smallestContaining({
+      minLat: 0,
+      minLng: -1,
+      maxLat: 1,
+      maxLng: 1,
     });
-    const { service, findMany, queryRaw } = makeHarness([]);
-    findMany.mockResolvedValue([covered, groundless]);
-    // Only the county has a place_geometries row (§2.6: a candidate with no
-    // verdict row has no ground knowledge at all).
-    queryRaw.mockResolvedValue([
-      { placeId: covered.placeId, covers: true, groundArea: 6 },
-    ]);
-
-    const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
-    // The ground-judged candidate wins; the groundless one is invisible.
-    expect(smallest?.name).toBe('CoveredCounty');
+    expect(plain.queryRaw.mock.calls[0][0].sql as string).not.toContain(
+      'ST_Union',
+    );
   });
 
   it('ground-verdict failure degrades THIS read to NO CONTAINER (§2.6 posture: never bbox-judged, never an error)', async () => {

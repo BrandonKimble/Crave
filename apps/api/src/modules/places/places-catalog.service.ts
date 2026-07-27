@@ -31,7 +31,6 @@ import {
   GeoPoint,
   PlaceGround,
   bboxArea,
-  bboxContains,
   bboxCrossesAntimeridian,
   bboxIntersectionParts,
   bboxLatSpan,
