@@ -2314,3 +2314,40 @@ acceptance walk NOT yet (burn-in first, by design). Findings (owner + repro):
 NEXT ROUND ORDER: attribute #1 first (grab is the core), then #4/#2 geometry
 pair, then #3 cutouts, then verify #6/#7, then native mask (#5), then delete
 pass + invariants + acceptance walk.
+
+### THE CHROME/TRACK CONFLICT (2026-07-27) — the real architectural finding
+
+Two laws collide, and every symptom in the owner's last two rounds is one of
+them losing:
+
+LAW A (VISUAL, production): the body lane starts BELOW the chrome. Content
+never passes under the header, so the header's cutouts (grab slot, close
+circle) and the strip's chip holes punch through to the FROSTED MAP. This is
+why production cutouts always show the map and mine show white/content.
+
+LAW B (INPUT, one-track): the chrome region must be part of the TRACK, because
+a chrome-born drag IS a track drag (the native chromeGrab clamp). That
+requires the scroll view to span the chrome — which puts scrolling content
+directly behind the chrome, defeating LAW A.
+
+I implemented A (content window) → grab died (hit-testing: the scroll view no
+longer receives chrome-region touches; probe: willBeginDragging fires ZERO
+times). I implemented B (full-bleed track) → cutouts show content, not map,
+and the polls "gap" appears where the spacer/cap seam lands.
+
+THE RESOLUTION (next session, in order):
+1. Keep the track full-bleed (LAW B — input is the harder constraint and the
+   physics depend on it).
+2. Restore LAW A visually WITHOUT a clip: give the CHROME its own frost that
+   samples the MAP, not the content — i.e. the chrome's frost slab must be a
+   sibling positioned OUTSIDE the sheet clip (map-sampling), composited under
+   the chrome plate via the same masked-hole plate. The content behind the
+   chrome is then hidden by the plate; the holes reveal map-frost.
+   Equivalent alternative: content stays clipped for PAINT via a masked
+   overlay (mask, not layout clip) so hit-testing is untouched.
+3. Only after cutouts+grab both hold: re-verify polls gap, profile mid-detent
+   seat (posture memory reading a stale seat?), strip cutouts, homepage
+   shelf cutouts (HomePanel FrostCutout usage — the shelves' boxes must
+   register holes exactly as the pre-flip home did), and header flushness
+   (the amber debug bar occupies real space — verify with debug=0).
+STILL TRUE: `crave://tracksheet-host?on=0` restores the old system whole.
