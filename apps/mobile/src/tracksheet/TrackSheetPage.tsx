@@ -215,6 +215,10 @@ export function TrackSheetPage<Item>({
               best = detent;
             }
           }
+          console.log(
+            '[TRACKDBG] headerPan end current=' + Math.round(current) +
+            ' projected=' + Math.round(projected) + ' best=' + Math.round(best)
+          );
           runOnJS(snapToTauJS)(best);
         }),
     [detentTaus, grabStartTau, physics.userOwnsPosture, setTauJS, snapToTauJS, tau, trackH]
