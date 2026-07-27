@@ -282,6 +282,29 @@ export class PlacesCatalogService {
   }
 
   /**
+   * The view as 1-or-2 NON-CROSSING PostGIS envelopes ("arms").
+   *
+   * NEVER union them into one geometry for an index operand: `&&` compares
+   * BOUNDING BOXES, and the bbox of two arms at ±180 is the WHOLE WORLD, so
+   * `geometry && ST_Union(armA, armB)` matches every place in the latitude
+   * band and cannot use the index. Measured on the live DB (22.8k grounds):
+   * the union form matched 693 rows / seq-scanned; per-arm matched 1 row in
+   * 0.18ms. Arms stay separate and are OR-ed (intersection) or AND-ed
+   * (containment) by the caller.
+   */
+  private viewArms(view: GeoBbox): Prisma.Sql[] {
+    if (view.minLng <= view.maxLng) {
+      return [
+        Prisma.sql`ST_MakeEnvelope(${view.minLng}::float8, ${view.minLat}::float8, ${view.maxLng}::float8, ${view.maxLat}::float8, 4326)`,
+      ];
+    }
+    return [
+      Prisma.sql`ST_MakeEnvelope(${view.minLng}::float8, ${view.minLat}::float8, 180::float8, ${view.maxLat}::float8, 4326)`,
+      Prisma.sql`ST_MakeEnvelope((-180)::float8, ${view.minLat}::float8, ${view.maxLng}::float8, ${view.maxLat}::float8, 4326)`,
+    ];
+  }
+
+  /**
    * Candidate grounds for a view: ST_Intersects on the GiST index, returning
    * each candidate ALREADY simplified for this view (see
    * GROUND_SIMPLIFY_VIEW_FRACTION — full detail never leaves the table).
@@ -296,12 +319,11 @@ export class PlacesCatalogService {
     const grounds = new Map<string, PlaceGround>();
     const viewSpan = Math.max(bboxLatSpan(view), bboxLngSpan(view));
     const tolerance = viewSpan / GROUND_SIMPLIFY_VIEW_FRACTION;
-    const envelope =
-      view.minLng <= view.maxLng
-        ? Prisma.sql`ST_MakeEnvelope(${view.minLng}::float8, ${view.minLat}::float8, ${view.maxLng}::float8, ${view.maxLat}::float8, 4326)`
-        : Prisma.sql`ST_Union(
-            ST_MakeEnvelope(${view.minLng}::float8, ${view.minLat}::float8, 180::float8, ${view.maxLat}::float8, 4326),
-            ST_MakeEnvelope((-180)::float8, ${view.minLat}::float8, ${view.maxLng}::float8, ${view.maxLat}::float8, 4326))`;
+    // Intersection = the ground touches ANY arm.
+    const overlapsAnyArm = Prisma.join(
+      this.viewArms(view).map((arm) => Prisma.sql`geometry && ${arm}`),
+      ' OR ',
+    );
     try {
       const rows = await this.prisma.$queryRaw<
         Array<{ placeId: string; geojson: string | null }>
@@ -312,7 +334,7 @@ export class PlacesCatalogService {
                  ST_SimplifyPreserveTopology(geometry, ${tolerance})
                ) AS "geojson"
         FROM place_geometries
-        WHERE geometry && ${envelope}
+        WHERE ${overlapsAnyArm}
       `);
       for (const row of rows) {
         if (!row.geojson) continue;
@@ -375,12 +397,15 @@ export class PlacesCatalogService {
    * back to a weaker judgment — consumers already tolerate null.
    */
   private async smallestCoveringPlaceId(box: GeoBbox): Promise<string | null> {
-    const envelope =
-      box.minLng <= box.maxLng
-        ? Prisma.sql`ST_MakeEnvelope(${box.minLng}::float8, ${box.minLat}::float8, ${box.maxLng}::float8, ${box.maxLat}::float8, 4326)`
-        : Prisma.sql`ST_Union(
-            ST_MakeEnvelope(${box.minLng}::float8, ${box.minLat}::float8, 180::float8, ${box.maxLat}::float8, 4326),
-            ST_MakeEnvelope((-180)::float8, ${box.minLat}::float8, ${box.maxLng}::float8, ${box.maxLat}::float8, 4326))`;
+    // Containment = the ground covers EVERY arm of the target (a crossing
+    // target is only contained if both of its halves are). Per-arm ST_Covers
+    // keeps each operand index-usable; see viewArms on why never to union.
+    const coversAllArms = Prisma.join(
+      this.viewArms(box).map(
+        (arm) => Prisma.sql`ST_Covers(pg.geometry, ${arm})`,
+      ),
+      ' AND ',
+    );
     try {
       const rows = await this.prisma.$queryRaw<Array<{ placeId: string }>>(
         Prisma.sql`
@@ -388,7 +413,7 @@ export class PlacesCatalogService {
         SELECT pg.place_id AS "placeId"
         FROM place_geometries pg
         JOIN places p ON p.place_id = pg.place_id
-        WHERE ST_Covers(pg.geometry, ${envelope})
+        WHERE ${coversAllArms}
         ORDER BY ST_Area(pg.geometry) ASC, p.name ASC
         LIMIT 1
       `,

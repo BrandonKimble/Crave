@@ -751,7 +751,12 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it('a CROSSING view unions its two arms in SQL (the seam is not a plain rectangle)', async () => {
+  it('a CROSSING view is TWO separate index operands, never a union (RED: a union bbox is the whole world)', async () => {
+    // The bug this pins: `geometry && ST_Union(armA, armB)`. `&&` compares
+    // BOUNDING BOXES, and two arms at ±180 have a WHOLE-WORLD bbox, so the
+    // predicate matched every place in the latitude band and could not use
+    // the index. Measured live (22.8k grounds): union form 693 rows via seq
+    // scan; per-arm 1 row in 0.18ms.
     const { service, queryRaw } = makeHarness([]);
     queryRaw.mockResolvedValue([]);
     await service.placesInView({
@@ -760,7 +765,10 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
       maxLat: 1,
       maxLng: -179,
     });
-    expect(queryRaw.mock.calls[0][0].sql as string).toContain('ST_Union');
+    const sql = queryRaw.mock.calls[0][0].sql as string;
+    expect(sql).not.toContain('ST_Union');
+    expect((sql.match(/geometry && /g) ?? []).length).toBe(2);
+    expect(sql).toContain(' OR ');
 
     const plain = makeHarness([]);
     plain.queryRaw.mockResolvedValue([]);
@@ -770,9 +778,8 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
       maxLat: 1,
       maxLng: 1,
     });
-    expect(plain.queryRaw.mock.calls[0][0].sql as string).not.toContain(
-      'ST_Union',
-    );
+    const plainSql = plain.queryRaw.mock.calls[0][0].sql as string;
+    expect((plainSql.match(/geometry && /g) ?? []).length).toBe(1);
   });
 });
 
@@ -856,7 +863,7 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
     expect(findUnique).not.toHaveBeenCalled();
   });
 
-  it('a CROSSING target envelope unions its two arms (the seam is not a plain rectangle)', async () => {
+  it('a CROSSING target must be covered on BOTH arms — AND-ed, never unioned', async () => {
     const { service, queryRaw } = makeHarness([]);
     queryRaw.mockResolvedValue([]);
     await service.smallestContaining({
@@ -866,8 +873,12 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
       maxLng: -179,
     });
     const sql = queryRaw.mock.calls[0][0].sql as string;
-    expect(sql).toContain('ST_Union');
-    // RED-proof: a non-crossing target must NOT union.
+    // Union would make the index operand the whole world (see placesInView).
+    expect(sql).not.toContain('ST_Union');
+    // Containment of a split target means covering EVERY half.
+    expect((sql.match(/ST_Covers\(pg\.geometry, /g) ?? []).length).toBe(2);
+    expect(sql).toContain(' AND ');
+
     const plain = makeHarness([]);
     plain.queryRaw.mockResolvedValue([]);
     await plain.service.smallestContaining({
@@ -876,9 +887,8 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
       maxLat: 1,
       maxLng: 1,
     });
-    expect(plain.queryRaw.mock.calls[0][0].sql as string).not.toContain(
-      'ST_Union',
-    );
+    const plainSql = plain.queryRaw.mock.calls[0][0].sql as string;
+    expect((plainSql.match(/ST_Covers\(pg\.geometry, /g) ?? []).length).toBe(1);
   });
 
   it('ground-verdict failure degrades THIS read to NO CONTAINER (§2.6 posture: never bbox-judged, never an error)', async () => {
