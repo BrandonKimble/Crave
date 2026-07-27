@@ -1908,7 +1908,11 @@ model Place {
   // MERGE LAW's decision (PlacesCatalogService.resolveIdentity), not the
   // index's.
   @@index([countryCode, subdivisionCode])
-  @@index([providerPlaceId])
+  /// THE identity key (one-ground charter P3): the vendor's stable geometry
+  /// id. Unique because identity must BE unique — the write-time exclusivity
+  /// guard in PlacesPromotionService refuses a second claim on the same
+  /// vendor entity, and this index makes that invariant structural.
+  @@unique([providerPlaceId], map: "places_provider_place_id_key")
   /// GIN: the descendant subtree walk's @> join (place-dag-read) — without it
   /// a country-scale subject's expansion seq-scanned per recursion level
   /// (the 13–17s NY home-feed latency, attributed 2026-07-26).

@@ -601,11 +601,33 @@ export class PlacesCatalogService {
     // town in Georgia AND a country; matching by name is what let two
     // different entities merge and destroy each other's extent.
     if (node.providerPlaceId) {
-      const byVendorId = await this.prisma.place.findFirst({
+      // findUNIQUE, not findFirst: the id is the identity key and carries a
+      // unique index (migration 20260727220000), so "which row wins" is not a
+      // question — an unordered findFirst could have answered differently
+      // between calls if the invariant ever slipped (red-team finding).
+      const byVendorId = await this.prisma.place.findUnique({
         where: { providerPlaceId: node.providerPlaceId },
       });
       if (byVendorId) {
-        return this.mergeSketch(byVendorId, node, parentPlaceId);
+        // LEVEL GUARD: the vendor can return the same geometry id at two
+        // rungs for a coincident boundary (a city-state, a consolidated
+        // city-county). Merging a Municipality observation into a
+        // CountrySubdivision row would silently mislabel the level, which
+        // mergeSketch never corrects. Same id at a DIFFERENT level is not
+        // this place — fall through to the name path, which can mint the
+        // distinct row.
+        if (byVendorId.providerLevelCode === node.providerLevelCode) {
+          return this.mergeSketch(byVendorId, node, parentPlaceId);
+        }
+        this.logger.warn(
+          'vendor id matched a row at a DIFFERENT level — not this place',
+          {
+            placeId: byVendorId.placeId,
+            storedLevel: byVendorId.providerLevelCode,
+            observedLevel: node.providerLevelCode,
+            providerPlaceId: node.providerPlaceId,
+          },
+        );
       }
     }
     // Bounded re-resolution loop: every race (create-vs-create P2002,

@@ -78,11 +78,15 @@ function makeHarness(
   const findUniqueOrThrow = jest
     .fn()
     .mockImplementation(() => Promise.resolve(makePlaceRow()));
-  const findUnique = jest
-    .fn()
-    .mockImplementation(() => Promise.resolve(makePlaceRow()));
+  const findUnique = jest.fn().mockImplementation((args: any) => {
+    if (args?.where?.providerPlaceId !== undefined) {
+      return findUniqueVendorId(args);
+    }
+    return Promise.resolve(makePlaceRow());
+  });
   // P3 vendor-id-first identity lookup; null = no stored row carries this id.
   const findFirst = jest.fn().mockResolvedValue(null);
+  const findUniqueVendorId = jest.fn().mockResolvedValue(null);
   const executeRaw = jest.fn().mockResolvedValue(1);
   const queryRaw = jest.fn().mockResolvedValue([]);
   const prisma: any = {
@@ -112,6 +116,7 @@ function makeHarness(
     findMany,
     findUniqueOrThrow,
     findUnique,
+    findUniqueVendorId,
     findFirst,
     executeRaw,
     queryRaw,
@@ -291,14 +296,14 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       name: 'Totally Different Name',
       providerPlaceId: 'tomtom-geom-austin',
     });
-    const { service, findFirst, findMany, create } = makeHarness([]);
-    findFirst.mockResolvedValue(stored);
+    const { service, findUniqueVendorId, findMany, create } = makeHarness([]);
+    findUniqueVendorId.mockResolvedValue(stored);
 
     const [resolved] = await service.sketchChain([
       { ...austinNode, bbox: null },
     ]);
 
-    expect(findFirst).toHaveBeenCalledWith({
+    expect(findUniqueVendorId).toHaveBeenCalledWith({
       where: { providerPlaceId: 'tomtom-geom-austin' },
     });
     // Resolved to the id-matched row despite the name disagreeing entirely.
@@ -306,6 +311,26 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     // The name-candidate lookup never ran, and nothing was forked.
     expect(findMany).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('the SAME vendor id at a DIFFERENT level is not this place (coincident boundary)', async () => {
+    // A city-state or consolidated city-county can share one boundary across
+    // two rungs, so the vendor may hand back the same geometry id for both.
+    // Merging a Municipality observation into a CountrySubdivision row would
+    // silently mislabel the level — mergeSketch never corrects it.
+    const stateRow = makePlaceRow({
+      providerLevelCode: 'CountrySubdivision',
+      providerPlaceId: 'tomtom-geom-austin',
+    });
+    const { service, findUniqueVendorId, create, update } = makeHarness([]);
+    findUniqueVendorId.mockResolvedValue(stateRow);
+
+    // austinNode is a Municipality carrying that same id.
+    await service.sketchChain([{ ...austinNode, bbox: null }]);
+
+    // Not merged into the state row; minted as its own place.
+    expect(update).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('a same-name homonym with a DIFFERENT vendor id is a different entity — minted, never merged (the San Juan class)', async () => {
@@ -316,8 +341,10 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       name: 'Austin',
       providerPlaceId: 'tomtom-geom-SOMEWHERE-ELSE',
     });
-    const { service, findFirst, create, update } = makeHarness([otherEntity]);
-    findFirst.mockResolvedValue(null); // no row carries OUR id yet
+    const { service, findUniqueVendorId, create, update } = makeHarness([
+      otherEntity,
+    ]);
+    findUniqueVendorId.mockResolvedValue(null); // no row carries OUR id yet
 
     await service.sketchChain([{ ...austinNode, bbox: null }]);
 
@@ -328,8 +355,10 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
 
   it('an id-less stored row is still eligible (no vendor opinion yet) — it merges and adopts the id', async () => {
     const idLess = makePlaceRow({ providerPlaceId: null });
-    const { service, findFirst, create, update } = makeHarness([idLess]);
-    findFirst.mockResolvedValue(null);
+    const { service, findUniqueVendorId, create, update } = makeHarness([
+      idLess,
+    ]);
+    findUniqueVendorId.mockResolvedValue(null);
 
     await service.sketchChain([{ ...austinNode, bbox: null }]);
 
@@ -346,8 +375,8 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     // live — so a county-carrying observation against a county-less row left
     // the county NULL forever, for essentially every observation.
     const countyLess = makePlaceRow({ county: null });
-    const { service, findFirst, update } = makeHarness([]);
-    findFirst.mockResolvedValue(countyLess);
+    const { service, findUniqueVendorId, update } = makeHarness([]);
+    findUniqueVendorId.mockResolvedValue(countyLess);
 
     await service.sketchChain([
       { ...austinNode, bbox: null, county: 'Travis' },
@@ -359,8 +388,8 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
 
   it('a stored county is NEVER overwritten by a differing observation', async () => {
     const stored = makePlaceRow({ county: 'Hunt' });
-    const { service, findFirst, update } = makeHarness([]);
-    findFirst.mockResolvedValue(stored);
+    const { service, findUniqueVendorId, update } = makeHarness([]);
+    findUniqueVendorId.mockResolvedValue(stored);
 
     await service.sketchChain([
       { ...austinNode, bbox: null, county: 'Travis' },
