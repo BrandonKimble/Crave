@@ -303,14 +303,37 @@ describe('TomtomChainProbeAdapter — POINT IDENTITY (one-ground charter P0)', (
     expect(calls[0].params.entityType).toBe('Municipality');
   });
 
-  it('a point answering ANOTHER country is a miss, and falls back to the name lookup', async () => {
+  it('a DIFFERENT provider country code is still accepted (US/PR: the vocabularies are not shared)', async () => {
+    // Caught live before it ever ran: the Census seeds Puerto Rico municipios
+    // as country US while TomTom answers PR. A country equality gate would
+    // have rejected 78 of the 351 backlog rows (22%) and sent them back to
+    // the name matching that already failed them. The anchor is interior and
+    // the level is pinned, so the containing entity IS the answer.
     const { adapter, calls } = buildAdapter({
       reverseAddresses: [
         {
-          address: { countryCode: 'MX' }, // border anchor answered across
-          dataSources: { geometry: { id: 'geo-across-border' } },
+          address: { countryCode: 'PR' },
+          dataSources: { geometry: { id: 'geo-ponce' } },
         },
       ],
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-by-name' } },
+        },
+      ],
+    });
+    expect(await adapter.resolveGeometryId(ANCHORED_NODE)).toEqual({
+      kind: 'ok',
+      geometryId: 'geo-ponce',
+    });
+    expect(calls).toHaveLength(1); // the name lookup never runs
+  });
+
+  it('a point with NO geometry id is a miss, and falls back to the name lookup', async () => {
+    const { adapter, calls } = buildAdapter({
+      reverseAddresses: [{ address: { countryCode: 'US' } }], // no id
       forwardResults: [
         {
           entityType: 'Municipality',

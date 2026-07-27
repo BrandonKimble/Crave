@@ -546,13 +546,21 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (!geometryId) {
       return { kind: 'miss' };
     }
+    // NO country equality gate (removed 2026-07-26 before it ever ran in
+    // anger): provider country codes are NOT a shared vocabulary. The Census
+    // seeds Puerto Rico municipios as country US; TomTom answers PR. A strict
+    // check would have rejected all 78 PR rows in the backlog (22%) and sent
+    // them back to the name matching that already failed them.
+    //
+    // Nothing is lost: the anchor is a point GUARANTEED to lie inside this
+    // place, and the request pins the level — so whatever entity contains it
+    // at that level IS the answer, by construction. The polygon that comes
+    // back is still validated downstream by the promotion WRONG-ENTITY guard.
     const countryCode = entry?.address?.countryCode?.trim().toUpperCase();
     if (countryCode && countryCode !== node.countryCode) {
-      // Border anchor answered across the line — not our entity.
       this.logger.debug(
-        `geometryIdAtPoint: ${node.providerLevelCode} "${node.name}" answered ${countryCode} (want ${node.countryCode}) — miss`,
+        `geometryIdAtPoint: ${node.providerLevelCode} "${node.name}" answered ${countryCode} (catalog says ${node.countryCode}) — accepted; provider country vocabularies differ (US/PR)`,
       );
-      return { kind: 'miss' };
     }
     return { kind: 'ok', geometryId };
   }
