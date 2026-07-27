@@ -26,13 +26,18 @@ export async function descendantPlaceIds(
   if (!roots.length) {
     return [];
   }
+  // Join form is @> (array containment), NOT `= ANY(...)`: only @> can use
+  // the GIN index on parent_place_ids. Attributed 2026-07-26: the ANY form
+  // seq-scanned the whole catalog per recursion level — descendants of a
+  // country-scale subject took 13–17s (the NY home-feed latency); @> + GIN
+  // runs the same subtree in ~28ms.
   const rows = await prisma.$queryRaw<Array<{ place_id: string }>>(Prisma.sql`
     WITH RECURSIVE subtree AS (
       SELECT place_id FROM places WHERE place_id = ANY(${roots}::uuid[])
       UNION
       SELECT p.place_id
       FROM places p
-      JOIN subtree s ON s.place_id = ANY(p.parent_place_ids)
+      JOIN subtree s ON p.parent_place_ids @> ARRAY[s.place_id]
     )
     SELECT place_id FROM subtree
   `);

@@ -1903,6 +1903,10 @@ model Place {
   // index's.
   @@index([countryCode, subdivisionCode])
   @@index([providerPlaceId])
+  /// GIN: the descendant subtree walk's @> join (place-dag-read) — without it
+  /// a country-scale subject's expansion seq-scanned per recursion level
+  /// (the 13–17s NY home-feed latency, attributed 2026-07-26).
+  @@index([parentPlaceIds], map: "idx_places_parent_place_ids_gin", type: Gin)
   @@map("places")
 }
 

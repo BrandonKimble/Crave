@@ -642,7 +642,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
               index={index}
               rank={index + 1}
               qualityColor={getMarkerColorForRestaurant(restaurant)}
-              isLiked={false}
+              isSaved={false}
               pillEditMode={canEditRef.current}
               onSavePress={
                 canEditRef.current
@@ -678,7 +678,7 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
             item={dish}
             index={index}
             qualityColor={getMarkerColorForDish(dish)}
-            isLiked={false}
+            isSaved={false}
             pillEditMode={canEditRef.current}
             restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
             onSavePress={

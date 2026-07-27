@@ -87,7 +87,7 @@ type RestaurantResultCardProps = {
   rank: number;
   qualityColor: string;
   preparedDescriptor?: RestaurantResultCardDescriptor | null;
-  isLiked: boolean;
+  isSaved: boolean;
   onSavePress: () => void;
   /** Own/collaborator list detail: first pill = Edit (note + remove) —
    *  onSavePress then opens the item editor, not the save modal. */
@@ -114,7 +114,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   rank,
   qualityColor,
   preparedDescriptor: maybePreparedDescriptor = null,
-  isLiked,
+  isSaved,
   onSavePress,
   pillEditMode = false,
   openRestaurantProfile,
@@ -584,7 +584,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           moved here; Call renders only when the restaurant carries a phone. */}
       <CardActionPillRow
         onSave={onSavePress}
-        isSaved={isLiked || isSavedAnywhere}
+        isSaved={isSaved || isSavedAnywhere}
         editMode={pillEditMode}
         onShare={handleShare}
         phoneNumber={

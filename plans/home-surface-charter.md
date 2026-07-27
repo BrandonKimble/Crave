@@ -130,19 +130,34 @@ forgotten work.
     it live, detail/save read it directly, the adapter's composite fallback
     is deleted and a null-connection legacy dish row is dropped, never faked).
     No synthetic ids exist anywhere to reject.
-11. Corrupt Puerto Rico municipio polygons (San Juan, Río Grande, Jayuya —
-    place_geometries areas 799–913, world-spanning garbage that "covers" any
-    viewport at 1.000). Currently benign for the finest-place law (their
-    areas are so huge the finest pick still wins) but they caused the
-    "Polls in Jayuya Municipio" headers over Miami and they inflate every
-    verdict's candidate set. Trigger: next geometry-pipeline touch — delete
-    or re-sketch those rows and add an area-sanity gate at sketch time.
-12. /home/feed verdict latency on the New York viewport: 14–17s observed
-    (sim pass 2026-07-26) vs ~1.5s for Austin — the coverage SQL against the
-    big NYC-area polygons (and the corrupt PR rows in the candidate set) is
-    the suspect. Attribute before fixing (per the attribution law).
-    Trigger: before NYC onboarding is real; likely falls out of (11).
-13. List COVERS, Spotify album-cover model (owner-ratified direction
+11. ~~Corrupt place bboxes/sketches~~ — ATTRIBUTED + HEALED 2026-07-26.
+    They were NOT leftover polygons: place_geometries holds exactly two
+    designed tiers (TomTom outlines + bbox-envelope sketches). The corruption
+    was the §1 MERGE LAW's widen-only bbox union joining DISTINCT same-named
+    entities (San Juan Municipio PR ∪ a western "San Juan"; also Delcambre,
+    Hoover, Osage Beach, San Antonio… 25 rows + 36 outlined rows drifted).
+    Healed from factual sources only via
+    scripts/data-fixes/heal-place-bboxes.ts (idempotent; run on local +
+    prod): outlined places ← TomTom envelope; census sketch-only places ←
+    the exact seed law recomputed from the census gazetteer by GEOID; sketch
+    envelopes refreshed. See item 14 for the make-it-impossible fix.
+12. ~~NY verdict latency~~ — ATTRIBUTED (phase timers, live repro) + FIXED
+    2026-07-26: 17,082ms total, of which descendants=16,863ms — the subtree
+    walk's `= ANY(parent_place_ids)` recursive join seq-scanned the catalog
+    per level for a country-scale subject. Fix: `@>` join + GIN index
+    (migration 20260727030000) — same subtree 13,267ms → 28ms. Residual
+    (secondary, logged): a WORLD-zoom viewport admits all ~21k census places
+    as candidates (placesInView ≈ 1.4s); acceptable today, revisit if globe
+    zoom becomes a hot path.
+13. Merge-law cross-entity widening (the item-11 root): resolveIdentity can
+    match a probe of one entity onto a stored row of a DIFFERENT same-named
+    entity, and the widen-only bbox union then destroys the stored bbox.
+    Make it impossible at the law: a merge whose bboxes are DISJOINT (no
+    overlap between stored bbox and incoming bbox) is a distinct-entity
+    signal, not a widen. Owner note 2026-07-26: keep it minimal — no
+    speculative gates beyond the law fix. Trigger: next places/identity
+    touch; the heal script re-run detects any recurrence in the meantime.
+14. List COVERS, Spotify album-cover model (owner-ratified direction
     2026-07-26): kill the 2×2 photo collage on user lists; the owner curates
     ONE cover image per list ("list cover") — creative, vibe-first, never
     forced. Curated home lists stay on the icon system at scale (collages
