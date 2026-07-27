@@ -216,11 +216,23 @@ export function TrackSheetPage<Item>({
   }, [grabHandleHidden, navActionProgress]);
 
   // ── Derivations (pure functions of τ / sheetTopY) ──
-  const sheetClipStyle = useAnimatedStyle(() => ({
+  // ── THE SURFACE FOLLOWS THE TRACK (counter-translate DELETED, 2026-07-27) ──
+  // The track is a plain, untransformed, unclipped full-screen scroll: touches
+  // land natively everywhere and no trick sits between the finger and the
+  // engine. Content already begins at sheetTopY BY CONSTRUCTION (the spacer
+  // occupies exactly [0,H] of the track), so nothing has to be pushed into
+  // place. The sheet surface and chrome simply RIDE sheetTopY, and the only
+  // thing that ever needed clipping — rows scrolling above the sheet — is
+  // handled by a MASK (paint-only, hit-test-free).
+  const surfaceStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTopY.value }],
   }));
-  const trackCounterStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -sheetTopY.value }],
+  const chromeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTopY.value }],
+  }));
+  // Mask band: everything above the chrome's bottom edge is hidden.
+  const maskBandStyle = useAnimatedStyle(() => ({
+    height: Math.max(0, sheetTopY.value + chromeHeight),
   }));
   const dividerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(tau.value - trackH, [0, 3, 14], [0, 0.35, 1], 'clamp'),
@@ -457,38 +469,32 @@ export function TrackSheetPage<Item>({
 
   return (
     <View style={styles.root} pointerEvents="box-none">
+      {/* SHEET SURFACE: frost + rounded corners, riding sheetTopY, BEHIND the
+          track. Transparent to touches — the track owns input. */}
       <Reanimated.View
         style={[
-          styles.sheetClip,
-          // TRANSPARENT surface: the frost must sample the MAP beneath the
-          // sheet (a white clip bg made the blur sample white — dead tint).
-          // The frost + white plates ARE the sheet material; the bounce reveal
-          // shows frost, production-true.
+          styles.surface,
           { height: SCREEN.height },
           debugHud && styles.debugEdge,
-          sheetClipStyle,
+          surfaceStyle,
         ]}
+        pointerEvents="none"
       >
-        {/* THE ONE FROST (inventory §4): constant opacity, never animated —
-            every cutout in the chrome reveals this surface. */}
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <FrostedGlassBackground />
-        </View>
-        {/* THE CHROME MASK (the chrome/track conflict's resolution): content
-            is hidden behind the chrome by PAINT — a CALayer mask, which does
-            NOT affect hit-testing — so the track keeps spanning the chrome
-            (a chrome drag is a track drag) while the chrome's frost samples
-            the MAP and its cutouts reveal frosted map, production-true. */}
-        <MaskedView
-          style={StyleSheet.absoluteFill}
-          maskElement={
-            <View style={styles.maskRoot}>
-              <View style={{ height: chromeHeight }} />
-              <View style={styles.maskVisible} />
-            </View>
-          }
-        >
-        <Reanimated.View style={[styles.trackCounter, trackCounterStyle]}>
+        <FrostedGlassBackground />
+      </Reanimated.View>
+
+      {/* THE TRACK: untransformed, unclipped. The mask hides everything above
+          the chrome's bottom edge (rows scrolling past the sheet top, and the
+          band behind the chrome so its cutouts reveal frosted MAP). */}
+      <MaskedView
+        style={StyleSheet.absoluteFill}
+        maskElement={
+          <View style={styles.maskRoot}>
+            <Reanimated.View style={maskBandStyle} />
+            <View style={styles.maskVisible} />
+          </View>
+        }
+      >
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
             style={StyleSheet.absoluteFill}
@@ -514,8 +520,7 @@ export function TrackSheetPage<Item>({
             onScroll={onScroll}
             onContentSizeChange={handleContentSizeChange}
           />
-        </Reanimated.View>
-        </MaskedView>
+      </MaskedView>
 
         {/* Chrome: sheet material pinned at the surface top.
             HIT-TRANSPARENT BY LAW (attribution 2026-07-27: `auto` swallowed
@@ -528,7 +533,7 @@ export function TrackSheetPage<Item>({
             arbitration (a chrome-born drag is clamped to the sheet region),
             which is the ONE TRACK design: geometry arbitrates, not view
             layering. */}
-        <View style={styles.chrome} pointerEvents="box-none">
+        <Reanimated.View style={[styles.chrome, chromeStyle]} pointerEvents="box-none">
           {/* THE CHROME FROST SLAB: the chrome carries its own frosted glass
               beneath its plates — every cutout (grab, close, strip chips)
               shows real blur of whatever passes beneath (map or content), in
@@ -577,10 +582,7 @@ export function TrackSheetPage<Item>({
             </>
           ) : null}
           <Reanimated.View style={[styles.divider, dividerStyle]} />
-        </View>
-
-
-      </Reanimated.View>
+        </Reanimated.View>
 
       {debugHud ? (
         <View style={styles.hud} pointerEvents="none">
@@ -593,7 +595,7 @@ export function TrackSheetPage<Item>({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
-  sheetClip: {
+  surface: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -602,7 +604,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
-  trackCounter: { ...StyleSheet.absoluteFillObject },
   // Mask: transparent band over the chrome (content hidden there), opaque
   // below (content visible). Colors are irrelevant — alpha is the mask.
   maskRoot: { flex: 1, backgroundColor: 'transparent' },
