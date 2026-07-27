@@ -286,12 +286,25 @@ const useTrackScenePageChrome = (
   const seatSnap = sceneRuntimeForSeat.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(
     scene
   );
-  const seatTau =
+  const seatTauForSnap =
     seatSnap === 'expanded'
       ? trackH
       : seatSnap === 'middle'
         ? snapPoints.collapsed - snapPoints.middle
         : 0;
+  // THE SEAT IS A ONE-SHOT SWITCH COMMAND (race fix, 2026-07-27): production
+  // fires a motion descriptor ON THE SWITCH — it is not a standing target. As
+  // a standing target it re-asserted on attach + on every recompute and stole
+  // the sheet back after a drag ("drags don't stick"). Now: a seat is emitted
+  // only on the render where the presented scene CHANGES; afterwards the seat
+  // is null and the user's posture is the only authority until the next
+  // switch (gesture settles still write posture memory for the NEXT switch).
+  const lastSeatedSceneRef = React.useRef<OverlayKey | null>(null);
+  const isSceneSwitch = lastSeatedSceneRef.current !== scene;
+  React.useEffect(() => {
+    lastSeatedSceneRef.current = scene;
+  }, [scene]);
+  const seatTau = isSceneSwitch ? seatTauForSnap : null;
 
   // THE SETTLE OBSERVER → SESSION: gesture rests write posture memory with the
   // production writer semantics (writer:'gesture'; the snap-law seats accept it).

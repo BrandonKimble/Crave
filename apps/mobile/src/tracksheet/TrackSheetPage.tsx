@@ -319,8 +319,13 @@ export function TrackSheetPage<Item>({
       }
     };
     assertSeat();
-    // Re-assert on every successful native attach (recycler mount races).
+    // Re-assert on attach ONLY while the machine still owns posture (mount
+    // races). Once the user has touched the sheet, attach re-asserts are
+    // silent — the seat is a one-shot, never a leash.
     const unsubscribe = physics.subscribeAttached(() => {
+      if (physics.userOwnsPosture.value) {
+        return;
+      }
       attempts = 0;
       assertSeat();
     });

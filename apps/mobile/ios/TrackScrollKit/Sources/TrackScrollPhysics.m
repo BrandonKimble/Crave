@@ -163,7 +163,12 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
     // Header release: always a sheet-region settle onto the detent spring —
     // momentum from a chrome grab may never pour into list scrolling.
     self.chromeGrab = NO;
-    const double vTrack = -velocity.y * 1000.0; // dτ/dt (pt/s)
+    // SIGN (attribution 2026-07-27): τ RISES with contentOffset, and UIKit's
+    // velocity.y is positive when the offset is increasing — so the τ-space
+    // projection is +velocity, not -velocity. The inverted sign projected a
+    // fast expand-drag backwards and slammed the sheet to collapsed
+    // ("drags don't stick": τ hit 645 then snapped to 0).
+    const double vTrack = velocity.y * 1000.0; // dτ/dt (pt/s)
     const double projected =
         MIN(edge, MAX(0, scrollView.contentOffset.y + vTrack * 0.18));
     CGFloat best = self.snapOffsets.firstObject.doubleValue;
@@ -173,7 +178,10 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
       }
     }
     targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
-    [self startSpringOn:scrollView toTarget:best fromY:releaseY velocityY:velocity.y * 1000.0];
+    // The spring's velocity is in OFFSET space (d/dt of contentOffset.y), and
+    // UIKit reports pt/ms — same axis as τ here, negated for the spring's
+    // displacement convention (d = y - target).
+    [self startSpringOn:scrollView toTarget:best fromY:releaseY velocityY:-velocity.y * 1000.0];
     return;
   }
 
