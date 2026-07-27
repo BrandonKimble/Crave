@@ -2288,3 +2288,29 @@ surface (still old-composition — renders under track when search active?
 VERIFY), translateY riders rewire, settle/motion polish, then DELETE the old
 system per the inventory delete list + grep-invariants (no old-runtime
 imports outside the rollback path, no nested scrollables in track cells).
+
+### POST-FLIP RED TEAM — OWNER FINDING SET (2026-07-27, burn-in round 1)
+
+Rung-5 status honestly: FLIP done; DELETE PASS / GREP-INVARIANTS / full
+acceptance walk NOT yet (burn-in first, by design). Findings (owner + repro):
+1. HEADER/BODY GRAB DEAD ON SEARCH SCENE (repro'd: collapsed drag moves
+   nothing). Suspects: (a) geometry mismatch — native chrome band computes
+   sheetTop = chromeTopInset + (H − τ) with H = collapsed−expanded from the
+   OWNER snapPoints, verify against actual seat; (b) attach dead after the
+   flip's content swap (KVO rewrap vs FlashList remount); ATTRIBUTE with
+   native probes before fixing.
+2. DIVIDER doesn't fade out at scroll top (check τ source + seat offset).
+3. LISTS strip cutouts blocked again + visible line above the band (likely
+   the strip band's own backdrop layering in the registry Strip vs kit band;
+   attribute with debug=1).
+4. POLLS gap below chrome where frost shows (content window top vs chrome
+   height mismatch for strip scenes — 108.25 vs measured; check chromeHeight
+   used in window top vs listHeader spacer).
+5. NAV CURVE missing (known: native silhouette mask study — hard clip is a
+   straight line).
+6. HOME CONTENT: fixed this commit (search scene → home shelves).
+7. SEARCH CHROME CHOREOGRAPHY: translateY bound this commit — VERIFY fade +
+   scale + scrim on device next round.
+NEXT ROUND ORDER: attribute #1 first (grab is the core), then #4/#2 geometry
+pair, then #3 cutouts, then verify #6/#7, then native mask (#5), then delete
+pass + invariants + acceptance walk.
