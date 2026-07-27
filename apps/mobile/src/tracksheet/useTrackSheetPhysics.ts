@@ -127,13 +127,20 @@ export const useTrackSheetPhysics = (
             chromeHeight: geometry.chromeHeight ?? 0,
           })
           .then(() => {
+            if (__DEV__) {
+              console.log(`[TRACKDBG] attach ok (attempt ${attempt})`);
+            }
             attachedListenersRef.current.forEach((listener) => listener());
           })
           .catch(() => {
             attempt += 1;
-            if (attempt < 10) {
-              setTimeout(tryAttach, 150);
+            // UNCAPPED with backoff (post-flip lesson): the host now mounts at
+            // BOOT, and the recycler can appear later than any fixed cap — a
+            // dead attach means no physics at all.
+            if (__DEV__ && attempt % 10 === 0) {
+              console.log(`[TRACKDBG] attach retrying (attempt ${attempt})`);
             }
+            setTimeout(tryAttach, Math.min(1000, 150 * Math.ceil(attempt / 5)));
           });
       };
       tryAttach();

@@ -208,9 +208,7 @@ export function TrackSheetPage<Item>({
     transform: [{ translateY: sheetTopY.value }],
   }));
   const trackCounterStyle = useAnimatedStyle(() => ({
-    // Content stays screen-fixed inside the window: window top = clip top +
-    // chromeHeight, so the counter subtracts both.
-    transform: [{ translateY: -sheetTopY.value - chromeHeight }],
+    transform: [{ translateY: -sheetTopY.value }],
   }));
   const dividerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(tau.value - trackH, [0, 3, 14], [0, 0.35, 1], 'clamp'),
@@ -369,14 +367,16 @@ export function TrackSheetPage<Item>({
   const listHeader = React.useMemo(
     () => (
       <View>
-        {/* spacer region [0,H): the sheet-travel section of the track. The
-            content window starts below the chrome (production body-lane
-            shape) — no cap needed; content rest position = window top. */}
-        <View style={{ height: trackH + chromeHeight }} pointerEvents="none" />
+        {/* spacer region [0,H): the sheet-travel section of the track.
+            THE CONTENT WINDOW IS DEAD (it clipped UIKit hit-testing and killed
+            the header grab) — the track is full-bleed again; the white cap is
+            the content surface under the chrome. */}
+        <View style={{ height: trackH }} pointerEvents="none" />
+        <View style={{ height: chromeHeight, backgroundColor: surfaceColor }} />
         {listLeader}
       </View>
     ),
-    [chromeHeight, listLeader, trackH]
+    [chromeHeight, listLeader, surfaceColor, trackH]
   );
   const listFooter = React.useMemo(
     () => (
@@ -442,7 +442,6 @@ export function TrackSheetPage<Item>({
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <FrostedGlassBackground />
         </View>
-        <View style={[styles.contentWindow, { top: chromeHeight }]} pointerEvents="box-none">
         <Reanimated.View style={[styles.trackCounter, trackCounterStyle]}>
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
@@ -470,12 +469,18 @@ export function TrackSheetPage<Item>({
             onContentSizeChange={handleContentSizeChange}
           />
         </Reanimated.View>
-        </View>
 
         {/* Chrome: sheet material pinned at the surface top. TOUCH-OPAQUE
             (inventory + owner law): a touch on the chrome NEVER reaches the
             track — the header can not scroll the list through itself. */}
         <View style={styles.chrome} pointerEvents="auto">
+          {/* THE CHROME FROST SLAB: the chrome carries its own frosted glass
+              beneath its plates — every cutout (grab, close, strip chips)
+              shows real blur of whatever passes beneath (map or content), in
+              every scroll state. */}
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <FrostedGlassBackground />
+          </View>
           {/* Plate covers the HEADER BLOCK only — the strip band paints its
               own plate, and anything beneath its holes must be FROST (a full-
               chrome plate blocked the strip cutouts with white). */}
@@ -543,13 +548,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
   trackCounter: { ...StyleSheet.absoluteFillObject },
-  contentWindow: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-  },
   chrome: {
     position: 'absolute',
     top: 0,
