@@ -1544,6 +1544,7 @@ restaurant_vote_totals AS (
     SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  WHERE NOT c.is_category_item
   GROUP BY c.restaurant_id
 )`;
 
@@ -1552,6 +1553,7 @@ restaurant_vote_totals AS (
   SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  WHERE NOT c.is_category_item
   GROUP BY c.restaurant_id
 )`.trim();
 
@@ -1570,6 +1572,7 @@ geographic_restaurant_vote_totals AS (
     SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
+  WHERE NOT c.is_category_item
   GROUP BY c.restaurant_id
 )`;
 
@@ -1578,6 +1581,7 @@ geographic_restaurant_vote_totals AS (
   SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
+  WHERE NOT c.is_category_item
   GROUP BY c.restaurant_id
 )`.trim();
 

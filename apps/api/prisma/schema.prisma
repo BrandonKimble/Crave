@@ -133,6 +133,12 @@ model Connection {
   ingredients         String[]                @default([]) @db.Uuid
   mentionCount        Int                     @default(0) @map("mention_count")
   totalUpvotes        Int                     @default(0) @map("total_upvotes")
+  /// Phase 4: this row materializes a CATEGORY claim ("known for burgers")
+  /// rather than a specific dish — its food_id IS a category entity. Scored
+  /// and presented like a dish (owner's design: a category card in the dish
+  /// list); excluded ONLY from restaurant-level vote-total rollups, where its
+  /// mentions would double-count against the dishes they also support.
+  isCategoryItem      Boolean                 @default(false) @map("is_category_item")
   supportMentionCount Int                     @default(0) @map("support_mention_count")
   supportTotalUpvotes Int                     @default(0) @map("support_total_upvotes")
   lastMentionedAt     DateTime?               @map("last_mentioned_at")

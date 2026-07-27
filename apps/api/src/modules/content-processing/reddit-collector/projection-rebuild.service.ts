@@ -55,6 +55,8 @@ type ItemSupportMention = {
 type RestaurantItemProjection = {
   restaurantId: string;
   foodId: string;
+  /** Phase 4: this row is a CATEGORY claim materialized as an item. */
+  isCategoryItem: boolean;
   categories: string[];
   baseFoodAttributes: string[];
   foodAttributes: string[];
@@ -383,6 +385,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         ({
           restaurantId: foodEvent.restaurantId,
           foodId: foodEvent.entityId,
+          isCategoryItem: false,
           categories: [],
           baseFoodAttributes: [],
           foodAttributes: [],
@@ -464,6 +467,64 @@ export class ProjectionRebuildService implements OnModuleInit {
           support.sourceUpvotes,
           support.sourceDocumentId,
         );
+      });
+    });
+
+    // PHASE 4 — CATEGORY ITEMS (owner's design). A category claim ("known
+    // for their burgers") is real, scoreable evidence about the place, but
+    // until now it could only ride along as SUPPORT on a specific dish —
+    // so a restaurant praised for burgers with no named burger had nothing
+    // to show. Materialize each claimed category as its own item whose
+    // food_id IS the category entity: honest about what it is, presentable
+    // as a category card, and scored by the same mention machinery.
+    //
+    // The claim's mentions still bank onto matching dishes above (unchanged
+    // — a dish under a loved category deserves that boost); the category
+    // item carries the claim's OWN direct evidence. Restaurant-level
+    // vote-total rollups exclude these rows so the same mention can't be
+    // counted twice at the restaurant level.
+    //
+    // INVARIANT: a category item never lists itself in `categories` — a
+    // category is not its own parent (also what keeps the edge derivation
+    // from minting a self-edge).
+    itemSupportMentions.forEach((support) => {
+      support.categoryIds.forEach((categoryId) => {
+        const key = `${support.restaurantId}:${categoryId}`;
+        const existing = items.get(key);
+        if (existing && !existing.isCategoryItem) {
+          // A real dish already occupies this (restaurant, food) pair — the
+          // category is genuinely ordered by name here, so the dish IS the
+          // claim's home. Nothing to materialize.
+          return;
+        }
+        const aggregate =
+          existing ??
+          ({
+            restaurantId: support.restaurantId,
+            foodId: categoryId,
+            isCategoryItem: true,
+            categories: [],
+            baseFoodAttributes: [],
+            foodAttributes: [],
+            ingredients: [],
+            mentionCount: 0,
+            totalUpvotes: 0,
+            supportMentionCount: 0,
+            supportTotalUpvotes: 0,
+            lastMentionedAt: null,
+            firstMentionedAt: null,
+            mentions: [],
+          } satisfies RestaurantItemProjection);
+        aggregate.foodAttributes = Array.from(
+          new Set([...aggregate.foodAttributes, ...support.foodAttributeIds]),
+        ).sort();
+        this.applyTimedContribution(
+          aggregate,
+          support.mentionedAt,
+          support.sourceUpvotes,
+          support.sourceDocumentId,
+        );
+        items.set(key, aggregate);
       });
     });
 
@@ -670,6 +731,7 @@ export class ProjectionRebuildService implements OnModuleInit {
             totalUpvotes: item.totalUpvotes,
             supportMentionCount: item.supportMentionCount,
             supportTotalUpvotes: item.supportTotalUpvotes,
+            isCategoryItem: item.isCategoryItem,
             lastMentionedAt: item.lastMentionedAt,
             lastUpdated: now,
           },
@@ -687,6 +749,7 @@ export class ProjectionRebuildService implements OnModuleInit {
             totalUpvotes: item.totalUpvotes,
             supportMentionCount: item.supportMentionCount,
             supportTotalUpvotes: item.supportTotalUpvotes,
+            isCategoryItem: item.isCategoryItem,
             lastMentionedAt: item.lastMentionedAt,
             lastUpdated: now,
             createdAt: item.firstMentionedAt ?? now,
