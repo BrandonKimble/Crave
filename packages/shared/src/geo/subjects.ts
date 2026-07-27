@@ -83,7 +83,9 @@ const EPSILON = 1e-9;
 export interface SubjectCandidate {
   placeId: string;
   name: string;
-  bbox: GeoBbox;
+  // NO bbox (dropped 2026-07-26): the §2.5 judgment ranks ONLY on
+  // coverageOfView + placeArea, both ground-derived. Carrying a bbox here
+  // was dead payload that invited a second, weaker source of truth.
   /**
    * §2.5 coverage: area(real ground ∩ view)/area(view) when the polygon is
    * known; area(bbox ∩ view)/area(view) as the honest fallback otherwise.
@@ -185,7 +187,6 @@ export function subjectCandidatesInView(view: GeoBbox, places: PlaceLike[]): Sub
     candidates.push({
       placeId: place.placeId,
       name: place.name,
-      bbox: place.bbox,
       coverageOfView: coverage.coverageOfView,
       placeArea: coverage.placeArea,
       parentPlaceIds: place.parentPlaceIds,

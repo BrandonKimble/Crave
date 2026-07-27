@@ -18,17 +18,9 @@ function candidate(
   coverageOfView: number,
   placeArea: number,
 ): FeedPlaceCandidate {
-  // bbox only matters for containment tests; give big places a containing box.
-  const half = Math.sqrt(placeArea) / 2;
   return {
     placeId,
     name,
-    bbox: {
-      minLat: 0.5 - half,
-      minLng: 0.5 - half,
-      maxLat: 0.5 + half,
-      maxLng: 0.5 + half,
-    },
     coverageOfView,
     placeArea,
   };

@@ -53,7 +53,6 @@ function candidate(
   return {
     placeId: `id-${name}`,
     name,
-    bbox,
     coverageOfView: coverageOfViewShare,
     placeArea: bboxArea(bbox),
     ...overrides,

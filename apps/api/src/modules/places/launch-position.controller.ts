@@ -33,12 +33,17 @@ export class LaunchPositionController {
       lat: located.coordinate.lat,
       lng: located.coordinate.lng,
     });
+    // Wrap guard (2026-07-26): a seam-straddling place stores minLng > maxLng,
+    // which as a plain camera box is INVERTED (the client would derive a
+    // ~360°-wide zoom). Such a place ships no bounds — the client keeps its
+    // default zoom, the same honest absence a bbox-less place produces.
     const bounds =
       place &&
       place.bboxMinLat !== null &&
       place.bboxMinLng !== null &&
       place.bboxMaxLat !== null &&
-      place.bboxMaxLng !== null
+      place.bboxMaxLng !== null &&
+      Number(place.bboxMinLng) <= Number(place.bboxMaxLng)
         ? {
             southWest: {
               lat: Number(place.bboxMinLat),

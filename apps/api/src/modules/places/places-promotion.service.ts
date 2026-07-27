@@ -64,6 +64,10 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlaceGeometryPromotion, Prisma } from '@prisma/client';
+import {
+  bboxLatSpan as bboxLatSpanOf,
+  bboxLngSpan as bboxLngSpanOf,
+} from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { utcInstantSql } from '../signals/sql-instant';
@@ -513,14 +517,23 @@ export class PlacesPromotionService {
     // row stays sketch, the cached geometry id is cleared so a future pass
     // re-resolves instead of refetching the same wrong feature.
     const envelope = geojsonEnvelope(polygon.geojson);
-    const bboxLngSpan =
-      place.bboxMaxLng !== null && place.bboxMinLng !== null
-        ? Number(place.bboxMaxLng) - Number(place.bboxMinLng)
+    // Wrap-aware spans (bug fixed 2026-07-26): the raw subtraction this
+    // replaces went NEGATIVE for a seam-straddling place, so `< 0.2 * span`
+    // was trivially true and the guard could reject a CORRECT polygon.
+    const placeBbox =
+      place.bboxMinLat !== null &&
+      place.bboxMinLng !== null &&
+      place.bboxMaxLat !== null &&
+      place.bboxMaxLng !== null
+        ? {
+            minLat: Number(place.bboxMinLat),
+            minLng: Number(place.bboxMinLng),
+            maxLat: Number(place.bboxMaxLat),
+            maxLng: Number(place.bboxMaxLng),
+          }
         : null;
-    const bboxLatSpan =
-      place.bboxMaxLat !== null && place.bboxMinLat !== null
-        ? Number(place.bboxMaxLat) - Number(place.bboxMinLat)
-        : null;
+    const bboxLngSpan = placeBbox ? bboxLngSpanOf(placeBbox) : null;
+    const bboxLatSpan = placeBbox ? bboxLatSpanOf(placeBbox) : null;
     if (
       envelope &&
       bboxLngSpan !== null &&

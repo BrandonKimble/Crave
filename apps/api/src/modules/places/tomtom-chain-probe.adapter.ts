@@ -45,6 +45,10 @@ import {
   GeoBbox,
   GeoPoint,
   METERS_PER_DEGREE_LAT,
+  bboxContainsPoint,
+  bboxIntersectionParts,
+  bboxLatSpan,
+  bboxLngSpan,
   normalizePlaceName,
 } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
@@ -421,13 +425,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     const result =
       outcome.results.find((candidate) => {
         const bbox = parseForwardBoundingBox(candidate.boundingBox);
-        return (
-          bbox !== null &&
-          anchor.lat >= bbox.minLat &&
-          anchor.lat <= bbox.maxLat &&
-          anchor.lng >= bbox.minLng &&
-          anchor.lng <= bbox.maxLng
-        );
+        // Wrap-aware (bug fixed 2026-07-26): the raw min/max comparison this
+        // replaces silently rejected EVERY candidate whose bbox crosses the
+        // antimeridian (minLng > maxLng), leaving such nodes permanently
+        // bbox-less. bboxContainsPoint judges by lng ARCS.
+        return bbox !== null && bboxContainsPoint(bbox, anchor);
       }) ?? null;
     if (!result) {
       this.logger.warn(
@@ -736,9 +738,11 @@ function pickBboxAgreeingCandidate(
   candidates: TomtomGeocodeResult[],
   placeBbox: GeoBbox,
 ): TomtomGeocodeResult | null {
-  const placeArea =
-    (placeBbox.maxLng - placeBbox.minLng) *
-    (placeBbox.maxLat - placeBbox.minLat);
+  // Wrap-aware throughout (bug fixed 2026-07-26): raw `maxLng - minLng` spans
+  // and raw min/max overlap go NEGATIVE across the antimeridian, so a
+  // seam-straddling place scored every candidate at zero overlap and picked
+  // none. bboxLngSpan/bboxIntersectionParts speak in arcs.
+  const placeArea = bboxLngSpan(placeBbox) * bboxLatSpan(placeBbox);
   if (!(placeArea > 0)) {
     return candidates[0] ?? null; // degenerate index bbox judges nothing
   }
@@ -749,16 +753,14 @@ function pickBboxAgreeingCandidate(
     if (!bbox) {
       continue;
     }
-    const overlapLng =
-      Math.min(bbox.maxLng, placeBbox.maxLng) -
-      Math.max(bbox.minLng, placeBbox.minLng);
-    const overlapLat =
-      Math.min(bbox.maxLat, placeBbox.maxLat) -
-      Math.max(bbox.minLat, placeBbox.minLat);
-    if (overlapLng <= 0 || overlapLat <= 0) {
+    const overlapArea = bboxIntersectionParts(bbox, placeBbox).reduce(
+      (sum, part) => sum + bboxLngSpan(part) * bboxLatSpan(part),
+      0,
+    );
+    if (overlapArea <= 0) {
       continue;
     }
-    const coverage = (overlapLng * overlapLat) / placeArea;
+    const coverage = overlapArea / placeArea;
     if (coverage >= CANDIDATE_PLACE_COVERAGE_FLOOR && coverage > bestCoverage) {
       bestCoverage = coverage;
       best = candidate;
