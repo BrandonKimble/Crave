@@ -150,6 +150,10 @@ export type SharePackagePreviewDto =
        *  WORLD (favorites-as-search); absent ⇒ the client falls back to a plain
        *  push with a loud dev bark. */
       listType?: 'restaurant' | 'dish';
+      /** list kind only: 'curated' ⇒ an app-curated list — the client's tap
+       *  runs the curated fetch seam (GET /home/lists/:id), not the user-list
+       *  read. Absent ⇒ a user list. */
+      listSource?: 'curated';
     };
 
 export type MessageDto = {

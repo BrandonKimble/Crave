@@ -1,7 +1,14 @@
 import React from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { HandPlatter, Heart, Phone, Share as LucideShare } from 'lucide-react-native';
+import {
+  CircleCheck,
+  CirclePlus,
+  HandPlatter,
+  Pencil,
+  Phone,
+  Share as LucideShare,
+} from 'lucide-react-native';
 
 import { Text } from '../..';
 import { colors as themeColors } from '../../../constants/theme';
@@ -9,10 +16,13 @@ import { CONTENT_HORIZONTAL_PADDING } from '../../../screens/Search/constants/se
 
 // ─── The card PILL ACTION ROW (wave-3 charter §3.1 — the Google reference, recolored) ────────
 // Rounded pills under every result card: PRIMARY at low opacity for the bodies, the darker
-// primary for text/icons. Vocabulary: **Save** (heart — the favorites term is dead) · Share ·
-// Call · Dishes (restaurant cards ONLY). Scrollable-strip physics like everything else
-// (edge-to-edge bleed, content aligned by scrollable inset — §2.4's toggle-strip law); the
-// heart/share buttons that used to float on the card body MOVE here.
+// primary for text/icons. Vocabulary (plus/saved design, owner-ratified 2026-07-26 — the
+// heart icon is dead on cards): **Save** (circled plus) flipping to **Saved** (circled check)
+// once the item lives in any of the viewer's lists — tapping either opens the save modal
+// (the check re-opens it to reorganize) · Share · Call · Dishes (restaurant cards ONLY).
+// Own-list detail swaps Save for **Edit** (note + remove — see editMode). Scrollable-strip
+// physics like everything else (edge-to-edge bleed, content aligned by scrollable inset —
+// §2.4's toggle-strip law).
 
 const PILL_BODY = 'rgba(255, 51, 104, 0.10)'; // themeColors.primary (#ff3368) @ 10%
 const PILL_INK = themeColors.primaryDark; // the darker primary for text/icons
@@ -29,6 +39,9 @@ type Pill = {
 export type CardActionPillRowProps = {
   onSave: () => void;
   isSaved?: boolean;
+  /** Own/collaborator list detail: the first pill is Edit (note + remove)
+   *  instead of Save — the row is already "saved", the verb is curation. */
+  editMode?: boolean;
   onShare: () => void;
   /** Null/absent = no Call pill (honest absence, never a dead button). */
   phoneNumber?: string | null;
@@ -40,6 +53,7 @@ export type CardActionPillRowProps = {
 const CardActionPillRow: React.FC<CardActionPillRowProps> = ({
   onSave,
   isSaved = false,
+  editMode = false,
   onShare,
   phoneNumber = null,
   onDishes = null,
@@ -52,20 +66,24 @@ const CardActionPillRow: React.FC<CardActionPillRowProps> = ({
   }, [phoneNumber]);
 
   const pills: Pill[] = [
-    {
-      key: 'save',
-      label: 'Save',
-      icon: (
-        <Heart
-          size={PILL_ICON_SIZE}
-          color={PILL_INK}
-          fill={isSaved ? PILL_INK : 'none'}
-          strokeWidth={2}
-        />
-      ),
-      onPress: onSave,
-      accessibilityLabel: isSaved ? 'Saved' : 'Save',
-    },
+    editMode
+      ? {
+          key: 'edit',
+          label: 'Edit',
+          icon: <Pencil size={PILL_ICON_SIZE} color={PILL_INK} strokeWidth={2} />,
+          onPress: onSave,
+        }
+      : {
+          key: 'save',
+          label: isSaved ? 'Saved' : 'Save',
+          icon: isSaved ? (
+            <CircleCheck size={PILL_ICON_SIZE} color={PILL_INK} strokeWidth={2} />
+          ) : (
+            <CirclePlus size={PILL_ICON_SIZE} color={PILL_INK} strokeWidth={2} />
+          ),
+          onPress: onSave,
+          accessibilityLabel: isSaved ? 'Saved — reorganize' : 'Save',
+        },
     {
       key: 'share',
       label: 'Share',

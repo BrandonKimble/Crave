@@ -23,6 +23,7 @@ import { formatCraveScoreMovement } from '../../../screens/Search/utils/quality'
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 import CardActionPillRow from './CardActionPillRow';
+import { useSavedMembership } from '../../../store/saved-membership-store';
 import {
   RESULT_CARD_GALLERY_HEIGHT,
   RESULT_CARD_GALLERY_TILE_ASPECT,
@@ -63,6 +64,9 @@ type DishResultCardProps = {
   isLiked: boolean;
   restaurantForDish?: RestaurantResult;
   onSavePress: () => void;
+  /** Own/collaborator list detail: first pill = Edit (note + remove) —
+   *  onSavePress then opens the item editor, not the save modal. */
+  pillEditMode?: boolean;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
     source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
@@ -85,6 +89,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   isLiked,
   restaurantForDish,
   onSavePress,
+  pillEditMode = false,
   openRestaurantProfile,
   openScoreInfo,
   note = null,
@@ -93,6 +98,9 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   galleryHeight = RESULT_CARD_GALLERY_HEIGHT,
 }) => {
   const rank = index + 1;
+  // Live saved-anywhere state (batched /lists/memberships read + optimistic
+  // mutation marks) — the plus/saved pill design's single source of truth.
+  const isSavedAnywhere = useSavedMembership('connection', item.connectionId);
   const trackRecentlyViewedFood = useSearchHistoryStore((state) => state.trackRecentlyViewedFood);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
   const hasStatus = Boolean(item.restaurantOperatingStatus);
@@ -283,7 +291,8 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           the card-body heart/share moved here. */}
       <CardActionPillRow
         onSave={onSavePress}
-        isSaved={isLiked}
+        isSaved={isLiked || isSavedAnywhere}
+        editMode={pillEditMode}
         onShare={handleShare}
         phoneNumber={
           restaurantForDish?.displayLocation?.phoneNumber ??

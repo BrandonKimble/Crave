@@ -238,9 +238,13 @@ const SharedEntityCard = ({ shared }: { shared: SharePackagePreview }) => {
                 entityId: shared.id,
                 entityType: refType,
                 label: shared.title,
-                // Wave-4 §3 mouth 4: a shared LIST runs the full list world.
+                // Wave-4 §3 mouth 4: a shared LIST runs the full list world;
+                // curated lists ride the same push with the curated fetch seam.
                 ...(shared.kind === 'list' && shared.listType != null
                   ? { listType: shared.listType }
+                  : {}),
+                ...(shared.kind === 'list' && shared.listSource === 'curated'
+                  ? { listSource: 'curated' as const }
                   : {}),
               })
           : null;

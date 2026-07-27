@@ -28,7 +28,7 @@ export class UserListsPublicController {
    *  summary carries `city` (majority market of its items) for the client's
    *  city-header grouping. Auth is OPTIONAL (public surface), but when a
    *  viewer is present a blocked pair sees nothing (§8.6). */
-  @Get(':userId/favorites/lists')
+  @Get(':userId/lists')
   @UseGuards(OptionalClerkAuthGuard)
   async listPublicLists(
     @Param('userId', ParseUUIDPipe) userId: string,

@@ -42,6 +42,7 @@ import {
   type RestaurantResultCardTextSegment,
 } from '../../../screens/Search/components/restaurant-result-card-descriptor';
 import CardActionPillRow from './CardActionPillRow';
+import { useSavedMembership } from '../../../store/saved-membership-store';
 import {
   RESULT_CARD_GALLERY_HEIGHT,
   RESULT_CARD_GALLERY_TILE_ASPECT,
@@ -88,6 +89,9 @@ type RestaurantResultCardProps = {
   preparedDescriptor?: RestaurantResultCardDescriptor | null;
   isLiked: boolean;
   onSavePress: () => void;
+  /** Own/collaborator list detail: first pill = Edit (note + remove) —
+   *  onSavePress then opens the item editor, not the save modal. */
+  pillEditMode?: boolean;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
     source?: 'results_sheet' | 'auto_open_single_candidate'
@@ -112,6 +116,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   preparedDescriptor: maybePreparedDescriptor = null,
   isLiked,
   onSavePress,
+  pillEditMode = false,
   openRestaurantProfile,
   openScoreInfo,
   primaryFoodTerm: _primaryFoodTerm,
@@ -120,6 +125,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   onAddPhoto,
   galleryHeight = RESULT_CARD_GALLERY_HEIGHT,
 }) => {
+  // Live saved-anywhere state (batched /lists/memberships read + optimistic
+  // mutation marks) — the plus/saved pill design's single source of truth.
+  const isSavedAnywhere = useSavedMembership('restaurant', restaurant.restaurantId);
   const preparedDescriptor =
     maybePreparedDescriptor?.restaurantId === restaurant.restaurantId
       ? maybePreparedDescriptor
@@ -576,7 +584,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           moved here; Call renders only when the restaurant carries a phone. */}
       <CardActionPillRow
         onSave={onSavePress}
-        isSaved={isLiked}
+        isSaved={isLiked || isSavedAnywhere}
+        editMode={pillEditMode}
         onShare={handleShare}
         phoneNumber={
           restaurant.displayLocation?.phoneNumber ??

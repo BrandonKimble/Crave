@@ -4,7 +4,7 @@ import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interce
 
 // Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
 @AllowUnentitled()
-@Controller('favorites/lists/share')
+@Controller('lists/share')
 export class UserListsShareController {
   constructor(private readonly userListsService: UserListsService) {}
 

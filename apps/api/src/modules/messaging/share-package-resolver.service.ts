@@ -46,7 +46,11 @@ export class SharePackageResolverService {
       title: string,
       subtitle: string | null = null,
       imageUrl: string | null = null,
-      extra: { pollId?: string; listType?: 'restaurant' | 'dish' } = {},
+      extra: {
+        pollId?: string;
+        listType?: 'restaurant' | 'dish';
+        listSource?: 'curated';
+      } = {},
     ): SharePackagePreviewDto => ({
       unavailable: false,
       kind,
@@ -76,7 +80,34 @@ export class SharePackageResolverService {
             collaborators: { select: { userId: true } },
           },
         });
-        if (!list) return unavailable;
+        if (!list) {
+          // Curated lists share under the SAME 'list' kind (uuid namespaces
+          // are disjoint; the fetch seam is the only fork — home-surface
+          // charter). Global lists are visible to everyone; a personal
+          // (weekly-tasting) list only to its owner. No author gate: the
+          // system, not a user, owns curated content.
+          const curated = await this.prisma.curatedList.findUnique({
+            where: { listId: id },
+            select: {
+              title: true,
+              itemCount: true,
+              listType: true,
+              scope: true,
+              ownerUserId: true,
+            },
+          });
+          if (!curated) return unavailable;
+          if (
+            curated.scope === 'personal' &&
+            curated.ownerUserId !== viewerUserId
+          ) {
+            return unavailable;
+          }
+          return available(curated.title, `${curated.itemCount} places`, null, {
+            listType: curated.listType === 'dish' ? 'dish' : 'restaurant',
+            listSource: 'curated',
+          });
+        }
         // Identity-adjacent: a list carries its OWNER's identity.
         if (await this.blockedByAuthorGate(viewerUserId, list.ownerUserId)) {
           return unavailable;

@@ -422,7 +422,7 @@ export class UserListMapper {
         // Detail-path parity with the results path (spec B.1.5): the saver's
         // note + the backing UserListItem id ride every axis row.
         note: item.note ?? null,
-        favoriteListItemId: item.itemId,
+        userListItemId: item.itemId,
       });
     }
 
@@ -485,7 +485,7 @@ export class UserListMapper {
         ),
         // Detail-path parity with the results path (spec B.1.5).
         note: item.note ?? null,
-        favoriteListItemId: item.itemId,
+        userListItemId: item.itemId,
       });
     });
 

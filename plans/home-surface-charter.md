@@ -87,14 +87,21 @@ the only new fact. Re-tapping the same city refetches (pickSeq edge).
 Every item here is DELIBERATELY deferred with its trigger; nothing below is
 forgotten work.
 
-1. Result-row Save pills show no live hearted-state — needs ONE batched
-   membership read for the visible rows (per-row reads would be dishonest
-   jank). Trigger: first UX polish pass post sim-verification.
-2. No one-tap dish heart on dish surfaces — the hook/routes support it;
-   the affordance placement is a design decision. Same trigger as (1).
-3. Send-in-app (messaging) share for curated lists — the share-package
-   resolver speaks user-list ids only; extend it to curated ids. Trigger:
-   messaging share usage exists.
+1. ~~Save pills show no live saved-state~~ — SUPERSEDED + RESOLVED
+   2026-07-26 by the owner's plus/saved pill design: the card heart is DEAD.
+   Save pill = circled plus → circled check + "Saved" once the item lives in
+   ANY of the viewer's lists (batched POST /lists/memberships, one request
+   per screenful via the saved-membership store's ensure queue; save-modal
+   and heart mutations mark optimistically; removals re-ask the server).
+   Tapping "Saved" re-opens the save modal to reorganize.
+2. ~~One-tap dish heart~~ — DISSOLVED by the same design: cards use the
+   plus/saved pill, not hearts. (The heart VERB survives server-side as the
+   favorites-kind routes; profile-surface hearts unchanged.)
+3. ~~Send-in-app share for curated lists~~ — RESOLVED 2026-07-26: the
+   share-package resolver's 'list' kind falls through user_lists →
+   curated_lists (global visible to all; personal owner-only; no author
+   gate — the system owns curated content), and the preview carries
+   listSource:'curated' so the DM bubble tap runs the curated fetch seam.
 4. Programmatic list artwork (photo collage + color extraction) — V2;
    V1 is the ratified cutout+icon system.
 5. Curated recipes/cron ground-up scrutiny + onboarding-seeded
@@ -107,9 +114,10 @@ forgotten work.
 7. Strip action-row still on raw MaskedHoleOverlay (non-scrolling,
    renderWhenEmpty — deliberately left); unify onto CutoutBand only if it
    ever needs the edge illusion.
-8. Server favorite* HTTP route paths (@Controller('favorites')) kept for
-   client compatibility — rename to /lists/* alongside a mobile release
-   once the app ships through a store channel.
+8. ~~favorite\* HTTP route paths~~ — RESOLVED 2026-07-26 (owner: no installed
+   clients exist): @Controller('lists'), /lists/share, /users/:id/lists;
+   mobile client paths updated in the same commit. The favorites-KIND routes
+   live at /lists/favorites/items (the kind, not the old name).
 9. The 8-per-axis shelf caps are GONE (earn-it); the /home/feed response
    carries EVERY earned shelf with no shelf-count bound or pagination —
    dormant at 2 cities, real at a 40-cuisine metro (red team 2026-07-26).
@@ -134,3 +142,10 @@ forgotten work.
     big NYC-area polygons (and the corrupt PR rows in the candidate set) is
     the suspect. Attribute before fixing (per the attribution law).
     Trigger: before NYC onboarding is real; likely falls out of (11).
+13. List COVERS, Spotify album-cover model (owner-ratified direction
+    2026-07-26): kill the 2×2 photo collage on user lists; the owner curates
+    ONE cover image per list ("list cover") — creative, vibe-first, never
+    forced. Curated home lists stay on the icon system at scale (collages
+    read as messy/crowded — the anti-goal); V2 artwork explores a cohesive
+    commissioned/AI-consistent icon set beyond lucide. Trigger: the lists
+    UX pass after the recipes/onboarding leg.

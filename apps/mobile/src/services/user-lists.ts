@@ -108,21 +108,21 @@ export const userListsService = {
     listType?: UserListType;
     visibility?: UserListVisibility;
   }): Promise<UserListSummary[]> {
-    const response = await api.get<UserListSummary[]>('/favorites/lists', { params });
+    const response = await api.get<UserListSummary[]>('/lists', { params });
     return response.data;
   },
   async listPublic(params: {
     userId: string;
     listType?: UserListType;
   }): Promise<UserListSummary[]> {
-    const response = await api.get<UserListSummary[]>(`/users/${params.userId}/favorites/lists`, {
+    const response = await api.get<UserListSummary[]>(`/users/${params.userId}/lists`, {
       params: { listType: params.listType },
     });
     return response.data;
   },
   async get(listId: string, opts?: { shareSlug?: string | null }): Promise<UserListDetail> {
     // RT-18: a non-owner/non-collaborator read must PRESENT the slug (the capability).
-    const response = await api.get<UserListDetail>(`/favorites/lists/${listId}`, {
+    const response = await api.get<UserListDetail>(`/lists/${listId}`, {
       params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined,
     });
     return response.data;
@@ -150,7 +150,7 @@ export const userListsService = {
       targetUserId?: string | null;
     }
   ): Promise<SearchResponse> {
-    const response = await api.post<SearchResponse>(`/favorites/lists/${listId}/results`, {
+    const response = await api.post<SearchResponse>(`/lists/${listId}/results`, {
       openNow: opts?.openNow,
       priceLevels: opts?.priceLevels?.length ? opts.priceLevels : undefined,
       cityPlaceId: opts?.cityPlaceId ?? undefined,
@@ -171,7 +171,7 @@ export const userListsService = {
     listId: string,
     opts?: { shareSlug?: string | null; targetUserId?: string | null }
   ): Promise<Array<{ placeId: string; name: string; restaurantCount: number }>> {
-    const response = await api.post(`/favorites/lists/${listId}/cities`, {
+    const response = await api.post(`/lists/${listId}/cities`, {
       shareSlug: opts?.shareSlug ?? undefined,
       targetUserId: opts?.targetUserId ?? undefined,
     });
@@ -184,7 +184,7 @@ export const userListsService = {
       : [];
   },
   async getShared(shareSlug: string): Promise<UserListDetail> {
-    const response = await api.get<UserListDetail>(`/favorites/lists/share/${shareSlug}`);
+    const response = await api.get<UserListDetail>(`/lists/share/${shareSlug}`);
     return response.data;
   },
   async create(payload: {
@@ -193,7 +193,7 @@ export const userListsService = {
     listType: UserListType;
     visibility?: UserListVisibility;
   }): Promise<UserListSummary> {
-    const response = await api.post<UserListSummary>('/favorites/lists', payload);
+    const response = await api.post<UserListSummary>('/lists', payload);
     return response.data;
   },
   async update(
@@ -208,14 +208,14 @@ export const userListsService = {
       useOwnPhotos?: boolean;
     }
   ): Promise<UserListSummary> {
-    const response = await api.patch<UserListSummary>(`/favorites/lists/${listId}`, payload);
+    const response = await api.patch<UserListSummary>(`/lists/${listId}`, payload);
     return response.data;
   },
   async updatePosition(listId: string, position: number): Promise<void> {
-    await api.patch(`/favorites/lists/${listId}/position`, { position });
+    await api.patch(`/lists/${listId}/position`, { position });
   },
   async remove(listId: string): Promise<void> {
-    await api.delete(`/favorites/lists/${listId}`);
+    await api.delete(`/lists/${listId}`);
   },
   // Save-sheet toolkit: `note` rides the add. A `connectionId` sent to a
   // RESTAURANT list is resolved server-side to that connection's restaurant
@@ -231,7 +231,7 @@ export const userListsService = {
       note?: string;
     }
   ) {
-    const response = await api.post(`/favorites/lists/${listId}/items`, payload);
+    const response = await api.post(`/lists/${listId}/items`, payload);
     return response.data;
   },
   /**
@@ -245,7 +245,7 @@ export const userListsService = {
     locationId?: string;
     note?: string;
   }) {
-    const response = await api.post('/favorites/lists/favorites/items', payload);
+    const response = await api.post('/lists/favorites/items', payload);
     return response.data;
   },
   /** Unheart: remove from the user's kind='favorites' list. */
@@ -254,7 +254,7 @@ export const userListsService = {
     connectionId?: string;
     locationId?: string;
   }) {
-    const response = await api.delete('/favorites/lists/favorites/items', { data: payload });
+    const response = await api.delete('/lists/favorites/items', { data: payload });
     return response.data;
   },
   /**
@@ -262,16 +262,15 @@ export const userListsService = {
    * current membership (the API enforces set equality — loud contract).
    */
   async reorderItems(listId: string, orderedItemIds: string[]): Promise<void> {
-    await api.patch(`/favorites/lists/${listId}/items/order`, { orderedItemIds });
+    await api.patch(`/lists/${listId}/items/order`, { orderedItemIds });
   },
   async getCollaborators(
     listId: string,
     opts?: { shareSlug?: string | null }
   ): Promise<UserListCollaborators> {
-    const response = await api.get<UserListCollaborators>(
-      `/favorites/lists/${listId}/collaborators`,
-      { params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined }
-    );
+    const response = await api.get<UserListCollaborators>(`/lists/${listId}/collaborators`, {
+      params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined,
+    });
     return response.data;
   },
   /** Join via invite link (RT-18: the slug presented WITH intent is the invite). */
@@ -280,27 +279,31 @@ export const userListsService = {
     shareSlug: string
   ): Promise<{ listId: string; role: 'owner' | 'collaborator' }> {
     const response = await api.post<{ listId: string; role: 'owner' | 'collaborator' }>(
-      `/favorites/lists/${listId}/collaborators/join`,
+      `/lists/${listId}/collaborators/join`,
       { shareSlug }
     );
     return response.data;
   },
   /** Owner-kick or self-leave (the API fails closed on anything else). */
   async removeCollaborator(listId: string, userId: string): Promise<void> {
-    await api.delete(`/favorites/lists/${listId}/collaborators/${userId}`);
+    await api.delete(`/lists/${listId}/collaborators/${userId}`);
   },
   async updateItemPosition(listId: string, itemId: string, position: number): Promise<void> {
-    await api.patch(`/favorites/lists/${listId}/items/${itemId}`, { position });
+    await api.patch(`/lists/${listId}/items/${itemId}`, { position });
+  },
+  /** Item-editor (Edit pill): null clears the note. */
+  async updateItemNote(listId: string, itemId: string, note: string | null): Promise<void> {
+    await api.patch(`/lists/${listId}/items/${itemId}`, { note });
   },
   async removeItem(listId: string, itemId: string): Promise<void> {
-    await api.delete(`/favorites/lists/${listId}/items/${itemId}`);
+    await api.delete(`/lists/${listId}/items/${itemId}`);
   },
   async enableShare(listId: string, rotate = false): Promise<{ shareSlug: string }> {
-    const response = await api.post(`/favorites/lists/${listId}/share`, { rotate });
+    const response = await api.post(`/lists/${listId}/share`, { rotate });
     return response.data;
   },
   async disableShare(listId: string): Promise<void> {
-    await api.delete(`/favorites/lists/${listId}/share`);
+    await api.delete(`/lists/${listId}/share`);
   },
   /**
    * Red-team W2 (page-registry §8.4 Overview element 1): the viewer's lists
@@ -308,8 +311,23 @@ export const userListsService = {
    */
   async entityMemberships(entityId: string): Promise<UserListEntityMembership[]> {
     const response = await api.get<UserListEntityMembership[]>(
-      `/favorites/entities/${entityId}/memberships`
+      `/lists/entities/${entityId}/memberships`
     );
+    return response.data;
+  },
+  /**
+   * ONE batched saved-anywhere read for a screenful of cards (plus/saved pill
+   * state) — the server returns the distinct subset of the asked ids that
+   * live in any list the viewer owns or co-edits.
+   */
+  async batchMemberships(query: {
+    restaurantIds?: string[];
+    connectionIds?: string[];
+  }): Promise<{ savedRestaurantIds: string[]; savedConnectionIds: string[] }> {
+    const response = await api.post<{
+      savedRestaurantIds: string[];
+      savedConnectionIds: string[];
+    }>('/lists/memberships', query);
     return response.data;
   },
 };

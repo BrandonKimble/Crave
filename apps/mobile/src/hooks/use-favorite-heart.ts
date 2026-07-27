@@ -1,14 +1,15 @@
 import React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { userListsService, type UserListEntityMembership } from '../services/user-lists';
+import { refreshSavedMembership, useSavedMembershipStore } from '../store/saved-membership-store';
 import { userListKeys } from './use-user-lists';
 
 /**
  * The HEART VERB (Favorites-as-kind, Spotify Liked-Songs model): a one-tap
  * toggle against the user's kind='favorites' list via the dedicated heart
- * routes — POST /favorites/lists/favorites/items (ensure-then-add; the server
- * lazily creates the list on first heart) and the DELETE twin. It NEVER rides
- * the generic per-list add-item route.
+ * routes — POST /lists/favorites/items (ensure-then-add; the server lazily
+ * creates the list on first heart) and the DELETE twin. It NEVER rides the
+ * generic per-list add-item route.
  */
 
 export type HeartTarget = {
@@ -34,14 +35,23 @@ export const runHeartToggle = async ({
   const selector = target.restaurantId
     ? { restaurantId: target.restaurantId }
     : { connectionId: target.connectionId };
+  const kind = target.restaurantId ? ('restaurant' as const) : ('connection' as const);
+  const targetId = target.restaurantId ?? target.connectionId;
   if (isFavorite) {
     await userListsService.removeFavoriteItem(selector);
+    // "Still saved in some OTHER list?" can't be known locally — re-ask.
+    if (targetId) {
+      refreshSavedMembership(kind, targetId);
+    }
     return 'removed';
   }
   await userListsService.addFavoriteItem({
     ...selector,
     locationId: target.locationId ?? undefined,
   });
+  if (targetId) {
+    useSavedMembershipStore.getState().markSaved(kind, targetId);
+  }
   return 'added';
 };
 

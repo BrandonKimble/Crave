@@ -1,4 +1,5 @@
 import { userListsService, type UserListSummary } from '../../services/user-lists';
+import { useSavedMembershipStore } from '../../store/saved-membership-store';
 
 /**
  * Save-sheet row model (Favorites-as-kind, Spotify Liked-Songs shape):
@@ -74,8 +75,16 @@ export const dispatchSaveForRow = async (
   selectedRowId: string,
   payload: SaveTargetPayload
 ): Promise<unknown> => {
-  if (selectedRowId === FAVORITES_ROW_ID) {
-    return userListsService.addFavoriteItem(payload);
+  const result =
+    selectedRowId === FAVORITES_ROW_ID
+      ? await userListsService.addFavoriteItem(payload)
+      : await userListsService.addItem(selectedRowId, payload);
+  // Plus/saved pill coherence: a successful save marks the target saved
+  // everywhere it renders (the batched-membership store's mutation seam).
+  if (payload.restaurantId) {
+    useSavedMembershipStore.getState().markSaved('restaurant', payload.restaurantId);
+  } else if (payload.connectionId) {
+    useSavedMembershipStore.getState().markSaved('connection', payload.connectionId);
   }
-  return userListsService.addItem(selectedRowId, payload);
+  return result;
 };

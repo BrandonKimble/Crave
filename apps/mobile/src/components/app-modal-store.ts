@@ -24,6 +24,8 @@ export type AppModalAction = {
 /** Text-input support (the Alert.prompt replacement — typed-confirm flows, etc.). */
 export type AppModalPrompt = {
   placeholder?: string;
+  /** Prefill (edit-existing flows, e.g. the list-item note editor). */
+  defaultValue?: string;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address' | 'number-pad';

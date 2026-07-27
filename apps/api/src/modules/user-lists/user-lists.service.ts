@@ -277,6 +277,56 @@ export class UserListsService {
   }
 
   /**
+   * ONE batched saved-anywhere read for a screenful of cards (plus/saved
+   * pill state). "Yours" mirrors listMembershipsForEntity: owner OR
+   * collaborator lists. Returns the DISTINCT subset of the asked ids that
+   * live in any such list — never per-row detail (that's the entity read).
+   */
+  async listMembershipsBatch(
+    userId: string,
+    query: { restaurantIds?: string[]; connectionIds?: string[] },
+  ): Promise<{ savedRestaurantIds: string[]; savedConnectionIds: string[] }> {
+    const restaurantIds = query.restaurantIds ?? [];
+    const connectionIds = query.connectionIds ?? [];
+    if (!restaurantIds.length && !connectionIds.length) {
+      return { savedRestaurantIds: [], savedConnectionIds: [] };
+    }
+    const items = await this.prisma.userListItem.findMany({
+      where: {
+        OR: [
+          ...(restaurantIds.length
+            ? [{ restaurantId: { in: restaurantIds } }]
+            : []),
+          ...(connectionIds.length
+            ? [{ connectionId: { in: connectionIds } }]
+            : []),
+        ],
+        list: {
+          OR: [
+            { ownerUserId: userId },
+            { collaborators: { some: { userId } } },
+          ],
+        },
+      },
+      select: { restaurantId: true, connectionId: true },
+    });
+    const savedRestaurantIds = new Set<string>();
+    const savedConnectionIds = new Set<string>();
+    for (const item of items) {
+      if (item.restaurantId && restaurantIds.includes(item.restaurantId)) {
+        savedRestaurantIds.add(item.restaurantId);
+      }
+      if (item.connectionId && connectionIds.includes(item.connectionId)) {
+        savedConnectionIds.add(item.connectionId);
+      }
+    }
+    return {
+      savedRestaurantIds: [...savedRestaurantIds],
+      savedConnectionIds: [...savedConnectionIds],
+    };
+  }
+
+  /**
    * §8.15 city grouping: a list's city = the majority city of its items
    * (restaurant items directly; dish items via their connection's
    * restaurant). Ties break arbitrarily-but-stably; the client renders the

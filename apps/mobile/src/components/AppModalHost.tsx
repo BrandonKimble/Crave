@@ -47,8 +47,9 @@ export const AppModalHost: React.FC = () => {
   const promptConfigRef = React.useRef<AppModalConfig | null>(null);
   if (config != null && promptConfigRef.current !== config) {
     promptConfigRef.current = config;
-    if (promptText !== '') {
-      setPromptText('');
+    const initial = config.prompt?.defaultValue ?? '';
+    if (promptText !== initial) {
+      setPromptText(initial);
     }
   }
 

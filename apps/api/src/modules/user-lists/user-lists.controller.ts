@@ -22,16 +22,17 @@ import { UpdateUserListPositionDto } from './dto/update-user-list-position.dto';
 import { UpdateUserListItemDto } from './dto/update-user-list-item.dto';
 import { ShareUserListDto } from './dto/share-user-list.dto';
 import { ListUserListsDto } from './dto/list-user-lists.dto';
+import { BatchMembershipsDto } from './dto/batch-memberships.dto';
 import { UserListResultsDto } from './dto/user-list-results.dto';
 import { JoinUserListCollaboratorsDto } from './dto/join-user-list-collaborators.dto';
 import { ReorderUserListItemsDto } from './dto/reorder-user-list-items.dto';
 
-@Controller('favorites')
+@Controller('lists')
 @UseGuards(ClerkAuthGuard)
 export class UserListsController {
   constructor(private readonly userListsService: UserListsService) {}
 
-  @Get('lists')
+  @Get()
   listLists(@CurrentUser() user: User, @Query() query: ListUserListsDto) {
     return this.userListsService.listForUser(user.userId, query);
   }
@@ -50,7 +51,17 @@ export class UserListsController {
     );
   }
 
-  @Post('lists')
+  // ONE batched saved-anywhere read for a screenful of cards (plus/saved
+  // pill state). Static path — declared before the ':listId' param routes.
+  @Post('memberships')
+  listMembershipsBatch(
+    @CurrentUser() user: User,
+    @Body() dto: BatchMembershipsDto,
+  ) {
+    return this.userListsService.listMembershipsBatch(user.userId, dto);
+  }
+
+  @Post()
   createList(@CurrentUser() user: User, @Body() dto: CreateUserListDto) {
     return this.userListsService.createList(user.userId, dto);
   }
@@ -61,13 +72,13 @@ export class UserListsController {
   // UUID pipe would 400 'favorites'). Ensure-then-add/remove: the favorites-
   // kind list is lazily created on first heart. Bodies are the normal
   // add-item selector (restaurantId XOR connectionId [+ locationId, note]).
-  @Post('lists/favorites/items')
+  @Post('favorites/items')
   addFavoriteItem(@CurrentUser() user: User, @Body() dto: AddUserListItemDto) {
     return this.userListsService.addFavoriteItem(user.userId, dto);
   }
 
   // Unheart by TARGET (same selector body — the client doesn't know itemIds).
-  @Delete('lists/favorites/items')
+  @Delete('favorites/items')
   @HttpCode(204)
   removeFavoriteItem(
     @CurrentUser() user: User,
@@ -76,7 +87,7 @@ export class UserListsController {
     return this.userListsService.removeFavoriteItemByTarget(user.userId, dto);
   }
 
-  @Get('lists/:listId')
+  @Get(':listId')
   getList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -88,7 +99,7 @@ export class UserListsController {
 
   // No ParseUUIDPipe: also accepts the virtual All ids
   // ('all:restaurants' / 'all:dishes'); the service validates concrete ids.
-  @Post('lists/:listId/results')
+  @Post(':listId/results')
   getListResults(
     @CurrentUser() user: User,
     @Param('listId') listId: string,
@@ -100,7 +111,7 @@ export class UserListsController {
   // City-chip vocabulary (§8.16 "sliced by city"): the distinct catalog
   // cities present in the list. POST for parity with /results (carries the
   // same access dto: shareSlug / targetUserId); accepts virtual All ids.
-  @Post('lists/:listId/cities')
+  @Post(':listId/cities')
   listCitiesForList(
     @CurrentUser() user: User,
     @Param('listId') listId: string,
@@ -109,7 +120,7 @@ export class UserListsController {
     return this.userListsService.listCitiesForList(user.userId, listId, dto);
   }
 
-  @Get('lists/:listId/collaborators')
+  @Get(':listId/collaborators')
   getCollaborators(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -122,7 +133,7 @@ export class UserListsController {
     );
   }
 
-  @Post('lists/:listId/collaborators/join')
+  @Post(':listId/collaborators/join')
   joinCollaborators(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -135,7 +146,7 @@ export class UserListsController {
     );
   }
 
-  @Delete('lists/:listId/collaborators/:userId')
+  @Delete(':listId/collaborators/:userId')
   @HttpCode(204)
   removeCollaborator(
     @CurrentUser() user: User,
@@ -149,7 +160,7 @@ export class UserListsController {
     );
   }
 
-  @Patch('lists/:listId/items/order')
+  @Patch(':listId/items/order')
   reorderListItems(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -162,7 +173,7 @@ export class UserListsController {
     );
   }
 
-  @Patch('lists/:listId')
+  @Patch(':listId')
   updateList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -171,7 +182,7 @@ export class UserListsController {
     return this.userListsService.updateList(user.userId, listId, dto);
   }
 
-  @Patch('lists/:listId/position')
+  @Patch(':listId/position')
   updateListPosition(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -184,7 +195,7 @@ export class UserListsController {
     );
   }
 
-  @Post('lists/:listId/items')
+  @Post(':listId/items')
   addListItem(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -193,7 +204,7 @@ export class UserListsController {
     return this.userListsService.addItem(user.userId, listId, dto);
   }
 
-  @Patch('lists/:listId/items/:itemId')
+  @Patch(':listId/items/:itemId')
   updateListItem(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -203,7 +214,7 @@ export class UserListsController {
     return this.userListsService.updateItem(user.userId, listId, itemId, dto);
   }
 
-  @Delete('lists/:listId/items/:itemId')
+  @Delete(':listId/items/:itemId')
   @HttpCode(204)
   removeListItem(
     @CurrentUser() user: User,
@@ -213,7 +224,7 @@ export class UserListsController {
     return this.userListsService.removeItem(user.userId, listId, itemId);
   }
 
-  @Post('lists/:listId/share')
+  @Post(':listId/share')
   enableShare(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -222,7 +233,7 @@ export class UserListsController {
     return this.userListsService.enableShare(user.userId, listId, dto);
   }
 
-  @Delete('lists/:listId/share')
+  @Delete(':listId/share')
   @HttpCode(204)
   disableShare(
     @CurrentUser() user: User,
@@ -231,7 +242,7 @@ export class UserListsController {
     return this.userListsService.disableShare(user.userId, listId);
   }
 
-  @Delete('lists/:listId')
+  @Delete(':listId')
   @HttpCode(204)
   removeList(
     @CurrentUser() user: User,

@@ -22,6 +22,9 @@ export type SharePackagePreview =
       /** list kind only: the list's side — present ⇒ the tap runs the full
        *  list WORLD (favorites-as-search). */
       listType?: 'restaurant' | 'dish';
+      /** list kind only: 'curated' ⇒ app-curated — tap runs the curated
+       *  fetch seam; absent ⇒ a user list. */
+      listSource?: 'curated';
     };
 
 export interface DmMessage {

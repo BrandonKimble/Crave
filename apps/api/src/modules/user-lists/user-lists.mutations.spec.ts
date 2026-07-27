@@ -538,7 +538,7 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
     expect(detail2.defaultSort).toBe('best');
   });
 
-  it('detail rows project note + favoriteListItemId (parity with the results path)', async () => {
+  it('detail rows project note + userListItemId (parity with the results path)', async () => {
     const detailItems = [
       makeItem({
         itemId: 'item-1',
@@ -558,7 +558,7 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
       ]);
     const detail: any = await service.getListForUser(OWNER, LIST_ID);
     expect(detail.restaurants[0].note).toBe('the brisket');
-    expect(detail.restaurants[0].favoriteListItemId).toBe('item-1');
+    expect(detail.restaurants[0].userListItemId).toBe('item-1');
   });
 });
 

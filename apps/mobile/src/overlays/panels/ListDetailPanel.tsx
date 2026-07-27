@@ -66,6 +66,7 @@ import {
 import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-codec';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
+import { refreshSavedMembership } from '../../store/saved-membership-store';
 import {
   userListsService,
   type UserListCollaborators,
@@ -388,6 +389,9 @@ type ListDetailReadyData = {
   onJoin: () => Promise<void>;
   openCollaboratorRoster: () => void;
   onOrderSaved: () => Promise<void>;
+  /** Item-editor (Edit pill) refetch: note edits / removals re-pull results
+   *  WITHOUT flipping the sort override (unlike onOrderSaved). */
+  onItemsMutated: () => Promise<void>;
   slice: ListDetailSliceData;
 };
 
@@ -419,13 +423,13 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
       data.listType === 'restaurant'
         ? restaurantRows.map((restaurant) => ({
             key: restaurant.restaurantId,
-            itemId: restaurant.favoriteListItemId ?? null,
+            itemId: restaurant.userListItemId ?? null,
             kind: 'restaurant' as const,
             restaurant,
           }))
         : dishRows.map((dish) => ({
             key: dish.connectionId,
-            itemId: dish.favoriteListItemId ?? null,
+            itemId: dish.userListItemId ?? null,
             kind: 'dish' as const,
             dish,
           })),
@@ -558,6 +562,74 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
   // white card treatment so it reads as picked up over its siblings.
   const canAddPhotoRef = React.useRef(data.canAddPhoto);
   canAddPhotoRef.current = data.canAddPhoto;
+  const canEditRef = React.useRef(data.canEdit);
+  canEditRef.current = data.canEdit;
+
+  // ─── Item editor (Edit pill — plus/saved design, owner-ratified 2026-07-26):
+  // on own/collaborator lists the row is already "saved", so the first pill is
+  // Edit — note + remove-from-list — instead of the save modal.
+  const listIdRef = React.useRef(data.resolvedListId);
+  listIdRef.current = data.resolvedListId;
+  const onItemsMutatedRef = React.useRef(data.onItemsMutated);
+  onItemsMutatedRef.current = data.onItemsMutated;
+  const openItemEditor = React.useCallback((row: ListDetailRichRow) => {
+    const itemId = row.itemId;
+    if (itemId == null) {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.warn('[ITEMEDIT] row has no itemId — editor skipped', row.key);
+      }
+      return; // virtual-All / projection rows carry no editable item
+    }
+    const label = row.kind === 'restaurant' ? row.restaurant.restaurantName : row.dish.foodName;
+    const note = (row.kind === 'restaurant' ? row.restaurant.note : row.dish.note) ?? '';
+    showAppModal({
+      title: `Edit ${label}`,
+      message: 'Update your note, or remove it from this list.',
+      prompt: { placeholder: 'Add a note (optional)', defaultValue: note },
+      actions: [
+        {
+          label: 'Save note',
+          onPress: (text) => {
+            const trimmed = (text ?? '').trim();
+            void (async () => {
+              try {
+                await userListsService.updateItemNote(
+                  listIdRef.current,
+                  itemId,
+                  trimmed === '' ? null : trimmed
+                );
+                await onItemsMutatedRef.current();
+              } catch {
+                announceFailureIfOnline();
+              }
+            })();
+          },
+        },
+        {
+          label: 'Remove from list',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await userListsService.removeItem(listIdRef.current, itemId);
+                // "Still saved in some OTHER list?" is a server fact — re-ask.
+                refreshSavedMembership(
+                  row.kind === 'restaurant' ? 'restaurant' : 'connection',
+                  row.key
+                );
+                await onItemsMutatedRef.current();
+              } catch {
+                announceFailureIfOnline();
+              }
+            })();
+          },
+        },
+        { label: 'Cancel', style: 'cancel' },
+      ],
+    });
+  }, []);
+
   const renderRichRowCard = React.useCallback(
     (row: ListDetailRichRow, index: number) => {
       const canAdd = canAddPhotoRef.current;
@@ -571,10 +643,17 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
               rank={index + 1}
               qualityColor={getMarkerColorForRestaurant(restaurant)}
               isLiked={false}
-              onSavePress={getRestaurantSaveHandler(
-                restaurant.restaurantId,
-                restaurant.restaurantLocationId ?? restaurant.displayLocation?.locationId ?? null
-              )}
+              pillEditMode={canEditRef.current}
+              onSavePress={
+                canEditRef.current
+                  ? () => openItemEditor(row)
+                  : getRestaurantSaveHandler(
+                      restaurant.restaurantId,
+                      restaurant.restaurantLocationId ??
+                        restaurant.displayLocation?.locationId ??
+                        null
+                    )
+              }
               openRestaurantProfile={openRestaurantProfileFromList}
               openScoreInfo={openScoreInfo}
               primaryFoodTerm={null}
@@ -600,8 +679,13 @@ const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData
             index={index}
             qualityColor={getMarkerColorForDish(dish)}
             isLiked={false}
+            pillEditMode={canEditRef.current}
             restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
-            onSavePress={getDishSaveHandler(dish.connectionId, dish.restaurantLocationId ?? null)}
+            onSavePress={
+              canEditRef.current
+                ? () => openItemEditor(row)
+                : getDishSaveHandler(dish.connectionId, dish.restaurantLocationId ?? null)
+            }
             openRestaurantProfile={openRestaurantProfileFromList}
             openScoreInfo={openScoreInfo}
             note={dish.note ?? null}
@@ -1660,6 +1744,13 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     });
     setSortOverride('custom');
   }, [listIdParam, queryClient, resolvedListId, shareSlug]);
+  const onItemsMutated = React.useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['listDetailResults', resolvedListId] });
+    await queryClient.invalidateQueries({
+      queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+    });
+    await queryClient.invalidateQueries({ queryKey: userListKeys.all });
+  }, [listIdParam, queryClient, resolvedListId, shareSlug]);
   // Dead slug (sharing revoked — the only way link access dies): 410 {state:'private'}
   // on either read → a RESOLVED private-gone answer, excluded from the error edge.
   const isPrivateGone =
@@ -1692,6 +1783,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           onJoin: handleJoin,
           openCollaboratorRoster,
           onOrderSaved,
+          onItemsMutated,
           slice: {
             effectiveSort,
             openNow,
