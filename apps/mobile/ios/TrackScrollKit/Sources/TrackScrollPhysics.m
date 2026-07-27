@@ -39,6 +39,12 @@
 /// Releases whose native target lands below this bound get detent-targeted.
 @property (nonatomic, assign) CGFloat snapRegionEnd;
 @property (nonatomic, copy) NSArray<NSNumber *> *snapOffsets;
+/// NATIVE GEOMETRY ARBITRATION (the second input surface, by construction):
+/// a scroll pan whose touch STARTS inside the chrome band [sheetTop,
+/// sheetTop+chromeHeight) is cancelled here — the JS header-grab pan owns it.
+/// sheetTop derives from the track: chromeTopInset + max(0, edge − offset).
+@property (nonatomic, assign) CGFloat chromeTopInset;
+@property (nonatomic, assign) CGFloat chromeHeight;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -102,6 +108,22 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
 {
+  // GEOMETRY ARBITRATION: reject drags born on the chrome. Toggling the pan
+  // recognizer cancels the in-flight gesture cleanly; the RNGH header pan
+  // (observing at the root) keeps the touch.
+  if (self.chromeHeight > 0) {
+    UIPanGestureRecognizer *pan = scrollView.panGestureRecognizer;
+    const CGPoint location = [pan locationInView:scrollView.window];
+    const CGPoint translation = [pan translationInView:scrollView.window];
+    const CGFloat startY = location.y - translation.y;
+    const CGFloat sheetTop =
+        self.chromeTopInset + MAX(0, self.ballisticEdge - scrollView.contentOffset.y);
+    if (startY >= sheetTop && startY < sheetTop + self.chromeHeight) {
+      pan.enabled = NO;
+      pan.enabled = YES;
+      return;
+    }
+  }
   // FINGER DOWN: full 1:1 track (the continuous grab); any armed intercept or
   // in-flight bounce dies — the finger owns the track from here.
   self.ballisticArmed = NO;
@@ -329,9 +351,13 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     };
     NSNumber *edge = config[@"ballisticEdge"];
     NSNumber *regionEnd = config[@"snapRegionEnd"];
+    NSNumber *chromeTopInset = config[@"chromeTopInset"];
+    NSNumber *chromeHeight = config[@"chromeHeight"];
     proxy.ballisticEdge = edge != nil ? edge.doubleValue : -1;
     proxy.snapRegionEnd = regionEnd != nil ? regionEnd.doubleValue : -1;
     proxy.snapOffsets = config[@"snapOffsets"] ?: @[];
+    proxy.chromeTopInset = chromeTopInset != nil ? chromeTopInset.doubleValue : 0;
+    proxy.chromeHeight = chromeHeight != nil ? chromeHeight.doubleValue : 0;
     resolve(@(YES));
   }];
 }
@@ -360,6 +386,24 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
                   toTarget:offset.doubleValue
                      fromY:scrollView.contentOffset.y
                  velocityY:0];
+    });
+  }];
+}
+
+// Header-grab drag channel: direct offset write (non-animated), for the JS
+// header pan whose worklet scrollTo proved inert on the recycler's scroll view.
+RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
+                  offset:(nonnull NSNumber *)offset)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
+                          animated:NO];
     });
   }];
 }

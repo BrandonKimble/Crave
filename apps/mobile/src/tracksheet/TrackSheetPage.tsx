@@ -143,7 +143,14 @@ export function TrackSheetPage<Item>({
   seatTau = null,
   onUserListScrollActivity,
 }: TrackSheetPageProps<Item>): React.ReactElement {
-  const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
+  const chromeHeightForArbitration =
+    OVERLAY_TAB_HEADER_HEIGHT +
+    (dockedStrip != null ? dockedStrip.height + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM : 0);
+  const physicsGeometry = React.useMemo(
+    () => ({ ...geometry, chromeHeight: chromeHeightForArbitration }),
+    [chromeHeightForArbitration, geometry]
+  );
+  const physics = useTrackSheetPhysics(physicsGeometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag, detentTaus } = physics;
 
   // Animated ref on the INNER scroll view — the header-grab pan's write channel.
@@ -176,6 +183,7 @@ export function TrackSheetPage<Item>({
   // handle, nav action, strip chips) alive.
   const grabStartTau = useSharedValue(0);
   const snapToTauJS = physics.snapToTau;
+  const setTauJS = physics.setTau;
   const headerGrabPan = React.useMemo(
     () =>
       Gesture.Pan()
@@ -189,20 +197,18 @@ export function TrackSheetPage<Item>({
         .onUpdate((event) => {
           'worklet';
           const next = Math.min(trackH, Math.max(0, grabStartTau.value - event.translationY));
-          if (Math.round(event.translationY) % 50 === 0) {
-            console.log(
-              '[TRACKDBG] headerPan update next=' + Math.round(next) + ' tau=' + Math.round(tau.value)
-            );
-          }
-          scrollTo(scrollAnimatedRef, 0, next, false);
+          // Native write channel — the worklet scrollTo proved inert on the
+          // recycler's scroll view (RED trace in the ledger).
+          runOnJS(setTauJS)(next);
         })
         .onEnd((event) => {
           'worklet';
-          // dτ/dt = −vy; UIKit-style projection then nearest detent in [0,H].
-          const projected = Math.min(
+          // dτ/dt = −vy; project from the PAN's own position (τ events can lag).
+          const current = Math.min(
             trackH,
-            Math.max(0, tau.value + -event.velocityY * 0.18)
+            Math.max(0, grabStartTau.value - event.translationY)
           );
+          const projected = Math.min(trackH, Math.max(0, current + -event.velocityY * 0.18));
           let best = detentTaus[0] ?? 0;
           for (const detent of detentTaus) {
             if (Math.abs(detent - projected) < Math.abs(best - projected)) {
@@ -211,7 +217,7 @@ export function TrackSheetPage<Item>({
           }
           runOnJS(snapToTauJS)(best);
         }),
-    [detentTaus, grabStartTau, physics.userOwnsPosture, scrollAnimatedRef, snapToTauJS, tau, trackH]
+    [detentTaus, grabStartTau, physics.userOwnsPosture, setTauJS, snapToTauJS, tau, trackH]
   );
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is

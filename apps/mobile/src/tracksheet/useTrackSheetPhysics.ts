@@ -23,6 +23,9 @@ import {
 // is one-shot durable (the FlashList lesson).
 
 export type TrackSheetGeometry = {
+  /** Chrome band height (pt) — the native side rejects scroll pans that START
+   * inside the chrome (geometry arbitration; the header pan owns them). */
+  chromeHeight?: number;
   /** Sheet top edge (screen y) when fully expanded. */
   expandedTop: number;
   /** Sheet top edge (screen y) when collapsed. */
@@ -50,6 +53,8 @@ export type TrackSheetPhysics = {
   attachToTag: (tag: number | null) => void;
   /** Programmatic settle to a τ — rides the same native critically damped spring. */
   snapToTau: (tau: number) => void;
+  /** Direct offset write (header-grab drag channel). */
+  setTau: (tau: number) => void;
   /** Fires after each successful native attach (seat re-assertion hook). */
   subscribeAttached: (listener: () => void) => () => void;
   /** Written by the page's onContentSizeChange (scroll events carry no contentSize). */
@@ -120,6 +125,8 @@ export const useTrackSheetPhysics = (
             ballisticEdge: trackH,
             snapRegionEnd: trackH,
             snapOffsets: detentTaus,
+            chromeTopInset: geometry.expandedTop,
+            chromeHeight: geometry.chromeHeight ?? 0,
           })
           .then(() => {
             attachedListenersRef.current.forEach((listener) => listener());
@@ -133,7 +140,7 @@ export const useTrackSheetPhysics = (
       };
       tryAttach();
     },
-    [detentTaus, trackH]
+    [detentTaus, geometry.chromeHeight, geometry.expandedTop, trackH]
   );
   React.useEffect(() => {
     const physics = NativeModules.TrackScrollPhysics;
@@ -158,6 +165,13 @@ export const useTrackSheetPhysics = (
         physics.detach?.(tag);
       }
     };
+  }, []);
+  const setTau = React.useCallback((tauTarget: number) => {
+    const physics = NativeModules.TrackScrollPhysics;
+    const tag = attachedTagRef.current;
+    if (physics?.setOffset != null && tag != null) {
+      physics.setOffset(tag, tauTarget);
+    }
   }, []);
   const snapToTau = React.useCallback((tauTarget: number) => {
     const physics = NativeModules.TrackScrollPhysics;
@@ -208,18 +222,40 @@ export const useTrackSheetPhysics = (
     [contentHeight, lastActivityAt, onUserListScrollActivity, reassertAttach, trackH]
   );
 
-  return {
-    tau,
-    trackH,
-    detentTaus,
-    dragging,
-    ballisticFromList,
-    sheetTopY,
-    onScroll,
-    attachToTag,
-    snapToTau,
-    subscribeAttached,
-    contentHeight,
-    userOwnsPosture,
-  };
+  // STABLE IDENTITY (feel-bug root cause, 2026-07-26): consumers key effects on
+  // this object — a fresh literal per render re-ran the SEAT effect on every
+  // HUD tick, clearing the user-owns-posture latch and re-snapping the sheet
+  // 4x/second ("bounces back, won't stay at any snap point").
+  return React.useMemo(
+    () => ({
+      tau,
+      trackH,
+      detentTaus,
+      dragging,
+      ballisticFromList,
+      sheetTopY,
+      onScroll,
+      attachToTag,
+      snapToTau,
+      setTau,
+      subscribeAttached,
+      contentHeight,
+      userOwnsPosture,
+    }),
+    [
+      tau,
+      trackH,
+      detentTaus,
+      dragging,
+      ballisticFromList,
+      sheetTopY,
+      onScroll,
+      attachToTag,
+      snapToTau,
+      setTau,
+      subscribeAttached,
+      contentHeight,
+      userOwnsPosture,
+    ]
+  );
 };
