@@ -8,6 +8,7 @@ import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useAppRouteSharedSheetRuntimeOwner } from '../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
 import type { OverlayKey } from '../overlays/types';
@@ -133,9 +134,12 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // startup geometry seed (the same routeOverlaySnapPoints the production sheet
   // rides), and the presented scene tracks the PresentationFrame — tab presses
   // switch this host's chrome exactly as they switch the production sheet's.
-  // LIVE geometry: computed per render (cheap) — a boot-time memo froze
-  // pre-layout values and mis-seated the sheet.
-  const snapPoints = getSearchStartupGeometrySeed().routeOverlaySnapPoints;
+  // THE CANONICAL GEOMETRY + PUBLICATION SVs: the shared sheet runtime owner is
+  // the live production source (snapPoints synced in place; sheetTranslateY /
+  // sheetScrollOffset are what every legacy rider subscribes to). Geometry
+  // unification: attach config and chrome both read THIS object now.
+  const sharedSheetOwner = useAppRouteSharedSheetRuntimeOwner();
+  const snapPoints = sharedSheetOwner.snapPoints;
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const scene = frame.activeSceneKey ?? sceneOverride;
@@ -257,6 +261,20 @@ const useTrackScenePageChrome = (
         : undefined,
     [Strip, scene]
   );
+  const sharedSheetOwner2 = useAppRouteSharedSheetRuntimeOwner();
+  // RED-proven (2026-07-27): binding sheetTranslateY woke BEHAVIORAL riders —
+  // the dismiss-motion plane / search foreground-launch intent read the track's
+  // header drag as search-session motion and opened the suggestion surface.
+  // The old writer carried implicit session context; those riders must be
+  // audited scene-by-scene before translateY binds (acceptance inventory §5.8
+  // subscriber table). Until then only the safe reader set (divider, origin
+  // capture) gets its value via sheetScrollOffset.
+  const sharedSheetPublicationBindings = React.useMemo(
+    () => ({
+      sheetScrollOffset: sharedSheetOwner2.sheetScrollOffset,
+    }),
+    [sharedSheetOwner2.sheetScrollOffset]
+  );
   const geometry = React.useMemo(
     () => ({
       expandedTop: snapPoints.expanded,
@@ -275,6 +293,7 @@ const useTrackScenePageChrome = (
     onNavActionPress,
     isChildScene,
     onGrabHandlePress,
+    sharedSheetPublicationBindings,
   };
 };
 
@@ -295,6 +314,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     onNavActionPress,
     isChildScene,
     onGrabHandlePress,
+    sharedSheetPublicationBindings,
   } = useTrackScenePageChrome(scene, snapPoints);
   const pollsParts = usePollsPanelListSceneParts();
   const homeParts = useHomePanelListSceneParts();
@@ -429,6 +449,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         debugHud
         commandsRef={commandsRef}
         seatTau={seatTau}
+        publicationBindings={sharedSheetPublicationBindings}
         onUserListScrollActivity={
           scene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined
         }

@@ -3,6 +3,7 @@ import { Dimensions, Pressable, StyleSheet, View, type ViewStyle } from 'react-n
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Reanimated, {
   interpolate,
+  useAnimatedReaction,
   useAnimatedStyle,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -119,6 +120,13 @@ export type TrackSheetPageProps<Item> = {
   seatTau?: number | null;
   /** Production pagination signal (sceneBodyTransport.onUserListScrollActivity). */
   onUserListScrollActivity?: TrackSheetPhysicsOptions['onUserListScrollActivity'];
+  /** THE PUBLICATION BRIDGE (acceptance inventory §5.8): mirror the track into
+   * the app-wide shared sheet values — every legacy subscriber (search chrome
+   * transition, scrim, dismiss plane, origin capture) rides the track. */
+  publicationBindings?: {
+    sheetTranslateY?: SharedValue<number>;
+    sheetScrollOffset?: SharedValue<number>;
+  };
 };
 
 export function TrackSheetPage<Item>({
@@ -140,6 +148,7 @@ export function TrackSheetPage<Item>({
   commandsRef,
   seatTau = null,
   onUserListScrollActivity,
+  publicationBindings,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const chromeHeightForArbitration =
     OVERLAY_TAB_HEADER_HEIGHT +
@@ -215,6 +224,29 @@ export function TrackSheetPage<Item>({
       }
     },
     [attachToTag]
+  );
+
+  // THE PUBLICATION BRIDGE: one-way, UI-thread mirrors — the track is the ONE
+  // writer; legacy readers see the exact values the old sheet used to publish.
+  const boundTranslateY = publicationBindings?.sheetTranslateY ?? null;
+  const boundScrollOffset = publicationBindings?.sheetScrollOffset ?? null;
+  useAnimatedReaction(
+    () => sheetTopY.value,
+    (value) => {
+      if (boundTranslateY != null) {
+        boundTranslateY.value = value;
+      }
+    },
+    [boundTranslateY]
+  );
+  useAnimatedReaction(
+    () => Math.max(0, tau.value - trackH),
+    (value) => {
+      if (boundScrollOffset != null) {
+        boundScrollOffset.value = value;
+      }
+    },
+    [boundScrollOffset, trackH]
   );
 
   // ── THE SEAT: declarative re-asserting settle ──
