@@ -214,9 +214,21 @@ const useTrackScenePageChrome = (
 ) => {
   const commandsRef = React.useRef<TrackSheetCommands | null>(null);
   const trackH = snapPoints.collapsed - snapPoints.expanded;
-  // THE SEAT is declarative now: simplified posture rule (full motion-descriptor
-  // table = rung 4) expressed as a target τ the page re-asserts itself.
-  const seatTau = scene === 'home' ? 0 : trackH;
+  // THE PRODUCTION POSTURE (rung 4): the seat comes from the snap session —
+  // posture seats + per-scene remembered detents, gesture-written only
+  // (inventory §5.10). τ mapping: expanded→H, middle→collapsed−middle,
+  // collapsed→0. 'hidden' has no track posture yet (dismiss choreography is a
+  // later slice) — it seats collapsed.
+  const sceneRuntimeForSeat = useAppRouteSceneRuntime();
+  const seatSnap = sceneRuntimeForSeat.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(
+    scene
+  );
+  const seatTau =
+    seatSnap === 'expanded'
+      ? trackH
+      : seatSnap === 'middle'
+        ? snapPoints.collapsed - snapPoints.middle
+        : 0;
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
