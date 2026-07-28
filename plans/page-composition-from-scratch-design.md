@@ -2351,3 +2351,46 @@ THE RESOLUTION (next session, in order):
    register holes exactly as the pre-flip home did), and header flushness
    (the amber debug bar occupies real space — verify with debug=0).
 STILL TRUE: `crave://tracksheet-host?on=0` restores the old system whole.
+
+### THE HEADER WIGGLE + "EVERYTHING SHOULD BE GRABBABLE" — one root, one shape
+
+ROOT CAUSE OF THE WIGGLE (and why the prototype never had it):
+The sheet's CONTENT moves natively (UIScrollView, locked to the display link).
+The CHROME moves through a DERIVED value (τ → sheetTopY → animated transform),
+which lands one frame behind the engine. Two motion sources for one surface ⇒
+they desync by ~1 frame every frame ⇒ the header appears to wiggle against the
+sheet it is supposed to be part of.
+THE PROTOTYPE DIDN'T WIGGLE because the counter-translate put the CONTENT on
+the SAME derived value as the chrome: content = native scroll + (−sheetTopY),
+chrome = +sheetTopY. Both carried the identical one-frame lag, so they were
+locked to each other — the lag was invisible because nothing on screen
+contradicted it. Deleting the counter-translate (for a touch problem that
+turned out to be a rig artifact) removed the lockstep and exposed the lag.
+So: the counter-translate was not only a trick — it was the sync mechanism.
+
+THE IDEAL SHAPE (fixes the wiggle AND the grab law in one move):
+THE CHROME BELONGS TO THE TRACK'S CONTENT, AS A STICKY HEADER.
+  content = spacer[0,H] → CHROME (sticky) → rows
+With contentInset.top = expandedTop, the chrome rides the content natively
+(zero derived values, zero lag, zero wiggle) while τ ≤ H, and the scroll view
+PINS it at expandedTop once τ > H — which is exactly the production behavior
+(chrome pinned, content sliding under it) but enforced by UIKit itself.
+CONSEQUENCES, all of them wins:
+  • No derived transform for the chrome ⇒ the wiggle is impossible.
+  • The chrome is INSIDE the scroll view ⇒ every touch on it (title, close
+    button, grab handle, strip chips) is a scroll touch. THE WHOLE SHEET IS
+    GRABBABLE BY CONSTRUCTION — and UIScrollView's own tap-vs-drag arbitration
+    (touchesShouldBegin/cancelContentTouches) is exactly the "swipe direction
+    logic" the owner describes: taps still hit buttons, drags become sheet
+    motion. No chromeGrab arbitration, no pointerEvents rules, no exceptions.
+  • chromeGrab / the chrome inset bound / the hit-transparency law all become
+    UNNECESSARY and get deleted — three mechanisms collapse into one.
+  • The sheet SURFACE (frost + corners) still rides sheetTopY, but it is a
+    pure backdrop with no content relationship, so a frame of lag on it is
+    invisible (it is a solid field, not a texture the eye can register against
+    the content) — and it can be eliminated too by giving the sticky chrome
+    the rounded top and letting the frost span the viewport.
+WHY THIS IS THE GROUND-UP SHAPE: the ONE TRACK axiom says every visual is a
+derivation of τ. The chrome is the one thing that is not a derivation — it IS
+content at a known content-offset. Modeling it as content (sticky) instead of
+as a derived overlay removes an entire class of sync bugs.
