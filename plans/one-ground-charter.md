@@ -135,19 +135,45 @@ county axis, no geometric comparison, no extra vendor call:
   false "already asked" area (4r² vs πr²), which could suppress discovery of
   a real place in a corner for the whole 30d TTL. RED-provable spec asserts
   the square answers a 1.27r corner and the disc does not.
-- P5b OPEN — signals store a RECTANGLE, not a place: measured on the dev DB,
-  876 of 955 signals (92%) carry a place-derived rectangle, ALL of them wider
-  than 1 km. A poll "in Austin" literally carries Austin's bounding box, so
-  attribution leaks into Round Rock and Pflugerville. Ideal: store the
-  placeId (+ a point for point-events) and let the attribution join the
-  place's real ground — `ground-containment.ts` is already fully polygon-
-  native and is the reference implementation.
-  SIZE, honestly: 32 call sites across 7 files, all in the hot demand/supply
-  path (search ranking, poll supply, demand aggregation) plus a schema
-  migration and a backfill. This is its own arc, not a tail — and it should
-  open by writing the attribution law into the new
-  `places-containment.integration.spec` harness so the behaviour is proven
-  against PostGIS BEFORE and AFTER the change.
+- P5b OPEN — RE-ATTRIBUTED 2026-07-28 against PROD. The earlier framing here
+  ("876 of 955 signals carry a place-derived rectangle", "32 call sites across
+  7 files") was measured on the DEV database and was wrong in both directions.
+  The truth is worse in effect and far smaller in scope.
+
+  WHAT IS ACTUALLY WRONG — exactly one producer. `polls.service.pollSignalGeo`
+  calls `signals.bboxFromPlace(placeId)`, which stuffs the place's stored
+  BOUNDING RECTANGLE into the signal's geo. `bboxFromPlace` has exactly ONE
+  consumer (that function, 4 call sites). Every OTHER signal geo is HONEST and
+  must not be touched: `bboxFromBounds` is a real viewport, `entity_view` and
+  the user-lists/restaurant paths are true points. Charter §"what survives as a
+  rectangle" item 1 says a viewport IS a rectangle — a blanket "signals store a
+  placeId" would have DESTROYED correct data. P5b is a poll-signal fix, not a
+  signals-wide migration.
+
+  THE MEASURED EFFECT (prod, all 22,778 places with a ground + bbox). The
+  attribution law is `placeCoversGeo OR geoCoversPlace`:
+  - arm (i) `ST_Covers(ground, geo)` fails for **22,774 / 22,778 = 99.98%** —
+    a polygon never covers its own bounding rectangle (the 4 passes are
+    rectangular/degenerate grounds). So a poll does NOT attribute to its own
+    place through the containing arm at all.
+  - arm (ii) `ST_CoveredBy(ground, geo)` rescues it — but OVER-FIRES, matching
+    every OTHER place whose ground fits inside that rectangle. Measured:
+    **Austin bleeds into 31 other places**, Denver 9, Portland 9. One poll
+    created in Austin registers demand in 32 places.
+
+  NOT YET LIVE ON PROD — the fortunate part. Prod signals are only
+  `viewport_dwell` (465), `search` (282), `entity_view` (77); zero poll-kind
+  signals exist because prod's 17,941 polls were seeded, not created through
+  the API. So this can be fixed BEFORE it writes a single bad row. Fix it
+  before poll acts start flowing.
+
+  IDEAL: a poll signal's WHERE is its placeId — a nullable `place_id` on
+  `signals`, preferred by the attribution when present, with the geo columns
+  retained for the genuinely-rectangular and genuinely-point kinds.
+  `ground-containment.ts` is already fully polygon-native on the place side
+  and is the reference implementation. Open by writing the bleed into
+  `places-containment.integration.spec` as a RED-provable case (the Austin-31
+  number is the assertion) BEFORE changing the law.
 
 ## Catalog verdict — FULL audit, all 22,726 places (2026-07-28)
 
