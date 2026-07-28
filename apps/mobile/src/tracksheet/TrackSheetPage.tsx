@@ -227,11 +227,31 @@ export function TrackSheetPage<Item>({
   // thing that ever needed clipping — rows scrolling above the sheet — is
   // handled by a MASK (paint-only, hit-test-free).
   // Mask band: everything above the chrome's bottom edge is hidden.
-  const dividerStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(tau.value - trackH, [0, 3, 14], [0, 0.35, 1], 'clamp'),
-  }));
+  const trackHShared = useSharedValue(trackH);
+  React.useEffect(() => {
+    trackHShared.value = trackH;
+  }, [trackH, trackHShared]);
+  const dividerStyle = useAnimatedStyle(() => {
+    // LIVE H, never a captured constant: at boot the geometry seed can report
+    // expandedTop === collapsedTop ⇒ trackH 0, which degenerates this to
+    // `opacity: τ` — pinning the divider ON at rest on EVERY page (the exact
+    // universality the owner saw). The fade only means anything once H is real.
+    const h = trackHShared.value;
+    if (h <= 0) {
+      return { opacity: 0 };
+    }
+    return { opacity: interpolate(tau.value - h, [0, 3, 14], [0, 0.35, 1], 'clamp') };
+  });
 
   // The chrome's node handle goes to the native pin (step 1 primitive).
+  // THE PIN MUST RE-ASSERT ON ATTACH: React fires refs CHILD-FIRST, so
+  // setChromeRef runs before the track's own ref — and pinChrome no-ops when
+  // the proxy does not exist yet. attach() retries (logs show success on a
+  // later attempt); the pin had no such re-assert, so it was dropped once and
+  // forever, and the chrome then scrolled away past H ("the sheet never stops
+  // at the top snap"). Same law the seat already follows.
+  const applyPinRef = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
   const chromeTagRef = React.useRef<number | null>(null);
   const applyPin = React.useCallback(() => {
@@ -247,6 +267,7 @@ export function TrackSheetPage<Item>({
     },
     [applyPin]
   );
+  applyPinRef.current = applyPin;
 
   const listInstanceRef = React.useRef<{
     scrollToOffset?: (opts: { offset: number; animated?: boolean }) => void;
