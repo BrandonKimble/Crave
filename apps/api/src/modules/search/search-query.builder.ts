@@ -1536,6 +1536,33 @@ selected_locations AS (
     return { sql, preview };
   }
 
+  /**
+   * RESTAURANT ROLLUP ADMISSION (charter §2a, ratified 2026-07-27).
+   *
+   * One claim, counted exactly once. A category item ("known for their
+   * burgers") is real evidence about the place, so it SHOULD lift the
+   * restaurant score — but only when it is the sole carrier of that claim.
+   * The moment a specific dish sits under that category, the dish already
+   * carries it into this rollup, and admitting the category item too would
+   * count the same endorsement twice.
+   *
+   * The test is PER CATEGORY, not per restaurant: a place can be praised for
+   * burgers (has burger dishes -> category excluded) and for tacos (no taco
+   * dish -> category admitted) in the same breath. An earlier version
+   * excluded every category item outright, which was safe against
+   * double-counting but silently discarded the claims that had no dish to
+   * ride on — exactly the restaurants this design exists to represent.
+   */
+  private static readonly ROLLUP_ADMISSION_SQL = `
+    NOT c.is_category_item
+    OR NOT EXISTS (
+      SELECT 1
+      FROM core_restaurant_items d
+      WHERE d.restaurant_id = c.restaurant_id
+        AND NOT d.is_category_item
+        AND c.food_id = ANY(d.categories)
+    )`;
+
   private buildRestaurantVoteTotalsCte(): { sql: Prisma.Sql; preview: string } {
     const sql = Prisma.sql`
 restaurant_vote_totals AS (
@@ -1545,7 +1572,7 @@ restaurant_vote_totals AS (
     SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
-  WHERE NOT c.is_category_item
+  WHERE ${Prisma.raw(SearchQueryBuilder.ROLLUP_ADMISSION_SQL)}
   GROUP BY c.restaurant_id
 )`;
 
@@ -1554,7 +1581,7 @@ restaurant_vote_totals AS (
   SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
-  WHERE NOT c.is_category_item
+  WHERE ${SearchQueryBuilder.ROLLUP_ADMISSION_SQL}
   GROUP BY c.restaurant_id
 )`.trim();
 
@@ -1573,7 +1600,7 @@ geographic_restaurant_vote_totals AS (
     SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  WHERE NOT c.is_category_item
+  WHERE ${Prisma.raw(SearchQueryBuilder.ROLLUP_ADMISSION_SQL)}
   GROUP BY c.restaurant_id
 )`;
 
@@ -1582,7 +1609,7 @@ geographic_restaurant_vote_totals AS (
   SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
   FROM core_restaurant_items c
   JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  WHERE NOT c.is_category_item
+  WHERE ${SearchQueryBuilder.ROLLUP_ADMISSION_SQL}
   GROUP BY c.restaurant_id
 )`.trim();
 

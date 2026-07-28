@@ -111,7 +111,17 @@ export class RestaurantMentionsService {
 
     const [signals, matched, blockedPeers] = await Promise.all([
       this.prisma.restaurantEntitySignal.findMany({
-        where: { restaurantId, mentionCount: { gt: 0 } },
+        // ACTIVE ONLY (charter §2e). Archived entities are kept as FK-safe
+        // tombstones and resolution SINKS, not as vocabulary — a tag is a
+        // user-facing label, so a merged-away or junk entity must never
+        // surface as one. Filtering here rather than after `take` so the tag
+        // budget is spent on real tags. 4,892 of 49,342 signal rows point at
+        // archived entities today (2026-07-27).
+        where: {
+          restaurantId,
+          mentionCount: { gt: 0 },
+          entity: { status: 'active' },
+        },
         orderBy: { mentionCount: 'desc' },
         take: MAX_TAGS,
         select: {

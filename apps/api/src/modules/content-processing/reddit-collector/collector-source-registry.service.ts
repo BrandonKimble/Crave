@@ -334,10 +334,11 @@ export class CollectorSourceRegistryService {
    * Advance a dispatched lane (the pacer's row-advance). When the pacer
    * supplies `derivedIntervalDays` (chronological: the loss-horizon formula
    * clamped by the arrival measurement's horizon — no-fake-estimates law,
-   * 2026-07-24), it REPLACES the row cadence entirely: the declared
-   * cadence_days is bootstrap-only, standing in until the first measurement
-   * exists. Hot sources tighten below it; quiet sources stretch above it
-   * (never past the measurement horizon). Absent = the declared cadence.
+   * 2026-07-24), it REPLACES the row cadence entirely — in due_at AND in the
+   * cadence_days column, which is seeded by the declaration and thereafter
+   * reports the measured interval. Hot sources tighten below it; quiet
+   * sources stretch above it (never past the measurement horizon). Absent =
+   * the cadence already on the row.
    */
   async advanceLane(
     sourceId: string,
@@ -356,6 +357,15 @@ export class CollectorSourceRegistryService {
       SET due_at = ${now}::timestamp + make_interval(
             secs => COALESCE(${derived}::float8, cadence_days) * 86400
           ),
+          -- HONEST COLUMN (charter §3). due_at carried the derived interval
+          -- while cadence_days kept reporting the bootstrap declaration, so
+          -- the column said "1 day" for lanes actually running every 14 —
+          -- behavior was right, the readout lied, and the readout is what an
+          -- operator inspects. cadence_days now means one thing: the interval
+          -- this lane runs at, seeded by the declaration and corrected by
+          -- measurement. ensureLanes is ON CONFLICT DO NOTHING, so the
+          -- declaration never overwrites a measured value.
+          cadence_days = COALESCE(${derived}::float8, cadence_days),
           last_ran_at = ${now},
           updated_at = now()
       WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
