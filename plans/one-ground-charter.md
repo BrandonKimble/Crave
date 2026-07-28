@@ -149,6 +149,56 @@ county axis, no geometric comparison, no extra vendor call:
   `places-containment.integration.spec` harness so the behaviour is proven
   against PostGIS BEFORE and AFTER the change.
 
+## Catalog verdict — FULL audit, all 22,726 places (2026-07-28)
+
+`audit-catalog-vs-vendor.ts` with no `--sample`, level-pinned, every place's own
+anchor reverse-geocoded against TomTom:
+
+```
+agree=22307  levelDiff=0  countryDiff=0  nameDiff=407  noVendor=12
+```
+
+**Zero structural error in the entire catalog.** This closes the "should we scrap
+and re-seed?" question with a measurement instead of a hunch: there is nothing to
+re-seed. It also makes the cost of a wipe the only remaining variable, and that
+cost is severe — TEN tables carry a `place_id` and only ONE
+(`curated_lists.city_place_id`) has a foreign key, so a truncate would SILENTLY
+orphan ~34k rows (polls 17,941; poll_place_supply 16,236; poll_topics,
+poll_weekly_ticks, signal_demand_daily, engines.member_place_ids,
+notification_devices.home_place_id, sources.anchor_place_id). Silent, not loud.
+
+READING THE LOG IS PART OF THE MEASUREMENT: only DIFFERENCES are logged, agreements
+are silent. A raw `wc -l` of the log reads as a ~93% failure rate; converting the
+last alphabetical name into a real denominator showed 5,552 places behind 73 lines
+(~1.3%). Nearly shipped the opposite conclusion off the raw count.
+
+### The 407 name diffs are NOT a defect count — do not sweep them
+
+Classified: 123 are ours = vendor + a census legal designation (78 `Municipio`,
+11 `Census Area`, 11 `Borough`, 9 `Planning Region`, 4 `City and Borough`,
+2 `Municipality`); 284 are genuinely different names. In the second group WE are
+frequently correct — "Ashville" vs vendor "Harrison" is the vendor modelling a
+coarser township (the Glen Echo Park / Normandy class, already guarded), and
+"Baltimore" vs "Baltimore County" is better as ours on a county row. A blanket
+"adopt the vendor name" would DESTROY correct data, and would turn
+"Carmel-by-the-Sea" into "Carmel" — the wrong name for that town.
+
+DEFERRED, scoped: strip the ~115 census legal designations only (they are visible
+in the UI — "Polls in Anchorage Municipality"), class by class, leaving the 284 and
+the `by-the-Sea`/`Village`/`Lake`/`City` stragglers to a human read.
+
+### Seeding new regions going forward — grid, not census
+
+Owner direction 2026-07-28, and it is the right shape: onboard a new
+country/state with a COARSE grid of reverse-geocode probes, and let organic
+discovery supply everything finer. The strength is that it is NOT new machinery —
+`probe()` returns the WHOLE ladder (neighbourhood → … → country) with vendor ids
+per node, so a grid probe mints everything above it through the exact path organic
+discovery uses. One creation path means one set of rules; the census's real sin was
+being a PARALLEL creation path with different ones. Spacing is DERIVED from the
+guarantee (§16: "every county gets ≥1 probe" → spacing under the smallest county's
+width), never picked. Retire the census seeder with this.
+
 ## Non-negotiables while executing
 
 - No phase lands without the sim proving the surfaces it touches.
