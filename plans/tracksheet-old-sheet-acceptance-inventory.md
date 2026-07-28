@@ -163,3 +163,47 @@ FrostCutout holes) + SceneBodyReadyGate skeletons → [50] overlay lane →
 8. FrostCutout holes content-coords with −contentOverscroll term.
 9. chromeAck layout-effect always; synthetic warm paint ack preserved.
 10. Seat memory gesture-written only; home seat carried by docked scene.
+
+## THE NAV-FOLLOW CONTRACT (recovered 2026-07-28 — owner: "the mask doesn't
+## follow the nav like it used to")
+
+The old frame host did NOT clip the sheet at a fixed nav top. Its exclusion
+boundary TRACKS the nav's live motion (SearchRouteSheetFrameHost.tsx:62-85):
+
+  maskEnabled   = isPersistentNavBodyExclusionMode(mode)
+                  || max(0, navBarHeight − max(0, navTranslateY)) > 0.25
+  boundaryTY    = isPersistentNavBodyExclusionMode(mode) ? 0
+                                                         : max(0, navTranslateY)
+  visibleY      = navBarTop
+  hiddenY       = navBarTop + max(0, bottomNavHiddenTranslateY)
+
+MEANING: as the nav slides OUT (navTranslateY grows toward
+bottomNavHiddenTranslateY), the sheet's bottom boundary slides down WITH it,
+so the sheet GROWS into the space the nav vacates — the sheet and the nav are
+one composition, never two independently-moving pieces. In persistent modes
+(dockedScene/staticPersistent) the boundary is PINNED at 0 (the nav is always
+there, so the sheet never claims that band).
+
+MY BUG: TrackSheetRouteHost's hard clip is a STATIC height
+(seed.navBarTopForSnaps). It cannot follow navTranslateY, so when the nav
+slides out for a child page / results reveal, the vacated band belongs to
+nobody and the map shows through. That is exactly the owner's report.
+
+THE FIX (ideal shape, not a patch): the clip height must be a DERIVATION of
+the same nav motion value the nav itself rides —
+    clipHeight = navBarTop + (persistent ? 0 : max(0, navTranslateY))
+driven on the UI thread from the shared navTranslateY (published via
+routeHostVisualRuntime → route-sheet-chrome-motion-state-controller), so the
+sheet's bottom edge and the nav are ONE motion, by construction. This is the
+same law as the header: never a second, independently-timed writer for a
+boundary that must stay glued to something else.
+NEXT: also port the native silhouette-curve mask (the nav cutout shape) once
+the boundary follows — the curve is the remaining visual half.
+
+## DIVIDER FADE (stuck visible) — hypothesis to attribute next
+Curve is correct ([0,3,14]→[0,0.35,1] on max(0, τ−H)). Stuck-visible means
+τ−H ≥ 14 at rest, i.e. the resting offset sits INSIDE the list region. With
+the chrome now living in content, verify the rest offset for an expanded seat
+is exactly τ=H (spacer height) and that the seat maps to H — a chrome-height
+double-count in the spacer would park the sheet H+chromeHeight and pin the
+divider on. Probe: log τ at rest per scene before changing anything.
