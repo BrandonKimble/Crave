@@ -217,7 +217,7 @@ Prisma model. Grain: (restaurant_id, attribute_id, source_class) with
 attribute is a characterization, not praise; a patio does not fade.
 Correction comes from RECOMPUTATION.
 
-REMAINING (in safe order — additive first, flip last):
+COMPLETE 2026-07-27. All steps below landed and verified:
 1. WRITE evidence from all four sources alongside today's array writes
    (no behavior change): unified-processing (source_class
    'reddit_evidence', observations = mention count), restaurant-location-
@@ -242,3 +242,34 @@ TAGS CONSTRAINT (owner): the tags reader ranks top-30 by mentionCount
 ACROSS ALL entity types with no type filter — so signals must keep the
 (restaurant, entity) grain. Source class belongs as a COLUMN on the new
 evidence table, never as extra signal rows, or tag counts fracture.
+
+
+## Phase 4b — COMPLETE 2026-07-27
+
+Restaurant attributes are now a PROJECTION. The merge-only accumulator that
+no re-extraction could correct is gone.
+
+- Rebuild writes the REDDIT slice of evidence from active events (wipe +
+  recount, same discipline as signals) and then DERIVES
+  core_entities.restaurant_attributes = union of every source's live claims,
+  filtered to ACTIVE attribute entities.
+- Non-reddit sources state their claims in the substrate at their own write
+  sites: places_api (Google types, at the live enrichment update),
+  cuisine_llm, poll_seed. They survive rebuilds because only the reddit
+  class is wiped — the 77.7% finding made this mandatory.
+- Backfill (scripts/backfill-attribute-evidence.ts): 10,153 pairs classed
+  reddit_evidence with true counts, 37,074 legacy_stamp (provenance was
+  never recorded before this table; honest rather than guessed). Legacy
+  rows are inert and get overwritten as each real source re-runs.
+- PARITY VERIFIED BEFORE FLIPPING: derived vs stamped differs by exactly
+  1,425 pairs — ALL of them archived attribute entities (ontology-rejected
+  vocabulary the array could never drop) — plus 16 gained. Live flip on 40
+  restaurants: 249 -> 232 pairs, archived-still-stamped = 0.
+- Search admission unharmed (it reads the array in RAW SQL and is now the
+  sole path): active attributes still match at scale — takeout 2,738
+  restaurants, dine in 2,593, delivery 2,130.
+- Tags untouched: signals keep the (restaurant, entity) grain; source class
+  lives on the evidence table, never as extra signal rows.
+
+STILL OPEN (small): the tags reader should filter entity.status='active'
+(4,769 signal rows point at archived entities).

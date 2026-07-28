@@ -1169,6 +1169,14 @@ export class RestaurantLocationEnrichmentService {
           ['restaurantAttributes'],
         );
       }
+      // Phase 4b: Google's claims stated in the rebuildable substrate, so
+      // the derived array can be rebuilt without losing them (they have no
+      // source document and cannot live in the event ledger).
+      await this.recordAttributeEvidence(
+        entity.entityId,
+        googleRestaurantAttributeIds,
+        'places_api',
+      );
 
       try {
         await this.prisma.$transaction(
@@ -2114,6 +2122,44 @@ export class RestaurantLocationEnrichmentService {
   /** THE domain normalizer — shared so every identity decision (enrichment
    *  conflict resolution, the duplicate sweep, poll-path location adoption)
    *  compares domains the same way. */
+  /**
+   * Phase 4b: state this source's attribute claims in the rebuildable
+   * substrate. Non-reddit sources (Google place types, the cuisine LLM)
+   * have no source document or extraction run, so they cannot write
+   * core_restaurant_entity_events — this is where their evidence lives.
+   * Upsert-by-(restaurant, attribute, sourceClass): a source restating a
+   * claim refreshes it rather than accumulating duplicates.
+   */
+  async recordAttributeEvidence(
+    restaurantId: string,
+    attributeIds: string[],
+    sourceClass: string,
+  ): Promise<void> {
+    const ids = Array.from(new Set(attributeIds.filter(Boolean)));
+    if (!restaurantId || !ids.length) return;
+    try {
+      await this.prisma.restaurantAttributeEvidence.createMany({
+        data: ids.map((attributeId) => ({
+          restaurantId,
+          attributeId,
+          sourceClass,
+          observations: 1,
+        })),
+        skipDuplicates: true,
+      });
+    } catch (error) {
+      // Evidence recording must never fail the enrichment it accompanies.
+      this.logger.warn('Attribute evidence write failed', {
+        operation: 'attribute_evidence_write',
+        restaurantId,
+        sourceClass,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
   normalizeWebsiteDomain(value: unknown): string | null {
     const normalizedUrl = this.normalizeWebsiteUrl(value);
     if (!normalizedUrl) {

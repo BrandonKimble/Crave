@@ -138,7 +138,12 @@ export class ProjectionRebuildService implements OnModuleInit {
     await Promise.all([
       this.replaceRestaurantPraise(tx, restaurantIds, restaurantEvents),
       this.replaceRestaurantEntitySignals(tx, restaurantIds, entityEvents),
+      this.replaceRedditAttributeEvidence(tx, restaurantIds, entityEvents),
     ]);
+
+    // Phase 4b: the attribute array is DERIVED from evidence now — this is
+    // the line that makes re-extraction able to correct a wrong attribute.
+    await this.deriveRestaurantAttributes(tx, restaurantIds);
 
     const mentionGroups = this.groupEntityEventsByMention(entityEvents);
     const itemSupportMentions = this.buildItemSupportMentions(mentionGroups);
@@ -632,6 +637,84 @@ export class ProjectionRebuildService implements OnModuleInit {
         },
       });
     }
+  }
+
+  /**
+   * Phase 4b: rebuild the REDDIT slice of restaurant-attribute evidence
+   * from the active event set — same wipe-and-recount discipline as
+   * signals. Only this source class is touched: places_api / cuisine_llm /
+   * poll_seed / legacy_stamp rows are owned by their own writers and must
+   * survive a projection rebuild (77.7% of stamped attributes come from
+   * them — deriving from events alone would erase three quarters of the
+   * data).
+   */
+  private async replaceRedditAttributeEvidence(
+    tx: PrismaTransaction,
+    restaurantIds: string[],
+    entityEvents: ActiveRestaurantEntityEvent[],
+  ): Promise<void> {
+    const counts = new Map<
+      string,
+      { restaurantId: string; attributeId: string; observations: number }
+    >();
+    entityEvents.forEach((event) => {
+      if (event.evidenceType !== 'restaurant_attribute') return;
+      const key = `${event.restaurantId}:${event.entityId}`;
+      const existing = counts.get(key) ?? {
+        restaurantId: event.restaurantId,
+        attributeId: event.entityId,
+        observations: 0,
+      };
+      existing.observations += 1;
+      counts.set(key, existing);
+    });
+
+    await tx.restaurantAttributeEvidence.deleteMany({
+      where: {
+        restaurantId: { in: restaurantIds },
+        sourceClass: 'reddit_evidence',
+      },
+    });
+    if (counts.size === 0) return;
+    await tx.restaurantAttributeEvidence.createMany({
+      data: Array.from(counts.values()).map((row) => ({
+        restaurantId: row.restaurantId,
+        attributeId: row.attributeId,
+        sourceClass: 'reddit_evidence',
+        observations: row.observations,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  /**
+   * Phase 4b: `core_entities.restaurant_attributes` becomes a PROJECTION of
+   * the evidence table — the union of every source's live claims, filtered
+   * to ACTIVE attribute entities so archived vocabulary drops out on its
+   * own. Before this, the array was merge-only: it could never shrink, so a
+   * wrong attribute survived every re-extraction. Now it tracks the
+   * evidence, which is the system's law everywhere else.
+   */
+  private async deriveRestaurantAttributes(
+    tx: PrismaTransaction,
+    restaurantIds: string[],
+  ): Promise<void> {
+    if (!restaurantIds.length) return;
+    await tx.$executeRaw`
+      UPDATE core_entities r
+      SET restaurant_attributes = COALESCE(ev.attrs, ARRAY[]::uuid[])
+      FROM (
+        SELECT rid AS restaurant_id,
+               (SELECT array_agg(DISTINCT a.attribute_id)
+                FROM core_restaurant_attribute_evidence a
+                JOIN core_entities ae
+                  ON ae.entity_id = a.attribute_id AND ae.status = 'active'
+                WHERE a.restaurant_id = rid) AS attrs
+        FROM unnest(${restaurantIds}::uuid[]) AS rid
+      ) ev
+      WHERE r.entity_id = ev.restaurant_id
+        AND r.type = 'restaurant'
+    `;
   }
 
   private async replaceRestaurantEntitySignals(

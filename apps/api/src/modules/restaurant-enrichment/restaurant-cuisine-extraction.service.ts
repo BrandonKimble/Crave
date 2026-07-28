@@ -101,6 +101,10 @@ export class RestaurantCuisineExtractionService {
             },
           });
         }
+        // Phase 4b: state the cuisine LLM's claims in the rebuildable
+        // substrate — this source has no document/run, so the event ledger
+        // cannot hold them and a derived array would otherwise drop them.
+        await this.recordCuisineEvidence(entity.entityId, mergedAttributes);
       }
 
       this.logger.debug('Cuisine extraction already completed', {
@@ -460,5 +464,32 @@ export class RestaurantCuisineExtractionService {
 
   private hashValue(value: string): string {
     return createHash('sha256').update(value).digest('hex');
+  }
+  /** Phase 4b: cuisine-LLM attribute claims -> evidence substrate. */
+  private async recordCuisineEvidence(
+    restaurantId: string,
+    attributeIds: string[],
+  ): Promise<void> {
+    const ids = Array.from(new Set(attributeIds.filter(Boolean)));
+    if (!restaurantId || !ids.length) return;
+    try {
+      await this.prisma.restaurantAttributeEvidence.createMany({
+        data: ids.map((attributeId) => ({
+          restaurantId,
+          attributeId,
+          sourceClass: 'cuisine_llm',
+          observations: 1,
+        })),
+        skipDuplicates: true,
+      });
+    } catch (error) {
+      this.logger.warn('Cuisine attribute evidence write failed', {
+        operation: 'attribute_evidence_write',
+        restaurantId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
   }
 }

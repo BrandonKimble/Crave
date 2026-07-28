@@ -22,6 +22,8 @@ import {
   PlaceLike,
   SubjectCandidate,
   bboxArea,
+  METERS_PER_DEGREE_LAT,
+  probedRegionAnswersAnchor,
   bboxToGround,
   clipRingToRect,
   groundArea,
@@ -507,18 +509,65 @@ describe('probeAnchors — §2 probe budget (KEPT: probe coverage, not headers)'
     }
   });
 
+  it('A PROBE DISC DOES NOT ANSWER ITS OWN CORNERS (RED for the squared circle)', () => {
+    // A reverse geocode speaks for a RADIUS. Squaring it claimed the corners
+    // too: a square of side 2r covers 4r² where the disc covers πr², so ~21%
+    // of the "already asked" area had never been asked — and a real place
+    // sitting in a corner could be suppressed from discovery forever.
+    //
+    // Corner point at 1.4r diagonal: INSIDE the old square, OUTSIDE the disc.
+    const centre = { lat: 0, lng: 0 };
+    const radiusMeters = 100;
+    const rDeg = radiusMeters / METERS_PER_DEGREE_LAT;
+    const disc = {
+      kind: 'disc' as const,
+      center: centre,
+      radiusMeters,
+    };
+    const squaredDisc = {
+      kind: 'box' as const,
+      bbox: {
+        minLat: -rDeg,
+        minLng: -rDeg,
+        maxLat: rDeg,
+        maxLng: rDeg,
+      },
+    };
+    const corner = { lat: rDeg * 0.9, lng: rDeg * 0.9 }; // |d| ≈ 1.27r
+    const tinyView = {
+      minLat: -rDeg,
+      minLng: -rDeg,
+      maxLat: rDeg,
+      maxLng: rDeg,
+    };
+    const viewArea = bboxArea(tinyView);
+
+    // The square answers the corner (the old, wrong behaviour)…
+    expect(probedRegionAnswersAnchor(viewArea, squaredDisc, corner)).toBe(true);
+    // …the disc does NOT: we never asked there.
+    expect(probedRegionAnswersAnchor(viewArea, disc, corner)).toBe(false);
+    // And the disc still answers its own centre.
+    expect(probedRegionAnswersAnchor(viewArea, disc, centre)).toBe(true);
+  });
+
   it('a view fully answered by a commensurate-scale place needs no probes at all', () => {
     // 1.7×1.7 bbox over the 1×1 view: covering, and not too-big (area 2.89 ≤
     // 3 × viewArea) — it legitimately answers every anchor.
     const anchors = probeAnchors(view, [
-      { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
+      {
+        kind: 'box',
+        bbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
+      },
     ]);
     expect(anchors).toEqual([]);
   });
 
   it('known commensurate-scale bboxes suppress their anchors; only unanswered ground is probed', () => {
     const anchors = probeAnchors(view, [
-      { minLat: -0.1, minLng: -0.1, maxLat: 1.1, maxLng: 0.6 },
+      {
+        kind: 'box',
+        bbox: { minLat: -0.1, minLng: -0.1, maxLat: 1.1, maxLng: 0.6 },
+      },
     ]);
     expect(anchors.length).toBeGreaterThan(0);
     expect(anchors.length).toBeLessThanOrEqual(3);
@@ -541,7 +590,10 @@ describe('probeAnchors — §2 probe budget (KEPT: probe coverage, not headers)'
       maxLat: 30,
       maxLng: 30,
     };
-    const anchors = probeAnchors(streetView, [city, country]);
+    const anchors = probeAnchors(streetView, [
+      { kind: 'box', bbox: city },
+      { kind: 'box', bbox: country },
+    ]);
     expect(anchors).toHaveLength(MAX_PROBE_ANCHORS);
     // A commensurate-scale neighborhood over the same ground DOES answer.
     const ward: GeoBbox = {
@@ -550,6 +602,12 @@ describe('probeAnchors — §2 probe budget (KEPT: probe coverage, not headers)'
       maxLat: 0.5025,
       maxLng: 0.5025,
     };
-    expect(probeAnchors(streetView, [city, country, ward])).toEqual([]);
+    expect(
+      probeAnchors(streetView, [
+        { kind: 'box', bbox: city },
+        { kind: 'box', bbox: country },
+        { kind: 'box', bbox: ward },
+      ]),
+    ).toEqual([]);
   });
 });

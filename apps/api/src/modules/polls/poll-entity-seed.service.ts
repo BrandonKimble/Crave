@@ -317,6 +317,19 @@ export class PollEntitySeedService {
       where: { entityId: params.restaurantId },
       data: { restaurantAttributes: Array.from(updated.values()) },
     });
+    // Phase 4b: a poll-seeded attribute is a claim like any other — state
+    // it in the substrate so the derived array keeps it.
+    await this.prisma.restaurantAttributeEvidence.createMany({
+      data: [
+        {
+          restaurantId: params.restaurantId,
+          attributeId: params.attributeId,
+          sourceClass: 'poll_seed',
+          observations: 1,
+        },
+      ],
+      skipDuplicates: true,
+    });
   }
 
   private async findRestaurantByPlaceId(placeId: string) {

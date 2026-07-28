@@ -53,8 +53,11 @@ import {
   bboxCenter,
   bboxContainsPoint,
   bboxLngSpan,
+  MIN_COS_LAT,
+  METERS_PER_DEGREE_LAT,
   normalizeLng,
   pointDistance,
+  pointDistanceMeters,
   pointToBboxDistance,
 } from './place-geo';
 import { PlaceGround, groundArea, groundCoverageOfView } from './ground';
@@ -248,6 +251,69 @@ export function bboxAnswersAnchor(viewArea: number, bbox: GeoBbox, anchor: GeoPo
 }
 
 /**
+ * A region we have ALREADY ASKED ABOUT (one-ground charter P5, 2026-07-27).
+ *
+ * Two provenances, two honest shapes — the point of this type is that they
+ * are NOT the same shape and were previously forced to be:
+ *  - 'disc': a reverse geocode speaks for a RADIUS around its anchor (the
+ *    vendor's ~100 m). Squaring that disc overclaimed its corners — a square
+ *    of side 2r covers 4r² where the disc covers πr², so ~21% of what we
+ *    called "asked" was never asked. A real place sitting in that corner
+ *    could be permanently suppressed from discovery.
+ *  - 'box': a VIEWPORT we probed and sketched exhaustively. A viewport
+ *    genuinely is a rectangle; nothing is gained by pretending otherwise.
+ */
+export type ProbedRegion =
+  | { kind: 'disc'; center: GeoPoint; radiusMeters: number }
+  | { kind: 'box'; bbox: GeoBbox };
+
+/** Cos-weighted degrees², the SAME metric bboxArea uses, so the scale gate
+ *  compares like with like. */
+export function probedRegionArea(region: ProbedRegion): number {
+  if (region.kind === 'box') {
+    return bboxArea(region.bbox);
+  }
+  const radiusDeg = region.radiusMeters / METERS_PER_DEGREE_LAT;
+  const cosLat = Math.max(Math.cos((region.center.lat * Math.PI) / 180), MIN_COS_LAT);
+  // π r² with the lng axis stretched by 1/cos(lat) — the same weighting
+  // bboxArea applies, so a disc and a box are directly comparable.
+  return Math.PI * radiusDeg * (radiusDeg / cosLat) * cosLat;
+}
+
+export function probedRegionContainsPoint(region: ProbedRegion, point: GeoPoint): boolean {
+  if (region.kind === 'box') {
+    return bboxContainsPoint(region.bbox, point);
+  }
+  return pointDistanceMeters(region.center, point) <= region.radiusMeters;
+}
+
+/** Degrees to the region's nearest edge; 0 inside. Ranking only (§2's
+ *  largest-uncovered-region proxy), same use as pointToBboxDistance. */
+export function pointToProbedRegionDistance(point: GeoPoint, region: ProbedRegion): number {
+  if (region.kind === 'box') {
+    return pointToBboxDistance(point, region.bbox);
+  }
+  const gapMeters = pointDistanceMeters(region.center, point) - region.radiusMeters;
+  return gapMeters <= 0 ? 0 : gapMeters / METERS_PER_DEGREE_LAT;
+}
+
+/**
+ * Does a region we already asked about answer this anchor for THIS view?
+ * Same two-part law as bboxAnswersAnchor — contains the point AND is not
+ * over-scale — now honest about the region's real shape.
+ */
+export function probedRegionAnswersAnchor(
+  viewArea: number,
+  region: ProbedRegion,
+  anchor: GeoPoint
+): boolean {
+  return (
+    !isTooBigForView(viewArea, probedRegionArea(region)) &&
+    probedRegionContainsPoint(region, anchor)
+  );
+}
+
+/**
  * The §2.5 header judgment. `placesInView` is EVERY candidate whose ground
  * (or fallback bbox) touches the view — including ancestors, so "finest"
  * needs no DAG traversal: a covering city simply out-fines its covering
@@ -333,12 +399,14 @@ const GRID_FRACTIONS: readonly number[] = Array.from(
  */
 export function probeAnchors(
   view: GeoBbox,
-  knownBboxes: GeoBbox[],
+  knownRegions: ProbedRegion[],
   maxAnchors: number = MAX_PROBE_ANCHORS
 ): GeoPoint[] {
   const viewArea = bboxArea(view);
   // Over-scale regions neither answer anchors nor repel them.
-  const answering = knownBboxes.filter((bbox) => !isTooBigForView(viewArea, bboxArea(bbox)));
+  const answering = knownRegions.filter(
+    (region) => !isTooBigForView(viewArea, probedRegionArea(region))
+  );
 
   const latSpan = view.maxLat - view.minLat;
   const lngSpan = bboxLngSpan(view); // wrap-aware for antimeridian views
@@ -357,7 +425,7 @@ export function probeAnchors(
   }
 
   const isAnswered = (point: GeoPoint): boolean =>
-    answering.some((bbox) => bboxContainsPoint(bbox, point));
+    answering.some((region) => probedRegionContainsPoint(region, point));
 
   const anchors: GeoPoint[] = [];
   if (!isAnswered(center)) {
@@ -370,7 +438,7 @@ export function probeAnchors(
     let bestScore = -1;
     for (let i = 0; i < remaining.length; i += 1) {
       const point = remaining[i];
-      const toKnown = answering.map((bbox) => pointToBboxDistance(point, bbox));
+      const toKnown = answering.map((region) => pointToProbedRegionDistance(point, region));
       const toChosen = anchors.map((anchor) => pointDistance(point, anchor));
       const score = Math.min(...toKnown, ...toChosen, Number.POSITIVE_INFINITY);
       if (score > bestScore) {

@@ -245,11 +245,14 @@ describe('TomtomChainProbeAdapter', () => {
     const { adapter } = buildAdapter({ reverseAddresses: [] });
     const result = await adapter.probe(ANCHOR);
     expect(result.chain).toEqual([]);
-    // probedBbox = anchor ± 100 m (vendor default radius) — a real region.
-    expect(result.probedBbox.minLat).toBeLessThan(ANCHOR.lat);
-    expect(result.probedBbox.maxLat).toBeGreaterThan(ANCHOR.lat);
-    expect(result.probedBbox.minLng).toBeLessThan(ANCHOR.lng);
-    expect(result.probedBbox.maxLng).toBeGreaterThan(ANCHOR.lng);
+    // The probe speaks for a DISC of the vendor's 100 m default radius —
+    // recorded as a radius, never squared into a bbox (which would claim
+    // ~21% more ground than was ever asked about).
+    expect(result.probedRegion).toEqual({
+      kind: 'disc',
+      center: ANCHOR,
+      radiusMeters: 100,
+    });
   });
 
   it('THROWS on a pool denial — never fabricates a "no place here" observation', async () => {

@@ -1,0 +1,75 @@
+import 'dotenv/config';
+process.env.PROCESS_ROLE ||= 'api';
+
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+
+/**
+ * Phase 4b backfill. Before the evidence table existed, provenance was NOT
+ * recorded — an attribute in the array could have come from reddit, Google,
+ * the cuisine LLM, or a poll seed, and nothing distinguishes them after the
+ * fact. So: pairs with real reddit events are classed 'reddit_evidence'
+ * (with their true observation count); every remaining stamped pair is
+ * classed 'legacy_stamp' — honest about the fact that we cannot know.
+ *
+ * Legacy rows keep the derived array whole (77.7% of stamped attributes
+ * have no reddit event). They are inert: each real source overwrites its
+ * own class as it re-runs, and re-extraction now rebuilds the reddit slice.
+ *
+ *   yarn workspace api ts-node scripts/backfill-attribute-evidence.ts [--apply]
+ */
+async function main(): Promise<void> {
+  const apply = process.argv.includes('--apply');
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
+  stopCronsForScript(app);
+  const out = (m = '') => process.stdout.write(`${m}\n`);
+  try {
+    const prisma = app.get(PrismaService);
+    const [pending] = await prisma.$queryRaw<Array<{ n: number }>>`
+      SELECT count(*)::int AS n
+      FROM (SELECT entity_id, unnest(restaurant_attributes) AS attr
+            FROM core_entities WHERE type='restaurant' AND status='active') x
+    `;
+    out(
+      `stamped pairs to classify: ${pending.n} (mode=${apply ? 'APPLY' : 'dry-run'})`,
+    );
+    if (!apply) return;
+
+    const reddit = await prisma.$executeRaw`
+      INSERT INTO core_restaurant_attribute_evidence
+        (restaurant_id, attribute_id, source_class, observations)
+      SELECT e.restaurant_id, e.entity_id, 'reddit_evidence', count(*)
+      FROM core_restaurant_entity_events e
+      JOIN collection_source_documents d
+        ON d.document_id = e.source_document_id
+       AND d.active_extraction_run_id = e.extraction_run_id
+      WHERE e.evidence_type = 'restaurant_attribute'
+      GROUP BY e.restaurant_id, e.entity_id
+      ON CONFLICT DO NOTHING
+    `;
+    const legacy = await prisma.$executeRaw`
+      INSERT INTO core_restaurant_attribute_evidence
+        (restaurant_id, attribute_id, source_class, observations)
+      SELECT x.entity_id, x.attr, 'legacy_stamp', 1
+      FROM (SELECT entity_id, unnest(restaurant_attributes) AS attr
+            FROM core_entities WHERE type='restaurant' AND status='active') x
+      WHERE NOT EXISTS (
+        SELECT 1 FROM core_restaurant_attribute_evidence a
+        WHERE a.restaurant_id = x.entity_id AND a.attribute_id = x.attr
+      )
+      ON CONFLICT DO NOTHING
+    `;
+    out(`inserted: reddit_evidence=${reddit} legacy_stamp=${legacy}`);
+  } finally {
+    await app.close();
+  }
+}
+
+main().catch((error) => {
+  process.stderr.write(`${error instanceof Error ? error.stack : error}\n`);
+  process.exit(1);
+});

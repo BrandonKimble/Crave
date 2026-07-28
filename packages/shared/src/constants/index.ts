@@ -14,4 +14,4 @@ export const API_ENDPOINTS = {
   ENTITIES: '/api/entities',
 } as const;
 
-export const ONBOARDING_VERSION = 1;
+export const ONBOARDING_VERSION = 6;

@@ -28,9 +28,9 @@
  *    a FORWARD call just leaves that node bbox-less (a later probe fills it);
  *    a denial on the REVERSE call throws — the ground was never asked, so the
  *    reconciler must log-and-skip, never record a false "no place here".
- *  - probedBbox = anchor ± the vendor's default reverse-geocode radius
- *    (100 m — vendor fact), converted to degrees at the anchor's latitude:
- *    the region this probe actually speaks for when it says "no place here".
+ *  - probedRegion = the DISC of the vendor's default reverse-geocode radius
+ *    (100 m — vendor fact) around the anchor: the ground this probe actually
+ *    speaks for when it says "no place here".
  */
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
@@ -44,12 +44,12 @@ import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.ser
 import {
   GeoBbox,
   GeoPoint,
-  METERS_PER_DEGREE_LAT,
   bboxContainsPoint,
   bboxIntersectionParts,
   bboxLatSpan,
   bboxLngSpan,
   normalizePlaceName,
+  ProbedRegion,
 } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 import {
@@ -229,7 +229,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 
   async probe(anchor: GeoPoint): Promise<TomtomChainProbeResult> {
-    const probedBbox = this.probedBboxAround(anchor);
+    const probedRegion = this.probedRegionAround(anchor);
     if (!this.apiKey) {
       // Config absence is an operational fault, not a "no place here"
       // observation — throw so the reconciler logs it and does NOT write a
@@ -240,13 +240,13 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     const entry = await this.reverseGeocode(anchor);
     if (!entry?.address) {
       // Vendor says nothing lives here — a first-class §2 observation.
-      return { chain: [], probedBbox };
+      return { chain: [], probedRegion };
     }
 
     const address = entry.address;
     const countryCode = address.countryCode?.trim().toUpperCase();
     if (!countryCode) {
-      return { chain: [], probedBbox };
+      return { chain: [], probedRegion };
     }
     const subdivisionCode =
       address.countrySubdivisionCode?.trim() ||
@@ -276,7 +276,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       });
     }
     if (chain.length === 0) {
-      return { chain: [], probedBbox };
+      return { chain: [], probedRegion };
     }
 
     // The returned entity's own bbox + stable geometry id come free.
@@ -310,7 +310,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       }
     }
 
-    return { chain, probedBbox };
+    return { chain, probedRegion };
   }
 
   /**
@@ -746,20 +746,16 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     return existing?.bboxMinLat != null;
   }
 
-  /** anchor ± the vendor's 100 m default radius, in degrees at that latitude. */
-  private probedBboxAround(anchor: GeoPoint): GeoBbox {
-    const dLat = REVERSE_GEOCODE_RADIUS_METERS / METERS_PER_DEGREE_LAT;
-    const cosLat = Math.max(
-      Math.cos((anchor.lat * Math.PI) / 180),
-      // Degenerate-at-poles guard: never divide by ~0; the bbox just widens.
-      0.01,
-    );
-    const dLng = dLat / cosLat;
+  /**
+   * The disc this probe speaks for: the anchor plus the vendor's default
+   * reverse-geocode radius. Recorded as a RADIUS, not a square — squaring it
+   * claimed ~21% more ground than was ever asked about (see the port doc).
+   */
+  private probedRegionAround(anchor: GeoPoint): ProbedRegion {
     return {
-      minLat: anchor.lat - dLat,
-      minLng: anchor.lng - dLng,
-      maxLat: anchor.lat + dLat,
-      maxLng: anchor.lng + dLng,
+      kind: 'disc',
+      center: anchor,
+      radiusMeters: REVERSE_GEOCODE_RADIUS_METERS,
     };
   }
 }

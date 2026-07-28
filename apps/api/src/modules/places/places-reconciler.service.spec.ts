@@ -67,7 +67,11 @@ function makeHarness(options: {
           Promise.resolve({
             chain: [],
             // Tiny negative region: never answers the other anchors.
-            probedBbox: { minLat: 0, minLng: 0, maxLat: 0.001, maxLng: 0.001 },
+            probedRegion: {
+              kind: 'disc' as const,
+              center: { lat: 0.0005, lng: 0.0005 },
+              radiusMeters: 100,
+            },
           })),
     ),
     // Promotion-drain port methods (unused by the reconciler).
@@ -179,7 +183,7 @@ describe('PlacesReconcilerService — §2 background naming', () => {
       probeImpl: () =>
         Promise.resolve({
           chain,
-          probedBbox: VIEW,
+          probedRegion: { kind: 'box' as const, bbox: VIEW },
         }),
     });
     service.noteViewport(VIEW);
@@ -201,11 +205,11 @@ describe('PlacesReconcilerService — §2 background naming', () => {
       probeImpl: () =>
         Promise.resolve({
           chain: [], // no place here
-          probedBbox: {
-            minLat: -0.35,
-            minLng: -0.35,
-            maxLat: 1.35,
-            maxLng: 1.35,
+          // A big "nothing here" region: expressed as the BOX it honestly
+          // is (a probed viewport), not a squared disc.
+          probedRegion: {
+            kind: 'box' as const,
+            bbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
           },
         }),
     });
@@ -245,7 +249,11 @@ describe('PlacesReconcilerService — §2 background naming', () => {
               bbox: country,
             },
           ],
-          probedBbox: { minLat: 0, minLng: 0, maxLat: 0.001, maxLng: 0.001 },
+          probedRegion: {
+            kind: 'disc' as const,
+            center: { lat: 0.0005, lng: 0.0005 },
+            radiusMeters: 100,
+          },
         }),
     });
 
@@ -282,7 +290,10 @@ describe('PlacesReconcilerService — §2 background naming', () => {
       chain: [],
       // Commensurate region → answers the pass's remaining anchors so the
       // flight drains.
-      probedBbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
+      probedRegion: {
+        kind: 'box' as const,
+        bbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
+      },
     });
     await service.whenIdle();
   });

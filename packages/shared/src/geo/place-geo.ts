@@ -235,6 +235,27 @@ export function pointToBboxDistance(point: GeoPoint, bbox: GeoBbox): number {
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }
 
+/**
+ * §16 DEFINITIONAL: the cos(lat) floor shared by every cos-weighted area /
+ * lng-stretch computation, so a near-polar region cannot divide by ~0.
+ * Same value the census seed's bbox derivation uses.
+ */
+export const MIN_COS_LAT = 0.01;
+
+/**
+ * Great-circle-ish distance in METRES between two points (equirectangular
+ * approximation: exact enough far below the ~100 m radii and few-km spans
+ * this is used for, and it shares the cos(lat) weighting the area metric
+ * uses). Needed because a probe's speak-for region is a RADIUS, and a radius
+ * only means something in metres.
+ */
+export function pointDistanceMeters(a: GeoPoint, b: GeoPoint): number {
+  const dLatM = (a.lat - b.lat) * METERS_PER_DEGREE_LAT;
+  const cosLat = Math.max(Math.cos(((a.lat + b.lat) / 2) * (Math.PI / 180)), MIN_COS_LAT);
+  const dLngM = circularLngDelta(a.lng, b.lng) * METERS_PER_DEGREE_LAT * cosLat;
+  return Math.sqrt(dLatM * dLatM + dLngM * dLngM);
+}
+
 export function pointDistance(a: GeoPoint, b: GeoPoint): number {
   const dLat = a.lat - b.lat;
   const dLng = circularLngDelta(a.lng, b.lng);

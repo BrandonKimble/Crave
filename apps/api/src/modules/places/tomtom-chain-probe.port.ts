@@ -18,7 +18,7 @@
  * "TomTom pools governed FIRST — the one ungoverned money"), which is exactly
  * why it is NOT built here: governance wiring belongs to the Phase-B cutover.
  */
-import { GeoBbox, GeoPoint } from '@crave-search/shared';
+import { GeoBbox, GeoPoint, ProbedRegion } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 
 /**
@@ -37,10 +37,17 @@ export interface TomtomChainProbeResult {
    */
   chain: PlaceSketchNode[];
   /**
-   * The region the probe speaks for — §2's negative observation is
-   * REGION-scale ("probed bbox"), never a bare point.
+   * The region this probe SPEAKS FOR — §2's negative observation is
+   * region-scale, never a bare point.
+   *
+   * A DISC (one-ground charter P5, 2026-07-27): a reverse geocode answers for
+   * a RADIUS around its anchor, so that is what we record. It used to be
+   * squared into a bbox, which overclaimed the corners — a square of side 2r
+   * covers 4r² where the disc covers πr², so ~21% of the "asked" area had
+   * never been asked, and a real place sitting there could be permanently
+   * suppressed from discovery.
    */
-  probedBbox: GeoBbox;
+  probedRegion: ProbedRegion;
 }
 
 /**

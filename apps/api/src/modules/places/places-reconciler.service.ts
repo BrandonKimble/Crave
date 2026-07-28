@@ -27,8 +27,9 @@ import {
   GeoBbox,
   METERS_PER_DEGREE_LAT,
   bboxArea,
-  bboxAnswersAnchor,
   bboxLngSpan,
+  ProbedRegion,
+  probedRegionAnswersAnchor,
   probeAnchors,
   MAX_PROBE_ANCHORS,
   viewCenter,
@@ -56,8 +57,8 @@ export const NEGATIVE_OBSERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * asked region answers commensurate-or-coarser future views and a genuinely
  * finer zoom re-asks once per scale band per TTL.
  */
-interface NegativeObservation {
-  bbox: GeoBbox;
+interface AskedRegion {
+  region: ProbedRegion;
   observedAtMs: number;
 }
 
@@ -103,7 +104,7 @@ export class PlacesReconcilerService {
    * restarts and are shared across processes; in-memory is the documented
    * interim (worst case a restart re-spends ≤3 cheap probes per region).
    */
-  private negativeObservations: NegativeObservation[] = [];
+  private askedRegions: AskedRegion[] = [];
 
   /** Single-flight per cell (§2): cellKey → in-flight reconcile. */
   private readonly inFlight = new Map<string, Promise<void>>();
@@ -169,13 +170,18 @@ export class PlacesReconcilerService {
     // bites there — but the law is one law).
     const inView = await this.catalog.placesInView(view);
     const viewArea = bboxArea(view);
-    const knownBboxes: GeoBbox[] = [
-      ...inView.map((entry) => entry.bbox),
-      ...this.freshNegativeBboxes(),
+    // Places contribute their (rectangular) extent; probes contribute the
+    // DISC they actually spoke for; a fully-probed viewport contributes
+    // itself. One region list, three honest shapes (one-ground charter P5).
+    const knownRegions: ProbedRegion[] = [
+      ...inView.map(
+        (entry): ProbedRegion => ({ kind: 'box', bbox: entry.bbox }),
+      ),
+      ...this.freshAskedRegions(),
     ];
 
     // Step 2 (§2): ≤3 anchors, center + largest-uncovered-region candidates.
-    const anchors = probeAnchors(view, knownBboxes, MAX_PROBE_ANCHORS);
+    const anchors = probeAnchors(view, knownRegions, MAX_PROBE_ANCHORS);
     if (anchors.length === 0) {
       return; // fully answered — zero spend
     }
@@ -185,32 +191,35 @@ export class PlacesReconcilerService {
     // anchors 2–3, scale-judged like any other known ground) — and WRITE
     // every result. Budget is structural: `anchors` is already capped at
     // MAX_PROBE_ANCHORS.
-    let answeredBboxes: GeoBbox[] = [];
+    let answered: ProbedRegion[] = [];
     for (const anchor of anchors) {
       if (
-        answeredBboxes.some((bbox) => bboxAnswersAnchor(viewArea, bbox, anchor))
+        answered.some((region) =>
+          probedRegionAnswersAnchor(viewArea, region, anchor),
+        )
       ) {
         continue; // answered by an earlier probe in this same pass
       }
       const result = await this.probe.probe(anchor);
       if (result.chain.length === 0) {
         // "No place here" IS an observation — region-scale, 30d TTL (§2).
-        this.negativeObservations.push({
-          bbox: result.probedBbox,
+        this.askedRegions.push({
+          region: result.probedRegion,
           observedAtMs: Date.now(),
         });
-        answeredBboxes = [...answeredBboxes, result.probedBbox];
+        answered = [...answered, result.probedRegion];
         continue;
       }
       // Sketch EVERYTHING: every chain node is written regardless of how it
       // will judge against any view — subjecthood is read-time (§2), and a
       // rejected-commensurability node is still catalog truth.
       const places = await this.catalog.sketchChain(result.chain);
-      answeredBboxes = [
-        ...answeredBboxes,
+      answered = [
+        ...answered,
         ...places
           .map((place) => placeBbox(place))
-          .filter((bbox): bbox is GeoBbox => bbox !== null),
+          .filter((bbox): bbox is GeoBbox => bbox !== null)
+          .map((bbox): ProbedRegion => ({ kind: 'box', bbox })),
       ];
     }
 
@@ -219,18 +228,18 @@ export class PlacesReconcilerService {
     // ground doesn't re-spend draws every settle when its finest chain is
     // over-scale (see NegativeObservation doc). Recorded only when a probe
     // actually fired (a fully-answered pass costs nothing to repeat).
-    this.negativeObservations.push({
-      bbox: view,
+    this.askedRegions.push({
+      region: { kind: 'box', bbox: view },
       observedAtMs: Date.now(),
     });
   }
 
-  private freshNegativeBboxes(): GeoBbox[] {
+  private freshAskedRegions(): ProbedRegion[] {
     const cutoff = Date.now() - NEGATIVE_OBSERVATION_TTL_MS;
     // Prune expired entries on read — the cache stays bounded by attention.
-    this.negativeObservations = this.negativeObservations.filter(
+    this.askedRegions = this.askedRegions.filter(
       (entry) => entry.observedAtMs >= cutoff,
     );
-    return this.negativeObservations.map((entry) => entry.bbox);
+    return this.askedRegions.map((entry) => entry.region);
   }
 }
