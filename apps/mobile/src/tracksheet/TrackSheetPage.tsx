@@ -594,6 +594,22 @@ export function TrackSheetPage<Item>({
             renderWhenEmpty
             style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
           />
+          {/* THE STRIP SEAM (polls gap fix): the 8pt spacer under the band is
+              sheet material, not frost — it is part of the chrome plate's
+              coverage, painted here so no gap can open between the band and
+              the first row. */}
+          {dockedStrip != null ? (
+            <View
+              style={[
+                styles.stripSeam,
+                {
+                  top: OVERLAY_TAB_HEADER_HEIGHT + dockedStrip.height,
+                  backgroundColor: surfaceColor,
+                },
+              ]}
+              pointerEvents="none"
+            />
+          ) : null}
           <View style={styles.grabWrapper}>
             <Pressable
               onPress={onGrabHandlePress}
@@ -621,8 +637,11 @@ export function TrackSheetPage<Item>({
           <View style={styles.headerBottomPad} />
           {dockedStrip != null ? (
             <>
-              <TrackSheetDockedStrip {...dockedStrip} />
-              <View style={[styles.stripSpacer, { backgroundColor: surfaceColor }]} />
+              {/* The band renders NO plate of its own (plateColor transparent):
+                  production's ToggleStrip paints its chips directly, and the
+                  frost slab behind the chrome is what shows between them —
+                  a plate here would be the white that blocked the cutouts. */}
+              <TrackSheetDockedStrip {...dockedStrip} plateColor="transparent" />
             </>
           ) : null}
           <Reanimated.View style={[styles.divider, dividerStyle]} />
@@ -685,7 +704,12 @@ const styles = StyleSheet.create({
   titleSlot: { flex: 1, minWidth: 0, marginRight: 12, flexDirection: 'row', alignItems: 'center' },
   actionGroup: { flexDirection: 'row', alignItems: 'center' },
   headerBottomPad: { height: OVERLAY_HEADER_PADDING_BOTTOM },
-  stripSpacer: { height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM, width: '100%' },
+  stripSeam: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
+  },
   divider: { height: 1, backgroundColor: '#f1f5f9' },
   // Layer marker (debug builds of the parallel host): the TrackSheet surface is
   // the one with the amber top edge — never confuse it with the old sheet again.
