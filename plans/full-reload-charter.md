@@ -16,11 +16,11 @@ costing the same as the full one.
 All-in $0.00382/doc — 9x the extraction-only ledger figure ($0.00043),
 because that figure counts ONLY content.extract.
 
-| caller | USD | share | note |
-|---|---|---|---|
-| content.extract | 0.69 | 34% | input 92% CACHED (1.74M of 1.89M) — caching works |
-| entity-resolution.match_batch | 1.32 | 64% | 432,727 OUTPUT tokens / 76 calls (~5,700 each) |
-| attribute.place + match + embeddings | 0.05 | 2% | |
+| caller                               | USD  | share | note                                              |
+| ------------------------------------ | ---- | ----- | ------------------------------------------------- |
+| content.extract                      | 0.69 | 34%   | input 92% CACHED (1.74M of 1.89M) — caching works |
+| entity-resolution.match_batch        | 1.32 | 64%   | 432,727 OUTPUT tokens / 76 calls (~5,700 each)    |
+| attribute.place + match + embeddings | 0.05 | 2%    |                                                   |
 
 Projections at this rate: **Austin (39,495 docs) ≈ $151**; both metros
 (71,528) ≈ $273. A FRESH-START wipe likely costs MORE than $151: this pilot
@@ -35,40 +35,40 @@ reload.
 ## 2. DECISIONS RATIFIED (implement these)
 
 a. **Category items count toward the RESTAURANT score only when no dish
-   exists under that category** — granular per category, not per
-   restaurant. A place can have burgers-with-dishes (excluded; the dishes
-   already carry the claim) and tacos-without (included). One claim,
-   counted exactly once, always.
+exists under that category** — granular per category, not per
+restaurant. A place can have burgers-with-dishes (excluded; the dishes
+already carry the claim) and tacos-without (included). One claim,
+counted exactly once, always.
 b. **No support-vs-direct weighting, no split display.** Every endorsement
-   counts as one. The CATEGORY CARD is the explanation: "Tacos · 8" next to
-   "birria taco · 11" tells the story visually (the dish is always >= the
-   category under equal boost). No badge, no qualifier word.
+counts as one. The CATEGORY CARD is the explanation: "Tacos · 8" next to
+"birria taco · 11" tells the story visually (the dish is always >= the
+category under equal boost). No badge, no qualifier word.
 c. **Fresh start scope:** wipe DERIVED — entities, connections + mentions,
-   signals, category edges, attribute evidence, adjudication tombstones.
-   KEEP raw truth — collection_source_documents, collection_extraction_
-   inputs, sources/lanes, users/polls/lists. VERIFY FIRST: count
-   user-generated references to entity ids (poll votes/targets, list items,
-   favorites, photos) — they FK to entities and will break.
-   RATIONALE for wiping tombstones specifically: archived entities are
-   resolution SINKS, so every junk/merge judgment made under the OLD prompt
-   is frozen and never re-adjudicated. A reload that keeps them inherits
-   the old vocabulary's mistakes.
+signals, category edges, attribute evidence, adjudication tombstones.
+KEEP raw truth — collection*source_documents, collection_extraction*
+inputs, sources/lanes, users/polls/lists. VERIFY FIRST: count
+user-generated references to entity ids (poll votes/targets, list items,
+favorites, photos) — they FK to entities and will break.
+RATIONALE for wiping tombstones specifically: archived entities are
+resolution SINKS, so every junk/merge judgment made under the OLD prompt
+is frozen and never re-adjudicated. A reload that keeps them inherits
+the old vocabulary's mistakes.
 d. **Keep archived entities in NORMAL operation** (FK safety + sink
-   efficiency); readers filter to active. The wipe is a one-time
-   fresh-start event, not a new policy.
+efficiency); readers filter to active. The wipe is a one-time
+fresh-start event, not a new policy.
 e. **Tags reader filters entity.status='active'** (4,769 signal rows point
-   at archived entities today).
+at archived entities today).
 f. **Collection scheduler is PAUSED** (COLLECTION_SCHEDULER_ENABLED=false
-   on worker, 2026-07-27) so no collection interleaves with the reload.
-   MUST be re-enabled after.
+on worker, 2026-07-27) so no collection interleaves with the reload.
+MUST be re-enabled after.
 g. **Prod attribute-evidence backfill MUST run before any prod projection
-   rebuild** — otherwise the derived array drops the ~78% of attributes
-   that came from Google/cuisine sources. (Moot if the fresh start wipes
-   attributes anyway — sequence deliberately.)
+rebuild** — otherwise the derived array drops the ~78% of attributes
+that came from Google/cuisine sources. (Moot if the fresh start wipes
+attributes anyway — sequence deliberately.)
 
 ## 3. CADENCE (investigated, no fix needed)
 
-Derived cadence is correct: austinfood 0.79 posts/day -> clamp(0.5*1000/
+Derived cadence is correct: austinfood 0.79 posts/day -> clamp(0.5\*1000/
 0.79, 2h, 14d) = 14 days; foodnyc 12.29/day -> also 14d. The 14-day cap IS
 the max interval (ARRIVAL_LOOKBACK_DAYS) — we never let a source go 633
 days; the measurement horizon bounds it. Lanes still read cadence_days=1
@@ -83,6 +83,7 @@ reads due_at so behavior is right; fix the column write for honesty.
 
 The prompt has NEVER been validated in full: the 13/13 replay predates the
 two-axis parent rule AND the fusion rule. Required before the reload:
+
 1. Re-run the 13-case regression under the CURRENT prompt (must still pass).
 2. Large representative sample (>= 100 docs, random, all shapes) graded for
    EVERY failure class we know: menu-item labeling, fan-out, fusion
@@ -108,8 +109,17 @@ touching the reload.
 
 ## 6. SEQUENCE
 
-1. Resolution-cost audit lands -> apply savings (compounds over everything).
-2. Implement §2 ratified decisions (a, b as no-op, e, cadence column).
+1. DONE 2026-07-27. Resolution-cost audit found thinking config lost at the
+   callLLMApi seam (28af1b38) AND absent entirely in the relevance gate,
+   whose ledger was also blind to thinking tokens (f12f4126). One shared
+   resolver now owns thinking level for every assembler. All-in cost/doc
+   $0.00382 -> $0.00045 (8.5x); Austin reload ~$151 -> ~$18; replay ~18x
+   faster. Applies to every future collection run, not just the reload.
+2. DONE 2026-07-27 (1b58d1d5): §2a per-category rollup admission (1,191 of
+   1,706 category items are sole carriers and now count; 515 stay
+   suppressed), §2e tags filtered to active (4,892 archived signal rows no
+   longer surfaceable as tags), §3 cadence_days column now honest. §2b was
+   already a no-op — no weighting exists to remove.
 3. Run the §4 audit; iterate the prompt in LARGE spans until clean.
 4. Verify user-reference counts (§2c), then wipe + reload Austin.
 5. Re-enable collection; confirm NY continuity (§5).
