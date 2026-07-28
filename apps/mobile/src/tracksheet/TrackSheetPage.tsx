@@ -49,10 +49,11 @@ import { TrackSheetDockedStrip, type TrackSheetDockedStripProps } from './TrackS
 //     native rubber both ends; critically damped detent settles; the ballistic
 //     wall (momentum never crosses the sheet-top boundary); durable native
 //     hatch (TrackScrollKit).
-//   • THE SHEET SURFACE — rounded clipping surface riding sheetTopY with the
-//     fullscreen track counter-positioned inside (content can never escape the
-//     sheet's bounds; overscroll reveals sheet material; real corners; touches
-//     above the sheet fall through to the world).
+//   • THE SCROLL VIEW *IS* THE SHEET — content is
+//     [transparent spacer = sheet travel][chrome][body], inset at expandedTop.
+//     The chrome is content (one motion source ⇒ no wiggle) pinned natively
+//     past H, and every touch anywhere on the sheet is a scroll touch ⇒ the
+//     whole sheet is grabbable, with UIScrollView owning tap-vs-drag.
 //   • CHROME — header row at the surface top, optional docked strip band with
 //     TRUE CUTOUTS through the white plate (MaskedHoleOverlay), and the
 //     divider that fades in as content slides under the chrome.
@@ -166,14 +167,7 @@ export function TrackSheetPage<Item>({
   publicationBindings,
   onGestureSettle,
 }: TrackSheetPageProps<Item>): React.ReactElement {
-  const chromeHeightForArbitration =
-    OVERLAY_TAB_HEADER_HEIGHT +
-    (dockedStrip != null ? dockedStrip.height + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM : 0);
-  const physicsGeometry = React.useMemo(
-    () => ({ ...geometry, chromeHeight: chromeHeightForArbitration }),
-    [chromeHeightForArbitration, geometry]
-  );
-  const physics = useTrackSheetPhysics(physicsGeometry, { onUserListScrollActivity });
+  const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
@@ -191,7 +185,9 @@ export function TrackSheetPage<Item>({
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
-  const chromeHeight = chromeHeightForArbitration;
+  const chromeHeight =
+    OVERLAY_TAB_HEADER_HEIGHT +
+    (dockedStrip != null ? dockedStrip.height + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM : 0);
 
   // THE HEADER CUTOUT PLATE (inventory §1.5): white plate with the grab-handle
   // slot and the close-circle punched through to the frost beneath.
@@ -524,7 +520,6 @@ export function TrackSheetPage<Item>({
           <Reanimated.View style={[styles.divider, dividerStyle]} />
       </View>
     ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       chromeHeight,
       dockedStrip,
@@ -659,19 +654,8 @@ export function TrackSheetPage<Item>({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
-  surface: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    overflow: 'hidden',
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-  },
   // Mask: transparent band over the chrome (content hidden there), opaque
   // below (content visible). Colors are irrelevant — alpha is the mask.
-  maskRoot: { flex: 1, backgroundColor: 'transparent' },
-  maskVisible: { flex: 1, backgroundColor: '#000000' },
   chrome: {
     // In CONTENT now (not an overlay): the sheet's top edge whenever pinned.
     width: '100%',

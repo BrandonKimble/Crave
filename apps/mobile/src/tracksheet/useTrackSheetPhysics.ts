@@ -20,12 +20,11 @@ import {
 //     exact frame the offset crosses H and drives the native rubber spring
 //     (velocity-continuous top bounce); bottom edge bounces natively.
 // The proxy re-wraps itself via KVO when Fabric replaces the delegate — attach
-// is one-shot durable (the FlashList lesson).
+// is one-shot durable (the FlashList lesson). The CHROME is content inside this
+// same scroll view (see TrackSheetPage) and is pinned natively past H, so there
+// is no chrome region and no second input surface — one track, one engine.
 
 export type TrackSheetGeometry = {
-  /** Chrome band height (pt) — the native side rejects scroll pans that START
-   * inside the chrome (geometry arbitration; the header pan owns them). */
-  chromeHeight?: number;
   /** Sheet top edge (screen y) when fully expanded. */
   expandedTop: number;
   /** Sheet top edge (screen y) when collapsed. */
@@ -123,8 +122,6 @@ export const useTrackSheetPhysics = (
             ballisticEdge: trackH,
             snapRegionEnd: trackH,
             snapOffsets: detentTaus,
-            chromeTopInset: geometry.expandedTop,
-            chromeHeight: geometry.chromeHeight ?? 0,
           })
           .then(() => {
             if (__DEV__) {
@@ -145,7 +142,7 @@ export const useTrackSheetPhysics = (
       };
       tryAttach();
     },
-    [detentTaus, geometry.chromeHeight, geometry.expandedTop, trackH]
+    [detentTaus, trackH]
   );
   React.useEffect(() => {
     const physics = NativeModules.TrackScrollPhysics;

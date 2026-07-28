@@ -39,18 +39,6 @@
 /// Releases whose native target lands below this bound get detent-targeted.
 @property (nonatomic, assign) CGFloat snapRegionEnd;
 @property (nonatomic, copy) NSArray<NSNumber *> *snapOffsets;
-/// NATIVE GEOMETRY ARBITRATION (the second input surface, by construction):
-/// a scroll pan whose touch STARTS inside the chrome band [sheetTop,
-/// sheetTop+chromeHeight) is cancelled here — the JS header-grab pan owns it.
-/// sheetTop derives from the track: chromeTopInset + max(0, edge − offset).
-@property (nonatomic, assign) CGFloat chromeTopInset;
-@property (nonatomic, assign) CGFloat chromeHeight;
-/// A drag born on the chrome IS a track drag bounded to the sheet region:
-/// while set, offsets clamp to [0, edge] and release always detent-settles.
-@property (nonatomic, assign) BOOL chromeGrab;
-/// Saved bottom inset while a chrome-born drag bounds the track to the sheet.
-@property (nonatomic, assign) CGFloat restoreBottomInset;
-@property (nonatomic, assign) BOOL hasBottomInsetOverride;
 /// THE NATIVE PIN (the scroll view IS the sheet, step 1): the chrome lives in
 /// the track's CONTENT (after the spacer) so it is grabbable and shares the
 /// content's motion source. While τ ≤ H it travels with content; past H it must
@@ -122,38 +110,10 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
 - (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView
 {
-  NSLog(@"[TRACKNATIVE] willBeginDragging offset=%.1f enabled=%d frame=%@",
-        scrollView.contentOffset.y, scrollView.scrollEnabled,
-        NSStringFromCGRect(scrollView.frame));
-  // THE HEADER GRAB IS THE TRACK (ground-up shape): a drag born on the chrome
-  // drives the SAME track, bounded to the sheet region — one engine, native
-  // finger tracking, and the release rides the existing detent spring. No
-  // second gesture system exists.
-  self.chromeGrab = NO;
-  const CGFloat edgeForBound = self.ballisticEdge;
-  if (self.chromeHeight > 0 && edgeForBound >= 0) {
-    UIPanGestureRecognizer *pan = scrollView.panGestureRecognizer;
-    const CGPoint location = [pan locationInView:scrollView.window];
-    const CGPoint translation = [pan translationInView:scrollView.window];
-    const CGFloat startY = location.y - translation.y;
-    const CGFloat sheetTop =
-        self.chromeTopInset + MAX(0, self.ballisticEdge - scrollView.contentOffset.y);
-    if (startY >= sheetTop && startY < sheetTop + self.chromeHeight) {
-      self.chromeGrab = YES;
-      // THE CHROME BOUND AS AN INSET: make `edge` the scroll view's own max
-      // offset for the duration of this gesture, so a header drag can never
-      // scroll the list through the chrome — enforced by UIKit, not by us.
-      const CGFloat maxOffset =
-          scrollView.contentSize.height - scrollView.bounds.size.height;
-      if (maxOffset > edgeForBound) {
-        UIEdgeInsets inset = scrollView.contentInset;
-        self.restoreBottomInset = inset.bottom;
-        self.hasBottomInsetOverride = YES;
-        inset.bottom = -(maxOffset - edgeForBound);
-        scrollView.contentInset = inset;
-      }
-    }
-  }
+  // NO CHROME REGION EXISTS (the scroll view IS the sheet, 2026-07-28): the
+  // chrome is CONTENT inside this scroll view, so a touch on it is an ordinary
+  // track touch. The old chromeGrab arbitration + its inset bound are DELETED —
+  // one track, one engine, no special regions.
   // FINGER DOWN: full 1:1 track (the continuous grab); any armed intercept or
   // in-flight bounce dies — the finger owns the track from here.
   self.ballisticArmed = NO;
@@ -182,38 +142,6 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
   const CGFloat edge = self.ballisticEdge;
   const CGFloat releaseY = scrollView.contentOffset.y;
-
-  if (self.hasBottomInsetOverride) {
-    UIEdgeInsets inset = scrollView.contentInset;
-    inset.bottom = self.restoreBottomInset;
-    scrollView.contentInset = inset;
-    self.hasBottomInsetOverride = NO;
-  }
-  if (self.chromeGrab) {
-    // Header release: always a sheet-region settle onto the detent spring —
-    // momentum from a chrome grab may never pour into list scrolling.
-    self.chromeGrab = NO;
-    // SIGN (attribution 2026-07-27): τ RISES with contentOffset, and UIKit's
-    // velocity.y is positive when the offset is increasing — so the τ-space
-    // projection is +velocity, not -velocity. The inverted sign projected a
-    // fast expand-drag backwards and slammed the sheet to collapsed
-    // ("drags don't stick": τ hit 645 then snapped to 0).
-    const double vTrack = velocity.y * 1000.0; // dτ/dt (pt/s)
-    const double projected =
-        MIN(edge, MAX(0, scrollView.contentOffset.y + vTrack * 0.18));
-    CGFloat best = self.snapOffsets.firstObject.doubleValue;
-    for (NSNumber *offset in self.snapOffsets) {
-      if (fabs(offset.doubleValue - projected) < fabs(best - projected)) {
-        best = offset.doubleValue;
-      }
-    }
-    targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
-    // The spring's velocity is in OFFSET space (d/dt of contentOffset.y), and
-    // UIKit reports pt/ms — same axis as τ here, negated for the spring's
-    // displacement convention (d = y - target).
-    [self startSpringOn:scrollView toTarget:best fromY:releaseY velocityY:-velocity.y * 1000.0];
-    return;
-  }
 
   if (edge >= 0 && releaseY >= edge) {
     // BALLISTIC RELEASE IN THE LIST REGION: do NOT bound the track here — bounding
@@ -251,18 +179,11 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
-  static int scrollTick = 0;
-  if (++scrollTick % 20 == 0) {
-    NSLog(@"[TRACKNATIVE] didScroll y=%.1f contentH=%.1f viewportH=%.1f",
-          scrollView.contentOffset.y, scrollView.contentSize.height,
-          scrollView.bounds.size.height);
-  }
   const CGFloat edge = self.ballisticEdge;
   // NO PER-FRAME CLAMP (jerk fix, 2026-07-27): forcing contentOffset back to
   // the edge every frame FIGHTS UIKit — the finger moves, the clamp yanks, the
   // engine re-syncs ("bounces back, then continues"). The prototype had no such
-  // override and moved perfectly. The chrome bound is now an INSET installed
-  // before tracking, so UIKit enforces it itself, with its own rubber-band.
+  // override and moved perfectly.
   if (self.ballisticArmed && edge >= 0 && !scrollView.tracking && scrollView.decelerating) {
     const CGFloat y = scrollView.contentOffset.y;
     const CFTimeInterval now = CACurrentMediaTime();
@@ -434,13 +355,9 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     };
     NSNumber *edge = config[@"ballisticEdge"];
     NSNumber *regionEnd = config[@"snapRegionEnd"];
-    NSNumber *chromeTopInset = config[@"chromeTopInset"];
-    NSNumber *chromeHeight = config[@"chromeHeight"];
     proxy.ballisticEdge = edge != nil ? edge.doubleValue : -1;
     proxy.snapRegionEnd = regionEnd != nil ? regionEnd.doubleValue : -1;
     proxy.snapOffsets = config[@"snapOffsets"] ?: @[];
-    proxy.chromeTopInset = chromeTopInset != nil ? chromeTopInset.doubleValue : 0;
-    proxy.chromeHeight = chromeHeight != nil ? chromeHeight.doubleValue : 0;
     resolve(@(YES));
   }];
 }
