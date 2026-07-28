@@ -315,6 +315,10 @@ export function TrackSheetPage<Item>({
     [physics, reportSettle]
   );
 
+  const cancelPendingSeat = React.useCallback(() => {
+    seatTimerCancelRef.current?.();
+  }, []);
+
   // ── THE SEAT: declarative re-asserting settle ──
   const seatTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
@@ -354,14 +358,37 @@ export function TrackSheetPage<Item>({
       attempts = 0;
       assertSeat();
     });
+    seatTimerCancelRef.current = () => {
+      cancelled = true;
+      if (seatTimerRef.current != null) {
+        clearTimeout(seatTimerRef.current);
+        seatTimerRef.current = null;
+      }
+    };
     return () => {
       cancelled = true;
       unsubscribe();
+      seatTimerCancelRef.current = null;
       if (seatTimerRef.current != null) {
         clearTimeout(seatTimerRef.current);
       }
     };
   }, [physics, seatTau, tau]);
+
+  // THE GESTURE CANCELS THE MACHINE (jerk fix): any pending seat retry or
+  // in-flight programmatic spring dies the moment a finger lands — otherwise
+  // the seat's spring and the drag fight for a few frames ("bounces back,
+  // then continues once it realizes I'm swiping").
+  const seatTimerCancelRef = React.useRef<(() => void) | null>(null);
+  useAnimatedReaction(
+    () => physics.dragging.value,
+    (isDragging, was) => {
+      if (isDragging && !was) {
+        runOnJS(cancelPendingSeat)();
+      }
+    },
+    [physics]
+  );
 
   const pendingSnapTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   React.useEffect(() => {
@@ -415,7 +442,14 @@ export function TrackSheetPage<Item>({
   );
   const listFooter = React.useMemo(
     () => (
-      <View style={{ height: footerHeight + shortPageFill, backgroundColor: surfaceColor }} />
+      <View
+        style={{
+          // The tail must outlast any bounce: the list's own bottom edge must
+          // never appear inside the sheet.
+          height: footerHeight + shortPageFill + SCREEN.height,
+          backgroundColor: surfaceColor,
+        }}
+      />
     ),
     [footerHeight, shortPageFill, surfaceColor]
   );
@@ -474,7 +508,9 @@ export function TrackSheetPage<Item>({
       <Reanimated.View
         style={[
           styles.surface,
-          { height: SCREEN.height },
+          // 2x viewport: a hard rubber-band must never reveal the surface's
+          // bottom edge (owner: "the scroll area does not appear infinite").
+          { height: SCREEN.height * 2 },
           debugHud && styles.debugEdge,
           surfaceStyle,
         ]}
@@ -621,6 +657,11 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    // The plate is a square SVG — the chrome clips it to the sheet's corners
+    // (owner: "the header is no longer rounded").
+    overflow: 'hidden',
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
   chromePlate: { position: 'absolute', top: 0, left: 0, right: 0 },
   grabWrapper: { alignItems: 'center', paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP },
