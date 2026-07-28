@@ -207,3 +207,42 @@ the chrome now living in content, verify the rest offset for an expanded seat
 is exactly τ=H (spacer height) and that the seat maps to H — a chrome-height
 double-count in the spacer would park the sheet H+chromeHeight and pin the
 divider on. Probe: log τ at rest per scene before changing anything.
+
+## NAV BOUNDARY + CURVE — EXACT RECIPE (recovered 2026-07-28)
+
+Do NOT hand-roll either. Production already implements BOTH in one native view;
+the track host must reproduce the same wiring:
+
+SearchRouteSheetFrameHost.tsx → SearchRouteSheetNativeMaskHost (memo) takes a
+`sheetMaskRuntime` of SharedValues + statics:
+  { exclusionModeValue, navTranslateY, navBarHeight, navBarTop,
+    bottomNavHiddenTranslateY }
+and derives, ON THE UI THREAD:
+  nativeMaskAnimatedProps = useAnimatedProps(() => {
+    const modeValue = exclusionModeValue.value;
+    const boundaryTranslateY = resolveNativeSheetMaskBoundaryTranslateY({
+      modeValue, navTranslateY: navTranslateY.value });      // persistent→0
+    const maskEnabled = shouldEnableSheetMaskForNavSilhouette({
+      modeValue, navBarHeight, navTranslateY: boundaryTranslateY });
+    return { maskEnabled, navBodyBoundaryTranslateY: boundaryTranslateY };
+  })
+  hardClipAnimatedStyle = useAnimatedStyle(...)   // the FOLLOWING clip height
+plus static props: navBodyBoundaryVisibleY = navBarTop,
+navBodyBoundaryHiddenY = navBarTop + max(0, bottomNavHiddenTranslateY),
+maskOriginY = 0, style = {width: viewportWidth, height: viewportHeight}.
+
+⇒ THE CURVE AND THE FOLLOW ARE THE SAME MECHANISM. My earlier attempt "blanked
+the surface" because I passed STATIC maskEnabled/boundary props with no
+animatedProps — the native view needs the animated pair to resolve its
+silhouette. Reusing it correctly fixes the see-through band AND restores the
+nav cutout curve in one move; the static hard clip then gets deleted.
+
+THE ONE UNKNOWN LEFT: where the track host reads those SharedValues.
+navTranslateY + navSilhouetteSheetExclusionModeValue live on
+RouteSheetChromeMotionSnapshot (route-sheet-chrome-motion-state-controller.ts),
+sourced from routeHostVisualRuntime. Find its authority accessor on
+AppRouteSceneRuntime (candidate: routeSheetVisualAuthority /
+syncRouteHostVisualRuntime) and subscribe with useSyncExternalStore, exactly as
+the old surface host does. DO NOT substitute a JS-thread copy — the values must
+be the SAME SharedValues the nav itself rides, or the boundary will lag the nav
+by a frame (the wiggle class of bug).
