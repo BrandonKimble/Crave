@@ -486,6 +486,10 @@ export function TrackSheetPage<Item>({
       {/* THE TRACK: untransformed, unclipped. The mask hides everything above
           the chrome's bottom edge (rows scrolling past the sheet top, and the
           band behind the chrome so its cutouts reveal frosted MAP). */}
+      {/* MASK EXONERATED (2026-07-27): bypassing MaskedView changed nothing —
+          the touch never reaches this wrapper with OR without it (JS
+          responder-capture probe silent), and z=9999 changed nothing either.
+          The mask stays (the cutouts need it); the blocker is elsewhere. */}
       <MaskedView
         style={StyleSheet.absoluteFill}
         maskElement={
@@ -494,6 +498,10 @@ export function TrackSheetPage<Item>({
             <View style={styles.maskVisible} />
           </View>
         }
+        onStartShouldSetResponderCapture={() => {
+          console.log('[TRACKDBG] touch reached track wrapper');
+          return false;
+        }}
       >
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
