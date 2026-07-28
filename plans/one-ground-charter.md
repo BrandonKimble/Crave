@@ -126,8 +126,28 @@ county axis, no geometric comparison, no extra vendor call:
   `bboxUnion`/`widenBbox`/`upsertSketchEnvelope` collapse into "the ground is
   written once, the envelope is derived", and the four columns DROP.
 
-**P5 — the honest shapes.** Probe memory becomes point+radius; signals store
-placeId (+ point). Both are behavior improvements, not just cleanups.
+**P5 — the honest shapes.**
+
+- P5a LANDED 2026-07-27: probe memory is a DISC (centre + radius in metres),
+  not a squared circle. `ProbedRegion` is a discriminated union because the
+  memory genuinely holds two shapes — a probe's disc and a probed VIEWPORT's
+  rectangle — and forcing them into one was the defect. Squaring cost ~21%
+  false "already asked" area (4r² vs πr²), which could suppress discovery of
+  a real place in a corner for the whole 30d TTL. RED-provable spec asserts
+  the square answers a 1.27r corner and the disc does not.
+- P5b OPEN — signals store a RECTANGLE, not a place: measured on the dev DB,
+  876 of 955 signals (92%) carry a place-derived rectangle, ALL of them wider
+  than 1 km. A poll "in Austin" literally carries Austin's bounding box, so
+  attribution leaks into Round Rock and Pflugerville. Ideal: store the
+  placeId (+ a point for point-events) and let the attribution join the
+  place's real ground — `ground-containment.ts` is already fully polygon-
+  native and is the reference implementation.
+  SIZE, honestly: 32 call sites across 7 files, all in the hot demand/supply
+  path (search ranking, poll supply, demand aggregation) plus a schema
+  migration and a backfill. This is its own arc, not a tail — and it should
+  open by writing the attribution law into the new
+  `places-containment.integration.spec` harness so the behaviour is proven
+  against PostGIS BEFORE and AFTER the change.
 
 ## Non-negotiables while executing
 
