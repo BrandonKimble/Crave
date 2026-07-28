@@ -2394,3 +2394,53 @@ WHY THIS IS THE GROUND-UP SHAPE: the ONE TRACK axiom says every visual is a
 derivation of τ. The chrome is the one thing that is not a derivation — it IS
 content at a known content-offset. Modeling it as content (sticky) instead of
 as a derived overlay removes an entire class of sync bugs.
+
+### THE DEEPEST SHAPE — "THE SCROLL VIEW IS THE SHEET" (2026-07-27)
+
+Owner asked: is sticky chrome the ideal abstraction, or a symptom? Answer:
+a symptom. Two findings force the deeper model.
+
+FINDING 1 (platform): FlashList v2's stickyHeaderIndices is JS-DRIVEN
+(RecyclerView.js: stickyHeaderRef.current.reportScrollEvent(event.nativeEvent)
+→ StickyHeaders component). It carries the SAME one-frame lag as a Reanimated
+derivation, so it would NOT fix the wiggle. RN's own ScrollView sticky headers
+ARE native (RCTScrollView), but FlashList owns its scroll view's children, so
+that path is not directly available.
+
+FINDING 2 (model): every element of the sheet is one of exactly two things —
+(a) content at a known content-offset (rows, poll card, chin), or
+(b) chrome pinned at a known screen position (header, strip).
+And (b) is just (a) plus a pin rule. There is no third category. The sheet is
+therefore not "a container holding a scroll view"; THE SCROLL VIEW IS THE
+SHEET:
+    content = [transparent spacer = sheet travel][chrome][body]
+    contentInset.top = expandedTop
+    background = transparent (the map shows through the spacer region)
+Under this model:
+  • sheetTopY stops being structural — it is only a READOUT for external
+    riders (scrim, search chrome). Nothing positions itself from it.
+  • The mask is unnecessary: above the sheet is the transparent spacer by
+    construction; content passing the chrome goes UNDER it because the chrome
+    is opaque and pinned.
+  • The rounded top belongs to the chrome (the chrome IS the sheet's top edge
+    whenever pinned, and travels with content when not).
+  • THE WHOLE SHEET IS GRABBABLE BY CONSTRUCTION — chrome is inside the scroll
+    view, so every touch is a scroll touch, and UIScrollView's own
+    delaysContentTouches/cancelContentTouches IS the tap-vs-drag arbitration.
+  • DELETED: counter-translate, MaskedView, surface overlay, chrome overlay,
+    chromeGrab, the chrome inset bound, chrome hit-transparency rules — seven
+    mechanisms replaced by one sentence.
+THE ONE PIECE THAT MUST BE NATIVE: the pin. Because FlashList's sticky is JS,
+TrackScrollKit must pin the chrome itself — the module already owns the scroll
+view and its delegate, so it positions the chrome subview inside
+scrollViewDidScroll, in the same frame as the offset change. Zero lag by
+construction (this is exactly how RCTScrollView implements native sticky
+headers). That is the last native primitive this design needs.
+
+IMPLEMENTATION ORDER (next session, one coherent pass — do NOT half-land it):
+ 1. TrackScrollKit: pinChromeTag(tag, pinY) — pin a subview in didScroll.
+ 2. Kit: chrome moves INTO the list content (after the spacer); delete the
+    chrome overlay + surface overlay + mask + chromeGrab + inset bound.
+ 3. Re-derive sheetTopY as a pure readout for the publication bridge.
+ 4. Verify: no wiggle (chrome and rows share one motion source), whole-sheet
+    grab, cutouts (frost behind chrome samples map through the spacer).
