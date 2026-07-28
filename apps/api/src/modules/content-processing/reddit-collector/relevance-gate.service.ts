@@ -12,6 +12,10 @@ import {
   jsonSchemaToTypedSchema,
 } from '../../external-integrations/llm/prompts/llm-response-schemas';
 import { LLMPost } from '../../external-integrations/llm/llm.types';
+import {
+  resolveThinkingConfig,
+  type GeminiThinkingConfig,
+} from '../../external-integrations/llm/gemini-thinking';
 
 export interface RelevanceGateResult {
   kept: LLMPost[];
@@ -53,6 +57,8 @@ export class RelevanceGateService implements OnModuleInit {
   private genAI!: GoogleGenAI;
   private prompt!: string;
   private promptHash!: string;
+  /** A keep/drop verdict is the cheapest classify we make -> 'query'. */
+  private gateThinkingConfig?: GeminiThinkingConfig;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -73,6 +79,11 @@ export class RelevanceGateService implements OnModuleInit {
       ),
       'utf8',
     );
+    this.gateThinkingConfig = resolveThinkingConfig({
+      model: GATE_MODEL,
+      context: 'query',
+      settings: this.configService.get('llm.thinking'),
+    }).config;
     this.promptHash = createHash('sha256')
       .update(this.prompt)
       .digest('hex')
@@ -209,6 +220,15 @@ export class RelevanceGateService implements OnModuleInit {
             RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
           ),
           maxOutputTokens: 65536,
+          // THINKING IS NEVER IMPLICIT (cost audit 2026-07-27). GATE_MODEL is
+          // a gemini-3 model, and Gemini 3 defaults to HIGH when a request
+          // omits the level — so this gate, which judges EVERY collected post,
+          // was silently buying maximum reasoning for a keep/drop call. The
+          // level comes from the shared resolver, not a local literal, so this
+          // assembler can't drift from LlmService again.
+          ...(this.gateThinkingConfig
+            ? { thinkingConfig: this.gateThinkingConfig }
+            : {}),
         },
       });
       this.usageLedger.record({
@@ -217,7 +237,12 @@ export class RelevanceGateService implements OnModuleInit {
         model: GATE_MODEL,
         mode: 'interactive',
         inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
-        outputTokens: response.usageMetadata?.candidatesTokenCount ?? 0,
+        // Thinking tokens BILL as output (same law as llm.service and the
+        // batch reconciler). Omitting them made the gate's ledger blind to
+        // exactly the spend the HIGH-thinking default was creating.
+        outputTokens:
+          (response.usageMetadata?.candidatesTokenCount ?? 0) +
+          (response.usageMetadata?.thoughtsTokenCount ?? 0),
         caller: 'relevance-gate.judgeBatch',
       });
       const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';

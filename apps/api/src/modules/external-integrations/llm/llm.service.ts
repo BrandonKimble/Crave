@@ -1,4 +1,9 @@
 import { applyAuditReasonPolicy } from './llm-audit-policy';
+import {
+  resolveThinkingConfig,
+  type GeminiThinkingConfig,
+  type ThinkingContext,
+} from './gemini-thinking';
 import { DecisionLedgerService } from '../shared/decision-ledger.service';
 import {
   Injectable,
@@ -126,7 +131,7 @@ interface LLMGenerationOptions {
   thinkingOverride?: {
     includeThoughts?: boolean;
   };
-  thinkingContext?: 'content' | 'query';
+  thinkingContext?: ThinkingContext;
   /** Collection extraction: the chunk's valid SRC refs. Constrains the
    *  response schema's source_id to an enum so ref typos are impossible at
    *  the decode layer (digit-count drift class, attributed 2026-07-10). */
@@ -3893,75 +3898,32 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private normalizeThinkingLevel(
-    level: string | undefined,
-  ): string | undefined {
-    if (!level) {
-      return undefined;
-    }
-    const normalized = level.trim().toUpperCase();
-    const cleaned = normalized
-      .replace(/^THINKING_LEVEL[._]/u, '')
-      .replace(/^THINKINGLEVEL[._]/u, '');
-    if (
-      cleaned === 'MINIMAL' ||
-      cleaned === 'LOW' ||
-      cleaned === 'MEDIUM' ||
-      cleaned === 'HIGH'
-    ) {
-      return cleaned;
-    }
-    return undefined;
-  }
-
-  private isGemini3Model(model: string): boolean {
-    return /gemini-3/i.test(model);
-  }
-
+  /** Delegates to the shared resolver (gemini-thinking.ts) so LlmService,
+   *  the relevance gate, and the batch builder cannot drift apart on what a
+   *  call's thinking level is — the drift IS the cost bug. */
   private getThinkingConfig(
     model: string,
-    context: 'content' | 'query' = 'content',
+    context: ThinkingContext = 'content',
     overrides?: {
       includeThoughts?: boolean;
     },
-  ):
-    | {
-        thinkingLevel?: string;
-        includeThoughts?: boolean;
-      }
-    | undefined {
-    const includeThoughts =
-      overrides?.includeThoughts ??
-      this.llmConfig.thinking?.includeThoughts === true;
-
-    // Gemini 3+ uses thinkingLevel. ALWAYS send one so we never silently default
-    // to HIGH (Gemini 3's default when no level is specified). Defaults: query →
-    // MINIMAL (cheap classify/parse), content → LOW.
-    if (this.isGemini3Model(model)) {
-      const configuredLevel =
-        context === 'query'
-          ? (this.llmConfig.thinking?.queryLevel ??
-            this.llmConfig.thinking?.level)
-          : this.llmConfig.thinking?.level;
-      const normalized = this.normalizeThinkingLevel(configuredLevel);
-      if (configuredLevel && !normalized) {
-        this.logger.warn('Invalid Gemini thinking level; using default', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'thinking_config',
-          model,
-          context,
-          configuredLevel,
-        });
-      }
-      const level = normalized ?? (context === 'query' ? 'MINIMAL' : 'LOW');
-      return {
-        thinkingLevel: level,
-        ...(includeThoughts ? { includeThoughts } : {}),
-      };
+  ): GeminiThinkingConfig | undefined {
+    const { config, invalidLevel } = resolveThinkingConfig({
+      model,
+      context,
+      settings: this.llmConfig.thinking,
+      includeThoughtsOverride: overrides?.includeThoughts,
+    });
+    if (invalidLevel) {
+      this.logger.warn('Invalid Gemini thinking level; using default', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'thinking_config',
+        model,
+        context,
+        configuredLevel: invalidLevel,
+      });
     }
-
-    // Non-Gemini-3 models are not used in this codebase; no thinking control.
-    return includeThoughts ? { includeThoughts } : undefined;
+    return config;
   }
 
   private getThoughtDebugMaxEntries(scope: 'query' | 'content'): number {
