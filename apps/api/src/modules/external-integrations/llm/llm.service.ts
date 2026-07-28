@@ -3149,8 +3149,21 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       defaultGenerationConfig.thinkingConfig = baseThinkingConfig;
     }
 
-    const generationConfig: GeminiGenerationConfig =
-      options.generationConfig ?? defaultGenerationConfig;
+    // THINKING CONFIG IS NEVER OPTIONAL (cost bug, 2026-07-27). This used to
+    // be `options.generationConfig ?? defaultGenerationConfig`, so ANY caller
+    // supplying its own config silently discarded the computed thinkingConfig
+    // — and Gemini 3's default with no level specified is HIGH. Measured
+    // blast radius: entity-resolution.match_batch averaged 5,694 output
+    // tokens/call versus 48 for the SAME judgment through the single-item
+    // path that set it correctly (118x), making resolution 64% of all replay
+    // spend. A caller may still override thinking deliberately; it just can
+    // no longer LOSE it by accident.
+    const generationConfig: GeminiGenerationConfig = options.generationConfig
+      ? {
+          ...(baseThinkingConfig ? { thinkingConfig: baseThinkingConfig } : {}),
+          ...options.generationConfig,
+        }
+      : defaultGenerationConfig;
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
 
     const hasResponseMimeType =
