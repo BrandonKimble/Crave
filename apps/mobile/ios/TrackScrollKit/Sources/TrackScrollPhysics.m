@@ -51,6 +51,14 @@
 /// Saved bottom inset while a chrome-born drag bounds the track to the sheet.
 @property (nonatomic, assign) CGFloat restoreBottomInset;
 @property (nonatomic, assign) BOOL hasBottomInsetOverride;
+/// THE NATIVE PIN (the scroll view IS the sheet, step 1): the chrome lives in
+/// the track's CONTENT (after the spacer) so it is grabbable and shares the
+/// content's motion source. While τ ≤ H it travels with content; past H it must
+/// hold at the sheet's pinned top. FlashList's sticky headers are JS-driven and
+/// would reintroduce the one-frame lag (the wiggle), so the pin happens HERE —
+/// inside scrollViewDidScroll, the same frame as the offset change, exactly as
+/// RCTScrollView implements native sticky headers.
+@property (nonatomic, weak) UIView *pinnedChromeView;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -279,6 +287,16 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
       self.lastTimestamp = now;
     }
   }
+  // THE PIN: zero-lag, same frame as the offset. translate = max(0, τ − H).
+  UIView *chrome = self.pinnedChromeView;
+  if (chrome != nil && edge >= 0) {
+    const CGFloat hold = MAX(0.0, scrollView.contentOffset.y - edge);
+    const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
+    if (!CGAffineTransformEqualToTransform(chrome.transform, next)) {
+      chrome.transform = next;
+    }
+  }
+
   if ([self.original respondsToSelector:@selector(scrollViewDidScroll:)]) {
     [self.original scrollViewDidScroll:scrollView];
   }
@@ -470,6 +488,30 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
       [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
                           animated:NO];
     });
+  }];
+}
+
+// Register the chrome view to pin (pass chromeTag = nil to clear).
+RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
+                  chromeTag:(nullable NSNumber *)chromeTag)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      return;
+    }
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    if (proxy == nil) {
+      return;
+    }
+    if (chromeTag == nil) {
+      proxy.pinnedChromeView.transform = CGAffineTransformIdentity;
+      proxy.pinnedChromeView = nil;
+      return;
+    }
+    UIView *chrome = viewRegistry[chromeTag] ?: [uiManager viewForReactTag:chromeTag];
+    proxy.pinnedChromeView = chrome;
   }];
 }
 
