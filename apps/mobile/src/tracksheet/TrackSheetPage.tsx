@@ -167,18 +167,20 @@ export function TrackSheetPage<Item>({
   onGestureSettle,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
-  // The track's frame starts at expandedTop (THE FRAME LAW), so its viewport —
-  // the quantity UIKit clamps the max offset against — is short by that much.
-  const viewportH = SCREEN.height - geometry.expandedTop;
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
   // accumulator and must only advance inside the handler.
-  // THE REACHABILITY INSET (see the law at handleContentSizeChange).
-  const [insetBottom, setInsetBottom] = React.useState(0);
+  const [shortPageFill, setShortPageFill] = React.useState(0);
+  const shortPageFillRef = React.useRef(0);
   // Fresh page ⇒ fresh measurement: the accumulator resets when the data
   // identity changes, so a long page never inherits a short page's fill.
+  const listDataIdentity = list.data;
+  React.useEffect(() => {
+    shortPageFillRef.current = 0;
+    setShortPageFill(0);
+  }, [listDataIdentity]);
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
@@ -569,9 +571,7 @@ export function TrackSheetPage<Item>({
 
   const listHeader = React.useMemo(
     () => (
-      <View style={{ zIndex: 2 }}>
-        {/* THE Z LAW: the chrome is CONTENT, and cells paint after the header —
-            so without this the rows slide OVER the header instead of under. */}
+      <View>
         {/* [0,H): sheet travel — TRANSPARENT, so the map shows through above
             the sheet with no mask and no clip. */}
         <View style={{ height: trackH }} pointerEvents="none" />
@@ -582,8 +582,17 @@ export function TrackSheetPage<Item>({
     [chromeElement, listLeader, trackH]
   );
   const listFooter = React.useMemo(
-    () => <View style={{ height: footerHeight, backgroundColor: surfaceColor }} />,
-    [footerHeight, surfaceColor]
+    () => (
+      <View
+        style={{
+          // The tail must outlast any bounce: the list's own bottom edge must
+          // never appear inside the sheet.
+          height: footerHeight + shortPageFill + SCREEN.height,
+          backgroundColor: surfaceColor,
+        }}
+      />
+    ),
+    [footerHeight, shortPageFill, surfaceColor]
   );
 
   const renderItem = list.renderItem;
@@ -596,17 +605,11 @@ export function TrackSheetPage<Item>({
     [renderItem, rowSurfaceStyle, surfaceColor]
   );
 
-  // THE REACHABILITY LAW (ground-up, 2026-07-28): every detent must be
-  // SETTLEABLE — UIKit clamps the max offset to (contentH + insetBottom −
-  // viewport), so a short page silently forbids τ near H (the recurring τ≈225
-  // mystery). Reachability is GEOMETRY, so it is expressed as an INSET, never
-  // as fabricated content (banked law #18). This supersedes the old fill, which
-  // padded the footer with a screen-height of white: that made the scroll far
-  // longer than the content warranted, and — because it was derived from a
-  // measurement it itself changed — needed a monotonic accumulator to converge.
-  // An inset does not change contentH, so this converges in ONE step by
-  // construction. It is also NOT how the sheet stays opaque: THE PLATE owns
-  // that, so no amount of rubber band can expose the content's end.
+  // THE SHORT-PAGE FILL LAW (ground-up, 2026-07-27): every detent must be
+  // REACHABLE — UIKit clamps settles to (contentH − viewport), so a short page
+  // silently forbids τ near H (the recurring τ≈225 mystery: an empty polls page
+  // capped the track at its content edge and every spring settle was dragged
+  // back there). The fill guarantees contentH ≥ spacer(H) + viewport.
   const handleContentSizeChange = React.useCallback(
     (_width: number, height: number) => {
       physics.contentHeight.value = height;
@@ -623,17 +626,17 @@ export function TrackSheetPage<Item>({
       // the reachable range grows, re-assert the seat — unless the user has
       // taken posture, which always outranks the machine.
       reassertSeatRef.current?.();
-      // Below the spacer sits everything the page can actually scroll; the
-      // inset makes up whatever it lacks of one viewport.
-      const belowSpacer = height - trackH;
-      setInsetBottom(Math.max(0, Math.ceil(viewportH - belowSpacer)));
+      const required = trackH + SCREEN.height;
+      const deficit = required - height;
+      if (deficit <= 1) {
+        return;
+      }
+      const nextFill = shortPageFillRef.current + Math.ceil(deficit);
+      shortPageFillRef.current = nextFill;
+      setShortPageFill(nextFill);
     },
-    [physics.contentHeight, trackH, viewportH]
+    [physics.contentHeight, trackH]
   );
-
-  const plateStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetTopY.value }],
-  }));
 
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
@@ -653,24 +656,10 @@ export function TrackSheetPage<Item>({
           the map shows through the spacer region. No counter-translate, no
           mask, no surface overlay, no chrome overlay, no chromeGrab — the
           engine owns motion, bounds, pinning and tap-vs-drag. */}
-      {/* THE PLATE: the sheet surface is a DERIVATION OF τ, not content. Its
-          top edge rides sheetTopY and it runs far past the screen bottom, so
-          the sheet reads as solid at every τ and through any rubber band in
-          either direction — regardless of how short the page's content is.
-          Content length and surface extent are now independent concerns. The
-          chrome is opaque and sits exactly at the sheet top, so this view's
-          own top edge is never the visible one. */}
-      <Reanimated.View style={[styles.plate, plateStyle]} pointerEvents="none" />
       <AnimatedFlashList
         ref={setListRef as unknown as React.Ref<React.Component>}
-        /* THE FRAME LAW: the scroll view IS exactly the region the sheet can
-           ever occupy — it starts at expandedTop, so it clips natively there.
-           Previously it was full-bleed with expandedTop as contentContainer
-           PADDING, which left content free to render up into the 0..expandedTop
-           band and off the top of the screen once it scrolled under the chrome.
-           τ is unchanged: at τ=0 the spacer top sits at expandedTop, so the
-           sheet top is expandedTop + H = collapsedTop, exactly as before. */
-        style={[styles.track, { top: geometry.expandedTop }]}
+        style={StyleSheet.absoluteFill}
+        contentContainerStyle={{ paddingTop: geometry.expandedTop }}
         data={list.data}
         renderItem={renderRowOnSurface}
         keyExtractor={list.keyExtractor}
@@ -690,7 +679,6 @@ export function TrackSheetPage<Item>({
         alwaysBounceVertical
         scrollEventThrottle={16}
         onScroll={onScroll}
-        contentInset={{ bottom: insetBottom }}
         onContentSizeChange={handleContentSizeChange}
       />
 
@@ -705,8 +693,6 @@ export function TrackSheetPage<Item>({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
-  track: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  plate: { position: 'absolute', left: 0, right: 0, top: 0, height: SCREEN.height * 3 },
   // Mask: transparent band over the chrome (content hidden there), opaque
   // below (content visible). Colors are irrelevant — alpha is the mask.
   chrome: {
