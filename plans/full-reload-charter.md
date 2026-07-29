@@ -79,31 +79,36 @@ COSMETIC DEFECT: advanceLane updates due_at but leaves the cadence_days
 COLUMN stale, so the column misreports the lane's real cadence. Scheduling
 reads due_at so behavior is right; fix the column write for honesty.
 
-## 3b. NESTED CATEGORY DOUBLE-COUNT (found 2026-07-28; fix before reload)
+## 3b. NESTED CATEGORY DOUBLE-COUNT — SUPERSEDED, DO NOT BUILD
 
-§2a suppresses a category item when a DISH carries the claim. Owner asked
-whether nested category claims (a place claimed for both "chicken" and
-"kung pao chicken", no dishes) should each count. MEASURED: 871 same-
-document parent+child category pairs, 723 mentions / 1,006 upvotes of 5,722
-category upvotes (~18%) are ONE claim counted twice. So: not correct.
+Original plan: make banking symmetric (give category items their parent
+categories) so a ROW-level rule could handle nested claims. That plan
+assumed the row rule. It was replaced by CLAIM IDENTITY (d9e963da), which
+resolves nested cases directly at the mention level.
 
-The obvious fix is WRONG and was tested before proposing: suppressing any
-category with a narrower category under it flips 244 items and drops 646
-upvotes of genuinely DISTINCT claims. Why the asymmetry — banking. A
-category claim's mentions REPLAY onto matching dishes, so excluding the
-whole category item loses nothing (the dish already holds it). Category
-items carry `categories: []`, so nothing replays onto a NARROWER CATEGORY
-item — excluding the parent there destroys evidence.
+VERIFIED SUPERSEDED 2026-07-28: same-document parent/child pairs still
+counted twice under the shipped rule = **0**. The defect 3b existed to fix
+does not exist. Its only residual effect would be letting a parent claim
+boost a narrower CATEGORY item's score — a ranking nicety, not a
+correctness fix — and it would require reordering projection-rebuild
+(category items are deliberately built AFTER support attachment) for that
+marginal gain. Building it now would be building on a stale plan.
 
-IDEAL FIX (foundation, not a second SQL rule): make banking SYMMETRIC —
-give category items their parent categories so a parent claim replays onto
-the narrower category item exactly as it does onto a dish. Then ONE rule
-covers every case: a claim counts once, credited to the most specific
-carrier that actually holds it, and the rollup predicate widens from "a
-dish carries it" to "any narrower item carries it". Requires reordering
-projection-rebuild (category items are currently built AFTER support
-attachment, deliberately, so they receive no banked support) — verify with
-a full local rebuild before the reload.
+## 3d. BATCH CACHE OVERLAP (found while red-teaming item 4)
+
+There is no `caches.delete` anywhere in the codebase. The batch system
+cache has TTL 30h and is replaced once it drops below 25h remaining, so
+under continuous load a new cache is created roughly every 5h while the
+previous ones keep billing storage to their full 30h — about 6 alive at
+once, ~$0.10/hr (~$73/month at sustained load; less in practice because
+load is bursty).
+
+NOT simply a leak: the 30h TTL exists so an in-flight job cannot outlive
+its cache under the Batch API 24h SLA, so deleting on replacement would be
+unsafe while jobs reference it. The safe fix is retiring a cache once its
+jobs are terminal, which needs job-lifecycle awareness. Recorded, not built
+blind. It is now at least VISIBLE — this spend was unledgered until
+03070df0.
 
 ## 3c. ASSERTED vs INFERRED CATEGORIES (designed, measured, DEFERRED)
 
