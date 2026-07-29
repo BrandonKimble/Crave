@@ -7,6 +7,13 @@ import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { foodNameVariants } from './food-lemma';
+
+/** Number variance applies to what people ORDER, not to proper nouns:
+ *  "Torchy's Tacos" is not "Torchy's Taco". Shared by the exact-match tier
+ *  and the within-batch creation dedupe so the two cannot drift apart. */
+function entityTypeUsesNumberVariants(entityType: EntityType): boolean {
+  return entityType === EntityType.food || entityType === EntityType.ingredient;
+}
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
@@ -517,8 +524,7 @@ export class EntityResolutionService implements OnModuleInit {
     // variants here removes the question from the stochastic tier entirely
     // (cheaper AND exact). Foods and ingredients only — restaurant names
     // carry number as branding ("Torchy's Tacos" is not "Torchy's Taco").
-    const usesNumberVariants =
-      entityType === EntityType.food || entityType === EntityType.ingredient;
+    const usesNumberVariants = entityTypeUsesNumberVariants(entityType);
     const probeNames = usesNumberVariants
       ? Array.from(
           new Set(entities.flatMap((e) => foodNameVariants(e.normalizedName))),
@@ -1200,6 +1206,24 @@ export class EntityResolutionService implements OnModuleInit {
 
         results.push(primaryResult);
         primaryNewEntityMap.set(normalizedKey, primaryResult);
+
+        // WITHIN-BATCH number dedupe. The exact tier closes input-vs-
+        // EXISTING, but this map keyed only the raw name — so a single batch
+        // containing both "taco" and "tacos" with NEITHER in the database
+        // minted two entities, and the tier that would have caught it never
+        // ran. That is precisely the reload's path: with an empty entity
+        // table every string resolves cold, so the split would re-form at
+        // the one moment the fix matters most. Registering the new primary
+        // under its number variants makes the later form find it. First
+        // primary wins; never steal a key another primary already owns.
+        if (entityTypeUsesNumberVariants(entityType)) {
+          for (const variant of foodNameVariants(normalizedName)) {
+            const variantKey = `${entityType}:${variant}`;
+            if (!primaryNewEntityMap.has(variantKey)) {
+              primaryNewEntityMap.set(variantKey, primaryResult);
+            }
+          }
+        }
 
         const closestFuzzyMatch = context.fuzzyMatches
           .filter((r) => r.entityId)
