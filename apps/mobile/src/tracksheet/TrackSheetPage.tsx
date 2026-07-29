@@ -167,7 +167,7 @@ export function TrackSheetPage<Item>({
   onGestureSettle,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
-  const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
+  const { tau, trackH, sheetTopY, onScroll, attachToTag, contentHeight } = physics;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
@@ -638,6 +638,23 @@ export function TrackSheetPage<Item>({
     [physics.contentHeight, trackH]
   );
 
+  // ── THE FOUNDING LAYERS (red team 2, 2026-07-28) ───────────────────────────
+  // The app's ONE frost founds the SHEET, not the chrome. It cannot be
+  // full-bleed (it would frost the map above the sheet), so it is anchored to
+  // sheetTop and runs unbounded downward — the sheet's material, in τ.
+  // White is NOT a layer beneath the rows: nothing opaque may sit between a
+  // row's plate and the frost, or every body cutout reveals white instead of
+  // blur. White comes from the row plates themselves, and the tail below the
+  // last row gets its own plate anchored at the content's end — so a short
+  // page reads solid to the screen bottom and through any rubber band, with no
+  // fabricated scroll length (R4/R5).
+  const frostStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTopY.value }],
+  }));
+  const tailStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: Math.max(sheetTopY.value, contentHeight.value - tau.value) }],
+  }));
+
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
     if (!debugHud) {
@@ -656,6 +673,9 @@ export function TrackSheetPage<Item>({
           the map shows through the spacer region. No counter-translate, no
           mask, no surface overlay, no chrome overlay, no chromeGrab — the
           engine owns motion, bounds, pinning and tap-vs-drag. */}
+      <Reanimated.View style={[styles.founding, frostStyle]} pointerEvents="none">
+        <FrostedGlassBackground />
+      </Reanimated.View>
       <AnimatedFlashList
         ref={setListRef as unknown as React.Ref<React.Component>}
         style={StyleSheet.absoluteFill}
@@ -682,6 +702,11 @@ export function TrackSheetPage<Item>({
         onContentSizeChange={handleContentSizeChange}
       />
 
+      <Reanimated.View
+        style={[styles.founding, { backgroundColor: surfaceColor }, tailStyle]}
+        pointerEvents="none"
+      />
+
       {debugHud ? (
         <View style={styles.hud} pointerEvents="none">
           <Reanimated.Text style={styles.hudText}>{hud}</Reanimated.Text>
@@ -693,6 +718,13 @@ export function TrackSheetPage<Item>({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
+  founding: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: SCREEN.height * 2,
+  },
   // Mask: transparent band over the chrome (content hidden there), opaque
   // below (content visible). Colors are irrelevant — alpha is the mask.
   chrome: {
