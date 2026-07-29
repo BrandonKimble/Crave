@@ -25,6 +25,7 @@ import { useAppRouteSharedSheetRuntimeOwner } from '../navigation/runtime/AppRou
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-types';
 import type { OverlayKey } from '../overlays/types';
+import { getSearchSurfaceRuntime } from '../screens/Search/runtime/surface/search-surface-runtime';
 import { getSearchStartupGeometrySeed } from '../screens/Search/runtime/shared/search-startup-geometry-seed-runtime';
 import {
   BottomSheetSceneStackBodyDataActivityContext,
@@ -67,6 +68,14 @@ import {
 
 const DEEP_LINK_HOST = 'tracksheet-host';
 const SCREEN = Dimensions.get('window');
+
+const markSheetLegReady = (): void => {
+  const runtime = getSearchSurfaceRuntime();
+  const transactionId = runtime.getActiveOrPendingRedrawTransactionId();
+  if (transactionId != null) {
+    runtime.markRedrawSheetReady(transactionId);
+  }
+};
 
 class ChromeProbeBoundary extends React.Component<
   { label: string; children: React.ReactNode },
@@ -282,9 +291,8 @@ const useTrackScenePageChrome = (
   // collapsed→0. 'hidden' has no track posture yet (dismiss choreography is a
   // later slice) — it seats collapsed.
   const sceneRuntimeForSeat = useAppRouteSceneRuntime();
-  const seatSnap = sceneRuntimeForSeat.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(
-    scene
-  );
+  const seatSnap =
+    sceneRuntimeForSeat.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(scene);
   const seatTauForSnap =
     seatSnap === 'expanded'
       ? trackH
@@ -324,6 +332,27 @@ const useTrackScenePageChrome = (
     },
     [middleTau, scene, sceneRuntimeForSeat, trackH]
   );
+
+  // ── THE SHEET LEG OF THE REDRAW JOIN ([JOINT], attributed 2026-07-28) ──────
+  // canAdmitResultsBody joins {cards→'paint', mapFrame, sheet}. The OLD host was
+  // THE sheet-motion authority for that last leg (app-route-sheet-host-authority-
+  // controller: markRedrawSheetReady at snap SETTLE). With it unmounted NOTHING
+  // produced 'sheet', so a world-backed list held its rows until the 1500ms bark
+  // and the reveal never joined. This host is that authority now.
+  //   • settle → ready (the faithful port of the old snap-SETTLE producer)
+  //   • redraw arms while the sheet is already at rest → ready immediately,
+  //     because a sheet that never moves has no settle to wait for. This is the
+  //     case list entry actually hits.
+  // markRedrawSheetReady is idempotent (publishes + offers), so both may fire.
+  // NOT wired: the motion-PENDING side of the fence. The old contract warns it
+  // must be motion-keyed on both sides or a deferred/no-op snap strands the bit
+  // — producing it without a proven motion signal would trade a hang for a
+  // freeze. Recorded as a deliberate deferral.
+  React.useEffect(() => {
+    const runtime = getSearchSurfaceRuntime();
+    markSheetLegReady();
+    return runtime.subscribe(markSheetLegReady);
+  }, []);
 
   const descriptor = getPersistentHeaderDescriptor(scene);
   const Title = descriptor?.Title;
@@ -508,11 +537,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
             >
               {/* padding INSIDE the surface so the white plate spans the full
                   cell (padded-outside left frost gutters at the margins). */}
-              <View
-                style={
-                  UNPADDED_BODY_SCENES.has(scene) ? undefined : styles.mountedBodyInset
-                }
-              >
+              <View style={UNPADDED_BODY_SCENES.has(scene) ? undefined : styles.mountedBodyInset}>
                 <ChromeProbeBoundary label={`${scene}.body`}>
                   <Body entry={entry ?? undefined} />
                 </ChromeProbeBoundary>
@@ -568,11 +593,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     // sheet. Its dual-band results composition migrates separately; until then
     // the home shelves are the correct content (post-flip owner report).
     const partsFor =
-      scene === 'polls'
-        ? pollsParts
-        : scene === 'home' || scene === 'search'
-          ? homeParts
-          : null;
+      scene === 'polls' ? pollsParts : scene === 'home' || scene === 'search' ? homeParts : null;
     if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
       const spec = partsFor.sceneBodyContent;
       const specRenderItem = spec.renderItem;
@@ -630,7 +651,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
             </SceneBodyFoundationSurface>
           ) : null
         }
-
         rowSurfaceStyle={
           MOUNTED_TRACK_SCENES.has(scene)
             ? UNPADDED_BODY_SCENES.has(scene)
@@ -645,6 +665,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         seatTau={seatTau}
         publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
+        onSettle={markSheetLegReady}
         onUserListScrollActivity={
           scene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined
         }

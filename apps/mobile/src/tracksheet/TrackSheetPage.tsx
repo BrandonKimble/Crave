@@ -143,6 +143,11 @@ export type TrackSheetPageProps<Item> = {
    * the detent). Feeds posture memory — seats are gesture-written only
    * (inventory §5.10). Programmatic settles never fire it. */
   onGestureSettle?: (detentTau: number) => void;
+  /** THE MOTION-AUTHORITY SIGNAL: fires on EVERY rest, gesture or programmatic.
+   * The search redraw join's 'sheet' leg rides this — the old host marked
+   * sheetReady at snap SETTLE regardless of writer. Deliberately distinct from
+   * onGestureSettle, which is posture memory and must stay gesture-only. */
+  onSettle?: (detentTau: number) => void;
 };
 
 export function TrackSheetPage<Item>({
@@ -166,6 +171,7 @@ export function TrackSheetPage<Item>({
   onUserListScrollActivity,
   publicationBindings,
   onGestureSettle,
+  onSettle,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag, contentHeight } = physics;
@@ -316,10 +322,16 @@ export function TrackSheetPage<Item>({
   // after a gesture.
   const onGestureSettleRef = React.useRef(onGestureSettle);
   onGestureSettleRef.current = onGestureSettle;
+  const onSettleRef = React.useRef(onSettle);
+  onSettleRef.current = onSettle;
   const settleReportedTau = useSharedValue(-1);
   const settleLastTau = useSharedValue(-1);
-  const reportSettle = React.useCallback((detentTau: number) => {
-    onGestureSettleRef.current?.(detentTau);
+  const reportSettle = React.useCallback((detentTau: number, owned: boolean) => {
+    onSettleRef.current?.(detentTau);
+    // Posture memory is gesture-written ONLY (inventory §5.10).
+    if (owned) {
+      onGestureSettleRef.current?.(detentTau);
+    }
   }, []);
   useAnimatedReaction(
     () => ({
@@ -328,7 +340,9 @@ export function TrackSheetPage<Item>({
       owned: physics.userOwnsPosture.value,
     }),
     (current) => {
-      if (!current.owned || current.dragging) {
+      // The WRITER no longer gates the observation — only the finger does. A
+      // programmatic settle is still a settle; reportSettle routes by writer.
+      if (current.dragging) {
         settleLastTau.value = -1;
         return;
       }
@@ -341,7 +355,7 @@ export function TrackSheetPage<Item>({
       for (const detent of physics.detentTaus) {
         if (Math.abs(detent - current.value) <= 2 && settleReportedTau.value !== detent) {
           settleReportedTau.value = detent;
-          runOnJS(reportSettle)(detent);
+          runOnJS(reportSettle)(detent, current.owned);
           return;
         }
       }
@@ -564,7 +578,11 @@ export function TrackSheetPage<Item>({
 
   const listHeader = React.useMemo(
     () => (
-      <View>
+      <View style={styles.chromeLane}>
+        {/* THE CHROME LANE (old system: PersistentSheetHeaderHost at zIndex
+            60, above the body lane — that is how the header "ignored the
+            scroll"). The chrome is content here, and cells paint AFTER the
+            header, so it must be raised or the rows paint over it. */}
         {/* [0,H): sheet travel — TRANSPARENT, so the map shows through above
             the sheet with no mask and no clip. */}
         <View style={{ height: trackH }} pointerEvents="none" />
@@ -699,6 +717,7 @@ export function TrackSheetPage<Item>({
           alwaysBounceVertical
           scrollEventThrottle={16}
           onScroll={onScroll}
+          automaticallyAdjustContentInsets={false}
           contentInset={{ bottom: insetBottom }}
           onContentSizeChange={handleContentSizeChange}
         />
@@ -733,6 +752,7 @@ const styles = StyleSheet.create({
   },
   // Containment (R6): nothing renders above the sheet's top edge. A clip, not
   // a reposition — the track inside is counter-offset so nothing shifts.
+  chromeLane: { zIndex: 60 },
   clip: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
   track: { position: 'absolute', left: 0, right: 0, height: SCREEN.height },
   founding: {
@@ -781,7 +801,14 @@ const styles = StyleSheet.create({
     right: 0,
     height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
   },
-  divider: { height: 1, backgroundColor: '#f1f5f9' },
+  divider: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: '#f1f5f9',
+  },
   // Layer marker (debug builds of the parallel host): the TrackSheet surface is
   // the one with the amber top edge — never confuse it with the old sheet again.
   debugEdge: { borderTopWidth: 3, borderTopColor: '#f59e0b' },
