@@ -246,24 +246,26 @@ export function TrackSheetPage<Item>({
     return { opacity: interpolate(tau.value - h, [0, 3, 14], [0, 0.35, 1], 'clamp') };
   });
 
-  // The chrome's node handle goes to the native pin (step 1 primitive).
-  // THE PIN MUST RE-ASSERT ON ATTACH: React fires refs CHILD-FIRST, so
-  // setChromeRef runs before the track's own ref — and pinChrome no-ops when
-  // the proxy does not exist yet. attach() retries (logs show success on a
-  // later attempt); the pin had no such re-assert, so it was dropped once and
-  // forever, and the chrome then scrolled away past H ("the sheet never stops
-  // at the top snap"). Same law the seat already follows.
+  // THE HEADER-LANE MASK replaces the chrome PIN. The chrome is no longer in
+  // the content, so there is nothing to pin — instead the track's rows are
+  // masked out of the chrome's band, so a blur through a header cutout can
+  // only ever sample the frost (and therefore the map), never a passing row.
+  // A CALayer mask clips RENDERING ONLY, so the band still takes touches and
+  // the whole sheet stays grabbable. It must RE-ASSERT ON ATTACH: React fires
+  // refs child-first and the native proxy may not exist on the first pass —
+  // the same law the seat already follows.
   const reassertSeatRef = React.useRef<(() => void) | null>(null);
   const applyPinRef = React.useRef<(() => void) | null>(null);
   React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
   const chromeTagRef = React.useRef<number | null>(null);
+  const maskTop = geometry.expandedTop + chromeHeight;
   const applyPin = React.useCallback(() => {
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    if (nativePhysics?.pinChrome != null && trackTagRef.current != null) {
-      nativePhysics.pinChrome(trackTagRef.current, chromeTagRef.current);
+    if (nativePhysics?.setTrackMask != null && trackTagRef.current != null) {
+      nativePhysics.setTrackMask(trackTagRef.current, maskTop);
     }
-  }, []);
+  }, [maskTop]);
   // ── THE ORIGIN INVARIANT (RED-capable; this exact defect regressed 3x) ─────
   // The chrome IS the sheet's top edge, so its window y must equal sheetTopY.
   // It diverged by exactly expandedTop every time a layer applied that origin
@@ -299,6 +301,9 @@ export function TrackSheetPage<Item>({
     [applyPin]
   );
   applyPinRef.current = applyPin;
+  React.useEffect(() => {
+    applyPin();
+  }, [applyPin]);
 
   const listInstanceRef = React.useRef<{
     scrollToOffset?: (opts: { offset: number; animated?: boolean }) => void;
@@ -605,7 +610,7 @@ export function TrackSheetPage<Item>({
 
   const listHeader = React.useMemo(
     () => (
-      <View style={styles.chromeLane}>
+      <View>
         {/* THE CHROME LANE (old system: PersistentSheetHeaderHost at zIndex
             60, above the body lane — that is how the header "ignored the
             scroll"). The chrome is content here, and cells paint AFTER the
@@ -613,7 +618,10 @@ export function TrackSheetPage<Item>({
         {/* [0,H): sheet travel — TRANSPARENT, so the map shows through above
             the sheet with no mask and no clip. */}
         <View style={{ height: trackH }} pointerEvents="none" />
-        {chromeElement}
+        {/* THE CHROME RESERVE: the chrome is a LANE above the track now, so the
+            content leaves its band empty. The body's top is therefore always
+            exactly sheetTop(tau) + chromeHeight. */}
+        <View style={{ height: chromeHeight }} pointerEvents="none" />
         {listLeader}
       </View>
     ),
@@ -694,6 +702,10 @@ export function TrackSheetPage<Item>({
     transform: [{ translateY: Math.max(sheetTopY.value, contentHeight.value - tau.value) }],
   }));
 
+  const chromeLaneStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTopY.value }],
+  }));
+
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
     if (!debugHud) {
@@ -720,8 +732,8 @@ export function TrackSheetPage<Item>({
           <FrostedGlassBackground />
         </View>
       </Reanimated.View>
-      <View style={[styles.clip, { top: geometry.expandedTop }]}>
-        <View style={[styles.trackShift, { top: -geometry.expandedTop }]}>
+      <View style={StyleSheet.absoluteFill}>
+        <View style={StyleSheet.absoluteFill}>
           <AnimatedFlashList
             ref={setListRef as unknown as React.Ref<React.Component>}
             style={StyleSheet.absoluteFill}
@@ -757,6 +769,10 @@ export function TrackSheetPage<Item>({
         pointerEvents="none"
       />
 
+      <Reanimated.View style={[styles.chromeLane, chromeLaneStyle]} pointerEvents="box-none">
+        {chromeElement}
+      </Reanimated.View>
+
       {debugHud ? (
         <View style={styles.hud} pointerEvents="none">
           <Reanimated.Text style={styles.hudText}>{hud}</Reanimated.Text>
@@ -781,7 +797,7 @@ const styles = StyleSheet.create({
   },
   // Containment (R6): nothing renders above the sheet's top edge. A clip, not
   // a reposition — the track inside is counter-offset so nothing shifts.
-  chromeLane: { zIndex: 60 },
+  chromeLane: { position: 'absolute', left: 0, right: 0, top: 0, zIndex: 60 },
   clip: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
   trackShift: { position: 'absolute', left: 0, right: 0, height: SCREEN.height },
   founding: {
