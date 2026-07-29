@@ -2797,51 +2797,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * gemini.monthlySpend registration comment); a firing here is an
    * INCIDENT, not scheduling — "a bug cost at most two extra months."
    */
+  /** Delegates to THE gemini spend gate (GovernanceService). Kept as a thin
+   *  named method because call sites read better, and because the batch path
+   *  once had its own divergent copy of this logic — one implementation now. */
   async assertSpendBudgetOpen(): Promise<void> {
-    // Admission goes through the registry primitive, which re-reads the
-    // durable window on a TTL and fails closed on an unconfirmed store.
-    // This used to compare a poolStatus() snapshot that was loaded ONCE at
-    // boot and never refreshed — so api and worker each carried a private
-    // view of month-to-date spend and the cap was effectively per-process.
-    const verdict = await this.governance.pools.admit('gemini.monthlySpend');
-    const status = this.governance.pools.poolStatus('gemini.monthlySpend');
-    const monthKey = new Date().toISOString().slice(0, 7);
-    if (!verdict.admitted && verdict.reason === 'unconfirmed') {
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'gemini_backstop',
-        title: 'Gemini spend budget cannot be confirmed',
-        body: 'The durable spend window failed to load, so month-to-date spend is unknown. Refusing LLM spend rather than admitting against a window that reads zero.',
-        dedupeKey: `gemini_backstop_unconfirmed:${monthKey}`,
-      });
-      throw new Error(
-        'LLM spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance',
-      );
-    }
-    if (status.poisonedForMs !== null && status.poisonedForMs > 0) {
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'gemini_backstop',
-        title: 'Gemini spend budget poisoned (vendor cap)',
-        body: `LLM spend budget poisoned (vendor cap) — reopens in ${Math.ceil(status.poisonedForMs / 3_600_000)}h; work stays queued.`,
-        dedupeKey: `gemini_backstop:${monthKey}`,
-      });
-      throw new Error(
-        `LLM spend budget poisoned (vendor cap) — reopens in ${Math.ceil(status.poisonedForMs / 3_600_000)}h; work stays queued`,
-      );
-    }
-    if (status.used >= status.limit) {
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'gemini_backstop',
-        title: 'Gemini spend budget backstop fired',
-        body: 'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived.',
-        dedupeKey: `gemini_backstop:${monthKey}`,
-      });
-      throw new Error(
-        'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
-      );
-    }
+    await this.governance.assertGeminiSpendOpen();
   }
 
   /**

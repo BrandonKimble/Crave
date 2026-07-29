@@ -164,15 +164,11 @@ export class GeminiBatchService implements OnModuleDestroy {
     // campaigns stop via their envelope, Tier 2 lanes via cost baselines;
     // this pool's limit is BACKSTOP_MULTIPLE × trailing measured monthly
     // spend, re-derived nightly (governance.service.ts).
-    const spend = this.governance.pools.poolStatus('gemini.monthlySpend');
-    if (
-      (spend.poisonedForMs !== null && spend.poisonedForMs > 0) ||
-      spend.used >= spend.limit
-    ) {
-      throw new Error(
-        'LLM spend budget closed (gemini.monthlySpend Tier-3 backstop) — batch submission refused locally; work stays queued',
-      );
-    }
+    // ONE GATE (2026-07-28). This used to hand-compare a poolStatus()
+    // snapshot, which never re-reads the durable window and treats an
+    // unconfirmed store as zero spent — i.e. fail-OPEN on the path that is
+    // both the default extraction mode and 46.9% of measured spend.
+    await this.governance.assertGeminiSpendOpen();
     // §24 red team finding 1 ("a breach must stop work"): when this batch
     // belongs to a Tier 1 campaign (resumeContext.campaignId), refuse BEFORE
     // any vendor call unless the campaign is still dispatchable

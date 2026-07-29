@@ -445,6 +445,62 @@ export class GovernanceService implements OnModuleInit {
    * denial (typed not-now — the caller degrades gracefully, e.g. header says
    * "this area" and the mint retries next month).
    */
+  /**
+   * THE gemini spend gate — one implementation, both callers.
+   *
+   * There were two: the interactive path (LlmService) and batch submission
+   * (GeminiBatchService), each comparing a poolStatus() snapshot by hand.
+   * When the interactive one was hardened, the batch one silently kept the
+   * OLD semantics — no window refresh, and fail-OPEN on an unconfirmed store
+   * (windowUsed returns 0, which reads as "nothing spent this month" and
+   * admits). That mattered more than it looks: batch is 46.9% of all
+   * measured spend AND is now the default extraction path, so the riskiest
+   * gate guarded the biggest spender. Two gates for one budget is the defect;
+   * this is the fix.
+   */
+  async assertGeminiSpendOpen(): Promise<void> {
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const verdict = await this.pools.admit('gemini.monthlySpend');
+    if (verdict.admitted) {
+      return;
+    }
+    if (verdict.reason === 'unconfirmed') {
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'gemini_backstop',
+        title: 'Gemini spend budget cannot be confirmed',
+        body: 'The durable spend window failed to load, so month-to-date spend is unknown. Refusing LLM spend rather than admitting against a window that reads zero.',
+        dedupeKey: `gemini_backstop_unconfirmed:${monthKey}`,
+      });
+      throw new Error(
+        'LLM spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance',
+      );
+    }
+    if (verdict.reason === 'poisoned') {
+      const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'gemini_backstop',
+        title: 'Gemini spend budget poisoned (vendor cap)',
+        body: `LLM spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued.`,
+        dedupeKey: `gemini_backstop:${monthKey}`,
+      });
+      throw new Error(
+        `LLM spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`,
+      );
+    }
+    this.opsAlerts.emit({
+      severity: 'critical',
+      kind: 'gemini_backstop',
+      title: 'Gemini spend budget backstop fired',
+      body: 'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived.',
+      dedupeKey: `gemini_backstop:${monthKey}`,
+    });
+    throw new Error(
+      'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
+    );
+  }
+
   async draw<T>(
     poolName: string,
     workClass: string,

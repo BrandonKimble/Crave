@@ -24,6 +24,10 @@ function buildService(isDispatchable: boolean) {
   const configService = { get: jest.fn().mockReturnValue('fake-api-key') };
   const usageLedger = { record: jest.fn() };
   const governance = {
+    // Batch submission now goes through THE shared gemini spend gate rather
+    // than hand-comparing a poolStatus snapshot (which never refreshed and
+    // failed OPEN on an unconfirmed store).
+    assertGeminiSpendOpen: jest.fn().mockResolvedValue(undefined),
     pools: {
       poolStatus: jest.fn().mockReturnValue({
         poisonedForMs: null,

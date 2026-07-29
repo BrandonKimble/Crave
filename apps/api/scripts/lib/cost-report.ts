@@ -41,7 +41,11 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
 
   // ---- Spend (ledger window, official list rates) ----
   const usage = await prisma.apiUsageEvent.groupBy({
-    by: ['service', 'operation', 'skuTier', 'model', 'mode'],
+    // durationHours is part of the GROUPING, not just a sum: cache-STORAGE
+    // rows price by token-hours, and without it they fell through to the
+    // cached-READ rate — 13 cents reported as 0.2 cents, the exact spend the
+    // cache metering was built to expose.
+    by: ['service', 'operation', 'skuTier', 'model', 'mode', 'durationHours'],
     where: { createdAt: { gte: since } },
     _sum: {
       requestCount: true,
@@ -78,6 +82,7 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
           inputTokens: row._sum.inputTokens,
           outputTokens: row._sum.outputTokens,
           cachedTokens: row._sum.cachedTokens,
+          durationHours: row.durationHours,
         }) / 1_000_000;
       geminiUsd += usd;
       out(
