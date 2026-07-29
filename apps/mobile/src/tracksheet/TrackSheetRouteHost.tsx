@@ -19,6 +19,7 @@ import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
+import { SearchRouteSheetFrameHost } from '../overlays/SearchRouteSheetFrameHost';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useAppRouteSharedSheetRuntimeOwner } from '../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
@@ -141,16 +142,17 @@ export const TrackSheetRouteHost: React.FC = () => {
  * nav silhouette and hard-clipped at the nav top. Static persistent-mode props
  * for now (nav hide choreography joins with the motion work). */
 const NavExcludedTrackSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => {
-  const seed = getSearchStartupGeometrySeed();
-  // HARD CLIP half of nav exclusion (inventory §5.1): the sheet subtree may
-  // never paint below the nav top. The native silhouette-curve mask
-  // (SearchRouteSheetNavExclusionMaskNativeView) made the whole surface
-  // invisible when mounted without the frame host's init — reusing it needs a
-  // study of its native impl, queued; the hard clip carries the contract
-  // (sheet never covers nav) until then.
-  // The compose chin renders as a SIBLING of the clip — true viewport coords
-  // (the published chin's offsets assume a viewport-spanning container; inside
-  // the clip it landed mid-screen).
+  // NAV EXCLUSION — REUSE, DON'T REIMPLEMENT (2026-07-28). SearchRouteSheetFrameHost
+  // IS the nav-exclusion abstraction: it selects the live nav SharedValues from
+  // routeHostVisualRuntimeAuthority and drives ONE native mask view with an
+  // ANIMATED pair (maskEnabled + navBodyBoundaryTranslateY) plus a following
+  // hard clip. That single mechanism produces BOTH behaviours we need — the
+  // boundary that follows the nav out and back (so the vacated band never shows
+  // the map) AND the silhouette curve — in the same frame as the nav's own
+  // motion. Writing a second copy here would be a second writer of the same
+  // boundary, which is the exact class of bug this whole arc has been deleting;
+  // my earlier attempt failed only because I passed STATIC props instead of the
+  // animated pair. The old static clip is gone with this.
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
   const liveScene = frame.activeSceneKey ?? scene;
@@ -162,16 +164,13 @@ const NavExcludedTrackSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => 
       : null;
   return (
     <>
-      <View
-        style={{
-          width: seed.windowWidth,
-          height: Math.max(0, seed.navBarTopForSnaps),
-          overflow: 'hidden',
-        }}
-        pointerEvents="box-none"
+      <SearchRouteSheetFrameHost
+        routeHostVisualRuntimeAuthority={sceneRuntime.routeHostVisualRuntimeAuthority}
       >
         <TrackSheetRouteSurface scene={scene} />
-      </View>
+      </SearchRouteSheetFrameHost>
+      {/* The compose chin stays OUTSIDE the mask: its offsets are viewport-based
+          (production numbers), and it must not be carved by the nav silhouette. */}
       {listChrome != null ? (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
           {listChrome}
