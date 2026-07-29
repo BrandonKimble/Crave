@@ -22,9 +22,18 @@ import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 type Row = Record<string, unknown>;
 
-/** Meal periods / venue styles / drink terms that §4.3 bans from
- *  food_categories. Leakage here is what minted 'breakfast' (258 events) and
- *  'cocktails' (183) as food-type rows. */
+/**
+ * OCCASION AND SERVICE words — things that answer WHEN, WHERE, or HOW you
+ * get food, never WHAT it is. That is the §4.3 discriminator, and it is the
+ * only thing this detector may flag.
+ *
+ * The first version of this list was WRONG and inflated the class to 7.5%:
+ * it included dessert, coffee, beer, cocktail — all of which name a kind of
+ * thing in the cup or on the plate and are legitimate categories. The data
+ * settled it: 'coffee' splits 817 category / 401 dish, almost exactly like
+ * 'steak' at 695/301. A detector measuring its own bad list is worse than no
+ * detector, because it reads as evidence.
+ */
 const NON_CATEGORY_TERMS = new Set([
   'breakfast',
   'brunch',
@@ -32,21 +41,14 @@ const NON_CATEGORY_TERMS = new Set([
   'dinner',
   'late night',
   'happy hour',
-  'dessert',
-  'drink',
-  'drinks',
-  'cocktail',
-  'cocktails',
-  'beer',
-  'wine',
-  'coffee',
-  'bakery',
-  'bar',
-  'cafe',
-  'food',
-  'comfort food',
   'takeout',
   'delivery',
+  'dine in',
+  'comfort food',
+  'street food',
+  'buffet',
+  'combo plate',
+  'tasting menu',
   'vegetarian',
   'vegan',
   'gluten free',

@@ -105,6 +105,35 @@ projection-rebuild (category items are currently built AFTER support
 attachment, deliberately, so they receive no banked support) — verify with
 a full local rebuild before the reload.
 
+## 3c. ASSERTED vs INFERRED CATEGORIES (designed, measured, DEFERRED)
+
+Owner asked whether "Nixta has the best tacos - the duck carnitas taco is
+unreal" should score +2 (the category claim respected in its own right)
+rather than +1. Read the real text behind both shadow types:
+
+- DISH shadows category (25 cases): 19 of 25 (76%) have the category word IN
+  the document -- "Great coffee" + "their cold brew", "I ALSO recommend
+  their cookies". These are genuine independent assertions. Owner is right.
+- CATEGORY shadows category (731 cases): only 253 asserted. "I only buy
+  Chilean Sea Bass" emits sea bass + seafood + fish -- ONE thing said, two
+  ancestors INFERRED. Counting each would scale a comment by how deep a
+  taxonomy the model happened to emit, and would systematically favor foods
+  with deep category trees. That is noise, not signal.
+
+So the distinction is ASSERTED vs INFERRED, not dish-vs-category. Ideal fix:
+extraction MARKS the category the person actually named; inferred ancestors
+never score alone.
+
+DEFERRED, deliberately. Magnitude: 465 upvotes of 123,965 = 0.38% of score
+mass, 152 restaurants, avg +3.1. And it is FULLY REVERSIBLE at zero cost --
+shadowing is a QUERY-TIME rule, the category items and their mentions are
+retained, and the raw documents survive the reload (§2c), so assertedness
+can be computed later offline with no re-extraction and no reload. Against
+that, building it now would add a NEW extraction obligation immediately
+before we spend, and every prompt obligation examined this session has
+leaked. Conservative under-count of 0.38% beats a new failure class at the
+moment the audit is meant to be shrinking unknowns.
+
 ## 4. THE PRE-RELOAD AUDIT (the gate — do this BEFORE spending)
 
 The prompt has NEVER been validated in full: the 13/13 replay predates the
