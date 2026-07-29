@@ -243,6 +243,11 @@ export class RelevanceGateService implements OnModuleInit {
         outputTokens:
           (response.usageMetadata?.candidatesTokenCount ?? 0) +
           (response.usageMetadata?.thoughtsTokenCount ?? 0),
+        // Cached share must be RECORDED even when it is zero: without it the
+        // gate's caching status is unobservable, and this is the one
+        // high-volume path with no explicit cache (6.47M input tokens of a
+        // byte-identical prompt).
+        cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
         caller: 'relevance-gate.judgeBatch',
       });
       const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';

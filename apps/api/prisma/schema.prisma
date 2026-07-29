@@ -264,6 +264,10 @@ model ApiUsageEvent {
   outputTokens Int?     @map("output_tokens")
   cachedTokens Int?     @map("cached_tokens")
   requestCount Int      @default(1) @map("request_count")
+  /// Cache STORAGE rows only: hours the cached content is held. Storage
+  /// bills per token-hour, so it needs a dimension the token columns do not
+  /// carry — kept separate rather than overloading cached_tokens.
+  durationHours Float?  @map("duration_hours")
   caller       String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
   runKey       String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
   /// Idempotency key for at-most-once records (e.g. one row per batch job).

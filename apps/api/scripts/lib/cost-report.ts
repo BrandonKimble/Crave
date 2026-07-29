@@ -1,3 +1,4 @@
+import { pricedGeminiRow } from '../../src/modules/external-integrations/shared/gemini-pricing';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 
 /**
@@ -25,19 +26,6 @@ export const PLACES_RATES: Record<string, number> = {
   'autocomplete:essentials': 0.0028,
 };
 
-/** OFFICIAL Gemini rates per 1M tokens (ai.google.dev/gemini-api/docs/pricing,
- *  verified 2026-07-10 after the cost-recon audit found earlier values ~5x
- *  low — the portal, not the ledger, was right). Batch = half. Cached input
- *  reads bill at ~10% of the input rate, NOT modeled — the input line is a
- *  CEILING. */
-export const GEMINI_RATES: Record<string, { in: number; out: number }> = {
-  'gemini-3.5-flash': { in: 1.5, out: 9.0 },
-  'gemini-3-flash-preview': { in: 0.5, out: 3.0 },
-  'gemini-3.1-flash-lite-preview': { in: 0.25, out: 1.5 },
-  'gemini-2.5-flash-lite': { in: 0.1, out: 0.4 },
-  'gemini-embedding-001': { in: 0.15, out: 0 },
-};
-
 export interface CostReportOptions {
   prisma: PrismaService;
   out: (line: string) => void;
@@ -55,7 +43,15 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
   const usage = await prisma.apiUsageEvent.groupBy({
     by: ['service', 'operation', 'skuTier', 'model', 'mode'],
     where: { createdAt: { gte: since } },
-    _sum: { requestCount: true, inputTokens: true, outputTokens: true },
+    _sum: {
+      requestCount: true,
+      inputTokens: true,
+      outputTokens: true,
+      // CACHED TOKENS ARE THE WHOLE STORY on this corpus: content.extract
+      // runs ~89% cached, so a report that ignores them overstated that line
+      // by ~5x. They were not even summed before.
+      cachedTokens: true,
+    },
   });
   let placesUsd = 0;
   let geminiUsd = 0;
@@ -70,20 +66,27 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
         `  places ${row.operation}/${row.skuTier}: ${requests} req -> $${usd.toFixed(2)}`,
       );
     } else if (row.service === 'gemini') {
-      const rates = GEMINI_RATES[row.model ?? ''] ?? { in: 1.5, out: 9.0 };
-      const discount = row.mode === 'batch' ? 0.5 : 1;
+      // ONE rate table for the whole codebase (gemini-pricing.ts). This
+      // script used to keep its own {in,out} copy with NO cached rate, which
+      // had already drifted (it never learned gemini-3.1-flash-lite) and
+      // could only ever print a ceiling. Same lesson as the thinking
+      // resolver: a second source of truth is a bug with a delay fuse.
       const usd =
-        (((row._sum.inputTokens ?? 0) / 1e6) * rates.in +
-          ((row._sum.outputTokens ?? 0) / 1e6) * rates.out) *
-        discount;
+        pricedGeminiRow({
+          model: row.model,
+          mode: row.mode,
+          inputTokens: row._sum.inputTokens,
+          outputTokens: row._sum.outputTokens,
+          cachedTokens: row._sum.cachedTokens,
+        }) / 1_000_000;
       geminiUsd += usd;
       out(
-        `  gemini ${row.model}/${row.mode}: ${requests} req, ${row._sum.inputTokens ?? 0} in / ${row._sum.outputTokens ?? 0} out -> $${usd.toFixed(2)}`,
+        `  gemini ${row.model}/${row.mode}: ${requests} req, ${row._sum.inputTokens ?? 0} in (${row._sum.cachedTokens ?? 0} cached) / ${row._sum.outputTokens ?? 0} out -> $${usd.toFixed(2)}`,
       );
     }
   }
   out(
-    `  TOTAL: places $${placesUsd.toFixed(2)} + gemini $${geminiUsd.toFixed(2)} = $${(placesUsd + geminiUsd).toFixed(2)} (list rates; free tiers + cached-read discounts make real bills LOWER)`,
+    `  TOTAL: places $${placesUsd.toFixed(2)} + gemini $${geminiUsd.toFixed(2)} = $${(placesUsd + geminiUsd).toFixed(2)} (list rates, cached reads priced at the cached rate)`,
   );
 
   if (!subreddit) return;

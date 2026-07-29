@@ -69,3 +69,37 @@ describe('geminiCostMicros (K4 vendor rates, fetched 2026-07-24)', () => {
     );
   });
 });
+
+describe('cache storage pricing', () => {
+  it('prices a storage row by token-HOURS, not as a cached read', () => {
+    // 17,000 tokens held 30h at $1/M/hr = $0.51 — the figure the code has
+    // been quoting in prose while metering none of it.
+    const micros = geminiCostMicros({
+      model: 'gemini-3-flash-preview',
+      cachedTokens: 17_000,
+      durationHours: 30,
+    });
+    expect(micros).toBe(510_000);
+  });
+
+  it('does NOT treat a normal cached read as storage', () => {
+    const read = geminiCostMicros({
+      model: 'gemini-3-flash-preview',
+      inputTokens: 17_000,
+      cachedTokens: 17_000,
+    });
+    // Cached READ at $0.05/M = $0.00085, three orders of magnitude below the
+    // 30h hold. Conflating them would misprice both.
+    expect(read).toBe(850);
+  });
+
+  it('storage rows carry no generation cost', () => {
+    expect(
+      geminiCostMicros({
+        model: 'gemini-3-flash-preview',
+        cachedTokens: 1_000_000,
+        durationHours: 1,
+      }),
+    ).toBe(1_000_000);
+  });
+});

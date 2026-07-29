@@ -15,6 +15,9 @@ export interface UsageEvent {
   outputTokens?: number;
   cachedTokens?: number;
   requestCount?: number;
+  /** Cache-storage events only: hours the cached content is held. Presence
+   *  switches pricing from cached-READ to cache-STORAGE (token-hours). */
+  durationHours?: number;
   caller: string;
   runKey?: string;
   /** Idempotency key for at-most-once records (unique column; a duplicate
@@ -118,6 +121,7 @@ export class UsageLedgerService implements OnModuleDestroy {
       outputTokens: event.outputTokens ?? null,
       cachedTokens: event.cachedTokens ?? null,
       requestCount: event.requestCount ?? 1,
+      durationHours: event.durationHours ?? null,
       caller: event.caller,
       runKey: event.runKey ?? null,
       dedupeKey: event.dedupeKey ?? null,

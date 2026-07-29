@@ -23,19 +23,49 @@ interface ModelRates {
   cachedInput: number;
   /** USD per 1M output tokens. */
   output: number;
+  /** USD per 1M cached tokens held for one HOUR (context-cache storage).
+   *  Storage is billed for as long as the cache lives, independently of
+   *  whether anything reads it. */
+  cacheStorage: number;
 }
 
 const GEMINI_RATES: Record<string, ModelRates> = {
-  'gemini-3-flash-preview': { input: 0.5, cachedInput: 0.05, output: 3.0 },
+  'gemini-3-flash-preview': {
+    input: 0.5,
+    cachedInput: 0.05,
+    output: 3.0,
+    cacheStorage: 1.0,
+  },
   'gemini-3.1-flash-lite-preview': {
     input: 0.25,
     cachedInput: 0.025,
     output: 1.5,
+    cacheStorage: 1.0,
   },
-  'gemini-3.1-flash-lite': { input: 0.25, cachedInput: 0.025, output: 1.5 },
-  'gemini-3.5-flash': { input: 1.5, cachedInput: 0.15, output: 9.0 },
-  'gemini-2.5-flash-lite': { input: 0.1, cachedInput: 0.01, output: 0.4 },
-  'gemini-embedding-001': { input: 0.15, cachedInput: 0.15, output: 0 },
+  'gemini-3.1-flash-lite': {
+    input: 0.25,
+    cachedInput: 0.025,
+    output: 1.5,
+    cacheStorage: 1.0,
+  },
+  'gemini-3.5-flash': {
+    input: 1.5,
+    cachedInput: 0.15,
+    output: 9.0,
+    cacheStorage: 1.0,
+  },
+  'gemini-2.5-flash-lite': {
+    input: 0.1,
+    cachedInput: 0.01,
+    output: 0.4,
+    cacheStorage: 1.0,
+  },
+  'gemini-embedding-001': {
+    input: 0.15,
+    cachedInput: 0.15,
+    output: 0,
+    cacheStorage: 1.0,
+  },
 };
 
 /** Unknown-model fallback: the priciest flash-class rate we know — spend
@@ -44,6 +74,7 @@ const UNKNOWN_MODEL_RATES: ModelRates = {
   input: 1.5,
   cachedInput: 0.15,
   output: 9.0,
+  cacheStorage: 1.0,
 };
 
 const BATCH_DISCOUNT = 0.5;
@@ -54,6 +85,10 @@ export interface GeminiUsageTokens {
   inputTokens?: number;
   outputTokens?: number;
   cachedTokens?: number;
+  /** Cache-storage rows: hours the cached tokens are held. When set, the
+   *  cached tokens are priced as STORAGE (token-hours) instead of as a
+   *  cached-read discount — they are different products. */
+  durationHours?: number;
 }
 
 /** §24 red team finding 6 ("NaN spend must not vanish"): a finite-or-zero
@@ -74,6 +109,20 @@ function finiteOrZero(value: number | undefined): number {
  *  reports it; cached tokens re-price the cached share, they don't add. */
 export function geminiCostMicros(usage: GeminiUsageTokens): number {
   const rates = GEMINI_RATES[usage.model ?? ''] ?? UNKNOWN_MODEL_RATES;
+
+  // CACHE STORAGE is a different product from a cached READ: it bills per
+  // token-hour for as long as the cache lives, whether or not anything
+  // reads it. Priced here so the spend governor — which meters exclusively
+  // from ledger rows — can finally see it. Storage rows carry no input or
+  // output tokens, so they never mix with generation pricing.
+  const durationHours = Math.max(0, finiteOrZero(usage.durationHours));
+  if (durationHours > 0) {
+    const heldTokens = Math.max(0, finiteOrZero(usage.cachedTokens));
+    const storageUsd =
+      (heldTokens * durationHours * rates.cacheStorage) / 1_000_000;
+    return Math.round(storageUsd * 1_000_000);
+  }
+
   const cached = Math.max(0, finiteOrZero(usage.cachedTokens));
   const uncachedIn = Math.max(0, finiteOrZero(usage.inputTokens) - cached);
   const out = Math.max(0, finiteOrZero(usage.outputTokens));
@@ -99,6 +148,8 @@ export function pricedGeminiRow(row: {
   input_tokens?: number | bigint | null;
   output_tokens?: number | bigint | null;
   cached_tokens?: number | bigint | null;
+  durationHours?: number | null;
+  duration_hours?: number | null;
 }): number {
   const num = (
     camel: number | null | undefined,
@@ -107,6 +158,7 @@ export function pricedGeminiRow(row: {
   return geminiCostMicros({
     model: row.model ?? undefined,
     mode: (row.mode as 'interactive' | 'batch' | undefined) ?? undefined,
+    durationHours: num(row.durationHours, row.duration_hours),
     inputTokens: num(row.inputTokens, row.input_tokens),
     outputTokens: num(row.outputTokens, row.output_tokens),
     cachedTokens: num(row.cachedTokens, row.cached_tokens),

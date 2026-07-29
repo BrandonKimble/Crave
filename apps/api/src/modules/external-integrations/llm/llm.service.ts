@@ -532,17 +532,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     });
 
     const ttlSeconds = Math.max(1, Math.floor(this.systemCacheTtlMs / 1000));
-    const cache = await this.genAI.caches.create({
+    const { name: cacheName } = await this.createLedgeredCache({
       model: this.llmConfig.model,
-      config: {
-        systemInstruction: this.systemPrompt,
-        ttl: `${ttlSeconds}s`,
-      },
+      systemInstruction: this.systemPrompt,
+      ttlSeconds,
+      caller: 'llm.systemInstructionCache',
     });
-    const cacheName = cache?.name;
-    if (!cacheName) {
-      throw new Error('Cache name missing from Gemini cache create response');
-    }
 
     const refreshedAt = Date.now();
     const expiresAt = refreshedAt + this.systemCacheTtlMs;
@@ -768,17 +763,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         promptLength: this.queryPrompt.length,
       });
 
-      const cache = await this.genAI.caches.create({
+      const { name: cacheName } = await this.createLedgeredCache({
         model: this.queryModel,
-        config: {
-          systemInstruction: this.queryPrompt,
-          ttl: '10800s',
-        },
+        systemInstruction: this.queryPrompt,
+        ttlSeconds: 10800,
+        caller: 'llm.queryInstructionCache',
       });
-      const cacheName = cache?.name;
-      if (!cacheName) {
-        throw new Error('Cache name missing from Gemini cache create response');
-      }
       this.queryInstructionCache = { name: cacheName };
 
       this.logger.info('Query instruction cache created successfully', {
@@ -1172,16 +1162,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }
     try {
       const ttlSeconds = Math.floor(LLMService.BATCH_CACHE_TTL_MS / 1000);
-      const cache = await this.genAI.caches.create({
+      const cache = await this.createLedgeredCache({
         model: this.llmConfig.model,
-        config: {
-          systemInstruction: this.systemPrompt,
-          ttl: `${ttlSeconds}s`,
-        },
+        systemInstruction: this.systemPrompt,
+        ttlSeconds,
+        caller: 'llm.batchSystemCache',
       });
-      if (!cache?.name) {
-        throw new Error('Cache name missing from Gemini cache create response');
-      }
       this.batchSystemCache = {
         name: cache.name,
         expiresAtMs: now + LLMService.BATCH_CACHE_TTL_MS,
@@ -3918,6 +3904,63 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       valueType: typeof cause,
       valueTag: Object.prototype.toString.call(cause),
     };
+  }
+
+  /**
+   * THE chokepoint for context-cache creation — the only place that calls
+   * `caches.create`.
+   *
+   * Cache creation and cache STORAGE are paid Gemini operations that the
+   * usage ledger never recorded: before this, the ledger contained exactly
+   * eight distinct operations and none was a cache op, while the code's own
+   * comments priced storage in prose (~$0.51 per batch-cache load). Because
+   * the spend governor meters EXCLUSIVELY from ledger rows, a backstop meant
+   * to catch a runaway was structurally blind to this spend — and the batch
+   * cache re-creates roughly every 5h under continuous load while the
+   * interactive query cache refreshes ~8x/day.
+   *
+   * Two rows, because they are two products: the creation write (input
+   * tokens) and the hold (token-hours for the requested TTL). Storage is
+   * recorded up front for the full TTL, which OVER-meters if a cache is
+   * dropped early — the same direction the unknown-model fallback already
+   * chose, since spend that vanishes is the failure that matters.
+   */
+  private async createLedgeredCache(params: {
+    model: string;
+    systemInstruction: string;
+    ttlSeconds: number;
+    caller: string;
+  }): Promise<{ name: string; tokens: number }> {
+    const cache = await this.genAI.caches.create({
+      model: params.model,
+      config: {
+        systemInstruction: params.systemInstruction,
+        ttl: `${params.ttlSeconds}s`,
+      },
+    });
+    const cacheName = cache?.name;
+    if (!cacheName) {
+      throw new Error('Cache name missing from Gemini cache create response');
+    }
+    const tokens = cache.usageMetadata?.totalTokenCount ?? 0;
+    this.usageLedger.record({
+      service: 'gemini',
+      operation: 'createCachedContent',
+      model: params.model,
+      mode: 'interactive',
+      inputTokens: tokens,
+      caller: params.caller,
+    });
+    this.usageLedger.record({
+      service: 'gemini',
+      operation: 'cachedContentStorage',
+      model: params.model,
+      mode: 'interactive',
+      cachedTokens: tokens,
+      durationHours: params.ttlSeconds / 3600,
+      caller: params.caller,
+    });
+    return { name: cacheName, tokens };
   }
 
   /** Delegates to the shared resolver (gemini-thinking.ts) so LlmService,
