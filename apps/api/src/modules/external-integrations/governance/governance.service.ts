@@ -351,7 +351,30 @@ export class GovernanceService implements OnModuleInit {
         },
       });
       if (!row) {
+        // SILENCE HERE IS THE FAILURE MODE. The Tier-3 story is "3x trailing
+        // MEASURED spend", but with no derived row the live limit is the
+        // env seed — an owner guess wearing a derivation's clothes, which
+        // §16 exists to forbid. Absence looked identical to "nothing to
+        // derive", so a nightly that silently stopped producing rows was
+        // invisible. Say so.
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'gemini_backstop',
+          title: 'Gemini backstop is NOT derived — running on the env seed',
+          body: `No ${GEMINI_BACKSTOP_WORK_CLASS}/month row exists, so the spend cap is the GEMINI_MONTHLY_SPEND_CAP_USD seed rather than a measurement. Check that the nightly spend-analytics refresh is running.`,
+          dedupeKey: 'gemini_backstop_underived',
+        });
         return;
+      }
+      const ageMs = Date.now() - row.refreshedAt.getTime();
+      if (ageMs > 48 * 60 * 60 * 1000) {
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'gemini_backstop',
+          title: 'Gemini backstop derivation is stale',
+          body: `The derived cap was last refreshed ${Math.round(ageMs / 3_600_000)}h ago. A stale derivation silently governs today's spend with last week's measurement.`,
+          dedupeKey: 'gemini_backstop_stale',
+        });
       }
       const before = this.pools.poolStatus('gemini.monthlySpend').limit;
       const after = Math.round(row.microUsdPerUnit);

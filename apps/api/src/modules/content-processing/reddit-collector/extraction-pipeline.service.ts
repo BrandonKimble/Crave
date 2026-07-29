@@ -169,14 +169,19 @@ export class ExtractionPipelineService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ExtractionPipelineService');
-    // COLLECTION_LLM_MODE=batch defers every chunk's LLM call to a Gemini
-    // batch job (~50% price; ≤24h SLA — every collection flow is async, none
-    // blocks a user). 'interactive' (default) keeps the live path for dev/test
-    // runs that shouldn't wait on batch turnaround.
+    // BATCH IS THE DEFAULT, because the cheap path is the correct one here:
+    // every collection flow is async and none blocks a user, and batch is
+    // ~50% price with a <=24h SLA. This used to require opting IN via
+    // COLLECTION_LLM_MODE=batch, so the default silently paid a flat 2x on
+    // the pipeline's single largest cost — and an env var cannot express
+    // what actually varies, which is whether a PARTICULAR run can wait.
+    // Latency tolerance belongs to the work item (params.llmMode already
+    // carries it with a documented forcing reason); the env var now only
+    // opts DOWN, for dev/test runs that must not wait on batch turnaround.
     this.collectionLlmMode =
-      process.env.COLLECTION_LLM_MODE?.trim().toLowerCase() === 'batch'
-        ? 'batch'
-        : 'interactive';
+      process.env.COLLECTION_LLM_MODE?.trim().toLowerCase() === 'interactive'
+        ? 'interactive'
+        : 'batch';
     // Relevance gate: ON for every collection type, always (owner call
     // 2026-07-07 after drop-audit review). COLLECTION_RELEVANCE_GATE=off is
     // the single explicit opt-down for debugging ("why wasn't my post

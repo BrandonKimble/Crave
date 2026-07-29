@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { LoggerService } from '../../../shared';
+import { CorrelationUtils, LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
 import { geminiCostMicros } from './gemini-pricing';
 import { SpendCampaignService } from './spend-campaign.service';
@@ -123,7 +123,13 @@ export class UsageLedgerService implements OnModuleDestroy {
       requestCount: event.requestCount ?? 1,
       durationHours: event.durationHours ?? null,
       caller: event.caller,
-      runKey: event.runKey ?? null,
+      // RUN ATTRIBUTION BY DEFAULT. runKey had exactly one producer (the
+      // batch job id), so 165 of 58,958 gemini rows and ZERO Places/TomTom
+      // rows carried it — "what did this reload cost, by cause?" was
+      // unanswerable for 99.7% of spend. The correlation id is already
+      // threaded through every request path, so defaulting to it makes cost
+      // a real run-scoped dimension without touching a single call site.
+      runKey: event.runKey ?? CorrelationUtils.getCorrelationId() ?? null,
       dedupeKey: event.dedupeKey ?? null,
     };
     // createMany + skipDuplicates makes keyed records idempotent (unique

@@ -227,6 +227,9 @@ export class PoolRegistry {
    * failure leaves the window unconfirmed → reserve() fails closed (§14.5).
    * No-op for perMinute pools and for already-confirmed windows.
    */
+  /** Last time admit() re-read a pool's durable window (TTL bookkeeping). */
+  private readonly lastAdmitRefreshAt = new Map<string, number>();
+
   async ensureWindow(poolName: string, at: Date = new Date()): Promise<void> {
     const pool = this.requirePool(poolName);
     if (!this.isDurable(pool) || this.store === undefined) {
@@ -270,6 +273,72 @@ export class PoolRegistry {
         unpersisted: carried,
       });
     }
+  }
+
+  /**
+   * ADMISSION for meter-only durable pools (the dollar backstops).
+   *
+   * Why this exists: `ensureWindow` deliberately returns early once a window
+   * is confirmed and fully persisted, so after boot a process NEVER re-reads
+   * the store. That is correct for a pool this process draws from — its own
+   * in-memory tally is authoritative. It is WRONG for a pool that SIBLING
+   * PROCESSES also spend against: api and worker each deploy separately
+   * (scripts/rig/deploy.sh ships both), so each held its own view of
+   * month-to-date spend and a $475 cap was really ~$475 PER PROCESS.
+   *
+   * So admission re-reads the durable window on a short TTL — a monthly
+   * dollar window does not need per-call freshness, but it must not be
+   * frozen at boot for a month.
+   *
+   * It also fails CLOSED on an unconfirmed store. `ensureWindow`'s catch
+   * leaves `confirmed:false` WITHOUT populating usage, so `windowUsed`
+   * reads 0 — a store hiccup silently reset the month to zero spend. A
+   * budget that cannot prove what it has spent must not admit.
+   */
+  async admit(
+    poolName: string,
+    at: Date = new Date(),
+    ttlMs = 30_000,
+  ): Promise<
+    | { admitted: true }
+    | {
+        admitted: false;
+        reason: 'poisoned' | 'exhausted' | 'unconfirmed';
+        retryAfterMs: number | null;
+      }
+  > {
+    const lastAt = this.lastAdmitRefreshAt.get(poolName) ?? 0;
+    if (at.getTime() - lastAt >= ttlMs) {
+      const pool = this.requirePool(poolName);
+      // Force a store read: drop the confirmed flag so ensureWindow cannot
+      // take its early return, then restore state through the normal path.
+      const state = this.durable.get(pool.name);
+      if (state) {
+        this.durable.set(pool.name, { ...state, confirmed: false });
+      }
+      await this.ensureWindow(poolName, at);
+      this.lastAdmitRefreshAt.set(poolName, at.getTime());
+    }
+
+    const status = this.poolStatus(poolName, at);
+    if (status.poisonedForMs !== null && status.poisonedForMs > 0) {
+      return {
+        admitted: false,
+        reason: 'poisoned',
+        retryAfterMs: status.poisonedForMs,
+      };
+    }
+    if (status.storeConfirmed === false) {
+      return { admitted: false, reason: 'unconfirmed', retryAfterMs: null };
+    }
+    if (status.used >= status.limit) {
+      return {
+        admitted: false,
+        reason: 'exhausted',
+        retryAfterMs: status.resetMs,
+      };
+    }
+    return { admitted: true };
   }
 
   listRegistered(): PoolConfig[] {

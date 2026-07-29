@@ -150,8 +150,19 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
     }
 
     expect(logger.error).toHaveBeenCalled();
-    expect(opsAlerts.emit).toHaveBeenCalledTimes(1);
-    const emitted = opsAlerts.emit.mock.calls[0][0];
+    // Assert on THE alert under test, not on the total: boot legitimately
+    // emits others (e.g. "backstop is not derived" when no measured row
+    // exists, which is true in this fixture). A bare count coupled this spec
+    // to every unrelated alert in the system.
+    const bookkeeping = opsAlerts.emit.mock.calls
+      .map((call: unknown[]) => call[0] as { kind: string })
+      .filter((alert) => alert.kind === 'pool_bookkeeping_failure');
+    expect(bookkeeping).toHaveLength(1);
+    const emitted = bookkeeping[0] as unknown as {
+      severity: string;
+      kind: string;
+      dedupeKey: string;
+    };
     expect(emitted.severity).toBe('critical');
     expect(emitted.kind).toBe('pool_bookkeeping_failure');
     expect(emitted.dedupeKey).toMatch(
