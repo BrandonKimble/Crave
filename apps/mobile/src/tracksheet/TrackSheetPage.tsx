@@ -66,7 +66,6 @@ import { TrackSheetDockedStrip, type TrackSheetDockedStripProps } from './TrackS
 
 const SCREEN = Dimensions.get('window');
 
-
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
 );
@@ -205,7 +204,9 @@ export function TrackSheetPage<Item>({
     }
     if (navActionProgress != null) {
       const headerRowY =
-        OVERLAY_GRAB_HANDLE_PADDING_TOP + OVERLAY_GRAB_HANDLE_HEIGHT + OVERLAY_HEADER_ROW_MARGIN_TOP;
+        OVERLAY_GRAB_HANDLE_PADDING_TOP +
+        OVERLAY_GRAB_HANDLE_HEIGHT +
+        OVERLAY_HEADER_ROW_MARGIN_TOP;
       holes.push({
         x: SCREEN.width - OVERLAY_HORIZONTAL_PADDING - OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
         y: headerRowY,
@@ -250,6 +251,7 @@ export function TrackSheetPage<Item>({
   // later attempt); the pin had no such re-assert, so it was dropped once and
   // forever, and the chrome then scrolled away past H ("the sheet never stops
   // at the top snap"). Same law the seat already follows.
+  const reassertSeatRef = React.useRef<(() => void) | null>(null);
   const applyPinRef = React.useRef<(() => void) | null>(null);
   React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
@@ -324,13 +326,18 @@ export function TrackSheetPage<Item>({
     onGestureSettleRef.current?.(detentTau);
   }, []);
   useAnimatedReaction(
-    () => ({ value: tau.value, dragging: physics.dragging.value, owned: physics.userOwnsPosture.value }),
+    () => ({
+      value: tau.value,
+      dragging: physics.dragging.value,
+      owned: physics.userOwnsPosture.value,
+    }),
     (current) => {
       if (!current.owned || current.dragging) {
         settleLastTau.value = -1;
         return;
       }
-      const stable = settleLastTau.value >= 0 && Math.abs(current.value - settleLastTau.value) <= 0.5;
+      const stable =
+        settleLastTau.value >= 0 && Math.abs(current.value - settleLastTau.value) <= 0.5;
       settleLastTau.value = current.value;
       if (!stable) {
         return;
@@ -389,6 +396,10 @@ export function TrackSheetPage<Item>({
       attempts = 0;
       assertSeat();
     });
+    reassertSeatRef.current = () => {
+      attempts = 0;
+      assertSeat();
+    };
     seatTimerCancelRef.current = () => {
       cancelled = true;
       if (seatTimerRef.current != null) {
@@ -399,6 +410,7 @@ export function TrackSheetPage<Item>({
     return () => {
       cancelled = true;
       unsubscribe();
+      reassertSeatRef.current = null;
       seatTimerCancelRef.current = null;
       if (seatTimerRef.current != null) {
         clearTimeout(seatTimerRef.current);
@@ -471,74 +483,73 @@ export function TrackSheetPage<Item>({
         collapsable={false}
         style={[styles.chrome, { height: chromeHeight }]}
       >
-
-          {/* THE CHROME FROST SLAB: the chrome carries its own frosted glass
+        {/* THE CHROME FROST SLAB: the chrome carries its own frosted glass
               beneath its plates — every cutout (grab, close, strip chips)
               shows real blur of whatever passes beneath (map or content), in
               every scroll state. */}
-          <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <FrostedGlassBackground />
-          </View>
-          {/* Plate covers the HEADER BLOCK only — the strip band paints its
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <FrostedGlassBackground />
+        </View>
+        {/* Plate covers the HEADER BLOCK only — the strip band paints its
               own plate, and anything beneath its holes must be FROST (a full-
               chrome plate blocked the strip cutouts with white). */}
-          <MaskedHoleOverlay
-            holes={plateHoles}
-            backgroundColor={surfaceColor}
-            renderWhenEmpty
-            style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
-          />
-          {/* THE STRIP SEAM (polls gap fix): the 8pt spacer under the band is
+        <MaskedHoleOverlay
+          holes={plateHoles}
+          backgroundColor={surfaceColor}
+          renderWhenEmpty
+          style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
+        />
+        {/* THE STRIP SEAM (polls gap fix): the 8pt spacer under the band is
               sheet material, not frost — it is part of the chrome plate's
               coverage, painted here so no gap can open between the band and
               the first row. */}
-          {dockedStrip != null ? (
-            <View
-              style={[
-                styles.stripSeam,
-                {
-                  top: OVERLAY_TAB_HEADER_HEIGHT + dockedStrip.height,
-                  backgroundColor: surfaceColor,
-                },
-              ]}
-              pointerEvents="none"
-            />
-          ) : null}
-          <View style={styles.grabWrapper}>
-            <Pressable
-              onPress={onGrabHandlePress}
-              hitSlop={10}
-              accessibilityLabel="Expand sheet"
-              disabled={onGrabHandlePress == null}
-            >
-              <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
-            </Pressable>
+        {dockedStrip != null ? (
+          <View
+            style={[
+              styles.stripSeam,
+              {
+                top: OVERLAY_TAB_HEADER_HEIGHT + dockedStrip.height,
+                backgroundColor: surfaceColor,
+              },
+            ]}
+            pointerEvents="none"
+          />
+        ) : null}
+        <View style={styles.grabWrapper}>
+          <Pressable
+            onPress={onGrabHandlePress}
+            hitSlop={10}
+            accessibilityLabel="Expand sheet"
+            disabled={onGrabHandlePress == null}
+          >
+            <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
+          </Pressable>
+        </View>
+        <View style={styles.headerRow}>
+          <View style={styles.titleSlot}>{title}</View>
+          <View style={styles.actionGroup}>
+            {headerExtras}
+            {navActionProgress != null && onNavActionPress != null ? (
+              <HeaderNavAction
+                progress={navActionProgress}
+                onPress={onNavActionPress}
+                accessibilityLabel={navActionLabel}
+              />
+            ) : null}
           </View>
-          <View style={styles.headerRow}>
-            <View style={styles.titleSlot}>{title}</View>
-            <View style={styles.actionGroup}>
-              {headerExtras}
-              {navActionProgress != null && onNavActionPress != null ? (
-                <HeaderNavAction
-                  progress={navActionProgress}
-                  onPress={onNavActionPress}
-                  accessibilityLabel={navActionLabel}
-                />
-              ) : null}
-            </View>
-          </View>
-          {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
-          <View style={styles.headerBottomPad} />
-          {dockedStrip != null ? (
-            <>
-              {/* The band renders NO plate of its own (plateColor transparent):
+        </View>
+        {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
+        <View style={styles.headerBottomPad} />
+        {dockedStrip != null ? (
+          <>
+            {/* The band renders NO plate of its own (plateColor transparent):
                   production's ToggleStrip paints its chips directly, and the
                   frost slab behind the chrome is what shows between them —
                   a plate here would be the white that blocked the cutouts. */}
-              <TrackSheetDockedStrip {...dockedStrip} plateColor="transparent" />
-            </>
-          ) : null}
-          <Reanimated.View style={[styles.divider, dividerStyle]} />
+            <TrackSheetDockedStrip {...dockedStrip} plateColor="transparent" />
+          </>
+        ) : null}
+        <Reanimated.View style={[styles.divider, dividerStyle]} />
       </View>
     ),
     [
@@ -608,6 +619,13 @@ export function TrackSheetPage<Item>({
       // shrink made UIKit clamp the offset, killing the drag. Grow-only makes
       // the loop converge in one step by construction; the fill resets when
       // the DATA identity changes (a new page measures fresh).
+      // REACHABILITY RE-ASSERT (profile mid-detent seat, 2026-07-28): a seat is
+      // UNREACHABLE until content supports it — UIKit clamps any settle to
+      // contentH − viewport. Bodies that grow after mount (profile: avatar,
+      // stats, tabs) therefore seat SHORT, landing between detents. Whenever
+      // the reachable range grows, re-assert the seat — unless the user has
+      // taken posture, which always outranks the machine.
+      reassertSeatRef.current?.();
       const required = trackH + SCREEN.height;
       const deficit = required - height;
       if (deficit <= 1) {
@@ -638,31 +656,31 @@ export function TrackSheetPage<Item>({
           the map shows through the spacer region. No counter-translate, no
           mask, no surface overlay, no chrome overlay, no chromeGrab — the
           engine owns motion, bounds, pinning and tap-vs-drag. */}
-          <AnimatedFlashList
-            ref={setListRef as unknown as React.Ref<React.Component>}
-            style={StyleSheet.absoluteFill}
-            contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-            data={list.data}
-            renderItem={renderRowOnSurface}
-            keyExtractor={list.keyExtractor}
-            getItemType={list.getItemType}
-            ItemSeparatorComponent={list.ItemSeparatorComponent}
-            ListEmptyComponent={list.ListEmptyComponent}
-            onEndReached={list.onEndReached}
-            onEndReachedThreshold={list.onEndReachedThreshold}
-            extraData={list.extraData}
-            drawDistance={SCREEN.height}
-            maintainVisibleContentPosition={{ disabled: true }}
-            renderScrollComponent={TrackScrollComponent}
-            ListHeaderComponent={listHeader}
-            ListFooterComponent={listFooter}
-            showsVerticalScrollIndicator={false}
-            bounces
-            alwaysBounceVertical
-            scrollEventThrottle={16}
-            onScroll={onScroll}
-            onContentSizeChange={handleContentSizeChange}
-          />
+      <AnimatedFlashList
+        ref={setListRef as unknown as React.Ref<React.Component>}
+        style={StyleSheet.absoluteFill}
+        contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+        data={list.data}
+        renderItem={renderRowOnSurface}
+        keyExtractor={list.keyExtractor}
+        getItemType={list.getItemType}
+        ItemSeparatorComponent={list.ItemSeparatorComponent}
+        ListEmptyComponent={list.ListEmptyComponent}
+        onEndReached={list.onEndReached}
+        onEndReachedThreshold={list.onEndReachedThreshold}
+        extraData={list.extraData}
+        drawDistance={SCREEN.height}
+        maintainVisibleContentPosition={{ disabled: true }}
+        renderScrollComponent={TrackScrollComponent}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
+        showsVerticalScrollIndicator={false}
+        bounces
+        alwaysBounceVertical
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        onContentSizeChange={handleContentSizeChange}
+      />
 
       {debugHud ? (
         <View style={styles.hud} pointerEvents="none">
