@@ -224,6 +224,51 @@ DEFERRED, scoped: strip the ~115 census legal designations only (they are visibl
 in the UI — "Polls in Anchorage Municipality"), class by class, leaving the 284 and
 the `by-the-Sea`/`Village`/`Lake`/`City` stragglers to a human read.
 
+### Names — the catalog is now 100% vendor-sourced (2026-07-28)
+
+END STATE: **22,767 places, every one TomTom-identified with a vendor id.** The
+census is gone from the data as well as the code.
+
+The 11 vendor-less rows were DELETED (owner call): organic minting only ever
+creates what a reverse-geocode chain returns (`sketchChain` upserts every node
+of the chain and nothing else), so a place TomTom does not model would never
+come into existence. Those 11 could only have arrived from the census seeder.
+Their only content was 10 machine-generated "Best restaurants in X" polls with
+zero votes, zero comments and no human author; deleted with them, and an
+orphan sweep across polls / supply / topics / demand / weekly ticks confirmed 0.
+
+NAME CLASSES, decided by measurement rather than a sweep (407 diffs):
+
+- **115 census legal designators STRIPPED** — Municipio (78), Borough (13),
+  Census Area (11), Planning Region (9), City and Borough (4), Municipality (2),
+  all at CountrySecondarySubdivision. Verified first that the vendor's measured
+  name EQUALS the stripped form for all 115 (0 mismatches), so this adopts the
+  vendor rather than guessing. Collision-checked against the identity index
+  (0 collisions) before applying. "Polls in Anchorage Municipality" now reads
+  "Polls in Anchorage".
+- **2 EXCEPTIONS kept** — `Kodiak Island Borough`, `Lake and Peninsula Borough`:
+  the vendor's own name includes "Borough". A blanket regex would have broken
+  these, which is exactly why the class was verified per-row.
+- **5 census "official (common)" artifacts ADOPTED from the vendor** —
+  `San Buenaventura (Ventura)` → `Ventura`, `El Paso de Robles (Paso Robles)` →
+  `Paso Robles`, etc.
+- **160 St./Saint: WE KEEP OURS, against the vendor.** House style is "St."
+  (184 rows vs 1) and it is the friendlier form; the lone `Saint Edwards`
+  outlier was normalized to `St. Edwards`. The vendor is authoritative on
+  IDENTITY, not on typographic house style.
+- **14 vendor-appends-a-designator LEFT ALONE** — vendor "Baltimore County"
+  vs our "Baltimore" on a county row: ours is cleaner in context.
+- **113 genuinely-different entities LEFT ALONE** — vendor "Harrison" for our
+  "Ashville" is the vendor being coarser, not a correction.
+- **9 parentheticals KEPT** — `Bath (Berkeley Springs)`, `Addison (Webster
+Springs)` … probed live: TOMTOM ITSELF carries the parenthetical. Not our
+  artifact, so not ours to rewrite. If editorial display names are ever wanted,
+  the right shape is a separate display-name concept, NOT overwriting the
+  vendor's `name` — that is the open question, deliberately not hacked.
+
+DURABILITY (checked, not assumed): `mergeSketch` never writes `name` — it only
+gap-fills nulls — so these edits cannot be reverted by a later observation.
+
 ### Census retirement — measured 2026-07-28, 11 rows left and they are honest
 
 Code: ZERO load-bearing census references remain in `apps/api/src` or
