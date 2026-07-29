@@ -354,3 +354,86 @@ The cutout family (§4 items 2 and 3) is now fully attributed from the tree, not
 inferred. The remaining items are NOT at this confidence and must not be
 implemented on the same assumption of certainty: the polls header gap, the
 `[JOINT]` redraw join, and nav choppiness have no attributed mechanism yet.
+
+---
+
+## 9. THE HEADER CONTRACT (2026-07-28) — §3 was wrong, and this is why the same
+
+## three symptoms keep returning
+
+Owner, third occurrence: a hairline under the header that widens as the sheet
+pans; the scroll squaring off the sheet's rounded corners; and the header's
+cutouts going dead because "the scroll becomes the background that the cutouts
+are seeing through."
+
+These are not three bugs. They are three consequences of one modelling error,
+and no amount of geometry fixes them.
+
+### What the old system actually does
+
+`bottomSheetSceneStackHostStyles.ts` →
+
+```
+sceneStackPageBodyLayer: { position:'absolute', top:0, bottom:0,
+                           overflow:'hidden', zIndex:2 }
+```
+
+with `top` overridden to the chrome height when `reserveHeaderLane`
+(`BottomSheetSceneStackPageFrame.tsx:116`), and the header a separate lane at
+`zIndex:60` (`PersistentSheetHeaderHost.tsx:342`).
+
+**The scrollable body is a CLIPPED LANE whose frame begins below the chrome. The
+chrome was never inside the scroll.** Three properties fall out for free:
+
+1. **Honest cutouts.** No content ever enters the chrome band, so the header's
+   holes sample only static layers — the frost, hence the blurred map. A blur
+   samples whatever is behind it; the old model guarantees nothing is.
+2. **Intact corners.** The scroll cannot reach the sheet's top corners, so it
+   cannot square them off.
+3. **No seam.** The lane's top edge sits BEHIND an opaque z60 header rather than
+   abutting it, so the fractional chrome height (68.25, 108.25 with a strip)
+   can't open a subpixel hairline — which is exactly the line that widens as it
+   moves.
+
+### Why §3 is wrong
+
+§3 says "the chrome is content, pinned natively," justified by R3 (no wiggle)
+and R2 (whole-sheet grab). But putting the chrome in the content necessarily
+puts the BODY in the chrome's band once τ > H, which structurally forbids 1–3
+above. The wiggle constraint that motivated it only exists BECAUSE chrome and
+content share a visible edge — as a separate lane the chrome has no edge to
+disagree with, so R3 stops being a constraint at all.
+
+### The corrected shape
+
+- Content = `[spacer H][chromeHeight reserve][body][tail]`, so the body's top is
+  always exactly `sheetTop(τ) + chromeHeight`.
+- The chrome is an OVERLAY LANE above the track, positioned at `sheetTop(τ)` —
+  the same derivation the frost already rides, so they move in lockstep.
+- The body is excluded from the chrome band. The boundary is STATIC at
+  `expandedTop + chromeHeight`: below τ=H the body is already lower, and at
+  τ ≥ H the sheet top is pinned at `expandedTop`.
+
+### The one hard constraint, and why `overflow:hidden` cannot be the mechanism
+
+R2 says every point of the sheet is grabbable. In ONE TRACK the touch must reach
+the scroll view itself. `overflow:hidden` (or a frame that starts below the
+chrome) clips rendering AND hit-testing, so it would kill the grab in the header
+band — the exact regression the owner reported earlier.
+
+A **CALayer mask clips rendering only; hit-testing is unaffected.** So the track
+keeps a full-bleed frame (touches reach it everywhere, header included) while a
+mask hides its rows above `expandedTop + chromeHeight`. The mask must be
+re-positioned per frame against `contentOffset` in `scrollViewDidScroll` — the
+same native writer that already pins the chrome, so still one writer.
+
+This is a native addition to TrackScrollKit, and it is the piece that makes the
+corrected model possible at all. It is NOT optional: without it the choice is
+"honest cutouts" OR "grabbable header", and the requirements demand both.
+
+### Status
+
+DESIGNED, NOT LANDED. Deliberately: three blind landings this session each
+regressed and were reverted, and this is a larger restructure than any of them.
+The order is native mask first (additive, inert until used), then the chrome
+lane, verifying the ORIGIN invariant and a new body-top probe at each step.
