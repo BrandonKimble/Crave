@@ -19,6 +19,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import { overlaySheetStyles } from '../overlays/overlaySheetStyles';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import HeaderNavAction from '../overlays/HeaderNavAction';
 import {
@@ -483,13 +484,10 @@ export function TrackSheetPage<Item>({
         collapsable={false}
         style={[styles.chrome, { height: chromeHeight }]}
       >
-        {/* THE CHROME FROST SLAB: the chrome carries its own frosted glass
-              beneath its plates — every cutout (grab, close, strip chips)
-              shows real blur of whatever passes beneath (map or content), in
-              every scroll state. */}
-        <View style={StyleSheet.absoluteFill} pointerEvents="none">
-          <FrostedGlassBackground />
-        </View>
+        {/* NO CHROME FROST SLAB: the frost founds the SHEET (see the founding
+              layers below). A slab here would sit ON that frost and blur an
+              already-blurred layer — the owner's "double frosty". The chrome's
+              cutouts reach the founding frost directly. */}
         {/* Plate covers the HEADER BLOCK only — the strip band paints its
               own plate, and anything beneath its holes must be FROST (a full-
               chrome plate blocked the strip cutouts with white). */}
@@ -673,8 +671,13 @@ export function TrackSheetPage<Item>({
           the map shows through the spacer region. No counter-translate, no
           mask, no surface overlay, no chrome overlay, no chromeGrab — the
           engine owns motion, bounds, pinning and tap-vs-drag. */}
-      <Reanimated.View style={[styles.founding, frostStyle]} pointerEvents="none">
-        <FrostedGlassBackground />
+      <Reanimated.View
+        style={[overlaySheetStyles.shadowShell, styles.silhouette, styles.founding, frostStyle]}
+        pointerEvents="none"
+      >
+        <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
+          <FrostedGlassBackground />
+        </View>
       </Reanimated.View>
       <AnimatedFlashList
         ref={setListRef as unknown as React.Ref<React.Component>}
@@ -718,6 +721,17 @@ export function TrackSheetPage<Item>({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
+  // The shadow must live on a view that does NOT clip, so the silhouette is a
+  // shadow shell (radii, no overflow) wrapping a clipped frost.
+  silhouette: {
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
+  },
+  silhouetteClip: {
+    overflow: 'hidden',
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
+  },
   founding: {
     position: 'absolute',
     left: 0,
