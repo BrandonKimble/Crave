@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityStatus } from '@prisma/client';
+import { EntityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
 import { LoggerService } from '../../../shared';
@@ -243,6 +243,8 @@ export class FoodDedupeMergeService {
           where: { connectionId: connection.connectionId },
           data: { connectionId: surviving.connectionId },
         });
+        // (event re-pointing happens once per pair, after the connection
+        // loop — see mergeFoodEntityEvents)
         // Phase C: view history lives in the signals ledger — the reader
         // resolves the dead connectionId to the survivor at read (via
         // entity_redirects + (food, restaurant)); no rekey.
@@ -288,6 +290,17 @@ export class FoodDedupeMergeService {
       // the survivor at read. Chains are flattened so the readers' one-hop
       // COALESCE stays complete (A→B then B→C rewrites A→C), and any stale
       // redirect FROM the live winner is dropped.
+      // THE SUBSTRATE, NOT JUST THE PROJECTION (2026-07-28). Re-pointing
+      // connections alone is NOT DURABLE: core_restaurant_items is a
+      // PROJECTION rebuilt from core_restaurant_entity_events, and the
+      // rebuild does not follow entity_redirects. So a merge that leaves the
+      // event ledger pointing at the archived loser is undone by the next
+      // full rebuild — it would RESURRECT every split we just collapsed.
+      // Measured when this was found: 4,247 events still pointed at archived
+      // foods. The restaurant merge already did this
+      // (mergeRestaurantEntityEvents); the food merge simply never did.
+      await this.mergeFoodEntityEvents(tx, winner.entityId, loser.entityId);
+
       await tx.entityRedirect.updateMany({
         where: { toEntityId: loser.entityId },
         data: { toEntityId: winner.entityId },
@@ -316,5 +329,48 @@ export class FoodDedupeMergeService {
       .filter((token) => token && !STOPWORDS.has(token))
       .sort()
       .join(' ');
+  }
+  /** Re-point the loser's evidence events onto the winner. Mirrors
+   *  RestaurantEntityMergeService.mergeRestaurantEntityEvents: an event that
+   *  would collide with an identical winner event is dropped rather than
+   *  duplicated, so a merge can never inflate evidence. */
+  private async mergeFoodEntityEvents(
+    tx: Prisma.TransactionClient,
+    winnerId: string,
+    loserId: string,
+  ): Promise<void> {
+    const loserEvents = await tx.restaurantEntityEvent.findMany({
+      where: { entityId: loserId },
+      select: {
+        eventId: true,
+        extractionRunId: true,
+        mentionKey: true,
+        restaurantId: true,
+        evidenceType: true,
+      },
+    });
+
+    for (const event of loserEvents) {
+      const conflicting = await tx.restaurantEntityEvent.findFirst({
+        where: {
+          extractionRunId: event.extractionRunId,
+          mentionKey: event.mentionKey,
+          restaurantId: event.restaurantId,
+          entityId: winnerId,
+          evidenceType: event.evidenceType,
+        },
+        select: { eventId: true },
+      });
+      if (conflicting) {
+        await tx.restaurantEntityEvent.delete({
+          where: { eventId: event.eventId },
+        });
+        continue;
+      }
+      await tx.restaurantEntityEvent.update({
+        where: { eventId: event.eventId },
+        data: { entityId: winnerId },
+      });
+    }
   }
 }
