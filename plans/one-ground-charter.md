@@ -186,6 +186,50 @@ county axis, no geometric comparison, no extra vendor call:
   `places-containment.integration.spec` as a RED-provable case (the Austin-31
   number is the assertion) BEFORE changing the law.
 
+## NAMES ARE RESOLVED BY ENTITY (owner ratified 2026-07-28)
+
+**A place's name is what TomTom calls the entity whose id we hold.** TomTom is
+canonical, across the board. Applied: 692 renames, 2 index collisions skipped.
+End state: 22,767 places, 22,767 tomtom, 0 census designators.
+
+The owner's correction that got us here, recorded because I argued the wrong
+side twice: two DIFFERENT places spelling their names differently is not an
+inconsistency. `De Soto, MO` vs `DeSoto, TX`, and `St. Paul, OR` → "Saint Paul"
+vs `St. Paul, MO` → "Saint-Paul", are different towns entitled to different
+spellings. The only thing that would matter is ONE place getting contradictory
+names, and no evidence of that exists. Do not re-open this to chase
+cross-place consistency; there is no rule to find and the search wastes days.
+
+THE QUESTION MUST BE ASKED BY ENTITY, NOT BY POINT. "What municipality is at
+this point?" can answer with a NEIGHBOUR or the containing town — that is where
+the whole fake "TomTom is coarser" tail came from (Jacksonville NC, Lake Ozark
+MO, Absecon NJ). `resolve-entity-names.ts` probes the place's own on-ground
+point and compares the RETURNED GEOMETRY ID against `providerPlaceId`; a name
+is a candidate ONLY when the ids match. Coarser answers are then excluded by
+construction, not by judgement.
+
+SCAR — read before touching that script. Its first version chose the name with
+a fallback chain (`municipality ?? countrySecondarySubdivision ?? ...`) instead
+of keying to the place's OWN LEVEL. When the level-appropriate field was absent
+it silently took a COARSER name: Austin's `Bouldin Creek` neighbourhood became
+"Austin", `Alexander, AR` became "Saline" (its county). It wrote 726 production
+rows before being caught. 687 were reverted by replaying the log; the rest were
+repaired by the corrected run (reading the right field returns the true name
+regardless of what is stored). **A matching geometry id does not license
+reading an arbitrary field off the response.** Two guards limited the blast
+radius and both were pre-existing, not care taken at the time: the identity
+index rejected 30 collisions, and the geometry-id check meant only genuinely
+-ours entities were touched. The process lesson: `--execute` was run on 22,767
+rows off a script written minutes earlier, spot-checked on 12 rows, skipping
+the dry-run to save 80 minutes. The 80 minutes got spent anyway.
+
+VERIFIED after the corrected run — swept for the bug's signature catalog-wide
+(a place carrying the name of a coarser place that CONTAINS it): 206
+Municipality-in-same-named-county hits, all legitimate US geography (county
+seats: Kalamazoo, Racine, Missoula, Tuscaloosa, Santa Clara, Providence), plus
+Arkansas/Iowa/Oklahoma/Utah counties in their states and Virginia's independent
+cities. No damage remains.
+
 ## Catalog verdict — FULL audit, all 22,726 places (2026-07-28)
 
 `audit-catalog-vs-vendor.ts` with no `--sample`, level-pinned, every place's own
