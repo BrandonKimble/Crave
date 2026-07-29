@@ -156,6 +156,34 @@ two-axis parent rule AND the fusion rule. Required before the reload:
    crossposts, very long threads, price/hours claims mistaken for dishes.
 4. Only when the sample is clean do we wipe and reload.
 
+## 4b. AUDIT CLASS RESULTS (2026-07-28)
+
+NEGATION / SARCASM / MULTI-RESTAURANT COMPARISON — **CLEAN**, verified on
+real cases where a document praises one venue and pans another. Extraction
+attributed every one to the PRAISED venue:
+
+- "Uchi is the best sushi I've ever had, but Uchiko isn't even on the same
+  level" -> Uchi Austin (not Uchiko)
+- "Shogun in Pflugerville. Kobe is bland as hell." -> Shogun (not Kobe)
+- "Austin has the worst Whataburgers. P Terrys and ask for crispy fries"
+  -> P. Terry's (not Whataburger)
+
+DETECTOR FALSE POSITIVES — three of my own detectors measured themselves
+rather than the system, which is why every number here is checked against
+real text before it is believed:
+
+- CLASS 1 flagged dessert/coffee/beer as illegal categories (they are
+  legitimate "what" words) -> 7.5% and 15.8% were both artifacts.
+- CLASS 3 graded inferred parent categories and ask-inheritance replies as
+  hallucinations -> 36.5%, then 19%, both artifacts; real rate 3.4%.
+- CLASS 6 flagged "community garden" and "Terrible Love" as junk restaurant
+  names. Both are REAL Austin coffee shops. Real rate: 0.
+
+STILL UNEXAMINED: chains vs one-offs, non-English text, deleted/edited
+comments, bots, crossposts, very long threads, price/hours claims mistaken
+for dishes. Minor open item: "crisp" extracted as a food from "ask for
+crispy fries" (adjective fragment).
+
 ## 5. NEW YORK — no reprocessing, no gaps
 
 NY's raw corpus and its 1,000-post catch-up stay as they are. The risk is a
