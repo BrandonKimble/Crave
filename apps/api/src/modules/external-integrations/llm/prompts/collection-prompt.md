@@ -459,7 +459,9 @@ Self-check examples:
 
 ### 4.3 `food_categories` Hierarchy Algorithm
 
-Produce a cascading, high-signal list of categories after locking the `food` phrase. Every entry must pass a STRICTER test than 3.0: it must name a dish class someone could order **by that name alone** as a complete order ("tuna roll", "roll", "soup"). Cuisines, styles, meal-periods, and other properties are attributes, never categories — and **ingredients, flavor descriptors, and serving formats are NOTHING** (not categories, not attributes): "balsamic", "gruyere", "pecan", "ranch", "pepperoni", "sweet and spicy", "buffet", "combo plate" must never appear in `food_categories`. The tell: "I'll have the gruyere" is not a complete order; "I'll have the popover" is. Each category becomes a searchable dish entity downstream — emit only words a diner would search as a dish.
+Produce a cascading, high-signal list of categories after locking the `food` phrase. Every entry must pass a STRICTER test than 3.0: it must name a dish class someone could order **by that name alone** as a complete order ("tuna roll", "roll", "soup").
+
+**A category answers "WHAT IS IT?" — never "WHEN, WHERE, OR HOW DO I GET IT?"** This is the discriminator the order test alone cannot give you, because occasion words are perfectly sayable to a server ("I'll have the breakfast") while naming no food at all. A category names the thing that is handed to you; the moment a word describes the hour you eat it, the course it occupies, or the way it reaches you, it is an attribute. "coffee", "beer", "dessert", "pastry" survive — each names a kind of thing in the cup or on the plate. "breakfast", "brunch", "lunch", "dinner", "happy hour", "takeout" do not — they are circumstances, and two people ordering one could be handed anything. Cuisines, styles, meal-periods, and other properties are attributes, never categories — and **ingredients, flavor descriptors, and serving formats are NOTHING** (not categories, not attributes): "balsamic", "gruyere", "pecan", "ranch", "pepperoni", "sweet and spicy", "buffet", "combo plate" must never appear in `food_categories`. The tell: "I'll have the gruyere" is not a complete order; "I'll have the popover" is. Each category becomes a searchable dish entity downstream — emit only words a diner would search as a dish.
 
 1. Seed with the most specific dish noun.
    - Start with the `food` phrase unless it still includes attribute words; otherwise use the first attribute-free variant (e.g., "tuna roll" instead of "spicy tuna roll").
@@ -470,10 +472,12 @@ Produce a cascading, high-signal list of categories after locking the `food` phr
    - After each iteration, consider trimming a trailing classifier (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bun, slider, fry, sando, lavash, arepa, etc.) when the preceding chunk is dish-like. Treat the list as guidance — if a new tail word functions as a serving format, handle it the same way.
    - Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`, not `["tai"]`.
    - Stop before the remainder is a lone ingredient; ingredient nouns are dropped entirely (they are components of the dish, not classes it belongs to).
+   - A peel that lands on an occasion word yields NOTHING, even when that word sits inside the dish's own name: "ploughman's lunch" is a dish, but "lunch" is not a class it belongs to — it fails "what is it?".
 
-3. Add parent categories (menu-section parents).
-   - Use the parent-category rules in 4.4 to add section-level parents (dessert, pastry, coffee, tea, sandwich, soup, etc.) that the dish implies.
-   - Add these even when not explicitly stated, but only when the dish clearly belongs to that section.
+3. Add parent categories (the food's KIND, not its place on the menu).
+   - Use the parent-category rules in 4.4 to add broader dish classes (dessert, pastry, coffee, tea, sandwich, soup, etc.) that the dish implies.
+   - Add these even when not explicitly stated, but only when the dish clearly belongs to that class.
+   - **A printed menu section is not automatically a category.** Menus organize by occasion ("Breakfast", "Happy Hour"), by course position ("Starters", "Sides"), and by kind ("Tacos", "Sandwiches") — only the KIND headings name food. A dish served at breakfast has no category "breakfast"; french toast is toast, and when the diner eats it is an attribute at most.
 
 4. Deduplicate, sort by specificity (most specific first). Keep the list concise but do not enforce a hard cap; include all high-signal parent dish classes. Ingredients, flavors, and formats never appear — a peeled component ("tuna" from "tuna roll", "burrata" from a "with burrata" clause) enters ONLY if it independently names a complete orderable dish class in this context (e.g. "tuna" at a sushi bar); default to dropping it.
 
@@ -481,7 +485,7 @@ Self-check questions:
 
 - Does each category name a dish class orderable **by that name alone** (no bare ingredients, flavors, or formats)?
 - Does the chain broaden logically without jumping to unrelated attribute-only terms?
-- Are cuisines, styles, dietary flags, and meal periods kept in attributes instead of categories?
+- Does every category answer "what is it?" rather than when, where, or how it is served? (Cuisines, styles, dietary flags, meal periods, and service modes are attributes.)
 - Does the list include parent categories when the dish clearly belongs to a menu section?
 
 Example pairs:
@@ -499,7 +503,7 @@ Rules:
 
 - Add 1-3 parent categories when the dish clearly implies them, even if they are not explicitly stated.
 - Parent categories must be food nouns that pass the 3.0 test (dessert, pastry, cake, cookie, ice cream, coffee, tea, sandwich, soup, salad, pizza, taco, burger, noodle, dumpling, rice bowl, etc.).
-- Do not add cuisines, styles, meal periods, or service styles (mexican, indian, comfort food, street food, brunch, bbq, happy hour, etc.); those are properties and belong in attributes.
+- Do not add cuisines, styles, meal periods, or service styles (mexican, indian, comfort food, street food, brunch, bbq, happy hour, etc.); those are properties and belong in attributes. The test is "what is it?" — a parent must name the food itself, never the occasion, the course slot, or the service mode. A dish being _typical of_ breakfast makes breakfast an occasion it suits, not a class it belongs to.
 - It is fine to include both dish-family and section-level parents (e.g., "croissant" → "pastry" and "dessert").
 - **Run the 3.0 order test on the PARTS of the dish name, not just the whole.** Any part that would itself be a complete order somewhere is a parent of this dish; parts that only describe it are not. "house-made carnitas taco" → "taco" is a complete order and so is "carnitas" → `["taco", "carnitas"]` (4.3's own example); "carbonara udon" → both "udon" and "carbonara" are things a diner orders by name → `["udon", "noodle", "pasta", "carbonara"]`; but "breakfast tacos" → "breakfast" is not something handed to you → `["taco"]` only, and "grilled burger" → `["burger"]` only. **Whether the part is TRADITIONALLY its own dish family is irrelevant** — carbonara names one specific Roman pasta by tradition, yet diners now order "the carbonara" in udon and pizza form, so by use it names an order and earns its parent. Categories follow how people order today, not culinary lineage. Dropping such a part is the most common category miss: someone craving carbonara wants the udon version too.
 
