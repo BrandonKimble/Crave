@@ -208,3 +208,89 @@ was landing three laws blind in one pass.
    lists show frost.
 6. **Collapse the scene acks into one join.** Verify: the `[JOINT]` error is gone
    on list entry.
+
+---
+
+## 7. RED TEAM (2026-07-28) — checked against the old sheet + the prototype record
+
+Two findings invalidate parts of §2/§3. Recorded before any code is written.
+
+### F1. C2 is WRONG — the hole registry already exists, and we are not using it
+
+The old stack (inventory §4) is:
+
+```
+map → sheet container → nav-exclusion mask + hard clip → shadowShell →
+sceneStackSurface (r22 top, overflow hidden) → [0] ONE FrostedGlassBackground
+(opacity 1, never animated) → [1] scene white plate → [2] body lane +
+SceneBodyFoundationSurface (white plate + FrostCutout holes) → ... →
+[60] PersistentSheetHeaderHost (cutout plate) → [61] divider host
+```
+
+`SceneBodyFoundationSurface` IS the "one surface, one hole registry" §3 proposes:
+a white plate with a hole store, 0 holes → plain fill, ≥1 → one content-tall
+`MaskedHoleOverlay`. THE TRUE-CUTOUT LAW (2026-07-23) already established that
+every see-through element punches through to ONE shared frost, with self-frost
+deleted app-wide.
+
+And the two scenes the owner reports broken are named in the record as the only
+two `FrostCutout` users: **ProfilePanel stats (r16) and the HomePanel row band.**
+
+So the defect is NOT components each implementing holes. It is that
+**`FrostCutout` is a no-op outside a foundation surface — by design** — and the
+track host does not reproduce the layer stack that provides one. The white
+curated-list boxes and the profile band showing map are the same single fault:
+a missing founding layer, not a missing abstraction.
+
+This is banked law #20 (when production already owns a behaviour as a
+component, REUSE it — a second implementation is a second writer). §3's "holes
+are registered, not drawn" is right as a _law_ and already true in the tree.
+Writing a new registry would have been the error the red team was for.
+
+### F2. The short-page fact — the old system already solved R5 with ZERO padding
+
+Boundary-physics slice 4 (2026-07-23) deleted `SHORT_PAGE_SCROLL_ROOM_PX`
+outright: "a short page's interior range is honestly 0 — both boundaries at
+once", and the overscroll pan treats `max === 0` as a legal bottom, "so short
+pages get the real rubber-band with zero fake padding."
+
+So the old architecture met R4/R5 by making the sheet's rubber band a SEPARATE
+mechanism from the list's scroll. ONE TRACK fused them — which is why the fake
+padding came back. The fusion is still right (R1 is the whole point), but it
+means **reachability and opacity had no analogue in the old system and are
+genuinely new obligations of ONE TRACK.** §3's inset (reachability) and plate
+(opacity) stand — they are not re-solving a solved problem, they are paying the
+price of the fusion. That price is worth naming honestly rather than pretending
+ONE TRACK is free.
+
+### F3. Containment — the old clip MOVED; ours is static, and that is correct
+
+Old: `sceneStackSurface` clips with `overflow hidden` and r22 top corners, and
+that container moves with the sheet. §3 makes the clip STATIC at `expandedTop`.
+Both are sound, for different reasons: in ONE TRACK the spacer is transparent, so
+content cannot exist above `sheetTop` while `τ < H`; the only escape is content
+rising past `expandedTop` when `τ > H`, which a static clip bounds exactly. The
+r22 rounded top corner must then ride `sheetTop` — that is THE PLATE's corner,
+not the clip's. This is a real difference from the old system and must be
+eye-checked, not assumed.
+
+### Verdict
+
+§3 survives, with C2 struck and rewritten: **the plate is not new construction —
+it is `SceneBodyFoundationSurface`'s mechanism HOISTED from the body lane (where
+it is content-sized, which is C1) to the sheet (τ-anchored, unbounded).** The
+frost layer, the hole store, `MaskedHoleOverlay` and `FrostCutout` are reused
+verbatim. Holes stay in content coordinates with the existing
+`translateY = −clamp(scroll) − contentOverscroll` glue term.
+
+### Revised step order (supersedes §6)
+
+1. Attribute the origin's claimants (unchanged — still the gate).
+2. **Reproduce the founding layer stack in the track host**: ONE
+   `FrostedGlassBackground`, then the sheet plate, then the track. This alone
+   should restore profile stats and the home row band, and it is the smallest
+   change with the largest reported-defect coverage.
+3. Hoist the foundation plate from content-sized to τ-anchored/unbounded (C1).
+4. Containment to the frame; r22 corner onto the plate. Eye-check the corner.
+5. Reachability to the inset; delete the fill.
+6. Collapse the scene acks into one join.
