@@ -2002,6 +2002,13 @@ model Signal {
   subjectType String   @map("subject_type") @db.VarChar(16) // entity | term | none
   subjectId   String?  @map("subject_id") @db.Uuid
   subjectText String?  @map("subject_text") @db.VarChar(255)
+  /// P5b ANCHOR (one-ground charter): for acts whose WHERE genuinely IS a
+  /// place (poll created/voted/commented), the place itself — never its
+  /// bounding rectangle. Attribution reads the place's real GROUND through
+  /// this id, so the act lands on that place and its ancestors and nothing
+  /// else. NULL for the kinds whose shape is honestly a rectangle (a viewport)
+  /// or a point (entity_view), which keep the geo columns below.
+  placeId     String?  @map("place_id") @db.Uuid
   geoMinLat   Decimal  @map("geo_min_lat") @db.Decimal(10, 8)
   geoMinLng   Decimal  @map("geo_min_lng") @db.Decimal(11, 8)
   geoMaxLat   Decimal  @map("geo_max_lat") @db.Decimal(10, 8)
@@ -2022,6 +2029,11 @@ model Signal {
   // one actor's acts of one kind newest-first.
   @@index([actorId, kind, occurredAt])
   @@index([recordedAt])
+  // P5b place-anchored attribution join: raw-SQL PARTIAL index
+  // (migration 20260728030000) — idx_signals_place_id ... WHERE place_id IS
+  // NOT NULL, because most signals are geo-shaped and carry NULL. A plain
+  // @@index([placeId]) here would be a SECOND, non-partial index and permanent
+  // migrate-diff drift. Do not re-add.
   // Raw-SQL partial expression index (migration 20260719235000):
   // (COALESCE(meta->>'searchRequestId', meta->>'cacheRevealRequestId'),
   // occurred_at) WHERE either id present — the ledger-wide retry-dedupe probe

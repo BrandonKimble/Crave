@@ -270,6 +270,8 @@ export class SignalDemandAggregateService {
         WITH day_first AS (
           SELECT
             s.actor_id, s.kind, s.subject_type, s.subject_id, s.subject_text,
+            -- P5b place anchor: NULL for geo-shaped acts (viewports, points).
+            s.place_id,
             s.geo_min_lat, s.geo_min_lng, s.geo_max_lat, s.geo_max_lng,
             s.occurred_at,
             ${EVENT_COUNT_SQL} AS acts,
@@ -306,8 +308,17 @@ export class SignalDemandAggregateService {
             )
         ),
         geos AS (
+          -- P5b (one-ground charter): PLACE-ANCHORED signals never enter the
+          -- geometric path. A poll act's WHERE is a place, so its attribution
+          -- is that place — read-time inheritance supplies the ancestors, the
+          -- same as for a geometric verdict. Letting an anchored signal tile
+          -- was the measured defect: its geo used to be the place's bounding
+          -- RECTANGLE, and "contained" then matched every ground that fitted
+          -- inside it (Austin: 31 other places). Excluding them here is also
+          -- why their geo columns can stay a harmless centroid point.
           SELECT DISTINCT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng
           FROM day_signals
+          WHERE place_id IS NULL
         ),
         crossing_places AS MATERIALIZED (
           -- Antimeridian-crossing catalog rows (bbox_min_lng > bbox_max_lng):
@@ -447,9 +458,21 @@ export class SignalDemandAggregateService {
           d.subject_id, d.subject_text,
           SUM(d.acts)::int, MAX(d.occurred_at)
         FROM day_signals d
-        JOIN attributed a
-          ON a.geo_min_lat = d.geo_min_lat AND a.geo_min_lng = d.geo_min_lng
-         AND a.geo_max_lat = d.geo_max_lat AND a.geo_max_lng = d.geo_max_lng
+        -- P5b: two disjoint sources of the place tile, selected by whether the
+        -- act carries an anchor. Anchored -> the anchor place itself, no
+        -- geometry consulted. Unanchored -> the geometric verdict, keyed by
+        -- geo tuple exactly as before. The WHERE clauses are mutually
+        -- exclusive on d.place_id, so a signal takes exactly one branch.
+        JOIN LATERAL (
+          SELECT d.place_id AS place_id
+          WHERE d.place_id IS NOT NULL
+          UNION ALL
+          SELECT a.place_id
+          FROM attributed a
+          WHERE d.place_id IS NULL
+            AND a.geo_min_lat = d.geo_min_lat AND a.geo_min_lng = d.geo_min_lng
+            AND a.geo_max_lat = d.geo_max_lat AND a.geo_max_lng = d.geo_max_lng
+        ) a ON TRUE
         GROUP BY a.place_id, d.actor_id, d.kind, d.subject_type, d.subject_id, d.subject_text
       `;
         return { deletedRows, insertedRows };

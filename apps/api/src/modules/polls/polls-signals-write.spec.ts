@@ -150,7 +150,15 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
     });
   });
 
-  it('a vote on a PLACE-keyed poll writes the signal with the PLACE bbox (red-team 3e)', async () => {
+  it('a vote on a PLACE-keyed poll ANCHORS to the place and carries a zero-area geo — never the place rectangle (P5b, was red-team 3e)', async () => {
+    // This test used to assert the OPPOSITE — that the signal carried the
+    // place's bounding rectangle (29.5..30.9 × -98.2..-97.2). That was the
+    // defect: measured on prod over all 22,778 places with a ground,
+    // ST_Covers(ground, own_bbox) is FALSE for 99.98% of them, so the
+    // attribution law's containing arm missed the poll's own place and the
+    // tiling arm over-fired onto everything that fitted inside the rectangle
+    // (Austin bled into 31 other places). The mock place below still HAS that
+    // bbox precisely so this test goes RED if the rectangle ever comes back.
     const PLACE_ID = '99999999-9999-9999-9999-999999999999';
     const { service, signalsPrisma } = createHarness({
       pollPlaceId: PLACE_ID,
@@ -170,12 +178,17 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
     expect(signalsPrisma.signal.create).toHaveBeenCalledTimes(1);
     const data = signalsPrisma.signal.create.mock.calls[0][0].data;
     expect(data.kind).toBe('poll_vote');
+    // The WHERE of the act: the place itself.
+    expect(data.placeId).toBe(PLACE_ID);
+    // The geo is the centroid POINT — zero area, asserting no extent at all.
     expect(data).toMatchObject({
-      geoMinLat: 29.5,
-      geoMinLng: -98.2,
-      geoMaxLat: 30.9,
-      geoMaxLng: -97.2,
+      geoMinLat: 30.27,
+      geoMinLng: -97.74,
+      geoMaxLat: 30.27,
+      geoMaxLng: -97.74,
     });
+    expect(data.geoMinLat).toBe(data.geoMaxLat);
+    expect(data.geoMinLng).toBe(data.geoMaxLng);
   });
 
   it('un-endorsing (toggle off) writes NO signal — the ledger is append-only', async () => {

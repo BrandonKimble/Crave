@@ -114,6 +114,18 @@ export interface RecordSignalInput {
    * null / resolved-null skips the write with a once-per-key debug log.
    */
   geo: SignalBbox | Promise<SignalBbox | null> | null;
+  /**
+   * P5b PLACE ANCHOR: set ONLY when the act's WHERE genuinely IS a place (a
+   * poll act). Attribution then judges on that place's real ground — the act
+   * lands on the place and its ancestors and nothing else — and ignores `geo`,
+   * which for these rows is just the centroid point.
+   *
+   * Leave undefined for acts whose shape is honestly a rectangle (a viewport)
+   * or a point (entity_view). Setting it for those would be a regression: a
+   * viewport IS a rectangle, and collapsing it to a place would throw away the
+   * extent the act actually had.
+   */
+  placeId?: string | null;
   occurredAt?: Date;
   meta?: Record<string, unknown> | null;
 }
@@ -214,15 +226,24 @@ export class SignalsService {
   }
 
   /**
-   * Place bbox via the places catalog (§1 DAG rows) — the geo for signals on
-   * place-keyed polls (red-team 3e: a vote on a placeId poll attributes to
-   * the PLACE bbox; the legacy marketKey path died with legacy-poll expiry).
-   * Crossing place
-   * rows (minLng > maxLng) pass through as-is — SignalBbox is wrap-aware.
-   * Falls back to the centroid as a zero-area bbox for un-sketched-bbox rows.
+   * The REPRESENTATIVE POINT of a place — its centroid as a zero-area bbox.
+   *
+   * P5b (one-ground charter, 2026-07-28): this REPLACES `bboxFromPlace`, which
+   * returned the place's stored bounding RECTANGLE and was the single producer
+   * of the attribution bleed. Measured on prod across all 22,778 places with a
+   * ground: `ST_Covers(ground, own_bbox)` is FALSE for 22,774 (99.98%) — a
+   * polygon never covers its own bounding box — so the attribution law's
+   * "containing" arm never matched the poll's own place, and the "tiling" arm
+   * carried it and over-fired onto every place whose ground fitted inside that
+   * rectangle (Austin: 31 other places; Denver and Portland: 9 each).
+   *
+   * A place-anchored signal now carries `placeId`, and attribution reads the
+   * place's REAL GROUND through it. The geo columns are NOT NULL, so they still
+   * need a value; the centroid is the least-claiming honest one — a point that
+   * asserts no extent at all, rather than a rectangle that asserts a false one.
    * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.
    */
-  async bboxFromPlace(
+  async centroidGeoFromPlace(
     placeId: string | null | undefined,
   ): Promise<SignalBbox | null> {
     if (!placeId) {
@@ -235,38 +256,19 @@ export class SignalsService {
     try {
       const place = await this.prisma.place.findUnique({
         where: { placeId },
-        select: {
-          bboxMinLat: true,
-          bboxMinLng: true,
-          bboxMaxLat: true,
-          bboxMaxLng: true,
-          centroidLat: true,
-          centroidLng: true,
-        },
+        select: { centroidLat: true, centroidLng: true },
       });
-      let bbox: SignalBbox | null = null;
-      if (
-        place?.bboxMinLat != null &&
-        place.bboxMinLng != null &&
-        place.bboxMaxLat != null &&
-        place.bboxMaxLng != null
-      ) {
-        bbox = {
-          minLat: Number(place.bboxMinLat),
-          minLng: Number(place.bboxMinLng),
-          maxLat: Number(place.bboxMaxLat),
-          maxLng: Number(place.bboxMaxLng),
-        };
-      } else if (place?.centroidLat != null && place.centroidLng != null) {
-        bbox = this.bboxFromPoint(
-          Number(place.centroidLat),
-          Number(place.centroidLng),
-        );
-      }
-      this.cachePut(this.placeBboxCache, placeId, bbox, PLACE_BBOX_CACHE_MAX);
-      return bbox;
+      const geo =
+        place?.centroidLat != null && place.centroidLng != null
+          ? this.bboxFromPoint(
+              Number(place.centroidLat),
+              Number(place.centroidLng),
+            )
+          : null;
+      this.cachePut(this.placeBboxCache, placeId, geo, PLACE_BBOX_CACHE_MAX);
+      return geo;
     } catch (error) {
-      this.logger.debug('Place bbox lookup failed', {
+      this.logger.debug('Place centroid lookup failed', {
         placeId,
         error: {
           message: error instanceof Error ? error.message : String(error),
@@ -394,6 +396,7 @@ export class SignalsService {
         subjectType: subjectId ? 'entity' : subjectText ? 'term' : 'none',
         subjectId,
         subjectText,
+        placeId: input.placeId ?? null,
         geoMinLat: geo.minLat,
         geoMinLng: geo.minLng,
         geoMaxLat: geo.maxLat,

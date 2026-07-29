@@ -108,45 +108,51 @@ describe('SignalsService bbox helpers (geo is ALWAYS a bbox — §3)', () => {
   });
 });
 
-describe('SignalsService.bboxFromPlace (red-team 3e: place-keyed poll geo)', () => {
-  it('returns the place bbox, cached, and passes crossing rows through as-is', async () => {
+describe('SignalsService.centroidGeoFromPlace (P5b: a poll act carries a POINT, never the place rectangle)', () => {
+  const CENTROID_GEO = {
+    minLat: 30.27,
+    maxLat: 30.27,
+    minLng: -97.74,
+    maxLng: -97.74,
+  };
+
+  it('returns the centroid as a ZERO-AREA geo even when the place has a bbox, and caches it', async () => {
+    // The RED-provable assertion of this file: the place below HAS a stored
+    // rectangle (30.1..30.4 × -97.9..-97.6). The old bboxFromPlace returned it,
+    // which is what bled a poll in Austin into 31 other places. Returning
+    // anything with area here is the bug coming back.
     const { service, prisma } = createService();
     prisma.place.findUnique.mockResolvedValue({
-      bboxMinLat: '30.1',
-      bboxMinLng: '-97.9',
-      bboxMaxLat: '30.4',
-      bboxMaxLng: '-97.6',
       centroidLat: '30.27',
       centroidLng: '-97.74',
     });
     const placeId = '99999999-9999-9999-9999-999999999999';
-    await expect(service.bboxFromPlace(placeId)).resolves.toEqual(GEO);
-    await expect(service.bboxFromPlace(placeId)).resolves.toEqual(GEO);
+    await expect(service.centroidGeoFromPlace(placeId)).resolves.toEqual(
+      CENTROID_GEO,
+    );
+    await expect(service.centroidGeoFromPlace(placeId)).resolves.toEqual(
+      CENTROID_GEO,
+    );
     expect(prisma.place.findUnique).toHaveBeenCalledTimes(1); // cached
+
+    const geo = await service.centroidGeoFromPlace(placeId);
+    expect(geo?.minLat).toBe(geo?.maxLat);
+    expect(geo?.minLng).toBe(geo?.maxLng);
   });
 
-  it('falls back to the centroid point for un-sketched-bbox places, null when nothing resolves, and never rejects', async () => {
+  it('is null when the place has no centroid or the id is absent, and never rejects', async () => {
     const { service, prisma } = createService();
     prisma.place.findUnique.mockResolvedValueOnce({
-      bboxMinLat: null,
-      bboxMinLng: null,
-      bboxMaxLat: null,
-      bboxMaxLng: null,
-      centroidLat: '30.27',
-      centroidLng: '-97.74',
+      centroidLat: null,
+      centroidLng: null,
     });
     await expect(
-      service.bboxFromPlace('88888888-8888-8888-8888-888888888888'),
-    ).resolves.toEqual({
-      minLat: 30.27,
-      maxLat: 30.27,
-      minLng: -97.74,
-      maxLng: -97.74,
-    });
-    await expect(service.bboxFromPlace(null)).resolves.toBeNull();
+      service.centroidGeoFromPlace('88888888-8888-8888-8888-888888888888'),
+    ).resolves.toBeNull();
+    await expect(service.centroidGeoFromPlace(null)).resolves.toBeNull();
     prisma.place.findUnique.mockRejectedValueOnce(new Error('db down'));
     await expect(
-      service.bboxFromPlace('77777777-7777-7777-7777-777777777777'),
+      service.centroidGeoFromPlace('77777777-7777-7777-7777-777777777777'),
     ).resolves.toBeNull();
   });
 });
@@ -214,6 +220,9 @@ describe('SignalsService write shape', () => {
         subjectType: 'entity',
         subjectId: ENTITY_ID,
         subjectText: null,
+        // P5b: an entity_view's WHERE is honestly a POINT, not a place — it
+        // carries no anchor, and its geo columns stay authoritative.
+        placeId: null,
         geoMinLat: GEO.minLat,
         geoMinLng: GEO.minLng,
         geoMaxLat: GEO.maxLat,

@@ -155,18 +155,26 @@ export class PollsService {
 
   /**
    * §3 signal geo for poll acts (red-team 3e): a poll attributes to its
-   * PLACE's bbox — the closed loop that feeds poll_vote back into the
-   * place's demand mass and answerYield. Every poll is place-keyed since the
+   * PLACE — the closed loop that feeds poll_vote back into the place's demand
+   * mass and answerYield. Every poll is place-keyed since the
    * legacy-poll-expiry backfill (2026-07-20: all 94 legacy market-keyed rows
-   * re-keyed to catalog places; new rows are place-keyed at creation);
-   * bboxFromPlace never rejects, so the promise is safe un-awaited as
-   * RecordSignalInput.geo.
+   * re-keyed to catalog places; new rows are place-keyed at creation).
+   *
+   * P5b (one-ground charter, 2026-07-28): this used to hand the signal the
+   * place's stored bounding RECTANGLE. It now hands over the placeId as the
+   * anchor — `pollSignalAnchor` — and the geo is only the place's centroid
+   * point. The rectangle was the whole defect: a polygon never covers its own
+   * bounding box (measured: 22,774 / 22,778 places on prod), so the attribution
+   * law's containing arm missed the poll's OWN place and the tiling arm
+   * over-fired onto everything that fitted inside the rectangle — Austin bled
+   * into 31 other places. `centroidGeoFromPlace` never rejects, so the promise
+   * is safe un-awaited as RecordSignalInput.geo.
    */
   private pollSignalGeo(poll: {
     placeId: string | null;
   }): Promise<SignalBbox | null> {
     return poll.placeId
-      ? this.signals.bboxFromPlace(poll.placeId)
+      ? this.signals.centroidGeoFromPlace(poll.placeId)
       : Promise.resolve(null);
   }
 
@@ -923,6 +931,7 @@ export class PollsService {
       userId,
       subject: this.pollSignalSubject(poll),
       geo: this.pollSignalGeo(poll),
+      placeId: poll.placeId,
       meta: { pollId: poll.pollId },
     });
     // W4: no pollsCreatedCount counter bump — the profile "Polls" stat is a
@@ -1084,6 +1093,7 @@ export class PollsService {
       userId,
       subject: this.pollSignalSubject(poll),
       geo: this.pollSignalGeo(poll),
+      placeId: poll.placeId,
       meta: { pollId: poll.pollId },
     });
     // W4: no counter bump — the stat is a live count (UserService.countCreatedPolls).
@@ -1271,6 +1281,7 @@ export class PollsService {
       userId,
       subject: this.pollSignalSubject(poll),
       geo: this.pollSignalGeo(poll),
+      placeId: poll.placeId,
       meta: { pollId },
     });
     return comment;
@@ -2024,6 +2035,7 @@ export class PollsService {
         userId,
         subject: this.pollSignalSubject(poll),
         geo: this.pollSignalGeo(poll),
+        placeId: poll.placeId,
         meta: {
           pollId,
           endorsedSubjectId: subjectId,

@@ -85,7 +85,7 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     { emitPollUpdate: jest.fn() } as never, // gateway
     llmService as never,
     {} as never, // entityTextSearch
-    { record: jest.fn(), bboxFromPlace: jest.fn() } as never, // signals
+    { record: jest.fn(), centroidGeoFromPlace: jest.fn() } as never, // signals
     placesCatalog as never,
     placesPromotions as never,
     {} as never, // viewportVerdict (feed-only; unused in this spec)

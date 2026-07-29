@@ -162,6 +162,77 @@ describe('containment laws, proven against PostGIS', () => {
     expect(resolved?.name).not.toBe('Coastal');
   });
 
+  it('P5b — A POLL ACT BELONGS TO ITS PLACE AND ITS ANCESTORS, NEVER TO WHAT MERELY FITS IN ITS RECTANGLE', async () => {
+    // The fixture is built so the OLD law and the NEW one DISAGREE.
+    //
+    // BigCity's ground is only the WESTERN half of its stored rectangle
+    // (60..61 of 60..62). Suburb sits in the EASTERN half — inside BigCity's
+    // RECTANGLE, outside BigCity's GROUND. State covers everything.
+    //
+    // OLD law (geo = BigCity's bbox): arm (i) ST_Covers(ground, bbox) is FALSE
+    // even for BigCity itself (a polygon never covers its own bbox), and arm
+    // (ii) ST_CoveredBy(ground, bbox) matches Suburb — so the act lands on a
+    // town it did not happen in. That is the measured prod defect (Austin: 31).
+    // NEW law (anchor = BigCity): BigCity ✓ (covers itself), State ✓
+    // (ancestor), Suburb ✗ (BigCity's ground does not cover it).
+    const bigCityId = await seedPlace({
+      name: 'BigCity',
+      level: 'Municipality',
+      bbox: { minLat: 60, minLng: 60, maxLat: 62, maxLng: 62 },
+      groundWkt: 'POLYGON((60 60, 61 60, 61 62, 60 62, 60 60))',
+    });
+    await seedPlace({
+      name: 'Suburb',
+      level: 'Municipality',
+      bbox: { minLat: 61.2, minLng: 61.2, maxLat: 61.4, maxLng: 61.4 },
+      groundWkt:
+        'POLYGON((61.2 61.2, 61.4 61.2, 61.4 61.4, 61.2 61.4, 61.2 61.2))',
+    });
+    await seedPlace({
+      name: 'State',
+      level: 'CountrySubdivision',
+      bbox: { minLat: 59, minLng: 59, maxLat: 63, maxLng: 63 },
+      groundWkt: 'POLYGON((59 59, 63 59, 63 63, 59 63, 59 59))',
+    });
+
+    // A poll act in BigCity, written the P5b way: anchored to the place. The
+    // geo columns still carry the old rectangle, so this test ALSO proves the
+    // anchor WINS over a lying rectangle sitting right next to it.
+    const [signal] = await prisma.$queryRawUnsafe<Array<{ signal_id: string }>>(
+      `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
+                            geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
+       VALUES ('poll_created', 'none', gen_random_uuid(), now(), $1::uuid,
+               60, 60, 62, 62)
+       RETURNING signal_id`,
+      bigCityId,
+    );
+
+    const attributed = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
+      `SELECT p.name
+         FROM places p, signals s
+        WHERE s.signal_id = $1::uuid
+          AND p.provider = '${TEST_TAG}'
+          AND (CASE WHEN s.place_id IS NOT NULL
+                 THEN EXISTS (SELECT 1 FROM place_geometries anchor_pg
+                                JOIN place_geometries cand_pg
+                                  ON cand_pg.place_id = p.place_id
+                               WHERE anchor_pg.place_id = s.place_id
+                                 AND ST_Covers(cand_pg.geometry, anchor_pg.geometry))
+                 ELSE FALSE END)`,
+      signal.signal_id,
+    );
+    const names = attributed.map((r) => r.name).sort();
+
+    expect(names).toContain('BigCity'); // the place it happened in
+    expect(names).toContain('State'); // its ancestor
+    expect(names).not.toContain('Suburb'); // RED under the old rectangle law
+
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM signals WHERE signal_id = $1::uuid`,
+      signal.signal_id,
+    );
+  });
+
   it('THE SEAM: a view crossing the antimeridian returns only the places actually there', async () => {
     // SCOPE, stated honestly: the union-envelope bug shipped on 2026-07-27
     // was a PERFORMANCE defect, not a correctness one. Measured on the dev
