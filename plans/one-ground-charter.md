@@ -135,7 +135,18 @@ county axis, no geometric comparison, no extra vendor call:
   false "already asked" area (4r² vs πr²), which could suppress discovery of
   a real place in a corner for the whole 30d TTL. RED-provable spec asserts
   the square answers a 1.27r corner and the disc does not.
-- P5b OPEN — RE-ATTRIBUTED 2026-07-28 against PROD. The earlier framing here
+- P5b LANDED 2026-07-28 (commit c6c8a7ee). `signals.place_id` is the anchor;
+  when set, attribution is ground-to-ground (`ST_Covers(candidate, anchor)`) —
+  the place and its ancestors, and NO tiling arm, because a poll is not a
+  viewport. The aggregate drops anchored signals from `geos` entirely and joins
+  them to their own place through a LATERAL. `bboxFromPlace` is retired for
+  `centroidGeoFromPlace`, so an anchored act's geo columns assert no extent.
+  Proven RED (sabotage → `["BigCity","State","Suburb"]`) then GREEN against
+  real PostGIS, and the LATERAL was executed against a real DB on both
+  branches because its unit spec only string-matches. The attribution below is
+  the record of what was wrong and why.
+
+- P5b BACKGROUND — RE-ATTRIBUTED 2026-07-28 against PROD. The earlier framing here
   ("876 of 955 signals carry a place-derived rectangle", "32 call sites across
   7 files") was measured on the DEV database and was wrong in both directions.
   The truth is worse in effect and far smaller in scope.
