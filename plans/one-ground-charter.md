@@ -224,6 +224,37 @@ DEFERRED, scoped: strip the ~115 census legal designations only (they are visibl
 in the UI — "Polls in Anchorage Municipality"), class by class, leaving the 284 and
 the `by-the-Sea`/`Village`/`Lake`/`City` stragglers to a human read.
 
+### The representative point must be ON THE GROUND (found 2026-07-28)
+
+Chasing "should we just adopt TomTom's coarser names?" surfaced a real defect
+that had been masquerading as a naming disagreement: **564 of 22,715 places
+(2.48%) had a centroid that did not lie inside their own polygon.**
+
+Cause: a plain centroid of a CONCAVE or MULTI-PART polygon falls outside it (a
+C-shaped town; a town with islands). Consequence: every probe that used the
+centroid as "a point in this place" was asking about somewhere else — which is
+precisely why the audit reported a neighbouring town's name for those rows.
+The "113 places where TomTom is coarser" figure was substantially an artifact
+of probing the wrong spot, not a vendor disagreement.
+
+FIX: `ST_PointOnSurface(ground)` — guaranteed to lie inside the geometry, and
+DERIVED from the one ground, exactly as the law wants. Applied to the 564
+broken rows only; 0 remain outside. Re-probing the affected names with correct
+points moved 131 of 210 from "disagrees" to "agrees". A fresh 300-sample audit
+after the repair: **agree=291, levelDiff=0, countryDiff=0, noVendor=0,
+nameDiff=9** — and all 9 are the classes we deliberately keep.
+
+DO NOT "fix" this by adopting the vendor's coarser name. Verified on real rows
+(Ashville OH, Blanchard LA, Hochatown OK, Dennis TX): each has a DISTINCT
+TomTom entity id and its OWN, much smaller polygon — the vendor models them
+individually. The coarse answer comes from the QUESTION ("what municipality is
+at this point"), which can return a neighbour or the containing town; it is not
+the vendor lacking the place. Renaming Ashville to Harrison would leave a place
+called "Harrison" holding Ashville's boundary while the real Harrison exists
+separately — re-creating the exact duplicate-identity class P3 eliminated.
+The name and the polygon answer different questions: the polygon comes from the
+entity's own id (specific and correct), the coarse name from a point lookup.
+
 ### Names — the catalog is now 100% vendor-sourced (2026-07-28)
 
 END STATE: **22,767 places, every one TomTom-identified with a vendor id.** The
