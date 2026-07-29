@@ -3133,42 +3133,64 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       };
     };
 
-    const defaultGenerationConfig: GeminiGenerationConfig = {
+    // UNIVERSAL defaults — true of every Gemini call we make, regardless of
+    // what it is for. These MUST survive a caller supplying its own config.
+    const universalDefaults: GeminiGenerationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
       maxOutputTokens: this.llmConfig.maxTokens || 65536,
-      responseMimeType: 'application/json',
-      responseJsonSchema: collectionResponseJsonSchemaForSourceRefs(
-        options.sourceRefs,
-      ),
     };
     const thinkingContext = options.thinkingContext ?? 'content';
     const baseThinkingConfig = this.getThinkingConfig(
       targetModel,
       thinkingContext,
       options.thinkingOverride,
+      options.usageCaller,
     );
     if (baseThinkingConfig) {
-      defaultGenerationConfig.thinkingConfig = baseThinkingConfig;
+      universalDefaults.thinkingConfig = baseThinkingConfig;
     }
 
-    // THINKING CONFIG IS NEVER OPTIONAL (cost bug, 2026-07-27). This used to
-    // be `options.generationConfig ?? defaultGenerationConfig`, so ANY caller
-    // supplying its own config silently discarded the computed thinkingConfig
-    // — and Gemini 3's default with no level specified is HIGH. Measured
-    // blast radius: entity-resolution.match_batch averaged 5,694 output
-    // tokens/call versus 48 for the SAME judgment through the single-item
-    // path that set it correctly (118x), making resolution 64% of all replay
-    // spend. A caller may still override thinking deliberately; it just can
-    // no longer LOSE it by accident.
+    // COLLECTION-SPECIFIC defaults — the extraction response shape. These
+    // apply ONLY when the caller brings no config of its own, i.e. the
+    // collection path. Merging them into every caller would silently impose
+    // the extraction schema on unrelated prompts.
+    const collectionDefaults: GeminiGenerationConfig = {
+      ...universalDefaults,
+      responseMimeType: 'application/json',
+      responseJsonSchema: collectionResponseJsonSchemaForSourceRefs(
+        options.sourceRefs,
+      ),
+    };
+
+    // NO COMPUTED DEFAULT CAN BE LOST BY A CALLER (hardened 2026-07-28).
+    //
+    // This started as `options.generationConfig ?? defaultGenerationConfig`,
+    // which discarded the computed thinkingConfig for every caller that
+    // passed a config — and Gemini 3 with no level specified thinks HIGH.
+    // Measured: entity-resolution.match_batch averaged 5,694 output tokens
+    // per call versus 48 for the SAME judgment through the path that set it
+    // correctly, making resolution 64% of all replay spend.
+    //
+    // The first fix special-cased exactly ONE key (thinkingConfig). That
+    // repaired the symptom and left the CLASS: every other computed default
+    // was still dropped, harmless today only because all 11 callers happen
+    // to re-specify what they need. Adding one default tomorrow would
+    // reintroduce the identical bug silently. Now the whole universal block
+    // merges, and `undefined` values in the caller's config are stripped so
+    // an explicitly-undefined key cannot clobber a computed one either.
+    const definedOnly = (
+      config: GeminiGenerationConfig,
+    ): GeminiGenerationConfig =>
+      Object.fromEntries(
+        Object.entries(config).filter(([, value]) => value !== undefined),
+      ) as GeminiGenerationConfig;
+
     const generationConfig: GeminiGenerationConfig = options.generationConfig
-      ? {
-          ...(baseThinkingConfig ? { thinkingConfig: baseThinkingConfig } : {}),
-          ...options.generationConfig,
-        }
-      : defaultGenerationConfig;
+      ? { ...universalDefaults, ...definedOnly(options.generationConfig) }
+      : collectionDefaults;
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
 
     const hasResponseMimeType =
@@ -3907,12 +3929,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     overrides?: {
       includeThoughts?: boolean;
     },
+    caller?: string,
   ): GeminiThinkingConfig | undefined {
     const { config, invalidLevel } = resolveThinkingConfig({
       model,
       context,
       settings: this.llmConfig.thinking,
       includeThoughtsOverride: overrides?.includeThoughts,
+      caller,
     });
     if (invalidLevel) {
       this.logger.warn('Invalid Gemini thinking level; using default', {

@@ -1,71 +1,112 @@
 type GeminiGenerationConfig = Record<string, unknown>;
 
 /**
- * COST-BUG REGRESSION (2026-07-27). `callLLMApi` used to resolve its config
- * as `options.generationConfig ?? defaultGenerationConfig`, so any caller
- * that supplied its own config silently LOST the computed thinkingConfig —
- * and Gemini 3 defaults to HIGH thinking when no level is sent. Measured:
- * entity-resolution.match_batch averaged 5,694 output tokens/call vs 48 for
- * the same judgment through the single-item path (118x), making resolution
- * 64% of replay spend. This pins the merge semantics so the regression
- * cannot return silently.
+ * COST-BUG REGRESSION (2026-07-27, hardened 2026-07-28).
+ *
+ * `callLLMApi` used to resolve its config as `options.generationConfig ??
+ * defaultGenerationConfig`, so any caller supplying its own config silently
+ * LOST the computed thinkingConfig — and Gemini 3 thinks HIGH when no level
+ * is sent. Measured: entity-resolution.match_batch averaged 5,694 output
+ * tokens/call vs 48 for the same judgment through the path that set it
+ * correctly, making resolution 64% of replay spend.
+ *
+ * The first fix special-cased ONE key and left the CLASS alive. These specs
+ * now pin the general property — no computed universal default can be lost
+ * by any caller, for any key — plus the boundary that keeps it safe: the
+ * COLLECTION-specific response schema must NOT leak onto callers that bring
+ * their own config, or every unrelated prompt inherits the extraction shape.
  */
 function resolveGenerationConfig(
   optionsConfig: GeminiGenerationConfig | undefined,
-  baseThinkingConfig: { thinkingLevel?: string } | undefined,
-  defaultConfig: GeminiGenerationConfig,
+  universalDefaults: GeminiGenerationConfig,
+  collectionDefaults: GeminiGenerationConfig,
 ): GeminiGenerationConfig {
+  const definedOnly = (config: GeminiGenerationConfig) =>
+    Object.fromEntries(
+      Object.entries(config).filter(([, value]) => value !== undefined),
+    );
   return optionsConfig
-    ? {
-        ...(baseThinkingConfig ? { thinkingConfig: baseThinkingConfig } : {}),
-        ...optionsConfig,
-      }
-    : defaultConfig;
+    ? { ...universalDefaults, ...definedOnly(optionsConfig) }
+    : collectionDefaults;
 }
 
-describe('callLLMApi generationConfig merge (thinking-config seam)', () => {
-  const base = { thinkingLevel: 'MINIMAL' };
-  const fallback: GeminiGenerationConfig = { temperature: 1 };
+describe('callLLMApi generationConfig merge', () => {
+  const thinking = { thinkingLevel: 'MINIMAL' };
+  const universal: GeminiGenerationConfig = {
+    temperature: 0.1,
+    topP: 0.5,
+    maxOutputTokens: 65536,
+    thinkingConfig: thinking,
+  };
+  const collection: GeminiGenerationConfig = {
+    ...universal,
+    responseMimeType: 'application/json',
+    responseJsonSchema: { collection: true },
+  };
 
   it('injects the computed thinking config into a caller-supplied config', () => {
     const merged = resolveGenerationConfig(
-      { temperature: 0, maxOutputTokens: 65536 } as GeminiGenerationConfig,
-      base,
-      fallback,
+      { temperature: 0, responseJsonSchema: { mine: true } },
+      universal,
+      collection,
     );
-    expect(
-      (merged as { thinkingConfig?: { thinkingLevel?: string } })
-        .thinkingConfig,
-    ).toEqual(base);
+    expect(merged.thinkingConfig).toEqual(thinking);
     expect(merged.temperature).toBe(0);
+  });
+
+  it('preserves EVERY universal default, not just thinking (the class, not the key)', () => {
+    const merged = resolveGenerationConfig(
+      { temperature: 0 },
+      universal,
+      collection,
+    );
+    expect(merged.topP).toBe(0.5);
     expect(merged.maxOutputTokens).toBe(65536);
+    expect(merged.thinkingConfig).toEqual(thinking);
   });
 
-  it('lets a caller DELIBERATELY override thinking (override wins over the default)', () => {
+  it('lets a caller DELIBERATELY override any default', () => {
     const merged = resolveGenerationConfig(
-      {
-        temperature: 0,
-        thinkingConfig: { thinkingLevel: 'HIGH' },
-      } as GeminiGenerationConfig,
-      base,
-      fallback,
+      { thinkingConfig: { thinkingLevel: 'HIGH' }, maxOutputTokens: 1024 },
+      universal,
+      collection,
     );
-    expect(
-      (merged as { thinkingConfig?: { thinkingLevel?: string } })
-        .thinkingConfig,
-    ).toEqual({ thinkingLevel: 'HIGH' });
+    expect(merged.thinkingConfig).toEqual({ thinkingLevel: 'HIGH' });
+    expect(merged.maxOutputTokens).toBe(1024);
   });
 
-  it('falls back to the default config when the caller supplies none', () => {
-    expect(resolveGenerationConfig(undefined, base, fallback)).toBe(fallback);
-  });
-
-  it('supplies no thinking key when none was computed (never invents one)', () => {
+  it('does NOT let an explicit undefined clobber a computed default', () => {
     const merged = resolveGenerationConfig(
-      { temperature: 0 } as GeminiGenerationConfig,
-      undefined,
-      fallback,
+      { thinkingConfig: undefined, temperature: undefined },
+      universal,
+      collection,
     );
-    expect('thinkingConfig' in merged).toBe(false);
+    expect(merged.thinkingConfig).toEqual(thinking);
+    expect(merged.temperature).toBe(0.1);
+  });
+
+  it('never leaks the COLLECTION response schema onto a caller with its own config', () => {
+    const merged = resolveGenerationConfig(
+      { responseJsonSchema: { mine: true } },
+      universal,
+      collection,
+    );
+    expect(merged.responseJsonSchema).toEqual({ mine: true });
+
+    // Even a caller that supplies NO schema must not inherit the extraction
+    // one — that would silently reshape an unrelated prompt's output.
+    const noSchema = resolveGenerationConfig(
+      { temperature: 0 },
+      universal,
+      collection,
+    );
+    expect(noSchema.responseJsonSchema).toBeUndefined();
+    expect(noSchema.responseMimeType).toBeUndefined();
+  });
+
+  it('falls back to the full collection config when the caller brings none', () => {
+    const merged = resolveGenerationConfig(undefined, universal, collection);
+    expect(merged).toEqual(collection);
+    expect(merged.thinkingConfig).toEqual(thinking);
   });
 });

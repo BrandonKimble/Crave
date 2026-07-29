@@ -17,6 +17,23 @@ export type GeminiThinkingSettings = {
   level?: string;
   queryLevel?: string;
   includeThoughts?: boolean;
+  /**
+   * PER-CALLER overrides, keyed by the §24 usageCaller tag — the same key
+   * the usage ledger records, so "what level did we buy" and "what did it
+   * cost" join on one column.
+   *
+   * Why this dimension exists: 'content' | 'query' is not per-caller, it is
+   * per-global-setting, so ten caller classes collapse onto two levers.
+   * `entity-resolution.match_batch` (a ~545-token identity judgment) and
+   * `dish.knowledge_synthesize` (a generative call that once burned 63,325
+   * output tokens) both declare 'query' and are therefore forced to the same
+   * level — correct today by luck, not by design.
+   *
+   * DELIBERATELY EMPTY until a level is MEASURED. Inventing per-caller
+   * values would be a fake estimate dressed as configuration; the point is
+   * that the seam can express the difference the moment evidence exists.
+   */
+  perCaller?: Record<string, string>;
 };
 
 /** Mirrors the SDK's ThinkingConfig. `thinkingBudget` is the older
@@ -63,6 +80,8 @@ export function resolveThinkingConfig(params: {
   context: ThinkingContext;
   settings?: GeminiThinkingSettings;
   includeThoughtsOverride?: boolean;
+  /** §24 usageCaller tag; selects a per-caller level when one is set. */
+  caller?: string;
 }): { config?: GeminiThinkingConfig; invalidLevel?: string } {
   const { model, context, settings } = params;
   const includeThoughts =
@@ -74,10 +93,14 @@ export function resolveThinkingConfig(params: {
     return { config: includeThoughts ? { includeThoughts } : undefined };
   }
 
+  const perCallerLevel = params.caller
+    ? settings?.perCaller?.[params.caller]
+    : undefined;
   const configuredLevel =
-    context === 'query'
+    perCallerLevel ??
+    (context === 'query'
       ? (settings?.queryLevel ?? settings?.level)
-      : settings?.level;
+      : settings?.level);
   const normalized = normalizeThinkingLevel(configuredLevel);
   return {
     config: {

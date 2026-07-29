@@ -71,6 +71,32 @@ describe('resolveThinkingConfig', () => {
     expect(result.config).toBeUndefined();
   });
 
+  it('lets a per-CALLER level beat the context default (keyed by usageCaller)', () => {
+    const settings = {
+      level: 'LOW',
+      queryLevel: 'MINIMAL',
+      perCaller: { 'dish.knowledge_synthesize': 'MEDIUM' },
+    };
+    expect(
+      resolveThinkingConfig({
+        model: GEMINI3,
+        context: 'query',
+        settings,
+        caller: 'dish.knowledge_synthesize',
+      }).config?.thinkingLevel,
+    ).toBe('MEDIUM');
+    // A caller with no entry is unaffected — the map is opt-in, not a
+    // replacement for the context default.
+    expect(
+      resolveThinkingConfig({
+        model: GEMINI3,
+        context: 'query',
+        settings,
+        caller: 'entity-resolution.match_batch',
+      }).config?.thinkingLevel,
+    ).toBe('MINIMAL');
+  });
+
   it('carries includeThoughts only when asked', () => {
     expect(
       resolveThinkingConfig({ model: GEMINI3, context: 'query' }).config
