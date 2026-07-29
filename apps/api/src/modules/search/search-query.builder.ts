@@ -1537,83 +1537,107 @@ selected_locations AS (
   }
 
   /**
-   * RESTAURANT ROLLUP ADMISSION (charter §2a, ratified 2026-07-27).
+   * RESTAURANT ROLLUP = ONE CLAIM, COUNTED ONCE, CREDITED TO THE MOST
+   * SPECIFIC CARRIER (charter §2a + §3b, unified 2026-07-28).
    *
-   * One claim, counted exactly once. A category item ("known for their
-   * burgers") is real evidence about the place, so it SHOULD lift the
-   * restaurant score — but only when it is the sole carrier of that claim.
-   * The moment a specific dish sits under that category, the dish already
-   * carries it into this rollup, and admitting the category item too would
-   * count the same endorsement twice.
+   * A claim is one source document saying one thing about one restaurant.
+   * It should lift that restaurant exactly once, credited to the most
+   * specific thing it named.
    *
-   * The test is PER CATEGORY, not per restaurant: a place can be praised for
-   * burgers (has burger dishes -> category excluded) and for tacos (no taco
-   * dish -> category admitted) in the same breath. An earlier version
-   * excluded every category item outright, which was safe against
-   * double-counting but silently discarded the claims that had no dish to
-   * ride on — exactly the restaurants this design exists to represent.
+   * This replaces a ROW-TYPE test ("does a dish exist under this category?")
+   * that could not tell two situations apart, and got each of them wrong:
+   *
+   *   "Nixta has the best tacos - the duck carnitas taco is unreal"
+   *     ONE claim. The row rule suppressed the taco category item and
+   *     scored 1 -- right, but by luck.
+   *
+   *   "Nixta has the best steak. The duck carnitas taco is unreal"
+   *     TWO claims about different things. If Nixta happened to have a
+   *     steak dish, the row rule suppressed the steak category item and
+   *     scored 1, LOSING the steak claim entirely -- because banking files
+   *     it as SUPPORT, and this rollup sums DIRECT only. Measured: 514
+   *     suppressed category items held 1,532 direct mentions / 2,651 direct
+   *     upvotes that counted zero.
+   *
+   *   "the kung pao chicken here is incredible" (no dishes)
+   *     ONE claim that emits BOTH 'kung pao chicken' and its parent
+   *     'chicken' as categories. Nothing banks between two category items,
+   *     so both counted. Measured: 723 mentions / 1,006 upvotes double-
+   *     counted this way.
+   *
+   * The claim-identity rule fixes all three with one law, because it asks
+   * about the DOCUMENT, not the row type: a direct mention is shadowed when
+   * the SAME document also directly named something MORE SPECIFIC at the
+   * SAME restaurant -- a dish under this category, or a narrower category.
+   * Claims from different documents never shadow each other, so a
+   * category-only endorsement always survives.
+   *
+   * Reads the mention LEDGER rather than the item counters. Verified
+   * equivalent before switching: 0 of 11,840 items disagreed with their own
+   * direct-mention rows, so the ledger changes nothing except the dedup.
+   * A mention with no source document cannot be shadowed (it counts).
    */
-  private static readonly ROLLUP_ADMISSION_SQL = `
-    NOT c.is_category_item
-    OR NOT EXISTS (
+  private static readonly CLAIM_MENTIONS_FROM_SQL = `
+  FROM core_restaurant_item_mentions m
+  JOIN core_restaurant_items c ON c.connection_id = m.connection_id`;
+
+  private static readonly CLAIM_IDENTITY_WHERE_SQL = `
+    m.kind = 'direct'
+    AND NOT EXISTS (
       SELECT 1
-      FROM core_restaurant_items d
-      WHERE d.restaurant_id = c.restaurant_id
-        AND NOT d.is_category_item
-        AND c.food_id = ANY(d.categories)
+      FROM core_restaurant_item_mentions m2
+      JOIN core_restaurant_items c2 ON c2.connection_id = m2.connection_id
+      WHERE m2.kind = 'direct'
+        AND m2.source_document_id IS NOT NULL
+        AND m2.source_document_id = m.source_document_id
+        AND c2.restaurant_id = c.restaurant_id
+        AND c2.food_id <> c.food_id
+        AND (
+          c.food_id = ANY(c2.categories)
+          OR EXISTS (
+            SELECT 1 FROM derived_food_category_edges e
+            WHERE e.food_id = c2.food_id AND e.category_id = c.food_id
+          )
+        )
     )`;
 
   private buildRestaurantVoteTotalsCte(): { sql: Prisma.Sql; preview: string } {
-    const sql = Prisma.sql`
-restaurant_vote_totals AS (
+    const body = `
   SELECT
     c.restaurant_id,
-    SUM(c.total_upvotes) AS total_upvotes,
-    SUM(c.mention_count) AS total_mentions
-  FROM core_restaurant_items c
+    SUM(m.source_upvotes) AS total_upvotes,
+    COUNT(*) AS total_mentions${SearchQueryBuilder.CLAIM_MENTIONS_FROM_SQL}
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
-  WHERE ${Prisma.raw(SearchQueryBuilder.ROLLUP_ADMISSION_SQL)}
-  GROUP BY c.restaurant_id
-)`;
+  WHERE ${SearchQueryBuilder.CLAIM_IDENTITY_WHERE_SQL}
+  GROUP BY c.restaurant_id`;
 
-    const preview = `
-restaurant_vote_totals AS (
-  SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
-  FROM core_restaurant_items c
-  JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
-  WHERE ${SearchQueryBuilder.ROLLUP_ADMISSION_SQL}
-  GROUP BY c.restaurant_id
-)`.trim();
-
-    return { sql, preview };
+    return {
+      sql: Prisma.sql`
+restaurant_vote_totals AS (${Prisma.raw(body)}
+)`,
+      preview: `restaurant_vote_totals AS (${body}\n)`,
+    };
   }
 
   private buildGeographicRestaurantVoteTotalsCte(): {
     sql: Prisma.Sql;
     preview: string;
   } {
-    const sql = Prisma.sql`
-geographic_restaurant_vote_totals AS (
+    const body = `
   SELECT
     c.restaurant_id,
-    SUM(c.total_upvotes) AS total_upvotes,
-    SUM(c.mention_count) AS total_mentions
-  FROM core_restaurant_items c
+    SUM(m.source_upvotes) AS total_upvotes,
+    COUNT(*) AS total_mentions${SearchQueryBuilder.CLAIM_MENTIONS_FROM_SQL}
   JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  WHERE ${Prisma.raw(SearchQueryBuilder.ROLLUP_ADMISSION_SQL)}
-  GROUP BY c.restaurant_id
-)`;
+  WHERE ${SearchQueryBuilder.CLAIM_IDENTITY_WHERE_SQL}
+  GROUP BY c.restaurant_id`;
 
-    const preview = `
-geographic_restaurant_vote_totals AS (
-  SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
-  FROM core_restaurant_items c
-  JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  WHERE ${SearchQueryBuilder.ROLLUP_ADMISSION_SQL}
-  GROUP BY c.restaurant_id
-)`.trim();
-
-    return { sql, preview };
+    return {
+      sql: Prisma.sql`
+geographic_restaurant_vote_totals AS (${Prisma.raw(body)}
+)`,
+      preview: `geographic_restaurant_vote_totals AS (${body}\n)`,
+    };
   }
 
   private buildPublicRestaurantScoresCte(): {

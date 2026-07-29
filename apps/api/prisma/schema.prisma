@@ -496,6 +496,8 @@ model RestaurantItemMention {
   connection       Connection @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
 
   @@index([connectionId])
+  /// Claim identity: the rollup's shadow lookup is per source document.
+  @@index([sourceDocumentId, kind], map: "idx_restaurant_item_mentions_document")
   @@map("core_restaurant_item_mentions")
 }
 

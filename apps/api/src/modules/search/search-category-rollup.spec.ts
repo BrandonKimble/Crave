@@ -40,17 +40,20 @@ function constraints(): SearchConstraints {
 }
 
 /**
- * Charter §2a: a category item lifts the restaurant score ONLY when no dish
- * carries that same category claim. These pin the shape of the admission
- * rule in BOTH restaurant rollup CTEs — the previous blanket
- * `NOT c.is_category_item` passes the double-count half of the test but
- * fails the "sole carrier still counts" half, so each spec can show RED.
+ * Charter §2a + §3b unified: the restaurant rollup counts ONE CLAIM ONCE,
+ * credited to the most specific carrier that document named.
  *
- * Semantics verified against live data (2026-07-27): of 1,706 category
- * items, 1,191 are sole carriers (admitted) and 515 are also carried by a
- * dish (suppressed).
+ * These pin the shape in BOTH rollup CTEs. Each can show RED: the previous
+ * row-type rule (`NOT c.is_category_item OR NOT EXISTS ... d.categories`)
+ * fails every one of them.
+ *
+ * Verified against live data (2026-07-28): old 122,402 upvotes -> new
+ * 123,965, with 190 restaurants GAINED (claims the row rule dropped, because
+ * banking files them as support and this rollup sums direct) and 140 REDUCED
+ * (same-document parent/child double counts). Both directions move, which is
+ * what distinguishes a correctness fix from "count more".
  */
-describe('restaurant rollup admits category items only as sole carriers', () => {
+describe('restaurant rollup counts one claim once, most specific carrier wins', () => {
   const preview = (): string =>
     new SearchQueryBuilder().buildRestaurantQuery({
       plan: compileQueryPlanFromConstraints(constraints()),
@@ -58,24 +61,36 @@ describe('restaurant rollup admits category items only as sole carriers', () => 
       searchCenter: null,
     }).preview;
 
-  it('still excludes a category item whose claim a dish already carries', () => {
+  it('reads the mention LEDGER, not the item counters (claims live per document)', () => {
     const sql = preview();
-    expect(sql).toContain('NOT d.is_category_item');
-    expect(sql).toContain('c.food_id = ANY(d.categories)');
+    expect(sql).toContain('core_restaurant_item_mentions m');
+    expect(sql).toContain("m.kind = 'direct'");
   });
 
-  it('admits a category item when no dish sits under it (NOT EXISTS, not a blanket ban)', () => {
-    const sql = preview();
-    expect(sql).toMatch(/NOT c\.is_category_item\s*\n\s*OR NOT EXISTS/);
+  it('shadows only within the SAME source document', () => {
+    expect(preview()).toContain('m2.source_document_id = m.source_document_id');
   });
 
-  it('scopes the dish check to the SAME restaurant (per-category, per-place)', () => {
-    expect(preview()).toContain('d.restaurant_id = c.restaurant_id');
+  it('shadows only within the SAME restaurant', () => {
+    expect(preview()).toContain('c2.restaurant_id = c.restaurant_id');
   });
 
-  it('applies the rule to the geographic rollup too, not just the filtered one', () => {
+  it('treats a dish under the category AND a narrower category as more specific', () => {
     const sql = preview();
-    const occurrences = sql.split('OR NOT EXISTS').length - 1;
+    expect(sql).toContain('c.food_id = ANY(c2.categories)');
+    expect(sql).toContain('derived_food_category_edges');
+  });
+
+  it('never shadows a mention that has no source document', () => {
+    expect(preview()).toContain('m2.source_document_id IS NOT NULL');
+  });
+
+  it('no longer excludes category items by ROW TYPE (that dropped real claims)', () => {
+    expect(preview()).not.toContain('NOT c.is_category_item');
+  });
+
+  it('applies to the geographic rollup too, not just the filtered one', () => {
+    const occurrences = preview().split("m.kind = 'direct'").length - 1;
     expect(occurrences).toBeGreaterThanOrEqual(2);
   });
 });
