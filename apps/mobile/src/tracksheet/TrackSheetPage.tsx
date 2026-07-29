@@ -173,15 +173,10 @@ export function TrackSheetPage<Item>({
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
   // accumulator and must only advance inside the handler.
-  const [shortPageFill, setShortPageFill] = React.useState(0);
-  const shortPageFillRef = React.useRef(0);
+  // THE REACHABILITY INSET (law at handleContentSizeChange).
+  const [insetBottom, setInsetBottom] = React.useState(0);
   // Fresh page ⇒ fresh measurement: the accumulator resets when the data
   // identity changes, so a long page never inherits a short page's fill.
-  const listDataIdentity = list.data;
-  React.useEffect(() => {
-    shortPageFillRef.current = 0;
-    setShortPageFill(0);
-  }, [listDataIdentity]);
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
@@ -585,12 +580,12 @@ export function TrackSheetPage<Item>({
         style={{
           // The tail must outlast any bounce: the list's own bottom edge must
           // never appear inside the sheet.
-          height: footerHeight + shortPageFill + SCREEN.height,
+          height: footerHeight,
           backgroundColor: surfaceColor,
         }}
       />
     ),
-    [footerHeight, shortPageFill, surfaceColor]
+    [footerHeight, surfaceColor]
   );
 
   const renderItem = list.renderItem;
@@ -624,14 +619,15 @@ export function TrackSheetPage<Item>({
       // the reachable range grows, re-assert the seat — unless the user has
       // taken posture, which always outranks the machine.
       reassertSeatRef.current?.();
-      const required = trackH + SCREEN.height;
-      const deficit = required - height;
-      if (deficit <= 1) {
-        return;
-      }
-      const nextFill = shortPageFillRef.current + Math.ceil(deficit);
-      shortPageFillRef.current = nextFill;
-      setShortPageFill(nextFill);
+      // REACHABILITY IS GEOMETRY, NOT CONTENT: UIKit clamps the max offset to
+      // (contentH + insetBottom − viewport), so a short page silently forbids
+      // τ near H. Expressed as content this was a value derived from a
+      // measurement it itself changed — a feedback loop needing a monotonic
+      // accumulator, and a scroll far longer than the content warranted. An
+      // inset does not change contentH, so this converges in ONE step.
+      // Opacity is NOT this law's job: the τ-anchored tail plate owns that.
+      const belowSpacer = height - trackH;
+      setInsetBottom(Math.max(0, Math.ceil(SCREEN.height - belowSpacer)));
     },
     [physics.contentHeight, trackH]
   );
@@ -679,31 +675,34 @@ export function TrackSheetPage<Item>({
           <FrostedGlassBackground />
         </View>
       </Reanimated.View>
-      <AnimatedFlashList
-        ref={setListRef as unknown as React.Ref<React.Component>}
-        style={StyleSheet.absoluteFill}
-        contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-        data={list.data}
-        renderItem={renderRowOnSurface}
-        keyExtractor={list.keyExtractor}
-        getItemType={list.getItemType}
-        ItemSeparatorComponent={list.ItemSeparatorComponent}
-        ListEmptyComponent={list.ListEmptyComponent}
-        onEndReached={list.onEndReached}
-        onEndReachedThreshold={list.onEndReachedThreshold}
-        extraData={list.extraData}
-        drawDistance={SCREEN.height}
-        maintainVisibleContentPosition={{ disabled: true }}
-        renderScrollComponent={TrackScrollComponent}
-        ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
-        showsVerticalScrollIndicator={false}
-        bounces
-        alwaysBounceVertical
-        scrollEventThrottle={16}
-        onScroll={onScroll}
-        onContentSizeChange={handleContentSizeChange}
-      />
+      <View style={[styles.clip, { top: geometry.expandedTop }]}>
+        <AnimatedFlashList
+          ref={setListRef as unknown as React.Ref<React.Component>}
+          style={[styles.track, { top: -geometry.expandedTop }]}
+          contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+          data={list.data}
+          renderItem={renderRowOnSurface}
+          keyExtractor={list.keyExtractor}
+          getItemType={list.getItemType}
+          ItemSeparatorComponent={list.ItemSeparatorComponent}
+          ListEmptyComponent={list.ListEmptyComponent}
+          onEndReached={list.onEndReached}
+          onEndReachedThreshold={list.onEndReachedThreshold}
+          extraData={list.extraData}
+          drawDistance={SCREEN.height}
+          maintainVisibleContentPosition={{ disabled: true }}
+          renderScrollComponent={TrackScrollComponent}
+          ListHeaderComponent={listHeader}
+          ListFooterComponent={listFooter}
+          showsVerticalScrollIndicator={false}
+          bounces
+          alwaysBounceVertical
+          scrollEventThrottle={16}
+          onScroll={onScroll}
+          contentInset={{ bottom: insetBottom }}
+          onContentSizeChange={handleContentSizeChange}
+        />
+      </View>
 
       <Reanimated.View
         style={[styles.founding, { backgroundColor: surfaceColor }, tailStyle]}
@@ -732,6 +731,10 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
+  // Containment (R6): nothing renders above the sheet's top edge. A clip, not
+  // a reposition — the track inside is counter-offset so nothing shifts.
+  clip: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
+  track: { position: 'absolute', left: 0, right: 0, height: SCREEN.height },
   founding: {
     position: 'absolute',
     left: 0,
