@@ -3943,6 +3943,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       throw new Error('Cache name missing from Gemini cache create response');
     }
     const tokens = cache.usageMetadata?.totalTokenCount ?? 0;
+    // `mode` is a PRICING dimension (it applies the 50% batch discount), not
+    // an attribution one — and there is no evidence the vendor discounts
+    // cache operations for batch pipelines. Tagging the batch cache 'batch'
+    // here would under-meter it by half on a guess, so all cache rows price
+    // at standard rate. Attribution is carried by `caller`
+    // (llm.batchSystemCache vs llm.queryInstructionCache), which is the
+    // dimension that actually answers "which pipeline created this".
     this.usageLedger.record({
       service: 'gemini',
       operation: 'createCachedContent',
