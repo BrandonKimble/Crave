@@ -294,3 +294,63 @@ verbatim. Holes stay in content coordinates with the existing
 4. Containment to the frame; r22 corner onto the plate. Eye-check the corner.
 5. Reachability to the inset; delete the fill.
 6. Collapse the scene acks into one join.
+
+---
+
+## 8. RED TEAM 2 (2026-07-28) — the mechanism, proven from the tree
+
+F1 said "a missing founding layer." That was the right shape but still a
+hypothesis. It is now proven, and it is sharper than F1 stated.
+
+### The proof
+
+- `TrackSheetPage.tsx:491` renders the app's ONE `FrostedGlassBackground`
+  **inside the chrome block**, immediately above the chrome's own
+  `MaskedHoleOverlay` (:496).
+- `TrackSheetRouteHost.tsx:545` wraps **every row individually** in its own
+  `SceneBodyFoundationSurface`, with `scrollOffset={zeroScrollOffset}`. The
+  comment at :539 records why: "FrostCutout found no surface and silently
+  rendered a plain box."
+
+So the frost is not a founding layer of the sheet at all — it is a **local
+backdrop of the header**. That single fact explains the exact split the owner
+reported, with no remaining mystery:
+
+- Header cutouts (grab handle, nav action) show frost — the frost is directly
+  behind that plate.
+- Body cutouts (**ProfilePanel stats, HomePanel row band** — the only two
+  `FrostCutout` users) show the MAP, because behind a row's plate there is
+  nothing but the transparent track.
+
+The per-row wrap at :545 was a fix aimed at C2's symptom (FrostCutout no-op'ing)
+that could never work: it gave each hole a plate, but no hole a frost. It also
+IS conflation C1 in its purest form — N plates, each sized to a row.
+
+### What this settles about the design
+
+1. **The frost must found the SHEET, not the chrome.** Old stack [0]: ONE
+   `FrostedGlassBackground`, opacity 1, never animated, beneath everything. This
+   is a move, not new code.
+2. **One plate, not N.** The per-row surfaces collapse into the single
+   τ-anchored plate of §3. This is the hoist, and it deletes the per-row wrap.
+3. **One foundation surface at the LANE**, restoring the real
+   `scrollOffset` glue term (`−clamp(scroll) − contentOverscroll`) that the
+   per-row wrap zeroed out. Holes stay in content coordinates.
+4. `TrackSheetStrip` already punches through its own plate with the same
+   `MaskedHoleOverlay` — correct once a frost exists beneath it, and needing no
+   change.
+
+### Ordering correction
+
+Step 2 and step 3 of §7 are **not separable**. Hoisting the frost without
+collapsing the per-row plates leaves N opaque row plates between the frost and
+the holes; collapsing the plates without the frost leaves the holes revealing
+map. They land together or not at all — the same lesson as the last regression,
+arrived at from the opposite direction.
+
+### Confidence
+
+The cutout family (§4 items 2 and 3) is now fully attributed from the tree, not
+inferred. The remaining items are NOT at this confidence and must not be
+implemented on the same assumption of certainty: the polls header gap, the
+`[JOINT]` redraw join, and nav choppiness have no attributed mechanism yet.
