@@ -79,6 +79,32 @@ COSMETIC DEFECT: advanceLane updates due_at but leaves the cadence_days
 COLUMN stale, so the column misreports the lane's real cadence. Scheduling
 reads due_at so behavior is right; fix the column write for honesty.
 
+## 3b. NESTED CATEGORY DOUBLE-COUNT (found 2026-07-28; fix before reload)
+
+§2a suppresses a category item when a DISH carries the claim. Owner asked
+whether nested category claims (a place claimed for both "chicken" and
+"kung pao chicken", no dishes) should each count. MEASURED: 871 same-
+document parent+child category pairs, 723 mentions / 1,006 upvotes of 5,722
+category upvotes (~18%) are ONE claim counted twice. So: not correct.
+
+The obvious fix is WRONG and was tested before proposing: suppressing any
+category with a narrower category under it flips 244 items and drops 646
+upvotes of genuinely DISTINCT claims. Why the asymmetry — banking. A
+category claim's mentions REPLAY onto matching dishes, so excluding the
+whole category item loses nothing (the dish already holds it). Category
+items carry `categories: []`, so nothing replays onto a NARROWER CATEGORY
+item — excluding the parent there destroys evidence.
+
+IDEAL FIX (foundation, not a second SQL rule): make banking SYMMETRIC —
+give category items their parent categories so a parent claim replays onto
+the narrower category item exactly as it does onto a dish. Then ONE rule
+covers every case: a claim counts once, credited to the most specific
+carrier that actually holds it, and the rollup predicate widens from "a
+dish carries it" to "any narrower item carries it". Requires reordering
+projection-rebuild (category items are currently built AFTER support
+attachment, deliberately, so they receive no banked support) — verify with
+a full local rebuild before the reload.
+
 ## 4. THE PRE-RELOAD AUDIT (the gate — do this BEFORE spending)
 
 The prompt has NEVER been validated in full: the 13/13 replay predates the
