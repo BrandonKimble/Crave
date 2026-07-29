@@ -1597,6 +1597,18 @@ selected_locations AS (
           OR EXISTS (
             SELECT 1 FROM derived_food_category_edges e
             WHERE e.food_id = c2.food_id AND e.category_id = c.food_id
+              -- ANTISYMMETRY. Lineage is genuinely directed (11,093 edges,
+              -- only 8 symmetric), but where BOTH directions are claimed the
+              -- relation is saying "synonyms", not "parent/child" -- e.g.
+              -- 'wings' <-> 'chicken wings'. Without this guard each would
+              -- shadow the other and the claim would vanish from the rollup
+              -- entirely. Losing evidence is worse than counting a synonym
+              -- pair twice, so neither shadows.
+              AND NOT EXISTS (
+                SELECT 1 FROM derived_food_category_edges rev
+                WHERE rev.food_id = c.food_id
+                  AND rev.category_id = c2.food_id
+              )
           )
         )
     )`;

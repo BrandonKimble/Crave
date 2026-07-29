@@ -89,6 +89,14 @@ describe('restaurant rollup counts one claim once, most specific carrier wins', 
     expect(preview()).not.toContain('NOT c.is_category_item');
   });
 
+  it('is ANTISYMMETRIC: a synonym cycle must not erase both claims', () => {
+    // Lineage is genuinely directed (11,093 edges, 8 symmetric), but where
+    // both directions exist ('wings' <-> 'chicken wings') the relation means
+    // synonym, not parent/child. Without the reverse-edge guard each would
+    // shadow the other and the claim would vanish from the rollup entirely.
+    expect(preview()).toContain('rev.food_id = c.food_id');
+  });
+
   it('applies to the geographic rollup too, not just the filtered one', () => {
     const occurrences = preview().split("m.kind = 'direct'").length - 1;
     expect(occurrences).toBeGreaterThanOrEqual(2);
