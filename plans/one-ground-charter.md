@@ -224,6 +224,32 @@ DEFERRED, scoped: strip the ~115 census legal designations only (they are visibl
 in the UI — "Polls in Anchorage Municipality"), class by class, leaving the 284 and
 the `by-the-Sea`/`Village`/`Lake`/`City` stragglers to a human read.
 
+### Census retirement — measured 2026-07-28, 11 rows left and they are honest
+
+Code: ZERO load-bearing census references remain in `apps/api/src` or
+`packages/shared/src` — every hit is a comment describing history.
+
+Data: probed all 22 remaining census-GEOID rows against TomTom at their own
+anchors. 21 returned an entity, but only 11 returned THEMSELVES; the other 10
+returned the NEIGHBOURING municipality that contains them (Glen Echo Park →
+Normandy, Sweetwater → Miami, Mule Barn → Cleveland, Rentiesville → Checotah,
+Cherokee Ridge → Union Grove, Cimarron City → Crescent, Lone Chimney → Pawnee,
+Vernon → Hanna, Viola → Morrison, Holt → Kearney). Those 10 plus Keansburg NJ
+(no entity at all) are places TomTom does not model individually — claiming
+those geometry ids would be exactly the entity-exclusivity violation the
+promotion guard exists to prevent, and would put two towns on one outline.
+
+Applied: the 11 self-matching rows adopted their TomTom identity (their
+outlines were ALREADY TomTom-sourced — `place_geometries.provider_boundary_id`
+was the TomTom geometry id; only `places.provider_place_id` still held a census
+GEOID), and Texas + United States had their stale `provider='census'` label
+corrected. Result: **22,767 tomtom / 11 census**.
+
+The 11 are not a debt to pay down — they are the honest tail. They keep a
+census-derived approximate outline because no better source exists for them
+today, and organic discovery will replace any of them the moment TomTom starts
+modelling it.
+
 ### Seeding new regions going forward — grid, not census
 
 Owner direction 2026-07-28, and it is the right shape: onboard a new
