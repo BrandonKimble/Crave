@@ -264,8 +264,35 @@ export function TrackSheetPage<Item>({
       nativePhysics.pinChrome(trackTagRef.current, chromeTagRef.current);
     }
   }, []);
+  // ── THE ORIGIN INVARIANT (RED-capable; this exact defect regressed 3x) ─────
+  // The chrome IS the sheet's top edge, so its window y must equal sheetTopY.
+  // It diverged by exactly expandedTop every time a layer applied that origin
+  // twice — or, in the clip's case, applied the offset while its counter-offset
+  // was silently dropped (FlashList ignores `top` in its style prop; MEASURED,
+  // not assumed). A drift here is always an origin-ownership bug, so it barks
+  // with both numbers rather than failing quietly on screen.
+  const chromeViewRef = React.useRef<View | null>(null);
+  React.useEffect(() => {
+    if (!__DEV__) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      chromeViewRef.current?.measureInWindow((_x, y) => {
+        const drift = Math.round(y - sheetTopY.value);
+        if (Math.abs(drift) > 1) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[ORIGIN] chrome window y (${Math.round(y)}) != sheetTopY (${Math.round(sheetTopY.value)}) — drift ${drift}pt; expandedTop=${Math.round(geometry.expandedTop)}. Some layer is applying the sheet origin twice, or dropping a counter-offset.`
+          );
+        }
+      });
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [geometry.expandedTop, sheetTopY]);
+
   const setChromeRef = React.useCallback(
     (node: View | null) => {
+      chromeViewRef.current = node as unknown as View | null;
       chromeTagRef.current = node != null ? findNodeHandle(node) : null;
       applyPin();
     },
@@ -694,33 +721,35 @@ export function TrackSheetPage<Item>({
         </View>
       </Reanimated.View>
       <View style={[styles.clip, { top: geometry.expandedTop }]}>
-        <AnimatedFlashList
-          ref={setListRef as unknown as React.Ref<React.Component>}
-          style={[styles.track, { top: -geometry.expandedTop }]}
-          contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-          data={list.data}
-          renderItem={renderRowOnSurface}
-          keyExtractor={list.keyExtractor}
-          getItemType={list.getItemType}
-          ItemSeparatorComponent={list.ItemSeparatorComponent}
-          ListEmptyComponent={list.ListEmptyComponent}
-          onEndReached={list.onEndReached}
-          onEndReachedThreshold={list.onEndReachedThreshold}
-          extraData={list.extraData}
-          drawDistance={SCREEN.height}
-          maintainVisibleContentPosition={{ disabled: true }}
-          renderScrollComponent={TrackScrollComponent}
-          ListHeaderComponent={listHeader}
-          ListFooterComponent={listFooter}
-          showsVerticalScrollIndicator={false}
-          bounces
-          alwaysBounceVertical
-          scrollEventThrottle={16}
-          onScroll={onScroll}
-          automaticallyAdjustContentInsets={false}
-          contentInset={{ bottom: insetBottom }}
-          onContentSizeChange={handleContentSizeChange}
-        />
+        <View style={[styles.trackShift, { top: -geometry.expandedTop }]}>
+          <AnimatedFlashList
+            ref={setListRef as unknown as React.Ref<React.Component>}
+            style={StyleSheet.absoluteFill}
+            contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+            data={list.data}
+            renderItem={renderRowOnSurface}
+            keyExtractor={list.keyExtractor}
+            getItemType={list.getItemType}
+            ItemSeparatorComponent={list.ItemSeparatorComponent}
+            ListEmptyComponent={list.ListEmptyComponent}
+            onEndReached={list.onEndReached}
+            onEndReachedThreshold={list.onEndReachedThreshold}
+            extraData={list.extraData}
+            drawDistance={SCREEN.height}
+            maintainVisibleContentPosition={{ disabled: true }}
+            renderScrollComponent={TrackScrollComponent}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={listFooter}
+            showsVerticalScrollIndicator={false}
+            bounces
+            alwaysBounceVertical
+            scrollEventThrottle={16}
+            onScroll={onScroll}
+            automaticallyAdjustContentInsets={false}
+            contentInset={{ bottom: insetBottom }}
+            onContentSizeChange={handleContentSizeChange}
+          />
+        </View>
       </View>
 
       <Reanimated.View
@@ -754,7 +783,7 @@ const styles = StyleSheet.create({
   // a reposition — the track inside is counter-offset so nothing shifts.
   chromeLane: { zIndex: 60 },
   clip: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
-  track: { position: 'absolute', left: 0, right: 0, height: SCREEN.height },
+  trackShift: { position: 'absolute', left: 0, right: 0, height: SCREEN.height },
   founding: {
     position: 'absolute',
     left: 0,
