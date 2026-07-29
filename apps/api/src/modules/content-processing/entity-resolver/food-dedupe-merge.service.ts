@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityStatus } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 
@@ -50,10 +51,65 @@ export class FoodDedupeMergeService {
       judgeRejected: 0,
     };
 
+    // 0. NUMBER VARIANTS FIRST — and deliberately OUTSIDE the trigram scan.
+    // This sweep has always excluded substring-related pairs (step 1's
+    // `position(a.name IN b.name) = 0`) to protect legitimate specific-vs-
+    // general dishes like "chicken sandwich" inside "chicken parm sandwich".
+    // But "taco" is a substring of "tacos", so that guard silently excluded
+    // EVERY singular/plural pair — which is why 260 of them accumulated in a
+    // database that has had a dedupe sweep all along. Number variance is
+    // decided in code (food-lemma.ts), never by similarity or by the judge,
+    // so it gets its own lane with no floor and no LLM call.
+    const activeFoods = await this.prisma.entity.findMany({
+      where: { type: 'food', status: 'active' },
+      select: { entityId: true, name: true },
+    });
+    const seenNumberPair = new Set<string>();
+    const numberVariantPairs: {
+      a_id: string;
+      a_name: string;
+      b_id: string;
+      b_name: string;
+    }[] = [];
+    const byLowerName = new Map(
+      activeFoods.map((f) => [f.name.toLowerCase().trim(), f]),
+    );
+    for (const food of activeFoods) {
+      for (const variant of foodNameVariants(food.name)) {
+        const other = byLowerName.get(variant);
+        if (!other || other.entityId === food.entityId) continue;
+        if (!isSameFoodUpToNumber(food.name, other.name)) continue;
+        const key = [food.entityId, other.entityId].sort().join(':');
+        if (seenNumberPair.has(key)) continue;
+        seenNumberPair.add(key);
+        numberVariantPairs.push({
+          a_id: food.entityId,
+          a_name: food.name,
+          b_id: other.entityId,
+          b_name: other.name,
+        });
+      }
+    }
+    for (const pair of numberVariantPairs) {
+      if (dryRun) {
+        this.logger.info('Would merge number-variant foods', {
+          a: pair.a_name,
+          b: pair.b_name,
+          via: 'number',
+        });
+      } else {
+        await this.mergeFoodPair(pair.a_id, pair.b_id);
+      }
+      summary.autoMerged += 1;
+    }
+    const mergedByNumber = new Set(
+      numberVariantPairs.flatMap((p) => [p.a_id, p.b_id]),
+    );
+
     // 1. Candidate pairs: high trigram similarity, both active foods, and not
     // substring-related (substrings are legitimate specific-vs-general dishes,
     // e.g. "chicken sandwich" ⊂ "chicken parm sandwich").
-    const pairs = await this.prisma.$queryRaw<
+    const allPairs = await this.prisma.$queryRaw<
       { a_id: string; a_name: string; b_id: string; b_name: string }[]
     >`
       SELECT a.entity_id a_id, a.name a_name, b.entity_id b_id, b.name b_name
@@ -67,6 +123,9 @@ export class FoodDedupeMergeService {
       ORDER BY similarity(a.name, b.name) DESC
       LIMIT 200
     `;
+    const pairs = allPairs.filter(
+      (p) => !mergedByNumber.has(p.a_id) && !mergedByNumber.has(p.b_id),
+    );
     summary.candidatePairs = pairs.length;
     if (!pairs.length) {
       return summary;

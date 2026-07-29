@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
+import { foodNameVariants } from './food-lemma';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
@@ -505,6 +506,25 @@ export class EntityResolutionService implements OnModuleInit {
       e.normalizedName.toLowerCase().trim(),
     );
 
+    // SINGULAR/PLURAL IS DECIDED HERE, IN CODE, NOT BY THE JUDGE.
+    // Attribution (llm_decision_records, 2026-07-28): the LLM judge answered
+    // the IDENTICAL question "is 'dumplings' the same as 'dumpling'?" —
+    // same candidate list — `match` five times and `new` once, and the one
+    // `new` minted the duplicate permanently, because this exact tier then
+    // finds it forever and the judge is never asked again. 11.6% of repeated
+    // identical questions across the ledger disagree with themselves. A
+    // plural is a morphological fact, so we never ask: probing the number
+    // variants here removes the question from the stochastic tier entirely
+    // (cheaper AND exact). Foods and ingredients only — restaurant names
+    // carry number as branding ("Torchy's Tacos" is not "Torchy's Taco").
+    const usesNumberVariants =
+      entityType === EntityType.food || entityType === EntityType.ingredient;
+    const probeNames = usesNumberVariants
+      ? Array.from(
+          new Set(entities.flatMap((e) => foodNameVariants(e.normalizedName))),
+        )
+      : normalizedNames;
+
     try {
       // Optimized bulk query for exact matches. Archived rows are excluded:
       // a merged-away synonym must forward to its canonical via the alias
@@ -513,7 +533,7 @@ export class EntityResolutionService implements OnModuleInit {
         type: entityType,
         status: { not: EntityStatus.archived },
         name: {
-          in: normalizedNames,
+          in: probeNames,
           mode: 'insensitive',
         },
       };
@@ -535,9 +555,16 @@ export class EntityResolutionService implements OnModuleInit {
       );
 
       return entities.map((entity) => {
-        const entityId = nameToEntityMap.get(
-          entity.normalizedName.toLowerCase().trim(),
-        );
+        const raw = entity.normalizedName.toLowerCase().trim();
+        // Exact spelling wins; a number variant is the fallback, so an input
+        // never jumps to a plural twin when its own form exists.
+        let entityId = nameToEntityMap.get(raw);
+        if (!entityId && usesNumberVariants) {
+          for (const variant of foodNameVariants(raw)) {
+            entityId = nameToEntityMap.get(variant);
+            if (entityId) break;
+          }
+        }
         return {
           tempId: entity.tempId,
           entityId: entityId || null,
