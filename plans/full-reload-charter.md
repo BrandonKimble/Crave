@@ -209,6 +209,33 @@ The dedicated audit cycle ran as its own plan per the re-sequencing:
   the wipe erases current entities, so pre-reload alias curation is work
   thrown away.
 
+## 7. EXECUTION RECORD (2026-07-30) — THE RELOAD IS RUNNING
+
+- Prod deployed at 31da01ca (final prompt + all migrations), then worker at
+  6bfb8107 with the FullReloadRunner.
+- §2c verified ON PROD: 3,630 poll targets, 3,231 curated items, 646
+  photo/list refs, 2 on-demand links — NOT negligible, so the wipe
+  preserves user-anchored rows.
+- INSURANCE: pg_dump of the four derived tables taken pre-wipe (90MB,
+  session scratchpad) on top of the raw-truth re-derivability guarantee.
+- WIPE EXECUTED on prod (scripts/reload/wipe-austin-derived.sql, rehearsed
+  on local first): single clean transaction — 1,952 entities + 1,686
+  connections preserved (counters zeroed), ~20,400 entities wiped
+  INCLUDING tombstones (the charter's point), locations/edges/signals/
+  events/mentions/scores wiped, non-reddit attribute evidence kept only on
+  preserved restaurants.
+- RELOAD RUNNING prod-natively (worker boot runner, RUN_AUSTIN_FULL_RELOAD
+  =1): 39,463 docs across 47 runs, submission via Gemini BATCH (default,
+  half price), every submission through the unified spend gate. First
+  progress: 10/47 runs / 1,614 docs / 0 failed in ~30s. A deploy-overlap
+  twin instance emitted a duplicate "starting" line and died before
+  meaningful submission (single progress stream confirms one runner; any
+  sub-run duplicate is ledger-visible and bounded).
+- OPERATOR TAIL (after the DONE log + batch queue drains):
+  1. railway variables --service worker --set RUN_AUSTIN_FULL_RELOAD=0
+  2. railway variables --service worker --set COLLECTION_SCHEDULER_ENABLED=true
+  3. redeploy worker; confirm foodnyc chronological dispatch on next tick.
+
 ## 5. NEW YORK — no reprocessing, no gaps
 
 NY's raw corpus and its 1,000-post catch-up stay as they are. The risk is a
@@ -219,6 +246,11 @@ chronological lane resumes with a due date that does not skip arrivals. If
 the pause runs long, run foodnyc's chronological lane ALONE (cheap, ~11
 docs/run at Austin rates; NY is denser) to keep the window fresh without
 touching the reload.
+
+CONTINUITY VERIFIED 2026-07-30 (read-only, prod): foodnyc chronological
+last ran 2026-07-25, due 2026-08-08 (the derived 14d cadence), newest doc
+2026-07-25. Elapsed pause ≈ 5 days against the ~81-day window — ample
+headroom; the lane resumes cleanly on re-enable with no skipped arrivals.
 
 ## 5b. RE-SEQUENCED INTO THE THREE-PLAN PROGRAM (owner 2026-07-30)
 
