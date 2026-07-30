@@ -47,15 +47,6 @@
 /// inside scrollViewDidScroll, the same frame as the offset change, exactly as
 /// RCTScrollView implements native sticky headers.
 @property (nonatomic, weak) UIView *pinnedChromeView;
-/// THE HEADER-LANE MASK. The chrome is a lane ABOVE the track, and a blur can
-/// only reveal the map if NOTHING opaque sits between the hole and the map — so
-/// the track's rows must never RENDER in the chrome's band. clipsToBounds (or a
-/// frame that starts below the chrome) would do it, but it clips HIT-TESTING
-/// too, and every point of the sheet must stay grabbable. A CALayer mask clips
-/// rendering ONLY: touches in the band still reach the scroll view, so a drag on
-/// the header still drives the one track. NAN = no mask.
-@property (nonatomic, assign) CGFloat maskTop;
-@property (nonatomic, strong) CALayer *trackMaskLayer;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -224,24 +215,6 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
     const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
     if (!CGAffineTransformEqualToTransform(chrome.transform, next)) {
       chrome.transform = next;
-    }
-  }
-
-  // THE MASK rides the same frame as the offset. It lives in the scroll view's
-  // BOUNDS space, which scrolls with the content — so holding it screen-fixed
-  // means tracking contentOffset here, exactly like the pin above.
-  CALayer *mask = self.trackMaskLayer;
-  if (mask != nil && !isnan(self.maskTop)) {
-    const CGRect b = scrollView.bounds;
-    const CGRect next = CGRectMake(0,
-                                   scrollView.contentOffset.y + self.maskTop,
-                                   CGRectGetWidth(b),
-                                   CGRectGetHeight(b) * 4.0);
-    if (!CGRectEqualToRect(mask.frame, next)) {
-      [CATransaction begin];
-      [CATransaction setDisableActions:YES];
-      mask.frame = next;
-      [CATransaction commit];
     }
   }
 
@@ -456,46 +429,6 @@ RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
     }
     UIView *chrome = viewRegistry[chromeTag] ?: [uiManager viewForReactTag:chromeTag];
     proxy.pinnedChromeView = chrome;
-  }];
-}
-
-// Install/clear the header-lane mask. maskTop is in POINTS from the scroll
-// view's top edge; rows above it stop rendering while still taking touches.
-RCT_EXPORT_METHOD(setTrackMask:(nonnull NSNumber *)reactTag
-                  maskTop:(nullable NSNumber *)maskTop)
-{
-  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
-    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
-    if (scrollView == nil) {
-      return;
-    }
-    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
-    if (proxy == nil) {
-      return;
-    }
-    if (maskTop == nil) {
-      scrollView.layer.mask = nil;
-      proxy.trackMaskLayer = nil;
-      proxy.maskTop = NAN;
-      return;
-    }
-    CALayer *mask = proxy.trackMaskLayer;
-    if (mask == nil) {
-      mask = [CALayer layer];
-      mask.backgroundColor = [UIColor blackColor].CGColor;
-      proxy.trackMaskLayer = mask;
-      scrollView.layer.mask = mask;
-    }
-    proxy.maskTop = [maskTop doubleValue];
-    const CGRect b = scrollView.bounds;
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES];
-    mask.frame = CGRectMake(0,
-                            scrollView.contentOffset.y + proxy.maskTop,
-                            CGRectGetWidth(b),
-                            CGRectGetHeight(b) * 4.0);
-    [CATransaction commit];
   }];
 }
 
