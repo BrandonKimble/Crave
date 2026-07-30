@@ -195,6 +195,17 @@ the pause runs long, run foodnyc's chronological lane ALONE (cheap, ~11
 docs/run at Austin rates; NY is denser) to keep the window fresh without
 touching the reload.
 
+## 5b. RE-SEQUENCED INTO THE THREE-PLAN PROGRAM (owner 2026-07-30)
+
+This charter is now PHASE 3 of a larger order: (1) the search rebuild's
+STRUCTURAL work (plans/search-from-scratch-derivation.md) lands first —
+it is graph-content-independent; (2) a dedicated FULL DATA AUDIT + PROMPT
+REVIEW cycle (its own plan) produces the final prompt; (3) THEN this
+charter executes (verify §2c, wipe, reload, re-enable, NY continuity),
+followed by the search plan's calibration tail against the fresh graph.
+Pipeline fixes are DEPLOYED (8961ef71, 2026-07-30) so prod already runs
+the corrected prompt, scoring, and spend governor.
+
 ## 6. SEQUENCE
 
 1. DONE 2026-07-27. Resolution-cost audit found thinking config lost at the

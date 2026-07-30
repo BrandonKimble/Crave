@@ -369,6 +369,12 @@ export class CollectorSourceRegistryService {
           last_ran_at = ${now},
           updated_at = now()
       WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+        -- CONCURRENCY GUARD (red team R14): advancing is CLAIMING. Two
+        -- overlapping dispatches for one lane must not both push due_at
+        -- from their own "now" (last-write-wins on cadence_days too). Only
+        -- a lane that is still DUE can be advanced; the loser's UPDATE
+        -- matches zero rows and the lane advances exactly once.
+        AND due_at <= ${now}
     `;
   }
 
