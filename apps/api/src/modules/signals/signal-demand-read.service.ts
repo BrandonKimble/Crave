@@ -918,12 +918,17 @@ export class SignalDemandReadService {
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.subject_id IS NOT NULL
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
           -- Wave-5 F4: wrap-aware longitude intersect (the ONE canonical
           -- predicate) as the PREFILTER; attribution itself is the
           -- aggregate's §2.6 single-ground containment law (C3 cut) —
           -- ST_Covers/ST_CoveredBy on the place's ONE geometry row.
-          AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
+          -- P5b (2026-07-29): the prefilter is BYPASSED for anchored signals —
+          -- their geo is a centroid point that can sit outside an ANCESTOR's
+          -- bbox (the Washington spill), and their predicate is a DAG PK-walk
+          -- that needs no geometric prefilter.
+          AND (s.place_id IS NOT NULL
+               OR (s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
+                   AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})))
           AND (${freshSignalAttributionSql('p')})
           ${freshFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2
@@ -1022,11 +1027,15 @@ export class SignalDemandReadService {
           AND s.occurred_at >= ${utcInstantSql(params.since)}
           AND s.subject_text IS NOT NULL
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
-          AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
           -- Wave-5 F4: wrap-aware longitude intersect (canonical helper) as
           -- the PREFILTER; membership judged by the §2.6 single-ground
           -- containment law (C3 cut) — the place's ONE geometry row.
-          AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
+          -- P5b (2026-07-29): prefilter bypassed for anchored signals (their
+          -- centroid-point geo can sit outside an ancestor's bbox — the
+          -- Washington spill; the DAG predicate needs no geometric prefilter).
+          AND (s.place_id IS NOT NULL
+               OR (s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
+                   AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})))
           AND (${freshSignalAttributionSql('p')})
       ),
       per_request AS (

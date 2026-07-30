@@ -298,9 +298,19 @@ export class DemandMassReader {
           MAX(${EVENT_COUNT_SQL})::float8 AS acts
         FROM places pb
         JOIN signals s
-          ON s.geo_min_lat <= pb.bbox_max_lat
-         AND s.geo_max_lat >= pb.bbox_min_lat
-         AND (${this.lngIntersectSql()})
+          -- P5b (2026-07-29): the bbox prefilter is BYPASSED for anchored
+          -- signals. An anchored act's geo is its place's centroid POINT, and
+          -- that point can legitimately sit outside an ANCESTOR's bbox
+          -- (TomTom's Washington Municipality spills into Maryland; its
+          -- representative point can be in the spill, outside DC's bbox).
+          -- "Containment implies intersection, so the prefilter never drops a
+          -- true candidate" is a GEO-ARM fact only — DAG ancestry makes no
+          -- geometric promise. The anchored arm needs no prefilter: its
+          -- predicate is a PK-walk, not a geometry probe.
+          ON (s.place_id IS NOT NULL
+              OR (s.geo_min_lat <= pb.bbox_max_lat
+                  AND s.geo_max_lat >= pb.bbox_min_lat
+                  AND (${this.lngIntersectSql()})))
          AND (${freshSignalAttributionSql('pb')})
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
           AND pb.bbox_min_lat IS NOT NULL
@@ -431,9 +441,19 @@ export class DemandMassReader {
           MAX(${EVENT_COUNT_SQL})::float8 AS acts
         FROM places pb
         JOIN signals s
-          ON s.geo_min_lat <= pb.bbox_max_lat
-         AND s.geo_max_lat >= pb.bbox_min_lat
-         AND (${this.lngIntersectSql()})
+          -- P5b (2026-07-29): the bbox prefilter is BYPASSED for anchored
+          -- signals. An anchored act's geo is its place's centroid POINT, and
+          -- that point can legitimately sit outside an ANCESTOR's bbox
+          -- (TomTom's Washington Municipality spills into Maryland; its
+          -- representative point can be in the spill, outside DC's bbox).
+          -- "Containment implies intersection, so the prefilter never drops a
+          -- true candidate" is a GEO-ARM fact only — DAG ancestry makes no
+          -- geometric promise. The anchored arm needs no prefilter: its
+          -- predicate is a PK-walk, not a geometry probe.
+          ON (s.place_id IS NOT NULL
+              OR (s.geo_min_lat <= pb.bbox_max_lat
+                  AND s.geo_max_lat >= pb.bbox_min_lat
+                  AND (${this.lngIntersectSql()})))
          AND (${freshSignalAttributionSql('pb')})
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         WHERE pb.place_id = ANY(${placeIds}::uuid[])

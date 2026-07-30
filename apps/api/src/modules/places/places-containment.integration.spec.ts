@@ -13,8 +13,9 @@
  * It FAILS LOUDLY without one rather than skipping: a silently-skipped test
  * proves nothing, which is the exact disease this file treats.
  */
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { PlacesCatalogService } from './places-catalog.service';
+import { freshSignalAttributionSql } from '../signals/ground-containment';
 
 const TEST_TAG = 'itest-containment';
 const prisma = new PrismaClient();
@@ -36,11 +37,16 @@ async function seedPlace(opts: {
   level: string;
   bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number };
   groundWkt: string;
+  /** DAG edges, as sketchChain would have written them. The real system
+   *  ALWAYS has these (every place is born from a reverse-geocode chain);
+   *  a fixture without them models a state that cannot occur. */
+  parents?: string[];
 }): Promise<string> {
   const [row] = await prisma.$queryRawUnsafe<Array<{ place_id: string }>>(
     `INSERT INTO places (name, provider_level_code, country_code, provider,
-                         bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng)
-     VALUES ($1, $2, 'US', '${TEST_TAG}', $3, $4, $5, $6)
+                         bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng,
+                         parent_place_ids)
+     VALUES ($1, $2, 'US', '${TEST_TAG}', $3, $4, $5, $6, $7::uuid[])
      RETURNING place_id`,
     opts.name,
     opts.level,
@@ -48,6 +54,7 @@ async function seedPlace(opts: {
     opts.bbox.minLng,
     opts.bbox.maxLat,
     opts.bbox.maxLng,
+    opts.parents ?? [],
   );
   await prisma.$executeRawUnsafe(
     `INSERT INTO place_geometries (place_id, provider_boundary_id, fetched_at, geometry)
@@ -56,6 +63,46 @@ async function seedPlace(opts: {
     opts.groundWkt,
   );
   return row.place_id;
+}
+
+/**
+ * Insert an ANCHORED signal (P5b: place_id set, geo = whatever rectangle/point
+ * the caller wants on the NOT NULL columns), attribute it with the REAL
+ * exported law — freshSignalAttributionSql, the exact Prisma.Sql the runtime
+ * call sites execute — and return the attributed names. The signal is cleaned
+ * up even when an expectation later throws.
+ */
+async function attributeAnchoredSignal(
+  anchorPlaceId: string,
+  geo: { minLat: number; minLng: number; maxLat: number; maxLng: number },
+): Promise<string[]> {
+  const [signal] = await prisma.$queryRawUnsafe<Array<{ signal_id: string }>>(
+    `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
+                          geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
+     VALUES ('poll_created', 'none', gen_random_uuid(), now(), $1::uuid,
+             $2, $3, $4, $5)
+     RETURNING signal_id`,
+    anchorPlaceId,
+    geo.minLat,
+    geo.minLng,
+    geo.maxLat,
+    geo.maxLng,
+  );
+  try {
+    const attributed = await prisma.$queryRaw<Array<{ name: string }>>(
+      Prisma.sql`SELECT p.name
+         FROM places p, signals s
+        WHERE s.signal_id = ${signal.signal_id}::uuid
+          AND p.provider = ${TEST_TAG}
+          AND (${freshSignalAttributionSql('p')})`,
+    );
+    return attributed.map((r) => r.name).sort();
+  } finally {
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM signals WHERE signal_id = $1::uuid`,
+      signal.signal_id,
+    );
+  }
 }
 
 beforeAll(async () => {
@@ -167,19 +214,32 @@ describe('containment laws, proven against PostGIS', () => {
     //
     // BigCity's ground is only the WESTERN half of its stored rectangle
     // (60..61 of 60..62). Suburb sits in the EASTERN half — inside BigCity's
-    // RECTANGLE, outside BigCity's GROUND. State covers everything.
+    // RECTANGLE, outside BigCity's GROUND. State covers everything, and the
+    // DAG records BigCity → State exactly as sketchChain would have.
     //
     // OLD law (geo = BigCity's bbox): arm (i) ST_Covers(ground, bbox) is FALSE
     // even for BigCity itself (a polygon never covers its own bbox), and arm
     // (ii) ST_CoveredBy(ground, bbox) matches Suburb — so the act lands on a
     // town it did not happen in. That is the measured prod defect (Austin: 31).
-    // NEW law (anchor = BigCity): BigCity ✓ (covers itself), State ✓
-    // (ancestor), Suburb ✗ (BigCity's ground does not cover it).
+    // NEW law (anchor = BigCity): BigCity ✓ (itself), State ✓ (DAG ancestor),
+    // Suburb ✗ (not the anchor, not an ancestor of it).
+    //
+    // This runs the REAL exported predicate — the earlier version of this test
+    // inlined a COPY of the SQL, which is the string-match disease this file
+    // exists to cure (a fix to the law would have left the copy asserting the
+    // old one).
+    const stateId = await seedPlace({
+      name: 'State',
+      level: 'CountrySubdivision',
+      bbox: { minLat: 59, minLng: 59, maxLat: 63, maxLng: 63 },
+      groundWkt: 'POLYGON((59 59, 63 59, 63 63, 59 63, 59 59))',
+    });
     const bigCityId = await seedPlace({
       name: 'BigCity',
       level: 'Municipality',
       bbox: { minLat: 60, minLng: 60, maxLat: 62, maxLng: 62 },
       groundWkt: 'POLYGON((60 60, 61 60, 61 62, 60 62, 60 60))',
+      parents: [stateId],
     });
     await seedPlace({
       name: 'Suburb',
@@ -187,50 +247,81 @@ describe('containment laws, proven against PostGIS', () => {
       bbox: { minLat: 61.2, minLng: 61.2, maxLat: 61.4, maxLng: 61.4 },
       groundWkt:
         'POLYGON((61.2 61.2, 61.4 61.2, 61.4 61.4, 61.2 61.4, 61.2 61.2))',
-    });
-    await seedPlace({
-      name: 'State',
-      level: 'CountrySubdivision',
-      bbox: { minLat: 59, minLng: 59, maxLat: 63, maxLng: 63 },
-      groundWkt: 'POLYGON((59 59, 63 59, 63 63, 59 63, 59 59))',
+      parents: [stateId],
     });
 
     // A poll act in BigCity, written the P5b way: anchored to the place. The
     // geo columns still carry the old rectangle, so this test ALSO proves the
     // anchor WINS over a lying rectangle sitting right next to it.
-    const [signal] = await prisma.$queryRawUnsafe<Array<{ signal_id: string }>>(
-      `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
-                            geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
-       VALUES ('poll_created', 'none', gen_random_uuid(), now(), $1::uuid,
-               60, 60, 62, 62)
-       RETURNING signal_id`,
-      bigCityId,
-    );
-
-    const attributed = await prisma.$queryRawUnsafe<Array<{ name: string }>>(
-      `SELECT p.name
-         FROM places p, signals s
-        WHERE s.signal_id = $1::uuid
-          AND p.provider = '${TEST_TAG}'
-          AND (CASE WHEN s.place_id IS NOT NULL
-                 THEN EXISTS (SELECT 1 FROM place_geometries anchor_pg
-                                JOIN place_geometries cand_pg
-                                  ON cand_pg.place_id = p.place_id
-                               WHERE anchor_pg.place_id = s.place_id
-                                 AND ST_Covers(cand_pg.geometry, anchor_pg.geometry))
-                 ELSE FALSE END)`,
-      signal.signal_id,
-    );
-    const names = attributed.map((r) => r.name).sort();
+    const names = await attributeAnchoredSignal(bigCityId, {
+      minLat: 60,
+      minLng: 60,
+      maxLat: 62,
+      maxLng: 62,
+    });
 
     expect(names).toContain('BigCity'); // the place it happened in
     expect(names).toContain('State'); // its ancestor
     expect(names).not.toContain('Suburb'); // RED under the old rectangle law
+  });
 
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM signals WHERE signal_id = $1::uuid`,
-      signal.signal_id,
-    );
+  it('P5b ANCESTRY IS THE VENDOR CHAIN, NOT POLYGON NESTING — the Washington case', async () => {
+    // Measured on prod 2026-07-29: TomTom's Washington Municipality is 159.5
+    // sq mi with only 42.8% inside the District (the metro agglomeration, not
+    // the city), and 2,111 of 19,452 US municipality→state DAG links (10.85%)
+    // are NOT geometric containments — municipal outlines include bays and
+    // barrier islands the state outline generalises away. ST_Covers is
+    // all-or-nothing, so ONE sliver outside the parent breaks the link.
+    //
+    // The fixture reproduces the shape: Metropolis's ground SPILLS west of its
+    // DAG parent District (69.5..70.6 vs the District's 70..71), so
+    // ST_Covers(District.ground, Metropolis.ground) is FALSE while the DAG —
+    // the vendor's own stated chain — says District IS the parent. The law
+    // must follow the DAG: the vendor's stated hierarchy is a fact, polygon
+    // nesting is an approximation (the same principle as P3 identity).
+    //
+    // Innocent sits INSIDE Metropolis's polygon but is NOT in its ancestor
+    // chain — geometric thinking in either direction would drag it in.
+    const districtId = await seedPlace({
+      name: 'District',
+      level: 'CountrySubdivision',
+      bbox: { minLat: 70, minLng: 70, maxLat: 71, maxLng: 71 },
+      groundWkt: 'POLYGON((70 70, 71 70, 71 71, 70 71, 70 70))',
+    });
+    const metropolisId = await seedPlace({
+      name: 'Metropolis',
+      level: 'Municipality',
+      bbox: { minLat: 70.2, minLng: 69.5, maxLat: 70.8, maxLng: 70.6 },
+      groundWkt:
+        'POLYGON((69.5 70.2, 70.6 70.2, 70.6 70.8, 69.5 70.8, 69.5 70.2))',
+      parents: [districtId],
+    });
+    await seedPlace({
+      name: 'Innocent',
+      level: 'Municipality',
+      bbox: { minLat: 70.3, minLng: 70.1, maxLat: 70.4, maxLng: 70.2 },
+      groundWkt:
+        'POLYGON((70.1 70.3, 70.2 70.3, 70.2 70.4, 70.1 70.4, 70.1 70.3))',
+      parents: [districtId],
+    });
+
+    // The anchored act's geo is the CENTROID POINT, placed here IN THE SPILL
+    // (70.5, 69.7 — west of the District's bbox), modelling Washington's
+    // representative point sitting on the Maryland side. The law must ignore
+    // it entirely. NOTE the runtime call sites additionally wrap the law in a
+    // bbox PREFILTER that anchored signals must bypass (they do — the
+    // `s.place_id IS NOT NULL OR (...)` arm at each site); this harness runs
+    // the law alone, so that bypass is asserted at the site level, not here.
+    const names = await attributeAnchoredSignal(metropolisId, {
+      minLat: 70.5,
+      minLng: 69.7,
+      maxLat: 70.5,
+      maxLng: 69.7,
+    });
+
+    expect(names).toContain('Metropolis'); // the place it happened in
+    expect(names).toContain('District'); // DAG ancestor — RED under ST_Covers ancestry
+    expect(names).not.toContain('Innocent'); // inside the polygon, not in the chain
   });
 
   it('THE SEAM: a view crossing the antimeridian returns only the places actually there', async () => {

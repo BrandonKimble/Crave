@@ -87,24 +87,36 @@ export function geoCoversPlaceSql(
 }
 
 /**
- * P5b — THE PLACE-ANCHORED DIRECTION (one-ground charter, 2026-07-28).
+ * P5b — THE PLACE-ANCHORED DIRECTION (one-ground charter, 2026-07-28;
+ * ancestry law corrected 2026-07-29).
  *
  * When a signal's WHERE genuinely IS a place (a poll act), the act belongs to
- * that place and to every place CONTAINING it — its ancestors — and to nothing
- * else. Judged ground-to-ground: `ST_Covers(candidate.ground, anchor.ground)`.
- * A polygon covers itself, so the anchor place matches; a county covering the
- * town matches; a neighbourhood INSIDE the town does NOT (the act is not in it).
+ * that place and to its ANCESTORS — the vendor's own stated chain, walked up
+ * `parent_place_ids` — and to nothing else.
  *
- * There is deliberately NO tiling arm here. That arm exists so a coarse
+ * ANCESTRY COMES FROM THE DAG, NEVER FROM GEOMETRY. The first version judged
+ * ancestors with `ST_Covers(candidate.ground, anchor.ground)` and claimed the
+ * two were "the same question in one GiST-indexed predicate". They are not.
+ * ST_Covers is all-or-nothing, and polygons do not nest perfectly: municipal
+ * outlines include bays, barrier islands and metro spill the parent's outline
+ * generalises away. Measured on prod (2026-07-29): 2,111 of 19,452 US
+ * municipality→state links the DAG asserts (10.85%) are NOT geometric
+ * containments — TomTom's Washington Municipality is 159.5 sq mi with only
+ * 42.8% inside the District, so a DC poll attributed to Washington and the
+ * COUNTRY, silently skipping its state. The vendor's stated hierarchy is a
+ * fact; polygon nesting is an approximation — the same principle that made
+ * identity the vendor ID rather than a geometric comparison (P3).
+ *
+ * There is deliberately NO downward arm here. Tiling exists so a coarse
  * VIEWPORT reaches the places inside it; a poll is not a viewport, and letting
- * it tile downward is precisely the measured defect this replaces — a poll in
- * Austin collected demand in 31 other places because arm (ii) matched every
- * ground that fitted inside Austin's stored RECTANGLE.
+ * it reach downward is the measured defect P5b replaced (Austin bled into 31
+ * places through its rectangle). A place INSIDE the anchor's polygon but not
+ * on its chain (the fixture's "Innocent") stays excluded by construction.
  *
- * Ancestors are resolved geometrically rather than through the DAG because
- * `places.parent_place_ids` holds DIRECT edges only, so a DAG walk would need
- * recursion per row; `ST_Covers` answers the same question in one GiST-indexed
- * predicate.
+ * Cost, honestly: a correlated recursive walk per (signal, candidate) pair —
+ * but the ladder is ≤6 rungs, each step is a PK lookup, and the fresh arm's
+ * cardinality is one day of poll acts. The geometry probe it replaces was two
+ * PK lookups plus an ST_Covers on real outlines; this is comparable and exact.
  */
 export function placeAnchoredAttributionSql(
   placeAlias: string,
@@ -113,11 +125,15 @@ export function placeAnchoredAttributionSql(
   const p = Prisma.raw(placeAlias);
   const s = Prisma.raw(geoAlias);
   return Prisma.sql`EXISTS (
-        SELECT 1
-        FROM place_geometries anchor_pg
-        JOIN place_geometries cand_pg ON cand_pg.place_id = ${p}.place_id
-        WHERE anchor_pg.place_id = ${s}.place_id
-          AND ST_Covers(cand_pg.geometry, anchor_pg.geometry)
+        WITH RECURSIVE anchor_chain(place_id) AS (
+          SELECT ${s}.place_id
+          UNION
+          SELECT parent.place_id
+          FROM anchor_chain ac
+          JOIN places ap ON ap.place_id = ac.place_id
+          CROSS JOIN LATERAL unnest(ap.parent_place_ids) AS parent(place_id)
+        )
+        SELECT 1 FROM anchor_chain WHERE place_id = ${p}.place_id
       )`;
 }
 
