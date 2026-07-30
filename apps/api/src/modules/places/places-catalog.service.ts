@@ -628,6 +628,19 @@ export class PlacesCatalogService {
             providerPlaceId: node.providerPlaceId,
           },
         );
+        // ENTITY EXCLUSIVITY (red-team finding, 2026-07-29, both reviewers
+        // independently): the id is CLAIMED — by the other rung — and the
+        // unique index enforces exactly that. Falling through while the node
+        // still carried the id was a guaranteed crash: the name path either
+        // CREATEs with it (P2002 → retry → identical state → "did not settle
+        // after 3 attempts") or merges into a null-id candidate whose
+        // id-adopt UPDATE throws P2002 uncaught. Deterministic input —
+        // any chain where the vendor stamps one geometry id on two rungs, the
+        // exact case this guard's comment names — so one such probe killed
+        // the whole sketchChain, and in seed-region.ts aborted the entire
+        // run. The node proceeds id-LESS: the row mints/merges on the name
+        // axis and simply never claims an id that is not its to claim.
+        node = { ...node, providerPlaceId: undefined };
       }
     }
     // Bounded re-resolution loop: every race (create-vs-create P2002,

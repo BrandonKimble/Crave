@@ -313,7 +313,11 @@ export class DemandMassReader {
                   AND (${this.lngIntersectSql()})))
          AND (${freshSignalAttributionSql('pb')})
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
-          AND pb.bbox_min_lat IS NOT NULL
+          -- P5b: bbox-less candidates stay reachable through the ANCHORED
+          -- arm (its predicate is a DAG walk; the candidate's rectangle is
+          -- irrelevant, and bbox legitimately diverges from ground for
+          -- antimeridian places whose bbox writeback is skipped).
+          AND (s.place_id IS NOT NULL OR pb.bbox_min_lat IS NOT NULL)
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
           ${this.freshActFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2, 3
@@ -457,7 +461,11 @@ export class DemandMassReader {
          AND (${freshSignalAttributionSql('pb')})
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
-          AND pb.bbox_min_lat IS NOT NULL
+          -- P5b: bbox-less candidates stay reachable through the ANCHORED
+          -- arm (its predicate is a DAG walk; the candidate's rectangle is
+          -- irrelevant, and bbox legitimately diverges from ground for
+          -- antimeridian places whose bbox writeback is skipped).
+          AND (s.place_id IS NOT NULL OR pb.bbox_min_lat IS NOT NULL)
           AND s.subject_type = 'entity'
           AND s.subject_id IS NOT NULL
           AND s.occurred_at >= ${utcInstantSql(todayStart)}

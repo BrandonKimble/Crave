@@ -322,6 +322,74 @@ describe('containment laws, proven against PostGIS', () => {
     expect(names).toContain('Metropolis'); // the place it happened in
     expect(names).toContain('District'); // DAG ancestor — RED under ST_Covers ancestry
     expect(names).not.toContain('Innocent'); // inside the polygon, not in the chain
+
+    // THE DOWNWARD DIRECTION (the fresh arm speaks the aggregate's lineage
+    // law — red-team 2026-07-29): a poll anchored to the DISTRICT reaches its
+    // DAG descendants, exactly as the closed-day read would serve it to them
+    // through the anchor tile. Without this the same act flipped verdict at
+    // the midnight boundary. Both children are in the chain; a sibling of the
+    // anchor would not be.
+    const fromDistrict = await attributeAnchoredSignal(districtId, {
+      minLat: 70.5,
+      minLng: 70.5,
+      maxLat: 70.5,
+      maxLng: 70.5,
+    });
+    expect(fromDistrict).toContain('District');
+    expect(fromDistrict).toContain('Metropolis'); // descendant
+    expect(fromDistrict).toContain('Innocent'); // also a child of District
+  });
+
+  it('P5b AT THE REAL CALL SITE: placeDemandMass sees an anchored act whose point lies OUTSIDE the reading place bbox', async () => {
+    // Both red-team reviewers (2026-07-29) landed on the same residual: the
+    // predicate-level tests above cannot detect a missing PREFILTER BYPASS at
+    // the call sites — the runtime queries AND a bbox/lng prefilter around the
+    // law, and an anchored act's centroid point can sit outside an ancestor's
+    // bbox (Washington's point on the Maryland side). This test runs the REAL
+    // runtime SQL — DemandMassReader.placeDemandMass, the exact statement the
+    // poll-supply engine executes — over the Washington fixture. Remove the
+    // `s.place_id IS NOT NULL OR (...)` arm at the site and this goes RED
+    // (the prefilter drops the row before the law runs; District reads zero).
+    const districtId = await seedPlace({
+      name: 'SiteDistrict',
+      level: 'CountrySubdivision',
+      bbox: { minLat: 80, minLng: 20, maxLat: 81, maxLng: 21 },
+      groundWkt: 'POLYGON((20 80, 21 80, 21 81, 20 81, 20 80))',
+    });
+    const metroId = await seedPlace({
+      name: 'SiteMetropolis',
+      level: 'Municipality',
+      bbox: { minLat: 80.2, minLng: 19.5, maxLat: 80.8, maxLng: 20.6 },
+      groundWkt:
+        'POLYGON((19.5 80.2, 20.6 80.2, 20.6 80.8, 19.5 80.8, 19.5 80.2))',
+      parents: [districtId],
+    });
+
+    // Anchored poll act, occurred NOW (the fresh arm reads today), centroid
+    // point at (80.5, 19.7) — WEST of SiteDistrict's bbox (lng 20..21).
+    const [signal] = await prisma.$queryRawUnsafe<Array<{ signal_id: string }>>(
+      `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
+                            geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
+       VALUES ('poll_created', 'none', gen_random_uuid(), now(), $1::uuid,
+               80.5, 19.7, 80.5, 19.7)
+       RETURNING signal_id`,
+      metroId,
+    );
+    try {
+      const { DemandMassReader } = await import(
+        '../polls/supply/demand-mass.reader'
+      );
+      const reader = new DemandMassReader(prisma as never);
+      const masses = await reader.placeDemandMass([districtId, metroId]);
+      const byId = new Map(masses.map((m) => [m.placeId, m.mass]));
+      expect(byId.get(metroId) ?? 0).toBeGreaterThan(0); // the anchor itself
+      expect(byId.get(districtId) ?? 0).toBeGreaterThan(0); // ancestor, despite the point outside its bbox
+    } finally {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM signals WHERE signal_id = $1::uuid`,
+        signal.signal_id,
+      );
+    }
   });
 
   it('THE SEAM: a view crossing the antimeridian returns only the places actually there', async () => {

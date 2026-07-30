@@ -167,6 +167,25 @@ async function main(): Promise<void> {
         `[seed] NOTE: ${targets.length} places named "${regionName}"; using the LARGEST ` +
           `(${target.provider_level_code}). Others are ignored.`,
       );
+      // Red-team 2026-07-29: a homonym must never SPEND on a guess —
+      // "Washington" is a state, a DC municipality and a dozen towns, and
+      // gridding the largest under --execute silently buys the wrong (or a
+      // vastly bigger) territory. Dry-run proceeds so the operator can see
+      // the pick; execution demands the disambiguated --region-id.
+      if (execute && !arg('--region-id')) {
+        throw new Error(
+          `"${regionName}" is ambiguous (${targets.length} rows). Dry-run first, then re-run with --region-id <place_id>.`,
+        );
+      }
+    }
+    const regionId = arg('--region-id');
+    const chosen = regionId
+      ? targets.find((t) => t.place_id === regionId)
+      : target;
+    if (!chosen) {
+      throw new Error(
+        `--region-id ${regionId} does not match any "${regionName}" row`,
+      );
     }
     // ── BUILD THE GRID, IN SQL, CLIPPED TO THE REAL GROUND ───────────────────
     // Generated in the DATABASE, not here. Two reasons, both learned the hard
@@ -211,7 +230,7 @@ async function main(): Promise<void> {
           `CREATE TEMP TABLE seed_pieces ON COMMIT DROP AS
              SELECT ST_Subdivide(geometry, 128) AS geom
                FROM place_geometries WHERE place_id = $1::uuid`,
-          target.place_id,
+          chosen.place_id,
         );
         await tx.$executeRawUnsafe(
           `CREATE INDEX seed_pieces_gix ON seed_pieces USING GIST (geom)`,
@@ -252,6 +271,7 @@ async function main(): Promise<void> {
                     SELECT 1 FROM places p
                       JOIN place_geometries pg ON pg.place_id = p.place_id
                      WHERE p.provider_level_code = ANY($4::text[])
+                       AND pg.provider_boundary_id IS NOT NULL -- real outlines only (red-team 2026-07-29): a sketch envelope would mark unoccupied cells covered
                        AND pg.geometry && ST_SetSRID(ST_MakePoint(g.lng, g.lat), 4326)
                        AND ST_Covers(pg.geometry, ST_SetSRID(ST_MakePoint(g.lng, g.lat), 4326))
                   ) AS covered
@@ -271,7 +291,7 @@ async function main(): Promise<void> {
     const planned = Math.min(todo.length, maxProbes);
 
     out('');
-    out(`[seed] region        ${target.name} (${target.provider_level_code})`);
+    out(`[seed] region        ${chosen.name} (${chosen.provider_level_code})`);
     out(`[seed] spacing       ${spacingKm} km`);
     out(
       `[seed] guarantee     every place at least ${spacingKm} km across is probed`,
@@ -313,6 +333,7 @@ async function main(): Promise<void> {
         `SELECT EXISTS (
            SELECT 1 FROM places c JOIN place_geometries cg ON cg.place_id = c.place_id
             WHERE c.provider_level_code = ANY($3::text[])
+              AND cg.provider_boundary_id IS NOT NULL
               AND cg.geometry && ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326)
               AND ST_Covers(cg.geometry, ST_SetSRID(ST_MakePoint($2::float8, $1::float8), 4326))
          ) AS covered`,

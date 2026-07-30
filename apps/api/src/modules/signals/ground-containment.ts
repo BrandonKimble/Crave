@@ -107,16 +107,29 @@ export function geoCoversPlaceSql(
  * fact; polygon nesting is an approximation — the same principle that made
  * identity the vendor ID rather than a geometric comparison (P3).
  *
- * There is deliberately NO downward arm here. Tiling exists so a coarse
- * VIEWPORT reaches the places inside it; a poll is not a viewport, and letting
- * it reach downward is the measured defect P5b replaced (Austin bled into 31
- * places through its rectangle). A place INSIDE the anchor's polygon but not
- * on its chain (the fixture's "Innocent") stays excluded by construction.
+ * BOTH DIRECTIONS OF THE CHAIN, deliberately (red-team 2026-07-29, the two
+ * reviewers found the same asymmetry from opposite ends). The aggregate READ
+ * already serves an anchored act to the anchor's DAG DESCENDANTS: the act is
+ * stored at the anchor tile, and the ratified lineage law (docket item 7 —
+ * ancestors at weight 1) walks a root's `up` chain straight onto that tile, so
+ * a Bouldin Creek read counts an Austin-anchored poll — but only once the day
+ * CLOSES. A fresh arm that refused the downward direction produced a midnight
+ * step-discontinuity: same act, different verdict either side of the day
+ * boundary. So the fresh arm speaks the aggregate's lineage law: the act
+ * belongs to the anchor, its ancestors, and its DAG descendants.
  *
- * Cost, honestly: a correlated recursive walk per (signal, candidate) pair —
- * but the ladder is ≤6 rungs, each step is a PK lookup, and the fresh arm's
- * cardinality is one day of poll acts. The geometry probe it replaces was two
- * PK lookups plus an ST_Covers on real outlines; this is comparable and exact.
+ * This is NOT the Austin-rectangle bleed returning. That defect reached
+ * NEIGHBOURS — Round Rock fitted inside Austin's stored rectangle without
+ * being inside Austin at all. DAG descendants are places the vendor itself
+ * says are IN the anchor. A place merely inside the anchor's polygon but off
+ * its chain (the fixture's "Innocent") stays excluded in both directions.
+ * The two arms also now mirror the geometric law's own two directions
+ * (place-covers-geo OR geo-covers-place), each expressed on the axis that is
+ * a FACT for its signal shape: geometry for viewports, the chain for anchors.
+ *
+ * Cost, honestly: two correlated recursive walks per (signal, candidate)
+ * pair — but the ladder is ≤6 rungs of PK lookups and the fresh arm's
+ * cardinality is one day of poll acts.
  */
 export function placeAnchoredAttributionSql(
   placeAlias: string,
@@ -124,7 +137,7 @@ export function placeAnchoredAttributionSql(
 ): Prisma.Sql {
   const p = Prisma.raw(placeAlias);
   const s = Prisma.raw(geoAlias);
-  return Prisma.sql`EXISTS (
+  return Prisma.sql`(EXISTS (
         WITH RECURSIVE anchor_chain(place_id) AS (
           SELECT ${s}.place_id
           UNION
@@ -134,7 +147,17 @@ export function placeAnchoredAttributionSql(
           CROSS JOIN LATERAL unnest(ap.parent_place_ids) AS parent(place_id)
         )
         SELECT 1 FROM anchor_chain WHERE place_id = ${p}.place_id
-      )`;
+      ) OR EXISTS (
+        WITH RECURSIVE candidate_chain(place_id) AS (
+          SELECT ${p}.place_id
+          UNION
+          SELECT parent.place_id
+          FROM candidate_chain cc
+          JOIN places cp ON cp.place_id = cc.place_id
+          CROSS JOIN LATERAL unnest(cp.parent_place_ids) AS parent(place_id)
+        )
+        SELECT 1 FROM candidate_chain WHERE place_id = ${s}.place_id
+      ))`;
 }
 
 /**

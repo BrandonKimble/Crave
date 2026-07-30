@@ -101,11 +101,16 @@ async function main(): Promise<void> {
     : '';
   const order = sample > 0 ? 'ORDER BY random()' : 'ORDER BY name';
   const limit = sample > 0 ? `LIMIT ${sample}` : '';
+  // Red-team 2026-07-29: probe ST_PointOnSurface(ground), never the stored
+  // centroid — the stored point can drift off-ground again (mergeSketch
+  // gap-fills it from the vendor position), and an off-ground probe returns a
+  // NEIGHBOUR, whose country would then be AUTO-APPLIED under --execute.
   const rows = await prisma.$queryRawUnsafe<Row[]>(
-    `SELECT place_id, name, provider_level_code, country_code,
-            centroid_lat::text, centroid_lng::text
-     FROM places
-     WHERE centroid_lat IS NOT NULL ${where} ${order} ${limit}`,
+    `SELECT p.place_id, p.name, p.provider_level_code, p.country_code,
+            ST_Y(ST_PointOnSurface(g.geometry))::text AS centroid_lat,
+            ST_X(ST_PointOnSurface(g.geometry))::text AS centroid_lng
+     FROM places p JOIN place_geometries g ON g.place_id = p.place_id
+     ${where ? 'WHERE ' + where.replace(/^AND /, '') : ''} ${order} ${limit}`,
   );
 
   console.log(
@@ -181,16 +186,30 @@ async function main(): Promise<void> {
     console.log(`[audit] dry-run — ${fixes.length} structural fixes available`);
     return;
   }
+  // Red-team 2026-07-29: parameterized (vendor strings were interpolated raw
+  // next to a correctly-parameterized id) and per-row fault-tolerant — the
+  // level is an input to the identity expression index, so one collision used
+  // to throw and silently abandon every remaining fix after a partial prefix.
+  let applied = 0;
   for (const fix of fixes) {
-    const sets: string[] = [];
-    if (fix.level) sets.push(`provider_level_code = '${fix.level}'`);
-    if (fix.country) sets.push(`country_code = '${fix.country}'`);
-    await prisma.$executeRawUnsafe(
-      `UPDATE places SET ${sets.join(', ')} WHERE place_id = $1::uuid`,
-      fix.id,
-    );
+    try {
+      await prisma.$executeRawUnsafe(
+        `UPDATE places
+            SET provider_level_code = COALESCE($1, provider_level_code),
+                country_code = COALESCE($2, country_code)
+          WHERE place_id = $3::uuid`,
+        fix.level ?? null,
+        fix.country ?? null,
+        fix.id,
+      );
+      applied += 1;
+    } catch (e) {
+      console.log(
+        `  FAILED fix for ${fix.id}: ${e instanceof Error ? e.message.replace(/\s+/g, ' ').trim() : String(e)}`,
+      );
+    }
   }
-  console.log(`[audit] applied ${fixes.length} structural fixes`);
+  console.log(`[audit] applied ${applied}/${fixes.length} structural fixes`);
 }
 
 void main().finally(() => prisma.$disconnect());

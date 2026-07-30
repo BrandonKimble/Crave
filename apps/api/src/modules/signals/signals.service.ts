@@ -258,14 +258,34 @@ export class SignalsService {
         where: { placeId },
         select: { centroidLat: true, centroidLng: true },
       });
-      const geo =
+      let geo =
         place?.centroidLat != null && place.centroidLng != null
           ? this.bboxFromPoint(
               Number(place.centroidLat),
               Number(place.centroidLng),
             )
           : null;
-      this.cachePut(this.placeBboxCache, placeId, geo, PLACE_BBOX_CACHE_MAX);
+      if (!geo) {
+        // Red-team finding (2026-07-29, both reviewers): centroid is nullable
+        // (gap-filled at merge, so a place can live without one for a while),
+        // and a null here used to SKIP THE WRITE of every poll act anchored to
+        // that place — an append-only ledger silently losing acts, with the
+        // null verdict cached until process restart so a later gap-fill never
+        // recovered. The geo is vestigial for anchored rows (the anchor is
+        // the attribution); derive the honest point from the ONE ground.
+        const [row] = await this.prisma.$queryRaw<
+          Array<{ lat: number; lng: number }>
+        >`SELECT ST_Y(ST_PointOnSurface(geometry))::float8 AS lat,
+                 ST_X(ST_PointOnSurface(geometry))::float8 AS lng
+            FROM place_geometries WHERE place_id = ${placeId}::uuid`;
+        geo = row ? this.bboxFromPoint(row.lat, row.lng) : null;
+      }
+      // Cache only a RESOLVED point. A null verdict is a transient state
+      // (pre-gap-fill, pre-outline), not a fact — caching it turned a
+      // temporary gap into a process-lifetime act-dropper.
+      if (geo) {
+        this.cachePut(this.placeBboxCache, placeId, geo, PLACE_BBOX_CACHE_MAX);
+      }
       return geo;
     } catch (error) {
       this.logger.debug('Place centroid lookup failed', {

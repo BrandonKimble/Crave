@@ -96,8 +96,13 @@ async function main(): Promise<void> {
       MunicipalitySubdivision: addr.municipalitySubdivision,
       Municipality: addr.municipality,
       CountrySecondarySubdivision: addr.countrySecondarySubdivision,
-      CountrySubdivision:
-        addr.countrySubdivisionName ?? addr.countrySubdivision,
+      // NAME field only — NO `?? addr.countrySubdivision` fallback. That
+      // field is the two-letter CODE ("TX"), not a name; when the vendor
+      // omits countrySubdivisionName, a matching geometry id would have
+      // licensed renaming Missouri to "MO". Both red-team reviewers flagged
+      // it independently (2026-07-29) as the scar class this file documents,
+      // alive in the file that documents it. Field absent = no candidate.
+      CountrySubdivision: addr.countrySubdivisionName,
       Country: addr.country,
     };
     const nm = nameByLevel[r.lvl] ?? '';
