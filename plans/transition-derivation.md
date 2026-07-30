@@ -126,3 +126,58 @@ legs question from scratch (budgeted co-mounted legs + engine re-attach VS
 held single-list swap — decided by the phantom-duplicate and zero-bounds
 constraints, not by what exists), and must cover the full descriptor/fence/
 restore vocabulary above. Nothing from §IV ships before that.
+
+---
+
+## VI. V2 — THE DECISION (from scratch, from §V's facts)
+
+### The insight §I–III missed: τ fuses two DIFFERENT kinds of state
+
+τ < H is SHEET POSTURE — app-level, shared, must survive every switch.
+τ ≥ H is LIST SCROLL — per-scene, private, must NOT leak across scenes.
+The old system stored these separately (sheetY + each leg's own scroll). ONE
+TRACK fused them into one number and the switch path never decomposed it — so
+a switch either leaked the old scene's scroll into the new one or re-seated τ
+(moving the sheet). Every jank symptom lives in that missing decomposition.
+
+### THE SWITCH FORMULA (the core of v2)
+
+On scene switch: τ_new = min(τ, H) + listScroll(incomingScene)
+with listScroll(scene) saved at switch-out as max(0, τ − H).
+Proof of stillness: sheetTop(τ) = expandedTop + max(0, H − τ) is FLAT for
+τ ≥ H, and listScroll is nonzero only when both sides are ≥ H — so
+sheetTop(τ_new) ≡ sheetTop(τ). The sheet CANNOT move on a switch, by algebra,
+while each scene keeps its own scroll. A descriptor seat (home↔content
+crossing, child open, dismiss) is the ONLY thing that changes posture, exactly
+as the old table specifies — including remembered-gesture seats and
+preserveLiveY.
+
+### THE LEGS VERDICT: co-mounted lists are NOT needed
+
+Their sole purpose in the old system was "outgoing visible until incoming
+painted" — but there each leg carried its own full surface. In the native-shell
+world the SURFACE never swaps (frost/plate/chrome/tail are persistent native);
+only ROWS swap. So the purpose is served by THE HELD SWAP alone: keep the
+outgoing rows' data until the incoming body is resolved AND its first layout
+has painted (the paint-evidence gate, ported), then swap data + apply the
+switch formula + swap chrome in the SAME commit, with the shell re-asserted
+that frame. Zero-bounds seeding, N τ-writers, phantom duplicates, per-leg
+masks — the entire §V blocker list — never exist. Budgeted residency returns
+later ONLY as data prewarming, never as mounted duplicate lists.
+
+### The remaining v2 laws (unchanged from §III, now consistent)
+
+RANGE (native-only contentInset; every posture always legal; delete the JS
+inset + reachability re-assert + fix the detach KVO leak) · SEAT
+(descriptor-only, <0.5pt short-circuit, gesture-only memory) · FENCE (snap
+START → sheetReady pending, settle → restore — produced by the track's one
+facts bridge) · DIM PLANE (strip height = the shell's own sheetTop, bound in
+bindShell; search-root-gated, zone at expanded, wedges reused).
+
+### Why this is a design and not a plan
+
+Every owner symptom maps to exactly one law, and each law makes its symptom
+unwritable: mid-high snaps (RANGE + FORMULA), jerk/re-target (SEAT), flicker/
+flash (HELD SWAP), scroll leaking between tabs (FORMULA), search-bar band
+artifacts (DIM PLANE), reveal hangs (FENCE). Nothing in it references the
+current tree except as the thing to delete.
