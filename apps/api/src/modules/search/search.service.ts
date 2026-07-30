@@ -2811,6 +2811,7 @@ export class SearchService {
         {
           subject_id: string | null;
           subject_text: string | null;
+          place_id: string | null;
           geo_min_lat: number;
           geo_min_lng: number;
           geo_max_lat: number;
@@ -2818,7 +2819,7 @@ export class SearchService {
           meta: Prisma.JsonValue;
         }[]
       >`
-        SELECT s.subject_id, s.subject_text,
+        SELECT s.subject_id, s.subject_text, s.place_id,
                s.geo_min_lat::float8 AS geo_min_lat,
                s.geo_min_lng::float8 AS geo_min_lng,
                s.geo_max_lat::float8 AS geo_max_lat,
@@ -2857,6 +2858,12 @@ export class SearchService {
         maxLat: original.geo_max_lat,
         maxLng: original.geo_max_lng,
       },
+      // P5b: a copy carries the ORIGINAL's anchor. Today this path is filtered
+      // to kind='search', which is never anchored, so this is defensive — but
+      // the copy hand-lists columns, so any anchored kind reaching it would
+      // silently lose its WHERE and fall back to the geo point. Carrying the
+      // anchor costs nothing and closes the class.
+      placeId: original.place_id,
       meta: {
         cacheRevealRequestId,
         originalBackendSearchRequestId: dto.originalBackendSearchRequestId,

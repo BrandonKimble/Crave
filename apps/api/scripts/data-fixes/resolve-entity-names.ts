@@ -124,13 +124,21 @@ async function main(): Promise<void> {
     console.log(`[entity-names] dry-run — ${renames.length} renames available`);
     return;
   }
-  // Per-row, fault-tolerant: the identity index is
-  // (country, subdivision, level, name, county) NULLS NOT DISTINCT, so a
-  // vendor name can collide with a sibling row. Identity is the VENDOR ID, so
-  // a name collision is not a correctness problem — but it would abort a
-  // 22k-row loop. Report and continue instead of dying two hours in.
+  // Per-row, fault-tolerant so one bad row cannot abort a 22k-row pass. A
+  // failure here is USUALLY the identity index (country, subdivision, level,
+  // name, county) NULLS NOT DISTINCT rejecting a name a sibling already holds
+  // — harmless, since identity is the VENDOR ID, not the name.
+  //
+  // SCAR: an earlier version labelled EVERY failure "COLLISION" and printed
+  // `e.message.split('\n')[0]`. Prisma messages START with a newline, so the
+  // reason printed EMPTY, and two TRANSIENT CONNECTION DROPS were reported —
+  // to the owner, as fact — as collisions that had "correctly" blocked a
+  // rename. Both renames were valid, and one of them (East Lansing MI ->
+  // Lansing) corrected a row that had been holding LANSING's 39.8 sq mi
+  // polygon under the wrong census-era name. Never collapse an error class you
+  // have not actually read, and never report a swallowed error as a diagnosis.
   let applied = 0;
-  const collided: string[] = [];
+  const failed: string[] = [];
   for (const rn of renames) {
     try {
       await prisma.$executeRawUnsafe(
@@ -140,17 +148,21 @@ async function main(): Promise<void> {
       );
       applied += 1;
     } catch (e) {
-      collided.push(
-        `  COLLISION "${rn.from}, ${rn.sub ?? ''}" -> "${rn.to}": ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`,
+      const msg =
+        e instanceof Error ? e.message.replace(/\s+/g, ' ').trim() : String(e);
+      failed.push(
+        `  FAILED "${rn.from}, ${rn.sub ?? ''}" -> "${rn.to}": ${msg}`,
       );
     }
   }
-  if (collided.length) {
-    console.log('\n[entity-names] could not apply:');
-    console.log(collided.join('\n'));
+  if (failed.length) {
+    console.log(
+      '\n[entity-names] could not apply (READ THESE — not all are collisions):',
+    );
+    console.log(failed.join('\n'));
   }
   console.log(
-    `[entity-names] applied ${applied} renames, ${collided.length} collisions`,
+    `[entity-names] applied ${applied} renames, ${failed.length} failures`,
   );
 }
 
