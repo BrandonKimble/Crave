@@ -421,6 +421,45 @@ THREE RED-TEAM FINDINGS AGAINST MY OWN FIRST DRAFT, all fixed:
    per-connection and Prisma pools, so the transaction pins them. This is the
    canonical PostGIS answer to point-in-large-polygon, not a workaround.
 
+### P5b BUG — ANCESTORS MUST COME FROM THE DAG, NOT FROM GEOMETRY (found 2026-07-29)
+
+**Measured: 2,111 of 19,452 (10.85%) municipality→state links that the DAG
+asserts are MISSED by P5b's geometric ancestor test.** A poll in any of those
+towns attributes to the town and the country, silently skipping its state.
+
+The cause is a wrong claim in my own P5b note. I wrote that ancestors are
+resolved geometrically "because `places.parent_place_ids` holds DIRECT edges
+only, so a DAG walk would need recursion per row; `ST_Covers` answers the same
+question in one GiST-indexed predicate." **It does not answer the same
+question.** `ST_Covers(candidate, anchor)` asks which grounds geometrically
+CONTAIN this ground; that coincides with the hierarchy only when polygons nest
+perfectly, and they do not. `ST_Covers` is all-or-nothing, so a single sliver
+outside the parent breaks the link — and slivers are the norm, not the
+exception: municipal outlines include bays, barrier islands and coastal water
+that the state outline generalises away. The >20% spill cases cluster in
+AK (63), FL (62), NY (25), NJ (25), CA (20) — coastlines, not errors.
+
+The worked example that exposed it: TomTom's `Washington` Municipality is
+159.5 sq mi with only 42.8% inside the District (36.6% Maryland, 21.1%
+Virginia) — the metro agglomeration, not the city. So the District's ground
+does not cover it, and the geometric walk yields `Washington → United States`.
+The DAG, built from the vendor's own reverse-geocode chain, has it right:
+`Washington → District of Columbia (county) → District of Columbia (state) →
+United States`. The vendor's STATED hierarchy is a fact; the polygon nesting is
+an approximation. Identity already follows that principle (P3: the vendor id,
+not a geometric comparison) — ancestry must too.
+
+NOT LIVE: prod still has zero poll-kind signals, so this has never fired, the
+same luck P5b's original bug had. It must be fixed before poll acts flow.
+
+THE FIX, deliberately deferred rather than rushed at the end of a long session:
+`placeAnchoredAttributionSql` should resolve ancestors by walking
+`parent_place_ids` (the ladder is ≤6 deep) instead of testing `ST_Covers`.
+That touches the hot demand/supply path with its documented planner traps, so
+it opens the way P5b did — by writing the Washington case into
+`places-containment.integration.spec` as a RED-provable assertion (a poll
+anchored to Washington MUST reach the District) before changing the law.
+
 ### THE CATALOG IS AN INCORPORATED-PLACES LIST, NOT A MAP (measured 2026-07-29)
 
 We hold **19,451 US municipalities covering 47.7% of US land**. 19,451 is
