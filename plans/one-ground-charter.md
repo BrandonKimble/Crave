@@ -421,6 +421,45 @@ THREE RED-TEAM FINDINGS AGAINST MY OWN FIRST DRAFT, all fixed:
    per-connection and Prisma pools, so the transaction pins them. This is the
    canonical PostGIS answer to point-in-large-polygon, not a workaround.
 
+### THE CATALOG IS AN INCORPORATED-PLACES LIST, NOT A MAP (measured 2026-07-29)
+
+We hold **19,451 US municipalities covering 47.7% of US land**. 19,451 is
+almost exactly the count of US INCORPORATED PLACES (~19,500) — which is what
+the census seeder loaded. The US additionally has ~16,000 CIVIL TOWNSHIPS plus
+thousands of unincorporated communities, and TomTom models those as
+municipalities too. We have none of them.
+
+Probed 20 random points that lie inside a state but inside NO municipality we
+hold. **20 of 20 returned a TomTom municipality** — Waterboro and East Hancock
+(ME), East Keating and Millcreek (PA), Ridgefield (OH), Exeter and Glocester
+(RI), and, in the places you would most expect a genuine void, Mojave /
+Tranquillity / Thermal (CA) and Tonopah / Battle Mountain (NV). There was no
+"genuinely unincorporated" result anywhere in the sample. The sparseness is
+OUR GAP, not the vendor's model.
+
+Per-state coverage confirms the mechanism rather than any geography:
+
+| lowest        |       | highest  |       |
+| ------------- | ----- | -------- | ----- |
+| Maine         | 3.0%  | Delaware | 93.2% |
+| New Hampshire | 5.1%  | Oklahoma | 90.5% |
+| South Dakota  | 7.1%  | Georgia  | 88.9% |
+| Pennsylvania  | 8.5%  | Texas    | 79.3% |
+| Rhode Island  | 13.3% | Florida  | 72.0% |
+
+The floor is New England (ME/NH/VT/RI/CT/MA — land is organised into TOWNS, and
+almost nothing is an "incorporated place") plus the township belt
+(PA/OH/MI/IN/WI/MN/ND/SD). The ceiling is states whose incorporated places
+genuinely do cover the land. Size is irrelevant: Rhode Island is not sparse
+because it is small, and California sits at 36.6% for the same reason as
+Pennsylvania — a whole class of vendor-modelled place was never loaded.
+
+CONSEQUENCE: `seed-region.ts` is not only a new-continent tool. Running it over
+the US at 15 km is ~22k probes / ~82 min and would roughly double municipality
+coverage. Deferred pending an owner call on the spend — but this is the real
+reason a user standing in half the country resolves to a county instead of a
+town, and the reason parts of the map will feel empty.
+
 ### Seeding new regions going forward — grid, not census
 
 Owner direction 2026-07-28, and it is the right shape: onboard a new
