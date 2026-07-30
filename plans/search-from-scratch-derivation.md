@@ -41,11 +41,31 @@ Order of lanes — deterministic facts first, calibrated judgment second,
 LLM last (the session's recurring law: plural resolution, thinking
 resolver, spend gate all landed on this shape):
 
-1. **Gazetteer pass** (tier 0): scan the query with the existing
-   span-preserving n-gram scanner (`scanForKnownEntities`) across ALL
-   entity types INCLUDING ingredient, viewport/territory-scoped. Returns
-   character spans → entities WITH the types the data says they have.
-   Deterministic, one indexed query, no LLM.
+1. **Gazetteer pass** (tier 0): scan the query with the span-preserving
+   n-gram scanner (`scanForKnownEntities`) across ALL entity types
+   INCLUDING ingredient, viewport/territory-scoped, returning character
+   spans → entities with the types the data says they have.
+   **REQUIRED SCANNER CHANGE (round-2 review, two reviewers converged
+   independently): the existing scanner CANNOT do this.** Its greedy
+   overlap filter treats same-span duplicates as overlaps, so a span with
+   three active entities (breakfast: food + food_attribute +
+   restaurant_attribute) survives as ONE arbitrary-order winner — decided
+   by JS sort stability over DB row order. As-is, "types come from
+   grounding" would reintroduce the never-look defect with Postgres row
+   order as the guesser. Fix: return all same-span matches as one span
+   carrying an entities[] list; overlap policy applies to SPANS, type
+   policy to CONSUMERS. This is a shared dependency — polls highlighting
+   uses the same scanner — so the change ships with a consumer-side
+   single-winner policy for polls to preserve its display behavior.
+   Two more scanner requirements from the same review: a HARD QUERY
+   LENGTH CAP (sourceQuery has no @MaxLength; tokens x 4-grams on a
+   5k-token query measured 3.8s — a self-inflicted DoS once this is the
+   unconditional first step), and the SCAN QUERY REWRITTEN as a UNION of
+   an indexed name arm and an alias arm (the current `name = ANY OR
+EXISTS(unnest(aliases))` defeats the btree entirely — measured as a
+   full seq scan; the earlier "alias-haystack index lever" claim was
+   wrong, a trgm index cannot serve array-element equality; a normalized
+   alias table is the durable fix).
    - Poll highlighting keeps its narrower type set — in a comment,
      attribute words are incidental prose; in a query every word was typed
      on purpose. One engine, per-consumer type set + display policy.
@@ -64,7 +84,15 @@ resolver, spend gate all landed on this shape):
    owner's product ruling and the pipeline mechanics, not this number;
    re-measure on real traffic post-launch. The two formerly-irreducible jobs both leave the hot path:
    - **Negation: the FEATURE is removed** (owner: people do not search
-     "pizza no tomato sauce"). Replaced by the DIETARY TOGGLE STRIP —
+     "pizza no tomato sauce"). **REQUIRED GUARD (round-2 review): removal
+     alone does not IGNORE a negated phrase — it INVERTS it.** "cilantro"
+     is an active ingredient entity, so "tacos no cilantro" grounds
+     cilantro as a POSITIVE constraint and confidently returns
+     cilantro-forward results. The zero-LLM mitigation: a deterministic
+     negation-cue guard on the hot path — when a cue token (no / without /
+     minus / hold / sans / -free) immediately precedes a grounded span,
+     DROP that span from constraints entirely (ignore, never exclude, and
+     never invert). The dropped span still flows to demand as residue. Replaced by the DIETARY TOGGLE STRIP —
      LIFESTYLE toggles only (vegan, vegetarian, gluten-free, halal,
      kosher), mapping to HARD attribute constraints. ALLERGEN toggles are
      REJECTED (owner 2026-07-30): allergens are not discussed enough for
@@ -141,11 +169,11 @@ pool member that provenance + score-ranking absorb).
 
 Hardness is a FACT, derived — never guessed per query:
 
-| class                   | source              | examples                                                            | relaxable?            |
-| ----------------------- | ------------------- | ------------------------------------------------------------------- | --------------------- |
-| structural              | request             | viewport, open-now, price                                           | never                 |
-| **dietary requirement** | **vocabulary flag** | vegan, gluten-free, halal, kosher, dairy-free, nut-free, vegetarian | **never**             |
-| preference              | default             | spicy, crispy, patio, cozy                                          | soft (richness-gated) |
+| class                   | source              | examples                                                       | relaxable?            |
+| ----------------------- | ------------------- | -------------------------------------------------------------- | --------------------- |
+| structural              | request             | viewport, open-now, price                                      | never                 |
+| **dietary requirement** | **vocabulary flag** | vegan, vegetarian, gluten-free, halal, kosher (LIFESTYLE only) | **never**             |
+| preference              | default             | spicy, crispy, patio, cozy                                     | soft (richness-gated) |
 
 COVERAGE MEASURED (red team 2026-07-30), so expectations are set before
 launch: restaurant-side vegan 219 / halal 134 / vegetarian 110 / gluten
@@ -153,10 +181,13 @@ free 57 / kosher 10 venues; dish-side vegan 186 / vegetarian 114 / gluten
 free 37 connections (Austin). Hard toggles WILL run thin — by design that
 feeds precise demand, but kosher at 10 venues argues for launching the
 well-covered four and adding kosher when the data can carry it (owner
-call at build). Gazetteer scan cost bounded at ~22ms worst-shape on
-today's catalogue (lower(name) btree-indexed; the alias EXISTS arm is the
-slow half and has an optimization lever in the existing alias-haystack
-index) — the vs-LLM latency claim holds.
+call at build). DENOMINATOR (round-2): 8,612 active restaurants — so
+even vegan's 219 is ~2.5% coverage; the sparse-hard-toggle UX question
+is in the §7 owner queue. Gazetteer scan measured ~16-22ms today, but the
+mechanism claim was WRONG: the `OR EXISTS(unnest(aliases))` shape defeats
+the name btree, so it is an O(catalogue) seq scan, not an indexed lookup
+— fine at 22k rows, linear growth after the reload; fix is the UNION /
+alias-table rewrite in §1.1. The vs-LLM latency conclusion still holds.
 
 RATIFIED 2026-07-29: dietary attributes are hard. Today's ladder DROPS
 "vegan" (it lives in the droppable food-attributes bucket) — for a vegan
@@ -173,21 +204,43 @@ One execution per projection. In-query, every candidate row computes which
 constraints it satisfies (provenance). Membership policy:
 
 1. Subject + family: always required (subject is sacred). COMPOSITION LAW
-   (red team correction — the spec earlier implied AND across all spans):
-   multiple SUBJECT spans compose as OR — verified today's semantics, the
-   foodIds array is one `= ANY(...)` clause ("tacos and pizza" means
-   either) — while MODIFIER spans compose as AND against the subjects.
-   Subjects widen; modifiers narrow.
+   — corrected TWICE and now stated from verified code, with the change
+   marked as a change: multiple SUBJECT spans compose as OR (one
+   `= ANY(...)` clause; "tacos and pizza" means either). MODIFIERS today
+   compose as OR WITHIN their bucket too (`c.food_attributes &&
+ARRAY[...]` is array OVERLAP — "spicy crispy tacos" = spicy OR
+   crispy); AND holds only ACROSS buckets. Therefore per-word soft
+   constraints with AND semantics are a BEHAVIOR CHANGE, not a
+   preservation — under today's semantics no state exists where "spicy"
+   alone fails. §7 owner queue: rule whether multi-modifier queries
+   should mean AND (narrower, more literal) or keep today's OR.
 2. Hard constraints: absolute walls.
 3. Each PREFERENCE is individually droppable — per WORD, not per type
    bucket (today "spicy vegan tacos" thin drops spicy AND vegan together;
    per-word can keep vegan-only matches first — and with vegan now hard,
    spicy alone is what relaxes).
 4. **THE RICHNESS GATE (named invariant):** soft misses are admitted ONLY
-   when full matches are scarce (threshold ≈ today's 10). Without it,
-   score-alone ordering makes every soft word decorative — a high-score
-   non-spicy taco would outrank spicy ones even when spicy tacos abound.
-   Expressible in-query (window function). NOT optional.
+   when full matches are scarce. Without it, score-alone ordering makes
+   every soft word decorative. Expressible in-query — round-2 PROVED the
+   shape (per-row provenance booleans → cumulative window gate → score
+   order): 5.98ms on today's data, deterministic membership, stable
+   pagination. TWO DESIGN CONSTRAINTS the proof also surfaced:
+   (a) OPEN-NOW: today's relax trigger counts POST-openness rows, and
+   openness is evaluated in JS — an in-SQL gate counts pre-openness
+   candidates (50 matches, 3 open: today relaxes, the naive gate does
+   not). The gate DECISION must therefore be computed on the
+   openness-aware candidate set and passed into the query as a parameter
+   for the open-now path.
+   (b) PHASE-2 HYDRATE: the open-now hydrate re-runs the builder
+   restricted to page ids; a gate embedded in the shared CTE stack would
+   recompute over ~20 rows and flip. Same fix: gate decided once per
+   request, parameterized in.
+   THRESHOLD PROVENANCE (round-2): today's 10 is an inherited bare
+   literal from the original commit — neither measured nor owner-chosen.
+   Under the no-fake-estimates law it must be adopted EXPLICITLY or
+   re-derived; and per-word gating counts a different quantity than
+   today's per-bucket count, so "transfers" was unexamined. NOT optional
+   either way.
 5. Similar ring: admitted only behind the user's "Include similar" chip
    (existing behavior, kept).
 
@@ -199,8 +252,14 @@ lists, hand-rolled strict/relaxed pagination stitching.
 
 One pooled list per projection, ordered by score alone (or rising).
 Provenance (exactMatch, relevance) rides as data for the chip, display,
-and demand — never as sort key. Identical visible behavior to today
-(HARD requirement, verified against code).
+and demand — never as sort key. Round-2 VERIFIED the score-alone claim
+(exactMatch is null in production config; pooledOrder degenerates to pure
+score). Behavior preservation is re-scoped from "identical" to
+"identical EXCEPT an explicit intended-divergence list", because two
+divergences are now known and deliberate: (1) the pre-existing page-1
+row-loss bug (client pageSize < threshold strands strict rows 6-10 on no
+page — the single query FIXES this), and (2) whatever the owner rules on
+modifier AND-vs-OR (§1.4.1).
 
 ### 1.6 Learn
 
@@ -255,15 +314,28 @@ plus one flattening):
 - Dietary attributes relaxable (droppable bucket) → hard class.
 - Two "same thing?" implementations with divergent floors → one engine,
   per-consumer floors.
-- Gazetteer exists but is unused by search; missing ingredient type.
+- Gazetteer exists but is unused by search; missing ingredient type AND
+  structurally one-type-per-span (the §1.1 scanner change).
+- A THIRD projection exists that the derivation missed: see-locations
+  (lean single-restaurant + in-view locations, bypasses the ranking
+  pipeline entirely). Untouched by this redesign — named here so scope is
+  honest, not discovered mid-build.
 
-## 4. Migration order (each step shippable, reversible, behavior-preserving)
+## 4. Migration order (each step shippable and reversible; steps 1-2
+
+change visible results BY DESIGN — the header no longer claims otherwise)
 
 0. AFTER the Austin reload — grounding quality and the linker re-sweep
    depend on the post-reload graph; don't debug search atop moving data.
-1. **Dietary hardness** (smallest, user-visible correctness): flag the
-   curated set; exempt the flagged ids from the ladder's droppable bucket.
-   Ships against today's ladder without any other change.
+1. **Dietary hardness** (user-visible correctness). Round-2 corrected the
+   scope: there is NO per-id drop mechanism — relaxation zeroes a whole
+   presence count — so this is THREE coordinated call-site changes
+   (partial-drop in buildSearchConstraints; canDrop\* recomputation when
+   every food-attr is hard; blocking relaxed_modifiers, which drops both
+   buckets and is preferentially selected), not a flag. COUPLING: step 2's
+   placement of "vegan" (itself multi-type) must respect the dietary flag
+   over dominance, or step 1's exemption silently stops applying — the
+   dietary flag WINS placement, by rule.
 2. **Untyped RECALL behind the existing buckets** (RED TEAM 2026-07-30
    re-scoped this step — as first written it was incoherent): today's
    buckets AND against each other (verified: the restaurant query ANDs the
@@ -272,9 +344,17 @@ plus one flattening):
    breakfast-family dish AND a breakfast-attributed venue. OVER-constraint,
    the opposite of the fix. So step 2 does what the buckets CAN express:
    full-vocabulary recall (gazetteer + linker see every type), then
-   SINGLE-bucket placement by the data-dominant type (measured evidence
-   counts, e.g. breakfast: 929 attribute vs 264 category events ->
-   attribute). This kills the never-look defect at the RECALL level only;
+   SINGLE-bucket placement. Round-2 KILLED the dominance formula: honest
+   per-type counts for breakfast are 606 food_attribute / 355 food / 323
+   restaurant_attribute (the earlier "929 vs 264" summed two buckets on
+   one side and undercounted the other), dominance is ill-defined for
+   roughly half the 827 multi-type names (423 under 10 events, 69 exact
+   ties), and it places "vegetarian" into the RESTAURANT bucket against
+   the dietary rule. The honest mechanism: only ~44 names are genuine
+   cross-bucket conflicts (690 of 827 are food+ingredient pairs the twin
+   union already serves) — placement is a small CURATED list, dietary
+   flags win by rule, everything else follows its only bucket. This
+   kills the never-look defect at the RECALL level only;
    full multi-type placement (OR within a span) lands with step 3's
    constraint model, which is the layer that can express it. Requires the
    linker re-sweep (floors were fit to type-scoped recall).
@@ -283,7 +363,12 @@ plus one flattening):
    tacos" grounds "tacos", and only the joined candidate "brekfast tacos"
    can fuzzy-reach the COMPOUND entity "breakfast taco"; a lone "brekfast"
    probe fragments the span into breakfast+taco and loses the compound.
-   (Today the sync LLM emits whole phrases, masking this.)
+   (Today the sync LLM emits whole phrases, masking this.) Round-2 made
+   this rule load-bearing for ORDINARY PLURALS, not just typos: exact
+   grounding is alias-dependent and 1,003 of 1,085 single-word foods
+   carry no plural alias — "empanadas" grounds only because the lemma
+   variants / linker catch it. Wire the food-lemma variant probe into the
+   gazetteer candidate set so number never depends on alias luck.
 3. **Single-query pooling with provenance + richness gate**, run alongside
    the ladder on real queries until output matches, then delete the
    ladder, probes, exclusion lists, and pagination stitching.
@@ -303,6 +388,12 @@ plus one flattening):
   (defensive additions to "residue empty").
 - Linker re-sweep corpus refresh (974 pairs + 300 controls predate the
   reload vocabulary).
+- RETROACTIVE junk cleanup (round-2): junk already lives as ACTIVE
+  entities and WILL ground — restaurants named "Best", "Place",
+  "Favorite" (zero geocoded locations; escape territory scoping whenever
+  no engine covers the viewport), food-side "fresh"/"classic"/"dinner",
+  and 299 extraction-fragment names of 5+ words. §2.5 hygiene is
+  forward-looking only; schedule the sweep of the existing rows.
 - ~~Price/hours words trilemma~~ **RESOLVED (owner, 2026-07-29):
   ATTRIBUTES, never toggle pre-fill.** Pre-filling toggles from "cheap"
   would establish an inference contract owed forever ("fancy", "date
@@ -323,14 +414,48 @@ plus one flattening):
 Query: **"vgean breakfast tacos, no cilantro"**, map on Austin.
 
 - Understand: gazetteer grounds "breakfast tacos" (anchors + family:
-  migas taco, breakfast burrito…) and both readings of "breakfast";
-  linker resolves "vgean"→vegan; residue "no cilantro" → LLM marks an
-  exclusion.
-- Constraints: viewport hard; cilantro-free hard (exclusion); vegan hard
-  (dietary flag); breakfast-taco family required.
-- One query: 12 vegan cilantro-free breakfast tacos exist → exactly
-  those, score-ordered. Only 3 exist → still ONLY those 3 (vegan is
-  hard; nothing relaxes), and collection is told "vegan failed in this
-  viewport". If instead the soft word had failed ("spicy"), non-spicy
-  rows would join the pool — one score-sorted list, same screen as
-  today.
+  migas taco, breakfast burrito…) with every type breakfast truly has;
+  linker resolves "vgean"→vegan (dietary-flagged, hard); the cue guard
+  sees "no" preceding the grounded span "cilantro" and DROPS cilantro
+  from constraints entirely — ignored, never inverted, never excluded;
+  the dropped span rides to demand as residue. No LLM ran.
+- Constraints: viewport hard; vegan hard (dietary flag); breakfast-taco
+  family required. (No exclusion exists — the lane is deleted.)
+- One query, gate decision parameterized in: 12 vegan breakfast tacos
+  exist → exactly those, score-ordered. Only 3 exist → still ONLY those
+  3 (vegan is hard; nothing relaxes), and collection is told "vegan
+  failed in this viewport". If instead a SOFT word had gone thin
+  ("spicy"), non-spicy rows would join the pool — one score-sorted list.
+
+## 7. Round-2 fresh-context adversarial review (2026-07-30) — status
+
+Three independent reviewers (systems, product, data), no access to the
+authoring context. Every finding above marked "round-2" came from them
+and was verified against code/data before being folded in. What HELD
+under genuine attack: the gazetteer-first + types-from-data architecture,
+score-sovereign pooling (verified pure-score in production config), the
+single-query gate shape (5.98ms proof), alias depth, Spanish dish-name
+grounding, the linker residue rule, claim-identity scoring, and every
+headline number (reproduced within drift).
+
+**OWNER DECISION QUEUE (design questions the reviews opened; not mine to
+settle):**
+
+1. SPARSE HARD TOGGLES: a permanently-toggled gluten-free user sees ≤57
+   venues of 8,612 on every search, forever — and the argument that
+   killed allergen toggles (absence of evidence ≠ absence) applies to
+   the celiac slice of GF users. Options: ship hard with explicit
+   "N places carry this claim" messaging; ship soft-with-label; defer
+   toggles until coverage grows. Related: halal 134 / kosher 10 — where
+   is the coverage line, and by what rule?
+2. CHIP vs WALLS: does "Include similar" respect hard constraints
+   (dead button exactly in the thin case it's offered for) or bypass
+   them (a "never relaxable" wall one tap from relaxed)? Pick one,
+   state it.
+3. MODIFIER SEMANTICS: today "spicy crispy tacos" means spicy OR crispy.
+   Per-word constraints enable AND. Which is the product?
+4. PARTIAL-GROUNDING HONESTY: half-grounded queries ("dinner date spot"
+   pools date-the-fruit; "food near the capitol" ignores the location
+   words) return specific-looking results with no "we didn't understand
+   X" affordance. Decide whether the response carries an unresolved-terms
+   indicator in the UI, or accept silent degradation.
