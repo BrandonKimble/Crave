@@ -64,6 +64,14 @@ export interface RecallCandidate {
   denseCosine: number | null;
 }
 
+import {
+  groupEntitySpans,
+  pickSpanWinner,
+  type EntitySpanGroup,
+} from './gazetteer-spans';
+
+export type { EntitySpanGroup, SpanEntity } from './gazetteer-spans';
+
 /** A known-entity mention found by the gazetteer scan: a character span + its entity. */
 export interface EntitySpan {
   start: number;
@@ -938,11 +946,29 @@ export class EntityTextSearchService {
    * Restaurants are engine-territory-scoped when an engineId is given (no
    * covering engine ⇒ global match); foods/attributes are always global.
    */
-  async scanForKnownEntities(
+  /** Query-shape guard (round-2 review): candidates = tokens x 4-grams, so
+   *  an unbounded query is a self-inflicted DoS on what is now the
+   *  unconditional first step of every search (a 5k-token query measured
+   *  3.8s pre-cap). 48 tokens comfortably covers any real search while
+   *  bounding the candidate array. */
+  private static readonly GAZETTEER_MAX_TOKENS = 48;
+
+  /**
+   * Multi-type gazetteer scan (search rebuild phase 1): every known-entity
+   * span with EVERY entity that exact span names — the types come from the
+   * data, not from any guess. Longest-span-wins applies to SPANS; type
+   * policy belongs to consumers (see scanForKnownEntities for the
+   * deterministic single-winner wrapper polls use).
+   *
+   * Lookup is a UNION of two INDEXED arms (name btree + the
+   * crave_text_array_lower(aliases) GIN) — the old single query OR'd the
+   * arms, which forced a full seq scan of the active catalogue per search.
+   */
+  async scanForKnownEntityGroups(
     text: string,
     entityTypes: EntityType[],
     options: { engineId?: string | null; maxPhraseWords?: number } = {},
-  ): Promise<EntitySpan[]> {
+  ): Promise<EntitySpanGroup[]> {
     const raw = text ?? '';
     if (!raw.trim() || entityTypes.length === 0) return [];
 
@@ -955,6 +981,7 @@ export class EntityTextSearchService {
         start: match.index,
         end: match.index + match[0].length,
       });
+      if (tokens.length >= EntityTextSearchService.GAZETTEER_MAX_TOKENS) break;
     }
     if (!tokens.length) return [];
 
@@ -995,18 +1022,28 @@ export class EntityTextSearchService {
       FROM core_entities e
       WHERE e.status = 'active'::entity_status
         AND e.type = ANY(${typeArray})
-        AND (
-          LOWER(e.name) = ANY(${candidates}::text[])
-          OR EXISTS (
-            SELECT 1 FROM unnest(e.aliases) a
-            WHERE LOWER(a) = ANY(${candidates}::text[])
-          )
-        )
+        AND LOWER(e.name) = ANY(${candidates}::text[])
+        ${territoryFilter}
+      UNION
+      SELECT e.entity_id AS "entityId", e.name, e.type,
+             LOWER(e.name) AS "normName",
+             ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases"
+      FROM core_entities e
+      WHERE e.status = 'active'::entity_status
+        AND e.type = ANY(${typeArray})
+        AND crave_text_array_lower(e.aliases) && ${candidates}::text[]
         ${territoryFilter}
     `);
 
     const candidateSet = new Set(candidates);
-    const rawSpans: EntitySpan[] = [];
+    const rawSpans: Array<{
+      start: number;
+      end: number;
+      text: string;
+      entityId: string;
+      name: string;
+      type: EntityType;
+    }> = [];
     for (const row of rows) {
       const matchedPhrases = new Set<string>();
       if (candidateSet.has(row.normName)) matchedPhrases.add(row.normName);
@@ -1027,19 +1064,34 @@ export class EntityTextSearchService {
       }
     }
 
-    // Longest-match, non-overlapping greedy (drops sub-phrases + same-span dupes).
-    rawSpans.sort(
-      (a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start,
+    return groupEntitySpans(rawSpans);
+  }
+
+  async scanForKnownEntities(
+    text: string,
+    entityTypes: EntityType[],
+    options: { engineId?: string | null; maxPhraseWords?: number } = {},
+  ): Promise<EntitySpan[]> {
+    // Single-winner consumer policy (polls highlighting): one entity per
+    // span, chosen DETERMINISTICALLY by the caller's own type order + id —
+    // the old path let JS sort stability over DB row order decide, which is
+    // arbitrary across replicas and vacuums.
+    const groups = await this.scanForKnownEntityGroups(
+      text,
+      entityTypes,
+      options,
     );
-    const accepted: EntitySpan[] = [];
-    for (const span of rawSpans) {
-      const overlaps = accepted.some(
-        (a) => span.start < a.end && span.end > a.start,
-      );
-      if (!overlaps) accepted.push(span);
-    }
-    accepted.sort((a, b) => a.start - b.start);
-    return accepted;
+    return groups.map((group) => {
+      const winner = pickSpanWinner(group, entityTypes);
+      return {
+        start: group.start,
+        end: group.end,
+        text: group.text,
+        entityId: winner.entityId,
+        name: winner.name,
+        type: winner.type,
+      };
+    });
   }
 
   /**

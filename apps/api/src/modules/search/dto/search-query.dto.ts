@@ -329,6 +329,10 @@ export type SearchResponseDto = SharedSearchResponse;
 export class NaturalSearchRequestDto {
   @IsString()
   @IsNotEmpty()
+  // Round-2 review: unbounded query x the gazetteer's 4-gram expansion was
+  // a self-inflicted DoS on the hot path (5k tokens measured 3.8s). 256
+  // chars comfortably covers any real search; the scanner also caps tokens.
+  @MaxLength(256)
   query!: string;
 
   @IsOptional()
