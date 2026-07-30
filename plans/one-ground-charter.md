@@ -370,6 +370,57 @@ census-derived approximate outline because no better source exists for them
 today, and organic discovery will replace any of them the moment TomTom starts
 modelling it.
 
+### The coarse-grid onboarder — BUILT 2026-07-29 (`apps/api/scripts/seed-region.ts`)
+
+Shipped as a SCRIPT, dry-run by default. Not a cron, not an endpoint: opening a
+region is rare, deliberate, expensive and human-initiated, and the two
+alternatives both invite an unattended or accidental continent-scale spend.
+
+    npx ts-node scripts/seed-region.ts --region "France" --spacing-km 15
+    npx ts-node scripts/seed-region.ts --region "France" --spacing-km 15 --execute
+    npx ts-node scripts/seed-region.ts --bootstrap 48.85,2.35   # region unknown yet
+
+It CREATES NOTHING. It chooses WHERE to look and hands each point to the same
+path organic discovery uses (`probe()` → `sketchChain()`), so one call mints the
+whole ladder with a vendor id per rung. That is the design, not an
+implementation detail: the census seeder was a PARALLEL creation path with
+different rules and every defect in this file's history came from it. If that
+script ever grows its own upsert, that is the bug.
+
+MEASURED (dry runs against prod):
+
+| region        | spacing | cells on ground | already covered | probes  | wall clock |
+| ------------- | ------- | --------------- | --------------- | ------- | ---------- |
+| Rhode Island  | 15 km   | 12              | 1               | ≤11     | ~1 min     |
+| United States | 100 km  | 941             | 450             | ≤491    | ~2 min     |
+| United States | 15 km   | 41,671          | 19,528          | ≤22,143 | ~82 min    |
+
+Incidental finding worth acting on someday: coverage is SPARSE even in the US —
+Rhode Island holds 8 of ~39 municipalities, 11.8% of the state's area, and 47%
+of US cells at 15 km are uncovered. This tool is useful for filling in existing
+territory, not only for new continents.
+
+THREE RED-TEAM FINDINGS AGAINST MY OWN FIRST DRAFT, all fixed:
+
+1. **The seam guard was DEAD CODE.** I refused regions where
+   `min_lng > max_lng`. A polygon whose parts straddle 180° (the US, via the
+   Aleutians) stores XMin=-179.15 / XMax=179.78, so the test is FALSE and never
+   fired. The sweep therefore spans the long way round the globe — a SUPERSET —
+   and `ST_Covers` clips it back to exactly the right cells. Correctness comes
+   from the CLIP, never from the extent. Guard deleted, reasoning written down;
+   a guard that cannot fire is worse than none because it reads as protection.
+2. **Array-shipping does not scale.** Grid generation moved into SQL
+   (`generate_series` + a per-row LATERAL lng step, because longitude degrees
+   shrink with latitude and one fixed step would under-sample exactly where the
+   region is widest). Verified byte-identical output before/after.
+3. **`ST_Covers` against one country-sized MultiPolygon is the real wall.**
+   US @ 15 km did not finish in 10 minutes: a single huge geometry cannot be
+   helped by an index (it is one row) and its bbox is useless as a prefilter
+   when the region straddles the seam. Fixed with `ST_Subdivide` into
+   GiST-indexed pieces inside ONE interactive transaction — temp tables are
+   per-connection and Prisma pools, so the transaction pins them. This is the
+   canonical PostGIS answer to point-in-large-polygon, not a workaround.
+
 ### Seeding new regions going forward — grid, not census
 
 Owner direction 2026-07-28, and it is the right shape: onboard a new
