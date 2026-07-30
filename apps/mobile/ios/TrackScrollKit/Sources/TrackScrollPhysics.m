@@ -47,6 +47,27 @@
 /// inside scrollViewDidScroll, the same frame as the offset change, exactly as
 /// RCTScrollView implements native sticky headers.
 @property (nonatomic, weak) UIView *pinnedChromeView;
+/// ── THE SHELL (native-shell derivation, 2026-07-29) ─────────────────────────
+/// Native owns POSITION, RN owns PIXELS. Every view whose position is a
+/// function of τ is transformed HERE, in scrollViewDidScroll — one writer, one
+/// frame, zero lag between any two shell layers:
+///   frost       screen-space: translateY = sheetTop(τ)        (view laid at 0)
+///   tail        screen-space: translateY = max(sheetTop, contentEnd − τ)
+///   chromeView  screen-space: translateY = sheetTop(τ)        (the VISUALS —
+///               a box-none overlay; its twin lives in the CONTENT for touches,
+///               pinned by pinnedChromeView above)
+///   band mask   rows never RENDER above sheetTop(τ) + chromeHeight. A CALayer
+///               mask clips rendering ONLY, so the masked touch twin still
+///               hit-tests and the scroll view keeps owning tap-vs-drag for
+///               every pixel of the sheet.
+@property (nonatomic, weak) UIView *shellFrostView;
+@property (nonatomic, weak) UIView *shellTailView;
+@property (nonatomic, weak) UIView *shellChromeView;
+@property (nonatomic, strong) CALayer *shellBandMask;
+@property (nonatomic, assign) CGFloat shellExpandedTop;
+@property (nonatomic, assign) CGFloat shellTrackH;
+@property (nonatomic, assign) CGFloat shellChromeHeight;
+@property (nonatomic, assign) BOOL shellEnabled;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -206,6 +227,44 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
     } else {
       self.lastOffsetY = y;
       self.lastTimestamp = now;
+    }
+  }
+  // THE SHELL WRITER: every τ-derived position, one place, same frame.
+  if (self.shellEnabled) {
+    const CGFloat tau = scrollView.contentOffset.y;
+    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, self.shellTrackH - tau);
+    UIView *frost = self.shellFrostView;
+    if (frost != nil) {
+      const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
+      if (!CGAffineTransformEqualToTransform(frost.transform, t)) frost.transform = t;
+    }
+    UIView *chromeOverlay = self.shellChromeView;
+    if (chromeOverlay != nil) {
+      const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
+      if (!CGAffineTransformEqualToTransform(chromeOverlay.transform, t)) chromeOverlay.transform = t;
+    }
+    UIView *tail = self.shellTailView;
+    if (tail != nil) {
+      const CGFloat contentEnd = scrollView.contentSize.height - tau;
+      const CGFloat tailTop = MAX(sheetTop, contentEnd);
+      const CGAffineTransform t = CGAffineTransformMakeTranslation(0, tailTop);
+      if (!CGAffineTransformEqualToTransform(tail.transform, t)) tail.transform = t;
+    }
+    CALayer *mask = self.shellBandMask;
+    if (mask != nil) {
+      // Layer space = bounds space = contentOffset-tracked: screen y Y lives
+      // at layer y (τ + Y). The band bottom is sheetTop + chromeHeight.
+      const CGRect b = scrollView.bounds;
+      const CGRect next = CGRectMake(0,
+                                     tau + sheetTop + self.shellChromeHeight,
+                                     CGRectGetWidth(b),
+                                     CGRectGetHeight(b) * 6.0);
+      if (!CGRectEqualToRect(mask.frame, next)) {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        mask.frame = next;
+        [CATransaction commit];
+      }
     }
   }
   // THE PIN: zero-lag, same frame as the offset. translate = max(0, τ − H).
@@ -429,6 +488,53 @@ RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
     }
     UIView *chrome = viewRegistry[chromeTag] ?: [uiManager viewForReactTag:chromeTag];
     proxy.pinnedChromeView = chrome;
+  }];
+}
+
+// ── bindShell: the one configuration call for the native shell ──────────────
+// Tags are RN views (RN owns their pixels); native takes over their transforms.
+// Idempotent and re-assertable (refs fire child-first; Fabric remounts) — every
+// call simply re-resolves the views and re-applies the current frame.
+RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
+                  config:(NSDictionary *)config)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      return;
+    }
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    if (proxy == nil) {
+      return;
+    }
+    // JS null crosses the bridge as NSNull, NOT nil — feeding it to
+    // viewForReactTag: is a doesNotRecognizeSelector crash (hit live 2026-07-29).
+    UIView *(^resolve)(id) = ^UIView *(id tag) {
+      if (![tag isKindOfClass:[NSNumber class]]) {
+        return nil;
+      }
+      return viewRegistry[(NSNumber *)tag] ?: [uiManager viewForReactTag:(NSNumber *)tag];
+    };
+    proxy.shellFrostView = resolve(config[@"frostTag"]);
+    proxy.shellTailView = resolve(config[@"tailTag"]);
+    proxy.shellChromeView = resolve(config[@"chromeTag"]);
+    proxy.shellExpandedTop = [config[@"expandedTop"] doubleValue];
+    proxy.shellTrackH = [config[@"trackH"] doubleValue];
+    proxy.shellChromeHeight = [config[@"chromeHeight"] doubleValue];
+    if (proxy.shellBandMask == nil) {
+      CALayer *mask = [CALayer layer];
+      mask.backgroundColor = [UIColor blackColor].CGColor;
+      proxy.shellBandMask = mask;
+      scrollView.layer.mask = mask;
+    } else if (scrollView.layer.mask != proxy.shellBandMask) {
+      scrollView.layer.mask = proxy.shellBandMask;
+    }
+    proxy.shellEnabled = YES;
+    // Apply the current frame immediately — don't wait for the next scroll.
+    if ([proxy respondsToSelector:@selector(scrollViewDidScroll:)]) {
+      [proxy scrollViewDidScroll:scrollView];
+    }
   }];
 }
 

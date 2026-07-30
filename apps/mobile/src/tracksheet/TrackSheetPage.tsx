@@ -174,7 +174,7 @@ export function TrackSheetPage<Item>({
   onSettle,
 }: TrackSheetPageProps<Item>): React.ReactElement {
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
-  const { tau, trackH, sheetTopY, onScroll, attachToTag, contentHeight } = physics;
+  const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
@@ -246,24 +246,74 @@ export function TrackSheetPage<Item>({
     return { opacity: interpolate(tau.value - h, [0, 3, 14], [0, 0.35, 1], 'clamp') };
   });
 
-  // The chrome's node handle goes to the native pin (step 1 primitive).
-  // THE PIN MUST RE-ASSERT ON ATTACH: React fires refs CHILD-FIRST, so
-  // setChromeRef runs before the track's own ref — and pinChrome no-ops when
-  // the proxy does not exist yet. attach() retries (logs show success on a
-  // later attempt); the pin had no such re-assert, so it was dropped once and
-  // forever, and the chrome then scrolled away past H ("the sheet never stops
-  // at the top snap"). Same law the seat already follows.
+  // ── THE NATIVE SHELL BIND (native-shell derivation, 2026-07-29) ────────────
+  // Native owns POSITION, RN owns PIXELS. Every view whose position is a
+  // function of τ (frost, tail, chrome visuals) hands its tag to the shell,
+  // and TrackScrollKit transforms them in scrollViewDidScroll — one writer,
+  // one frame, zero lag between any two shell layers. The chrome TOUCH twin
+  // stays in the content (pinChrome), where the band mask hides its pixels but
+  // hit-testing survives — UIScrollView keeps owning tap-vs-drag for every
+  // pixel of the sheet. MUST RE-ASSERT ON ATTACH: refs fire child-first and
+  // the proxy may not exist on the first pass (same law as the seat).
   const reassertSeatRef = React.useRef<(() => void) | null>(null);
   const applyPinRef = React.useRef<(() => void) | null>(null);
   React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
   const chromeTagRef = React.useRef<number | null>(null);
+  const chromeVisualTagRef = React.useRef<number | null>(null);
+  const frostTagRef = React.useRef<number | null>(null);
+  const tailTagRef = React.useRef<number | null>(null);
   const applyPin = React.useCallback(() => {
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    if (nativePhysics?.pinChrome != null && trackTagRef.current != null) {
+    if (trackTagRef.current == null) {
+      return;
+    }
+    if (nativePhysics?.pinChrome != null) {
       nativePhysics.pinChrome(trackTagRef.current, chromeTagRef.current);
     }
-  }, []);
+    if (nativePhysics?.bindShell != null) {
+      nativePhysics.bindShell(trackTagRef.current, {
+        frostTag: frostTagRef.current,
+        tailTag: tailTagRef.current,
+        chromeTag: chromeVisualTagRef.current,
+        expandedTop: geometry.expandedTop,
+        trackH,
+        chromeHeight,
+      });
+    }
+  }, [chromeHeight, geometry.expandedTop, trackH]);
+  React.useEffect(() => {
+    applyPin();
+  }, [applyPin]);
+  // COMMIT-PROOF: React resets a view's transform whenever it recommits (its
+  // style carries none), and a resting sheet gets no scroll frame to restore
+  // it — a scene switch left the chrome visuals at y=0 (seen live 2026-07-29,
+  // profile). Re-assert the bind after EVERY commit; bindShell re-applies the
+  // current frame immediately, so a reset can never survive a commit.
+  React.useLayoutEffect(() => {
+    applyPin();
+  });
+  const setChromeVisualRef = React.useCallback(
+    (node: View | null) => {
+      chromeVisualTagRef.current = node != null ? findNodeHandle(node) : null;
+      applyPin();
+    },
+    [applyPin]
+  );
+  const setFrostRef = React.useCallback(
+    (node: View | null) => {
+      frostTagRef.current = node != null ? findNodeHandle(node) : null;
+      applyPin();
+    },
+    [applyPin]
+  );
+  const setTailRef = React.useCallback(
+    (node: View | null) => {
+      tailTagRef.current = node != null ? findNodeHandle(node) : null;
+      applyPin();
+    },
+    [applyPin]
+  );
   // ── THE ORIGIN INVARIANT (RED-capable; this exact defect regressed 3x) ─────
   // The chrome IS the sheet's top edge, so its window y must equal sheetTopY.
   // It diverged by exactly expandedTop every time a layer applied that origin
@@ -513,79 +563,80 @@ export function TrackSheetPage<Item>({
   // touch, so the whole sheet is grabbable by construction with UIScrollView's
   // own delaysContentTouches/cancelContentTouches as the tap-vs-drag rule.
   // TrackScrollKit pins it past H (native, same-frame).
-  const chromeElement = React.useMemo(
-    () => (
-      <View
-        ref={setChromeRef}
-        collapsable={false}
-        style={[styles.chrome, { height: chromeHeight }]}
-      >
-        {/* NO CHROME FROST SLAB: the frost founds the SHEET (see the founding
+  const renderChrome = (refCallback: (node: View | null) => void) => (
+    <View ref={refCallback} collapsable={false} style={[styles.chrome, { height: chromeHeight }]}>
+      {/* NO CHROME FROST SLAB: the frost founds the SHEET (see the founding
               layers below). A slab here would sit ON that frost and blur an
               already-blurred layer — the owner's "double frosty". The chrome's
               cutouts reach the founding frost directly. */}
-        {/* Plate covers the HEADER BLOCK only — the strip band paints its
+      {/* Plate covers the HEADER BLOCK only — the strip band paints its
               own plate, and anything beneath its holes must be FROST (a full-
               chrome plate blocked the strip cutouts with white). */}
-        <MaskedHoleOverlay
-          holes={plateHoles}
-          backgroundColor={surfaceColor}
-          renderWhenEmpty
-          style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
-        />
-        {/* THE STRIP SEAM (polls gap fix): the 8pt spacer under the band is
+      <MaskedHoleOverlay
+        holes={plateHoles}
+        backgroundColor={surfaceColor}
+        renderWhenEmpty
+        style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
+      />
+      {/* THE STRIP SEAM (polls gap fix): the 8pt spacer under the band is
               sheet material, not frost — it is part of the chrome plate's
               coverage, painted here so no gap can open between the band and
               the first row. */}
-        {dockedStrip != null ? (
-          <View
-            style={[
-              styles.stripSeam,
-              {
-                top: OVERLAY_TAB_HEADER_HEIGHT + dockedStrip.height,
-                backgroundColor: surfaceColor,
-              },
-            ]}
-            pointerEvents="none"
-          />
-        ) : null}
-        <View style={styles.grabWrapper}>
-          <Pressable
-            onPress={onGrabHandlePress}
-            hitSlop={10}
-            accessibilityLabel="Expand sheet"
-            disabled={onGrabHandlePress == null}
-          >
-            <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
-          </Pressable>
+      {dockedStrip != null ? (
+        <View
+          style={[
+            styles.stripSeam,
+            {
+              top: OVERLAY_TAB_HEADER_HEIGHT + dockedStrip.height,
+              backgroundColor: surfaceColor,
+            },
+          ]}
+          pointerEvents="none"
+        />
+      ) : null}
+      <View style={styles.grabWrapper}>
+        <Pressable
+          onPress={onGrabHandlePress}
+          hitSlop={10}
+          accessibilityLabel="Expand sheet"
+          disabled={onGrabHandlePress == null}
+        >
+          <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
+        </Pressable>
+      </View>
+      <View style={styles.headerRow}>
+        <View style={styles.titleSlot}>{title}</View>
+        <View style={styles.actionGroup}>
+          {headerExtras}
+          {navActionProgress != null && onNavActionPress != null ? (
+            <HeaderNavAction
+              progress={navActionProgress}
+              onPress={onNavActionPress}
+              accessibilityLabel={navActionLabel}
+            />
+          ) : null}
         </View>
-        <View style={styles.headerRow}>
-          <View style={styles.titleSlot}>{title}</View>
-          <View style={styles.actionGroup}>
-            {headerExtras}
-            {navActionProgress != null && onNavActionPress != null ? (
-              <HeaderNavAction
-                progress={navActionProgress}
-                onPress={onNavActionPress}
-                accessibilityLabel={navActionLabel}
-              />
-            ) : null}
-          </View>
-        </View>
-        {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
-        <View style={styles.headerBottomPad} />
-        {dockedStrip != null ? (
-          <>
-            {/* The band renders NO plate of its own (plateColor transparent):
+      </View>
+      {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
+      <View style={styles.headerBottomPad} />
+      {dockedStrip != null ? (
+        <>
+          {/* The band renders NO plate of its own (plateColor transparent):
                   production's ToggleStrip paints its chips directly, and the
                   frost slab behind the chrome is what shows between them —
                   a plate here would be the white that blocked the cutouts. */}
-            <TrackSheetDockedStrip {...dockedStrip} plateColor="transparent" />
-          </>
-        ) : null}
-        <Reanimated.View style={[styles.divider, dividerStyle]} />
-      </View>
-    ),
+          <TrackSheetDockedStrip {...dockedStrip} plateColor="transparent" />
+        </>
+      ) : null}
+      <Reanimated.View style={[styles.divider, dividerStyle]} />
+    </View>
+  );
+  // THE TWINS: same JSX factory, two instances, so their layouts agree by
+  // construction. The TOUCH twin lives in the content (band-masked invisible,
+  // hit-testable — the grab and every button ride UIScrollView arbitration);
+  // the VISUAL twin is a pointerEvents-none overlay, positioned natively.
+  const chromeElement = React.useMemo(
+    () => renderChrome(setChromeRef),
     [
       chromeHeight,
       dockedStrip,
@@ -597,6 +648,24 @@ export function TrackSheetPage<Item>({
       onNavActionPress,
       plateHoles,
       setChromeRef,
+      surfaceColor,
+      title,
+      dividerStyle,
+    ]
+  );
+  const chromeVisualElement = React.useMemo(
+    () => renderChrome(setChromeVisualRef),
+    [
+      chromeHeight,
+      dockedStrip,
+      grabHandleHidden,
+      headerExtras,
+      navActionProgress,
+      navActionLabel,
+      onGrabHandlePress,
+      onNavActionPress,
+      plateHoles,
+      setChromeVisualRef,
       surfaceColor,
       title,
       dividerStyle,
@@ -687,12 +756,6 @@ export function TrackSheetPage<Item>({
   // last row gets its own plate anchored at the content's end — so a short
   // page reads solid to the screen bottom and through any rubber band, with no
   // fabricated scroll length (R4/R5).
-  const frostStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetTopY.value }],
-  }));
-  const tailStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: Math.max(sheetTopY.value, contentHeight.value - tau.value) }],
-  }));
 
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
@@ -712,50 +775,64 @@ export function TrackSheetPage<Item>({
           the map shows through the spacer region. No counter-translate, no
           mask, no surface overlay, no chrome overlay, no chromeGrab — the
           engine owns motion, bounds, pinning and tap-vs-drag. */}
-      <Reanimated.View
-        style={[overlaySheetStyles.shadowShell, styles.silhouette, styles.founding, frostStyle]}
+      {/* THE FROST: RN pixels, native position (translateY = sheetTop each
+          frame, written by the shell in scrollViewDidScroll). Carries the
+          silhouette: r22 corners + the production shadow on the non-clipping
+          wrapper. */}
+      <View
+        ref={setFrostRef}
+        collapsable={false}
+        style={[overlaySheetStyles.shadowShell, styles.silhouette, styles.founding]}
         pointerEvents="none"
       >
         <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
           <FrostedGlassBackground />
         </View>
-      </Reanimated.View>
-      <View style={[styles.clip, { top: geometry.expandedTop }]}>
-        <View style={[styles.trackShift, { top: -geometry.expandedTop }]}>
-          <AnimatedFlashList
-            ref={setListRef as unknown as React.Ref<React.Component>}
-            style={StyleSheet.absoluteFill}
-            contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-            data={list.data}
-            renderItem={renderRowOnSurface}
-            keyExtractor={list.keyExtractor}
-            getItemType={list.getItemType}
-            ItemSeparatorComponent={list.ItemSeparatorComponent}
-            ListEmptyComponent={list.ListEmptyComponent}
-            onEndReached={list.onEndReached}
-            onEndReachedThreshold={list.onEndReachedThreshold}
-            extraData={list.extraData}
-            drawDistance={SCREEN.height}
-            maintainVisibleContentPosition={{ disabled: true }}
-            renderScrollComponent={TrackScrollComponent}
-            ListHeaderComponent={listHeader}
-            ListFooterComponent={listFooter}
-            showsVerticalScrollIndicator={false}
-            bounces
-            alwaysBounceVertical
-            scrollEventThrottle={16}
-            onScroll={onScroll}
-            automaticallyAdjustContentInsets={false}
-            contentInset={{ bottom: insetBottom }}
-            onContentSizeChange={handleContentSizeChange}
-          />
-        </View>
       </View>
+      <AnimatedFlashList
+        ref={setListRef as unknown as React.Ref<React.Component>}
+        style={StyleSheet.absoluteFill}
+        contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+        data={list.data}
+        renderItem={renderRowOnSurface}
+        keyExtractor={list.keyExtractor}
+        getItemType={list.getItemType}
+        ItemSeparatorComponent={list.ItemSeparatorComponent}
+        ListEmptyComponent={list.ListEmptyComponent}
+        onEndReached={list.onEndReached}
+        onEndReachedThreshold={list.onEndReachedThreshold}
+        extraData={list.extraData}
+        drawDistance={SCREEN.height}
+        maintainVisibleContentPosition={{ disabled: true }}
+        renderScrollComponent={TrackScrollComponent}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
+        showsVerticalScrollIndicator={false}
+        bounces
+        alwaysBounceVertical
+        scrollEventThrottle={16}
+        onScroll={onScroll}
+        automaticallyAdjustContentInsets={false}
+        contentInset={{ bottom: insetBottom }}
+        onContentSizeChange={handleContentSizeChange}
+      />
 
-      <Reanimated.View
-        style={[styles.founding, { backgroundColor: surfaceColor }, tailStyle]}
+      {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
+          contentEnd − τ), native) — the sheet is solid past any content end,
+          through any bounce, with zero fabricated scroll length. */}
+      <View
+        ref={setTailRef}
+        collapsable={false}
+        style={[styles.founding, { backgroundColor: surfaceColor }]}
         pointerEvents="none"
       />
+
+      {/* THE CHROME VISUALS: pointerEvents none — every touch falls through to
+          the track; the content twin supplies the buttons. Positioned natively
+          at sheetTop, so chrome, frost and band mask agree every frame. */}
+      <View style={styles.chromeOverlay} pointerEvents="none">
+        {chromeVisualElement}
+      </View>
 
       {debugHud ? (
         <View style={styles.hud} pointerEvents="none">
@@ -782,8 +859,7 @@ const styles = StyleSheet.create({
   // Containment (R6): nothing renders above the sheet's top edge. A clip, not
   // a reposition — the track inside is counter-offset so nothing shifts.
   chromeLane: { zIndex: 60 },
-  clip: { position: 'absolute', left: 0, right: 0, bottom: 0, overflow: 'hidden' },
-  trackShift: { position: 'absolute', left: 0, right: 0, height: SCREEN.height },
+  chromeOverlay: { position: 'absolute', left: 0, right: 0, top: 0, zIndex: 60 },
   founding: {
     position: 'absolute',
     left: 0,
