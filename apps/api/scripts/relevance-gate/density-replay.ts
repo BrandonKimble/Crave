@@ -1,19 +1,32 @@
 /**
- * Relevance-gate PACK-DENSITY replay: same labeled corpus as replay.ts but
- * packed with the EXACT production packing algorithm from
- * relevance-gate.service.ts (PACK_TOKEN_BUDGET=20000, PACK_MAX_POSTS=25,
- * greedy in order). Compares P/R vs the low/mixed-density baseline.
+ * Relevance-gate calibration replay — through THE PRODUCTION PATH.
+ *
+ * The original harness built its own GoogleGenAI client and hand-assembled
+ * the request, which means it never measured the shipped configuration at
+ * all: it was a parallel assembler that could (and did) drift — no thinking
+ * config, prompt in the user text part while production moved it to
+ * systemInstruction. A calibration number from a harness that bypasses the
+ * system it calibrates is a fake measurement.
+ *
+ * This version boots the app and drives RelevanceGateService.filterPosts —
+ * the real packing, the real gateway (caller profile, thinking level, spend
+ * admission, ledger) — against the 130-post labeled corpus. Verdicts
+ * persist under a throwaway platform tag so reruns are clean and prod rows
+ * are untouched.
+ *
+ *   yarn workspace api ts-node scripts/relevance-gate/density-replay.ts
  */
 import 'dotenv/config';
+process.env.PROCESS_ROLE ||= 'api';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GoogleGenAI } from '@google/genai';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from '../../src/app.module';
+import { RelevanceGateService } from '../../src/modules/content-processing/reddit-collector/relevance-gate.service';
+import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
+import type { LLMPost } from '../../src/modules/external-integrations/llm/llm.types';
 
-const DIR = '/Users/brandonkimble/Crave/apps/api/scripts/relevance-gate';
-const PROMPT = fs.readFileSync(
-  '/Users/brandonkimble/Crave/apps/api/src/modules/external-integrations/llm/prompts/relevance-gate-prompt.md',
-  'utf8',
-);
+const DIR = __dirname;
 
 interface Sample {
   sub: string;
@@ -22,10 +35,7 @@ interface Sample {
   body: string;
 }
 
-const PACK_TOKEN_BUDGET = 20000;
-const PACK_MAX_POSTS = 25;
-
-async function main() {
+async function main(): Promise<void> {
   const labels = JSON.parse(
     fs.readFileSync(path.join(DIR, 'calibration-labels.json'), 'utf8'),
   ) as Record<string, number>;
@@ -33,110 +43,62 @@ async function main() {
     .readFileSync(path.join(DIR, 'calibration-sample.jsonl'), 'utf8')
     .split('\n')
     .filter(Boolean)
-    .map((l) => JSON.parse(l) as Sample)
-    .filter((s) => s.id in labels);
+    .map((line) => JSON.parse(line) as Sample)
+    .filter((sample) => sample.id in labels);
 
-  // production packing (verbatim algorithm from relevance-gate.service.ts)
-  const batches: Sample[][] = [];
-  let current: Sample[] = [];
-  let currentTokens = 0;
-  for (const post of samples) {
-    const postTokens = Math.ceil(
-      (post.title.length + (post.body ?? '').length) / 4,
+  const app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['warn', 'error'],
+  });
+  stopCronsForScript(app);
+  try {
+    const gate = app.get(RelevanceGateService);
+    // Unique platform tag per run: no cached verdicts, no prod collisions.
+    const platform = `calibration-${Date.now().toString(36)}`;
+    const posts = samples.map((sample) => ({
+      id: sample.id,
+      title: sample.title,
+      content: sample.body,
+    })) as LLMPost[];
+
+    const started = Date.now();
+    const result = await gate.filterPosts(platform, posts);
+    const keptIds = new Set(result.kept.map((post) => post.id));
+
+    let tp = 0;
+    let fn = 0;
+    let fp = 0;
+    let tn = 0;
+    for (const sample of samples) {
+      const shouldKeep = labels[sample.id] === 1;
+      const kept = keptIds.has(sample.id);
+      if (shouldKeep && kept) tp += 1;
+      else if (shouldKeep && !kept) {
+        fn += 1;
+        console.log(`FALSE DROP: ${sample.id} "${sample.title}"`);
+      } else if (!shouldKeep && kept) fp += 1;
+      else tn += 1;
+    }
+    const recall = tp / Math.max(1, tp + fn);
+    const precision = tp / Math.max(1, tp + fp);
+    console.log(
+      `\nposts=${samples.length} judged=${result.judged} in ${Math.round(
+        (Date.now() - started) / 1000,
+      )}s (platform=${platform})`,
     );
-    if (
-      current.length &&
-      (current.length >= PACK_MAX_POSTS ||
-        currentTokens + postTokens > PACK_TOKEN_BUDGET)
-    ) {
-      batches.push(current);
-      current = [];
-      currentTokens = 0;
-    }
-    current.push(post);
-    currentTokens += postTokens;
+    console.log(
+      `keep-recall=${recall.toFixed(3)} (tp=${tp} fn=${fn})  keep-precision=${precision.toFixed(3)} (fp=${fp} tn=${tn})`,
+    );
+    console.log(
+      'Baseline under the OLD configuration (own client, prompt inline, implicit HIGH thinking): recall 1.000 / precision 0.776 at max density.',
+    );
+  } finally {
+    await app.close();
   }
-  if (current.length) batches.push(current);
-  console.log(
-    `replaying ${samples.length} posts in ${batches.length} production-shape packs:`,
-    batches
-      .map(
-        (b) =>
-          `${b.length}p/${Math.ceil(b.reduce((s, p) => s + p.title.length + (p.body ?? '').length, 0) / 4)}t`,
-      )
-      .join(' '),
-  );
-
-  const ai = new GoogleGenAI({ apiKey: process.env.LLM_API_KEY ?? '' });
-  const verdicts = new Map<string, { keep: boolean; reason?: string }>();
-  let inTok = 0,
-    outTok = 0;
-  for (const batch of batches) {
-    const payload = batch.map((s, j) => ({
-      index: j,
-      title: s.title,
-      body: s.body,
-    }));
-    const res = await ai.models.generateContent({
-      model: 'gemini-3.1-flash-lite-preview',
-      contents: [
-        {
-          parts: [
-            { text: `${PROMPT}\n\n## Posts\n\n${JSON.stringify(payload)}` },
-          ],
-        },
-      ],
-      config: {
-        temperature: 0,
-        responseMimeType: 'application/json',
-        maxOutputTokens: 65536,
-      },
-    });
-    inTok += res.usageMetadata?.promptTokenCount ?? 0;
-    outTok += res.usageMetadata?.candidatesTokenCount ?? 0;
-    const text = res.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-    const rawParsed = JSON.parse(text) as unknown;
-    const vs = (
-      Array.isArray(rawParsed)
-        ? rawParsed
-        : (rawParsed as Record<string, unknown>)?.verdicts
-    ) as { index: number; keep: boolean; reason?: string }[] | undefined;
-    for (const v of vs ?? []) {
-      const sample = batch[v.index];
-      if (sample) verdicts.set(sample.id, { keep: v.keep, reason: v.reason });
-    }
-  }
-
-  let tp = 0,
-    fp = 0,
-    fn = 0,
-    tn = 0,
-    missing = 0;
-  const falseDrops: string[] = [],
-    falseKeeps: string[] = [];
-  const labelsAll = labels;
-  for (const s of samples) {
-    const truth = labelsAll[s.id] === 1;
-    const v = verdicts.get(s.id);
-    if (!v) missing++;
-    const pred = v?.keep ?? true;
-    if (truth && pred) tp++;
-    else if (!truth && pred) {
-      fp++;
-      falseKeeps.push(`${s.sub}|${s.title.slice(0, 60)}`);
-    } else if (truth && !pred) {
-      fn++;
-      falseDrops.push(`${s.sub}|${s.title.slice(0, 60)}|${v?.reason}`);
-    } else tn++;
-  }
-  console.log(
-    `keep-precision=${(tp / (tp + fp)).toFixed(3)} keep-recall=${(tp / (tp + fn)).toFixed(3)} (tp=${tp} fp=${fp} fn=${fn} tn=${tn} missing=${missing})`,
-  );
-  console.log(`tokens in=${inTok} out=${outTok}`);
-  console.log('FALSE DROPS:');
-  falseDrops.forEach((d) => console.log('  ' + d));
 }
-main().catch((e) => {
-  console.error(e);
+
+main().catch((error) => {
+  console.error(
+    error instanceof Error ? (error.stack ?? error.message) : error,
+  );
   process.exit(1);
 });
