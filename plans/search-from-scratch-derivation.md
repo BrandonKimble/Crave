@@ -55,27 +55,32 @@ resolver, spend gate all landed on this shape):
 2. **Linker on the residue**: the calibrated conservative matcher
    (sweep-derived per-tier floors, tie plurality) for typos and variants
    the gazetteer can't see ("vgean" → vegan).
-3. **LLM on the remaining residue only** — its irreplaceable jobs:
+3. **LLM as residue fallback — exactly TWO irreducible jobs** (list
+   shrunk twice under owner challenge, 2026-07-29; each earlier claimed
+   job checked against the real code):
    - **Negation** ("no cilantro" — the gazetteer alone would ground
      cilantro as a POSITIVE constraint: the inverted-allergy failure, the
-     most dangerous bug this design must make impossible);
-   - filter-word handling — **PROPOSED, not current behavior** (owner
-     challenge 2026-07-29 caught this presented as existing; verified: the
-     query prompt outputs six entity arrays and nothing else, and
-     openNow/priceLevels/bounds come only from UI toggles + viewport).
-     Today: "nearby" is stripped as generic (correct — the viewport IS the
-     geo filter); "open late" rides the community-attribute lane (active
-     'late night' entity); "cheap" is a DEAD word ('cheap'/'cheap eats'
-     archived, no text→price mapping — it silently contributes nothing).
-     Whether the ideal maps such words to structural filters is §5's
-     decision, not an assumption;
-   - junk words → discarded ("best", "somewhere");
-   - segmentation of unknown phrases (→ clean on-demand terms);
-   - modifier↔subject attachment in multi-subject queries.
-     **Skip gate (conservative):** the LLM may be skipped ONLY when the
-     residue after lanes 1–2 is empty. Negation/filter/junk words are never
-     entity names, so they always land in residue — the property that makes
-     the skip safe.
+     most dangerous bug this design must make impossible). A deterministic
+     cue set (no/without/minus/hold/-free/allergic/sans) routes to the
+     LLM; the LLM handles the tail ("can't do dairy"; "not too spicy",
+     which is not an exclusion at all).
+   - **Unknown-phrase segmentation**: words that ground to nothing become
+     CLEAN on-demand terms instead of per-word garbage — open-world
+     demand quality.
+     Jobs that DISSOLVED on inspection: typing (→ data); filter extraction
+     (never existed; trilemma resolved to attributes); attachment (never
+     existed — the schema is six FLAT arrays, exclusions apply
+     query-globally); junk discard (stripGenericTokens already does it
+     deterministically, pre-LLM); fallback decomposition (the n-gram scan
+     finds every KNOWN contained dish; family expansion does the rest);
+     ingredient-vs-dish direction (multi-type grounding + the twin union
+     serve both readings).
+     **Skip gate (conservative):** the LLM runs when negation cues are
+     present OR meaningful residue survives lanes 1–2; skipped otherwise.
+     Cue words are never entity names, so they always land in residue — the
+     property that makes the skip safe. Expected outcome: queries made
+     purely of known names (likely the majority — measurable from the
+     search-signal ledger before committing) never touch the LLM.
 4. **The LLM assigns NO types.** Typing was the root cause of every
    query-understanding bug found this session (breakfast, sushi, tasting
    menu): the guess was made at the layer that lacks the facts, and
@@ -246,14 +251,16 @@ plus one flattening):
   (defensive additions to "residue empty").
 - Linker re-sweep corpus refresh (974 pairs + 300 controls predate the
   reload vocabulary).
-- **Price/hours words: filter, attribute, or dead?** "cheap tacos" today
-  does nothing with "cheap". Options: (a) map to the priceLevels filter —
-  complete coverage, since Google price_level exists on ~every restaurant,
-  but it equates "cheap" with a number; (b) revive the attribute — honest
-  community claim ("cheap eats" vibes), but sparse coverage; (c) both,
-  filter + attribute OR'd. "open late" has the same trilemma against
-  computed hours vs the 'late night' claim. Owner decision; today's
-  behavior (dead word / claim-only) should not survive by accident.
+- ~~Price/hours words trilemma~~ **RESOLVED (owner, 2026-07-29):
+  ATTRIBUTES, never toggle pre-fill.** Pre-filling toggles from "cheap"
+  would establish an inference contract owed forever ("fancy", "date
+  night", "dinner" ...) where every miss reads as a bug; suppressing the
+  words is prompt work in the wrong direction. As plain attributes they
+  match where the community made the claim, drop via the richness gate
+  where claims are sparse, and the drop itself teaches the toggle —
+  degradation as instruction. ONE CURATION ACT required so the dead-word
+  state doesn't survive by accident: 'cheap'/'cheap eats' are archived —
+  revive or alias onto the active 'affordable'.
 
 ## 6. Worked example (the mental model)
 
