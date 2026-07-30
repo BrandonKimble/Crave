@@ -23,6 +23,9 @@ export interface LLMConfig {
     level?: string;
     queryLevel?: string;
     includeThoughts?: boolean;
+    /** Runtime per-caller level overrides; wins over the profile table
+     *  (gemini-caller-profiles.ts), which is the value SOURCE. */
+    perCaller?: Record<string, string>;
   };
   thoughtDebug?: {
     enabled: boolean;

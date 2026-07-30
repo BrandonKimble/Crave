@@ -10,6 +10,10 @@ import {
   type CacheVendorOps,
 } from './gemini-context-cache.registry';
 import {
+  callerProfile,
+  PROFILE_THINKING_LEVELS,
+} from './gemini-caller-profiles';
+import {
   Injectable,
   OnModuleInit,
   OnModuleDestroy,
@@ -125,6 +129,9 @@ type GeminiGenerationConfig = Record<string, unknown> & {
 };
 
 interface LLMGenerationOptions {
+  /** Inline media (images) prepended to the text part — the photo gate's
+   *  thumbnail classification rides the same pipeline as text callers. */
+  mediaParts?: Array<{ inlineData: { mimeType: string; data: string } }>;
   generationConfig?: GeminiGenerationConfig;
   cacheName?: string | null;
   systemInstruction?: string | null;
@@ -1105,13 +1112,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
     const prompt = this.buildCuisineExtractionPrompt(trimmedSummary);
     // Cuisine extraction is a simple per-restaurant classify → cheap Lite tier.
-    const model = 'gemini-3.1-flash-lite-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('cuisine.extract')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: Math.min(this.llmConfig.temperature ?? 0.1, 0.2),
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
     };
@@ -1169,13 +1177,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return { allowed: true, reason: 'empty' };
     }
 
-    const model = 'gemini-3.1-flash-lite-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('moderation.classify')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: MODERATION_RESPONSE_JSON_SCHEMA,
     };
@@ -1257,7 +1266,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return { decision: 'reject', candidateId: null, reason: 'empty term' };
     }
 
-    const model = 'gemini-3-flash-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('attribute.place')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
@@ -1265,7 +1276,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       // gemini-3 thinking tokens count against this ceiling, so a tiny JSON reply
       // still needs headroom (512 truncated mid-thought → fail-closed to `new`).
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: applyAuditReasonPolicy(
         ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
@@ -1387,19 +1397,16 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }));
     if (!input.items.length) return [];
 
-    const model = 'gemini-3-flash-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('entity-resolution.match_batch')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      // POLICY: output budgets are model-max everywhere (65536). A budget's
-      // only job is capping runaway cost (~pennies at max); a too-small one
-      // SILENTLY truncates — thinking tokens bill against it unpredictably —
-      // and every parser then fails open (moderation would auto-ALLOW) or
-      // closed (judges spawn duplicate entities). Proven 2026-07-07: this
-      // call at 4096 truncated mid-JSON and every item failed closed.
-      maxOutputTokens: 65536,
+      // Output ceiling: profile-supplied; see the OUTPUT CEILING POLICY in
+      // gemini-caller-profiles.ts (do not lower without replaying that lesson).
       responseMimeType: 'application/json',
       responseJsonSchema: ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
     };
@@ -1517,7 +1524,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
     };
@@ -1602,7 +1608,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return { decision: 'new', candidateId: null, reason: 'no candidates' };
     }
 
-    const model = 'gemini-3-flash-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('entity-resolution.match')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
@@ -1610,7 +1618,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       // gemini-3 thinking tokens count against this ceiling, so a tiny JSON reply
       // still needs headroom (truncated mid-thought → fail-closed to `new`).
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: applyAuditReasonPolicy(
         ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
@@ -1718,13 +1725,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const model = 'gemini-3.1-flash-lite-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('poll.infer_subject')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: applyAuditReasonPolicy(
         POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
@@ -1843,13 +1851,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return names[0] ?? '';
     }
 
-    const model = 'gemini-3.1-flash-lite-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('attribute.canonicalize_name')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
     };
@@ -1911,13 +1920,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const cleaned = names.map((n) => n?.trim()).filter(Boolean);
     if (!cleaned.length) return [];
 
-    const model = 'gemini-3.1-flash-lite-preview';
+    // Model comes from THE caller profile (gemini-caller-profiles.ts) —
+    // one table, keyed by the ledger's caller column.
+    const model = callerProfile('cuisine.classify_hubs')!.model!;
     const generationConfig: GeminiGenerationConfig = {
       temperature: 0,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
     };
@@ -1991,15 +2001,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: this.llmConfig.maxTokens || 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
     };
 
+    // Model + ceiling come from the caller profile. NOTE: this call used to
+    // pass no systemInstruction and therefore silently inherited the 78KB
+    // collection prompt inline — measured 19,832 avg input tokens for a
+    // yes/no chooser (86 ledger rows). The gateway's fallback fix ends that.
     const response = await this.callLLMApi(prompt, {
       usageCaller: 'places.choose_candidate',
       generationConfig,
-      model: 'gemini-3.1-flash-lite-preview',
       timeoutMs:
         typeof this.llmConfig.queryTimeout === 'number' &&
         Number.isFinite(this.llmConfig.queryTimeout) &&
@@ -2677,6 +2689,40 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * THE public gateway for Gemini calls made by services OUTSIDE LlmService.
+   *
+   * Before this method, every outside caller (the relevance gate, the photo
+   * gate) built its own GoogleGenAI client and its own request — which is
+   * exactly how each historical cost bug happened: an assembler forgetting
+   * the thinking level, the admission gate, or a ledger field. Routing
+   * through here gets ALL of it by construction: spend admission, caller
+   * profile (model/ceiling/thinking), universal config defaults, retry
+   * classification, and full ledger accounting (thinking tokens, cached
+   * tokens, runKey).
+   *
+   * The caller declares INTENT — who it is, what it wants generated, its
+   * response shape — never mechanics.
+   */
+  async generateForCaller(params: {
+    /** §24 usageCaller tag; selects the caller profile AND the ledger tag. */
+    caller: string;
+    prompt: string;
+    systemInstruction?: string;
+    mediaParts?: Array<{ inlineData: { mimeType: string; data: string } }>;
+    generationConfig?: GeminiGenerationConfig;
+    maxRetries?: number;
+  }): Promise<string> {
+    const response = await this.callLLMApi(params.prompt, {
+      usageCaller: params.caller,
+      systemInstruction: params.systemInstruction,
+      mediaParts: params.mediaParts,
+      generationConfig: params.generationConfig,
+      maxRetries: params.maxRetries ?? 1,
+    });
+    return this.extractTextContent(response, `caller:${params.caller}`);
+  }
+
+  /**
    * Make authenticated API call to Gemini service using @google/genai library
    */
   private async callLLMApi(
@@ -2691,7 +2737,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     // when the backstop reopens; nothing storms Google. Expected to never
     // fire — Tier 1/2 govern spend upstream (see assertSpendBudgetOpen).
     await this.assertSpendBudgetOpen();
-    const targetModel = options.model ?? this.llmConfig.model;
+    // CALLER PROFILE is the source of per-caller configuration (model,
+    // output ceiling, thinking context/level) — one table keyed by the same
+    // usageCaller the ledger records. An explicit option still wins, so a
+    // deliberate per-call override remains possible; what is no longer
+    // possible is a call site FORGETTING one of these and silently getting
+    // an expensive default.
+    const profile = callerProfile(options.usageCaller);
+    const targetModel = options.model ?? profile?.model ?? this.llmConfig.model;
     const maxRetries =
       typeof options.maxRetries === 'number' && options.maxRetries >= 0
         ? options.maxRetries
@@ -2976,9 +3029,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
-      maxOutputTokens: this.llmConfig.maxTokens || 65536,
+      maxOutputTokens:
+        profile?.maxOutputTokens ?? (this.llmConfig.maxTokens || 65536),
     };
-    const thinkingContext = options.thinkingContext ?? 'content';
+    const thinkingContext =
+      options.thinkingContext ?? profile?.context ?? 'content';
     const baseThinkingConfig = this.getThinkingConfig(
       targetModel,
       thinkingContext,
@@ -3027,7 +3082,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const generationConfig: GeminiGenerationConfig = options.generationConfig
       ? { ...universalDefaults, ...definedOnly(options.generationConfig) }
       : collectionDefaults;
-    const systemInstruction = options.systemInstruction ?? this.systemPrompt;
+    // The systemPrompt fallback is for the COLLECTION path only (callers
+    // that pass neither an instruction nor a config are the extraction
+    // flow). A gateway caller that supplies its own generationConfig but no
+    // instruction (e.g. the photo gate: media + one question) must NOT
+    // silently inherit the 78KB collection prompt.
+    const systemInstruction =
+      options.systemInstruction ??
+      (options.generationConfig ? undefined : this.systemPrompt);
 
     const hasResponseMimeType =
       typeof generationConfig.responseMimeType === 'string' &&
@@ -3138,7 +3200,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             }
           : {
               ...generationConfig,
-              systemInstruction,
+              // Omit the key entirely when there is no instruction — an
+              // explicit undefined would still be serialized by some layers.
+              ...(systemInstruction ? { systemInstruction } : {}),
             };
 
         const resolvedTimeoutMs = (() => {
@@ -3190,7 +3254,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           try {
             return await this.genAI.models.generateContent({
               model: targetModel,
-              contents: [{ parts: [{ text: prompt }] }],
+              contents: [
+                {
+                  parts: [...(options.mediaParts ?? []), { text: prompt }],
+                },
+              ],
               config: requestConfigWithTimeout,
             });
           } finally {
@@ -3888,7 +3956,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const { config, invalidLevel } = resolveThinkingConfig({
       model,
       context,
-      settings: this.llmConfig.thinking,
+      // Profiles are the VALUE source for per-caller levels; a runtime
+      // config override (llm.thinking.perCaller) still wins over the table.
+      settings: {
+        ...this.llmConfig.thinking,
+        perCaller: {
+          ...PROFILE_THINKING_LEVELS,
+          ...this.llmConfig.thinking?.perCaller,
+        },
+      },
       includeThoughtsOverride: overrides?.includeThoughts,
       caller,
     });

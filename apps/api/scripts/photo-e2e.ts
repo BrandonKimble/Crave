@@ -47,10 +47,13 @@ async function main(): Promise<void> {
   const prismaClient = new PrismaClient();
   const prisma = prismaClient as unknown as PrismaService;
   const cloudinary = new CloudinaryService(fakeConfig, fakeLogger);
-  const fakeLedger = {
-    record: () => undefined,
-  } as unknown as import('../src/modules/external-integrations/shared/usage-ledger.service').UsageLedgerService;
-  const vision = new PhotoVisionService(fakeConfig, fakeLedger, fakeLogger);
+  // PhotoVisionService rides the Gemini gateway now; the e2e probe stubs it
+  // with a permissive double (this script tests the upload/moderation flow,
+  // not the paid classifier).
+  const fakeLlm = {
+    generateForCaller: async () => 'YES',
+  } as unknown as import('../src/modules/external-integrations/llm/llm.service').LLMService;
+  const vision = new PhotoVisionService(fakeLlm, fakeLogger);
   const photos = new PhotosService(
     prisma,
     fakeConfig,

@@ -1,21 +1,16 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
-import { UsageLedgerService } from '../../external-integrations/shared/usage-ledger.service';
 import {
   RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
   jsonSchemaToTypedSchema,
 } from '../../external-integrations/llm/prompts/llm-response-schemas';
 import { LLMPost } from '../../external-integrations/llm/llm.types';
-import {
-  resolveThinkingConfig,
-  type GeminiThinkingConfig,
-} from '../../external-integrations/llm/gemini-thinking';
+import { LLMService } from '../../external-integrations/llm/llm.service';
+import { callerProfile } from '../../external-integrations/llm/gemini-caller-profiles';
 
 export interface RelevanceGateResult {
   kept: LLMPost[];
@@ -24,7 +19,9 @@ export interface RelevanceGateResult {
   judged: number;
 }
 
-const GATE_MODEL = 'gemini-3.1-flash-lite-preview';
+// The model is owned by the caller profile; this alias exists only for the
+// persisted verdict rows and CANNOT drift from what actually ran.
+const GATE_MODEL = callerProfile('relevance-gate.judgeBatch')!.model!;
 // NO body truncation — a 500-char window caused PROVEN false drops (itinerary
 // posts express food intent at char ~500-800: "Find a place to eat Okonomiyaki"
 // @573). Reddit caps selftext at 40k chars, so cost is bounded by DYNAMIC
@@ -54,24 +51,17 @@ const PACK_MAX_POSTS = 25;
 @Injectable()
 export class RelevanceGateService implements OnModuleInit {
   private logger!: LoggerService;
-  private genAI!: GoogleGenAI;
   private prompt!: string;
   private promptHash!: string;
-  /** A keep/drop verdict is the cheapest classify we make -> 'query'. */
-  private gateThinkingConfig?: GeminiThinkingConfig;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
     private readonly loggerService: LoggerService,
-    private readonly usageLedger: UsageLedgerService,
+    private readonly llmService: LLMService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RelevanceGateService');
-    this.genAI = new GoogleGenAI({
-      apiKey: this.configService.get<string>('llm.apiKey') || '',
-    });
     this.prompt = readFileSync(
       join(
         __dirname,
@@ -79,11 +69,6 @@ export class RelevanceGateService implements OnModuleInit {
       ),
       'utf8',
     );
-    this.gateThinkingConfig = resolveThinkingConfig({
-      model: GATE_MODEL,
-      context: 'query',
-      settings: this.configService.get('llm.thinking'),
-    }).config;
     this.promptHash = createHash('sha256')
       .update(this.prompt)
       .digest('hex')
@@ -192,66 +177,33 @@ export class RelevanceGateService implements OnModuleInit {
       body: post.content ?? '',
     }));
     try {
-      const response = await this.genAI.models.generateContent({
-        model: GATE_MODEL,
-        contents: [
-          {
-            parts: [
-              {
-                text: `${this.prompt}\n\n## Posts\n\n${JSON.stringify(payload)}`,
-              },
-            ],
-          },
-        ],
-        config: {
+      // THE GATEWAY, not a private client (2026-07-29). This service used to
+      // hold its own GoogleGenAI and hand-assemble the request — the exact
+      // assembler pattern behind every cost bug this month: it forgot the
+      // thinking level (HIGH by default), never recorded cached tokens, and
+      // bypassed spend admission entirely. generateForCaller supplies all of
+      // it from the caller profile; this file keeps only what is genuinely
+      // the gate's: packing, verdict parsing, fail-open persistence.
+      const text = await this.llmService.generateForCaller({
+        caller: 'relevance-gate.judgeBatch',
+        systemInstruction: this.prompt,
+        prompt: `## Posts\n\n${JSON.stringify(payload)}`,
+        maxRetries: 0,
+        generationConfig: {
           temperature: 0,
           responseMimeType: 'application/json',
           // Schema is the output-shape authority. Gate reasons are EXEMPT
           // from the audit-reason policy: they are PERSISTED per verdict and
           // audit an IRREVERSIBLE decision (a dropped post never reaches
-          // extraction) — ~$0.08/city of output tokens for a permanent
-          // record of why signal was excluded. The policy covers only
-          // ephemeral judge reasons that would be paid for and discarded.
-          // TYPED responseSchema (not responseJsonSchema): flash-lite treats
-          // the json-schema form as advisory on long prompts and emits a
-          // bare array — typed is enforced (same lesson as the batch
-          // backend).
+          // extraction). TYPED responseSchema (not responseJsonSchema):
+          // flash-lite treats the json-schema form as advisory on long
+          // prompts and emits a bare array — typed is enforced.
           responseSchema: jsonSchemaToTypedSchema(
             RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
           ),
-          maxOutputTokens: 65536,
-          // THINKING IS NEVER IMPLICIT (cost audit 2026-07-27). GATE_MODEL is
-          // a gemini-3 model, and Gemini 3 defaults to HIGH when a request
-          // omits the level — so this gate, which judges EVERY collected post,
-          // was silently buying maximum reasoning for a keep/drop call. The
-          // level comes from the shared resolver, not a local literal, so this
-          // assembler can't drift from LlmService again.
-          ...(this.gateThinkingConfig
-            ? { thinkingConfig: this.gateThinkingConfig }
-            : {}),
         },
       });
-      this.usageLedger.record({
-        service: 'gemini',
-        operation: 'generateContent',
-        model: GATE_MODEL,
-        mode: 'interactive',
-        inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
-        // Thinking tokens BILL as output (same law as llm.service and the
-        // batch reconciler). Omitting them made the gate's ledger blind to
-        // exactly the spend the HIGH-thinking default was creating.
-        outputTokens:
-          (response.usageMetadata?.candidatesTokenCount ?? 0) +
-          (response.usageMetadata?.thoughtsTokenCount ?? 0),
-        // Cached share must be RECORDED even when it is zero: without it the
-        // gate's caching status is unobservable, and this is the one
-        // high-volume path with no explicit cache (6.47M input tokens of a
-        // byte-identical prompt).
-        cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
-        caller: 'relevance-gate.judgeBatch',
-      });
-      const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-      const raw = JSON.parse(text) as unknown;
+      const raw = JSON.parse(text || '{}') as unknown;
       // Tolerate both the schema object and a bare verdict array (fail-open
       // parsing — a malformed response must never drop posts).
       if (Array.isArray(raw)) {
