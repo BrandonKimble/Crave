@@ -213,3 +213,21 @@ is a different mechanism and still exists in production, search-root-gated.
 The design keeps it, shell-bound (L4), because "search bar behind the scrim"
 is a stated want — if the owner wants it gone too, L4 deletes cleanly and
 nothing else depends on it.
+
+## VIII. Owner correction (2026-07-29): shadow STAYS, the 12% scrim dies
+
+Misread corrected. "Get rid of the shadowing" meant the DIM PLANE — the ≤12%
+black scrim (strip + inverse-corner wedges) that darkens the search chrome as
+the sheet extends. That is DELETED from the design outright: L4 is struck, and
+with it the whole scrim-tracking problem (a layer that must equal sheetTop
+every frame simply no longer exists — the class of "band detached from the
+sheet" artifacts dies with it).
+
+The sheet's own TOP-EDGE SHADOW (production shadowShell, ~4px bleed above the
+corner silhouette) STAYS — restored to the frost wrapper in the tree. S3
+stands as originally written.
+
+KEPT unchanged: every other search-chrome transformation driven by the
+transition progress — the scale ramp (0.985→1), visibility/opacity from
+overlayChromeVisibilityProgress, the dismiss plane, origin capture. Those ride
+the progress value, not the scrim, and are unaffected by its deletion.

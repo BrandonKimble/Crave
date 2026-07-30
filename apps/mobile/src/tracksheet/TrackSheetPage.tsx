@@ -19,6 +19,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import { overlaySheetStyles } from '../overlays/overlaySheetStyles';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import HeaderNavAction from '../overlays/HeaderNavAction';
 import {
@@ -803,10 +804,11 @@ export function TrackSheetPage<Item>({
       <View
         ref={setFrostRef}
         collapsable={false}
-        /* NO SHADOW (owner decision 2026-07-29): a top-edge shadow that skips
-           the cutouts is physically incoherent, and keeping cutout color
-           constant matters more. The silhouette is corners only. */
-        style={[styles.silhouette, styles.founding]}
+        /* THE SHADOW STAYS (owner correction 2026-07-29): "get rid of the
+           shadowing" meant the 12% black SCRIM over the search chrome, not the
+           sheet's own top-edge shadow. Production shadowShell, on the
+           non-clipping wrapper so the corners don't eat it. */
+        style={[overlaySheetStyles.shadowShell, styles.silhouette, styles.founding]}
         pointerEvents="none"
       >
         <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
