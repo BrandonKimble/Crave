@@ -84,15 +84,15 @@ EXISTS(unnest(aliases))` defeats the btree entirely — measured as a
    owner's product ruling and the pipeline mechanics, not this number;
    re-measure on real traffic post-launch. The two formerly-irreducible jobs both leave the hot path:
    - **Negation: the FEATURE is removed** (owner: people do not search
-     "pizza no tomato sauce"). **REQUIRED GUARD (round-2 review): removal
-     alone does not IGNORE a negated phrase — it INVERTS it.** "cilantro"
-     is an active ingredient entity, so "tacos no cilantro" grounds
-     cilantro as a POSITIVE constraint and confidently returns
-     cilantro-forward results. The zero-LLM mitigation: a deterministic
-     negation-cue guard on the hot path — when a cue token (no / without /
-     minus / hold / sans / -free) immediately precedes a grounded span,
-     DROP that span from constraints entirely (ignore, never exclude, and
-     never invert). The dropped span still flows to demand as residue. Replaced by the DIETARY TOGGLE STRIP —
+     "pizza no tomato sauce"). ROUND-2 TRACE, then the RULING: removal
+     alone does not ignore a negated phrase — it INVERTS it ("cilantro"
+     is an active ingredient, so "tacos no cilantro" grounds cilantro as
+     a POSITIVE constraint). **OWNER RULING (2026-07-30): ACCEPTED AS A
+     FEATURE, not a bug — no cue guard.** The behavior trains users that
+     the search box does not do negation, exactly as Google Maps does;
+     the only negation the product expresses is through real entities
+     (gluten free etc.) and the dietary toggles. The trade-off is known
+     and chosen. Replaced by the DIETARY TOGGLE STRIP —
      LIFESTYLE toggles only (vegan, vegetarian, gluten-free, halal,
      kosher), mapping to HARD attribute constraints. ALLERGEN toggles are
      REJECTED (owner 2026-07-30): allergens are not discussed enough for
@@ -388,6 +388,11 @@ change visible results BY DESIGN — the header no longer claims otherwise)
   (defensive additions to "residue empty").
 - Linker re-sweep corpus refresh (974 pairs + 300 controls predate the
   reload vocabulary).
+- VOCABULARY CURATION (owner, deferred to the post-implementation prompt
+  passes): "dinner date" should have been banked as an alias on
+  'romantic' and archived — the round-2 "date grounds as the fruit"
+  finding is a curation gap of this kind, not a pipeline defect. Sweep
+  the vibe-phrase vocabulary for peers when the prompt passes run.
 - RETROACTIVE junk cleanup (round-2): junk already lives as ACTIVE
   entities and WILL ground — restaurants named "Best", "Place",
   "Favorite" (zero geocoded locations; escape territory scoping whenever
@@ -415,10 +420,10 @@ Query: **"vgean breakfast tacos, no cilantro"**, map on Austin.
 
 - Understand: gazetteer grounds "breakfast tacos" (anchors + family:
   migas taco, breakfast burrito…) with every type breakfast truly has;
-  linker resolves "vgean"→vegan (dietary-flagged, hard); the cue guard
-  sees "no" preceding the grounded span "cilantro" and DROPS cilantro
-  from constraints entirely — ignored, never inverted, never excluded;
-  the dropped span rides to demand as residue. No LLM ran.
+  linker resolves "vgean"→vegan (dietary-flagged, hard); "no" is
+  ungrounded residue and "cilantro" grounds as a positive ingredient
+  span — BY RULING (accepted inversion; the box does not do negation,
+  like Google Maps). No LLM ran.
 - Constraints: viewport hard; vegan hard (dietary flag); breakfast-taco
   family required. (No exclusion exists — the lane is deleted.)
 - One query, gate decision parameterized in: 12 vegan breakfast tacos
@@ -441,17 +446,24 @@ headline number (reproduced within drift).
 **OWNER DECISION QUEUE (design questions the reviews opened; not mine to
 settle):**
 
-1. SPARSE HARD TOGGLES: a permanently-toggled gluten-free user sees ≤57
-   venues of 8,612 on every search, forever — and the argument that
-   killed allergen toggles (absence of evidence ≠ absence) applies to
-   the celiac slice of GF users. Options: ship hard with explicit
-   "N places carry this claim" messaging; ship soft-with-label; defer
-   toggles until coverage grows. Related: halal 134 / kosher 10 — where
-   is the coverage line, and by what rule?
-2. CHIP vs WALLS: does "Include similar" respect hard constraints
-   (dead button exactly in the thin case it's offered for) or bypass
-   them (a "never relaxable" wall one tap from relaxed)? Pick one,
-   state it.
+1. ~~SPARSE HARD TOGGLES~~ **RESOLVED (owner 2026-07-30): ship hard;
+   sparse coverage is EXPECTED, not surprising.** The remedy is
+   EXTRACTION-side, not UX-side: a dedicated prompt pass ensuring every
+   raw-data mention of gluten free / dietary terms is captured and
+   PERMANENTLY linked as restaurant attribute evidence (work item for
+   the post-implementation prompt passes). Dietary attributes are also
+   EXCLUDED from lexical expansion and the similar ring — a hard
+   constraint is never reinterpreted.
+2. ~~CHIP vs WALLS~~ **RESOLVED by code verification (2026-07-30): the
+   chip already respects every wall.** It widens ONLY the food subject
+   ring (siblings anchor on resolved food ids; attributes are
+   structurally untouchable), the widened run keeps all other
+   constraints, and when walls leave nothing similarAvailable reads 0 —
+   the chip goes naturally inert, which is honest. NEW-PLAN improvement:
+   today the chip's badge costs an EXTRA dual query on every page-1 food
+   search (attachSimilarPreview); in the one-query design the similar
+   ring is provenance in the SAME execution (excluded from the default
+   view, counted for the badge) — the extra execution dissolves.
 3. MODIFIER SEMANTICS: today "spicy crispy tacos" means spicy OR crispy.
    Per-word constraints enable AND. Which is the product?
 4. PARTIAL-GROUNDING HONESTY: half-grounded queries ("dinner date spot"
