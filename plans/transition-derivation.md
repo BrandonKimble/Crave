@@ -181,3 +181,35 @@ unwritable: mid-high snaps (RANGE + FORMULA), jerk/re-target (SEAT), flicker/
 flash (HELD SWAP), scroll leaking between tabs (FORMULA), search-bar band
 artifacts (DIM PLANE), reveal hangs (FENCE). Nothing in it references the
 current tree except as the thing to delete.
+
+## VII. Archaeology (owner-directed, 2026-07-29) — the pre-home contract, and one design change
+
+The owner recalled switching being correct "before we added the home page."
+Confirmed in history. The pre-home seat runtime (checkpoint 9ad80e33,
+2026-07-14) states the contract verbatim: "Switching tabs never moves the
+sheet EXCEPT when crossing between home and the rest." Two seats only — HOME
+(carrier scene: 'polls', because home's presentation WAS docked polls;
+seeded collapsed) and ONE SHARED content seat (seeded expanded); writes
+gesture-only.
+
+Then 1613024f ("the home surface — polls DEMOTED TO A TAB") made home a real
+scene — but polls kept its home-side seat classification from its carrier
+days. So today lists→polls is a home↔content CROSSING by stale taxonomy, and
+the system commands a downward seat exactly as designed for a crossing —
+that is the owner's "switching from lists to polls snaps the sheet down."
+Not a physics bug: a stale classification.
+
+DESIGN CHANGE (the one thing VI missed): **a scene's seat side is DERIVED
+from its presentation role — the map-dominant root owns the home seat;
+every tab is content** — never inherited from history. Concretely: polls
+moves to the content seat; 'home' is the sole home-side scene; search keeps
+aliasing the home seat. lists↔polls becomes same-seat → zero commanded
+pixels by the same rule that always governed same-side switches.
+
+CLARIFICATION (dim band vs shadow): the SHADOW (gray top-edge gradient,
+shadowShell) is DELETED — owner decision, done. The DIM PLANE (the ≤12%
+black scrim that recedes the search bar as the sheet reaches full extension)
+is a different mechanism and still exists in production, search-root-gated.
+The design keeps it, shell-bound (L4), because "search bar behind the scrim"
+is a stated want — if the owner wants it gone too, L4 deletes cleanly and
+nothing else depends on it.
