@@ -59,7 +59,16 @@ resolver, spend gate all landed on this shape):
    - **Negation** ("no cilantro" — the gazetteer alone would ground
      cilantro as a POSITIVE constraint: the inverted-allergy failure, the
      most dangerous bug this design must make impossible);
-   - filter words → structural filters ("cheap", "open late");
+   - filter-word handling — **PROPOSED, not current behavior** (owner
+     challenge 2026-07-29 caught this presented as existing; verified: the
+     query prompt outputs six entity arrays and nothing else, and
+     openNow/priceLevels/bounds come only from UI toggles + viewport).
+     Today: "nearby" is stripped as generic (correct — the viewport IS the
+     geo filter); "open late" rides the community-attribute lane (active
+     'late night' entity); "cheap" is a DEAD word ('cheap'/'cheap eats'
+     archived, no text→price mapping — it silently contributes nothing).
+     Whether the ideal maps such words to structural filters is §5's
+     decision, not an assumption;
    - junk words → discarded ("best", "somewhere");
    - segmentation of unknown phrases (→ clean on-demand terms);
    - modifier↔subject attachment in multi-subject queries.
@@ -237,6 +246,14 @@ plus one flattening):
   (defensive additions to "residue empty").
 - Linker re-sweep corpus refresh (974 pairs + 300 controls predate the
   reload vocabulary).
+- **Price/hours words: filter, attribute, or dead?** "cheap tacos" today
+  does nothing with "cheap". Options: (a) map to the priceLevels filter —
+  complete coverage, since Google price_level exists on ~every restaurant,
+  but it equates "cheap" with a number; (b) revive the attribute — honest
+  community claim ("cheap eats" vibes), but sparse coverage; (c) both,
+  filter + attribute OR'd. "open late" has the same trilemma against
+  computed hours vs the 'late night' claim. Owner decision; today's
+  behavior (dead word / claim-only) should not survive by accident.
 
 ## 6. Worked example (the mental model)
 
