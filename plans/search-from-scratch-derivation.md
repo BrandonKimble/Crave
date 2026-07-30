@@ -55,37 +55,45 @@ resolver, spend gate all landed on this shape):
 2. **Linker on the residue**: the calibrated conservative matcher
    (sweep-derived per-tier floors, tie plurality) for typos and variants
    the gazetteer can't see ("vgean" → vegan).
-3. **LLM as residue fallback — exactly TWO irreducible jobs** (list
-   shrunk twice under owner challenge, 2026-07-29; each earlier claimed
-   job checked against the real code):
-   - **Negation** ("no cilantro" — the gazetteer alone would ground
-     cilantro as a POSITIVE constraint: the inverted-allergy failure, the
-     most dangerous bug this design must make impossible). A deterministic
-     cue set (no/without/minus/hold/-free/allergic/sans) routes to the
-     LLM; the LLM handles the tail ("can't do dairy"; "not too spicy",
-     which is not an exclusion at all).
-   - **Unknown-phrase segmentation**: words that ground to nothing become
-     CLEAN on-demand terms instead of per-word garbage — open-world
-     demand quality.
-     Jobs that DISSOLVED on inspection: typing (→ data); filter extraction
-     (never existed; trilemma resolved to attributes); attachment (never
-     existed — the schema is six FLAT arrays, exclusions apply
-     query-globally); junk discard (stripGenericTokens already does it
-     deterministically, pre-LLM); fallback decomposition (the n-gram scan
-     finds every KNOWN contained dish; family expansion does the rest);
-     ingredient-vs-dish direction (multi-type grounding + the twin union
-     serve both readings).
-     **Skip gate (conservative):** the LLM runs when negation cues are
-     present OR meaningful residue survives lanes 1–2; skipped otherwise.
-     Cue words are never entity names, so they always land in residue — the
-     property that makes the skip safe. Expected outcome: queries made
-     purely of known names (likely the majority — measurable from the
-     search-signal ledger before committing) never touch the LLM.
-4. **The LLM assigns NO types.** Typing was the root cause of every
-   query-understanding bug found this session (breakfast, sushi, tasting
-   menu): the guess was made at the layer that lacks the facts, and
-   type-scoped recall then never looked in the right vocabulary (the
-   never-look defect). Types come from grounding.
+3. **NO PER-SEARCH LLM (RATIFIED 2026-07-29; supersedes the earlier
+   "two irreducible jobs" framing).** MEASURED on the real search-signal
+   ledger: 96.2% of weighted traffic (151/157 signals; 86.7% of 30
+   distinct queries — small corpus, directional) grounds completely with
+   the gazetteer alone; 3 of the 4 misses are TYPOS (the linker's lane),
+   leaving ONE genuinely linguistic query. Zero negation queries exist in
+   the corpus. The two formerly-irreducible jobs both leave the hot path:
+   - **Negation: the FEATURE is removed** (owner: people do not search
+     "pizza no tomato sauce"). Replaced by the DIETARY TOGGLE STRIP —
+     lifestyle toggles (vegan, vegetarian, gluten-free, halal, kosher) map
+     to HARD attribute constraints; allergen toggles (nuts, dairy,
+     shellfish, egg) map to the EXISTING excluded-ingredient lane
+     (conservative across both tiers, never relaxed — infra already
+     built). The exclusion LANE survives; toggles become its deterministic
+     front door. Free-text negation is no longer interpreted.
+   - **Unknown-phrase segmentation moves ASYNC.** The hot path ignores
+     residue: grounded spans search immediately; residue is logged as-is
+     to the demand pipeline and segmented there by a batch-priced LLM
+     (where language work already lives). Partial-grounding queries
+     ("khachapuri at that place on 5th") get instant results from the
+     known spans; the unknown term becomes a clean collection seed
+     asynchronously. Per-search LLM cost -> zero; llmMs (the dominant
+     interpretation latency) disappears.
+   - **Junk discard needs no judgment**: junk words simply fail to ground
+     and are ignored as residue. The necessary partner is extraction
+     hygiene — principled (not word-list) §2.5 rules keeping
+     best/good/top-class words out of the GRAPH, so junk can never ground.
+     Jobs that DISSOLVED earlier on inspection (kept for the record):
+     typing (→ data); filter extraction (never existed; trilemma resolved
+     to attributes); attachment (never existed — six FLAT arrays,
+     exclusions query-global); fallback decomposition (n-gram scan finds
+     every KNOWN contained dish); ingredient-vs-dish direction (multi-type
+     grounding + twin union).
+4. **Nothing assigns types by guess.** Typing was the root cause of
+   every query-understanding bug found this session (breakfast, sushi,
+   tasting menu): the guess was made at the layer that lacks the facts,
+   and type-scoped recall then never looked in the right vocabulary (the
+   never-look defect). Types come from grounding — and with the hot path
+   LLM-free, no component is left that COULD guess.
 
 ### 1.2 Ground (structured, never flattened)
 
@@ -122,7 +130,7 @@ Hardness is a FACT, derived — never guessed per query:
 | class                   | source              | examples                                                            | relaxable?            |
 | ----------------------- | ------------------- | ------------------------------------------------------------------- | --------------------- |
 | structural              | request             | viewport, open-now, price                                           | never                 |
-| exclusion               | negation in text    | "no cilantro"                                                       | never                 |
+| exclusion               | allergen toggles    | nuts, dairy, shellfish, egg                                         | never                 |
 | **dietary requirement** | **vocabulary flag** | vegan, gluten-free, halal, kosher, dairy-free, nut-free, vegetarian | **never**             |
 | preference              | default             | spicy, crispy, patio, cozy                                          | soft (richness-gated) |
 
@@ -258,9 +266,13 @@ plus one flattening):
   words is prompt work in the wrong direction. As plain attributes they
   match where the community made the claim, drop via the richness gate
   where claims are sparse, and the drop itself teaches the toggle —
-  degradation as instruction. ONE CURATION ACT required so the dead-word
-  state doesn't survive by accident: 'cheap'/'cheap eats' are archived —
-  revive or alias onto the active 'affordable'.
+  degradation as instruction. CORRECTION (measured 2026-07-29): no curation
+  act is needed — the active 'affordable' restaurant_attribute already
+  carries 35 aliases including 'cheap' and 'cheap eats' (the archived rows
+  are tombstone sinks from a correct ontology pass: food-side 'cheap'
+  REJECTED as not a dish property; restaurant-side merged with the name
+  banked). "cheap" grounds via the alias tier today; the earlier
+  "dead word" claim checked archived name rows but not aliases.
 
 ## 6. Worked example (the mental model)
 
