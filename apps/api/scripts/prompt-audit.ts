@@ -35,8 +35,9 @@ type Row = Record<string, unknown>;
  * detector, because it reads as evidence.
  */
 const NON_CATEGORY_TERMS = new Set([
-  'breakfast',
-  'brunch',
+  // NOT breakfast/brunch: they predict a recognizable kind of food and are
+  // legitimate categories by the 4.3 ruling — a detector flagging compliant
+  // output is measuring itself (this list has been wrong twice already).
   'lunch',
   'dinner',
   'late night',

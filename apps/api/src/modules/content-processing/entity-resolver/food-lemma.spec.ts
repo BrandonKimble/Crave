@@ -62,6 +62,23 @@ describe('isSameFoodUpToNumber', () => {
     }
   });
 
+  it('the deny-list is SYMMETRIC: the singular never proposes a protected plural', () => {
+    // Red team R7: 'wings' was protected from singularizing, but 'wing'
+    // happily proposed 'wings' and the pair merged anyway — in the merge
+    // lane both names are REAL entities, so "a bogus candidate never
+    // matches" was no defense.
+    for (const [singular, protectedPlural] of [
+      ['wing', 'wings'],
+      ['fry', 'fries'],
+      ['bean', 'beans'],
+      ['chip', 'chips'],
+      ['green', 'greens'],
+    ] as const) {
+      expect(foodNameVariants(singular)).not.toContain(protectedPlural);
+      expect(isSameFoodUpToNumber(singular, protectedPlural)).toBe(false);
+    }
+  });
+
   it('does not collapse two genuinely different foods', () => {
     expect(isSameFoodUpToNumber('pho', 'poke')).toBe(false);
     expect(isSameFoodUpToNumber('glass noodle', 'rice noodle')).toBe(false);

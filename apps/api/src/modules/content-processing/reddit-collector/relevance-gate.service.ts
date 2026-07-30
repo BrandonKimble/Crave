@@ -26,11 +26,11 @@ const GATE_MODEL = callerProfile('relevance-gate.judgeBatch')!.model!;
 // posts express food intent at char ~500-800: "Find a place to eat Okonomiyaki"
 // @573). Reddit caps selftext at 40k chars, so cost is bounded by DYNAMIC
 // PACKING instead: posts fill a call until the token budget is reached.
-// Pack density CALIBRATED 2026-07-11 (scripts/relevance-gate/density-replay.ts):
-// the 130-post labeled corpus run through THIS exact packing algorithm —
-// including a maximum-density 25-post/19,752-token pack, essentially the
-// densest pack production can produce — held keep-recall 1.000 (precision
-// 0.776, fail-open slack). Re-run density-replay.ts if either value grows.
+// Pack density RECALIBRATED 2026-07-29 through the PRODUCTION path
+// (scripts/relevance-gate/density-replay.ts drives filterPosts itself):
+// 130-post labeled corpus, keep-recall 1.000 / keep-precision 0.797 under
+// the shipped configuration (gateway, systemInstruction placement, MINIMAL
+// thinking). Re-run density-replay.ts if either constant grows.
 const PACK_TOKEN_BUDGET = 20000;
 const PACK_MAX_POSTS = 25;
 
@@ -40,7 +40,8 @@ const PACK_MAX_POSTS = 25;
  * plausibly name venues or dishes worth eating/drinking at?" — so the
  * expensive extraction prompt only reads plausible threads. Calibrated on a
  * hand-labeled 130-post corpus (scripts/relevance-gate/): keep-recall 1.000,
- * keep-precision 0.869 (fail-open by design — uncertainty and errors KEEP).
+ * keep-precision 0.797 under the shipped 2026-07-29 configuration
+ * (fail-open by design — uncertainty and errors KEEP).
  *
  * Verdicts persist per (platform, postId): a post judged once is never
  * re-judged (re-loads and keyword overlaps are free) and false drops are
@@ -79,9 +80,15 @@ export class RelevanceGateService implements OnModuleInit {
     // audit record. The 130-post calibration numbers describe the old
     // configuration — re-run density-replay before trusting them for this
     // one.)
+    // The discriminator is the REAL profile, serialized — a hand-written
+    // literal here could not see a profile model/thinking change (red team
+    // R7 round 2). Placement is the one config fact the profile cannot
+    // know.
     this.promptHash = createHash('sha256')
       .update(
-        `${this.prompt}\n@gate-config: placement=systemInstruction thinking=query-default`,
+        `${this.prompt}\n@gate-config placement=systemInstruction ${JSON.stringify(
+          callerProfile('relevance-gate.judgeBatch'),
+        )}`,
       )
       .digest('hex')
       .slice(0, 16);

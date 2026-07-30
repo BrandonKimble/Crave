@@ -8,12 +8,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { foodNameVariants } from './food-lemma';
 
-/** Number variance applies to what people ORDER, not to proper nouns:
- *  "Torchy's Tacos" is not "Torchy's Taco". Shared by the exact-match tier
- *  and the within-batch creation dedupe so the two cannot drift apart. */
-function entityTypeUsesNumberVariants(entityType: EntityType): boolean {
-  return entityType === EntityType.food || entityType === EntityType.ingredient;
-}
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import {
@@ -68,6 +62,13 @@ interface EntityResolutionCacheConfig {
  * 2. Alias matching with array operations
  * 3. Fuzzy matching with confidence scoring
  */
+/** Number variance applies to what people ORDER, not to proper nouns:
+ *  "Torchy's Tacos" is not "Torchy's Taco". Shared by the exact-match tier
+ *  and the within-batch creation dedupe so the two cannot drift apart. */
+function entityTypeUsesNumberVariants(entityType: EntityType): boolean {
+  return entityType === EntityType.food || entityType === EntityType.ingredient;
+}
+
 @Injectable()
 export class EntityResolutionService implements OnModuleInit {
   private logger!: LoggerService;
@@ -1107,9 +1108,17 @@ export class EntityResolutionService implements OnModuleInit {
           entityType === 'restaurant'
             ? `${entityType}:${this.normalizeEngineScope(entity.engineId)}:`
             : `${entityType}:`;
-        const overlayCandidates = [...primaryNewEntityMap.entries()]
-          .filter(([key]) => key.startsWith(lanePrefix))
-          .map(([, primary]) => primary)
+        // Dedupe by tempId (red team R5): number-variant registration puts
+        // ONE primary under several keys, and without this the judge's
+        // 8-candidate budget could fill with clones of a single entity,
+        // crowding out genuinely distinct near-duplicates.
+        const overlayCandidates = [
+          ...new Map(
+            [...primaryNewEntityMap.entries()]
+              .filter(([key]) => key.startsWith(lanePrefix))
+              .map(([, primary]) => [primary.tempId, primary] as const),
+          ).values(),
+        ]
           .filter((primary) => {
             const other = (primary.normalizedName ?? '').toLowerCase().trim();
             if (!other || other === normalizedName) return false;

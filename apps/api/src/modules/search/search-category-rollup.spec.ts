@@ -97,8 +97,11 @@ describe('restaurant rollup counts one claim once, most specific carrier wins', 
     expect(preview()).toContain('rev.food_id = c.food_id');
   });
 
-  it('applies to the geographic rollup too, not just the filtered one', () => {
-    const occurrences = preview().split("m.kind = 'direct'").length - 1;
-    expect(occurrences).toBeGreaterThanOrEqual(2);
+  it('breaks symmetric-claim ties with a deterministic winner instead of erasing both', () => {
+    // Red team R2: symmetric projection arrays and mutual edges are synonym
+    // shapes; exactly one side must survive (never zero, never two).
+    const sql = preview();
+    expect(sql).toContain('c2.food_id < c.food_id');
+    expect(sql).toContain('NOT (c2.food_id = ANY(c.categories))');
   });
 });

@@ -90,7 +90,20 @@ export class FoodDedupeMergeService {
         });
       }
     }
+    // STALE-SNAPSHOT GUARD (red team R4): with three variants
+    // (taco/tacos/tacoes) the pair list is enumerated once, so a later pair
+    // can reference an entity an earlier pair already archived — and the
+    // winner rule would happily crown a tombstone. Any id consumed by a
+    // completed number merge skips subsequent pairs; the next sweep run
+    // sees the healed state and finishes the chain.
+    const consumedByNumberLane = new Set<string>();
     for (const pair of numberVariantPairs) {
+      if (
+        consumedByNumberLane.has(pair.a_id) ||
+        consumedByNumberLane.has(pair.b_id)
+      ) {
+        continue;
+      }
       if (dryRun) {
         this.logger.info('Would merge number-variant foods', {
           a: pair.a_name,
@@ -99,6 +112,8 @@ export class FoodDedupeMergeService {
         });
       } else {
         await this.mergeFoodPair(pair.a_id, pair.b_id);
+        consumedByNumberLane.add(pair.a_id);
+        consumedByNumberLane.add(pair.b_id);
       }
       summary.autoMerged += 1;
     }
@@ -235,10 +250,40 @@ export class FoodDedupeMergeService {
           continue;
         }
         // Re-point dependents, sum counters, drop the loser row.
-        await tx.restaurantItemMention.updateMany({
-          where: { connectionId: connection.connectionId },
-          data: { connectionId: surviving.connectionId },
+        // COLLISION DEDUPE (red team R1): the claim-identity rollup shadows
+        // only ACROSS foods (c2.food_id <> c.food_id), so two direct
+        // mentions of the SAME document landing on ONE merged connection
+        // can never shadow each other — a bare re-point would recreate at
+        // the mention grain exactly the double count this merge exists to
+        // kill. A loser mention whose (document, kind) already exists on
+        // the survivor is dropped, mirroring mergeFoodEntityEvents.
+        const survivorMentions = await tx.restaurantItemMention.findMany({
+          where: { connectionId: surviving.connectionId },
+          select: { sourceDocumentId: true, kind: true },
         });
+        const survivorKeys = new Set(
+          survivorMentions.map(
+            (mention) => `${mention.sourceDocumentId ?? ''}:${mention.kind}`,
+          ),
+        );
+        const loserMentions = await tx.restaurantItemMention.findMany({
+          where: { connectionId: connection.connectionId },
+          select: { id: true, sourceDocumentId: true, kind: true },
+        });
+        for (const mention of loserMentions) {
+          const key = `${mention.sourceDocumentId ?? ''}:${mention.kind}`;
+          if (mention.sourceDocumentId && survivorKeys.has(key)) {
+            await tx.restaurantItemMention.delete({
+              where: { id: mention.id },
+            });
+          } else {
+            await tx.restaurantItemMention.update({
+              where: { id: mention.id },
+              data: { connectionId: surviving.connectionId },
+            });
+            survivorKeys.add(key);
+          }
+        }
         await tx.userListItem.updateMany({
           where: { connectionId: connection.connectionId },
           data: { connectionId: surviving.connectionId },

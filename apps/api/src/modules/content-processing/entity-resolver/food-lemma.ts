@@ -91,18 +91,24 @@ function pluralCandidates(word: string): string[] {
   if (word.endsWith('s')) {
     return [];
   }
+  const guard = (forms: string[]): string[] =>
+    forms.filter((form) => !NEVER_SINGULARIZE.has(form));
+  // The deny-list guards BOTH directions (red team R7): it protected
+  // 'wings' from singularizing but nothing stopped 'wing' from PROPOSING
+  // 'wings' — the pair still collapsed, just onto the plural, defeating
+  // the documented invariant in the one direction the specs did not pin.
   if (/(ch|sh|x|z)$/.test(word)) {
-    return [`${word}es`];
+    return guard([`${word}es`]);
   }
   if (/[^aeiou]y$/.test(word)) {
-    return [`${word.slice(0, -1)}ies`];
+    return guard([`${word.slice(0, -1)}ies`]);
   }
   // Consonant-final loanwords take -es (chicharron -> chicharrones).
   if (/[nlr]$/.test(word)) {
-    return [`${word}s`, `${word}es`];
+    return guard([`${word}s`, `${word}es`]);
   }
   // cookie -> cookies, taco -> tacos
-  return [`${word}s`];
+  return guard([`${word}s`]);
 }
 
 /**

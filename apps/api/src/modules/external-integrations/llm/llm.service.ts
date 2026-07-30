@@ -993,7 +993,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
-      maxOutputTokens: this.llmConfig.maxTokens || 65536,
+      maxOutputTokens:
+        callerProfile('content.extract')?.maxOutputTokens ??
+        (this.llmConfig.maxTokens || 65536),
       responseMimeType: 'application/json',
       // The batch backend rejects responseJsonSchema (INVALID_ARGUMENT for
       // every item — attributed via single-variable slice tests) but accepts
@@ -1014,7 +1016,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // batch. The warn in getOrCreateBatchSystemCache is the audit trail.
       config.systemInstruction = this.systemPrompt;
     }
-    const thinking = this.getThinkingConfig(this.llmConfig.model, 'content');
+    // Same caller profile as the interactive path (red team R8): without
+    // the caller arg, a future content.extract perCaller thinking override
+    // would apply interactively but silently NOT to batch — the default
+    // extraction path. Values coincide today; the seam must not depend on
+    // that.
+    const thinking = this.getThinkingConfig(
+      this.llmConfig.model,
+      callerProfile('content.extract')?.context ?? 'content',
+      undefined,
+      'content.extract',
+    );
     if (thinking) {
       config.thinkingConfig = thinking;
     }
@@ -3152,7 +3164,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         return { retry: true, reason: 'timeout' };
       }
       if (
-        lowerMessage.includes('ecconnreset') ||
+        lowerMessage.includes('econnreset') ||
         lowerMessage.includes('econnrefused')
       ) {
         return { retry: true, reason: 'network' };

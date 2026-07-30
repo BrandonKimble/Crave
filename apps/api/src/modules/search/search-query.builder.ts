@@ -241,8 +241,6 @@ export class SearchQueryBuilder {
     );
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
-    const geographicRestaurantVoteTotalsCte =
-      this.buildGeographicRestaurantVoteTotalsCte();
     const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
     const publicConnectionScoresCte = this.buildPublicConnectionScoresCte();
 
@@ -373,7 +371,6 @@ WITH
   ${filteredLocationsCte.sql},
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
-  ${geographicRestaurantVoteTotalsCte.sql},
   ${publicRestaurantScoresCte.sql},
   ${publicConnectionScoresCte.sql},
   ${locationAggregatesCte.sql},
@@ -386,7 +383,6 @@ WITH
   ${filteredLocationsCte.preview},
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
-  ${geographicRestaurantVoteTotalsCte.preview},
   ${publicRestaurantScoresCte.preview},
   ${publicConnectionScoresCte.preview},
   ${locationAggregatesCte.preview},
@@ -625,8 +621,6 @@ filtered_restaurants AS (
     );
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
-    const geographicRestaurantVoteTotalsCte =
-      this.buildGeographicRestaurantVoteTotalsCte();
     const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
     const publicConnectionScoresCte = this.buildPublicConnectionScoresCte();
 
@@ -674,7 +668,7 @@ filtered_connections AS (
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
-  JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+  LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
   JOIN public_restaurant_scores prs
     ON prs.subject_id = fr.entity_id
   JOIN public_connection_scores pcs
@@ -696,7 +690,7 @@ filtered_connections AS (
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
-  JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+  LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
   JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
   JOIN public_connection_scores pcs ON pcs.subject_id = c.connection_id
   JOIN core_entities f ON f.entity_id = c.food_id
@@ -727,7 +721,6 @@ WITH
   ${filteredLocationsCte.sql},
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
-  ${geographicRestaurantVoteTotalsCte.sql},
   ${publicRestaurantScoresCte.sql},
   ${publicConnectionScoresCte.sql},
   ${filteredConnectionsCte}
@@ -739,7 +732,6 @@ WITH
   ${filteredLocationsCte.preview},
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
-  ${geographicRestaurantVoteTotalsCte.preview},
   ${publicRestaurantScoresCte.preview},
   ${publicConnectionScoresCte.preview},
   ${filteredConnectionsCtePreview}`;
@@ -1085,8 +1077,16 @@ LIMIT ${pagination.take};`.trim();
     if (filters.minimumVotes !== null) {
       conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
       conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
-      conditions.push(Prisma.sql`rvt.total_upvotes >= ${filters.minimumVotes}`);
-      conditionPreview.push(`rvt.total_upvotes >= ${filters.minimumVotes}`);
+      // COALESCE is load-bearing with the LEFT JOIN: a restaurant whose
+      // direct mentions are all shadowed (or all support-kind) has NO rollup
+      // row, and an INNER JOIN here silently dropped its dishes even with
+      // minimumVotes unset (red team R3).
+      conditions.push(
+        Prisma.sql`COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
+      );
+      conditionPreview.push(
+        `COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
+      );
       minimumVotesApplied = true;
     }
 
@@ -1593,21 +1593,35 @@ selected_locations AS (
         AND c2.restaurant_id = c.restaurant_id
         AND c2.food_id <> c.food_id
         AND (
-          c.food_id = ANY(c2.categories)
+          -- Projection-array branch, with a symmetric-claim tiebreak: when
+          -- each lists the other as a category (synonym shape), exactly one
+          -- deterministic winner survives -- never both (double count),
+          -- never neither (claim vanishes). Red team R2.
+          (
+            c.food_id = ANY(c2.categories)
+            AND (
+              NOT (c2.food_id = ANY(c.categories))
+              OR c2.food_id < c.food_id
+            )
+          )
           OR EXISTS (
             SELECT 1 FROM derived_food_category_edges e
             WHERE e.food_id = c2.food_id AND e.category_id = c.food_id
-              -- ANTISYMMETRY. Lineage is genuinely directed (11,093 edges,
-              -- only 8 symmetric), but where BOTH directions are claimed the
-              -- relation is saying "synonyms", not "parent/child" -- e.g.
-              -- 'wings' <-> 'chicken wings'. Without this guard each would
-              -- shadow the other and the claim would vanish from the rollup
-              -- entirely. Losing evidence is worse than counting a synonym
-              -- pair twice, so neither shadows.
-              AND NOT EXISTS (
-                SELECT 1 FROM derived_food_category_edges rev
-                WHERE rev.food_id = c.food_id
-                  AND rev.category_id = c2.food_id
+              -- Edge branch: same rule. Lineage is genuinely directed
+              -- (11,093 edges, 8 symmetric); where BOTH directions are
+              -- claimed ('wings' <-> 'chicken wings') the relation means
+              -- synonym, and the food_id total order picks ONE survivor
+              -- instead of the old guard's "count both" (red team R6) or
+              -- the naive "erase both". Cycles of length >= 3 remain
+              -- theoretically lossy (measured 0 today); the full fix is
+              -- rank-per-document, deferred with this note as the record.
+              AND (
+                NOT EXISTS (
+                  SELECT 1 FROM derived_food_category_edges rev
+                  WHERE rev.food_id = c.food_id
+                    AND rev.category_id = c2.food_id
+                )
+                OR c2.food_id < c.food_id
               )
           )
         )
@@ -1628,27 +1642,6 @@ selected_locations AS (
 restaurant_vote_totals AS (${Prisma.raw(body)}
 )`,
       preview: `restaurant_vote_totals AS (${body}\n)`,
-    };
-  }
-
-  private buildGeographicRestaurantVoteTotalsCte(): {
-    sql: Prisma.Sql;
-    preview: string;
-  } {
-    const body = `
-  SELECT
-    c.restaurant_id,
-    SUM(m.source_upvotes) AS total_upvotes,
-    COUNT(*) AS total_mentions${SearchQueryBuilder.CLAIM_MENTIONS_FROM_SQL}
-  JOIN geographic_restaurants gr ON gr.entity_id = c.restaurant_id
-  WHERE ${SearchQueryBuilder.CLAIM_IDENTITY_WHERE_SQL}
-  GROUP BY c.restaurant_id`;
-
-    return {
-      sql: Prisma.sql`
-geographic_restaurant_vote_totals AS (${Prisma.raw(body)}
-)`,
-      preview: `geographic_restaurant_vote_totals AS (${body}\n)`,
     };
   }
 

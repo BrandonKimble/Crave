@@ -12,6 +12,7 @@ import { GEMINI_CALLER_PROFILES } from './gemini-caller-profiles';
  */
 
 const SRC_ROOT = join(__dirname, '..', '..', '..');
+const SCRIPTS_ROOT = join(SRC_ROOT, '..', 'scripts');
 
 function walk(dir: string, acc: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
@@ -26,7 +27,10 @@ function walk(dir: string, acc: string[] = []): string[] {
 }
 
 describe('Gemini gateway lockdown', () => {
-  const files = walk(SRC_ROOT);
+  // scripts/ is inside the wall too (red team R4): the calibration
+  // harness that lived there with its own client measured a configuration
+  // production never ran — a fake measurement is worse than none.
+  const files = [...walk(SRC_ROOT), ...walk(SCRIPTS_ROOT)];
 
   it('the raw GoogleGenAI client is constructible ONLY inside the gateway seam', () => {
     const allowed = new Set([
@@ -40,6 +44,10 @@ describe('Gemini gateway lockdown', () => {
       // was audited clean ($0.078 lifetime); folding it buys purity, not
       // protection. Allowed deliberately, with this line as the record.
       'external-integrations/llm/embedding.service.ts',
+      // Historical one-shot A/B harness (2026-07-12 model comparison), kept
+      // as a record; would run at HIGH thinking if ever re-used — rewrite
+      // through the gateway before re-running.
+      '../scripts/collection-model-ab-v2.ts',
     ]);
     // Detection is IMPORT-based (red team F6): `new GoogleGenAI` as a
     // string was evadable via an aliased import or `new (GoogleGenAI)`;
@@ -47,8 +55,13 @@ describe('Gemini gateway lockdown', () => {
     // behind the gateway's exported types, not a direct SDK import.
     const offenders = files
       .filter((file) => readFileSync(file, 'utf8').includes('@google/genai'))
-      .map((file) => file.replace(`${SRC_ROOT}/`, '').replace(/\\/g, '/'))
-      .map((file) => file.replace(/^modules\//, ''))
+      .map((file) =>
+        file
+          .replace(`${SRC_ROOT}/`, '')
+          .replace(/\\/g, '/')
+          .replace(/^modules\//, '')
+          .replace(/^.*\/apps\/api\/scripts\//, '../scripts/'),
+      )
       .filter((file) => !allowed.has(file));
     expect(offenders).toEqual([]);
   });
@@ -81,7 +94,6 @@ describe('Gemini gateway lockdown', () => {
       'llm.callGeminiApi',
       'gemini-batch.collection_extraction',
       'embedding.embedContent',
-      'photo-vision.isFoodContent', // legacy ledger tag, replaced by photos.is_food
     ]);
     // Red team F2: the gate's caller was wrongly exempted here, which meant
     // deleting its profile kept CI green (the only guard left was a boot

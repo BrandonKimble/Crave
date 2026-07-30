@@ -362,7 +362,10 @@ export class GovernanceService implements OnModuleInit {
           kind: 'gemini_backstop',
           title: 'Gemini backstop is NOT derived — running on the env seed',
           body: `No ${GEMINI_BACKSTOP_WORK_CLASS}/month row exists, so the spend cap is the GEMINI_MONTHLY_SPEND_CAP_USD seed rather than a measurement. Check that the nightly spend-analytics refresh is running.`,
-          dedupeKey: 'gemini_backstop_underived',
+          // Bucketed by day (R1): ops-alerts persists dedupe keys forever,
+          // so a constant key means the alert fires once EVER — a dead
+          // detector wearing an alert's clothes.
+          dedupeKey: `gemini_backstop_underived:${new Date().toISOString().slice(0, 10)}`,
         });
         return;
       }
@@ -373,12 +376,25 @@ export class GovernanceService implements OnModuleInit {
           kind: 'gemini_backstop',
           title: 'Gemini backstop derivation is stale',
           body: `The derived cap was last refreshed ${Math.round(ageMs / 3_600_000)}h ago. A stale derivation silently governs today's spend with last week's measurement.`,
-          dedupeKey: 'gemini_backstop_stale',
+          dedupeKey: `gemini_backstop_stale:${new Date().toISOString().slice(0, 10)}`,
         });
       }
       const before = this.pools.poolStatus('gemini.monthlySpend').limit;
       const after = Math.round(row.microUsdPerUnit);
-      if (after <= 0 || after === before) {
+      if (after <= 0) {
+        // A derived row exists but is garbage — the env seed silently
+        // governs, which is exactly what the underived alert exists to
+        // prevent. Same severity, distinct key.
+        this.opsAlerts.emit({
+          severity: 'warn',
+          kind: 'gemini_backstop',
+          title: 'Gemini backstop derivation row is corrupt',
+          body: `backstop.gemini/month exists but microUsdPerUnit=${row.microUsdPerUnit}; the env seed is governing.`,
+          dedupeKey: `gemini_backstop_corrupt:${new Date().toISOString().slice(0, 10)}`,
+        });
+        return;
+      }
+      if (after === before) {
         return;
       }
       this.pools.resetLimit('gemini.monthlySpend', after);
@@ -458,7 +474,17 @@ export class GovernanceService implements OnModuleInit {
    * gate guarded the biggest spender. Two gates for one budget is the defect;
    * this is the fix.
    */
+  /** Last derived-backstop health check (R2: boot-only checking meant a
+   *  long-lived process never noticed the nightly dying). */
+  private lastBackstopHealthCheckMs = 0;
+
   async assertGeminiSpendOpen(): Promise<void> {
+    // Re-evaluate derivation health at most daily, riding the gate every
+    // caller already passes through — no new scheduler.
+    if (Date.now() - this.lastBackstopHealthCheckMs > 24 * 3_600_000) {
+      this.lastBackstopHealthCheckMs = Date.now();
+      void this.applyDerivedGeminiBackstop();
+    }
     const monthKey = new Date().toISOString().slice(0, 7);
     const verdict = await this.pools.admit('gemini.monthlySpend');
     if (verdict.admitted) {
@@ -483,7 +509,7 @@ export class GovernanceService implements OnModuleInit {
         kind: 'gemini_backstop',
         title: 'Gemini spend budget poisoned (vendor cap)',
         body: `LLM spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued.`,
-        dedupeKey: `gemini_backstop:${monthKey}`,
+        dedupeKey: `gemini_backstop_poisoned:${monthKey}`,
       });
       throw new Error(
         `LLM spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`,

@@ -181,15 +181,6 @@ export interface LLMEntityRef {
 /**
  * LLM Source type
  */
-export interface LLMSource {
-  type: 'post' | 'comment';
-  id: string;
-  content: string;
-  ups?: number | null;
-  url?: string | null;
-  created_at?: string | null;
-}
-
 /**
  * Gemini API response structure
  */
@@ -231,40 +222,6 @@ export interface LLMApiResponse {
 /**
  * Gemini API request structure
  */
-export interface GeminiApiRequest {
-  contents: Array<{
-    role?: string;
-    parts: Array<{
-      text: string;
-    }>;
-  }>;
-  generationConfig?: {
-    temperature?: number;
-    maxOutputTokens?: number;
-    topP?: number;
-    topK?: number;
-    candidateCount?: number;
-    stopSequences?: string[];
-    responseMimeType?: string;
-    responseSchema?: object;
-    responseJsonSchema?: unknown;
-    thinkingConfig?: {
-      thinkingBudget?: number;
-      thinkingLevel?: string;
-      includeThoughts?: boolean;
-    };
-  };
-  safetySettings?: Array<{
-    category: string;
-    threshold: string;
-  }>;
-  systemInstruction?: {
-    parts: Array<{
-      text: string;
-    }>;
-  };
-}
-
 /**
  * Performance metrics for LLM operations
  */
