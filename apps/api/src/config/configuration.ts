@@ -315,12 +315,6 @@ export default () => {
         // Gemini system-instruction cache: 3h TTL, refresh 10 min early.
         systemTtlSeconds: 10_800,
         systemRefreshLeadSeconds: 600,
-        redisKey:
-          resolveScopedEnv(appEnv, {
-            dev: process.env.LLM_SYSTEM_CACHE_REDIS_KEY_DEV,
-            prod: process.env.LLM_SYSTEM_CACHE_REDIS_KEY_PROD,
-            fallback: process.env.LLM_SYSTEM_CACHE_REDIS_KEY,
-          }) || `crave:${appEnv}:llm:system-instruction-cache`,
         // Query-analysis result cache (was .env-only; 0 here would DISABLE
         // it — 900/120/200 are the values production behavior has been using).
         queryResultTtlSeconds: 900,

@@ -40,7 +40,6 @@ export interface LLMConfig {
   cache?: {
     systemTtlSeconds: number;
     systemRefreshLeadSeconds: number;
-    redisKey: string;
     queryResultTtlSeconds?: number;
     queryResultRedisKey?: string;
     queryResultCacheVersion?: string;
@@ -398,12 +397,4 @@ export interface RateLimitInfo {
   utilizationPercent: number;
   rpmUtilization: number;
   tpmUtilization: number;
-}
-
-export interface SystemInstructionCacheState {
-  cacheId: string;
-  expiresAt: number;
-  refreshedAt: number;
-  promptHash: string;
-  model: string;
 }

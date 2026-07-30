@@ -139,7 +139,10 @@ describe('GeminiContextCacheRegistry', () => {
   it('retires a superseded cache and DELETES it when no in-flight batch job references it', async () => {
     const { registry, prisma, ops } = build([]);
     prisma.geminiContextCache.findMany.mockResolvedValue([
-      { name: 'cachedContents/old' },
+      {
+        name: 'cachedContents/old',
+        createdAt: new Date(Date.now() - 2 * HOUR),
+      },
     ]);
     await registry.acquire(params, ops);
     expect(ops.delete).toHaveBeenCalledWith('cachedContents/old');
@@ -151,7 +154,10 @@ describe('GeminiContextCacheRegistry', () => {
   it('NEVER deletes a cache an in-flight batch job still references (retire only)', async () => {
     const { registry, prisma, ops } = build([]);
     prisma.geminiContextCache.findMany.mockResolvedValue([
-      { name: 'cachedContents/pinned' },
+      {
+        name: 'cachedContents/pinned',
+        createdAt: new Date(Date.now() - 2 * HOUR),
+      },
     ]);
     prisma.$queryRaw.mockResolvedValue([{ exists: true }]);
     await registry.acquire(params, ops);
@@ -173,6 +179,83 @@ describe('GeminiContextCacheRegistry', () => {
     ops.updateTtl.mockRejectedValue(new Error('vendor says no'));
     const got = await registry.acquire(params, ops);
     expect(got).toMatchObject({ name: 'cachedContents/new', reused: false });
+  });
+
+  it('a YOUNG superseded cache is retired but NEVER vendor-deleted (build->submit window)', async () => {
+    // Red team F4: a batch builder embeds the cache name before submit
+    // persists the job items, so the refcount cannot see the reference yet.
+    // Deleting a young cache under that window kills a whole job to save an
+    // hour of rent.
+    const { registry, prisma, ops } = build([]);
+    prisma.geminiContextCache.findMany.mockResolvedValue([
+      {
+        name: 'cachedContents/young',
+        createdAt: new Date(Date.now() - 5 * 60 * 1000),
+      },
+    ]);
+    await registry.acquire(params, ops);
+    expect(ops.delete).not.toHaveBeenCalled();
+    expect(prisma.geminiContextCache.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { name: 'cachedContents/young' } }),
+    );
+  });
+
+  it('a RACED in-lock reuse ledgers NOTHING (the minting process alone records)', async () => {
+    // Red team gap #1: outside lookup misses, but inside the advisory lock a
+    // sibling's fresh row appears. Reusing it must not re-ledger the
+    // creation/storage the sibling already recorded.
+    const { registry, prisma, usageLedger, ops } = build([]);
+    prisma.geminiContextCache.findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(null) // outside lookup: nothing yet
+      .mockResolvedValue({
+        // in-lock re-check: sibling minted while we waited on the lock
+        name: 'cachedContents/sibling',
+        tokenCount: 18_862,
+        expiresAt: new Date(Date.now() + 29 * HOUR),
+      });
+    const got = await registry.acquire(params, ops);
+    expect(got).toMatchObject({ name: 'cachedContents/sibling', reused: true });
+    expect(ops.create).not.toHaveBeenCalled();
+    expect(usageLedger.record).not.toHaveBeenCalled();
+  });
+
+  it('an EXPIRED row is never reused or extended — it falls through to a mint', async () => {
+    // Red team gap #2: expired-but-unretired rows exist forever (no GC).
+    const { registry, ops } = build([
+      {
+        name: 'cachedContents/expired',
+        tokenCount: 18_862,
+        expiresAt: new Date(Date.now() - 1 * HOUR),
+      },
+    ]);
+    const got = await registry.acquire(params, ops);
+    expect(got).toMatchObject({ name: 'cachedContents/new', reused: false });
+    expect(ops.updateTtl).not.toHaveBeenCalled();
+  });
+
+  it('LOSING the extension CAS ledgers nothing and falls through to the lock path', async () => {
+    // Red team F5/F6: concurrent extends must bill once. The CAS loser
+    // records no storage hours for the extension and re-resolves under the
+    // lock instead of returning a possibly-retired name.
+    const { registry, prisma, usageLedger, ops } = build([
+      {
+        name: 'cachedContents/contended',
+        tokenCount: 18_862,
+        expiresAt: new Date(Date.now() + 10 * HOUR),
+      },
+    ]);
+    prisma.geminiContextCache.updateMany.mockResolvedValue({ count: 0 });
+    const got = await registry.acquire(params, ops);
+    expect(got).toMatchObject({ name: 'cachedContents/new', reused: false });
+    const extensionRows = usageLedger.record.mock.calls
+      .map((c) => c[0] as { operation: string; durationHours?: number })
+      .filter(
+        (e) =>
+          e.operation === 'cachedContentStorage' &&
+          (e.durationHours ?? 0) < params.ttlSeconds / 3600,
+      );
+    expect(extensionRows).toHaveLength(0);
   });
 
   it('invalidate() retires by name so sibling processes stop reusing a bad cache', async () => {

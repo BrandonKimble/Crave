@@ -114,29 +114,44 @@ export class GeminiContextCacheRegistry {
           try {
             await ops.updateTtl(row.name, params.ttlSeconds);
             const newExpiresAtMs = now + params.ttlSeconds * 1000;
-            const additionalHours =
-              (newExpiresAtMs - row.expiresAt.getTime()) / 3_600_000;
-            if (additionalHours > 0) {
-              this.usageLedger.record({
-                service: 'gemini',
-                operation: 'cachedContentStorage',
-                model: params.model,
-                mode: 'interactive',
-                cachedTokens: row.tokenCount,
-                durationHours: additionalHours,
-                caller: params.caller,
-              });
-            }
-            await this.prisma.geminiContextCache.update({
-              where: { name: row.name },
+            // CAS on (name, old expiresAt, not-retired): under multi-process
+            // load every process crossing the floor tries to extend, and the
+            // vendor bills the extension ONCE — so exactly one process may
+            // ledger it. Losing the CAS also covers the extend-vs-retire
+            // race: a row a sibling just retired fails the write and we fall
+            // through to a fresh mint instead of returning a dying name.
+            const won = await this.prisma.geminiContextCache.updateMany({
+              where: {
+                name: row.name,
+                retiredAt: null,
+                expiresAt: row.expiresAt,
+              },
               data: { expiresAt: new Date(newExpiresAtMs) },
             });
-            return {
-              name: row.name,
-              tokenCount: row.tokenCount,
-              expiresAtMs: newExpiresAtMs,
-              reused: true,
-            };
+            if (won.count === 1) {
+              const additionalHours =
+                (newExpiresAtMs - row.expiresAt.getTime()) / 3_600_000;
+              if (additionalHours > 0) {
+                this.usageLedger.record({
+                  service: 'gemini',
+                  operation: 'cachedContentStorage',
+                  model: params.model,
+                  mode: 'interactive',
+                  cachedTokens: row.tokenCount,
+                  durationHours: additionalHours,
+                  caller: params.caller,
+                });
+              }
+              return {
+                name: row.name,
+                tokenCount: row.tokenCount,
+                expiresAtMs: newExpiresAtMs,
+                reused: true,
+              };
+            }
+            // Lost the CAS: a sibling extended (their write recorded the
+            // hours) or retired the row. Re-read and serve whatever is live
+            // now via the lock path below.
           } catch (error) {
             this.logger.warn('Cache TTL extension failed; minting fresh', {
               cacheName: row.name,
@@ -149,67 +164,94 @@ export class GeminiContextCacheRegistry {
       }
     }
 
-    // MINT UNDER AN ADVISORY LOCK, with a re-check inside it. Without this,
-    // two processes booting together both see "no row", both pay a vendor
-    // create, and each then retires the OTHER's cache — a wasted mint plus a
-    // transient 404 for whichever process loses. Same discipline as entity
-    // creation. The lock is transaction-scoped; the vendor create happens
-    // inside it deliberately (double-mint is the failure being priced away,
-    // and creates take ~1s at worst).
-    const minted = await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`gemini-cache:${params.model}:${hash}`}))`;
-      if (!params.forceRemint) {
-        const raced = await tx.geminiContextCache.findFirst({
-          where: { model: params.model, promptHash: hash, retiredAt: null },
-          orderBy: { expiresAt: 'desc' },
-        });
-        if (
-          raced &&
-          raced.expiresAt.getTime() - Date.now() > params.minRemainingMs
-        ) {
+    // MINT under an advisory lock with an in-lock re-check. Two processes
+    // booting together must not both pay a vendor create and then retire
+    // each other's cache — the lock serializes them and the loser reuses
+    // the winner's row.
+    //
+    // Red team F1: the vendor create runs INSIDE this transaction on
+    // purpose (releasing the lock before the create reopens the double-mint
+    // race), but the first version relied on Prisma's DEFAULT interactive-tx
+    // timeout of 5s — so a slow vendor create rolled the tx back AFTER the
+    // vendor resource existed: a paid cache with no registry row, invisible
+    // and billing rent for its full TTL, the precise failure this registry
+    // exists to kill. The timeout is now explicit and sized for a vendor
+    // call, and if the tx still fails after the create succeeded, the fresh
+    // vendor cache is best-effort deleted so nothing is orphaned.
+    //
+    // Expiry is stamped from BEFORE the create: the vendor TTL clock starts
+    // when the create is processed, not when it returns, and the registry
+    // must never believe a cache outlives its vendor truth.
+    const lockKey = `gemini-cache:${params.model}:${hash}`;
+    let createdOutsideRow: string | null = null;
+    let minted: {
+      name: string;
+      tokenCount: number;
+      expiresAtMs: number;
+      reused: boolean;
+    };
+    try {
+      minted = await this.prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+          if (!params.forceRemint) {
+            const raced = await tx.geminiContextCache.findFirst({
+              where: { model: params.model, promptHash: hash, retiredAt: null },
+              orderBy: { expiresAt: 'desc' },
+            });
+            if (
+              raced &&
+              raced.expiresAt.getTime() - Date.now() > params.minRemainingMs
+            ) {
+              return {
+                name: raced.name,
+                tokenCount: raced.tokenCount,
+                expiresAtMs: raced.expiresAt.getTime(),
+                reused: true,
+              };
+            }
+          }
+          const mintStartMs = Date.now();
+          const created = await ops.create({
+            model: params.model,
+            systemInstruction: params.systemInstruction,
+            ttlSeconds: params.ttlSeconds,
+          });
+          createdOutsideRow = created.name;
+          const expiresAtMs = mintStartMs + params.ttlSeconds * 1000;
+          await tx.geminiContextCache.create({
+            data: {
+              name: created.name,
+              model: params.model,
+              promptHash: hash,
+              tokenCount: created.tokenCount,
+              caller: params.caller,
+              expiresAt: new Date(expiresAtMs),
+            },
+          });
+          createdOutsideRow = null;
           return {
-            name: raced.name,
-            tokenCount: raced.tokenCount,
-            expiresAtMs: raced.expiresAt.getTime(),
-            reused: true as const,
+            name: created.name,
+            tokenCount: created.tokenCount,
+            expiresAtMs,
+            reused: false,
           };
-        }
-      }
-      const created = await ops.create({
-        model: params.model,
-        systemInstruction: params.systemInstruction,
-        ttlSeconds: params.ttlSeconds,
-      });
-      const expiresAtMs = Date.now() + params.ttlSeconds * 1000;
-      await tx.geminiContextCache.create({
-        data: {
-          name: created.name,
-          model: params.model,
-          promptHash: hash,
-          tokenCount: created.tokenCount,
-          caller: params.caller,
-          expiresAt: new Date(expiresAtMs),
         },
-      });
-      return {
-        name: created.name,
-        tokenCount: created.tokenCount,
-        expiresAtMs,
-        reused: false as const,
-      };
-    });
+        // Sized for a vendor HTTP call, not a DB write. maxWait covers
+        // sibling boots queueing on the advisory lock behind a slow create.
+        { timeout: 120_000, maxWait: 30_000 },
+      );
+    } catch (error) {
+      if (createdOutsideRow) {
+        await ops.delete(createdOutsideRow).catch(() => undefined);
+      }
+      throw error;
+    }
     if (minted.reused) {
       return minted;
     }
     const expiresAtMs = minted.expiresAtMs;
 
-    // Two ledger rows, two products: the creation write (input tokens) and
-    // the hold (token-hours for the TTL). Storage is booked up front for the
-    // full TTL — over-metering if retired early, which is the deliberate
-    // failure direction (spend that vanishes is the failure that matters).
-    // `mode` stays 'interactive' on purpose: mode is a PRICING dimension
-    // (50% batch discount) and there is no evidence the vendor discounts
-    // cache ops; attribution rides `caller`.
     this.usageLedger.record({
       service: 'gemini',
       operation: 'createCachedContent',
@@ -273,9 +315,21 @@ export class GeminiContextCacheRegistry {
     try {
       const superseded = await this.prisma.geminiContextCache.findMany({
         where: { model, promptHash, retiredAt: null, name: { not: keepName } },
-        select: { name: true },
+        select: { name: true, createdAt: true },
       });
       for (const row of superseded) {
+        // Red team F4 (build->submit TOCTOU): the refcount below only sees
+        // batch job ITEMS that already exist, but a batch builder embeds the
+        // cache name into its requests seconds-to-minutes BEFORE submit
+        // persists them. A concurrent force-remint in that window would see
+        // zero references and vendor-delete a name a whole job is about to
+        // use. So a YOUNG cache is never vendor-deleted — retired in the
+        // registry (no further reuse) but left alive for anything that
+        // already holds its name; the vendor TTL reaps it. Skipping the
+        // delete costs at most one hour of rent; deleting under a job costs
+        // the whole job.
+        const ageMs = Date.now() - row.createdAt.getTime();
+        const young = ageMs < 3_600_000;
         const referenced = await this.prisma.$queryRaw<
           Array<{ exists: boolean }>
         >`
@@ -286,7 +340,7 @@ export class GeminiContextCacheRegistry {
               AND i.request->'config'->>'cachedContent' = ${row.name}
           ) AS exists
         `;
-        if (!referenced[0]?.exists) {
+        if (!referenced[0]?.exists && !young) {
           await ops.delete(row.name).catch((error: unknown) => {
             // Best-effort: the vendor TTL reaps it regardless; the registry
             // retirement below is what stops further reuse.

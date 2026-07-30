@@ -304,9 +304,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           this.configService.get<number>(
             'llm.cache.systemRefreshLeadSeconds',
           ) ?? 600,
-        redisKey:
-          this.configService.get<string>('llm.cache.redisKey') ??
-          'llm:system-instruction-cache',
         queryResultTtlSeconds:
           this.configService.get<number>('llm.cache.queryResultTtlSeconds') ??
           0,
@@ -3101,14 +3098,24 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       return { retry: false, reason: 'non_retryable' };
     };
 
+    // CACHE RECOVERY IS CAPPED (red team F2). The mismatch/404 branches
+    // below retry via `attempt--`, outside maxRetries — and after the
+    // registry landed, each spin of the 404 branch is a PAID vendor mint
+    // (forceRemint skips every lookup). A vendor that persistently 404s
+    // fresh caches (key/project misconfiguration) would otherwise mint,
+    // retire, and re-ledger forever. After the cap, the call falls back to
+    // INLINE instructions — paying full input rate beats an infinite loop.
+    let cacheRecoveryAttempts = 0;
+    let forceInlineInstruction = false;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      const cacheName =
-        options.cacheName ??
-        (options.systemInstruction
-          ? null
-          : targetModel === this.llmConfig.model
-            ? (this.systemInstructionCache?.name ?? null)
-            : null);
+      const cacheName = forceInlineInstruction
+        ? null
+        : (options.cacheName ??
+          (options.systemInstruction
+            ? null
+            : targetModel === this.llmConfig.model
+              ? (this.systemInstructionCache?.name ?? null)
+              : null));
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
@@ -3431,6 +3438,27 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         );
 
         if (cacheName && this.isCachedContentModelMismatchError(error)) {
+          cacheRecoveryAttempts += 1;
+          if (cacheRecoveryAttempts > 2) {
+            // Recovery isn't converging — the freshly minted replacements
+            // are failing too. Stop paying for mints and go inline.
+            forceInlineInstruction = true;
+            attempt--;
+            continue;
+          }
+          if (options.cacheName) {
+            // A caller-supplied name (the query cache) is FROZEN in options
+            // for the life of this call — rebuilding the cache cannot change
+            // what we resend, so retrying the same bad name loops without
+            // progress (red team F3). Invalidate it for siblings and finish
+            // this call inline; the caller's next call re-resolves lazily.
+            await this.cacheRegistry.invalidate(cacheName);
+            this.queryInstructionCache = null;
+            this.queryCacheExpiresAtMs = null;
+            forceInlineInstruction = true;
+            attempt--;
+            continue;
+          }
           try {
             await this.handleCachedContentModelMismatch(cacheName);
           } catch (refreshError) {
@@ -3452,9 +3480,27 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           continue;
         }
 
+        if (options.cacheName && this.isCachedContentMissingError(error)) {
+          // Caller-supplied (query) cache 404'd at the vendor: before this
+          // branch existed the name was never invalidated, so every process
+          // kept being served the dead row for up to 3h (red team F3).
+          cacheRecoveryAttempts += 1;
+          await this.cacheRegistry.invalidate(options.cacheName);
+          this.queryInstructionCache = null;
+          this.queryCacheExpiresAtMs = null;
+          forceInlineInstruction = true;
+          attempt--;
+          continue;
+        }
         const cacheableRequest =
           !options.cacheName && !options.systemInstruction;
         if (cacheableRequest && this.isCachedContentMissingError(error)) {
+          cacheRecoveryAttempts += 1;
+          if (cacheRecoveryAttempts > 2) {
+            forceInlineInstruction = true;
+            attempt--;
+            continue;
+          }
           this.logger.warn(
             'Gemini cache handle invalid; attempting refresh before retry',
             {
