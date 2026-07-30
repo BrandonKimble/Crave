@@ -83,7 +83,11 @@ resolver, spend gate all landed on this shape):
      the SYNC LLM; under zero-per-search-LLM, a batch-priced segmentation
      step INSIDE the demand pipeline (many residues per call) becomes the
      REQUIRED precondition before residue may become keywords — the same
-     job relocated, not a new capability. Partial-grounding queries
+     job relocated, not a new capability. SCHEMA IMPLICATION (red team):
+     on_demand_requests.entity_type is NOT NULL, so raw residue cannot
+     enter the queue as-is — it needs a staging landing zone (or an
+     'unsegmented' holding state) that the batch segmenter drains INTO
+     typed queue rows. "Logged as-is" was underspecified. Partial-grounding queries
      ("khachapuri at that place on 5th") get instant results from the
      known spans; the unknown term becomes a clean collection seed
      asynchronously. Per-search LLM cost -> zero; llmMs (the dominant
@@ -143,6 +147,17 @@ Hardness is a FACT, derived — never guessed per query:
 | **dietary requirement** | **vocabulary flag** | vegan, gluten-free, halal, kosher, dairy-free, nut-free, vegetarian | **never**             |
 | preference              | default             | spicy, crispy, patio, cozy                                          | soft (richness-gated) |
 
+COVERAGE MEASURED (red team 2026-07-30), so expectations are set before
+launch: restaurant-side vegan 219 / halal 134 / vegetarian 110 / gluten
+free 57 / kosher 10 venues; dish-side vegan 186 / vegetarian 114 / gluten
+free 37 connections (Austin). Hard toggles WILL run thin — by design that
+feeds precise demand, but kosher at 10 venues argues for launching the
+well-covered four and adding kosher when the data can carry it (owner
+call at build). Gazetteer scan cost bounded at ~22ms worst-shape on
+today's catalogue (lower(name) btree-indexed; the alias EXISTS arm is the
+slow half and has an optimization lever in the existing alias-haystack
+index) — the vs-LLM latency claim holds.
+
 RATIFIED 2026-07-29: dietary attributes are hard. Today's ladder DROPS
 "vegan" (it lives in the droppable food-attributes bucket) — for a vegan
 user that is a wrong answer, not degradation. The fix: a small CURATED
@@ -157,7 +172,12 @@ user's explicit opt-out.
 One execution per projection. In-query, every candidate row computes which
 constraints it satisfies (provenance). Membership policy:
 
-1. Subject + family: always required (subject is sacred).
+1. Subject + family: always required (subject is sacred). COMPOSITION LAW
+   (red team correction — the spec earlier implied AND across all spans):
+   multiple SUBJECT spans compose as OR — verified today's semantics, the
+   foodIds array is one `= ANY(...)` clause ("tacos and pizza" means
+   either) — while MODIFIER spans compose as AND against the subjects.
+   Subjects widen; modifiers narrow.
 2. Hard constraints: absolute walls.
 3. Each PREFERENCE is individually droppable — per WORD, not per type
    bucket (today "spicy vegan tacos" thin drops spicy AND vegan together;
@@ -244,11 +264,26 @@ plus one flattening):
 1. **Dietary hardness** (smallest, user-visible correctness): flag the
    curated set; exempt the flagged ids from the ladder's droppable bucket.
    Ships against today's ladder without any other change.
-2. **Untyped grounding behind the existing buckets**: gazetteer-first (all
-   types incl. ingredient) + linker on residue + conservative LLM skip
-   gate; place grounded entities into today's buckets by their DATA
-   types. Kills the never-look defect with the whole downstream untouched.
-   Requires the linker re-sweep (floors were fit to type-scoped recall).
+2. **Untyped RECALL behind the existing buckets** (RED TEAM 2026-07-30
+   re-scoped this step — as first written it was incoherent): today's
+   buckets AND against each other (verified: the restaurant query ANDs the
+   attribute clause at builder line ~206), so placing one span's grounding
+   into TWO buckets would demand BOTH match — "breakfast" would require a
+   breakfast-family dish AND a breakfast-attributed venue. OVER-constraint,
+   the opposite of the fix. So step 2 does what the buckets CAN express:
+   full-vocabulary recall (gazetteer + linker see every type), then
+   SINGLE-bucket placement by the data-dominant type (measured evidence
+   counts, e.g. breakfast: 929 attribute vs 264 category events ->
+   attribute). This kills the never-look defect at the RECALL level only;
+   full multi-type placement (OR within a span) lands with step 3's
+   constraint model, which is the layer that can express it. Requires the
+   linker re-sweep (floors were fit to type-scoped recall).
+   LINKER RESIDUE RULE (red team): the linker must probe residue tokens
+   JOINED with adjacent grounded spans, not tokens alone — "brekfast
+   tacos" grounds "tacos", and only the joined candidate "brekfast tacos"
+   can fuzzy-reach the COMPOUND entity "breakfast taco"; a lone "brekfast"
+   probe fragments the span into breakfast+taco and loses the compound.
+   (Today the sync LLM emits whole phrases, masking this.)
 3. **Single-query pooling with provenance + richness gate**, run alongside
    the ladder on real queries until output matches, then delete the
    ladder, probes, exclusion lists, and pagination stitching.
