@@ -464,10 +464,16 @@ settle):**
    search (attachSimilarPreview); in the one-query design the similar
    ring is provenance in the SAME execution (excluded from the default
    view, counted for the badge) — the extra execution dissolves.
-3. MODIFIER SEMANTICS: today "spicy crispy tacos" means spicy OR crispy.
-   Per-word constraints enable AND. Which is the product?
-4. PARTIAL-GROUNDING HONESTY: half-grounded queries ("dinner date spot"
-   pools date-the-fruit; "food near the capitol" ignores the location
-   words) return specific-looking results with no "we didn't understand
-   X" affordance. Decide whether the response carries an unresolved-terms
-   indicator in the UI, or accept silent degradation.
+3. ~~MODIFIER SEMANTICS~~ **RESOLVED (owner 2026-07-30): OR stays.**
+   "spicy crispy tacos" keeps meaning spicy OR crispy — today's semantics
+   are the product. Per-word provenance still lands (it powers the
+   richness gate and demand signals); only the COMPOSITION stays OR, so
+   the migration is behavior-preserving on this axis after all.
+4. ~~PARTIAL-GROUNDING HONESTY~~ **RESOLVED (owner 2026-07-30): keep as
+   is — silent.** No unresolved-terms affordance in the UI; half-grounded
+   queries return what grounded, and the residue works through the demand
+   pipeline. Consistent with the negation ruling: the box teaches its own
+   grammar by behavior, not by disclaimers.
+
+THE QUEUE IS EMPTY — every design question from both review rounds is
+ratified, verified, or explicitly deferred with an owner ruling.
