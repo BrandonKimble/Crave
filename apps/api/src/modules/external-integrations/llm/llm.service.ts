@@ -261,6 +261,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         queryLevel:
           this.configService.get<string>('llm.thinking.queryLevel') ||
           undefined,
+        perCaller:
+          this.configService.get<Record<string, string>>(
+            'llm.thinking.perCaller',
+          ) ?? undefined,
         includeThoughts:
           this.configService.get<boolean>('llm.thinking.includeThoughts') ===
           true,
@@ -3170,14 +3174,21 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     let cacheRecoveryAttempts = 0;
     let forceInlineInstruction = false;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Red team F5: the collection system-CACHE may attach only where the
+      // collection system-PROMPT would have been inlined — i.e. the caller
+      // brought neither an instruction nor a config (the extraction path).
+      // The old condition keyed on systemInstruction alone, so a future
+      // gateway caller on the FLASH model with its own config would have
+      // silently inherited the 78KB collection cache (the cached-rate twin
+      // of the places.choose_candidate inline leak).
+      const collectionPath =
+        !options.systemInstruction && !options.generationConfig;
       const cacheName = forceInlineInstruction
         ? null
         : (options.cacheName ??
-          (options.systemInstruction
-            ? null
-            : targetModel === this.llmConfig.model
-              ? (this.systemInstructionCache?.name ?? null)
-              : null));
+          (collectionPath && targetModel === this.llmConfig.model
+            ? (this.systemInstructionCache?.name ?? null)
+            : null));
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),

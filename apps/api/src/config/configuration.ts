@@ -290,6 +290,18 @@ export default () => {
         level: 'LOW',
         queryLevel: 'MINIMAL',
         includeThoughts: process.env.LLM_THINKING_INCLUDE_THOUGHTS === 'true',
+        // Runtime per-caller overrides (JSON: {"caller.tag":"MEDIUM"}).
+        // Wins over the profile table; red team F4 found the channel was
+        // documented but unparseable — a promised override nobody could set.
+        perCaller: ((): Record<string, string> | undefined => {
+          const raw = process.env.LLM_THINKING_PER_CALLER;
+          if (!raw) return undefined;
+          try {
+            return JSON.parse(raw) as Record<string, string>;
+          } catch {
+            return undefined;
+          }
+        })(),
       },
       thoughtDebug: {
         enabled: process.env.LLM_DEBUG_THOUGHTS_ONCE === 'true',

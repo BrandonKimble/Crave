@@ -41,8 +41,12 @@ describe('Gemini gateway lockdown', () => {
       // protection. Allowed deliberately, with this line as the record.
       'external-integrations/llm/embedding.service.ts',
     ]);
+    // Detection is IMPORT-based (red team F6): `new GoogleGenAI` as a
+    // string was evadable via an aliased import or `new (GoogleGenAI)`;
+    // referencing the SDK module at all is not. A types-only need belongs
+    // behind the gateway's exported types, not a direct SDK import.
     const offenders = files
-      .filter((file) => readFileSync(file, 'utf8').includes('new GoogleGenAI'))
+      .filter((file) => readFileSync(file, 'utf8').includes('@google/genai'))
       .map((file) => file.replace(`${SRC_ROOT}/`, '').replace(/\\/g, '/'))
       .map((file) => file.replace(/^modules\//, ''))
       .filter((file) => !allowed.has(file));
@@ -77,22 +81,24 @@ describe('Gemini gateway lockdown', () => {
       'llm.callGeminiApi',
       'gemini-batch.collection_extraction',
       'embedding.embedContent',
-      'relevance-gate.judgeBatch', // also appears as ledger tag; profiled
       'photo-vision.isFoodContent', // legacy ledger tag, replaced by photos.is_food
     ]);
-    const generationCallers = [...seen].filter(
+    // Red team F2: the gate's caller was wrongly exempted here, which meant
+    // deleting its profile kept CI green (the only guard left was a boot
+    // crash). Generation callers are NEVER exempt.
+    const unprofiled = [...seen].filter(
       (caller) =>
-        !nonGeneration.has(caller) || caller in GEMINI_CALLER_PROFILES,
-    );
-    const unprofiled = generationCallers.filter(
-      (caller) =>
-        !(caller in GEMINI_CALLER_PROFILES) && !nonGeneration.has(caller),
+        !nonGeneration.has(caller) && !(caller in GEMINI_CALLER_PROFILES),
     );
     expect(unprofiled).toEqual([]);
   });
 
   it('no profile is an orphan (a table entry with no live call site)', () => {
+    // Red team F1: the haystack included gemini-caller-profiles.ts itself,
+    // whose keys are single-quoted — every profile matched its own
+    // definition and the test could never fail. Exclude the table.
     const allSource = files
+      .filter((file) => !file.endsWith('gemini-caller-profiles.ts'))
       .map((file) => readFileSync(file, 'utf8'))
       .join('\n');
     const orphans = Object.keys(GEMINI_CALLER_PROFILES).filter(

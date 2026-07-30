@@ -69,8 +69,20 @@ export class RelevanceGateService implements OnModuleInit {
       ),
       'utf8',
     );
+    // CONFIG hash, not just prompt hash (red team F3). All 8,197 verdicts
+    // persisted before 2026-07-27 were judged under Gemini-3's implicit
+    // HIGH thinking, and this commit moved the gate prompt from the user
+    // text part to systemInstruction — both real configuration changes that
+    // a prompt-text hash cannot see. The discriminator makes every future
+    // row honest about WHICH judging configuration produced it. (Verdict
+    // REUSE is keyed on (platform, postId) and is unaffected; this is the
+    // audit record. The 130-post calibration numbers describe the old
+    // configuration — re-run density-replay before trusting them for this
+    // one.)
     this.promptHash = createHash('sha256')
-      .update(this.prompt)
+      .update(
+        `${this.prompt}\n@gate-config: placement=systemInstruction thinking=query-default`,
+      )
       .digest('hex')
       .slice(0, 16);
   }
