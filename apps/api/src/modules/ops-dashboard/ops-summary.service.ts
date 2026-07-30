@@ -466,12 +466,18 @@ export class OpsSummaryService {
         service: 'google_places',
         createdAt: { gte: windowStart, lt: now },
       },
-      select: { skuTier: true, requestCount: true, createdAt: true },
+      select: {
+        skuTier: true,
+        operation: true,
+        requestCount: true,
+        createdAt: true,
+      },
     });
     const buckets = new Array<number>(DAILY_WINDOW_DAYS).fill(0);
     for (const row of rows) {
       buckets[this.dayBucket(row.createdAt, windowStart)] +=
-        placesCostMicrosPerCall(row.skuTier ?? null) * (row.requestCount ?? 0);
+        placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
+        (row.requestCount ?? 0);
     }
     return buckets;
   }
@@ -513,12 +519,13 @@ export class OpsSummaryService {
   private async placesMicros(start: Date, end: Date): Promise<number> {
     const rows = await this.prisma.apiUsageEvent.findMany({
       where: { service: 'google_places', createdAt: { gte: start, lt: end } },
-      select: { skuTier: true, requestCount: true },
+      select: { skuTier: true, operation: true, requestCount: true },
     });
     let total = 0;
     for (const row of rows) {
       total +=
-        placesCostMicrosPerCall(row.skuTier ?? null) * (row.requestCount ?? 0);
+        placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
+        (row.requestCount ?? 0);
     }
     return total;
   }

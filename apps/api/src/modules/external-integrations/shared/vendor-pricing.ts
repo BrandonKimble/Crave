@@ -48,24 +48,51 @@ export const tomtomBlendedCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
  * pricing — tiered pricing; we price at the entry tier). SKU strings match
  * UsageLedgerService.classifyPlacesSku outputs.
  */
+// OPERATION-AWARE (red team R3, 2026-07-29): Google prices per
+// operation x SKU, not per SKU — textSearch:pro is $0.032/call while
+// placeDetails:pro is $0.017. The old per-SKU table silently applied the
+// placeDetails rate to every operation, under-metering textSearch ~1.9x in
+// the GOVERNOR while the standalone cost-report kept its own correct table
+// (two tables, the wrong one governing money — the exact drift class the
+// gemini rate-table unification killed). Rates: Cloud Billing catalog,
+// verified 2026-07-08; cost-report's table folded in here.
 const PLACES_RATES_MICRO_USD_PER_CALL: Record<string, number> = {
-  essentials: 5_000,
-  pro: 17_000,
-  enterprise: 20_000,
-  enterprise_atmosphere: 25_000,
+  'placeDetails:essentials': 5_000,
+  'placeDetails:pro': 17_000,
+  'placeDetails:enterprise': 20_000,
+  'placeDetails:enterprise_atmosphere': 25_000,
+  'textSearch:pro': 32_000,
+  'textSearch:enterprise': 35_000,
+  'textSearch:enterprise_atmosphere': 40_000,
+  'autocomplete:essentials': 2_800,
 };
 
-/** Unknown/null SKU fallback: the highest known entry-tier rate — the same
- *  over-meter-never-vanish principle as gemini-pricing's unknown model. */
-const UNKNOWN_PLACES_SKU_RATE_MICRO_USD = 25_000;
+/** Per-SKU ceiling across operations — used when the caller has no
+ *  operation dimension. Over-meter, never vanish. */
+const SKU_MAX_MICRO_USD: Record<string, number> = {
+  essentials: 5_000,
+  pro: 32_000,
+  enterprise: 35_000,
+  enterprise_atmosphere: 40_000,
+};
 
-/** Micro-USD cost of one Google Places (New) call, priced by SKU tier. */
-export function placesCostMicrosPerCall(skuTier: string | null): number {
+/** Unknown/null fallback: highest known rate — over-meter, never vanish. */
+const UNKNOWN_PLACES_SKU_RATE_MICRO_USD = 40_000;
+
+/** Micro-USD cost of one Google Places (New) call. Pass the ledger's
+ *  operation for the exact rate; without it the SKU ceiling applies. */
+export function placesCostMicrosPerCall(
+  skuTier: string | null,
+  operation?: string | null,
+): number {
   if (skuTier === null) {
     return UNKNOWN_PLACES_SKU_RATE_MICRO_USD;
   }
-  return (
-    PLACES_RATES_MICRO_USD_PER_CALL[skuTier] ??
-    UNKNOWN_PLACES_SKU_RATE_MICRO_USD
-  );
+  if (operation) {
+    const exact = PLACES_RATES_MICRO_USD_PER_CALL[`${operation}:${skuTier}`];
+    if (exact !== undefined) {
+      return exact;
+    }
+  }
+  return SKU_MAX_MICRO_USD[skuTier] ?? UNKNOWN_PLACES_SKU_RATE_MICRO_USD;
 }

@@ -551,12 +551,12 @@ export class SpendAnalyticsService {
     if (newRestaurants >= MIN_SAMPLE_UNITS) {
       const placesRows = await this.prisma.apiUsageEvent.findMany({
         where: { service: 'google_places', createdAt: createdWindow },
-        select: { skuTier: true, requestCount: true },
+        select: { skuTier: true, operation: true, requestCount: true },
       });
       let placesSpend = 0;
       for (const row of placesRows) {
         placesSpend +=
-          placesCostMicrosPerCall(row.skuTier ?? null) *
+          placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
           (row.requestCount ?? 0);
       }
       out.push({
@@ -783,8 +783,31 @@ export class SpendAnalyticsService {
       const end = new Date(start.getTime() + MS_PER_DAY);
       dailyTotals.push(await this.totalGeminiSpendMicros(start, end));
     }
-    const medianDailyMicros = median(dailyTotals);
-    const trailingSpendMicros = medianDailyMicros * UNIT_COST_WINDOW_DAYS;
+    // WINSORIZED SUM, not median-of-days (root-caused 2026-07-29): this
+    // workload is BURSTY by design — batch reloads and 14-day source
+    // cadences mean most trailing days have ZERO gemini spend (measured: 14
+    // of 30 locally). A median over mostly-zero days is ~0, so
+    // derivedLimitMicros was <= 0 and this method silently returned — the
+    // backstop.gemini row NEVER existed and the env seed governed forever,
+    // which is precisely what §16 forbids. The median was the anti-runaway
+    // guard; winsorizing keeps that property without zeroing the
+    // derivation: each day contributes at most the 90th percentile of the
+    // window's POSITIVE days, so a runaway day is capped at "a big normal
+    // day" while real burst spend still counts. The x3 nightly growth clamp
+    // below remains the primary runaway bound.
+    const positiveDays = dailyTotals.filter((total) => total > 0);
+    const p90 = positiveDays.length
+      ? [...positiveDays].sort((a, b) => a - b)[
+          Math.min(
+            positiveDays.length - 1,
+            Math.floor(positiveDays.length * 0.9),
+          )
+        ]
+      : 0;
+    const trailingSpendMicros = dailyTotals.reduce(
+      (sum, total) => sum + Math.min(total, p90),
+      0,
+    );
     const derivedLimitMicros = Math.round(
       trailingSpendMicros * BACKSTOP_MULTIPLE,
     );

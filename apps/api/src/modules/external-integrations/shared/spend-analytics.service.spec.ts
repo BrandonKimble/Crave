@@ -273,7 +273,11 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     );
     expect(enterpriseRow).toBeDefined();
     expect(enterpriseRow!.sampleUnits).toBe(2);
-    expect(enterpriseRow!.microUsdPerUnit).toBe(20_000);
+    // Operation-aware pricing (R3): a per-SKU unit-cost row aggregates
+    // ACROSS operations, so it prices at the SKU ceiling (textSearch:
+    // enterprise 35,000µ), not the old placeDetails-only 20,000µ that
+    // under-metered every textSearch draw. Over-meter, never vanish.
+    expect(enterpriseRow!.microUsdPerUnit).toBe(35_000);
 
     // Unknown/null SKU groups under 'unknown', priced at the highest rate.
     const unknownRow = rows.find(
@@ -281,7 +285,9 @@ describe('SpendAnalyticsService.refreshUnitCosts (§24.2 Leg A)', () => {
     );
     expect(unknownRow).toBeDefined();
     expect(unknownRow!.sampleUnits).toBe(1);
-    expect(unknownRow!.microUsdPerUnit).toBe(25_000);
+    // Unknown SKU prices at the highest known rate, which is now the
+    // textSearch:enterprise_atmosphere 40,000µ (was 25,000µ pre-R3).
+    expect(unknownRow!.microUsdPerUnit).toBe(40_000);
 
     // The old zero-priced unattributed rows are gone.
     expect(
@@ -514,6 +520,63 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
       findUnique,
     };
   }
+
+  it('a BURSTY window still derives a backstop (the median-of-days bug zeroed it)', async () => {
+    // Root-caused 2026-07-29: with 16 of 30 trailing days at ZERO spend
+    // (bursty batch + 14-day cadences + the collection pause), the old
+    // median-of-days statistic returned 0, derivedLimitMicros <= 0 silently
+    // returned, and the backstop.gemini row NEVER existed — the env seed
+    // governed forever. This spec is RED under that code: 16 empty days +
+    // 14 spend days must still write a row (winsorized sum).
+    const upsert = jest.fn().mockResolvedValue({});
+    const findUnique = jest.fn().mockResolvedValue(null);
+    let call = 0;
+    const findMany = jest.fn().mockImplementation(() => {
+      call += 1;
+      return Promise.resolve(
+        call <= 16
+          ? []
+          : [
+              {
+                inputTokens: 1_000_000,
+                outputTokens: 0,
+                cachedTokens: 0,
+                model: MODEL,
+                mode: 'interactive',
+              },
+            ],
+      );
+    });
+    const service = new SpendAnalyticsService(
+      {
+        apiUsageEvent: { findMany },
+        spendUnitCost: { upsert, findUnique },
+      } as never,
+      stubLogger() as never,
+      {} as never,
+      { emit: jest.fn() } as never,
+      {
+        pools: {
+          poolStatus: jest.fn().mockReturnValue({ limit: 1 }),
+          resetLimit: jest.fn(),
+        },
+      } as never,
+    );
+    await (
+      service as unknown as {
+        refreshBackstop(a: Date, b: Date, c: Date): Promise<void>;
+      }
+    ).refreshBackstop(
+      new Date(Date.now() - 30 * 86_400_000),
+      new Date(),
+      new Date(),
+    );
+    expect(upsert).toHaveBeenCalled();
+    const written = (
+      upsert.mock.calls as Array<[{ create: { microUsdPerUnit: number } }]>
+    )[0][0];
+    expect(written.create.microUsdPerUnit).toBeGreaterThan(0);
+  });
 
   it('writes backstop.gemini as BACKSTOP_MULTIPLE(3) x the MEDIAN daily spend x 30, and resets the live pool (no prior row: unclamped)', async () => {
     // Flat 1000 micros/day for all 30 days -> median = 1000 -> trailing =

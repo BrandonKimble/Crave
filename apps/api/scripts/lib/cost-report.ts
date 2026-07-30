@@ -1,4 +1,5 @@
 import { pricedGeminiRow } from '../../src/modules/external-integrations/shared/gemini-pricing';
+import { placesCostMicrosPerCall } from '../../src/modules/external-integrations/shared/vendor-pricing';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 
 /**
@@ -11,20 +12,6 @@ import type { PrismaService } from '../../src/prisma/prisma.service';
  * Used by scripts/cost-report.ts (CLI) and scripts/seed-archive.ts (end of a
  * seeding run).
  */
-
-/** Official per-request rates (Cloud Billing catalog, verified 2026-07-08),
- *  post-free-tier. Free monthly tiers (1k enterprise/atmosphere, 5k pro, 10k
- *  essentials & autocomplete) make real bills LOWER than this report. */
-export const PLACES_RATES: Record<string, number> = {
-  'placeDetails:enterprise_atmosphere': 0.025,
-  'placeDetails:enterprise': 0.02,
-  'placeDetails:pro': 0.017,
-  'placeDetails:essentials': 0.005,
-  'textSearch:enterprise_atmosphere': 0.04,
-  'textSearch:enterprise': 0.035,
-  'textSearch:pro': 0.032,
-  'autocomplete:essentials': 0.0028,
-};
 
 export interface CostReportOptions {
   prisma: PrismaService;
@@ -63,8 +50,13 @@ export async function printCostReport(opts: CostReportOptions): Promise<void> {
   for (const row of usage) {
     const requests = row._sum.requestCount ?? 0;
     if (row.service === 'google_places') {
-      const rate = PLACES_RATES[`${row.operation}:${row.skuTier}`] ?? 0;
-      const usd = requests * rate;
+      // ONE rate table (vendor-pricing.ts, operation-aware since R3) —
+      // this script's private copy was the correct one while the shared
+      // table under-priced the governor; both truths now live together.
+      const usd =
+        (placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
+          requests) /
+        1_000_000;
       placesUsd += usd;
       out(
         `  places ${row.operation}/${row.skuTier}: ${requests} req -> $${usd.toFixed(2)}`,
