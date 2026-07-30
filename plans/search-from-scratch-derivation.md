@@ -56,24 +56,34 @@ resolver, spend gate all landed on this shape):
    (sweep-derived per-tier floors, tie plurality) for typos and variants
    the gazetteer can't see ("vgean" → vegan).
 3. **NO PER-SEARCH LLM (RATIFIED 2026-07-29; supersedes the earlier
-   "two irreducible jobs" framing).** MEASURED on the real search-signal
-   ledger: 96.2% of weighted traffic (151/157 signals; 86.7% of 30
-   distinct queries — small corpus, directional) grounds completely with
-   the gazetteer alone; 3 of the 4 misses are TYPOS (the linker's lane),
-   leaving ONE genuinely linguistic query. Zero negation queries exist in
-   the corpus. The two formerly-irreducible jobs both leave the hot path:
+   "two irreducible jobs" framing).** Smoke-tested on the search-signal
+   ledger — with the honest caveat that the corpus is 2 ACTORS / 157
+   searches (the owner pre-launch, mostly single-entity queries): NOT
+   traffic evidence, only proof the mechanics ground cleanly (151/157;
+   3 of 4 misses are typos, the linker's lane). The decision rests on the
+   owner's product ruling and the pipeline mechanics, not this number;
+   re-measure on real traffic post-launch. The two formerly-irreducible jobs both leave the hot path:
    - **Negation: the FEATURE is removed** (owner: people do not search
      "pizza no tomato sauce"). Replaced by the DIETARY TOGGLE STRIP —
-     lifestyle toggles (vegan, vegetarian, gluten-free, halal, kosher) map
-     to HARD attribute constraints; allergen toggles (nuts, dairy,
-     shellfish, egg) map to the EXISTING excluded-ingredient lane
-     (conservative across both tiers, never relaxed — infra already
-     built). The exclusion LANE survives; toggles become its deterministic
-     front door. Free-text negation is no longer interpreted.
-   - **Unknown-phrase segmentation moves ASYNC.** The hot path ignores
-     residue: grounded spans search immediately; residue is logged as-is
-     to the demand pipeline and segmented there by a batch-priced LLM
-     (where language work already lives). Partial-grounding queries
+     LIFESTYLE toggles only (vegan, vegetarian, gluten-free, halal,
+     kosher), mapping to HARD attribute constraints. ALLERGEN toggles are
+     REJECTED (owner 2026-07-30): allergens are not discussed enough for
+     the claim data to carry them — and the exclusion lane could only
+     filter dishes KNOWN to contain the allergen; absence of evidence is
+     not absence of nuts, so the toggle would imply a promise the data
+     cannot keep. CONSEQUENCE: the excluded-ingredient lane is DELETED
+     ENTIRELY (its only producer was LLM negation output) — DTO field,
+     compiler clause, two-tier NOT SQL, and specs. Free-text negation is
+     no longer interpreted.
+   - **Unknown-phrase segmentation moves ASYNC.** Verified plumbing: the
+     on-demand queue already receives cleaned per-TERM rows (never the raw
+     query — it rides only as audit metadata), consumed by the §11
+     four-family portfolio (unmet floor, cooldowns, cap, spend check)
+     into literal Reddit keyword searches. Today term quality comes from
+     the SYNC LLM; under zero-per-search-LLM, a batch-priced segmentation
+     step INSIDE the demand pipeline (many residues per call) becomes the
+     REQUIRED precondition before residue may become keywords — the same
+     job relocated, not a new capability. Partial-grounding queries
      ("khachapuri at that place on 5th") get instant results from the
      known spans; the unknown term becomes a clean collection seed
      asynchronously. Per-search LLM cost -> zero; llmMs (the dominant
@@ -130,7 +140,6 @@ Hardness is a FACT, derived — never guessed per query:
 | class                   | source              | examples                                                            | relaxable?            |
 | ----------------------- | ------------------- | ------------------------------------------------------------------- | --------------------- |
 | structural              | request             | viewport, open-now, price                                           | never                 |
-| exclusion               | allergen toggles    | nuts, dairy, shellfish, egg                                         | never                 |
 | **dietary requirement** | **vocabulary flag** | vegan, gluten-free, halal, kosher, dairy-free, nut-free, vegetarian | **never**             |
 | preference              | default             | spicy, crispy, patio, cozy                                          | soft (richness-gated) |
 
