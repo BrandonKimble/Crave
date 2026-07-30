@@ -90,6 +90,7 @@ function createHarness(
     {} as never, // queryBuilder
     {} as never, // entityExpansion
     {} as never, // siblingExpansion
+    { getDietaryIds: () => Promise.resolve(new Set()) } as never, // dietaryConstraints
     {} as never, // onDemandRequestService
     {} as never, // textSanitizer
     searchPrisma as never, // prisma

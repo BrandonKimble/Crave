@@ -27,6 +27,11 @@ import {
   SearchSiblingExpansionService,
   type SiblingCutOptions,
 } from './search-sibling-expansion.service';
+import {
+  DietaryConstraintRegistry,
+  attributeIdsForStage,
+  hasSoftAttributeIds,
+} from './dietary-constraints';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 import {
   ON_DEMAND_MIN_RESULTS,
@@ -219,6 +224,7 @@ export class SearchService {
     private readonly queryBuilder: SearchQueryBuilder,
     private readonly entityExpansion: SearchEntityExpansionService,
     private readonly siblingExpansion: SearchSiblingExpansionService,
+    private readonly dietaryConstraints: DietaryConstraintRegistry,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
@@ -400,7 +406,8 @@ export class SearchService {
       });
     }
 
-    const relaxation = this.resolveRelaxationCapabilities(request);
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const relaxation = this.resolveRelaxationCapabilities(request, dietaryIds);
     const canRelax = relaxation.canRelax;
 
     let planExpansion: PlanExpansionState | null = null;
@@ -1868,6 +1875,7 @@ export class SearchService {
     const minimumVotes = this.normalizeMinimumVotes(
       params.request.minimumVotes,
     );
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
     const constraints = this.buildSearchConstraints(
       params.request,
       params.stage,
@@ -1877,6 +1885,7 @@ export class SearchService {
         minimumVotes,
       },
       params.planExpansion,
+      dietaryIds,
     );
     const stagePlan = compileQueryPlanFromConstraints(constraints);
     const planMs = performance.now() - planStart;
@@ -2042,18 +2051,30 @@ export class SearchService {
       minimumVotes: number | null;
     },
     planExpansion?: PlanExpansionState | null,
+    dietaryIds: ReadonlySet<string> = new Set(),
   ): SearchConstraints {
     const inputPresence = this.getEntityPresenceSummary(request);
     const stagePresence = { ...inputPresence };
 
+    // DIETARY HARDNESS (spec §1.3): a dropping stage keeps the dietary
+    // subset — the flagged ids survive every stage, and the presence count
+    // reflects what SURVIVED so the compiler still emits the clause.
+    const staged = attributeIdsForStage({
+      stage,
+      foodAttributeIds: this.collectEntityIds(request.entities.foodAttributes),
+      restaurantAttributeIds: this.collectEntityIds(
+        request.entities.restaurantAttributes,
+      ),
+      dietaryIds,
+    });
     if (stage === 'relaxed_food_attributes' || stage === 'relaxed_modifiers') {
-      stagePresence.foodAttributes = 0;
+      stagePresence.foodAttributes = staged.foodAttributeIds.length;
     }
     if (
       stage === 'relaxed_restaurant_attributes' ||
       stage === 'relaxed_modifiers'
     ) {
-      stagePresence.restaurantAttributes = 0;
+      stagePresence.restaurantAttributes = staged.restaurantAttributeIds.length;
     }
 
     const hadFoodGroup = Boolean(request.entities.food?.length);
@@ -2069,12 +2090,10 @@ export class SearchService {
       !hadFoodGroup && !hadRestaurantGroup && hadFoodAttributeGroup;
 
     const foodAttributeIds =
-      stagePresence.foodAttributes > 0
-        ? this.collectEntityIds(request.entities.foodAttributes)
-        : [];
+      stagePresence.foodAttributes > 0 ? staged.foodAttributeIds : [];
     const restaurantAttributeIds =
       stagePresence.restaurantAttributes > 0
-        ? this.collectEntityIds(request.entities.restaurantAttributes)
+        ? staged.restaurantAttributeIds
         : [];
 
     const dedupe = (ids: string[]): string[] =>
@@ -2140,6 +2159,7 @@ export class SearchService {
 
   private resolveRelaxationCapabilities(
     request: SearchQueryRequestDto,
+    dietaryIds: ReadonlySet<string>,
   ): RelaxationCapabilities {
     const hasFoodAttributes = Boolean(request.entities.foodAttributes?.length);
     const hasRestaurantAttributes = Boolean(
@@ -2149,13 +2169,30 @@ export class SearchService {
       request.entities.food?.length || request.entities.restaurants?.length,
     );
 
-    const canDropFoodAttributes = hasFoodAttributes
-      ? hasPrimaryEntities || hasRestaurantAttributes
-      : false;
-    const canDropRestaurantAttributes = hasRestaurantAttributes
-      ? hasPrimaryEntities || hasFoodAttributes
-      : false;
-    const canDropAllModifiers = hasPrimaryEntities;
+    // DIETARY HARDNESS (spec §1.3): a stage is offered only when it has
+    // something SOFT to drop. A bucket that is all-dietary keeps its ids
+    // through every stage (see buildSearchConstraints), so offering the
+    // stage would re-execute an identical query — and, before this fix,
+    // would have DROPPED a vegan user's one non-negotiable word.
+    const hasSoftFood = hasSoftAttributeIds(
+      this.collectEntityIds(request.entities.foodAttributes),
+      dietaryIds,
+    );
+    const hasSoftRestaurant = hasSoftAttributeIds(
+      this.collectEntityIds(request.entities.restaurantAttributes),
+      dietaryIds,
+    );
+
+    const canDropFoodAttributes =
+      hasFoodAttributes && hasSoftFood
+        ? hasPrimaryEntities || hasRestaurantAttributes
+        : false;
+    const canDropRestaurantAttributes =
+      hasRestaurantAttributes && hasSoftRestaurant
+        ? hasPrimaryEntities || hasFoodAttributes
+        : false;
+    const canDropAllModifiers =
+      hasPrimaryEntities && (hasSoftFood || hasSoftRestaurant);
     const canRelax = canDropFoodAttributes || canDropRestaurantAttributes;
 
     return {

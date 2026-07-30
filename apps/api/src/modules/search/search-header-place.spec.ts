@@ -129,6 +129,7 @@ function createHarness(options: {
     {} as never, // queryBuilder
     {} as never, // entityExpansion
     {} as never, // siblingExpansion
+    { getDietaryIds: () => Promise.resolve(new Set()) } as never, // dietaryConstraints
     {} as never, // onDemandRequestService
     {} as never, // textSanitizer (no entities on these requests)
     {} as never, // prisma (no impression targets → search log untouched)

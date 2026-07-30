@@ -27,6 +27,7 @@ import { SearchPopularityService } from './search-popularity.service';
 import { RestaurantStatusService } from './restaurant-status.service';
 import { SearchEntityExpansionService } from './search-entity-expansion.service';
 import { SearchSiblingExpansionService } from './search-sibling-expansion.service';
+import { DietaryConstraintRegistry } from './dietary-constraints';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     RestaurantStatusService,
     SearchEntityExpansionService,
     SearchSiblingExpansionService,
+    DietaryConstraintRegistry,
   ],
   exports: [
     SearchService,

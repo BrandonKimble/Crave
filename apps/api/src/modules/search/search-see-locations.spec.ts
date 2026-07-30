@@ -93,6 +93,7 @@ function createServiceHarness(options: { inViewLocationCount?: number } = {}) {
     {} as never, // queryBuilder
     {} as never, // entityExpansion
     {} as never, // siblingExpansion
+    { getDietaryIds: () => Promise.resolve(new Set()) } as never, // dietaryConstraints
     {} as never, // onDemandRequestService
     {} as never, // textSanitizer
     {} as never, // prisma
