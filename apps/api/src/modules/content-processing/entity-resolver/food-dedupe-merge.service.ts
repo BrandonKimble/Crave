@@ -268,14 +268,36 @@ export class FoodDedupeMergeService {
         );
         const loserMentions = await tx.restaurantItemMention.findMany({
           where: { connectionId: connection.connectionId },
-          select: { id: true, sourceDocumentId: true, kind: true },
+          select: {
+            id: true,
+            sourceDocumentId: true,
+            kind: true,
+            sourceUpvotes: true,
+          },
         });
+        // Deleted mentions must ALSO leave the counters (red team F2): the
+        // loser's counters are incremented onto the survivor wholesale
+        // below, so a deduped-away mention would stay baked into
+        // mention_count/total_upvotes — dish ranking and minimumVotes read
+        // those columns, recreating at the dish grain the double count this
+        // dedupe kills at the mention grain.
+        let deletedDirectCount = 0;
+        let deletedDirectUpvotes = 0;
+        let deletedSupportCount = 0;
+        let deletedSupportUpvotes = 0;
         for (const mention of loserMentions) {
           const key = `${mention.sourceDocumentId ?? ''}:${mention.kind}`;
           if (mention.sourceDocumentId && survivorKeys.has(key)) {
             await tx.restaurantItemMention.delete({
               where: { id: mention.id },
             });
+            if (mention.kind === 'direct') {
+              deletedDirectCount += 1;
+              deletedDirectUpvotes += mention.sourceUpvotes;
+            } else {
+              deletedSupportCount += 1;
+              deletedSupportUpvotes += mention.sourceUpvotes;
+            }
           } else {
             await tx.restaurantItemMention.update({
               where: { id: mention.id },
@@ -296,10 +318,18 @@ export class FoodDedupeMergeService {
         await tx.connection.update({
           where: { connectionId: surviving.connectionId },
           data: {
-            mentionCount: { increment: connection.mentionCount },
-            totalUpvotes: { increment: connection.totalUpvotes },
-            supportMentionCount: { increment: connection.supportMentionCount },
-            supportTotalUpvotes: { increment: connection.supportTotalUpvotes },
+            mentionCount: {
+              increment: connection.mentionCount - deletedDirectCount,
+            },
+            totalUpvotes: {
+              increment: connection.totalUpvotes - deletedDirectUpvotes,
+            },
+            supportMentionCount: {
+              increment: connection.supportMentionCount - deletedSupportCount,
+            },
+            supportTotalUpvotes: {
+              increment: connection.supportTotalUpvotes - deletedSupportUpvotes,
+            },
             lastMentionedAt:
               connection.lastMentionedAt &&
               (!surviving.lastMentionedAt ||

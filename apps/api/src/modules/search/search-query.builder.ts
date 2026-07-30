@@ -1612,9 +1612,12 @@ selected_locations AS (
               -- claimed ('wings' <-> 'chicken wings') the relation means
               -- synonym, and the food_id total order picks ONE survivor
               -- instead of the old guard's "count both" (red team R6) or
-              -- the naive "erase both". Cycles of length >= 3 remain
-              -- theoretically lossy (measured 0 today); the full fix is
-              -- rank-per-document, deferred with this note as the record.
+              -- the naive "erase both". Two residues remain, same class,
+              -- both measured harmless today and owned by the deferred
+              -- rank-per-document fix: cycles of length >= 3 (0 live), and
+              -- CROSS-BRANCH mutuals (A shadows B via the array while B
+              -- shadows A via a mutual edge -- 1 structural pair live, 0
+              -- shared-document mentions).
               AND (
                 NOT EXISTS (
                   SELECT 1 FROM derived_food_category_edges rev

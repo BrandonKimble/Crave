@@ -418,24 +418,36 @@ export class SpendAnalyticsService {
         service: 'google_places',
         createdAt: { gte: windowStart, lt: windowEnd },
       },
-      select: { skuTier: true, requestCount: true },
+      select: { skuTier: true, operation: true, requestCount: true },
     });
-    const bySku = new Map<string, number>();
+    const bySku = new Map<string, { units: number; micros: number }>();
     for (const row of rows) {
       const skuLabel = row.skuTier ?? 'unknown';
-      bySku.set(skuLabel, (bySku.get(skuLabel) ?? 0) + (row.requestCount ?? 0));
+      const prior = bySku.get(skuLabel) ?? { units: 0, micros: 0 };
+      const units = row.requestCount ?? 0;
+      bySku.set(skuLabel, {
+        units: prior.units + units,
+        // Exact per-operation pricing (red team F5): the operation column is
+        // in this query already, so the display row can be exact instead of
+        // the SKU ceiling.
+        micros:
+          prior.micros +
+          placesCostMicrosPerCall(
+            skuLabel === 'unknown' ? null : skuLabel,
+            row.operation,
+          ) *
+            units,
+      });
     }
     const out: UnitCostRow[] = [];
-    for (const [skuLabel, sampleUnits] of bySku) {
+    for (const [skuLabel, { units: sampleUnits, micros }] of bySku) {
       if (sampleUnits === 0) {
         continue;
       }
       out.push({
         workClass: `google_places.${skuLabel}`,
         unit: 'call',
-        microUsdPerUnit: placesCostMicrosPerCall(
-          skuLabel === 'unknown' ? null : skuLabel,
-        ),
+        microUsdPerUnit: Math.round(micros / sampleUnits),
         sampleUnits,
         windowStart,
         windowEnd,
@@ -795,15 +807,19 @@ export class SpendAnalyticsService {
     // window's POSITIVE days, so a runaway day is capped at "a big normal
     // day" while real burst spend still counts. The x3 nightly growth clamp
     // below remains the primary runaway bound.
-    const positiveDays = dailyTotals.filter((total) => total > 0);
-    const p90 = positiveDays.length
-      ? [...positiveDays].sort((a, b) => a - b)[
-          Math.min(
-            positiveDays.length - 1,
-            Math.floor(positiveDays.length * 0.9),
-          )
-        ]
-      : 0;
+    // Cap at the k-th largest positive day, k = max(1, ceil(10% of n)).
+    // A plain floor(n*0.9) index equals n-1 for every n <= 10 — the "p90"
+    // was the MAXIMUM day and capped nothing exactly where this workload
+    // lives (sparse positive days), so a single runaway day could become
+    // the whole baseline (red team F1). With k >= 1 the largest day is
+    // always capped to the next one down; for n = 1 the first-derivation
+    // clamp below is the bound.
+    const positiveDays = dailyTotals
+      .filter((total) => total > 0)
+      .sort((a, b) => a - b);
+    const capCount = Math.max(1, Math.ceil(positiveDays.length * 0.1));
+    const capIndex = Math.max(0, positiveDays.length - 1 - capCount);
+    const p90 = positiveDays.length ? positiveDays[capIndex] : 0;
     const trailingSpendMicros = dailyTotals.reduce(
       (sum, total) => sum + Math.min(total, p90),
       0,
@@ -824,10 +840,17 @@ export class SpendAnalyticsService {
         },
       },
     });
+    // FIRST derivation is clamped too (red team F1): with no prior row the
+    // old code applied no bound at all, so one runaway day in a quiet
+    // window could seed the backstop at 3x that day. The live pool limit
+    // (the env seed governance booted with) stands in as the prior.
     const previousLimitMicros =
-      priorRow !== null ? Math.round(priorRow.microUsdPerUnit) : null;
+      priorRow !== null
+        ? Math.round(priorRow.microUsdPerUnit)
+        : (this.governance?.pools.poolStatus('gemini.monthlySpend').limit ??
+          null);
     const clampedLimitMicros =
-      previousLimitMicros !== null
+      previousLimitMicros !== null && previousLimitMicros > 0
         ? Math.min(derivedLimitMicros, previousLimitMicros * BACKSTOP_MULTIPLE)
         : derivedLimitMicros;
     await this.prisma.spendUnitCost.upsert({
