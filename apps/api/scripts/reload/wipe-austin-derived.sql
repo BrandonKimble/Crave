@@ -57,6 +57,18 @@ UPDATE core_restaurant_items SET
 DELETE FROM core_restaurant_locations
 WHERE restaurant_id NOT IN (SELECT entity_id FROM preserved_entities);
 
+-- PRESERVED restaurants' restaurant_attributes arrays reference attribute
+-- entities this wipe deletes; the check_restaurant_attributes_exist CHECK
+-- re-fires on ANY later update to those rows, failing ingest. (Found in
+-- production during the 2026-07-30 execution: 1,654 preserved restaurants
+-- carried stale refs; one 53-item batch job went terminal-failed on it and
+-- had to be pruned + revived. This step now runs INSIDE the wipe.)
+UPDATE core_entities e SET restaurant_attributes = COALESCE(
+  (SELECT array_agg(a) FROM unnest(e.restaurant_attributes) a
+   WHERE a IN (SELECT entity_id FROM preserved_entities)), '{}')
+WHERE e.type = 'restaurant'
+  AND e.entity_id IN (SELECT entity_id FROM preserved_entities);
+
 DELETE FROM entity_redirects
 WHERE from_entity_id NOT IN (SELECT entity_id FROM preserved_entities)
    OR to_entity_id NOT IN (SELECT entity_id FROM preserved_entities);

@@ -231,6 +231,16 @@ The dedicated audit cycle ran as its own plan per the re-sequencing:
   twin instance emitted a duplicate "starting" line and died before
   meaningful submission (single progress stream confirms one runner; any
   sub-run duplicate is ledger-visible and bounded).
+- INCIDENT DURING INGEST (2026-07-30, resolved): one 53-item batch job went
+  terminal-failed on `check_restaurant_attributes_exist` — preserved
+  restaurants' attribute ARRAYS still referenced wiped attribute entities,
+  and the CHECK re-fires on any later update. Fixed live: 1,654 preserved
+  restaurants pruned to surviving ids, the failed job revived to
+  'submitted' (provider results already paid; re-ingest clean), and the
+  pruning step folded into the wipe script so the class cannot recur.
+- SUBMISSION DONE 2026-07-30 07:39 UTC: 47/47 runs, 0 failures, 39,463
+  docs; flag disarmed immediately (a crash-restart with it set would
+  re-submit); ~50 batch jobs / ~2,000 chunk items draining.
 - OPERATOR TAIL (after the DONE log + batch queue drains):
   1. railway variables --service worker --set RUN_AUSTIN_FULL_RELOAD=0
   2. railway variables --service worker --set COLLECTION_SCHEDULER_ENABLED=true
