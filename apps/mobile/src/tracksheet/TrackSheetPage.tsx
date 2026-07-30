@@ -326,18 +326,40 @@ export function TrackSheetPage<Item>({
     if (!__DEV__) {
       return undefined;
     }
-    const timer = setTimeout(() => {
+    // AT-REST ONLY (false-positive fix, 2026-07-29): measureInWindow is async,
+    // so a moving sheet samples position and sheetTopY a frame apart — a 3pt
+    // "drift" mid-settle is measurement skew, not an origin bug. Bark only when
+    // two samples 600ms apart both drift AND the sheet did not move between
+    // them (a real double-count is constant; skew is not).
+    let cancelled = false;
+    const sample = (onDrift: (drift: number, y: number) => void) => {
+      const before = sheetTopY.value;
       chromeViewRef.current?.measureInWindow((_x, y) => {
-        const drift = Math.round(y - sheetTopY.value);
+        if (cancelled || sheetTopY.value !== before) {
+          return; // moved while measuring — meaningless sample
+        }
+        const drift = Math.round(y - before);
         if (Math.abs(drift) > 1) {
-          // eslint-disable-next-line no-console
-          console.error(
-            `[ORIGIN] chrome window y (${Math.round(y)}) != sheetTopY (${Math.round(sheetTopY.value)}) — drift ${drift}pt; expandedTop=${Math.round(geometry.expandedTop)}. Some layer is applying the sheet origin twice, or dropping a counter-offset.`
-          );
+          onDrift(drift, y);
         }
       });
+    };
+    const timer = setTimeout(() => {
+      sample(() => {
+        setTimeout(() => {
+          sample((drift, y) => {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[ORIGIN] chrome window y (${Math.round(y)}) != sheetTopY (${Math.round(sheetTopY.value)}) — drift ${drift}pt; expandedTop=${Math.round(geometry.expandedTop)}. Some layer is applying the sheet origin twice, or dropping a counter-offset.`
+            );
+          });
+        }, 600);
+      });
     }, 2500);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [geometry.expandedTop, sheetTopY]);
 
   const setChromeRef = React.useCallback(
