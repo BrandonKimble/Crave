@@ -241,10 +241,31 @@ The dedicated audit cycle ran as its own plan per the re-sequencing:
 - SUBMISSION DONE 2026-07-30 07:39 UTC: 47/47 runs, 0 failures, 39,463
   docs; flag disarmed immediately (a crash-restart with it set would
   re-submit); ~50 batch jobs / ~2,000 chunk items draining.
-- OPERATOR TAIL (after the DONE log + batch queue drains):
-  1. railway variables --service worker --set RUN_AUSTIN_FULL_RELOAD=0
-  2. railway variables --service worker --set COLLECTION_SCHEDULER_ENABLED=true
-  3. redeploy worker; confirm foodnyc chronological dispatch on next tick.
+- ~~OPERATOR TAIL~~ **EXECUTED — THE RELOAD IS COMPLETE (2026-07-30 ~13:20
+  UTC).** Queue drained with ZERO failed jobs (both constraint-hit jobs
+  revived and ingested clean); flag disarmed at DONE; scheduler re-enabled
+  and worker redeployed.
+
+  FINAL GRAPH (prod): 9,404 active entities (4,202 restaurants, 3,847
+  foods), 11,694 connections, 4,673 category items, 79,871 events, 27,580
+  mentions — rebuilt from 39,463 documents under the final prompt.
+
+  GATE VERDICTS AT FULL SCALE:
+  - occasion-as-category: 102 / 31,396 events = 0.32% (breakfast 915 and
+    brunch 94 are RATIFIED categories, not leaks) — matches the audit's
+    predicted ~0.4%.
+  - plural splits: 5 pairs (was 186) — cross-batch creation-race residue;
+    the dedupe sweep's number-variant lane clears them (calibration tail).
+
+  MEASURED COST: ~$25 all-in (extraction $7.30 at 91% cache hit + batch
+  discount; resolution ~$14 on cold-start VOLUME at ~100 output tokens/
+  call — pre-fix this same reload would have cost ~$150+; gate $0, every
+  verdict reused). §1's fresh-start-costs-more prediction confirmed: the
+  overrun vs the warm-table replay estimate is entirely cold resolution.
+
+  NEXT: the search calibration tail against this graph (linker re-sweep,
+  ~44-name placement curation, richness threshold, junk sweep, dedupe
+  number-variant pass, gazetteer cutover).
 
 ## 5. NEW YORK — no reprocessing, no gaps
 
