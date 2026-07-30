@@ -47,6 +47,7 @@
 /// inside scrollViewDidScroll, the same frame as the offset change, exactly as
 /// RCTScrollView implements native sticky headers.
 @property (nonatomic, weak) UIView *pinnedChromeView;
+// (context symbol for the clamp guard, declared file-top below)
 /// ── THE SHELL (native-shell derivation, 2026-07-29) ─────────────────────────
 /// Native owns POSITION, RN owns PIXELS. Every view whose position is a
 /// function of τ is transformed HERE, in scrollViewDidScroll — one writer, one
@@ -68,6 +69,7 @@
 @property (nonatomic, assign) CGFloat shellTrackH;
 @property (nonatomic, assign) CGFloat shellChromeHeight;
 @property (nonatomic, assign) BOOL shellEnabled;
+@property (nonatomic, assign) BOOL clampGuardInstalled;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -75,6 +77,7 @@
 @end
 
 static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
+static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
 @implementation TrackScrollDelegateProxy
 
@@ -103,6 +106,23 @@ static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
                         change:(NSDictionary *)change
                        context:(void *)context
 {
+  if (context == kTrackClampGuardCtx) {
+    // THE τ-INVARIANCE GUARD: synchronous with the contentSize change — a
+    // scene switch swaps CONTENT and must never move the SHEET, but a shorter
+    // body lets UIKit clamp τ down (maxOffset = contentH + insetBottom −
+    // viewport). Grow-only headroom keeps the current τ legal; the JS
+    // reachability inset owns the baseline.
+    UIScrollView *guarded = (UIScrollView *)object;
+    const CGFloat offset = guarded.contentOffset.y;
+    const CGFloat viewport = CGRectGetHeight(guarded.bounds);
+    const CGFloat maxOffset = guarded.contentSize.height + guarded.contentInset.bottom - viewport;
+    if (offset > maxOffset + 0.5) {
+      UIEdgeInsets insets = guarded.contentInset;
+      insets.bottom += ceil(offset - maxOffset);
+      guarded.contentInset = insets;
+    }
+    return;
+  }
   if (context != kTrackDelegateKVOContext) {
     [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
     return;
@@ -491,6 +511,15 @@ RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
   }];
 }
 
+// ── THE τ-INVARIANCE LAW (transition jank, 2026-07-29) ──────────────────────
+// A scene switch swaps CONTENT; it must never move the SHEET. But in ONE TRACK
+// the content height bounds τ's legal range (maxOffset = contentH + insetBottom
+// − viewport), so the instant a swap mounts a shorter body UIKit clamps τ down
+// — the owner's "snaps to a weird mid-high", the jerk, the non-persistent feel.
+// JS cannot fix this (it reacts a frame after the clamp). The guard runs
+// SYNCHRONOUSLY with the contentSize change: grow contentInset.bottom so the
+// current τ stays legal. Grow-only — the JS reachability inset owns the
+// baseline; the guard only ever adds headroom, and only when needed.
 // ── bindShell: the one configuration call for the native shell ──────────────
 // Tags are RN views (RN owns their pixels); native takes over their transforms.
 // Idempotent and re-assertable (refs fire child-first; Fabric remounts) — every
@@ -531,6 +560,13 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
       scrollView.layer.mask = proxy.shellBandMask;
     }
     proxy.shellEnabled = YES;
+    if (!proxy.clampGuardInstalled) {
+      proxy.clampGuardInstalled = YES;
+      [scrollView addObserver:(id)proxy
+                   forKeyPath:@"contentSize"
+                      options:NSKeyValueObservingOptionNew
+                      context:kTrackClampGuardCtx];
+    }
     // Apply the current frame immediately — don't wait for the next scroll.
     if ([proxy respondsToSelector:@selector(scrollViewDidScroll:)]) {
       [proxy scrollViewDidScroll:scrollView];
