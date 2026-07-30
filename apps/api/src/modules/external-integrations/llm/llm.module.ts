@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
+import { GeminiContextCacheRegistry } from './gemini-context-cache.registry';
 import { LLMService } from './llm.service';
 import { GeminiBatchService } from './gemini-batch.service';
 import { EmbeddingService } from './embedding.service';
@@ -22,6 +23,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
     PrismaModule, // For LoggerService
   ],
   providers: [
+    GeminiContextCacheRegistry,
     LLMService,
     GeminiBatchService,
     EmbeddingService,

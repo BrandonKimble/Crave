@@ -6,6 +6,10 @@ import {
 } from './gemini-thinking';
 import { DecisionLedgerService } from '../shared/decision-ledger.service';
 import {
+  GeminiContextCacheRegistry,
+  type CacheVendorOps,
+} from './gemini-context-cache.registry';
+import {
   Injectable,
   OnModuleInit,
   OnModuleDestroy,
@@ -47,7 +51,6 @@ import {
   LLMRestaurantPlaceChooserCandidate,
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
-  SystemInstructionCacheState,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
 import {
@@ -175,7 +178,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private systemCacheRefreshInFlight: Promise<void> | null = null;
   private systemCacheTtlMs = 0;
   private systemCacheRefreshLeadMs = 0;
-  private systemCacheRedisKey = 'llm:system-instruction-cache';
   private queryResultCacheTtlSeconds = 0;
   private queryResultCacheRedisKey = 'llm:query-analysis';
   private queryResultCacheVersion = 'v1';
@@ -214,6 +216,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     private readonly decisionLedger: DecisionLedgerService,
     private readonly governance: GovernanceService,
     private readonly opsAlerts: OpsAlertsService,
+    private readonly cacheRegistry: GeminiContextCacheRegistry,
   ) {}
 
   onModuleInit(): void {
@@ -405,18 +408,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       );
     });
 
-    this.initializeQueryInstructionCache().catch((error) => {
-      this.logger.warn(
-        'Query instruction cache initialization failed, continuing with fallback',
-        {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'module_init',
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-    });
+    // Query-instruction cache is LAZY (getQueryCacheName): minting it at
+    // boot made every script run rent a cache it never read.
   }
 
   onModuleDestroy(): void {
@@ -445,52 +438,19 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       refreshLeadMs = Math.max(30_000, Math.floor(this.systemCacheTtlMs / 2));
     }
     this.systemCacheRefreshLeadMs = refreshLeadMs;
-
-    this.systemCacheRedisKey =
-      cacheConfig?.redisKey ?? 'llm:system-instruction-cache';
   }
 
   private async bootstrapSystemInstructionCache(): Promise<void> {
-    const correlationId = CorrelationUtils.getCorrelationId();
+    // The registry is the cross-process store: this boot-time acquire is a
+    // SELECT + reuse in the common case (a sibling already minted the cache
+    // for this exact prompt) and pays a vendor create only when no live
+    // cache exists. The old Redis persistence layer was a second source of
+    // truth for the same fact and is gone.
     try {
-      const persisted = await this.loadPersistedSystemCacheState();
-      if (!persisted) {
-        await this.refreshSystemInstructionCache('bootstrap');
-        return;
-      }
-
-      const { expiresAt, refreshedAt, cacheId } = persisted;
-
-      if (this.isCacheStateFresh(persisted)) {
-        const expiresAtIso = new Date(Number(expiresAt)).toISOString();
-        const refreshedAtIso = new Date(Number(refreshedAt)).toISOString();
-        this.systemInstructionCache = { name: cacheId };
-        this.systemInstructionCacheExpiresAt = expiresAt;
-        this.logger.info('Using persisted system instruction cache', {
-          correlationId,
-          operation: 'init_system_cache',
-          cacheId,
-          expiresAt: expiresAtIso,
-          refreshedAt: refreshedAtIso,
-          source: 'redis',
-        });
-        this.scheduleSystemCacheRefresh();
-        return;
-      }
-
-      const expiresAtIso = new Date(Number(expiresAt)).toISOString();
-      this.logger.debug('Persisted cache is stale or expired, refreshing', {
-        correlationId,
-        operation: 'init_system_cache',
-        cacheId,
-        expiresAt: expiresAtIso,
-        now: new Date().toISOString(),
-      });
-
       await this.refreshSystemInstructionCache('bootstrap');
     } catch (error) {
       this.logger.warn('Failed to bootstrap system instruction cache', {
-        correlationId,
+        correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'init_system_cache',
         error: {
           message: error instanceof Error ? error.message : String(error),
@@ -532,25 +492,22 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     });
 
     const ttlSeconds = Math.max(1, Math.floor(this.systemCacheTtlMs / 1000));
-    const { name: cacheName } = await this.createLedgeredCache({
+    // Bad-cache reasons force a fresh mint (the registry retires the bad
+    // row so sibling processes stop reusing it too); routine refreshes go
+    // through lookup/extend and usually pay nothing.
+    const forceRemint = reason === 'model_mismatch' || reason === 'gemini_403';
+    const { name: cacheName, expiresAtMs } = await this.createLedgeredCache({
       model: this.llmConfig.model,
       systemInstruction: this.systemPrompt,
       ttlSeconds,
       caller: 'llm.systemInstructionCache',
+      minRemainingMs: this.systemCacheRefreshLeadMs,
+      forceRemint,
     });
 
-    const refreshedAt = Date.now();
-    const expiresAt = refreshedAt + this.systemCacheTtlMs;
+    const expiresAt = expiresAtMs;
     this.systemInstructionCache = { name: cacheName };
     this.systemInstructionCacheExpiresAt = expiresAt;
-
-    await this.persistSystemInstructionCacheState({
-      cacheId: cacheName,
-      refreshedAt,
-      expiresAt,
-      promptHash: this.getSystemPromptCacheFingerprint(),
-      model: this.llmConfig.model,
-    });
 
     this.logger.info('System instruction cache created successfully', {
       correlationId,
@@ -592,121 +549,31 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     }, delay);
   }
 
-  private isCacheStateFresh(
-    state: SystemInstructionCacheState | null,
-  ): state is SystemInstructionCacheState {
-    if (
-      !state ||
-      typeof state.cacheId !== 'string' ||
-      typeof state.expiresAt !== 'number' ||
-      typeof state.promptHash !== 'string' ||
-      typeof state.model !== 'string'
-    ) {
-      return false;
-    }
-    if (state.promptHash !== this.getSystemPromptCacheFingerprint()) {
-      return false;
-    }
-    if (state.model !== this.llmConfig.model) {
-      return false;
-    }
-    const freshnessBoundary = state.expiresAt - this.systemCacheRefreshLeadMs;
-    return Date.now() < freshnessBoundary;
-  }
-
-  private async loadPersistedSystemCacheState(): Promise<SystemInstructionCacheState | null> {
-    if (!this.redisClient) {
-      return null;
-    }
-    try {
-      const raw = await this.redisClient.get(this.systemCacheRedisKey);
-      if (!raw) {
-        return null;
-      }
-      const parsed = JSON.parse(raw) as SystemInstructionCacheState;
-      if (
-        typeof parsed?.cacheId === 'string' &&
-        typeof parsed?.expiresAt === 'number' &&
-        typeof parsed?.refreshedAt === 'number' &&
-        typeof parsed?.promptHash === 'string' &&
-        typeof parsed?.model === 'string'
-      ) {
-        return parsed;
-      }
-    } catch (error) {
-      this.logger.warn('Failed to load cached system instruction metadata', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'load_system_cache_state',
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-    }
-    return null;
-  }
-
-  private async persistSystemInstructionCacheState(
-    state: SystemInstructionCacheState | null,
-  ): Promise<void> {
-    if (!this.redisClient) {
-      return;
-    }
-    try {
-      if (!state) {
-        await this.redisClient.del(this.systemCacheRedisKey);
-        return;
-      }
-
-      const ttl = Math.max(
-        60_000,
-        state.expiresAt - Date.now() + this.systemCacheRefreshLeadMs,
-      );
-      await this.redisClient.set(
-        this.systemCacheRedisKey,
-        JSON.stringify(state),
-        'PX',
-        ttl,
-      );
-    } catch (error) {
-      this.logger.warn('Failed to persist system instruction cache metadata', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'persist_system_cache_state',
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-    }
-  }
-
-  private async clearSystemInstructionCache(): Promise<void> {
+  private clearSystemInstructionCache(): void {
     if (this.systemCacheRefreshTimer) {
       clearTimeout(this.systemCacheRefreshTimer);
       this.systemCacheRefreshTimer = null;
     }
     this.systemInstructionCache = null;
     this.systemInstructionCacheExpiresAt = null;
-    await this.persistSystemInstructionCacheState(null);
-  }
-
-  private getSystemPromptCacheFingerprint(): string {
-    return this.hashString(
-      JSON.stringify({
-        model: this.llmConfig.model,
-        systemPrompt: this.systemPrompt,
-      }),
-    );
   }
 
   private async rebuildQueryInstructionCache(
     reason: CacheRefreshReason,
   ): Promise<void> {
+    // Retire the bad row in the REGISTRY too — dropping only the in-process
+    // memo would leave sibling processes reusing a cache we know is bad.
+    const badName = this.queryInstructionCache?.name;
+    if (badName) {
+      await this.cacheRegistry.invalidate(badName);
+    }
     this.queryInstructionCache = null;
-    this.logger.info('Reinitializing query instruction cache', {
+    this.queryCacheExpiresAtMs = null;
+    this.logger.info('Query instruction cache dropped; next call re-acquires', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'refresh_query_cache',
       reason,
     });
-    await this.initializeQueryInstructionCache();
   }
 
   private async handleCachedContentModelMismatch(
@@ -719,6 +586,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         operation: 'handle_cache_model_mismatch',
         cacheId: cacheName,
       });
+      await this.cacheRegistry.invalidate(cacheName);
       await this.refreshSystemInstructionCache('model_mismatch');
       return;
     }
@@ -739,48 +607,48 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async initializeQueryInstructionCache(): Promise<void> {
+  /** Query-cache memo expiry (registry acquire is the source of truth). */
+  private queryCacheExpiresAtMs: number | null = null;
+
+  /**
+   * LAZY query-instruction cache. This used to be minted EAGERLY at every
+   * boot with no cross-process identity — so every script that loaded the
+   * app graph rented a fresh cache it would never read (the dominant share
+   * of the 62 abandoned storage rows / ~$27 in one day that the cache
+   * metering exposed). Now nothing is acquired until a query-path call
+   * actually needs it, and the registry means the common case is reusing a
+   * sibling's cache for free. Fail-open on any error: null falls back to
+   * inline system instructions — paying full rate beats failing a search.
+   */
+  private async getQueryCacheName(): Promise<string | null> {
+    const memoName = this.queryInstructionCache?.name;
+    if (
+      memoName &&
+      this.queryCacheExpiresAtMs !== null &&
+      this.queryCacheExpiresAtMs - Date.now() > 300_000
+    ) {
+      return memoName;
+    }
+
     const minCachedTokenCount = 1024;
     const estimatedTokens = Math.ceil(this.queryPrompt.length / 4);
     if (estimatedTokens < minCachedTokenCount) {
-      this.logger.info('Skipping query instruction cache (prompt too small)', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'init_query_cache',
-        model: this.queryModel,
-        promptLength: this.queryPrompt.length,
-        estimatedTokens,
-        minCachedTokenCount,
-      });
-      this.queryInstructionCache = null;
-      return;
+      return null;
     }
 
     try {
-      this.logger.info('Creating explicit cache for query instructions', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'init_query_cache',
-        model: this.queryModel,
-        promptLength: this.queryPrompt.length,
-      });
-
-      const { name: cacheName } = await this.createLedgeredCache({
+      const acquired = await this.createLedgeredCache({
         model: this.queryModel,
         systemInstruction: this.queryPrompt,
         ttlSeconds: 10800,
         caller: 'llm.queryInstructionCache',
       });
-      this.queryInstructionCache = { name: cacheName };
-
-      this.logger.info('Query instruction cache created successfully', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'init_query_cache',
-        model: this.queryModel,
-        cacheId: this.queryInstructionCache?.name,
-        ttl: '10800s',
-      });
+      this.queryInstructionCache = { name: acquired.name };
+      this.queryCacheExpiresAtMs = acquired.expiresAtMs;
+      return acquired.name;
     } catch (error) {
       this.logger.warn(
-        'Failed to create query instruction cache, falling back to direct system instruction usage',
+        'Failed to acquire query instruction cache, falling back to inline system instruction',
         {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'init_query_cache',
@@ -790,6 +658,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         },
       );
       this.queryInstructionCache = null;
+      this.queryCacheExpiresAtMs = null;
+      return null;
     }
   }
 
@@ -950,7 +820,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   async analyzeSearchQuery(query: string): Promise<LLMSearchQueryAnalysis> {
-    const usingQueryCache = Boolean(this.queryInstructionCache?.name);
+    const queryCacheName = await this.getQueryCacheName();
+    const usingQueryCache = Boolean(queryCacheName);
     this.logger.info('Analyzing search query through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'analyze_search_query',
@@ -1030,7 +901,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const response = await this.callLLMApi(prompt, {
       usageCaller: 'query.interpret',
       generationConfig: queryGenerationConfig,
-      cacheName: this.queryInstructionCache?.name ?? null,
+      cacheName: queryCacheName,
       systemInstruction: this.queryPrompt,
       model: this.queryModel,
       timeoutMs:
@@ -1167,10 +1038,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         systemInstruction: this.systemPrompt,
         ttlSeconds,
         caller: 'llm.batchSystemCache',
+        // Reuse only above the 25h floor: an in-flight batch job (24h SLA)
+        // must never outlive its cache. Below the floor the registry EXTENDS
+        // the live cache instead of abandoning it and minting a twin.
+        minRemainingMs: LLMService.BATCH_CACHE_MIN_REMAINING_MS,
       });
       this.batchSystemCache = {
         name: cache.name,
-        expiresAtMs: now + LLMService.BATCH_CACHE_TTL_MS,
+        expiresAtMs: cache.expiresAtMs,
       };
       this.logger.info('Batch system-prompt cache created', {
         cacheName: cache.name,
@@ -3570,7 +3445,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
                     : String(refreshError),
               },
             });
-            await this.clearSystemInstructionCache();
+            this.clearSystemInstructionCache();
             this.queryInstructionCache = null;
           }
           attempt--;
@@ -3590,6 +3465,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             },
           );
           try {
+            const badName = this.systemInstructionCache?.name;
+            if (badName) {
+              // Registry too — a vendor-404'd cache must stop being served
+              // to sibling processes, not just this one.
+              await this.cacheRegistry.invalidate(badName);
+            }
             await this.refreshSystemInstructionCache('gemini_403');
           } catch (refreshError) {
             this.logger.error(
@@ -3606,7 +3487,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
                 },
               },
             );
-            await this.clearSystemInstructionCache();
+            this.clearSystemInstructionCache();
           }
           attempt--;
           continue;
@@ -3885,67 +3766,66 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * THE chokepoint for context-cache creation — the only place that calls
-   * `caches.create`.
-   *
-   * Cache creation and cache STORAGE are paid Gemini operations that the
-   * usage ledger never recorded: before this, the ledger contained exactly
-   * eight distinct operations and none was a cache op, while the code's own
-   * comments priced storage in prose (~$0.51 per batch-cache load). Because
-   * the spend governor meters EXCLUSIVELY from ledger rows, a backstop meant
-   * to catch a runaway was structurally blind to this spend — and the batch
-   * cache re-creates roughly every 5h under continuous load while the
-   * interactive query cache refreshes ~8x/day.
-   *
-   * Two rows, because they are two products: the creation write (input
-   * tokens) and the hold (token-hours for the requested TTL). Storage is
-   * recorded up front for the full TTL, which OVER-meters if a cache is
-   * dropped early — the same direction the unknown-model fallback already
-   * chose, since spend that vanishes is the failure that matters.
+   * Acquire a context cache through THE registry (lookup-before-mint,
+   * extend-instead-of-remint, retire-with-refcount; see
+   * gemini-context-cache.registry.ts for the full rationale). This method
+   * exists so LlmService keeps ownership of the single GoogleGenAI client —
+   * the registry is pure orchestration and receives the vendor ops per call.
    */
   private async createLedgeredCache(params: {
     model: string;
     systemInstruction: string;
     ttlSeconds: number;
     caller: string;
-  }): Promise<{ name: string; tokens: number }> {
-    const cache = await this.genAI.caches.create({
-      model: params.model,
-      config: {
+    minRemainingMs?: number;
+    forceRemint?: boolean;
+  }): Promise<{ name: string; tokens: number; expiresAtMs: number }> {
+    const acquired = await this.cacheRegistry.acquire(
+      {
+        model: params.model,
         systemInstruction: params.systemInstruction,
-        ttl: `${params.ttlSeconds}s`,
+        ttlSeconds: params.ttlSeconds,
+        // Default floor: never hand out a cache with under 5 minutes left.
+        minRemainingMs: params.minRemainingMs ?? 300_000,
+        caller: params.caller,
+        forceRemint: params.forceRemint,
       },
-    });
-    const cacheName = cache?.name;
-    if (!cacheName) {
-      throw new Error('Cache name missing from Gemini cache create response');
-    }
-    const tokens = cache.usageMetadata?.totalTokenCount ?? 0;
-    // `mode` is a PRICING dimension (it applies the 50% batch discount), not
-    // an attribution one — and there is no evidence the vendor discounts
-    // cache operations for batch pipelines. Tagging the batch cache 'batch'
-    // here would under-meter it by half on a guess, so all cache rows price
-    // at standard rate. Attribution is carried by `caller`
-    // (llm.batchSystemCache vs llm.queryInstructionCache), which is the
-    // dimension that actually answers "which pipeline created this".
-    this.usageLedger.record({
-      service: 'gemini',
-      operation: 'createCachedContent',
-      model: params.model,
-      mode: 'interactive',
-      inputTokens: tokens,
-      caller: params.caller,
-    });
-    this.usageLedger.record({
-      service: 'gemini',
-      operation: 'cachedContentStorage',
-      model: params.model,
-      mode: 'interactive',
-      cachedTokens: tokens,
-      durationHours: params.ttlSeconds / 3600,
-      caller: params.caller,
-    });
-    return { name: cacheName, tokens };
+      this.cacheVendorOps(),
+    );
+    return {
+      name: acquired.name,
+      tokens: acquired.tokenCount,
+      expiresAtMs: acquired.expiresAtMs,
+    };
+  }
+
+  private cacheVendorOps(): CacheVendorOps {
+    return {
+      create: async ({ model, systemInstruction, ttlSeconds }) => {
+        const cache = await this.genAI.caches.create({
+          model,
+          config: { systemInstruction, ttl: `${ttlSeconds}s` },
+        });
+        if (!cache?.name) {
+          throw new Error(
+            'Cache name missing from Gemini cache create response',
+          );
+        }
+        return {
+          name: cache.name,
+          tokenCount: cache.usageMetadata?.totalTokenCount ?? 0,
+        };
+      },
+      updateTtl: async (name, ttlSeconds) => {
+        await this.genAI.caches.update({
+          name,
+          config: { ttl: `${ttlSeconds}s` },
+        });
+      },
+      delete: async (name) => {
+        await this.genAI.caches.delete({ name });
+      },
+    };
   }
 
   /** Delegates to the shared resolver (gemini-thinking.ts) so LlmService,

@@ -250,6 +250,29 @@ model LlmBatchJobItem {
   @@map("llm_batch_job_items")
 }
 
+/// Durable, content-addressed registry of Gemini context caches — a paid,
+/// TTL-bearing vendor resource whose only identity used to be a private
+/// field on a per-process singleton (so every process minted its own copy
+/// of the same prompt and nothing was ever deleted). One row per vendor
+/// cache; all processes look up by (model, promptHash) before minting.
+model GeminiContextCache {
+  /// Vendor resource name (cachedContents/...): the real-world identity.
+  name       String    @id @db.VarChar(256)
+  model      String    @db.VarChar(128)
+  promptHash String    @map("prompt_hash") @db.VarChar(64)
+  tokenCount Int       @map("token_count")
+  caller     String    @db.VarChar(128)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  expiresAt  DateTime  @map("expires_at")
+  /// Set when superseded/invalidated. A retired row is never returned by
+  /// lookup; the vendor object is deleted when no in-flight batch job
+  /// references it, else the vendor TTL reaps it.
+  retiredAt  DateTime? @map("retired_at")
+
+  @@index([model, promptHash, retiredAt], map: "idx_gemini_context_caches_lookup")
+  @@map("gemini_context_caches")
+}
+
 /// Automatic per-call usage ledger for paid external APIs (Gemini + Google
 /// Places). Written at the service chokepoints so every run's cost is
 /// queryable later: slice by runKey/purpose/skuTier, multiply by rates.
