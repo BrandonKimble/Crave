@@ -79,3 +79,50 @@ components verbatim (law #20).
    commanded pixels on same-posture switches — log the command decisions).
 3. L4 dim plane onto the shell (fixes the search-bar band artifacts).
 4. L3 held swap (the flicker) — last, it is pure RN sequencing.
+
+---
+
+## V. RED TEAM (2026-07-29, owner-directed) — §I–III are NOT yet the ideal; corrections recorded before any code
+
+The owner was right not to trust it. Verified against the tree:
+
+**Corrections to §I.** O1: 18 legs, not 7; and the body lane genuinely
+CROSS-DISSOLVES in held-dissolve mode — "nothing fades" is only true of the
+chrome lanes. O2: the persistent header's onLayout is a SECOND inset source
+alongside computeSceneChromeHeight. O3 is materially wrong: postureSeat
+resolves the REMEMBERED GESTURE seat (gesture-written only) — after any
+programmatic move a same-side switch commands REAL pixels; the short-circuit
+is confirmed but is not why tab switches were still. O4: the dim plane is
+gated on search-root focus and its zone starts at EXPANDED, not above middle.
+
+**Omitted vocabulary the ideal must cover** (all cited in the agent record):
+warm-leg early-flip vs cold paint via hasPaintedSceneKeys evidence; held
+transitions pinning paintAck=0 across the flush→commit window; the motion
+FENCE producers (snap START → pending, settle → restore, issue-side expected);
+the full descriptor table (promoteAtLeast, rememberedDetent with per-row
+fallbacks, terminalDismiss→hide, none-mandates, preserveLiveY catch-all,
+isPreserveMotionContract suppressing camera+chrome); dismiss/restore
+choreography (poll restore hold, dismiss boundary at collapsed,
+gesture-hidden); origin capture pre-writing the popped-to posture; and search
+ALIASING the home seat (home↔search = same seat) with a bespoke leg outside
+the data lane.
+
+**THE LEGS QUESTION — opened, with hard facts on both sides.** §III L3
+accepted the single-FlashList shape from the current tree — a violation of the
+from-scratch charter. Co-mounted per-scene legs with ONE re-attaching engine
+are PARTIALLY supported: attach is idempotent per scroll view, setOffset can
+seed τ pre-reveal, detach restores delegates safely. And PARTIALLY blocked,
+today: display:none legs have zero bounds so a seeded τ clamps to 0; N lists
+share one onScroll handler (each would write τ); commandsRef is last-mount-
+wins; the clamp-guard KVO is not removed on detach (a crash class on
+attach/detach cycles — REAL BUG, fix regardless); the track host already
+tried registry prewarm legs once and got the phantom-duplicate paint; and the
+old system's co-mounting was BUDGETED residency (shells never evict, content
+evicts; warm-before-navigate), not unconditional mounting.
+
+**Verdict.** §I–III stand as a corrected evidence record, not as the ideal.
+The v2 derivation must be built from THIS section's facts, must answer the
+legs question from scratch (budgeted co-mounted legs + engine re-attach VS
+held single-list swap — decided by the phantom-duplicate and zero-bounds
+constraints, not by what exists), and must cover the full descriptor/fence/
+restore vocabulary above. Nothing from §IV ships before that.
