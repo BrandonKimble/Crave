@@ -325,8 +325,14 @@ plus one flattening):
 
 change visible results BY DESIGN — the header no longer claims otherwise)
 
-0. AFTER the Austin reload — grounding quality and the linker re-sweep
-   depend on the post-reload graph; don't debug search atop moving data.
+0. RE-SEQUENCED (owner 2026-07-30): the program is now **search STRUCTURE
+   (this plan, now) → data audit + prompt review cycle (its own third
+   plan) → charter reload → search CALIBRATION tail.** Only the
+   calibration-dependent work waits for the post-reload graph: the linker
+   re-sweep, the ~44-name placement curation, the richness threshold
+   adoption, and the junk sweep. Everything structural below is
+   graph-content-independent and builds NOW; each thing is then measured
+   exactly once, against data that is done changing.
 1. **Dietary hardness** (user-visible correctness). Round-2 corrected the
    scope: there is NO per-id drop mechanism — relaxation zeroes a whole
    presence count — so this is THREE coordinated call-site changes
