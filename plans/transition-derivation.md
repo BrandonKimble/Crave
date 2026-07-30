@@ -231,3 +231,39 @@ KEPT unchanged: every other search-chrome transformation driven by the
 transition progress — the scale ramp (0.985→1), visibility/opacity from
 overlayChromeVisibilityProgress, the dismiss plane, origin capture. Those ride
 the progress value, not the scrim, and are unaffected by its deletion.
+
+## IX. Implementation record (2026-07-29) — the rungs landed, with three laws the derivation earned on contact with UIKit
+
+CORRECTION to VII: the registry already classifies polls as content-side (the
+home migration did it); the seat-taxonomy rung was a no-op. The observed
+snap-down was V1+V2 (clamp + seat), as V2's laws predicted.
+
+Landed and device-verified (τ probes + screenshots, home↔polls round trip:
+916→648 held expanded; 648→916 exact scroll restore, sheet still):
+
+1. THE RANGE LAW, native. With THE PRIOR-GROW: UIKit clamps contentOffset
+   WHILE processing a new contentSize — before any after-the-fact observer —
+   so the guard pre-grows the inset in the KVO PRIOR notification (τ +
+   viewport covers any new height), and the after-notification tightens to
+   the exact formula. Growing an inset never moves content.
+2. THE SHELL REFRESH: with no clamp there is also no didScroll after a swap,
+   so the after-notification re-runs the shell writer explicitly — tail/mask/
+   chrome always positioned against the NEW contentSize (the parked-tail
+   defect, seen live).
+3. THE SWITCH FORMULA in the page (sceneKey prop): save max(0, τ−H) per
+   scene at switch-out; instant setOffset to min(τ,H) + restored. Never a
+   spring — restoring your own scroll is not motion.
+4. THE SEAT IS POSTURE-SPACE: a seat targets sheetTop, which is FLAT for
+   τ ≥ H — 'expanded' is satisfied by ANY τ ≥ H. Seats compare min(τ,H),
+   never raw τ (an 'expanded' seat was destroying restored scroll, live).
+   Plus the native <0.5pt short-circuit in snapTo.
+5. THE HELD SWAP: the outgoing scene's rows stay until the incoming body
+   resolves; placeholder never flashes between real scenes. Scroll memory
+   keys on the DISPLAYED scene.
+6. JS inset + reachability re-assert DELETED (range law subsumes both);
+   detach KVO leak fixed; the 12% scrim off (BACKDROP_DIM_MAX_OPACITY=0,
+   host deletion deferred to the delete pass).
+
+Open (burn-in): polls' leader inset shows frost between strip and card
+(pre-existing composition, not a switch defect); child-page enter/exit and
+search/results still ride the old descriptors untouched.

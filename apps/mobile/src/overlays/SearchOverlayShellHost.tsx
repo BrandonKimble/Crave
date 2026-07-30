@@ -45,7 +45,13 @@ const areBackdropSnapshotsEqual = (
   left.backdropDimProgress === right.backdropDimProgress &&
   left.backdropSheetTopY === right.backdropSheetTopY;
 
-const BACKDROP_DIM_MAX_OPACITY = 0.12;
+// THE SCRIM IS OFF (owner decision 2026-07-29, transition derivation VIII):
+// the 12% dim plane over the search chrome is retired. 0 keeps the entire
+// plumbing inert (strip + wedges render fully transparent) while every other
+// search-chrome transform (scale ramp, visibility, dismiss plane) still rides
+// the transition progress unchanged. Deleting the host outright happens with
+// the old-system delete pass.
+const BACKDROP_DIM_MAX_OPACITY = 0;
 
 // The scrim dims "everything outside the sheet": a strip that ends flush at the sheet's top
 // edge plus two inverse-corner pieces that fill the notches beside the sheet's rounded top

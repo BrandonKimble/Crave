@@ -574,7 +574,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     [scene, zeroScrollOffset]
   );
 
-  const list = React.useMemo(() => {
+  const resolvedList = React.useMemo(() => {
     if (publishedBody != null && publishedBody.surfaceKind === 'list') {
       return {
         leader: publishedBody.ListHeaderComponent ?? null,
@@ -612,10 +612,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     if (MOUNTED_TRACK_SCENES.has(scene)) {
       return { data: [scene], renderItem: renderMountedBody };
     }
-    return {
-      data: PLACEHOLDER_ROWS,
-      renderItem: renderPlaceholderRow,
-    };
+    return null;
   }, [
     homeParts,
     pollsParts,
@@ -625,6 +622,23 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     scene,
     wrapRowOnFoundation,
   ]);
+  // THE HELD SWAP (transition derivation VI, ported from the old system's
+  // co-mounted hard swap): the outgoing scene's rows STAY until the incoming
+  // scene's body is RESOLVED — a switch never flashes placeholder skeleton
+  // between two real scenes. The surface (frost/plate/chrome/tail) is
+  // persistent native and never swaps; only rows do, once, when ready.
+  const lastResolvedListRef = React.useRef<{ scene: OverlayKey; list: unknown } | null>(null);
+  if (resolvedList != null) {
+    lastResolvedListRef.current = { scene, list: resolvedList };
+  }
+  const heldList = lastResolvedListRef.current;
+  const list =
+    resolvedList ??
+    heldList?.list ??
+    ({ data: PLACEHOLDER_ROWS, renderItem: renderPlaceholderRow } as unknown);
+  // THE FORMULA'S SCENE IDENTITY: scroll memory keys on the scene whose rows
+  // are actually displayed (a held outgoing body keeps its own scroll).
+  const displayedScene = resolvedList != null ? scene : (heldList?.scene ?? scene);
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -637,6 +651,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         onGrabHandlePress={onGrabHandlePress}
         dockedStrip={dockedStrip}
         list={list as TrackSheetPageProps<unknown>['list']}
+        sceneKey={displayedScene}
         listLeader={
           (list as { leader?: unknown }).leader != null ? (
             <SceneBodyFoundationSurface

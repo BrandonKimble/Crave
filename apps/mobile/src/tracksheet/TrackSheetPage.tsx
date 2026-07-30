@@ -125,6 +125,12 @@ export type TrackSheetPageProps<Item> = {
   debugHud?: boolean;
   /** Imperative commands (scene-switch snaps etc.) — filled on mount. */
   commandsRef?: React.MutableRefObject<TrackSheetCommands | null>;
+  /** Scene identity for THE SWITCH FORMULA: on change, the outgoing scene's
+   * list scroll (max(0, τ−H)) is saved and the incoming scene's is restored:
+   * τ_new = min(τ, H) + listScroll(incoming). sheetTop is flat for τ ≥ H and
+   * listScroll is nonzero only there, so the sheet PROVABLY cannot move on a
+   * switch while every scene keeps its own scroll. */
+  sceneKey?: string | null;
   /** THE SEAT (declarative): the desired resting τ. Re-asserted until reached —
    * on prop change, on native attach, and through recycler-mount races — and
    * CANCELLED the moment the user grabs the track (a seat is a target, never a
@@ -168,6 +174,7 @@ export function TrackSheetPage<Item>({
   debugHud = false,
   commandsRef,
   seatTau = null,
+  sceneKey = null,
   onUserListScrollActivity,
   publicationBindings,
   onGestureSettle,
@@ -179,8 +186,6 @@ export function TrackSheetPage<Item>({
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
   // accumulator and must only advance inside the handler.
-  // THE REACHABILITY INSET (law at handleContentSizeChange).
-  const [insetBottom, setInsetBottom] = React.useState(0);
   // Fresh page ⇒ fresh measurement: the accumulator resets when the data
   // identity changes, so a long page never inherits a short page's fill.
 
@@ -255,7 +260,6 @@ export function TrackSheetPage<Item>({
   // hit-testing survives — UIScrollView keeps owning tap-vs-drag for every
   // pixel of the sheet. MUST RE-ASSERT ON ATTACH: refs fire child-first and
   // the proxy may not exist on the first pass (same law as the seat).
-  const reassertSeatRef = React.useRef<(() => void) | null>(null);
   const applyPinRef = React.useRef<(() => void) | null>(null);
   React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
@@ -485,7 +489,13 @@ export function TrackSheetPage<Item>({
       if (physics.dragging.value || physics.userOwnsPosture.value) {
         return;
       }
-      if (Math.abs(tau.value - seatTau) <= 1) {
+      // THE SEAT IS POSTURE-SPACE, NOT τ-SPACE (attributed live 2026-07-29:
+      // a restore to τ=916 was dragged back to H by an 'expanded' seat). A
+      // seat targets sheetTop, and sheetTop is FLAT for τ ≥ H — so 'expanded'
+      // (seatTau === trackH) is satisfied by ANY τ ≥ H. Compare postures
+      // (min(τ, H)), never raw τ: the old system's seat moved sheetY only and
+      // could not touch a page's scroll.
+      if (Math.abs(Math.min(tau.value, trackH) - seatTau) <= 1) {
         return;
       }
       physics.snapToTau(seatTau);
@@ -505,10 +515,6 @@ export function TrackSheetPage<Item>({
       attempts = 0;
       assertSeat();
     });
-    reassertSeatRef.current = () => {
-      attempts = 0;
-      assertSeat();
-    };
     seatTimerCancelRef.current = () => {
       cancelled = true;
       if (seatTimerRef.current != null) {
@@ -519,7 +525,6 @@ export function TrackSheetPage<Item>({
     return () => {
       cancelled = true;
       unsubscribe();
-      reassertSeatRef.current = null;
       seatTimerCancelRef.current = null;
       if (seatTimerRef.current != null) {
         clearTimeout(seatTimerRef.current);
@@ -754,18 +759,12 @@ export function TrackSheetPage<Item>({
       // stats, tabs) therefore seat SHORT, landing between detents. Whenever
       // the reachable range grows, re-assert the seat — unless the user has
       // taken posture, which always outranks the machine.
-      reassertSeatRef.current?.();
-      // REACHABILITY IS GEOMETRY, NOT CONTENT: UIKit clamps the max offset to
-      // (contentH + insetBottom − viewport), so a short page silently forbids
-      // τ near H. Expressed as content this was a value derived from a
-      // measurement it itself changed — a feedback loop needing a monotonic
-      // accumulator, and a scroll far longer than the content warranted. An
-      // inset does not change contentH, so this converges in ONE step.
-      // Opacity is NOT this law's job: the τ-anchored tail plate owns that.
-      const belowSpacer = height - trackH;
-      setInsetBottom(Math.max(0, Math.ceil(SCREEN.height - belowSpacer)));
+      // THE RANGE LAW (transition derivation VI): the ENGINE owns τ's legal
+      // range natively, synchronously with every contentSize change — every
+      // posture is always legal, so every seat is reachable by construction.
+      // The JS inset and the reachability re-assert are DELETED, not moved.
     },
-    [physics.contentHeight, trackH]
+    [physics.contentHeight]
   );
 
   // ── THE FOUNDING LAYERS (red team 2, 2026-07-28) ───────────────────────────
@@ -778,6 +777,31 @@ export function TrackSheetPage<Item>({
   // last row gets its own plate anchored at the content's end — so a short
   // page reads solid to the screen bottom and through any rubber band, with no
   // fabricated scroll length (R4/R5).
+
+  // THE SWITCH FORMULA — applied synchronously at the switch commit, instant
+  // (setOffset, never a spring: restoring YOUR scroll is not motion).
+  const sceneScrollMemoryRef = React.useRef(new Map<string, number>());
+  const prevSceneKeyRef = React.useRef<string | null>(sceneKey);
+  React.useLayoutEffect(() => {
+    const prev = prevSceneKeyRef.current;
+    if (sceneKey == null || prev === sceneKey) {
+      return;
+    }
+    prevSceneKeyRef.current = sceneKey;
+    if (prev != null) {
+      sceneScrollMemoryRef.current.set(prev, Math.max(0, tau.value - trackH));
+    }
+    const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
+    const target = Math.min(Math.max(0, tau.value), trackH) + restored;
+    const nativePhysics = NativeModules.TrackScrollPhysics;
+    if (
+      Math.abs(target - tau.value) > 0.5 &&
+      nativePhysics?.setOffset != null &&
+      trackTagRef.current != null
+    ) {
+      nativePhysics.setOffset(trackTagRef.current, target);
+    }
+  }, [sceneKey, tau, trackH]);
 
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
@@ -839,7 +863,6 @@ export function TrackSheetPage<Item>({
         scrollEventThrottle={16}
         onScroll={onScroll}
         automaticallyAdjustContentInsets={false}
-        contentInset={{ bottom: insetBottom }}
         onContentSizeChange={handleContentSizeChange}
       />
 

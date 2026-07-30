@@ -107,20 +107,41 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
                        context:(void *)context
 {
   if (context == kTrackClampGuardCtx) {
-    // THE τ-INVARIANCE GUARD: synchronous with the contentSize change — a
-    // scene switch swaps CONTENT and must never move the SHEET, but a shorter
-    // body lets UIKit clamp τ down (maxOffset = contentH + insetBottom −
-    // viewport). Grow-only headroom keeps the current τ legal; the JS
-    // reachability inset owns the baseline.
-    UIScrollView *guarded = (UIScrollView *)object;
-    const CGFloat offset = guarded.contentOffset.y;
-    const CGFloat viewport = CGRectGetHeight(guarded.bounds);
-    const CGFloat maxOffset = guarded.contentSize.height + guarded.contentInset.bottom - viewport;
-    if (offset > maxOffset + 0.5) {
-      UIEdgeInsets insets = guarded.contentInset;
-      insets.bottom += ceil(offset - maxOffset);
-      guarded.contentInset = insets;
+    // THE PRIOR-GROW (attributed live 2026-07-29: [SWITCH] target=648 →
+    // tau=311). UIKit clamps contentOffset WHILE processing the new
+    // contentSize — before any after-the-fact observer runs — so a guard that
+    // reads τ afterwards preserves the already-clamped value. The PRIOR
+    // notification fires BEFORE the change: grow the inset to cover the
+    // current τ against ANY new content height (τ + viewport), so the clamp
+    // never occurs; the after-notification then tightens to the exact
+    // formula. Growing an inset never moves content; only shrinking can.
+    if ([change[NSKeyValueChangeNotificationIsPriorKey] boolValue]) {
+      UIScrollView *prior = (UIScrollView *)object;
+      const CGFloat viewport = CGRectGetHeight(prior.bounds);
+      const CGFloat needed = ceil(prior.contentOffset.y + viewport);
+      if (prior.contentInset.bottom < needed) {
+        UIEdgeInsets insets = prior.contentInset;
+        insets.bottom = needed;
+        prior.contentInset = insets;
+      }
+      return;
     }
+    // THE RANGE LAW (transition derivation VI): the ENGINE owns τ's legal
+    // range, and this is its ONE writer — synchronous with every contentSize
+    // change, so UIKit can never clamp τ through an async JS gap. The range
+    // must always cover [0, trackH] (every posture legal ⇒ every seat
+    // reachable by construction ⇒ no reachability re-assert machinery) AND
+    // the current τ (a content swap must never move the sheet).
+    //   reach = max(0, viewport − (contentH − trackH))
+    //   keep  = max(0, τ − (contentH − viewport))
+    //   insetBottom = max(reach, keep)
+    [self applyRangeLawTo:(UIScrollView *)object];
+    // THE SHELL REFRESH: with the prior-grow, a content swap no longer clamps
+    // — which also means no didScroll fires, so tail/mask/chrome would hold
+    // positions computed against the OLD contentSize (seen live: tail parked
+    // offscreen after a swap, frost showing below the new shorter content).
+    // Re-run the shell writer against the new geometry explicitly.
+    [self scrollViewDidScroll:(UIScrollView *)object];
     return;
   }
   if (context != kTrackDelegateKVOContext) {
@@ -215,6 +236,27 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     }
     targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
     [self startSpringOn:scrollView toTarget:best fromY:releaseY velocityY:velocity.y * 1000.0];
+  }
+}
+
+- (void)applyRangeLawTo:(UIScrollView *)scrollView
+{
+  if (!self.shellEnabled) {
+    return;
+  }
+  const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
+  if (viewport <= 0) {
+    return;
+  }
+  const CGFloat contentH = scrollView.contentSize.height;
+  const CGFloat tau = scrollView.contentOffset.y;
+  const CGFloat reach = MAX(0.0, viewport - (contentH - self.shellTrackH));
+  const CGFloat keep = MAX(0.0, tau - (contentH - viewport));
+  const CGFloat target = ceil(MAX(reach, keep));
+  UIEdgeInsets insets = scrollView.contentInset;
+  if (fabs(insets.bottom - target) > 0.5) {
+    insets.bottom = target;
+    scrollView.contentInset = insets;
   }
 }
 
@@ -445,6 +487,7 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
 // physics uses for detents/rubber — scene-switch snaps feel identical to
 // gesture-born settles (and JS-side scrollToOffset through animated wrappers
 // proved unreliable).
+// (short-circuit lives inside snapTo's UI block below)
 RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
                   offset:(nonnull NSNumber *)offset)
 {
@@ -452,6 +495,12 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
     UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
     UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
     if (scrollView == nil) {
+      return;
+    }
+    // THE SHORT-CIRCUIT (ported from the old snap runtime): a seat within
+    // 0.5pt of the current τ commands NOTHING — a same-posture switch is
+    // provably zero pixels, never a spring that "confirms" the position.
+    if (fabs(scrollView.contentOffset.y - offset.doubleValue) < 0.5) {
       return;
     }
     TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
@@ -564,7 +613,7 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
       proxy.clampGuardInstalled = YES;
       [scrollView addObserver:(id)proxy
                    forKeyPath:@"contentSize"
-                      options:NSKeyValueObservingOptionNew
+                      options:NSKeyValueObservingOptionNew | NSKeyValueObservingOptionPrior
                       context:kTrackClampGuardCtx];
     }
     // Apply the current frame immediately — don't wait for the next scroll.
@@ -577,6 +626,7 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
 RCT_EXPORT_METHOD(detach:(nonnull NSNumber *)reactTag)
 {
   [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    // (clamp-guard KVO removed below with the proxy — leak fixed 2026-07-29)
     UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
     UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
     if (scrollView == nil) {
@@ -585,6 +635,13 @@ RCT_EXPORT_METHOD(detach:(nonnull NSNumber *)reactTag)
     TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
     if (proxy != nil) {
       [proxy endObservingDelegateOf:scrollView];
+      if (proxy.clampGuardInstalled) {
+        @try {
+          [scrollView removeObserver:(id)proxy forKeyPath:@"contentSize" context:kTrackClampGuardCtx];
+        } @catch (__unused NSException *e) {
+        }
+        proxy.clampGuardInstalled = NO;
+      }
       scrollView.delegate = proxy.original;
       objc_setAssociatedObject(scrollView, kTrackProxyKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
