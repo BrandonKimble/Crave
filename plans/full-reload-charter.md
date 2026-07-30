@@ -184,6 +184,31 @@ comments, bots, crossposts, very long threads, price/hours claims mistaken
 for dishes. Minor open item: "crisp" extracted as a food from "ask for
 crispy fries" (adjective fragment).
 
+## 4c. PHASE-2 AUDIT CYCLE COMPLETE (2026-07-30) — THE GATE IS GREEN
+
+The dedicated audit cycle ran as its own plan per the re-sequencing:
+
+- UNEXAMINED CLASSES, now examined: CHAINS — one finding, In-N-Out exists
+  as THREE entities (In-N-Out Burger / In-n-out / In N Out; a resolution
+  class for the post-reload sweep, the same-name normalizer does not fold
+  a differing word). NON-ENGLISH — clean; accented Spanish/Italian text
+  extracts correctly. LONG THREADS — clean; the two zero-event 200+
+  comment threads are a roach complaint and a price rant, and zero
+  endorsements from complaints is CORRECT. PRICE/HOURS-AS-DISHES — real:
+  "tuesday special", "lunch deal", "happy hour tasting menu" minted as
+  foods; fixed with the predicts-the-food test applied to special/deal/
+  menu heads (a head whose only food-content is special/deal/menu is no
+  dish; "chicken special" survives, "tuesday special" does not).
+- DIETARY EMPHASIS (owner ruling): lifestyle claims are never dropped —
+  normalized to canonical terms, emitted on the appropriate side(s),
+  because the hard toggles' entire coverage comes from these claims.
+- FINAL COHORT under the final prompt (281 docs / 760 events): occasion
+  leakage 0/243; ungrounded 1/130 (0.8%); attribute leakage 3/339 (0.9%,
+  two being 'bbq' — an explicitly legitimate venue style); junk names 0.
+- Vocabulary curation (dinner date → romantic alias) DEFERRED post-reload:
+  the wipe erases current entities, so pre-reload alias curation is work
+  thrown away.
+
 ## 5. NEW YORK — no reprocessing, no gaps
 
 NY's raw corpus and its 1,000-post catch-up stay as they are. The risk is a
