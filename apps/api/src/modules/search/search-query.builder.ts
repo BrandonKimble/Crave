@@ -93,7 +93,6 @@ interface ParsedFilters {
   twinIngredientIds: string[];
   foodAttributeIds: string[];
   ingredientIds: string[];
-  excludedIngredientIds: string[];
   foodAttributePrimary: boolean;
   boundsPayload: BoundsPayload | null;
   polygonPayload: PolygonPayload | null;
@@ -801,15 +800,8 @@ LIMIT ${pagination.take};`.trim();
         connectionFilters,
         EntityScope.FOOD_ATTRIBUTE,
       ),
-      // The INGREDIENT scope carries two lanes on one entityType — the clause
-      // payload's `exclude` flag is the discriminator (include = recall union,
-      // exclude = conservative NOT; see buildEffectiveIngredientsClause).
       ingredientIds: this.collectEntityIds(
-        connectionFilters.filter((filter) => filter.payload?.exclude !== true),
-        EntityScope.INGREDIENT,
-      ),
-      excludedIngredientIds: this.collectEntityIds(
-        connectionFilters.filter((filter) => filter.payload?.exclude === true),
+        connectionFilters,
         EntityScope.INGREDIENT,
       ),
       foodAttributePrimary: Boolean(directives?.primaryFoodAttributeQuery),
@@ -1025,7 +1017,6 @@ LIMIT ${pagination.take};`.trim();
         if (filters.twinIngredientIds.length) {
           const containment = this.buildEffectiveIngredientsClause(
             filters.twinIngredientIds,
-            'include',
           );
           conditions.push(
             Prisma.sql`((${foodIdClause}) OR ${containment.sql})`,
@@ -1059,16 +1050,6 @@ LIMIT ${pagination.take};`.trim();
     if (filters.ingredientIds.length) {
       const clause = this.buildEffectiveIngredientsClause(
         filters.ingredientIds,
-        'include',
-      );
-      conditions.push(clause.sql);
-      conditionPreview.push(clause.preview);
-    }
-
-    if (filters.excludedIngredientIds.length) {
-      const clause = this.buildEffectiveIngredientsClause(
-        filters.excludedIngredientIds,
-        'exclude',
       );
       conditions.push(clause.sql);
       conditionPreview.push(clause.preview);
@@ -1140,7 +1121,6 @@ LIMIT ${pagination.take};`.trim();
         if (filters.twinIngredientIds.length) {
           const containment = this.buildEffectiveIngredientsClause(
             filters.twinIngredientIds,
-            'include',
           );
           conditions.push(
             Prisma.sql`((${foodIdClause}) OR ${containment.sql})`,
@@ -1174,16 +1154,6 @@ LIMIT ${pagination.take};`.trim();
     if (filters.ingredientIds.length) {
       const clause = this.buildEffectiveIngredientsClause(
         filters.ingredientIds,
-        'include',
-      );
-      conditions.push(clause.sql);
-      conditionPreview.push(clause.preview);
-    }
-
-    if (filters.excludedIngredientIds.length) {
-      const clause = this.buildEffectiveIngredientsClause(
-        filters.excludedIngredientIds,
-        'exclude',
       );
       conditions.push(clause.sql);
       conditionPreview.push(clause.preview);
@@ -1209,10 +1179,7 @@ LIMIT ${pagination.take};`.trim();
     // cannot honor them (worst case: a restaurant card whose dish list is
     // entirely filtered out). With either ingredient lane active, admission
     // must come from connection evidence that passed the ingredient clause.
-    if (
-      filters.ingredientIds.length > 0 ||
-      filters.excludedIngredientIds.length > 0
-    ) {
+    if (filters.ingredientIds.length > 0) {
       return {
         sql: this.combineSqlClauses([]),
         preview: this.combinePreviewClauses([]),
@@ -2028,15 +1995,15 @@ location_aggregates AS (
    *   name/alias join covers synthesis gaps — owner ruling 2026-07-25).
    *   Knowledge fills recall ("gruyere" finds dishes whose canon includes
    *   it even when no Redditor named it).
-   * - 'exclude' (allergies / "no cilantro"): CONSERVATIVE — excluded when
-   *   EITHER tier names the ingredient. Canon says ramen has egg; a venue's
-   *   version might not — for an exclusion you never gamble on the venue
-   *   being the exception.
+   * (The 'exclude' arm was DELETED 2026-07-30 — spec §1.1: free-text
+   * negation is no longer interpreted (owner: accepted-inversion ruling)
+   * and allergen toggles were rejected, so nothing produced exclusion ids.
+   * Include-only ever since.)
    */
-  private buildEffectiveIngredientsClause(
-    ingredientIds: string[],
-    mode: 'include' | 'exclude',
-  ): { sql: Prisma.Sql; preview: string } {
+  private buildEffectiveIngredientsClause(ingredientIds: string[]): {
+    sql: Prisma.Sql;
+    preview: string;
+  } {
     const overlap = Prisma.sql`((${this.buildArrayOverlapClause(
       'c.ingredients',
       ingredientIds,
@@ -2048,13 +2015,6 @@ location_aggregates AS (
     )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
       ingredientIds,
     )}))`;
-    if (mode === 'exclude') {
-      // Exclusion stays two-tier only: a dish NAMED burrata is trivially
-      // excluded by "no burrata" through its own canon/evidence; the name
-      // join below is a RECALL widener and has no business shrinking an
-      // exclusion beyond the doctrine's conservative rule.
-      return { sql: Prisma.sql`NOT ${overlap}`, preview: `NOT ${previewCore}` };
-    }
     // Include arm, third branch: the dish IS the ingredient by name — a food
     // entity whose name (or an alias) equals the linked ingredient entity's
     // name (or one of ITS aliases). Covers "burrata" returning dishes named

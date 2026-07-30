@@ -28,12 +28,6 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
       description:
         'Ingredient nouns the user searches BY (bare ingredient or "with X"); empty when the query names dishes',
     },
-    excludedIngredients: {
-      type: 'array',
-      items: { type: 'string' },
-      description:
-        'Ingredient nouns the user wants ABSENT ("no X", "without X", "X-free", allergy phrasing); never overlaps ingredients',
-    },
   },
   required: [
     'restaurants',
@@ -41,7 +35,6 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
     'foodAttributes',
     'restaurantAttributes',
     'ingredients',
-    'excludedIngredients',
   ],
   additionalProperties: false,
 } as const;

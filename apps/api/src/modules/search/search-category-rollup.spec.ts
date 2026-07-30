@@ -32,7 +32,6 @@ function constraints(): SearchConstraints {
       foodAttributeIds: [],
       restaurantAttributeIds: [],
       ingredientIds: [],
-      excludedIngredientIds: [],
     },
     filters: { priceLevels: [], minimumVotes: null, rising: false },
     unresolved: { groups: [] },

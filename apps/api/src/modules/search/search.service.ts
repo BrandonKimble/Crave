@@ -2137,11 +2137,6 @@ export class SearchService {
         // Ingredient lane: always-on when linked (no relaxation coupling —
         // an ingredient is the query's subject, not a droppable modifier).
         ingredientIds: this.collectEntityIds(request.entities.ingredients),
-        // Excluded-ingredient lane: same always-on rule — an allergy/"no X"
-        // constraint must never be relaxed away.
-        excludedIngredientIds: this.collectEntityIds(
-          request.entities.excludedIngredients,
-        ),
       },
       filters: {
         bounds: request.bounds,

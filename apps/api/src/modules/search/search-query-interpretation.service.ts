@@ -148,7 +148,7 @@ export class SearchQueryInterpretationService {
       foods: cleanedAnalysis.foods,
     });
 
-    const { inputs: resolutionInputs, excludedIngredientTempIds } =
+    const { inputs: resolutionInputs } =
       this.buildResolutionInputs(cleanedAnalysis);
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
@@ -158,10 +158,7 @@ export class SearchQueryInterpretationService {
         : [];
     entityResolutionMs = performance.now() - resolutionStart;
 
-    const groupedEntities = this.groupResolvedEntities(
-      resolutionResultList,
-      excludedIngredientTempIds,
-    );
+    const groupedEntities = this.groupResolvedEntities(resolutionResultList);
 
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
     // Mint the searchRequestId HERE (runQuery reuses a present id) so the two
@@ -263,9 +260,6 @@ export class SearchQueryInterpretationService {
 
   private buildResolutionInputs(analysis: LLMSearchQueryAnalysis): {
     inputs: EntityResolutionInput[];
-    /** Which ingredient-typed inputs belong to the EXCLUSION lane — same
-     *  vocabulary and linker as the include lane, different downstream verb. */
-    excludedIngredientTempIds: Set<string>;
   } {
     const inputs: EntityResolutionInput[] = [];
 
@@ -302,11 +296,8 @@ export class SearchQueryInterpretationService {
     addEntries(analysis.foodAttributes, 'food_attribute');
     addEntries(analysis.restaurantAttributes, 'restaurant_attribute');
     addEntries(analysis.ingredients ?? [], 'ingredient');
-    const excludedIngredientTempIds = new Set(
-      addEntries(analysis.excludedIngredients ?? [], 'ingredient'),
-    );
 
-    return { inputs, excludedIngredientTempIds };
+    return { inputs };
   }
 
   /**
@@ -477,9 +468,6 @@ export class SearchQueryInterpretationService {
         analysis.restaurantAttributes,
       ),
       ingredients: this.stripGenericTokensFromTerms(analysis.ingredients ?? []),
-      excludedIngredients: this.stripGenericTokensFromTerms(
-        analysis.excludedIngredients ?? [],
-      ),
     };
   }
 
@@ -506,14 +494,12 @@ export class SearchQueryInterpretationService {
 
   private groupResolvedEntities(
     results: EntityResolutionResult[],
-    excludedIngredientTempIds: Set<string>,
   ): QueryEntityGroupDto {
     const restaurantEntities: QueryEntityDto[] = [];
     const foodEntities: QueryEntityDto[] = [];
     const foodAttributeEntities: QueryEntityDto[] = [];
     const restaurantAttributeEntities: QueryEntityDto[] = [];
     const ingredientEntities: QueryEntityDto[] = [];
-    const excludedIngredientEntities: QueryEntityDto[] = [];
 
     const pushEntity = (
       collection: QueryEntityDto[],
@@ -560,12 +546,7 @@ export class SearchQueryInterpretationService {
           pushEntity(restaurantAttributeEntities, result);
           break;
         case 'ingredient':
-          pushEntity(
-            excludedIngredientTempIds.has(result.tempId)
-              ? excludedIngredientEntities
-              : ingredientEntities,
-            result,
-          );
+          pushEntity(ingredientEntities, result);
           break;
         default:
           break;
@@ -582,9 +563,6 @@ export class SearchQueryInterpretationService {
         ? restaurantAttributeEntities
         : undefined,
       ingredients: ingredientEntities.length ? ingredientEntities : undefined,
-      excludedIngredients: excludedIngredientEntities.length
-        ? excludedIngredientEntities
-        : undefined,
     };
   }
 
@@ -759,7 +737,6 @@ export class SearchQueryInterpretationService {
       foodAttributes: entities.foodAttributes,
       restaurantAttributes: entities.restaurantAttributes,
       ingredients: entities.ingredients,
-      excludedIngredients: entities.excludedIngredients,
     });
 
     return {
@@ -835,7 +812,6 @@ export class SearchQueryInterpretationService {
       foodAttributes: analysis.foodAttributes.length,
       restaurantAttributes: analysis.restaurantAttributes.length,
       ingredients: analysis.ingredients?.length ?? 0,
-      excludedIngredients: analysis.excludedIngredients?.length ?? 0,
     };
   }
 

@@ -19,12 +19,10 @@ export interface ConstraintResolvedIds {
   foodIds: string[];
   foodAttributeIds: string[];
   restaurantAttributeIds: string[];
-  /** Ingredient lane — filters connections by evidence OR canonical tier. */
+  /** Ingredient lane — filters connections by evidence OR canonical tier.
+   *  (The excluded-ingredient lane was deleted 2026-07-30 — spec §1.1:
+   *  negation is not interpreted, allergen toggles rejected.) */
   ingredientIds: string[];
-  /** Excluded-ingredient lane ("no egg", allergy) — conservative NOT across
-   *  EITHER tier (doctrine rule 3: never gamble on the venue being the
-   *  exception to canon). */
-  excludedIngredientIds: string[];
 }
 
 export interface SearchConstraints {

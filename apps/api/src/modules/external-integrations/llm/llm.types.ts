@@ -244,7 +244,6 @@ export interface LLMSearchQueryAnalysis {
   ingredients?: string[];
   /** Ingredient nouns the user wants ABSENT ("no egg", "without cilantro",
    *  "peanut-free") — the allergy-safe exclusion lane. */
-  excludedIngredients?: string[];
   metadata?: Record<string, unknown>;
 }
 
