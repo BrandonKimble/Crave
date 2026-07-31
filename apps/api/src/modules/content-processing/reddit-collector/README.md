@@ -31,7 +31,6 @@
 - [reddit-batch-processing.service.ts](./reddit-batch-processing.service.ts): Live batch entrypoint.
 - [extraction-pipeline.service.ts](./extraction-pipeline.service.ts): Shared extraction path for live ingestion and replay.
 - [collection-evidence.service.ts](./collection-evidence.service.ts): Persists source docs, extraction runs, extraction inputs.
-- [collection-evidence.service.ts](./collection-evidence.service.ts): Persists source docs, collection runs, extraction runs, extraction inputs.
 - [replay.service.ts](./replay.service.ts): Replay orchestration.
 - [projection-rebuild.service.ts](./projection-rebuild.service.ts): Rebuilds projections from active evidence.
 - [unified-processing.service.ts](./unified-processing.service.ts): Persists entities, events, items, and triggers rebuild.

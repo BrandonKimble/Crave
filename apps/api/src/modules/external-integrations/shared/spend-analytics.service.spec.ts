@@ -578,7 +578,123 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
     expect(written.create.microUsdPerUnit).toBeGreaterThan(0);
   });
 
-  it('writes backstop.gemini as BACKSTOP_MULTIPLE(3) x the MEDIAN daily spend x 30, and resets the live pool (no prior row: unclamped)', async () => {
+  it('CAPS a runaway day to the next-largest positive day (RED under floor(0.9n))', async () => {
+    // 1 runaway day (1,000,000 input tokens) among 4 quiet days (10,000):
+    // winsorized, the runaway contributes a quiet day's worth. Under the
+    // old floor(n*0.9) index (a no-op for n <= 10) the runaway counts in
+    // full and this spec goes RED.
+    const upsert = jest.fn().mockResolvedValue({});
+    let call = 0;
+    const findMany = jest.fn().mockImplementation(() => {
+      call += 1;
+      if (call > 25 && call <= 29) {
+        return Promise.resolve([
+          {
+            inputTokens: 10_000,
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: MODEL,
+            mode: 'interactive',
+          },
+        ]);
+      }
+      if (call === 30) {
+        return Promise.resolve([
+          {
+            inputTokens: 1_000_000,
+            outputTokens: 0,
+            cachedTokens: 0,
+            model: MODEL,
+            mode: 'interactive',
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    const service = new SpendAnalyticsService(
+      {
+        apiUsageEvent: { findMany },
+        spendUnitCost: {
+          upsert,
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+      } as never,
+      stubLogger() as never,
+      {} as never,
+      { emit: jest.fn() } as never,
+      {
+        pools: {
+          poolStatus: jest
+            .fn()
+            .mockReturnValue({ limit: Number.MAX_SAFE_INTEGER }),
+          resetLimit: jest.fn(),
+        },
+      } as never,
+    );
+    await (
+      service as unknown as {
+        refreshBackstop(a: Date, b: Date, c: Date): Promise<void>;
+      }
+    ).refreshBackstop(
+      new Date(Date.now() - 30 * 86_400_000),
+      new Date(),
+      new Date(),
+    );
+    const written = (
+      upsert.mock.calls as Array<[{ create: { microUsdPerUnit: number } }]>
+    )[0][0];
+    // 5 days each capped to one quiet day's cost -> derived = 3 * 5 * quiet.
+    // Uncapped it would be ~100x larger.
+    const quietMicros = written.create.microUsdPerUnit / 3 / 5;
+    expect(written.create.microUsdPerUnit).toBeLessThan(quietMicros * 3 * 6);
+  });
+
+  it('the FIRST derivation clamps against the live pool limit (RED if unclamped)', async () => {
+    const upsert = jest.fn().mockResolvedValue({});
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        inputTokens: 10_000_000,
+        outputTokens: 0,
+        cachedTokens: 0,
+        model: MODEL,
+        mode: 'interactive',
+      },
+    ]);
+    const SMALL_LIMIT = 1_000; // micros — derived will vastly exceed 3x this
+    const service = new SpendAnalyticsService(
+      {
+        apiUsageEvent: { findMany },
+        spendUnitCost: {
+          upsert,
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+      } as never,
+      stubLogger() as never,
+      {} as never,
+      { emit: jest.fn() } as never,
+      {
+        pools: {
+          poolStatus: jest.fn().mockReturnValue({ limit: SMALL_LIMIT }),
+          resetLimit: jest.fn(),
+        },
+      } as never,
+    );
+    await (
+      service as unknown as {
+        refreshBackstop(a: Date, b: Date, c: Date): Promise<void>;
+      }
+    ).refreshBackstop(
+      new Date(Date.now() - 30 * 86_400_000),
+      new Date(),
+      new Date(),
+    );
+    const written = (
+      upsert.mock.calls as Array<[{ create: { microUsdPerUnit: number } }]>
+    )[0][0];
+    expect(written.create.microUsdPerUnit).toBe(SMALL_LIMIT * 3);
+  });
+
+  it('writes backstop.gemini as BACKSTOP_MULTIPLE(3) x the winsorized trailing spend, and resets the live pool', async () => {
     // Flat 1000 micros/day for all 30 days -> median = 1000 -> trailing =
     // 30_000 -> derived = 30_000 * 3 = 90_000.
     const { prisma, upsert } = buildBackstopPrisma(4_000, null);

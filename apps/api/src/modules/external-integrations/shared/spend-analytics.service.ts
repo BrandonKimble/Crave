@@ -771,11 +771,12 @@ export class SpendAnalyticsService {
    * restart. §16: BACKSTOP_MULTIPLE is the only owner number here; the
    * trailing spend it multiplies is 100% measured.
    *
-   * RED-TEAM FIX 2026-07-24 (§24 red team finding 3 — "the backstop must not
-   * chase a runaway"): the trailing baseline is the MEDIAN of the last 30
-   * daily spend totals × 30, not their mean/sum — a median resists up to
-   * ~15 runaway days skewing the base (a mean would already have "learned"
-   * the runaway as normal by the time it derives). Growth is additionally
+   * RED-TEAM FIX 2026-07-24, REVISED 2026-07-29: the trailing baseline is
+   * a WINSORIZED SUM of the last 30 daily totals (the top k positive days
+   * are capped to the next value down, k = max(1, ceil(10% of n))). The
+   * first fix used a median-of-days, which resists runaways but is ~0 on
+   * this deliberately BURSTY workload (most days have zero spend) — the
+   * derivation silently never produced a row. Growth is additionally
    * CLAMPED: newLimit = min(derived, previousLimit × BACKSTOP_MULTIPLE) —
    * the backstop may grow at most ×3 (the SAME K1 that prices the multiple
    * itself) per night, so a sustained runaway raises the backstop
@@ -807,7 +808,9 @@ export class SpendAnalyticsService {
     // window's POSITIVE days, so a runaway day is capped at "a big normal
     // day" while real burst spend still counts. The x3 nightly growth clamp
     // below remains the primary runaway bound.
-    // Cap at the k-th largest positive day, k = max(1, ceil(10% of n)).
+    // Cap the top k positive days to the (k+1)-th largest, k = max(1,
+    // ceil(10% of n)) — every runaway-sized day contributes at most a
+    // big-normal day.
     // A plain floor(n*0.9) index equals n-1 for every n <= 10 — the "p90"
     // was the MAXIMUM day and capped nothing exactly where this workload
     // lives (sparse positive days), so a single runaway day could become
