@@ -323,3 +323,36 @@ THE STASH σ, and make H+σ the effective sheet/list boundary everywhere:
 This is not a patch on the fusion; it is the fusion completed — posture and
 scroll become separable exactly when the finger demands it, by moving the
 boundary instead of the state.
+
+## XII. GROUND-UP VERDICT (owner-directed, 2026-07-30) — why switching is unstable
+
+Standing broken state observed (not a flash): polls header flush with the
+SCREEN TOP, body far below, frost gap between them. Three introduced
+fragilities, each a violation of our own derivation:
+
+F1. THE FAKE SLOT. The chrome/frost/tail are React-managed views whose
+transforms native writes — but React RESETS transforms on every commit,
+and we re-assert AFTER (the commit-proof law). That is a race, not a
+guarantee: any commit that lands without a follow-up shell apply leaves
+the header at y=0 (screen top) — seen on profile, now polls. The
+native-shell derivation specified a REAL native slot (native container
+views the shell owns, RN renders INTO them); we shipped the transform
+shortcut instead. VERDICT: build the real slot — chrome position becomes
+un-writable by React, the header-at-top class dies.
+F2. THE DIVISIBLE SWITCH. Content swap (commit), tau re-fuse (async block),
+sigma reset, shell rebind are separate observable steps. VERDICT: the
+ARMED RE-FUSE — the host arms the target at the presentation-frame flush
+(before React commits); the native contentSize observer (already
+synchronous with the mount) applies it. No interim state exists.
+F3. THE PARALLEL SEAT (law #20 violation). The old, locked-in logic — "the
+sheet stays exactly where it is unless crossing to/from the home sheet,
+which restores its remembered seat" — lives in the motion descriptor
+table. The track host RE-IMPLEMENTED seat resolution beside it
+(getRouteSceneSwitchSceneSnap + one-shot + formula ordering). A second
+implementation of locked-in choreography is why it no longer behaves.
+VERDICT: delete the parallel path; consume the descriptor pipeline's
+output (posture-space snapTo / none), exactly as the old host did.
+
+Plus DRAG ROLES (XI red team) and the switch-commit profiler. Execution
+order: F1 (the slot) → F2 (armed re-fuse) → F3 (descriptor-driven seat) →
+roles → profile. Each rung device-verified before the next.
