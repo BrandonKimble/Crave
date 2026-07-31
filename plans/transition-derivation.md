@@ -398,3 +398,21 @@ side-effects: orderedCandidates reversal makes the LAST registrant win for
 every scene in the sheetHost group (incl. dismiss choreography), and the
 authority controller dedupes on command-value identity. Register ONLY under
 the flip, assert the old host is not co-registered, and eye the dismiss path.
+
+### XII red team 3 — both surviving planks assumed a single writer that isn't
+
+(1) The hybrid's baseline computes its target from JS mirrors of τ/σ that lag
+the UI thread (σ via an event hop) — the stale baseline can fire first, clear
+the token, and disarm the CORRECT native arm. Idempotence must live on the
+TOKEN with the target computed ONCE, natively, inside the UI block (τ/σ read
+there, like setOffset already does). The JS effect only arms; it never
+computes.
+(2) "registerTarget has zero callers" was WRONG: the old authority controller
+registers 'sheetHost' via AppRouteSheetHostRuntimeProvider — a provider
+OUTSIDE the flip gate — so with the flip on, the plug would co-register and
+last-registrant-wins decides by mount order. syncSheetMotionTarget must be
+flip-gated before the track host plugs in.
+(3) The probe must measure in WINDOW space (wrapper mispositioning cancels
+out in local space) and assert shellChromeView != nil — a nil/NSNull chrome
+tag yields exactly "header at screen top, no transform ever applied", the
+owner's standing state's best current candidate.
