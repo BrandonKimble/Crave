@@ -285,3 +285,41 @@ must live natively beside the engine (a temporary, scoped posture-drag path —
 the one place a second writer is permitted, because the finger IS the writer).
 Needs its own derivation + verification round: release settles, ballistic
 wall interplay, and the τ/scroll re-fusion at settle are all non-trivial.
+
+## XI. THE STASH (σ) — the header-handle derivation (2026-07-30)
+
+**Old system:** header outside the scroll; a header drag drove sheetY only,
+body scroll untouched. Free, because posture and scroll were two variables.
+
+**Why ONE TRACK can't express it:** a sheet at middle with a scrolled list is
+UNREPRESENTABLE — τ < H forces listY = 0. Any fix that rewrites τ per-frame
+(P8) or jumps it at drag-begin produces visible teleports.
+
+**The insight:** don't move τ — move the EDGE. Introduce one native variable,
+THE STASH σ, and make H+σ the effective sheet/list boundary everywhere:
+
+    sheetTop(τ) = expandedTop + max(0, (H+σ) − τ)
+    listY(τ)    = max(0, τ − (H+σ))
+
+- STASH (header-drag begin): σ += max(0, τ − (H+σ)). At that instant
+  sheetTop is unchanged by algebra — no jump. From the next frame, finger
+  motion moves the sheet edge 1:1, and because ROWS are content (screen y =
+  contentY − τ), they move WITH the sheet automatically — the whole sheet
+  slides as one object, scrolled content glued in place, exactly the old feel.
+- DISSOLVE (τ rises to H+σ): σ := 0. sheetTop unchanged by algebra again —
+  and the content offset is genuinely H+σ, i.e. THE OLD SCROLL, restored
+  exactly, with zero discontinuity. Not stored and replayed: never lost.
+- Everything shifts by σ: ballistic edge, snap region, sheet-region detents
+  (detentTau+σ), the chrome pin, the band mask. snapTo inputs are
+  POSTURE-space (native adds σ); setOffset is τ-space and RESETS σ (a scene
+  switch re-fuses). Scene switches save σ + listY as the outgoing scroll.
+- Behavior table: header drag anywhere ⇒ sheet moves immediately. Row drag at
+  a lower posture with σ ⇒ the classic handoff (sheet first), and expansion
+  lands on the preserved scroll. Row drag at expanded ⇒ unchanged continuum.
+- ONE WRITER holds: σ lives in the proxy, written only in
+  willBeginDragging (stash) and didScroll (dissolve) — the same two hands
+  that already own τ.
+
+This is not a patch on the fusion; it is the fusion completed — posture and
+scroll become separable exactly when the finger demands it, by moving the
+boundary instead of the state.

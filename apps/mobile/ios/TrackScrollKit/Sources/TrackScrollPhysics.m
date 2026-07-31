@@ -70,6 +70,15 @@
 @property (nonatomic, assign) CGFloat shellChromeHeight;
 @property (nonatomic, assign) BOOL shellEnabled;
 @property (nonatomic, assign) BOOL clampGuardInstalled;
+/// THE STASH σ (transition derivation XI): the header is a HANDLE. A drag
+/// beginning in the chrome band moves the EDGE instead of the state: H+σ is
+/// the effective sheet/list boundary everywhere. Stash (σ += listY) at
+/// header-drag begin and dissolve (σ := 0) when τ rises back to H+σ are BOTH
+/// jump-free by algebra — sheetTop is unchanged at either instant, and rows,
+/// being content, move with the sheet automatically. σ is written only here
+/// and in didScroll: the same two hands that own τ.
+@property (nonatomic, assign) CGFloat stashSigma;
+@property (nonatomic, copy) void (^onSigmaChanged)(CGFloat sigma);
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -180,6 +189,25 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   // in-flight bounce dies — the finger owns the track from here.
   self.ballisticArmed = NO;
   [self stopSpring];
+  // THE STASH: a drag that BEGINS in the chrome band is a posture drag — the
+  // sheet must follow the finger immediately, list scroll preserved. σ moves
+  // the boundary so that happens; the touch keeps being an ordinary scroll
+  // touch (tap-vs-drag arbitration untouched).
+  if (self.shellEnabled && self.ballisticEdge >= 0) {
+    const CGFloat tau = scrollView.contentOffset.y;
+    const CGFloat effEdge = self.ballisticEdge + self.stashSigma;
+    const CGFloat listY = MAX(0.0, tau - effEdge);
+    if (listY > 0.5) {
+      const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
+      const CGFloat touchY = [scrollView.panGestureRecognizer locationInView:scrollView.superview].y;
+      if (touchY >= sheetTop - 1 && touchY <= sheetTop + self.shellChromeHeight + 1) {
+        self.stashSigma += listY;
+        if (self.onSigmaChanged) {
+          self.onSigmaChanged(self.stashSigma);
+        }
+      }
+    }
+  }
   if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0) {
     UIEdgeInsets inset = scrollView.contentInset;
     inset.top = 0;
@@ -202,7 +230,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
                          targetContentOffset:targetContentOffset];
   }
 
-  const CGFloat edge = self.ballisticEdge;
+  const CGFloat edge = self.ballisticEdge >= 0 ? self.ballisticEdge + self.stashSigma : self.ballisticEdge;
   const CGFloat releaseY = scrollView.contentOffset.y;
 
   if (edge >= 0 && releaseY >= edge) {
@@ -217,7 +245,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     return;
   }
 
-  if (self.snapOffsets.count > 0 && releaseY < self.snapRegionEnd) {
+  if (self.snapOffsets.count > 0 && releaseY < self.snapRegionEnd + self.stashSigma) {
     // SHEET REGION release — two laws in one move:
     //   THE BALLISTIC WALL: momentum born in the sheet region may never cross H.
     //   Riding targetContentOffset let a fast release project PAST H and pour its
@@ -227,11 +255,13 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     //   rubber — one physics system for every release, velocity-continuous from
     //   the finger's true release speed.
     // Velocity-aware detent choice: UIKit's own projection, clamped to <= H.
-    const double projected = MIN(targetContentOffset->y, self.snapRegionEnd);
-    CGFloat best = self.snapOffsets.firstObject.doubleValue;
+    // Sheet-region detents live at detentTau + σ in τ-space.
+    const double projected = MIN(targetContentOffset->y, self.snapRegionEnd + self.stashSigma);
+    CGFloat best = self.snapOffsets.firstObject.doubleValue + self.stashSigma;
     for (NSNumber *offset in self.snapOffsets) {
-      if (fabs(offset.doubleValue - projected) < fabs(best - projected)) {
-        best = offset.doubleValue;
+      const CGFloat candidate = offset.doubleValue + self.stashSigma;
+      if (fabs(candidate - projected) < fabs(best - projected)) {
+        best = candidate;
       }
     }
     targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
@@ -262,7 +292,22 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
-  const CGFloat edge = self.ballisticEdge;
+  // THE DISSOLVE: τ back at (or past) the effective boundary means the sheet
+  // is fully expanded and the content offset IS the old scroll — σ has done
+  // its job and evaporates. sheetTop is unchanged by algebra; nothing moves.
+  // Never while TRACKING: at the stash instant τ == H+σ exactly, and a
+  // finger-down dissolve would kill the stash at birth (seen live — the
+  // header drag reverted to unscrolling). The dissolve waits for the finger
+  // to lift; a rest at exactly H+σ then dissolves into "expanded at the old
+  // scroll" with zero movement.
+  if (self.stashSigma > 0 && !scrollView.tracking &&
+      scrollView.contentOffset.y >= self.ballisticEdge + self.stashSigma - 0.5) {
+    self.stashSigma = 0;
+    if (self.onSigmaChanged) {
+      self.onSigmaChanged(0);
+    }
+  }
+  const CGFloat edge = self.ballisticEdge >= 0 ? self.ballisticEdge + self.stashSigma : self.ballisticEdge;
   // NO PER-FRAME CLAMP (jerk fix, 2026-07-27): forcing contentOffset back to
   // the edge every frame FIGHTS UIKit — the finger moves, the clamp yanks, the
   // engine re-syncs ("bounces back, then continues"). The prototype had no such
@@ -294,7 +339,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   // THE SHELL WRITER: every τ-derived position, one place, same frame.
   if (self.shellEnabled) {
     const CGFloat tau = scrollView.contentOffset.y;
-    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, self.shellTrackH - tau);
+    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
     UIView *frost = self.shellFrostView;
     if (frost != nil) {
       const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
@@ -418,7 +463,7 @@ RCT_EXPORT_MODULE();
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[ @"trackTopArrival" ];
+  return @[ @"trackTopArrival", @"trackSigmaChanged" ];
 }
 
 - (dispatch_queue_t)methodQueue
@@ -479,6 +524,10 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.ballisticEdge = edge != nil ? edge.doubleValue : -1;
     proxy.snapRegionEnd = regionEnd != nil ? regionEnd.doubleValue : -1;
     proxy.snapOffsets = config[@"snapOffsets"] ?: @[];
+    __weak typeof(self) sigmaWeakSelf = self;
+    proxy.onSigmaChanged = ^(CGFloat sigma) {
+      [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
+    };
     resolve(@(YES));
   }];
 }
@@ -500,18 +549,21 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
     // THE SHORT-CIRCUIT (ported from the old snap runtime): a seat within
     // 0.5pt of the current τ commands NOTHING — a same-posture switch is
     // provably zero pixels, never a spring that "confirms" the position.
-    if (fabs(scrollView.contentOffset.y - offset.doubleValue) < 0.5) {
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    // snapTo input is POSTURE-space: σ shifts it into τ-space.
+    const CGFloat sigma = proxy != nil ? proxy.stashSigma : 0;
+    const CGFloat target = offset.doubleValue + sigma;
+    if (fabs(scrollView.contentOffset.y - target) < 0.5) {
       return;
     }
-    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
     if (proxy == nil) {
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target)
                           animated:YES];
       return;
     }
     dispatch_async(dispatch_get_main_queue(), ^{
       [proxy startSpringOn:scrollView
-                  toTarget:offset.doubleValue
+                  toTarget:target
                      fromY:scrollView.contentOffset.y
                  velocityY:0];
     });
@@ -520,6 +572,8 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
 
 // Header-grab drag channel: direct offset write (non-animated), for the JS
 // header pan whose worklet scrollTo proved inert on the recycler's scroll view.
+// setOffset is τ-SPACE and RESETS σ: callers (the switch formula) re-fuse
+// posture+scroll into one absolute offset, so any standing stash is stale.
 RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
                   offset:(nonnull NSNumber *)offset)
 {
@@ -528,6 +582,13 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
     UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
     if (scrollView == nil) {
       return;
+    }
+    TrackScrollDelegateProxy *fuseProxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    if (fuseProxy != nil && fuseProxy.stashSigma != 0) {
+      fuseProxy.stashSigma = 0;
+      if (fuseProxy.onSigmaChanged) {
+        fuseProxy.onSigmaChanged(0);
+      }
     }
     dispatch_async(dispatch_get_main_queue(), ^{
       [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)

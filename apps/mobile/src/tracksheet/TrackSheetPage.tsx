@@ -248,7 +248,10 @@ export function TrackSheetPage<Item>({
     if (h <= 0) {
       return { opacity: 0 };
     }
-    return { opacity: interpolate(tau.value - h, [0, 3, 14], [0, 0.35, 1], 'clamp') };
+    // σ shifts the boundary: content is "under the chrome" past H+σ.
+    return {
+      opacity: interpolate(tau.value - h - physics.sigma.value, [0, 3, 14], [0, 0.35, 1], 'clamp'),
+    };
   });
 
   // ── THE NATIVE SHELL BIND (native-shell derivation, 2026-07-29) ────────────
@@ -455,8 +458,9 @@ export function TrackSheetPage<Item>({
       if (!stable) {
         return;
       }
+      const posture = current.value - physics.sigma.value;
       for (const detent of physics.detentTaus) {
-        if (Math.abs(detent - current.value) <= 2 && settleReportedTau.value !== detent) {
+        if (Math.abs(detent - posture) <= 2 && settleReportedTau.value !== detent) {
           settleReportedTau.value = detent;
           runOnJS(reportSettle)(detent, current.owned);
           return;
@@ -495,7 +499,7 @@ export function TrackSheetPage<Item>({
       // (seatTau === trackH) is satisfied by ANY τ ≥ H. Compare postures
       // (min(τ, H)), never raw τ: the old system's seat moved sheetY only and
       // could not touch a page's scroll.
-      if (Math.abs(Math.min(tau.value, trackH) - seatTau) <= 1) {
+      if (Math.abs(Math.min(tau.value - physics.sigma.value, trackH) - seatTau) <= 1) {
         return;
       }
       physics.snapToTau(seatTau);
@@ -788,11 +792,15 @@ export function TrackSheetPage<Item>({
       return;
     }
     prevSceneKeyRef.current = sceneKey;
+    const sigmaNow = physics.sigma.value;
     if (prev != null) {
-      sceneScrollMemoryRef.current.set(prev, Math.max(0, tau.value - trackH));
+      // The outgoing scroll = the stash (scroll carried by a header drag) plus
+      // any live list scroll past the effective boundary.
+      sceneScrollMemoryRef.current.set(prev, sigmaNow + Math.max(0, tau.value - trackH - sigmaNow));
     }
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
-    const target = Math.min(Math.max(0, tau.value), trackH) + restored;
+    const posture = Math.min(Math.max(0, tau.value - sigmaNow), trackH);
+    const target = posture + restored;
     const nativePhysics = NativeModules.TrackScrollPhysics;
     if (
       Math.abs(target - tau.value) > 0.5 &&

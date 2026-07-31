@@ -56,6 +56,8 @@ export type TrackSheetPhysics = {
   subscribeAttached: (listener: () => void) => () => void;
   /** Written by the page's onContentSizeChange (scroll events carry no contentSize). */
   contentHeight: SharedValue<number>;
+  /** THE STASH σ — native-owned effective-boundary shift (H+σ). */
+  sigma: SharedValue<number>;
   /** Latches true on the first user gesture; the seat must not re-assert while
    * set (a seat is a target, never a lock). Cleared by the page on seat change. */
   userOwnsPosture: SharedValue<boolean>;
@@ -87,13 +89,17 @@ export const useTrackSheetPhysics = (
   /** Track content height (written by the page's onContentSizeChange — the
    * scroll event's contentSize is NULL in Reanimated events, banked lore). */
   const contentHeight = useSharedValue(0);
+  /** THE STASH σ (transition derivation XI): native-owned; mirrored here so
+   * every τ-consumer (sheetTopY, divider, settles, seats, the switch formula)
+   * reads the EFFECTIVE boundary H+σ. Written only by the native events. */
+  const sigma = useSharedValue(0);
   const lastActivityAt = useSharedValue(0);
   const onUserListScrollActivity = options?.onUserListScrollActivity;
 
   const sheetTopY = useDerivedValue(() =>
     ballisticFromList.value
       ? geometry.expandedTop
-      : geometry.expandedTop + Math.max(0, trackH - tau.value)
+      : geometry.expandedTop + Math.max(0, trackH + sigma.value - tau.value)
   );
 
   // ── Native hatch attach (durable; retries cover a recycler's late mount) ──
@@ -152,6 +158,12 @@ export const useTrackSheetPhysics = (
     const emitter = new NativeEventEmitter(physics);
     // Debug probe only: the bounce itself is fully native (the module drives
     // contentOffset along the rubber spring; τ genuinely dips below H).
+    const sigmaListener = emitter.addListener(
+      'trackSigmaChanged',
+      ({ sigma: nextSigma }: { sigma: number }) => {
+        sigma.value = nextSigma;
+      }
+    );
     const arrival = emitter.addListener('trackTopArrival', ({ velocity, overshoot }) => {
       if (__DEV__) {
         console.log(
@@ -160,6 +172,7 @@ export const useTrackSheetPhysics = (
       }
     });
     return () => {
+      sigmaListener.remove();
       arrival.remove();
       const tag = attachedTagRef.current;
       attachedTagRef.current = null;
@@ -188,13 +201,13 @@ export const useTrackSheetPhysics = (
         tau.value = event.contentOffset.y;
         if (
           onUserListScrollActivity != null &&
-          event.contentOffset.y > trackH &&
+          event.contentOffset.y > trackH + sigma.value &&
           contentHeight.value > 0
         ) {
           const now = Date.now();
           if (now - lastActivityAt.value >= 120) {
             lastActivityAt.value = now;
-            const offsetY = event.contentOffset.y - trackH;
+            const offsetY = event.contentOffset.y - trackH - sigma.value;
             const distanceFromEnd =
               contentHeight.value - (event.contentOffset.y + event.layoutMeasurement.height);
             runOnJS(onUserListScrollActivity)(offsetY, distanceFromEnd);
@@ -211,7 +224,7 @@ export const useTrackSheetPhysics = (
       },
       onEndDrag: (event) => {
         dragging.value = false;
-        ballisticFromList.value = event.contentOffset.y >= trackH - SPACER_EPSILON;
+        ballisticFromList.value = event.contentOffset.y >= trackH + sigma.value - SPACER_EPSILON;
       },
     },
     [contentHeight, lastActivityAt, onUserListScrollActivity, reassertAttach, trackH]
@@ -235,6 +248,7 @@ export const useTrackSheetPhysics = (
       subscribeAttached,
       contentHeight,
       userOwnsPosture,
+      sigma,
     }),
     [
       tau,
@@ -249,6 +263,7 @@ export const useTrackSheetPhysics = (
       subscribeAttached,
       contentHeight,
       userOwnsPosture,
+      sigma,
     ]
   );
 };
