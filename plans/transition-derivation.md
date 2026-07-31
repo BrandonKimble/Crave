@@ -356,3 +356,26 @@ output (posture-space snapTo / none), exactly as the old host did.
 Plus DRAG ROLES (XI red team) and the switch-commit profiler. Execution
 order: F1 (the slot) → F2 (armed re-fuse) → F3 (descriptor-driven seat) →
 roles → profile. Each rung device-verified before the next.
+
+### XII red team (code-verified) — two of three claims corrected
+
+F1 REFUTED: the transform re-assert chain is actually gapless (ref callbacks
+pre-effect, no-dep layout effect, bindShell same-batch immediate apply; one
+self-healing stale-tag caveat). The standing header-at-screen-top therefore
+has an UNKNOWN cause — it must be ATTRIBUTED LIVE before any slot rebuild.
+Instrument gap found: the ORIGIN invariant measures the TOUCH twin only; add
+a visual-twin probe. The native slot remains the derivation's ideal but is
+not evidence-justified as this bug's fix.
+
+F2 INVERTED: setOffset is already same-commit; the real race is the re-fuse
+landing BEFORE the new contentSize (clamp against old range / stale metrics).
+THE ARMED RE-FUSE survives as the mechanism — applied AT the contentSize
+event — for the inverse reason.
+
+F3 SHARPENED: parallel re-implementation confirmed, but the old executor
+writes nothing — sheetMotionTargetRegistry.registerTarget has ZERO callers.
+The socket the old system designed for exactly this integration sits unused.
+THE FIX: register the track host as the motion TARGET and consume the
+descriptor table's commands (posture-space) — the locked-in switch logic
+(stays-put, home-crossing seats, preserveLiveY, promoteAtLeast, child rules)
+comes back verbatim, and the parallel seat path is deleted.
