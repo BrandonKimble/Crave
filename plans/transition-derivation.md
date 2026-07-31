@@ -379,3 +379,22 @@ THE FIX: register the track host as the motion TARGET and consume the
 descriptor table's commands (posture-space) — the locked-in switch logic
 (stays-put, home-crossing seats, preserveLiveY, promoteAtLeast, child rules)
 comes back verbatim, and the parallel seat path is deleted.
+
+### XII red team 2 (code-verified) — the corrected plan, corrected again
+
+P1 RISK: the visual-twin probe is real new coverage, but the naive assertion
+is wrong-by-construction — subtract the view's UNTRANSFORMED frame origin,
+and expect the twins to legitimately diverge by σ during a stash.
+P2 REFUTED: contentSize KVO is a VALUE-change observer — an equal-height
+swap (two same-length pages) emits nothing, so a purely KVO-armed re-fuse
+silently no-ops on exactly the case it exists for. Shape that survives: keep
+the always-runs layout-effect setOffset as baseline AND arm natively; both
+paths apply-once-and-clear the same idempotent target; apply only in the
+POST KVO branch (the prior branch sees old geometry); disarm via the seat's
+existing gesture-cancel + bounded-retry lifetime, not a new one.
+P3 RISK: registerTarget wiring is sound and small (worklet reaction mapping
+snapTo→posture τ + token-clear; no old runtime import), BUT registration has
+side-effects: orderedCandidates reversal makes the LAST registrant win for
+every scene in the sheetHost group (incl. dismiss choreography), and the
+authority controller dedupes on command-value identity. Register ONLY under
+the flip, assert the old host is not co-registered, and eye the dismiss path.
