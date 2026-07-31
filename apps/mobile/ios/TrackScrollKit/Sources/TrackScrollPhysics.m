@@ -79,6 +79,11 @@
 /// and in didScroll: the same two hands that own τ.
 @property (nonatomic, assign) CGFloat stashSigma;
 @property (nonatomic, copy) void (^onSigmaChanged)(CGFloat sigma);
+/// A drag that begins on the header is a POSTURE drag for its whole life:
+/// the boundary becomes its scroll CEILING, expressed as an inset (law #18 —
+/// bounds are insets, never per-frame writes), so an upward header drag gets
+/// UIKit's own rubber band at the boundary instead of scrolling the list.
+@property (nonatomic, assign) BOOL postureDragActive;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -197,15 +202,24 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     const CGFloat tau = scrollView.contentOffset.y;
     const CGFloat effEdge = self.ballisticEdge + self.stashSigma;
     const CGFloat listY = MAX(0.0, tau - effEdge);
-    if (listY > 0.5) {
-      const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
-      const CGFloat touchY = [scrollView.panGestureRecognizer locationInView:scrollView.superview].y;
-      if (touchY >= sheetTop - 1 && touchY <= sheetTop + self.shellChromeHeight + 1) {
+    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
+    const CGFloat touchY = [scrollView.panGestureRecognizer locationInView:scrollView.superview].y;
+    if (touchY >= sheetTop - 1 && touchY <= sheetTop + self.shellChromeHeight + 1) {
+      if (listY > 0.5) {
         self.stashSigma += listY;
         if (self.onSigmaChanged) {
           self.onSigmaChanged(self.stashSigma);
         }
       }
+      // THE POSTURE CEILING: cap maxOffset at the boundary for this drag —
+      // header drags may move the SHEET only, in both directions. Signed
+      // inset: maxOffset = contentH + inset − viewport == boundary exactly.
+      self.postureDragActive = YES;
+      const CGFloat boundary = self.ballisticEdge + self.stashSigma;
+      const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
+      UIEdgeInsets capInsets = scrollView.contentInset;
+      capInsets.bottom = boundary + viewport - scrollView.contentSize.height;
+      scrollView.contentInset = capInsets;
     }
   }
   if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0) {
@@ -215,6 +229,18 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   }
   if ([self.original respondsToSelector:@selector(scrollViewWillBeginDragging:)]) {
     [self.original scrollViewWillBeginDragging:scrollView];
+  }
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+  if (self.postureDragActive) {
+    self.postureDragActive = NO;
+    // Restore the range law's inset (the ceiling was drag-scoped).
+    [self applyRangeLawTo:scrollView];
+  }
+  if ([self.original respondsToSelector:@selector(scrollViewDidEndDragging:willDecelerate:)]) {
+    [self.original scrollViewDidEndDragging:scrollView willDecelerate:decelerate];
   }
 }
 
@@ -463,7 +489,7 @@ RCT_EXPORT_MODULE();
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[ @"trackTopArrival", @"trackSigmaChanged" ];
+  return @[ @"trackTopArrival", @"trackSigmaChanged", @"trackShellWarning" ];
 }
 
 - (dispatch_queue_t)methodQueue
@@ -572,6 +598,40 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
 
 // Header-grab drag channel: direct offset write (non-animated), for the JS
 // header pan whose worklet scrollTo proved inert on the recycler's scroll view.
+// THE RE-FUSE (XII red team 3): the switch formula's target is computed HERE,
+// with FRESH τ/σ read inside the UI block -- the JS mirrors lag the UI thread
+// (σ by an event hop), and a stale-computed target was the silently-wrong
+// write. JS passes only the incoming scene's restore scroll; posture carries.
+RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
+                  restore:(nonnull NSNumber *)restore)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    if (scrollView == nil) {
+      return;
+    }
+    TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+    if (proxy == nil) {
+      return;
+    }
+    const CGFloat tau = scrollView.contentOffset.y;
+    const CGFloat sigma = proxy.stashSigma;
+    const CGFloat trackH = proxy.shellTrackH;
+    const CGFloat posture = MIN(MAX(0.0, tau - sigma), trackH);
+    const CGFloat target = posture + restore.doubleValue;
+    if (proxy.stashSigma != 0) {
+      proxy.stashSigma = 0;
+      if (proxy.onSigmaChanged) {
+        proxy.onSigmaChanged(0);
+      }
+    }
+    if (fabs(tau - target) > 0.5) {
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
+    }
+  }];
+}
+
 // setOffset is τ-SPACE and RESETS σ: callers (the switch formula) re-fuse
 // posture+scroll into one absolute offset, so any standing stash is stale.
 RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
@@ -590,10 +650,11 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
         fuseProxy.onSigmaChanged(0);
       }
     }
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
-                          animated:NO];
-    });
+    // SYNCHRONOUS with this UI block (the switch formula's re-fuse): an extra
+    // dispatch hop let the freshly swapped content render one frame at the
+    // OLD deep tau — the owner's "content floating up in the sky" flash.
+    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
+                        animated:NO];
   }];
 }
 
@@ -637,6 +698,7 @@ RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
 RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
                   config:(NSDictionary *)config)
 {
+  __weak typeof(self) weakSelf2 = self;
   [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
     UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
     UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
@@ -658,6 +720,14 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
     proxy.shellFrostView = resolve(config[@"frostTag"]);
     proxy.shellTailView = resolve(config[@"tailTag"]);
     proxy.shellChromeView = resolve(config[@"chromeTag"]);
+    // THE NIL-ASSERT (XII red team 3): a chrome tag that fails to resolve
+    // means the shell never transforms that view -- the header parks at the
+    // screen top with no error anywhere. Bark loudly instead of silently.
+    if (config[@"chromeTag"] != nil && ![config[@"chromeTag"] isKindOfClass:[NSNull class]] &&
+        proxy.shellChromeView == nil) {
+      [weakSelf2 sendEventWithName:@"trackShellWarning"
+                              body:@{ @"part": @"chrome", @"tag": config[@"chromeTag"] }];
+    }
     proxy.shellExpandedTop = [config[@"expandedTop"] doubleValue];
     proxy.shellTrackH = [config[@"trackH"] doubleValue];
     proxy.shellChromeHeight = [config[@"chromeHeight"] doubleValue];
@@ -681,6 +751,46 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
     if ([proxy respondsToSelector:@selector(scrollViewDidScroll:)]) {
       [proxy scrollViewDidScroll:scrollView];
     }
+  }];
+}
+
+// THE SHELL AUDIT (P10, 2026-07-31): Fabric's measureInWindow answers from
+// the SHADOW TREE — it is blind to transforms written natively behind React's
+// back, so a JS probe of shell views reports layout fiction (barked y=0 while
+// the screen was correct). Truth lives in UIKit: resolve the proxy's actual
+// views and convert their PRESENTATION positions to window space.
+RCT_EXPORT_METHOD(auditShell:(nonnull NSNumber *)reactTag
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
+    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
+    TrackScrollDelegateProxy *proxy = scrollView ? objc_getAssociatedObject(scrollView, kTrackProxyKey) : nil;
+    if (proxy == nil) {
+      resolve(@{ @"ok": @NO, @"reason": @"no-proxy" });
+      return;
+    }
+    const CGFloat tau = scrollView.contentOffset.y;
+    const CGFloat sheetTop = proxy.shellExpandedTop + MAX(0.0, (proxy.shellTrackH + proxy.stashSigma) - tau);
+    NSMutableDictionary *body = [NSMutableDictionary dictionary];
+    body[@"ok"] = @YES;
+    body[@"tau"] = @(tau);
+    body[@"sigma"] = @(proxy.stashSigma);
+    body[@"expectedSheetTop"] = @(sheetTop);
+    UIView *chrome = proxy.shellChromeView;
+    body[@"chromeBound"] = @(chrome != nil);
+    if (chrome != nil) {
+      body[@"chromeAttached"] = @(chrome.window != nil);
+      const CGPoint origin = [chrome convertPoint:CGPointZero toView:nil];
+      body[@"chromeWindowY"] = @(origin.y);
+    }
+    UIView *frost = proxy.shellFrostView;
+    body[@"frostBound"] = @(frost != nil);
+    if (frost != nil) {
+      body[@"frostWindowY"] = @([frost convertPoint:CGPointZero toView:nil].y);
+    }
+    resolve(body);
   }];
 }
 

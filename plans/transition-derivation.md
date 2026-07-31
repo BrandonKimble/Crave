@@ -416,3 +416,26 @@ flip-gated before the track host plugs in.
 out in local space) and assert shellChromeView != nil — a nil/NSNull chrome
 tag yields exactly "header at screen top, no transform ever applied", the
 owner's standing state's best current candidate.
+
+### XII execution round (2026-07-31) — the probe lied, the law is new, the audit is armed
+
+P10 (NEW PLATFORM LAW): Fabric's measureInWindow answers from the SHADOW
+TREE — it is blind to transforms written natively behind React's back. The
+window-space JS probe barked "chrome at y=0" 38 times while a screenshot
+proved the screen pixel-correct. Any JS-side measurement of a shell view is
+layout fiction; truth must be asked of UIKit.
+
+Landed: auditShell (native) — resolves the proxy's ACTUAL views, converts
+presentation positions to window space, reports bound/attached/position vs
+expected sheetTop; JS polls it at rest, double-sampled, barks + re-binds on a
+persistent divergence. Also landed: refuse() — the switch target computed
+ONCE, natively, from fresh τ/σ inside the UI block (the stale-mirror fix);
+JS passes only the incoming scene's restore. The nil-tag bind assert
+(trackShellWarning) is in.
+
+STATUS OF THE STANDING HEADER-AT-TOP: unreproduced under instrumentation.
+Tab-switch stress runs clean under the audit. The reproduction earlier this
+round was the PROBE'S OWN ARTIFACT (P10). The audit now sits armed in dev —
+when the owner next hits the state, the log will hold bound/attached/position
+facts from UIKit, not shadow-tree fiction. The registry plug (F3) remains
+queued behind that attribution.

@@ -300,13 +300,76 @@ export function TrackSheetPage<Item>({
   React.useLayoutEffect(() => {
     applyPin();
   });
+  const chromeVisualViewRef = React.useRef<View | null>(null);
   const setChromeVisualRef = React.useCallback(
     (node: View | null) => {
+      chromeVisualViewRef.current = node;
       chromeVisualTagRef.current = node != null ? findNodeHandle(node) : null;
       applyPin();
     },
     [applyPin]
   );
+  // THE SHELL AUDIT (P10, 2026-07-31): Fabric's measureInWindow is SHADOW-TREE
+  // layout — blind to native transforms (it barked y=0 while the screen was
+  // provably correct). Truth is asked of UIKit via the native auditShell, at
+  // rest, double-sampled. Barks on real divergence or an unbound/detached
+  // chrome view — the header-at-screen-top class, measured honestly.
+  React.useEffect(() => {
+    if (!__DEV__) {
+      return undefined;
+    }
+    let cancelled = false;
+    let priorBad: string | null = null;
+    const timer = setInterval(() => {
+      const nativePhysics = NativeModules.TrackScrollPhysics;
+      if (nativePhysics?.auditShell == null || trackTagRef.current == null) {
+        return;
+      }
+      void nativePhysics.auditShell(trackTagRef.current).then(
+        (audit: {
+          ok: boolean;
+          tau?: number;
+          sigma?: number;
+          expectedSheetTop?: number;
+          chromeBound?: boolean;
+          chromeAttached?: boolean;
+          chromeWindowY?: number;
+        }) => {
+          if (cancelled || !audit.ok) {
+            return;
+          }
+          const problems: string[] = [];
+          if (!audit.chromeBound) {
+            problems.push('chrome UNBOUND');
+          } else if (!audit.chromeAttached) {
+            problems.push('chrome DETACHED (dead backing view)');
+          } else if (
+            audit.chromeWindowY != null &&
+            audit.expectedSheetTop != null &&
+            Math.abs(audit.chromeWindowY - audit.expectedSheetTop) > 1
+          ) {
+            problems.push(
+              `chrome at ${Math.round(audit.chromeWindowY)} != sheetTop ${Math.round(audit.expectedSheetTop)}`
+            );
+          }
+          const key = problems.join('; ') || null;
+          // Double-sample: bark only when the SAME problem persists across two
+          // consecutive audits (a moving sheet can skew one sample).
+          if (key != null && key === priorBad) {
+            // eslint-disable-next-line no-console
+            console.error(`[SHELL] audit: ${key} (τ=${Math.round(audit.tau ?? -1)})`);
+            applyPin();
+          }
+          priorBad = key;
+        },
+        () => undefined
+      );
+    }, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [applyPin]);
   const setFrostRef = React.useCallback(
     (node: View | null) => {
       frostTagRef.current = node != null ? findNodeHandle(node) : null;
@@ -796,18 +859,16 @@ export function TrackSheetPage<Item>({
     if (prev != null) {
       // The outgoing scroll = the stash (scroll carried by a header drag) plus
       // any live list scroll past the effective boundary.
+      // Save uses the JS mirrors — switches happen at rest, where the mirrors
+      // are settled; the TARGET is deliberately NOT computed here (XII red
+      // team 3: the mirrors lag the UI thread, and a stale target disarmed
+      // the correct write). Native computes it with fresh τ/σ in refuse().
       sceneScrollMemoryRef.current.set(prev, sigmaNow + Math.max(0, tau.value - trackH - sigmaNow));
     }
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
-    const posture = Math.min(Math.max(0, tau.value - sigmaNow), trackH);
-    const target = posture + restored;
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    if (
-      Math.abs(target - tau.value) > 0.5 &&
-      nativePhysics?.setOffset != null &&
-      trackTagRef.current != null
-    ) {
-      nativePhysics.setOffset(trackTagRef.current, target);
+    if (nativePhysics?.refuse != null && trackTagRef.current != null) {
+      nativePhysics.refuse(trackTagRef.current, restored);
     }
   }, [sceneKey, tau, trackH]);
 

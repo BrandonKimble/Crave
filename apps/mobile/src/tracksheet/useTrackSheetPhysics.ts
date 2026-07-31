@@ -164,6 +164,15 @@ export const useTrackSheetPhysics = (
         sigma.value = nextSigma;
       }
     );
+    const shellWarning = emitter.addListener(
+      'trackShellWarning',
+      ({ part, tag }: { part: string; tag: number }) => {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[SHELL] bindShell could not resolve the ${part} view (tag ${tag}) — that layer will NEVER be positioned (header-at-screen-top class). The bind must be re-asserted with a live tag.`
+        );
+      }
+    );
     const arrival = emitter.addListener('trackTopArrival', ({ velocity, overshoot }) => {
       if (__DEV__) {
         console.log(
@@ -172,6 +181,7 @@ export const useTrackSheetPhysics = (
       }
     });
     return () => {
+      shellWarning.remove();
       sigmaListener.remove();
       arrival.remove();
       const tag = attachedTagRef.current;
