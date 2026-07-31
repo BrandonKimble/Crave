@@ -267,3 +267,21 @@ Landed and device-verified (τ probes + screenshots, home↔polls round trip:
 Open (burn-in): polls' leader inset shows frost between strip and card
 (pre-existing composition, not a switch defect); child-page enter/exit and
 search/results still ride the old descriptors untouched.
+
+## X. NEXT (owner, 2026-07-30): the header is a HANDLE, not part of the page
+
+Owner report: with the page scrolled, dragging the HEADER scrolls the page's
+content back up before the sheet moves — the header feels like page surface
+instead of a sheet handle, and blocks pulling the sheet down mid-scroll.
+
+The old system never had this: the header lived outside the scroll, so a
+header drag drove ONLY sheetY while the body's scroll stayed put. This is the
+posture/scroll decomposition (VI) applied MID-GESTURE, not just at switches:
+
+LAW: a drag BEGINNING in the chrome band drives POSTURE ONLY (sheet slides
+with the finger, list scroll preserved; re-expansion restores the exact
+scroll). A drag beginning on rows keeps the ONE TRACK continuum. Mechanism
+must live natively beside the engine (a temporary, scoped posture-drag path —
+the one place a second writer is permitted, because the finger IS the writer).
+Needs its own derivation + verification round: release settles, ballistic
+wall interplay, and the τ/scroll re-fusion at settle are all non-trivial.
