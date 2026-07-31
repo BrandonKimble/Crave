@@ -257,11 +257,22 @@ The dedicated audit cycle ran as its own plan per the re-sequencing:
   - plural splits: 5 pairs (was 186) — cross-batch creation-race residue;
     the dedupe sweep's number-variant lane clears them (calibration tail).
 
-  MEASURED COST: ~$25 all-in (extraction $7.30 at 91% cache hit + batch
-  discount; resolution ~$14 on cold-start VOLUME at ~100 output tokens/
-  call — pre-fix this same reload would have cost ~$150+; gate $0, every
-  verdict reused). §1's fresh-start-costs-more prediction confirmed: the
-  overrun vs the warm-table replay estimate is entirely cold resolution.
+  MEASURED COST — CORRECTED against the Google billing export (owner
+  asked; first-ever ledger-vs-invoice reconciliation): **~$143 all-in**.
+  - Gemini ~$25 (extraction $7.30 at 91% cache hit + batch discount;
+    resolution ~$14 cold-start volume at ~100 out-tokens/call — pre-fix
+    this line alone would have been ~$150+; gate $0, verdicts reused).
+    Billed $26.3 incl. same-key morning replays — within 5%.
+  - PLACES ~$118 — the line every projection missed, mine included: the
+    wipe deleted ~20k restaurants, the reload re-created ~4,200, and each
+    re-creation triggered Places enrichment (2,773 details enterprise-
+    atmosphere + 2,447 text searches). The LEDGER recorded it perfectly
+    and TO THE CENT against the bill ($69.33 and $42.84 exact); the error
+    was reporting the gemini column as "all-in". Pilots never wiped, so
+    re-enrichment never appeared in any cost model.
+  - Cache storage $5.37/day billed — VALIDATES the previously un-sourced
+    $1.00/M token-hour rate and confirms charter 3d's overlap math.
+    RECONCILIATION VERDICT: the meter matches the till.
 
   NEXT: the search calibration tail against this graph (linker re-sweep,
   ~44-name placement curation, richness threshold, junk sweep, dedupe
