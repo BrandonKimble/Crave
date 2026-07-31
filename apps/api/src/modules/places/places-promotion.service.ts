@@ -767,6 +767,31 @@ export class PlacesPromotionService {
         AND g.geometry IS NOT NULL
         AND (ST_XMax(g.geometry) - ST_XMin(g.geometry)) < 180
     `);
+    // The REPRESENTATIVE POINT is derived from the ground AT THE GROUND'S
+    // WRITE — the same law as the bbox SET above (a derived value may only be
+    // written by the write of its source). Before this, the centroid was a
+    // DECOUPLED derived value: born from the vendor position / census point,
+    // never re-checked when the real outline arrived, so a concave or
+    // multi-part outline left it off-ground — 564 rows on prod (2.48%),
+    // repaired one-off 2026-07-28, and the class was REGENERATING through
+    // this very method because nothing coupled the point to the polygon. An
+    // off-ground point made every point-probe ask about a NEIGHBOUR (the
+    // fake "TomTom is coarser" tail). ST_PointOnSurface is inside by
+    // construction; no seam filter — it picks a point on one arm of a
+    // crossing geometry just fine.
+    await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE places p SET
+        centroid_lat = ST_Y(ST_PointOnSurface(g.geometry)),
+        centroid_lng = ST_X(ST_PointOnSurface(g.geometry))
+      FROM place_geometries g
+      WHERE g.place_id = p.place_id
+        AND p.place_id = ${placeId}::uuid
+        AND g.geometry IS NOT NULL
+        AND (p.centroid_lat IS NULL
+             OR NOT ST_Covers(g.geometry,
+                  ST_SetSRID(ST_MakePoint(p.centroid_lng::float8,
+                                          p.centroid_lat::float8), 4326)))
+    `);
     return true;
   }
 

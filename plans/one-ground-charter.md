@@ -9,6 +9,51 @@ the bbox halves of home-surface-charter registry items 13 and 15.
 
 **A place has ONE ground: its real polygon. Everything else is derived.**
 
+## THE UNDERLYING ABSTRACTION (named 2026-07-29, after the dual red team)
+
+Every defect in this arc — all of them — was one substitution, with two faces:
+
+**GEOMETRY WAS STANDING IN FOR FACTS.**
+
+1. **Geometry answering NON-geometric questions.** The vendor STATES identity
+   (the geometry id), hierarchy (the reverse-geocode chain → `parent_place_ids`),
+   level, and name-at-id. Everywhere the system re-derived one of those from
+   shapes instead, it broke — because shapes are approximations and the
+   re-derivation inherits the approximation error:
+   - identity from name/bbox overlap → the San Juan corruption, 363 shared polygons
+   - WHERE-of-an-act from a rectangle → Austin bleeding into 31 places (P5b)
+   - ancestry from `ST_Covers` → 10.85% of towns skipping their state (Washington)
+   - names from a point probe → the fake "TomTom is coarser" tail, 726 wrong renames
+   - a geometric PREFILTER gating a non-geometric predicate → anchored acts dropped
+     The rule: **geometry answers only geometric questions** — what is in view,
+     what contains this point/box. Identity, hierarchy, naming and attribution
+     come from the vendor's stated facts. (What remains legitimately geometric:
+     `placesInView`, `smallestContaining`, viewport-signal tiling, probe memory.)
+
+2. **Derived values decoupled from their source's writes.** A derived value
+   that is not written AT the write of its source drifts into a lie with no
+   event to catch it: the grow-only bbox outlived its polygon (P4 fixed it —
+   bbox is SET when the ground is written); the centroid was born from a
+   vendor/census position and never re-checked when the real outline arrived —
+   564 off-ground points, repaired one-off, and the class was REGENERATING
+   until 2026-07-29, when the promotion write gained the same coupling
+   (centroid := ST_PointOnSurface(ground) whenever the written ground does not
+   cover the stored point). The rule: **a derived value may only be written by
+   the write of its source.** One-off repairs treat the symptom; the coupling
+   removes the disease.
+
+Corollary for review: when a bug appears in this domain, ask FIRST "is
+geometry answering a question the vendor already answered?" and SECOND "is a
+derived value being written anywhere other than its source's write?" Both
+red teams' findings, and every fix this arc, reduce to one of the two.
+
+Known residue, documented not hidden: `pickBboxAgreeingCandidate` (adapter
+forward-geocode fallback) still disambiguates by bbox agreement — reachable
+only for anchor-less rows, of which prod has zero; dies with the P3/P4 tail.
+`mergeSketch` still gap-fills centroid from the observed position for
+outline-less rows — that IS the best available fact there, and the promotion
+coupling re-derives it the moment a real ground lands.
+
 There is no stored bbox. There is no second, weaker shape that can drift,
 be merged wrong, or silently judge. When code needs a rectangle it derives
 one from the ground at the moment of use.
