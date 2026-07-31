@@ -55,6 +55,32 @@ app relaunch (0-byte API delta while the app 500s = requests dying pre-logger). 
 gotcha fixed 2026-07-11: prompt .md files are nest-cli assets now; a clean `yarn build`
 used to produce a dist that crashed at bootstrap (ENOENT relevance-gate-prompt.md).
 
+## Law: place-grounded RESTAURANTS are never deleted (2026-07-30, cost ~$118 to learn)
+
+A restaurant entity grounded to a real `google_place_id` is expensive,
+verified knowledge: deleting it forces full Places re-enrichment on
+re-creation (details enterprise+atmosphere ~$25/1k + text searches ~$35/1k
+
+- autocomplete). The Austin fresh-start wiped ~20k and re-enriched ~4,200
+  = ~$118 of avoidable Places spend (~5x the reload's entire LLM bill). Any
+  wipe/cleanup preserves every restaurant with a geocoded place id — the
+  wipe script (apps/api/scripts/reload/wipe-austin-derived.sql) now encodes
+  this; keep it that way.
+
+## Cost truth: the BigQuery billing export + the reconcile routine
+
+The REAL bill lives in BigQuery: project `crave-467301`, dataset
+`billing_export`, table `gcp_billing_export_resource_v1_01B5D1_11D0D6_23E783`
+(gcloud on this machine is authed as the owner; export lags ~24h). Our
+`api_usage_ledger` is the live meter — verified 2026-07-30 EXACT to the
+cent on Places and within 5% on Gemini — but a report is only as complete
+as the columns you sum: the first "all-in" reload figure missed the $118
+Places line by summing gemini only. Run
+`./scripts/rig/cost-reconcile.sh [days]` after every one-off spend event
+(reload, city onboarding, backfill) and ~monthly. ANY one-off cost
+estimate must include BOTH lines: LLM (per-doc, measured) AND Places
+re-enrichment (~$0.028 per newly-created restaurant, measured 2026-07-30).
+
 ## Where product & business thinking lives (read before working on a feature)
 
 Three doc homes, by purpose:

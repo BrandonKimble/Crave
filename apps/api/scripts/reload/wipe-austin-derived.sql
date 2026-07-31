@@ -32,6 +32,14 @@ SELECT DISTINCT entity_id FROM (
   UNION SELECT entity_id FROM collection_on_demand_requests WHERE entity_id IS NOT NULL
   UNION SELECT ci.food_id FROM core_restaurant_items ci JOIN preserved_connections pc ON pc.connection_id = ci.connection_id
   UNION SELECT ci.restaurant_id FROM core_restaurant_items ci JOIN preserved_connections pc ON pc.connection_id = ci.connection_id
+  -- RESTAURANT LAW (owner, 2026-07-30, learned at a cost of ~$118): a
+  -- restaurant grounded to a real Google place id is EXPENSIVE, VERIFIED
+  -- knowledge — deleting it forces full Places re-enrichment (details
+  -- enterprise+atmosphere + text searches + autocomplete) on re-creation.
+  -- The 2026-07-30 reload deleted ~20k and re-enriched ~4,200 for ~$118
+  -- of Places spend that preserving them would have avoided. NEVER again:
+  -- every place-grounded restaurant survives every wipe.
+  UNION SELECT rl.restaurant_id FROM core_restaurant_locations rl WHERE rl.google_place_id IS NOT NULL
 ) e WHERE entity_id IS NOT NULL;
 
 DELETE FROM core_restaurant_item_mentions;
