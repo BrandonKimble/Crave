@@ -270,6 +270,10 @@ export class SpendAnalyticsService {
       JOIN llm_batch_jobs j ON j.job_id::text = e.run_key
       WHERE e.service = 'gemini'
         AND e.caller = 'gemini-batch.collection_extraction'
+        -- Round-6 F2: a failed job's PARTIAL usage row must not be priced
+        -- into the per-document rate against a doc_count that was never
+        -- extracted (deflates the measured rate). NULL = pre-outcome rows.
+        AND e.outcome IS DISTINCT FROM 'failed'
         AND e.created_at >= ${windowStart}
         AND e.created_at < ${windowEnd}
         AND j.resume_context ->> 'extractionRunId' IS NOT NULL

@@ -79,6 +79,7 @@ export class EmbeddingService implements OnModuleInit {
           batch.reduce((sum, text) => sum + text.length, 0) / 4,
         ),
         requestCount: 1,
+        outcome: 'ok',
         caller: 'embedding.embed',
       });
       const vectors = response.embeddings ?? [];

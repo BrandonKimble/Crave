@@ -71,6 +71,11 @@ const TERMINAL: Partial<Record<string, 'succeeded' | 'failed'>> = {
   // the transport needs no SDK import; the lockdown spec flags any file
   // referencing the vendor SDK outside the gateway).
   JOB_STATE_SUCCEEDED: 'succeeded',
+  // PARTIALLY_SUCCEEDED is terminal too (round-6 F1: unmapped, such a job
+  // polled forever — never ingested, never failed, never ledgered). Treated
+  // as succeeded: the ingest path already stores per-item errors, so the
+  // completed items land and the failed ones surface item-level.
+  JOB_STATE_PARTIALLY_SUCCEEDED: 'succeeded',
   JOB_STATE_FAILED: 'failed',
   JOB_STATE_CANCELLED: 'failed',
   JOB_STATE_EXPIRED: 'failed',
@@ -468,6 +473,13 @@ export class GeminiBatchService implements OnModuleDestroy {
       // Before this, a provider-failed job ledgered nothing — paid work with
       // no meter. Sum whatever usage the remote carries; idempotent by the
       // same one-row-per-job dedupe key as the success path.
+      const failedResumeRow = await this.prisma.llmBatchJob.findUnique({
+        where: { jobId },
+        select: { resumeContext: true },
+      });
+      const failedCampaignId = campaignIdFromResumeContext(
+        failedResumeRow?.resumeContext,
+      );
       const failedInlined = remote.dest?.inlinedResponses ?? [];
       const failedUsage = { input: 0, output: 0, cached: 0, model: '' };
       for (const entry of failedInlined) {
@@ -491,6 +503,10 @@ export class GeminiBatchService implements OnModuleDestroy {
           caller: `gemini-batch.${purpose}`,
           runKey: jobId,
           dedupeKey: `gemini-batch:${jobId}`,
+          // Round-6 F2: without this, partial spend on a failed batch was
+          // invisible to campaign budget accounting while identical spend on
+          // a succeeded batch counted.
+          campaignId: failedCampaignId,
           outcome: 'failed',
         });
       }
