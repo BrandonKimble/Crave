@@ -92,4 +92,36 @@ WHERE NOT EXISTS (
     AND ev.created_at > :'since'::timestamptz)
 ORDER BY r.name, f.name;
 
+-- ── SEMANTIC TWINS (red team 2026-08-01 R4) ────────────────────────────────
+-- The lexical TWIN check above misses renames: "birria tacos" → "quesabirria"
+-- mints a live new entity while the user's anchored one starves, invisibly.
+-- Candidate pairs by embedding distance: a NEW same-type entity within
+-- cosine distance 0.25 of an ANCHORED entity is a rename suspect. Output is
+-- a REVIEW QUEUE, not an auto-merge list — the agent triages (obvious
+-- rename → merge into the anchor via the dedupe services so rehome runs;
+-- genuinely distinct concept → leave, the anchor is simply quiet now).
+\echo ''
+\echo '=== SEMANTIC TWIN CANDIDATES (agent review; distance < 0.25) ==='
+SELECT
+  a.entity_id   AS anchored_id,
+  a.name        AS anchored_name,
+  n.entity_id   AS new_id,
+  n.name        AS new_name,
+  a.type,
+  round((a.name_embedding <=> n.name_embedding)::numeric, 4) AS cos_distance
+FROM core_entities a
+JOIN preserved_entities p ON p.entity_id = a.entity_id
+JOIN core_entities n
+  ON n.type = a.type
+ AND n.status = 'active'
+ AND n.created_at > :'since'::timestamptz
+ AND n.entity_id <> a.entity_id
+WHERE a.status = 'active'
+  AND a.name_embedding IS NOT NULL
+  AND n.name_embedding IS NOT NULL
+  AND lower(a.name) <> lower(n.name)
+  AND (a.name_embedding <=> n.name_embedding) < 0.25
+ORDER BY cos_distance ASC
+LIMIT 200;
+
 ROLLBACK;

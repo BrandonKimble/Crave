@@ -49,7 +49,20 @@ SELECT DISTINCT entity_id FROM (
     WHERE rl.google_place_id IS NOT NULL
 ) e WHERE entity_id IS NOT NULL;
 
+-- TRANSITIVE redirect closure (red team 2026-08-01 R7: merges flatten
+-- chains, but a wipe must not depend on that invariant holding — walk the
+-- whole chain so every hop's target survives).
 INSERT INTO preserved_entities
-SELECT DISTINCT r.to_entity_id FROM entity_redirects r
-JOIN preserved_entities p ON p.entity_id = r.from_entity_id
-WHERE r.to_entity_id NOT IN (SELECT entity_id FROM preserved_entities);
+WITH RECURSIVE hops AS (
+  SELECT r.to_entity_id FROM entity_redirects r
+  JOIN preserved_entities p ON p.entity_id = r.from_entity_id
+  UNION
+  SELECT r.to_entity_id FROM entity_redirects r
+  JOIN hops h ON h.to_entity_id = r.from_entity_id
+)
+SELECT DISTINCT to_entity_id FROM hops
+WHERE to_entity_id NOT IN (SELECT entity_id FROM preserved_entities);
+-- NOTE (audited 2026-08-01): live signals.subject_type values are exactly
+-- {'none','entity'} — the entity filter above covers every subject-bearing
+-- signal. If a new subject_type is ever introduced, add its id translation
+-- here (the poll_endorsements composite handling is the template).
