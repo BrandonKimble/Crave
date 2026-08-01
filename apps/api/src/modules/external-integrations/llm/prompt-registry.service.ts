@@ -113,10 +113,11 @@ export class PromptRegistryService implements OnModuleInit {
   async pushCandidate(
     content: string,
     notes?: string,
+    kind: string = COLLECTION_SYSTEM_PROMPT_KIND,
   ): Promise<RegisteredPrompt> {
     const contentHash = createHash('sha256').update(content).digest('hex');
     const existing = await this.prisma.llmPrompt.findFirst({
-      where: { kind: COLLECTION_SYSTEM_PROMPT_KIND, contentHash },
+      where: { kind, contentHash },
       select: { version: true, status: true },
     });
     if (existing) {
@@ -124,14 +125,10 @@ export class PromptRegistryService implements OnModuleInit {
         `Identical content already registered as version ${existing.version} (${existing.status})`,
       );
     }
-    const max = await this.prisma.llmPrompt.aggregate({
-      where: { kind: COLLECTION_SYSTEM_PROMPT_KIND },
-      _max: { version: true },
-    });
-    const version = (max._max.version ?? 0) + 1;
+    const version = (await this.nextVersion(kind)) ?? 1;
     await this.prisma.llmPrompt.create({
       data: {
-        kind: COLLECTION_SYSTEM_PROMPT_KIND,
+        kind,
         version,
         content,
         contentHash,
@@ -147,22 +144,37 @@ export class PromptRegistryService implements OnModuleInit {
    *  state impossible even under a race. Also swaps the in-process prompt
    *  immediately in THIS process; other processes pick it up on restart or
    *  via their own registry read. */
-  async activate(version: number): Promise<RegisteredPrompt> {
-    const target = await this.getVersion(version);
+  async activate(
+    version: number,
+    kind: string = COLLECTION_SYSTEM_PROMPT_KIND,
+  ): Promise<RegisteredPrompt> {
+    const target = await this.getVersion(version, kind);
     if (target.status === 'active') return target;
     await this.prisma.$transaction([
       this.prisma.llmPrompt.updateMany({
-        where: { kind: COLLECTION_SYSTEM_PROMPT_KIND, status: 'active' },
+        where: { kind, status: 'active' },
         data: { status: 'retired' },
       }),
       this.prisma.llmPrompt.updateMany({
-        where: { kind: COLLECTION_SYSTEM_PROMPT_KIND, version },
+        where: { kind, version },
         data: { status: 'active', activatedAt: new Date() },
       }),
     ]);
-    this.llmService.setActiveSystemPrompt(target.content);
-    this.logger.info('Prompt version activated', { version });
+    // Only the collection prompt lives hot in LLMService; other kinds'
+    // consumers (the gate) read the registry at their own boot.
+    if (kind === COLLECTION_SYSTEM_PROMPT_KIND) {
+      this.llmService.setActiveSystemPrompt(target.content);
+    }
+    this.logger.info('Prompt version activated', { version, kind });
     return { ...target, status: 'active' };
+  }
+
+  private async nextVersion(kind: string): Promise<number> {
+    const max = await this.prisma.llmPrompt.aggregate({
+      where: { kind },
+      _max: { version: true },
+    });
+    return (max._max.version ?? 0) + 1;
   }
 
   private async ensureSeededAndGetActive(
@@ -179,28 +191,39 @@ export class PromptRegistryService implements OnModuleInit {
         status: active.status,
       };
     }
-    // First boot on this database: seed the shipped asset as v1 active.
+    // No active row. Seed from the shipped asset — but NEVER assume version
+    // 1 is free or is the asset: a runs-table backfill can pre-populate
+    // retired versions (red team 2026-08-01). Find-by-hash first; else
+    // insert as the NEXT version.
     const asset = SEED_ASSETS[kind];
     if (!asset) {
       throw new Error(`No active prompt and no seed asset for kind ${kind}`);
     }
     const content = readFileSync(join(__dirname, 'prompts', asset), 'utf-8');
     const contentHash = createHash('sha256').update(content).digest('hex');
+    const byHash = await this.prisma.llmPrompt.findFirst({
+      where: { kind, contentHash },
+      select: { version: true },
+    });
+    const version = byHash?.version ?? (await this.nextVersion(kind));
     await this.prisma.llmPrompt.upsert({
       where: {
-        kind_version: { kind, version: 1 },
+        kind_version: { kind, version },
       },
-      update: { status: 'active' },
+      update: { status: 'active', activatedAt: new Date() },
       create: {
         kind,
-        version: 1,
+        version,
         content,
         contentHash,
         status: 'active',
         notes: `seeded from prompts/${asset} asset`,
       },
     });
-    this.logger.info('Seeded prompt v1 from asset file', { kind });
-    return { version: 1, content, contentHash, status: 'active' };
+    this.logger.info('Seeded active prompt from asset file', {
+      kind,
+      version,
+    });
+    return { version, content, contentHash, status: 'active' };
   }
 }
