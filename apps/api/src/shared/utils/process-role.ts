@@ -34,4 +34,17 @@ export const isWorkerRuntime = (): boolean => {
   return role === 'all' || role === 'worker';
 };
 
-export const isSchedulerRuntime = (): boolean => isWorkerRuntime();
+/**
+ * CRONS_ENABLED=false is the global cron kill-switch: ScheduleModule.forRoot()
+ * never loads, so every @Cron in the codebase — present and future — is inert.
+ * Exists for environments that must never spend unattended (staging holds
+ * dev vendor keys; a data load there would otherwise start the
+ * embedding-reconciler and places-promotion crons within minutes).
+ * Distinct from COLLECTION_SCHEDULER_ENABLED, which gates collection only.
+ */
+export const isSchedulerRuntime = (): boolean => {
+  if ((process.env.CRONS_ENABLED ?? '').trim().toLowerCase() === 'false') {
+    return false;
+  }
+  return isWorkerRuntime();
+};
