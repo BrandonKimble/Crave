@@ -18,6 +18,7 @@ import { subscribeToReconnect } from '../../store/systemStatusStore';
 import {
   getViewportSubjectState,
   subscribeViewportSubjectState,
+  useViewportSubjectState,
 } from '../../store/viewport-subject-store';
 import type { MapBounds } from '../../types';
 import { logger } from '../../utils';
@@ -39,15 +40,27 @@ import { requestMapCameraFlyToBbox } from '../../store/map-camera-command-store'
 
 const SURFACE = themeColors.surface;
 
-// ─── Persistent header (home-surface-charter §1): the Title renders the SAME feed
-// response's resolvedCity — no separate verdict fetch. Null city → 'Explore'
-// (owner note: the cleaner of the two sanctioned fallbacks; app name read as a
-// brand splash, 'Explore' reads as a page).
+// ─── Persistent header — ONE TITLE AUTHORITY (owner ruling 2026-08-01, header
+// red-team): the client subject store names EVERY surface's title, exactly as
+// polls does — the same §2 law run on-device against the sliding catalog
+// slice, committed via settle+dwell hysteresis, so the title tracks the LIVE
+// camera instead of freezing to the last feed response. The feed's
+// resolvedCity survives ONLY as the initial-paint fallback until the store's
+// first commit (verdict null) — and it still scopes CONTENT (which curated
+// city's shelves render); a title/content lag window is accepted and honest.
+// 'this-area' / null → 'Explore' (owner note: reads as a page, not a splash).
 const HomePersistentHeaderTitle = React.memo(() => {
   const resolvedCityName = useHomeFeedStore((state) => state.feed?.resolvedCity?.name ?? null);
+  const viewportSubject = useViewportSubjectState();
+  const liveTitle =
+    viewportSubject.verdict != null
+      ? viewportSubject.verdict.kind === 'place'
+        ? viewportSubject.verdict.placeName
+        : null
+      : resolvedCityName;
   return (
     <View style={styles.persistentHeaderTitleGroup}>
-      <PollsHeaderTitleText title={resolvedCityName ?? 'Explore'} />
+      <PollsHeaderTitleText title={liveTitle ?? 'Explore'} />
     </View>
   );
 });
