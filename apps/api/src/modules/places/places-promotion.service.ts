@@ -64,33 +64,19 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlaceGeometryPromotion, Prisma } from '@prisma/client';
-import {
-  bboxLatSpan as bboxLatSpanOf,
-  bboxLngSpan as bboxLngSpanOf,
-} from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { utcInstantSql } from '../signals/sql-instant';
-import { NEGATIVE_OBSERVATION_TTL_MS } from './places-reconciler.service';
 import {
   PolygonFetchResult,
   TOMTOM_CHAIN_PROBE,
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
-import { derivedBboxSelectSql } from './places-catalog.service';
 import { SpendCampaignService } from '../external-integrations/shared/spend-campaign.service';
 import {
   tomtomCheapCostMicrosPerDraw,
   tomtomScarceCostMicrosPerDraw,
 } from '../external-integrations/shared/vendor-pricing';
-
-/**
- * §16: the header-answer memory window REUSES the §2 30d region-observation
- * TTL (K1 "30d no-place TTL") — one attention-memory constant, not a new
- * knob. More than one header answer inside the window = "frequent" (§2(e)'s
- * minimal honest reading: the smallest count that is a repeat).
- */
-export const HEADER_ANSWER_MEMORY_TTL_MS = NEGATIVE_OBSERVATION_TTL_MS;
 
 /** §16 K4-derived: 2 vendor calls per item ÷ ~5 QPS vendor window → 500ms. */
 const VENDOR_QPS_SPACING_MS = 500;
@@ -126,24 +112,6 @@ export class PlacesPromotionService {
 
   /** Single-flight for the drain (cron + ops seam can overlap). */
   private draining = false;
-
-  /**
-   * §2(e) header-answer memory: placeId → first-answer epoch ms. In-memory
-   * interim, same documented stance as the reconciler's negative-region
-   * cache (worst case a restart forgets one first-answer). `enqueuedOnce`
-   * keeps a hot header place (every search names it) from re-hitting the
-   * idempotent enqueue on each request.
-   *
-   * MULTI-PROCESS CAVEAT (wave-6 finding 4.5, documented not fixed): both
-   * memories are PER-PROCESS — two processes serving header traffic each
-   * count their own first-answer, so "frequent" may need up to 2× answers
-   * to trigger, and each process re-hits the (idempotent, cheap) enqueue
-   * once. Harmless by construction: the enqueue is ON CONFLICT DO NOTHING
-   * and the DRAIN is single-flight across processes (advisory lock below),
-   * so the worst case is a slightly later earned moment — no double spend.
-   */
-  private headerAnswers = new Map<string, number>();
-  private readonly enqueuedOnce = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -185,6 +153,16 @@ export class PlacesPromotionService {
           )
         ON CONFLICT (place_id) DO NOTHING
       `);
+      // Docket #1 (abstraction audit, 2026-07-30): POLYGON AT BIRTH IS
+      // SYNCHRONOUS-BY-DEFAULT — the charter P0 second half, finally landed.
+      // A birth fires an immediate drain pass (fire-and-forget; the advisory
+      // lock + single-flight make overlap harmless), so a newborn wears its
+      // real outline in seconds instead of answering headers from a fat
+      // envelope for up to an hour. The hourly cron remains as the RETRY
+      // sweep — the queue's only remaining job.
+      if (trigger === 'birth') {
+        void this.drainTick();
+      }
     } catch (error) {
       this.logger.warn('Promotion enqueue failed (earned moment retries)', {
         placeId,
@@ -196,37 +174,12 @@ export class PlacesPromotionService {
     }
   }
 
-  /**
-   * §2(e): the header path reports every place-kind verdict here (search
-   * header + polls feed header — one §2 judgment, both mouths). The SECOND
-   * answer within the memory TTL enqueues 'header_answers'. Synchronous and
-   * allocation-light — it sits on the hot search path.
-   */
-  noteHeaderAnswer(placeId: string): void {
-    if (this.enqueuedOnce.has(placeId)) {
-      return;
-    }
-    const now = Date.now();
-    this.pruneHeaderMemory(now);
-    const firstSeenAt = this.headerAnswers.get(placeId);
-    if (firstSeenAt === undefined) {
-      this.headerAnswers.set(placeId, now);
-      return;
-    }
-    // Frequent: answered more than once within the TTL → earned moment.
-    this.enqueuedOnce.add(placeId);
-    this.headerAnswers.delete(placeId);
-    void this.enqueue(placeId, 'header_answers');
-  }
-
-  private pruneHeaderMemory(nowMs: number): void {
-    const cutoff = nowMs - HEADER_ANSWER_MEMORY_TTL_MS;
-    for (const [placeId, seenAt] of this.headerAnswers) {
-      if (seenAt < cutoff) {
-        this.headerAnswers.delete(placeId);
-      }
-    }
-  }
+  // noteHeaderAnswer / headerAnswers / enqueuedOnce DELETED (docket #1):
+  // the attention memory answered "does this place deserve a polygon?" — a
+  // question with only one answer since polygons stopped being scarce. Under
+  // birth-intake every place it could ever name is already queued or
+  // grounded, and it sat on the hot search path with a documented
+  // multi-process caveat.
 
   /** Hourly governed drain (§16 K3 operational cadence — see header). */
   @Cron(CronExpression.EVERY_HOUR)
@@ -435,52 +388,23 @@ export class PlacesPromotionService {
     // (not pool denials, which never reach the vendor) — metered against
     // the campaign envelope by the promoteOne wrapper on EVERY exit.
 
-    // Step 1 — the stable TomTom geometry id. tomtom-provider places carry
-    // it as providerPlaceId (§1 identity law); census-seeded places (GEOID
-    // alias) resolve it via ONE cheap county-qualified forward geocode,
-    // cached on the queue row across windows.
-    let geometryId =
+    // Docket #1: the geometry id IS the place's identity (final dissolution:
+    // composite (id, level) unique, id-less non-fallback observations are
+    // refused at the door). The old census-GEOID cheap-geocode step is
+    // UNREACHABLE — every enqueueable place is tomtom-provider with an id —
+    // and was deleted with its adapter path. A null here means an invariant
+    // broke upstream; refuse loudly rather than resurrect name matching.
+    const geometryId =
       item.providerBoundaryId ??
       (place.provider === 'tomtom' ? place.providerPlaceId : null);
     if (!geometryId) {
-      const resolved = await this.probe.resolveGeometryId({
-        name: place.name,
-        county: place.county,
-        subdivisionCode: place.subdivisionCode,
-        countryCode: place.countryCode,
-        providerLevelCode: place.providerLevelCode,
-        // POINT IDENTITY (one-ground charter P0): the census internal point
-        // (stored as the centroid) is guaranteed to lie inside the real
-        // place, so the vendor can be asked "what is HERE at this level"
-        // instead of being searched by name. Name matching is the fallback.
-        anchor:
-          place.centroidLat != null && place.centroidLng != null
-            ? {
-                lat: Number(place.centroidLat),
-                lng: Number(place.centroidLng),
-              }
-            : null,
-        // §2.5 resolve-time validation: the place's own extent (DERIVED from
-        // its ground — P4) disambiguates vendor duplicate records on the
-        // name-matching fallback path only.
-        bbox: await this.derivedExtentOf(item.placeId),
-      });
-      if (resolved.kind === 'denied') {
-        return 'stop'; // cheap pool not-now — NOT an attempt; next window
-      }
-      if (resolved.kind === 'miss') {
-        draws.cheap += 1;
-        await this.recordAttempt(item.placeId, now);
-        return 'attempted';
-      }
-      draws.cheap += 1;
-      geometryId = resolved.geometryId;
-      await this.prisma.placeGeometryPromotion.update({
-        where: { placeId: item.placeId },
-        data: { providerBoundaryId: geometryId },
-      });
+      this.logger.error(
+        'promotion item without a geometry id — identity invariant broken upstream',
+        { placeId: item.placeId, provider: place.provider },
+      );
+      await this.recordAttempt(item.placeId, now);
+      return 'attempted';
     }
-
     // ENTITY EXCLUSIVITY (2026-07-27): one vendor entity belongs to at most
     // ONE place. Enforced HERE, at the only moment it can be — before the
     // scarce draw is spent.
@@ -575,41 +499,34 @@ export class PlacesPromotionService {
     // what I claimed. The span check survives ONLY where no anchor exists
     // (52 rows): weaker evidence used only where stronger evidence is absent,
     // never in preference to it.
+    // Docket #1: the anchorless span-ratio branch is DELETED — the
+    // representative point is coupled to the ground's write (the P4 centroid
+    // law), so anchorlessness is transient-at-birth at most, and the anchor
+    // test is strictly stronger evidence. No anchor = refuse this pass and
+    // retry once the coupling has run.
     const anchor =
       place.centroidLat != null && place.centroidLng != null
         ? { lat: Number(place.centroidLat), lng: Number(place.centroidLng) }
         : null;
-    let wrongEntity = false;
-    let rejectReason = '';
-    if (anchor) {
-      const [covers] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>(
-        Prisma.sql`
-          SELECT ST_Covers(
-                   ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
-                     polygon.geojson,
-                   )}::json->'features'->0->'geometry'), 4326),
-                   ST_SetSRID(ST_MakePoint(${anchor.lng}::float8, ${anchor.lat}::float8), 4326)
-                 ) AS ok
-        `,
-      );
-      wrongEntity = covers?.ok === false;
-      rejectReason = 'polygon does not contain the place anchor';
-    } else {
-      const envelope = geojsonEnvelope(polygon.geojson);
-      // P4: the stored extent is the ground's envelope, derived at use.
-      const placeBbox = await this.derivedExtentOf(item.placeId);
-      const lngSpan = placeBbox ? bboxLngSpanOf(placeBbox) : null;
-      const latSpan = placeBbox ? bboxLatSpanOf(placeBbox) : null;
-      wrongEntity = Boolean(
-        envelope &&
-          lngSpan !== null &&
-          latSpan !== null &&
-          Math.max(lngSpan, latSpan) > 0.05 &&
-          envelope.lngSpan < 0.2 * lngSpan &&
-          envelope.latSpan < 0.2 * latSpan,
-      );
-      rejectReason = 'anchorless place: polygon far smaller than stored extent';
+    if (!anchor) {
+      await this.recordAttempt(item.placeId, now);
+      this.logger.warn('promotion deferred: place has no anchor yet', {
+        placeId: item.placeId,
+      });
+      return 'attempted';
     }
+    const [covers] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>(
+      Prisma.sql`
+        SELECT ST_Covers(
+                 ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
+                   polygon.geojson,
+                 )}::json->'features'->0->'geometry'), 4326),
+                 ST_SetSRID(ST_MakePoint(${anchor.lng}::float8, ${anchor.lat}::float8), 4326)
+               ) AS ok
+      `,
+    );
+    const wrongEntity = covers?.ok === false;
+    const rejectReason = 'polygon does not contain the place anchor';
     if (wrongEntity) {
       await this.prisma.placeGeometryPromotion.update({
         where: { placeId: item.placeId },
@@ -761,36 +678,6 @@ export class PlacesPromotionService {
     return true;
   }
 
-  /** P4: the place's extent, via the ONE canonical wrap-aware derivation.
-   *
-   *  Red-team F7 (2026-07-30): the first cut hand-rolled a PLANAR read here,
-   *  resting on an asserted-not-enforced "no seam rows reach promotion". A
-   *  seam-straddling sketch would have derived a 360° span, tripped the
-   *  anchorless wrong-entity guard, and been pinned at sketch grade FOREVER
-   *  (each rejection nulls the cached geometry id). The wrap-aware derivation
-   *  returns the true small span; the shared bboxLngSpan helper understands
-   *  the min>max convention. Null when no geometry row exists. */
-  private async derivedExtentOf(placeId: string) {
-    const [row] = await this.prisma.$queryRaw<
-      Array<{
-        bbox_min_lat: number;
-        bbox_min_lng: number;
-        bbox_max_lat: number;
-        bbox_max_lng: number;
-      }>
-    >(Prisma.sql`
-      SELECT ${derivedBboxSelectSql('g')}
-        FROM place_geometries g WHERE g.place_id = ${placeId}::uuid`);
-    return row
-      ? {
-          minLat: row.bbox_min_lat,
-          minLng: row.bbox_min_lng,
-          maxLat: row.bbox_max_lat,
-          maxLng: row.bbox_max_lng,
-        }
-      : null;
-  }
-
   /** Promotion completes: stamp the queue row AND places.promoted_at. */
   private async stampPromoted(
     placeId: string,
@@ -857,53 +744,4 @@ export class PlacesPromotionService {
       data: { attempts: { increment: 1 }, lastAttemptAt: now },
     });
   }
-}
-
-/**
- * Envelope of every coordinate in a GeoJSON FeatureCollection (wrong-entity
- * guard input). Null when no finite coordinates are found.
- */
-function geojsonEnvelope(
-  geojson: unknown,
-): { lngSpan: number; latSpan: number } | null {
-  let minLng = Infinity;
-  let minLat = Infinity;
-  let maxLng = -Infinity;
-  let maxLat = -Infinity;
-  const walk = (node: unknown): void => {
-    if (!Array.isArray(node)) {
-      return;
-    }
-    if (
-      node.length >= 2 &&
-      typeof node[0] === 'number' &&
-      typeof node[1] === 'number'
-    ) {
-      if (Number.isFinite(node[0]) && Number.isFinite(node[1])) {
-        minLng = Math.min(minLng, node[0]);
-        maxLng = Math.max(maxLng, node[0]);
-        minLat = Math.min(minLat, node[1]);
-        maxLat = Math.max(maxLat, node[1]);
-      }
-      return;
-    }
-    for (const child of node) {
-      walk(child);
-    }
-  };
-  const features =
-    typeof geojson === 'object' && geojson !== null
-      ? (
-          geojson as {
-            features?: Array<{ geometry?: { coordinates?: unknown } }>;
-          }
-        ).features
-      : undefined;
-  for (const feature of features ?? []) {
-    walk(feature?.geometry?.coordinates);
-  }
-  if (!Number.isFinite(minLng) || !Number.isFinite(minLat)) {
-    return null;
-  }
-  return { lngSpan: maxLng - minLng, latSpan: maxLat - minLat };
 }

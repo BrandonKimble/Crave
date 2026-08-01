@@ -2978,10 +2978,8 @@ export class SearchService {
         })),
       );
       if (resolution.kind === 'place') {
-        // §2(e) tier-2 promotion: answering the header from this place
-        // counts toward its "frequent header-answering" earned moment
-        // (second answer within the memory TTL joins the queue).
-        this.placesPromotions.noteHeaderAnswer(resolution.place.placeId);
+        // Docket #1: the header-answer earned-moment hook is DELETED —
+        // polygons arrive at birth; nothing is left for attention to earn.
         return resolution.place.name;
       }
       return null;

@@ -172,18 +172,8 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
     expect(response.metadata.displayPlaceName).toBe('Austin');
   });
 
-  it('§2(e) tier-2 promotion: a place-kind header verdict reports a header answer; "this area" does not', async () => {
-    const { service, placesPromotions } = createHarness({
-      placesInView: [placeInView('Austin', VIEW, 1)],
-    });
-    const response = await service.runQuery(buildRequest());
-    expect(response.metadata.displayPlaceName).toBe('Austin');
-    expect(placesPromotions.noteHeaderAnswer).toHaveBeenCalledTimes(1);
-
-    const empty = createHarness({ placesInView: [] });
-    await empty.service.runQuery(buildRequest());
-    expect(empty.placesPromotions.noteHeaderAnswer).not.toHaveBeenCalled();
-  });
+  // The header-answer earned-moment test was DELETED with its hook
+  // (docket #1): a place that answers a header already has its outline.
 
   it('a multi-place straddle yields null (mobile renders its own fallback)', async () => {
     const west: GeoBbox = {

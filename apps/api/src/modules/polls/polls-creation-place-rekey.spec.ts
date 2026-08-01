@@ -116,17 +116,7 @@ describe('poll creation place re-key (Phase C)', () => {
     expect(data).not.toHaveProperty('marketKey');
   });
 
-  it("§2(a) tier-2 promotion: creating a poll enqueues the place's earned polygon moment (fire-and-forget)", async () => {
-    const { service, placesPromotions } = createHarness();
-    await service.createPoll(
-      { question: 'Where should I eat tonight?', bounds: BOUNDS } as never,
-      USER_ID,
-    );
-    expect(placesPromotions.enqueue).toHaveBeenCalledWith(
-      PLACE_ID,
-      'poll_created',
-    );
-  });
+  // The poll_created enqueue test was DELETED with its trigger (docket #1).
 
   it('no containing place -> §2 quota-drought fallback: the poll is created against a minted "this area near (lat, lng)" place — creation NEVER blocks (wave-5 §17c)', async () => {
     const { service, placesCatalog, prisma } = createHarness();

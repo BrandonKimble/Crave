@@ -231,22 +231,8 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
     expect(dbClient).toBe(tx);
   });
 
-  it('§2(c) tier-2 promotion pre-fetch: a place warranting a poll (credit + creditRate ≥ 1) enqueues credit_prefetch; one searcher never does', async () => {
-    const { service, placesPromotions } = createHarness({
-      subjects: [SUBJECT],
-    });
-    await service.runTick(SUNDAY_0930_LOCAL);
-    expect(placesPromotions.enqueue).toHaveBeenCalledWith(
-      PLACE_ID,
-      'credit_prefetch',
-    );
-
-    // §17 one-searcher law: the stateless sub-1-creditRate place leaves no
-    // residue — including no promotion enqueue.
-    const lone = createHarness({ subjects: [SUBJECT], mass: 1 });
-    await lone.service.runTick(SUNDAY_0930_LOCAL);
-    expect(lone.placesPromotions.enqueue).not.toHaveBeenCalled();
-  });
+  // The credit_prefetch test was DELETED with its trigger (docket #1):
+  // polygons arrive at birth; poll-supply math no longer touches geometry.
 
   it('IDEMPOTENT (pre-filter): an existing (placeId, weekOf) tick publishes nothing', async () => {
     const { service, prisma } = createHarness({

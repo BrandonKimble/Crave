@@ -661,15 +661,10 @@ export class PollWeeklyRitualService {
       return;
     }
 
-    // §2(c) tier-2 promotion — derived pre-fetch: credit + creditRate ×
-    // Δt_to_tick ≥ 1. creditRate is PER-WEEK and the tick is weekly, so the
-    // formula is credit + creditRate ≥ 1: this place will warrant a poll by
-    // the next tick — earn its polygon ahead of the moment. Fire-and-forget;
-    // sits behind the no-residue early return above so one searcher still
-    // never promotes (§17 one-searcher law).
-    if (decision.credit + decision.creditRate >= 1) {
-      void this.placesPromotions.enqueue(placeId, 'credit_prefetch');
-    }
+    // Docket #1 (2026-07-30): the credit_prefetch earned-moment trigger is
+    // DELETED — polygons arrive at birth now, so poll-supply math no longer
+    // has a reason to touch geometry acquisition. (Trigger count at
+    // deletion: 17 lifetime enqueues, all redundant with birth-intake.)
 
     const ranked = this.rankSubjects({
       weekOf,

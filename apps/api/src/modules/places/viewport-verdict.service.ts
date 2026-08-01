@@ -61,14 +61,8 @@ export class ViewportVerdictService {
       }
     }
     const membership = resolveFeedMembership(view, candidates, bigPlaceIds);
-    if (membership.resolution.kind === 'place') {
-      // §2(e) tier-2 promotion: a viewport header answering from this place
-      // counts toward its "frequent header-answering" earned moment —
-      // regardless of which surface (polls feed / home) asked.
-      this.placesPromotions.noteHeaderAnswer(
-        membership.resolution.place.placeId,
-      );
-    }
+    // Docket #1: the header-answer earned-moment hook is DELETED — a place
+    // that can answer a header already has (or is seconds from) its outline.
     const descendants = membership.subjectPlaceIds.length
       ? await descendantPlaceIds(this.prisma, membership.subjectPlaceIds)
       : [];

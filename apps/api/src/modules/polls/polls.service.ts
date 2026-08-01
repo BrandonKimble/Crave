@@ -698,11 +698,9 @@ export class PollsService {
     if (!place) {
       throw new BadRequestException('Unable to resolve a place for this poll');
     }
-    // §2(a) tier-2 promotion: a poll created here is an earned moment for the
-    // place's scarce-pool polygon. Fire-and-forget — the §2 "blocking caller"
-    // nuance is about NAME resolution (handled above, never blocks); the
-    // polygon enqueue must never touch the creation path's latency/outcome.
-    void this.placesPromotions.enqueue(place.placeId, 'poll_created');
+    // Docket #1: the 'poll_created' earned-moment trigger is DELETED —
+    // under birth-intake with an immediate drain, the place already has (or
+    // is seconds from) its outline; nothing is left to earn.
     await this.enforceWeeklyPollCap(userId, place.placeId);
     if (dto.question?.trim()) {
       return this.createPollFromQuestion(

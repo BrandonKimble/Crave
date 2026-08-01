@@ -6,10 +6,7 @@
  * attempts++), census two-step (cheap geometry-id fetch then scarce
  * polygon), raw-SQL polygon persist, header-answer frequency memory.
  */
-import {
-  HEADER_ANSWER_MEMORY_TTL_MS,
-  PlacesPromotionService,
-} from './places-promotion.service';
+import { PlacesPromotionService } from './places-promotion.service';
 
 const PLACE_ID = '00000000-0000-4000-8000-000000000001';
 const PLACE_ID_2 = '00000000-0000-4000-8000-000000000002';
@@ -30,8 +27,13 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
     countryCode: 'US',
     subdivisionCode: 'TX',
     county: 'Hunt',
-    provider: 'census',
-    providerPlaceId: '4880032',
+    // Docket #1: the census lane is gone — every enqueueable place is a
+    // mirrored vendor entity carrying its geometry id, with an anchor
+    // (the P4 centroid coupling guarantees one).
+    provider: 'tomtom',
+    providerPlaceId: 'geo-wolfe',
+    centroidLat: '33.37',
+    centroidLng: '-96.07',
     promotedAt: null,
     ...overrides,
   };
@@ -225,52 +227,11 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       // First item hit the scarce boundary; the hardClosed month pool means
       // nothing behind it admits either — exactly ONE draw attempted.
       expect(fetchPolygon).toHaveBeenCalledTimes(1);
-      // Denial ≠ attempt: no attempts increment, no promotion stamp.
-      expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledTimes(1);
-      // (the one update is the providerBoundaryId cache from the cheap step)
-      expect(
-        prisma.placeGeometryPromotion.update.mock.calls[0][0].data,
-      ).toEqual({ providerBoundaryId: 'geo-wolfe' });
+      // Denial ≠ attempt: no attempts increment, no promotion stamp — and
+      // docket #1: no cheap-step cache write exists anymore (the geometry id
+      // IS the place's identity, carried from birth).
+      expect(prisma.placeGeometryPromotion.update).not.toHaveBeenCalled();
       expect(prisma.place.update).not.toHaveBeenCalled();
-    });
-
-    it('census-seeded place runs the two-step: cheap geometry-id fetch, cached, then the scarce draw', async () => {
-      const resolveGeometryId = jest
-        .fn()
-        .mockResolvedValue({ kind: 'ok', geometryId: 'geo-wolfe' });
-      const fetchPolygon = jest
-        .fn()
-        .mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON });
-      const { service, prisma } = makeHarness({
-        queueRows: [makeQueueRow()],
-        resolveGeometryId,
-        fetchPolygon,
-      });
-      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      // Step 1: county-qualified identity tuple (§1) — GEOID is NOT a
-      // TomTom geometry id.
-      expect(resolveGeometryId).toHaveBeenCalledWith({
-        name: 'Wolfe City',
-        county: 'Hunt',
-        subdivisionCode: 'TX',
-        countryCode: 'US',
-        providerLevelCode: 'Municipality',
-        // POINT IDENTITY (one-ground charter P0): the fixture row carries no
-        // centroid, so the drain passes a null anchor and the adapter falls
-        // back to the name lookup.
-        anchor: null,
-        // §2.5 resolve-time validation: the fixture row carries no bbox, so
-        // the drain passes null (adapter falls back to first-result).
-        bbox: null,
-      });
-      // The resolved id is cached on the queue row (a later scarce denial
-      // never re-spends the cheap draw).
-      expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
-        where: { placeId: PLACE_ID },
-        data: { providerBoundaryId: 'geo-wolfe' },
-      });
-      // Step 2: the scarce polygon draw uses the resolved id.
-      expect(fetchPolygon).toHaveBeenCalledWith('geo-wolfe');
     });
 
     it('a tomtom-provider place skips the cheap step: providerPlaceId IS the geometry id (§1)', async () => {
@@ -287,20 +248,6 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
       expect(resolveGeometryId).not.toHaveBeenCalled();
       expect(fetchPolygon).toHaveBeenCalledWith('geo-t');
-    });
-
-    it('cheap-pool denial on the id step stops the pass without an attempt', async () => {
-      const resolveGeometryId = jest.fn().mockResolvedValue({ kind: 'denied' });
-      const fetchPolygon = jest.fn();
-      const { service, prisma } = makeHarness({
-        queueRows: [makeQueueRow(), makeQueueRow({ placeId: PLACE_ID_2 })],
-        resolveGeometryId,
-        fetchPolygon,
-      });
-      await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      expect(resolveGeometryId).toHaveBeenCalledTimes(1);
-      expect(fetchPolygon).not.toHaveBeenCalled();
-      expect(prisma.placeGeometryPromotion.update).not.toHaveBeenCalled();
     });
 
     it('a consumed-draw miss increments attempts (no cap) and the item stays queued', async () => {
@@ -497,42 +444,20 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
     });
 
     it('a wrong-entity rejection meters its draws into the campaign', async () => {
-      // Non-trivial place bbox with a tiny returned polygon → wrong-entity
-      // reject ('attempted'), after 1 cheap + 1 scarce consumed draw.
-      const tinyPolygon = {
-        type: 'FeatureCollection' as const,
-        features: [
-          {
-            type: 'Feature',
-            geometry: {
-              type: 'Polygon',
-              coordinates: [
-                [
-                  [0, 0],
-                  [0, 0.001],
-                  [0.001, 0.001],
-                  [0, 0],
-                ],
-              ],
-            },
-          },
-        ],
-      };
+      // Docket #1: the only wrong-entity test left is the ANCHOR guard (the
+      // anchorless span heuristic died with the census lane). The polygon
+      // does not cover the place's own anchor → rejected ('attempted') after
+      // the scarce draw — and that consumed draw must still be metered.
       const fetchPolygon = jest
         .fn()
-        .mockResolvedValue({ kind: 'ok', geojson: tinyPolygon });
+        .mockResolvedValue({ kind: 'ok', geojson: POLYGON_GEOJSON });
       const spendCampaigns = {
         isDispatchable: jest.fn().mockResolvedValue(true),
         recordSpend: jest.fn().mockResolvedValue(undefined),
       };
       const { service, prisma } = makeHarness({
         queueRows: [makeQueueRow({ campaignId: 'camp-1' })],
-        place: makePlaceRow({
-          bboxMinLat: 0,
-          bboxMinLng: 0,
-          bboxMaxLat: 1,
-          bboxMaxLng: 1,
-        }),
+        polygonCoversAnchor: false,
         fetchPolygon,
         spendCampaigns,
       });
@@ -609,26 +534,6 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
     });
   });
 
-  describe('header-answer frequency (§2(e))', () => {
-    it('first answer remembers, second within the TTL enqueues, later answers stop hitting the DB', async () => {
-      const { service, prisma } = makeHarness({});
-      service.noteHeaderAnswer(PLACE_ID);
-      expect(prisma.$executeRaw).not.toHaveBeenCalled();
-      service.noteHeaderAnswer(PLACE_ID);
-      // fire-and-forget → flush microtasks
-      await Promise.resolve();
-      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
-      const insert = prisma.$executeRaw.mock.calls[0][0];
-      expect(insert.values).toContain('header_answers');
-      // Hot header place: no further DB hits per request.
-      service.noteHeaderAnswer(PLACE_ID);
-      service.noteHeaderAnswer(PLACE_ID);
-      await Promise.resolve();
-      expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
-    });
-
-    it('the memory TTL reuses the §2 30d region-observation constant (one knob)', () => {
-      expect(HEADER_ANSWER_MEMORY_TTL_MS).toBe(30 * 24 * 60 * 60 * 1000);
-    });
-  });
+  // The header-answer describe was DELETED with noteHeaderAnswer (docket #1):
+  // the attention memory earned polygons that now arrive at birth.
 });
