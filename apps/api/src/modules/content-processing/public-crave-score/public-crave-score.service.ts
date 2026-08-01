@@ -596,6 +596,11 @@ export class PublicCraveScoreService {
         FROM collection_source_documents sd
         WHERE sd.platform = s.platform
           AND lower(sd.community) = lower(s.handle)
+          -- Per-voter ballot documents (round-3 red team C2) are claim
+          -- carriers, not room activity: one poll must contribute ONE doc
+          -- to A(τ), not voters+1, or the poll room's calibration silently
+          -- re-weights by turnout.
+          AND NOT (sd.raw_payload ? 'voterUserId')
           AND NOT EXISTS (
             SELECT 1 FROM collection_relevance_verdicts v
             WHERE v.platform = sd.platform

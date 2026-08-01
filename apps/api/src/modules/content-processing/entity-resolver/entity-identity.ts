@@ -37,27 +37,40 @@ export function entityIdentityKey(name: string, type: EntityType): string {
     return base;
   }
   if (type === EntityType.food || type === EntityType.ingredient) {
-    // VARIANT CLOSURE TO A FIXPOINT (red team F8, round 2 ⑥b): any bounded
-    // expansion is asymmetric — two levels still gave 'curry' → min
-    // 'curri' vs 'curries' → min 'curr'. Iterating to a true fixpoint
-    // makes every member of a variant family land on the SAME closed set,
-    // so min-over-closure is a genuine canonical fold. Converges fast
-    // (variant rules only shrink/extend the head word by a few chars);
-    // over-collapse costs lock contention, never correctness — this key
-    // serializes and probes, it never asserts equality.
-    const closure = new Set<string>(foodNameVariants(base));
-    for (let size = -1; size !== closure.size; ) {
-      size = closure.size;
-      for (const variant of Array.from(closure)) {
-        for (const next of foodNameVariants(variant)) {
-          closure.add(next);
-        }
-      }
-    }
-    const collapsed = Array.from(closure).sort()[0] ?? base;
-    return collapsed.split(' ').sort().join(' ');
+    // PER-TOKEN fold, then sort (round-3 empirical red team: folding the
+    // whole name stems only the LAST word — head-final — so the key
+    // depended on token order and 41.8% of real multi-word names,
+    // including "pizza square"/"square pizza", still took different
+    // locks). Folding each token independently to its variant-closure
+    // minimum is order-invariant by construction; sorting finishes it.
+    // Coarse by design: this key serializes creators and widens probes,
+    // it never asserts equality.
+    return base
+      .split(' ')
+      .map((token) => tokenFold(token))
+      .sort()
+      .join(' ');
   }
   return base;
+}
+
+/** Canonical fold of ONE word: min over the fixpoint closure of its
+ *  number variants (round 2 ⑥b: any bounded expansion is asymmetric —
+ *  the fixpoint makes every member of a variant family land on the same
+ *  closed set). Terminates: singular candidates strictly shrink, grown
+ *  forms end in 's' and cannot grow again (proven round 3, ≤3 iterations
+ *  on real data). */
+function tokenFold(token: string): string {
+  const closure = new Set<string>(foodNameVariants(token));
+  for (let size = -1; size !== closure.size; ) {
+    size = closure.size;
+    for (const variant of Array.from(closure)) {
+      for (const next of foodNameVariants(variant)) {
+        closure.add(next);
+      }
+    }
+  }
+  return Array.from(closure).sort()[0] ?? token;
 }
 
 /**

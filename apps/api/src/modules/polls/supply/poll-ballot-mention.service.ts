@@ -16,6 +16,7 @@
  * events is never re-minted (retry-safe against crashes mid-mint).
  */
 import { Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
 import {
   EntityType,
   MentionSource,
@@ -196,12 +197,19 @@ export class PollBallotMentionService {
       for (const choice of choices) {
         const mentionKey = `poll-ballot:${pollId}:${choice.userId}`;
         affectedRestaurantIds.add(choice.restaurantId);
+        // source_id is VARCHAR(64); base (48 chars) + raw voter uuid
+        // overflows it and Postgres 22001-aborts the whole graduation
+        // (round-3 red team C1) — a short voter hash keeps it at 61.
+        const voterSourceId = `${documentSourceId}:${createHash('sha256')
+          .update(choice.userId)
+          .digest('hex')
+          .slice(0, 12)}`;
         const voterDocument = await tx.sourceDocument.upsert({
           where: {
             platform_sourceType_sourceId: {
               platform: POLL_SURFACE_PLATFORM,
               sourceType: MentionSource.post,
-              sourceId: `${documentSourceId}:${choice.userId}`,
+              sourceId: voterSourceId,
             },
           },
           update: {},
@@ -209,7 +217,8 @@ export class PollBallotMentionService {
             platform: POLL_SURFACE_PLATFORM,
             community: pollSurfaceHandle(poll.placeId as string),
             sourceType: MentionSource.post,
-            sourceId: `${documentSourceId}:${choice.userId}`,
+            sourceId: voterSourceId,
+            parentSourceId: documentSourceId,
             title: `${poll.question} — ballot`,
             sourceCreatedAt: poll.launchedAt ?? poll.createdAt,
             rawPayload: {

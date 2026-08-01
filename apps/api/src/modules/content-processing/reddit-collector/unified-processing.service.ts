@@ -396,8 +396,12 @@ export class UnifiedProcessingService implements OnModuleInit {
       // prompt correctly found nothing here" must supersede the old run's
       // claims, or the wrong old evidence stays live forever. Run the same
       // activation the consolidated tx would have run.
-      const zeroMentionActivate =
-        sourceMetadata.extractionTrace?.activateDocumentIds ?? [];
+      // DRY RUN writes nothing — this branch used to run before the
+      // dry-run gate and deleted real evidence during shadow runs
+      // (round-3 red team C3).
+      const zeroMentionActivate = this.dryRunEnabled
+        ? []
+        : (sourceMetadata.extractionTrace?.activateDocumentIds ?? []);
       let supersededRestaurantIds: string[] = [];
       if (zeroMentionActivate.length > 0 && sourceMetadata.extractionTrace) {
         const runId = sourceMetadata.extractionTrace.extractionRunId;
@@ -1599,6 +1603,47 @@ export class UnifiedProcessingService implements OnModuleInit {
                 name: true,
               },
             });
+            if (
+              !existing &&
+              (entityType === 'food' || entityType === 'ingredient')
+            ) {
+              // FOOD WORD-ORDER PROBE (round-3 empirical red team: the
+              // widened lock serialized "duck confit"/"confit duck" but the
+              // variant probe misses reordered names, so the second creator
+              // minted the twin anyway). Token-sorted stripped names are
+              // DB-computable; number variance is already covered by the
+              // variant probe above.
+              const sortedKey = canonicalName
+                .toLowerCase()
+                .replace(/[^a-z0-9 ]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .split(' ')
+                .sort()
+                .join(' ');
+              const orderMatches = await tx.$queryRaw<
+                Array<{ entity_id: string; name: string; aliases: string[] }>
+              >`
+                SELECT entity_id, name, aliases FROM core_entities
+                WHERE type = ${entityType}::"EntityType"
+                  AND status <> 'archived'
+                  AND (
+                    SELECT string_agg(w, ' ' ORDER BY w)
+                    FROM unnest(string_to_array(
+                      btrim(regexp_replace(regexp_replace(lower(name),
+                        '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')), ' ')) w
+                  ) = ${sortedKey}
+                ORDER BY created_at
+                LIMIT 1
+              `;
+              if (orderMatches.length > 0) {
+                existing = {
+                  entityId: orderMatches[0].entity_id,
+                  name: orderMatches[0].name,
+                  aliases: orderMatches[0].aliases,
+                };
+              }
+            }
             if (
               !existing &&
               entityType !== 'food' &&

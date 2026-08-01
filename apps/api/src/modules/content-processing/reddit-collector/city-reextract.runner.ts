@@ -129,6 +129,11 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       FROM collection_source_documents d
       WHERE d.community = ANY(${communities})
         AND d.active_extraction_run_id IS NOT NULL
+        -- poll_surface docs are synthetic ballot carriers (per-voter, no
+        -- body); replaying their no-LLM runs would activate an empty run
+        -- over the ballot mentions and supersede-delete them (round-3
+        -- red team). Same exclusion the curated-list builder applies.
+        AND d.platform <> 'poll_surface'
       GROUP BY 1
       ORDER BY min(d.collected_at)
     `;

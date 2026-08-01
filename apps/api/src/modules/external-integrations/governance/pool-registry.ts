@@ -281,7 +281,12 @@ export class PoolRegistry {
           });
           state.unpersisted = 0;
         } catch {
-          // Old-window tail stays in memory; next call retries.
+          // Round-3 C4: continuing here used to CLOBBER the tail at the
+          // bottom of this function (residualNow() sees the old window and
+          // returns 0). Bail instead: the window stays unconfirmed,
+          // reserve() fails closed, and the next ensureWindow retries the
+          // tail flush.
+          return;
         }
       }
       const carried = state && state.windowKey === key ? state.unpersisted : 0;
@@ -298,7 +303,11 @@ export class PoolRegistry {
         if (current.windowKey === key) {
           return current.unpersisted - carried;
         }
-        if (current.windowKey === initialKey) return 0;
+        if (current.windowKey === initialKey) {
+          // Consumption landed on the PRE-ROLL window mid-call — bail so
+          // the overwrite below can't discard it (round-3 C4 secondary).
+          return current.unpersisted > 0 ? null : 0;
+        }
         return null;
       };
       try {

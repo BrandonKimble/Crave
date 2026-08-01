@@ -133,7 +133,10 @@ export class CampaignNotFoundError extends Error {
 
 /** Typed 'not now' (mirrors PoolDenial, §14.7): a breached campaign's work
  *  refuses further spend until the owner re-approves via resumeAfterBreach.
- *  Callers requeue the work; never treat as a hard error outcome. */
+ *  NOTE (round-3 red team C6): today's callers log-and-continue rather than
+ *  requeue — the breached/terminal distinction below exists so a FUTURE
+ *  requeue-on-breach caller cannot spin forever against a completed
+ *  campaign, not because one exists yet. */
 export class CampaignBreachedError extends Error {
   constructor(public readonly campaignId: string) {
     super(

@@ -257,6 +257,45 @@ under attack: effective-prompt gate coherence, F5 sweep ordering,
 UPDATE..RETURNING verdict, M4 single-flight, residual math on all three
 interleavings.
 
+## RED-TEAM ROUND 3 (2026-08-01, static fix-attacker + EMPIRICAL adversary
+
+executing code/SQL against the prod mirror; all fixed same day)
+
+Static (on round-2's fixes): C1 CRITICAL — per-voter ballot source_id
+(85 chars) overflowed VARCHAR(64); every graduation would 22001-abort in
+an infinite retry loop (unit specs passed because the mock hid the
+column). Voter suffix is now a 12-char hash (61 total). C2 — voter docs
+inflated the poll room's A(τ) mass by turnout; excluded from the mass
+count via raw_payload voterUserId (+ parentSourceId provenance). C3 —
+zero-mention supersede ran BEFORE the dry-run gate (shadow runs would
+delete real evidence); gated. C4 — month-roll tail was clobbered when
+its flush failed (bail-and-retry now) + mid-load pre-roll consume guard.
+C5 — stranded metric gained the restaurant dimension (was blind to it).
+C6 — breach-error docstring corrected (no requeue caller exists yet).
+Plus: city-reextract excludes poll_surface docs (replaying no-LLM ballot
+runs would supersede-delete ballot mentions). Verified sound: ballot
+re-mint idempotency, sweep pass composition (entity-first is required
+and correct), fixpoint termination (proven, ≤3 iterations, ns cost).
+
+Empirical (17,188 real names, sweep dry-runs under simulated merge
+load, full unique-violation scans): the identity fold was NOT
+order-invariant (41.8% of multi-word names — the docblock's own
+"pizza square" example still split) because only the HEAD word was
+stemmed — now folds EVERY token to its closure minimum then sorts
+(re-verified invariant on all divergent pairs); the food probe never
+covered word-order twins even under a shared lock — added a
+token-sorted stripped SQL probe for foods. PASSES with numbers: 0
+content-unique violations on prod data; 0 false adoptions in the
+stripped probe (21/21 real dupes it would have prevented); sweep
+leak-free and abort-free under a simulated 38-pair merge (2,963 events,
+7 real collisions proving the re-keyed pre-check earns its keep); TS
+key ≡ SQL key byte-for-byte on all 10k+ non-food names; fold runs 17k
+names in 43ms. Claims table: 0 rows ever — the claim path is still
+UNTESTED in production (first real exercise = the next collection
+cycle; watch it). Stranded-metric note: the entity-dim count is
+dominated by ~11k deliberately-archived cuisine attributes awaiting the
+class-② ruling — expected to drain then.
+
 ## SEQUENCE (this becomes audit class ①, expanded)
 
 1. Stop the bleeding (data): repair C1's dark events while all runs

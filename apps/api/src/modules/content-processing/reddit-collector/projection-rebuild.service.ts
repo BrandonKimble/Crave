@@ -1123,15 +1123,30 @@ export class ProjectionRebuildService implements OnModuleInit {
         AND winner.entity_id = r.to_entity_id
         AND winner.status = 'active'
     `;
-    const unredirected = await this.prismaService.$queryRaw<
-      Array<{ n: bigint | number }>
+    // Stranded = still on a tombstone after the sweep, split by dimension
+    // (round-3 C5: the old count was blind to the restaurant dimension) and
+    // by redirect-lessness. NOTE the entity-dimension count is dominated by
+    // ~11k deliberately-archived attribute events (cuisine vocabulary)
+    // awaiting the class-② repointing ruling — expected to drain then, not
+    // a regression signal until it does.
+    const stranded = await this.prismaService.$queryRaw<
+      Array<{ entity_dim: number; restaurant_dim: number; praise_dim: number }>
     >`
-      SELECT count(*) AS n
-      FROM core_restaurant_entity_events ev
-      JOIN core_entities e ON e.entity_id = ev.entity_id
-      WHERE e.status = 'archived'
+      SELECT
+        (SELECT count(*)::int FROM core_restaurant_entity_events ev
+          JOIN core_entities e ON e.entity_id = ev.entity_id
+          WHERE e.status = 'archived') AS entity_dim,
+        (SELECT count(*)::int FROM core_restaurant_entity_events ev
+          JOIN core_entities e ON e.entity_id = ev.restaurant_id
+          WHERE e.status = 'archived') AS restaurant_dim,
+        (SELECT count(*)::int FROM core_restaurant_events ev
+          JOIN core_entities e ON e.entity_id = ev.restaurant_id
+          WHERE e.status = 'archived') AS praise_dim
     `;
-    const strandedCount = Number(unredirected[0]?.n ?? 0);
+    const strandedCount =
+      Number(stranded[0]?.entity_dim ?? 0) +
+      Number(stranded[0]?.restaurant_dim ?? 0) +
+      Number(stranded[0]?.praise_dim ?? 0);
     const rebuildSet = Array.from(
       new Set(
         [...repointed, ...dupDeleted, ...restRepointed, ...praiseRepointed].map(
@@ -1144,6 +1159,9 @@ export class ProjectionRebuildService implements OnModuleInit {
         operation: 'tombstone_event_sweep',
         rebuiltRestaurants: rebuildSet.length,
         strandedWithoutRedirect: strandedCount,
+        strandedEntityDim: Number(stranded[0]?.entity_dim ?? 0),
+        strandedRestaurantDim: Number(stranded[0]?.restaurant_dim ?? 0),
+        strandedPraiseDim: Number(stranded[0]?.praise_dim ?? 0),
       });
     }
     for (let i = 0; i < rebuildSet.length; i += 50) {
