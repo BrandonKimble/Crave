@@ -372,36 +372,6 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('COUNTY GAP-FILL survives the id-first path (RED: P3 silently stopped the county axis accruing)', async () => {
-    // The regression this pins: P3's vendor-id match jumps straight to
-    // mergeSketch, bypassing resolveIdentity where county adoption used to
-    // live — so a county-carrying observation against a county-less row left
-    // the county NULL forever, for essentially every observation.
-    const countyLess = makePlaceRow({ county: null });
-    const { service, findUniqueVendorId, update } = makeHarness([]);
-    findUniqueVendorId.mockResolvedValue(countyLess);
-
-    await service.sketchChain([
-      { ...austinNode, bbox: null, county: 'Travis' },
-    ]);
-
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data.county).toBe('Travis');
-  });
-
-  it('a stored county is NEVER overwritten by a differing observation', async () => {
-    const stored = makePlaceRow({ county: 'Hunt' });
-    const { service, findUniqueVendorId, update } = makeHarness([]);
-    findUniqueVendorId.mockResolvedValue(stored);
-
-    await service.sketchChain([
-      { ...austinNode, bbox: null, county: 'Travis' },
-    ]);
-
-    const wrote = update.mock.calls[0]?.[0]?.data ?? {};
-    expect(wrote.county).toBeUndefined();
-  });
-
   it('appends a new parent edge ATOMICALLY (Prisma push — concurrent merges cannot drop each other, finding 1c)', async () => {
     const priorParent = '11111111-1111-4111-8111-111111111111';
     const texasRow = makePlaceRow({

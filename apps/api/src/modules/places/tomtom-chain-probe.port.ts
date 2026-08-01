@@ -18,7 +18,7 @@
  * "TomTom pools governed FIRST — the one ungoverned money"), which is exactly
  * why it is NOT built here: governance wiring belongs to the Phase-B cutover.
  */
-import { GeoBbox, GeoPoint, ProbedRegion } from '@crave-search/shared';
+import { GeoPoint, ProbedRegion } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 
 /**
@@ -50,18 +50,6 @@ export interface TomtomChainProbeResult {
   probedRegion: ProbedRegion;
 }
 
-/**
- * §2 promotion-drain vendor outcomes. `denied` = a governed pool said typed
- * not-now (the item stays queued, NOT an attempt); `miss` = the pool admitted
- * and the vendor had no usable answer (a draw was consumed — attempts++).
- * Transport/vendor ERRORS still throw (the drain treats a throw as a
- * consumed-draw systemic fault and ends the pass).
- */
-export type GeometryIdResolution =
-  | { kind: 'ok'; geometryId: string }
-  | { kind: 'denied' }
-  | { kind: 'miss' };
-
 export type PolygonFetchResult =
   | { kind: 'ok'; geojson: GeoJsonFeatureCollection }
   | { kind: 'denied' }
@@ -78,43 +66,12 @@ export interface GeoJsonFeatureCollection {
   }>;
 }
 
-/** The identity tuple a county-qualified forward geocode needs (§1). */
-export type GeometryIdentityNode = Pick<
-  PlaceSketchNode,
-  'name' | 'county' | 'subdivisionCode' | 'countryCode' | 'providerLevelCode'
-> & {
-  /**
-   * The place's own known extent (bbox index columns). When present, the
-   * adapter VALIDATES candidate geocode results against it and picks the
-   * best-agreeing candidate — the vendor keeps duplicate same-name records
-   * (observed: "San Antonio, TX" Municipality twice, one 0.66° and one
-   * 0.012° wide) and rank order is not trustworthy. Null/absent = legacy
-   * first-result behavior.
-   */
-  bbox?: GeoBbox | null;
-  /**
-   * POINT IDENTITY (one-ground charter P0, 2026-07-26): a coordinate
-   * GUARANTEED to lie inside the real place — for census-seeded rows the
-   * Census internal point, stored as the place's centroid. When present the
-   * adapter resolves the geometry id by REVERSE-geocoding this point at the
-   * place's own level: the vendor answers with the entity that actually
-   * contains it, so there is no same-name ambiguity to disambiguate and no
-   * bbox comparison to make ("Switzerland, Baker FL" cannot resolve to
-   * Switzerland the country). Name matching is the FALLBACK for rows that
-   * carry no anchor.
-   */
-  anchor?: GeoPoint | null;
-};
+// GeometryIdResolution / GeometryIdentityNode DELETED (dockets #1 + #4):
+// the census resolve lane is gone; every place carries its geometry id from
+// birth under the composite (id, level) identity.
 
 export interface TomtomChainProbe {
   probe(anchor: GeoPoint): Promise<TomtomChainProbeResult>;
-  /**
-   * §2 promotion two-step, step 1 (census-seeded places only): ONE cheap-pool
-   * county-qualified forward geocode to learn the place's stable TomTom
-   * geometry id (a tomtom-provider place already carries it as
-   * providerPlaceId — §1 identity law, live-validated).
-   */
-  resolveGeometryId(node: GeometryIdentityNode): Promise<GeometryIdResolution>;
   /**
    * §2 promotion step 2: the SCARCE-pool Additional Data polygon fetch
    * (geometry id → Polygon/MultiPolygon FeatureCollection).

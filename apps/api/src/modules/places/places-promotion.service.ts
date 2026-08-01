@@ -690,10 +690,8 @@ export class PlacesPromotionService {
         where: { placeId },
         data: { promotedAt: now, providerBoundaryId: geometryId },
       }),
-      this.prisma.place.update({
-        where: { placeId },
-        data: { promotedAt: now },
-      }),
+      // Docket #4: places.promoted_at is DROPPED — it had zero readers (the
+      // drain reads the QUEUE row's promoted_at, stamped above).
     ]);
   }
 

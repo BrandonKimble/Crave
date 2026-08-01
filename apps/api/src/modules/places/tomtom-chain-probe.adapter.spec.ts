@@ -184,38 +184,9 @@ describe('TomtomChainProbeAdapter', () => {
     expect(state?.bbox ?? null).toBeNull();
   });
 
-  it('threads the inline county onto nodes FINER than the county rung ONLY (§1 county axis)', async () => {
-    // Live-verified shape (2026-07-19, Lakeside TX probes): the reverse
-    // response carries countrySecondarySubdivision inline as the BARE county
-    // name even when the returned entity is finer.
-    const { adapter } = buildAdapter({
-      reverseAddresses: [
-        {
-          ...UWS_REVERSE_ENTRY,
-          address: {
-            ...UWS_REVERSE_ENTRY.address,
-            countrySecondarySubdivision: 'New York',
-            municipalitySubdivision: 'Manhattan',
-          },
-        },
-      ],
-      knownBboxIdentities: true,
-    });
-    const result = await adapter.probe(ANCHOR);
-    const countyOf = (level: string) =>
-      result.chain.find((n) => n.providerLevelCode === level)?.county ?? null;
-    // Finer than the county rung: county threaded.
-    expect(countyOf('Neighbourhood')).toBe('New York');
-    expect(countyOf('MunicipalitySubdivision')).toBe('New York');
-    expect(countyOf('Municipality')).toBe('New York');
-    // The county rung itself and broader: a county is not discriminated by
-    // itself, and a state/country is not inside a county — NULL.
-    expect(countyOf('CountrySecondarySubdivision')).toBeNull();
-    expect(countyOf('CountrySubdivision')).toBeNull();
-    expect(countyOf('Country')).toBeNull();
-  });
+  // The county-threading test DIED with the county axis (docket #4).
 
-  it('county-qualifies the forward-geocode query so limit=1 lands on the observed same-name twin', async () => {
+  it('qualifies the forward-geocode query by name + subdivision (county died with docket #4; anchor containment disambiguates twins)', async () => {
     const { adapter, calls } = buildAdapter({
       reverseAddresses: [
         {
@@ -237,9 +208,7 @@ describe('TomtomChainProbeAdapter', () => {
           '',
       );
     // Municipality (below the county rung) carries the county qualifier…
-    expect(
-      urlFor('Municipality').endsWith('/New York, New York, NY.json'),
-    ).toBe(true);
+    expect(urlFor('Municipality').endsWith('/New York, NY.json')).toBe(true);
     // …while the state rung stays unqualified (no county axis there).
     expect(urlFor('CountrySubdivision').endsWith('/New York, NY.json')).toBe(
       true,
@@ -269,253 +238,12 @@ describe('TomtomChainProbeAdapter', () => {
   });
 });
 
-const IDENTITY_NODE = {
-  name: 'Wolfe City',
-  county: 'Hunt',
-  subdivisionCode: 'TX',
-  countryCode: 'US',
-  providerLevelCode: 'Municipality',
-};
-
-describe('TomtomChainProbeAdapter — POINT IDENTITY (one-ground charter P0)', () => {
-  const ANCHORED_NODE = {
-    ...IDENTITY_NODE,
-    anchor: { lat: 33.36, lng: -96.07 },
-  };
-
-  it('an anchored node asks WHAT IS HERE (reverse, level-pinned) and never runs the name lookup', async () => {
-    const { adapter, calls, drawCalls } = buildAdapter({
-      reverseAddresses: [
-        {
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-by-point' } },
-        },
-      ],
-      // RED-proof: the name lookup would answer a DIFFERENT (wrong-twin) id.
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-wrong-twin' } },
-        },
-      ],
-    });
-    const result = await adapter.resolveGeometryId(ANCHORED_NODE);
-    expect(result).toEqual({ kind: 'ok', geometryId: 'geo-by-point' });
-    // Exactly one draw, and it is the reverse (point) call.
-    expect(drawCalls).toEqual([
-      { pool: 'tomtom.reverseGeocode', workClass: 'promotion-point-identity' },
-    ]);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].url).toContain('/reverseGeocode/33.36,-96.07');
-    expect(calls[0].params.entityType).toBe('Municipality');
-  });
-
-  it('a DIFFERENT provider country code is still accepted (US/PR: the vocabularies are not shared)', async () => {
-    // Caught live before it ever ran: the Census seeds Puerto Rico municipios
-    // as country US while TomTom answers PR. A country equality gate would
-    // have rejected 78 of the 351 backlog rows (22%) and sent them back to
-    // the name matching that already failed them. The anchor is interior and
-    // the level is pinned, so the containing entity IS the answer.
-    const { adapter, calls } = buildAdapter({
-      reverseAddresses: [
-        {
-          address: { countryCode: 'PR' },
-          dataSources: { geometry: { id: 'geo-ponce' } },
-        },
-      ],
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-by-name' } },
-        },
-      ],
-    });
-    expect(await adapter.resolveGeometryId(ANCHORED_NODE)).toEqual({
-      kind: 'ok',
-      geometryId: 'geo-ponce',
-    });
-    expect(calls).toHaveLength(1); // the name lookup never runs
-  });
-
-  it('a point with NO geometry id is a miss, and falls back to the name lookup', async () => {
-    const { adapter, calls } = buildAdapter({
-      reverseAddresses: [{ address: { countryCode: 'US' } }], // no id
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-by-name' } },
-        },
-      ],
-    });
-    expect(await adapter.resolveGeometryId(ANCHORED_NODE)).toEqual({
-      kind: 'ok',
-      geometryId: 'geo-by-name',
-    });
-    expect(calls).toHaveLength(2); // point tried, then name
-  });
-
-  it('a POOL DENIAL on the point call is typed not-now — it must NOT fall through to the name lookup', async () => {
-    const { adapter, calls } = buildAdapter({ denyPool: true });
-    expect(await adapter.resolveGeometryId(ANCHORED_NODE)).toEqual({
-      kind: 'denied',
-    });
-    expect(calls).toHaveLength(0);
-  });
-
-  it('an anchorless node keeps the name lookup (the fallback path is intact)', async () => {
-    const { adapter, drawCalls } = buildAdapter({
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-wolfe' } },
-        },
-      ],
-    });
-    expect(await adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
-      kind: 'ok',
-      geometryId: 'geo-wolfe',
-    });
-    expect(drawCalls).toEqual([
-      { pool: 'tomtom.geocode', workClass: 'promotion' },
-    ]);
-  });
-});
+// The POINT-IDENTITY resolve describe DIED with resolveGeometryId (dockets
+// #1 + #4): the census resolve lane is gone — every place carries its
+// geometry id from birth.
 
 describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
-  it('resolveGeometryId rides the CHEAP pool with the promotion workClass and county-qualified query', async () => {
-    const { adapter, calls, drawCalls } = buildAdapter({
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-wolfe' } },
-        },
-      ],
-    });
-    const result = await adapter.resolveGeometryId(IDENTITY_NODE);
-    expect(result).toEqual({ kind: 'ok', geometryId: 'geo-wolfe' });
-    expect(drawCalls).toEqual([
-      { pool: 'tomtom.geocode', workClass: 'promotion' },
-    ]);
-    expect(calls[0].url).toContain(encodeURIComponent('Wolfe City, Hunt, TX'));
-  });
-
-  it('resolveGeometryId: denial is typed not-now; a wrong-entity match is a miss', async () => {
-    const denied = buildAdapter({ denyPool: true });
-    expect(await denied.adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
-      kind: 'denied',
-    });
-    const wrongEntity = buildAdapter({
-      forwardResults: [
-        {
-          entityType: 'Neighbourhood',
-          address: { countryCode: 'US' },
-          dataSources: { geometry: { id: 'geo-x' } },
-        },
-      ],
-    });
-    expect(await wrongEntity.adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
-      kind: 'miss',
-    });
-  });
-
-  it('resolveGeometryId with a place bbox: picks the bbox-AGREEING candidate, not the vendor rank-1 twin (§2.5)', async () => {
-    // The San Antonio defect: the vendor keeps two same-name Municipality
-    // records and ranks the 0.012°-wide fragment first for the
-    // county-qualified query. The place's own extent must decide.
-    const { adapter, calls } = buildAdapter({
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          boundingBox: {
-            topLeftPoint: { lat: 29.385, lon: -98.604 },
-            btmRightPoint: { lat: 29.368, lon: -98.592 },
-          },
-          dataSources: { geometry: { id: 'geo-tiny-twin' } },
-        },
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          boundingBox: {
-            topLeftPoint: { lat: 29.761, lon: -98.886 },
-            btmRightPoint: { lat: 29.103, lon: -98.223 },
-          },
-          dataSources: { geometry: { id: 'geo-real' } },
-        },
-      ],
-    });
-    const result = await adapter.resolveGeometryId({
-      ...IDENTITY_NODE,
-      name: 'San Antonio',
-      county: 'Bexar',
-      bbox: {
-        minLat: 29.103,
-        minLng: -98.886,
-        maxLat: 29.761,
-        maxLng: -98.223,
-      },
-    });
-    expect(result).toEqual({ kind: 'ok', geometryId: 'geo-real' });
-    // A validation bbox widens the draw to a candidate LIST (still one call).
-    expect(calls[0].params.limit).toBe(5);
-  });
-
-  it('resolveGeometryId with a place bbox: a vendor bbox far WIDER than the census bbox still agrees (containment, not size-ratio)', async () => {
-    // Live-proven (Brunswick GA): the RIGHT record's vendor bbox is ~6× the
-    // census bbox (water/metro extent) — it must be chosen, because it fully
-    // CONTAINS the place's own extent.
-    const { adapter } = buildAdapter({
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          boundingBox: {
-            topLeftPoint: { lat: 31.4, lon: -81.7 },
-            btmRightPoint: { lat: 30.98, lon: -81.3 },
-          },
-          dataSources: { geometry: { id: 'geo-wide-but-right' } },
-        },
-      ],
-    });
-    expect(
-      await adapter.resolveGeometryId({
-        ...IDENTITY_NODE,
-        bbox: { minLat: 31.11, minLng: -81.53, maxLat: 31.17, maxLng: -81.46 },
-      }),
-    ).toEqual({ kind: 'ok', geometryId: 'geo-wide-but-right' });
-  });
-
-  it('resolveGeometryId with a place bbox: NO agreeing candidate = miss (sketch truth beats a wrong twin)', async () => {
-    const { adapter } = buildAdapter({
-      forwardResults: [
-        {
-          entityType: 'Municipality',
-          address: { countryCode: 'US' },
-          boundingBox: {
-            topLeftPoint: { lat: 29.385, lon: -98.604 },
-            btmRightPoint: { lat: 29.368, lon: -98.592 },
-          },
-          dataSources: { geometry: { id: 'geo-tiny-twin' } },
-        },
-      ],
-    });
-    expect(
-      await adapter.resolveGeometryId({
-        ...IDENTITY_NODE,
-        bbox: {
-          minLat: 29.103,
-          minLng: -98.886,
-          maxLat: 29.761,
-          maxLng: -98.223,
-        },
-      }),
-    ).toEqual({ kind: 'miss' });
-  });
+  // The five resolveGeometryId tests DIED with the method (dockets #1+#4).
 
   it('fetchPolygon rides the SCARCE pool and returns only Polygon/MultiPolygon features', async () => {
     const { adapter, drawCalls } = buildAdapter({
@@ -571,16 +299,6 @@ describe('TomtomChainProbeAdapter — wave-6 item 2: 429 → poisonWindow', () =
       kind: 'denied',
     });
     expect(poisonWindow).toHaveBeenCalledWith('tomtom.scarcePolygons', 5000);
-  });
-
-  it('resolveGeometryId: a 429 without Retry-After poisons the GEOCODE pool with the K4 per-second-window default', async () => {
-    const { adapter, poisonWindow } = buildAdapter({
-      httpFailure: { status: 429 },
-    });
-    expect(await adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
-      kind: 'denied',
-    });
-    expect(poisonWindow).toHaveBeenCalledWith('tomtom.geocode', 1000);
   });
 
   it('probe (reverse geocode): a 429 poisons the REVERSE pool and throws the pool-denied operational miss — never a negative observation', async () => {

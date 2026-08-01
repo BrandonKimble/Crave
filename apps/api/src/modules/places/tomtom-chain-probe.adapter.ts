@@ -45,15 +45,10 @@ import {
   GeoBbox,
   GeoPoint,
   bboxContainsPoint,
-  bboxIntersectionParts,
-  bboxLatSpan,
-  bboxLngSpan,
   ProbedRegion,
 } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 import {
-  GeometryIdResolution,
-  GeometryIdentityNode,
   PolygonFetchResult,
   PROBE_SPEAKS_FOR_METERS,
   TomtomChainProbe,
@@ -86,20 +81,6 @@ const LEVEL_LADDER: ReadonlyArray<{
   },
   { levelCode: 'Country', nameOf: (a) => a.country },
 ];
-
-/**
- * The county rung's position in the ladder. Nodes FINER than this rung
- * (Municipality, MunicipalitySubdivision, Neighbourhood) carry the reverse
- * response's inline countrySecondarySubdivision as their §1 county axis —
- * the response carries it even when the returned entity is finer (best
- * effort: some responses omit it; the gap-fill law absorbs late arrivals).
- * The county rung itself and everything broader get NULL: a county is not
- * discriminated by itself (county names are unique within a subdivision),
- * and a state/country is not inside a county.
- */
-const COUNTY_RUNG_INDEX = LEVEL_LADDER.findIndex(
-  (rung) => rung.levelCode === 'CountrySecondarySubdivision',
-);
 
 /** §16 definitional: 6-rung ladder, most-specific rung free with reverse. */
 const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
@@ -252,12 +233,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       address.countrySubdivision?.trim() ||
       null;
 
-    const countyName = address.countrySecondarySubdivision?.trim() || null;
-
     // Build the chain (most specific first) from whatever rungs the response
     // actually names — §2 sketches what was OBSERVED, never a padded ladder.
     const chain: PlaceSketchNode[] = [];
-    for (const [rungIndex, rung] of LEVEL_LADDER.entries()) {
+    for (const rung of LEVEL_LADDER) {
       const name = rung.nameOf(address)?.trim();
       if (!name) {
         continue;
@@ -268,9 +247,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         countryCode,
         // A country is not inside a subdivision — identity stops at itself.
         subdivisionCode: rung.levelCode === 'Country' ? null : subdivisionCode,
-        // County axis only on nodes FINER than the county rung (see
-        // COUNTY_RUNG_INDEX doc).
-        county: rungIndex < COUNTY_RUNG_INDEX ? countyName : null,
         provider: 'tomtom',
       });
     }
@@ -446,123 +422,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     };
   }
 
-  /**
-   * §2 promotion two-step, step 1: cheap-pool forward geocode → the stable
-   * TomTom geometry id for a place the catalog knows only by a non-tomtom
-   * alias (census GEOID). Same county-qualified mechanics as the probe path;
-   * distinct workClass so the draw ledger attributes the spend honestly.
-   */
-  async resolveGeometryId(
-    node: GeometryIdentityNode,
-  ): Promise<GeometryIdResolution> {
-    // POINT IDENTITY FIRST (one-ground charter P0): when the place carries an
-    // anchor guaranteed to lie inside it (census internal point), ASK WHAT IS
-    // HERE rather than searching for a name and then guessing which duplicate
-    // is ours. The vendor answers with the entity containing the point, so
-    // ambiguity never arises: "Switzerland, Baker FL" cannot come back as
-    // Switzerland the country. Same cheap-pool cost as the name lookup it
-    // replaces (one draw), and it needs no bbox at all.
-    if (node.anchor) {
-      const resolved = await this.geometryIdAtPoint(node);
-      if (resolved.kind !== 'miss') {
-        return resolved; // ok | denied — a denial must not fall through
-      }
-      // A point miss (vendor names no entity of this level here) falls
-      // through to the name lookup: the census point and the vendor's
-      // coverage can legitimately disagree at this level.
-    }
-    // BBOX-VALIDATED SELECTION (§2.5): the vendor keeps duplicate same-name
-    // records ("San Antonio, TX" Municipality exists twice — 0.66° wide and
-    // 0.012° wide) and query phrasing decides which ranks first, so rank is
-    // not identity. Fetch several candidates and pick by agreement with the
-    // place's own known extent; if none agree, that is a MISS — sketch truth
-    // beats a confident wrong twin.
-    const outcome = await this.forwardGeocodeMatch(
-      node,
-      'promotion',
-      node.bbox ? GEOMETRY_ID_CANDIDATE_LIMIT : 1,
-    );
-    if (outcome.kind !== 'ok') {
-      return { kind: outcome.kind };
-    }
-    const candidates = outcome.results.filter((result) =>
-      result.dataSources?.geometry?.id?.trim(),
-    );
-    const chosen = node.bbox
-      ? pickBboxAgreeingCandidate(candidates, node.bbox)
-      : (candidates[0] ?? null);
-    if (!chosen) {
-      this.logger.warn(
-        `resolveGeometryId: no bbox-agreeing candidate for "${node.name}" (${candidates.length} candidates) — miss`,
-      );
-      return { kind: 'miss' };
-    }
-    return {
-      kind: 'ok',
-      geometryId: chosen.dataSources!.geometry!.id!.trim(),
-    };
-  }
-
-  /**
-   * POINT IDENTITY (one-ground charter P0): reverse-geocode the place's own
-   * interior anchor, filtered to the place's own level, and take the stable
-   * geometry id the vendor returns for the entity that CONTAINS that point.
-   * The country is verified (an anchor near a border can answer across it);
-   * the level is pinned by the request itself. One cheap-pool draw.
-   */
-  private async geometryIdAtPoint(
-    node: GeometryIdentityNode,
-  ): Promise<GeometryIdResolution> {
-    const anchor = node.anchor as GeoPoint;
-    const url = `${this.reverseBaseUrl}/${anchor.lat},${anchor.lng}.json`;
-    let response: AxiosResponse<TomtomReverseResponse> | null;
-    try {
-      response = await this.governance.draw(
-        'tomtom.reverseGeocode',
-        'promotion-point-identity',
-        () =>
-          firstValueFrom(
-            this.httpService.get<TomtomReverseResponse>(url, {
-              params: {
-                key: this.apiKey as string,
-                entityType: node.providerLevelCode,
-              },
-              timeout: this.timeoutMs,
-            }),
-          ),
-      );
-    } catch (error) {
-      if (this.poisonPoolOn429(error, 'tomtom.reverseGeocode')) {
-        return { kind: 'denied' };
-      }
-      throw error;
-    }
-    if (!response) {
-      return { kind: 'denied' };
-    }
-    const entry = (response.data?.addresses ?? [])[0];
-    const geometryId = entry?.dataSources?.geometry?.id?.trim();
-    if (!geometryId) {
-      return { kind: 'miss' };
-    }
-    // NO country equality gate (removed 2026-07-26 before it ever ran in
-    // anger): provider country codes are NOT a shared vocabulary. The Census
-    // seeds Puerto Rico municipios as country US; TomTom answers PR. A strict
-    // check would have rejected all 78 PR rows in the backlog (22%) and sent
-    // them back to the name matching that already failed them.
-    //
-    // Nothing is lost: the anchor is a point GUARANTEED to lie inside this
-    // place, and the request pins the level — so whatever entity contains it
-    // at that level IS the answer, by construction. The polygon that comes
-    // back is still validated downstream by the promotion WRONG-ENTITY guard.
-    const countryCode = entry?.address?.countryCode?.trim().toUpperCase();
-    if (countryCode && countryCode !== node.countryCode) {
-      this.logger.debug(
-        `geometryIdAtPoint: ${node.providerLevelCode} "${node.name}" answered ${countryCode} (catalog says ${node.countryCode}) — accepted; provider country vocabularies differ (US/PR)`,
-      );
-    }
-    return { kind: 'ok', geometryId };
-  }
+  // resolveGeometryId / geometryIdAtPoint DELETED (dockets #1 + #4,
+  // 2026-07-30): the census-GEOID resolve lane — the last name-identity
+  // organ. Its only caller died when promotion stopped needing it (every
+  // place carries its geometry id from birth, composite (id, level) unique).
 
   /**
    * The one governed forward-geocode call, shared by the probe's bbox fill
@@ -577,7 +440,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
    * never shed — bboxes only ever grow).
    */
   private async forwardGeocodeMatch(
-    node: GeometryIdentityNode,
+    node: Pick<
+      PlaceSketchNode,
+      'name' | 'subdivisionCode' | 'countryCode' | 'providerLevelCode'
+    >,
     workClass: string,
     limit = 1,
   ): Promise<
@@ -587,8 +453,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       }
     | { kind: 'denied' | 'miss' }
   > {
+    // Docket #4: the county qualifier died with the county column — the
+    // caller validates candidates by ANCHOR CONTAINMENT, which is stronger
+    // than any name qualifier.
     const query = encodeURIComponent(
-      [node.name, node.county, node.subdivisionCode]
+      [node.name, node.subdivisionCode]
         .filter((part): part is string => Boolean(part))
         .join(', '),
     );
@@ -771,61 +640,6 @@ function parseReverseBoundingBox(
  * so far are 2-4 records deep; 5 is headroom, still one cheap draw.
  */
 const GEOMETRY_ID_CANDIDATE_LIMIT = 5;
-
-/**
- * §16 DERIVED: the agreement floor — a candidate must cover at least half of
- * the place's own bbox. A true record CONTAINS the place bbox (~100%
- * coverage, even when the vendor box is much wider — observed Brunswick GA:
- * vendor bbox 6× the census bbox, still full containment); a duplicate-record
- * fragment covers almost none of it (San Antonio's 0.012° twin ≈ 0.04%).
- * Majority is the loosest threshold that still separates those two clusters.
- */
-const CANDIDATE_PLACE_COVERAGE_FLOOR = 0.5;
-
-/**
- * Pick the candidate whose vendor bbox AGREES with the place's own known
- * extent, measured as INTERSECTION-over-PLACE-area: how much of the place's
- * bbox the candidate's bbox covers. Deliberately NOT symmetric IoU and NOT a
- * center/span test — vendor bboxes for the RIGHT record are often far wider
- * than census bounds (water/metro extent), which a center-inside or
- * size-ratio test wrongly rejects (live-proven: Brunswick GA), while a
- * wrong-twin fragment can never cover the majority of the true extent.
- * Highest coverage wins; below the floor = null (caller treats as miss).
- */
-function pickBboxAgreeingCandidate(
-  candidates: TomtomGeocodeResult[],
-  placeBbox: GeoBbox,
-): TomtomGeocodeResult | null {
-  // Wrap-aware throughout (bug fixed 2026-07-26): raw `maxLng - minLng` spans
-  // and raw min/max overlap go NEGATIVE across the antimeridian, so a
-  // seam-straddling place scored every candidate at zero overlap and picked
-  // none. bboxLngSpan/bboxIntersectionParts speak in arcs.
-  const placeArea = bboxLngSpan(placeBbox) * bboxLatSpan(placeBbox);
-  if (!(placeArea > 0)) {
-    return candidates[0] ?? null; // degenerate index bbox judges nothing
-  }
-  let best: TomtomGeocodeResult | null = null;
-  let bestCoverage = 0;
-  for (const candidate of candidates) {
-    const bbox = parseForwardBoundingBox(candidate.boundingBox);
-    if (!bbox) {
-      continue;
-    }
-    const overlapArea = bboxIntersectionParts(bbox, placeBbox).reduce(
-      (sum, part) => sum + bboxLngSpan(part) * bboxLatSpan(part),
-      0,
-    );
-    if (overlapArea <= 0) {
-      continue;
-    }
-    const coverage = overlapArea / placeArea;
-    if (coverage >= CANDIDATE_PLACE_COVERAGE_FLOOR && coverage > bestCoverage) {
-      bestCoverage = coverage;
-      best = candidate;
-    }
-  }
-  return best;
-}
 
 /** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects. */
 function parseForwardBoundingBox(

@@ -309,10 +309,9 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         where: { placeId: PLACE_ID },
         data: { promotedAt: now, providerBoundaryId: 'geo-cached' },
       });
-      expect(prisma.place.update).toHaveBeenCalledWith({
-        where: { placeId: PLACE_ID },
-        data: { promotedAt: now },
-      });
+      // Docket #4: places.promoted_at is dropped — only the QUEUE row is
+      // stamped (asserted above); no places write happens.
+      expect(prisma.place.update).not.toHaveBeenCalled();
     });
 
     it('a raced pre-existing polygon just stamps promotion — no draws', async () => {
@@ -328,10 +327,9 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       await service.drainQueue(now);
       expect(fetchPolygon).not.toHaveBeenCalled();
       expect(resolveGeometryId).not.toHaveBeenCalled();
-      expect(prisma.place.update).toHaveBeenCalledWith({
-        where: { placeId: PLACE_ID },
-        data: { promotedAt: now },
-      });
+      // Docket #4: places.promoted_at is dropped — only the QUEUE row is
+      // stamped (asserted above); no places write happens.
+      expect(prisma.place.update).not.toHaveBeenCalled();
     });
 
     it('the drain retries every tick and NEVER re-selects a refused row (docket #2: month-as-backoff is dead)', async () => {
@@ -440,10 +438,15 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         polygonCoversAnchor: true,
       });
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
-      expect(prisma.place.update).toHaveBeenCalledWith({
-        where: { placeId: PLACE_ID },
-        data: { promotedAt: new Date('2026-07-20T00:00:00Z') },
-      });
+      // Accepted: the QUEUE row is stamped promoted (docket #4: the places
+      // copy of promoted_at is dropped — it had zero readers).
+      expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            promotedAt: new Date('2026-07-20T00:00:00Z'),
+          }),
+        }),
+      );
     });
 
     it('a wrong-entity rejection meters its draws into the campaign', async () => {

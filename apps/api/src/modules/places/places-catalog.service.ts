@@ -77,19 +77,10 @@ export interface PlaceSketchNode {
   providerLevelCode: string;
   countryCode: string;
   subdivisionCode?: string | null;
-  /**
-   * COUNTY AXIS (§1 amendment): the provider's county-axis NAME for nodes
-   * FINER than the county rung (a county axis on a county/state/country node
-   * is meaningless — a state is not inside a county — so providers leave it
-   * null there). Optional and best-effort: reverse responses don't always
-   * carry it; the gap-fill law adopts it when it arrives.
-   */
-  county?: string | null;
   bbox?: GeoBbox | null;
   centroid?: GeoPoint | null;
   /** Offline centroid→tz at creation (§1); optional at sketch time. */
   timeZone?: string | null;
-  localScriptAlias?: string | null;
   provider?: string;
   /** The provider's stable geometry id — adopted as an alias (§1). */
   providerPlaceId?: string | null;
@@ -554,12 +545,10 @@ export class PlacesCatalogService {
             providerLevelCode: node.providerLevelCode,
             countryCode: node.countryCode,
             subdivisionCode: node.subdivisionCode ?? null,
-            county: node.county ? normalizePlaceName(node.county) : null,
             parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
             centroidLat: node.centroid?.lat,
             centroidLng: node.centroid?.lng,
             timeZone: node.timeZone ?? null,
-            localScriptAlias: node.localScriptAlias ?? null,
             ...(node.provider ? { provider: node.provider } : {}),
             providerPlaceId: node.providerPlaceId,
           },
@@ -621,12 +610,10 @@ export class PlacesCatalogService {
             providerLevelCode: node.providerLevelCode,
             countryCode: node.countryCode,
             subdivisionCode: node.subdivisionCode ?? null,
-            county: null,
             parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
             centroidLat: node.centroid?.lat,
             centroidLng: node.centroid?.lng,
             timeZone: node.timeZone ?? null,
-            localScriptAlias: node.localScriptAlias ?? null,
             provider: 'fallback',
             providerPlaceId: null,
           },
@@ -732,27 +719,12 @@ export class PlacesCatalogService {
       data.parentPlaceIds = { push: parentPlaceId };
     }
 
-    // COUNTY GAP-FILL lives HERE (moved 2026-07-27, red-team finding).
-    // It used to sit only in resolveIdentity's decision table, because the
-    // county was part of how identity was CHOSEN. Since P3 made the vendor
-    // geometry id the identity, the id-first path skips that table entirely
-    // — so for every observation carrying a vendor id (i.e. nearly all of
-    // them) the county axis silently stopped accruing. County is not an
-    // identity input any more; it is just another unknown scalar the merge
-    // fills, exactly like centroid/timeZone/localScriptAlias below. Same
-    // never-overwrite rule: a stored non-null county is never replaced.
-    if (!existing.county && node.county) {
-      data.county = normalizePlaceName(node.county);
-    }
     if (existing.centroidLat === null && node.centroid) {
       data.centroidLat = node.centroid.lat;
       data.centroidLng = node.centroid.lng;
     }
     if (!existing.timeZone && node.timeZone) {
       data.timeZone = node.timeZone;
-    }
-    if (!existing.localScriptAlias && node.localScriptAlias) {
-      data.localScriptAlias = node.localScriptAlias;
     }
 
     if (!widen && Object.keys(data).length === 0) {
