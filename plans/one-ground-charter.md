@@ -90,12 +90,19 @@ anchor-or-geo CHECK; birth-synchronous outline with the earned-moment
 triggers, header memory, census cheap-step and anchorless span guard all
 deleted; per-minute pools with terminal refusal; the residue columns dropped
 along with uq_places_identity's name-uniqueness law and the entire
-resolveGeometryId lane; act-identity SQL stated once). REMAINING: #5's
-widen-shrink revisit (post-#1 the sketch lane is tail-only — fallback mints
-and refused claims — so widenSketchGround/the disjoint guard now serve only
-that tail; shrink when next touched), #6 the dual-arm collapse (needs the
-owner's staleness ruling: today's demand at ≤15min lag vs live), #7 the
-probe-memory table (cents at stake; low urgency).
+resolveGeometryId lane; act-identity SQL stated once). #6 and #7 LANDED
+next session (commits 2bf1213d/aa9e4b41, deployed): the owner ruled the
+aggregate IS the law — the fresh ledger arm (the second dialect) is deleted
+everywhere (entityDemandScores, querySuggestions, territoryEntityDemand,
+demand-mass place/subject/by_actor), the aggregate includes today and the
+15-min rebuild cadence is the freshness contract; territoryUnmetAsks keeps
+its ledger read by design (it reads ask CONTENT, not demand mass). #7: the
+reconciler's asked-region memory moved from a per-process array to the
+probed_regions table (migration 20260730140000, disc|box CHECK, 30d TTL
+pruned lazily at read); the scale judgment stays in TS. REMAINING: #5's
+widen-shrink revisit only (post-#1 the sketch lane is tail-only — fallback
+mints and refused claims — so widenSketchGround/the disjoint guard now
+serve only that tail; shrink when next touched).
 
 Two independent architecture audits (Opus 5 + Fable 5), each asked "what are
 we building on without questioning?", one measuring the live DB, one reading
