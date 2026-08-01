@@ -20,7 +20,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
-import { SignalBbox, SignalsService } from '../signals/signals.service';
+import { SignalsService } from '../signals/signals.service';
 import { computeIpAuditHmacs, hmacDeviceKey } from '../signals/audit-hmac';
 import { PollsGateway } from './polls.gateway';
 import { PollListSort, PollListTime, PollListType } from './dto/list-polls.dto';
@@ -153,30 +153,9 @@ export class PollsService {
     return term.length ? { term } : null;
   }
 
-  /**
-   * §3 signal geo for poll acts (red-team 3e): a poll attributes to its
-   * PLACE — the closed loop that feeds poll_vote back into the place's demand
-   * mass and answerYield. Every poll is place-keyed since the
-   * legacy-poll-expiry backfill (2026-07-20: all 94 legacy market-keyed rows
-   * re-keyed to catalog places; new rows are place-keyed at creation).
-   *
-   * P5b (one-ground charter, 2026-07-28): this used to hand the signal the
-   * place's stored bounding RECTANGLE. It now hands over the placeId as the
-   * anchor — `pollSignalAnchor` — and the geo is only the place's centroid
-   * point. The rectangle was the whole defect: a polygon never covers its own
-   * bounding box (measured: 22,774 / 22,778 places on prod), so the attribution
-   * law's containing arm missed the poll's OWN place and the tiling arm
-   * over-fired onto everything that fitted inside the rectangle — Austin bled
-   * into 31 other places. `centroidGeoFromPlace` never rejects, so the promise
-   * is safe un-awaited as RecordSignalInput.geo.
-   */
-  private pollSignalGeo(poll: {
-    placeId: string | null;
-  }): Promise<SignalBbox | null> {
-    return poll.placeId
-      ? this.signals.centroidGeoFromPlace(poll.placeId)
-      : Promise.resolve(null);
-  }
+  // pollSignalGeo DELETED (docket #3): a poll act's WHERE is its placeId —
+  // the anchor — and it carries NO geometry (nullable geo, anchor-or-geo
+  // CHECK). The centroid-manufacturing helper died with the NOT NULL columns.
 
   /**
    * §6 POLLS FEED — polls of places in view (+ descendants of the
@@ -930,7 +909,7 @@ export class PollsService {
       kind: 'poll_created',
       userId,
       subject: this.pollSignalSubject(poll),
-      geo: this.pollSignalGeo(poll),
+      geo: null,
       placeId: poll.placeId,
       meta: { pollId: poll.pollId },
     });
@@ -1092,7 +1071,7 @@ export class PollsService {
       kind: 'poll_created',
       userId,
       subject: this.pollSignalSubject(poll),
-      geo: this.pollSignalGeo(poll),
+      geo: null,
       placeId: poll.placeId,
       meta: { pollId: poll.pollId },
     });
@@ -1280,7 +1259,7 @@ export class PollsService {
       kind: 'poll_comment',
       userId,
       subject: this.pollSignalSubject(poll),
-      geo: this.pollSignalGeo(poll),
+      geo: null,
       placeId: poll.placeId,
       meta: { pollId },
     });
@@ -2034,7 +2013,7 @@ export class PollsService {
         kind: 'poll_vote',
         userId,
         subject: this.pollSignalSubject(poll),
-        geo: this.pollSignalGeo(poll),
+        geo: null,
         placeId: poll.placeId,
         meta: {
           pollId,

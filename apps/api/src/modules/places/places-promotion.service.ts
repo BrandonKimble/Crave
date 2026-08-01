@@ -837,6 +837,10 @@ export class PlacesPromotionService {
         SELECT min(s.recorded_at) AS oldest
         FROM signals s, place_geometries g
         WHERE g.place_id = ${placeId}::uuid
+          -- Docket #3: anchored acts carry NULL geo and are attributed by
+          -- the DAG, so a polygon upgrade cannot re-attribute them — only
+          -- geometry-shaped acts pull the watermark back.
+          AND s.geo_min_lat IS NOT NULL
           AND s.geo_max_lat >= ST_YMin(g.geometry)
           AND s.geo_min_lat <= ST_YMax(g.geometry)
           AND s.geo_max_lng >= ST_XMin(g.geometry)

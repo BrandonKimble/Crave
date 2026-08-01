@@ -2048,10 +2048,14 @@ model Signal {
   /// else. NULL for the kinds whose shape is honestly a rectangle (a viewport)
   /// or a point (entity_view), which keep the geo columns below.
   placeId     String?  @map("place_id") @db.Uuid
-  geoMinLat   Decimal  @map("geo_min_lat") @db.Decimal(10, 8)
-  geoMinLng   Decimal  @map("geo_min_lng") @db.Decimal(11, 8)
-  geoMaxLat   Decimal  @map("geo_max_lat") @db.Decimal(10, 8)
-  geoMaxLng   Decimal  @map("geo_max_lng") @db.Decimal(11, 8)
+  /// Docket #3: NULLABLE — an act has three honest shapes (rectangle /
+  /// point / place-anchor) and carries geo ONLY when its WHERE is a
+  /// geometry. CHECK signals_where_shape_check (raw migration
+  /// 20260730110000) enforces anchor-or-geo.
+  geoMinLat   Decimal? @map("geo_min_lat") @db.Decimal(10, 8)
+  geoMinLng   Decimal? @map("geo_min_lng") @db.Decimal(11, 8)
+  geoMaxLat   Decimal? @map("geo_max_lat") @db.Decimal(10, 8)
+  geoMaxLng   Decimal? @map("geo_max_lng") @db.Decimal(11, 8)
   actorId     String   @map("actor_id") @db.Uuid
   occurredAt  DateTime @map("occurred_at")
   /// WHEN the ledger learned of the act (occurredAt = when it happened).

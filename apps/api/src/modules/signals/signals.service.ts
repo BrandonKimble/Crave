@@ -75,7 +75,9 @@ export const ECHO_SIGNAL_KINDS = [
   'on_demand_ask',
 ] as const satisfies readonly SignalKind[];
 
-/** Geo is ALWAYS a bbox; a point is a zero-area bbox (§3). Longitude is
+/** A geometry-shaped act's geo is a bbox; a point is a zero-area bbox (§3);
+ *  an ANCHORED act (docket #3) carries NO geo at all — its WHERE is its
+ *  place. Longitude is
  *  WRAP-AWARE: minLng > maxLng means the bbox CROSSES the antimeridian and
  *  covers [minLng, 180] ∪ [-180, maxLng] (the places-catalog representation;
  *  readers OR-split crossing rows — demand-mass reader red-team 3c). */
@@ -116,9 +118,9 @@ export interface RecordSignalInput {
   geo: SignalBbox | Promise<SignalBbox | null> | null;
   /**
    * P5b PLACE ANCHOR: set ONLY when the act's WHERE genuinely IS a place (a
-   * poll act). Attribution then judges on that place's real ground — the act
-   * lands on the place and its ancestors and nothing else — and ignores `geo`,
-   * which for these rows is just the centroid point.
+   * poll act). Attribution then judges on the vendor's stated chain — the
+   * act lands on the place, its ancestors, and its DAG descendants — and geo
+   * is NOT WRITTEN at all (docket #3: nullable geo, anchor-or-geo CHECK).
    *
    * Leave undefined for acts whose shape is honestly a rectangle (a viewport)
    * or a point (entity_view). Setting it for those would be a regression: a
@@ -135,15 +137,12 @@ export interface RecordSignalInput {
 // read changes meaning at any cap value. Sized to corpus reality (actors ≫
 // places); pacer-derived sizing replaces them if they ever bind.
 const ACTOR_CACHE_MAX = 10_000;
-const PLACE_BBOX_CACHE_MAX = 1_000;
 
 @Injectable()
 export class SignalsService {
   private readonly logger: LoggerService;
   /** cacheKey ("u:<userId>" | "d:<deviceKey>") -> actorId */
   private readonly actorIdCache = new Map<string, string>();
-  /** placeId -> bbox (null cached too: un-sketched places) */
-  private readonly placeBboxCache = new Map<string, SignalBbox | null>();
   /** Skip conditions log once per key per process — never spam the hot path. */
   private readonly loggedSkips = new Set<string>();
 
@@ -225,78 +224,10 @@ export class SignalsService {
     return { minLat: lat, maxLat: lat, minLng: lng, maxLng: lng };
   }
 
-  /**
-   * The REPRESENTATIVE POINT of a place — its centroid as a zero-area bbox.
-   *
-   * P5b (one-ground charter, 2026-07-28): this REPLACES `bboxFromPlace`, which
-   * returned the place's stored bounding RECTANGLE and was the single producer
-   * of the attribution bleed. Measured on prod across all 22,778 places with a
-   * ground: `ST_Covers(ground, own_bbox)` is FALSE for 22,774 (99.98%) — a
-   * polygon never covers its own bounding box — so the attribution law's
-   * "containing" arm never matched the poll's own place, and the "tiling" arm
-   * carried it and over-fired onto every place whose ground fitted inside that
-   * rectangle (Austin: 31 other places; Denver and Portland: 9 each).
-   *
-   * A place-anchored signal now carries `placeId`, and attribution reads the
-   * place's REAL GROUND through it. The geo columns are NOT NULL, so they still
-   * need a value; the centroid is the least-claiming honest one — a point that
-   * asserts no extent at all, rather than a rectangle that asserts a false one.
-   * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.
-   */
-  async centroidGeoFromPlace(
-    placeId: string | null | undefined,
-  ): Promise<SignalBbox | null> {
-    if (!placeId) {
-      return null;
-    }
-    const cached = this.placeBboxCache.get(placeId);
-    if (cached !== undefined) {
-      return cached;
-    }
-    try {
-      const place = await this.prisma.place.findUnique({
-        where: { placeId },
-        select: { centroidLat: true, centroidLng: true },
-      });
-      let geo =
-        place?.centroidLat != null && place.centroidLng != null
-          ? this.bboxFromPoint(
-              Number(place.centroidLat),
-              Number(place.centroidLng),
-            )
-          : null;
-      if (!geo) {
-        // Red-team finding (2026-07-29, both reviewers): centroid is nullable
-        // (gap-filled at merge, so a place can live without one for a while),
-        // and a null here used to SKIP THE WRITE of every poll act anchored to
-        // that place — an append-only ledger silently losing acts, with the
-        // null verdict cached until process restart so a later gap-fill never
-        // recovered. The geo is vestigial for anchored rows (the anchor is
-        // the attribution); derive the honest point from the ONE ground.
-        const [row] = await this.prisma.$queryRaw<
-          Array<{ lat: number; lng: number }>
-        >`SELECT ST_Y(ST_PointOnSurface(geometry))::float8 AS lat,
-                 ST_X(ST_PointOnSurface(geometry))::float8 AS lng
-            FROM place_geometries WHERE place_id = ${placeId}::uuid`;
-        geo = row ? this.bboxFromPoint(row.lat, row.lng) : null;
-      }
-      // Cache only a RESOLVED point. A null verdict is a transient state
-      // (pre-gap-fill, pre-outline), not a fact — caching it turned a
-      // temporary gap into a process-lifetime act-dropper.
-      if (geo) {
-        this.cachePut(this.placeBboxCache, placeId, geo, PLACE_BBOX_CACHE_MAX);
-      }
-      return geo;
-    } catch (error) {
-      this.logger.debug('Place centroid lookup failed', {
-        placeId,
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return null;
-    }
-  }
+  // centroidGeoFromPlace DELETED (docket #3, 2026-07-30): it existed solely
+  // to manufacture a value for NOT NULL geo columns on place-anchored acts —
+  // the apparatus that once silently dropped poll acts. Anchored acts now
+  // write NULL geo; the anchor IS the WHERE (CHECK signals_where_shape_check).
 
   /**
    * Zero-area bbox from a restaurant location: the given locationId when
@@ -393,7 +324,10 @@ export class SignalsService {
     }
 
     const geo = await geoPromise;
-    if (!geo) {
+    if (!geo && !input.placeId) {
+      // Docket #3: only a geometry-shaped act needs a geometry. An anchored
+      // act's WHERE is its place — it must never be dropped for lacking a
+      // rectangle (that exact drop happened once; see the P5b scar).
       this.skipOnce(`${input.kind}:no-geo`, 'Signal skipped: no geo bbox', {
         kind: input.kind,
       });
@@ -417,10 +351,10 @@ export class SignalsService {
         subjectId,
         subjectText,
         placeId: input.placeId ?? null,
-        geoMinLat: geo.minLat,
-        geoMinLng: geo.minLng,
-        geoMaxLat: geo.maxLat,
-        geoMaxLng: geo.maxLng,
+        geoMinLat: geo?.minLat ?? null,
+        geoMinLng: geo?.minLng ?? null,
+        geoMaxLat: geo?.maxLat ?? null,
+        geoMaxLng: geo?.maxLng ?? null,
         actorId,
         occurredAt: input.occurredAt ?? new Date(),
         meta: input.meta

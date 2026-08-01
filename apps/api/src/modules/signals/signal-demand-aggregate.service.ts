@@ -313,7 +313,11 @@ export class SignalDemandAggregateService {
           -- why their geo columns can stay a harmless centroid point.
           SELECT DISTINCT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng
           FROM day_signals
-          WHERE place_id IS NULL
+          -- Docket #3: stated POSITIVELY — the geometric path is for acts
+          -- whose WHERE is a geometry. Anchored acts carry NULL geo now
+          -- (nullable columns, anchor-or-geo CHECK), so the two filters are
+          -- the same set; this one says what it means.
+          WHERE geo_min_lat IS NOT NULL
         ),
         containing AS (
           -- §3 (i) under §2.6 GROUND UNIFICATION: the SMALLEST place whose

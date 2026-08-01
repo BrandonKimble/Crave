@@ -108,54 +108,9 @@ describe('SignalsService bbox helpers (geo is ALWAYS a bbox — §3)', () => {
   });
 });
 
-describe('SignalsService.centroidGeoFromPlace (P5b: a poll act carries a POINT, never the place rectangle)', () => {
-  const CENTROID_GEO = {
-    minLat: 30.27,
-    maxLat: 30.27,
-    minLng: -97.74,
-    maxLng: -97.74,
-  };
-
-  it('returns the centroid as a ZERO-AREA geo even when the place has a bbox, and caches it', async () => {
-    // The RED-provable assertion of this file: the place below HAS a stored
-    // rectangle (30.1..30.4 × -97.9..-97.6). The old bboxFromPlace returned it,
-    // which is what bled a poll in Austin into 31 other places. Returning
-    // anything with area here is the bug coming back.
-    const { service, prisma } = createService();
-    prisma.place.findUnique.mockResolvedValue({
-      centroidLat: '30.27',
-      centroidLng: '-97.74',
-    });
-    const placeId = '99999999-9999-9999-9999-999999999999';
-    await expect(service.centroidGeoFromPlace(placeId)).resolves.toEqual(
-      CENTROID_GEO,
-    );
-    await expect(service.centroidGeoFromPlace(placeId)).resolves.toEqual(
-      CENTROID_GEO,
-    );
-    expect(prisma.place.findUnique).toHaveBeenCalledTimes(1); // cached
-
-    const geo = await service.centroidGeoFromPlace(placeId);
-    expect(geo?.minLat).toBe(geo?.maxLat);
-    expect(geo?.minLng).toBe(geo?.maxLng);
-  });
-
-  it('is null when the place has no centroid or the id is absent, and never rejects', async () => {
-    const { service, prisma } = createService();
-    prisma.place.findUnique.mockResolvedValueOnce({
-      centroidLat: null,
-      centroidLng: null,
-    });
-    await expect(
-      service.centroidGeoFromPlace('88888888-8888-8888-8888-888888888888'),
-    ).resolves.toBeNull();
-    await expect(service.centroidGeoFromPlace(null)).resolves.toBeNull();
-    prisma.place.findUnique.mockRejectedValueOnce(new Error('db down'));
-    await expect(
-      service.centroidGeoFromPlace('77777777-7777-7777-7777-777777777777'),
-    ).resolves.toBeNull();
-  });
-});
+// The centroidGeoFromPlace describe was DELETED with the method (docket #3,
+// 2026-07-30): anchored acts write NULL geo now — there is no centroid to
+// manufacture and no null-cache rule to get wrong.
 
 describe('SignalsService actor resolution (pseudonymous, cached)', () => {
   it('upserts by userId on first sight and caches the mapping', async () => {

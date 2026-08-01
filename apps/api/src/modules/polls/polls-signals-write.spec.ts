@@ -150,15 +150,13 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
     });
   });
 
-  it('a vote on a PLACE-keyed poll ANCHORS to the place and carries a zero-area geo — never the place rectangle (P5b, was red-team 3e)', async () => {
-    // This test used to assert the OPPOSITE — that the signal carried the
-    // place's bounding rectangle (29.5..30.9 × -98.2..-97.2). That was the
-    // defect: measured on prod over all 22,778 places with a ground,
-    // ST_Covers(ground, own_bbox) is FALSE for 99.98% of them, so the
-    // attribution law's containing arm missed the poll's own place and the
-    // tiling arm over-fired onto everything that fitted inside the rectangle
-    // (Austin bled into 31 other places). The mock place below still HAS that
-    // bbox precisely so this test goes RED if the rectangle ever comes back.
+  it('a vote on a PLACE-keyed poll ANCHORS to the place and carries NO geo at all (docket #3; was P5b / red-team 3e)', async () => {
+    // Evolution of this pin, kept as history because each stage was a real
+    // defect: (1) the signal carried the place's bounding RECTANGLE — Austin
+    // bled into 31 places; (2) P5b anchored it but NOT NULL geo forced a
+    // manufactured centroid, whose lookup once silently DROPPED acts;
+    // (3) docket #3 made geo nullable — the anchor IS the where, and no
+    // place lookup happens on the write path at all.
     const PLACE_ID = '99999999-9999-9999-9999-999999999999';
     const { service, signalsPrisma } = createHarness({
       pollPlaceId: PLACE_ID,
@@ -172,23 +170,16 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
     );
     await flush();
 
-    expect(signalsPrisma.place.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { placeId: PLACE_ID } }),
-    );
+    // No centroid manufacture — the write needs nothing from places.
+    expect(signalsPrisma.place.findUnique).not.toHaveBeenCalled();
     expect(signalsPrisma.signal.create).toHaveBeenCalledTimes(1);
     const data = signalsPrisma.signal.create.mock.calls[0][0].data;
     expect(data.kind).toBe('poll_vote');
-    // The WHERE of the act: the place itself.
-    expect(data.placeId).toBe(PLACE_ID);
-    // The geo is the centroid POINT — zero area, asserting no extent at all.
-    expect(data).toMatchObject({
-      geoMinLat: 30.27,
-      geoMinLng: -97.74,
-      geoMaxLat: 30.27,
-      geoMaxLng: -97.74,
-    });
-    expect(data.geoMinLat).toBe(data.geoMaxLat);
-    expect(data.geoMinLng).toBe(data.geoMaxLng);
+    expect(data.placeId).toBe(PLACE_ID); // the WHERE of the act
+    expect(data.geoMinLat).toBeNull();
+    expect(data.geoMinLng).toBeNull();
+    expect(data.geoMaxLat).toBeNull();
+    expect(data.geoMaxLng).toBeNull();
   });
 
   it('un-endorsing (toggle off) writes NO signal — the ledger is append-only', async () => {
