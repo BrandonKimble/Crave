@@ -1158,7 +1158,10 @@ export class ProjectionRebuildService implements OnModuleInit {
       this.logger.warn('Tombstone-event sweep', {
         operation: 'tombstone_event_sweep',
         rebuiltRestaurants: rebuildSet.length,
-        strandedWithoutRedirect: strandedCount,
+        // label matches the MEASUREMENT (round 5): events still on
+        // archived entities post-sweep — no active-winner redirect existed
+        // for them (moved/deleted rows are already gone by this point).
+        strandedOnTombstones: strandedCount,
         strandedEntityDim: Number(stranded[0]?.entity_dim ?? 0),
         strandedRestaurantDim: Number(stranded[0]?.restaurant_dim ?? 0),
         strandedPraiseDim: Number(stranded[0]?.praise_dim ?? 0),

@@ -317,6 +317,35 @@ CLAIMS PATH: first real execution (local Postgres) — claim/contention/
 stamp/reap all correct; prod detectors all zero post-deploy; production
 soak of the claim path = next scheduled collection cycle.
 
+## RED-TEAM ROUND 5 (2026-08-01, EXECUTION-ONLY: real classes, real
+
+Postgres, no mocks — "prove each claim by running it")
+
+Every standing claim executed. 7/7 proofs pass via real service instances
+over the live mirror (peripheral logger/alert stubs declared): content
+uniques reject duplicate claims with real 23505s; mention partial unique
+rejects; REAL activateRunForDocuments supersedes + flips; REAL claims
+lifecycle (win/lose-contention/stamp/release); transition guards refuse
+(ingesting can't be knocked to succeeded; live lease shields from sweep);
+REAL recordSpend under 3-way concurrency loses zero updates, flips
+breached, refuses the post-breach spender, fires the ops alert; REAL
+PoolRegistry + PrismaPoolConsumptionStore month-roll flushes the July
+tail to July's row. Nest-context execution (full AppModule boot, zero
+stubs): ballot graduation end-to-end on a fabricated poll — per-voter
+docs (61-char ids), both agreeing voters mint (the old design would have
+thrown exactly there), idempotent re-mint, K6 rebuild counts 2 voters =
+2 mentions; sweepTombstoneEvents ran clean on live data (9 restaurant-dim
+repoints, 0 deletes, no violations, active events untouched by count
+invariants). All prior-round FAILs this round were test-harness
+artifacts, not code. Label honesty fix: strandedWithoutRedirect →
+strandedOnTombstones (matches what the query measures).
+
+NOT EXECUTED (named, per the empirical law): score-read effect of ballot
+mentions; sweep second-run idempotency (count-invariant proof only, not
+row-hash); provider-side Gemini submission/poll (needs live vendor);
+production soak of the claims path (first real exercise = next scheduled
+collection cycle); dry-run supersede branch.
+
 ## SEQUENCE (this becomes audit class ①, expanded)
 
 1. Stop the bleeding (data): repair C1's dark events while all runs
