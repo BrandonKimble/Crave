@@ -323,9 +323,14 @@ county axis, no geometric comparison, no extra vendor call:
   leg was needed — the insight that unlocked it: the law forbids STORED
   shapes, not wire rectangles, so `PlaceInView.bbox` stays on the wire and is
   derived from the ground IN THE SAME QUERY that fetches it
-  (`derivedBboxSelectSql`, wrap-aware: a crossing geometry reconstructs the
-  min>max convention from per-arm extents via ST_Dump — live-verified on
-  prod: the US derives 172.5→-66.9). The merge law's widen now GROWS THE
+  (`derivedBboxSelectSql`, wrap-aware — CORRECTED 2026-08-01, empirical
+  round, commit ebb4cf49: the ±179.999 crossing gate assumed arms touch
+  ±180; the real US geometry stops at 179.778/-179.147, so prod was
+  deriving a 359° world band. The law is now the LARGEST LONGITUDINAL
+  GAP — bbox = complement of the biggest empty arc between merged part
+  extents, behind a cheap span≥180 suspicion gate. Proven RED first
+  ("THE ALEUTIAN CLASS"); the UK class stays planar under the same law;
+  re-verified live on prod: the US derives 172.5→-67.0). The merge law's widen now GROWS THE
   SKETCH GROUND ITSELF (ST_Envelope∘ST_Collect against the live row, outline
   rows guarded); writeSketchGround takes the observed envelope as a
   parameter; launch camera, enrichment bias, the county decision table, the
@@ -853,3 +858,32 @@ enter-eager finest-dominator judgments over a margin-escape-refreshed
 slice. The law itself needed no change. Remaining nicety: home could
 adopt the polls retry ladder (the failed-fetch retry edge already
 landed in 7d9022a0).
+
+## EMPIRICAL RED-TEAM ROUND (2026-08-01) — every claim executed, no mocks
+
+Prod readonly + local dev DB + real vendor + real drain. RESULTS:
+
+- CONFIRMED on prod: 0 fallback places ever; fallback index dropped;
+  probed_regions live; 0 id-less places; 0 lowercase level codes;
+  signals anchor-or-geo CHECK present; recency kernel SQL == TS EXACT
+  (ages 0–56); @> vs =ANY territory walks identical sets (20=20,
+  symdiff 0) with the GIN bitmap index confirmed via EXPLAIN; the
+  Washington chain walks Municipality→DC county→DC state→US; ancestry
+  spill re-measured 2,110 links (claimed 2,111); City-chip lowercase
+  literal matches 0 places vs 41 for 'Municipality' on real restaurant
+  points.
+- PROVEN by running the REAL pipeline locally (real TomTom spend, ~6
+  calls): enqueue('birth') → promoteNewborn promoted synchronously;
+  drainTick promoted the rest — the 3 Peru stragglers are OUTLINED on
+  the local db end-to-end. Prod's copies stay sketch because
+  CRONS_ENABLED=false on the prod worker — DELIBERATE (Austin
+  re-extraction handoff: re-enable only after activation; the first
+  hourly tick after re-enable promotes them).
+- FALSIFIED and FIXED: the derived-bbox "live-verified 172.5→-66.9"
+  claim (see the corrected P4 text — largest-gap law, RED-first).
+- NOT EXECUTABLE, stated honestly: the promoteNewborn advisory-lock
+  leak (needs a multi-process pooled-session race), the mobile
+  drought-400 end-to-end (needs a poll creation in unseeded ground
+  against prod), prod cron behavior itself (deliberately paused), and
+  the malformed-country vendor path (no reproducible trigger — TomTom
+  answers well-formed).
