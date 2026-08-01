@@ -121,43 +121,64 @@ export interface PlaceInView {
  */
 export function derivedBboxSelectSql(alias: string): Prisma.Sql {
   const g = Prisma.raw(alias);
-  // CROSSING means REACHING ±180 on both sides — never merely "wide".
+  // THE LARGEST-GAP LAW (empirical red-team 2026-08-01, supersedes two prior
+  // gates — each proven RED in places-containment.integration.spec before
+  // its fix):
+  // - Gate 1 (planar span >= 180 + centroid-sign arms) wrapped the UK class
+  //   (wide both-hemisphere parts, seam untouched) around the Pacific.
+  // - Gate 2 ("crossing = reaching ±179.999 on both sides") assumed the
+  //   two-arm storage convention touches ±180 exactly. Measured on PROD:
+  //   TomTom's real US geometry stops at 179.778 / -179.147, so the gate
+  //   never fired and the US bbox derived as the planar band
+  //   [-179.147, 179.778] — a 359° world band ("THE ALEUTIAN CLASS").
+  // The honest definition needs no crossing gate at all: the bbox is the
+  // COMPLEMENT OF THE LARGEST EMPTY LONGITUDINAL ARC between the geometry's
+  // merged part extents (the standard antimeridian treatment). US: the
+  // empty arc runs -66.9 east to 172.5 (~239°), so the bbox wraps
+  // 172.5 → -66.9. UK class: its largest arc contains the seam, so the
+  // complement IS the planar envelope. A normal row's largest arc is the
+  // whole rest of the circle — planar, unchanged.
   //
-  // Red-team convergent finding (2026-07-30, both reviewers independently):
-  // the first cut keyed the wrap branch on planar span >= 180 and bucketed
-  // parts by CENTROID SIGN. A UK-with-territories-class geometry (parts at
-  // -128 and +72; planar span 200, seam untouched) then derived 72 -> 1.8 —
-  // a wrap bbox covering the PACIFIC, excluding its own territory and
-  // claiming half the planet, which the reconciler would have remembered as
-  // an answered region for 30 days. Proven RED in
-  // places-containment.integration.spec ("THE UK CLASS") before this fix.
-  //
-  // The two-arm storage convention guarantees a genuine crosser has a part
-  // reaching +180 AND a part reaching -180, so that is the gate. Arms are
-  // bucketed by which hemisphere the part LIVES in (XMin >= 0 = east arm,
-  // everything else west): a wide non-crosser falls to the honest planar
-  // envelope, and the COALESCE fallbacks can no longer paper over a
-  // mis-bucketed world.
-  const crossing = Prisma.sql`(ST_XMax(${g}.geometry) >= 179.999
-         AND ST_XMin(${g}.geometry) <= -179.999)`;
+  // Cost: the gap analysis scans ST_Dump parts, so it runs ONLY behind the
+  // cheap suspicion gate `planar span >= 180` (provably sufficient: parts
+  // confined to any arc < 180° can never make the wrap complement smaller
+  // than the planar envelope). A handful of country-scale rows pay it.
+  const wide = Prisma.sql`(ST_XMax(${g}.geometry) - ST_XMin(${g}.geometry) >= 180)`;
+  // Largest gap over merged part intervals: sort by part min-lng; a gap
+  // opens where a part's min exceeds the running max of all prior part
+  // maxes; the wrap-around arc (global max b → first a + 360) competes as
+  // the "planar" candidate. Ties prefer planar (is_wrap DESC).
+  const gapPick = (column: Prisma.Sql) => Prisma.sql`(
+      SELECT ${column}
+      FROM (
+        SELECT all_gaps.gap_start, all_gaps.gap_end, all_gaps.is_wrap
+        FROM (
+          SELECT gap_start, gap_end, is_wrap
+          FROM (
+            SELECT iv.a AS gap_end,
+                   MAX(iv.b) OVER (ORDER BY iv.a ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS gap_start,
+                   FALSE AS is_wrap
+            FROM (SELECT ST_XMin(part.geom) AS a, ST_XMax(part.geom) AS b
+                  FROM ST_Dump(${g}.geometry) AS part) iv
+          ) internal_gaps
+          WHERE gap_start IS NOT NULL AND gap_end > gap_start
+          UNION ALL
+          SELECT ST_XMax(${g}.geometry), ST_XMin(${g}.geometry) + 360, TRUE
+        ) all_gaps
+        ORDER BY (all_gaps.gap_end - all_gaps.gap_start) DESC, all_gaps.is_wrap DESC
+        LIMIT 1
+      ) best_gap
+    )`;
   return Prisma.sql`
     ST_YMin(${g}.geometry)::float8 AS bbox_min_lat,
     ST_YMax(${g}.geometry)::float8 AS bbox_max_lat,
-    CASE WHEN NOT ${crossing}
+    CASE WHEN NOT ${wide}
          THEN ST_XMin(${g}.geometry)::float8
-         ELSE COALESCE((
-           SELECT MIN(ST_XMin(part.geom))
-           FROM ST_Dump(${g}.geometry) AS part
-           WHERE ST_XMin(part.geom) >= 0
-         ), ST_XMin(${g}.geometry))::float8
+         ELSE ${gapPick(Prisma.sql`CASE WHEN is_wrap THEN ST_XMin(${g}.geometry) ELSE gap_end END`)}::float8
     END AS bbox_min_lng,
-    CASE WHEN NOT ${crossing}
+    CASE WHEN NOT ${wide}
          THEN ST_XMax(${g}.geometry)::float8
-         ELSE COALESCE((
-           SELECT MAX(ST_XMax(part.geom))
-           FROM ST_Dump(${g}.geometry) AS part
-           WHERE ST_XMin(part.geom) < 0
-         ), ST_XMax(${g}.geometry))::float8
+         ELSE ${gapPick(Prisma.sql`CASE WHEN is_wrap THEN ST_XMax(${g}.geometry) ELSE gap_start END`)}::float8
     END AS bbox_max_lng`;
 }
 

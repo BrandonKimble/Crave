@@ -492,6 +492,39 @@ describe('containment laws, proven against PostGIS', () => {
     expect(row!.bbox.maxLng).toBeCloseTo(72, 5); // NOT a wrap
   });
 
+  it('P4 DERIVED BBOX, THE ALEUTIAN CLASS: seam-straddling parts that never TOUCH ±180 derive the WRAP bbox, never a world band', async () => {
+    // Empirical red-team 2026-08-01, measured on PROD: the real US geometry's
+    // seam parts stop at 179.778 and -179.147 — the vendor does NOT split
+    // arms exactly at ±180, so the "reaching ±179.999 on both sides" gate
+    // never fires and the US bbox derived as the planar band
+    // [-179.147, 179.778] — a 359-degree world band. The honest law is the
+    // LARGEST LONGITUDINAL GAP: the bbox is the complement of the biggest
+    // empty arc between the geometry's parts (US: the empty Pacific/Atlantic
+    // arc from -66.9 east to 172.5 is ~239 degrees, so the bbox wraps
+    // 172.5 -> -66.9). The UK class stays planar under the same law (its
+    // largest gap contains the seam).
+    await seedPlace({
+      name: 'AleutiaLand',
+      level: 'Country',
+      bbox: { minLat: 20, minLng: 172.5, maxLat: 65, maxLng: -66.9 },
+      groundWkt:
+        'MULTIPOLYGON(((172.5 50, 179.778 50, 179.778 52, 172.5 52, 172.5 50)),' +
+        '((-179.147 50, -170 50, -170 52, -179.147 52, -179.147 50)),' +
+        '((-125 25, -66.9 25, -66.9 49, -125 49, -125 25)))',
+    });
+    const inView = await service.placesInView({
+      minLat: 24,
+      minLng: -126,
+      maxLat: 50,
+      maxLng: -60,
+    });
+    const row = inView.find((r) => r.place.name === 'AleutiaLand');
+    expect(row).toBeDefined();
+    // WRAP convention: min > max, spanning the seam — never a world band.
+    expect(row!.bbox.minLng).toBeCloseTo(172.5, 3);
+    expect(row!.bbox.maxLng).toBeCloseTo(-66.9, 3);
+  });
+
   it('THE SEAM: a view crossing the antimeridian returns only the places actually there', async () => {
     // SCOPE, stated honestly: the union-envelope bug shipped on 2026-07-27
     // was a PERFORMANCE defect, not a correctness one. Measured on the dev
