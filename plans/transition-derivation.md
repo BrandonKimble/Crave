@@ -497,3 +497,34 @@ the instrument now NAMES offending views instead of reporting drift numbers.
 Verified: switch stress across all tabs + drags — zero audit barks, screen
 pixel-correct at every posture. The settled re-bind, commit-proof reasserts
 and audit self-heal are now redundant for slots and go in the delete pass.
+
+## XV. THE PERF VERDICT (owner question, 2026-07-31): one abstraction is still wrong
+
+The measured facts: switch cost = the incoming scene's CONTENT MOUNT, paid on
+the interaction's critical frames (->home was 500ms of shelf cards; staged to
+65ms; ->polls 158ms). The motion engine, the shell, the slots, the surface —
+none of them appear in the cost. They are sound.
+
+The abstraction that is wrong for zero-drop: SCENES AS VISITORS — one
+persistent list whose content is evicted and remounted per switch. Mount cost
+at interaction time is STRUCTURAL to that choice; staging and prewarming only
+amortize it (a per-scene hand-tuned tax, forever). The old system was 60fps
+because scenes were RESIDENTS: mounted once, switch = opacity flip, mount
+cost paid at boot/idle, never at the interaction.
+
+THE IDEAL: SCENES AS RESIDENTS, budgeted — N co-mounted per-scene lists, ONE
+engine attached to the presented leg, hidden legs display-detached; warm at
+boot/idle under the old residency manager's budget discipline. XII rejected
+this on correctness grounds THAT THE SLOT HAS SINCE DISSOLVED: the
+phantom-duplicate paint was a transform/bind-era artifact (slots
+self-register; the registry is keyed and current), tau seeding is solved
+(setOffset + range law), N tau-writers reduces to "only the attached leg's
+handler feeds tau", and the shell never swaps at all (it is scene-agnostic
+native — residency costs it nothing).
+
+RECOMMENDATION: adopt residents as the target abstraction; it is the only
+shape where 60fps switching is structural rather than tuned. It is a major
+rung (engine re-attach choreography, per-leg band mask, scroll-memory per
+leg) and gets its own derivation + red team with the slot-era facts before a
+line lands. Until then the staged mount holds the line, and the perf probe
+keeps every switch honest.
