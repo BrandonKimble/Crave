@@ -82,6 +82,93 @@ non-vendor path). Open it in a fresh session with a RED-provable spec that an
 id-less observation is REFUSED, then delete the table. Until then the table
 stands, correct but dead weight.
 
+### THE NEXT DISSOLUTIONS — the abstraction docket (dual audit, 2026-07-30)
+
+Two independent architecture audits (Opus 5 + Fable 5), each asked "what are
+we building on without questioning?", one measuring the live DB, one reading
+the code's own testimony. Ranked by cost of keeping; convergence noted.
+
+**1. The earned-moment promotion apparatus (BOTH, + owner's own measurement).**
+Built for scarce paid polygons. Dead three ways: the pools are 100k catastrophe
+backstops that honest work cannot bind; the queue is 100% drained (22,766
+promoted, 0 pending); trigger counts are paid_seed 19,505 / birth 3,239 /
+credit_prefetch 17 / header_answers 5. Charter P0's SECOND HALF ("polygon at
+birth becomes synchronous-by-default; the queue survives only as the retry
+lane") NEVER LANDED — birth still waits for the hourly cron, so a newborn
+answers headers from a fat envelope for up to an hour, the exact judged-by-
+rectangle class this arc killed. Also inside it: the two-step cheap-geocode
+flow is UNREACHABLE (every enqueueable place is tomtom with an id), and the 3
+sketch-grade stragglers (the Peru chain) have NO queue row and nothing sweeps
+for them — a live gap. DISSOLUTION: birth fires an immediate governed fetch;
+queue = retry lane with attempts; triggers a/c/e, the header-answer memory,
+credit_prefetch's ritual coupling, and the cheap-draw step all delete. Entity
+exclusivity moves to the birth write.
+
+**2. Month-as-backoff + no terminal state (BOTH).** The month window neither
+rations (backstop) nor matches the vendor (~5 QPS per-minute is the real
+grain, named in governance.service as the KNOWN BETTER SHAPE). Distortions:
+retry latency is a function of the CALENDAR DATE of failure (a miss on the
+1st waits ~30 days, on the 30th ~1 day); a refused claim (vendor doesn't
+model the place separately — a FACT) retries forever, re-spending monthly;
+a runaway burns 100k in ~5.5h then blocks all work for ~25 days. DISSOLUTION:
+per-minute admission pool (registry already supports it), month stays as
+meter+alarm, failure-kind backoff, and a terminal 'refused' status.
+
+**3. signals geo columns NOT NULL (BOTH — and the window is NOW).** Post-P5b
+there are three honest shapes (rectangle / point / place-anchor) and the
+constraint forces anchored rows to manufacture a centroid — the apparatus
+that already caused the silently-dropped-poll-acts bug. DISSOLUTION: nullable
+geo + CHECK (place_id IS NOT NULL OR geo_min_lat IS NOT NULL);
+centroidGeoFromPlace deletes; the aggregate's exclusion becomes the positive
+statement; pullDemandWatermarkBack gets the null-aware form. Prod has ZERO
+poll-kind signals, so this migration is free today and costs more every day
+after launch.
+
+**4. Residue columns (BOTH).** localScriptAlias: write-only, zero readers
+anywhere — delete. places.promoted_at: zero readers (the drain reads the
+queue row's) — delete. county: sole consumers are the unreachable census-
+resolve lane — dies with docket #1; until then mergeSketch gap-fills fuel
+for an engine with no road. provider: a varchar serving as the boolean
+"is this a mirrored vendor entity". KEEP: subdivisionCode (display region),
+timeZone (poll local-time) — load-bearing.
+
+**5. SKETCH-GRADE (the productive disagreement).** One auditor: dissolve it —
+birth writes the real outline or nothing; the envelope is the LAST rectangle
+that can judge, and every widen/TOCTOU/disjoint-guard scar exists only
+because a rectangle can be re-widened. The other: the representation must
+stay for the honest tail (fallback mints and vendor-doesn't-model-separately
+places have no outline to fetch). SYNTHESIS: both are right — ordinary births
+go straight to outline (docket #1), the envelope survives ONLY for the tail
+lanes, and the widen law shrinks to tail-only code. Revisit widen deletion
+AFTER #1 lands.
+
+**6. The dual-arm demand read (ONE auditor; a real design question).** The
+attribution law exists in two dialects: the aggregate's containing/contained
+CTEs and the fresh arm's predicates — and they have ALREADY diverged once
+(the midnight step-discontinuity, caught by red team). The aggregate rebuilds
+today's slice every 15 minutes and the readers then DISCARD it (day <
+today), re-deriving today per-query through the second dialect. Proposed:
+one law, one implementation — readers read the aggregate for ALL days,
+today's slice on a tightened cadence; the fresh arms delete. The other
+auditor judged the aggregate sound without flagging the fresh arm; this one
+needs an owner decision (staleness budget for today's demand: minutes vs
+live).
+
+**7. The reconciler's asked-region memory (ONE auditor).** Per-process,
+unbounded array, linear scan, lost on restart. The ideal home became obvious
+after P5a: ProbedRegion is disc|box and PostGIS represents both natively
+with a GiST index — a small table turns the spend-avoidance memory durable
+and indexed. Low urgency; cents at stake.
+
+JUDGED SOUND by both, with live constraints: the day-rebuild aggregate +
+watermark (re-attribution seam is real), the DAG ancestry walk (10.85%
+measured), derivedBboxSelectSql + viewArms (measured), entity exclusivity
+per (id, level), ProbedRegion's union, the UTC transaction law, the advisory
+locks, simplify-at-write/read constants. One drift seam to close cheaply:
+DEDUPE_KEY_SQL / EVENT_COUNT_SQL / first-occurrence are duplicated verbatim
+between the aggregate and read services — extract to shared SQL like
+ground-containment.
+
 Corollary for review: when a bug appears in this domain, ask FIRST "is
 geometry answering a question the vendor already answered?" and SECOND "is a
 derived value being written anywhere other than its source's write?" Both
