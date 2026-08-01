@@ -73,10 +73,13 @@ async function main(): Promise<void> {
     const presence = regionPlace
       ? await prisma.$queryRawUnsafe<PresenceRow[]>(
           `WITH region_place AS (
-             SELECT bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
-               FROM places
-              WHERE name = $1 AND subdivision_code = $2 AND country_code = $3
-              ORDER BY promoted_at DESC NULLS LAST
+             -- P4: membership judged by the ONE ground (the old rectangle
+             -- read was the bbox-lies-ground-judges defect, live in the
+             -- fixture generator).
+             SELECT g.geometry
+               FROM places p JOIN place_geometries g ON g.place_id = p.place_id
+              WHERE p.name = $1 AND p.subdivision_code = $2 AND p.country_code = $3
+              ORDER BY p.promoted_at DESC NULLS LAST
               LIMIT 1
            )
            SELECT e.entity_id
@@ -84,8 +87,8 @@ async function main(): Promise<void> {
              JOIN core_restaurant_locations l ON l.location_id = e.primary_location_id
              CROSS JOIN region_place rp
             WHERE e.type = 'restaurant'
-              AND l.latitude BETWEEN rp.bbox_min_lat AND rp.bbox_max_lat
-              AND l.longitude BETWEEN rp.bbox_min_lng AND rp.bbox_max_lng`,
+              AND ST_Covers(rp.geometry,
+                    ST_SetSRID(ST_MakePoint(l.longitude, l.latitude), 4326))`,
           regionPlace.name,
           regionPlace.subdivisionCode,
           regionPlace.countryCode,

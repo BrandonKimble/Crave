@@ -58,10 +58,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import {
-  freshSignalAttributionSql,
-  geoEnvelopeSql,
-} from '../../signals/ground-containment';
+import { freshSignalAttributionSql } from '../../signals/ground-containment';
 import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
 import { utcInstantSql } from '../../signals/sql-instant';
 import {
@@ -290,22 +287,14 @@ export class DemandMassReader {
           MAX(${EVENT_COUNT_SQL})::float8 AS acts
         FROM places pb
         JOIN signals s
-          -- P2 (2026-07-30): the prefilter is the geometry GiST — the place's
-          -- ground && the signal's wrap-aware envelope — replacing the
-          -- hand-written bbox lat arms + lng wrap arithmetic (a derived
-          -- rectangle re-implementing what the index does natively, seam
-          -- bugs and all). Containment in either direction implies overlap,
-          -- so it never drops a true geometric candidate.
-          -- P5b (2026-07-29): BYPASSED for anchored signals — their geo is a
-          -- centroid point that can sit outside an ANCESTOR's ground
-          -- (the Washington spill), and their predicate is a DAG PK-walk
-          -- that makes no geometric promise.
-          ON (s.place_id IS NOT NULL
-              OR EXISTS (
-                   SELECT 1 FROM place_geometries pre
-                   WHERE pre.place_id = pb.place_id
-                     AND pre.geometry && ${geoEnvelopeSql('s')}))
-         AND (${freshSignalAttributionSql('pb')})
+          -- P2 red-team F5 (2026-07-30): NO separate prefilter. The
+          -- attribution law itself is the PK probe — ST_Covers/ST_CoveredBy
+          -- short-circuit on the cached geometry bbox inside PostGIS, so any
+          -- hand-written pre-check (the old bbox/lng arms, and briefly an
+          -- EXISTS && probe) was a strictly redundant second heap probe per
+          -- (place, signal) pair on the hot path. The anchored (P5b) branch
+          -- is dispatched INSIDE the law's CASE.
+          ON (${freshSignalAttributionSql('pb')})
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
           ${this.freshActFirstOccurrenceSql(todayStart)}
@@ -434,22 +423,14 @@ export class DemandMassReader {
           MAX(${EVENT_COUNT_SQL})::float8 AS acts
         FROM places pb
         JOIN signals s
-          -- P2 (2026-07-30): the prefilter is the geometry GiST — the place's
-          -- ground && the signal's wrap-aware envelope — replacing the
-          -- hand-written bbox lat arms + lng wrap arithmetic (a derived
-          -- rectangle re-implementing what the index does natively, seam
-          -- bugs and all). Containment in either direction implies overlap,
-          -- so it never drops a true geometric candidate.
-          -- P5b (2026-07-29): BYPASSED for anchored signals — their geo is a
-          -- centroid point that can sit outside an ANCESTOR's ground
-          -- (the Washington spill), and their predicate is a DAG PK-walk
-          -- that makes no geometric promise.
-          ON (s.place_id IS NOT NULL
-              OR EXISTS (
-                   SELECT 1 FROM place_geometries pre
-                   WHERE pre.place_id = pb.place_id
-                     AND pre.geometry && ${geoEnvelopeSql('s')}))
-         AND (${freshSignalAttributionSql('pb')})
+          -- P2 red-team F5 (2026-07-30): NO separate prefilter. The
+          -- attribution law itself is the PK probe — ST_Covers/ST_CoveredBy
+          -- short-circuit on the cached geometry bbox inside PostGIS, so any
+          -- hand-written pre-check (the old bbox/lng arms, and briefly an
+          -- EXISTS && probe) was a strictly redundant second heap probe per
+          -- (place, signal) pair on the hot path. The anchored (P5b) branch
+          -- is dispatched INSIDE the law's CASE.
+          ON (${freshSignalAttributionSql('pb')})
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
           AND s.subject_type = 'entity'

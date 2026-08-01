@@ -156,19 +156,20 @@ describe('the two-arm freshness seam (aggregate closed days + fresh today)', () 
     }
   });
 
-  it('the fresh arm prefilters on the geometry GiST with the wrap-aware signal envelope — no hand-written lng arithmetic (P2)', async () => {
+  it('the fresh arm has NO separate prefilter — the attribution law IS the check, wrap-aware via the signal envelope (P2 + red-team F5)', async () => {
     const { reader, queries } = createHarness();
     await reader.placeDemandMass([PLACE], NOW);
     await reader.subjectDemandMass([PLACE], NOW);
     for (const query of queries) {
       const sql = flatten(query);
       // Wrap-awareness lives in geoEnvelopeSql (two-arm ST_Union for a
-      // crossing geo); the prefilter is ground && envelope, bypassed for
-      // anchored signals whose predicate is a DAG walk (P5b).
+      // crossing geo) inside the law itself; ST_Covers/ST_CoveredBy
+      // short-circuit on the cached geometry bbox, so any pre-check was a
+      // redundant second heap probe per (place, signal) pair (red-team F5).
       expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
       expect(sql).toContain('ST_Union(');
-      expect(sql).toContain('pre.geometry &&');
-      expect(sql).toContain('s.place_id IS NOT NULL');
+      expect(sql).toContain('s.place_id IS NOT NULL'); // P5b dispatch CASE
+      expect(sql).not.toContain('pre.geometry');
       expect(sql).not.toContain('bbox_max_lat');
     }
   });

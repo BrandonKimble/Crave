@@ -24,10 +24,10 @@ import { Prisma } from '@prisma/client';
  * its ground never attributes there); a place with no geometry row (a
  * bbox-less birth — no ground knowledge at all) is simply not a container.
  * The correlated place_geometries probe is a PK lookup (place_id is the
- * primary key) — cheap at fresh-arm cardinalities. Call sites keep their
- * bbox-intersection join conditions as the btree PREFILTER (§2.5(c): bbox =
- * index only; containment implies intersection, so the prefilter never
- * drops a true candidate).
+ * primary key) — cheap at fresh-arm cardinalities, and it IS the whole
+ * check: P2 (2026-07-30) removed every separate prefilter, because
+ * ST_Covers/ST_CoveredBy short-circuit on the cached geometry bbox inside
+ * PostGIS — any hand-written pre-check was a redundant second probe.
  *
  * Wrap-awareness: a crossing signal geo (min_lng > max_lng) covers
  * [min, 180] ∪ [-180, max]; its envelope is the ST_Union of the two arms

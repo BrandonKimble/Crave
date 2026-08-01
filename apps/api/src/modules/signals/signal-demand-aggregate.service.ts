@@ -344,6 +344,11 @@ export class SignalDemandAggregateService {
             FROM geos g
             JOIN place_geometries pg
               ON ST_Covers(pg.geometry, ${geoEnvelopeSql('g')})
+            -- Red-team F1 (2026-07-30): place_geometries has NO FK to places,
+            -- so an orphan ground (test teardown, a deleted place) could WIN
+            -- the smallest-area pick and store a ghost uuid the readers then
+            -- silently drop. The join to places is the existence check.
+            JOIN places pl ON pl.place_id = pg.place_id
           ) ranked
           WHERE pick = 1
         ),

@@ -98,10 +98,11 @@ async function loadPool(): Promise<PoolRestaurant[]> {
   >(
     `
     with austin_place as (
-      select bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
-      from places
-      where name = 'Austin' and subdivision_code = 'TX' and country_code = 'US'
-      order by promoted_at desc nulls last
+      -- P4: the ONE ground judges membership, not a rectangle.
+      select g.geometry
+      from places p join place_geometries g on g.place_id = p.place_id
+      where p.name = 'Austin' and p.subdivision_code = 'TX' and p.country_code = 'US'
+      order by p.promoted_at desc nulls last
       limit 1
     )
     select e.entity_id, e.name
@@ -111,8 +112,7 @@ async function loadPool(): Promise<PoolRestaurant[]> {
     join core_restaurant_locations l on l.location_id = e.primary_location_id
     cross join austin_place ap
     where e.type = 'restaurant' and l.google_place_id is not null
-      and l.latitude between ap.bbox_min_lat and ap.bbox_max_lat
-      and l.longitude between ap.bbox_min_lng and ap.bbox_max_lng
+      and ST_Covers(ap.geometry, ST_SetSRID(ST_MakePoint(l.longitude, l.latitude), 4326))
     order by s.display_score desc
     limit ${POOL_SIZE}
     `,

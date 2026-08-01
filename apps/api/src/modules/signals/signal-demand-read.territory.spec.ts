@@ -170,7 +170,7 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     // against the place's ONE ground, not hand-written lng arithmetic.
     expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
     expect(sql).toContain('ST_Union(');
-    expect(sql).toContain('pre.geometry &&');
+    expect(sql).not.toContain('pre.geometry'); // F5: no separate prefilter
   });
 
   it('the fresh TODAY arm judges membership by the §2.5(c) containment law (C3 cut): polygon-first, geometry-null bbox fallback — the lng intersect is only the prefilter', async () => {
@@ -273,7 +273,7 @@ describe('territoryUnmetAsks (kind-filtered ask read)', () => {
     // P2: wrap-awareness via the signal envelope + geometry-GiST prefilter
     // (see the demand-arm test above for the law).
     expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
-    expect(sql).toContain('pre.geometry &&');
+    expect(sql).not.toContain('pre.geometry'); // F5: no separate prefilter
     // The two ask sites of one search still collapse per (request, term).
     expect(sql).toContain('askSearchRequestId');
     // §2.5(c) containment membership (C3 cut) — same law as the demand arm.

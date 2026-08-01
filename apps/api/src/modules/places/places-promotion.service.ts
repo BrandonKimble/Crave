@@ -77,6 +77,7 @@ import {
   TOMTOM_CHAIN_PROBE,
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
+import { derivedBboxSelectSql } from './places-catalog.service';
 import { SpendCampaignService } from '../external-integrations/shared/spend-campaign.service';
 import {
   tomtomCheapCostMicrosPerDraw,
@@ -749,27 +750,32 @@ export class PlacesPromotionService {
     return true;
   }
 
-  /** P4: the place's extent, derived from its ONE ground (planar envelope —
-   *  the promotion paths never involve seam-crossing rows, which are all
-   *  long-outlined countries/states). Null when no geometry row exists. */
+  /** P4: the place's extent, via the ONE canonical wrap-aware derivation.
+   *
+   *  Red-team F7 (2026-07-30): the first cut hand-rolled a PLANAR read here,
+   *  resting on an asserted-not-enforced "no seam rows reach promotion". A
+   *  seam-straddling sketch would have derived a 360° span, tripped the
+   *  anchorless wrong-entity guard, and been pinned at sketch grade FOREVER
+   *  (each rejection nulls the cached geometry id). The wrap-aware derivation
+   *  returns the true small span; the shared bboxLngSpan helper understands
+   *  the min>max convention. Null when no geometry row exists. */
   private async derivedExtentOf(placeId: string) {
     const [row] = await this.prisma.$queryRaw<
       Array<{
-        min_lat: number;
-        min_lng: number;
-        max_lat: number;
-        max_lng: number;
+        bbox_min_lat: number;
+        bbox_min_lng: number;
+        bbox_max_lat: number;
+        bbox_max_lng: number;
       }>
     >(Prisma.sql`
-      SELECT ST_YMin(geometry)::float8 AS min_lat, ST_XMin(geometry)::float8 AS min_lng,
-             ST_YMax(geometry)::float8 AS max_lat, ST_XMax(geometry)::float8 AS max_lng
-        FROM place_geometries WHERE place_id = ${placeId}::uuid`);
+      SELECT ${derivedBboxSelectSql('g')}
+        FROM place_geometries g WHERE g.place_id = ${placeId}::uuid`);
     return row
       ? {
-          minLat: row.min_lat,
-          minLng: row.min_lng,
-          maxLat: row.max_lat,
-          maxLng: row.max_lng,
+          minLat: row.bbox_min_lat,
+          minLng: row.bbox_min_lng,
+          maxLat: row.bbox_max_lat,
+          maxLng: row.bbox_max_lng,
         }
       : null;
   }

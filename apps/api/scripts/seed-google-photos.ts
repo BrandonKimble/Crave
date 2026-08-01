@@ -52,10 +52,11 @@ async function getCandidates(): Promise<Candidate[]> {
   >(
     `
     with austin_place as (
-      select place_id, bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
-      from places
-      where name = 'Austin' and subdivision_code = 'TX' and country_code = 'US'
-      order by promoted_at desc nulls last
+      -- P4: the ONE ground judges membership, not a rectangle.
+      select p.place_id, g.geometry
+      from places p join place_geometries g on g.place_id = p.place_id
+      where p.name = 'Austin' and p.subdivision_code = 'TX' and p.country_code = 'US'
+      order by p.promoted_at desc nulls last
       limit 1
     ),
     owner_list_restaurants as (
@@ -75,8 +76,7 @@ async function getCandidates(): Promise<Candidate[]> {
       cross join austin_place ap
       where e.type = 'restaurant'
         and ap.place_id is not null
-        and rl.latitude between ap.bbox_min_lat and ap.bbox_max_lat
-        and rl.longitude between ap.bbox_min_lng and ap.bbox_max_lng
+        and ST_Covers(ap.geometry, ST_SetSRID(ST_MakePoint(rl.longitude, rl.latitude), 4326))
       order by s.display_score desc
       limit ${TOP_AUSTIN_LIMIT}
     ),

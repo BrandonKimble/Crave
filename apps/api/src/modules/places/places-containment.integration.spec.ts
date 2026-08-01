@@ -121,6 +121,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // The FK (ON DELETE CASCADE, migration 20260730070000) removes the grounds
+  // with the places — this teardown used to leak orphan geometries into the
+  // dev DB on every run, and red-team F1 found an orphan could WIN the
+  // aggregate's smallest-containing pick as a ghost.
   await prisma.$executeRawUnsafe(
     `DELETE FROM places WHERE provider = '${TEST_TAG}'`,
   );
@@ -400,6 +404,64 @@ describe('containment laws, proven against PostGIS', () => {
         signal.signal_id,
       );
     }
+  });
+
+  it('P4 DERIVED BBOX AT THE SEAM: a two-arm crossing ground derives the wrap convention (min > max)', async () => {
+    // The one genuinely new geometry logic in P4 — and both red teams found
+    // it had ZERO coverage that could go RED. A crossing ground is stored as
+    // two arms hugging ±180; the derived camera envelope must reconstruct
+    // the wrap convention, not the planar envelope (which would span the
+    // world).
+    await seedPlace({
+      name: 'SeamNation',
+      level: 'Country',
+      bbox: { minLat: 40, minLng: 175, maxLat: 41, maxLng: -178 },
+      groundWkt:
+        'MULTIPOLYGON(((175 40, 180 40, 180 41, 175 41, 175 40)),' +
+        '((-180 40, -178 40, -178 41, -180 41, -180 40)))',
+    });
+    const inView = await service.placesInView({
+      minLat: 39.9,
+      minLng: 176,
+      maxLat: 41.1,
+      maxLng: 179,
+    });
+    const row = inView.find((r) => r.place.name === 'SeamNation');
+    expect(row).toBeDefined();
+    expect(row!.bbox.minLng).toBeCloseTo(175, 5);
+    expect(row!.bbox.maxLng).toBeCloseTo(-178, 5); // min > max = wrap
+    expect(row!.bbox.minLat).toBeCloseTo(40, 5);
+    expect(row!.bbox.maxLat).toBeCloseTo(41, 5);
+  });
+
+  it('P4 DERIVED BBOX, THE UK CLASS: wide BOTH-HEMISPHERE parts that never touch the seam derive the PLANAR envelope, never a wrap', async () => {
+    // Red-team convergent finding (both reviewers, independently): the first
+    // cut keyed "crossing" on planar span >= 180 and bucketed parts by
+    // CENTROID SIGN. A UK-with-territories-class geometry (parts at -128 and
+    // +72 — planar span 200, seam never touched) then derived 72 -> 1.8, a
+    // wrap bbox covering the PACIFIC — excluding its own territory and
+    // claiming half the planet (which the reconciler would remember as an
+    // answered region for 30 days). Crossing must mean REACHING ±180, not
+    // being wide.
+    await seedPlace({
+      name: 'ScatterKingdom',
+      level: 'Country',
+      bbox: { minLat: 45, minLng: -128, maxLat: 47, maxLng: 72 },
+      groundWkt:
+        'MULTIPOLYGON(((-128 45, -127 45, -127 46, -128 46, -128 45)),' +
+        '((-3 45, 1.8 45, 1.8 47, -3 47, -3 45)),' +
+        '((71 45, 72 45, 72 46, 71 46, 71 45)))',
+    });
+    const inView = await service.placesInView({
+      minLat: 44.9,
+      minLng: -4,
+      maxLat: 47.1,
+      maxLng: 2,
+    });
+    const row = inView.find((r) => r.place.name === 'ScatterKingdom');
+    expect(row).toBeDefined();
+    expect(row!.bbox.minLng).toBeCloseTo(-128, 5); // planar, the true extent
+    expect(row!.bbox.maxLng).toBeCloseTo(72, 5); // NOT a wrap
   });
 
   it('THE SEAM: a view crossing the antimeridian returns only the places actually there', async () => {

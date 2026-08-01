@@ -105,16 +105,16 @@ function makeHarness(options: {
       // P4: the derived-extent read (ST_YMin/... FROM place_geometries) —
       // answered from the fixture place's legacy bbox fields, which model the
       // sketch ground's envelope (the production invariant).
-      if (sql.includes('ST_YMin(geometry)')) {
+      if (sql.includes('AS bbox_min_lat')) {
         const pl: any = options.place ?? {};
         return Promise.resolve(
           pl.bboxMinLat != null
             ? [
                 {
-                  min_lat: Number(pl.bboxMinLat),
-                  min_lng: Number(pl.bboxMinLng),
-                  max_lat: Number(pl.bboxMaxLat),
-                  max_lng: Number(pl.bboxMaxLng),
+                  bbox_min_lat: Number(pl.bboxMinLat),
+                  bbox_min_lng: Number(pl.bboxMinLng),
+                  bbox_max_lat: Number(pl.bboxMaxLat),
+                  bbox_max_lng: Number(pl.bboxMaxLng),
                 },
               ]
             : [],

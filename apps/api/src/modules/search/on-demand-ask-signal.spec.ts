@@ -222,24 +222,46 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
 describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
   it('reads on_demand_ask signals by TERRITORY with per-request dedupe — never the dead ask-event table', async () => {
     const queries: string[] = [];
+    // Flatten NESTED Prisma.Sql fragments too — the attribution law is
+    // embedded as a fragment, and asserting on the outer template alone
+    // cannot see it (that blind spot is how a pin goes always-green).
+    const flattenSql = (
+      strings: readonly string[],
+      values: readonly unknown[],
+    ): string =>
+      strings
+        .map((part, i) => {
+          const v = values[i];
+          if (v && typeof v === 'object' && 'strings' in v && 'values' in v) {
+            const frag = v as {
+              strings: readonly string[];
+              values: readonly unknown[];
+            };
+            return part + flattenSql(frag.strings, frag.values);
+          }
+          return part + (v !== undefined ? '?' : '');
+        })
+        .join('');
     const prisma = {
-      $queryRaw: jest.fn((strings: TemplateStringsArray) => {
-        queries.push(strings.join('?'));
-        return Promise.resolve([
-          {
-            term: 'khachapuri',
-            entity_type: 'food',
-            entity_id: null,
-            reason: 'unresolved',
-            distinct_user_count: BigInt(2),
-            demand_score: 2,
-            result_restaurant_count: 0,
-            result_food_count: 0,
-            last_seen_at: new Date('2026-07-18T00:00:00Z'),
-            ask_count: BigInt(3),
-          },
-        ]);
-      }),
+      $queryRaw: jest.fn(
+        (strings: TemplateStringsArray, ...values: unknown[]) => {
+          queries.push(flattenSql(strings, values));
+          return Promise.resolve([
+            {
+              term: 'khachapuri',
+              entity_type: 'food',
+              entity_id: null,
+              reason: 'unresolved',
+              distinct_user_count: BigInt(2),
+              demand_score: 2,
+              result_restaurant_count: 0,
+              result_food_count: 0,
+              last_seen_at: new Date('2026-07-18T00:00:00Z'),
+              ask_count: BigInt(3),
+            },
+          ]);
+        },
+      ),
     };
     const reader = new SignalDemandReadService(
       prisma as never,
@@ -256,9 +278,9 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
     expect(sql).toContain("s.kind = 'on_demand_ask'");
     // Site dedupe: the two ask sites of one search collapse on the shared id.
     expect(sql).toContain('askSearchRequestId');
-    // Territory scoping = geometry-GiST overlap against the member places'
-    // ONE ground (P2, 2026-07-30) — the bbox arms are gone.
-    expect(sql).toContain('pre.geometry &&');
+    // Territory scoping = the containment law itself against the member
+    // places' ONE ground (P2 + red-team F5: no separate prefilter).
+    expect(sql).toContain('ST_Covers(pg.geometry,');
     expect(sql).not.toContain('collection_on_demand_ask_events');
     expect(sql).not.toContain('collectable_market_key');
 

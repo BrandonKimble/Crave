@@ -55,18 +55,30 @@ async function main(): Promise<void> {
              COALESCE(sum(output_tokens),0) AS "outTok", count(*) AS calls
       FROM api_usage_ledger GROUP BY caller`;
     const baseline = new Map(
-      before.map((r) => [r.caller, { inTok: Number(r.inTok), outTok: Number(r.outTok), calls: Number(r.calls) }]),
+      before.map((r) => [
+        r.caller,
+        {
+          inTok: Number(r.inTok),
+          outTok: Number(r.outTok),
+          calls: Number(r.calls),
+        },
+      ]),
     );
 
     const started = Date.now();
     let ok = 0;
     for (const [i, run] of picked.entries()) {
       try {
-        await replay.replayExtractionRun({ sourceExtractionRunId: run.runId, activate: true });
+        await replay.replayExtractionRun({
+          sourceExtractionRunId: run.runId,
+          activate: true,
+        });
         ok += 1;
         out(`[${i + 1}/${picked.length}] ${run.runId} (${run.docs} docs) ok`);
       } catch (e) {
-        out(`[${i + 1}/${picked.length}] ${run.runId} FAILED: ${e instanceof Error ? e.message : e}`);
+        out(
+          `[${i + 1}/${picked.length}] ${run.runId} FAILED: ${e instanceof Error ? e.message : e}`,
+        );
       }
     }
 
@@ -76,13 +88,16 @@ async function main(): Promise<void> {
              COALESCE(sum(output_tokens),0) AS "outTok", count(*) AS calls
       FROM api_usage_ledger GROUP BY caller`;
 
-    out(`\n=== PILOT SPEND DELTA (${docs} docs, ${ok}/${picked.length} runs, ${Math.round((Date.now()-started)/1000)}s)`);
+    out(
+      `\n=== PILOT SPEND DELTA (${docs} docs, ${ok}/${picked.length} runs, ${Math.round((Date.now() - started) / 1000)}s)`,
+    );
     for (const row of after) {
       const b = baseline.get(row.caller) ?? { inTok: 0, outTok: 0, calls: 0 };
       const dIn = Number(row.inTok) - b.inTok;
       const dOut = Number(row.outTok) - b.outTok;
       const dCalls = Number(row.calls) - b.calls;
-      if (dCalls > 0) out(`  ${row.caller}: calls=${dCalls} in=${dIn} out=${dOut}`);
+      if (dCalls > 0)
+        out(`  ${row.caller}: calls=${dCalls} in=${dIn} out=${dOut}`);
     }
     out(`\nDOCS_REPLAYED=${docs}`);
   } finally {

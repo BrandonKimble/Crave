@@ -129,23 +129,42 @@ export interface PlaceInView {
  */
 export function derivedBboxSelectSql(alias: string): Prisma.Sql {
   const g = Prisma.raw(alias);
+  // CROSSING means REACHING ±180 on both sides — never merely "wide".
+  //
+  // Red-team convergent finding (2026-07-30, both reviewers independently):
+  // the first cut keyed the wrap branch on planar span >= 180 and bucketed
+  // parts by CENTROID SIGN. A UK-with-territories-class geometry (parts at
+  // -128 and +72; planar span 200, seam untouched) then derived 72 -> 1.8 —
+  // a wrap bbox covering the PACIFIC, excluding its own territory and
+  // claiming half the planet, which the reconciler would have remembered as
+  // an answered region for 30 days. Proven RED in
+  // places-containment.integration.spec ("THE UK CLASS") before this fix.
+  //
+  // The two-arm storage convention guarantees a genuine crosser has a part
+  // reaching +180 AND a part reaching -180, so that is the gate. Arms are
+  // bucketed by which hemisphere the part LIVES in (XMin >= 0 = east arm,
+  // everything else west): a wide non-crosser falls to the honest planar
+  // envelope, and the COALESCE fallbacks can no longer paper over a
+  // mis-bucketed world.
+  const crossing = Prisma.sql`(ST_XMax(${g}.geometry) >= 179.999
+         AND ST_XMin(${g}.geometry) <= -179.999)`;
   return Prisma.sql`
     ST_YMin(${g}.geometry)::float8 AS bbox_min_lat,
     ST_YMax(${g}.geometry)::float8 AS bbox_max_lat,
-    CASE WHEN ST_XMax(${g}.geometry) - ST_XMin(${g}.geometry) < 180
+    CASE WHEN NOT ${crossing}
          THEN ST_XMin(${g}.geometry)::float8
          ELSE COALESCE((
            SELECT MIN(ST_XMin(part.geom))
            FROM ST_Dump(${g}.geometry) AS part
-           WHERE ST_X(ST_Centroid(part.geom)) >= 0
+           WHERE ST_XMin(part.geom) >= 0
          ), ST_XMin(${g}.geometry))::float8
     END AS bbox_min_lng,
-    CASE WHEN ST_XMax(${g}.geometry) - ST_XMin(${g}.geometry) < 180
+    CASE WHEN NOT ${crossing}
          THEN ST_XMax(${g}.geometry)::float8
          ELSE COALESCE((
            SELECT MAX(ST_XMax(part.geom))
            FROM ST_Dump(${g}.geometry) AS part
-           WHERE ST_X(ST_Centroid(part.geom)) < 0
+           WHERE ST_XMin(part.geom) < 0
          ), ST_XMax(${g}.geometry))::float8
     END AS bbox_max_lng`;
 }
@@ -794,7 +813,8 @@ export class PlacesCatalogService {
   ): Promise<Place> {
     // P4: the known extent is DERIVED from the one ground at the moment of
     // use — no stored rectangle to read or to drift.
-    const existingBbox = await this.derivedBboxOf(existing.placeId);
+    const derived = await this.derivedBboxOf(existing.placeId);
+    const existingBbox = derived?.bbox ?? null;
     // Distinct-place guard (red-team 7aaa66d9 finding 3, the Lakeside-TX
     // phantom): when both bboxes exist and are DISJOINT (no intersection —
     // definitional, no threshold), the identity match has collided two
@@ -824,8 +844,15 @@ export class PlacesCatalogService {
     // Skip-if-contained is race-safe: a sketch ground only ever GROWS, so an
     // observation that adds nothing against our read adds nothing against
     // any concurrent state either.
+    // Red-team F6 (2026-07-30): widening is a SKETCH-grade concept. A vendor
+    // OUTLINE is a fact — the widen UPDATE was guarded against it anyway, so
+    // attempting one was a guaranteed no-op write plus a re-read, recomputed
+    // on EVERY future observation of the node (it could never converge).
     const widen =
-      node.bbox && merged && !this.sameBbox(existingBbox, merged)
+      node.bbox &&
+      merged &&
+      (derived?.isSketch ?? true) &&
+      !this.sameBbox(existingBbox, merged)
         ? merged
         : null;
 
@@ -912,11 +939,18 @@ export class PlacesCatalogService {
    * exactly the rows that were bbox-NULL before). Wrap-aware via
    * derivedBboxSelectSql.
    */
-  private async derivedBboxOf(placeId: string): Promise<GeoBbox | null> {
-    const [row] = await this.prisma.$queryRaw<DerivedBboxRow[]>(Prisma.sql`
-      SELECT ${derivedBboxSelectSql('g')}
+  private async derivedBboxOf(
+    placeId: string,
+  ): Promise<{ bbox: GeoBbox; isSketch: boolean } | null> {
+    const [row] = await this.prisma.$queryRaw<
+      Array<DerivedBboxRow & { is_sketch: boolean }>
+    >(Prisma.sql`
+      SELECT ${derivedBboxSelectSql('g')},
+             (g.provider_boundary_id IS NULL) AS is_sketch
       FROM place_geometries g WHERE g.place_id = ${placeId}::uuid`);
-    return row ? bboxFromDerivedRow(row) : null;
+    return row
+      ? { bbox: bboxFromDerivedRow(row), isSketch: row.is_sketch }
+      : null;
   }
 
   /**
@@ -945,7 +979,15 @@ export class PlacesCatalogService {
                             ${hull.maxLng}::float8, ${hull.maxLat}::float8, 4326)))),
           fetched_at = now()
         WHERE place_id = ${placeId}::uuid
-          AND provider_boundary_id IS NULL`;
+          AND provider_boundary_id IS NULL
+          -- Red-team F2 (2026-07-30, TOCTOU): the seam-free/crossing dispatch
+          -- was decided on a STALE read. If a concurrent merge crossed this
+          -- row's sketch in between, planar ST_Envelope over a two-arm
+          -- geometry is the WHOLE WORLD band — the San Juan class reborn,
+          -- and grow-only means it never heals. The live-row span guard makes
+          -- the stale branch a no-op instead (the next sketch re-widens
+          -- through the crossing path).
+          AND (ST_XMax(geometry) - ST_XMin(geometry)) < 180`;
       return;
     }
     await this.writeSketchGround(placeId, hull);

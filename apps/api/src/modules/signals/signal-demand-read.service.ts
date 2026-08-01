@@ -3,10 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
-import {
-  freshSignalAttributionSql,
-  geoEnvelopeSql,
-} from './ground-containment';
+import { freshSignalAttributionSql } from './ground-containment';
 import { utcInstantSql } from './sql-instant';
 import {
   DEMAND_HALF_LIFE_DAYS,
@@ -916,18 +913,9 @@ export class SignalDemandReadService {
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.subject_id IS NOT NULL
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          -- P2 (2026-07-30): the prefilter is the geometry GiST — ground &&
-          -- the signal's wrap-aware envelope — replacing the bbox lat arms +
-          -- the hand-written lng wrap arithmetic. Attribution itself stays
-          -- the aggregate's §2.6 single-ground containment law (C3 cut).
-          -- P5b (2026-07-29): BYPASSED for anchored signals — centroid-point
-          -- geo can sit outside an ancestor's ground (the Washington spill);
-          -- the DAG predicate makes no geometric promise.
-          AND (s.place_id IS NOT NULL
-               OR EXISTS (
-                    SELECT 1 FROM place_geometries pre
-                    WHERE pre.place_id = p.place_id
-                      AND pre.geometry && ${geoEnvelopeSql('s')}))
+          -- P2 red-team F5 (2026-07-30): no separate prefilter — the
+          -- attribution law's own PK probes short-circuit on the cached
+          -- geometry bbox; any pre-check was a redundant second heap probe.
           AND (${freshSignalAttributionSql('p')})
           ${freshFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2
@@ -1026,16 +1014,8 @@ export class SignalDemandReadService {
           AND s.occurred_at >= ${utcInstantSql(params.since)}
           AND s.subject_text IS NOT NULL
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
-          -- P2 (2026-07-30): geometry-GiST prefilter (ground && wrap-aware
-          -- signal envelope) replaces the bbox/lng arms; membership judged by
-          -- the §2.6 single-ground containment law (C3 cut).
-          -- P5b: bypassed for anchored signals (DAG predicate, no geometric
-          -- promise — the Washington spill).
-          AND (s.place_id IS NOT NULL
-               OR EXISTS (
-                    SELECT 1 FROM place_geometries pre
-                    WHERE pre.place_id = p.place_id
-                      AND pre.geometry && ${geoEnvelopeSql('s')}))
+          -- P2 red-team F5 (2026-07-30): no separate prefilter — the law's
+          -- own PK probes short-circuit on the cached geometry bbox.
           AND (${freshSignalAttributionSql('p')})
       ),
       per_request AS (
