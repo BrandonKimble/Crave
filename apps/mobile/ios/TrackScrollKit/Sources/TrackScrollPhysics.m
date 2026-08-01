@@ -94,6 +94,7 @@
                 fromY:(double)y0
             velocityY:(double)v0;
 - (void)stopSpring;
+- (void)applyRangeLawTo:(UIScrollView *)scrollView;
 @end
 
 /// ── THE POSTURE REGISTER (residents red team, 2026-08-01) ───────────────────
@@ -840,6 +841,14 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
     proxy.shellChromeHeight = chromeH;
   }
   proxy.shellChromeHeight = chromeH;
+  // THE RANGE LAW RUNS FIRST (measured: lists->profile landed BETWEEN detents).
+  // UIKit clamps contentOffset to contentH + insetBottom - viewport at write
+  // time. Seeding the carried posture before the incoming leg's reachability
+  // inset exists let UIKit clamp the write to wherever that leg's content
+  // happened to end — a landing at no snap point at all, and (because it is a
+  // clamp, not a spring) an instant one. Every posture must be REACHABLE
+  // before the offset is written.
+  [proxy applyRangeLawTo:scrollView];
   const CGFloat trackH = proxy != nil && proxy.shellTrackH > 0 ? proxy.shellTrackH : gTrackShellTrackH;
   const CGFloat posture = trackH > 0 ? MIN(gTrackPostureRegister, trackH) : gTrackPostureRegister;
   const CGFloat target = posture + restore;

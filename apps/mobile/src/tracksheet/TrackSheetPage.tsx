@@ -1066,6 +1066,21 @@ export function TrackSheetPage({
       });
     }
   }, [presentedSceneKey, tau, trackH, attachToTag, applyPin]);
+  // THE BOOT TRANSACTION (missing-header fix): presentation must be COMMANDED,
+  // never inferred. Seeding it from "whichever leg slot registers first while
+  // claiming initialPresented" is a mount-order race — lose it and every leg
+  // sits at alpha 0, which is the owner's "the home header is just missing
+  // after a reload". Run the same transaction the switch runs, once, for the
+  // scene we boot into.
+  React.useEffect(() => {
+    const nativePhysics = NativeModules.TrackScrollPhysics;
+    if (nativePhysics?.switchTo == null) {
+      return;
+    }
+    const sceneKey = presentedSceneKeyRef.current;
+    nativePhysics.switchTo(sceneKey, 0, legChromeHeightBySceneRef.current(sceneKey));
+  }, []);
+
   // A freshly mounted leg attaches async: re-apply the pending restore once
   // the proxy exists (stamped by scene so a later switch cancels it).
   const pendingRestoreRef = React.useRef<{ sceneKey: string; restored: number } | null>(null);
