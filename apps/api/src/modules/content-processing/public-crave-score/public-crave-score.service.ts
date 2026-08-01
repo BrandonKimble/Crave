@@ -600,7 +600,7 @@ export class PublicCraveScoreService {
           -- carriers, not room activity: one poll must contribute ONE doc
           -- to A(τ), not voters+1, or the poll room's calibration silently
           -- re-weights by turnout.
-          AND NOT (sd.raw_payload ? 'voterUserId')
+          AND COALESCE(NOT (sd.raw_payload ? 'voterUserId'), true)
           AND NOT EXISTS (
             SELECT 1 FROM collection_relevance_verdicts v
             WHERE v.platform = sd.platform

@@ -280,12 +280,14 @@ export class PoolRegistry {
             consumed: state.unpersisted,
           });
           state.unpersisted = 0;
-        } catch {
+        } catch (error) {
           // Round-3 C4: continuing here used to CLOBBER the tail at the
           // bottom of this function (residualNow() sees the old window and
           // returns 0). Bail instead: the window stays unconfirmed,
           // reserve() fails closed, and the next ensureWindow retries the
-          // tail flush.
+          // tail flush. ALERT on the way out (round 4): a persistent store
+          // failure now wedges the pool into denial — that must be loud.
+          this.onDurableFlushFailure?.(pool.name, error);
           return;
         }
       }

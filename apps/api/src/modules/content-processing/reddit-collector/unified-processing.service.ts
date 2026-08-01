@@ -399,6 +399,19 @@ export class UnifiedProcessingService implements OnModuleInit {
       // DRY RUN writes nothing — this branch used to run before the
       // dry-run gate and deleted real evidence during shadow runs
       // (round-3 red team C3).
+      if (
+        this.dryRunEnabled &&
+        (sourceMetadata.extractionTrace?.activateDocumentIds?.length ?? 0) > 0
+      ) {
+        // Round 4: a shadow run must still REPORT the most consequential
+        // diff class — documents whose live evidence WOULD be superseded
+        // by this zero-mention verdict.
+        this.logger.info('DRY RUN: zero-mention batch would supersede docs', {
+          batchId,
+          wouldSupersedeDocuments:
+            sourceMetadata.extractionTrace?.activateDocumentIds?.length ?? 0,
+        });
+      }
       const zeroMentionActivate = this.dryRunEnabled
         ? []
         : (sourceMetadata.extractionTrace?.activateDocumentIds ?? []);
@@ -1625,7 +1638,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 Array<{ entity_id: string; name: string; aliases: string[] }>
               >`
                 SELECT entity_id, name, aliases FROM core_entities
-                WHERE type = ${entityType}::"EntityType"
+                WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
                   AND (
                     SELECT string_agg(w, ' ' ORDER BY w)
@@ -1642,6 +1655,17 @@ export class UnifiedProcessingService implements OnModuleInit {
                   name: orderMatches[0].name,
                   aliases: orderMatches[0].aliases,
                 };
+                // Round-4 design note: token-multiset adoption CAN conflate
+                // genuinely-distinct dishes (chocolate milk / milk
+                // chocolate) — none exist in the graph today (empirically
+                // scanned), so adoption stays on, but every use is logged
+                // so a bad one is findable, never silent.
+                this.logger.warn('Order-probe ADOPTED existing food', {
+                  batchId,
+                  incoming: canonicalName,
+                  adopted: orderMatches[0].name,
+                  entityId: orderMatches[0].entity_id,
+                });
               }
             }
             if (
@@ -1661,7 +1685,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 Array<{ entity_id: string; name: string; aliases: string[] }>
               >`
                 SELECT entity_id, name, aliases FROM core_entities
-                WHERE type = ${entityType}::"EntityType"
+                WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
                   AND btrim(regexp_replace(regexp_replace(lower(name),
                         '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) = ${strippedKey}

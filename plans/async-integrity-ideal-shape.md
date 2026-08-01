@@ -296,6 +296,27 @@ cycle; watch it). Stranded-metric note: the entity-dim count is
 dominated by ~11k deliberately-archived cuisine attributes awaiting the
 class-② ruling — expected to drain then.
 
+## RED-TEAM ROUND 4 (2026-08-01, diff-attacker + live/prod verification)
+
+BLOCKER caught before it ever fired: both adopt-probe raw queries cast to
+::"EntityType" but the DB type is entity_type (@@map) — every new-entity
+mint whose variant probe missed would 42704-abort the write tx. Shipped
+by round 2, propagated by round 3, masked by mocked specs; fixed to
+::entity_type and verified live (finds pizza square/square pizza). Also:
+null-safe raw_payload predicate in the mass query (latent NULL drop);
+the pool-registry bail paths now ALERT via onDurableFlushFailure (a
+persistent store failure wedges the pool loudly, not silently); dry runs
+report would-supersede counts (shadow diffs see the most consequential
+class); order-probe adoptions are audit-logged (design ruling: adoption
+stays ON — zero false collisions exist in the graph today, the
+chocolate-milk/milk-chocolate class is prospective and now findable).
+Verified sound: '\\s+' escaping (this time), TS≡SQL sorted keys on all
+7,614 food names, voter-hash collision math (4e-12/poll), parent_source_id
+consumers, jsonb ? operator under Prisma, stranded-query cost (19ms).
+CLAIMS PATH: first real execution (local Postgres) — claim/contention/
+stamp/reap all correct; prod detectors all zero post-deploy; production
+soak of the claim path = next scheduled collection cycle.
+
 ## SEQUENCE (this becomes audit class ①, expanded)
 
 1. Stop the bleeding (data): repair C1's dark events while all runs
