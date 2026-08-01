@@ -123,16 +123,20 @@ export class RestaurantEntityMergeService {
       select: {
         eventId: true,
         extractionRunId: true,
-        mentionKey: true,
+        sourceDocumentId: true,
         evidenceType: true,
       },
     });
 
     for (const event of duplicateEvents) {
+      // Collision check mirrors the LIVE content unique (run, doc,
+      // restaurant, type) — the old mention-key check missed same-document
+      // collisions and the re-point then aborted on P2002 (round-2 red
+      // team, cold sweep #2).
       const conflicting = await tx.restaurantEvent.findFirst({
         where: {
           extractionRunId: event.extractionRunId,
-          mentionKey: event.mentionKey,
+          sourceDocumentId: event.sourceDocumentId,
           restaurantId: canonicalId,
           evidenceType: event.evidenceType,
         },
@@ -163,17 +167,19 @@ export class RestaurantEntityMergeService {
       select: {
         eventId: true,
         extractionRunId: true,
-        mentionKey: true,
+        sourceDocumentId: true,
         entityId: true,
         evidenceType: true,
       },
     });
 
     for (const event of duplicateEvents) {
+      // Mirrors the LIVE content unique (run, doc, restaurant, entity,
+      // type) — see the restaurant-event pass above.
       const conflicting = await tx.restaurantEntityEvent.findFirst({
         where: {
           extractionRunId: event.extractionRunId,
-          mentionKey: event.mentionKey,
+          sourceDocumentId: event.sourceDocumentId,
           restaurantId: canonicalId,
           entityId: event.entityId,
           evidenceType: event.evidenceType,

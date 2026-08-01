@@ -641,9 +641,21 @@ export class SpendCampaignService {
       RETURNING spent_micros
     `;
     if (!incremented.length) {
-      // State moved under us (breached/completed elsewhere) — the guarded
-      // WHERE refused; treat as breached-style refusal for the caller.
-      throw new CampaignBreachedError(campaignId);
+      // State moved under us — the guarded WHERE refused. Distinguish the
+      // requeue-and-wait case (breached) from terminal states (completed/
+      // cancelled), or callers would requeue against a done campaign
+      // forever (round 2 ④).
+      const now = await this.prisma.spendCampaign.findUnique({
+        where: { campaignId },
+        select: { state: true },
+      });
+      if (now?.state === 'breached') {
+        throw new CampaignBreachedError(campaignId);
+      }
+      throw new CampaignStateError(
+        campaignId,
+        `cannot record spend in state '${now?.state ?? 'missing'}'`,
+      );
     }
     const durableSpent = Number(incremented[0].spent_micros);
     const breached = durableSpent >= envelopeMicros;

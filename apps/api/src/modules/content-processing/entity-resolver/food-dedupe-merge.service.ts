@@ -439,17 +439,20 @@ export class FoodDedupeMergeService {
       select: {
         eventId: true,
         extractionRunId: true,
-        mentionKey: true,
+        sourceDocumentId: true,
         restaurantId: true,
         evidenceType: true,
       },
     });
 
     for (const event of loserEvents) {
+      // Mirrors the LIVE content unique (run, doc, restaurant, entity,
+      // type) — the mention-key check missed same-document collisions and
+      // the re-point aborted on P2002 (round-2 red team).
       const conflicting = await tx.restaurantEntityEvent.findFirst({
         where: {
           extractionRunId: event.extractionRunId,
-          mentionKey: event.mentionKey,
+          sourceDocumentId: event.sourceDocumentId,
           restaurantId: event.restaurantId,
           entityId: winnerId,
           evidenceType: event.evidenceType,

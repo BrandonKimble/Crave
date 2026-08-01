@@ -1017,11 +1017,107 @@ export class ProjectionRebuildService implements OnModuleInit {
     // winner (the claim either just moved or already exists there). Events
     // whose redirect target is itself archived are NOT deletable — they are
     // stranded recoverable evidence and stay counted below (red team F5:
-    // the previous delete removed them silently).
+    // the previous delete removed them silently). Deleted rows' restaurants
+    // join the rebuild set — their counts were inflated by the duplicate
+    // (round 2 ③).
+    const dupDeleted = await this.prismaService.$queryRaw<
+      Array<{ restaurant_id: string }>
+    >`
+      WITH gone AS (
+        DELETE FROM core_restaurant_entity_events ev
+        USING core_entities e, entity_redirects r, core_entities winner
+        WHERE ev.entity_id = e.entity_id
+          AND e.status = 'archived'
+          AND r.from_entity_id = e.entity_id
+          AND winner.entity_id = r.to_entity_id
+          AND winner.status = 'active'
+        RETURNING ev.restaurant_id
+      )
+      SELECT DISTINCT restaurant_id FROM gone
+    `;
+    // RESTAURANT DIMENSION (round 2 ③): events keyed to a merged-away
+    // RESTAURANT id are the same open tail — the projection loads by
+    // restaurant_id and never sees them. Re-point both event tables through
+    // the restaurant's redirect; content-unique collisions are redundant
+    // copies (the winner already heard this document) and are deleted.
+    const restRepointed = await this.prismaService.$queryRaw<
+      Array<{ restaurant_id: string }>
+    >`
+      WITH candidates AS (
+        SELECT DISTINCT ON (
+            ev.extraction_run_id, ev.source_document_id,
+            r.to_entity_id, ev.entity_id, ev.evidence_type)
+          ev.event_id, r.to_entity_id
+        FROM core_restaurant_entity_events ev
+        JOIN core_entities e
+          ON e.entity_id = ev.restaurant_id AND e.status = 'archived'
+        JOIN entity_redirects r ON r.from_entity_id = e.entity_id
+        JOIN core_entities winner
+          ON winner.entity_id = r.to_entity_id AND winner.status = 'active'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM core_restaurant_entity_events dup
+          WHERE dup.extraction_run_id = ev.extraction_run_id
+            AND dup.source_document_id = ev.source_document_id
+            AND dup.restaurant_id = r.to_entity_id
+            AND dup.entity_id = ev.entity_id
+            AND dup.evidence_type = ev.evidence_type
+        )
+        ORDER BY ev.extraction_run_id, ev.source_document_id,
+                 r.to_entity_id, ev.entity_id, ev.evidence_type, ev.event_id
+      ), moved AS (
+        UPDATE core_restaurant_entity_events ev
+        SET restaurant_id = candidates.to_entity_id
+        FROM candidates
+        WHERE ev.event_id = candidates.event_id
+        RETURNING candidates.to_entity_id AS restaurant_id
+      )
+      SELECT DISTINCT restaurant_id FROM moved
+    `;
     await this.prismaService.$executeRaw`
       DELETE FROM core_restaurant_entity_events ev
       USING core_entities e, entity_redirects r, core_entities winner
-      WHERE ev.entity_id = e.entity_id
+      WHERE ev.restaurant_id = e.entity_id
+        AND e.status = 'archived'
+        AND r.from_entity_id = e.entity_id
+        AND winner.entity_id = r.to_entity_id
+        AND winner.status = 'active'
+    `;
+    const praiseRepointed = await this.prismaService.$queryRaw<
+      Array<{ restaurant_id: string }>
+    >`
+      WITH candidates AS (
+        SELECT DISTINCT ON (
+            ev.extraction_run_id, ev.source_document_id,
+            r.to_entity_id, ev.evidence_type)
+          ev.event_id, r.to_entity_id
+        FROM core_restaurant_events ev
+        JOIN core_entities e
+          ON e.entity_id = ev.restaurant_id AND e.status = 'archived'
+        JOIN entity_redirects r ON r.from_entity_id = e.entity_id
+        JOIN core_entities winner
+          ON winner.entity_id = r.to_entity_id AND winner.status = 'active'
+        WHERE NOT EXISTS (
+          SELECT 1 FROM core_restaurant_events dup
+          WHERE dup.extraction_run_id = ev.extraction_run_id
+            AND dup.source_document_id = ev.source_document_id
+            AND dup.restaurant_id = r.to_entity_id
+            AND dup.evidence_type = ev.evidence_type
+        )
+        ORDER BY ev.extraction_run_id, ev.source_document_id,
+                 r.to_entity_id, ev.evidence_type, ev.event_id
+      ), moved AS (
+        UPDATE core_restaurant_events ev
+        SET restaurant_id = candidates.to_entity_id
+        FROM candidates
+        WHERE ev.event_id = candidates.event_id
+        RETURNING candidates.to_entity_id AS restaurant_id
+      )
+      SELECT DISTINCT restaurant_id FROM moved
+    `;
+    await this.prismaService.$executeRaw`
+      DELETE FROM core_restaurant_events ev
+      USING core_entities e, entity_redirects r, core_entities winner
+      WHERE ev.restaurant_id = e.entity_id
         AND e.status = 'archived'
         AND r.from_entity_id = e.entity_id
         AND winner.entity_id = r.to_entity_id
@@ -1036,17 +1132,22 @@ export class ProjectionRebuildService implements OnModuleInit {
       WHERE e.status = 'archived'
     `;
     const strandedCount = Number(unredirected[0]?.n ?? 0);
-    if (repointed.length > 0 || strandedCount > 0) {
+    const rebuildSet = Array.from(
+      new Set(
+        [...repointed, ...dupDeleted, ...restRepointed, ...praiseRepointed].map(
+          (row) => row.restaurant_id,
+        ),
+      ),
+    );
+    if (rebuildSet.length > 0 || strandedCount > 0) {
       this.logger.warn('Tombstone-event sweep', {
         operation: 'tombstone_event_sweep',
-        rebuiltRestaurants: repointed.length,
+        rebuiltRestaurants: rebuildSet.length,
         strandedWithoutRedirect: strandedCount,
       });
     }
-    for (let i = 0; i < repointed.length; i += 50) {
-      await this.rebuildForRestaurants(
-        repointed.slice(i, i + 50).map((row) => row.restaurant_id),
-      );
+    for (let i = 0; i < rebuildSet.length; i += 50) {
+      await this.rebuildForRestaurants(rebuildSet.slice(i, i + 50));
     }
   }
 

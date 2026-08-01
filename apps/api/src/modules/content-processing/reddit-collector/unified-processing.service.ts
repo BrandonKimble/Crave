@@ -392,11 +392,31 @@ export class UnifiedProcessingService implements OnModuleInit {
         totalMentions: mentions.length,
       });
 
+      // ZERO MENTIONS IS STILL A VERDICT (round-2 red team ①): "the new
+      // prompt correctly found nothing here" must supersede the old run's
+      // claims, or the wrong old evidence stays live forever. Run the same
+      // activation the consolidated tx would have run.
+      const zeroMentionActivate =
+        sourceMetadata.extractionTrace?.activateDocumentIds ?? [];
+      let supersededRestaurantIds: string[] = [];
+      if (zeroMentionActivate.length > 0 && sourceMetadata.extractionTrace) {
+        const runId = sourceMetadata.extractionTrace.extractionRunId;
+        supersededRestaurantIds = await this.prismaService.$transaction(
+          (tx) => this.applyActivationSupersede(tx, runId, zeroMentionActivate),
+          { timeout: this.transactionTimeoutMs },
+        );
+        if (supersededRestaurantIds.length > 0) {
+          await this.projectionRebuildService.rebuildForRestaurants(
+            supersededRestaurantIds,
+          );
+        }
+      }
+
       return {
         entitiesCreated: 0,
         connectionsCreated: 0,
         affectedConnectionIds: [],
-        affectedRestaurantIds: [],
+        affectedRestaurantIds: supersededRestaurantIds,
         createdEntityIds: [],
         createdEntitySummaries: [],
         reusedEntitySummaries: [],
@@ -1599,7 +1619,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 WHERE type = ${entityType}::"EntityType"
                   AND status <> 'archived'
                   AND btrim(regexp_replace(regexp_replace(lower(name),
-                        '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')) = ${strippedKey}
+                        '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) = ${strippedKey}
                 ORDER BY created_at
                 LIMIT 1
               `;
@@ -1875,41 +1895,14 @@ export class UnifiedProcessingService implements OnModuleInit {
             activateDocumentIds.length > 0 &&
             sourceMetadata.extractionTrace
           ) {
-            const activateRunId =
-              sourceMetadata.extractionTrace.extractionRunId;
-            const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
-              SELECT DISTINCT restaurant_id FROM (
-                SELECT restaurant_id FROM core_restaurant_entity_events
-                WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
-                  AND extraction_run_id <> ${activateRunId}::uuid
-                UNION
-                SELECT restaurant_id FROM core_restaurant_events
-                WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
-                  AND extraction_run_id <> ${activateRunId}::uuid
-              ) r
-            `;
-            for (const row of losing
-              .map((entry) => entry.restaurant_id)
-              .sort()) {
-              await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${row}`}))`;
-              affectedRestaurantIds.add(row);
+            const superseded = await this.applyActivationSupersede(
+              tx,
+              sourceMetadata.extractionTrace.extractionRunId,
+              activateDocumentIds,
+            );
+            for (const restaurantId of superseded) {
+              affectedRestaurantIds.add(restaurantId);
             }
-            await tx.restaurantEntityEvent.deleteMany({
-              where: {
-                sourceDocumentId: { in: activateDocumentIds },
-                extractionRunId: { not: activateRunId },
-              },
-            });
-            await tx.restaurantEvent.deleteMany({
-              where: {
-                sourceDocumentId: { in: activateDocumentIds },
-                extractionRunId: { not: activateRunId },
-              },
-            });
-            await tx.sourceDocument.updateMany({
-              where: { documentId: { in: activateDocumentIds } },
-              data: { activeExtractionRunId: activateRunId },
-            });
           }
 
           return {
@@ -2376,6 +2369,50 @@ export class UnifiedProcessingService implements OnModuleInit {
         `Mention ${mention.temp_id} failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  /** Supersede-delete + pointer flip for activated documents, shared by the
+   *  consolidated write tx and the zero-mention path (round-2 red team ①:
+   *  "the prompt correctly found nothing" is a verdict that must supersede
+   *  too). Takes the rebuild locks for restaurants losing evidence and
+   *  returns them so the caller rebuilds them post-commit. */
+  private async applyActivationSupersede(
+    tx: PrismaTransaction,
+    activateRunId: string,
+    activateDocumentIds: string[],
+  ): Promise<string[]> {
+    const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
+      SELECT DISTINCT restaurant_id FROM (
+        SELECT restaurant_id FROM core_restaurant_entity_events
+        WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
+          AND extraction_run_id <> ${activateRunId}::uuid
+        UNION
+        SELECT restaurant_id FROM core_restaurant_events
+        WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
+          AND extraction_run_id <> ${activateRunId}::uuid
+      ) r
+    `;
+    const losingIds = losing.map((entry) => entry.restaurant_id).sort();
+    for (const restaurantId of losingIds) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${restaurantId}`}))`;
+    }
+    await tx.restaurantEntityEvent.deleteMany({
+      where: {
+        sourceDocumentId: { in: activateDocumentIds },
+        extractionRunId: { not: activateRunId },
+      },
+    });
+    await tx.restaurantEvent.deleteMany({
+      where: {
+        sourceDocumentId: { in: activateDocumentIds },
+        extractionRunId: { not: activateRunId },
+      },
+    });
+    await tx.sourceDocument.updateMany({
+      where: { documentId: { in: activateDocumentIds } },
+      data: { activeExtractionRunId: activateRunId },
+    });
+    return losingIds;
   }
 
   private async recordRestaurantEvents(

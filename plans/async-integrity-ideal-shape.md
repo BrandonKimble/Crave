@@ -228,6 +228,35 @@ connections behind a vendor call). CONSCIOUS deferrals, recorded:
   keep-and-filter would preserve one-command re-activation of a prior
   run. Decide before the first shadow-activation on prod.
 
+## RED-TEAM ROUND 2 (2026-08-01, fix-attacker + cold end-to-end sweep, all fixed same day)
+
+Cold sweep (looked where rounds 1 didn't): the content uniques BROKE the
+poll ballot lane — per-voter events shared one synthetic document, so the
+second agreeing voter aborted graduation (P2002) and the rebuild guard
+would collapse N voters to one mention. FIX: one synthetic document per
+voter (the voter IS the claim identity); zero prod rows existed, no
+migration. Also: all three merge services pre-checked event collisions on
+the OLD mention-key unique — re-keyed to the live (run, doc, ...) key.
+Archive lane, interactive path, on-demand, places writes, and all
+post-supersede readers verified CLEAN (negative results recorded).
+
+Fix-attacker (on efec8bc7's own fixes): '\s+' in a template literal
+cooked to 's+' — the stripped-name probe replaced letter runs of 's' and
+could FALSELY ADOPT distinct entities ("Taco" adopting "Tacos"); fixed
+'\\s+'. Zero-mention batches early-returned BEFORE activation, so "the
+new prompt correctly found nothing" never superseded old claims — the
+supersede now runs in that branch too (shared applyActivationSupersede).
+Identity fold now iterates variants to a true FIXPOINT (two levels still
+split curry/curries). Tombstone sweep gained the RESTAURANT dimension
+(merged-away restaurant ids on both event tables — the projection loads
+by restaurant and never saw them) and rebuilds restaurants whose
+duplicate rows were deleted. Campaign zero-count refusal distinguishes
+breached (requeue) from terminal states (stop); month-roll unpersisted
+tails now flush to their own window key (drift class). Verified sound
+under attack: effective-prompt gate coherence, F5 sweep ordering,
+UPDATE..RETURNING verdict, M4 single-flight, residual math on all three
+interleavings.
+
 ## SEQUENCE (this becomes audit class ①, expanded)
 
 1. Stop the bleeding (data): repair C1's dark events while all runs

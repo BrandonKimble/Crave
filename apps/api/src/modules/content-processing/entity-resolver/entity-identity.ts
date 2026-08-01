@@ -37,16 +37,21 @@ export function entityIdentityKey(name: string, type: EntityType): string {
     return base;
   }
   if (type === EntityType.food || type === EntityType.ingredient) {
-    // VARIANT CLOSURE (red team F8): one level of variants is asymmetric —
-    // min(variants('curry')) = 'curries' but min(variants('curries')) =
-    // 'currie', so the pair took different locks. Expanding each variant's
-    // own variants makes both sides converge on the same closed set, and
-    // min over the closure is a canonical fold both agree on.
-    const firstOrder = foodNameVariants(base);
-    const closure = new Set<string>(firstOrder);
-    for (const variant of firstOrder) {
-      for (const second of foodNameVariants(variant)) {
-        closure.add(second);
+    // VARIANT CLOSURE TO A FIXPOINT (red team F8, round 2 ⑥b): any bounded
+    // expansion is asymmetric — two levels still gave 'curry' → min
+    // 'curri' vs 'curries' → min 'curr'. Iterating to a true fixpoint
+    // makes every member of a variant family land on the SAME closed set,
+    // so min-over-closure is a genuine canonical fold. Converges fast
+    // (variant rules only shrink/extend the head word by a few chars);
+    // over-collapse costs lock contention, never correctness — this key
+    // serializes and probes, it never asserts equality.
+    const closure = new Set<string>(foodNameVariants(base));
+    for (let size = -1; size !== closure.size; ) {
+      size = closure.size;
+      for (const variant of Array.from(closure)) {
+        for (const next of foodNameVariants(variant)) {
+          closure.add(next);
+        }
       }
     }
     const collapsed = Array.from(closure).sort()[0] ?? base;

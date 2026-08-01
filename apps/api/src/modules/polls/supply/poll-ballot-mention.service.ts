@@ -185,9 +185,53 @@ export class PollBallotMentionService {
         },
       });
 
+      // PER-VOTER DOCUMENTS (round-2 red team, cold sweep #1): each voter is
+      // a distinct CLAIM, so each voter gets a distinct synthetic document.
+      // With one shared ballot document, the content-identity unique
+      // (run, doc, restaurant[, entity], type) rejects the SECOND voter who
+      // agrees — aborting graduation — and the rebuild's one-(doc, kind)
+      // guard collapses every voter to a single mention. One doc per voter
+      // makes both invariants agree with K6's "each voter mints one".
+      let ordinal = 1;
       for (const choice of choices) {
         const mentionKey = `poll-ballot:${pollId}:${choice.userId}`;
         affectedRestaurantIds.add(choice.restaurantId);
+        const voterDocument = await tx.sourceDocument.upsert({
+          where: {
+            platform_sourceType_sourceId: {
+              platform: POLL_SURFACE_PLATFORM,
+              sourceType: MentionSource.post,
+              sourceId: `${documentSourceId}:${choice.userId}`,
+            },
+          },
+          update: {},
+          create: {
+            platform: POLL_SURFACE_PLATFORM,
+            community: pollSurfaceHandle(poll.placeId as string),
+            sourceType: MentionSource.post,
+            sourceId: `${documentSourceId}:${choice.userId}`,
+            title: `${poll.question} — ballot`,
+            sourceCreatedAt: poll.launchedAt ?? poll.createdAt,
+            rawPayload: {
+              pollId,
+              voterUserId: choice.userId,
+              sourceId: source.sourceId,
+              mapping: BALLOT_PROMPT_HASH,
+            } as Prisma.InputJsonValue,
+          },
+          select: { documentId: true },
+        });
+        await tx.extractionInputDocument.createMany({
+          data: [
+            {
+              inputId: input.inputId,
+              documentId: voterDocument.documentId,
+              ordinal,
+            },
+          ],
+          skipDuplicates: true,
+        });
+        ordinal += 1;
         if (choice.foodId) {
           // Dish-axis choice: a direct menu-item mention (m=1) — exactly the
           // shape the projection counts as one dish mention.
@@ -195,7 +239,7 @@ export class PollBallotMentionService {
             data: {
               extractionRunId: run.extractionRunId,
               inputId: input.inputId,
-              sourceDocumentId: document.documentId,
+              sourceDocumentId: voterDocument.documentId,
               restaurantId: choice.restaurantId,
               mentionKey,
               entityId: choice.foodId,
@@ -214,7 +258,7 @@ export class PollBallotMentionService {
             data: {
               extractionRunId: run.extractionRunId,
               inputId: input.inputId,
-              sourceDocumentId: document.documentId,
+              sourceDocumentId: voterDocument.documentId,
               restaurantId: choice.restaurantId,
               mentionKey,
               evidenceType: 'poll_ballot',
@@ -224,6 +268,10 @@ export class PollBallotMentionService {
             },
           });
         }
+        await tx.sourceDocument.update({
+          where: { documentId: voterDocument.documentId },
+          data: { activeExtractionRunId: run.extractionRunId },
+        });
       }
 
       // Activate: the ballot run becomes the document's active run so the

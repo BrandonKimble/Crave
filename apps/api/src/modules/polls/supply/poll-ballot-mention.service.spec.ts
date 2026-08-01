@@ -43,6 +43,18 @@ function createHarness(options: {
   const tx = {
     sourceDocument: {
       create: jest.fn().mockResolvedValue({ documentId: DOC_ID }),
+      // Per-voter documents (round-2 red team): each voter's synthetic doc
+      // is upserted; give each a distinct id so per-voter identity holds.
+      upsert: jest
+        .fn()
+        .mockImplementation(
+          (args: {
+            where: { platform_sourceType_sourceId: { sourceId: string } };
+          }) =>
+            Promise.resolve({
+              documentId: `doc-${args.where.platform_sourceType_sourceId.sourceId}`,
+            }),
+        ),
       update: jest.fn().mockResolvedValue({}),
     },
     extractionRun: {
@@ -51,7 +63,10 @@ function createHarness(options: {
     extractionInput: {
       create: jest.fn().mockResolvedValue({ inputId: INPUT_ID }),
     },
-    extractionInputDocument: { create: jest.fn().mockResolvedValue({}) },
+    extractionInputDocument: {
+      create: jest.fn().mockResolvedValue({}),
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     restaurantEvent: { create: jest.fn().mockResolvedValue({}) },
     restaurantEntityEvent: { create: jest.fn().mockResolvedValue({}) },
   };

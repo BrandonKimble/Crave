@@ -265,6 +265,25 @@ export class PoolRegistry {
         return;
       }
       const initialKey = state?.windowKey;
+      // WINDOW-ROLL TAIL (round 2 ⑤, drift class): consumption metered
+      // against the PREVIOUS window but never flushed used to be silently
+      // dropped on roll — a plausible contributor to the ~5% Gemini
+      // reconcile drift. Flush it to ITS OWN window key first, best-effort.
+      if (
+        state &&
+        initialKey !== undefined &&
+        initialKey !== key &&
+        state.unpersisted > 0
+      ) {
+        try {
+          await this.store.add(pool.name, initialKey, {
+            consumed: state.unpersisted,
+          });
+          state.unpersisted = 0;
+        } catch {
+          // Old-window tail stays in memory; next call retries.
+        }
+      }
       const carried = state && state.windowKey === key ? state.unpersisted : 0;
       let addSucceeded = false;
       // Residual = consumption that landed DURING the awaits and is not yet
