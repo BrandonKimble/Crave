@@ -734,13 +734,26 @@ export function TrackSheetPage({
   // own delaysContentTouches/cancelContentTouches as the tap-vs-drag rule.
   // TrackScrollKit pins it past H (native, same-frame).
 
+  // THE ONE PAINTED HEADER (two-surfaces fix, 2026-08-01). The chrome exists
+  // TWICE by necessity: a touch twin inside the scroll content (so every pixel
+  // of the header is a scroll touch — the grabbable-sheet law) and a visual
+  // twin in the shell slot (so it rides sheetTop natively, no wiggle). Painting
+  // BOTH made each copy a self-sufficient-looking sheet — that is why a desync
+  // ever read as TWO sheets rather than one misplaced layer. The touch twin is
+  // now INVISIBLE (opacity 0): same layout, same hit-testing, zero pixels. Two
+  // headers on screen is now unrepresentable, not merely avoided.
   const renderChrome = (
     refCallback: ((node: View | null) => void) | null,
     chromeTitle: React.ReactNode,
     band: React.ReactNode | null,
-    chromeH: number
+    chromeH: number,
+    painted: boolean
   ) => (
-    <View ref={refCallback} collapsable={false} style={[styles.chrome, { height: chromeH }]}>
+    <View
+      ref={refCallback}
+      collapsable={false}
+      style={[styles.chrome, { height: chromeH }, !painted && styles.unpaintedChrome]}
+    >
       {/* NO CHROME FROST SLAB: the frost founds the SHEET (see the founding
               layers below). A slab here would sit ON that frost and blur an
               already-blurred layer — the owner's "double frosty". The chrome's
@@ -853,7 +866,8 @@ export function TrackSheetPage({
       legChromeRef(leg.sceneKey),
       leg.title ?? title,
       band,
-      legChromeHeight(leg)
+      legChromeHeight(leg),
+      false
     );
     touchChromeCacheRef.current.set(leg.sceneKey, { leg, element });
     return element;
@@ -876,7 +890,7 @@ export function TrackSheetPage({
           ) : null;
         return {
           sceneKey: leg.sceneKey,
-          element: renderChrome(null, leg.title ?? title, band, legChromeHeight(leg)),
+          element: renderChrome(null, leg.title ?? title, band, legChromeHeight(leg), true),
         };
       }),
     [
@@ -1216,6 +1230,9 @@ const styles = StyleSheet.create({
   // NO OPACITY HERE, EVER: leg visibility is the engine's (TrackLegSlot alpha,
   // flipped inside the switch transaction). A React opacity would multiply it
   // on the interop wrapper and fight the transaction.
+  // opacity 0 keeps layout AND hit-testing (unlike display:none) — the touch
+  // twin stays grabbable while painting nothing.
+  unpaintedChrome: { opacity: 0 },
   legLayer: { ...StyleSheet.absoluteFillObject },
   legChromeLayer: { ...StyleSheet.absoluteFillObject },
   // The shadow must live on a view that does NOT clip, so the silhouette is a

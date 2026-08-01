@@ -19,7 +19,6 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { TOGGLE_STRIP_BAND_HEIGHT } from './toggle-strip-metrics';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import CutoutBandMaterial from '../components/CutoutBandMaterial';
@@ -718,7 +717,14 @@ export function ToggleStrip({
     // reverse); outside one, FrostCutout is inert by its own contract.
     <FrostCutout style={styles.cutoutFrame}>
       <View style={styles.band} testID={testID} onLayout={handleBandLayout}>
-        <FrostedGlassBackground />
+        {/* NO OWN BLUR (THE ONE-FROST LAW, 2026-08-01). The app has exactly ONE
+            frosted layer — the sheet's founding frost — and every cutout is a
+            HOLE that reveals IT. This band used to mount its own
+            FrostedGlassBackground so "the strip's blur sees REAL frost": blur
+            over frost, i.e. the owner's doubled frostiness, and a second blur
+            surface that could desync from the sheet's. The band is now
+            transparent outside its white mask plate: the chips' windows show
+            the one shared frost, exactly like every other cutout. */}
         <Reanimated.View
           style={toggleRowMorphStyle}
           pointerEvents={showActionRow ? 'none' : 'auto'}

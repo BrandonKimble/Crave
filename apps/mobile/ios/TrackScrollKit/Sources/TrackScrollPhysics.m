@@ -615,12 +615,17 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.onSigmaChanged = ^(CGFloat sigma) {
       [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
     };
-    // OWNERSHIP DOES NOT TRANSFER HERE (teleport fix, measured): attach runs
-    // before the switch transaction, while the incoming leg still holds its
-    // PARKED offset — owning the register now lets one stray KVO/clamp tick
-    // overwrite the carried posture with the parked one (collapsed->expanded
-    // teleported). Only the switch transaction (and refuse) may hand the
-    // register to a new scroll view.
+    // OWNERSHIP TRANSFERS ONLY ON A SWITCH — with ONE exception: BOOT.
+    // Attach must not STEAL the register (it runs before the switch
+    // transaction, while the incoming leg still holds its PARKED offset; one
+    // stray KVO tick then overwrote the carried posture — the measured
+    // collapsed->expanded teleport). But if NOBODY owns it yet, the first
+    // attached leg must claim it, or the register never tracks the boot
+    // scene's τ and the first switch carries posture 0 (= collapsed): the
+    // owner's "polls slides up from the bottom".
+    if (gTrackPostureOwner == nil || gTrackPostureOwner.window == nil) {
+      gTrackPostureOwner = scrollView;
+    }
     resolve(@(YES));
   }];
 }
@@ -740,6 +745,70 @@ static NSString *gTrackPendingSwitchKey = nil;
 static double gTrackPendingSwitchRestore = 0;
 static double gTrackPendingSwitchChromeH = 0;
 
+/// THE LEG MUST BE LIVE INSIDE THE TRANSACTION (measured 2026-08-01): a fresh
+/// leg's engine proxy is installed by the JS attach path, which lands AFTER the
+/// switch. Until then that leg's scroll view has NO delegate proxy — so when
+/// the seat spring animated its contentOffset, no didScroll ran the shell
+/// writer: the rows rose while frost/chrome/tail stayed parked at the old
+/// sheetTop (the owner's "header stranded at the bottom"). The transaction now
+/// ADOPTS the incoming scroll view — proxy installed, ballistic config
+/// inherited from the outgoing leg, shell wired from the config mirrors — so
+/// the leg drives the shell from its very first animated frame. The later JS
+/// attach/bindShell then merely re-assert.
+static TrackScrollDelegateProxy *TrackAdoptScrollView(UIScrollView *scrollView, double chromeH)
+{
+  TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+  TrackScrollDelegateProxy *donor =
+      gTrackPostureOwner != nil && gTrackPostureOwner != scrollView
+          ? objc_getAssociatedObject(gTrackPostureOwner, kTrackProxyKey)
+          : nil;
+  if (proxy == nil) {
+    proxy = [TrackScrollDelegateProxy new];
+    proxy.original = scrollView.delegate;
+    objc_setAssociatedObject(scrollView, kTrackProxyKey, proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    scrollView.delegate = proxy;
+    [proxy beginObservingDelegateOf:scrollView];
+  } else if (scrollView.delegate != proxy) {
+    proxy.original = scrollView.delegate;
+    scrollView.delegate = proxy;
+  }
+  // Physics config is a property of the SHEET, not of a leg: inherit it so an
+  // adopted leg has the same ballistic wall and detents from frame one.
+  if (donor != nil) {
+    if (proxy.ballisticEdge <= 0) {
+      proxy.ballisticEdge = donor.ballisticEdge;
+    }
+    if (proxy.snapRegionEnd <= 0) {
+      proxy.snapRegionEnd = donor.snapRegionEnd;
+    }
+    if (proxy.snapOffsets.count == 0) {
+      proxy.snapOffsets = donor.snapOffsets;
+    }
+    if (proxy.onTopArrival == nil) {
+      proxy.onTopArrival = donor.onTopArrival;
+    }
+    if (proxy.onSigmaChanged == nil) {
+      proxy.onSigmaChanged = donor.onSigmaChanged;
+    }
+  }
+  if (!proxy.shellEnabled && gTrackShellTrackH > 0) {
+    proxy.shellExpandedTop = gTrackShellExpandedTop;
+    proxy.shellTrackH = gTrackShellTrackH;
+    proxy.shellChromeHeight = chromeH;
+    if (proxy.shellBandMask == nil) {
+      CALayer *mask = [CALayer layer];
+      mask.backgroundColor = [UIColor blackColor].CGColor;
+      proxy.shellBandMask = mask;
+      scrollView.layer.mask = mask;
+    } else if (scrollView.layer.mask != proxy.shellBandMask) {
+      scrollView.layer.mask = proxy.shellBandMask;
+    }
+    proxy.hostScrollView = scrollView;
+    proxy.shellEnabled = YES;
+  }
+  return proxy;
+}
+
 static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
 {
   TrackLegRegistry *legs = [TrackLegRegistry shared];
@@ -759,7 +828,7 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
     TrackScrollDelegateProxy *oldProxy = objc_getAssociatedObject(oldOwner, kTrackProxyKey);
     [oldProxy stopSpring];
   }
-  TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+  TrackScrollDelegateProxy *proxy = TrackAdoptScrollView(scrollView, chromeH);
   [proxy stopSpring];
   if (proxy != nil) {
     if (proxy.stashSigma != 0) {
@@ -770,27 +839,7 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
     }
     proxy.shellChromeHeight = chromeH;
   }
-  // COLD-LEG SHELL WIRING (the flight-ghost fix): a fresh leg's proxy may
-  // exist before bindShell ran — shellEnabled NO means the seat spring's
-  // didScroll would skip the shell writer, freezing frost/chrome at the old
-  // sheetTop for the whole flight (measured: parked at 717.75 through the
-  // spring, teleporting at settle). Wire the shell here, in the transaction,
-  // from the config mirrors — bindShell later just re-asserts.
-  if (proxy != nil && !proxy.shellEnabled && gTrackShellTrackH > 0) {
-    proxy.shellExpandedTop = gTrackShellExpandedTop;
-    proxy.shellTrackH = gTrackShellTrackH;
-    proxy.shellChromeHeight = chromeH;
-    if (proxy.shellBandMask == nil) {
-      CALayer *mask = [CALayer layer];
-      mask.backgroundColor = [UIColor blackColor].CGColor;
-      proxy.shellBandMask = mask;
-      scrollView.layer.mask = mask;
-    } else if (scrollView.layer.mask != proxy.shellBandMask) {
-      scrollView.layer.mask = proxy.shellBandMask;
-    }
-    proxy.hostScrollView = scrollView;
-    proxy.shellEnabled = YES;
-  }
+  proxy.shellChromeHeight = chromeH;
   const CGFloat trackH = proxy != nil && proxy.shellTrackH > 0 ? proxy.shellTrackH : gTrackShellTrackH;
   const CGFloat posture = trackH > 0 ? MIN(gTrackPostureRegister, trackH) : gTrackPostureRegister;
   const CGFloat target = posture + restore;
