@@ -212,8 +212,12 @@ ARRAY[...]` is array OVERLAP — "spicy crispy tacos" = spicy OR
    crispy); AND holds only ACROSS buckets. Therefore per-word soft
    constraints with AND semantics are a BEHAVIOR CHANGE, not a
    preservation — under today's semantics no state exists where "spicy"
-   alone fails. §7 owner queue: rule whether multi-modifier queries
-   should mean AND (narrower, more literal) or keep today's OR.
+   alone fails. **RESOLVED (owner, 2026-08-01): richness-gate semantics —
+   all-words matches preferred, partial matches admitted only when full
+   matches are scarce — CONDITIONAL on the adaptation happening inside a
+   single request (no second search). The in-query gate satisfies this by
+   construction (per-row provenance → cumulative window gate → score
+   order, one execution).**
 2. Hard constraints: absolute walls.
 3. Each PREFERENCE is individually droppable — per WORD, not per type
    bucket (today "spicy vegan tacos" thin drops spicy AND vegan together;
@@ -387,7 +391,12 @@ change visible results BY DESIGN — the header no longer claims otherwise)
 
 - Gazetteer overlap policy details (longest-wins segmentation + contained
   matches as family evidence) — validate on real queries.
-- The richness threshold (today's 10) — keep, or re-measure post-reload.
+- ~~The richness threshold (today's 10)~~ **RESOLVED (owner, 2026-08-01):
+  one full page (DEFAULT_PAGE_SIZE = 25).** Applied to
+  RELAX_STRICT_THRESHOLD immediately; the step-3 gate inherits the same
+  value; re-measure in the calibration tail. Audited: no other bare-10
+  relax knobs exist in the search module (ON_DEMAND_MIN_RESULTS=1 is a
+  different, intentional knob).
 - Primary-entity rule for the search signal when a span grounds to
   multiple types (today: targets[0]; consider recording all).
 - Whether the LLM skip gate should also require no digits/no comparatives

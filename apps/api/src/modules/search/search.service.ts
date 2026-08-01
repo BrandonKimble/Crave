@@ -374,7 +374,12 @@ export class SearchService {
 
     const phaseTimings: Record<string, number> = {};
 
-    const RELAX_STRICT_THRESHOLD = 10;
+    // OWNER-CHOSEN 2026-08-01 (was an inherited bare 10, flagged by the
+    // from-scratch derivation's no-fake-estimates check): "scarce" means
+    // less than ONE FULL PAGE (DEFAULT_PAGE_SIZE). This same value becomes
+    // the richness gate's scarcity line in the step-3 pooled query;
+    // re-measure against the post-re-extract graph in the calibration tail.
+    const RELAX_STRICT_THRESHOLD = DEFAULT_PAGE_SIZE;
     const TOP_DISHES_LIMIT = 3;
 
     const pagination = this.resolvePagination(request.pagination);
