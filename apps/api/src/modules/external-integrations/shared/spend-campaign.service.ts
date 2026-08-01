@@ -620,24 +620,34 @@ export class SpendCampaignService {
     const governance = this.requireGovernance();
     const poolName = campaignPoolName(campaignId);
     await governance.pools.meter(poolName, roundedMicros);
-    const status = governance.pools.poolStatus(poolName);
-    const breached = status.used >= status.limit;
+    // BREACH VERDICT FROM THE DATABASE (async-integrity step 5, H7): the
+    // process-local pool sees only THIS process's meter stream — a second
+    // worker (or a restart) each carried an independent envelope, so the
+    // real cross-process spend could sail past the cap unnoticed. The DB
+    // spentMicros increment is atomic; the durable total is the truth the
+    // verdict must read. The pool stays as the fast in-process gauge.
+    const envelopeMicros = Math.round(
+      Number(row.estimateMicros) *
+        (1 + (row.toleranceFraction ?? ENVELOPE_BOOTSTRAP_TOLERANCE)),
+    );
+    const durableSpent = Number(row.spentMicros) + roundedMicros;
+    const breached = durableSpent >= envelopeMicros;
 
     if (breached) {
       const breachNote =
-        `envelope breach: actual ${status.used} micro-USD >= projected ` +
-        `envelope ${status.limit} micro-USD (unit_count ${row.unitCount}, ` +
+        `envelope breach: actual ${durableSpent} micro-USD >= projected ` +
+        `envelope ${envelopeMicros} micro-USD (unit_count ${row.unitCount}, ` +
         `work_class ${row.workClass})`;
       this.logger.error('SPEND CAMPAIGN ENVELOPE BREACHED — campaign stopped', {
         campaignId,
         name: row.name,
         workClass: row.workClass,
-        actualMicros: status.used,
-        projectedEnvelopeMicros: status.limit,
+        actualMicros: durableSpent,
+        projectedEnvelopeMicros: envelopeMicros,
         unitCount: row.unitCount,
       });
-      const actualUsd = Math.round(status.used / 10_000) / 100;
-      const projectedUsd = Math.round(status.limit / 10_000) / 100;
+      const actualUsd = Math.round(durableSpent / 10_000) / 100;
+      const projectedUsd = Math.round(envelopeMicros / 10_000) / 100;
       this.opsAlerts.emit({
         severity: 'critical',
         kind: 'campaign_breached',

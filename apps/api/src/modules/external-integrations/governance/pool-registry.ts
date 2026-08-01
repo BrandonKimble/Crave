@@ -230,49 +230,78 @@ export class PoolRegistry {
   /** Last time admit() re-read a pool's durable window (TTL bookkeeping). */
   private readonly lastAdmitRefreshAt = new Map<string, number>();
 
+  /** SINGLE-FLIGHT per pool (async-integrity step 5, H6): flushDurable and
+   *  ensureWindow both read-modify-write `unpersisted` around awaits — two
+   *  overlapping calls double-persisted one delta and then suppressed
+   *  subsequent flushes (negative unpersisted), and ensureWindow's
+   *  unconditional `unpersisted: 0` discarded consumes that landed during
+   *  its awaits. Every durable write now runs on a per-pool chain. */
+  private readonly durableWriteChains = new Map<string, Promise<void>>();
+
+  private serializeDurable(
+    poolName: string,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    const prev = this.durableWriteChains.get(poolName);
+    const next = prev ? prev.then(fn, fn) : fn();
+    this.durableWriteChains.set(poolName, next);
+    return next;
+  }
+
   async ensureWindow(poolName: string, at: Date = new Date()): Promise<void> {
-    const pool = this.requirePool(poolName);
-    if (!this.isDurable(pool) || this.store === undefined) {
-      return;
-    }
-    const key = this.windowKeyString(pool, at);
-    const state = this.durable.get(pool.name);
-    if (
-      state &&
-      state.windowKey === key &&
-      state.confirmed &&
-      state.unpersisted === 0
-    ) {
-      return;
-    }
-    const carried = state && state.windowKey === key ? state.unpersisted : 0;
-    try {
-      if (carried > 0) {
-        await this.store.add(pool.name, key, { consumed: carried });
+    return this.serializeDurable(poolName, async () => {
+      const pool = this.requirePool(poolName);
+      if (!this.isDurable(pool) || this.store === undefined) {
+        return;
       }
-      const loaded = await this.store.load(pool.name, key);
-      this.usage.set(pool.name, {
-        windowStart: this.windowKeyStart(pool, at),
-        used: loaded?.consumed ?? 0,
-      });
-      if (pool.window.kind === 'grant') {
-        pool.window = {
-          kind: 'grant',
-          amount: (this.grantBase.get(pool.name) ?? 0) + (loaded?.granted ?? 0),
-        };
+      const key = this.windowKeyString(pool, at);
+      const state = this.durable.get(pool.name);
+      if (
+        state &&
+        state.windowKey === key &&
+        state.confirmed &&
+        state.unpersisted === 0
+      ) {
+        return;
       }
-      this.durable.set(pool.name, {
-        windowKey: key,
-        confirmed: true,
-        unpersisted: 0,
-      });
-    } catch {
-      this.durable.set(pool.name, {
-        windowKey: key,
-        confirmed: false,
-        unpersisted: carried,
-      });
-    }
+      const carried = state && state.windowKey === key ? state.unpersisted : 0;
+      try {
+        if (carried > 0) {
+          await this.store.add(pool.name, key, { consumed: carried });
+        }
+        const loaded = await this.store.load(pool.name, key);
+        // A consume() may have landed during the awaits above — subtract
+        // what was actually flushed instead of zeroing, so nothing metered
+        // is discarded (step 5, H6 lost-update).
+        const current = this.durable.get(pool.name);
+        const residual =
+          current && current.windowKey === key
+            ? current.unpersisted - carried
+            : 0;
+        this.usage.set(pool.name, {
+          windowStart: this.windowKeyStart(pool, at),
+          used: (loaded?.consumed ?? 0) + Math.max(0, residual),
+        });
+        if (pool.window.kind === 'grant') {
+          pool.window = {
+            kind: 'grant',
+            amount:
+              (this.grantBase.get(pool.name) ?? 0) + (loaded?.granted ?? 0),
+          };
+        }
+        this.durable.set(pool.name, {
+          windowKey: key,
+          confirmed: true,
+          unpersisted: Math.max(0, residual),
+        });
+      } catch {
+        this.durable.set(pool.name, {
+          windowKey: key,
+          confirmed: false,
+          unpersisted: carried,
+        });
+      }
+    });
   }
 
   /**
@@ -592,22 +621,24 @@ export class PoolRegistry {
    * confirmation (fail closed). Never throws.
    */
   private async flushDurable(poolName: string): Promise<void> {
-    const pool = this.requirePool(poolName);
-    if (!this.isDurable(pool) || this.store === undefined) {
-      return;
-    }
-    const state = this.durable.get(poolName);
-    if (!state || state.unpersisted <= 0) {
-      return;
-    }
-    const delta = state.unpersisted;
-    try {
-      await this.store.add(poolName, state.windowKey, { consumed: delta });
-      state.unpersisted -= delta;
-    } catch (error) {
-      state.confirmed = false;
-      this.onDurableFlushFailure?.(poolName, error);
-    }
+    return this.serializeDurable(poolName, async () => {
+      const pool = this.requirePool(poolName);
+      if (!this.isDurable(pool) || this.store === undefined) {
+        return;
+      }
+      const state = this.durable.get(poolName);
+      if (!state || state.unpersisted <= 0) {
+        return;
+      }
+      const delta = state.unpersisted;
+      try {
+        await this.store.add(poolName, state.windowKey, { consumed: delta });
+        state.unpersisted -= delta;
+      } catch (error) {
+        state.confirmed = false;
+        this.onDurableFlushFailure?.(poolName, error);
+      }
+    });
   }
 
   /** The IN-MEMORY declared-vs-actual stream — the drift instrument (§14.7).

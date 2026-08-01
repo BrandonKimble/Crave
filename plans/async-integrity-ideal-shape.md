@@ -146,6 +146,34 @@ context-cache registry is correctly locked (advisory + in-lock
 re-check). Read Committed + single-tx consolidated processing gives
 atomic per-batch writes. Redirects are chain-flattened and clean.
 
+## EXECUTION RECORD (2026-08-01, all five steps)
+
+- Step 1 DONE (e81c9c35): ledger repair ran on prod — 23,358 superseded +
+  7,384 same-run duplicate events deleted, 2,086 restaurants rebuilt,
+  detectors zero.
+- Step 2 DONE (b39631a2, deployed): doc-scoped event uniques + mention
+  partial unique + counter recompute (migration); supersede-on-activation
+  (dark evidence can no longer exist); identity-key advisory locks +
+  variant adopt-probe + tombstone-adopt-via-redirect; one-(doc,kind)
+  claim guard in the rebuild. The (type, identity_key) DB unique index
+  is DEFERRED until the restaurant/food dedupe classes clear the ~190
+  existing violations.
+- Step 3 DONE (2158acd2): ExtractionCoverageClaim reservations at every
+  entry point (replay finally gated — runner crash-restart is real);
+  guarded pollOne transitions; idempotent provider submission
+  (displayName adoption); lease-respecting stale sweep; claim release on
+  terminal states + orphan reaping.
+- Step 4 DONE (925367c1): activation from post-trim extracted set;
+  compaction refuses runs with live evidence; per-restaurant sorted
+  rebuild locks; in-tx redirect revalidation of resolution ids; nightly
+  tombstone-event sweep (re-point + rebuild + stranded count);
+  ensureCollectionRun upsert; atomic input persist.
+- Step 5 DONE (flush single-flight + ensureWindow subtract-not-zero;
+  campaign breach verdict from durable spentMicros). DEFERRED: Tier-3
+  monthlySpend reserve/reconcile at submit — the backstop stays a soft
+  30s-TTL gauge (by design a catastrophe brake; campaigns are the real
+  cap); revisit if multi-worker ever ships.
+
 ## SEQUENCE (this becomes audit class ①, expanded)
 
 1. Stop the bleeding (data): repair C1's dark events while all runs
