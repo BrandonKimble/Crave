@@ -35,6 +35,17 @@ verification duties.
   of docs — check `collection_source_documents.community` and include what
   you intend). ~70k docs corpus; last full re-extract finished 07-31 07:04.
 
+## Free rider for the prompt revision (charter §3c)
+
+While you are editing the prompt anyway: §3c (full-reload-charter.md,
+"ASSERTED vs INFERRED CATEGORIES", deferred at 0.38% score mass) wants
+extraction to MARK the category the commenter actually NAMED, so inferred
+taxonomy ancestors never score alone. Its cost was "a new prompt
+obligation right before a spend" — that objection vanishes when a prompt
+revision + full re-extract is happening regardless. Owner call whether to
+fold it in; if yes, it needs a field in the output schema + one line in
+the scoring shadow rule, and the audit harness should check it.
+
 ## The sequence (agent-operated; owner approves twice)
 
 ```bash
