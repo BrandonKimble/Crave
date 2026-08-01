@@ -468,7 +468,11 @@ export class UserListsService {
            )
       JOIN places p
         ON p.place_id = pg.place_id
-       AND p.provider_level_code = 'municipality'
+       -- The vendor's own verbatim rung label (TomTom's vocabulary is global
+       -- — every country's city rung is 'Municipality'), read as a stored
+       -- fact. Ladder-audit 2026-08-01: the previous lowercase literal
+       -- matched NOTHING, so this chip returned zero cities since birth.
+       AND p.provider_level_code = 'Municipality'
       WHERE rl.restaurant_id = ANY(${restaurantIds}::uuid[])
         AND rl.latitude IS NOT NULL
         AND rl.longitude IS NOT NULL

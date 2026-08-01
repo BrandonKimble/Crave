@@ -658,16 +658,32 @@ United States`. The vendor's STATED hierarchy is a fact; the polygon nesting is
 an approximation. Identity already follows that principle (P3: the vendor id,
 not a geometric comparison) — ancestry must too.
 
-NOT LIVE: prod still has zero poll-kind signals, so this has never fired, the
-same luck P5b's original bug had. It must be fixed before poll acts flow.
-
-THE FIX, deliberately deferred rather than rushed at the end of a long session:
-`placeAnchoredAttributionSql` should resolve ancestors by walking
-`parent_place_ids` (the ladder is ≤6 deep) instead of testing `ST_Covers`.
-That touches the hot demand/supply path with its documented planner traps, so
-it opens the way P5b did — by writing the Washington case into
-`places-containment.integration.spec` as a RED-provable assertion (a poll
-anchored to Washington MUST reach the District) before changing the law.
+FIXED 2026-07-29, the way this section prescribed: the Washington case was
+written into `places-containment.integration.spec` as a RED-provable
+assertion first ("ANCESTRY IS THE VENDOR CHAIN, NOT POLYGON NESTING"), then
+`placeAnchoredAttributionSql` (ground-containment.ts) was rewritten to walk
+`parent_place_ids` — a bidirectional recursive chain walk (anchor's
+ancestors OR candidate's chain reaching the anchor), no ST_Covers anywhere
+on the anchored path. The aggregate rebuild routes anchored acts straight
+to the anchor tile with no geometry consulted; read-time lineage supplies
+ancestors. Full-alignment audit 2026-08-01 (two independent sweeps over
+every containment predicate and every level-code touch) found and fixed
+the three stragglers: (1) polls' `engineIdForPlace` derived engine
+membership from ST_Covers over the place centroid — now a
+`parent_place_ids` chain walk, nearest rung wins, mirroring
+`resolveEngineTerritoryPlaceIds`; (2) the user-lists City chip filtered on
+lowercase `'municipality'` — matched NOTHING (canonical stored label is
+`'Municipality'`, TomTom's global vocabulary), so the chip had returned
+zero cities since birth; (3) the probe adapter recorded a malformed
+vendor response (rungs named, country slot empty) as a §2 "nothing lives
+here" negative observation — now throws `tomtom_missing_country_code` as
+an operational fault. Judged legit and kept: the promotion guard's
+point-in-polygon refusal (geometry is the thing ON TRIAL there, not the
+declared fact), the adapter's bbox pick (no vendor id declared yet), and
+`isSubdivisionOrBigger`'s depth judgment (structural, not a label switch;
+short-chain city-states read "big", fails safe — edge documented in
+place-dag-read.ts). Geometry now answers only geometric questions;
+level codes are labels on a variable-length vendor chain everywhere.
 
 ### THE CATALOG IS AN INCORPORATED-PLACES LIST, NOT A MAP (measured 2026-07-29)
 

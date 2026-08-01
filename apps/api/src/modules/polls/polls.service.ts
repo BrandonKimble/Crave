@@ -1118,8 +1118,9 @@ export class PollsService {
    *
    * §13 territory-as-retrieval-prior (markets extermination leg 3): restaurant
    * matching is scoped to the ENGINE whose territory covers the poll's PLACE
-   * (member grounds cover the place centroid). A poll outside every engine
-   * territory scans globally — the honest uncovered state, never a market key.
+   * (a member on the place's own ancestor chain — declared fact, no
+   * geometry). A poll outside every engine territory scans globally — the
+   * honest uncovered state, never a market key.
    */
   async highlightCommentSpans(
     body: string,
@@ -1140,10 +1141,17 @@ export class PollsService {
   }
 
   /**
-   * The covering engine for a place: an engine whose MEMBER GROUNDS cover the
-   * place's centroid (§5 — territory is the derived union of member grounds;
-   * a descendant place is geometrically inside a member, so member grounds
-   * suffice). Smallest covering member ground wins on overlap. null = no
+   * The covering engine for a place: an engine one of whose MEMBERS sits on
+   * the place's own ancestor chain — the place itself, or a `parent_place_ids`
+   * ancestor (§5 territory = members ∪ DAG descendants, the same law
+   * resolveEngineTerritoryPlaceIds states from the other end). Membership is
+   * a DECLARED fact, so it is answered from the vendor chain, never from
+   * geometry: the previous ST_Covers-over-centroid form re-derived it
+   * geometrically and inherited the measured 10.85% non-nesting spill
+   * (ground-containment.ts — TomTom's Washington centroid can sit outside
+   * the District's outline, silently dropping the covering engine). Nearest
+   * rung wins on overlap (a member place beats a member ancestor); depth is
+   * capped at 12 as a defective-cycle guard (the ladder is ≤6). null = no
    * covering engine (gazetteer scope falls back to global).
    */
   private async engineIdForPlace(
@@ -1155,23 +1163,19 @@ export class PollsService {
     try {
       const rows = await this.prisma.$queryRaw<Array<{ engineId: string }>>(
         Prisma.sql`
+          WITH RECURSIVE chain(place_id, depth) AS (
+            SELECT ${placeId}::uuid, 0
+            UNION
+            SELECT parent.place_id, c.depth + 1
+            FROM chain c
+            JOIN places p ON p.place_id = c.place_id
+            CROSS JOIN LATERAL unnest(p.parent_place_ids) AS parent(place_id)
+            WHERE c.depth < 12
+          )
           SELECT e.engine_id AS "engineId"
-          FROM engines e
-          JOIN place_geometries pg ON pg.place_id = ANY(e.member_place_ids)
-          JOIN places target ON target.place_id = ${placeId}::uuid
-          WHERE target.centroid_lat IS NOT NULL
-            AND target.centroid_lng IS NOT NULL
-            AND ST_Covers(
-              pg.geometry,
-              ST_SetSRID(
-                ST_MakePoint(
-                  target.centroid_lng::double precision,
-                  target.centroid_lat::double precision
-                ),
-                4326
-              )
-            )
-          ORDER BY ST_Area(pg.geometry) ASC
+          FROM chain c
+          JOIN engines e ON c.place_id = ANY(e.member_place_ids)
+          ORDER BY c.depth ASC, e.engine_id ASC
           LIMIT 1
         `,
       );

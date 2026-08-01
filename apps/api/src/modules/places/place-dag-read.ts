@@ -53,9 +53,17 @@ export async function descendantPlaceIds(
  * chains always hang municipalities under a subdivision and/or county, so
  * town-and-smaller places sit at depth ≥ 2.
  *
- * Known honest edge: a place sketched with a degenerate chain (no broader
- * node named — a parentless orphan) reads as "big" and is therefore never
- * pushed; that fails safe (a missed push, never spam).
+ * Known honest edges (both fail SAFE — a missed push, never spam):
+ * - a place sketched with a degenerate chain (no broader node named — a
+ *   parentless orphan) reads as "big";
+ * - a SHORT vendor chain (city hung directly under its country with no
+ *   subdivision/county rung — city-states, some territories) puts the city
+ *   at depth 1, so it also reads as "big" and is excluded from pushes.
+ *   Ladder-audit 2026-08-01: kept deliberately — depth here is a structural
+ *   judgment over the vendor's own chain, not a level-label switch, and for
+ *   a city-state the "city IS the subdivision" reading is arguably true.
+ *   Revisit only against a measured wrong exclusion, with ground area as
+ *   the candidate structural test (the subjects.ts law).
  */
 export async function isSubdivisionOrBigger(
   prisma: PrismaService,

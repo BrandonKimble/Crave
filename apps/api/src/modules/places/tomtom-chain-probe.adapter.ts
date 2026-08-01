@@ -226,7 +226,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     const address = entry.address;
     const countryCode = address.countryCode?.trim().toUpperCase();
     if (!countryCode) {
-      return { chain: [], probedRegion };
+      // The vendor DID describe this ground but the response is malformed
+      // (rungs named, country slot empty — a contract violation, since
+      // TomTom's country rung is universal). Ladder-audit 2026-08-01: the
+      // old `return { chain: [], probedRegion }` recorded this as a §2
+      // "nothing lives here" negative observation — a missing FIELD written
+      // as an absence of GROUND, suppressing re-probes for the TTL. An
+      // operational fault throws, exactly like the missing-key case above.
+      throw new Error('tomtom_missing_country_code');
     }
     const subdivisionCode =
       address.countrySubdivisionCode?.trim() ||
