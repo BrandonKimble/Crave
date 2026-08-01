@@ -42,6 +42,34 @@ Every defect in this arc — all of them — was one substitution, with two face
    the write of its source.** One-off repairs treat the symptom; the coupling
    removes the disease.
 
+### The abstraction beneath the abstraction (named 2026-07-30)
+
+"Geometry standing in for facts" is the DISEASE. The healthy form it points
+at deserves its own name: **A PLACE IS A MIRRORED VENDOR ENTITY.** TomTom
+holds complete entities — id, name, level, parent chain, polygon — and every
+defect in this arc came from us RE-DERIVING one field of that entity from
+fragments (a name from a point probe, ancestry from polygon nesting, identity
+from a name string, an extent from a stored rectangle) instead of copying the
+field from the entity itself. The fixes each converged one field onto the
+mirror; stated up front, they would have been ONE design rule instead of five
+recoveries.
+
+WHAT THAT VIEW EXPOSES AS THE FINAL DISSOLUTION (open, deliberately deferred):
+the name-identity machinery — resolveIdentity's county-axis decision table
+(rules c/b'/a/u1-u4), bboxNear, the disjoint-bbox guard, the level-guard
+fall-through — exists to reconcile PARTIAL observations, i.e. chain nodes
+that arrive without a vendor id. Measured 2026-07-30: **that case has never
+occurred** — 0 of 22,769 places lack a vendor id, 0 fallback-provider mints
+exist, and every mint since P3 carried its id (the adapter emits null only if
+the vendor omits dataSources.geometry.id, which live traffic has never
+shown). The decision table is defense code for a world that no longer exists
+— and it is where this week's only CRASH bug lived (the level-guard P2002
+loop). The dissolution: an id-less node updates nothing and mints nothing
+(log it loudly; the fallback "this area near…" lane stays as the one honest
+non-vendor path). Open it in a fresh session with a RED-provable spec that an
+id-less observation is REFUSED, then delete the table. Until then the table
+stands, correct but dead weight.
+
 Corollary for review: when a bug appears in this domain, ask FIRST "is
 geometry answering a question the vendor already answered?" and SECOND "is a
 derived value being written anywhere other than its source's write?" Both
