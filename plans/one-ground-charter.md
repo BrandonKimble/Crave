@@ -713,6 +713,21 @@ nothing with that area):
   Every ground in the system is now the vendor's, at the best resolution
   the vendor has granted so far.
 
+RED-TEAM ROUND 2026-08-01 (two independent teams over 7d836ee8 +
+192628d6; fixes in bf350c35): the awaited birth drain paid for the WHOLE
+queue (10k rows x 500ms spacing; on a backlog the newborn ran LAST) —
+replaced with promoteNewborn, one targeted row under the same latch +
+advisory lock, pinned RED (drainQueue must not run on birth). Also:
+seed-region SKIPS (not aborts) on tomtom_missing_country_code (per-cell
+fault; pool/config stay run-global stops); vestigial fallback clause
+deleted from seed-coarse-polygons; the mobile drought-400 gets
+actionable copy; spec fixtures vendor-cased 'Municipality' (the
+lowercase fixture world is exactly what hid the City-chip bug from 946
+green tests). Cleared with evidence: no tx entanglement, no drain
+recursion, fallback fully excised, migration ordering safe, chain-walk
+SQL correct on UNION/cycle/empty semantics, Municipality canonical on
+prod.
+
 ### THE CATALOG IS AN INCORPORATED-PLACES LIST, NOT A MAP (measured 2026-07-29)
 
 We hold **19,451 US municipalities covering 47.7% of US land**. 19,451 is
