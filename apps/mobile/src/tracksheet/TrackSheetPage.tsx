@@ -1003,8 +1003,12 @@ export function TrackSheetPage({
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
     pendingRestoreRef.current = { sceneKey, restored };
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    if (nativePhysics?.refuse != null && trackTagRef.current != null) {
-      nativePhysics.refuse(trackTagRef.current, restored);
+    // ONLY the incoming leg may be refused: before the posture register, a
+    // null nextTag fell through to the OUTGOING leg's tag and scrolled the
+    // hidden old leg (corrupting its parked offset). A fresh leg with no tag
+    // yet is seeded by the attach replay below instead.
+    if (nativePhysics?.refuse != null && nextTag != null) {
+      nativePhysics.refuse(nextTag, restored);
     }
     if (__DEV__) {
       // THE SWITCH PERF PROBE: JS-thread stall around the switch commit —
@@ -1031,13 +1035,17 @@ export function TrackSheetPage({
       physics.subscribeAttached(() => {
         const pending = pendingRestoreRef.current;
         const nativePhysics = NativeModules.TrackScrollPhysics;
+        // Resolve the tag FRESH from the presented scene: on a fresh-leg flip
+        // trackTagRef may still hold the outgoing leg (its tag registered
+        // before the incoming leg mounted).
+        const presentedTag = legTagsRef.current.get(presentedSceneKeyRef.current) ?? null;
         if (
           pending != null &&
           pending.sceneKey === presentedSceneKeyRef.current &&
           nativePhysics?.refuse != null &&
-          trackTagRef.current != null
+          presentedTag != null
         ) {
-          nativePhysics.refuse(trackTagRef.current, pending.restored);
+          nativePhysics.refuse(presentedTag, pending.restored);
         }
       }),
     [physics]

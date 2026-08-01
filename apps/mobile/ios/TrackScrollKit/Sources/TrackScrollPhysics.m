@@ -95,6 +95,18 @@
             velocityY:(double)v0;
 @end
 
+/// ── THE POSTURE REGISTER (residents red team, 2026-08-01) ───────────────────
+/// "Posture is a property of the SHEET; scroll is a property of the LEG."
+/// With N resident legs there are N scroll views, and reading posture from any
+/// one of them made the sheet position a side effect of whichever leg happened
+/// to be attached — a fresh leg's τ=0 teleported the sheet to collapsed on a
+/// switch. The register is the ONE sheet posture: written every frame by the
+/// PRESENTED leg's didScroll (the same hand that owns τ and σ), read by
+/// refuse() at every switch, seeded into a fresh leg before its first frame.
+/// The sheet provably cannot move on a switch — again, and now for N legs.
+static CGFloat gTrackPostureRegister = 0;
+static __weak UIScrollView *gTrackPostureOwner = nil;
+
 static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
@@ -370,6 +382,11 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   // THE SHELL WRITER: every τ-derived position, one place, same frame.
   if (self.shellEnabled) {
     const CGFloat tau = scrollView.contentOffset.y;
+    // THE POSTURE REGISTER WRITE: only the presented leg (the owner) speaks
+    // for the sheet — a hidden leg's clamp/adjust scrolls must not.
+    if (scrollView == gTrackPostureOwner && self.shellTrackH > 0) {
+      gTrackPostureRegister = MIN(MAX(0.0, tau - self.stashSigma), self.shellTrackH);
+    }
     const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
@@ -583,6 +600,9 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.onSigmaChanged = ^(CGFloat sigma) {
       [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
     };
+    // Attach declares this scroll view the presented leg: it owns the posture
+    // register from this UIKit transaction forward (refuse() re-asserts it).
+    gTrackPostureOwner = scrollView;
     resolve(@(YES));
   }];
 }
@@ -645,9 +665,13 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
       return;
     }
     const CGFloat tau = scrollView.contentOffset.y;
-    const CGFloat sigma = proxy.stashSigma;
     const CGFloat trackH = proxy.shellTrackH;
-    const CGFloat posture = MIN(MAX(0.0, tau - sigma), trackH);
+    // THE POSTURE REGISTER READ: the incoming leg's own τ is NOT the sheet's
+    // posture (a fresh leg sits at 0; a revisited leg holds its stale parked
+    // offset). The register carries the ONE posture across the flip; this
+    // view becomes the register's owner from here on.
+    const CGFloat posture = trackH > 0 ? MIN(gTrackPostureRegister, trackH) : gTrackPostureRegister;
+    gTrackPostureOwner = scrollView;
     const CGFloat target = posture + restore.doubleValue;
     if (proxy.stashSigma != 0) {
       proxy.stashSigma = 0;

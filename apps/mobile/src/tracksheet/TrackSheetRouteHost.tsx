@@ -12,8 +12,10 @@ import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec'
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import {
+  amendTransitionTxnJoinInputs,
   getLiveTransitionTxn,
   offerTransitionJoinInput,
+  sealLiveTransitionTxnJoin,
 } from '../navigation/runtime/transition-engine/transition-transaction';
 import { recordSceneChromeAck } from '../overlays/scene-chrome-ack-runtime';
 import { setTrackFlipState, useTrackFlipState } from './track-flip-store';
@@ -226,7 +228,29 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // controller-side, so over-acking is harmless.
   React.useLayoutEffect(() => {
     recordSceneChromeAck(scene);
-    if (getLiveTransitionTxn()?.mutation.targetSceneKey === scene) {
+    const liveTxn = getLiveTransitionTxn();
+    if (liveTxn?.mutation.targetSceneKey === scene) {
+      // THE SEAL (joinWait red team, 2026-08-01): sealing was the OLD host's
+      // duty (its roles-change subscriber armed {paint, chrome} and sealed);
+      // the ack bridge ported the offers but not the seal, so every track
+      // switch was "un-armed" and only sealed at the idle boundary — behind
+      // the sheet-settle plane's 700ms fallback. Result: revealed/settled
+      // (and the L4 flush + interactivity they gate) landed ~1s after paint.
+      // Port the duty: arm + seal here, where presented truth commits.
+      // ORDER LAW (proven by TXN-TRACE): offers before the amend are DISCARDED
+      // (consumed iff the plan declares the input), and recordSceneChromeAck
+      // dedupes per scene so a revisit never re-offers — both left 'chrome'
+      // pending and every reveal rode the 600ms liveness degrade. Arm FIRST,
+      // then offer both inputs explicitly: the per-leg chrome twin is mounted
+      // evidence at this commit, exactly like the old host's warm-paint offer.
+      if (
+        (liveTxn.phase === 'staged' || liveTxn.phase === 'committed') &&
+        liveTxn.plan.content.kind !== 'freezeUntilSnap'
+      ) {
+        amendTransitionTxnJoinInputs(['paint', 'chrome']);
+        sealLiveTransitionTxnJoin();
+        offerTransitionJoinInput('chrome');
+      }
       offerTransitionJoinInput('paint');
     }
     sceneRuntime.routeSceneSwitchRuntime.commitPresentationPaintAck(frame.switchId);
@@ -338,17 +362,31 @@ const useTrackScenePageChrome = (
             ? snapPoints.collapsed - snapPoints.middle
             : 0; // collapsed AND hidden seat collapsed (dismiss choreography later)
       pendingSettleTokenRef.current = settleToken;
+      // THE ZERO-PIXEL SETTLE (joinWait red team): a same-posture switch
+      // short-circuits inside native snapTo (<0.5pt) and produces NO settle
+      // fact — waiting the 700ms fallback held every tab switch's revealed/
+      // settled edges (and with them the L4 flush + interactivity) ~1s past
+      // paint. Detect the zero-move case here, synchronously, and complete
+      // the token now; the timer stays only as the safety net for snaps that
+      // genuinely move.
+      const currentPosture = Math.min(
+        Math.max(0, (commands?.readTau() ?? 0) - (commands?.readSigma() ?? 0)),
+        trackH
+      );
+      const willMove = Math.abs(currentPosture - postureTau) >= 0.5;
       commands?.snapToTau(postureTau);
       if (settleToken != null) {
-        // Short-circuited snaps produce no settle; complete on a bounded
-        // fallback so the motion plane can never hang (real settles complete
-        // it first via onSettle below).
-        setTimeout(() => {
-          if (pendingSettleTokenRef.current === settleToken) {
-            pendingSettleTokenRef.current = null;
-            sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
-          }
-        }, 700);
+        if (!willMove || commands == null) {
+          pendingSettleTokenRef.current = null;
+          sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
+        } else {
+          setTimeout(() => {
+            if (pendingSettleTokenRef.current === settleToken) {
+              pendingSettleTokenRef.current = null;
+              sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
+            }
+          }, 700);
+        }
       }
     },
     [commandsRef, sceneRuntimeForSeat, snapPoints, trackH]
