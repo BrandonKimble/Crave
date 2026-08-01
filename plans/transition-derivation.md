@@ -439,3 +439,28 @@ round was the PROBE'S OWN ARTIFACT (P10). The audit now sits armed in dev —
 when the owner next hits the state, the log will hold bound/attached/position
 facts from UIKit, not shadow-tree fiction. The registry plug (F3) remains
 queued behind that attribution.
+
+## XIII. THE SHARED-OWNERSHIP VERDICT (owner question, 2026-07-31)
+
+Why the old system never had this class: React owned POSITION AND LIFECYCLE of
+every view — a recreated view re-rendered with its position, because position
+WAS React state. No out-of-band writer existed for React to erase or miss.
+(Its price was the JS-frame lag and every composition defect that drove the
+rearchitecture.)
+
+Why the new one does: the shell splits ownership of the SAME views — React
+owns lifecycle (create/destroy/recreate at will), native owns position,
+coordinated only by tag lookups at instants in time. Every bug in this family
+(transform reset on recommit, stale interop resolution, dead backing view,
+nil tag) is the SEAM between the two ownerships. The settled re-bind narrows
+the seam; nothing narrows it to zero, because the seam IS the abstraction.
+
+The ideal, already in the native-shell derivation and now evidence-forced:
+THE REAL SLOT. Native creates and owns the positioned CONTAINERS (frost slab,
+chrome slot, tail) as views React never learns about; RN content mounts INTO
+the chrome slot via a true native component (the map precedent). React may
+recreate content freely — position lives on containers React cannot name.
+The retry, the commit-proof law, the audit self-heal, and the transform-reset
+class all become unnecessary or unwritable. VERDICT: build the slot. The
+settled re-bind is the bridge that keeps dev usable until it lands; the slot
+is the next major rung, its own session.
