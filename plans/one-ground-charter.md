@@ -54,7 +54,19 @@ field from the entity itself. The fixes each converged one field onto the
 mirror; stated up front, they would have been ONE design rule instead of five
 recoveries.
 
-WHAT THAT VIEW EXPOSES AS THE FINAL DISSOLUTION (open, deliberately deferred):
+THE FINAL DISSOLUTION — LANDED 2026-07-30 (commit 75752693). Identity is the
+vendor's own composite key (geometry id, entityType) — migration
+20260730090000 replaces the simple-unique id, so the coincident-boundary case
+is REPRESENTED instead of hacked around, and promotion's entity exclusivity
+is per (id, level). The county-axis decision table, findIdentityCandidates,
+bboxNear and the level-guard id-strip are DELETED with their ~15-test
+describe. Three lanes remain: id-carrying (composite lookup), fallback (the
+one non-vendor tuple lane), and REFUSED (id-less, loud warn — if that warning
+ever fires, the vendor changed its contract; investigate, never resurrect the
+table). All three lane laws were proven RED against the pre-dissolution code
+first. The paragraph below records why it was deferred and then done:
+
+WHAT THAT VIEW EXPOSED AS THE FINAL DISSOLUTION (as written when deferred):
 the name-identity machinery — resolveIdentity's county-axis decision table
 (rules c/b'/a/u1-u4), bboxNear, the disjoint-bbox guard, the level-guard
 fall-through — exists to reconcile PARTIAL observations, i.e. chain nodes
