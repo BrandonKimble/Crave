@@ -38,10 +38,6 @@ describe('Gemini gateway lockdown', () => {
       // typed vendor ops from here (batchTransportOps / embedVendorOp), so
       // "a second assembler" is unrepresentable, not merely audited.
       'external-integrations/llm/llm.service.ts',
-      // Historical one-shot A/B harness (2026-07-12 model comparison), kept
-      // as a record; would run at HIGH thinking if ever re-used — rewrite
-      // through the gateway before re-running.
-      '../scripts/collection-model-ab-v2.ts',
     ]);
     // Detection is IMPORT-based (red team F6): `new GoogleGenAI` as a
     // string was evadable via an aliased import or `new (GoogleGenAI)`;
