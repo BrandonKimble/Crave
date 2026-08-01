@@ -48,7 +48,6 @@ import {
   bboxIntersectionParts,
   bboxLatSpan,
   bboxLngSpan,
-  normalizePlaceName,
   ProbedRegion,
 } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
@@ -720,37 +719,17 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
    * county-blind read (any candidate's bbox counts, mirroring rules u1–u4).
    */
   private async catalogKnowsBbox(node: PlaceSketchNode): Promise<boolean> {
-    // P4 (2026-07-30): "knows the extent" = HAS A GROUND. The bbox columns
-    // are gone; a place's extent is its geometry row, so the once-ever
-    // forward geocode is suppressed exactly when a matching identity row
-    // already carries one.
-    const rows = await this.prisma.place.findMany({
-      where: {
-        countryCode: node.countryCode,
-        subdivisionCode: node.subdivisionCode ?? null,
-        providerLevelCode: node.providerLevelCode,
-        name: { equals: normalizePlaceName(node.name), mode: 'insensitive' },
-        ...(node.county
-          ? {
-              OR: [
-                { county: null },
-                {
-                  county: {
-                    equals: normalizePlaceName(node.county),
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
-      },
-      select: { placeId: true },
-    });
-    if (rows.length === 0) return false;
+    // FINAL DISSOLUTION (2026-07-30): "knows the extent" is asked BY ENTITY —
+    // the composite (id, level) — never by name. Chain nodes here always
+    // carry the id (it rides every reverse-geocode response); a node without
+    // one gets the forward geocode spent on it, which is the honest posture.
+    if (!node.providerPlaceId) return false;
     const [hit] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>`
       SELECT EXISTS (
-        SELECT 1 FROM place_geometries
-        WHERE place_id = ANY(${rows.map((r) => r.placeId)}::uuid[])
+        SELECT 1 FROM places p
+        JOIN place_geometries g ON g.place_id = p.place_id
+        WHERE p.provider_place_id = ${node.providerPlaceId}
+          AND p.provider_level_code = ${node.providerLevelCode}
       ) AS ok`;
     return hit?.ok === true;
   }

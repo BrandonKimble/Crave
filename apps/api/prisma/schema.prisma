@@ -1959,7 +1959,12 @@ model Place {
   /// id. Unique because identity must BE unique — the write-time exclusivity
   /// guard in PlacesPromotionService refuses a second claim on the same
   /// vendor entity, and this index makes that invariant structural.
-  @@unique([providerPlaceId], map: "places_provider_place_id_key")
+  // THE FINAL DISSOLUTION (2026-07-30): identity is the VENDOR'S OWN key —
+  // (geometry id, entityType). The vendor stamps one geometry id on two rungs
+  // for a coincident boundary (a city-state, a consolidated city-county) and
+  // distinguishes the entities by entityType; a simple-unique id forced an
+  // id-STRIP hack that fed the name-identity machinery. Composite = mirror.
+  @@unique([providerPlaceId, providerLevelCode], map: "places_provider_place_id_level_key")
   // Identity law: silent-fork prevention. The REAL unique constraint is a raw
   // expression index (migration 20260720050000): UNIQUE (country_code,
   // subdivision_code, lower(county), provider_level_code, lower(name))

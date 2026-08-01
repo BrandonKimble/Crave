@@ -12,15 +12,13 @@
  * The PostGIS geometry column lives OUTSIDE the prisma model; any
  * polygon-precise op must go through $queryRaw.
  *
- * §1 identity law (COUNTY-AXIS amendment, §18 item 8 ratified 2026-07-19):
- * placeKey = (countryCode, subdivisionCode?, county?, providerLevelCode,
- * normalized name). The optional COUNTY axis discriminates genuinely
- * distinct same-name municipalities within one subdivision (the two TX
- * "Lakeside"s). Sketch conflicts NEVER fork a place — they bbox-MERGE
- * (widen to union) and adopt the provider's stable geometry id as an alias
- * when present; whether a county-carrying observation MATCHES a stored row,
- * GAP-FILLS a county-unknown row, or mints a genuinely distinct sibling is
- * the resolveIdentity decision table.
+ * §1 identity law (THE FINAL DISSOLUTION, 2026-07-30): placeKey =
+ * (providerPlaceId, providerLevelCode) — the vendor's own key, since the
+ * vendor stamps one geometry id on two rungs for a coincident boundary and
+ * distinguishes those entities by entityType. The county-axis name table
+ * that used to reconcile id-less observations is DELETED (the id-less case
+ * measured as never-occurred); provider='fallback' is the one non-vendor
+ * lane, idempotent by its synthetic tuple.
  */
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Place, Prisma } from '@prisma/client';
@@ -259,12 +257,16 @@ export class PlacesCatalogService {
    * Returns the upserted places in the SAME order as the input chain.
    */
   async sketchChain(chain: PlaceSketchNode[]): Promise<Place[]> {
-    const results: Place[] = new Array<Place>(chain.length);
-    // Broadest-first walk so parent ids exist for child edges.
+    const results: Place[] = [];
+    // Broadest-first walk so parent ids exist for child edges. A REFUSED
+    // node (id-less, non-fallback — the final dissolution) is dropped and
+    // the parent edge threads PAST it: its children attach to the nearest
+    // minted ancestor rather than losing the whole chain.
     let parentPlaceId: string | undefined;
     for (let i = chain.length - 1; i >= 0; i -= 1) {
       const place = await this.upsertSketch(chain[i], parentPlaceId);
-      results[i] = place;
+      if (!place) continue;
+      results.unshift(place);
       parentPlaceId = place.placeId;
     }
     return results;
@@ -482,260 +484,68 @@ export class PlacesCatalogService {
   }
 
   /**
-   * All rows sharing the county-BLIND identity tuple (country, subdivision,
-   * level, lower(name)) — the candidate set the county-axis decision table
-   * (resolveIdentity) chooses among. Deterministically ordered (oldest
-   * first) so ties resolve the same way on every node.
-   */
-  private async findIdentityCandidates(
-    node: PlaceSketchNode,
-    name: string,
-  ): Promise<{ rows: Place[]; bboxOf: Map<string, GeoBbox> }> {
-    const rows = await this.prisma.place.findMany({
-      where: {
-        countryCode: node.countryCode,
-        subdivisionCode: node.subdivisionCode ?? null,
-        providerLevelCode: node.providerLevelCode,
-        name: { equals: name, mode: 'insensitive' },
-      },
-      orderBy: [{ createdAt: 'asc' }, { placeId: 'asc' }],
-    });
-    // P4: the decision table's geometry checks (b'/a/u2) read each
-    // candidate's extent DERIVED from its ground — candidates are 0-2 rows,
-    // one batched query. A groundless row simply has no extent, the same
-    // "unknown counts as not-disjoint" posture as before.
-    const bboxOf = new Map<string, GeoBbox>();
-    if (rows.length > 0) {
-      const derived = await this.prisma.$queryRaw<
-        Array<{ place_id: string } & DerivedBboxRow>
-      >(Prisma.sql`
-        SELECT g.place_id, ${derivedBboxSelectSql('g')}
-        FROM place_geometries g
-        WHERE g.place_id = ANY(${rows.map((r) => r.placeId)}::uuid[])`);
-      for (const row of derived) {
-        bboxOf.set(row.place_id, bboxFromDerivedRow(row));
-      }
-    }
-    return { rows, bboxOf };
-  }
-
-  /**
-   * The §1 COUNTY-AXIS decision table (ratified 2026-07-19). Given the
-   * county-blind candidate rows and one observation, decide MATCH / GAP-FILL
-   * / DISTINCT. County comparison is case-insensitive on the normalized name
-   * (same law as place names). Rows, observed county K:
+   * THE FINAL DISSOLUTION (one-ground charter, 2026-07-30): identity is the
+   * VENDOR'S OWN key — (geometry id, entityType) — and nothing else.
    *
-   *  (c) K known, candidate county == K            → MATCH, merge.
-   *  (b′) K known, candidate county != K (non-null) BUT its bbox INTERSECTS
-   *       the observation → MATCH into that candidate, stored county WINS,
-   *       disagreement logged. This is the multi-county-municipality law
-   *       (Houston spans Harris/Fort Bend/Montgomery: probes from different
-   *       parts of ONE city report different counties — rule (b) without
-   *       this geometry override would fork every multi-county city). It
-   *       also implements the ratified "UNLESS a sibling row already carries
-   *       a DIFFERENT county with a bbox near the observation" clause: the
-   *       near sibling absorbs the observation instead of the NULL row
-   *       adopting a contested county.
-   *  (a) K known, a county-UNKNOWN candidate exists whose bbox is NOT
-   *      disjoint from the observation (unknown-bbox counts as not-disjoint)
-   *      → GAP-FILL: merge into it and ADOPT K (no fork). Disjoint bboxes
-   *      veto adoption — that NULL row is the OTHER same-name town observed
-   *      before counties existed.
-   *  (b) K known, no candidate passed (c)/(b′)/(a) → genuinely DISTINCT
-   *      place: create a sibling row carrying K (the new index shape admits
-   *      it — counties differ, or NULL vs K).
+   * The county-axis decision table (rules c/b'/a/u1-u4), findIdentityCandidates,
+   * bboxNear and the level-guard id-strip that fed them are DELETED, not
+   * bypassed. They existed to reconcile PARTIAL observations — chain nodes
+   * arriving without a vendor id — and measured 2026-07-30 that case has
+   * never occurred: 0 of 22,769 places lack an id, every mint since P3
+   * carried one, and the machinery was where the arc's only crash bug lived
+   * (the level-guard P2002 loop). A place is a MIRRORED VENDOR ENTITY;
+   * an observation that does not name an entity does not touch the mirror.
    *
-   *  K UNKNOWN (county-less observation — county-rung-and-above nodes,
-   *  fallback mints, providers without county data):
-   *  (u1) a county-unknown candidate exists → MATCH it (the legacy tuple;
-   *       mergeSketch's disjoint-bbox guard still refuses phantom widening).
-   *  (u2) else a candidate whose bbox intersects the observation → MATCH it
-   *       (geometry picks among county-carrying same-name siblings; county
-   *       untouched).
-   *  (u3) else exactly one candidate → MATCH it (pre-amendment behavior;
-   *       the widen guard protects the disjoint case).
-   *  (u4) else (several county-carrying siblings, no geometry to arbitrate)
-   *       → MATCH the deterministic oldest, loudly. NEVER create here: a
-   *       fresh NULL-county row beside county-carrying siblings is pure
-   *       adoption bait for the wrong county later.
+   * Three lanes:
+   * 1. id-carrying node → findUnique on the composite (id, level); merge or
+   *    mint. The coincident-boundary case (one geometry id on two rungs —
+   *    a city-state, a consolidated city-county) is now REPRESENTED instead
+   *    of hacked around: the vendor distinguishes those entities by
+   *    entityType, and so does the composite unique index.
+   * 2. provider 'fallback' → the ONE honest non-vendor lane (§17c drought
+   *    mints, synthetic ~1km-rounded names). Idempotent by exact tuple.
+   * 3. anything else id-less → REFUSED, loudly. Nothing minted, nothing
+   *    updated. If this warning ever fires in live traffic, the vendor
+   *    changed its response contract — investigate, do not resurrect the
+   *    name table.
+   *
+   * Returns null ONLY for lane 3 (sketchChain drops the node and threads the
+   * parent edge past it).
    */
-  private resolveIdentity(
-    candidateRows: Place[],
-    node: PlaceSketchNode,
-    candidateBboxOf: Map<string, GeoBbox>,
-  ): { row: Place; adoptCounty?: string } | { row: null } {
-    let candidates = candidateRows;
-    if (candidates.length === 0) {
-      return { row: null };
-    }
-    // DIFFERENT VENDOR ID = DIFFERENT ENTITY (one-ground charter P3): the
-    // id-first lookup upstream already matched an exact id, so any remaining
-    // name-candidate that carries a DIFFERENT id is provably not this place
-    // — the vendor says so. Disqualify it rather than let the name/county
-    // rules merge two entities (the defect that widened San Juan Municipio
-    // across 45° of longitude). A candidate with no stored id is still
-    // eligible: it simply has no vendor opinion yet.
-    if (node.providerPlaceId) {
-      candidates = candidates.filter(
-        (row) =>
-          row.providerPlaceId === null ||
-          row.providerPlaceId === node.providerPlaceId,
-      );
-      if (candidates.length === 0) {
-        return { row: null }; // all homonyms are other entities → mint ours
-      }
-    }
-    const observedCounty = node.county ? normalizePlaceName(node.county) : null;
-    const sameCounty = (row: Place) =>
-      row.county !== null &&
-      observedCounty !== null &&
-      row.county.toLowerCase() === observedCounty.toLowerCase();
-    const bboxNear = (row: Place) => {
-      const rowBbox = candidateBboxOf.get(row.placeId) ?? null;
-      return (
-        rowBbox !== null &&
-        node.bbox != null &&
-        bboxIntersectionParts(rowBbox, node.bbox).length > 0
-      );
-    };
-
-    if (observedCounty !== null) {
-      const exact = candidates.find(sameCounty); // (c)
-      if (exact) {
-        return { row: exact };
-      }
-      const contested = candidates.find(
-        (row) => row.county !== null && bboxNear(row),
-      ); // (b′)
-      if (contested) {
-        this.logger.warn(
-          'county disagreement on identity match (multi-county ground) — stored county wins',
-          {
-            placeId: contested.placeId,
-            stored: contested.county,
-            observed: observedCounty,
-          },
-        );
-        return { row: contested };
-      }
-      const adoptable = candidates.find((row) => {
-        if (row.county !== null) return false;
-        const rowBbox = candidateBboxOf.get(row.placeId) ?? null;
-        const disjoint =
-          rowBbox !== null &&
-          node.bbox != null &&
-          bboxIntersectionParts(rowBbox, node.bbox).length === 0;
-        return !disjoint; // (a)
-      });
-      if (adoptable) {
-        return { row: adoptable, adoptCounty: observedCounty };
-      }
-      return { row: null }; // (b): distinct sibling
-    }
-
-    const countyless = candidates.find((row) => row.county === null); // (u1)
-    if (countyless) {
-      return { row: countyless };
-    }
-    const near = candidates.find(bboxNear); // (u2)
-    if (near) {
-      return { row: near };
-    }
-    if (candidates.length > 1) {
-      // (u4) — candidates are oldest-first; log the unarbitrable ambiguity.
-      this.logger.warn(
-        'ambiguous county-less observation across county-carrying siblings — merging into oldest',
-        {
-          placeId: candidates[0].placeId,
-          siblingCount: candidates.length,
-        },
-      );
-    }
-    return { row: candidates[0] }; // (u3)/(u4)
-  }
-
   private async upsertSketch(
     node: PlaceSketchNode,
     parentPlaceId: string | undefined,
-  ): Promise<Place> {
+  ): Promise<Place | null> {
     const name = normalizePlaceName(node.name);
-    // VENDOR ID IS THE IDENTITY (one-ground charter P3, 2026-07-26). The
-    // provider's geometry id is STABLE and per-entity (live-validated: the
-    // same id comes back from reverse and forward geocodes for the same
-    // entity), so when the observation carries one it answers identity
-    // EXACTLY — no name normalization, no county axis, no geometric
-    // comparison, no ambiguity. Names were never identity: "Scotland" is a
-    // town in Georgia AND a country; matching by name is what let two
-    // different entities merge and destroy each other's extent.
-    if (node.providerPlaceId) {
-      // findUNIQUE, not findFirst: the id is the identity key and carries a
-      // unique index (migration 20260727220000), so "which row wins" is not a
-      // question — an unordered findFirst could have answered differently
-      // between calls if the invariant ever slipped (red-team finding).
-      const byVendorId = await this.prisma.place.findUnique({
-        where: { providerPlaceId: node.providerPlaceId },
-      });
-      if (byVendorId) {
-        // LEVEL GUARD: the vendor can return the same geometry id at two
-        // rungs for a coincident boundary (a city-state, a consolidated
-        // city-county). Merging a Municipality observation into a
-        // CountrySubdivision row would silently mislabel the level, which
-        // mergeSketch never corrects. Same id at a DIFFERENT level is not
-        // this place — fall through to the name path, which can mint the
-        // distinct row.
-        if (byVendorId.providerLevelCode === node.providerLevelCode) {
-          return this.mergeSketch(byVendorId, node, parentPlaceId);
-        }
-        this.logger.warn(
-          'vendor id matched a row at a DIFFERENT level — not this place',
-          {
-            placeId: byVendorId.placeId,
-            storedLevel: byVendorId.providerLevelCode,
-            observedLevel: node.providerLevelCode,
-            providerPlaceId: node.providerPlaceId,
-          },
-        );
-        // ENTITY EXCLUSIVITY (red-team finding, 2026-07-29, both reviewers
-        // independently): the id is CLAIMED — by the other rung — and the
-        // unique index enforces exactly that. Falling through while the node
-        // still carried the id was a guaranteed crash: the name path either
-        // CREATEs with it (P2002 → retry → identical state → "did not settle
-        // after 3 attempts") or merges into a null-id candidate whose
-        // id-adopt UPDATE throws P2002 uncaught. Deterministic input —
-        // any chain where the vendor stamps one geometry id on two rungs, the
-        // exact case this guard's comment names — so one such probe killed
-        // the whole sketchChain, and in seed-region.ts aborted the entire
-        // run. The node proceeds id-LESS: the row mints/merges on the name
-        // axis and simply never claims an id that is not its to claim.
-        node = { ...node, providerPlaceId: undefined };
+
+    if (!node.providerPlaceId) {
+      if (node.provider === 'fallback') {
+        return this.upsertFallbackPlace(node, name, parentPlaceId);
       }
-    }
-    // Bounded re-resolution loop: every race (create-vs-create P2002,
-    // adopt-vs-adopt on the same NULL-county row) settles by re-reading the
-    // candidates — rows and counties only ever ACCRUE, so a re-run of the
-    // decision table lands on the settled truth.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const { rows: candidates, bboxOf } = await this.findIdentityCandidates(
-        node,
-        name,
+      this.logger.warn(
+        'id-less observation REFUSED — a place is a mirrored vendor entity',
+        {
+          name,
+          providerLevelCode: node.providerLevelCode,
+          countryCode: node.countryCode,
+        },
       );
-      const resolved = this.resolveIdentity(candidates, node, bboxOf);
-      if (resolved.row) {
-        if ('adoptCounty' in resolved && resolved.adoptCounty) {
-          // Gap-fill (rule a) must be RACE-SAFE: adopt only if the row is
-          // STILL county-unknown (a concurrent observer may have adopted a
-          // different county first — then the decision table must re-run
-          // against the new truth, possibly minting a distinct sibling).
-          const adopted = await this.prisma.place.updateMany({
-            where: { placeId: resolved.row.placeId, county: null },
-            data: { county: resolved.adoptCounty },
-          });
-          if (adopted.count === 0) {
-            continue; // lost the adoption race — re-resolve
-          }
-          resolved.row.county = resolved.adoptCounty;
-        }
-        return this.mergeSketch(resolved.row, node, parentPlaceId);
+      return null;
+    }
+
+    // Bounded race loop: two concurrent first-sketches of the same entity
+    // settle on the composite unique index — the loser re-reads and merges.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = await this.prisma.place.findUnique({
+        where: {
+          providerPlaceId_providerLevelCode: {
+            providerPlaceId: node.providerPlaceId,
+            providerLevelCode: node.providerLevelCode,
+          },
+        },
+      });
+      if (existing) {
+        return this.mergeSketch(existing, node, parentPlaceId);
       }
       try {
         const created = await this.prisma.place.create({
@@ -751,42 +561,91 @@ export class PlacesCatalogService {
             timeZone: node.timeZone ?? null,
             localScriptAlias: node.localScriptAlias ?? null,
             ...(node.provider ? { provider: node.provider } : {}),
-            providerPlaceId: node.providerPlaceId ?? null,
+            providerPlaceId: node.providerPlaceId,
           },
         });
         // §2.6 BIRTH = GROUND IMMEDIATELY: the sketch envelope lands in
-        // place_geometries synchronously with the place row (never waiting
-        // for the drain). P4: the envelope is built from the OBSERVATION
-        // directly — there are no bbox columns to route it through.
+        // place_geometries synchronously with the place row. P4: built from
+        // the OBSERVATION directly — there are no bbox columns.
         if (node.bbox) {
           await this.writeSketchGround(created.placeId, node.bbox);
         }
         // §2.5(d) POLYGON AT BIRTH: every new place enters the governed
-        // promotion queue immediately (fire-and-forget; the enqueue itself
-        // filters fallback mints and already-outlined ground). The hourly
-        // drain turns it into an outline within the hour — fine by law.
+        // promotion queue immediately (fire-and-forget).
         if (this.birthListener) {
           void this.birthListener.enqueue(created.placeId, 'birth');
         }
         return created;
       } catch (error) {
-        // Two concurrent first-sketches of the same tuple: the DB identity
-        // index (uq_places_identity, county axis included) makes the fork
-        // impossible; the loser re-resolves and MERGES instead.
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
           error.code === 'P2002'
         ) {
-          continue; // re-resolve against the winner's row
+          continue; // lost the mint race — re-read the winner and merge
         }
         throw error;
       }
     }
     throw new Error(
-      `place identity resolution did not settle after 3 attempts: ` +
-        `${node.countryCode}/${node.subdivisionCode ?? '∅'}/${node.county ?? '∅'}/` +
-        `${node.providerLevelCode}/${name}`,
+      'place identity resolution did not settle after 3 attempts',
     );
+  }
+
+  /**
+   * Lane 2: the §17c fallback mint — the ONE non-vendor path. Identity is the
+   * exact synthetic tuple (ZZ / areaFallback / the ~1km-rounded name), which
+   * is what makes nearby droughted creations converge on one row.
+   */
+  private async upsertFallbackPlace(
+    node: PlaceSketchNode,
+    name: string,
+    parentPlaceId: string | undefined,
+  ): Promise<Place> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = await this.prisma.place.findFirst({
+        where: {
+          provider: 'fallback',
+          countryCode: node.countryCode,
+          providerLevelCode: node.providerLevelCode,
+          name: { equals: name, mode: 'insensitive' },
+        },
+        orderBy: [{ createdAt: 'asc' }, { placeId: 'asc' }],
+      });
+      if (existing) {
+        return this.mergeSketch(existing, node, parentPlaceId);
+      }
+      try {
+        const created = await this.prisma.place.create({
+          data: {
+            name,
+            providerLevelCode: node.providerLevelCode,
+            countryCode: node.countryCode,
+            subdivisionCode: node.subdivisionCode ?? null,
+            county: null,
+            parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
+            centroidLat: node.centroid?.lat,
+            centroidLng: node.centroid?.lng,
+            timeZone: node.timeZone ?? null,
+            localScriptAlias: node.localScriptAlias ?? null,
+            provider: 'fallback',
+            providerPlaceId: null,
+          },
+        });
+        if (node.bbox) {
+          await this.writeSketchGround(created.placeId, node.bbox);
+        }
+        return created;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error('fallback mint did not settle after 3 attempts');
   }
 
   /**

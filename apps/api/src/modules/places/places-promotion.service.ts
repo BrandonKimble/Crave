@@ -498,12 +498,23 @@ export class PlacesPromotionService {
     // separately." First claimant keeps the entity — arbitrary but stable;
     // no evidence exists here to rank two places that both genuinely sit
     // inside one vendor entity.
+    // FINAL DISSOLUTION amendment (2026-07-30): exclusivity is per
+    // (geometry id, LEVEL) — the vendor's own identity. A coincident-boundary
+    // pair (city-state, consolidated city-county) shares one geometry id
+    // across two rungs and each rung legitimately wears the same outline;
+    // only a SAME-level second claimant is the Glen-Echo-Park class.
     const claimedByAnother = await this.prisma.$queryRaw<
       Array<{ placeId: string }>
     >(Prisma.sql`
-      SELECT place_id AS "placeId" FROM place_geometries
-      WHERE provider_boundary_id = ${geometryId}
-        AND place_id <> ${item.placeId}::uuid
+      SELECT g.place_id AS "placeId"
+      FROM place_geometries g
+      JOIN places p ON p.place_id = g.place_id
+      WHERE g.provider_boundary_id = ${geometryId}
+        AND g.place_id <> ${item.placeId}::uuid
+        AND p.provider_level_code = (
+          SELECT provider_level_code FROM places
+          WHERE place_id = ${item.placeId}::uuid
+        )
       LIMIT 1
     `);
     if (claimedByAnother.length > 0) {

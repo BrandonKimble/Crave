@@ -5,10 +5,10 @@
  * subdivisionCode?, county?, providerLevelCode, normalized name) MERGES (bbox
  * widens to union, providerPlaceId adopted as alias, parent edges union)
  * instead of creating a twin row; chain order supplies the DAG's parent
- * edges. The COUNTY-AXIS decision table (rules c / b′ / a / b / u1–u4) has a
- * dedicated describe block below.
+ * edges. (THE FINAL DISSOLUTION, 2026-07-30: identity is now the vendor's
+ * composite (id, level); the county-axis decision table and its describe
+ * block are deleted with the law.)
  */
-import { Prisma } from '@prisma/client';
 import {
   PlacesCatalogService,
   PlaceSketchNode,
@@ -72,21 +72,37 @@ function makeHarness(
   const update = jest
     .fn()
     .mockImplementation((args: any) =>
-      Promise.resolve(makePlaceRow(args.data)),
+      Promise.resolve(
+        makePlaceRow({ ...args.data, placeId: args.where?.placeId }),
+      ),
     );
   const updateMany = jest.fn().mockResolvedValue({ count: 1 });
   const findUniqueOrThrow = jest
     .fn()
     .mockImplementation(() => Promise.resolve(makePlaceRow()));
   const findUnique = jest.fn().mockImplementation((args: any) => {
-    if (args?.where?.providerPlaceId !== undefined) {
+    if (
+      args?.where?.providerPlaceId !== undefined ||
+      args?.where?.providerPlaceId_providerLevelCode !== undefined
+    ) {
       return findUniqueVendorId(args);
     }
     return Promise.resolve(makePlaceRow());
   });
-  // P3 vendor-id-first identity lookup; null = no stored row carries this id.
   const findFirst = jest.fn().mockResolvedValue(null);
-  const findUniqueVendorId = jest.fn().mockResolvedValue(null);
+  // FINAL DISSOLUTION: identity lookup is the COMPOSITE (id, level). The
+  // default resolves against the fixture rows, so tests read like the law.
+  const findUniqueVendorId = jest.fn().mockImplementation((args: any) => {
+    const composite = args?.where?.providerPlaceId_providerLevelCode;
+    const id = composite?.providerPlaceId ?? args?.where?.providerPlaceId;
+    const lvl = composite?.providerLevelCode;
+    const row = knownRows.find(
+      (r: any) =>
+        r.providerPlaceId === id &&
+        (lvl == null || r.providerLevelCode === lvl),
+    );
+    return Promise.resolve(row ?? null);
+  });
   const executeRaw = jest.fn().mockResolvedValue(1);
   // P4: the service derives extents FROM THE GROUND via $queryRaw (the
   // derived-bbox SELECT). The harness answers those reads from the fixture
@@ -181,6 +197,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
         providerLevelCode: 'neighbourhood',
         countryCode: 'US',
         subdivisionCode: 'TX',
+        providerPlaceId: 'tomtom-geom-hydepark',
       },
       austinNode,
       {
@@ -188,6 +205,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
         providerLevelCode: 'subdivision',
         countryCode: 'US',
         subdivisionCode: 'TX',
+        providerPlaceId: 'tomtom-geom-texas',
       },
     ];
     const places = await service.sketchChain(chain);
@@ -230,11 +248,10 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled(); // identical observation → idempotent no-op
-    // The identity lookup normalized the name and compared case-insensitively.
-    expect(findMany.mock.calls[0][0].where.name).toEqual({
-      equals: 'AUSTIN',
-      mode: 'insensitive',
-    });
+    // FINAL DISSOLUTION: there is no name lookup to run — the composite
+    // (id, level) resolved it, and the name variant is just a scalar the
+    // merge declines to overwrite.
+    expect(findMany).not.toHaveBeenCalled();
   });
 
   it('bbox MERGES on conflict: ATOMIC LEAST/GREATEST widen against the live row, never shrinks (finding 1c)', async () => {
@@ -243,6 +260,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       bboxMinLng: -97.9,
       bboxMaxLat: 30.4,
       bboxMaxLng: -97.6,
+      providerPlaceId: 'tomtom-geom-austin',
     });
     const { service, update, create, executeRaw, findUniqueOrThrow } =
       makeHarness([existing]);
@@ -250,7 +268,6 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     await service.sketchChain([
       {
         ...austinNode,
-        providerPlaceId: null,
         bbox: { minLat: 30.1, minLng: -97.95, maxLat: 30.3, maxLng: -97.7 },
       },
     ]);
@@ -292,31 +309,19 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       bboxMinLng: -97.95,
       bboxMaxLat: 30.52,
       bboxMaxLng: -97.56,
+      providerPlaceId: 'tomtom-geom-austin',
     });
     const { service, update, executeRaw } = makeHarness([existing]);
 
     await service.sketchChain([
       {
         ...austinNode,
-        providerPlaceId: null,
         bbox: { minLat: 30.2, minLng: -97.9, maxLat: 30.4, maxLng: -97.6 },
       },
     ]);
 
     expect(update).not.toHaveBeenCalled();
     expect(executeRaw).not.toHaveBeenCalled();
-  });
-
-  it('adopts providerPlaceId as an alias when the stored row has none', async () => {
-    const existing = makePlaceRow({ providerPlaceId: null });
-    const { service, update } = makeHarness([existing]);
-
-    await service.sketchChain([{ ...austinNode, bbox: null }]);
-
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data.providerPlaceId).toBe(
-      'tomtom-geom-austin',
-    );
   });
 
   // ── VENDOR ID IS THE IDENTITY (one-ground charter P3) ────────────────────
@@ -333,33 +338,18 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     ]);
 
     expect(findUniqueVendorId).toHaveBeenCalledWith({
-      where: { providerPlaceId: 'tomtom-geom-austin' },
+      where: {
+        providerPlaceId_providerLevelCode: {
+          providerPlaceId: 'tomtom-geom-austin',
+          providerLevelCode: 'municipality',
+        },
+      },
     });
     // Resolved to the id-matched row despite the name disagreeing entirely.
     expect(resolved.placeId).toBe(stored.placeId);
     // The name-candidate lookup never ran, and nothing was forked.
     expect(findMany).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
-  });
-
-  it('the SAME vendor id at a DIFFERENT level is not this place (coincident boundary)', async () => {
-    // A city-state or consolidated city-county can share one boundary across
-    // two rungs, so the vendor may hand back the same geometry id for both.
-    // Merging a Municipality observation into a CountrySubdivision row would
-    // silently mislabel the level — mergeSketch never corrects it.
-    const stateRow = makePlaceRow({
-      providerLevelCode: 'CountrySubdivision',
-      providerPlaceId: 'tomtom-geom-austin',
-    });
-    const { service, findUniqueVendorId, create, update } = makeHarness([]);
-    findUniqueVendorId.mockResolvedValue(stateRow);
-
-    // austinNode is a Municipality carrying that same id.
-    await service.sketchChain([{ ...austinNode, bbox: null }]);
-
-    // Not merged into the state row; minted as its own place.
-    expect(update).not.toHaveBeenCalled();
-    expect(create).toHaveBeenCalledTimes(1);
   });
 
   it('a same-name homonym with a DIFFERENT vendor id is a different entity — minted, never merged (the San Juan class)', async () => {
@@ -380,22 +370,6 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     // Minted as its own place; the homonym is untouched.
     expect(create).toHaveBeenCalledTimes(1);
     expect(update).not.toHaveBeenCalled();
-  });
-
-  it('an id-less stored row is still eligible (no vendor opinion yet) — it merges and adopts the id', async () => {
-    const idLess = makePlaceRow({ providerPlaceId: null });
-    const { service, findUniqueVendorId, create, update } = makeHarness([
-      idLess,
-    ]);
-    findUniqueVendorId.mockResolvedValue(null);
-
-    await service.sketchChain([{ ...austinNode, bbox: null }]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data.providerPlaceId).toBe(
-      'tomtom-geom-austin',
-    );
   });
 
   it('COUNTY GAP-FILL survives the id-first path (RED: P3 silently stopped the county axis accruing)', async () => {
@@ -431,19 +405,25 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
   it('appends a new parent edge ATOMICALLY (Prisma push — concurrent merges cannot drop each other, finding 1c)', async () => {
     const priorParent = '11111111-1111-4111-8111-111111111111';
     const texasRow = makePlaceRow({
+      placeId: 'id-texas-row',
       name: 'Texas',
       providerLevelCode: 'subdivision',
+      providerPlaceId: 'tomtom-geom-texas',
     });
-    const existingAustin = makePlaceRow({ parentPlaceIds: [priorParent] });
+    const existingAustin = makePlaceRow({
+      parentPlaceIds: [priorParent],
+      providerPlaceId: 'tomtom-geom-austin',
+    });
     const { service, update } = makeHarness([texasRow, existingAustin]);
 
     await service.sketchChain([
-      { ...austinNode, bbox: null, providerPlaceId: null },
+      { ...austinNode, bbox: null },
       {
         name: 'Texas',
         providerLevelCode: 'subdivision',
         countryCode: 'US',
         subdivisionCode: 'TX',
+        providerPlaceId: 'tomtom-geom-texas',
       },
     ]);
 
@@ -463,317 +443,97 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
   });
 });
 
-describe('PlacesCatalogService — §1 COUNTY-AXIS decision table (§18 item 8)', () => {
-  // The real Lakeside-TX pair: same name, same subdivision, 4.7° apart.
-  const tarrantLakeside = () =>
-    makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: 'Tarrant',
-      bboxMinLat: 32.8,
-      bboxMinLng: -97.53,
-      bboxMaxLat: 32.85,
-      bboxMaxLng: -97.46,
-      createdAt: new Date('2026-07-01T00:00:00Z'),
-    });
-  const sanPatricioLakeside = () =>
-    makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: 'San Patricio',
-      bboxMinLat: 28.08,
-      bboxMinLng: -97.89,
-      bboxMaxLat: 28.13,
-      bboxMaxLng: -97.83,
-      createdAt: new Date('2026-07-02T00:00:00Z'),
-    });
-  const nearSanPatricio = {
-    minLat: 28.09,
-    minLng: -97.88,
-    maxLat: 28.12,
-    maxLng: -97.84,
-  };
-  const lakesideNode = (
-    county: string | null,
-    bbox: typeof nearSanPatricio | null,
-  ): PlaceSketchNode => ({
-    name: 'Lakeside',
-    providerLevelCode: 'Municipality',
-    countryCode: 'US',
-    subdivisionCode: 'TX',
-    county,
-    bbox,
-  });
-
-  it('(c) both counties known and SAME → identity match, merges (case-insensitive county)', async () => {
-    const existing = tarrantLakeside();
-    const { service, create, executeRaw } = makeHarness([[existing]]);
-
-    const [place] = await service.sketchChain([
-      lakesideNode('TARRANT', {
-        minLat: 32.81,
-        minLng: -97.52,
-        maxLat: 32.84,
-        maxLng: -97.47,
-      }),
+describe('THE FINAL DISSOLUTION — identity is (vendor id, level); the name table is gone', () => {
+  it('an id-LESS non-fallback node is REFUSED: nothing minted, nothing updated, loud log', async () => {
+    // The mirror law: a place is a vendor entity. An observation without the
+    // vendor id is not an entity observation — it updates nothing and mints
+    // nothing. (Measured 2026-07-30: 0 of 22,769 places lack an id; the
+    // id-less case has never occurred in live traffic. The machinery that
+    // reconciled it was where the only crash bug of the arc lived.)
+    const { service, create, update, updateMany, findMany } = makeHarness([
+      null,
     ]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(executeRaw).not.toHaveBeenCalled(); // contained bbox → no widen
-    expect(place.placeId).toBe(existing.placeId);
-  });
-
-  it('(b) both counties known and DIFFERENT with no bbox overlap → distinct place, sibling row created', async () => {
-    const existing = tarrantLakeside();
-    const { service, create, update, updateMany } = makeHarness([[existing]]);
-
-    await service.sketchChain([lakesideNode('San Patricio', nearSanPatricio)]);
-
-    expect(update).not.toHaveBeenCalled();
-    expect(updateMany).not.toHaveBeenCalled();
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].data.county).toBe('San Patricio');
-    expect(create.mock.calls[0][0].data.name).toBe('Lakeside');
-  });
-
-  it('Lakeside-TX fixture: with both siblings stored, an observation resolves to the NEAR (same-county) one', async () => {
-    const tarrant = tarrantLakeside();
-    const sanPatricio = sanPatricioLakeside();
-    const { service, create } = makeHarness([[tarrant, sanPatricio]]);
-
-    const [place] = await service.sketchChain([
-      lakesideNode('San Patricio', nearSanPatricio),
+    const results = await service.sketchChain([
+      { ...austinNode, providerPlaceId: null },
     ]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(place.placeId).toBe(sanPatricio.placeId);
-  });
-
-  it('(a) stored county UNKNOWN, observed county, overlapping bbox → row ADOPTS the county (gap-fill, no fork)', async () => {
-    const existing = makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: null,
-      bboxMinLat: 28.08,
-      bboxMinLng: -97.89,
-      bboxMaxLat: 28.13,
-      bboxMaxLng: -97.83,
-    });
-    const { service, create, updateMany } = makeHarness([[existing]]);
-
-    const [place] = await service.sketchChain([
-      lakesideNode('San Patricio', nearSanPatricio),
-    ]);
-
-    expect(create).not.toHaveBeenCalled();
-    // Race-safe conditional adoption: only a STILL-county-unknown row adopts.
-    expect(updateMany).toHaveBeenCalledWith({
-      where: { placeId: existing.placeId, county: null },
-      data: { county: 'San Patricio' },
-    });
-    expect(place.placeId).toBe(existing.placeId);
-  });
-
-  it('(a-veto) stored county UNKNOWN but bboxes DISJOINT → no adoption, distinct sibling created', async () => {
-    const existing = makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: null, // pre-amendment organic row of the OTHER Lakeside
-      bboxMinLat: 32.8,
-      bboxMinLng: -97.53,
-      bboxMaxLat: 32.85,
-      bboxMaxLng: -97.46,
-    });
-    const { service, create, updateMany } = makeHarness([[existing]]);
-
-    await service.sketchChain([lakesideNode('San Patricio', nearSanPatricio)]);
-
-    expect(updateMany).not.toHaveBeenCalled();
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].data.county).toBe('San Patricio');
-  });
-
-  it('(b′) different county but OVERLAPPING bbox → multi-county ground: merges, stored county WINS, disagreement logged', async () => {
-    // Houston law: probes from different parts of one city report different
-    // counties — geometry overrides the county mismatch.
-    const existing = makePlaceRow({
-      name: 'Houston',
-      providerLevelCode: 'Municipality',
-      county: 'Harris',
-      bboxMinLat: 29.5,
-      bboxMinLng: -95.8,
-      bboxMaxLat: 30.1,
-      bboxMaxLng: -95.0,
-    });
-    const { service, create, update, updateMany } = makeHarness([[existing]]);
-    logger.warn.mockClear();
-
-    const [place] = await service.sketchChain([
-      {
-        name: 'Houston',
-        providerLevelCode: 'Municipality',
-        countryCode: 'US',
-        subdivisionCode: 'TX',
-        county: 'Fort Bend',
-        bbox: { minLat: 29.55, minLng: -95.75, maxLat: 29.7, maxLng: -95.6 },
-      },
-    ]);
-
+    expect(results).toEqual([]);
     expect(create).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
-    expect(updateMany).not.toHaveBeenCalled(); // stored county untouched
-    expect(place.placeId).toBe(existing.placeId);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('county disagreement'),
-      expect.objectContaining({ stored: 'Harris', observed: 'Fort Bend' }),
-    );
-  });
-
-  it("(b′ beats a) NULL-county row present but a DIFFERENT-county sibling sits on the observation's ground → sibling absorbs, no adoption", async () => {
-    const nullRow = makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: null,
-      bboxMinLat: null,
-      bboxMinLng: null,
-      bboxMaxLat: null,
-      bboxMaxLng: null,
-      createdAt: new Date('2026-06-01T00:00:00Z'),
-    });
-    const sanPatricio = sanPatricioLakeside();
-    const { service, create, updateMany } = makeHarness([
-      [nullRow, sanPatricio],
-    ]);
-
-    const [place] = await service.sketchChain([
-      lakesideNode('Nueces', nearSanPatricio), // disagreeing county, same ground
-    ]);
-
-    expect(create).not.toHaveBeenCalled();
     expect(updateMany).not.toHaveBeenCalled();
-    expect(place.placeId).toBe(sanPatricio.placeId);
+    expect(findMany).not.toHaveBeenCalled(); // no name lookup exists to run
   });
 
-  it('(gap-fill race) losing the conditional adoption re-resolves against the settled truth', async () => {
-    const nullRow = makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: null,
-      bboxMinLat: 28.08,
-      bboxMinLng: -97.89,
-      bboxMaxLat: 28.13,
-      bboxMaxLng: -97.83,
+  it('the same vendor id at a DIFFERENT level mints a SIBLING carrying the SAME id — identity is (id, level)', async () => {
+    // The coincident-boundary case (a city-state, a consolidated
+    // city-county): the vendor stamps one geometry id on two rungs and
+    // distinguishes the entities by entityType. So do we — the composite
+    // unique (provider_place_id, provider_level_code) IS the vendor's own
+    // identity, and the old id-STRIP hack (mint the sibling id-less, then
+    // reconcile it by name forever after) dies with the name table.
+    const stateRow = makePlaceRow({
+      placeId: 'id-state-row',
+      providerLevelCode: 'CountrySubdivision',
+      providerPlaceId: 'tomtom-geom-austin',
     });
-    // A concurrent observer adopted 'San Patricio' into the same row first.
-    const settled = { ...nullRow, county: 'San Patricio' };
-    const { service, create, updateMany, findMany } = makeHarness([
-      [nullRow],
-      [settled],
-    ]);
-    updateMany.mockResolvedValueOnce({ count: 0 }); // lost the race
-
-    const [place] = await service.sketchChain([
-      lakesideNode('San Patricio', nearSanPatricio),
-    ]);
-
-    expect(findMany).toHaveBeenCalledTimes(2); // re-resolved
-    expect(create).not.toHaveBeenCalled(); // rule (c) on the settled row
-    expect(place.placeId).toBe(nullRow.placeId);
-  });
-
-  it('(create race) P2002 on the county-shaped index re-resolves and merges with the winner', async () => {
-    const winner = sanPatricioLakeside();
-    const { service, create, findMany } = makeHarness([null, [winner]]);
-    const p2002 = Object.assign(
-      Object.create(Prisma.PrismaClientKnownRequestError.prototype),
-      { code: 'P2002', message: 'unique violation' },
-    );
-    create.mockRejectedValueOnce(p2002);
-
-    const [place] = await service.sketchChain([
-      lakesideNode('San Patricio', nearSanPatricio),
-    ]);
-
+    const { service, create, findUniqueVendorId } = makeHarness([null]);
+    findUniqueVendorId.mockImplementation((args: any) => {
+      // Answer BOTH query shapes: the old simple-id lookup (so this test is
+      // RED against the pre-dissolution code, which then STRIPPED the id)
+      // and the composite (id, level) lookup the dissolution introduces.
+      const composite = args?.where?.providerPlaceId_providerLevelCode;
+      if (composite) {
+        return Promise.resolve(
+          composite.providerPlaceId === 'tomtom-geom-austin' &&
+            composite.providerLevelCode === 'CountrySubdivision'
+            ? stateRow
+            : null,
+        );
+      }
+      return Promise.resolve(
+        args?.where?.providerPlaceId === 'tomtom-geom-austin' ? stateRow : null,
+      );
+    });
+    await service.sketchChain([austinNode]); // Municipality, same id
     expect(create).toHaveBeenCalledTimes(1);
-    expect(findMany).toHaveBeenCalledTimes(2);
-    expect(place.placeId).toBe(winner.placeId);
+    expect(create.mock.calls[0][0].data.providerPlaceId).toBe(
+      'tomtom-geom-austin',
+    );
+    expect(create.mock.calls[0][0].data.providerLevelCode).toBe('municipality');
   });
 
-  it('(u1) county-less observation prefers the county-unknown row over county-carrying siblings', async () => {
-    const nullRow = makePlaceRow({
-      name: 'Lakeside',
-      providerLevelCode: 'Municipality',
-      county: null,
-      createdAt: new Date('2026-07-03T00:00:00Z'),
+  it('the fallback lane survives as the ONE non-vendor path: id-less fallback mints, and re-mints MERGE by tuple', async () => {
+    const fallbackNode = {
+      name: 'this area near (30.27, -97.74)',
+      providerLevelCode: 'areaFallback',
+      countryCode: 'ZZ',
+      provider: 'fallback',
+      bbox: { minLat: 30.2, minLng: -97.8, maxLat: 30.34, maxLng: -97.68 },
+      centroid: { lat: 30.27, lng: -97.74 },
+    };
+    const { service, create, findFirst } = makeHarness([null]);
+    const [minted] = await service.sketchChain([fallbackNode]);
+    expect(minted).toBeDefined();
+    expect(create).toHaveBeenCalledTimes(1);
+    // Second observation of the same synthetic tuple: MERGES, no second mint.
+    const existing = makePlaceRow({
+      placeId: 'id-fallback-row',
+      name: fallbackNode.name,
+      providerLevelCode: 'areaFallback',
+      countryCode: 'ZZ',
+      provider: 'fallback',
     });
-    const { service, create } = makeHarness([[tarrantLakeside(), nullRow]]);
-
-    const [place] = await service.sketchChain([lakesideNode(null, null)]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(place.placeId).toBe(nullRow.placeId);
-  });
-
-  it('(u2) county-less observation with only county-carrying siblings: geometry picks; county untouched', async () => {
-    const tarrant = tarrantLakeside();
-    const sanPatricio = sanPatricioLakeside();
-    const { service, create, updateMany } = makeHarness([
-      [tarrant, sanPatricio],
-    ]);
-
-    const [place] = await service.sketchChain([
-      lakesideNode(null, nearSanPatricio),
-    ]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(updateMany).not.toHaveBeenCalled();
-    expect(place.placeId).toBe(sanPatricio.placeId);
-  });
-
-  it('(u4) county-less, several county-carrying siblings, no geometry → deterministic oldest, loudly, NEVER a new row', async () => {
-    const tarrant = tarrantLakeside(); // oldest (2026-07-01)
-    const sanPatricio = sanPatricioLakeside();
-    const { service, create } = makeHarness([[tarrant, sanPatricio]]);
-    logger.warn.mockClear();
-
-    const [place] = await service.sketchChain([lakesideNode(null, null)]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(place.placeId).toBe(tarrant.placeId);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('ambiguous county-less observation'),
-      expect.objectContaining({ siblingCount: 2 }),
-    );
-  });
-
-  it('county is stored NORMALIZED on create (whitespace collapsed)', async () => {
-    const { service, create } = makeHarness([null]);
-
-    await service.sketchChain([
-      lakesideNode('  San   Patricio ', nearSanPatricio),
-    ]);
-
-    expect(create.mock.calls[0][0].data.county).toBe('San Patricio');
-  });
-
-  it('(c + disjoint) same county but disjoint bboxes → merge refused the widen (defense-in-depth guard stays)', async () => {
-    const existing = tarrantLakeside();
-    const { service, create, executeRaw } = makeHarness([[existing]]);
-    logger.warn.mockClear();
-
-    const [place] = await service.sketchChain([
-      lakesideNode('Tarrant', nearSanPatricio), // same-county homonym defect
-    ]);
-
-    expect(create).not.toHaveBeenCalled();
-    expect(executeRaw).not.toHaveBeenCalled(); // no phantom union
-    expect(place.placeId).toBe(existing.placeId);
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('distinct-place suspect'),
-      expect.anything(),
-    );
+    findFirst.mockResolvedValue(existing);
+    const [merged] = await service.sketchChain([fallbackNode]);
+    expect(merged.placeId).toBe('id-fallback-row');
+    expect(create).toHaveBeenCalledTimes(1); // still one
   });
 });
+
+// The §1 COUNTY-AXIS decision table describe block (rules c/b'/a/u1-u4,
+// ~15 tests) was DELETED with the law it pinned (THE FINAL DISSOLUTION,
+// 2026-07-30): identity is the vendor's composite (id, level); id-less
+// observations are refused, so there is nothing left for a county axis to
+// disambiguate. County survives only as a gap-filled scalar in mergeSketch.
 
 describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
   // ONE GROUND FINDS AND JUDGES (one-ground charter P2/P4): candidates come
