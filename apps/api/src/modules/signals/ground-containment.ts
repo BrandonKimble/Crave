@@ -161,8 +161,10 @@ export function placeAnchoredAttributionSql(
 }
 
 /**
- * THE fresh-arm attribution predicate (C3 cut, single-representation under
- * §2.6): a today's-ledger signal belongs to a place read iff one CONTAINS
+ * THE ledger-signal attribution predicate (single-representation under
+ * §2.6). Post-docket-#6 it serves ONE caller — territoryUnmetAsks, which
+ * reads ask CONTENT from the ledger (never demand mass; the fresh demand
+ * arm is deleted). A ledger signal belongs to a place read iff one CONTAINS
  * the other — always judged on the place's ONE ground. The call sites keep
  * their cheap bbox-intersection join conditions as the PREFILTER
  * (containment in either direction implies intersection, so the prefilter

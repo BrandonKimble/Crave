@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { descendantPlaceIds } from '../places/place-dag-read';
 import { LoggerService } from '../../shared';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
 
@@ -1141,8 +1142,12 @@ export class EntityTextSearchService {
   }
 
   /** Engine territory = member places + places-DAG descendants (§5: derived
-   *  union, never stored). Cached briefly — batch heads scan many terms per
-   *  engine. Unknown engine ⇒ empty (global scope). */
+   *  union, never stored) — the walk itself is descendantPlaceIds, THE one
+   *  statement of the subtree law (end-state audit 2026-08-01: this method
+   *  hand-rolled its own CTE with the `= ANY` join form the place-dag-read
+   *  GIN lesson had already condemned — 13–17s seq-scans at country scale).
+   *  Cached briefly — batch heads scan many terms per engine. Unknown
+   *  engine ⇒ empty (global scope). */
   private async resolveEngineTerritoryPlaceIds(
     engineId: string | null,
   ): Promise<string[]> {
@@ -1153,18 +1158,13 @@ export class EntityTextSearchService {
     if (cached && cached.expiresAt > Date.now()) {
       return cached.placeIds;
     }
-    const rows = await this.prisma.$queryRaw<Array<{ place_id: string }>>`
-      WITH RECURSIVE territory AS (
-        SELECT unnest(e.member_place_ids) AS place_id
-        FROM engines e
-        WHERE e.engine_id = ${engineId}::uuid
-        UNION
-        SELECT p.place_id FROM places p
-        JOIN territory t ON t.place_id = ANY(p.parent_place_ids)
-      )
-      SELECT place_id FROM territory
-    `;
-    const placeIds = rows.map((row) => row.place_id);
+    const engine = await this.prisma.engine.findUnique({
+      where: { engineId },
+      select: { memberPlaceIds: true },
+    });
+    const placeIds = engine?.memberPlaceIds.length
+      ? await descendantPlaceIds(this.prisma, engine.memberPlaceIds)
+      : [];
     this.territoryCache.set(engineId, {
       placeIds,
       expiresAt: Date.now() + this.cacheTtlMs,

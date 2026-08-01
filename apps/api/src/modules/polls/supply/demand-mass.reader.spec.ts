@@ -110,7 +110,8 @@ describe('containment lineage + MAX set-semantics (docket item 7 algebra)', () =
     // Both walks: ancestors (up via parent_place_ids unnest) and descendants
     // (down via member-of-parent-array join).
     expect(sql).toMatch(/unnest\(p\.parent_place_ids\)/);
-    expect(sql).toMatch(/ANY\(p\.parent_place_ids\)/);
+    // GIN law (place-dag-read): the descendant join rides @>, never ANY.
+    expect(sql).toMatch(/p\.parent_place_ids @> ARRAY\[d\.tile\]/);
     // Count-once across a root's tiles: a signal stored at both a member and
     // an ancestor collapses via MAX per (actor, day, kind, subject).
     expect(sql).toContain('MAX(a.signal_count)');
@@ -195,6 +196,7 @@ describe('ONE read surface: the intersection reader is retired', () => {
     await reader.placesWithAnySignal(NOW);
     const sql = flatten(queries[0]);
     expect(sql).toMatch(/unnest\(p\.parent_place_ids\)/);
-    expect(sql).toMatch(/ANY\(p\.parent_place_ids\)/);
+    // GIN law (place-dag-read): the descendant join rides @>, never ANY.
+    expect(sql).toMatch(/p\.parent_place_ids @> ARRAY\[d\.place_id\]/);
   });
 });

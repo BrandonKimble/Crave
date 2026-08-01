@@ -165,7 +165,10 @@ export const usePollCreationPanelSpec = ({
       const status = (error as { response?: { status?: number } })?.response?.status;
       const serverMessage = (error as { response?: { data?: { message?: string } } })?.response
         ?.data?.message;
-      if (status === 400 && typeof serverMessage === 'string' && serverMessage.includes('place')) {
+      // EXACT drought string (red-team: moderation 400s carry free-text LLM
+      // reasons that can contain the word 'place' — substring matching gave
+      // a moderation reject the "we don't cover this area" copy).
+      if (status === 400 && serverMessage === 'Unable to resolve a place for this poll') {
         announceFailureIfOnline({
           message:
             "We don't cover this area yet. Try zooming to a nearby city and creating your poll there.",

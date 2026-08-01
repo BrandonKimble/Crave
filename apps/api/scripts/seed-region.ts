@@ -321,6 +321,7 @@ async function main(): Promise<void> {
     const before = await prisma.place.count();
 
     let skippedMidRun = 0;
+    let faultedCells = 0;
     for (const cell of todo.slice(0, planned)) {
       // COVERAGE IS RE-JUDGED AT THE MOMENT OF USE, not once up front. A probe
       // that mints a municipality can cover many LATER cells, and re-asking is
@@ -359,9 +360,15 @@ async function main(): Promise<void> {
         if (msg === 'tomtom_missing_country_code') {
           // PER-CELL vendor contract violation (rungs named, country slot
           // empty) — skip the cell and keep the run alive; the two faults
-          // below are RUN-GLOBAL and stop cleanly.
+          // below are RUN-GLOBAL and stop cleanly. Red-team bf350c35 F3:
+          // the vendor call WAS made and paid (the throw happens after
+          // reverseGeocode returns), so it counts as a probe AND keeps the
+          // QPS spacing — a contiguous malformed patch must not hammer the
+          // vendor at full speed or undercount draws in the summary.
+          probed += 1;
+          faultedCells += 1;
           out(`[seed] cell (${cell.lat},${cell.lng}) SKIPPED: ${msg}`);
-          skippedMidRun += 1;
+          await sleep(SPACING_MS);
           continue;
         }
         if (msg === 'tomtom_pool_denied' || msg === 'tomtom_config_missing') {
@@ -381,6 +388,9 @@ async function main(): Promise<void> {
     const after = await prisma.place.count();
     out('');
     out(`[seed] probed        ${probed}`);
+    out(
+      `[seed] faulted cells ${faultedCells} (vendor contract violations — draws spent, no ground)`,
+    );
     out(
       `[seed] skipped live  ${skippedMidRun} (covered by ground minted during this run)`,
     );

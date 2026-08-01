@@ -256,6 +256,11 @@ export class PlacesPromotionService {
    */
   private async promoteNewborn(placeId: string): Promise<void> {
     if (this.draining) {
+      // The hourly sweep owns this tick; its unfiltered WHERE picks the
+      // newborn up next pass. Logged so a starved newborn is attributable.
+      this.logger.info('Newborn promote deferred (drain in progress)', {
+        placeId,
+      });
       return;
     }
     this.draining = true;
@@ -266,6 +271,9 @@ export class PlacesPromotionService {
         `,
       );
       if (!lock[0]?.locked) {
+        this.logger.info('Newborn promote deferred (lock held elsewhere)', {
+          placeId,
+        });
         return;
       }
       try {
@@ -289,13 +297,24 @@ export class PlacesPromotionService {
           await this.promoteOne(rows[0], new Date());
         }
       } finally {
-        await this.prisma
-          .$queryRaw(
+        // Red-team bf350c35 F1: this path acquires PER BIRTH (far more
+        // round-trips than the hourly sweep), so a silent pooled-session
+        // unlock miss here could starve every sweep in every process while
+        // they log the WRONG cause ("another process drains"). Same warn
+        // contract as drainQueue — a leaked lock must be attributable.
+        const unlocked = await this.prisma
+          .$queryRaw<Array<{ unlocked: boolean }>>(
             Prisma.sql`
-              SELECT pg_advisory_unlock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY})
+              SELECT pg_advisory_unlock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS unlocked
             `,
           )
           .catch(() => null);
+        if (!unlocked?.[0]?.unlocked) {
+          this.logger.warn(
+            'Newborn promote advisory unlock did not release (pooled-session mismatch; lock clears when its connection closes)',
+            { placeId },
+          );
+        }
       }
     } catch (error) {
       this.logger.warn('Newborn promote failed (hourly sweep retries)', {

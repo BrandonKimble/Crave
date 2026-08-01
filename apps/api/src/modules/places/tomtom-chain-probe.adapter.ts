@@ -378,9 +378,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   /**
    * Governed forward geocode of one chain node; null on any miss.
    *
-   * ANCHOR-CONTAINMENT VALIDATION (coherence red-team 2026-07-23): this fill
-   * DONATES the bbox that later serves as the drain's twin-disambiguation
-   * reference (resolveGeometryId's node.bbox), so it must not adopt a
+   * ANCHOR-CONTAINMENT VALIDATION (coherence red-team 2026-07-23): this
+   * fill DONATES the node's catalog bbox (resolveGeometryId, its old
+   * consumer, is deleted — dockets #1/#4), so it must not adopt a
    * wrong-twin record itself. The probe owns ground truth the drain lacks:
    * the chain came from reverse-geocoding THE ANCHOR, so the node's true
    * extent must contain that point — a same-name twin elsewhere cannot.

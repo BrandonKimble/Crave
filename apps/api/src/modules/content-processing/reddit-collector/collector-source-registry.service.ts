@@ -13,6 +13,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { descendantPlaceIds } from '../../places/place-dag-read';
 import { LoggerService } from '../../../shared';
 import { REDDIT_LANES } from './reddit-collection-adapter';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
@@ -292,17 +293,10 @@ export class CollectorSourceRegistryService {
     if (!engine.memberPlaceIds.length) {
       return [];
     }
-    const rows = await this.prisma.$queryRaw<Array<{ place_id: string }>>`
-      WITH RECURSIVE territory AS (
-        SELECT place_id FROM places
-        WHERE place_id = ANY(${engine.memberPlaceIds}::uuid[])
-        UNION
-        SELECT p.place_id FROM places p
-        JOIN territory t ON t.place_id = ANY(p.parent_place_ids)
-      )
-      SELECT place_id FROM territory
-    `;
-    return rows.map((row) => row.place_id);
+    // The walk is descendantPlaceIds — THE one statement of the subtree law
+    // (end-state audit 2026-08-01: this method hand-rolled the CTE with the
+    // `= ANY` join form the place-dag-read GIN lesson had already condemned).
+    return descendantPlaceIds(this.prisma, engine.memberPlaceIds);
   }
 
   /**

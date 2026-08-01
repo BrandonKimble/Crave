@@ -61,7 +61,8 @@ describe('EngineCoverageService.resolveViewportCoverage', () => {
     const sql = call[0].sql;
     // §5: territory = member places + DAG descendants, derived at read.
     expect(sql).toContain('unnest(e.member_place_ids)');
-    expect(sql).toContain('ANY(p.parent_place_ids)');
+    // GIN law (place-dag-read): the descendant join must ride @>, never ANY.
+    expect(sql).toContain('p.parent_place_ids @> ARRAY[t.place_id]');
     // §2.6: ONE ground column; union-then-measure so overlapping member
     // grounds never double-count; && is the §2.5(c) candidate prefilter.
     expect(sql).toContain('place_geometries');

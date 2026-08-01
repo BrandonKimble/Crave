@@ -5,10 +5,7 @@ import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import { freshSignalAttributionSql } from './ground-containment';
 import { utcInstantSql } from './sql-instant';
-import {
-  DEMAND_HALF_LIFE_DAYS,
-  RECENCY_FLAT_DAYS,
-} from '../polls/supply/poll-supply.constants';
+import { dayRecencySql } from '../polls/supply/poll-supply.constants';
 import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 
 // freshFirstOccurrenceSql DELETED (docket #6): the fresh ledger arm it
@@ -140,7 +137,8 @@ export class SignalDemandReadService {
 
   /**
    * Per-entity demand score: Σ over actors of log2(1 + Σ acts·recency) —
-   * aggregate for completed days, ledger for today, redirects at read.
+   * the aggregate alone (docket #6: it includes today at the 15-min rebuild
+   * cadence), redirects at read.
    * Returns a map keyed by the REQUESTED (already-canonical) entityIds.
    */
   async entityDemandScores(
@@ -173,7 +171,7 @@ export class SignalDemandReadService {
           COALESCE(r.to_entity_id, a.subject_id) AS entity_id,
           a.actor_id,
           SUM(
-            a.signal_count * ${this.dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
+            a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
           )::float8 AS acts
         FROM signal_demand_daily a
         LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
@@ -238,7 +236,7 @@ export class SignalDemandReadService {
           a.subject_text AS query_key,
           a.actor_id,
           SUM(
-            a.signal_count * ${this.dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
+            a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
           )::float8 AS acts,
           SUM(a.signal_count)::float8 AS raw_count,
           MAX(a.last_occurred_at) AS last_used
@@ -774,7 +772,7 @@ export class SignalDemandReadService {
           entity_id,
           actor_id,
           SUM(
-            day_acts * ${this.dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
+            day_acts * ${dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
           )::float8 AS acts,
           MAX(last_seen_at) AS last_seen_at
         FROM agg
@@ -1008,7 +1006,7 @@ export class SignalDemandReadService {
           COALESCE(r.to_entity_id, a.subject_id) AS entity_id,
           a.actor_id,
           SUM(
-            a.signal_count * ${this.dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
+            a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
           )::float8 AS acts
         FROM signal_demand_daily a
         LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
@@ -1027,19 +1025,6 @@ export class SignalDemandReadService {
     return new Map(
       rows.map((row) => [row.entity_id, Number(row.demand_score)]),
     );
-  }
-
-  /**
-   * The §4 recency kernel at DAY granularity as SQL over an integer age-in-
-   * days expression: flat through the current cycle, then halving every
-   * half-life (the same K1 constants the demand-mass kernel states).
-   */
-  private dayRecencySql(ageDays: Prisma.Sql): Prisma.Sql {
-    return Prisma.sql`
-      CASE
-        WHEN GREATEST(0, ${ageDays}) <= ${RECENCY_FLAT_DAYS} THEN 1.0
-        ELSE power(0.5, (GREATEST(0, ${ageDays}) - ${RECENCY_FLAT_DAYS}) / ${DEMAND_HALF_LIFE_DAYS}::float8)
-      END`;
   }
 
   /**

@@ -608,6 +608,17 @@ export class PlacesCatalogService {
    * one silently shrinking the other. Scalar gap-fills stay last-writer-wins
    * but only ever write when the observed row's value is null/absent — a
    * non-null value is never overwritten with a different non-null one.
+   *
+   * KNOWN LIMIT, a deliberate choice (end-state audit 2026-08-01): the
+   * mirror is ACCRETIVE, never re-synced — parent edges only append and
+   * scalars only gap-fill, so a vendor RESTATEMENT (re-parenting after a
+   * boundary change, a renamed entity) leaves the first observation
+   * standing beside or instead of the new truth. Accepted because vendor
+   * restatements are rare, edge accretion fails soft (an extra ancestor
+   * over-attributes mildly; it never drops the true chain), and the honest
+   * fix is a vendor-refresh sweep (re-probe, diff, replace) built when a
+   * real restatement is first MEASURED — never a silent last-writer-wins
+   * that would let one bad probe rewrite a good chain.
    */
   private async mergeSketch(
     existing: Place,
@@ -622,13 +633,13 @@ export class PlacesCatalogService {
     // phantom): when both bboxes exist and are DISJOINT (no intersection —
     // definitional, no threshold), the identity match has collided two
     // genuinely different places. Unioning them mints a phantom region
-    // that poisons containing-fallback headers for everything in between,
-    // and §1's grow-only law makes the poison permanent. Refuse the widen,
-    // log the suspect. The COUNTY-AXIS amendment (resolveIdentity) resolves
-    // most of this class upstream, but the guard STAYS as defense in depth:
-    // same-county homonyms, county-less providers, and county-less
-    // observations (rules u1–u4) can still land a disjoint observation on
-    // the wrong row.
+    // that poisons containing headers for everything in between, and §1's
+    // grow-only law makes the poison permanent. Refuse the widen, log the
+    // suspect. (The county-axis machinery this note once cited is DELETED —
+    // THE FINAL DISSOLUTION; identity is the vendor composite key now, so a
+    // disjoint observation under the SAME identity means the vendor itself
+    // moved the entity or a stale row survived — either way, refuse and
+    // surface, never merge.)
     const disjoint =
       existingBbox &&
       node.bbox &&

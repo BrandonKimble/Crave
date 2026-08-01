@@ -80,7 +80,11 @@ export class EngineCoverageService {
           UNION
           SELECT t.engine_id, p.place_id
           FROM places p
-          JOIN territory t ON t.place_id = ANY(p.parent_place_ids)
+          -- @> rides the parent_place_ids GIN index (place-dag-read law:
+          -- the ANY form seq-scanned per recursion level, 13-17s at
+          -- country scale). Threaded by engine_id, so this stays inline
+          -- rather than calling descendantPlaceIds per engine.
+          JOIN territory t ON p.parent_place_ids @> ARRAY[t.place_id]
         ),
         clips AS (
           SELECT t.engine_id,

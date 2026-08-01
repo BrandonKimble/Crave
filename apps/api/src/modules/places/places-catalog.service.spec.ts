@@ -575,7 +575,7 @@ describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
 });
 
 describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
-  it('a CREATED place fires the birth enqueue (fire-and-forget)', async () => {
+  it('a CREATED place fires the birth enqueue (awaited — the newborn promote closes the vendor-bbox window in the same settle)', async () => {
     const { service, birthListener, create } = makeHarness([null]);
     const [created] = await service.sketchChain([austinNode]);
     expect(create).toHaveBeenCalledTimes(1);

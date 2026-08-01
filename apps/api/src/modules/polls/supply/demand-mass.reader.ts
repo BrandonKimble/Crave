@@ -65,6 +65,7 @@ import {
   DEMAND_KERNEL_HORIZON_DAYS,
   MS_PER_DAY,
   RECENCY_FLAT_DAYS,
+  dayRecencySql,
 } from './poll-supply.constants';
 
 /** K2 prior: all signal kinds weigh 1.0 at launch (see module doc). */
@@ -127,16 +128,6 @@ export interface SubjectDemandMass {
 export class DemandMassReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The §4 recency kernel at DAY granularity over an integer age-in-days
-   *  expression (the same statement SignalDemandReadService uses). */
-  private dayRecencySql(ageDays: Prisma.Sql): Prisma.Sql {
-    return Prisma.sql`
-      CASE
-        WHEN GREATEST(0, ${ageDays}) <= ${RECENCY_FLAT_DAYS} THEN 1.0
-        ELSE power(0.5, (GREATEST(0, ${ageDays}) - ${RECENCY_FLAT_DAYS}) / ${DEMAND_HALF_LIFE_DAYS}::float8)
-      END`;
-  }
-
   /**
    * The LINEAGE CTE chain (§3 containment read): per requested root place,
    * every aggregate tile whose rows belong to it — itself, its DAG
@@ -163,7 +154,8 @@ export class DemandMassReader {
         UNION
         SELECT d.root, p.place_id
         FROM down d
-        JOIN places p ON d.tile = ANY(p.parent_place_ids)
+        -- @> rides the parent_place_ids GIN index (place-dag-read law).
+        JOIN places p ON p.parent_place_ids @> ARRAY[d.tile]
       ),
       lineage AS (
         SELECT root, tile FROM up
@@ -192,9 +184,9 @@ export class DemandMassReader {
 
   /**
    * Place-level (subjectless) demand mass at the CURRENT instant for each
-   * requested place — aggregate closed days (echo kinds weigh 0; lineage
-   * tiles MAX-deduped) + fresh-today ledger arm (act-grain dedupe; wrap-aware
-   * intersect against the place bbox). Places with no acts return no row.
+   * requested place — the aggregate alone (docket #6: it includes today at
+   * the 15-min rebuild cadence; echo kinds weigh 0; lineage tiles
+   * MAX-deduped). Places with no acts return no row.
    */
   async placeDemandMass(
     placeIds: string[],
@@ -240,7 +232,7 @@ export class DemandMassReader {
           root,
           actor_id,
           SUM(
-            acts * ${this.dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
+            acts * ${dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
               * ${KIND_WEIGHT_PRIOR}
           )::float8 AS acts
         FROM day_acts
@@ -330,7 +322,7 @@ export class DemandMassReader {
           subject_id,
           actor_id,
           SUM(
-            acts * ${this.dayRecencySql(dayAge)} * ${KIND_WEIGHT_PRIOR}
+            acts * ${dayRecencySql(dayAge)} * ${KIND_WEIGHT_PRIOR}
           )::float8 AS acts,
           COALESCE(
             SUM(acts) FILTER (WHERE ${dayAge} <= ${baselineEndDays}), 0
@@ -405,7 +397,8 @@ export class DemandMassReader {
    * Freshness note: today's slice of the aggregate rebuilds every 15 minutes
    * (watermark cron), so a signal younger than the cron lag may miss ONE
    * hourly ritual pass — the ≥-hour Sunday window catches it on the next
-   * tick. The mass reads themselves still see it through their fresh arm.
+   * tick, and the mass reads see it after the next rebuild (docket #6: the
+   * 15-min cadence IS the freshness contract; the fresh arm is deleted).
    */
   async placesWithAnySignal(now: Date = new Date()): Promise<string[]> {
     const { horizonKey } = this.windowKeys(now);
@@ -429,7 +422,8 @@ export class DemandMassReader {
         UNION
         SELECT p.place_id
         FROM down d
-        JOIN places p ON d.place_id = ANY(p.parent_place_ids)
+        -- @> rides the parent_place_ids GIN index (place-dag-read law).
+        JOIN places p ON p.parent_place_ids @> ARRAY[d.place_id]
       )
       SELECT place_id FROM up
       UNION

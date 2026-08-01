@@ -1,3 +1,5 @@
+import { Prisma } from '@prisma/client';
+
 /**
  * §22 item 4 — poll supply constants, each classified under the Constants
  * Constitution (master plan §16). NO caps, NO arbitrary numbers: every value
@@ -109,3 +111,17 @@ export const DEMAND_KERNEL_HORIZON_DAYS =
  *  harvest's launchedAt lower bound. */
 export const ESTIMATOR_EVIDENCE_HORIZON_DAYS =
   HALF_LIVES_TO_NEGLIGIBLE * SUPPLY_ESTIMATOR_HALF_LIFE_DAYS;
+
+// ---------------------------------------------------------------------------
+// The §4 recency kernel at DAY granularity, stated ONCE beside its constants
+// (end-state audit 2026-08-01: it lived as two verbatim private methods in
+// SignalDemandReadService and DemandMassReader — the exact drift seam docket
+// #8 closed for act identity; a constant tweak in one silently forked the
+// demand law). Flat through the current cycle, then halving per half-life.
+export function dayRecencySql(ageDays: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`
+      CASE
+        WHEN GREATEST(0, ${ageDays}) <= ${RECENCY_FLAT_DAYS} THEN 1.0
+        ELSE power(0.5, (GREATEST(0, ${ageDays}) - ${RECENCY_FLAT_DAYS}) / ${DEMAND_HALF_LIFE_DAYS}::float8)
+      END`;
+}
