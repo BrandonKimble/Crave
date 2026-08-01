@@ -2733,20 +2733,29 @@ export class UnifiedProcessingService implements OnModuleInit {
         countryCode: true,
         centroidLat: true,
         centroidLng: true,
-        bboxMinLat: true,
-        bboxMinLng: true,
-        bboxMaxLat: true,
-        bboxMaxLng: true,
       },
     });
+    // P4 (2026-07-30): the bias radius derives from the place's ONE ground
+    // (its envelope), not stored columns. Google's circle bias is charter
+    // rectangle #3 — a vendor-edge wall, never a stored shape.
+    const [groundExtent] = await this.prismaService.$queryRaw<
+      Array<{
+        min_lat: number;
+        min_lng: number;
+        max_lat: number;
+        max_lng: number;
+      }>
+    >`SELECT ST_YMin(geometry)::float8 AS min_lat, ST_XMin(geometry)::float8 AS min_lng,
+             ST_YMax(geometry)::float8 AS max_lat, ST_XMax(geometry)::float8 AS max_lng
+        FROM place_geometries WHERE place_id = ${scope.anchorPlaceId}::uuid`;
 
     const radiusMeters = this.resolvePlaceBiasRadiusMeters({
       centroidLat: this.toNumeric(anchorPlace?.centroidLat),
       centroidLng: this.toNumeric(anchorPlace?.centroidLng),
-      bboxMaxLat: this.toNumeric(anchorPlace?.bboxMaxLat),
-      bboxMaxLng: this.toNumeric(anchorPlace?.bboxMaxLng),
-      bboxMinLat: this.toNumeric(anchorPlace?.bboxMinLat),
-      bboxMinLng: this.toNumeric(anchorPlace?.bboxMinLng),
+      bboxMaxLat: groundExtent?.max_lat ?? null,
+      bboxMaxLng: groundExtent?.max_lng ?? null,
+      bboxMinLat: groundExtent?.min_lat ?? null,
+      bboxMinLng: groundExtent?.min_lng ?? null,
     });
 
     return {

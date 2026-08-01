@@ -42,18 +42,16 @@ async function seedPlace(opts: {
    *  a fixture without them models a state that cannot occur. */
   parents?: string[];
 }): Promise<string> {
+  // P4: there are no bbox columns — the `bbox` option survives only as
+  // documentation of what the old stored rectangle WOULD have said (several
+  // tests' premises are "the rectangle lied"); nothing can read it now.
   const [row] = await prisma.$queryRawUnsafe<Array<{ place_id: string }>>(
     `INSERT INTO places (name, provider_level_code, country_code, provider,
-                         bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng,
                          parent_place_ids)
-     VALUES ($1, $2, 'US', '${TEST_TAG}', $3, $4, $5, $6, $7::uuid[])
+     VALUES ($1, $2, 'US', '${TEST_TAG}', $3::uuid[])
      RETURNING place_id`,
     opts.name,
     opts.level,
-    opts.bbox.minLat,
-    opts.bbox.minLng,
-    opts.bbox.maxLat,
-    opts.bbox.maxLng,
     opts.parents ?? [],
   );
   await prisma.$executeRawUnsafe(

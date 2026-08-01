@@ -34,7 +34,7 @@ import {
   MAX_PROBE_ANCHORS,
   viewCenter,
 } from '@crave-search/shared';
-import { PlacesCatalogService, placeBbox } from './places-catalog.service';
+import { PlacesCatalogService } from './places-catalog.service';
 import {
   PROBE_SPEAKS_FOR_METERS,
   TOMTOM_CHAIN_PROBE,
@@ -214,12 +214,15 @@ export class PlacesReconcilerService {
       // will judge against any view — subjecthood is read-time (§2), and a
       // rejected-commensurability node is still catalog truth.
       const places = await this.catalog.sketchChain(result.chain);
+      // P4: extents derived from the grounds just written — one batch read.
+      const extents = await this.catalog.derivedBboxes(
+        places.map((place) => place.placeId),
+      );
       answered = [
         ...answered,
-        ...places
-          .map((place) => placeBbox(place))
-          .filter((bbox): bbox is GeoBbox => bbox !== null)
-          .map((bbox): ProbedRegion => ({ kind: 'box', bbox })),
+        ...[...extents.values()].map(
+          (bbox): ProbedRegion => ({ kind: 'box', bbox }),
+        ),
       ];
     }
 

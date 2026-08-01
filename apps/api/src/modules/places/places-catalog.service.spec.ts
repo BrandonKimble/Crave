@@ -88,7 +88,46 @@ function makeHarness(
   const findFirst = jest.fn().mockResolvedValue(null);
   const findUniqueVendorId = jest.fn().mockResolvedValue(null);
   const executeRaw = jest.fn().mockResolvedValue(1);
-  const queryRaw = jest.fn().mockResolvedValue([]);
+  // P4: the service derives extents FROM THE GROUND via $queryRaw (the
+  // derived-bbox SELECT). The harness answers those reads from the fixture
+  // rows' legacy bbox fields — the fixture bbox IS the sketch ground's
+  // envelope, exactly the production invariant (writeSketchGround writes the
+  // observed envelope as the ground). Everything else on $queryRaw still
+  // returns [] (no polygons hydrated).
+  const knownRows: any[] = [];
+  for (const entry of existingByCall) {
+    if (entry === null) continue;
+    for (const r of Array.isArray(entry) ? entry : [entry]) knownRows.push(r);
+  }
+  const derivedRowsFor = (ids: string[]) =>
+    knownRows
+      .filter(
+        (r) =>
+          ids.includes(r.placeId) &&
+          r.bboxMinLat !== null &&
+          r.bboxMinLng !== null &&
+          r.bboxMaxLat !== null &&
+          r.bboxMaxLng !== null,
+      )
+      .map((r) => ({
+        place_id: r.placeId,
+        bbox_min_lat: Number(r.bboxMinLat),
+        bbox_min_lng: Number(r.bboxMinLng),
+        bbox_max_lat: Number(r.bboxMaxLat),
+        bbox_max_lng: Number(r.bboxMaxLng),
+      }));
+  const queryRaw = jest
+    .fn()
+    .mockImplementation((query: any, ...rest: any[]) => {
+      const text = typeof query === 'string' ? query : (query?.sql ?? '');
+      const values: any[] =
+        typeof query === 'string' ? rest : (query?.values ?? []);
+      if (text.includes('AS bbox_min_lat')) {
+        const ids = values.flat().filter((v: any) => typeof v === 'string');
+        return Promise.resolve(derivedRowsFor(ids));
+      }
+      return Promise.resolve([]);
+    });
   const prisma: any = {
     place: {
       create,
@@ -217,40 +256,30 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     ]);
 
     expect(create).not.toHaveBeenCalled();
-    // The widen is raw SQL (LEAST/GREATEST composes concurrent widenings —
-    // a plain read-modify-write update would let one merge shrink another's)
-    // PLUS the §2.6 sketch-ground refresh (the envelope row derives from the
-    // post-widen bbox in the same call flow).
+    // P4 (2026-07-30): the widen GROWS THE SKETCH GROUND ITSELF — there is no
+    // second stored shape. ST_Envelope(ST_Collect(live geometry, hull env))
+    // composes concurrent widenings exactly like the old LEAST/GREATEST on
+    // columns (each update unions against the LIVE row), and the
+    // provider_boundary_id guard means a landed vendor OUTLINE is never
+    // widened — a real outline is a fact, not an accretion.
     expect(update).not.toHaveBeenCalled();
-    expect(executeRaw).toHaveBeenCalledTimes(2);
+    expect(executeRaw).toHaveBeenCalledTimes(1);
     const [template, ...values] = executeRaw.mock.calls[0];
     const sql = (template as string[]).join('?');
-    expect(sql).toContain('LEAST(COALESCE(bbox_min_lat');
-    expect(sql).toContain('LEAST(COALESCE(bbox_min_lng');
-    expect(sql).toContain('GREATEST(COALESCE(bbox_max_lat');
-    expect(sql).toContain('GREATEST(COALESCE(bbox_max_lng');
-    // The OBSERVED bounds ride into LEAST/GREATEST (each appears twice:
-    // once inside COALESCE, once as the comparand), plus the row id.
+    expect(sql).toContain('UPDATE place_geometries');
+    expect(sql).toContain('ST_Envelope(ST_Collect(');
+    expect(sql).toContain('ST_MakeEnvelope(');
+    expect(sql).toContain('provider_boundary_id IS NULL');
+    // The HULL of known∪observed rides in (minLng, minLat, maxLng, maxLat)
+    // plus the row id: known 30.2..30.4 × -97.9..-97.6 ∪ observed
+    // 30.1..30.3 × -97.95..-97.7 = 30.1..30.4 × -97.95..-97.6.
     expect(values).toEqual([
-      30.1,
-      30.1,
-      -97.95,
-      -97.95,
-      30.3,
-      30.3,
-      -97.7,
-      -97.7,
+      expect.closeTo(-97.95, 6),
+      expect.closeTo(30.1, 6),
+      expect.closeTo(-97.6, 6),
+      expect.closeTo(30.4, 6),
       existing.placeId,
     ]);
-    // §2.6 derivation invariant: the second statement upserts the sketch
-    // envelope FROM the live places row, guarded to sketch-grade only.
-    const sketchSql = (executeRaw.mock.calls[1][0] as string[]).join('?');
-    expect(sketchSql).toContain('INSERT INTO place_geometries');
-    expect(sketchSql).toContain('ST_MakeEnvelope');
-    expect(sketchSql).toContain('ON CONFLICT (place_id) DO UPDATE');
-    expect(sketchSql).toContain(
-      'WHERE place_geometries.provider_boundary_id IS NULL',
-    );
     // Bbox-only merge re-reads the row for the post-widen truth.
     expect(findUniqueOrThrow).toHaveBeenCalledWith({
       where: { placeId: existing.placeId },
@@ -863,12 +892,25 @@ describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
     const [template, ...values] = executeRaw.mock.calls[0];
     const sql = (template as string[]).join('?');
     expect(sql).toContain('INSERT INTO place_geometries');
-    expect(sql).toContain('ST_MakeEnvelope');
     expect(sql).toContain('ON CONFLICT (place_id) DO UPDATE');
     expect(sql).toContain(
       'WHERE place_geometries.provider_boundary_id IS NULL',
     );
     expect(values).toContain(created.placeId);
+    // P4: the envelope is a NESTED fragment built from the OBSERVED bbox
+    // values (never a read of stored columns — there are none).
+    const envelopeFragment = values.find(
+      (v: any) => v && typeof v === 'object' && 'sql' in v,
+    ) as { sql: string; values: unknown[] } | undefined;
+    expect(envelopeFragment?.sql).toContain('ST_MakeEnvelope');
+    expect(envelopeFragment?.values).toEqual(
+      expect.arrayContaining([
+        austinNode.bbox!.minLng,
+        austinNode.bbox!.minLat,
+        austinNode.bbox!.maxLng,
+        austinNode.bbox!.maxLat,
+      ]),
+    );
   });
 
   it('a MERGED re-sketch never re-fires birth (the queue is for new ground)', async () => {

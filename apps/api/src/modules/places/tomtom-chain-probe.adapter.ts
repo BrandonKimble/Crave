@@ -720,7 +720,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
    * county-blind read (any candidate's bbox counts, mirroring rules u1–u4).
    */
   private async catalogKnowsBbox(node: PlaceSketchNode): Promise<boolean> {
-    const existing = await this.prisma.place.findFirst({
+    // P4 (2026-07-30): "knows the extent" = HAS A GROUND. The bbox columns
+    // are gone; a place's extent is its geometry row, so the once-ever
+    // forward geocode is suppressed exactly when a matching identity row
+    // already carries one.
+    const rows = await this.prisma.place.findMany({
       where: {
         countryCode: node.countryCode,
         subdivisionCode: node.subdivisionCode ?? null,
@@ -739,11 +743,16 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
               ],
             }
           : {}),
-        bboxMinLat: { not: null },
       },
-      select: { bboxMinLat: true },
+      select: { placeId: true },
     });
-    return existing?.bboxMinLat != null;
+    if (rows.length === 0) return false;
+    const [hit] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1 FROM place_geometries
+        WHERE place_id = ANY(${rows.map((r) => r.placeId)}::uuid[])
+      ) AS ok`;
+    return hit?.ok === true;
   }
 
   /**

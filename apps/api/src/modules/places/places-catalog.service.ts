@@ -118,21 +118,52 @@ export interface PlaceInView {
   ground: PlaceGround;
 }
 
-/** Read a Place row's decimal bbox as a GeoBbox, or null when un-sketched. */
-export function placeBbox(place: Place): GeoBbox | null {
-  if (
-    place.bboxMinLat === null ||
-    place.bboxMinLng === null ||
-    place.bboxMaxLat === null ||
-    place.bboxMaxLng === null
-  ) {
-    return null;
-  }
+/**
+ * P4 (one-ground charter, 2026-07-30): THE BBOX IS DERIVED FROM THE GROUND AT
+ * THE MOMENT OF USE — the stored columns are gone. This is the SELECT-list
+ * fragment; `alias` is a place_geometries alias. Seam-honest: a crossing
+ * geometry (planar span ≥ 180° — its parts straddle ±180) reconstructs the
+ * wrap convention (min_lng > max_lng) from its per-arm extents via ST_Dump;
+ * a normal geometry is just its envelope. Consumers read four columns named
+ * bbox_min_lat / bbox_min_lng / bbox_max_lat / bbox_max_lng.
+ */
+export function derivedBboxSelectSql(alias: string): Prisma.Sql {
+  const g = Prisma.raw(alias);
+  return Prisma.sql`
+    ST_YMin(${g}.geometry)::float8 AS bbox_min_lat,
+    ST_YMax(${g}.geometry)::float8 AS bbox_max_lat,
+    CASE WHEN ST_XMax(${g}.geometry) - ST_XMin(${g}.geometry) < 180
+         THEN ST_XMin(${g}.geometry)::float8
+         ELSE COALESCE((
+           SELECT MIN(ST_XMin(part.geom))
+           FROM ST_Dump(${g}.geometry) AS part
+           WHERE ST_X(ST_Centroid(part.geom)) >= 0
+         ), ST_XMin(${g}.geometry))::float8
+    END AS bbox_min_lng,
+    CASE WHEN ST_XMax(${g}.geometry) - ST_XMin(${g}.geometry) < 180
+         THEN ST_XMax(${g}.geometry)::float8
+         ELSE COALESCE((
+           SELECT MAX(ST_XMax(part.geom))
+           FROM ST_Dump(${g}.geometry) AS part
+           WHERE ST_X(ST_Centroid(part.geom)) < 0
+         ), ST_XMax(${g}.geometry))::float8
+    END AS bbox_max_lng`;
+}
+
+/** Row shape produced by derivedBboxSelectSql. */
+export interface DerivedBboxRow {
+  bbox_min_lat: number;
+  bbox_min_lng: number;
+  bbox_max_lat: number;
+  bbox_max_lng: number;
+}
+
+export function bboxFromDerivedRow(row: DerivedBboxRow): GeoBbox {
   return {
-    minLat: Number(place.bboxMinLat),
-    minLng: Number(place.bboxMinLng),
-    maxLat: Number(place.bboxMaxLat),
-    maxLng: Number(place.bboxMaxLng),
+    minLat: row.bbox_min_lat,
+    minLng: row.bbox_min_lng,
+    maxLat: row.bbox_max_lat,
+    maxLng: row.bbox_max_lng,
   };
 }
 
@@ -255,15 +286,13 @@ export class PlacesCatalogService {
     const viewArea = bboxArea(view);
     const results: PlaceInView[] = [];
     for (const place of rows) {
-      const ground = candidates.get(place.placeId);
-      if (!ground) continue;
-      // P4 TAIL: `bbox` here is still the stored column. It is now used ONLY
-      // as a camera/transport envelope (the judgment reads `ground`), so its
-      // derivation from the ground lands with the wire+camera leg, which
-      // needs the client change too. A geometry-carrying row with no stored
-      // bbox drops out, exactly as before.
-      const bbox = placeBbox(place);
-      if (!bbox) continue;
+      const entry = candidates.get(place.placeId);
+      if (!entry) continue;
+      const { ground, bbox } = entry;
+      // P4 (2026-07-30): `bbox` is DERIVED from the ground in the same query
+      // that fetched it — a camera/transport envelope, wrap-aware at the
+      // seam, computed at the moment of use. The wire shape is unchanged, so
+      // the mobile client needs nothing.
       // THE per-row coverage law is shared (resolvePlaceCoverage) so the
       // client's slice evaluation and this server read feed
       // resolveHeaderPlace identical numbers (header subject-store design).
@@ -315,32 +344,33 @@ export class PlacesCatalogService {
    */
   private async groundsIntersectingView(
     view: GeoBbox,
-  ): Promise<Map<string, PlaceGround>> {
-    const grounds = new Map<string, PlaceGround>();
+  ): Promise<Map<string, { ground: PlaceGround; bbox: GeoBbox }>> {
+    const grounds = new Map<string, { ground: PlaceGround; bbox: GeoBbox }>();
     const viewSpan = Math.max(bboxLatSpan(view), bboxLngSpan(view));
     const tolerance = viewSpan / GROUND_SIMPLIFY_VIEW_FRACTION;
     // Intersection = the ground touches ANY arm.
     const overlapsAnyArm = Prisma.join(
-      this.viewArms(view).map((arm) => Prisma.sql`geometry && ${arm}`),
+      this.viewArms(view).map((arm) => Prisma.sql`g.geometry && ${arm}`),
       ' OR ',
     );
     try {
       const rows = await this.prisma.$queryRaw<
-        Array<{ placeId: string; geojson: string | null }>
+        Array<{ placeId: string; geojson: string | null } & DerivedBboxRow>
       >(Prisma.sql`
         /*places:grounds_in_view*/
-        SELECT place_id AS "placeId",
+        SELECT g.place_id AS "placeId",
                ST_AsGeoJSON(
-                 ST_SimplifyPreserveTopology(geometry, ${tolerance})
-               ) AS "geojson"
-        FROM place_geometries
+                 ST_SimplifyPreserveTopology(g.geometry, ${tolerance})
+               ) AS "geojson",
+               ${derivedBboxSelectSql('g')}
+        FROM place_geometries g
         WHERE ${overlapsAnyArm}
       `);
       for (const row of rows) {
         if (!row.geojson) continue;
         const ground = parseGroundGeoJson(row.geojson);
         if (ground && ground.length > 0) {
-          grounds.set(row.placeId, ground);
+          grounds.set(row.placeId, { ground, bbox: bboxFromDerivedRow(row) });
         }
       }
     } catch (error) {
@@ -438,11 +468,11 @@ export class PlacesCatalogService {
    * (resolveIdentity) chooses among. Deterministically ordered (oldest
    * first) so ties resolve the same way on every node.
    */
-  private findIdentityCandidates(
+  private async findIdentityCandidates(
     node: PlaceSketchNode,
     name: string,
-  ): Promise<Place[]> {
-    return this.prisma.place.findMany({
+  ): Promise<{ rows: Place[]; bboxOf: Map<string, GeoBbox> }> {
+    const rows = await this.prisma.place.findMany({
       where: {
         countryCode: node.countryCode,
         subdivisionCode: node.subdivisionCode ?? null,
@@ -451,6 +481,23 @@ export class PlacesCatalogService {
       },
       orderBy: [{ createdAt: 'asc' }, { placeId: 'asc' }],
     });
+    // P4: the decision table's geometry checks (b'/a/u2) read each
+    // candidate's extent DERIVED from its ground — candidates are 0-2 rows,
+    // one batched query. A groundless row simply has no extent, the same
+    // "unknown counts as not-disjoint" posture as before.
+    const bboxOf = new Map<string, GeoBbox>();
+    if (rows.length > 0) {
+      const derived = await this.prisma.$queryRaw<
+        Array<{ place_id: string } & DerivedBboxRow>
+      >(Prisma.sql`
+        SELECT g.place_id, ${derivedBboxSelectSql('g')}
+        FROM place_geometries g
+        WHERE g.place_id = ANY(${rows.map((r) => r.placeId)}::uuid[])`);
+      for (const row of derived) {
+        bboxOf.set(row.place_id, bboxFromDerivedRow(row));
+      }
+    }
+    return { rows, bboxOf };
   }
 
   /**
@@ -496,6 +543,7 @@ export class PlacesCatalogService {
   private resolveIdentity(
     candidateRows: Place[],
     node: PlaceSketchNode,
+    candidateBboxOf: Map<string, GeoBbox>,
   ): { row: Place; adoptCounty?: string } | { row: null } {
     let candidates = candidateRows;
     if (candidates.length === 0) {
@@ -524,7 +572,7 @@ export class PlacesCatalogService {
       observedCounty !== null &&
       row.county.toLowerCase() === observedCounty.toLowerCase();
     const bboxNear = (row: Place) => {
-      const rowBbox = placeBbox(row);
+      const rowBbox = candidateBboxOf.get(row.placeId) ?? null;
       return (
         rowBbox !== null &&
         node.bbox != null &&
@@ -553,7 +601,7 @@ export class PlacesCatalogService {
       }
       const adoptable = candidates.find((row) => {
         if (row.county !== null) return false;
-        const rowBbox = placeBbox(row);
+        const rowBbox = candidateBboxOf.get(row.placeId) ?? null;
         const disjoint =
           rowBbox !== null &&
           node.bbox != null &&
@@ -648,8 +696,11 @@ export class PlacesCatalogService {
     // candidates — rows and counties only ever ACCRUE, so a re-run of the
     // decision table lands on the settled truth.
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      const candidates = await this.findIdentityCandidates(node, name);
-      const resolved = this.resolveIdentity(candidates, node);
+      const { rows: candidates, bboxOf } = await this.findIdentityCandidates(
+        node,
+        name,
+      );
+      const resolved = this.resolveIdentity(candidates, node, bboxOf);
       if (resolved.row) {
         if ('adoptCounty' in resolved && resolved.adoptCounty) {
           // Gap-fill (rule a) must be RACE-SAFE: adopt only if the row is
@@ -678,10 +729,6 @@ export class PlacesCatalogService {
             parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
             centroidLat: node.centroid?.lat,
             centroidLng: node.centroid?.lng,
-            bboxMinLat: node.bbox?.minLat,
-            bboxMinLng: node.bbox?.minLng,
-            bboxMaxLat: node.bbox?.maxLat,
-            bboxMaxLng: node.bbox?.maxLng,
             timeZone: node.timeZone ?? null,
             localScriptAlias: node.localScriptAlias ?? null,
             ...(node.provider ? { provider: node.provider } : {}),
@@ -690,9 +737,11 @@ export class PlacesCatalogService {
         });
         // §2.6 BIRTH = GROUND IMMEDIATELY: the sketch envelope lands in
         // place_geometries synchronously with the place row (never waiting
-        // for the drain) — a bbox-carrying place without a geometry row is
-        // impossible. The drain upgrades grade (sketch→outline) later.
-        await this.writeSketchGround(created.placeId);
+        // for the drain). P4: the envelope is built from the OBSERVATION
+        // directly — there are no bbox columns to route it through.
+        if (node.bbox) {
+          await this.writeSketchGround(created.placeId, node.bbox);
+        }
         // §2.5(d) POLYGON AT BIRTH: every new place enters the governed
         // promotion queue immediately (fire-and-forget; the enqueue itself
         // filters fallback mints and already-outlined ground). The hourly
@@ -743,7 +792,9 @@ export class PlacesCatalogService {
     node: PlaceSketchNode,
     parentPlaceId: string | undefined,
   ): Promise<Place> {
-    const existingBbox = placeBbox(existing);
+    // P4: the known extent is DERIVED from the one ground at the moment of
+    // use — no stored rectangle to read or to drift.
+    const existingBbox = await this.derivedBboxOf(existing.placeId);
     // Distinct-place guard (red-team 7aaa66d9 finding 3, the Lakeside-TX
     // phantom): when both bboxes exist and are DISJOINT (no intersection —
     // definitional, no threshold), the identity match has collided two
@@ -770,12 +821,12 @@ export class PlacesCatalogService {
       );
     }
     const merged = disjoint ? null : bboxUnion(existingBbox, node.bbox);
-    // Skip-if-contained is race-safe: bboxes only ever grow, so an
+    // Skip-if-contained is race-safe: a sketch ground only ever GROWS, so an
     // observation that adds nothing against our read adds nothing against
     // any concurrent state either.
     const widen =
       node.bbox && merged && !this.sameBbox(existingBbox, merged)
-        ? node.bbox
+        ? merged
         : null;
 
     const data: Prisma.PlaceUpdateInput = {};
@@ -823,7 +874,7 @@ export class PlacesCatalogService {
       return existing;
     }
     if (widen) {
-      await this.widenBbox(existing.placeId, existingBbox, widen);
+      await this.widenSketchGround(existing.placeId, widen);
     }
     if (Object.keys(data).length > 0) {
       return this.prisma.place.update({
@@ -839,87 +890,101 @@ export class PlacesCatalogService {
   }
 
   /**
-   * Atomic §1 bbox widening: LEAST/GREATEST against the LIVE row, so two
-   * concurrent merges each land their widening (no lost update — a lost
-   * widening is an effective shrink, which §1 forbids). COALESCE lets a
-   * first bbox land on a currently-NULL row.
-   *
-   * Antimeridian caveat: min/max monotonicity only holds when the union
-   * stays seam-free. When the observed bbox, the known bbox, or their hull
-   * crosses the antimeridian, the wrap-aware hull (bboxUnion — smaller
-   * enclosing arc) is written directly for the lng pair: lat stays atomic,
-   * and the lng last-writer window is confined to concurrent merges of the
-   * same seam-straddling place — rare, and self-healing since later sketches
-   * keep unioning.
+   * P4 public batch form: derived extents for a set of places (reconciler's
+   * answered-region memory, and any caller that used to read the columns).
    */
-  private async widenBbox(
+  async derivedBboxes(placeIds: string[]): Promise<Map<string, GeoBbox>> {
+    const out = new Map<string, GeoBbox>();
+    if (placeIds.length === 0) return out;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ place_id: string } & DerivedBboxRow>
+    >(Prisma.sql`
+      SELECT g.place_id, ${derivedBboxSelectSql('g')}
+      FROM place_geometries g
+      WHERE g.place_id = ANY(${placeIds}::uuid[])`);
+    for (const row of rows) out.set(row.place_id, bboxFromDerivedRow(row));
+    return out;
+  }
+
+  /**
+   * P4: derive a place's extent from its ONE ground at the moment of use.
+   * Returns null when the place has no geometry row (a bbox-less birth —
+   * exactly the rows that were bbox-NULL before). Wrap-aware via
+   * derivedBboxSelectSql.
+   */
+  private async derivedBboxOf(placeId: string): Promise<GeoBbox | null> {
+    const [row] = await this.prisma.$queryRaw<DerivedBboxRow[]>(Prisma.sql`
+      SELECT ${derivedBboxSelectSql('g')}
+      FROM place_geometries g WHERE g.place_id = ${placeId}::uuid`);
+    return row ? bboxFromDerivedRow(row) : null;
+  }
+
+  /**
+   * §1 widening, P4 form: the SKETCH GROUND ITSELF grows to the hull — there
+   * is no second stored shape. Race-safe grow-only: the seam-free path unions
+   * the observed envelope into the LIVE geometry (ST_Envelope∘ST_Collect
+   * composes exactly like the old LEAST/GREATEST — two concurrent widenings
+   * each land), and the outline guard means a landed vendor outline is NEVER
+   * widened — a real outline is a fact, not an accretion.
+   *
+   * Antimeridian caveat, unchanged in shape from the old column writer: a
+   * crossing hull is written directly as its two-arm union (last-writer
+   * window confined to concurrent merges of the same seam-straddling place —
+   * rare, self-healing since later sketches keep unioning).
+   */
+  private async widenSketchGround(
     placeId: string,
-    knownBbox: GeoBbox | null,
-    observed: GeoBbox,
+    hull: GeoBbox,
   ): Promise<void> {
-    const seamFree =
-      !bboxCrossesAntimeridian(observed) &&
-      (!knownBbox ||
-        (!bboxCrossesAntimeridian(knownBbox) &&
-          !bboxCrossesAntimeridian(bboxUnion(knownBbox, observed) as GeoBbox)));
-    if (seamFree) {
+    if (!bboxCrossesAntimeridian(hull)) {
       await this.prisma.$executeRaw`
-        UPDATE places SET
-          bbox_min_lat = LEAST(COALESCE(bbox_min_lat, ${observed.minLat}), ${observed.minLat}),
-          bbox_min_lng = LEAST(COALESCE(bbox_min_lng, ${observed.minLng}), ${observed.minLng}),
-          bbox_max_lat = GREATEST(COALESCE(bbox_max_lat, ${observed.maxLat}), ${observed.maxLat}),
-          bbox_max_lng = GREATEST(COALESCE(bbox_max_lng, ${observed.maxLng}), ${observed.maxLng})
-        WHERE place_id = ${placeId}::uuid`;
-    } else {
-      const hull = bboxUnion(knownBbox, observed) as GeoBbox;
-      await this.prisma.$executeRaw`
-        UPDATE places SET
-          bbox_min_lat = LEAST(COALESCE(bbox_min_lat, ${hull.minLat}), ${hull.minLat}),
-          bbox_min_lng = ${hull.minLng},
-          bbox_max_lat = GREATEST(COALESCE(bbox_max_lat, ${hull.maxLat}), ${hull.maxLat}),
-          bbox_max_lng = ${hull.maxLng}
-        WHERE place_id = ${placeId}::uuid`;
+        UPDATE place_geometries SET
+          geometry = ST_Multi(ST_Envelope(ST_Collect(
+            geometry,
+            ST_MakeEnvelope(${hull.minLng}::float8, ${hull.minLat}::float8,
+                            ${hull.maxLng}::float8, ${hull.maxLat}::float8, 4326)))),
+          fetched_at = now()
+        WHERE place_id = ${placeId}::uuid
+          AND provider_boundary_id IS NULL`;
+      return;
     }
-    // §2.6 derivation invariant: while sketch-grade, geometry DERIVES from
-    // the bbox — every widen refreshes the envelope row from the POST-widen
-    // places row in the same call flow (outline rows are untouched: the
-    // upsert is guarded on provider_boundary_id IS NULL).
-    await this.writeSketchGround(placeId);
+    await this.writeSketchGround(placeId, hull);
   }
 
   /**
    * §2.6 GROUND UNIFICATION — the sketch-grade ground write chokepoint:
-   * upsert the place's bbox envelope into place_geometries as a rectangular
-   * polygon (provider_boundary_id NULL = sketch-grade marker). Wrap-aware
-   * (a crossing bbox stores the union of its two arms) and degenerate-safe
-   * (a zero-span bbox cannot form a polygon — skipped; such a place stays
-   * invisible to judgment exactly like a bbox-less birth). The guard
+   * upsert the OBSERVED envelope into place_geometries as a rectangular
+   * polygon (provider_boundary_id NULL = sketch-grade marker). P4: the
+   * envelope is a PARAMETER (the observation), not a read of stored columns
+   * — the ground is the only stored shape. Wrap-aware (a crossing bbox
+   * stores the union of its two arms) and degenerate-safe (a zero-span bbox
+   * cannot form a polygon — skipped; such a place stays invisible to
+   * judgment exactly like a bbox-less birth). The guard
    * `WHERE provider_boundary_id IS NULL` means a sketch refresh can NEVER
    * clobber a landed outline — detail never decreases; the drain's outline
    * upsert (which stamps provider_boundary_id) is the only sketch→outline
    * transition.
    */
-  private async writeSketchGround(placeId: string): Promise<void> {
+  private async writeSketchGround(
+    placeId: string,
+    bbox: GeoBbox,
+  ): Promise<void> {
+    if (bbox.minLat >= bbox.maxLat || bbox.minLng === bbox.maxLng) {
+      return; // degenerate — cannot form a polygon
+    }
+    const envelope =
+      bbox.minLng < bbox.maxLng
+        ? Prisma.sql`ST_Multi(ST_MakeEnvelope(
+            ${bbox.minLng}::float8, ${bbox.minLat}::float8,
+            ${bbox.maxLng}::float8, ${bbox.maxLat}::float8, 4326))`
+        : Prisma.sql`ST_Multi(ST_Union(
+            ST_MakeEnvelope(${bbox.minLng}::float8, ${bbox.minLat}::float8,
+                            180::float8, ${bbox.maxLat}::float8, 4326),
+            ST_MakeEnvelope((-180)::float8, ${bbox.minLat}::float8,
+                            ${bbox.maxLng}::float8, ${bbox.maxLat}::float8, 4326)))`;
     await this.prisma.$executeRaw`
       INSERT INTO place_geometries (place_id, provider_boundary_id, fetched_at, geometry)
-      SELECT p.place_id, NULL, now(),
-             CASE
-               WHEN p.bbox_min_lng < p.bbox_max_lng THEN
-                 ST_Multi(ST_MakeEnvelope(
-                   p.bbox_min_lng::float8, p.bbox_min_lat::float8,
-                   p.bbox_max_lng::float8, p.bbox_max_lat::float8, 4326))
-               ELSE
-                 ST_Multi(ST_Union(
-                   ST_MakeEnvelope(p.bbox_min_lng::float8, p.bbox_min_lat::float8,
-                                   180::float8, p.bbox_max_lat::float8, 4326),
-                   ST_MakeEnvelope((-180)::float8, p.bbox_min_lat::float8,
-                                   p.bbox_max_lng::float8, p.bbox_max_lat::float8, 4326)))
-             END
-      FROM places p
-      WHERE p.place_id = ${placeId}::uuid
-        AND p.bbox_min_lat IS NOT NULL
-        AND p.bbox_min_lat < p.bbox_max_lat
-        AND p.bbox_min_lng <> p.bbox_max_lng
+      VALUES (${placeId}::uuid, NULL, now(), ${envelope})
       ON CONFLICT (place_id) DO UPDATE SET
         geometry = EXCLUDED.geometry,
         fetched_at = EXCLUDED.fetched_at

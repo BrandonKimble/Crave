@@ -33,26 +33,22 @@ export class LaunchPositionController {
       lat: located.coordinate.lat,
       lng: located.coordinate.lng,
     });
-    // Wrap guard (2026-07-26): a seam-straddling place stores minLng > maxLng,
-    // which as a plain camera box is INVERTED (the client would derive a
-    // ~360°-wide zoom). Such a place ships no bounds — the client keeps its
-    // default zoom, the same honest absence a bbox-less place produces.
+    // P4 (2026-07-30): the camera envelope is DERIVED from the ground at the
+    // moment of use — a "camera fit" is charter-legitimate rectangle #2 and
+    // never justified a stored column.
+    // Wrap guard (2026-07-26, unchanged in meaning): a seam-straddling place
+    // derives minLng > maxLng, which as a plain camera box is INVERTED (the
+    // client would derive a ~360°-wide zoom). Such a place ships no bounds —
+    // the client keeps its default zoom, the same honest absence a
+    // groundless place produces.
+    const derived = place
+      ? (await this.catalog.derivedBboxes([place.placeId])).get(place.placeId)
+      : undefined;
     const bounds =
-      place &&
-      place.bboxMinLat !== null &&
-      place.bboxMinLng !== null &&
-      place.bboxMaxLat !== null &&
-      place.bboxMaxLng !== null &&
-      Number(place.bboxMinLng) <= Number(place.bboxMaxLng)
+      derived && derived.minLng <= derived.maxLng
         ? {
-            southWest: {
-              lat: Number(place.bboxMinLat),
-              lng: Number(place.bboxMinLng),
-            },
-            northEast: {
-              lat: Number(place.bboxMaxLat),
-              lng: Number(place.bboxMaxLng),
-            },
+            southWest: { lat: derived.minLat, lng: derived.minLng },
+            northEast: { lat: derived.maxLat, lng: derived.maxLng },
           }
         : null;
 

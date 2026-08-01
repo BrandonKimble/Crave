@@ -50,15 +50,28 @@ function makeHarness(options: {
     lng: number;
   }) => Promise<TomtomChainProbeResult>;
 }) {
+  // P4: extents are DERIVED from grounds via catalog.derivedBboxes — the
+  // mock remembers what sketchChain minted and answers from the node bboxes.
+  const mintedBboxes = new Map<string, GeoBbox>();
   const catalog: any = {
     placesInView: jest.fn().mockResolvedValue(options.placesInView ?? []),
-    sketchChain: jest
-      .fn()
-      .mockImplementation((chain: any[]) =>
-        Promise.resolve(
-          chain.map((node: any) => makePlaceRow(node.name, node.bbox ?? null)),
-        ),
+    sketchChain: jest.fn().mockImplementation((chain: any[]) =>
+      Promise.resolve(
+        chain.map((node: any) => {
+          const row = makePlaceRow(node.name, node.bbox ?? null);
+          if (node.bbox) mintedBboxes.set(row.placeId, node.bbox as GeoBbox);
+          return row;
+        }),
       ),
+    ),
+    derivedBboxes: jest.fn().mockImplementation((ids: string[]) => {
+      const out = new Map<string, GeoBbox>();
+      for (const id of ids) {
+        const bbox = mintedBboxes.get(id);
+        if (bbox) out.set(id, bbox);
+      }
+      return Promise.resolve(out);
+    }),
   };
   const probe = {
     probe: jest.fn(

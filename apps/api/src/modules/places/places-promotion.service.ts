@@ -459,21 +459,10 @@ export class PlacesPromotionService {
                 lng: Number(place.centroidLng),
               }
             : null,
-        // §2.5 resolve-time validation: the place's own extent disambiguates
-        // vendor duplicate records (rank order is not identity) — the
+        // §2.5 resolve-time validation: the place's own extent (DERIVED from
+        // its ground — P4) disambiguates vendor duplicate records on the
         // name-matching fallback path only.
-        bbox:
-          place.bboxMinLat != null &&
-          place.bboxMinLng != null &&
-          place.bboxMaxLat != null &&
-          place.bboxMaxLng != null
-            ? {
-                minLat: Number(place.bboxMinLat),
-                minLng: Number(place.bboxMinLng),
-                maxLat: Number(place.bboxMaxLat),
-                maxLng: Number(place.bboxMaxLng),
-              }
-            : null,
+        bbox: await this.derivedExtentOf(item.placeId),
       });
       if (resolved.kind === 'denied') {
         return 'stop'; // cheap pool not-now — NOT an attempt; next window
@@ -595,18 +584,8 @@ export class PlacesPromotionService {
       rejectReason = 'polygon does not contain the place anchor';
     } else {
       const envelope = geojsonEnvelope(polygon.geojson);
-      const placeBbox =
-        place.bboxMinLat !== null &&
-        place.bboxMinLng !== null &&
-        place.bboxMaxLat !== null &&
-        place.bboxMaxLng !== null
-          ? {
-              minLat: Number(place.bboxMinLat),
-              minLng: Number(place.bboxMinLng),
-              maxLat: Number(place.bboxMaxLat),
-              maxLng: Number(place.bboxMaxLng),
-            }
-          : null;
+      // P4: the stored extent is the ground's envelope, derived at use.
+      const placeBbox = await this.derivedExtentOf(item.placeId);
       const lngSpan = placeBbox ? bboxLngSpanOf(placeBbox) : null;
       const latSpan = placeBbox ? bboxLatSpanOf(placeBbox) : null;
       wrongEntity = Boolean(
@@ -739,34 +718,9 @@ export class PlacesPromotionService {
     if (rows === 0) {
       return false; // no usable rings — caller treats as a miss
     }
-    // bbox is DERIVED FROM THE GROUND (one-ground charter P4, 2026-07-27):
-    // SET it to the polygon's envelope — do not GROW it.
-    //
-    // The old rule was grow-only (LEAST/GREATEST), because bbox was the
-    // candidate FINDER and shrinking it could drop rows. After P4a the
-    // finder is `geometry && view` on the GiST index, so bbox no longer
-    // finds anything — and grow-only had become pure residue that let a
-    // too-wide seed square (sqrt(ALAND), or a merge-damaged extent) outlive
-    // the real polygon forever. Measured on prod 2026-07-27: 8 promoted
-    // places still carried a rectangle disagreeing with their own ground.
-    //
-    // SEAM EXCEPTION (honest, not a special case): a geometry crossing the
-    // antimeridian is stored as two arms, so its PLANAR envelope is the
-    // whole world — not expressible as a plain min<max range. Those rows
-    // keep whatever they had (the min>max crossing convention); the ground
-    // is the truth for them either way. Detected by span, not by a flag.
-    await this.prisma.$executeRaw(Prisma.sql`
-      UPDATE places p SET
-        bbox_min_lat = ST_YMin(g.geometry),
-        bbox_min_lng = ST_XMin(g.geometry),
-        bbox_max_lat = ST_YMax(g.geometry),
-        bbox_max_lng = ST_XMax(g.geometry)
-      FROM place_geometries g
-      WHERE g.place_id = p.place_id
-        AND p.place_id = ${placeId}::uuid
-        AND g.geometry IS NOT NULL
-        AND (ST_XMax(g.geometry) - ST_XMin(g.geometry)) < 180
-    `);
+    // P4 COMPLETE (2026-07-30): there is no bbox writeback — the columns are
+    // gone, and every consumer derives the envelope from this ground at the
+    // moment of use (derivedBboxSelectSql / launch camera / bias radius).
     // The REPRESENTATIVE POINT is derived from the ground AT THE GROUND'S
     // WRITE — the same law as the bbox SET above (a derived value may only be
     // written by the write of its source). Before this, the centroid was a
@@ -793,6 +747,31 @@ export class PlacesPromotionService {
                                           p.centroid_lat::float8), 4326)))
     `);
     return true;
+  }
+
+  /** P4: the place's extent, derived from its ONE ground (planar envelope —
+   *  the promotion paths never involve seam-crossing rows, which are all
+   *  long-outlined countries/states). Null when no geometry row exists. */
+  private async derivedExtentOf(placeId: string) {
+    const [row] = await this.prisma.$queryRaw<
+      Array<{
+        min_lat: number;
+        min_lng: number;
+        max_lat: number;
+        max_lng: number;
+      }>
+    >(Prisma.sql`
+      SELECT ST_YMin(geometry)::float8 AS min_lat, ST_XMin(geometry)::float8 AS min_lng,
+             ST_YMax(geometry)::float8 AS max_lat, ST_XMax(geometry)::float8 AS max_lng
+        FROM place_geometries WHERE place_id = ${placeId}::uuid`);
+    return row
+      ? {
+          minLat: row.min_lat,
+          minLng: row.min_lng,
+          maxLat: row.max_lat,
+          maxLng: row.max_lng,
+        }
+      : null;
   }
 
   /** Promotion completes: stamp the queue row AND places.promoted_at. */

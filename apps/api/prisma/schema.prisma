@@ -1948,10 +1948,6 @@ model Place {
   parentPlaceIds    String[]      @default([]) @map("parent_place_ids") @db.Uuid
   centroidLat       Decimal?      @map("centroid_lat") @db.Decimal(10, 8)
   centroidLng       Decimal?      @map("centroid_lng") @db.Decimal(11, 8)
-  bboxMinLat        Decimal?      @map("bbox_min_lat") @db.Decimal(10, 8)
-  bboxMinLng        Decimal?      @map("bbox_min_lng") @db.Decimal(11, 8)
-  bboxMaxLat        Decimal?      @map("bbox_max_lat") @db.Decimal(10, 8)
-  bboxMaxLng        Decimal?      @map("bbox_max_lng") @db.Decimal(11, 8)
   timeZone          String?       @map("time_zone") @db.VarChar(64)
   provider          String        @default("tomtom") @db.VarChar(32)
   providerPlaceId   String?       @map("provider_place_id") @db.VarChar(128)

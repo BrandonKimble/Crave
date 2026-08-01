@@ -101,6 +101,8 @@ function createController(
   rows: any[],
   geometryRows?: Array<{ placeId: string; geojson: string }>,
 ) {
+  // P4: grounds_in_view now returns the DERIVED bbox columns beside the
+  // geojson — the harness mirrors that contract from the fixture extents.
   const grounds =
     geometryRows ??
     rows
@@ -113,6 +115,10 @@ function createController(
           maxLat: Number(row.bboxMaxLat),
           maxLng: Number(row.bboxMaxLng),
         }),
+        bbox_min_lat: Number(row.bboxMinLat),
+        bbox_min_lng: Number(row.bboxMinLng),
+        bbox_max_lat: Number(row.bboxMaxLat),
+        bbox_max_lng: Number(row.bboxMaxLng),
       }));
   const prisma: any = {
     place: {

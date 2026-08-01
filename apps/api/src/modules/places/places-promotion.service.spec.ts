@@ -102,6 +102,24 @@ function makeHarness(options: {
       if (sql.includes('FROM place_geometry_promotions')) {
         return Promise.resolve(options.queueRows ?? []);
       }
+      // P4: the derived-extent read (ST_YMin/... FROM place_geometries) —
+      // answered from the fixture place's legacy bbox fields, which model the
+      // sketch ground's envelope (the production invariant).
+      if (sql.includes('ST_YMin(geometry)')) {
+        const pl: any = options.place ?? {};
+        return Promise.resolve(
+          pl.bboxMinLat != null
+            ? [
+                {
+                  min_lat: Number(pl.bboxMinLat),
+                  min_lng: Number(pl.bboxMinLng),
+                  max_lat: Number(pl.bboxMaxLat),
+                  max_lng: Number(pl.bboxMaxLng),
+                },
+              ]
+            : [],
+        );
+      }
       // Entity exclusivity probe — MUST be matched before the generic
       // place_geometries branch below (both queries name that table).
       if (sql.includes('provider_boundary_id =')) {
@@ -320,26 +338,24 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(persist!.sql).toContain('ON CONFLICT (place_id) DO UPDATE');
       expect(persist!.values).toContain(JSON.stringify(POLYGON_GEOJSON));
 
-      // §2.5(c): the index derives from truth — the places bbox widens to
-      // the landed polygon's envelope — SET, not grown (one-ground charter
-      // P4). Grow-only existed because bbox was the candidate FINDER; after
-      // P4a the finder is the GiST index, so a too-wide seed square must not
-      // outlive the real polygon.
+      // P4 COMPLETE (2026-07-30): there is NO bbox writeback — the columns
+      // are gone; every consumer derives the envelope from this ground at the
+      // moment of use. What the ground write DOES couple is the
+      // REPRESENTATIVE POINT (the abstraction's second face: a derived value
+      // is written only by the write of its source): centroid :=
+      // ST_PointOnSurface(ground) whenever the written ground does not cover
+      // the stored point.
+      expect(
+        executeRawCalls.some((call) => call.sql.includes('bbox_min_lat')),
+      ).toBe(false);
       const derive = executeRawCalls.find((call) =>
         call.sql.includes('UPDATE places p SET'),
       );
       expect(derive).toBeDefined();
-      expect(derive!.sql).toContain('bbox_min_lat = ST_YMin(g.geometry)');
-      expect(derive!.sql).toContain('bbox_max_lng = ST_XMax(g.geometry)');
-      // RED-proof: the grow-only operators must be GONE, or a stale wide box
-      // survives its own ground (measured on prod: 8 such rows before this).
-      expect(derive!.sql).not.toContain('GREATEST');
-      expect(derive!.sql).not.toContain('LEAST');
-      // The seam exception is by SPAN, not a flag: a crossing geometry's
-      // planar envelope is the whole world and is left alone.
       expect(derive!.sql).toContain(
-        '(ST_XMax(g.geometry) - ST_XMin(g.geometry)) < 180',
+        'centroid_lat = ST_Y(ST_PointOnSurface(g.geometry))',
       );
+      expect(derive!.sql).toContain('NOT ST_Covers(g.geometry');
 
       // Promotion stamped on the queue row AND places.promoted_at.
       expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({

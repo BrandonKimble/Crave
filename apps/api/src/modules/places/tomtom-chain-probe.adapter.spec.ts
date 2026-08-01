@@ -91,11 +91,16 @@ function buildAdapter(options: {
       return options.denyPool ? null : act();
     },
   };
+  // P4: "catalog knows the extent" = a matching identity row WITH a ground.
   const prisma = {
     place: {
-      findFirst: () =>
-        Promise.resolve(options.knownBboxIdentities ? { bboxMinLat: 1 } : null),
+      findMany: () =>
+        Promise.resolve(
+          options.knownBboxIdentities ? [{ placeId: 'known-place-id' }] : [],
+        ),
     },
+    $queryRaw: () =>
+      Promise.resolve(options.knownBboxIdentities ? [{ ok: true }] : []),
   };
   const configService = {
     get: (key: string) => (key === 'tomtom.apiKey' ? 'test-key' : undefined),
