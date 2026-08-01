@@ -71,6 +71,7 @@ function build(options: { keepIds?: string[] } = {}) {
     {} as never,
     {} as never,
     relevanceGate as never,
+    { getVersion: jest.fn(), getActive: jest.fn() } as never,
   );
   (service as unknown as { logger: unknown }).logger = {
     info: jest.fn(),

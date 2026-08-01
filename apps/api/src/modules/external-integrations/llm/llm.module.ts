@@ -3,6 +3,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { GeminiContextCacheRegistry } from './gemini-context-cache.registry';
 import { LLMService } from './llm.service';
+import { PromptRegistryService } from './prompt-registry.service';
 import { GeminiBatchService } from './gemini-batch.service';
 import { EmbeddingService } from './embedding.service';
 import { LLMChunkingService } from './llm-chunking.service';
@@ -25,6 +26,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
   providers: [
     GeminiContextCacheRegistry,
     LLMService,
+    PromptRegistryService,
     GeminiBatchService,
     EmbeddingService,
     LLMChunkingService,
@@ -34,6 +36,7 @@ import { PrismaModule } from '../../../prisma/prisma.module';
   ],
   exports: [
     LLMService,
+    PromptRegistryService,
     GeminiBatchService,
     EmbeddingService,
     LLMChunkingService,

@@ -12,6 +12,7 @@ import {
   type ChunkProcessingResult,
 } from '../../external-integrations/llm/llm-concurrent-processing.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
+import { PromptRegistryService } from '../../external-integrations/llm/prompt-registry.service';
 import {
   GeminiBatchService,
   type BatchIngestItem,
@@ -109,6 +110,11 @@ interface ExtractionPipelineBaseParams {
   activateDocumentsBeforeProcessing?: boolean;
   skipSourceLedgerDedupe?: boolean;
   runMetadata?: Record<string, unknown>;
+  /** VERSIONED PROMPTS (2026-08-01): extract under a specific registered
+   *  prompt version instead of the active one — the shadow-replay lever.
+   *  Batch mode only (shadow replays are batch by design); interactive
+   *  callers must run the active prompt. */
+  promptVersion?: number;
 }
 
 export interface ExtractionPipelinePostsParams
@@ -165,7 +171,27 @@ export class ExtractionPipelineService implements OnModuleInit {
     private readonly unifiedProcessingService: UnifiedProcessingService,
     private readonly geminiBatchService: GeminiBatchService,
     private readonly relevanceGate: RelevanceGateService,
+    private readonly promptRegistry: PromptRegistryService,
   ) {}
+
+  /** VERSIONED PROMPTS: a shadow replay pins a registered candidate
+   *  version; the coverage hash, the run record, and the batch request must
+   *  all use the SAME content or coverage lies. Batch mode only — an
+   *  interactive caller under a pinned version is a wiring bug. */
+  private async resolveEffectivePrompt(
+    baseParams: ExtractionPipelineBaseParams,
+  ): Promise<string> {
+    if (!baseParams.promptVersion) {
+      return this.llmService.getSystemPrompt();
+    }
+    if ((baseParams.llmMode ?? this.collectionLlmMode) !== 'batch') {
+      throw new Error(
+        'promptVersion is only supported in batch mode (shadow replays)',
+      );
+    }
+    return (await this.promptRegistry.getVersion(baseParams.promptVersion))
+      .content;
+  }
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ExtractionPipelineService');
@@ -294,8 +320,9 @@ export class ExtractionPipelineService implements OnModuleInit {
     // title/body riding along as context and extract_from_post=false when the
     // post body itself is already covered. The post-LLM mention dedupe
     // remains the data-level guard.
+    const effectivePrompt = await this.resolveEffectivePrompt(params);
     const currentPromptHash = createHash('sha256')
-      .update(this.llmService.getSystemPrompt())
+      .update(effectivePrompt)
       .digest('hex');
     const allSourceIds = params.llmPosts.flatMap((post) => [
       post.id,
@@ -407,6 +434,9 @@ export class ExtractionPipelineService implements OnModuleInit {
     chunkingConfigOverride?: Record<string, unknown>;
   }): Promise<ExtractionPipelineResult> {
     let extractionRunId: string | null = null;
+    const effectivePrompt = await this.resolveEffectivePrompt(
+      params.baseParams,
+    );
 
     try {
       extractionRunId =
@@ -419,7 +449,7 @@ export class ExtractionPipelineService implements OnModuleInit {
           platform: params.baseParams.platform ?? 'reddit',
           community: params.baseParams.community,
           model: this.llmService.getContentModel(),
-          systemPrompt: this.llmService.getSystemPrompt(),
+          systemPrompt: effectivePrompt,
           generationConfig: this.llmService.getGenerationConfigSnapshot(),
           chunkingConfig:
             params.chunkingConfigOverride ??
@@ -541,7 +571,16 @@ export class ExtractionPipelineService implements OnModuleInit {
       items: await Promise.all(
         stubs.map(async (stub) => ({
           key: stub.chunkId,
-          ...(await this.llmService.buildCollectionBatchRequest(stub.input)),
+          ...(await this.llmService.buildCollectionBatchRequest(
+            stub.input,
+            params.baseParams.promptVersion
+              ? (
+                  await this.promptRegistry.getVersion(
+                    params.baseParams.promptVersion,
+                  )
+                ).content
+              : undefined,
+          )),
         })),
       ),
       resumeContext: {

@@ -214,6 +214,26 @@ model FoodCategoryEdge {
   @@map("derived_food_category_edges")
 }
 
+/// VERSIONED PROMPTS (2026-08-01): the prompt is runtime data, not a deploy
+/// asset. Live collection extracts with the ACTIVE version; candidate
+/// versions run shadow replays. Activation is an explicit governed event —
+/// this kills the prompt-hash coverage trap and the collection pause.
+model LlmPrompt {
+  promptId    String    @id @default(dbgenerated("gen_random_uuid()")) @map("prompt_id") @db.Uuid
+  kind        String    @db.VarChar(64)
+  version     Int
+  content     String
+  contentHash String    @map("content_hash") @db.VarChar(64)
+  /// candidate | active | retired (CHECK + one-active-per-kind partial unique)
+  status      String    @default("candidate") @db.VarChar(16)
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  activatedAt DateTime? @map("activated_at")
+
+  @@unique([kind, version], map: "llm_prompts_kind_version_key")
+  @@map("llm_prompts")
+}
+
 /// Gemini Batch API job tracking (COLLECTION_LLM_MODE=batch): a job's items
 /// carry everything needed to resume the pipeline when results land — the
 /// poller cron ingests via the purpose-keyed registry in GeminiBatchService.

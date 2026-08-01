@@ -1013,7 +1013,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * with margin, and storage costs ~$0.51/load (17k tokens x 30h x $1/M/hr) —
    * noise against ~$800 of prompt re-reads at full load.
    */
-  async buildCollectionBatchRequest(input: LLMModelInput): Promise<{
+  async buildCollectionBatchRequest(
+    input: LLMModelInput,
+    promptOverride?: string,
+  ): Promise<{
     contents: string;
     config: Record<string, unknown>;
   }> {
@@ -1038,13 +1041,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         ),
       ),
     };
-    const batchCacheName = await this.getOrCreateBatchSystemCache();
+    const effectivePrompt = promptOverride ?? this.systemPrompt;
+    const batchCacheName =
+      await this.getOrCreateBatchSystemCache(effectivePrompt);
     if (batchCacheName) {
       config.cachedContent = batchCacheName;
     } else {
       // Fail-open to the inline prompt: paying full rate beats failing the
       // batch. The warn in getOrCreateBatchSystemCache is the audit trail.
-      config.systemInstruction = this.systemPrompt;
+      config.systemInstruction = effectivePrompt;
     }
     // Same caller profile as the interactive path (red team R8): without
     // the caller arg, a future content.extract perCaller thinking override
@@ -1067,25 +1072,34 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    *  3h interactive cache): TTL must outlive the Batch API's 24h SLA so an
    *  in-flight job can never reference an expired cache. Reused across
    *  submissions while fresh; keyed to the current model + prompt. */
-  private batchSystemCache: { name: string; expiresAtMs: number } | null = null;
+  /** Keyed by prompt content hash — a candidate (shadow) prompt's cache
+   *  coexists with the active prompt's cache; the registry dedupes minting
+   *  content-addressed underneath. */
+  private batchSystemCaches = new Map<
+    string,
+    { name: string; expiresAtMs: number }
+  >();
   private static readonly BATCH_CACHE_TTL_MS = 30 * 60 * 60 * 1000;
   /** Refuse to attach a cache that cannot cover a full batch SLA from NOW. */
   private static readonly BATCH_CACHE_MIN_REMAINING_MS = 25 * 60 * 60 * 1000;
 
-  private async getOrCreateBatchSystemCache(): Promise<string | null> {
+  private async getOrCreateBatchSystemCache(
+    prompt: string,
+  ): Promise<string | null> {
     const now = Date.now();
+    const key = createHash('sha256').update(prompt).digest('hex');
+    const held = this.batchSystemCaches.get(key);
     if (
-      this.batchSystemCache &&
-      this.batchSystemCache.expiresAtMs - now >
-        LLMService.BATCH_CACHE_MIN_REMAINING_MS
+      held &&
+      held.expiresAtMs - now > LLMService.BATCH_CACHE_MIN_REMAINING_MS
     ) {
-      return this.batchSystemCache.name;
+      return held.name;
     }
     try {
       const ttlSeconds = Math.floor(LLMService.BATCH_CACHE_TTL_MS / 1000);
       const cache = await this.createLedgeredCache({
         model: this.llmConfig.model,
-        systemInstruction: this.systemPrompt,
+        systemInstruction: prompt,
         ttlSeconds,
         caller: 'llm.batchSystemCache',
         // Reuse only above the 25h floor: an in-flight batch job (24h SLA)
@@ -1093,10 +1107,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         // the live cache instead of abandoning it and minting a twin.
         minRemainingMs: LLMService.BATCH_CACHE_MIN_REMAINING_MS,
       });
-      this.batchSystemCache = {
+      this.batchSystemCaches.set(key, {
         name: cache.name,
         expiresAtMs: cache.expiresAtMs,
-      };
+      });
       this.logger.info('Batch system-prompt cache created', {
         cacheName: cache.name,
         ttlHours: LLMService.BATCH_CACHE_TTL_MS / 3_600_000,
@@ -1125,6 +1139,18 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
   getSystemPrompt(): string {
     return this.systemPrompt;
+  }
+
+  /** PROMPT REGISTRY seam (versioned prompts, 2026-08-01): the registry owns
+   *  which collection prompt is ACTIVE; on boot (and after activation) it
+   *  swaps the in-process copy here. Context caches are content-addressed,
+   *  so the next mint under the new content is automatic; the interactive
+   *  3h cache refresh cycle picks it up on its own schedule. */
+  setActiveSystemPrompt(content: string): void {
+    if (content === this.systemPrompt) return;
+    this.systemPrompt = content;
+    this.systemInstructionCache = null;
+    this.systemInstructionCacheExpiresAt = null;
   }
 
   getContentModel(): string {

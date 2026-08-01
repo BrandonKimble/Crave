@@ -70,6 +70,9 @@ export class ReplayService implements OnModuleInit {
      *  batch jobs this replay submits meter the campaign envelope
      *  (extraction-pipeline resumeContext → usage-ledger attribution). */
     campaignId?: string;
+    /** VERSIONED PROMPTS: pin a registered candidate version for a SHADOW
+     *  replay (activate:false). Omit to replay under the active prompt. */
+    promptVersion?: number;
   }): Promise<ExtractionRunReplaySummary> {
     const sourceRun = await this.prismaService.extractionRun.findUnique({
       where: { extractionRunId: params.sourceExtractionRunId },
@@ -157,6 +160,7 @@ export class ReplayService implements OnModuleInit {
         parentJobId: params.sourceExtractionRunId,
         collectionRunScopeKey: `replay:extraction:${params.sourceExtractionRunId}`,
         activateDocumentsBeforeProcessing: params.activate === true,
+        promptVersion: params.promptVersion,
         skipSourceLedgerDedupe: true,
         runMetadata: {
           replaySource: 'extraction_run',

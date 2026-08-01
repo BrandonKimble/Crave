@@ -61,22 +61,50 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       return;
     }
     const campaignId = process.env.REEXTRACT_CAMPAIGN_ID?.trim();
+    // SHADOW MODE (versioned prompts, 2026-08-01): REEXTRACT_ACTIVATE=false
+    // replays WITHOUT flipping documents' active runs — old extractions keep
+    // serving the app while the candidate prompt's outputs accumulate for
+    // the diff review. REEXTRACT_PROMPT_VERSION pins a registered candidate.
+    const activate =
+      (process.env.REEXTRACT_ACTIVATE ?? 'true').trim().toLowerCase() !==
+      'false';
+    const promptVersionRaw = process.env.REEXTRACT_PROMPT_VERSION?.trim();
+    const promptVersion = promptVersionRaw
+      ? Number.parseInt(promptVersionRaw, 10)
+      : undefined;
+    if (promptVersionRaw && !Number.isFinite(promptVersion)) {
+      this.logger.error('REEXTRACT_PROMPT_VERSION is not a number — refusing');
+      return;
+    }
+    if (promptVersion && activate) {
+      // A candidate prompt must go through the shadow → diff → activate
+      // choreography; direct-activate under an unreviewed prompt is the
+      // July self-heal accident with extra steps.
+      this.logger.error(
+        'REEXTRACT_PROMPT_VERSION requires REEXTRACT_ACTIVATE=false (shadow) — refusing',
+      );
+      return;
+    }
     // Fire-and-forget on purpose: boot must complete so the batch ingest
     // pollers this run depends on are alive alongside it.
-    void this.run(communities, campaignId).catch((error: unknown) => {
-      this.logger.error('City re-extract CRASHED', {
-        communities,
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-    });
+    void this.run(communities, campaignId, activate, promptVersion).catch(
+      (error: unknown) => {
+        this.logger.error('City re-extract CRASHED', {
+          communities,
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
+        });
+      },
+    );
   }
 
   private async run(
     communities: string[],
     campaignId: string | undefined,
+    activate: boolean = true,
+    promptVersion?: number,
   ): Promise<void> {
     if (!campaignId) {
       this.logger.error(
@@ -119,8 +147,9 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       try {
         await this.replay.replayExtractionRun({
           sourceExtractionRunId: run.runId,
-          activate: true,
+          activate,
           campaignId,
+          promptVersion,
         });
         ok += 1;
       } catch (error) {
