@@ -316,21 +316,12 @@ export function TrackSheetPage<Item>({
   // it — a scene switch left the chrome visuals at y=0 (seen live 2026-07-29,
   // profile). Re-assert the bind after EVERY commit; bindShell re-applies the
   // current frame immediately, so a reset can never survive a commit.
-  React.useLayoutEffect(() => {
-    applyPin();
-    // THE SETTLED RE-BIND (attributed live 2026-07-31, audit: "chrome at 0 !=
-    // sheetTop 70", bound AND attached): at the commit, viewForReactTag can
-    // resolve a STALE view for a just-remounted Fabric view (interop lag) —
-    // the transform lands on the old view and the displayed one shows
-    // untransformed. Re-assert once the registry has settled. The audit's
-    // 3s heal remains the backstop; this makes the window imperceptible.
-    const raf = requestAnimationFrame(() => applyPin());
-    const late = setTimeout(() => applyPin(), 150);
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(late);
-    };
-  });
+  // DELETE PASS (2026-07-31): the every-commit re-assert, the settled
+  // re-bind (rAF + 150ms), and the audit self-heal are gone — THE REAL SLOT
+  // self-registers in its own UIKit lifecycle and composes position inside
+  // setFrame, so there is no stale-tag window left to compensate for. The
+  // bind now re-asserts only when it MEANS something: geometry change
+  // (below), native attach, and the touch twin's ref.
   const chromeVisualViewRef = React.useRef<View | null>(null);
   const setChromeVisualRef = React.useCallback(
     (node: View | null) => {
@@ -383,20 +374,12 @@ export function TrackSheetPage<Item>({
               `chrome at ${Math.round(audit.chromeWindowY)} != sheetTop ${Math.round(audit.expectedSheetTop)}`
             );
           }
-          if ((globalThis as { __shellAuditLogged2?: boolean }).__shellAuditLogged2 !== true) {
-            (globalThis as { __shellAuditLogged2?: boolean }).__shellAuditLogged2 = true;
-            // eslint-disable-next-line no-console
-            console.log('[SHELL] audit snapshot ' + JSON.stringify(audit));
-          }
           const key = problems.join('; ') || null;
           // Double-sample: bark only when the SAME problem persists across two
           // consecutive audits (a moving sheet can skew one sample).
           if (key != null && key === priorBad) {
             // eslint-disable-next-line no-console
-            console.log('[SHELL] audit detail ' + JSON.stringify(audit));
-            // eslint-disable-next-line no-console
             console.error(`[SHELL] audit: ${key} (τ=${Math.round(audit.tau ?? -1)})`);
-            applyPin();
           }
           priorBad = key;
         },
@@ -893,6 +876,22 @@ export function TrackSheetPage<Item>({
     const nativePhysics = NativeModules.TrackScrollPhysics;
     if (nativePhysics?.refuse != null && trackTagRef.current != null) {
       nativePhysics.refuse(trackTagRef.current, restored);
+    }
+    if (__DEV__) {
+      // THE SWITCH PERF PROBE: JS-thread stall around the switch commit —
+      // time from this layout effect to the next TWO animation frames (the
+      // first rAF fires after paint; the gap to the second exposes the stall).
+      const t0 = Date.now();
+      requestAnimationFrame(() => {
+        const t1 = Date.now();
+        requestAnimationFrame(() => {
+          const t2 = Date.now();
+          // eslint-disable-next-line no-console
+          console.log(
+            `[PERF] switch ${prev}->${sceneKey} commit->paint=${t1 - t0}ms paint->next=${t2 - t1}ms`
+          );
+        });
+      });
     }
   }, [sceneKey, tau, trackH]);
 

@@ -160,6 +160,20 @@ const HomeShelfRowView = React.memo(
     const [bandSize, setBandSize] = React.useState({ width: 0, height: 0 });
     const [wellMap, setWellMap] = React.useState<Record<string, HomeWellRect>>({});
 
+    // THE STAGED SHELF MOUNT (attributed 2026-07-31: [PERF] switch ->home =
+    // ~500ms JS stall). The shelves are plain horizontal ScrollViews that
+    // .map EVERY card, so each return to home mounted every card in every
+    // shelf in one commit. Stage it: the visible head of each shelf mounts
+    // with the switch; the off-screen tail mounts one beat later, off the
+    // transition's critical frames. Card count, not a redesign — the shelf
+    // composition (wells, cutouts, seam) is untouched and re-measures as the
+    // tail lands via the existing rAF-collapsed sweep.
+    const [shelvesWarm, setShelvesWarm] = React.useState(false);
+    React.useEffect(() => {
+      const timer = setTimeout(() => setShelvesWarm(true), 160);
+      return () => clearTimeout(timer);
+    }, []);
+    const stageLimit = shelvesWarm ? undefined : 3;
     const handleWellLayout = React.useCallback((key: string, rect: HomeWellRect) => {
       setWellMap((prev) => {
         const existing = prev[key];
@@ -249,7 +263,7 @@ const HomeShelfRowView = React.memo(
                 ) : null}
                 <View style={styles.shelfCardRow}>
                   {row.kind === 'shelf'
-                    ? row.shelf.lists.map((list) => {
+                    ? row.shelf.lists.slice(0, stageLimit).map((list) => {
                         const Icon = resolveCuratedListIcon(list.iconKey);
                         return (
                           <HomeCutoutCard
@@ -265,19 +279,21 @@ const HomeShelfRowView = React.memo(
                           />
                         );
                       })
-                    : row.cities.map((city) => (
-                        <HomeCutoutCard
-                          key={city.placeId}
-                          wellKey={city.placeId}
-                          icon={<MapPin size={24} color={themeColors.primary} strokeWidth={2} />}
-                          title={city.name}
-                          subline={null}
-                          accessibilityLabel={`Explore ${city.name}`}
-                          testID={`home-city-card-${city.placeId}`}
-                          onPress={() => onPickCity(city)}
-                          onWellLayout={handleWellLayout}
-                        />
-                      ))}
+                    : row.cities
+                        .slice(0, stageLimit)
+                        .map((city) => (
+                          <HomeCutoutCard
+                            key={city.placeId}
+                            wellKey={city.placeId}
+                            icon={<MapPin size={24} color={themeColors.primary} strokeWidth={2} />}
+                            title={city.name}
+                            subline={null}
+                            accessibilityLabel={`Explore ${city.name}`}
+                            testID={`home-city-card-${city.placeId}`}
+                            onPress={() => onPickCity(city)}
+                            onWellLayout={handleWellLayout}
+                          />
+                        ))}
                 </View>
               </View>
             </ScrollView>
