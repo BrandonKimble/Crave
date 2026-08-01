@@ -97,3 +97,31 @@ held-dissolve scaffolding + flip fork (after burn-in) + gray placeholder rows
    switch choreography, one skeleton material) + acceptance walk.
 
 Red team this plan against the code before rung 1 lands, per standing law.
+
+## Part E — industry-standard additions (owner-requested sweep, 2026-08-01)
+
+Missing from our inventory but standard in every major tab bar:
+
+E1. LAZY FIRST MOUNT: a leg mounts on FIRST visit, not at boot (RN bottom-tabs
+default; also implied by warm-before-navigate). Boot cost stays flat as
+scenes are added.
+E2. RE-TAP = TOP: tapping the ACTIVE tab scrolls its page to top (iOS HIG /
+every major app). In τ-space: presented leg, active-tab press → animated
+settle to listY 0 (posture unchanged).
+E3. MEMORY-PRESSURE TRIM: the eviction law's CONTENT trim should also fire on
+real OS memory warnings, not only the budget (shells never evict).
+E4. SUBSCRIPTION LIVENESS: hidden legs subscribe to nothing (L3 A#9 —
+display-detached legs must also pause queries/stores, or residency trades
+frames for battery).
+E5. STATE PRESERVATION on return (scroll, filters, strip selection) — already
+ours via per-leg scroll memory + resident state; named so it stays tested.
+
+## Part F — rung 1 implementation shape (decided)
+
+NOT N full pages. ONE TrackSheetPage keeps the singletons — chrome twins,
+slots, shell, physics, τ — and hosts N ROW LEGS inside it: per-scene
+FlashLists as absolute-fill siblings, display-flipped, mounted lazily on
+first visit. The engine attaches to the presented leg's scroll view on flip
+(attach is per-scroll-view and idempotent already); refuse() restores the
+leg's τ; hidden legs emit no scroll events, so τ keeps ONE writer without any
+new machinery. Slots/chrome never duplicate (they were never per-scene).
