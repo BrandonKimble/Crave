@@ -1474,10 +1474,21 @@ export class UnifiedProcessingService implements OnModuleInit {
                 const forward = new Map(
                   redirects.map((row) => [row.fromEntityId, row.toEntityId]),
                 );
+                let dropped = 0;
                 for (const [tempId, entityId] of tempIdToEntityIdMap) {
                   const target = forward.get(entityId);
                   if (target) {
                     tempIdToEntityIdMap.set(tempId, target);
+                  } else if (
+                    archived.some((row) => row.entityId === entityId)
+                  ) {
+                    // JUNK SINK, made explicit (class ②): an archived
+                    // entity with NO redirect is rejected vocabulary — the
+                    // sink ABSORBS the mention by writing nothing, instead
+                    // of writing an event no projection can ever see
+                    // (11,235 such invisible events had accumulated).
+                    tempIdToEntityIdMap.delete(tempId);
+                    dropped += 1;
                   }
                 }
                 this.logger.warn(
@@ -1486,6 +1497,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                     batchId,
                     archivedResolved: archived.length,
                     redirected: redirects.length,
+                    sinkDropped: dropped,
                   },
                 );
               }

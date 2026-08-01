@@ -20,6 +20,13 @@ model Entity {
   /// ladder may NEVER drop. Null = soft. A fact about the vocabulary,
   /// never guessed per query.
   constraintClass                     String?                       @map("constraint_class") @db.VarChar(16)
+  /// FACET marker (class ② of the 2026-08 data audit): 'cuisine' tags the
+  /// canonical cuisine vocabulary — 57% of restaurant-attribute evidence
+  /// mass is cuisine, a category dimension, not a venue property. Kept as
+  /// restaurant_attribute TYPE until the re-extraction prompt emits a
+  /// native cuisine slot (so live search keeps working); the facet column
+  /// IS the identity in the meantime. Null = ordinary attribute.
+  facet                               String?                       @db.VarChar(16)
   canonicalDomain                     String?                       @map("canonical_domain") @db.VarChar(255)
   aliases                             String[]                      @default([])
   /// KNOWLEDGE TIER (food entities only): synthesized canonical ingredient
