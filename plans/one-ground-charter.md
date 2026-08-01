@@ -804,3 +804,44 @@ width), never picked. Retire the census seeder with this.
 - The seam (antimeridian) must stay correct at every phase — it is the place
   every bbox shortcut has historically broken (5 latent bugs found and fixed
   2026-07-26 in one audit).
+
+## THE HEADER — camera→name, red-teamed + re-derived (2026-08-01)
+
+FULL TRACE (both surfaces) established the facts. The resolution LAW
+survives a from-scratch re-derivation intact: subjects.ts is memoryless
+and pure (attention ≥ 1/3, dominator ≥ 2/3 — one knob, finest dominator
+wins, straddle reservation via the vendor chain), hysteresis lives with
+the caller (enter-eager, exit after 1s dwell, UNKNOWN never overwrites),
+data is placesInView with a 3x margin box so most pans cost zero
+network. Built from scratch on today's foundation, the law and the
+client-judges/server-serves split come out the SAME. What does NOT
+survive re-derivation — the delivery layer grew TWO AUTHORITIES:
+
+1. SPLIT-BRAIN TITLES. Polls chose the client subject store as title
+   authority (tracks the camera live); home chose the server's last feed
+   response (resolvedCity — frozen between fetches, blind to the camera
+   while parked, stale after a failed fetch). Two surfaces answer "what
+   is this view called?" by two different computers over two different
+   freshness stories — the same one-law-two-dialects disease docket #6
+   killed in demand. IDEAL: the subject store is THE title authority for
+   every surface; the server's verdict scopes CONTENT only (feed
+   membership, curated city rollup), and a content/title lag window is
+   accepted and honest rather than hidden by freezing the title.
+2. FIXED (commit below): home's failed fetch recorded its bounds as
+   "requested", so re-settling on identical bounds was a non-edge — a
+   stale title with NO retry path. The ref now clears on failure.
+3. STALE RATIONALE (comment corrected, value stands): the slice's 1h TTL
+   was derived from the hourly drain cadence; outlines are
+   birth-synchronous now, so the TTL is re-stated as a K3 staleness
+   ceiling. IDEAL replacement when staleness is first MEASURED as felt:
+   a catalog-revision watermark on feed responses — the slice
+   revalidates on CHANGE, not on a clock (the same derived-at-source
+   coupling law, applied to cache freshness).
+4. ACCEPTED EDGES, documented: pan-away-forever keeps the old name (each
+   move cancels the pending exit — bound it by re-evaluating at next
+   settle if ever felt); a server-side rename inside a cached slice
+   waits for the next slice fetch (verdict identity is the place id).
+
+REMAINING IDEAL DELTA (owner call, touches two precious surfaces + the
+owed sim pass): make home's title read the subject store (one authority)
+and give home the polls retry ladder. The law itself needs no change.

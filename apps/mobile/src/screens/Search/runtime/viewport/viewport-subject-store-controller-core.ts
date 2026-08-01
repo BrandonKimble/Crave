@@ -90,16 +90,18 @@ export const VIEWPORT_SETTLE_QUIESCENCE_MS = MAP_PLANNER_NORMAL_WORK_FAIRNESS_PO
 export const VIEWPORT_SUBJECT_DWELL_MS = 1_000;
 
 /**
- * Slice cache soft TTL — DERIVED (no-fake-estimates law, 2026-07-24):
- * marginBox bounds the cache SPATIALLY but nothing bounded it in TIME — a
- * session parked inside the same margin box could judge with a geometry
- * snapshot indefinitely while the server upgrades grounds sketch→outline
- * underneath. The TTL equals the PROMOTION DRAIN CADENCE (hourly — the
- * only clock that changes ground truth server-side): refreshing faster
- * re-downloads identical data; refreshing slower can serve two-cycle-old
- * ground. Any camera activity after the TTL refetches even inside
- * marginBox; a parked, untouched map has no viewer to lie to. What
- * changes it: the drain cadence, never tuning.
+ * Slice cache soft TTL — RATIONALE SUPERSEDED, value stands (header
+ * red-team 2026-08-01). The original derivation pegged this to the hourly
+ * promotion drain, but outlines are BIRTH-SYNCHRONOUS now (docket #1 +
+ * promoteNewborn) — the hourly sweep is only the retry tail, so "the drain
+ * cadence" no longer names the clock that changes ground truth. What the
+ * TTL honestly is today: a K3 staleness ceiling for a camera parked inside
+ * one margin box — new births in an already-sketched, already-named area
+ * are rare and low-stakes (a header rename, never a wrong judgment), so an
+ * hour bounds the lie cheaply. The IDEAL replacement (charter, header
+ * section): a catalog-revision watermark piggybacked on feed responses so
+ * the slice revalidates on change, not on a clock — build it when header
+ * staleness is first MEASURED as a felt defect, not before.
  */
 export const VIEWPORT_SLICE_TTL_MS = 60 * 60 * 1_000;
 

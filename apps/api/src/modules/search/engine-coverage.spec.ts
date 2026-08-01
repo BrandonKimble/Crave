@@ -63,6 +63,7 @@ describe('EngineCoverageService.resolveViewportCoverage', () => {
     expect(sql).toContain('unnest(e.member_place_ids)');
     // GIN law (place-dag-read): the descendant join must ride @>, never ANY.
     expect(sql).toContain('p.parent_place_ids @> ARRAY[t.place_id]');
+    expect(sql).not.toContain('ANY(p.parent_place_ids)');
     // §2.6: ONE ground column; union-then-measure so overlapping member
     // grounds never double-count; && is the §2.5(c) candidate prefilter.
     expect(sql).toContain('place_geometries');

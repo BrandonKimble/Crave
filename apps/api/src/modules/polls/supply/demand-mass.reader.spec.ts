@@ -112,6 +112,8 @@ describe('containment lineage + MAX set-semantics (docket item 7 algebra)', () =
     expect(sql).toMatch(/unnest\(p\.parent_place_ids\)/);
     // GIN law (place-dag-read): the descendant join rides @>, never ANY.
     expect(sql).toMatch(/p\.parent_place_ids @> ARRAY\[d\.tile\]/);
+    // ...and the condemned seq-scan form must be ABSENT, not merely outnumbered.
+    expect(sql).not.toMatch(/= ANY\(p\.parent_place_ids\)/);
     // Count-once across a root's tiles: a signal stored at both a member and
     // an ancestor collapses via MAX per (actor, day, kind, subject).
     expect(sql).toContain('MAX(a.signal_count)');

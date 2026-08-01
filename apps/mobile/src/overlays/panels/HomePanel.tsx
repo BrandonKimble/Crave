@@ -339,6 +339,12 @@ const useHomeFeedRuntime = (): void => {
       logger.warn('Failed to load home feed', {
         message: error instanceof Error ? error.message : 'unknown',
       });
+      // Header red-team 2026-08-01: a failed fetch must NOT hold its bounds
+      // as "requested" — that made a re-settle on the IDENTICAL bounds a
+      // non-edge, so the stale resolvedCity title served indefinitely with
+      // no retry path. Clearing the ref makes the next settle (even on the
+      // same camera) an honest retry edge.
+      lastRequestedBoundsRef.current = null;
       // Honest failure only when there is nothing to show; a stale feed stands.
       if (useHomeFeedStore.getState().feed == null) {
         useHomeFeedStore.getState().setStatus('failed');
