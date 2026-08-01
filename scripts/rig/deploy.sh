@@ -47,18 +47,22 @@ else
 fi
 
 if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
-  if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
-    echo "REFUSED: working tree is DIRTY — \`railway up\` would ship these uncommitted changes to PROD:" >&2
-    git status --short --untracked-files=no >&2
-    echo "Commit first, deploy to --env staging, or re-run with --force." >&2
+  # Untracked (non-ignored) files ship too — `railway up` uploads the tree,
+  # not the index — so the check must NOT pass --untracked-files=no.
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "REFUSED: working tree is DIRTY — \`railway up\` would ship these uncommitted/untracked files to PROD:" >&2
+    git status --short >&2
+    echo "Commit (or gitignore) first, deploy to --env staging, or re-run with --force." >&2
     exit 1
   fi
+  # Ahead-of-origin is fine (the script pushes main next); refuse only when
+  # HEAD is behind or diverged — prod must never ship history origin rejects.
   git fetch origin main --quiet
-  if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
-    echo "REFUSED: HEAD != origin/main — prod must ship exactly what origin has." >&2
+  if ! git merge-base --is-ancestor origin/main HEAD; then
+    echo "REFUSED: HEAD is behind or diverged from origin/main." >&2
     echo "  HEAD:        $(git rev-parse --short HEAD)" >&2
     echo "  origin/main: $(git rev-parse --short origin/main)" >&2
-    echo "Push (or pull) first, or re-run with --force." >&2
+    echo "Pull/rebase first, or re-run with --force." >&2
     exit 1
   fi
 fi
@@ -72,20 +76,23 @@ if [[ "$ENVIRONMENT" == "production" ]]; then
   mkdir -p "$BACKUP_DIR"
   # No public-URL var exists on the DB service; the TCP proxy is stable, so
   # take credentials from the api's DATABASE_URL and swap in the proxy host.
-  DB_URL="$(railway variables --service api --environment production --json 2>/dev/null \
+  # Password travels via PGPASSWORD, never argv (argv is world-readable in ps).
+  DB_CREDS="$(railway variables --service api --environment production --json 2>/dev/null \
     | python3 -c '
 import json, sys
 from urllib.parse import urlsplit
 u = json.load(sys.stdin).get("DATABASE_URL") or ""
 if u:
     p = urlsplit(u)
-    print(f"postgresql://{p.username}:{p.password}@sakura.proxy.rlwy.net:48622{p.path}")
-')" || DB_URL=""
-  if [[ -z "$DB_URL" ]]; then
-    echo "WARNING: could not resolve DATABASE_PUBLIC_URL — skipping snapshot." >&2
+    print(p.username, p.password, p.path.lstrip("/"))
+')" || DB_CREDS=""
+  if [[ -z "$DB_CREDS" ]]; then
+    echo "WARNING: could not resolve prod DATABASE_URL — skipping snapshot." >&2
   else
+    read -r DB_USER DB_PASS DB_NAME <<<"$DB_CREDS"
     SNAP="$BACKUP_DIR/prod-$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD).dump"
-    pg_dump --no-owner -Fc "$DB_URL" -f "$SNAP"
+    PGPASSWORD="$DB_PASS" pg_dump --no-owner -Fc \
+      -h sakura.proxy.rlwy.net -p 48622 -U "$DB_USER" -d "$DB_NAME" -f "$SNAP"
     echo "==> Snapshot: $SNAP ($(du -h "$SNAP" | cut -f1))"
     ls -t "$BACKUP_DIR"/prod-*.dump 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
   fi
