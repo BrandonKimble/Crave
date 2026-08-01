@@ -728,6 +728,23 @@ recursion, fallback fully excised, migration ordering safe, chain-walk
 SQL correct on UNION/cycle/empty semantics, Municipality canonical on
 prod.
 
+END-STATE RED TEAM 2026-08-01 (commit 9e50393b) — the falsification team
+tested "one law, one implementation" and won twice by the docket-#8
+standard: the engine-territory walk existed in FOUR copies with the GIN
+lesson (= ANY seq-scan, 13-17s) propagated to none — consolidated onto
+descendantPlaceIds, inline CTEs moved to @> with pins enforcing the
+form; dayRecencySql (the §4 decay kernel) was two verbatim copies —
+stated once beside its constants. Also: promoteNewborn unlock warns on
+pooled-session miss; mobile drought copy keys on the exact server
+string; seed-region counts+spaces faulted cells; the ACCRETIVE-MIRROR
+limit (parent edges append, never re-sync) is now a documented choice —
+trigger for the vendor-refresh sweep is the first MEASURED restatement;
+five stale comment blocks asserting deleted architecture rewritten.
+Judged sound and kept: the ~6 chain-walk grains (per-row predicate, set
+expansion, bounded first-hit, structural depth — different questions,
+not one law), freshSignalAttributionSql's single ask-content caller,
+places.provider varchar (vendor record, not a switch).
+
 ### THE CATALOG IS AN INCORPORATED-PLACES LIST, NOT A MAP (measured 2026-07-29)
 
 We hold **19,451 US municipalities covering 47.7% of US land**. 19,451 is
