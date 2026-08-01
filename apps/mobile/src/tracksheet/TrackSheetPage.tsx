@@ -100,6 +100,26 @@ function TrackTouchCarve(props: ViewProps & { children?: React.ReactNode }): Rea
   return <Native {...(props as unknown as Record<string, unknown>)} />;
 }
 
+// THE LEG SLOT (atomic switch): presentation is ENGINE-OWNED. Each leg's rows
+// and its visual chrome mount inside one of these; the native switch
+// transaction flips alphas, seeds the incoming offset, and re-aims the shell
+// in ONE CATransaction. React styles here must NEVER carry opacity — a React
+// opacity lands on the interop wrapper and multiplies the engine's alpha.
+const legSlotCache = globalThis as { __TrackLegSlotNative?: unknown };
+const TrackLegSlotNative = (legSlotCache.__TrackLegSlotNative ??=
+  requireNativeComponent('TrackLegSlot'));
+function TrackLegSlot(
+  props: ViewProps & {
+    legKey: string;
+    legKind: 'rows' | 'chrome';
+    initialPresented: boolean;
+    children?: React.ReactNode;
+  }
+): React.ReactElement {
+  const Native = TrackLegSlotNative as unknown as React.ComponentClass<Record<string, unknown>>;
+  return <Native {...(props as unknown as Record<string, unknown>)} />;
+}
+
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
 );
@@ -252,13 +272,17 @@ export function TrackSheetPage({
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
-  const presentedStrip = strips.find((entry) => entry.sceneKey === presentedSceneKey) ?? null;
+  const legChromeHeightBySceneRef = React.useRef<(sceneKey: string) => number>(() => 0);
   const legChromeHeight = (leg: TrackSheetLeg | null) =>
     OVERLAY_TAB_HEADER_HEIGHT +
     (leg?.stripChildren != null
       ? TOGGLE_STRIP_BAND_HEIGHT + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM
       : 0);
   const chromeHeight = legChromeHeight(presentedLeg);
+  const legsForHeightRef = React.useRef(legs);
+  legsForHeightRef.current = legs;
+  legChromeHeightBySceneRef.current = (sceneKey: string) =>
+    legChromeHeight(legsForHeightRef.current.find((l) => l.sceneKey === sceneKey) ?? null);
 
   // THE HEADER CUTOUT PLATE (inventory §1.5): white plate with the grab-handle
   // slot and the close-circle punched through to the frost beneath.
@@ -709,35 +733,6 @@ export function TrackSheetPage({
   // touch, so the whole sheet is grabbable by construction with UIScrollView's
   // own delaysContentTouches/cancelContentTouches as the tap-vs-drag rule.
   // TrackScrollKit pins it past H (native, same-frame).
-  // THE VISUAL BAND: every resident strip mounted once, opacity-flipped;
-  // PARKED (zero-height container, fixed-height layers) when the presented
-  // scene has no band — children keep their layout, so un-parking is free.
-  const visualBand =
-    strips.length > 0 ? (
-      <View
-        style={
-          presentedStrip != null ? { height: TOGGLE_STRIP_BAND_HEIGHT } : styles.stripBandParked
-        }
-      >
-        {/* THE PERSISTENT STRIPS: every resident strip stays mounted in the
-            band, opacity-flipped with its scene — no remount ⇒ no chip
-            re-measure ⇒ the late-chips gap is unwritable. No plate of its
-            own: chips paint directly over the frost. */}
-        {strips.map((entry) => (
-          <View
-            key={entry.sceneKey}
-            style={
-              entry.sceneKey === presentedSceneKey ? styles.stripLayer : styles.stripLayerHidden
-            }
-            pointerEvents={entry.sceneKey === presentedSceneKey ? 'box-none' : 'none'}
-          >
-            <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
-              {entry.children}
-            </TrackSheetDockedStrip>
-          </View>
-        ))}
-      </View>
-    ) : null;
 
   const renderChrome = (
     refCallback: ((node: View | null) => void) | null,
@@ -863,12 +858,29 @@ export function TrackSheetPage({
     touchChromeCacheRef.current.set(leg.sceneKey, { leg, element });
     return element;
   };
-  const chromeVisualElement = React.useMemo(
-    () => renderChrome(null, presentedLeg?.title ?? title, visualBand, chromeHeight),
+  // THE VISUAL TWINS, PER LEG (atomic switch): every leg's visual chrome is
+  // resident in the chrome slot, engine-alpha-flipped with its rows — no React
+  // state swap happens at switch time, so the header can never flip on a
+  // different frame than the content. Each band holds only its own strip
+  // (parking is dead: nothing flips between scenes inside one element).
+  const visualChromeLegs = React.useMemo(
+    () =>
+      legs.map((leg) => {
+        const band =
+          leg.stripChildren != null ? (
+            <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
+              <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
+                {leg.stripChildren}
+              </TrackSheetDockedStrip>
+            </View>
+          ) : null;
+        return {
+          sceneKey: leg.sceneKey,
+          element: renderChrome(null, leg.title ?? title, band, legChromeHeight(leg)),
+        };
+      }),
     [
-      chromeHeight,
-      strips,
-      presentedStrip,
+      legs,
       grabHandleHidden,
       headerExtras,
       navActionProgress,
@@ -878,7 +890,6 @@ export function TrackSheetPage({
       plateHoles,
       surfaceColor,
       title,
-      presentedLeg,
       dividerStyle,
     ]
   );
@@ -979,6 +990,8 @@ export function TrackSheetPage({
   // THE SWITCH FORMULA — applied synchronously at the switch commit, instant
   // (setOffset, never a spring: restoring YOUR scroll is not motion).
   const sceneScrollMemoryRef = React.useRef(new Map<string, number>());
+  // Boot presentation seed for the leg slots (native presentedKey starts here).
+  const initialSceneKeyRef = React.useRef(presentedSceneKey);
   const presentedSceneKeyRef = React.useRef<string>(presentedSceneKey);
   presentedSceneKeyRef.current = presentedSceneKey;
   const prevSceneKeyRef = React.useRef<string | null>(presentedSceneKey);
@@ -1016,12 +1029,11 @@ export function TrackSheetPage({
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
     pendingRestoreRef.current = { sceneKey, restored };
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    // ONLY the incoming leg may be refused: before the posture register, a
-    // null nextTag fell through to the OUTGOING leg's tag and scrolled the
-    // hidden old leg (corrupting its parked offset). A fresh leg with no tag
-    // yet is seeded by the attach replay below instead.
-    if (nativePhysics?.refuse != null && nextTag != null) {
-      nativePhysics.refuse(nextTag, restored);
+    // THE SWITCH TRANSACTION: seed + shell re-aim + alpha flip in ONE native
+    // CATransaction (a disagreeing frame is unwritable). A not-yet-registered
+    // leg PENDS natively and executes inside its own registering transaction.
+    if (nativePhysics?.switchTo != null) {
+      nativePhysics.switchTo(sceneKey, restored, legChromeHeightBySceneRef.current(sceneKey));
     }
     if (__DEV__) {
       // THE SWITCH PERF PROBE: JS-thread stall around the switch commit —
@@ -1051,14 +1063,18 @@ export function TrackSheetPage({
         // Resolve the tag FRESH from the presented scene: on a fresh-leg flip
         // trackTagRef may still hold the outgoing leg (its tag registered
         // before the incoming leg mounted).
-        const presentedTag = legTagsRef.current.get(presentedSceneKeyRef.current) ?? null;
         if (
           pending != null &&
           pending.sceneKey === presentedSceneKeyRef.current &&
-          nativePhysics?.refuse != null &&
-          presentedTag != null
+          nativePhysics?.switchTo != null
         ) {
-          nativePhysics.refuse(presentedTag, pending.restored);
+          // Idempotent: the transaction re-derives from the register, so a
+          // replay after attach lands on the same target.
+          nativePhysics.switchTo(
+            pending.sceneKey,
+            pending.restored,
+            legChromeHeightBySceneRef.current(pending.sceneKey)
+          );
         }
       }),
     [physics]
@@ -1112,9 +1128,12 @@ export function TrackSheetPage({
         {legs.map((leg) => {
           const isPresented = leg.sceneKey === presentedSceneKey;
           return (
-            <View
+            <TrackLegSlot
               key={leg.sceneKey}
-              style={isPresented ? styles.presentedLeg : styles.hiddenLeg}
+              legKey={leg.sceneKey}
+              legKind="rows"
+              initialPresented={leg.sceneKey === initialSceneKeyRef.current}
+              style={styles.legLayer}
               pointerEvents={isPresented ? 'auto' : 'none'}
             >
               <AnimatedFlashList
@@ -1146,7 +1165,7 @@ export function TrackSheetPage({
                   handleContentSizeChange(leg.sceneKey, h)
                 }
               />
-            </View>
+            </TrackLegSlot>
           );
         })}
       </TrackTouchCarve>
@@ -1163,7 +1182,18 @@ export function TrackSheetPage({
           at sheetTop, so chrome, frost and band mask agree every frame. */}
       <View style={styles.chromeOverlay} pointerEvents="none">
         <TrackShellSlot slotRole="chrome" pointerEvents="none">
-          {chromeVisualElement}
+          {visualChromeLegs.map((entry) => (
+            <TrackLegSlot
+              key={entry.sceneKey}
+              legKey={entry.sceneKey}
+              legKind="chrome"
+              initialPresented={entry.sceneKey === initialSceneKeyRef.current}
+              style={styles.legChromeLayer}
+              pointerEvents="none"
+            >
+              {entry.element}
+            </TrackLegSlot>
+          ))}
         </TrackShellSlot>
       </View>
 
@@ -1183,8 +1213,11 @@ const styles = StyleSheet.create({
   // scenes); opacity is paint-only, so the flip costs nothing — the old
   // system's residents flipped exactly this way. Hidden legs keep layout,
   // take no touches, and emit no scroll events.
-  presentedLeg: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
-  hiddenLeg: { ...StyleSheet.absoluteFillObject, opacity: 0, zIndex: 0 },
+  // NO OPACITY HERE, EVER: leg visibility is the engine's (TrackLegSlot alpha,
+  // flipped inside the switch transaction). A React opacity would multiply it
+  // on the interop wrapper and fight the transaction.
+  legLayer: { ...StyleSheet.absoluteFillObject },
+  legChromeLayer: { ...StyleSheet.absoluteFillObject },
   // The shadow must live on a view that does NOT clip, so the silhouette is a
   // shadow shell (radii, no overflow) wrapping a clipped frost.
   silhouette: {
@@ -1249,18 +1282,6 @@ const styles = StyleSheet.create({
   // Red team #2 mitigation: strips stay MOUNTED when the presented scene has
   // no band (zero-height, clipped) — flipping to a strip-less scene must not
   // destroy the resident strips' measure caches.
-  stripBandParked: { height: 0, overflow: 'hidden' },
-  // Fixed height (not absoluteFill): layers keep their layout inside a parked
-  // zero-height container, so un-parking costs no re-measure.
-  stripLayer: { position: 'absolute', top: 0, left: 0, right: 0, height: TOGGLE_STRIP_BAND_HEIGHT },
-  stripLayerHidden: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: TOGGLE_STRIP_BAND_HEIGHT,
-    opacity: 0,
-  },
   divider: {
     position: 'absolute',
     left: 0,

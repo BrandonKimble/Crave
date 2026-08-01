@@ -93,6 +93,7 @@
              toTarget:(double)target
                 fromY:(double)y0
             velocityY:(double)v0;
+- (void)stopSpring;
 @end
 
 /// ── THE POSTURE REGISTER (residents red team, 2026-08-01) ───────────────────
@@ -106,6 +107,11 @@
 /// The sheet provably cannot move on a switch — again, and now for N legs.
 static CGFloat gTrackPostureRegister = 0;
 static __weak UIScrollView *gTrackPostureOwner = nil;
+/// Geometry mirror for THE SWITCH TRANSACTION: a fresh leg has no proxy yet,
+/// but the transaction must still re-aim the shell from its state. Written by
+/// bindShell (the one configuration call), read only inside the transaction.
+static CGFloat gTrackShellExpandedTop = 0;
+static CGFloat gTrackShellTrackH = 0;
 
 static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
@@ -380,19 +386,22 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     }
   }
   // THE SHELL WRITER: every τ-derived position, one place, same frame.
-  if (self.shellEnabled) {
+  // OWNER-GATED (atomic-switch red team W7): a hidden leg's proxy survives
+  // with shellEnabled — its clamp/KVO scrolls must not re-aim the global
+  // slots to a stale τ. Only the presented leg speaks for the shell.
+  // THE POSTURE REGISTER + CARVE WRITES sit OUTSIDE the shellEnabled gate: a
+  // cold leg's spring must still speak for the sheet (its shell wiring may
+  // trail by a beat) — only OWNERSHIP gates them, never shell state.
+  if (scrollView == gTrackPostureOwner) {
+    const CGFloat trackHNow = self.shellTrackH > 0 ? self.shellTrackH : gTrackShellTrackH;
+    const CGFloat expandedTopNow = self.shellEnabled ? self.shellExpandedTop : gTrackShellExpandedTop;
+    if (trackHNow > 0) {
+      gTrackPostureRegister = MIN(MAX(0.0, scrollView.contentOffset.y - self.stashSigma), trackHNow);
+    }
+    gTrackCarveSheetTop = expandedTopNow + MAX(0.0, (trackHNow + self.stashSigma) - scrollView.contentOffset.y);
+  }
+  if (self.shellEnabled && (gTrackPostureOwner == nil || scrollView == gTrackPostureOwner)) {
     const CGFloat tau = scrollView.contentOffset.y;
-    // THE POSTURE REGISTER WRITE: only the presented leg (the owner) speaks
-    // for the sheet — a hidden leg's clamp/adjust scrolls must not.
-    if (scrollView == gTrackPostureOwner && self.shellTrackH > 0) {
-      gTrackPostureRegister = MIN(MAX(0.0, tau - self.stashSigma), self.shellTrackH);
-    }
-    // THE CARVE FEED: publish the live sheet edge for touch carving (only the
-    // presented leg speaks — a hidden leg's clamp scroll must not move the
-    // touch boundary).
-    if (scrollView == gTrackPostureOwner) {
-      gTrackCarveSheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
-    }
     const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
@@ -606,9 +615,12 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.onSigmaChanged = ^(CGFloat sigma) {
       [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
     };
-    // Attach declares this scroll view the presented leg: it owns the posture
-    // register from this UIKit transaction forward (refuse() re-asserts it).
-    gTrackPostureOwner = scrollView;
+    // OWNERSHIP DOES NOT TRANSFER HERE (teleport fix, measured): attach runs
+    // before the switch transaction, while the incoming leg still holds its
+    // PARKED offset — owning the register now lets one stray KVO/clamp tick
+    // overwrite the carried posture with the parked one (collapsed->expanded
+    // teleported). Only the switch transaction (and refuse) may hand the
+    // register to a new scroll view.
     resolve(@(YES));
   }];
 }
@@ -717,6 +729,113 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
   }];
 }
 
+// ─── THE SWITCH TRANSACTION (atomic switch, 2026-08-01) ─────────────────────
+// One CATransaction: seed the incoming leg's offset from the posture register,
+// re-aim every shell layer, kill live springs, and flip leg visibility — no
+// frame can exist where two painted copies of the sheet disagree. A switch to
+// a not-yet-registered leg PENDS natively and executes inside the leg slot's
+// own registering transaction: the leg's first painted frame is already
+// seeded and visible.
+static NSString *gTrackPendingSwitchKey = nil;
+static double gTrackPendingSwitchRestore = 0;
+static double gTrackPendingSwitchChromeH = 0;
+
+static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
+{
+  TrackLegRegistry *legs = [TrackLegRegistry shared];
+  TrackLegSlotView *rows = [legs viewForKey:legKey kind:@"rows"];
+  UIScrollView *scrollView = rows != nil ? TrackFindScrollView(rows) : nil;
+  if (scrollView == nil) {
+    gTrackPendingSwitchKey = [legKey copy];
+    gTrackPendingSwitchRestore = restore;
+    gTrackPendingSwitchChromeH = chromeH;
+    return;
+  }
+  gTrackPendingSwitchKey = nil;
+  // Springs die inside the transaction: a snap launched mid-switch may not
+  // animate a position this transaction is about to define.
+  UIScrollView *oldOwner = gTrackPostureOwner;
+  if (oldOwner != nil && oldOwner != scrollView) {
+    TrackScrollDelegateProxy *oldProxy = objc_getAssociatedObject(oldOwner, kTrackProxyKey);
+    [oldProxy stopSpring];
+  }
+  TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
+  [proxy stopSpring];
+  if (proxy != nil) {
+    if (proxy.stashSigma != 0) {
+      proxy.stashSigma = 0;
+      if (proxy.onSigmaChanged) {
+        proxy.onSigmaChanged(0);
+      }
+    }
+    proxy.shellChromeHeight = chromeH;
+  }
+  // COLD-LEG SHELL WIRING (the flight-ghost fix): a fresh leg's proxy may
+  // exist before bindShell ran — shellEnabled NO means the seat spring's
+  // didScroll would skip the shell writer, freezing frost/chrome at the old
+  // sheetTop for the whole flight (measured: parked at 717.75 through the
+  // spring, teleporting at settle). Wire the shell here, in the transaction,
+  // from the config mirrors — bindShell later just re-asserts.
+  if (proxy != nil && !proxy.shellEnabled && gTrackShellTrackH > 0) {
+    proxy.shellExpandedTop = gTrackShellExpandedTop;
+    proxy.shellTrackH = gTrackShellTrackH;
+    proxy.shellChromeHeight = chromeH;
+    if (proxy.shellBandMask == nil) {
+      CALayer *mask = [CALayer layer];
+      mask.backgroundColor = [UIColor blackColor].CGColor;
+      proxy.shellBandMask = mask;
+      scrollView.layer.mask = mask;
+    } else if (scrollView.layer.mask != proxy.shellBandMask) {
+      scrollView.layer.mask = proxy.shellBandMask;
+    }
+    proxy.hostScrollView = scrollView;
+    proxy.shellEnabled = YES;
+  }
+  const CGFloat trackH = proxy != nil && proxy.shellTrackH > 0 ? proxy.shellTrackH : gTrackShellTrackH;
+  const CGFloat posture = trackH > 0 ? MIN(gTrackPostureRegister, trackH) : gTrackPostureRegister;
+  const CGFloat target = posture + restore;
+  gTrackPostureOwner = scrollView;
+  if (fabs(scrollView.contentOffset.y - target) > 0.5) {
+    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
+  }
+  // Re-aim the shell NOW, in this transaction — setContentOffset with an
+  // unchanged value fires no didScroll, and a fresh leg has no proxy at all.
+  if (proxy != nil && proxy.shellEnabled) {
+    [proxy scrollViewDidScroll:scrollView];
+  } else {
+    const CGFloat expandedTop = gTrackShellExpandedTop;
+    const CGFloat sheetTop = expandedTop + MAX(0.0, trackH - target);
+    gTrackCarveSheetTop = sheetTop;
+    TrackShellRegistry *registry = [TrackShellRegistry shared];
+    const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
+    [[registry viewForRole:@"frost"] trackApplyTransform:t];
+    [[registry viewForRole:@"chrome"] trackApplyTransform:t];
+    const CGFloat contentEnd = scrollView.contentSize.height - target;
+    [[registry viewForRole:@"tail"]
+        trackApplyTransform:CGAffineTransformMakeTranslation(0, MAX(sheetTop, contentEnd))];
+  }
+  [legs applyAlphasForPresentedKey:legKey];
+}
+
+RCT_EXPORT_METHOD(switchTo:(nonnull NSString *)legKey
+                  restore:(nonnull NSNumber *)restore
+                  chromeHeight:(nonnull NSNumber *)chromeHeight)
+{
+  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+    TrackLegRegistry *legs = [TrackLegRegistry shared];
+    if (legs.onLegRegistered == nil) {
+      legs.onLegRegistered = ^(TrackLegSlotView *view) {
+        if (gTrackPendingSwitchKey != nil && [view.legKind isEqualToString:@"rows"] &&
+            [view.legKey isEqualToString:gTrackPendingSwitchKey]) {
+          TrackExecuteSwitch(gTrackPendingSwitchKey, gTrackPendingSwitchRestore,
+                             gTrackPendingSwitchChromeH);
+        }
+      };
+    }
+    TrackExecuteSwitch(legKey, restore.doubleValue, chromeHeight.doubleValue);
+  }];
+}
+
 // DEV AUDIT: who owns the touch at (x,y)? Walks hitTest from the key window
 // and returns the resolved view's class + ancestor chain (accessibility ids
 // where present) so a touch thief can be NAMED, not guessed.
@@ -752,6 +871,8 @@ RCT_EXPORT_METHOD(auditHit:(nonnull NSNumber *)x
       depth++;
     }
     resolve(@{ @"hit": hit ? NSStringFromClass(hit.class) : @"nil",
+               @"legs": [[TrackLegRegistry shared] auditLegs],
+               @"presentedKey": [TrackLegRegistry shared].presentedKey ?: @"nil",
                @"frame": hit ? NSStringFromCGRect([hit convertRect:hit.bounds toView:nil]) : @"",
                @"chain": chain,
                @"carveTop": @(gTrackCarveSheetTop) });
@@ -830,6 +951,8 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
     }
     proxy.shellExpandedTop = [config[@"expandedTop"] doubleValue];
     proxy.shellTrackH = [config[@"trackH"] doubleValue];
+    gTrackShellExpandedTop = proxy.shellExpandedTop;
+    gTrackShellTrackH = proxy.shellTrackH;
     proxy.shellChromeHeight = [config[@"chromeHeight"] doubleValue];
     if (proxy.shellBandMask == nil) {
       CALayer *mask = [CALayer layer];

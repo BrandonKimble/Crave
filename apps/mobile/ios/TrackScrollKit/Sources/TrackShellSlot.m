@@ -151,3 +151,125 @@ RCT_EXPORT_MODULE(TrackTouchCarve)
 }
 
 @end
+
+
+// ─── THE LEG SLOTS ───────────────────────────────────────────────────────────
+
+@implementation TrackLegRegistry {
+  NSMapTable<NSString *, TrackLegSlotView *> *_views;
+}
+
++ (instancetype)shared
+{
+  static TrackLegRegistry *shared;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{ shared = [TrackLegRegistry new]; });
+  return shared;
+}
+
+- (instancetype)init
+{
+  if ((self = [super init])) {
+    _views = [NSMapTable strongToWeakObjectsMapTable];
+  }
+  return self;
+}
+
+static NSString *TrackLegMapKey(NSString *key, NSString *kind)
+{
+  return [NSString stringWithFormat:@"%@|%@", key, kind];
+}
+
+- (void)registerView:(TrackLegSlotView *)view
+{
+  if (view.legKey == nil || view.legKind == nil) {
+    return;
+  }
+  [_views setObject:view forKey:TrackLegMapKey(view.legKey, view.legKind)];
+  // Seed presentation at boot: the first slot claiming initialPresented while
+  // no presented key exists becomes it (both its kinds share the key).
+  if (self.presentedKey == nil && view.initialPresented) {
+    self.presentedKey = view.legKey;
+  }
+  view.alpha = [view.legKey isEqualToString:self.presentedKey] ? 1.0 : 0.0;
+  if (self.onLegRegistered != nil) {
+    self.onLegRegistered(view);
+  }
+}
+
+- (void)unregisterView:(TrackLegSlotView *)view
+{
+  if (view.legKey == nil || view.legKind == nil) {
+    return;
+  }
+  NSString *key = TrackLegMapKey(view.legKey, view.legKind);
+  if ([_views objectForKey:key] == view) {
+    [_views removeObjectForKey:key];
+  }
+}
+
+- (nullable TrackLegSlotView *)viewForKey:(NSString *)key kind:(NSString *)kind
+{
+  return [_views objectForKey:TrackLegMapKey(key, kind)];
+}
+
+- (void)applyAlphasForPresentedKey:(NSString *)key
+{
+  self.presentedKey = key;
+  for (NSString *mapKey in [[_views keyEnumerator] allObjects]) {
+    TrackLegSlotView *view = [_views objectForKey:mapKey];
+    if (view != nil) {
+      view.alpha = [view.legKey isEqualToString:key] ? 1.0 : 0.0;
+    }
+  }
+}
+
+- (NSArray<NSDictionary *> *)auditLegs
+{
+  NSMutableArray *out = [NSMutableArray array];
+  for (NSString *mapKey in [[_views keyEnumerator] allObjects]) {
+    TrackLegSlotView *view = [_views objectForKey:mapKey];
+    if (view == nil) {
+      continue;
+    }
+    CGRect winFrame = [view convertRect:view.bounds toView:nil];
+    [out addObject:@{
+      @"key": mapKey,
+      @"alpha": @(view.alpha),
+      @"y": @(CGRectGetMinY(winFrame)),
+      @"hidden": @(view.isHidden),
+      @"windowNil": @(view.window == nil),
+    }];
+  }
+  return out;
+}
+
+@end
+
+@implementation TrackLegSlotView
+
+- (void)didMoveToWindow
+{
+  [super didMoveToWindow];
+  if (self.window != nil) {
+    [[TrackLegRegistry shared] registerView:self];
+  } else {
+    [[TrackLegRegistry shared] unregisterView:self];
+  }
+}
+
+@end
+
+@implementation TrackLegSlotViewManager
+
+RCT_EXPORT_MODULE(TrackLegSlot)
+RCT_EXPORT_VIEW_PROPERTY(legKey, NSString)
+RCT_EXPORT_VIEW_PROPERTY(legKind, NSString)
+RCT_EXPORT_VIEW_PROPERTY(initialPresented, BOOL)
+
+- (UIView *)view
+{
+  return [TrackLegSlotView new];
+}
+
+@end

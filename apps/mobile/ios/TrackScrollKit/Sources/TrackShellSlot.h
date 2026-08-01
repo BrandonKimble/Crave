@@ -40,6 +40,37 @@ NS_ASSUME_NONNULL_BEGIN
 /// carved touches (P7) — this is the missing half.
 extern CGFloat gTrackCarveSheetTop;
 
+/// ── THE LEG SLOTS (atomic switch, 2026-08-01) ───────────────────────────────
+/// Scene presentation is ENGINE-OWNED, not React-owned. Each resident leg's
+/// rows and its visual chrome mount inside a TrackLegSlotView; the engine's
+/// switch transaction flips alphas, seeds the incoming offset, and re-aims the
+/// shell inside ONE CATransaction — a frame where two painted copies of the
+/// sheet disagree is unwritable. React mounts content and never expresses
+/// presentation (no opacity in leg styles — a React opacity would multiply the
+/// engine's alpha on the interop wrapper and fight the transaction).
+@interface TrackLegSlotView : RCTView
+@property (nonatomic, copy, nullable) NSString *legKey;
+@property (nonatomic, copy, nullable) NSString *legKind; // "rows" | "chrome"
+@property (nonatomic, assign) BOOL initialPresented;
+@end
+
+@interface TrackLegRegistry : NSObject
++ (instancetype)shared;
+@property (nonatomic, copy, nullable) NSString *presentedKey;
+/// Set by the physics module; called (main thread, inside the registering
+/// UIKit transaction) when a leg slot registers while a switch is pending for
+/// its key — the leg's very first painted frame is already seeded and visible.
+@property (nonatomic, copy, nullable) void (^onLegRegistered)(TrackLegSlotView *view);
+- (void)registerView:(TrackLegSlotView *)view;
+- (void)unregisterView:(TrackLegSlotView *)view;
+- (nullable TrackLegSlotView *)viewForKey:(NSString *)key kind:(NSString *)kind;
+- (void)applyAlphasForPresentedKey:(NSString *)key;
+- (NSArray<NSDictionary *> *)auditLegs;
+@end
+
+@interface TrackLegSlotViewManager : RCTViewManager
+@end
+
 @interface TrackTouchCarveView : RCTView
 @end
 
