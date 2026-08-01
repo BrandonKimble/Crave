@@ -299,6 +299,18 @@ export function TrackSheetPage<Item>({
   // current frame immediately, so a reset can never survive a commit.
   React.useLayoutEffect(() => {
     applyPin();
+    // THE SETTLED RE-BIND (attributed live 2026-07-31, audit: "chrome at 0 !=
+    // sheetTop 70", bound AND attached): at the commit, viewForReactTag can
+    // resolve a STALE view for a just-remounted Fabric view (interop lag) —
+    // the transform lands on the old view and the displayed one shows
+    // untransformed. Re-assert once the registry has settled. The audit's
+    // 3s heal remains the backstop; this makes the window imperceptible.
+    const raf = requestAnimationFrame(() => applyPin());
+    const late = setTimeout(() => applyPin(), 150);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(late);
+    };
   });
   const chromeVisualViewRef = React.useRef<View | null>(null);
   const setChromeVisualRef = React.useCallback(
