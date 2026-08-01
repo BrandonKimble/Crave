@@ -1986,6 +1986,25 @@ model PlaceGeometry {
 // retry to the next MONTH window (the K4 monthly pool is the backoff clock);
 // providerBoundaryId caches a cheap-resolved TomTom geometry id across
 // windows. See PlacesPromotionService.
+/// Docket #7: the reconciler's asked-region memory — a probed region (disc
+/// or box) with a 30d TTL, durable and cross-process. The scale judgment
+/// stays in TS; this is the memory only.
+model ProbedRegion {
+  regionId     String   @id @default(dbgenerated("gen_random_uuid()")) @map("region_id") @db.Uuid
+  kind         String   @db.VarChar(4)
+  centerLat    Decimal? @map("center_lat") @db.Decimal(10, 8)
+  centerLng    Decimal? @map("center_lng") @db.Decimal(11, 8)
+  radiusMeters Float?   @map("radius_meters")
+  minLat       Decimal? @map("min_lat") @db.Decimal(10, 8)
+  minLng       Decimal? @map("min_lng") @db.Decimal(11, 8)
+  maxLat       Decimal? @map("max_lat") @db.Decimal(10, 8)
+  maxLng       Decimal? @map("max_lng") @db.Decimal(11, 8)
+  observedAt   DateTime @default(now()) @map("observed_at") @db.Timestamptz(6)
+
+  @@index([observedAt])
+  @@map("probed_regions")
+}
+
 model PlaceGeometryPromotion {
   placeId            String    @id @map("place_id") @db.Uuid
   trigger            String    @db.VarChar(32)

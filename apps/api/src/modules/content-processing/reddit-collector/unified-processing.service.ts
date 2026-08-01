@@ -15,10 +15,14 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { EntityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { buildCauseChain, LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
+import {
+  entityIdentityKey,
+  identityProbeNames,
+} from '../entity-resolver/entity-identity';
 import { derivedBboxSelectSql } from '../../places/places-catalog.service';
 import {
   ProcessingResult,
@@ -1505,14 +1509,22 @@ export class UnifiedProcessingService implements OnModuleInit {
             // RACE FIX (2026-07-26 dupes root cause): the check-then-act
             // window let two concurrent batches create the same (name, type)
             // twice (burnt bean company: 3h apart, same day). An advisory
-            // xact lock on the identity key serializes creators of the SAME
-            // name; unrelated names don't contend. Find is case-insensitive
-            // to match tier-1 resolution semantics.
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${canonicalName.toLowerCase()}`}))`;
-            const existing = await tx.entity.findFirst({
+            // xact lock serializes creators; unrelated names don't contend.
+            // STEP-2 HARDENING (async-integrity, 2026-08-01): the lock keys
+            // the CONTENT identity (lemma-collapsed, token-sorted for
+            // foods/ingredients; punctuation-stripped otherwise), because a
+            // name-string key let "pizza square"/"square pizza" take
+            // different locks and mint twins. The probe matches the widened
+            // key: number variants, ACTIVE rows only (an archived loser must
+            // never be adopted — its merge redirect is followed instead, so
+            // post-merge mentions land on the surviving canonical).
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${entityIdentityKey(canonicalName, entityType)}`}))`;
+            const probeNames = identityProbeNames(canonicalName, entityType);
+            let existing = await tx.entity.findFirst({
               where: {
-                name: { equals: canonicalName, mode: 'insensitive' },
+                name: { in: probeNames, mode: 'insensitive' },
                 type: entityType,
+                status: { not: EntityStatus.archived },
               },
               select: {
                 entityId: true,
@@ -1520,6 +1532,31 @@ export class UnifiedProcessingService implements OnModuleInit {
                 name: true,
               },
             });
+            if (!existing) {
+              const tombstone = await tx.entity.findFirst({
+                where: {
+                  name: { in: probeNames, mode: 'insensitive' },
+                  type: entityType,
+                  status: EntityStatus.archived,
+                },
+                select: { entityId: true },
+              });
+              if (tombstone) {
+                const redirect = await tx.entityRedirect.findUnique({
+                  where: { fromEntityId: tombstone.entityId },
+                  select: { toEntityId: true },
+                });
+                if (redirect) {
+                  existing = await tx.entity.findFirst({
+                    where: {
+                      entityId: redirect.toEntityId,
+                      status: { not: EntityStatus.archived },
+                    },
+                    select: { entityId: true, aliases: true, name: true },
+                  });
+                }
+              }
+            }
 
             let entityId: string | null = null;
             let createdNew = false;

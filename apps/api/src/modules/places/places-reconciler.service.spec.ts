@@ -91,7 +91,26 @@ function makeHarness(options: {
     resolveGeometryId: jest.fn().mockResolvedValue({ kind: 'miss' as const }),
     fetchPolygon: jest.fn().mockResolvedValue({ kind: 'miss' as const }),
   };
-  const service = new PlacesReconcilerService(catalog, probe, logger);
+  const service = new PlacesReconcilerService(
+    catalog,
+    probe,
+    (() => {
+      // Stateful memory mock: the asked-region tests are ABOUT the memory,
+      // so the mock must actually remember (docket #7 moved it to the DB).
+      const rows: any[] = [];
+      return {
+        probedRegion: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockImplementation(() => Promise.resolve(rows)),
+          create: jest.fn().mockImplementation(({ data }: any) => {
+            rows.push({ ...data, observedAt: new Date() });
+            return Promise.resolve(data);
+          }),
+        },
+      };
+    })() as never,
+    logger,
+  );
   return { service, catalog, probe };
 }
 

@@ -22,6 +22,7 @@
  * never blocks, never throws) is exactly the shape the pacer lane will absorb.
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
   GeoBbox,
@@ -57,10 +58,9 @@ export const NEGATIVE_OBSERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * asked region answers commensurate-or-coarser future views and a genuinely
  * finer zoom re-asks once per scale band per TTL.
  */
-interface AskedRegion {
-  region: ProbedRegion;
-  observedAtMs: number;
-}
+// AskedRegion (the in-memory shape) DIED with docket #7: the memory now
+// lives in the probed_regions table — durable across restarts and shared
+// across processes. The judgment stays in TS; the table is the memory only.
 
 /**
  * §16 DERIVED cell-level ceiling: the deepest meaningful single-flight cell
@@ -98,20 +98,13 @@ export function viewportCellKey(view: GeoBbox): string {
 export class PlacesReconcilerService {
   private readonly logger: LoggerService;
 
-  /**
-   * TODO(persistence): §2's negative region cache is a durable fact (a probed
-   * bbox with a 30d TTL) and belongs in a table so observations survive
-   * restarts and are shared across processes; in-memory is the documented
-   * interim (worst case a restart re-spends ≤3 cheap probes per region).
-   */
-  private askedRegions: AskedRegion[] = [];
-
   /** Single-flight per cell (§2): cellKey → in-flight reconcile. */
   private readonly inFlight = new Map<string, Promise<void>>();
 
   constructor(
     private readonly catalog: PlacesCatalogService,
     @Inject(TOMTOM_CHAIN_PROBE) private readonly probe: TomtomChainProbe,
+    private readonly prisma: PrismaService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PlacesReconcilerService');
@@ -177,7 +170,7 @@ export class PlacesReconcilerService {
       ...inView.map(
         (entry): ProbedRegion => ({ kind: 'box', bbox: entry.bbox }),
       ),
-      ...this.freshAskedRegions(),
+      ...(await this.freshAskedRegions()),
     ];
 
     // Step 2 (§2): ≤3 anchors, center + largest-uncovered-region candidates.
@@ -203,10 +196,7 @@ export class PlacesReconcilerService {
       const result = await this.probe.probe(anchor);
       if (result.chain.length === 0) {
         // "No place here" IS an observation — region-scale, 30d TTL (§2).
-        this.askedRegions.push({
-          region: result.probedRegion,
-          observedAtMs: Date.now(),
-        });
+        await this.rememberAskedRegion(result.probedRegion);
         answered = [...answered, result.probedRegion];
         continue;
       }
@@ -231,18 +221,69 @@ export class PlacesReconcilerService {
     // ground doesn't re-spend draws every settle when its finest chain is
     // over-scale (see NegativeObservation doc). Recorded only when a probe
     // actually fired (a fully-answered pass costs nothing to repeat).
-    this.askedRegions.push({
-      region: { kind: 'box', bbox: view },
-      observedAtMs: Date.now(),
-    });
+    await this.rememberAskedRegion({ kind: 'box', bbox: view });
   }
 
-  private freshAskedRegions(): ProbedRegion[] {
-    const cutoff = Date.now() - NEGATIVE_OBSERVATION_TTL_MS;
-    // Prune expired entries on read — the cache stays bounded by attention.
-    this.askedRegions = this.askedRegions.filter(
-      (entry) => entry.observedAtMs >= cutoff,
+  /** Docket #7: the durable read. Expired rows are pruned lazily here —
+   *  the TTL is the only writer of absence. */
+  private async freshAskedRegions(): Promise<ProbedRegion[]> {
+    const cutoff = new Date(Date.now() - NEGATIVE_OBSERVATION_TTL_MS);
+    await this.prisma.probedRegion.deleteMany({
+      where: { observedAt: { lt: cutoff } },
+    });
+    const rows = await this.prisma.probedRegion.findMany({
+      where: { observedAt: { gte: cutoff } },
+    });
+    return rows.map(
+      (row): ProbedRegion =>
+        row.kind === 'disc'
+          ? {
+              kind: 'disc',
+              center: {
+                lat: Number(row.centerLat),
+                lng: Number(row.centerLng),
+              },
+              radiusMeters: Number(row.radiusMeters),
+            }
+          : {
+              kind: 'box',
+              bbox: {
+                minLat: Number(row.minLat),
+                minLng: Number(row.minLng),
+                maxLat: Number(row.maxLat),
+                maxLng: Number(row.maxLng),
+              },
+            },
     );
-    return this.askedRegions.map((entry) => entry.region);
+  }
+
+  /** Docket #7: the durable write. Never throws — losing one memory row
+   *  costs at most a re-spent cheap probe, never a failed settle. */
+  private async rememberAskedRegion(region: ProbedRegion): Promise<void> {
+    try {
+      await this.prisma.probedRegion.create({
+        data:
+          region.kind === 'disc'
+            ? {
+                kind: 'disc',
+                centerLat: region.center.lat,
+                centerLng: region.center.lng,
+                radiusMeters: region.radiusMeters,
+              }
+            : {
+                kind: 'box',
+                minLat: region.bbox.minLat,
+                minLng: region.bbox.minLng,
+                maxLat: region.bbox.maxLat,
+                maxLng: region.bbox.maxLng,
+              },
+      });
+    } catch (error) {
+      this.logger.warn('asked-region write failed (worst case: one re-probe)', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
   }
 }

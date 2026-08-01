@@ -151,6 +151,13 @@ describe('viewport-dwell → naming reconciler settle seam (header subject-store
         placesInView: jest.fn().mockRejectedValue(new Error('db down')),
       } as never,
       { probe: jest.fn() } as never,
+      {
+        probedRegion: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn().mockResolvedValue({}),
+        },
+      } as never,
       logger,
     );
     const { controller, record } = createController(reconciler);

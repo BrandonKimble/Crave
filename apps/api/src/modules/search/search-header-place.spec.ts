@@ -273,6 +273,13 @@ describe('§2 reconciler wiring (the growth machine is live at the search chokep
     const reconciler = new PlacesReconcilerService(
       failingCatalog as never,
       { probe: jest.fn().mockRejectedValue(new Error('probe down')) } as never,
+      {
+        probedRegion: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn().mockResolvedValue({}),
+        },
+      } as never,
       createLogger() as never,
     );
     const { service } = createHarness({

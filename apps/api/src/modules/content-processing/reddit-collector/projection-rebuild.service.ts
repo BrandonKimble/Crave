@@ -75,6 +75,10 @@ type RestaurantItemProjection = {
     /** §8 provenance unification — resolved to a SOURCE room by the scorer. */
     sourceDocumentId: string | null;
   }[];
+  /** CLAIM IDENTITY (async-integrity step 2): one document contributes at
+   *  most ONE mention of each kind to a connection — two category routes
+   *  banking the same doc's support must not double it. Transient. */
+  seenContributions?: Set<string>;
 };
 
 @Injectable()
@@ -536,12 +540,34 @@ export class ProjectionRebuildService implements OnModuleInit {
     return Array.from(items.values());
   }
 
+  /** One (document, kind) claim per connection — the doc-null lane (ballot
+   *  mentions etc.) is never deduped, it has no document identity. */
+  private alreadyContributed(
+    aggregate: RestaurantItemProjection,
+    kind: 'direct' | 'support',
+    sourceDocumentId: string | null,
+  ): boolean {
+    if (!sourceDocumentId) {
+      return false;
+    }
+    const key = `${kind}:${sourceDocumentId}`;
+    aggregate.seenContributions ??= new Set();
+    if (aggregate.seenContributions.has(key)) {
+      return true;
+    }
+    aggregate.seenContributions.add(key);
+    return false;
+  }
+
   private applyTimedContribution(
     aggregate: RestaurantItemProjection,
     mentionedAt: Date,
     upvotes: number,
     sourceDocumentId: string | null,
   ): void {
+    if (this.alreadyContributed(aggregate, 'direct', sourceDocumentId)) {
+      return;
+    }
     aggregate.mentionCount += 1;
     aggregate.totalUpvotes += Math.max(0, upvotes);
     aggregate.mentions.push({
@@ -571,6 +597,9 @@ export class ProjectionRebuildService implements OnModuleInit {
     upvotes: number,
     sourceDocumentId: string | null,
   ): void {
+    if (this.alreadyContributed(aggregate, 'support', sourceDocumentId)) {
+      return;
+    }
     aggregate.supportMentionCount += 1;
     aggregate.supportTotalUpvotes += Math.max(0, upvotes);
     aggregate.mentions.push({

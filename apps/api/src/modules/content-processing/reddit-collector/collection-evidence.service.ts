@@ -345,6 +345,15 @@ export class CollectionEvidenceService implements OnModuleInit {
     return inputIdByChunkId;
   }
 
+  /**
+   * Activation SUPERSEDES physically (async-integrity step 2, Law 3): when
+   * a document's pointer flips to a new run, every OTHER run's events for
+   * that document are deleted in the same transaction. Before this, the
+   * old rows stayed in the ledger as "dark evidence" that every consumer
+   * had to remember to filter with an active-run join (23,358 rows had
+   * accumulated when this was measured; one forgotten join = 2-4x
+   * double-counting). The ledger now simply IS the active truth.
+   */
   async activateRunForDocuments(
     extractionRunId: string,
     documentIds: string[],
@@ -352,15 +361,25 @@ export class CollectionEvidenceService implements OnModuleInit {
     if (!documentIds.length) {
       return;
     }
-
-    await this.prismaService.sourceDocument.updateMany({
-      where: {
-        documentId: { in: Array.from(new Set(documentIds)) },
-      },
-      data: {
-        activeExtractionRunId: extractionRunId,
-      },
-    });
+    const ids = Array.from(new Set(documentIds));
+    await this.prismaService.$transaction([
+      this.prismaService.restaurantEntityEvent.deleteMany({
+        where: {
+          sourceDocumentId: { in: ids },
+          extractionRunId: { not: extractionRunId },
+        },
+      }),
+      this.prismaService.restaurantEvent.deleteMany({
+        where: {
+          sourceDocumentId: { in: ids },
+          extractionRunId: { not: extractionRunId },
+        },
+      }),
+      this.prismaService.sourceDocument.updateMany({
+        where: { documentId: { in: ids } },
+        data: { activeExtractionRunId: extractionRunId },
+      }),
+    ]);
   }
 
   async markExtractionRunCompleted(extractionRunId: string): Promise<void> {
