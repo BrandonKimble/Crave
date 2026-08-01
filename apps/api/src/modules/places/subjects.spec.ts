@@ -70,7 +70,7 @@ function placeLike(
     placeId: `id-${name}`,
     name,
     bbox,
-    providerLevelCode: 'municipality',
+    providerLevelCode: 'Municipality',
     parentPlaceIds: [],
     // §2.6: ground is REQUIRED — the default fixture is the sketch-grade
     // envelope (exactly what a sketch place_geometries row ships; wrap-aware:

@@ -204,6 +204,25 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(values).toContain('poll_created');
     });
 
+    it('a BIRTH promotes THE NEWBORN only — targeted row select, never the whole-queue drain (red-team 2026-08-01: a backlogged drain ran ~83min of spacing and processed the newborn LAST)', async () => {
+      const { service, prisma } = makeHarness({});
+      const drainSpy = jest.spyOn(service, 'drainQueue');
+      prisma.$queryRaw.mockResolvedValueOnce([{ locked: true }]); // advisory lock
+      prisma.$queryRaw.mockResolvedValueOnce([]); // targeted select: newborn already promoted/absent
+      prisma.$queryRaw.mockResolvedValueOnce([{ unlocked: true }]);
+      await service.enqueue(PLACE_ID, 'birth');
+      // The whole-queue drain must NOT run on the birth path.
+      expect(drainSpy).not.toHaveBeenCalled();
+      // The targeted select is scoped to the newborn's own row.
+      const targeted = prisma.$queryRaw.mock.calls
+        .map((call) => call[0])
+        .map((q) => (q?.sql ?? String(q)) as string)
+        .find((sql) => sql.includes('FROM place_geometry_promotions'));
+      expect(targeted).toContain('place_id = ');
+      expect(targeted).not.toContain('ORDER BY enqueued_at');
+      expect(targeted).not.toContain('LIMIT');
+    });
+
     it('re-enqueue is a no-op by construction and enqueue never throws', async () => {
       const { service, prisma } = makeHarness({});
       await service.enqueue(PLACE_ID, 'poll_created');

@@ -367,7 +367,6 @@ async function main(): Promise<void> {
         SELECT p.place_id, 'paid_seed', ${campaignId}::uuid
         FROM places p
         WHERE ${where}
-          AND p.provider <> 'fallback'
           AND NOT EXISTS (
             SELECT 1 FROM place_geometries g
             WHERE g.place_id = p.place_id AND g.geometry IS NOT NULL

@@ -159,7 +159,20 @@ export const usePollCreationPanelSpec = ({
       const poll = await createPoll(payload);
       onCreated(poll);
     } catch (error) {
-      announceFailureIfOnline();
+      // "TomTom or nothing": creation in an area the catalog doesn't cover
+      // yet is REFUSED by the API (400) — actionable copy, not the generic
+      // failure line.
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      const serverMessage = (error as { response?: { data?: { message?: string } } })?.response
+        ?.data?.message;
+      if (status === 400 && typeof serverMessage === 'string' && serverMessage.includes('place')) {
+        announceFailureIfOnline({
+          message:
+            "We don't cover this area yet. Try zooming to a nearby city and creating your poll there.",
+        });
+      } else {
+        announceFailureIfOnline();
+      }
     } finally {
       setSubmitting(false);
     }

@@ -31,7 +31,7 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
     placeId: `00000000-0000-4000-8000-${String(idCounter).padStart(12, '0')}`,
     name: 'Austin',
     localScriptAlias: null,
-    providerLevelCode: 'municipality',
+    providerLevelCode: 'Municipality',
     countryCode: 'US',
     subdivisionCode: 'TX',
     county: null as string | null,
@@ -181,7 +181,7 @@ function makeHarness(
 
 const austinNode: PlaceSketchNode = {
   name: 'Austin',
-  providerLevelCode: 'municipality',
+  providerLevelCode: 'Municipality',
   countryCode: 'US',
   subdivisionCode: 'TX',
   bbox: { minLat: 30.1, minLng: -97.95, maxLat: 30.52, maxLng: -97.56 },
@@ -341,7 +341,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       where: {
         providerPlaceId_providerLevelCode: {
           providerPlaceId: 'tomtom-geom-austin',
-          providerLevelCode: 'municipality',
+          providerLevelCode: 'Municipality',
         },
       },
     });
@@ -468,7 +468,7 @@ describe('THE FINAL DISSOLUTION — identity is (vendor id, level); the name tab
     expect(create.mock.calls[0][0].data.providerPlaceId).toBe(
       'tomtom-geom-austin',
     );
-    expect(create.mock.calls[0][0].data.providerLevelCode).toBe('municipality');
+    expect(create.mock.calls[0][0].data.providerLevelCode).toBe('Municipality');
   });
 });
 

@@ -356,6 +356,14 @@ async function main(): Promise<void> {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        if (msg === 'tomtom_missing_country_code') {
+          // PER-CELL vendor contract violation (rungs named, country slot
+          // empty) — skip the cell and keep the run alive; the two faults
+          // below are RUN-GLOBAL and stop cleanly.
+          out(`[seed] cell (${cell.lat},${cell.lng}) SKIPPED: ${msg}`);
+          skippedMidRun += 1;
+          continue;
+        }
         if (msg === 'tomtom_pool_denied' || msg === 'tomtom_config_missing') {
           // The governor said not-now, or config is absent. Both are
           // OPERATIONAL, not "no place here" — the adapter throws precisely so

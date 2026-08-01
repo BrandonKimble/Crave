@@ -6,9 +6,10 @@
  * (place_geometry_promotions, placeId PK) records the earned moment; a
  * governed hourly drain turns queued places into place_geometries rows.
  *
- * TRIGGERS (§2/§2.5) — the birth drain is AWAITED by the catalog's
- * background settle (2026-08-01); every other enqueue stays
- * fire-and-forget and never blocks anything:
+ * TRIGGERS (§2/§2.5) — a birth promotes THE NEWBORN, awaited by the
+ * catalog's background settle (2026-08-01, red-teamed: never the whole
+ * queue); every other enqueue stays fire-and-forget and never blocks
+ * anything:
  *   (0) birth            — §2.5(d) POLYGON AT BIRTH (ratified 2026-07-22):
  *       the catalog's create chokepoint (PlacesCatalogService.upsertSketch,
  *       via PLACE_BIRTH_LISTENER) enqueues EVERY newly sketched place; the
@@ -152,15 +153,14 @@ export class PlacesPromotionService {
       `);
       // Docket #1 (abstraction audit, 2026-07-30): POLYGON AT BIRTH IS
       // SYNCHRONOUS-BY-DEFAULT — the charter P0 second half, finally landed.
-      // A birth fires an immediate drain pass — AWAITED since 2026-08-01
-      // (the caller is the reconciler's background settle, so waiting costs
-      // nothing on any hot path and closes the vendor-bbox window within
-      // the same settle). The advisory lock + single-flight latch make
-      // overlap harmless: if a drain is already running this returns
-      // immediately and the hourly RETRY sweep — the queue's only remaining
-      // job — lands the outline next tick.
+      // A birth promotes THE NEWBORN, awaited (red-team 2026-08-01): the
+      // full drainTick here paid for the whole queue — oldest-first, up to
+      // 10k rows x 500ms spacing — and on any backlog the newborn ran LAST,
+      // so the await was most expensive exactly when it bought nothing.
+      // One targeted item closes the vendor-bbox window within the same
+      // settle; the hourly sweep remains the queue's only owner.
       if (trigger === 'birth') {
-        await this.drainTick();
+        await this.promoteNewborn(placeId);
       }
     } catch (error) {
       this.logger.warn('Promotion enqueue failed (earned moment retries)', {
@@ -241,6 +241,67 @@ export class PlacesPromotionService {
           );
         }
       }
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  /**
+   * Birth-time targeted promote: exactly one queue row (the newborn), no
+   * batch scan, no QPS spacing (a single item spends ≤2 vendor calls; the
+   * per-minute pool bounds rate). Shares the in-process latch and the
+   * cross-process advisory lock with the sweep so the governed pools are
+   * never drawn concurrently; if either is held, the newborn simply waits
+   * for the hourly sweep — the queue is the lateness buffer. Never throws.
+   */
+  private async promoteNewborn(placeId: string): Promise<void> {
+    if (this.draining) {
+      return;
+    }
+    this.draining = true;
+    try {
+      const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
+        Prisma.sql`
+          SELECT pg_try_advisory_lock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS locked
+        `,
+      );
+      if (!lock[0]?.locked) {
+        return;
+      }
+      try {
+        const rows = await this.prisma.$queryRaw<PlaceGeometryPromotion[]>(
+          Prisma.sql`
+            SELECT place_id            AS "placeId",
+                   trigger             AS "trigger",
+                   enqueued_at         AS "enqueuedAt",
+                   promoted_at         AS "promotedAt",
+                   attempts            AS "attempts",
+                   last_attempt_at     AS "lastAttemptAt",
+                   provider_boundary_id AS "providerBoundaryId",
+                   campaign_id         AS "campaignId"
+            FROM place_geometry_promotions
+            WHERE place_id = ${placeId}::uuid
+              AND promoted_at IS NULL
+              AND refused_at IS NULL
+          `,
+        );
+        if (rows[0]) {
+          await this.promoteOne(rows[0], new Date());
+        }
+      } finally {
+        await this.prisma
+          .$queryRaw(
+            Prisma.sql`
+              SELECT pg_advisory_unlock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY})
+            `,
+          )
+          .catch(() => null);
+      }
+    } catch (error) {
+      this.logger.warn('Newborn promote failed (hourly sweep retries)', {
+        placeId,
+        detail: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       this.draining = false;
     }

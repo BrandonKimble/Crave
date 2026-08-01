@@ -47,7 +47,7 @@ function placeRow(name: string, bbox: GeoBbox, overrides: any = {}) {
     placeId: `00000000-0000-4000-8000-${String(idCounter).padStart(12, '0')}`,
     name,
     localScriptAlias: null,
-    providerLevelCode: 'municipality',
+    providerLevelCode: 'Municipality',
     countryCode: 'US',
     subdivisionCode: 'TX',
     county: null,
@@ -208,7 +208,7 @@ describe('GET /places/in-view — slice membership + margin law', () => {
         placeId: row.placeId,
         name: 'Coreville',
         bbox: { minLat: 30.2, minLng: -97.8, maxLat: 30.6, maxLng: -97.4 },
-        providerLevelCode: 'municipality',
+        providerLevelCode: 'Municipality',
         parentPlaceIds: ['p-1', 'p-2'],
         // §2.6: ground ALWAYS ships. A sketch-grade place's ground is its
         // ENVELOPE, read from place_geometries like any other — PostGIS

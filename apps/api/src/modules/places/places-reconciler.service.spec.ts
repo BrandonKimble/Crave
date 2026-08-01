@@ -25,7 +25,7 @@ function makePlaceRow(name: string, bbox: GeoBbox | null) {
     placeId: `id-${name}`,
     name,
     localScriptAlias: null,
-    providerLevelCode: 'municipality',
+    providerLevelCode: 'Municipality',
     countryCode: 'US',
     subdivisionCode: 'TX',
     parentPlaceIds: [],
