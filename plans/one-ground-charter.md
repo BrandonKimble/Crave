@@ -128,13 +128,20 @@ a "place with no ground" state exists.
   hourly earned drain; the queue survives only as the retry lane.
 - Exit: zero places without a ground; the drain's straggler backlog is empty.
 
-**P1 — delete the fallback branches.** The two `NOT EXISTS place_geometries
-OR ST_Covers` disjuncts (curated builder, home near-you) collapse to one
-`ST_Covers`. Legal only after P0.
+**P1 — delete the fallback branches. LANDED 2026-07-26** (the curated-builder
+collapse; the aggregate spec asserts the old arm's ABSENCE). Verified
+2026-07-30: zero `NOT EXISTS place_geometries` disjuncts remain in runtime
+code.
 
-**P2 — prefilters to GiST.** Replace the 12 bbox-arm prefilters with
-`ST_Intersects` on the geometry index; delete the hand-written wrap arms and
-the crossing-row catch-alls; drop the partial bbox GiST expression index.
+**P2 — prefilters to GiST. LANDED 2026-07-30** (commit ab6826f1). The
+aggregate's containing CTE collapsed to ONE `ST_Covers` arm — PostGIS itself
+expands it to `&&` on the geometry GiST plus the exact test, so the hand-built
+machinery (bbox-envelope expression index, materialized crossing-place
+catch-all, UNION of wrap-arm branches) was re-implementing the index by hand
+on a derived rectangle. The four fresh-arm sites prefilter on
+`ground && geoEnvelopeSql(signal)`. lng-intersect.ts deleted whole (every
+export runtime-dead). Proven equivalent live: a real prod day rebuilds with
+identical row counts (14,232/14,230).
 
 **P3 — identity is the VENDOR ID, not the name.** LANDED 2026-07-26, and the
 answer turned out stronger than "compare grounds": TomTom stamps every entity
@@ -164,12 +171,21 @@ county axis, no geometric comparison, no extra vendor call:
   world-zoom find+simplify 27ms vs the 1,442ms the NY attribution recorded.
   Ground-read failure now yields NO candidates rather than bbox envelopes —
   the §2.6 law stated plainly.
-- P4 REMAINING: `PlaceInView.bbox` / `PlaceLike.bbox` is now purely a
-  CAMERA/transport envelope (nothing judges with it). Derive it from the
-  ground and drop it from the wire — needs the mobile leg (two jumps + the
-  launch-zoom derivation) in the same change. Then the merge law's
-  `bboxUnion`/`widenBbox`/`upsertSketchEnvelope` collapse into "the ground is
-  written once, the envelope is derived", and the four columns DROP.
+- P4 COMPLETE 2026-07-30 (commit 708ef389): the four columns and the bbox
+  expression index are DROPPED, on the local dev DB and on prod. NO mobile
+  leg was needed — the insight that unlocked it: the law forbids STORED
+  shapes, not wire rectangles, so `PlaceInView.bbox` stays on the wire and is
+  derived from the ground IN THE SAME QUERY that fetches it
+  (`derivedBboxSelectSql`, wrap-aware: a crossing geometry reconstructs the
+  min>max convention from per-arm extents via ST_Dump — live-verified on
+  prod: the US derives 172.5→-66.9). The merge law's widen now GROWS THE
+  SKETCH GROUND ITSELF (ST_Envelope∘ST_Collect against the live row, outline
+  rows guarded); writeSketchGround takes the observed envelope as a
+  parameter; launch camera, enrichment bias, the county decision table, the
+  promotion span guard and catalogKnowsBbox all derive at use. The sim leg of
+  the non-negotiable is OWED: the wire shape is byte-identical and pinned by
+  the controller spec, but the home surface has not been eyeballed since the
+  drop.
 
 **P5 — the honest shapes.**
 
