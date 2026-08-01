@@ -94,7 +94,10 @@ if u:
     PGPASSWORD="$DB_PASS" pg_dump --no-owner -Fc \
       -h sakura.proxy.rlwy.net -p 48622 -U "$DB_USER" -d "$DB_NAME" -f "$SNAP"
     echo "==> Snapshot: $SNAP ($(du -h "$SNAP" | cut -f1))"
-    ls -t "$BACKUP_DIR"/prod-*.dump 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
+    # Keep the newest 2 (not 1): if a bad migration is only noticed after the
+    # NEXT deploy, the newest dump is already post-corruption — the one before
+    # it is the recovery point. Fixed-size (~900MB), never accumulates.
+    ls -t "$BACKUP_DIR"/prod-*.dump 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null || true
   fi
 fi
 
