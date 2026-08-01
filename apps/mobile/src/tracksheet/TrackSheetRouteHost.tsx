@@ -317,9 +317,14 @@ const useTrackScenePageChrome = (
   const motionCommandValue = useSharedValue<{
     snapTo: 'expanded' | 'middle' | 'collapsed' | 'hidden';
     token: number;
+    settleToken?: number | null;
   } | null>(null);
+  // Red team #4: commands carry a settleToken the motion plane WAITS on; the
+  // old host completed it at snap settle. The track completes it at the next
+  // settle fact (or immediately when the snap short-circuits to zero pixels).
+  const pendingSettleTokenRef = React.useRef<number | null>(null);
   const executeMotionCommand = React.useCallback(
-    (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
+    (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden', settleToken: number | null) => {
       const commands = commandsRef.current;
       const postureTau =
         snap === 'expanded'
@@ -327,30 +332,69 @@ const useTrackScenePageChrome = (
           : snap === 'middle'
             ? snapPoints.collapsed - snapPoints.middle
             : 0; // collapsed AND hidden seat collapsed (dismiss choreography later)
+      pendingSettleTokenRef.current = settleToken;
       commands?.snapToTau(postureTau);
+      if (settleToken != null) {
+        // Short-circuited snaps produce no settle; complete on a bounded
+        // fallback so the motion plane can never hang (real settles complete
+        // it first via onSettle below).
+        setTimeout(() => {
+          if (pendingSettleTokenRef.current === settleToken) {
+            pendingSettleTokenRef.current = null;
+            sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(settleToken);
+          }
+        }, 700);
+      }
     },
-    [commandsRef, snapPoints, trackH]
+    [commandsRef, sceneRuntimeForSeat, snapPoints, trackH]
   );
+  const completePendingSettle = React.useCallback(() => {
+    const token = pendingSettleTokenRef.current;
+    if (token != null) {
+      pendingSettleTokenRef.current = null;
+      sceneRuntimeForSeat.routeSceneMotionRuntime.completeFromSheetSettle?.(token);
+    }
+  }, [sceneRuntimeForSeat]);
   useAnimatedReaction(
     () => motionCommandValue.value,
     (command, previous) => {
       if (command == null || command.token === (previous?.token ?? -1)) {
         return;
       }
-      runOnJS(executeMotionCommand)(command.snapTo);
+      runOnJS(executeMotionCommand)(command.snapTo, command.settleToken ?? null);
       motionCommandValue.value = null;
     },
     [executeMotionCommand]
   );
+  // Red team #3: without resolveCurrentSnapTarget, promoteAtLeast DEMOTES an
+  // expanded sheet (the registry returns null and the short-circuit never
+  // fires). The track answers from its own posture.
+  const resolveCurrentSnapTarget = React.useCallback(() => {
+    const middleTau = snapPoints.collapsed - snapPoints.middle;
+    const commands = commandsRef.current;
+    if (commands == null) {
+      return null;
+    }
+    const posture = Math.min(Math.max(0, commands.readTau() - commands.readSigma()), trackH);
+    if (Math.abs(posture - trackH) <= 2) {
+      return 'expanded' as const;
+    }
+    if (Math.abs(posture - middleTau) <= 2) {
+      return 'middle' as const;
+    }
+    return 'collapsed' as const;
+    // eslint-disable-next-line no-unreachable
+  }, [commandsRef, snapPoints, trackH]);
   React.useEffect(
     () =>
       sceneRuntimeForSeat.routeSceneMotionRuntime.registerSheetMotionTarget({
         sceneKey: 'sheetHost' as OverlayKey,
+        resolveCurrentSnapTarget,
         motionCommandValue: motionCommandValue as unknown as Parameters<
           typeof sceneRuntimeForSeat.routeSceneMotionRuntime.registerSheetMotionTarget
         >[0]['motionCommandValue'],
       }),
-    [motionCommandValue, sceneRuntimeForSeat]
+    [motionCommandValue, resolveCurrentSnapTarget, sceneRuntimeForSeat]
   );
 
   // THE SETTLE OBSERVER → SESSION: gesture rests write posture memory with the
@@ -489,6 +533,7 @@ const useTrackScenePageChrome = (
     commandsRef,
     title,
     strips,
+    completePendingSettle,
     geometry,
     seatTau,
     navActionProgress,
@@ -512,6 +557,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     commandsRef,
     title,
     strips,
+    completePendingSettle,
     geometry,
     seatTau,
     navActionProgress,
@@ -739,7 +785,10 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         seatTau={seatTau}
         publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
-        onSettle={markSheetLegReady}
+        onSettle={() => {
+          markSheetLegReady();
+          completePendingSettle();
+        }}
       />
     </View>
   );

@@ -126,6 +126,9 @@ export type TrackSheetLeg = {
 export type TrackSheetCommands = {
   /** Programmatic settle to a τ (detent) — rides the native scroll animation. */
   snapToTau: (tau: number, animated?: boolean) => void;
+  /** Posture peeks (JS mirrors; used at rest for descriptor resolution). */
+  readTau: () => number;
+  readSigma: () => number;
 };
 
 export type TrackSheetPageProps = {
@@ -663,6 +666,8 @@ export function TrackSheetPage({
       return;
     }
     commandsRef.current = {
+      readTau: () => tau.value,
+      readSigma: () => physics.sigma.value,
       // RETRYING SNAP (anti-trap, 2026-07-26): a scrollToOffset issued before the
       // recycler lays out is a silent no-op — the sheet sat at τ=0 while the OLD
       // sheet rendered the same page above it, and every visual check read the
@@ -756,8 +761,12 @@ export function TrackSheetPage({
       </View>
       {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
       <View style={styles.headerBottomPad} />
-      {presentedStrip != null ? (
-        <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
+      {strips.length > 0 ? (
+        <View
+          style={
+            presentedStrip != null ? { height: TOGGLE_STRIP_BAND_HEIGHT } : styles.stripBandParked
+          }
+        >
           {/* THE PERSISTENT STRIPS: every resident strip stays mounted in the
               band, opacity-flipped with its scene — no remount ⇒ no chip
               re-measure ⇒ the late-chips gap is unwritable. No plate of its
@@ -1063,7 +1072,8 @@ export function TrackSheetPage({
               bounces
               alwaysBounceVertical
               scrollEventThrottle={16}
-              onScroll={onScroll}
+              scrollEnabled={isPresented}
+              onScroll={isPresented ? onScroll : undefined}
               automaticallyAdjustContentInsets={false}
               onContentSizeChange={(_w: number, h: number) =>
                 handleContentSizeChange(leg.sceneKey, h)
@@ -1168,6 +1178,10 @@ const styles = StyleSheet.create({
     right: 0,
     height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
   },
+  // Red team #2 mitigation: strips stay MOUNTED when the presented scene has
+  // no band (zero-height, clipped) — flipping to a strip-less scene must not
+  // destroy the resident strips' measure caches.
+  stripBandParked: { height: 0, overflow: 'hidden' },
   stripLayer: { ...StyleSheet.absoluteFillObject },
   stripLayerHidden: { ...StyleSheet.absoluteFillObject, opacity: 0 },
   divider: {
