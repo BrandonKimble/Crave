@@ -170,7 +170,11 @@ const NavExcludedTrackSurface: React.FC<{ scene: OverlayKey }> = ({ scene }) => 
   // animated pair. The old static clip is gone with this.
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
-  const liveScene = frame.activeSceneKey ?? scene;
+  // PRESENTED truth (the old host's documented law): the sheet titles and hosts
+  // WHAT IT IS PAINTING. The one legal steady divergence is the docked lane —
+  // activeSceneKey is 'search' while the sheet presents the docked feed; reading
+  // activeSceneKey here rendered the SEARCH chrome ("Results") over home at boot.
+  const liveScene = frame.presentedSceneKey ?? frame.activeSceneKey ?? scene;
   const chinInput = sceneRuntime.sceneInputAuthority.getSceneInputSnapshot(liveScene);
   const chinBody = chinInput?.sceneBodyContent;
   const listChrome =
@@ -212,7 +216,8 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   const snapPoints = sharedSheetOwner.snapPoints;
   const sceneRuntime = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime);
-  const scene = frame.activeSceneKey ?? sceneOverride;
+  // PRESENTED truth, same law as the outer host (see liveScene above).
+  const scene = frame.presentedSceneKey ?? frame.activeSceneKey ?? sceneOverride;
 
   // THE ACK BRIDGE (flip prerequisite, inventory §5.5): with the old host
   // unmounted, THIS host records the chrome + paint acks that scene-switch
