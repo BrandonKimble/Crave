@@ -92,6 +92,41 @@ re-extraction prompt is final.
 
 ## P2 — OWNER DECISIONS (needed for the final prompt)
 
+**2026-08-01 VERIFICATION UPDATE (read before presenting these to the
+owner — three of the six changed after checking prompt+code):**
+
+- **P2.1 cuisine DISSOLVES — no ruling needed.** The reworked prompt
+  already encodes the design (§3.0(a): cuisine attaches BOTH sides,
+  always; inferred from dish identity). The audit's "57% misplaced mass"
+  is legacy data minted under the OLD prompt: food-side cuisine rows were
+  archived by an earlier cleanup (the 11k stranded tombstone events —
+  archived food_attribute 'mexican' holds 1,808 events while active
+  restaurant_attribute 'mexican' holds 2,704) plus 11 cuisines minted as
+  dishes. Fix = data repair aligned to the prompt design (revive or
+  re-point food-side cuisine rows, delete cuisine-dishes) + rerun. NOT a
+  new facet, NOT a new entity type.
+- **P2.2 chains NARROWS.** Nobody chose the pinning; it's emergent:
+  Places' location-biased matching works correctly but only fires at
+  entity CREATION; resolution is global name-match-first, so later
+  mentions from any city attach to the first-created branch (Austin
+  Shake Shack praise → Manhattan-grounded entity) with no Places call.
+  Narrowed ruling: make RESTAURANT resolution metro-scoped (per-metro
+  chain entities, each grounded locally) — recommended; a resolver
+  change, not schema. Owner has seen this framing; awaiting yes/no.
+- **P2.3 dietary NARROWS to a data fix.** The both-sides design is
+  legitimate testimony ("the pad thai is vegan" food-side vs "fully
+  vegan place" venue-side) — do NOT derive one from the other. Real
+  defect is duplicate active rows (vegan ×2 restaurant_attribute) →
+  merge. Micro-rulings stand: kosher style / allergy friendly stay OUT
+  of the dietary hard set; pescatarian stays IN (already flagged).
+- P2.4 (edges are truth, arrays demoted to build input) recommendation
+  VERIFIED and stands — concrete failure: 638 parent/child pairs
+  (13.3%) where the shadow rule answers differently depending on which
+  source a code path consults.
+- P2.5 (provenance = ordinary food attributes) stands.
+- P2.6 ($25 ungrounded-Places backfill inside the rerun campaign) still
+  awaiting owner yes/no.
+
 1. **Cuisine gets its own slot?** 57% of restaurant_attribute evidence
    mass is cuisine/category (`mexican` 2,704, `japanese` 1,924...), and
    cuisines also minted as dishes (11) and archived food_attributes with
