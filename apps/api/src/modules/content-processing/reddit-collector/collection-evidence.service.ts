@@ -394,9 +394,81 @@ export class CollectionEvidenceService implements OnModuleInit {
       },
     });
 
+    // Terminal run ⇒ its in-flight claims are done; completed coverage is
+    // now served by the run row itself.
+    await this.releaseCoverageClaimsForRun(extractionRunId);
+
     if (run.collectionRunId) {
       await this.refreshCollectionRunStatus(run.collectionRunId);
     }
+  }
+
+  /**
+   * CLAIM, DON'T CHECK (async-integrity step 3, Law 2): atomically reserve
+   * documents for extraction under a prompt contract. Winners are returned;
+   * a document somebody else holds a live claim on is the caller's cue to
+   * treat it as covered. This closes the blind window between "the covered
+   * check ran" and "the batch job row exists" that let overlapping runs
+   * double-pay — the reservation exists from the first moment, atomically.
+   */
+  async claimDocumentsForExtraction(
+    documentIds: string[],
+    promptHash: string,
+  ): Promise<Set<string>> {
+    const ids = Array.from(new Set(documentIds));
+    if (!ids.length) {
+      return new Set();
+    }
+    const rows = await this.prismaService.$queryRaw<
+      Array<{ document_id: string }>
+    >`
+      INSERT INTO collection_extraction_coverage_claims (document_id, prompt_hash)
+      SELECT unnest(${ids}::uuid[]), ${promptHash}
+      ON CONFLICT (document_id, prompt_hash) DO NOTHING
+      RETURNING document_id
+    `;
+    return new Set(rows.map((row) => row.document_id));
+  }
+
+  /** Stamp ownerless claims with the run that now owns them (post
+   *  createExtractionRun — the claim precedes the run by design). */
+  async stampCoverageClaims(
+    extractionRunId: string,
+    documentIds: string[],
+    promptHash: string,
+  ): Promise<void> {
+    if (!documentIds.length) {
+      return;
+    }
+    await this.prismaService.extractionCoverageClaim.updateMany({
+      where: {
+        documentId: { in: documentIds },
+        promptHash,
+        extractionRunId: null,
+      },
+      data: { extractionRunId },
+    });
+  }
+
+  async releaseCoverageClaimsForRun(extractionRunId: string): Promise<void> {
+    await this.prismaService.extractionCoverageClaim.deleteMany({
+      where: { extractionRunId },
+    });
+  }
+
+  /** Sweep companion: claims whose run died terminally without releasing,
+   *  whose run row is gone, or that stayed ownerless past two hours (crash
+   *  between claim and run creation) are reaped so retries can proceed. */
+  private async reapOrphanedCoverageClaims(): Promise<void> {
+    await this.prismaService.$executeRaw`
+      DELETE FROM collection_extraction_coverage_claims c
+      WHERE (c.extraction_run_id IS NULL
+             AND c.claimed_at < now() - interval '2 hours')
+         OR (c.extraction_run_id IS NOT NULL AND NOT EXISTS (
+               SELECT 1 FROM collection_extraction_runs r
+               WHERE r.extraction_run_id = c.extraction_run_id
+                 AND r.status = 'running'))
+    `;
   }
 
   /**
@@ -415,6 +487,7 @@ export class CollectionEvidenceService implements OnModuleInit {
     const horizonHours =
       Number.isFinite(parsedHorizon) && parsedHorizon > 0 ? parsedHorizon : 30;
     await this.reconcileStaleBatchJobs(horizonHours);
+    await this.reapOrphanedCoverageClaims();
     await this.compactSupersededRuns();
     const stale = await this.prismaService.$queryRaw<
       { extraction_run_id: string; collection_run_id: string | null }[]
@@ -505,6 +578,9 @@ export class CollectionEvidenceService implements OnModuleInit {
       FROM llm_batch_jobs j
       WHERE j.status IN ('pending', 'submitted', 'succeeded', 'ingesting')
         AND COALESCE(j.submitted_at, j.created_at) < now() - (${horizonHours} * interval '1 hour')
+        -- LEASE-RESPECTING (step 3): a live heartbeat means live work — a
+        -- long ingest past the horizon must not be killed under its owner.
+        AND (j.lease_expires_at IS NULL OR j.lease_expires_at < now())
       ORDER BY COALESCE(j.submitted_at, j.created_at) ASC
       LIMIT 200
     `);
@@ -525,6 +601,10 @@ export class CollectionEvidenceService implements OnModuleInit {
           where: {
             jobId: job.job_id,
             status: { in: ['pending', 'submitted', 'succeeded', 'ingesting'] },
+            OR: [
+              { leaseExpiresAt: null },
+              { leaseExpiresAt: { lt: new Date() } },
+            ],
           },
           data: {
             status: 'failed',
@@ -585,6 +665,9 @@ export class CollectionEvidenceService implements OnModuleInit {
         collectionRunId: true,
       },
     });
+
+    // A failed run's claims must free immediately so retry can re-claim.
+    await this.releaseCoverageClaimsForRun(extractionRunId);
 
     if (run.collectionRunId) {
       await this.refreshCollectionRunStatus(run.collectionRunId);

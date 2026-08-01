@@ -711,6 +711,26 @@ model ExtractionRun {
   @@map("collection_extraction_runs")
 }
 
+/// IN-FLIGHT EXTRACTION RESERVATION (async-integrity step 3, Law 2:
+/// claim, don't check). The covered-check infers in-flight-ness from a
+/// join across two tables written minutes apart — a blind window every
+/// entry point shares, and how overlapping runs double-paid. A claim is
+/// an atomic INSERT..ON CONFLICT: the winner extracts, losers treat the
+/// document as covered. Claims are stamped with their run once it exists,
+/// released when the run reaches a terminal state (completed coverage is
+/// then served by the run itself), and reaped by the stale sweep if
+/// ownerless (crash between claim and run creation).
+model ExtractionCoverageClaim {
+  documentId      String   @map("document_id") @db.Uuid
+  promptHash      String   @map("prompt_hash") @db.VarChar(64)
+  extractionRunId String?  @map("extraction_run_id") @db.Uuid
+  claimedAt       DateTime @default(now()) @map("claimed_at")
+
+  @@id([documentId, promptHash])
+  @@index([extractionRunId], map: "idx_coverage_claims_run")
+  @@map("collection_extraction_coverage_claims")
+}
+
 model ExtractionInput {
   inputId                String                    @id @default(dbgenerated("gen_random_uuid()")) @map("input_id") @db.Uuid
   extractionRunId        String                    @map("extraction_run_id") @db.Uuid

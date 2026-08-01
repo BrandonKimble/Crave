@@ -335,6 +335,37 @@ export class ExtractionPipelineService implements OnModuleInit {
         systemPromptHash: currentPromptHash,
         extractionSchemaVersion: 'v1',
       });
+    // CLAIM the uncovered documents (step 3, Law 2): an atomic reservation
+    // replaces the covered-check's blind window — a document another live
+    // run holds simply counts as covered and gets trimmed below.
+    {
+      const docIdBySourceId = new Map<string, string>();
+      for (const post of params.llmPosts) {
+        const postDocId = sourceDocumentIdBySourceKey.get(
+          buildSourceDocumentKey('post', post.id),
+        );
+        if (postDocId) docIdBySourceId.set(post.id, postDocId);
+        for (const comment of post.comments) {
+          const commentDocId = sourceDocumentIdBySourceKey.get(
+            buildSourceDocumentKey('comment', comment.id),
+          );
+          if (commentDocId) docIdBySourceId.set(comment.id, commentDocId);
+        }
+      }
+      const uncovered = Array.from(docIdBySourceId.entries()).filter(
+        ([sourceId]) => !coveredSourceIds.has(sourceId),
+      );
+      const won =
+        await this.collectionEvidenceService.claimDocumentsForExtraction(
+          uncovered.map(([, docId]) => docId),
+          currentPromptHash,
+        );
+      for (const [sourceId, docId] of uncovered) {
+        if (!won.has(docId)) {
+          coveredSourceIds.add(sourceId);
+        }
+      }
+    }
     const originalCommentCount = params.llmPosts.reduce(
       (sum, post) => sum + post.comments.length,
       0,
@@ -388,6 +419,63 @@ export class ExtractionPipelineService implements OnModuleInit {
     params: ExtractionPipelineStoredInputsParams,
   ): Promise<ExtractionPipelineResult> {
     this.assertStoredInputsUseSourceRefs(params.inputChunks);
+
+    // COVERAGE GATE (async-integrity step 3, C2): this path had NO gate —
+    // a worker restart mid-reload re-submitted (and re-PAID) every
+    // already-completed source run. Replay chunks are stored payloads, so
+    // gating is run-grain, not thread-grain: when EVERY document is
+    // already covered under the current contract (completed-with-output or
+    // live in-flight batch), skip the whole run. This is also the
+    // re-extract runner's crash-restart cursor.
+    const gateSourceIds = params.sourceDocuments.map(
+      (document) => document.sourceId,
+    );
+    const gateCovered =
+      await this.collectionEvidenceService.findExtractionCoveredSourceIds({
+        platform: params.platform ?? 'reddit',
+        sourceIds: gateSourceIds,
+        systemPromptHash: createHash('sha256')
+          .update(this.llmService.getSystemPrompt())
+          .digest('hex'),
+        extractionSchemaVersion: 'v1',
+      });
+    if (
+      gateSourceIds.length > 0 &&
+      gateSourceIds.every((sourceId) => gateCovered.has(sourceId))
+    ) {
+      this.logger.info(
+        'Stored-input replay fully covered under current contract — skipping',
+        {
+          batchId: params.batchId,
+          documents: gateSourceIds.length,
+        },
+      );
+      return this.buildFullyCoveredResult();
+    }
+    // Reserve the uncovered documents (Law 2). Replay chunks are stored
+    // payloads (run-grain), so a lost claim can't trim a single document —
+    // but if EVERY uncovered doc is claimed by another live run, this
+    // replay is a duplicate in flight and must stand down.
+    {
+      const gatePromptHash = createHash('sha256')
+        .update(this.llmService.getSystemPrompt())
+        .digest('hex');
+      const uncoveredDocIds = params.sourceDocuments
+        .filter((document) => !gateCovered.has(document.sourceId))
+        .map((document) => document.documentId);
+      const won =
+        await this.collectionEvidenceService.claimDocumentsForExtraction(
+          uncoveredDocIds,
+          gatePromptHash,
+        );
+      if (uncoveredDocIds.length > 0 && won.size === 0) {
+        this.logger.info(
+          'Stored-input replay: every uncovered document is claimed by a live run — standing down',
+          { batchId: params.batchId, documents: uncoveredDocIds.length },
+        );
+        return this.buildFullyCoveredResult();
+      }
+    }
 
     const sourceDocumentIdBySourceKey = new Map<SourceDocumentKey, string>(
       params.sourceDocuments.map((document) => [
@@ -462,6 +550,16 @@ export class ExtractionPipelineService implements OnModuleInit {
             ...(params.baseParams.runMetadata ?? {}),
           },
         });
+
+      // Adopt the (previously ownerless) coverage claims: the run now owns
+      // them; terminal-state transitions release them.
+      await this.collectionEvidenceService.stampCoverageClaims(
+        extractionRunId,
+        Array.from(new Set(params.sourceDocumentIdBySourceKey.values())),
+        createHash('sha256')
+          .update(this.llmService.getSystemPrompt())
+          .digest('hex'),
+      );
 
       const llmModeForRun = params.baseParams.llmMode ?? this.collectionLlmMode;
       // Zero chunks (e.g. the relevance gate dropped every post) completes

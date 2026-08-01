@@ -157,6 +157,12 @@ export interface BatchTransportOps {
   }): Promise<{ name?: string }>;
   cancel(name: string): Promise<void>;
   get(name: string): Promise<GeminiBatchJobRemote>;
+  /** Adoption probe (async-integrity step 3, Law 2): the deterministic
+   *  displayName is the submission's idempotency key — a crash between
+   *  provider-create and the DB write must ADOPT the existing provider
+   *  job on retry, never mint (and pay for) a second one. Returns the
+   *  provider job name if a batch with this displayName already exists. */
+  findByDisplayName(displayName: string): Promise<string | null>;
 }
 
 interface LLMGenerationOptions {
@@ -4029,6 +4035,27 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       },
       get: async (name) =>
         this.genAI.batches.get({ name }) as Promise<GeminiBatchJobRemote>,
+      findByDisplayName: async (displayName) => {
+        const pager = await this.genAI.batches.list({
+          config: { pageSize: 100 },
+        });
+        // The pager auto-walks pages; cap the scan — adoption only matters
+        // for a crash retried within the lease window (minutes), so the
+        // job is among the most recent if it exists at all.
+        let scanned = 0;
+        for await (const job of pager as AsyncIterable<{
+          name?: string;
+          displayName?: string;
+        }>) {
+          if (job.displayName === displayName) {
+            return job.name ?? null;
+          }
+          if (++scanned >= 200) {
+            break;
+          }
+        }
+        return null;
+      },
     };
   }
 

@@ -47,6 +47,12 @@ function build(options: { keepIds?: string[] } = {}) {
         return Promise.resolve(new Set(params.sourceIds));
       },
     ),
+    // Step-3 claim semantics: everything uncovered is won (no contention
+    // in this spec's world); stamping is a no-op.
+    claimDocumentsForExtraction: jest.fn((documentIds: string[]) =>
+      Promise.resolve(new Set(documentIds)),
+    ),
+    stampCoverageClaims: jest.fn(() => Promise.resolve()),
   };
   const relevanceGate = {
     filterPosts: jest.fn((_platform: string, posts: LLMPost[]) => {

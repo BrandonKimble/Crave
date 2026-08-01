@@ -285,6 +285,29 @@ export class GeminiBatchService implements OnModuleDestroy {
         orderBy: { itemIndex: 'asc' },
         select: { itemIndex: true, itemKey: true, request: true },
       });
+      // IDEMPOTENT SUBMISSION (step 3, Law 2): a crash between the
+      // provider create and the DB write leaves a PAID provider job the
+      // row doesn't know about; on reclaim we must adopt it, not buy a
+      // twin. The deterministic displayName is the idempotency key.
+      const displayName = `${purpose}-${jobId.slice(0, 8)}`;
+      const adopted = await this.batchOps.findByDisplayName(displayName);
+      if (adopted) {
+        await this.prisma.llmBatchJob.updateMany({
+          where: { jobId, status: 'submitting' },
+          data: {
+            providerJobName: adopted,
+            status: 'submitted',
+            submittedAt: new Date(),
+            leaseExpiresAt: null,
+          },
+        });
+        this.logger.warn('Gemini batch ADOPTED existing provider job', {
+          jobId,
+          providerJobName: adopted,
+          purpose,
+        });
+        return;
+      }
       const created = await this.batchOps.create({
         model,
         src: {
@@ -300,10 +323,10 @@ export class GeminiBatchService implements OnModuleDestroy {
             } as never;
           }),
         },
-        config: { displayName: `${purpose}-${jobId.slice(0, 8)}` },
+        config: { displayName },
       });
-      await this.prisma.llmBatchJob.update({
-        where: { jobId },
+      await this.prisma.llmBatchJob.updateMany({
+        where: { jobId, status: 'submitting' },
         data: {
           providerJobName: created.name ?? null,
           status: 'submitted',
@@ -583,8 +606,11 @@ export class GeminiBatchService implements OnModuleDestroy {
       campaignId,
       outcome: 'ok',
     });
-    await this.prisma.llmBatchJob.update({
-      where: { jobId },
+    // GUARDED transition (step 3, Law 2): only submitted→succeeded. A bare
+    // update here could knock a concurrently-claimed 'ingesting' job back
+    // to 'succeeded' and let a second poller ingest it again.
+    await this.prisma.llmBatchJob.updateMany({
+      where: { jobId, status: 'submitted' },
       data: { status: 'succeeded', completedAt: new Date() },
     });
     this.logger.info('Gemini batch succeeded', {
@@ -650,22 +676,32 @@ export class GeminiBatchService implements OnModuleDestroy {
           error: item.error,
         })),
       });
-      await this.prisma.llmBatchJob.update({
-        where: { jobId },
+      // GUARDED terminal write: a zero-count result means the stale sweep
+      // (or another poller) reclaimed this job mid-ingest — say so loudly
+      // instead of silently resurrecting a row someone else owns.
+      const finished = await this.prisma.llmBatchJob.updateMany({
+        where: { jobId, status: 'ingesting' },
         data: {
           status: 'ingested',
           ingestedAt: new Date(),
           leaseExpiresAt: null,
         },
       });
-      this.logger.info('Gemini batch ingested', { jobId, purpose });
+      if (finished.count === 0) {
+        this.logger.error(
+          'Gemini batch ingest finished but the claim was gone — job was reclaimed mid-ingest; writes are committed but job state was decided elsewhere',
+          { jobId, purpose },
+        );
+      } else {
+        this.logger.info('Gemini batch ingested', { jobId, purpose });
+      }
     } catch (error) {
       const causeChain = buildCauseChain(error);
       if (isTransientFailure(error)) {
         // Transient: the world will recover; the job is durable and waiting
         // is free. Release the claim, spend NO attempt, retry next cycle.
-        await this.prisma.llmBatchJob.update({
-          where: { jobId },
+        await this.prisma.llmBatchJob.updateMany({
+          where: { jobId, status: 'ingesting' },
           data: {
             status: 'succeeded',
             leaseExpiresAt: null,
@@ -681,16 +717,24 @@ export class GeminiBatchService implements OnModuleDestroy {
       }
       // Deterministic: the input cannot change, so retries are bounded by
       // MAX_INGEST_ATTEMPTS purely as the misclassification guard.
-      const updated = await this.prisma.llmBatchJob.update({
-        where: { jobId },
+      // Guarded: only the claim-holder spends an attempt; a reclaimed job's
+      // late failure must not double-charge the bound.
+      const attemptSpent = await this.prisma.llmBatchJob.updateMany({
+        where: { jobId, status: 'ingesting' },
         data: { ingestAttempts: { increment: 1 } },
+      });
+      const updated = await this.prisma.llmBatchJob.findUniqueOrThrow({
+        where: { jobId },
         select: { ingestAttempts: true },
       });
-      if (updated.ingestAttempts >= MAX_INGEST_ATTEMPTS) {
+      if (
+        attemptSpent.count > 0 &&
+        updated.ingestAttempts >= MAX_INGEST_ATTEMPTS
+      ) {
         // Terminal: fail the job AND its owning run instead of letting the
         // poll cron retry forever.
-        await this.prisma.llmBatchJob.update({
-          where: { jobId },
+        await this.prisma.llmBatchJob.updateMany({
+          where: { jobId, status: 'ingesting' },
           data: {
             status: 'failed',
             error: causeChain,
