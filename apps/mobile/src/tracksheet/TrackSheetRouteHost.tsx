@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dimensions, Linking, StyleSheet, Text, View } from 'react-native';
+import { Linking, StyleSheet, Text, View } from 'react-native';
 
 import {
   runOnJS,
@@ -737,14 +737,27 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     ]
   );
 
+  const legTitleCacheRef = React.useRef(new Map<OverlayKey, React.ReactNode>());
   const legs = React.useMemo(() => {
     const legScenes = new Set<OverlayKey>(visitedResidentsRef.current);
     legScenes.add(scene);
     return [...legScenes].map((legScene) => {
       const list = resolveLegList(legScene);
+      // Title elements are cached PER SCENE (like strips): a fresh element per
+      // switch would miss the page's touch-chrome cache and rebuild every
+      // leg's chrome on every flip (measured: it doubled switch cost).
+      let legTitle = legTitleCacheRef.current.get(legScene) ?? null;
+      if (legTitle == null) {
+        const LegTitle = getPersistentHeaderDescriptor(legScene)?.Title;
+        legTitle = LegTitle != null ? <LegTitle /> : null;
+        legTitleCacheRef.current.set(legScene, legTitle);
+      }
       const leader = (list as { leader?: unknown }).leader ?? null;
       return {
         sceneKey: legScene as string,
+        title: legTitle,
+        stripChildren:
+          strips.find((entry) => entry.sceneKey === (legScene as string))?.children ?? null,
         list: list as never,
         listLeader:
           leader != null ? (
@@ -766,7 +779,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
           legScene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined,
       };
     });
-  }, [pollsParts, publishedBody, resolveLegList, scene, zeroScrollOffset]);
+  }, [pollsParts, publishedBody, resolveLegList, scene, strips, zeroScrollOffset]);
 
   return (
     <View style={styles.root} pointerEvents="box-none">

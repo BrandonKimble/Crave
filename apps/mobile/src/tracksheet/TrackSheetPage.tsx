@@ -44,7 +44,7 @@ import {
   type TrackSheetGeometry,
   type TrackSheetPhysicsOptions,
 } from './useTrackSheetPhysics';
-import { TrackSheetDockedStrip, type TrackSheetDockedStripProps } from './TrackSheetStrip';
+import { TrackSheetDockedStrip } from './TrackSheetStrip';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
 //
@@ -121,6 +121,12 @@ export type TrackSheetLeg = {
   listLeader?: React.ReactNode;
   rowSurfaceStyle?: ViewStyle;
   onUserListScrollActivity?: TrackSheetPhysicsOptions['onUserListScrollActivity'];
+  /** PER-LEG CHROME (the residents centerpiece): each leg carries its OWN
+   * touch chrome permanently — title + its strip — so the chrome never
+   * changes parents on a flip and never remounts. Only the presented leg's
+   * twin feeds the native pin. */
+  title?: React.ReactNode;
+  stripChildren?: React.ReactNode;
 };
 
 export type TrackSheetCommands = {
@@ -234,11 +240,12 @@ export function TrackSheetPage({
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
   const presentedStrip = strips.find((entry) => entry.sceneKey === presentedSceneKey) ?? null;
-  const chromeHeight =
+  const legChromeHeight = (leg: TrackSheetLeg | null) =>
     OVERLAY_TAB_HEADER_HEIGHT +
-    (presentedStrip != null
+    (leg?.stripChildren != null
       ? TOGGLE_STRIP_BAND_HEIGHT + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM
       : 0);
+  const chromeHeight = legChromeHeight(presentedLeg);
 
   // THE HEADER CUTOUT PLATE (inventory §1.5): white plate with the grab-handle
   // slot and the close-circle punched through to the frost beneath.
@@ -349,14 +356,6 @@ export function TrackSheetPage({
   // bind now re-asserts only when it MEANS something: geometry change
   // (below), native attach, and the touch twin's ref.
   const chromeVisualViewRef = React.useRef<View | null>(null);
-  const setChromeVisualRef = React.useCallback(
-    (node: View | null) => {
-      chromeVisualViewRef.current = node;
-      chromeVisualTagRef.current = node != null ? findNodeHandle(node) : null;
-      applyPin();
-    },
-    [applyPin]
-  );
   // THE SHELL AUDIT (P10, 2026-07-31): Fabric's measureInWindow is SHADOW-TREE
   // layout — blind to native transforms (it barked y=0 while the screen was
   // provably correct). Truth is asked of UIKit via the native auditShell, at
@@ -465,14 +464,6 @@ export function TrackSheetPage({
     };
   }, [geometry.expandedTop, sheetTopY]);
 
-  const setChromeRef = React.useCallback(
-    (node: View | null) => {
-      chromeViewRef.current = node as unknown as View | null;
-      chromeTagRef.current = node != null ? findNodeHandle(node) : null;
-      applyPin();
-    },
-    [applyPin]
-  );
   applyPinRef.current = applyPin;
 
   // THE LEG REFS: one cached callback per scene; a mounting leg records its
@@ -705,8 +696,43 @@ export function TrackSheetPage({
   // touch, so the whole sheet is grabbable by construction with UIScrollView's
   // own delaysContentTouches/cancelContentTouches as the tap-vs-drag rule.
   // TrackScrollKit pins it past H (native, same-frame).
-  const renderChrome = (refCallback: (node: View | null) => void) => (
-    <View ref={refCallback} collapsable={false} style={[styles.chrome, { height: chromeHeight }]}>
+  // THE VISUAL BAND: every resident strip mounted once, opacity-flipped;
+  // PARKED (zero-height container, fixed-height layers) when the presented
+  // scene has no band — children keep their layout, so un-parking is free.
+  const visualBand =
+    strips.length > 0 ? (
+      <View
+        style={
+          presentedStrip != null ? { height: TOGGLE_STRIP_BAND_HEIGHT } : styles.stripBandParked
+        }
+      >
+        {/* THE PERSISTENT STRIPS: every resident strip stays mounted in the
+            band, opacity-flipped with its scene — no remount ⇒ no chip
+            re-measure ⇒ the late-chips gap is unwritable. No plate of its
+            own: chips paint directly over the frost. */}
+        {strips.map((entry) => (
+          <View
+            key={entry.sceneKey}
+            style={
+              entry.sceneKey === presentedSceneKey ? styles.stripLayer : styles.stripLayerHidden
+            }
+            pointerEvents={entry.sceneKey === presentedSceneKey ? 'box-none' : 'none'}
+          >
+            <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
+              {entry.children}
+            </TrackSheetDockedStrip>
+          </View>
+        ))}
+      </View>
+    ) : null;
+
+  const renderChrome = (
+    refCallback: ((node: View | null) => void) | null,
+    chromeTitle: React.ReactNode,
+    band: React.ReactNode | null,
+    chromeH: number
+  ) => (
+    <View ref={refCallback} collapsable={false} style={[styles.chrome, { height: chromeH }]}>
       {/* NO CHROME FROST SLAB: the frost founds the SHEET (see the founding
               layers below). A slab here would sit ON that frost and blur an
               already-blurred layer — the owner's "double frosty". The chrome's
@@ -724,7 +750,7 @@ export function TrackSheetPage({
               sheet material, not frost — it is part of the chrome plate's
               coverage, painted here so no gap can open between the band and
               the first row. */}
-      {presentedStrip != null ? (
+      {band != null ? (
         <View
           style={[
             styles.stripSeam,
@@ -747,7 +773,7 @@ export function TrackSheetPage({
         </Pressable>
       </View>
       <View style={styles.headerRow}>
-        <View style={styles.titleSlot}>{title}</View>
+        <View style={styles.titleSlot}>{chromeTitle}</View>
         <View style={styles.actionGroup}>
           {headerExtras}
           {navActionProgress != null && onNavActionPress != null ? (
@@ -760,60 +786,71 @@ export function TrackSheetPage({
         </View>
       </View>
       {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
-      <View style={styles.headerBottomPad} />
-      {strips.length > 0 ? (
-        <View
-          style={
-            presentedStrip != null ? { height: TOGGLE_STRIP_BAND_HEIGHT } : styles.stripBandParked
-          }
-        >
-          {/* THE PERSISTENT STRIPS: every resident strip stays mounted in the
-              band, opacity-flipped with its scene — no remount ⇒ no chip
-              re-measure ⇒ the late-chips gap is unwritable. No plate of its
-              own: chips paint directly over the frost. */}
-          {strips.map((entry) => (
-            <View
-              key={entry.sceneKey}
-              style={
-                entry.sceneKey === presentedSceneKey ? styles.stripLayer : styles.stripLayerHidden
-              }
-              pointerEvents={entry.sceneKey === presentedSceneKey ? 'box-none' : 'none'}
-            >
-              <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
-                {entry.children}
-              </TrackSheetDockedStrip>
-            </View>
-          ))}
-        </View>
-      ) : null}
+      <View style={styles.headerBottomPad} /> {band}
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
   );
-  // THE TWINS: same JSX factory, two instances, so their layouts agree by
-  // construction. The TOUCH twin lives in the content (band-masked invisible,
-  // hit-testable — the grab and every button ride UIScrollView arbitration);
-  // the VISUAL twin is a pointerEvents-none overlay, positioned natively.
-  const chromeElement = React.useMemo(
-    () => renderChrome(setChromeRef),
-    [
-      chromeHeight,
-      strips,
-      presentedStrip,
-      grabHandleHidden,
-      headerExtras,
-      navActionProgress,
-      navActionLabel,
-      onGrabHandlePress,
-      onNavActionPress,
-      plateHoles,
-      setChromeRef,
-      surfaceColor,
-      title,
-      dividerStyle,
-    ]
+  // THE TWINS (per-leg chrome, the residents centerpiece): each leg carries
+  // its OWN touch chrome permanently — it never changes parents on a flip, so
+  // it never remounts and its strip's touch layer never re-measures. Only the
+  // presented leg's twin feeds the pin (ref gated at fire time + on flip).
+  // The VISUAL twin stays single in the stable overlay with the flip band.
+  const legChromeTagsRef = React.useRef(new Map<string, number>());
+  const legChromeRefCacheRef = React.useRef(new Map<string, (node: View | null) => void>());
+  const legChromeRef = (sceneKey: string) => {
+    let cb = legChromeRefCacheRef.current.get(sceneKey);
+    if (cb == null) {
+      cb = (node: View | null) => {
+        if (node == null) {
+          legChromeTagsRef.current.delete(sceneKey);
+          return;
+        }
+        const tag = findNodeHandle(node);
+        if (tag == null) {
+          return;
+        }
+        legChromeTagsRef.current.set(sceneKey, tag);
+        if (sceneKey === presentedSceneKeyRef.current) {
+          chromeViewRef.current = node;
+          chromeTagRef.current = tag;
+          applyPin();
+        }
+      };
+      legChromeRefCacheRef.current.set(sceneKey, cb);
+    }
+    return cb;
+  };
+  const touchChromeCacheRef = React.useRef(
+    new Map<string, { leg: TrackSheetLeg; element: React.ReactElement }>()
   );
+  const touchChromeForLeg = (leg: TrackSheetLeg) => {
+    const cached = touchChromeCacheRef.current.get(leg.sceneKey);
+    if (
+      cached != null &&
+      cached.leg.title === leg.title &&
+      cached.leg.stripChildren === leg.stripChildren
+    ) {
+      return cached.element;
+    }
+    const band =
+      leg.stripChildren != null ? (
+        <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
+          <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
+            {leg.stripChildren}
+          </TrackSheetDockedStrip>
+        </View>
+      ) : null;
+    const element = renderChrome(
+      legChromeRef(leg.sceneKey),
+      leg.title ?? title,
+      band,
+      legChromeHeight(leg)
+    );
+    touchChromeCacheRef.current.set(leg.sceneKey, { leg, element });
+    return element;
+  };
   const chromeVisualElement = React.useMemo(
-    () => renderChrome(setChromeVisualRef),
+    () => renderChrome(null, presentedLeg?.title ?? title, visualBand, chromeHeight),
     [
       chromeHeight,
       strips,
@@ -825,9 +862,9 @@ export function TrackSheetPage({
       onGrabHandlePress,
       onNavActionPress,
       plateHoles,
-      setChromeVisualRef,
       surfaceColor,
       title,
+      presentedLeg,
       dividerStyle,
     ]
   );
@@ -836,10 +873,10 @@ export function TrackSheetPage({
   // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
   // would steal it); hidden legs reserve the same band height so their
   // content offsets stay comparable across flips.
-  const headerForLeg = (leg: TrackSheetLeg, isPresented: boolean) => (
+  const headerForLeg = (leg: TrackSheetLeg, _isPresented: boolean) => (
     <View style={styles.chromeLane}>
       <View style={{ height: trackH }} pointerEvents="none" />
-      {isPresented ? chromeElement : <View style={{ height: chromeHeight }} pointerEvents="none" />}
+      {touchChromeForLeg(leg)}
       {leg.listLeader ?? null}
     </View>
   );
@@ -943,6 +980,10 @@ export function TrackSheetPage({
     // it; refuse() then re-fuses posture + the leg's own scroll. A fresh
     // leg's proxy may attach async — subscribeAttached re-applies the restore.
     const nextTag = legTagsRef.current.get(sceneKey) ?? null;
+    const nextChromeTag = legChromeTagsRef.current.get(sceneKey) ?? null;
+    if (nextChromeTag != null) {
+      chromeTagRef.current = nextChromeTag;
+    }
     if (nextTag != null) {
       trackTagRef.current = nextTag;
       attachToTag(nextTag);
@@ -1182,8 +1223,17 @@ const styles = StyleSheet.create({
   // no band (zero-height, clipped) — flipping to a strip-less scene must not
   // destroy the resident strips' measure caches.
   stripBandParked: { height: 0, overflow: 'hidden' },
-  stripLayer: { ...StyleSheet.absoluteFillObject },
-  stripLayerHidden: { ...StyleSheet.absoluteFillObject, opacity: 0 },
+  // Fixed height (not absoluteFill): layers keep their layout inside a parked
+  // zero-height container, so un-parking costs no re-measure.
+  stripLayer: { position: 'absolute', top: 0, left: 0, right: 0, height: TOGGLE_STRIP_BAND_HEIGHT },
+  stripLayerHidden: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: TOGGLE_STRIP_BAND_HEIGHT,
+    opacity: 0,
+  },
   divider: {
     position: 'absolute',
     left: 0,
