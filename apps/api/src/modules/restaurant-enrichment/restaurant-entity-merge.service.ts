@@ -1,9 +1,10 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { DemandSubjectKind, Prisma, Entity } from '@prisma/client';
+import { Prisma, Entity } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
+import { EntityAnchorRehomeService } from '../content-processing/entity-resolver/entity-anchor-rehome.service';
 
 type RestaurantEntity = Entity;
 
@@ -15,6 +16,7 @@ export class RestaurantEntityMergeService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => ProjectionRebuildService))
     private readonly projectionRebuildService: ProjectionRebuildService,
+    private readonly anchorRehome: EntityAnchorRehomeService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantEntityMergeService');
@@ -204,9 +206,10 @@ export class RestaurantEntityMergeService {
     // in the immutable signals ledger, resolved through entity_redirects at
     // read (the redirect row is written by the merge flow itself).
     await this.rehomeUserListRestaurantItems(tx, canonicalId, duplicateId);
-    await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
-    await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
-    await this.rehomeDemandScoringCandidates(tx, canonicalId, duplicateId);
+    // poll targets + topic arrays, curated items, photos, on-demand
+    // requests, demand candidates: the shared user-anchor law (also used
+    // by the food merge — one implementation, no drift)
+    await this.anchorRehome.rehomeEntityAnchors(tx, canonicalId, duplicateId);
   }
 
   private async rehomeUserListRestaurantItems(
@@ -241,215 +244,6 @@ export class RestaurantEntityMergeService {
         data: { restaurantId: canonicalId },
       });
     }
-  }
-
-  private async rehomePollTopicRestaurantTargets(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    await tx.pollTopic.updateMany({
-      where: { targetRestaurantId: duplicateId },
-      data: { targetRestaurantId: canonicalId },
-    });
-  }
-
-  private async rehomeOnDemandRequestEntities(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const duplicateRequests = await tx.onDemandRequest.findMany({
-      where: {
-        OR: [{ entityId: duplicateId }, { entityIdentityKey: duplicateId }],
-      },
-      select: {
-        requestId: true,
-        term: true,
-        entityType: true,
-        reason: true,
-        engineId: true,
-        lastSeenAt: true,
-        lastQueuedAt: true,
-        resultRestaurantCount: true,
-        resultFoodCount: true,
-      },
-    });
-
-    const touchedRequestIds = new Set<string>();
-
-    for (const request of duplicateRequests) {
-      const canonicalRequest = await tx.onDemandRequest.findFirst({
-        where: {
-          requestId: { not: request.requestId },
-          term: request.term,
-          entityType: request.entityType,
-          reason: request.reason,
-          engineId: request.engineId,
-          entityIdentityKey: canonicalId,
-        },
-        select: {
-          requestId: true,
-          lastSeenAt: true,
-          lastQueuedAt: true,
-          resultRestaurantCount: true,
-          resultFoodCount: true,
-        },
-      });
-
-      if (canonicalRequest) {
-        const users = await tx.onDemandRequestUser.findMany({
-          where: { requestId: request.requestId },
-        });
-
-        for (const user of users) {
-          const existingUser = await tx.onDemandRequestUser.findUnique({
-            where: {
-              requestId_userId: {
-                requestId: canonicalRequest.requestId,
-                userId: user.userId,
-              },
-            },
-          });
-
-          if (existingUser) {
-            await tx.onDemandRequestUser.update({
-              where: {
-                requestId_userId: {
-                  requestId: canonicalRequest.requestId,
-                  userId: user.userId,
-                },
-              },
-              data: {
-                askCount: existingUser.askCount + user.askCount,
-                firstSeenAt:
-                  this.minDate(existingUser.firstSeenAt, user.firstSeenAt) ??
-                  existingUser.firstSeenAt,
-                lastSeenAt:
-                  this.maxDate(existingUser.lastSeenAt, user.lastSeenAt) ??
-                  existingUser.lastSeenAt,
-              },
-            });
-            continue;
-          }
-
-          await tx.onDemandRequestUser.create({
-            data: {
-              requestId: canonicalRequest.requestId,
-              userId: user.userId,
-              firstSeenAt: user.firstSeenAt,
-              lastSeenAt: user.lastSeenAt,
-              askCount: user.askCount,
-            },
-          });
-        }
-
-        await tx.onDemandRequest.update({
-          where: { requestId: canonicalRequest.requestId },
-          data: {
-            lastSeenAt:
-              this.maxDate(canonicalRequest.lastSeenAt, request.lastSeenAt) ??
-              canonicalRequest.lastSeenAt,
-            lastQueuedAt:
-              this.maxDate(
-                canonicalRequest.lastQueuedAt,
-                request.lastQueuedAt,
-              ) ?? canonicalRequest.lastQueuedAt,
-            resultRestaurantCount: Math.max(
-              canonicalRequest.resultRestaurantCount,
-              request.resultRestaurantCount,
-            ),
-            resultFoodCount: Math.max(
-              canonicalRequest.resultFoodCount,
-              request.resultFoodCount,
-            ),
-          },
-        });
-
-        await tx.onDemandRequest.delete({
-          where: { requestId: request.requestId },
-        });
-        touchedRequestIds.add(canonicalRequest.requestId);
-        continue;
-      }
-
-      await tx.onDemandRequest.update({
-        where: { requestId: request.requestId },
-        data: {
-          entityId: canonicalId,
-          entityIdentityKey: canonicalId,
-        },
-      });
-      touchedRequestIds.add(request.requestId);
-    }
-
-    for (const requestId of touchedRequestIds) {
-      const distinctUserCount = await tx.onDemandRequestUser.count({
-        where: { requestId },
-      });
-      await tx.onDemandRequest.update({
-        where: { requestId },
-        data: { distinctUserCount },
-      });
-    }
-  }
-
-  private async rehomeDemandScoringCandidates(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const duplicateCandidates = await tx.demandScoringCandidate.findMany({
-      where: { entityId: duplicateId },
-    });
-
-    for (const candidate of duplicateCandidates) {
-      const subjectKey = this.rehomeSubjectKey({
-        subjectKind: candidate.subjectKind,
-        subjectKey: candidate.subjectKey,
-        canonicalId,
-      });
-      const canonicalCandidate = await tx.demandScoringCandidate.findFirst({
-        where: {
-          runId: candidate.runId,
-          consumerKind: candidate.consumerKind,
-          candidateKind: candidate.candidateKind,
-          subjectKind: candidate.subjectKind,
-          subjectKey,
-          entityId: canonicalId,
-          entityType: candidate.entityType,
-          engineName: candidate.engineName,
-          bucket: candidate.bucket,
-          lane: candidate.lane,
-          reason: candidate.reason,
-        },
-      });
-
-      if (canonicalCandidate) {
-        await tx.demandScoringCandidate.delete({
-          where: { candidateId: candidate.candidateId },
-        });
-        continue;
-      }
-
-      await tx.demandScoringCandidate.update({
-        where: { candidateId: candidate.candidateId },
-        data: {
-          entityId: canonicalId,
-          subjectKey,
-        },
-      });
-    }
-  }
-
-  private rehomeSubjectKey(params: {
-    subjectKind: DemandSubjectKind;
-    subjectKey: string;
-    canonicalId: string;
-  }): string {
-    return params.subjectKind === DemandSubjectKind.entity
-      ? params.canonicalId
-      : params.subjectKey;
   }
 
   private async mergeLocations(
@@ -582,6 +376,12 @@ export class RestaurantEntityMergeService {
       sourceConnectionId,
       targetConnectionId,
     );
+    // curated picks + photos cascade on connection delete — repoint first
+    await this.anchorRehome.rehomeConnectionAnchors(
+      tx,
+      targetConnectionId,
+      sourceConnectionId,
+    );
   }
 
   private async rehomeUserListItemConnections(
@@ -619,26 +419,6 @@ export class RestaurantEntityMergeService {
         data: { connectionId: targetConnectionId },
       });
     }
-  }
-
-  private minDate(
-    a: Date | null | undefined,
-    b: Date | null | undefined,
-  ): Date | undefined {
-    if (a && b) {
-      return a.getTime() <= b.getTime() ? a : b;
-    }
-    return a ?? b ?? undefined;
-  }
-
-  private maxDate(
-    a: Date | null | undefined,
-    b: Date | null | undefined,
-  ): Date | undefined {
-    if (a && b) {
-      return a.getTime() >= b.getTime() ? a : b;
-    }
-    return a ?? b ?? undefined;
   }
 
   private minNumber(

@@ -64,8 +64,11 @@ re-creation (details enterprise+atmosphere ~$25/1k + text searches ~$35/1k
 - autocomplete). The Austin fresh-start wiped ~20k and re-enriched ~4,200
   = ~$118 of avoidable Places spend (~5x the reload's entire LLM bill). Any
   wipe/cleanup preserves every restaurant with a geocoded place id — the
-  wipe script (apps/api/scripts/reload/wipe-austin-derived.sql) now encodes
-  this; keep it that way.
+  city-scoped wipe (apps/api/scripts/reload/wipe-city-derived.sql) encodes
+  this plus the user-anchor and referenced-means-alive laws; keep it that
+  way. Its GLOBAL predecessor also nuked NY's derived graph as collateral
+  (found 2026-07-31, the scheduler then "self-healed" 20k NY docs at
+  unbudgeted Places+LLM cost): wipes are COMMUNITY-SCOPED now, always.
 
 ## Cost truth: the BigQuery billing export + the reconcile routine
 

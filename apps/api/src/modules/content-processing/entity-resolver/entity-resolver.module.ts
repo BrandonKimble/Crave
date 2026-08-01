@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EntityResolutionService } from './entity-resolution.service';
 import { FoodDedupeMergeService } from './food-dedupe-merge.service';
+import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
 import { RepositoryModule } from '../../../repositories/repository.module';
@@ -29,7 +30,12 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
     FoodDedupeMergeService,
     DishKnowledgeSynthesisService,
     AliasManagementService,
+    EntityAnchorRehomeService,
   ],
-  exports: [EntityResolutionService, AliasManagementService],
+  exports: [
+    EntityResolutionService,
+    AliasManagementService,
+    EntityAnchorRehomeService,
+  ],
 })
 export class EntityResolverModule {}

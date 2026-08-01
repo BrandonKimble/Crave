@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
+import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 
 export interface DedupeMergeSummary {
   candidatePairs: number;
@@ -34,6 +35,7 @@ export class FoodDedupeMergeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly llmService: LLMService,
+    private readonly anchorRehome: EntityAnchorRehomeService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('FoodDedupeMergeService');
@@ -310,6 +312,13 @@ export class FoodDedupeMergeService {
           where: { connectionId: connection.connectionId },
           data: { connectionId: surviving.connectionId },
         });
+        // curated picks + photos cascade on connection delete — repoint
+        // BEFORE the loser row goes (shared user-anchor law)
+        await this.anchorRehome.rehomeConnectionAnchors(
+          tx,
+          surviving.connectionId,
+          connection.connectionId,
+        );
         // (event re-pointing happens once per pair, after the connection
         // loop — see mergeFoodEntityEvents)
         // Phase C: view history lives in the signals ledger — the reader
@@ -359,6 +368,15 @@ export class FoodDedupeMergeService {
         where: { entityId: loser.entityId },
         data: { status: EntityStatus.archived },
       });
+
+      // Hard-rekey every user-anchored table off the archived loser (poll
+      // targets + topic arrays, curated items, photos, on-demand requests,
+      // demand candidates) — user links never point at a tombstone.
+      await this.anchorRehome.rehomeEntityAnchors(
+        tx,
+        winner.entityId,
+        loser.entityId,
+      );
 
       // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
       // signals ledger is never rekeyed — readers resolve loser subjectIds to

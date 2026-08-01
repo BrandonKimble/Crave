@@ -278,7 +278,37 @@ The dedicated audit cycle ran as its own plan per the re-sequencing:
   ~44-name placement curation, richness threshold, junk sweep, dedupe
   number-variant pass, gazetteer cutover).
 
-## 5. NEW YORK — no reprocessing, no gaps
+## 5a. INCIDENT (found 2026-07-31): the premise below was WRONG — the wipe was GLOBAL
+
+The §5 plan assumed NY was untouched, but the executed wipe's deletes had no
+community scope: NY's derived graph (43k+ events, its restaurants below the
+place-grounding cutover, its connections) was destroyed as collateral on
+2026-07-30. Nobody noticed because "NY continuity" was only verified as a
+COLLECTION-cadence fact. Then, when the scheduler re-enabled, the foodnyc
+keyword lane fired and — because extraction coverage is keyed to the PROMPT
+HASH, and the reload changed the prompt — saw every thread its terms
+surfaced as uncovered and re-extracted 20,563 NY docs (06:10–07:05 UTC
+2026-07-31): 32 batch jobs, 7,577 interactive resolution calls, and ~4,792
+Places detail enrichments re-creating NY restaurants the wipe had deleted
+(it predated the restaurant law). Ungoverned spend, roughly $100–200 —
+reconcile against BigQuery when the export lands (~24h lag).
+
+CONSEQUENCES ENCODED (all landed 2026-07-31):
+
+- Wipes are COMMUNITY-SCOPED forever: scripts/reload/wipe-city-derived.sql
+  (ledger deletes by source-doc community; orphan-only entity deletion;
+  REFERENCED-MEANS-ALIVE retires the stale-array bug class; user-anchor set
+  shared with the anchor audit via preserved-anchors.sql).
+- Deliberate re-runs go through CityReextractRunner, which REFUSES to start
+  without an owner-approved spend campaign and threads the campaignId so
+  batch spend meters the envelope.
+- NY is currently PARTIALLY healed (20,563 of 47,963 extracted docs carry
+  the new prompt; the remainder's derived data is gone until re-extracted).
+  Remaining scheduled keyword/chronological cycles will keep trickle-healing
+  it ungoverned. OPEN OWNER DECISION: finish NY deliberately via the
+  re-extract pattern (~27k docs ≈ $12–15 LLM; Places ≈ already re-spent).
+
+## 5. NEW YORK — no reprocessing, no gaps (SUPERSEDED BY §5a)
 
 NY's raw corpus and its 1,000-post catch-up stay as they are. The risk is a
 CHRONOLOGICAL GAP: with collection paused, new NY posts age out of the

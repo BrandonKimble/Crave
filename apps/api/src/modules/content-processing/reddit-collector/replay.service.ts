@@ -66,6 +66,10 @@ export class ReplayService implements OnModuleInit {
   async replayExtractionRun(params: {
     sourceExtractionRunId: string;
     activate?: boolean;
+    /** Owner-approved spend campaign: threads into runMetadata so the
+     *  batch jobs this replay submits meter the campaign envelope
+     *  (extraction-pipeline resumeContext → usage-ledger attribution). */
+    campaignId?: string;
   }): Promise<ExtractionRunReplaySummary> {
     const sourceRun = await this.prismaService.extractionRun.findUnique({
       where: { extractionRunId: params.sourceExtractionRunId },
@@ -157,6 +161,7 @@ export class ReplayService implements OnModuleInit {
         runMetadata: {
           replaySource: 'extraction_run',
           replayOfExtractionRunId: params.sourceExtractionRunId,
+          ...(params.campaignId ? { campaignId: params.campaignId } : {}),
         },
       });
 

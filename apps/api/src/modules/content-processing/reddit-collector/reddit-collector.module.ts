@@ -16,7 +16,7 @@ import { CollectionJobSchedulerService } from './chronological/collection-job-sc
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
-import { FullReloadRunner } from './full-reload.runner';
+import { CityReextractRunner } from './city-reextract.runner';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { ChronologicalBatchProcessingWorker } from './chronological/chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
@@ -85,7 +85,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       KeywordSliceSelectionService,
       KeywordAttemptHistoryService,
       KeywordSearchOrchestratorService,
-      FullReloadRunner,
+      CityReextractRunner,
     ]
   : [];
 
