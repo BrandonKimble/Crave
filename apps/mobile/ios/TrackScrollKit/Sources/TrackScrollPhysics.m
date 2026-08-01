@@ -94,6 +94,15 @@
 /// expandAllowTopElastic) instead of rubber-banding the rows under a pinned
 /// header.
 @property (nonatomic, assign) BOOL postureDragFromBoundary;
+/// THE OVERSHOOT EPISODE. The tug is NOT a property of the finger — it is a
+/// property of the sheet being past its boundary. Gating it on the drag made
+/// the sheet's tug term snap to 0 the instant the finger lifted while tau
+/// sprang home separately: the sheet "snapped back" instead of easing, and the
+/// rows visibly lagged it (they ride tau; the sheet had already jumped). The
+/// episode opens when a boundary-drag pushes past the boundary and closes only
+/// when tau actually returns — so finger, spring, sheet and rows are one body
+/// for the whole excursion.
+@property (nonatomic, assign) BOOL postureOvershootActive;
 /// Host scroll view (weak): lets slot registration ping a synchronous shell
 /// re-apply so a freshly recreated slot is positioned in the SAME UIKit
 /// transaction it appears in (the flash becomes unwritable).
@@ -284,6 +293,9 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 {
   if (self.postureDragActive) {
     self.postureDragActive = NO;
+    // postureOvershootActive is deliberately NOT cleared here: the episode
+    // closes in didScroll when tau is actually home, so the spring back is one
+    // cohesive sheet rather than a jump plus a lagging list.
     self.postureDragFromBoundary = NO;
     // Restore the range law's inset (the ceiling was drag-scoped).
     [self applyRangeLawTo:scrollView];
@@ -310,7 +322,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
   // THE TUG RETURNS: a posture drag that pulled the sheet past its boundary
   // springs back to the boundary — it is elastic, never a new posture.
-  if (self.postureDragActive && self.postureDragFromBoundary && edge >= 0 && releaseY > edge) {
+  if (self.postureOvershootActive && edge >= 0 && releaseY > edge) {
     targetContentOffset->y = releaseY;
     [self startSpringOn:scrollView toTarget:edge fromY:releaseY velocityY:velocity.y * 1000.0];
     return;
@@ -478,9 +490,12 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     // the overshoot IS the damped travel; the sheet simply follows it, and rows
     // (being content at tau) stay glued to the sheet by the same algebra.
     const CGFloat tugBoundary = self.shellTrackH + self.stashSigma;
-    const CGFloat tug = (self.postureDragActive && self.postureDragFromBoundary && tau > tugBoundary)
-                            ? (tau - tugBoundary)
-                            : 0.0;
+    if (self.postureDragActive && self.postureDragFromBoundary && tau > tugBoundary + 0.5) {
+      self.postureOvershootActive = YES;
+    } else if (self.postureOvershootActive && tau <= tugBoundary + 0.5) {
+      self.postureOvershootActive = NO;
+    }
+    const CGFloat tug = (self.postureOvershootActive && tau > tugBoundary) ? (tau - tugBoundary) : 0.0;
     const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, tugBoundary - tau) - tug;
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
