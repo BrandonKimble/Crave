@@ -400,16 +400,60 @@ export class RestaurantEntityMergeService {
       duplicateId?: string;
     }>;
   }> {
+    // STRIPPED-KEY grouping (class ③, empirically validated: 21/21 stripped
+    // collisions on the mirror were REAL duplicates). The old normalization
+    // turned punctuation into SPACES, so "Phil's"→"phil s" never grouped
+    // with "Phils"→"phils" — which is why possessive twins survived a
+    // nightly dedupe sweep for months. Groups of ANY size now qualify
+    // (Grizzelda's existed ×3); pairs are peeled per run — the nightly
+    // cadence converges multi-member groups over a few days.
     const groups = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
-      SELECT lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'gi')) AS name,
+      SELECT btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) AS name,
              array_agg(entity_id ORDER BY created_at) AS entity_ids
       FROM core_entities
       WHERE type = 'restaurant' AND status = 'active'
-      GROUP BY lower(regexp_replace(name, '[^a-z0-9]+', ' ', 'gi'))
-      HAVING count(*) = 2
+      GROUP BY btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g'))
+      HAVING count(*) >= 2
     `;
+    // PREFIX LANE (class ③): the stub/qualifier duplicate classes —
+    // "Garbos" orbiting "Garbo's on Mopac", "Valentinas" vs "Valentinas
+    // Tex Mex Bbq" — are token-boundary PREFIX pairs, invisible to exact
+    // grouping. Conservative admission: the shorter side must be
+    // UNGROUNDED (a stub by definition — grounded prefix pairs are the
+    // chain/branch question, deliberately untouched pending P2.2), and
+    // the SAME evidence hierarchy below judges the pair.
+    const prefixPairs = await this.prisma.$queryRaw<
+      Array<{ name: string; entity_ids: string[] }>
+    >`
+      WITH stripped AS (
+        SELECT entity_id,
+               btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) AS key,
+               EXISTS (SELECT 1 FROM core_restaurant_locations l
+                       WHERE l.restaurant_id = core_entities.entity_id
+                         AND l.google_place_id IS NOT NULL) AS grounded
+        FROM core_entities
+        WHERE type = 'restaurant' AND status = 'active'
+      )
+      SELECT b.key AS name, ARRAY[a.entity_id, b.entity_id] AS entity_ids
+      FROM stripped a
+      JOIN stripped b
+        ON a.key <> b.key
+       AND b.key LIKE a.key || ' %'
+       AND a.grounded = false
+       AND length(a.key) >= 4
+      -- AMBIGUITY GUARD: a stub that prefixes MORE THAN ONE distinct
+      -- longer name ('kings' → kings kolache / kings co imperial / ...)
+      -- cannot be attributed mechanically — hold it for a human or the
+      -- re-extraction, never merge into whichever pair sorts first.
+      WHERE (
+        SELECT count(DISTINCT b2.key) FROM stripped b2
+        WHERE b2.key <> a.key AND b2.key LIKE a.key || ' %'
+      ) = 1
+      LIMIT 200
+    `;
+
     let merged = 0;
     let held = 0;
     const decisions: Array<{
@@ -418,7 +462,7 @@ export class RestaurantEntityMergeService {
       canonicalId?: string;
       duplicateId?: string;
     }> = [];
-    for (const group of groups) {
+    for (const group of [...groups, ...prefixPairs]) {
       const details = await this.prisma.$queryRaw<
         Array<{
           entity_id: string;
@@ -440,7 +484,9 @@ export class RestaurantEntityMergeService {
         WHERE e.entity_id = ANY(${group.entity_ids}::uuid[])
         ORDER BY e.created_at
       `;
-      if (details.length !== 2) continue;
+      if (details.length < 2) continue;
+      // Pair-peel: judge the two OLDEST members this run; larger groups
+      // converge across nightly runs as each merge removes a member.
       const [a, b] = details;
       // EVIDENCE HIERARCHY (Phase 3.3 — replaces the place-id-disjointness
       // proxy, which is the EXPECTED state for legitimate chain branches):
