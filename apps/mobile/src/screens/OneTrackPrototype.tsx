@@ -118,8 +118,14 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </>
           ),
         }}
-        list={{ data: ROW_DATA, renderItem: renderRow } as never}
-        rowSurfaceStyle={styles.rowSurface}
+        legs={[
+          {
+            sceneKey: 'prototype',
+            list: { data: ROW_DATA, renderItem: renderRow } as never,
+            rowSurfaceStyle: styles.rowSurface,
+          },
+        ]}
+        presentedSceneKey="prototype"
         debugHud
       />
     </View>

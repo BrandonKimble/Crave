@@ -257,6 +257,16 @@ const ROOT_TRACK_SCENES = new Set<OverlayKey>([
 // the ToggleStrip band law barks inside any padded mount).
 const UNPADDED_BODY_SCENES = new Set<OverlayKey>(['listDetail'] as OverlayKey[]);
 
+// Tab scenes that become RESIDENTS on first visit (E1); child pages stay
+// transient (mount only while presented).
+const RESIDENT_TRACK_SCENES = new Set<OverlayKey>([
+  'search',
+  'home',
+  'polls',
+  'lists',
+  'profile',
+] as OverlayKey[]);
+
 const MOUNTED_TRACK_SCENES = new Set<OverlayKey>([
   'lists',
   'profile',
@@ -574,71 +584,96 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     [scene, zeroScrollOffset]
   );
 
-  const resolvedList = React.useMemo(() => {
-    if (publishedBody != null && publishedBody.surfaceKind === 'list') {
-      return {
-        leader: publishedBody.ListHeaderComponent ?? null,
-        chrome: publishedBody.ListChromeComponent ?? null,
-        data: publishedBody.data,
-        renderItem: publishedBody.renderItem,
-        keyExtractor: publishedBody.keyExtractor,
-        ListEmptyComponent: publishedBody.ListEmptyComponent,
-        ItemSeparatorComponent: publishedBody.ItemSeparatorComponent,
-        extraData: publishedBody.extraData,
-        onEndReached: publishedBody.onEndReached,
-        onEndReachedThreshold: publishedBody.onEndReachedThreshold,
-      };
-    }
-    // The search-root scene IS the home surface (curated shelves) — the boot
-    // sheet. Its dual-band results composition migrates separately; until then
-    // the home shelves are the correct content (post-flip owner report).
-    const partsFor =
-      scene === 'polls' ? pollsParts : scene === 'home' || scene === 'search' ? homeParts : null;
-    if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
-      const spec = partsFor.sceneBodyContent;
-      const specRenderItem = spec.renderItem;
-      return {
-        data: spec.data,
-        renderItem: (info: Parameters<NonNullable<typeof specRenderItem>>[0]) =>
-          wrapRowOnFoundation(specRenderItem?.(info) ?? null),
-        keyExtractor: spec.keyExtractor,
-        ListEmptyComponent: spec.ListEmptyComponent,
-        ItemSeparatorComponent: spec.ItemSeparatorComponent,
-        extraData: spec.extraData,
-        onEndReached: spec.onEndReached,
-        onEndReachedThreshold: spec.onEndReachedThreshold,
-      };
-    }
-    if (MOUNTED_TRACK_SCENES.has(scene)) {
-      return { data: [scene], renderItem: renderMountedBody };
-    }
-    return null;
-  }, [
-    homeParts,
-    pollsParts,
-    publishedBody,
-    renderMountedBody,
-    renderPlaceholderRow,
-    scene,
-    wrapRowOnFoundation,
-  ]);
-  // THE HELD SWAP (transition derivation VI, ported from the old system's
-  // co-mounted hard swap): the outgoing scene's rows STAY until the incoming
-  // scene's body is RESOLVED — a switch never flashes placeholder skeleton
-  // between two real scenes. The surface (frost/plate/chrome/tail) is
-  // persistent native and never swaps; only rows do, once, when ready.
-  const lastResolvedListRef = React.useRef<{ scene: OverlayKey; list: unknown } | null>(null);
-  if (resolvedList != null) {
-    lastResolvedListRef.current = { scene, list: resolvedList };
+  // ── THE RESIDENT LEGS (residents-cutover F) ────────────────────────────────
+  // Tab scenes become residents on FIRST visit (E1 lazy mount) and stay
+  // mounted; child/transient scenes mount only while presented. Per-scene
+  // list resolution below is the old presented-only resolution, parameterized.
+  const visitedResidentsRef = React.useRef(new Set<OverlayKey>());
+  if (RESIDENT_TRACK_SCENES.has(scene)) {
+    visitedResidentsRef.current.add(scene);
   }
-  const heldList = lastResolvedListRef.current;
-  const list =
-    resolvedList ??
-    heldList?.list ??
-    ({ data: PLACEHOLDER_ROWS, renderItem: renderPlaceholderRow } as unknown);
-  // THE FORMULA'S SCENE IDENTITY: scroll memory keys on the scene whose rows
-  // are actually displayed (a held outgoing body keeps its own scroll).
-  const displayedScene = resolvedList != null ? scene : (heldList?.scene ?? scene);
+  const resolveLegList = React.useCallback(
+    (legScene: OverlayKey) => {
+      if (legScene === scene && publishedBody != null && publishedBody.surfaceKind === 'list') {
+        return {
+          leader: publishedBody.ListHeaderComponent ?? null,
+          data: publishedBody.data,
+          renderItem: publishedBody.renderItem,
+          keyExtractor: publishedBody.keyExtractor,
+          ListEmptyComponent: publishedBody.ListEmptyComponent,
+          ItemSeparatorComponent: publishedBody.ItemSeparatorComponent,
+          extraData: publishedBody.extraData,
+          onEndReached: publishedBody.onEndReached,
+          onEndReachedThreshold: publishedBody.onEndReachedThreshold,
+        };
+      }
+      const partsFor =
+        legScene === 'polls'
+          ? pollsParts
+          : legScene === 'home' || legScene === 'search'
+            ? homeParts
+            : null;
+      if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
+        const spec = partsFor.sceneBodyContent;
+        const specRenderItem = spec.renderItem;
+        return {
+          data: spec.data,
+          renderItem: (info: Parameters<NonNullable<typeof specRenderItem>>[0]) =>
+            wrapRowOnFoundation(specRenderItem?.(info) ?? null),
+          keyExtractor: spec.keyExtractor,
+          ListEmptyComponent: spec.ListEmptyComponent,
+          ItemSeparatorComponent: spec.ItemSeparatorComponent,
+          extraData: spec.extraData,
+          onEndReached: spec.onEndReached,
+          onEndReachedThreshold: spec.onEndReachedThreshold,
+        };
+      }
+      if (MOUNTED_TRACK_SCENES.has(legScene)) {
+        return { data: [legScene], renderItem: renderMountedBody };
+      }
+      return { data: PLACEHOLDER_ROWS, renderItem: renderPlaceholderRow };
+    },
+    [
+      homeParts,
+      pollsParts,
+      publishedBody,
+      renderMountedBody,
+      renderPlaceholderRow,
+      scene,
+      wrapRowOnFoundation,
+    ]
+  );
+
+  const legs = React.useMemo(() => {
+    const legScenes = new Set<OverlayKey>(visitedResidentsRef.current);
+    legScenes.add(scene);
+    return [...legScenes].map((legScene) => {
+      const list = resolveLegList(legScene);
+      const leader = (list as { leader?: unknown }).leader ?? null;
+      return {
+        sceneKey: legScene as string,
+        list: list as never,
+        listLeader:
+          leader != null ? (
+            <SceneBodyFoundationSurface
+              scrollOffset={zeroScrollOffset}
+              sceneKey={legScene as SheetSceneKey}
+            >
+              <View style={styles.mountedBodyInset}>{renderListLeader(leader)}</View>
+            </SceneBodyFoundationSurface>
+          ) : null,
+        rowSurfaceStyle: MOUNTED_TRACK_SCENES.has(legScene)
+          ? UNPADDED_BODY_SCENES.has(legScene)
+            ? styles.mountedSurfaceUnpadded
+            : styles.mountedSurface
+          : (legScene === scene && publishedBody?.surfaceKind === 'list') || legScene === 'polls'
+            ? styles.rowSurface
+            : undefined,
+        onUserListScrollActivity:
+          legScene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined,
+      };
+    });
+  }, [pollsParts, publishedBody, resolveLegList, scene, zeroScrollOffset]);
 
   return (
     <View style={styles.root} pointerEvents="box-none">
@@ -650,40 +685,14 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         grabHandleHidden={scene === 'settings'}
         onGrabHandlePress={onGrabHandlePress}
         dockedStrip={dockedStrip}
-        list={list as TrackSheetPageProps<unknown>['list']}
-        sceneKey={displayedScene}
-        listLeader={
-          (list as { leader?: unknown }).leader != null ? (
-            <SceneBodyFoundationSurface
-              scrollOffset={zeroScrollOffset}
-              sceneKey={scene as SheetSceneKey}
-            >
-              {/* Lane leaders (poll card): white plate + FrostCutout support +
-                  the production content inset. */}
-              <View style={styles.mountedBodyInset}>
-                {renderListLeader((list as { leader?: unknown }).leader)}
-              </View>
-            </SceneBodyFoundationSurface>
-          ) : null
-        }
-        rowSurfaceStyle={
-          MOUNTED_TRACK_SCENES.has(scene)
-            ? UNPADDED_BODY_SCENES.has(scene)
-              ? styles.mountedSurfaceUnpadded
-              : styles.mountedSurface
-            : publishedBody?.surfaceKind === 'list' || scene === 'polls'
-              ? styles.rowSurface
-              : undefined
-        }
+        legs={legs}
+        presentedSceneKey={scene as string}
         debugHud={debugVisuals}
         commandsRef={commandsRef}
         seatTau={seatTau}
         publicationBindings={sharedSheetPublicationBindings}
         onGestureSettle={onGestureSettle}
         onSettle={markSheetLegReady}
-        onUserListScrollActivity={
-          scene === 'polls' ? pollsParts.sceneBodyTransport.onUserListScrollActivity : undefined
-        }
       />
     </View>
   );

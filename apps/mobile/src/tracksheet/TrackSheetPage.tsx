@@ -111,12 +111,23 @@ export type TrackSheetListProps<Item> = Pick<
   | 'extraData'
 >;
 
+/** THE RESIDENT LEG (residents-cutover Part F): a scene's rows, mounted once
+ * on first visit and kept resident; switches display-flip legs while the
+ * singletons (chrome, slots, shell, physics, τ) never remount. */
+export type TrackSheetLeg = {
+  sceneKey: string;
+  list: TrackSheetListProps<unknown>;
+  listLeader?: React.ReactNode;
+  rowSurfaceStyle?: ViewStyle;
+  onUserListScrollActivity?: TrackSheetPhysicsOptions['onUserListScrollActivity'];
+};
+
 export type TrackSheetCommands = {
   /** Programmatic settle to a τ (detent) — rides the native scroll animation. */
   snapToTau: (tau: number, animated?: boolean) => void;
 };
 
-export type TrackSheetPageProps<Item> = {
+export type TrackSheetPageProps = {
   geometry: TrackSheetGeometry;
   /** Title-slot content (left side of the header row). */
   title: React.ReactNode;
@@ -135,11 +146,12 @@ export type TrackSheetPageProps<Item> = {
   listLeader?: React.ReactNode;
   /** Footer surface extension below the last row. */
   footerHeight?: number;
-  list: TrackSheetListProps<Item>;
+  /** THE RESIDENT LEGS — every visited scene's rows. The presented leg is
+   * live; the rest are display-detached, scroll preserved via the switch
+   * formula. Lazy: the host adds a leg on first visit (E1). */
+  legs: TrackSheetLeg[];
   /** Sheet surface color. */
   surfaceColor?: string;
-  /** Extra style on each row cell's surface wrapper (padding etc.). */
-  rowSurfaceStyle?: ViewStyle;
   /** Dev HUD readout of τ. */
   debugHud?: boolean;
   /** Imperative commands (scene-switch snaps etc.) — filled on mount. */
@@ -149,14 +161,12 @@ export type TrackSheetPageProps<Item> = {
    * τ_new = min(τ, H) + listScroll(incoming). sheetTop is flat for τ ≥ H and
    * listScroll is nonzero only there, so the sheet PROVABLY cannot move on a
    * switch while every scene keeps its own scroll. */
-  sceneKey?: string | null;
+  presentedSceneKey: string;
   /** THE SEAT (declarative): the desired resting τ. Re-asserted until reached —
    * on prop change, on native attach, and through recycler-mount races — and
    * CANCELLED the moment the user grabs the track (a seat is a target, never a
    * lock). null = no opinion (leave τ where it is). */
   seatTau?: number | null;
-  /** Production pagination signal (sceneBodyTransport.onUserListScrollActivity). */
-  onUserListScrollActivity?: TrackSheetPhysicsOptions['onUserListScrollActivity'];
   /** THE PUBLICATION BRIDGE (acceptance inventory §5.8): mirror the track into
    * the app-wide shared sheet values — every legacy subscriber (search chrome
    * transition, scrim, dismiss plane, origin capture) rides the track. */
@@ -175,7 +185,7 @@ export type TrackSheetPageProps<Item> = {
   onSettle?: (detentTau: number) => void;
 };
 
-export function TrackSheetPage<Item>({
+export function TrackSheetPage({
   geometry,
   title,
   headerExtras,
@@ -185,22 +195,28 @@ export function TrackSheetPage<Item>({
   grabHandleHidden = false,
   onGrabHandlePress,
   dockedStrip,
-  listLeader,
   footerHeight = 160,
-  list,
+  legs,
   surfaceColor = '#ffffff',
-  rowSurfaceStyle,
   debugHud = false,
   commandsRef,
   seatTau = null,
-  sceneKey = null,
-  onUserListScrollActivity,
+  presentedSceneKey,
   publicationBindings,
   onGestureSettle,
   onSettle,
-}: TrackSheetPageProps<Item>): React.ReactElement {
+}: TrackSheetPageProps): React.ReactElement {
+  // Pagination signals route to the PRESENTED leg only (hidden legs emit no
+  // scroll events anyway; this keeps the physics hook identity stable).
+  const presentedLegRef = React.useRef<TrackSheetLeg | null>(null);
+  const presentedLeg = legs.find((leg) => leg.sceneKey === presentedSceneKey) ?? null;
+  presentedLegRef.current = presentedLeg;
+  const onUserListScrollActivity = React.useCallback((offsetY: number, distanceFromEnd: number) => {
+    presentedLegRef.current?.onUserListScrollActivity?.(offsetY, distanceFromEnd);
+  }, []);
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
+  const listLeader = presentedLeg?.listLeader ?? null;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
@@ -449,23 +465,36 @@ export function TrackSheetPage<Item>({
   );
   applyPinRef.current = applyPin;
 
-  const listInstanceRef = React.useRef<{
-    scrollToOffset?: (opts: { offset: number; animated?: boolean }) => void;
-  } | null>(null);
-  const setListRef = React.useCallback(
-    (instance: React.Component | null) => {
-      listInstanceRef.current = instance as unknown as {
-        scrollToOffset?: (opts: { offset: number; animated?: boolean }) => void;
-      } | null;
-      if (instance != null) {
-        const tag = findNodeHandle(instance);
-        trackTagRef.current = tag;
-        attachToTag(tag);
-        applyPin();
-      }
-    },
-    [applyPin, attachToTag]
+  // THE LEG REFS: one cached callback per scene; a mounting leg records its
+  // tag, and if it is the PRESENTED leg the engine attaches to it (attach is
+  // per-scroll-view, idempotent, retried) and the shell re-binds.
+  const legTagsRef = React.useRef(new Map<string, number>());
+  const legRefCacheRef = React.useRef(
+    new Map<string, (instance: React.Component | null) => void>()
   );
+  const legListRef = (sceneKey: string) => {
+    let cb = legRefCacheRef.current.get(sceneKey);
+    if (cb == null) {
+      cb = (instance: React.Component | null) => {
+        if (instance == null) {
+          legTagsRef.current.delete(sceneKey);
+          return;
+        }
+        const tag = findNodeHandle(instance);
+        if (tag == null) {
+          return;
+        }
+        legTagsRef.current.set(sceneKey, tag);
+        if (sceneKey === presentedSceneKeyRef.current) {
+          trackTagRef.current = tag;
+          attachToTag(tag);
+          applyPin();
+        }
+      };
+      legRefCacheRef.current.set(sceneKey, cb);
+    }
+    return cb;
+  };
 
   // THE PUBLICATION BRIDGE: one-way, UI-thread mirrors — the track is the ONE
   // writer; legacy readers see the exact values the old sheet used to publish.
@@ -773,23 +802,18 @@ export function TrackSheetPage<Item>({
     ]
   );
 
-  const listHeader = React.useMemo(
-    () => (
-      <View style={styles.chromeLane}>
-        {/* THE CHROME LANE (old system: PersistentSheetHeaderHost at zIndex
-            60, above the body lane — that is how the header "ignored the
-            scroll"). The chrome is content here, and cells paint AFTER the
-            header, so it must be raised or the rows paint over it. */}
-        {/* [0,H): sheet travel — TRANSPARENT, so the map shows through above
-            the sheet with no mask and no clip. */}
-        <View style={{ height: trackH }} pointerEvents="none" />
-        {chromeElement}
-        {listLeader}
-      </View>
-    ),
-    [chromeElement, listLeader, trackH]
+  // Per-leg header: [spacer H][chrome band][leader]. The chrome TOUCH TWIN
+  // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
+  // would steal it); hidden legs reserve the same band height so their
+  // content offsets stay comparable across flips.
+  const headerForLeg = (leg: TrackSheetLeg, isPresented: boolean) => (
+    <View style={styles.chromeLane}>
+      <View style={{ height: trackH }} pointerEvents="none" />
+      {isPresented ? chromeElement : <View style={{ height: chromeHeight }} pointerEvents="none" />}
+      {leg.listLeader ?? null}
+    </View>
   );
-  const listFooter = React.useMemo(
+  const legFooter = React.useMemo(
     () => (
       <View
         style={{
@@ -803,15 +827,29 @@ export function TrackSheetPage<Item>({
     [footerHeight, surfaceColor]
   );
 
-  const renderItem = list.renderItem;
-  const renderRowOnSurface = React.useCallback(
-    (info: Parameters<NonNullable<typeof renderItem>>[0]) => (
-      <View style={[{ backgroundColor: surfaceColor }, rowSurfaceStyle]}>
-        {renderItem?.(info) ?? null}
-      </View>
-    ),
-    [renderItem, rowSurfaceStyle, surfaceColor]
+  // Per-leg row surface: each leg's renderItem wrapped once, memoized by leg
+  // identity so resident legs keep stable cell identities across re-renders.
+  const rowRendererCacheRef = React.useRef(
+    new Map<string, { source: TrackSheetLeg; render: (info: never) => React.ReactElement }>()
   );
+  const rendererForLeg = (leg: TrackSheetLeg) => {
+    const cached = rowRendererCacheRef.current.get(leg.sceneKey);
+    if (
+      cached != null &&
+      cached.source.list.renderItem === leg.list.renderItem &&
+      cached.source.rowSurfaceStyle === leg.rowSurfaceStyle
+    ) {
+      return cached.render;
+    }
+    const legRenderItem = leg.list.renderItem;
+    const render = (info: never) => (
+      <View style={[{ backgroundColor: surfaceColor }, leg.rowSurfaceStyle]}>
+        {legRenderItem?.(info) ?? null}
+      </View>
+    );
+    rowRendererCacheRef.current.set(leg.sceneKey, { source: leg, render });
+    return render;
+  };
 
   // THE SHORT-PAGE FILL LAW (ground-up, 2026-07-27): every detent must be
   // REACHABLE — UIKit clamps settles to (contentH − viewport), so a short page
@@ -819,7 +857,12 @@ export function TrackSheetPage<Item>({
   // capped the track at its content edge and every spring settle was dragged
   // back there). The fill guarantees contentH ≥ spacer(H) + viewport.
   const handleContentSizeChange = React.useCallback(
-    (_width: number, height: number) => {
+    (sceneKey: string, height: number) => {
+      // Only the PRESENTED leg's geometry feeds the physics (hidden legs are
+      // display-detached; their sizes are not the sheet's).
+      if (sceneKey !== presentedSceneKeyRef.current) {
+        return;
+      }
       physics.contentHeight.value = height;
       // THE FILL IS MONOTONIC (thrash fix, 2026-07-27): the fill is derived
       // from a measurement the fill itself changes — a feedback loop that
@@ -855,13 +898,26 @@ export function TrackSheetPage<Item>({
   // THE SWITCH FORMULA — applied synchronously at the switch commit, instant
   // (setOffset, never a spring: restoring YOUR scroll is not motion).
   const sceneScrollMemoryRef = React.useRef(new Map<string, number>());
-  const prevSceneKeyRef = React.useRef<string | null>(sceneKey);
+  const presentedSceneKeyRef = React.useRef<string>(presentedSceneKey);
+  presentedSceneKeyRef.current = presentedSceneKey;
+  const prevSceneKeyRef = React.useRef<string | null>(presentedSceneKey);
   React.useLayoutEffect(() => {
+    const sceneKey = presentedSceneKey;
     const prev = prevSceneKeyRef.current;
-    if (sceneKey == null || prev === sceneKey) {
+    if (prev === sceneKey) {
       return;
     }
     prevSceneKeyRef.current = sceneKey;
+    // THE LEG FLIP: the engine attaches to the presented leg's scroll view
+    // (attach is per-scroll-view, idempotent, retried); the shell re-binds to
+    // it; refuse() then re-fuses posture + the leg's own scroll. A fresh
+    // leg's proxy may attach async — subscribeAttached re-applies the restore.
+    const nextTag = legTagsRef.current.get(sceneKey) ?? null;
+    if (nextTag != null) {
+      trackTagRef.current = nextTag;
+      attachToTag(nextTag);
+      applyPin();
+    }
     const sigmaNow = physics.sigma.value;
     if (prev != null) {
       // The outgoing scroll = the stash (scroll carried by a header drag) plus
@@ -873,6 +929,7 @@ export function TrackSheetPage<Item>({
       sceneScrollMemoryRef.current.set(prev, sigmaNow + Math.max(0, tau.value - trackH - sigmaNow));
     }
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
+    pendingRestoreRef.current = { sceneKey, restored };
     const nativePhysics = NativeModules.TrackScrollPhysics;
     if (nativePhysics?.refuse != null && trackTagRef.current != null) {
       nativePhysics.refuse(trackTagRef.current, restored);
@@ -893,7 +950,26 @@ export function TrackSheetPage<Item>({
         });
       });
     }
-  }, [sceneKey, tau, trackH]);
+  }, [presentedSceneKey, tau, trackH, attachToTag, applyPin]);
+  // A freshly mounted leg attaches async: re-apply the pending restore once
+  // the proxy exists (stamped by scene so a later switch cancels it).
+  const pendingRestoreRef = React.useRef<{ sceneKey: string; restored: number } | null>(null);
+  React.useEffect(
+    () =>
+      physics.subscribeAttached(() => {
+        const pending = pendingRestoreRef.current;
+        const nativePhysics = NativeModules.TrackScrollPhysics;
+        if (
+          pending != null &&
+          pending.sceneKey === presentedSceneKeyRef.current &&
+          nativePhysics?.refuse != null &&
+          trackTagRef.current != null
+        ) {
+          nativePhysics.refuse(trackTagRef.current, pending.restored);
+        }
+      }),
+    [physics]
+  );
 
   const [hud, setHud] = React.useState('');
   React.useEffect(() => {
@@ -932,32 +1008,49 @@ export function TrackSheetPage<Item>({
           </View>
         </View>
       </TrackShellSlot>
-      <AnimatedFlashList
-        ref={setListRef as unknown as React.Ref<React.Component>}
-        style={StyleSheet.absoluteFill}
-        contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-        data={list.data}
-        renderItem={renderRowOnSurface}
-        keyExtractor={list.keyExtractor}
-        getItemType={list.getItemType}
-        ItemSeparatorComponent={list.ItemSeparatorComponent}
-        ListEmptyComponent={list.ListEmptyComponent}
-        onEndReached={list.onEndReached}
-        onEndReachedThreshold={list.onEndReachedThreshold}
-        extraData={list.extraData}
-        drawDistance={SCREEN.height}
-        maintainVisibleContentPosition={{ disabled: true }}
-        renderScrollComponent={TrackScrollComponent}
-        ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
-        showsVerticalScrollIndicator={false}
-        bounces
-        alwaysBounceVertical
-        scrollEventThrottle={16}
-        onScroll={onScroll}
-        automaticallyAdjustContentInsets={false}
-        onContentSizeChange={handleContentSizeChange}
-      />
+      {/* THE RESIDENT LEGS (residents-cutover F): per-scene lists, mounted on
+          first visit, display-flipped. The presented leg is the live track;
+          hidden legs emit no events, keep their cells warm, and cost no
+          layout (display none). One chrome, one shell, one engine. */}
+      {legs.map((leg) => {
+        const isPresented = leg.sceneKey === presentedSceneKey;
+        return (
+          <View
+            key={leg.sceneKey}
+            style={isPresented ? styles.presentedLeg : styles.hiddenLeg}
+            pointerEvents={isPresented ? 'auto' : 'none'}
+          >
+            <AnimatedFlashList
+              ref={legListRef(leg.sceneKey) as unknown as React.Ref<React.Component>}
+              style={StyleSheet.absoluteFill}
+              contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+              data={leg.list.data}
+              renderItem={rendererForLeg(leg) as never}
+              keyExtractor={leg.list.keyExtractor}
+              getItemType={leg.list.getItemType}
+              ItemSeparatorComponent={leg.list.ItemSeparatorComponent}
+              ListEmptyComponent={leg.list.ListEmptyComponent}
+              onEndReached={leg.list.onEndReached}
+              onEndReachedThreshold={leg.list.onEndReachedThreshold}
+              extraData={leg.list.extraData}
+              drawDistance={SCREEN.height}
+              maintainVisibleContentPosition={{ disabled: true }}
+              renderScrollComponent={TrackScrollComponent}
+              ListHeaderComponent={headerForLeg(leg, isPresented)}
+              ListFooterComponent={legFooter}
+              showsVerticalScrollIndicator={false}
+              bounces
+              alwaysBounceVertical
+              scrollEventThrottle={16}
+              onScroll={onScroll}
+              automaticallyAdjustContentInsets={false}
+              onContentSizeChange={(_w: number, h: number) =>
+                handleContentSizeChange(leg.sceneKey, h)
+              }
+            />
+          </View>
+        );
+      })}
 
       {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
           contentEnd − τ), native) — the sheet is solid past any content end,
@@ -986,6 +1079,13 @@ export function TrackSheetPage<Item>({
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject },
+  // OPACITY-DETACHED, not display:none (perf, measured): flipping display
+  // forces a full Yoga relayout of the leg's whole subtree (~100ms on real
+  // scenes); opacity is paint-only, so the flip costs nothing — the old
+  // system's residents flipped exactly this way. Hidden legs keep layout,
+  // take no touches, and emit no scroll events.
+  presentedLeg: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
+  hiddenLeg: { ...StyleSheet.absoluteFillObject, opacity: 0, zIndex: 0 },
   // The shadow must live on a view that does NOT clip, so the silhouette is a
   // shadow shell (radii, no overflow) wrapping a clipped frost.
   silhouette: {
