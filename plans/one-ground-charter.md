@@ -548,7 +548,8 @@ NAME CLASSES, decided by measurement rather than a sweep (407 diffs):
 Springs)` … probed live: TOMTOM ITSELF carries the parenthetical. Not our
   artifact, so not ours to rewrite. If editorial display names are ever wanted,
   the right shape is a separate display-name concept, NOT overwriting the
-  vendor's `name` — that is the open question, deliberately not hacked.
+  vendor's `name`. CLOSED 2026-08-01, owner ruling: TomTom's names are fine
+  as-is — no display-name concept wanted; the vendor's `name` is the name.
 
 DURABILITY (checked, not assumed): `mergeSketch` never writes `name` — it only
 gap-fills nulls — so these edits cannot be reverted by a later observation.
