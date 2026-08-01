@@ -21,7 +21,6 @@ function buildService(isDispatchable: boolean) {
   const prisma = {
     llmBatchJob: { create: jest.fn() },
   };
-  const configService = { get: jest.fn().mockReturnValue('fake-api-key') };
   const usageLedger = { record: jest.fn() };
   const governance = {
     // Batch submission now goes through THE shared gemini spend gate rather
@@ -39,13 +38,22 @@ function buildService(isDispatchable: boolean) {
   const spendCampaigns = {
     isDispatchable: jest.fn().mockResolvedValue(isDispatchable),
   };
+  // The transport consumes typed vendor ops from the gateway now — no
+  // ConfigService/client of its own.
+  const llmService = {
+    batchTransportOps: () => ({
+      create: jest.fn().mockResolvedValue({ name: 'batches/fake' }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+      get: jest.fn().mockResolvedValue({ state: 'JOB_STATE_PENDING' }),
+    }),
+  };
   const service = new GeminiBatchService(
     prisma as never,
-    configService as never,
     stubLogger() as never,
     usageLedger as never,
     governance as never,
     spendCampaigns as never,
+    llmService as never,
   );
   return { service, prisma, spendCampaigns };
 }

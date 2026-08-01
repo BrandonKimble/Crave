@@ -3,9 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
-import { GoogleGenAI } from '@google/genai';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
+import { LLMService } from './llm.service';
 
 /**
  * Text embeddings via Gemini. Used as the *recall* stage of entity resolution:
@@ -17,7 +17,6 @@ import { UsageLedgerService } from '../shared/usage-ledger.service';
  */
 @Injectable()
 export class EmbeddingService implements OnModuleInit {
-  private genAI!: GoogleGenAI;
   private logger!: LoggerService;
   private redis: Redis | null = null;
   private readonly model = 'gemini-embedding-001';
@@ -35,12 +34,13 @@ export class EmbeddingService implements OnModuleInit {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redisService: RedisService,
     private readonly usageLedger: UsageLedgerService,
+    // Vendor calls ride the gateway's typed embed op — the raw SDK client
+    // has exactly one owner (llm.service).
+    private readonly llmService: LLMService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('EmbeddingService');
-    const apiKey = this.configService.get<string>('llm.apiKey') || '';
-    this.genAI = new GoogleGenAI({ apiKey });
     try {
       this.redis = this.redisService.getOrThrow();
     } catch {
@@ -63,7 +63,7 @@ export class EmbeddingService implements OnModuleInit {
     const out: number[][] = [];
     for (let i = 0; i < texts.length; i += this.batchSize) {
       const batch = texts.slice(i, i + this.batchSize);
-      const response = await this.genAI.models.embedContent({
+      const response = await this.llmService.embedVendorOp()({
         model: this.model,
         contents: batch,
         config: { taskType, outputDimensionality: this.dimensions },

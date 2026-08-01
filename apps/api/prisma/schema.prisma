@@ -296,6 +296,10 @@ model ApiUsageEvent {
   /// bills per token-hour, so it needs a dimension the token columns do not
   /// carry — kept separate rather than overloading cached_tokens.
   durationHours Float?  @map("duration_hours")
+  /// How the paid call ended: ok | truncated (MAX_TOKENS, response likely
+  /// discarded by the parser) | aborted (timeout after send; token counts
+  /// unknown) | failed (provider-failed batch). NULL = non-generation rows.
+  outcome       String? @db.VarChar(16)
   caller       String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
   runKey       String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
   /// Idempotency key for at-most-once records (e.g. one row per batch job).

@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { GoogleGenAI, JobState } from '@google/genai';
+import { LLMService } from './llm.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService, buildCauseChain } from '../../../shared';
@@ -67,10 +67,13 @@ export function isTransientFailure(error: unknown): boolean {
 
 /** Terminal Gemini states → our status. */
 const TERMINAL: Partial<Record<string, 'succeeded' | 'failed'>> = {
-  [JobState.JOB_STATE_SUCCEEDED]: 'succeeded',
-  [JobState.JOB_STATE_FAILED]: 'failed',
-  [JobState.JOB_STATE_CANCELLED]: 'failed',
-  [JobState.JOB_STATE_EXPIRED]: 'failed',
+  // Vendor job-state strings (formerly the SDK's JobState enum — inlined so
+  // the transport needs no SDK import; the lockdown spec flags any file
+  // referencing the vendor SDK outside the gateway).
+  JOB_STATE_SUCCEEDED: 'succeeded',
+  JOB_STATE_FAILED: 'failed',
+  JOB_STATE_CANCELLED: 'failed',
+  JOB_STATE_EXPIRED: 'failed',
 };
 
 /**
@@ -100,7 +103,6 @@ function campaignIdFromResumeContext(ctx: unknown): string | undefined {
 @Injectable()
 export class GeminiBatchService implements OnModuleDestroy {
   private readonly logger: LoggerService;
-  private readonly genAI: GoogleGenAI;
   private readonly ingestors = new Map<string, BatchIngestor>();
   private readonly failureHandlers = new Map<string, BatchFailureHandler>();
   private pollInFlight = false;
@@ -121,16 +123,20 @@ export class GeminiBatchService implements OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
-    configService: ConfigService,
     loggerService: LoggerService,
     private readonly usageLedger: UsageLedgerService,
     private readonly governance: GovernanceService,
     private readonly spendCampaigns: SpendCampaignService,
+    // The TRANSPORT no longer owns a vendor client: the gateway exposes the
+    // three batch operations as typed ops, so the raw SDK has exactly one
+    // owner and this service cannot drift into a second assembler.
+    private readonly llmService: LLMService,
   ) {
     this.logger = loggerService.setContext('GeminiBatchService');
-    this.genAI = new GoogleGenAI({
-      apiKey: configService.get<string>('llm.apiKey') || '',
-    });
+  }
+
+  private get batchOps() {
+    return this.llmService.batchTransportOps();
   }
 
   /** Pipelines register how their purpose's completed items get ingested. */
@@ -274,7 +280,7 @@ export class GeminiBatchService implements OnModuleDestroy {
         orderBy: { itemIndex: 'asc' },
         select: { itemIndex: true, itemKey: true, request: true },
       });
-      const created = await this.genAI.batches.create({
+      const created = await this.batchOps.create({
         model,
         src: {
           inlinedRequests: items.map((item) => {
@@ -326,7 +332,7 @@ export class GeminiBatchService implements OnModuleDestroy {
       select: { providerJobName: true },
     });
     if (job?.providerJobName) {
-      await this.genAI.batches.cancel({ name: job.providerJobName });
+      await this.batchOps.cancel(job.providerJobName);
     }
     await this.prisma.llmBatchJob.update({
       where: { jobId },
@@ -449,12 +455,45 @@ export class GeminiBatchService implements OnModuleDestroy {
     providerJobName: string,
     purpose: string,
   ): Promise<void> {
-    const remote = await this.genAI.batches.get({ name: providerJobName });
-    const state = remote.state ? String(remote.state) : 'unknown';
+    const remote = await this.batchOps.get(providerJobName);
+    const state =
+      typeof remote.state === 'string' && remote.state.length > 0
+        ? remote.state
+        : 'unknown';
     const terminal = TERMINAL[state];
     if (!terminal) return; // still queued/pending/running
 
     if (terminal === 'failed') {
+      // Google bills COMPLETED items inside a cancelled/expired/failed batch.
+      // Before this, a provider-failed job ledgered nothing — paid work with
+      // no meter. Sum whatever usage the remote carries; idempotent by the
+      // same one-row-per-job dedupe key as the success path.
+      const failedInlined = remote.dest?.inlinedResponses ?? [];
+      const failedUsage = { input: 0, output: 0, cached: 0, model: '' };
+      for (const entry of failedInlined) {
+        const meta = entry.response?.usageMetadata;
+        failedUsage.input += meta?.promptTokenCount ?? 0;
+        failedUsage.output +=
+          (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
+        failedUsage.cached += meta?.cachedContentTokenCount ?? 0;
+        failedUsage.model ||= entry.response?.modelVersion ?? '';
+      }
+      if (failedInlined.length > 0) {
+        this.usageLedger.record({
+          service: 'gemini',
+          operation: 'batchGenerateContent',
+          model: failedUsage.model || undefined,
+          mode: 'batch',
+          inputTokens: failedUsage.input,
+          outputTokens: failedUsage.output,
+          cachedTokens: failedUsage.cached,
+          requestCount: failedInlined.length,
+          caller: `gemini-batch.${purpose}`,
+          runKey: jobId,
+          dedupeKey: `gemini-batch:${jobId}`,
+          outcome: 'failed',
+        });
+      }
       await this.prisma.llmBatchJob.update({
         where: { jobId },
         data: {
@@ -526,6 +565,7 @@ export class GeminiBatchService implements OnModuleDestroy {
       runKey: jobId,
       dedupeKey: `gemini-batch:${jobId}`,
       campaignId,
+      outcome: 'ok',
     });
     await this.prisma.llmBatchJob.update({
       where: { jobId },

@@ -127,6 +127,38 @@ type GeminiGenerationConfig = Record<string, unknown> & {
   };
 };
 
+/** Minimal remote-batch shape the transport reads — exported so the batch
+ *  service needs no SDK import of its own (the lockdown spec flags any file
+ *  referencing @google/genai outside the gateway). */
+export interface GeminiBatchInlinedResponse {
+  response?: {
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      thoughtsTokenCount?: number;
+      cachedContentTokenCount?: number;
+    };
+    modelVersion?: string;
+  } | null;
+  error?: unknown;
+}
+
+export interface GeminiBatchJobRemote {
+  state?: unknown;
+  error?: unknown;
+  dest?: { inlinedResponses?: GeminiBatchInlinedResponse[] };
+}
+
+export interface BatchTransportOps {
+  create(params: {
+    model: string;
+    src: unknown;
+    config: { displayName: string };
+  }): Promise<{ name?: string }>;
+  cancel(name: string): Promise<void>;
+  get(name: string): Promise<GeminiBatchJobRemote>;
+}
+
 interface LLMGenerationOptions {
   /** Inline media (images) prepended to the text part — the photo gate's
    *  thumbnail classification rides the same pipeline as text callers. */
@@ -3309,6 +3341,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           outputTokens:
             outputTokens + (response.usageMetadata?.thoughtsTokenCount ?? 0),
           cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
+          // A MAX_TOKENS truncation is PAID output the parser then discards
+          // — before this column it ledgered identically to a good call, so
+          // "spend on thrown-away output" was unanswerable.
+          outcome:
+            finishReason === FinishReason.MAX_TOKENS ? 'truncated' : 'ok',
           caller: options.usageCaller ?? 'llm.callGeminiApi',
         });
         const tokenLimit =
@@ -3623,6 +3660,22 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         }
 
         const { retry, reason } = isRetryable(error);
+        if (reason === 'timeout') {
+          // The vendor may have completed (and billed) generation we never
+          // received. Token counts are UNKNOWN — recording zeros would be a
+          // fake measurement, so the row carries only the attempt count and
+          // the outcome; priced 0, visible. Before this, aborted attempts
+          // ledgered as NOTHING: spend with no meter.
+          this.usageLedger.record({
+            service: 'gemini',
+            operation: 'generateContent',
+            model: targetModel,
+            mode: 'interactive',
+            requestCount: 1,
+            outcome: 'aborted',
+            caller: options.usageCaller ?? 'llm.callGeminiApi',
+          });
+        }
         if (retry && attempt < maxRetries) {
           if (reason === 'rate_limit') {
             const classification = classifyRateLimit(error);
@@ -3926,6 +3979,42 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       tokens: acquired.tokenCount,
       expiresAtMs: acquired.expiresAtMs,
     };
+  }
+
+  /**
+   * Typed vendor operations for the two non-generation consumers. The
+   * re-derived ideal for "fold the stragglers" turned out NOT to be a
+   * pipeline refactor — batch request ASSEMBLY already flows through the
+   * shared pipeline (profiles, thinking, registry cache, the one spend
+   * gate). What remained was CLIENT OWNERSHIP: three batches.* calls and
+   * one embedContent were the only vendor operations outside this file.
+   * Exposing them as typed ops makes the raw client literally single-owner
+   * — the lockdown allowlist shrinks to this file, and "a second assembler
+   * forgot X" becomes unrepresentable rather than merely audited.
+   */
+  batchTransportOps(): BatchTransportOps {
+    return {
+      create: async (params) =>
+        this.genAI.batches.create(params as never) as Promise<{
+          name?: string;
+        }>,
+      cancel: async (name) => {
+        await this.genAI.batches.cancel({ name });
+      },
+      get: async (name) =>
+        this.genAI.batches.get({ name }) as Promise<GeminiBatchJobRemote>,
+    };
+  }
+
+  embedVendorOp(): (params: {
+    model: string;
+    contents: string[];
+    config?: { taskType?: string; outputDimensionality?: number };
+  }) => Promise<{ embeddings?: Array<{ values?: number[] }> }> {
+    return async (params) =>
+      this.genAI.models.embedContent(params as never) as Promise<{
+        embeddings?: Array<{ values?: number[] }>;
+      }>;
   }
 
   private cacheVendorOps(): CacheVendorOps {

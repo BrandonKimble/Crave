@@ -18,6 +18,9 @@ export interface UsageEvent {
   /** Cache-storage events only: hours the cached content is held. Presence
    *  switches pricing from cached-READ to cache-STORAGE (token-hours). */
   durationHours?: number;
+  /** How the paid call ended (ok | truncated | aborted | failed). Omit for
+   *  non-generation rows (cache lifecycle, Places, TomTom). */
+  outcome?: 'ok' | 'truncated' | 'aborted' | 'failed';
   caller: string;
   runKey?: string;
   /** Idempotency key for at-most-once records (unique column; a duplicate
@@ -122,6 +125,7 @@ export class UsageLedgerService implements OnModuleDestroy {
       cachedTokens: event.cachedTokens ?? null,
       requestCount: event.requestCount ?? 1,
       durationHours: event.durationHours ?? null,
+      outcome: event.outcome ?? null,
       caller: event.caller,
       // RUN ATTRIBUTION BY DEFAULT. runKey had exactly one producer (the
       // batch job id), so 165 of 58,958 gemini rows and ZERO Places/TomTom

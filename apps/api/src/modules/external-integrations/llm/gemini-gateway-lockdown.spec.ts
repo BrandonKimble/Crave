@@ -34,16 +34,10 @@ describe('Gemini gateway lockdown', () => {
 
   it('the raw GoogleGenAI client is constructible ONLY inside the gateway seam', () => {
     const allowed = new Set([
-      // The gateway itself: owns THE generateContent client.
+      // THE single owner. The batch transport and embeddings now consume
+      // typed vendor ops from here (batchTransportOps / embedVendorOp), so
+      // "a second assembler" is unrepresentable, not merely audited.
       'external-integrations/llm/llm.service.ts',
-      // The batch TRANSPORT (batches.create/get): folding it into the
-      // pipeline is the deferred item 3 of the gateway plan — its request
-      // CONFIGS already flow through buildCollectionBatchRequest.
-      'external-integrations/llm/gemini-batch.service.ts',
-      // embedContent has no thinking/config/cache dimension to forget and
-      // was audited clean ($0.078 lifetime); folding it buys purity, not
-      // protection. Allowed deliberately, with this line as the record.
-      'external-integrations/llm/embedding.service.ts',
       // Historical one-shot A/B harness (2026-07-12 model comparison), kept
       // as a record; would run at HIGH thinking if ever re-used — rewrite
       // through the gateway before re-running.
