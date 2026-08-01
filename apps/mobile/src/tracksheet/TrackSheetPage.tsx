@@ -4,8 +4,10 @@ import {
   findNodeHandle,
   NativeModules,
   Pressable,
+  requireNativeComponent,
   StyleSheet,
   View,
+  type ViewProps,
   type ViewStyle,
 } from 'react-native';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
@@ -66,6 +68,23 @@ import { TrackSheetDockedStrip, type TrackSheetDockedStripProps } from './TrackS
 // Omit both for a plain header sheet.
 
 const SCREEN = Dimensions.get('window');
+
+// THE REAL SLOT (transition derivation XIII): a native view that SELF-REGISTERS
+// with the engine inside its own UIKit lifecycle and whose transform is SEALED
+// against every writer but the engine. React may recreate it freely — the
+// replacement registers and is positioned in the same UIKit transaction it
+// appears in, so the detach flash and the parked-header class are unwritable.
+// Module double-evaluation (HMR / mixed-revision boots) makes a second
+// requireNativeComponent call an Invariant Violation -- cache globally.
+const slotCache = globalThis as { __TrackShellSlotNative?: unknown };
+const TrackShellSlotNative = (slotCache.__TrackShellSlotNative ??=
+  requireNativeComponent('TrackShellSlot'));
+function TrackShellSlot(
+  props: ViewProps & { slotRole: 'frost' | 'chrome' | 'tail'; children?: React.ReactNode }
+): React.ReactElement {
+  const Native = TrackShellSlotNative as unknown as React.ComponentClass<Record<string, unknown>>;
+  return <Native {...(props as unknown as Record<string, unknown>)} />;
+}
 
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
@@ -364,10 +383,17 @@ export function TrackSheetPage<Item>({
               `chrome at ${Math.round(audit.chromeWindowY)} != sheetTop ${Math.round(audit.expectedSheetTop)}`
             );
           }
+          if ((globalThis as { __shellAuditLogged2?: boolean }).__shellAuditLogged2 !== true) {
+            (globalThis as { __shellAuditLogged2?: boolean }).__shellAuditLogged2 = true;
+            // eslint-disable-next-line no-console
+            console.log('[SHELL] audit snapshot ' + JSON.stringify(audit));
+          }
           const key = problems.join('; ') || null;
           // Double-sample: bark only when the SAME problem persists across two
           // consecutive audits (a moving sheet can skew one sample).
           if (key != null && key === priorBad) {
+            // eslint-disable-next-line no-console
+            console.log('[SHELL] audit detail ' + JSON.stringify(audit));
             // eslint-disable-next-line no-console
             console.error(`[SHELL] audit: ${key} (τ=${Math.round(audit.tau ?? -1)})`);
             applyPin();
@@ -382,20 +408,6 @@ export function TrackSheetPage<Item>({
       clearInterval(timer);
     };
   }, [applyPin]);
-  const setFrostRef = React.useCallback(
-    (node: View | null) => {
-      frostTagRef.current = node != null ? findNodeHandle(node) : null;
-      applyPin();
-    },
-    [applyPin]
-  );
-  const setTailRef = React.useCallback(
-    (node: View | null) => {
-      tailTagRef.current = node != null ? findNodeHandle(node) : null;
-      applyPin();
-    },
-    [applyPin]
-  );
   // ── THE ORIGIN INVARIANT (RED-capable; this exact defect regressed 3x) ─────
   // The chrome IS the sheet's top edge, so its window y must equal sheetTopY.
   // It diverged by exactly expandedTop every time a layer applied that origin
@@ -906,20 +918,21 @@ export function TrackSheetPage<Item>({
           frame, written by the shell in scrollViewDidScroll). Carries the
           silhouette: r22 corners + the production shadow on the non-clipping
           wrapper. */}
-      <View
-        ref={setFrostRef}
-        collapsable={false}
-        /* THE SHADOW STAYS (owner correction 2026-07-29): "get rid of the
-           shadowing" meant the 12% black SCRIM over the search chrome, not the
-           sheet's own top-edge shadow. Production shadowShell, on the
-           non-clipping wrapper so the corners don't eat it. */
-        style={[overlaySheetStyles.shadowShell, styles.silhouette, styles.founding]}
-        pointerEvents="none"
-      >
-        <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
-          <FrostedGlassBackground />
+      {/* THE SHADOW STAYS (owner correction 2026-07-29): the deleted thing is
+          the 12% scrim, not the sheet's own top-edge shadow — shadowShell on
+          the non-clipping wrapper so the corners don't eat it. */}
+      {/* THE SLOT CARRIES NO PAINT (interop wrapper law, 2026-07-31): under
+          Fabric interop, style paint lands on a WRAPPER view the engine does
+          not transform — a background on the slot itself stays parked at y=0
+          (the white blanket, named by the coverage walk). Geometry on the
+          slot; every painted pixel on inner children. */}
+      <TrackShellSlot slotRole="frost" style={styles.founding} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, overlaySheetStyles.shadowShell, styles.silhouette]}>
+          <View style={[StyleSheet.absoluteFill, styles.silhouetteClip]}>
+            <FrostedGlassBackground />
+          </View>
         </View>
-      </View>
+      </TrackShellSlot>
       <AnimatedFlashList
         ref={setListRef as unknown as React.Ref<React.Component>}
         style={StyleSheet.absoluteFill}
@@ -950,18 +963,17 @@ export function TrackSheetPage<Item>({
       {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
           contentEnd − τ), native) — the sheet is solid past any content end,
           through any bounce, with zero fabricated scroll length. */}
-      <View
-        ref={setTailRef}
-        collapsable={false}
-        style={[styles.founding, { backgroundColor: surfaceColor }]}
-        pointerEvents="none"
-      />
+      <TrackShellSlot slotRole="tail" style={styles.founding} pointerEvents="none">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: surfaceColor }]} />
+      </TrackShellSlot>
 
       {/* THE CHROME VISUALS: pointerEvents none — every touch falls through to
           the track; the content twin supplies the buttons. Positioned natively
           at sheetTop, so chrome, frost and band mask agree every frame. */}
       <View style={styles.chromeOverlay} pointerEvents="none">
-        {chromeVisualElement}
+        <TrackShellSlot slotRole="chrome" pointerEvents="none">
+          {chromeVisualElement}
+        </TrackShellSlot>
       </View>
 
       {debugHud ? (

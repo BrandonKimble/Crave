@@ -1,4 +1,5 @@
 #import "TrackScrollPhysics.h"
+#import "TrackShellSlot.h"
 
 #import <QuartzCore/QuartzCore.h>
 #import <React/RCTUIManager.h>
@@ -84,6 +85,10 @@
 /// bounds are insets, never per-frame writes), so an upward header drag gets
 /// UIKit's own rubber band at the boundary instead of scrolling the list.
 @property (nonatomic, assign) BOOL postureDragActive;
+/// Host scroll view (weak): lets slot registration ping a synchronous shell
+/// re-apply so a freshly recreated slot is positioned in the SAME UIKit
+/// transaction it appears in (the flash becomes unwritable).
+@property (nonatomic, weak) UIScrollView *hostScrollView;
 - (void)startSpringOn:(UIScrollView *)scrollView
              toTarget:(double)target
                 fromY:(double)y0
@@ -366,22 +371,46 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   if (self.shellEnabled) {
     const CGFloat tau = scrollView.contentOffset.y;
     const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
-    UIView *frost = self.shellFrostView;
+    // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
+    // the tag-bound views remain as the legacy fallback until the delete pass.
+    TrackShellRegistry *registry = [TrackShellRegistry shared];
+    TrackShellSlotView *frostSlot = [registry viewForRole:@"frost"];
+    UIView *frost = frostSlot ?: self.shellFrostView;
     if (frost != nil) {
       const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
-      if (!CGAffineTransformEqualToTransform(frost.transform, t)) frost.transform = t;
+      if (!CGAffineTransformEqualToTransform(frost.transform, t)) {
+        if (frostSlot != nil) {
+          [frostSlot trackApplyTransform:t];
+        } else {
+          frost.transform = t;
+        }
+      }
     }
-    UIView *chromeOverlay = self.shellChromeView;
+    TrackShellSlotView *chromeSlot = [registry viewForRole:@"chrome"];
+    UIView *chromeOverlay = chromeSlot ?: self.shellChromeView;
     if (chromeOverlay != nil) {
       const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
-      if (!CGAffineTransformEqualToTransform(chromeOverlay.transform, t)) chromeOverlay.transform = t;
+      if (!CGAffineTransformEqualToTransform(chromeOverlay.transform, t)) {
+        if (chromeSlot != nil) {
+          [chromeSlot trackApplyTransform:t];
+        } else {
+          chromeOverlay.transform = t;
+        }
+      }
     }
-    UIView *tail = self.shellTailView;
+    TrackShellSlotView *tailSlot = [registry viewForRole:@"tail"];
+    UIView *tail = tailSlot ?: self.shellTailView;
     if (tail != nil) {
       const CGFloat contentEnd = scrollView.contentSize.height - tau;
       const CGFloat tailTop = MAX(sheetTop, contentEnd);
       const CGAffineTransform t = CGAffineTransformMakeTranslation(0, tailTop);
-      if (!CGAffineTransformEqualToTransform(tail.transform, t)) tail.transform = t;
+      if (!CGAffineTransformEqualToTransform(tail.transform, t)) {
+        if (tailSlot != nil) {
+          [tailSlot trackApplyTransform:t];
+        } else {
+          tail.transform = t;
+        }
+      }
     }
     CALayer *mask = self.shellBandMask;
     if (mask != nil) {
@@ -740,6 +769,15 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
       scrollView.layer.mask = proxy.shellBandMask;
     }
     proxy.shellEnabled = YES;
+    proxy.hostScrollView = scrollView;
+    __weak TrackScrollDelegateProxy *weakProxy = proxy;
+    [TrackShellRegistry shared].onSlotsChanged = ^{
+      TrackScrollDelegateProxy *strongProxy = weakProxy;
+      UIScrollView *host = strongProxy.hostScrollView;
+      if (strongProxy != nil && host != nil) {
+        [strongProxy scrollViewDidScroll:host];
+      }
+    };
     if (!proxy.clampGuardInstalled) {
       proxy.clampGuardInstalled = YES;
       [scrollView addObserver:(id)proxy
@@ -778,7 +816,24 @@ RCT_EXPORT_METHOD(auditShell:(nonnull NSNumber *)reactTag
     body[@"tau"] = @(tau);
     body[@"sigma"] = @(proxy.stashSigma);
     body[@"expectedSheetTop"] = @(sheetTop);
-    UIView *chrome = proxy.shellChromeView;
+    TrackShellSlotView *chromeSlotAudit = [[TrackShellRegistry shared] viewForRole:@"chrome"];
+    body[@"chromeIsSlot"] = @(chromeSlotAudit != nil);
+    body[@"frostIsSlot"] = @([[TrackShellRegistry shared] viewForRole:@"frost"] != nil);
+    body[@"tailIsSlot"] = @([[TrackShellRegistry shared] viewForRole:@"tail"] != nil);
+    TrackShellSlotView *tailSlotAudit = [[TrackShellRegistry shared] viewForRole:@"tail"];
+    if (tailSlotAudit != nil) {
+      body[@"tailTY"] = @(tailSlotAudit.transform.ty);
+    }
+    TrackShellSlotView *frostSlotAudit = [[TrackShellRegistry shared] viewForRole:@"frost"];
+    if (frostSlotAudit != nil) {
+      body[@"frostTY"] = @(frostSlotAudit.transform.ty);
+    }
+    body[@"shellEnabled"] = @(proxy.shellEnabled);
+    if (chromeSlotAudit != nil) {
+      body[@"slotTransformTY"] = @(chromeSlotAudit.transform.ty);
+      body[@"slotWindow"] = @(chromeSlotAudit.window != nil);
+    }
+    UIView *chrome = chromeSlotAudit ?: proxy.shellChromeView;
     body[@"chromeBound"] = @(chrome != nil);
     if (chrome != nil) {
       body[@"chromeAttached"] = @(chrome.window != nil);
@@ -789,6 +844,59 @@ RCT_EXPORT_METHOD(auditShell:(nonnull NSNumber *)reactTag
     body[@"frostBound"] = @(frost != nil);
     if (frost != nil) {
       body[@"frostWindowY"] = @([frost convertPoint:CGPointZero toView:nil].y);
+    }
+    TrackShellSlotView *chainSlot = [[TrackShellRegistry shared] viewForRole:@"chrome"];
+    if (chainSlot != nil) {
+      NSMutableArray *chain = [NSMutableArray array];
+      UIView *cursor = chainSlot;
+      int hops = 0;
+      while (cursor != nil && hops < 10) {
+        [chain addObject:[NSString stringWithFormat:@"%@ fy=%.0f ty=%.0f",
+                          NSStringFromClass(cursor.class), cursor.frame.origin.y,
+                          cursor.transform.ty]];
+        cursor = cursor.superview;
+        hops++;
+      }
+      body[@"chromeChain"] = chain;
+    }
+    // THE COVERAGE WALK: name every view that covers a probe point in the
+    // map band, deepest-first — the instrument answers "WHAT is the white
+    // thing" instead of us guessing layer by layer.
+    UIWindow *window = scrollView.window;
+    if (window != nil) {
+      const CGPoint probe = CGPointMake(200, 400);
+      NSMutableArray *coverage = [NSMutableArray array];
+      void (^__block walk)(UIView *, int) = nil;
+      void (^walkImpl)(UIView *, int);
+      __block __weak void (^weakWalk)(UIView *, int) = nil;
+      walkImpl = ^(UIView *view, int depth) {
+        if (view.hidden || view.alpha < 0.01 || depth > 24) {
+          return;
+        }
+        const CGRect frameInWindow = [view convertRect:view.bounds toView:nil];
+        if (CGRectContainsPoint(frameInWindow, probe)) {
+          UIColor *bg = view.backgroundColor;
+          CGFloat white = -1, alpha = -1;
+          if (bg != nil) {
+            [bg getWhite:&white alpha:&alpha];
+          }
+          if ((bg != nil && alpha > 0.9) || [view isKindOfClass:[UIVisualEffectView class]]) {
+            [coverage addObject:[NSString stringWithFormat:@"%@ y=%.0f h=%.0f w=%.2f a=%.2f",
+                                 NSStringFromClass(view.class),
+                                 frameInWindow.origin.y, frameInWindow.size.height, white, alpha]];
+          }
+        }
+        for (UIView *sub in view.subviews) {
+          void (^strongWalk)(UIView *, int) = weakWalk;
+          if (strongWalk) {
+            strongWalk(sub, depth + 1);
+          }
+        }
+      };
+      walk = walkImpl;
+      weakWalk = walk;
+      walk(window, 0);
+      body[@"coverage"] = coverage;
     }
     resolve(body);
   }];

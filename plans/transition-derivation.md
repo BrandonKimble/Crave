@@ -464,3 +464,36 @@ The retry, the commit-proof law, the audit self-heal, and the transform-reset
 class all become unnecessary or unwritable. VERDICT: build the slot. The
 settled re-bind is the bridge that keeps dev usable until it lands; the slot
 is the next major rung, its own session.
+
+## XIV. THE REAL SLOT — LANDED (2026-07-31), and the two laws it cost
+
+Landed: TrackShellSlotView (TrackScrollKit) — self-registering (registers
+with the engine in its own didMoveToWindow; a React recreation registers its
+replacement in the same UIKit transaction it appears, so the engine positions
+it before it can be drawn unpositioned), and paint-free by law. The engine
+reads the registry first each shell frame; tag-bound views remain as legacy
+fallback until the delete pass.
+
+P11 (COMPOSED-FRAME SEAL, measured live): setting a frame on a TRANSFORMED
+view re-solves position so the final frame matches the setter — the interop
+wrapper re-lays out the slot with frame=bounds every pass, silently
+cancelling the translation while transform.ty still READS as set (ty=70,
+rendered at 0; named by the ancestor-chain audit). Transforms on ANY
+externally-laid-out view are doomed. The slot therefore composes position
+INSIDE setFrame: POSITION = LAYOUT ⊕ SHELL OFFSET — every external layout
+write re-applies the engine's offset by construction, and setTransform is a
+no-op for all callers.
+
+P12 (INTEROP WRAPPER PAINT): under Fabric interop, style paint (background,
+shadow) lands on a WRAPPER view the engine never positions — a background on
+the slot itself stays parked at layout position (the white-blanket state,
+named by the coverage walk). THE SLOT CARRIES NO PAINT: geometry styles only;
+every painted pixel lives on inner children.
+
+Also: requireNativeComponent must be globally cached (module double-eval =
+Invariant Violation). The coverage walk + ancestor chain live in auditShell —
+the instrument now NAMES offending views instead of reporting drift numbers.
+
+Verified: switch stress across all tabs + drags — zero audit barks, screen
+pixel-correct at every posture. The settled re-bind, commit-proof reasserts
+and audit self-heal are now redundant for slots and go in the delete pass.
