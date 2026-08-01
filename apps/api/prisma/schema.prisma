@@ -2009,6 +2009,10 @@ model PlaceGeometryPromotion {
   promotedAt         DateTime? @map("promoted_at")
   attempts           Int       @default(0)
   lastAttemptAt      DateTime? @map("last_attempt_at")
+  /// Docket #2: TERMINAL refusal — the vendor provably does not model this
+  /// place separately (entity claimed at the same level, or the polygon
+  /// does not contain the anchor). A fact, never retried.
+  refusedAt          DateTime? @map("refused_at")
   providerBoundaryId String?   @map("provider_boundary_id") @db.VarChar(128)
   /// §24 Task 3: the spend campaign that enqueued this item (e.g. the coarse
   /// polygon seed's pilot campaign), when one exists. Organic/header/poll

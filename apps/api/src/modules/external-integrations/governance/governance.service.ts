@@ -104,44 +104,38 @@ export class GovernanceService implements OnModuleInit {
     //        20k → ~$86/mo each. Total ~$496/mo if all three ran flat out
     //        for a month, which only a runaway could do.
     //
-    // KNOWN BETTER SHAPE (not done here): a runaway burns a monthly quota in
-    // minutes and then blocks the rest of the month — the exact failure we
-    // just lived through. A PER-MINUTE ceiling derived from the vendor's own
-    // ~5 QPS (the K4 fact behind VENDOR_QPS_SPACING_MS) would stop a loop
-    // instantly and never touch the hourly drain's paced ~2/sec. The pool
-    // registry takes one window per pool, and the durable month machinery +
-    // the 80%-by-day-20 spend alert both read the month window, so switching
-    // shape is its own change. Logged in plans/one-ground-charter.md.
+    // DOCKET #2 (abstraction audit, 2026-07-30) — the KNOWN BETTER SHAPE,
+    // done: the admission window is the VENDOR'S OWN GRAIN. §16 K4 vendor
+    // fact: ~5 QPS on the Search/polygon endpoints → 300/minute per pool. A
+    // runaway now stops within ONE MINUTE instead of burning a month's
+    // backstop in ~5.5 hours and then blocking all legitimate work for ~25
+    // days; the hourly drain's paced ~2/sec never touches the ceiling. The
+    // month window is retired as an admission gate — spend visibility stays
+    // with the ledger + cost-reconcile, which read actual draws, not pools.
+    // (perMinute pools are in-memory by design: a restart forgets ≤1 minute
+    // of window, which cannot overspend at this grain.)
     //
     // §16 on reservationTtlMs: K3-shaped operational bounds — "how long a
     // leaked reservation may hold capacity before expiry reclaims it".
     // 60s ≈ one synchronous call; 120s ≈ a paged/batched dispatch.
-    const TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH = 100_000;
+    const TOMTOM_VENDOR_QPS = 5; // K4 vendor fact (same fact as VENDOR_QPS_SPACING_MS)
+    const TOMTOM_PER_MINUTE = TOMTOM_VENDOR_QPS * 60;
     this.pools.register({
       name: 'tomtom.reverseGeocode',
       credential: 'default',
-      window: {
-        kind: 'perMonth',
-        limit: TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH,
-      },
+      window: { kind: 'perMinute', limit: TOMTOM_PER_MINUTE },
       reservationTtlMs: 60_000,
     });
     this.pools.register({
       name: 'tomtom.geocode',
       credential: 'default',
-      window: {
-        kind: 'perMonth',
-        limit: TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH,
-      },
+      window: { kind: 'perMinute', limit: TOMTOM_PER_MINUTE },
       reservationTtlMs: 60_000,
     });
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
-      window: {
-        kind: 'perMonth',
-        limit: TOMTOM_RUNAWAY_BACKSTOP_PER_MONTH,
-      },
+      window: { kind: 'perMinute', limit: TOMTOM_PER_MINUTE },
       reservationTtlMs: 120_000,
     });
     // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM

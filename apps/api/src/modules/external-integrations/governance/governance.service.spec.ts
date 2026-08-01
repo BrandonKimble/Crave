@@ -142,8 +142,11 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
     await service.onModuleInit(); // healthy load → windows confirmed
 
     // The store starts failing writes; the next reconcile's flush fails.
+    // Docket #2: the TomTom pools became perMinute (in-memory by design), so
+    // the durable-flush law is exercised on a pool that IS durable — the
+    // gemini month pool.
     consumptionStore.add.mockRejectedValue(new Error('store down'));
-    const res = service.pools.reserve('tomtom.reverseGeocode', 1, 'probe');
+    const res = service.pools.reserve('gemini.monthlySpend', 1, 'probe');
     expect(res.admitted).toBe(true);
     if (res.admitted) {
       await service.pools.reconcile(res.reservationId, 1);
@@ -166,11 +169,11 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
     expect(emitted.severity).toBe('critical');
     expect(emitted.kind).toBe('pool_bookkeeping_failure');
     expect(emitted.dedupeKey).toMatch(
-      /^pool_bookkeeping_failure:tomtom\.reverseGeocode:\d{4}-\d{2}-\d{2}T\d{2}$/,
+      /^pool_bookkeeping_failure:gemini\.monthlySpend:\d{4}-\d{2}-\d{2}T\d{2}$/,
     );
 
     // RED-provable hard-close: flush failure → the draw attempt refuses.
-    const denied = service.pools.reserve('tomtom.reverseGeocode', 1, 'probe');
+    const denied = service.pools.reserve('gemini.monthlySpend', 1, 'probe');
     expect(denied.admitted).toBe(false);
     if (!denied.admitted) {
       expect(denied.reason).toBe('storeFailure');
@@ -178,9 +181,9 @@ describe('GovernanceService durable-flush failure (single fail semantic: hard-cl
 
     // Store recovers → ensureWindow flushes successfully → draws admit again.
     consumptionStore.add.mockResolvedValue(undefined);
-    await service.pools.ensureWindow('tomtom.reverseGeocode');
+    await service.pools.ensureWindow('gemini.monthlySpend');
     expect(
-      service.pools.reserve('tomtom.reverseGeocode', 1, 'probe').admitted,
+      service.pools.reserve('gemini.monthlySpend', 1, 'probe').admitted,
     ).toBe(true);
   });
 });

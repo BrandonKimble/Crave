@@ -66,7 +66,6 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PlaceGeometryPromotion, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { utcInstantSql } from '../signals/sql-instant';
 import {
   PolygonFetchResult,
   TOMTOM_CHAIN_PROBE,
@@ -260,9 +259,13 @@ export class PlacesPromotionService {
                campaign_id         AS "campaignId"
         FROM place_geometry_promotions
         WHERE promoted_at IS NULL
-          AND (last_attempt_at IS NULL
-               OR date_trunc('month', last_attempt_at)
-                  < date_trunc('month', ${utcInstantSql(now)}))
+          -- Docket #2: refusal is TERMINAL (a fact about the vendor's model,
+          -- never retried), and the month-as-backoff clause is DEAD — retry
+          -- latency was a function of the CALENDAR DATE of failure (a miss
+          -- on the 1st waited ~30 days, on the 30th ~1 day). Transient
+          -- failures simply retry next tick; the per-minute pool (the
+          -- vendor's own grain) is what bounds a runaway now.
+          AND refused_at IS NULL
         ORDER BY enqueued_at ASC
         LIMIT ${DRAIN_BATCH_LIMIT_PER_TICK}
       `,
@@ -442,7 +445,7 @@ export class PlacesPromotionService {
       LIMIT 1
     `);
     if (claimedByAnother.length > 0) {
-      await this.recordAttempt(item.placeId, now);
+      await this.recordRefusal(item.placeId, now);
       this.logger.warn(
         'vendor entity already claimed by another place — staying sketch (the vendor does not model this place separately)',
         {
@@ -528,11 +531,9 @@ export class PlacesPromotionService {
     const wrongEntity = covers?.ok === false;
     const rejectReason = 'polygon does not contain the place anchor';
     if (wrongEntity) {
-      await this.prisma.placeGeometryPromotion.update({
-        where: { placeId: item.placeId },
-        data: { providerBoundaryId: null },
-      });
-      await this.recordAttempt(item.placeId, now);
+      // Docket #2: also TERMINAL — the polygon for this entity id does not
+      // contain the place's own anchor, and that will not change next tick.
+      await this.recordRefusal(item.placeId, now);
       this.logger.warn('WRONG-ENTITY polygon rejected (place stays sketch)', {
         placeId: item.placeId,
         geometryId,
@@ -737,11 +738,25 @@ export class PlacesPromotionService {
     `);
   }
 
-  /** A consumed-draw miss: attempts++ (no cap), next chance next window. */
+  /** A consumed-draw miss: attempts++ (no cap), retried next tick. */
   private async recordAttempt(placeId: string, now: Date): Promise<void> {
     await this.prisma.placeGeometryPromotion.update({
       where: { placeId },
       data: { attempts: { increment: 1 }, lastAttemptAt: now },
+    });
+  }
+
+  /** Docket #2: a refusal is a FACT (the vendor does not model this place
+   *  separately). Terminal — the drain never selects the row again; the
+   *  place keeps its honest sketch envelope. */
+  private async recordRefusal(placeId: string, now: Date): Promise<void> {
+    await this.prisma.placeGeometryPromotion.update({
+      where: { placeId },
+      data: {
+        attempts: { increment: 1 },
+        lastAttemptAt: now,
+        refusedAt: now,
+      },
     });
   }
 }

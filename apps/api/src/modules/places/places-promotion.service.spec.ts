@@ -334,7 +334,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       });
     });
 
-    it('the month-window backoff clause rides the drain read (K4 pool window = the backoff clock)', async () => {
+    it('the drain retries every tick and NEVER re-selects a refused row (docket #2: month-as-backoff is dead)', async () => {
       const { service, prisma } = makeHarness({ queueRows: [] });
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
       const drainSelect = prisma.$queryRaw.mock.calls
@@ -343,9 +343,10 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
           String(query.sql ?? '').includes('ORDER BY enqueued_at ASC'),
         );
       expect(drainSelect).toBeDefined();
-      expect(String(drainSelect.sql)).toContain(
-        "date_trunc('month', last_attempt_at)",
-      );
+      // Refusal is terminal; transient failures just wait for the next tick
+      // (the per-minute pool bounds a runaway, not the calendar).
+      expect(String(drainSelect.sql)).toContain('refused_at IS NULL');
+      expect(String(drainSelect.sql)).not.toContain("date_trunc('month'");
       expect(String(drainSelect.sql)).toContain('promoted_at IS NULL');
     });
   });
@@ -417,10 +418,12 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
       // Rejected: never stamped as promoted, cached id cleared for a re-resolve.
       expect(prisma.place.update).not.toHaveBeenCalled();
-      const cleared = prisma.placeGeometryPromotion.update.mock.calls.find(
-        (call: any) => call[0].data.providerBoundaryId === null,
+      // Docket #2: the rejection is TERMINAL — refused_at is stamped and the
+      // row is never re-selected (no id-clearing re-spend cycle).
+      const refused = prisma.placeGeometryPromotion.update.mock.calls.find(
+        (call: any) => call[0].data.refusedAt instanceof Date,
       );
-      expect(cleared).toBeDefined();
+      expect(refused).toBeDefined();
     });
 
     it('ANCHOR CONTAINMENT: a polygon covering the anchor is accepted (the guard is not just "reject everything")', async () => {
