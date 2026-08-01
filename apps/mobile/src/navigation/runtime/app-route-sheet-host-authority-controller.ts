@@ -1,3 +1,4 @@
+import { getTrackFlipState } from '../../tracksheet/track-flip-store';
 import type {
   BottomSheetProgrammaticRuntimeModel,
   BottomSheetRuntimeModel,
@@ -1669,6 +1670,18 @@ class AppRouteSheetHostAuthorityController {
 
   private syncSheetMotionTarget(resolvedSurfaceInput = this.getResolvedSurfaceInput()): void {
     withSearchNavSwitchRuntimeAttribution('sheetHost', 'syncSheetMotionTarget', () => {
+      // THE SEAT SOCKET (residents rung 4): with the track flip ON, the TRACK
+      // HOST is the registered 'sheetHost' motion target — this provider-level
+      // registrant sat OUTSIDE the flip gate (XII red team 3) and would
+      // co-register; last-registrant-wins would then be a mount-order coin
+      // flip. One target per world.
+      if (getTrackFlipState().on) {
+        this.unregisterSheetMotionTarget?.();
+        this.unregisterSheetMotionTarget = null;
+        this.registeredSheetRuntimeModel = null;
+        this.registeredSheetMotionCommandValue = null;
+        return;
+      }
       const { activeRenderableShellSpec, resolvedRuntimeModel } = resolvedSurfaceInput;
       const motionCommandValue = this.resolveMountedSheetMotionCommandValue(resolvedSurfaceInput);
       if (

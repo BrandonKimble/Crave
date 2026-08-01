@@ -21,6 +21,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { overlaySheetStyles } from '../overlays/overlaySheetStyles';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import HeaderNavAction from '../overlays/HeaderNavAction';
@@ -140,8 +141,11 @@ export type TrackSheetPageProps = {
   /** Grab handle (production: 40x3.25 cutout to the frost; tap promotes). */
   grabHandleHidden?: boolean;
   onGrabHandlePress?: () => void;
-  /** Docked strip band with cutouts (chrome-pinned; rows vanish beneath it). */
-  dockedStrip?: Omit<TrackSheetDockedStripProps, 'children'> & { children: React.ReactNode };
+  /** THE PERSISTENT STRIPS (residents rung 3): every resident scene's strip
+   * band, mounted once and opacity-flipped with its leg — a strip never
+   * remounts on switch, so its chips never re-measure and the late-chips gap
+   * is unwritable. The presented scene's entry decides the band's presence. */
+  strips?: Array<{ sceneKey: string; children: React.ReactNode }>;
   /** In-list leader content — scrolls away with the page (in-list strip mode). */
   listLeader?: React.ReactNode;
   /** Footer surface extension below the last row. */
@@ -194,7 +198,7 @@ export function TrackSheetPage({
   navActionLabel = 'Close',
   grabHandleHidden = false,
   onGrabHandlePress,
-  dockedStrip,
+  strips = [],
   footerHeight = 160,
   legs,
   surfaceColor = '#ffffff',
@@ -226,9 +230,12 @@ export function TrackSheetPage({
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
+  const presentedStrip = strips.find((entry) => entry.sceneKey === presentedSceneKey) ?? null;
   const chromeHeight =
     OVERLAY_TAB_HEADER_HEIGHT +
-    (dockedStrip != null ? dockedStrip.height + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM : 0);
+    (presentedStrip != null
+      ? TOGGLE_STRIP_BAND_HEIGHT + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM
+      : 0);
 
   // THE HEADER CUTOUT PLATE (inventory §1.5): white plate with the grab-handle
   // slot and the close-circle punched through to the frost beneath.
@@ -712,12 +719,12 @@ export function TrackSheetPage({
               sheet material, not frost — it is part of the chrome plate's
               coverage, painted here so no gap can open between the band and
               the first row. */}
-      {dockedStrip != null ? (
+      {presentedStrip != null ? (
         <View
           style={[
             styles.stripSeam,
             {
-              top: OVERLAY_TAB_HEADER_HEIGHT + dockedStrip.height,
+              top: OVERLAY_TAB_HEADER_HEIGHT + TOGGLE_STRIP_BAND_HEIGHT,
               backgroundColor: surfaceColor,
             },
           ]}
@@ -749,14 +756,26 @@ export function TrackSheetPage({
       </View>
       {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
       <View style={styles.headerBottomPad} />
-      {dockedStrip != null ? (
-        <>
-          {/* The band renders NO plate of its own (plateColor transparent):
-                  production's ToggleStrip paints its chips directly, and the
-                  frost slab behind the chrome is what shows between them —
-                  a plate here would be the white that blocked the cutouts. */}
-          <TrackSheetDockedStrip {...dockedStrip} plateColor="transparent" />
-        </>
+      {presentedStrip != null ? (
+        <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
+          {/* THE PERSISTENT STRIPS: every resident strip stays mounted in the
+              band, opacity-flipped with its scene — no remount ⇒ no chip
+              re-measure ⇒ the late-chips gap is unwritable. No plate of its
+              own: chips paint directly over the frost. */}
+          {strips.map((entry) => (
+            <View
+              key={entry.sceneKey}
+              style={
+                entry.sceneKey === presentedSceneKey ? styles.stripLayer : styles.stripLayerHidden
+              }
+              pointerEvents={entry.sceneKey === presentedSceneKey ? 'box-none' : 'none'}
+            >
+              <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
+                {entry.children}
+              </TrackSheetDockedStrip>
+            </View>
+          ))}
+        </View>
       ) : null}
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
@@ -769,7 +788,8 @@ export function TrackSheetPage({
     () => renderChrome(setChromeRef),
     [
       chromeHeight,
-      dockedStrip,
+      strips,
+      presentedStrip,
       grabHandleHidden,
       headerExtras,
       navActionProgress,
@@ -787,7 +807,8 @@ export function TrackSheetPage({
     () => renderChrome(setChromeVisualRef),
     [
       chromeHeight,
-      dockedStrip,
+      strips,
+      presentedStrip,
       grabHandleHidden,
       headerExtras,
       navActionProgress,
@@ -1147,6 +1168,8 @@ const styles = StyleSheet.create({
     right: 0,
     height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
   },
+  stripLayer: { ...StyleSheet.absoluteFillObject },
+  stripLayerHidden: { ...StyleSheet.absoluteFillObject, opacity: 0 },
   divider: {
     position: 'absolute',
     left: 0,

@@ -96,28 +96,6 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           detentTops: [EXPANDED_TOP, MIDDLE_TOP, COLLAPSED_TOP],
         }}
         title={header}
-        dockedStrip={{
-          height: 54,
-          backdrop: stripBackdrop,
-          contentStyle: styles.stripRow,
-          children: (
-            <>
-              {STRIP_LABELS.map((label, index) =>
-                index === 1 ? (
-                  <View key={label} style={[styles.chip, styles.chipActive]}>
-                    <Text style={[styles.chipText, styles.chipTextActive]}>{label}</Text>
-                  </View>
-                ) : (
-                  <TrackSheetStripCutout key={label}>
-                    <View style={styles.chip}>
-                      <Text style={styles.chipText}>{label}</Text>
-                    </View>
-                  </TrackSheetStripCutout>
-                )
-              )}
-            </>
-          ),
-        }}
         legs={[
           {
             sceneKey: 'prototype',

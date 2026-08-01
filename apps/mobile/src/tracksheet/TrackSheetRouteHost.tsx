@@ -1,7 +1,13 @@
 import React from 'react';
-import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Dimensions, Linking, StyleSheet, Text, View } from 'react-native';
 
-import { useSharedValue, withTiming, Easing } from 'react-native-reanimated';
+import {
+  runOnJS,
+  useAnimatedReaction,
+  useSharedValue,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
@@ -19,6 +25,7 @@ import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
+import { SceneLoadingSurface } from '../components/skeletons';
 import { SearchRouteSheetFrameHost } from '../overlays/SearchRouteSheetFrameHost';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useAppRouteSharedSheetRuntimeOwner } from '../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
@@ -67,7 +74,6 @@ import {
 //   crave://tracksheet-host?on=1&scene=polls   (off: on=0; scene: any OverlayKey)
 
 const DEEP_LINK_HOST = 'tracksheet-host';
-const SCREEN = Dimensions.get('window');
 
 const markSheetLegReady = (): void => {
   const runtime = getSearchSurfaceRuntime();
@@ -300,28 +306,52 @@ const useTrackScenePageChrome = (
   // (inventory §5.10). τ mapping: expanded→H, middle→collapsed−middle,
   // collapsed→0. 'hidden' has no track posture yet (dismiss choreography is a
   // later slice) — it seats collapsed.
+  // THE SEAT SOCKET (residents rung 4): the PARALLEL SEAT IS DELETED. The
+  // track host registers as the 'sheetHost' motion target and consumes the
+  // descriptor table's commands — the locked-in switch logic (stays-put,
+  // home-crossing seats, preserveLiveY, promoteAtLeast, child rules) comes
+  // back verbatim from the code that always owned it. Commands are
+  // POSTURE-space snaps; snapTo natively adds σ and short-circuits <0.5pt.
   const sceneRuntimeForSeat = useAppRouteSceneRuntime();
-  const seatSnap =
-    sceneRuntimeForSeat.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(scene);
-  const seatTauForSnap =
-    seatSnap === 'expanded'
-      ? trackH
-      : seatSnap === 'middle'
-        ? snapPoints.collapsed - snapPoints.middle
-        : 0;
-  // THE SEAT IS A ONE-SHOT SWITCH COMMAND (race fix, 2026-07-27): production
-  // fires a motion descriptor ON THE SWITCH — it is not a standing target. As
-  // a standing target it re-asserted on attach + on every recompute and stole
-  // the sheet back after a drag ("drags don't stick"). Now: a seat is emitted
-  // only on the render where the presented scene CHANGES; afterwards the seat
-  // is null and the user's posture is the only authority until the next
-  // switch (gesture settles still write posture memory for the NEXT switch).
-  const lastSeatedSceneRef = React.useRef<OverlayKey | null>(null);
-  const isSceneSwitch = lastSeatedSceneRef.current !== scene;
-  React.useEffect(() => {
-    lastSeatedSceneRef.current = scene;
-  }, [scene]);
-  const seatTau = isSceneSwitch ? seatTauForSnap : null;
+  const seatTau = null;
+  const motionCommandValue = useSharedValue<{
+    snapTo: 'expanded' | 'middle' | 'collapsed' | 'hidden';
+    token: number;
+  } | null>(null);
+  const executeMotionCommand = React.useCallback(
+    (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
+      const commands = commandsRef.current;
+      const postureTau =
+        snap === 'expanded'
+          ? trackH
+          : snap === 'middle'
+            ? snapPoints.collapsed - snapPoints.middle
+            : 0; // collapsed AND hidden seat collapsed (dismiss choreography later)
+      commands?.snapToTau(postureTau);
+    },
+    [commandsRef, snapPoints, trackH]
+  );
+  useAnimatedReaction(
+    () => motionCommandValue.value,
+    (command, previous) => {
+      if (command == null || command.token === (previous?.token ?? -1)) {
+        return;
+      }
+      runOnJS(executeMotionCommand)(command.snapTo);
+      motionCommandValue.value = null;
+    },
+    [executeMotionCommand]
+  );
+  React.useEffect(
+    () =>
+      sceneRuntimeForSeat.routeSceneMotionRuntime.registerSheetMotionTarget({
+        sceneKey: 'sheetHost' as OverlayKey,
+        motionCommandValue: motionCommandValue as unknown as Parameters<
+          typeof sceneRuntimeForSeat.routeSceneMotionRuntime.registerSheetMotionTarget
+        >[0]['motionCommandValue'],
+      }),
+    [motionCommandValue, sceneRuntimeForSeat]
+  );
 
   // THE SETTLE OBSERVER → SESSION: gesture rests write posture memory with the
   // production writer semantics (writer:'gesture'; the snap-law seats accept it).
@@ -407,20 +437,32 @@ const useTrackScenePageChrome = (
   const onGrabHandlePress = React.useCallback(() => {
     promoteActiveSheet({ snap: 'middle' });
   }, [promoteActiveSheet]);
-  const dockedStrip = React.useMemo(
-    () =>
-      Strip != null
-        ? {
-            height: TOGGLE_STRIP_BAND_HEIGHT,
-            children: (
-              <ChromeProbeBoundary label={`${scene}.Strip`}>
-                <Strip />
-              </ChromeProbeBoundary>
-            ),
-          }
-        : undefined,
-    [Strip, scene]
-  );
+  // THE PERSISTENT STRIPS (residents rung 3): one strip element PER SCENE,
+  // cached forever — mounted once in the band and opacity-flipped, so chips
+  // never re-measure on a switch (the late-chips gap dies structurally).
+  const stripCacheRef = React.useRef(new Map<OverlayKey, React.ReactNode>());
+  if (Strip != null && !stripCacheRef.current.has(scene)) {
+    stripCacheRef.current.set(
+      scene,
+      <ChromeProbeBoundary label={`${scene}.Strip`}>
+        <Strip />
+      </ChromeProbeBoundary>
+    );
+  }
+  const strips = React.useMemo(() => {
+    const entries: Array<{ sceneKey: string; children: React.ReactNode }> = [];
+    stripCacheRef.current.forEach((children, stripScene) => {
+      entries.push({ sceneKey: stripScene as string, children });
+    });
+    // The presented scene must have an entry for the band to exist at all.
+    if (Strip != null && !entries.some((entry) => entry.sceneKey === (scene as string))) {
+      entries.push({
+        sceneKey: scene as string,
+        children: stripCacheRef.current.get(scene) ?? null,
+      });
+    }
+    return entries;
+  }, [Strip, scene]);
   const sharedSheetOwner2 = useAppRouteSharedSheetRuntimeOwner();
   // POST-FLIP: the track is the ONLY sheetTranslateY writer (the old runtime
   // no longer renders), so the full binding is on — search chrome scale, the
@@ -446,7 +488,7 @@ const useTrackScenePageChrome = (
   return {
     commandsRef,
     title,
-    dockedStrip,
+    strips,
     geometry,
     seatTau,
     navActionProgress,
@@ -469,7 +511,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
   const {
     commandsRef,
     title,
-    dockedStrip,
+    strips,
     geometry,
     seatTau,
     navActionProgress,
@@ -558,15 +600,15 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
       </BottomSheetSceneStackBodyDataActivityContext.Provider>
     );
   }, [entry, scene, zeroScrollOffset]);
-  const renderPlaceholderRow = React.useCallback(
-    ({ item }: { item: unknown }) => (
-      <View style={styles.row}>
-        <View style={styles.rowDot} />
-        <View style={styles.rowLine} />
-        <Text style={styles.rowIndex}>{String((item as number) + 1)}</Text>
-      </View>
+  const renderSkeletonBody = React.useCallback(
+    () => (
+      <SceneBodyFoundationSurface scrollOffset={zeroScrollOffset} sceneKey={scene as SheetSceneKey}>
+        <View style={styles.mountedBodyInset}>
+          <SceneLoadingSurface rowType="restaurant" />
+        </View>
+      </SceneBodyFoundationSurface>
     ),
-    []
+    [scene, zeroScrollOffset]
   );
 
   // ROWS ON THE FOUNDATION (owner report: home shelf boxes lost their
@@ -631,14 +673,19 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
       if (MOUNTED_TRACK_SCENES.has(legScene)) {
         return { data: [legScene], renderItem: renderMountedBody };
       }
-      return { data: PLACEHOLDER_ROWS, renderItem: renderPlaceholderRow };
+      // THE SKELETON RESTORATION (residents rung 2): a cold leg is a REAL
+      // sheet body whose one item renders THE ONE loading material (the
+      // cutout plate — THE SKELETON SHEET laws). The improvised gray rows
+      // are deleted; the skeleton is the leg's own content state, once per
+      // cold visit, never a transition state.
+      return { data: ['skeleton'], renderItem: renderSkeletonBody };
     },
     [
       homeParts,
       pollsParts,
       publishedBody,
       renderMountedBody,
-      renderPlaceholderRow,
+      renderSkeletonBody,
       scene,
       wrapRowOnFoundation,
     ]
@@ -684,7 +731,7 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         onNavActionPress={onNavActionPress}
         grabHandleHidden={scene === 'settings'}
         onGrabHandlePress={onGrabHandlePress}
-        dockedStrip={dockedStrip}
+        strips={strips}
         legs={legs}
         presentedSceneKey={scene as string}
         debugHud={debugVisuals}
@@ -697,8 +744,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
     </View>
   );
 };
-
-const PLACEHOLDER_ROWS = Array.from({ length: 30 }, (_, index) => index);
 
 // Published specs carry ListHeaderComponent as element OR component type.
 const renderListLeader = (leader: unknown): React.ReactNode => {
@@ -760,10 +805,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeActionText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
-  row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 20, gap: 12 },
-  rowDot: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#cbd5e1' },
-  rowLine: { flex: 1, height: 12, borderRadius: 6, backgroundColor: '#e2e8f0' },
-  rowIndex: { color: '#94a3b8', fontSize: 12 },
 });
 
 export default TrackSheetRouteHost;
