@@ -141,6 +141,19 @@ WHERE food_id IN (SELECT entity_id FROM doomed_entities)
 DELETE FROM core_entities
 WHERE entity_id IN (SELECT entity_id FROM doomed_entities);
 
+-- ------------------------------------------- re-assert vocabulary facts
+-- Curated facts written ON derived rows do not survive a wipe (learned
+-- 2026-08-01: the dietary migration's flags were wiped with the entities
+-- on 07-30 and re-extraction minted fresh UNFLAGGED rows — search's
+-- never-relax guarantee silently vanished). The dietary set is a closed
+-- owner-ratified vocabulary, so re-assert it by name after every wipe;
+-- re-extraction resolves onto these rows or the next wipe re-flags again.
+UPDATE core_entities SET constraint_class = 'dietary'
+WHERE status = 'active'
+  AND type IN ('food_attribute', 'restaurant_attribute')
+  AND lower(name) IN
+    ('vegan','vegetarian','gluten free','gluten-free','halal','kosher','pescatarian');
+
 -- ---------------------------------------------------------------- audit
 SELECT
   (SELECT count(*) FROM target_docs)            AS target_docs,
