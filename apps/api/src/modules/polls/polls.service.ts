@@ -50,7 +50,7 @@ import { PlacesCatalogService } from '../places/places-catalog.service';
 import { PlacesPromotionService } from '../places/places-promotion.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
-import { GeoBbox, bboxCenter } from '@crave-search/shared';
+import { GeoBbox } from '@crave-search/shared';
 import {
   PollFeedCursor,
   decodePollFeedCursor,
@@ -547,57 +547,6 @@ export class PollsService {
     return this.placesCatalog.smallestContaining(view);
   }
 
-  /**
-   * §2 quota-drought degradation (wave-5 §17c): when smallestContaining finds
-   * NO catalog row for the creation viewport, mint the ratified fallback —
-   * "this area near (lat, lng)" — through the ordinary sketch path (identity
-   * law dedupes repeat creations near the same rounded center; bboxes merge).
-   * The row participates in attribution immediately and is BACKFILLED (name/
-   * hierarchy) by the §2 naming reconciler as probes land. Creation-only:
-   * checkDuplicate keeps the side-effect-free resolveCreationPlace.
-   */
-  private async mintFallbackCreationPlace(dto: {
-    bounds?: {
-      northEast: { lat: number; lng: number };
-      southWest: { lat: number; lng: number };
-    } | null;
-  }): Promise<Place | null> {
-    const view = this.resolveFeedView({ bounds: dto.bounds ?? undefined });
-    if (!view) {
-      return null;
-    }
-    const center = bboxCenter(view);
-    // ~1km rounding: nearby droughted creations converge on ONE place row.
-    const name = `this area near (${center.lat.toFixed(2)}, ${center.lng.toFixed(2)})`;
-    try {
-      const [place] = await this.placesCatalog.sketchChain([
-        {
-          name,
-          // Open §1 vocabulary — a distinct code so backfill/promotion can
-          // recognize fallback rows without a schema flag.
-          providerLevelCode: 'areaFallback',
-          // ISO 3166 user-assigned "unknown" — no provider chain exists yet.
-          countryCode: 'ZZ',
-          provider: 'fallback',
-          bbox: view,
-          centroid: center,
-        },
-      ]);
-      this.logger.warn('Poll creation minted a fallback place (§2 drought)', {
-        placeId: place.placeId,
-        name,
-      });
-      return place;
-    } catch (error) {
-      this.logger.error('Fallback place mint failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return null;
-    }
-  }
-
   /** Entity-seeding bias derived from the creation place (verification
    *  location bias + region hints — the old market context's role). */
   private buildPlaceSeedContext(place: Place): PollPlaceContext {
@@ -686,15 +635,13 @@ export class PollsService {
   }
 
   async createPoll(dto: CreatePollDto, userId: string) {
-    // §2 law (wave-5 §17c): poll creation NEVER blocks on place resolution.
-    // When no catalog place contains the creation viewport (unseeded ground,
-    // cheap-pool drought), the poll is created against a minted
-    // "this area near (lat, lng)" place, backfilled by later naming probes.
-    // Only a request with NO bounds at all still 400s — there is nothing to
-    // anchor the poll to.
-    const place =
-      (await this.resolveCreationPlace(dto)) ??
-      (await this.mintFallbackCreationPlace(dto));
+    // "TomTom or nothing" (owner ruling 2026-08-01): when no catalog place
+    // contains the creation viewport, the creation is REFUSED honestly.
+    // The fallback mint ("this area near (lat, lng)", ZZ country, a
+    // rectangle sized by the creator's zoom) is deleted — it fired zero
+    // times ever on prod, and it was the one non-vendor ground in the
+    // system. Viewport reads seed real places long before anyone polls.
+    const place = await this.resolveCreationPlace(dto);
     if (!place) {
       throw new BadRequestException('Unable to resolve a place for this poll');
     }

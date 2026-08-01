@@ -686,6 +686,33 @@ short-chain city-states read "big", fails safe — edge documented in
 place-dag-read.ts). Geometry now answers only geometric questions;
 level codes are labels on a variable-length vendor chain everywhere.
 
+DOCKET #5 CLOSED 2026-08-01 by full audit instead of a shrink. Measured
+tail on prod: 3 sketch-grade grounds total (the Peru stragglers, already
+enqueued for outlines), zero fallback places ever, zero refusals ever.
+The audit's reframe: the sketch rectangle is TOMTOM'S OWN BBOX (returned
+free with every geocode), so the machinery is "vendor coarse shape at
+birth, vendor fine shape when granted" — both resolutions are vendor
+truth, and widenSketchGround (one caller, sketch-gated) is just the
+grow-while-coarse half. From-scratch verdict: keep it; it would be built
+the same way again. What the from-scratch lens DID change (owner ruling,
+"TomTom or nothing" — if the vendor doesn't have it / we can't ask, we do
+nothing with that area):
+
+- THE FALLBACK LANE IS DELETED — the one non-vendor ground in the system
+  (invented name, ZZ country, rectangle sized by the creator's zoom;
+  fired zero times ever). upsertSketch is two lanes now (id-carrying, or
+  refused loudly); a droughted poll creation 400s honestly; the
+  provider<>'fallback' enqueue guard and uq_places_fallback_identity
+  partial index dropped (migration 20260801120000).
+- THE BIRTH DRAIN IS AWAITED — sketchChain runs in the reconciler's
+  background settle, so waiting costs no hot path and the vendor-bbox
+  window closes within the same settle (best-effort: the single-flight
+  latch may defer to the hourly retry sweep). Refusal machinery kept:
+  never fired, ~30 lines of corruption tripwire, and a refused place
+  keeps the vendor's bbox — the correct coarse truth.
+  Every ground in the system is now the vendor's, at the best resolution
+  the vendor has granted so far.
+
 ### THE CATALOG IS AN INCORPORATED-PLACES LIST, NOT A MAP (measured 2026-07-29)
 
 We hold **19,451 US municipalities covering 47.7% of US land**. 19,451 is

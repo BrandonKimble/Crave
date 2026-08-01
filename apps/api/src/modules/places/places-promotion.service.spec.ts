@@ -183,7 +183,7 @@ function makeHarness(options: {
 
 describe('PlacesPromotionService — §2 earned-moment queue', () => {
   describe('enqueue (idempotent)', () => {
-    it('inserts with the conflict-no-op + fallback + already-promoted guards', async () => {
+    it('inserts with the conflict-no-op + already-promoted guards', async () => {
       const { service, executeRawCalls } = makeHarness({});
       await service.enqueue(PLACE_ID, 'poll_created');
       expect(executeRawCalls).toHaveLength(1);
@@ -191,8 +191,10 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(sql).toContain('INSERT INTO place_geometry_promotions');
       // Idempotency: queued OR promoted rows are conflict no-ops.
       expect(sql).toContain('ON CONFLICT (place_id) DO NOTHING');
-      // §17c fallback mints never enqueue (no vendor geometry exists).
-      expect(sql).toContain("provider <> 'fallback'");
+      // The fallback-provider guard is DELETED with the fallback lane
+      // (2026-08-01) — every place is a vendor mirror and may earn an
+      // outline.
+      expect(sql).not.toContain('fallback');
       // §2.6: "already promoted" = an OUTLINE-grade row (provider_boundary_id
       // set). Every place has a geometry row now, so bare row existence must
       // NOT gate the enqueue — a sketch envelope still earns its outline.

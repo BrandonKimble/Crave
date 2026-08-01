@@ -17,8 +17,11 @@
  * vendor stamps one geometry id on two rungs for a coincident boundary and
  * distinguishes those entities by entityType. The county-axis name table
  * that used to reconcile id-less observations is DELETED (the id-less case
- * measured as never-occurred); provider='fallback' is the one non-vendor
- * lane, idempotent by its synthetic tuple.
+ * measured as never-occurred). The fallback lane is DELETED too (owner
+ * ruling 2026-08-01, "TomTom or nothing": zero mints ever on prod; a
+ * droughted poll creation now refuses honestly instead of minting a
+ * synthetic place sized by the creator's zoom). Every ground in the system
+ * is the vendor's — bbox at birth, outline when granted.
  */
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Place, Prisma } from '@prisma/client';
@@ -487,20 +490,19 @@ export class PlacesCatalogService {
    * (the level-guard P2002 loop). A place is a MIRRORED VENDOR ENTITY;
    * an observation that does not name an entity does not touch the mirror.
    *
-   * Three lanes:
+   * Two lanes (the fallback lane was deleted 2026-08-01 — owner ruling
+   * "TomTom or nothing"; it had minted zero rows ever on prod):
    * 1. id-carrying node → findUnique on the composite (id, level); merge or
    *    mint. The coincident-boundary case (one geometry id on two rungs —
    *    a city-state, a consolidated city-county) is now REPRESENTED instead
    *    of hacked around: the vendor distinguishes those entities by
    *    entityType, and so does the composite unique index.
-   * 2. provider 'fallback' → the ONE honest non-vendor lane (§17c drought
-   *    mints, synthetic ~1km-rounded names). Idempotent by exact tuple.
-   * 3. anything else id-less → REFUSED, loudly. Nothing minted, nothing
+   * 2. anything id-less → REFUSED, loudly. Nothing minted, nothing
    *    updated. If this warning ever fires in live traffic, the vendor
    *    changed its response contract — investigate, do not resurrect the
    *    name table.
    *
-   * Returns null ONLY for lane 3 (sketchChain drops the node and threads the
+   * Returns null ONLY for lane 2 (sketchChain drops the node and threads the
    * parent edge past it).
    */
   private async upsertSketch(
@@ -510,9 +512,6 @@ export class PlacesCatalogService {
     const name = normalizePlaceName(node.name);
 
     if (!node.providerPlaceId) {
-      if (node.provider === 'fallback') {
-        return this.upsertFallbackPlace(node, name, parentPlaceId);
-      }
       this.logger.warn(
         'id-less observation REFUSED — a place is a mirrored vendor entity',
         {
@@ -560,9 +559,22 @@ export class PlacesCatalogService {
           await this.writeSketchGround(created.placeId, node.bbox);
         }
         // §2.5(d) POLYGON AT BIRTH: every new place enters the governed
-        // promotion queue immediately (fire-and-forget).
+        // promotion queue immediately, and the birth drain is AWAITED
+        // (2026-08-01) — sketchChain runs off the hot path (the reconciler's
+        // background settle), so the vendor-bbox window closes within the
+        // same settle instead of "whenever the tick runs". Best-effort by
+        // design: if a drain is already running, the in-process latch
+        // returns immediately and the belt-and-suspenders re-entry lands
+        // the outline next tick. A drain failure must never kill the birth.
         if (this.birthListener) {
-          void this.birthListener.enqueue(created.placeId, 'birth');
+          try {
+            await this.birthListener.enqueue(created.placeId, 'birth');
+          } catch (error) {
+            this.logger.warn('birth promotion enqueue failed — next tick', {
+              placeId: created.placeId,
+              detail: String(error),
+            });
+          }
         }
         return created;
       } catch (error) {
@@ -578,61 +590,6 @@ export class PlacesCatalogService {
     throw new Error(
       'place identity resolution did not settle after 3 attempts',
     );
-  }
-
-  /**
-   * Lane 2: the §17c fallback mint — the ONE non-vendor path. Identity is the
-   * exact synthetic tuple (ZZ / areaFallback / the ~1km-rounded name), which
-   * is what makes nearby droughted creations converge on one row.
-   */
-  private async upsertFallbackPlace(
-    node: PlaceSketchNode,
-    name: string,
-    parentPlaceId: string | undefined,
-  ): Promise<Place> {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const existing = await this.prisma.place.findFirst({
-        where: {
-          provider: 'fallback',
-          countryCode: node.countryCode,
-          providerLevelCode: node.providerLevelCode,
-          name: { equals: name, mode: 'insensitive' },
-        },
-        orderBy: [{ createdAt: 'asc' }, { placeId: 'asc' }],
-      });
-      if (existing) {
-        return this.mergeSketch(existing, node, parentPlaceId);
-      }
-      try {
-        const created = await this.prisma.place.create({
-          data: {
-            name,
-            providerLevelCode: node.providerLevelCode,
-            countryCode: node.countryCode,
-            subdivisionCode: node.subdivisionCode ?? null,
-            parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
-            centroidLat: node.centroid?.lat,
-            centroidLng: node.centroid?.lng,
-            timeZone: node.timeZone ?? null,
-            provider: 'fallback',
-            providerPlaceId: null,
-          },
-        });
-        if (node.bbox) {
-          await this.writeSketchGround(created.placeId, node.bbox);
-        }
-        return created;
-      } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2002'
-        ) {
-          continue;
-        }
-        throw error;
-      }
-    }
-    throw new Error('fallback mint did not settle after 3 attempts');
   }
 
   /**

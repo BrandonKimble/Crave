@@ -6,10 +6,9 @@
  * (place_geometry_promotions, placeId PK) records the earned moment; a
  * governed hourly drain turns queued places into place_geometries rows.
  *
- * TRIGGERS (§2/§2.5), all fire-and-forget — the §2 "ONE blocking caller"
- * nuance is about NAME resolution at poll creation (which already never
- * blocks, wave-5 §17c fallback mint); the polygon enqueue itself never
- * blocks anything:
+ * TRIGGERS (§2/§2.5) — the birth drain is AWAITED by the catalog's
+ * background settle (2026-08-01); every other enqueue stays
+ * fire-and-forget and never blocks anything:
  *   (0) birth            — §2.5(d) POLYGON AT BIRTH (ratified 2026-07-22):
  *       the catalog's create chokepoint (PlacesCatalogService.upsertSketch,
  *       via PLACE_BIRTH_LISTENER) enqueues EVERY newly sketched place; the
@@ -57,9 +56,8 @@
  *     (next window). A consumed-draw miss increments attempts (no cap — the
  *     pool bounds spend) and re-tries in the NEXT month window: the K4
  *     monthly pool is the backoff clock, not an invented constant.
- *   - fallback-provider places (§17c "this area near…" mints) never enqueue:
- *     a synthetic name has no vendor geometry; when naming backfill gives
- *     the ground real identity, the real place earns its own moment.
+ *   - (the §17c fallback lane is DELETED, 2026-08-01 — every place is a
+ *     vendor mirror now, so every place may earn an outline.)
  */
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -134,8 +132,9 @@ export class PlacesPromotionService {
    * OUTLINE-grade place_geometries row — §2.6: EVERY place has a geometry
    * row, so the "already has ground" test is provider_boundary_id IS NOT
    * NULL, never bare row existence; a sketch envelope still earns its
-   * outline) is a no-op; fallback-provider mints never enqueue. Never
-   * throws — every caller is fire-and-forget.
+   * outline) is a no-op. Never throws. (The fallback-provider guard is
+   * gone with the fallback lane itself, 2026-08-01 — every place is a
+   * vendor mirror now, so every place may earn an outline.)
    */
   async enqueue(placeId: string, trigger: string): Promise<void> {
     try {
@@ -144,7 +143,6 @@ export class PlacesPromotionService {
         SELECT p.place_id, ${trigger}
         FROM places p
         WHERE p.place_id = ${placeId}::uuid
-          AND p.provider <> 'fallback'
           AND NOT EXISTS (
             SELECT 1 FROM place_geometries g
             WHERE g.place_id = p.place_id
@@ -154,13 +152,15 @@ export class PlacesPromotionService {
       `);
       // Docket #1 (abstraction audit, 2026-07-30): POLYGON AT BIRTH IS
       // SYNCHRONOUS-BY-DEFAULT — the charter P0 second half, finally landed.
-      // A birth fires an immediate drain pass (fire-and-forget; the advisory
-      // lock + single-flight make overlap harmless), so a newborn wears its
-      // real outline in seconds instead of answering headers from a fat
-      // envelope for up to an hour. The hourly cron remains as the RETRY
-      // sweep — the queue's only remaining job.
+      // A birth fires an immediate drain pass — AWAITED since 2026-08-01
+      // (the caller is the reconciler's background settle, so waiting costs
+      // nothing on any hot path and closes the vendor-bbox window within
+      // the same settle). The advisory lock + single-flight latch make
+      // overlap harmless: if a drain is already running this returns
+      // immediately and the hourly RETRY sweep — the queue's only remaining
+      // job — lands the outline next tick.
       if (trigger === 'birth') {
-        void this.drainTick();
+        await this.drainTick();
       }
     } catch (error) {
       this.logger.warn('Promotion enqueue failed (earned moment retries)', {

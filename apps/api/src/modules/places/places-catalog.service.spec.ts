@@ -414,7 +414,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
 });
 
 describe('THE FINAL DISSOLUTION — identity is (vendor id, level); the name table is gone', () => {
-  it('an id-LESS non-fallback node is REFUSED: nothing minted, nothing updated, loud log', async () => {
+  it('an id-LESS node is REFUSED (the fallback lane is deleted — TomTom or nothing): nothing minted, nothing updated, loud log', async () => {
     // The mirror law: a place is a vendor entity. An observation without the
     // vendor id is not an entity observation — it updates nothing and mints
     // nothing. (Measured 2026-07-30: 0 of 22,769 places lack an id; the
@@ -469,33 +469,6 @@ describe('THE FINAL DISSOLUTION — identity is (vendor id, level); the name tab
       'tomtom-geom-austin',
     );
     expect(create.mock.calls[0][0].data.providerLevelCode).toBe('municipality');
-  });
-
-  it('the fallback lane survives as the ONE non-vendor path: id-less fallback mints, and re-mints MERGE by tuple', async () => {
-    const fallbackNode = {
-      name: 'this area near (30.27, -97.74)',
-      providerLevelCode: 'areaFallback',
-      countryCode: 'ZZ',
-      provider: 'fallback',
-      bbox: { minLat: 30.2, minLng: -97.8, maxLat: 30.34, maxLng: -97.68 },
-      centroid: { lat: 30.27, lng: -97.74 },
-    };
-    const { service, create, findFirst } = makeHarness([null]);
-    const [minted] = await service.sketchChain([fallbackNode]);
-    expect(minted).toBeDefined();
-    expect(create).toHaveBeenCalledTimes(1);
-    // Second observation of the same synthetic tuple: MERGES, no second mint.
-    const existing = makePlaceRow({
-      placeId: 'id-fallback-row',
-      name: fallbackNode.name,
-      providerLevelCode: 'areaFallback',
-      countryCode: 'ZZ',
-      provider: 'fallback',
-    });
-    findFirst.mockResolvedValue(existing);
-    const [merged] = await service.sketchChain([fallbackNode]);
-    expect(merged.placeId).toBe('id-fallback-row');
-    expect(create).toHaveBeenCalledTimes(1); // still one
   });
 });
 
