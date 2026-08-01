@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
@@ -39,6 +40,17 @@ export class FoodDedupeMergeService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('FoodDedupeMergeService');
+  }
+
+  /** Nightly convergence (class ④): the restaurant sweep has run nightly
+   *  for weeks while food dedupe was manual-only — which is how 26
+   *  duplicate food groups accumulated. Same 3AM window; deterministic
+   *  lanes are free, the judge lane is a handful of interactive calls
+   *  under Tier-2/3 governance. Cron registration is worker-gated
+   *  globally (isSchedulerRuntime). */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async runNightly(): Promise<void> {
+    await this.run({ dryRun: false });
   }
 
   async run(

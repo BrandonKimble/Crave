@@ -27,6 +27,12 @@ model Entity {
   /// native cuisine slot (so live search keeps working); the facet column
   /// IS the identity in the meantime. Null = ordinary attribute.
   facet                               String?                       @db.VarChar(16)
+  /// DB-GENERATED (stored) stripped-name identity key — btrim(regexp
+  /// lower/strip/squeeze). Never write it from the client; Postgres
+  /// computes it. Backs uq_attribute_identity_key (attributes-only
+  /// partial unique — foods need the TS lemma fold, restaurants await
+  /// the P2.2 chain model) and the creation-probe index.
+  identityKey                         String?                       @map("identity_key")
   canonicalDomain                     String?                       @map("canonical_domain") @db.VarChar(255)
   aliases                             String[]                      @default([])
   /// KNOWLEDGE TIER (food entities only): synthesized canonical ingredient
