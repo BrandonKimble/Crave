@@ -9,6 +9,10 @@ import {
   jsonSchemaToTypedSchema,
 } from '../../external-integrations/llm/prompts/llm-response-schemas';
 import { LLMPost } from '../../external-integrations/llm/llm.types';
+import {
+  PromptRegistryService,
+  RELEVANCE_GATE_PROMPT_KIND,
+} from '../../external-integrations/llm/prompt-registry.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { callerProfile } from '../../external-integrations/llm/gemini-caller-profiles';
 
@@ -59,17 +63,28 @@ export class RelevanceGateService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly loggerService: LoggerService,
     private readonly llmService: LLMService,
+    private readonly promptRegistry: PromptRegistryService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.logger = this.loggerService.setContext('RelevanceGateService');
-    this.prompt = readFileSync(
-      join(
-        __dirname,
-        '../../external-integrations/llm/prompts/relevance-gate-prompt.md',
-      ),
-      'utf8',
-    );
+    // REGISTRY TENANT (2026-08-01): the gate prompt lives in llm_prompts
+    // (kind 'relevance_gate', self-seeded from the asset) — same law as the
+    // collection prompt, no parallel file-loader silo. Fail-open to the
+    // shipped asset if the registry is unreachable at boot.
+    try {
+      this.prompt = (
+        await this.promptRegistry.getActive(RELEVANCE_GATE_PROMPT_KIND)
+      ).content;
+    } catch {
+      this.prompt = readFileSync(
+        join(
+          __dirname,
+          '../../external-integrations/llm/prompts/relevance-gate-prompt.md',
+        ),
+        'utf8',
+      );
+    }
     // CONFIG hash, not just prompt hash (red team F3). All 8,197 verdicts
     // persisted before 2026-07-27 were judged under Gemini-3's implicit
     // HIGH thinking, and this commit moved the gate prompt from the user

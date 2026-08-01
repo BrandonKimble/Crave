@@ -7,6 +7,15 @@ import { LoggerService } from '../../../shared';
 import { LLMService } from './llm.service';
 
 export const COLLECTION_SYSTEM_PROMPT_KIND = 'collection_system';
+export const RELEVANCE_GATE_PROMPT_KIND = 'relevance_gate';
+
+/** Every registry tenant self-seeds v1 from its shipped asset file — the
+ *  file stays the version-1 source of record in git; the registry is the
+ *  runtime truth. Add new prompt kinds HERE, never as a parallel loader. */
+const SEED_ASSETS: Record<string, string> = {
+  [COLLECTION_SYSTEM_PROMPT_KIND]: 'collection-prompt.md',
+  [RELEVANCE_GATE_PROMPT_KIND]: 'relevance-gate-prompt.md',
+};
 
 export interface RegisteredPrompt {
   version: number;
@@ -46,6 +55,12 @@ export class PromptRegistryService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     this.logger = this.loggerService.setContext('PromptRegistryService');
     try {
+      // Seed every tenant kind; swap the in-process collection prompt.
+      for (const kind of Object.keys(SEED_ASSETS)) {
+        if (kind !== COLLECTION_SYSTEM_PROMPT_KIND) {
+          await this.ensureSeededAndGetActive(kind);
+        }
+      }
       const active = await this.ensureSeededAndGetActive();
       // Swap the in-process prompt to the registry's active version — the
       // asset file is only the v1 seed; the registry is the runtime truth.
@@ -68,20 +83,23 @@ export class PromptRegistryService implements OnModuleInit {
     }
   }
 
-  async getActive(): Promise<RegisteredPrompt> {
-    return this.ensureSeededAndGetActive();
+  async getActive(
+    kind: string = COLLECTION_SYSTEM_PROMPT_KIND,
+  ): Promise<RegisteredPrompt> {
+    return this.ensureSeededAndGetActive(kind);
   }
 
-  async getVersion(version: number): Promise<RegisteredPrompt> {
+  async getVersion(
+    version: number,
+    kind: string = COLLECTION_SYSTEM_PROMPT_KIND,
+  ): Promise<RegisteredPrompt> {
     const row = await this.prisma.llmPrompt.findUnique({
       where: {
-        kind_version: { kind: COLLECTION_SYSTEM_PROMPT_KIND, version },
+        kind_version: { kind, version },
       },
     });
     if (!row) {
-      throw new Error(
-        `Prompt version ${version} not found for kind ${COLLECTION_SYSTEM_PROMPT_KIND}`,
-      );
+      throw new Error(`Prompt version ${version} not found for kind ${kind}`);
     }
     return {
       version: row.version,
@@ -147,9 +165,11 @@ export class PromptRegistryService implements OnModuleInit {
     return { ...target, status: 'active' };
   }
 
-  private async ensureSeededAndGetActive(): Promise<RegisteredPrompt> {
+  private async ensureSeededAndGetActive(
+    kind: string = COLLECTION_SYSTEM_PROMPT_KIND,
+  ): Promise<RegisteredPrompt> {
     const active = await this.prisma.llmPrompt.findFirst({
-      where: { kind: COLLECTION_SYSTEM_PROMPT_KIND, status: 'active' },
+      where: { kind, status: 'active' },
     });
     if (active) {
       return {
@@ -160,26 +180,27 @@ export class PromptRegistryService implements OnModuleInit {
       };
     }
     // First boot on this database: seed the shipped asset as v1 active.
-    const content = readFileSync(
-      join(__dirname, 'prompts', 'collection-prompt.md'),
-      'utf-8',
-    );
+    const asset = SEED_ASSETS[kind];
+    if (!asset) {
+      throw new Error(`No active prompt and no seed asset for kind ${kind}`);
+    }
+    const content = readFileSync(join(__dirname, 'prompts', asset), 'utf-8');
     const contentHash = createHash('sha256').update(content).digest('hex');
     await this.prisma.llmPrompt.upsert({
       where: {
-        kind_version: { kind: COLLECTION_SYSTEM_PROMPT_KIND, version: 1 },
+        kind_version: { kind, version: 1 },
       },
       update: { status: 'active' },
       create: {
-        kind: COLLECTION_SYSTEM_PROMPT_KIND,
+        kind,
         version: 1,
         content,
         contentHash,
         status: 'active',
-        notes: 'seeded from prompts/collection-prompt.md asset',
+        notes: `seeded from prompts/${asset} asset`,
       },
     });
-    this.logger.info('Seeded collection prompt v1 from asset file');
+    this.logger.info('Seeded prompt v1 from asset file', { kind });
     return { version: 1, content, contentHash, status: 'active' };
   }
 }

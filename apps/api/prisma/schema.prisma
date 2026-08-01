@@ -690,8 +690,10 @@ model ExtractionRun {
   collectionRunId         String?                 @map("collection_run_id") @db.Uuid
   pipeline                String                  @db.VarChar(32)
   model                   String                  @db.VarChar(128)
+  /// Content-addressed join key into llm_prompts.content_hash — the
+  /// registry is the ONLY prompt content store (2026-08-01 collapse; the
+  /// full text used to be duplicated here per run, zero readers).
   systemPromptHash        String                  @map("system_prompt_hash") @db.VarChar(64)
-  systemPrompt            String                  @map("system_prompt") @db.Text
   generationConfig        Json                    @default("{}") @map("generation_config")
   chunkingConfig          Json                    @default("{}") @map("chunking_config")
   extractionSchemaVersion String                  @default("v1") @map("extraction_schema_version") @db.VarChar(32)

@@ -150,11 +150,11 @@ export class PollBallotMentionService {
         data: {
           pipeline: BALLOT_PIPELINE,
           model: 'none',
+          // K6 definitional vote→mention mapping (no LLM): each distinct
+          // voter mints one structured mention (m=1, no upvote term) for
+          // their choice. Prompt content lives in llm_prompts only; this
+          // hash is the sentinel for the no-LLM pipeline.
           systemPromptHash: BALLOT_PROMPT_HASH,
-          systemPrompt:
-            'K6 definitional vote→mention mapping (no LLM): each distinct ' +
-            'voter mints one structured mention (m=1, no upvote term) for ' +
-            'their choice.',
           status: 'completed',
           completedAt: new Date(),
           metadata: {

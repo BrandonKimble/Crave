@@ -145,7 +145,6 @@ export class CollectionEvidenceService implements OnModuleInit {
         pipeline: params.pipeline,
         model: params.model,
         systemPromptHash,
-        systemPrompt: params.systemPrompt,
         generationConfig: params.generationConfig as Prisma.InputJsonValue,
         chunkingConfig: params.chunkingConfig as Prisma.InputJsonValue,
         extractionSchemaVersion: params.extractionSchemaVersion ?? 'v1',
