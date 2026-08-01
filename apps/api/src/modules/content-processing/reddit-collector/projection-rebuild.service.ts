@@ -212,7 +212,10 @@ export class ProjectionRebuildService implements OnModuleInit {
            SELECT DISTINCT food_id FROM core_restaurant_items
            WHERE restaurant_id = ANY($1::uuid[])
          )
-       GROUP BY c.food_id, cat_id`,
+       GROUP BY c.food_id, cat_id
+       HAVING count(*) >= 2
+           OR count(*) = (SELECT count(*) FROM core_restaurant_items c3
+                          WHERE c3.food_id = c.food_id)`,
       restaurantIds,
     );
   }

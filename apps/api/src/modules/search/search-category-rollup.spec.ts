@@ -74,10 +74,12 @@ describe('restaurant rollup counts one claim once, most specific carrier wins', 
     expect(preview()).toContain('c2.restaurant_id = c.restaurant_id');
   });
 
-  it('treats a dish under the category AND a narrower category as more specific', () => {
+  it('resolves specificity from ONE source of truth: the derived edge table (class ⑤, P2.4)', () => {
     const sql = preview();
-    expect(sql).toContain('c.food_id = ANY(c2.categories)');
     expect(sql).toContain('derived_food_category_edges');
+    // The projection-array branch is GONE — arrays were a strict subset of
+    // the edges and made the shadow verdict depend on which branch fired.
+    expect(sql).not.toContain('ANY(c2.categories)');
   });
 
   it('never shadows a mention that has no source document', () => {
@@ -97,10 +99,10 @@ describe('restaurant rollup counts one claim once, most specific carrier wins', 
   });
 
   it('breaks symmetric-claim ties with a deterministic winner instead of erasing both', () => {
-    // Red team R2: symmetric projection arrays and mutual edges are synonym
-    // shapes; exactly one side must survive (never zero, never two).
+    // Red team R2: mutual edges are synonym shapes; exactly one side must
+    // survive (never zero, never two).
     const sql = preview();
     expect(sql).toContain('c2.food_id < c.food_id');
-    expect(sql).toContain('NOT (c2.food_id = ANY(c.categories))');
+    expect(sql).toContain('rev.food_id = c.food_id');
   });
 });

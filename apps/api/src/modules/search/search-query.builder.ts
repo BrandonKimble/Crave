@@ -1559,41 +1559,27 @@ selected_locations AS (
         AND m2.source_document_id = m.source_document_id
         AND c2.restaurant_id = c.restaurant_id
         AND c2.food_id <> c.food_id
-        AND (
-          -- Projection-array branch, with a symmetric-claim tiebreak: when
-          -- each lists the other as a category (synonym shape), exactly one
-          -- deterministic winner survives -- never both (double count),
-          -- never neither (claim vanishes). Red team R2.
-          (
-            c.food_id = ANY(c2.categories)
+        -- ONE source of truth for food→category membership (class ⑤,
+        -- data-audit P2.4): derived_food_category_edges — what SEARCH
+        -- resolves members from. The old projection-array branch was a
+        -- second, disagreeing answer (arrays are a strict SUBSET of the
+        -- edges; 13.3% of shadow pairs were visible only via edges), so
+        -- the shadow verdict silently depended on which branch fired.
+        -- Symmetric-claim tiebreak preserved: where both directions are
+        -- claimed ('wings' <-> 'chicken wings') the relation means
+        -- synonym, and the food_id total order picks exactly ONE survivor
+        -- — never both (double count), never neither (claim vanishes).
+        AND EXISTS (
+          SELECT 1 FROM derived_food_category_edges e
+          WHERE e.food_id = c2.food_id AND e.category_id = c.food_id
             AND (
-              NOT (c2.food_id = ANY(c.categories))
+              NOT EXISTS (
+                SELECT 1 FROM derived_food_category_edges rev
+                WHERE rev.food_id = c.food_id
+                  AND rev.category_id = c2.food_id
+              )
               OR c2.food_id < c.food_id
             )
-          )
-          OR EXISTS (
-            SELECT 1 FROM derived_food_category_edges e
-            WHERE e.food_id = c2.food_id AND e.category_id = c.food_id
-              -- Edge branch: same rule. Lineage is genuinely directed
-              -- (11,093 edges, 8 symmetric); where BOTH directions are
-              -- claimed ('wings' <-> 'chicken wings') the relation means
-              -- synonym, and the food_id total order picks ONE survivor
-              -- instead of the old guard's "count both" (red team R6) or
-              -- the naive "erase both". Two residues remain, same class,
-              -- both measured harmless today and owned by the deferred
-              -- rank-per-document fix: cycles of length >= 3 (0 live), and
-              -- CROSS-BRANCH mutuals (A shadows B via the array while B
-              -- shadows A via a mutual edge -- 1 structural pair live, 0
-              -- shared-document mentions).
-              AND (
-                NOT EXISTS (
-                  SELECT 1 FROM derived_food_category_edges rev
-                  WHERE rev.food_id = c.food_id
-                    AND rev.category_id = c2.food_id
-                )
-                OR c2.food_id < c.food_id
-              )
-          )
         )
     )`;
 
