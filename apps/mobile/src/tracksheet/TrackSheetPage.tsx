@@ -347,15 +347,15 @@ export function TrackSheetPage({
   // Native owns POSITION, RN owns PIXELS. Every view whose position is a
   // function of τ (frost, tail, chrome visuals) hands its tag to the shell,
   // and TrackScrollKit transforms them in scrollViewDidScroll — one writer,
-  // one frame, zero lag between any two shell layers. The chrome TOUCH twin
-  // stays in the content (pinChrome), where the band mask hides its pixels but
-  // hit-testing survives — UIScrollView keeps owning tap-vs-drag for every
-  // pixel of the sheet. MUST RE-ASSERT ON ATTACH: refs fire child-first and
+  // one frame, zero lag between any two shell layers. There is no chrome twin
+  // and no pin any more: the ONE chrome lives in the shell slot and redirects
+  // its own unmarked touches into the presented leg's scroll view, so
+  // UIScrollView still owns tap-vs-drag for every pixel of the sheet.
+  // MUST RE-ASSERT ON ATTACH: refs fire child-first and
   // the proxy may not exist on the first pass (same law as the seat).
   const applyPinRef = React.useRef<(() => void) | null>(null);
   React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
-  const chromeTagRef = React.useRef<number | null>(null);
   const chromeVisualTagRef = React.useRef<number | null>(null);
   const frostTagRef = React.useRef<number | null>(null);
   const tailTagRef = React.useRef<number | null>(null);
@@ -363,9 +363,6 @@ export function TrackSheetPage({
     const nativePhysics = NativeModules.TrackScrollPhysics;
     if (trackTagRef.current == null) {
       return;
-    }
-    if (nativePhysics?.pinChrome != null) {
-      nativePhysics.pinChrome(trackTagRef.current, chromeTagRef.current);
     }
     if (nativePhysics?.bindShell != null) {
       nativePhysics.bindShell(trackTagRef.current, {
@@ -783,7 +780,16 @@ export function TrackSheetPage({
           pointerEvents="none"
         />
       ) : null}
-      <View style={styles.grabWrapper}>
+      {/* CONTROLS ARE MARKED (THE SINGLE PAINTED CHROME): the chrome slot's
+          hitTest hands every UNMARKED point to the presented leg's scroll view,
+          so the header drags the sheet exactly like a row does. Marked
+          subtrees keep their own touches: buttons and the strip's horizontal
+          scroller. */}
+      <View
+        style={styles.grabWrapper}
+        nativeID="track-chrome-control"
+        testID="track-chrome-control"
+      >
         <Pressable
           onPress={onGrabHandlePress}
           hitSlop={10}
@@ -795,7 +801,11 @@ export function TrackSheetPage({
       </View>
       <View style={styles.headerRow}>
         <View style={styles.titleSlot}>{chromeTitle}</View>
-        <View style={styles.actionGroup}>
+        <View
+          style={styles.actionGroup}
+          nativeID="track-chrome-control"
+          testID="track-chrome-control"
+        >
           {headerExtras}
           {navActionProgress != null && onNavActionPress != null ? (
             <HeaderNavAction
@@ -808,7 +818,11 @@ export function TrackSheetPage({
       </View>
       {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
       <View style={styles.headerBottomPad} />
-      {band}
+      {band != null ? (
+        <View nativeID="track-chrome-control" testID="track-chrome-control">
+          {band}
+        </View>
+      ) : null}
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
   );
@@ -817,66 +831,6 @@ export function TrackSheetPage({
   // it never remounts and its strip's touch layer never re-measures. Only the
   // presented leg's twin feeds the pin (ref gated at fire time + on flip).
   // The VISUAL twin stays single in the stable overlay with the flip band.
-  const legChromeTagsRef = React.useRef(new Map<string, number>());
-  const legChromeRefCacheRef = React.useRef(new Map<string, (node: View | null) => void>());
-  const legChromeRef = (sceneKey: string) => {
-    let cb = legChromeRefCacheRef.current.get(sceneKey);
-    if (cb == null) {
-      cb = (node: View | null) => {
-        if (node == null) {
-          legChromeTagsRef.current.delete(sceneKey);
-          return;
-        }
-        const tag = findNodeHandle(node);
-        if (tag == null) {
-          return;
-        }
-        legChromeTagsRef.current.set(sceneKey, tag);
-        if (sceneKey === presentedSceneKeyRef.current) {
-          chromeViewRef.current = node;
-          chromeTagRef.current = tag;
-          applyPin();
-        }
-      };
-      legChromeRefCacheRef.current.set(sceneKey, cb);
-    }
-    return cb;
-  };
-  const touchChromeCacheRef = React.useRef(
-    new Map<string, { leg: TrackSheetLeg; element: React.ReactElement }>()
-  );
-  const touchChromeForLeg = (leg: TrackSheetLeg) => {
-    const cached = touchChromeCacheRef.current.get(leg.sceneKey);
-    if (
-      cached != null &&
-      cached.leg.title === leg.title &&
-      cached.leg.stripChildren === leg.stripChildren
-    ) {
-      return cached.element;
-    }
-    const band =
-      leg.stripChildren != null ? (
-        <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
-          <TrackSheetDockedStrip height={TOGGLE_STRIP_BAND_HEIGHT} plateColor="transparent">
-            {leg.stripChildren}
-          </TrackSheetDockedStrip>
-        </View>
-      ) : null;
-    const element = renderChrome(
-      legChromeRef(leg.sceneKey),
-      leg.title ?? title,
-      band,
-      legChromeHeight(leg),
-      false
-    );
-    touchChromeCacheRef.current.set(leg.sceneKey, { leg, element });
-    return element;
-  };
-  // THE VISUAL TWINS, PER LEG (atomic switch): every leg's visual chrome is
-  // resident in the chrome slot, engine-alpha-flipped with its rows — no React
-  // state swap happens at switch time, so the header can never flip on a
-  // different frame than the content. Each band holds only its own strip
-  // (parking is dead: nothing flips between scenes inside one element).
   const visualChromeLegs = React.useMemo(
     () =>
       legs.map((leg) => {
@@ -912,10 +866,14 @@ export function TrackSheetPage({
   // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
   // would steal it); hidden legs reserve the same band height so their
   // content offsets stay comparable across flips.
+  // THE TOUCH TWIN IS GONE. The header no longer renders inside the content —
+  // it lives once, in the chrome slot, and redirects its own touches into this
+  // scroll view (TrackShellSlotView hitTest). The content only RESERVES the
+  // band so rows start below the chrome; nothing in here paints a header, so
+  // two headers on screen is unrepresentable rather than merely avoided.
   const headerForLeg = (leg: TrackSheetLeg, _isPresented: boolean) => (
     <View style={styles.chromeLane}>
-      <View style={{ height: trackH }} pointerEvents="none" />
-      {touchChromeForLeg(leg)}
+      <View style={{ height: trackH + legChromeHeight(leg) }} pointerEvents="none" />
       {leg.listLeader ?? null}
     </View>
   );
@@ -1021,10 +979,6 @@ export function TrackSheetPage({
     // it; refuse() then re-fuses posture + the leg's own scroll. A fresh
     // leg's proxy may attach async — subscribeAttached re-applies the restore.
     const nextTag = legTagsRef.current.get(sceneKey) ?? null;
-    const nextChromeTag = legChromeTagsRef.current.get(sceneKey) ?? null;
-    if (nextChromeTag != null) {
-      chromeTagRef.current = nextChromeTag;
-    }
     if (nextTag != null) {
       trackTagRef.current = nextTag;
       attachToTag(nextTag);
@@ -1206,11 +1160,13 @@ export function TrackSheetPage({
         <View style={[StyleSheet.absoluteFill, { backgroundColor: surfaceColor }]} />
       </TrackShellSlot>
 
-      {/* THE CHROME VISUALS: pointerEvents none — every touch falls through to
-          the track; the content twin supplies the buttons. Positioned natively
-          at sheetTop, so chrome, frost and band mask agree every frame. */}
-      <View style={styles.chromeOverlay} pointerEvents="none">
-        <TrackShellSlot slotRole="chrome" pointerEvents="none">
+      {/* THE ONE CHROME. It TAKES touches now (the twin that used to supply the
+          buttons is gone): the slot's hitTest keeps marked controls and hands
+          every other point to the presented leg's scroll view, so the header
+          drags the sheet exactly like a row does. box-none on the wrapper so
+          the region outside the chrome's own bounds stays the map's. */}
+      <View style={styles.chromeOverlay} pointerEvents="box-none">
+        <TrackShellSlot slotRole="chrome">
           {visualChromeLegs.map((entry) => (
             <TrackLegSlot
               key={entry.sceneKey}
@@ -1218,7 +1174,6 @@ export function TrackSheetPage({
               legKind="chrome"
               initialPresented={entry.sceneKey === initialSceneKeyRef.current}
               style={styles.legChromeLayer}
-              pointerEvents="none"
             >
               {entry.element}
             </TrackLegSlot>

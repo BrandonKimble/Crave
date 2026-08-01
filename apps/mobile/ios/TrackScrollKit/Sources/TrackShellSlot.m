@@ -47,10 +47,81 @@
 
 @end
 
+/// A chrome subtree JS marked as INTERACTIVE. Everything else in the chrome is
+/// sheet surface, and a touch on sheet surface belongs to the track.
+static NSString *const kTrackChromeControlMarker = @"track-chrome-control";
+
+/// Fabric and Paper expose RN's nativeID under DIFFERENT ObjC properties
+/// (`nativeId` on RCTViewComponentView vs the `nativeID` category), and a
+/// marker read through the wrong one silently matches nothing — which reads as
+/// "the buttons stopped working" rather than as a lookup bug. Test every
+/// spelling plus accessibilityIdentifier (testID), so the mark cannot be
+/// missed by architecture.
+static BOOL TrackViewCarriesMarker(UIView *node)
+{
+  if ([node.accessibilityIdentifier isEqualToString:kTrackChromeControlMarker]) {
+    return YES;
+  }
+  for (NSString *key in @[ @"nativeId", @"nativeID" ]) {
+    if ([node respondsToSelector:NSSelectorFromString(key)]) {
+      id value = [node valueForKey:key];
+      if ([value isKindOfClass:[NSString class]] &&
+          [(NSString *)value isEqualToString:kTrackChromeControlMarker]) {
+        return YES;
+      }
+    }
+  }
+  return NO;
+}
+
+static BOOL TrackViewIsChromeControl(UIView *view, UIView *stopAt)
+{
+  UIView *node = view;
+  while (node != nil && node != stopAt) {
+    if (TrackViewCarriesMarker(node)) {
+      return YES;
+    }
+    node = node.superview;
+  }
+  return NO;
+}
+
 @implementation TrackShellSlotView {
   CGRect _layoutFrame;
   CGFloat _shellOffsetY;
   BOOL _hasLayoutFrame;
+}
+
+/// THE SINGLE PAINTED CHROME (2026-08-01). The header used to exist TWICE: a
+/// touch twin inside the scroll content (so every header pixel is a scroll
+/// touch) and a visual twin here — because the band mask lives on the SCROLL
+/// VIEW's layer and so clips everything inside it, the in-content chrome
+/// included. Two paint-capable copies meant any desync read as TWO SHEETS, and
+/// during a stash they diverge by exactly sigma: the header's controls sat
+/// sigma points from where they were painted.
+///
+/// ONE chrome now: here, outside the scroll view, unmasked, painted, moved by
+/// the one writer. Grabbability comes back by REDIRECTING THE HIT — a touch
+/// that is not on a marked control resolves to the presented leg's scroll
+/// view, so UIKit puts that scroll view's pan recognizer in the delivery chain
+/// and the drag is an ordinary track drag: same engine, same
+/// delaysContentTouches tap-vs-drag arbitration, no second writer, and no
+/// contentOffset write (P8, and the v3 drag channel this repo already deleted).
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
+{
+  UIView *inner = [super hitTest:point withEvent:event];
+  if (![self.slotRole isEqualToString:@"chrome"]) {
+    return inner;
+  }
+  if (inner != nil && inner != self && TrackViewIsChromeControl(inner, self)) {
+    return inner;
+  }
+  UIScrollView *host = TrackPresentedScrollView();
+  if (host == nil || host.window == nil) {
+    return inner;
+  }
+  UIView *redirected = [host hitTest:[self convertPoint:point toView:host] withEvent:event];
+  return redirected ?: host;
 }
 
 // THE COMPOSED-FRAME SEAL (P11, 2026-07-31, measured live): setting a frame on

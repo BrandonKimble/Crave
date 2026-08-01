@@ -40,6 +40,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// carved touches (P7) — this is the missing half.
 extern CGFloat gTrackCarveSheetTop;
 
+/// The presented leg's scroll view (the engine's posture-register owner).
+/// THE SINGLE PAINTED CHROME needs it to redirect header drags into the track.
+UIScrollView *_Nullable TrackPresentedScrollView(void);
+
 /// ── THE LEG SLOTS (atomic switch, 2026-08-01) ───────────────────────────────
 /// Scene presentation is ENGINE-OWNED, not React-owned. Each resident leg's
 /// rows and its visual chrome mount inside a TrackLegSlotView; the engine's

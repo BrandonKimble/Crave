@@ -114,6 +114,11 @@ static __weak UIScrollView *gTrackPostureOwner = nil;
 static CGFloat gTrackShellExpandedTop = 0;
 static CGFloat gTrackShellTrackH = 0;
 
+UIScrollView *TrackPresentedScrollView(void)
+{
+  return gTrackPostureOwner;
+}
+
 static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
@@ -154,6 +159,12 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     // never occurs; the after-notification then tightens to the exact
     // formula. Growing an inset never moves content; only shrinking can.
     if ([change[NSKeyValueChangeNotificationIsPriorKey] boolValue]) {
+      // ...EXCEPT under a live posture drag, whose ceiling outranks it (see
+      // applyRangeLawTo): growing here would lift maxOffset above H+sigma and
+      // let the drag escape into list scrolling mid-gesture.
+      if (self.postureDragActive) {
+        return;
+      }
       UIScrollView *prior = (UIScrollView *)object;
       const CGFloat viewport = CGRectGetHeight(prior.bounds);
       const CGFloat needed = ceil(prior.contentOffset.y + viewport);
@@ -173,7 +184,9 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     //   reach = max(0, viewport − (contentH − trackH))
     //   keep  = max(0, τ − (contentH − viewport))
     //   insetBottom = max(reach, keep)
-    [self applyRangeLawTo:(UIScrollView *)object];
+    if (!self.postureDragActive) {
+      [self applyRangeLawTo:(UIScrollView *)object];
+    }
     // THE SHELL REFRESH: with the prior-grow, a content swap no longer clamps
     // — which also means no didScroll fires, so tail/mask/chrome would hold
     // positions computed against the OLD contentSize (seen live: tail parked
@@ -321,6 +334,15 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
 - (void)applyRangeLawTo:(UIScrollView *)scrollView
 {
+  // THE CEILING IS DRAG-SCOPED AND OUTRANKS THE RANGE LAW (header-drag red
+  // team): while a posture drag is live, maxOffset must stay H+sigma. The
+  // recycler changes contentSize DURING the drag (that is what dragging
+  // causes), and this method plus the KVO prior-grow were rewriting the inset
+  // with no knowledge of the drag — silently destroying the ceiling mid-
+  // gesture and handing the rest of the drag to free list scrolling.
+  if (self.postureDragActive) {
+    return;
+  }
   if (!self.shellEnabled) {
     return;
   }
