@@ -87,6 +87,19 @@ function TrackShellSlot(
   return <Native {...(props as unknown as Record<string, unknown>)} />;
 }
 
+// THE CARVE (responsibility audit #2): the legs' scroll views fill the screen,
+// but the sheet only OWNS from sheetTop down. This native wrapper's hitTest
+// releases every touch above the engine-published live sheet edge to the map —
+// the CraveBottomSheetHostView interactive-frame law, ported. Paint masking
+// never carved touches (P7); this is the missing half.
+const carveCache = globalThis as { __TrackTouchCarveNative?: unknown };
+const TrackTouchCarveNative = (carveCache.__TrackTouchCarveNative ??=
+  requireNativeComponent('TrackTouchCarve'));
+function TrackTouchCarve(props: ViewProps & { children?: React.ReactNode }): React.ReactElement {
+  const Native = TrackTouchCarveNative as unknown as React.ComponentClass<Record<string, unknown>>;
+  return <Native {...(props as unknown as Record<string, unknown>)} />;
+}
+
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
 );
@@ -1092,46 +1105,51 @@ export function TrackSheetPage({
           first visit, display-flipped. The presented leg is the live track;
           hidden legs emit no events, keep their cells warm, and cost no
           layout (display none). One chrome, one shell, one engine. */}
-      {legs.map((leg) => {
-        const isPresented = leg.sceneKey === presentedSceneKey;
-        return (
-          <View
-            key={leg.sceneKey}
-            style={isPresented ? styles.presentedLeg : styles.hiddenLeg}
-            pointerEvents={isPresented ? 'auto' : 'none'}
-          >
-            <AnimatedFlashList
-              ref={legListRef(leg.sceneKey) as unknown as React.Ref<React.Component>}
-              style={StyleSheet.absoluteFill}
-              contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-              data={leg.list.data}
-              renderItem={rendererForLeg(leg) as never}
-              keyExtractor={leg.list.keyExtractor}
-              getItemType={leg.list.getItemType}
-              ItemSeparatorComponent={leg.list.ItemSeparatorComponent}
-              ListEmptyComponent={leg.list.ListEmptyComponent}
-              onEndReached={leg.list.onEndReached}
-              onEndReachedThreshold={leg.list.onEndReachedThreshold}
-              extraData={leg.list.extraData}
-              drawDistance={SCREEN.height}
-              maintainVisibleContentPosition={{ disabled: true }}
-              renderScrollComponent={TrackScrollComponent}
-              ListHeaderComponent={headerForLeg(leg, isPresented)}
-              ListFooterComponent={legFooter}
-              showsVerticalScrollIndicator={false}
-              bounces
-              alwaysBounceVertical
-              scrollEventThrottle={16}
-              scrollEnabled={isPresented}
-              onScroll={isPresented ? onScroll : undefined}
-              automaticallyAdjustContentInsets={false}
-              onContentSizeChange={(_w: number, h: number) =>
-                handleContentSizeChange(leg.sceneKey, h)
-              }
-            />
-          </View>
-        );
-      })}
+      {/* box-none is LOAD-BEARING (P12's sibling): under Fabric the legacy
+          interop WRAPPER hit-tests, not our subclass — box-none makes the
+          wrapper defer to the carve view, whose hitTest override rules. */}
+      <TrackTouchCarve style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {legs.map((leg) => {
+          const isPresented = leg.sceneKey === presentedSceneKey;
+          return (
+            <View
+              key={leg.sceneKey}
+              style={isPresented ? styles.presentedLeg : styles.hiddenLeg}
+              pointerEvents={isPresented ? 'auto' : 'none'}
+            >
+              <AnimatedFlashList
+                ref={legListRef(leg.sceneKey) as unknown as React.Ref<React.Component>}
+                style={StyleSheet.absoluteFill}
+                contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+                data={leg.list.data}
+                renderItem={rendererForLeg(leg) as never}
+                keyExtractor={leg.list.keyExtractor}
+                getItemType={leg.list.getItemType}
+                ItemSeparatorComponent={leg.list.ItemSeparatorComponent}
+                ListEmptyComponent={leg.list.ListEmptyComponent}
+                onEndReached={leg.list.onEndReached}
+                onEndReachedThreshold={leg.list.onEndReachedThreshold}
+                extraData={leg.list.extraData}
+                drawDistance={SCREEN.height}
+                maintainVisibleContentPosition={{ disabled: true }}
+                renderScrollComponent={TrackScrollComponent}
+                ListHeaderComponent={headerForLeg(leg, isPresented)}
+                ListFooterComponent={legFooter}
+                showsVerticalScrollIndicator={false}
+                bounces
+                alwaysBounceVertical
+                scrollEventThrottle={16}
+                scrollEnabled={isPresented}
+                onScroll={isPresented ? onScroll : undefined}
+                automaticallyAdjustContentInsets={false}
+                onContentSizeChange={(_w: number, h: number) =>
+                  handleContentSizeChange(leg.sceneKey, h)
+                }
+              />
+            </View>
+          );
+        })}
+      </TrackTouchCarve>
 
       {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
           contentEnd − τ), native) — the sheet is solid past any content end,

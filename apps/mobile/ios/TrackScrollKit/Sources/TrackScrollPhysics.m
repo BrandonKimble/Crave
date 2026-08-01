@@ -387,6 +387,12 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     if (scrollView == gTrackPostureOwner && self.shellTrackH > 0) {
       gTrackPostureRegister = MIN(MAX(0.0, tau - self.stashSigma), self.shellTrackH);
     }
+    // THE CARVE FEED: publish the live sheet edge for touch carving (only the
+    // presented leg speaks — a hidden leg's clamp scroll must not move the
+    // touch boundary).
+    if (scrollView == gTrackPostureOwner) {
+      gTrackCarveSheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
+    }
     const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
@@ -709,6 +715,47 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
     [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
                         animated:NO];
   }];
+}
+
+// DEV AUDIT: who owns the touch at (x,y)? Walks hitTest from the key window
+// and returns the resolved view's class + ancestor chain (accessibility ids
+// where present) so a touch thief can be NAMED, not guessed.
+RCT_EXPORT_METHOD(auditHit:(nonnull NSNumber *)x
+                  y:(nonnull NSNumber *)y
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+{
+  dispatch_async(dispatch_get_main_queue(), ^{
+    UIWindow *window = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+      if ([scene isKindOfClass:[UIWindowScene class]]) {
+        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
+          if (w.isKeyWindow) { window = w; break; }
+        }
+      }
+      if (window != nil) { break; }
+    }
+    if (window == nil) {
+      reject(@"no_window", @"no key window", nil);
+      return;
+    }
+    CGPoint p = CGPointMake(x.doubleValue, y.doubleValue);
+    UIView *hit = [window hitTest:p withEvent:nil];
+    NSMutableArray<NSString *> *chain = [NSMutableArray array];
+    UIView *v = hit;
+    int depth = 0;
+    while (v != nil && depth < 24) {
+      NSString *name = NSStringFromClass(v.class);
+      NSString *nid = v.accessibilityIdentifier ?: v.nativeID;
+      [chain addObject:nid.length > 0 ? [NSString stringWithFormat:@"%@(%@)", name, nid] : name];
+      v = v.superview;
+      depth++;
+    }
+    resolve(@{ @"hit": hit ? NSStringFromClass(hit.class) : @"nil",
+               @"frame": hit ? NSStringFromCGRect([hit convertRect:hit.bounds toView:nil]) : @"",
+               @"chain": chain,
+               @"carveTop": @(gTrackCarveSheetTop) });
+  });
 }
 
 // Register the chrome view to pin (pass chromeTag = nil to clear).

@@ -32,4 +32,18 @@ NS_ASSUME_NONNULL_BEGIN
 @interface TrackShellSlotViewManager : RCTViewManager
 @end
 
+/// THE CARVE (responsibility audit #2, ported from CraveBottomSheetHostView's
+/// pointInside). The track scroll views fill the screen, but the sheet only
+/// OWNS from sheetTop down — a touch above it belongs to the map. The engine
+/// publishes the live sheetTop (screen-space, σ-aware) every shell frame; this
+/// wrapper's hitTest releases everything above it. Paint-only masking never
+/// carved touches (P7) — this is the missing half.
+extern CGFloat gTrackCarveSheetTop;
+
+@interface TrackTouchCarveView : RCTView
+@end
+
+@interface TrackTouchCarveViewManager : RCTViewManager
+@end
+
 NS_ASSUME_NONNULL_END

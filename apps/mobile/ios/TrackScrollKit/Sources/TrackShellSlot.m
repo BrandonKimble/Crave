@@ -116,3 +116,38 @@ RCT_EXPORT_VIEW_PROPERTY(slotRole, NSString)
 }
 
 @end
+
+
+// ─── THE CARVE ───────────────────────────────────────────────────────────────
+// Written by the engine's shell writer (TrackScrollPhysics didScroll — the one
+// writer, same frame as every other shell position). Seeded high so a boot
+// frame before the first shell write carves everything above the collapsed
+// sheet rather than nothing.
+CGFloat gTrackCarveSheetTop = 0;
+
+@implementation TrackTouchCarveView
+
+- (nullable UIView *)hitTest:(CGPoint)point withEvent:(nullable UIEvent *)event
+{
+  // Points are in this view's coordinates; the carve view is mounted
+  // full-screen at the page root, so y IS screen y. Above the sheet's live
+  // top edge the sheet does not exist for touches — the map underneath owns
+  // them (exactly CraveBottomSheetHostView's interactive-frame law).
+  if (gTrackCarveSheetTop > 0 && point.y < gTrackCarveSheetTop) {
+    return nil;
+  }
+  return [super hitTest:point withEvent:event];
+}
+
+@end
+
+@implementation TrackTouchCarveViewManager
+
+RCT_EXPORT_MODULE(TrackTouchCarve)
+
+- (UIView *)view
+{
+  return [TrackTouchCarveView new];
+}
+
+@end
