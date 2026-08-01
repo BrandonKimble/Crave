@@ -309,9 +309,10 @@ coarser township (the Glen Echo Park / Normandy class, already guarded), and
 "adopt the vendor name" would DESTROY correct data, and would turn
 "Carmel-by-the-Sea" into "Carmel" — the wrong name for that town.
 
-DEFERRED, scoped: strip the ~115 census legal designations only (they are visible
-in the UI — "Polls in Anchorage Municipality"), class by class, leaving the 284 and
-the `by-the-Sea`/`Village`/`Lake`/`City` stragglers to a human read.
+DONE (superseded by the entity-name law, 2026-07-29): the 115 designators were
+stripped, and then the whole name question was resolved permanently by
+`resolve-entity-names.ts` — a place's name is what the vendor calls the entity
+whose id we hold. This paragraph's class-by-class caution stands as history.
 
 ### The representative point must be ON THE GROUND (found 2026-07-28)
 
