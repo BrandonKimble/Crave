@@ -84,6 +84,19 @@ stands, correct but dead weight.
 
 ### THE NEXT DISSOLUTIONS — the abstraction docket (dual audit, 2026-07-30)
 
+STATUS 2026-07-30, same session: #1, #2, #3, #4 and #8 LANDED (commits
+88c74330, ea7aca32, c279db18, 6cd1e271, 46ef7792 — geo nullable with the
+anchor-or-geo CHECK; birth-synchronous outline with the earned-moment
+triggers, header memory, census cheap-step and anchorless span guard all
+deleted; per-minute pools with terminal refusal; the residue columns dropped
+along with uq_places_identity's name-uniqueness law and the entire
+resolveGeometryId lane; act-identity SQL stated once). REMAINING: #5's
+widen-shrink revisit (post-#1 the sketch lane is tail-only — fallback mints
+and refused claims — so widenSketchGround/the disjoint guard now serve only
+that tail; shrink when next touched), #6 the dual-arm collapse (needs the
+owner's staleness ruling: today's demand at ≤15min lag vs live), #7 the
+probe-memory table (cents at stake; low urgency).
+
 Two independent architecture audits (Opus 5 + Fable 5), each asked "what are
 we building on without questioning?", one measuring the live DB, one reading
 the code's own testimony. Ranked by cost of keeping; convergence noted.
