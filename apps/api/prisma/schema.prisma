@@ -759,7 +759,12 @@ model RestaurantEvent {
   sourceDocument   SourceDocument  @relation(fields: [sourceDocumentId], references: [documentId], onDelete: Cascade)
   restaurant       Entity          @relation("RestaurantEventRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
 
-  @@unique([extractionRunId, mentionKey, restaurantId, evidenceType], map: "restaurant_events_run_mention_restaurant_type_key")
+  /// CONTENT IDENTITY (async-integrity step 2): one claim per (run, doc,
+  /// restaurant, type). mention_key is provenance, not identity — keying
+  /// uniqueness on it let temp_id noise double-file claims within a run.
+  /// Cross-run duplication is prevented upstream (coverage claims) and
+  /// killed at activation (supersede-delete).
+  @@unique([extractionRunId, sourceDocumentId, restaurantId, evidenceType], map: "restaurant_events_run_doc_restaurant_type_key")
   @@index([restaurantId, mentionedAt(sort: Desc)], map: "idx_restaurant_events_restaurant_time")
   @@index([sourceDocumentId], map: "idx_restaurant_events_source_document")
   @@index([extractionRunId], map: "idx_restaurant_events_run")
@@ -787,7 +792,8 @@ model RestaurantEntityEvent {
   restaurant       Entity          @relation("RestaurantEntityEventRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   entity           Entity          @relation("RestaurantEntityEventTarget", fields: [entityId], references: [entityId], onDelete: Cascade)
 
-  @@unique([extractionRunId, mentionKey, restaurantId, entityId, evidenceType], map: "restaurant_entity_events_run_mention_restaurant_entity_type_key")
+  /// CONTENT IDENTITY (async-integrity step 2) — see RestaurantEvent.
+  @@unique([extractionRunId, sourceDocumentId, restaurantId, entityId, evidenceType], map: "restaurant_entity_events_run_doc_restaurant_entity_type_key")
   @@index([restaurantId, mentionedAt(sort: Desc)], map: "idx_restaurant_entity_events_restaurant_time")
   @@index([entityId, mentionedAt(sort: Desc)], map: "idx_restaurant_entity_events_entity_time")
   @@index([sourceDocumentId], map: "idx_restaurant_entity_events_source_document")
@@ -1979,12 +1985,10 @@ model Place {
   // distinguishes the entities by entityType; a simple-unique id forced an
   // id-STRIP hack that fed the name-identity machinery. Composite = mirror.
   @@unique([providerPlaceId, providerLevelCode], map: "places_provider_place_id_level_key")
-  // Raw-SQL PARTIAL unique (migration 20260730130000):
-  // uq_places_fallback_identity ON (country_code, provider_level_code,
-  // lower(name)) WHERE provider = 'fallback' — tuple idempotence for the
-  // ONE non-vendor lane. Vendor rows have NO name-uniqueness law (docket
-  // #4): two distinct entities may share a name; their identity is the
-  // composite (provider_place_id, provider_level_code) unique above.
+  // NO name-uniqueness law (docket #4): two distinct entities may share a
+  // name; identity is the composite unique above. (The fallback lane's
+  // partial index uq_places_fallback_identity was dropped with the lane —
+  // migration 20260801120000, "TomTom or nothing".)
   @@index([countryCode, subdivisionCode])
   /// GIN: the descendant subtree walk's @> join (place-dag-read) — without it
   /// a country-scale subject's expansion seq-scanned per recursion level

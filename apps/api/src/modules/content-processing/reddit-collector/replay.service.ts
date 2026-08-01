@@ -473,14 +473,27 @@ export class ReplayService implements OnModuleInit {
 
     const restaurantIds = await this.collectAffectedRestaurantIds(documentIds);
 
-    await this.prismaService.sourceDocument.updateMany({
-      where: {
-        documentId: { in: documentIds },
-      },
-      data: {
-        activeExtractionRunId: params.extractionRunId,
-      },
-    });
+    // Activation supersedes physically (same law as
+    // CollectionEvidenceService.activateRunForDocuments): other runs'
+    // events for these documents die with the pointer flip.
+    await this.prismaService.$transaction([
+      this.prismaService.restaurantEntityEvent.deleteMany({
+        where: {
+          sourceDocumentId: { in: documentIds },
+          extractionRunId: { not: params.extractionRunId },
+        },
+      }),
+      this.prismaService.restaurantEvent.deleteMany({
+        where: {
+          sourceDocumentId: { in: documentIds },
+          extractionRunId: { not: params.extractionRunId },
+        },
+      }),
+      this.prismaService.sourceDocument.updateMany({
+        where: { documentId: { in: documentIds } },
+        data: { activeExtractionRunId: params.extractionRunId },
+      }),
+    ]);
 
     const rebuildResult =
       await this.projectionRebuildService.rebuildForRestaurants(restaurantIds);
