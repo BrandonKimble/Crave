@@ -59,11 +59,9 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
-  lngIntersectSql,
-  placeLngColumns,
-  SIGNAL_LNG_COLUMNS,
-} from '../../signals/lng-intersect';
-import { freshSignalAttributionSql } from '../../signals/ground-containment';
+  freshSignalAttributionSql,
+  geoEnvelopeSql,
+} from '../../signals/ground-containment';
 import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
 import { utcInstantSql } from '../../signals/sql-instant';
 import {
@@ -146,12 +144,6 @@ export class DemandMassReader {
         WHEN GREATEST(0, ${ageDays}) <= ${RECENCY_FLAT_DAYS} THEN 1.0
         ELSE power(0.5, (GREATEST(0, ${ageDays}) - ${RECENCY_FLAT_DAYS}) / ${DEMAND_HALF_LIFE_DAYS}::float8)
       END`;
-  }
-
-  /** The canonical wrap-aware intersect (signals lng-intersect.ts) for
-   *  signal row s vs place-box row pb — the FRESH arm's geo predicate. */
-  private lngIntersectSql(): Prisma.Sql {
-    return lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('pb'));
   }
 
   /**
@@ -298,26 +290,23 @@ export class DemandMassReader {
           MAX(${EVENT_COUNT_SQL})::float8 AS acts
         FROM places pb
         JOIN signals s
-          -- P5b (2026-07-29): the bbox prefilter is BYPASSED for anchored
-          -- signals. An anchored act's geo is its place's centroid POINT, and
-          -- that point can legitimately sit outside an ANCESTOR's bbox
-          -- (TomTom's Washington Municipality spills into Maryland; its
-          -- representative point can be in the spill, outside DC's bbox).
-          -- "Containment implies intersection, so the prefilter never drops a
-          -- true candidate" is a GEO-ARM fact only — DAG ancestry makes no
-          -- geometric promise. The anchored arm needs no prefilter: its
-          -- predicate is a PK-walk, not a geometry probe.
+          -- P2 (2026-07-30): the prefilter is the geometry GiST — the place's
+          -- ground && the signal's wrap-aware envelope — replacing the
+          -- hand-written bbox lat arms + lng wrap arithmetic (a derived
+          -- rectangle re-implementing what the index does natively, seam
+          -- bugs and all). Containment in either direction implies overlap,
+          -- so it never drops a true geometric candidate.
+          -- P5b (2026-07-29): BYPASSED for anchored signals — their geo is a
+          -- centroid point that can sit outside an ANCESTOR's ground
+          -- (the Washington spill), and their predicate is a DAG PK-walk
+          -- that makes no geometric promise.
           ON (s.place_id IS NOT NULL
-              OR (s.geo_min_lat <= pb.bbox_max_lat
-                  AND s.geo_max_lat >= pb.bbox_min_lat
-                  AND (${this.lngIntersectSql()})))
+              OR EXISTS (
+                   SELECT 1 FROM place_geometries pre
+                   WHERE pre.place_id = pb.place_id
+                     AND pre.geometry && ${geoEnvelopeSql('s')}))
          AND (${freshSignalAttributionSql('pb')})
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
-          -- P5b: bbox-less candidates stay reachable through the ANCHORED
-          -- arm (its predicate is a DAG walk; the candidate's rectangle is
-          -- irrelevant, and bbox legitimately diverges from ground for
-          -- antimeridian places whose bbox writeback is skipped).
-          AND (s.place_id IS NOT NULL OR pb.bbox_min_lat IS NOT NULL)
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
           ${this.freshActFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2, 3
@@ -445,27 +434,24 @@ export class DemandMassReader {
           MAX(${EVENT_COUNT_SQL})::float8 AS acts
         FROM places pb
         JOIN signals s
-          -- P5b (2026-07-29): the bbox prefilter is BYPASSED for anchored
-          -- signals. An anchored act's geo is its place's centroid POINT, and
-          -- that point can legitimately sit outside an ANCESTOR's bbox
-          -- (TomTom's Washington Municipality spills into Maryland; its
-          -- representative point can be in the spill, outside DC's bbox).
-          -- "Containment implies intersection, so the prefilter never drops a
-          -- true candidate" is a GEO-ARM fact only — DAG ancestry makes no
-          -- geometric promise. The anchored arm needs no prefilter: its
-          -- predicate is a PK-walk, not a geometry probe.
+          -- P2 (2026-07-30): the prefilter is the geometry GiST — the place's
+          -- ground && the signal's wrap-aware envelope — replacing the
+          -- hand-written bbox lat arms + lng wrap arithmetic (a derived
+          -- rectangle re-implementing what the index does natively, seam
+          -- bugs and all). Containment in either direction implies overlap,
+          -- so it never drops a true geometric candidate.
+          -- P5b (2026-07-29): BYPASSED for anchored signals — their geo is a
+          -- centroid point that can sit outside an ANCESTOR's ground
+          -- (the Washington spill), and their predicate is a DAG PK-walk
+          -- that makes no geometric promise.
           ON (s.place_id IS NOT NULL
-              OR (s.geo_min_lat <= pb.bbox_max_lat
-                  AND s.geo_max_lat >= pb.bbox_min_lat
-                  AND (${this.lngIntersectSql()})))
+              OR EXISTS (
+                   SELECT 1 FROM place_geometries pre
+                   WHERE pre.place_id = pb.place_id
+                     AND pre.geometry && ${geoEnvelopeSql('s')}))
          AND (${freshSignalAttributionSql('pb')})
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
-          -- P5b: bbox-less candidates stay reachable through the ANCHORED
-          -- arm (its predicate is a DAG walk; the candidate's rectangle is
-          -- irrelevant, and bbox legitimately diverges from ground for
-          -- antimeridian places whose bbox writeback is skipped).
-          AND (s.place_id IS NOT NULL OR pb.bbox_min_lat IS NOT NULL)
           AND s.subject_type = 'entity'
           AND s.subject_id IS NOT NULL
           AND s.occurred_at >= ${utcInstantSql(todayStart)}

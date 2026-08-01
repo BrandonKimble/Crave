@@ -79,7 +79,13 @@ async function attributeAnchoredSignal(
   const [signal] = await prisma.$queryRawUnsafe<Array<{ signal_id: string }>>(
     `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
                           geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
-     VALUES ('poll_created', 'none', gen_random_uuid(), now(), $1::uuid,
+     VALUES ('poll_created', 'none', gen_random_uuid(),
+             -- naive-UTC, the ledger convention (signals.service writes JS
+             -- Date via Prisma = UTC wall-clock). A bare now() is SESSION-tz
+             -- naive and made this test a time-of-day flake: after ~17:00
+             -- PDT the UTC day has rolled over, the stamp lands "yesterday",
+             -- and the fresh arm (occurred_at >= todayStart) rightly drops it.
+             (now() AT TIME ZONE 'utc'), $1::uuid,
              $2, $3, $4, $5)
      RETURNING signal_id`,
     anchorPlaceId,
@@ -370,7 +376,13 @@ describe('containment laws, proven against PostGIS', () => {
     const [signal] = await prisma.$queryRawUnsafe<Array<{ signal_id: string }>>(
       `INSERT INTO signals (kind, subject_type, actor_id, occurred_at, place_id,
                             geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng)
-       VALUES ('poll_created', 'none', gen_random_uuid(), now(), $1::uuid,
+       VALUES ('poll_created', 'none', gen_random_uuid(),
+             -- naive-UTC, the ledger convention (signals.service writes JS
+             -- Date via Prisma = UTC wall-clock). A bare now() is SESSION-tz
+             -- naive and made this test a time-of-day flake: after ~17:00
+             -- PDT the UTC day has rolled over, the stamp lands "yesterday",
+             -- and the fresh arm (occurred_at >= todayStart) rightly drops it.
+             (now() AT TIME ZONE 'utc'), $1::uuid,
                80.5, 19.7, 80.5, 19.7)
        RETURNING signal_id`,
       metroId,

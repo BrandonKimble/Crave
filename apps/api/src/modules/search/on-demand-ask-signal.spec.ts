@@ -256,8 +256,9 @@ describe('territoryUnmetAsks read (the §11 unmet family input)', () => {
     expect(sql).toContain("s.kind = 'on_demand_ask'");
     // Site dedupe: the two ask sites of one search collapse on the shared id.
     expect(sql).toContain('askSearchRequestId');
-    // Territory scoping = geo overlap against the member places' bboxes.
-    expect(sql).toContain('p.bbox_max_lat');
+    // Territory scoping = geometry-GiST overlap against the member places'
+    // ONE ground (P2, 2026-07-30) — the bbox arms are gone.
+    expect(sql).toContain('pre.geometry &&');
     expect(sql).not.toContain('collection_on_demand_ask_events');
     expect(sql).not.toContain('collectable_market_key');
 

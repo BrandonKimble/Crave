@@ -4,11 +4,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import {
-  lngIntersectSql,
-  placeLngColumns,
-  SIGNAL_LNG_COLUMNS,
-} from './lng-intersect';
-import { freshSignalAttributionSql } from './ground-containment';
+  freshSignalAttributionSql,
+  geoEnvelopeSql,
+} from './ground-containment';
 import { utcInstantSql } from './sql-instant';
 import {
   DEMAND_HALF_LIFE_DAYS,
@@ -918,17 +916,18 @@ export class SignalDemandReadService {
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.subject_id IS NOT NULL
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          -- Wave-5 F4: wrap-aware longitude intersect (the ONE canonical
-          -- predicate) as the PREFILTER; attribution itself is the
-          -- aggregate's §2.6 single-ground containment law (C3 cut) —
-          -- ST_Covers/ST_CoveredBy on the place's ONE geometry row.
-          -- P5b (2026-07-29): the prefilter is BYPASSED for anchored signals —
-          -- their geo is a centroid point that can sit outside an ANCESTOR's
-          -- bbox (the Washington spill), and their predicate is a DAG PK-walk
-          -- that needs no geometric prefilter.
+          -- P2 (2026-07-30): the prefilter is the geometry GiST — ground &&
+          -- the signal's wrap-aware envelope — replacing the bbox lat arms +
+          -- the hand-written lng wrap arithmetic. Attribution itself stays
+          -- the aggregate's §2.6 single-ground containment law (C3 cut).
+          -- P5b (2026-07-29): BYPASSED for anchored signals — centroid-point
+          -- geo can sit outside an ancestor's ground (the Washington spill);
+          -- the DAG predicate makes no geometric promise.
           AND (s.place_id IS NOT NULL
-               OR (s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
-                   AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})))
+               OR EXISTS (
+                    SELECT 1 FROM place_geometries pre
+                    WHERE pre.place_id = p.place_id
+                      AND pre.geometry && ${geoEnvelopeSql('s')}))
           AND (${freshSignalAttributionSql('p')})
           ${freshFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2
@@ -1027,15 +1026,16 @@ export class SignalDemandReadService {
           AND s.occurred_at >= ${utcInstantSql(params.since)}
           AND s.subject_text IS NOT NULL
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
-          -- Wave-5 F4: wrap-aware longitude intersect (canonical helper) as
-          -- the PREFILTER; membership judged by the §2.6 single-ground
-          -- containment law (C3 cut) — the place's ONE geometry row.
-          -- P5b (2026-07-29): prefilter bypassed for anchored signals (their
-          -- centroid-point geo can sit outside an ancestor's bbox — the
-          -- Washington spill; the DAG predicate needs no geometric prefilter).
+          -- P2 (2026-07-30): geometry-GiST prefilter (ground && wrap-aware
+          -- signal envelope) replaces the bbox/lng arms; membership judged by
+          -- the §2.6 single-ground containment law (C3 cut).
+          -- P5b: bypassed for anchored signals (DAG predicate, no geometric
+          -- promise — the Washington spill).
           AND (s.place_id IS NOT NULL
-               OR (s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
-                   AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})))
+               OR EXISTS (
+                    SELECT 1 FROM place_geometries pre
+                    WHERE pre.place_id = p.place_id
+                      AND pre.geometry && ${geoEnvelopeSql('s')}))
           AND (${freshSignalAttributionSql('p')})
       ),
       per_request AS (

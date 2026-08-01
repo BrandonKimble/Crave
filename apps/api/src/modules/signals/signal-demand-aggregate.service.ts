@@ -40,8 +40,9 @@ import { geoEnvelopeSql } from './ground-containment';
  *   index. No fallback arms — no code path branches on which representation
  *   exists. Longitude is wrap-aware (min_lng > max_lng crosses the
  *   antimeridian): a crossing geo's envelope is the ST_Union of its two
- *   arms; crossing PLACES (none in the current catalog) take an explicit
- *   non-indexed PREFILTER branch over that tiny materialized set.
+ *   arms; crossing PLACES need no branch (P2, 2026-07-30) — ST_Covers/
+ *   ST_CoveredBy ride the geometry GiST directly, a crossing row's cached
+ *   bbox admits it broadly and the exact test judges (the P4a pattern).
  *   Additionally every signal lands EXACTLY ONCE on the GLOBAL tile
  *   (place_id NULL) so unscoped readers never see attribution fan-out.
  * - Redirects are applied AT READ (the aggregate stores raw subjectIds;
@@ -77,12 +78,6 @@ const DEDUPE_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>
 
 /** SQL: per-row act weight (backfilled legacy rows carry meta.eventCount). */
 const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
-
-/** SQL: float8 envelope over a places-catalog bbox — matches the partial
- *  expression GiST index Place_bbox_envelope_gist_idx VERBATIM (red-team 3b);
- *  only non-crossing places are indexed, so every indexed branch restates the
- *  index predicate (bbox present, min_lng <= max_lng). */
-const PLACE_ENVELOPE_SQL = Prisma.sql`ST_MakeEnvelope(p.bbox_min_lng::float8, p.bbox_min_lat::float8, p.bbox_max_lng::float8, p.bbox_max_lat::float8, 4326)`;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -320,67 +315,35 @@ export class SignalDemandAggregateService {
           FROM day_signals
           WHERE place_id IS NULL
         ),
-        crossing_places AS MATERIALIZED (
-          -- Antimeridian-crossing catalog rows (bbox_min_lng > bbox_max_lng):
-          -- excluded from the GiST envelope index, handled by explicit
-          -- branches. Materialized ONCE — a tiny set (currently the US row).
-          SELECT place_id, parent_place_ids,
-                 bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
-          FROM places
-          WHERE bbox_min_lat IS NOT NULL AND bbox_min_lng > bbox_max_lng
-        ),
         containing AS (
           -- §3 (i) under §2.6 GROUND UNIFICATION: the SMALLEST place whose
           -- GROUND contains the whole geo — at most ONE row per geo
           -- (read-time inheritance walks the ancestor chain; storing the
-          -- chain would double-count). The bbox is ONLY the candidate
-          -- prefilter (GiST envelope index + the crossing-place branch);
-          -- the ONE ground judges every candidate: it must ST_Covers the
-          -- geo envelope or it is REFUSED (its bbox lied — the El Paso act
-          -- inside a Juárez-class overhanging rectangle never attributes
-          -- across the border), and candidates rank by real ground area
-          -- (a sketch envelope's area equals its bbox area, so the ranking
-          -- metric is unchanged for sketch-grade rows).
+          -- chain would double-count).
+          --
+          -- P2 (one-ground charter, 2026-07-30): ONE arm, mirroring the
+          -- "contained" CTE below. ST_Covers is itself index-accelerated —
+          -- PostGIS expands it to && on the geometry GiST plus the exact
+          -- test — so the hand-built candidate machinery this replaces (a
+          -- bbox-envelope expression index, a materialized crossing-place
+          -- catch-all, and a UNION of wrap-arm prefilter branches) was
+          -- re-implementing the index by hand on a DERIVED rectangle. The
+          -- named abstraction, exactly: geometry answers this geometric
+          -- question directly. Crossing rows need no branch — their cached
+          -- geometry bbox admits them broadly and the exact test judges,
+          -- the same documented behavior as placesInView (P4a).
           SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng, place_id
           FROM (
-            SELECT x.geo_min_lat, x.geo_min_lng, x.geo_max_lat, x.geo_max_lng,
-                   x.place_id,
+            SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
+                   pg.place_id,
                    ROW_NUMBER() OVER (
-                     PARTITION BY x.geo_min_lat, x.geo_min_lng, x.geo_max_lat, x.geo_max_lng
+                     PARTITION BY g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng
                      ORDER BY ST_Area(pg.geometry) ASC,
-                              x.place_id ASC
+                              pg.place_id ASC
                    ) AS pick
-            FROM (
-              -- Indexed fast path: non-crossing geo × non-crossing place.
-              SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
-                     p.place_id
-              FROM geos g
-              JOIN places p
-                ON p.bbox_min_lat IS NOT NULL
-               AND p.bbox_min_lng <= p.bbox_max_lng
-               AND ${PLACE_ENVELOPE_SQL}
-                   ~ ST_MakeEnvelope(g.geo_min_lng::float8, g.geo_min_lat::float8,
-                                     g.geo_max_lng::float8, g.geo_max_lat::float8, 4326)
-              WHERE g.geo_min_lng <= g.geo_max_lng
-              UNION ALL
-              -- Crossing places (materialized tiny set): wrap-aware bbox
-              -- PREFILTER — a non-crossing geo fits one arm; a crossing
-              -- geo needs both its arms covered. Judgment stays below.
-              SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
-                     p.place_id
-              FROM geos g
-              JOIN crossing_places p
-                ON p.bbox_min_lat <= g.geo_min_lat
-               AND p.bbox_max_lat >= g.geo_max_lat
-               AND CASE
-                     WHEN g.geo_min_lng <= g.geo_max_lng
-                       THEN g.geo_min_lng >= p.bbox_min_lng OR g.geo_max_lng <= p.bbox_max_lng
-                     ELSE p.bbox_min_lng <= g.geo_min_lng AND g.geo_max_lng <= p.bbox_max_lng
-                   END
-            ) x
+            FROM geos g
             JOIN place_geometries pg
-              ON pg.place_id = x.place_id
-             AND ST_Covers(pg.geometry, ${geoEnvelopeSql('x')})
+              ON ST_Covers(pg.geometry, ${geoEnvelopeSql('g')})
           ) ranked
           WHERE pick = 1
         ),

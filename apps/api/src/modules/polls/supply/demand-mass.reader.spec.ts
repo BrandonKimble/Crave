@@ -156,14 +156,20 @@ describe('the two-arm freshness seam (aggregate closed days + fresh today)', () 
     }
   });
 
-  it('the fresh arm uses the canonical wrap-aware longitude intersect, never a plain range test', async () => {
+  it('the fresh arm prefilters on the geometry GiST with the wrap-aware signal envelope — no hand-written lng arithmetic (P2)', async () => {
     const { reader, queries } = createHarness();
     await reader.placeDemandMass([PLACE], NOW);
     await reader.subjectDemandMass([PLACE], NOW);
     for (const query of queries) {
       const sql = flatten(query);
-      expect(sql).toContain('s.geo_min_lng > s.geo_max_lng');
-      expect(sql).toContain('THEN TRUE');
+      // Wrap-awareness lives in geoEnvelopeSql (two-arm ST_Union for a
+      // crossing geo); the prefilter is ground && envelope, bypassed for
+      // anchored signals whose predicate is a DAG walk (P5b).
+      expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
+      expect(sql).toContain('ST_Union(');
+      expect(sql).toContain('pre.geometry &&');
+      expect(sql).toContain('s.place_id IS NOT NULL');
+      expect(sql).not.toContain('bbox_max_lat');
     }
   });
 

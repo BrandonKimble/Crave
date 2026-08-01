@@ -119,7 +119,9 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     // containment operator survives ONLY as the GiST candidate PREFILTER of
     // the containing pick — and NO bbox-intersection join.
     expect(insert).toContain('ST_MakeEnvelope');
-    expect(insert).toMatch(/~\s*¤?\s*ST_MakeEnvelope/); // containing prefilter
+    // P2: no bbox-contains (~) prefilter — ST_Covers on the ground is both
+    // finder and judge (index-expanded by PostGIS itself).
+    expect(insert).not.toMatch(/~\s*¤?\s*ST_MakeEnvelope/);
     // §2.6 GROUND UNIFICATION (leg 1): THE ONE GROUND judges — the
     // containing pick is an INNER JOIN on place_geometries requiring
     // ST_Covers(ground, geo) and ranks by ground area; zero fallback arms
@@ -127,7 +129,7 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     // containment judgment anywhere).
     expect(insert).toContain('ST_Covers(pg.geometry,');
     expect(insert).toContain('ST_Area(pg.geometry) ASC');
-    expect(insert).toContain('x.place_id ASC'); // deterministic pick anchor
+    expect(insert).toContain('pg.place_id ASC'); // deterministic pick anchor
     expect(insert).not.toContain('pg.geometry IS NULL');
     expect(insert).not.toContain('(pg.geometry IS NOT NULL) DESC');
     expect(insert).not.toContain('ELSE x.area END');
@@ -146,11 +148,16 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     expect(insert).toContain('parent.place_id) IN');
     expect(insert).toContain('c.place_id) NOT IN');
     expect(insert).not.toContain('d.geo_min_lat <= p.bbox_max_lat'); // no intersection join
-    // Wrap-awareness: a crossing geo's envelope is the union of its arms
-    // (geoEnvelopeSql CASE, embedded fragment); the indexed fast path fences
-    // to non-crossing geos and the crossing-place prefilter branch survives.
-    expect(insert).toContain('g.geo_min_lng <= g.geo_max_lng');
-    expect(insert).toContain('crossing_places');
+    // P2 (2026-07-30): the candidate finder IS the judge — ST_Covers rides
+    // the geometry GiST directly (PostGIS expands it to && + exact test), so
+    // the hand-built bbox machinery is GONE: no bbox-envelope expression, no
+    // crossing-place catch-all, no wrap-arm prefilter branches. Wrap
+    // awareness lives solely in geoEnvelopeSql's two-arm union (the CASE on
+    // the SIGNAL's own columns).
+    expect(insert).not.toContain('crossing_places');
+    expect(insert).not.toContain('bbox_min_lat');
+    expect(insert).not.toContain('ST_MakeEnvelope(p.bbox_min_lng');
+    expect(insert).toContain('WHEN g.geo_min_lng <= g.geo_max_lng'); // geoEnvelopeSql CASE
     // Red-team 1c: window-wide, geo-free retry dedupe — first occurrence
     // wins in-day, prior days excluded by anti-join.
     expect(insert).toContain("s.meta->>'searchRequestId'");

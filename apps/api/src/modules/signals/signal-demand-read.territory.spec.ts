@@ -164,10 +164,13 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       q.text.includes('signal_demand_daily'),
     )!;
     const sql = flattenFragments(query);
-    // A crossing-geo signal (min > max) reaches its place through the
-    // canonical lng-intersect CASE (signals/lng-intersect.ts).
-    expect(sql).toContain('s.geo_min_lng > s.geo_max_lng');
-    expect(sql).toContain('THEN TRUE');
+    // P2 (2026-07-30): wrap-awareness lives in the SIGNAL's envelope — a
+    // crossing geo (min > max) becomes the ST_Union of its two arms
+    // (geoEnvelopeSql), and the prefilter is the geometry GiST overlap
+    // against the place's ONE ground, not hand-written lng arithmetic.
+    expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
+    expect(sql).toContain('ST_Union(');
+    expect(sql).toContain('pre.geometry &&');
   });
 
   it('the fresh TODAY arm judges membership by the §2.5(c) containment law (C3 cut): polygon-first, geometry-null bbox fallback — the lng intersect is only the prefilter', async () => {
@@ -267,8 +270,10 @@ describe('territoryUnmetAsks (kind-filtered ask read)', () => {
     });
     const query = h.queries.find((q) => q.text.includes('on_demand_ask'))!;
     const sql = flattenFragments(query);
-    expect(sql).toContain('s.geo_min_lng > s.geo_max_lng');
-    expect(sql).toContain('THEN TRUE');
+    // P2: wrap-awareness via the signal envelope + geometry-GiST prefilter
+    // (see the demand-arm test above for the law).
+    expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
+    expect(sql).toContain('pre.geometry &&');
     // The two ask sites of one search still collapse per (request, term).
     expect(sql).toContain('askSearchRequestId');
     // §2.5(c) containment membership (C3 cut) — same law as the demand arm.
