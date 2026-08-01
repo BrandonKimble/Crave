@@ -85,6 +85,15 @@
 /// bounds are insets, never per-frame writes), so an upward header drag gets
 /// UIKit's own rubber band at the boundary instead of scrolling the list.
 @property (nonatomic, assign) BOOL postureDragActive;
+/// THE HEADER-GATED RELEASE (ported from the old resolveHeaderGatedSnapValue):
+/// a drag resolves against where it STARTED, not against where it ended, so a
+/// release is one deliberate step and never a nearest-detent lottery.
+@property (nonatomic, assign) CGFloat dragStartTau;
+/// Whether this posture drag began already at the boundary — the state in which
+/// an upward pull tugs the WHOLE sheet elastically (the old
+/// expandAllowTopElastic) instead of rubber-banding the rows under a pinned
+/// header.
+@property (nonatomic, assign) BOOL postureDragFromBoundary;
 /// Host scroll view (weak): lets slot registration ping a synchronous shell
 /// re-apply so a freshly recreated slot is positioned in the SAME UIKit
 /// transaction it appears in (the flash becomes unwritable).
@@ -231,6 +240,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   // in-flight bounce dies — the finger owns the track from here.
   self.ballisticArmed = NO;
   [self stopSpring];
+  self.dragStartTau = scrollView.contentOffset.y;
   // THE STASH: a drag that BEGINS in the chrome band is a posture drag — the
   // sheet must follow the finger immediately, list scroll preserved. σ moves
   // the boundary so that happens; the touch keeps being an ordinary scroll
@@ -252,6 +262,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       // header drags may move the SHEET only, in both directions. Signed
       // inset: maxOffset = contentH + inset − viewport == boundary exactly.
       self.postureDragActive = YES;
+      self.postureDragFromBoundary = (tau >= effEdge - 0.5);
       const CGFloat boundary = self.ballisticEdge + self.stashSigma;
       const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
       UIEdgeInsets capInsets = scrollView.contentInset;
@@ -273,6 +284,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 {
   if (self.postureDragActive) {
     self.postureDragActive = NO;
+    self.postureDragFromBoundary = NO;
     // Restore the range law's inset (the ceiling was drag-scoped).
     [self applyRangeLawTo:scrollView];
   }
@@ -295,6 +307,14 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
   const CGFloat edge = self.ballisticEdge >= 0 ? self.ballisticEdge + self.stashSigma : self.ballisticEdge;
   const CGFloat releaseY = scrollView.contentOffset.y;
+
+  // THE TUG RETURNS: a posture drag that pulled the sheet past its boundary
+  // springs back to the boundary — it is elastic, never a new posture.
+  if (self.postureDragActive && self.postureDragFromBoundary && edge >= 0 && releaseY > edge) {
+    targetContentOffset->y = releaseY;
+    [self startSpringOn:scrollView toTarget:edge fromY:releaseY velocityY:velocity.y * 1000.0];
+    return;
+  }
 
   if (edge >= 0 && releaseY >= edge) {
     // BALLISTIC RELEASE IN THE LIST REGION: do NOT bound the track here — bounding
@@ -319,12 +339,38 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     //   the finger's true release speed.
     // Velocity-aware detent choice: UIKit's own projection, clamped to <= H.
     // Sheet-region detents live at detentTau + σ in τ-space.
-    const double projected = MIN(targetContentOffset->y, self.snapRegionEnd + self.stashSigma);
-    CGFloat best = self.snapOffsets.firstObject.doubleValue + self.stashSigma;
-    for (NSNumber *offset in self.snapOffsets) {
-      const CGFloat candidate = offset.doubleValue + self.stashSigma;
-      if (fabs(candidate - projected) < fabs(best - projected)) {
-        best = candidate;
+    // THE HEADER-GATED RELEASE (ported verbatim in spirit from the old
+    // resolveHeaderGatedSnapValue; the track had only a nearest-detent pick,
+    // which is why releases stopped feeling like the old sheet):
+    //   anchor on where the DRAG STARTED, project velocity 0.18s ahead, ignore
+    //   travel inside a 20pt dead zone, cancel on a fast reversal, and move at
+    //   most ONE detent per drag once a full gate of min(chromeHeight, 96) has
+    //   been cleared. Deliberate, repeatable, and impossible to overshoot.
+    const CGFloat startTau = self.dragStartTau;
+    CGFloat startDetent = self.snapOffsets.firstObject.doubleValue + self.stashSigma;
+    NSUInteger startIndex = 0;
+    for (NSUInteger i = 0; i < self.snapOffsets.count; i++) {
+      const CGFloat candidate = self.snapOffsets[i].doubleValue + self.stashSigma;
+      if (fabs(candidate - startTau) < fabs(startDetent - startTau)) {
+        startDetent = candidate;
+        startIndex = i;
+      }
+    }
+    const double velocityPtsPerSecond = velocity.y * 1000.0;
+    const double travel = releaseY - startTau;
+    const double projectedTravel = travel + velocityPtsPerSecond * 0.18;
+    const double gate = MIN(self.shellChromeHeight > 0 ? self.shellChromeHeight : 96.0, 96.0);
+    const BOOL reversed = (travel > 0 && velocityPtsPerSecond < 0) ||
+                          (travel < 0 && velocityPtsPerSecond > 0);
+    const BOOL reversalCancel =
+        reversed && fabs(velocityPtsPerSecond) >= 220.0 && fabs(travel) <= 140.0;
+    CGFloat best = startDetent;
+    if (!reversalCancel && fabs(travel) >= 20.0 && fabs(projectedTravel) >= gate) {
+      // snapOffsets ascend in tau: higher index = more expanded.
+      const NSInteger step = projectedTravel > 0 ? 1 : -1;
+      const NSInteger nextIndex = (NSInteger)startIndex + step;
+      if (nextIndex >= 0 && nextIndex < (NSInteger)self.snapOffsets.count) {
+        best = self.snapOffsets[(NSUInteger)nextIndex].doubleValue + self.stashSigma;
       }
     }
     targetContentOffset->y = releaseY; // no native deceleration — the spring owns it
@@ -425,7 +471,17 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   }
   if (self.shellEnabled && (gTrackPostureOwner == nil || scrollView == gTrackPostureOwner)) {
     const CGFloat tau = scrollView.contentOffset.y;
-    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
+    // THE ELASTIC TUG (old expandAllowTopElastic, restored): a header drag that
+    // began at the boundary and pulls UP moves the WHOLE SHEET above its
+    // expanded top and springs back — it must never scroll rows under a pinned
+    // header. UIKit has already rubber-damped tau past the posture ceiling, so
+    // the overshoot IS the damped travel; the sheet simply follows it, and rows
+    // (being content at tau) stay glued to the sheet by the same algebra.
+    const CGFloat tugBoundary = self.shellTrackH + self.stashSigma;
+    const CGFloat tug = (self.postureDragActive && self.postureDragFromBoundary && tau > tugBoundary)
+                            ? (tau - tugBoundary)
+                            : 0.0;
+    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, tugBoundary - tau) - tug;
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
     TrackShellRegistry *registry = [TrackShellRegistry shared];
