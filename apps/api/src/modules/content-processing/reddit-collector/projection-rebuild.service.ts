@@ -903,9 +903,41 @@ export class ProjectionRebuildService implements OnModuleInit {
       .map((connection) => connection.connectionId);
 
     if (staleConnectionIds.length > 0) {
-      await tx.connection.deleteMany({
-        where: { connectionId: { in: staleConnectionIds } },
-      });
+      // USER-LAYER LAW (R1): a connection a user has anchored (list item,
+      // photo, curated pick) is never deleted by rebuild — it survives with
+      // zeroed counters and shows up in the anchor audit as STARVED instead.
+      // The FKs are ON DELETE RESTRICT, so an unfiltered delete would abort
+      // the whole rebuild transaction; this filter is the law, the FK is
+      // the backstop.
+      const anchoredRows = await tx.$queryRaw<
+        Array<{ connection_id: string }>
+      >(Prisma.sql`
+        SELECT c.connection_id FROM core_restaurant_items c
+        WHERE c.connection_id = ANY(${staleConnectionIds}::uuid[])
+          AND (
+            EXISTS (SELECT 1 FROM user_list_items u WHERE u.connection_id = c.connection_id)
+            OR EXISTS (SELECT 1 FROM photos p WHERE p.connection_id = c.connection_id)
+            OR EXISTS (SELECT 1 FROM curated_list_items cl WHERE cl.connection_id = c.connection_id)
+          )
+      `);
+      const anchored = new Set(anchoredRows.map((r) => r.connection_id));
+      const deletable = staleConnectionIds.filter((id) => !anchored.has(id));
+      if (deletable.length > 0) {
+        await tx.connection.deleteMany({
+          where: { connectionId: { in: deletable } },
+        });
+      }
+      if (anchored.size > 0) {
+        await tx.connection.updateMany({
+          where: { connectionId: { in: Array.from(anchored) } },
+          data: {
+            mentionCount: 0,
+            totalUpvotes: 0,
+            supportMentionCount: 0,
+            supportTotalUpvotes: 0,
+          },
+        });
+      }
     }
 
     return Array.from(new Set(affectedConnectionIds));

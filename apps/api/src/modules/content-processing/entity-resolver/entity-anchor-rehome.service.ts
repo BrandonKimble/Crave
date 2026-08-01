@@ -83,8 +83,129 @@ export class EntityAnchorRehomeService {
       data: { restaurantId: canonicalId },
     });
 
+    await this.rehomePollEndorsements(tx, canonicalId, duplicateId);
+    await this.rehomeCommentEntitySpans(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandRequests(tx, canonicalId, duplicateId);
     await this.rehomeDemandScoringCandidates(tx, canonicalId, duplicateId);
+  }
+
+  /** Red team 2026-08-01 (R2): poll_endorsements.subject_id is a bare
+   *  string (no FK) in THREE shapes — a raw entity uuid (restaurant axis)
+   *  and either half of the "restaurantId::foodId" dish composite. A merge
+   *  that leaves any shape behind silently stops counting the user's vote.
+   *  Where rekeying would collide with an existing endorsement by the same
+   *  user in the same poll (PK pollId+subjectType+subjectId+userId), the
+   *  duplicate-keyed row is dropped — the user's voice already counts on
+   *  the survivor. */
+  private async rehomePollEndorsements(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const shapes: Array<{ from: Prisma.Sql; to: Prisma.Sql }> = [
+      {
+        from: Prisma.sql`${duplicateId}`,
+        to: Prisma.sql`${canonicalId}`,
+      },
+      {
+        from: Prisma.sql`${duplicateId} || '::' || split_part(subject_id, '::', 2)`,
+        to: Prisma.sql`${canonicalId} || '::' || split_part(subject_id, '::', 2)`,
+      },
+      {
+        from: Prisma.sql`split_part(subject_id, '::', 1) || '::' || ${duplicateId}`,
+        to: Prisma.sql`split_part(subject_id, '::', 1) || '::' || ${canonicalId}`,
+      },
+    ];
+    for (const shape of shapes) {
+      await tx.$executeRaw(Prisma.sql`
+        DELETE FROM poll_endorsements e
+        WHERE e.subject_id = ${shape.from}
+          AND EXISTS (
+            SELECT 1 FROM poll_endorsements k
+            WHERE k.poll_id = e.poll_id
+              AND k.subject_type = e.subject_type
+              AND k.user_id = e.user_id
+              AND k.subject_id = ${shape.to}
+          )`);
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE poll_endorsements
+        SET subject_id = ${shape.to}
+        WHERE subject_id = ${shape.from}`);
+    }
+  }
+
+  /** Red team 2026-08-01 (R2): poll_comments.entity_spans is a JSONB array
+   *  of {entityId,...} objects with no FK. Rewrite the loser id in place so
+   *  span taps keep resolving. Name/text inside the span stays as written —
+   *  it is the user's comment text, not derived display. */
+  private async rehomeCommentEntitySpans(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE poll_comments
+      SET entity_spans = (
+        SELECT jsonb_agg(
+          CASE WHEN span->>'entityId' = ${duplicateId}
+               THEN jsonb_set(span, '{entityId}', to_jsonb(${canonicalId}::text))
+               ELSE span END
+          ORDER BY ord
+        )
+        FROM jsonb_array_elements(entity_spans) WITH ORDINALITY AS s(span, ord)
+      )
+      WHERE entity_spans @> ${JSON.stringify([{ entityId: duplicateId }])}::jsonb`);
+  }
+
+  /** ONE conflict-aware rekey for user_list_items, shared by both merges
+   *  (red team 2026-08-01 R3: the food merge's blunt updateMany aborted the
+   *  whole merge on the (listId, connectionId) unique when a user had both
+   *  dishes in one list; the restaurant merge handled the conflict but
+   *  resolved it by DELETING the losing row, discarding the user's note).
+   *  Policy: repoint when free; on conflict, fold the losing row into the
+   *  survivor — keep the user's note if the survivor has none, keep the
+   *  earlier position — then delete the fold source. The user's authored
+   *  content survives every merge. */
+  async rehomeUserListItems(
+    tx: Prisma.TransactionClient,
+    key: 'restaurantId' | 'connectionId',
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const sourceItems = await tx.userListItem.findMany({
+      where: { [key]: duplicateId },
+      select: { itemId: true, listId: true, note: true, position: true },
+    });
+
+    for (const item of sourceItems) {
+      const conflicting = await tx.userListItem.findFirst({
+        where: {
+          listId: item.listId,
+          [key]: canonicalId,
+          itemId: { not: item.itemId },
+        },
+        select: { itemId: true, note: true, position: true },
+      });
+
+      if (conflicting) {
+        const fold: { note?: string; position?: number } = {};
+        if (item.note && !conflicting.note) fold.note = item.note;
+        if (item.position < conflicting.position) fold.position = item.position;
+        if (Object.keys(fold).length > 0) {
+          await tx.userListItem.update({
+            where: { itemId: conflicting.itemId },
+            data: fold,
+          });
+        }
+        await tx.userListItem.delete({ where: { itemId: item.itemId } });
+        continue;
+      }
+
+      await tx.userListItem.update({
+        where: { itemId: item.itemId },
+        data: { [key]: canonicalId },
+      });
+    }
   }
 
   /** Connection-keyed user anchors, called BEFORE a folded duplicate

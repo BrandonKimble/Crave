@@ -205,45 +205,16 @@ export class RestaurantEntityMergeService {
     // collection_on_demand_ask_events) need NO rekey — user-act history lives
     // in the immutable signals ledger, resolved through entity_redirects at
     // read (the redirect row is written by the merge flow itself).
-    await this.rehomeUserListRestaurantItems(tx, canonicalId, duplicateId);
+    await this.anchorRehome.rehomeUserListItems(
+      tx,
+      'restaurantId',
+      canonicalId,
+      duplicateId,
+    );
     // poll targets + topic arrays, curated items, photos, on-demand
     // requests, demand candidates: the shared user-anchor law (also used
     // by the food merge — one implementation, no drift)
     await this.anchorRehome.rehomeEntityAnchors(tx, canonicalId, duplicateId);
-  }
-
-  private async rehomeUserListRestaurantItems(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const sourceItems = await tx.userListItem.findMany({
-      where: { restaurantId: duplicateId },
-      select: { itemId: true, listId: true },
-    });
-
-    for (const item of sourceItems) {
-      const conflicting = await tx.userListItem.findFirst({
-        where: {
-          listId: item.listId,
-          restaurantId: canonicalId,
-          itemId: { not: item.itemId },
-        },
-        select: { itemId: true },
-      });
-
-      if (conflicting) {
-        await tx.userListItem.delete({
-          where: { itemId: item.itemId },
-        });
-        continue;
-      }
-
-      await tx.userListItem.update({
-        where: { itemId: item.itemId },
-        data: { restaurantId: canonicalId },
-      });
-    }
   }
 
   private async mergeLocations(
@@ -371,10 +342,11 @@ export class RestaurantEntityMergeService {
     // reader resolves dead connections to the survivor via entity_redirects +
     // (food, restaurant) at read (SignalDemandReadService.recentlyViewedFoods)
     // — no per-merge rekey of view rows exists anymore.
-    await this.rehomeUserListItemConnections(
+    await this.anchorRehome.rehomeUserListItems(
       tx,
-      sourceConnectionId,
+      'connectionId',
       targetConnectionId,
+      sourceConnectionId,
     );
     // curated picks + photos cascade on connection delete — repoint first
     await this.anchorRehome.rehomeConnectionAnchors(
@@ -382,43 +354,6 @@ export class RestaurantEntityMergeService {
       targetConnectionId,
       sourceConnectionId,
     );
-  }
-
-  private async rehomeUserListItemConnections(
-    tx: Prisma.TransactionClient,
-    sourceConnectionId: string,
-    targetConnectionId: string,
-  ): Promise<void> {
-    const sourceItems = await tx.userListItem.findMany({
-      where: { connectionId: sourceConnectionId },
-      select: {
-        itemId: true,
-        listId: true,
-      },
-    });
-
-    for (const item of sourceItems) {
-      const conflicting = await tx.userListItem.findFirst({
-        where: {
-          listId: item.listId,
-          connectionId: targetConnectionId,
-          itemId: { not: item.itemId },
-        },
-        select: { itemId: true },
-      });
-
-      if (conflicting) {
-        await tx.userListItem.delete({
-          where: { itemId: item.itemId },
-        });
-        continue;
-      }
-
-      await tx.userListItem.update({
-        where: { itemId: item.itemId },
-        data: { connectionId: targetConnectionId },
-      });
-    }
   }
 
   private minNumber(

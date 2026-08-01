@@ -67,10 +67,83 @@ describe('EntityAnchorRehomeService', () => {
       'targetRestaurantAttributeId',
       'targetRestaurantId',
     ]);
-    // the raw array_replace updates for category_entity_ids/seed_entity_ids
+    // raws: 2 topic array_replace + 6 endorsement (3 shapes × delete+update)
+    // + 1 comment entity_spans rewrite
     expect(calls.filter((call) => call.table === '$executeRaw')).toHaveLength(
-      2,
+      9,
     );
+  });
+
+  it('rekeys poll endorsements in all THREE subject shapes (bare uuid + both composite halves), dropping collisions first', async () => {
+    // Red team 2026-08-01 R2: subject_id is FK-free; a merge that misses any
+    // shape silently un-counts the user's vote.
+    const { tx, calls } = buildTx();
+    await service().rehomeEntityAnchors(tx as never, WINNER, LOSER);
+    const raws = calls
+      .filter((call) => call.table === '$executeRaw')
+      .map((call) => JSON.stringify(call.args));
+    const endorsementRaws = raws.filter((text) =>
+      text.includes('poll_endorsements'),
+    );
+    expect(endorsementRaws).toHaveLength(6);
+    expect(
+      endorsementRaws.filter((text) => text.includes('DELETE FROM')),
+    ).toHaveLength(3);
+    // both composite halves are handled
+    expect(
+      endorsementRaws.filter((text) => text.includes('split_part')),
+    ).toHaveLength(4);
+  });
+
+  it('rewrites entityId inside poll_comments.entity_spans JSONB', async () => {
+    const { tx, calls } = buildTx();
+    await service().rehomeEntityAnchors(tx as never, WINNER, LOSER);
+    const spanRaws = calls
+      .filter((call) => call.table === '$executeRaw')
+      .map((call) => JSON.stringify(call.args))
+      .filter((text) => text.includes('poll_comments'));
+    expect(spanRaws).toHaveLength(1);
+    expect(spanRaws[0]).toContain('jsonb_set');
+    expect(spanRaws[0]).toContain('entityId');
+  });
+
+  it('list-item fold keeps the user note and earlier position instead of discarding them (R3)', async () => {
+    const { tx, calls } = buildTx();
+    const updates: unknown[] = [];
+    const deletes: unknown[] = [];
+    (tx as Record<string, unknown>).userListItem = {
+      findMany: () =>
+        Promise.resolve([
+          {
+            itemId: 'loser-item',
+            listId: 'list-1',
+            note: 'my note',
+            position: 1,
+          },
+        ]),
+      findFirst: () =>
+        Promise.resolve({ itemId: 'winner-item', note: null, position: 5 }),
+      update: (args: unknown) => {
+        updates.push(args);
+        return Promise.resolve({});
+      },
+      delete: (args: unknown) => {
+        deletes.push(args);
+        return Promise.resolve({});
+      },
+    };
+    await service().rehomeUserListItems(
+      tx as never,
+      'connectionId',
+      SURVIVING_CONNECTION,
+      FOLDED_CONNECTION,
+    );
+    expect(updates).toHaveLength(1);
+    expect(JSON.stringify(updates[0])).toContain('my note');
+    expect(JSON.stringify(updates[0])).toContain('"position":1');
+    expect(deletes).toHaveLength(1);
+    expect(JSON.stringify(deletes[0])).toContain('loser-item');
+    void calls;
   });
 
   it('rekeys curated list entity+restaurant columns and photo restaurants', async () => {

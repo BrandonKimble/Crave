@@ -1353,8 +1353,12 @@ model UserListItem {
   updatedAt     DateTime            @updatedAt @map("updated_at")
   list          UserList            @relation(fields: [listId], references: [listId], onDelete: Cascade)
   addedByUser   User?               @relation(fields: [addedByUserId], references: [userId], onDelete: SetNull)
-  restaurant    Entity?             @relation(fields: [restaurantId], references: [entityId], onDelete: Cascade)
-  connection    Connection?         @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
+  /// USER-LAYER LAW (2026-08-01 red team R1): user rows must NEVER be
+  /// destroyed by derived-layer cleanup. Restrict forces every deleter of an
+  /// entity/connection through an anchor-aware path (merge/rehome) — a
+  /// cascade here silently destroyed the user's saved item, note and all.
+  restaurant    Entity?             @relation(fields: [restaurantId], references: [entityId], onDelete: Restrict)
+  connection    Connection?         @relation(fields: [connectionId], references: [connectionId], onDelete: Restrict)
   location      RestaurantLocation? @relation(fields: [locationId], references: [locationId], onDelete: SetNull)
 
   @@unique([listId, restaurantId], map: "user_list_items_list_restaurant")
@@ -1493,8 +1497,9 @@ model Photo {
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
   user            User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  restaurant      Entity          @relation("RestaurantPhotos", fields: [restaurantId], references: [entityId], onDelete: Cascade)
-  connection      Connection?     @relation(fields: [connectionId], references: [connectionId], onDelete: SetNull)
+  /// USER-LAYER LAW (R1): a user's photo must never die with a derived row.
+  restaurant      Entity          @relation("RestaurantPhotos", fields: [restaurantId], references: [entityId], onDelete: Restrict)
+  connection      Connection?     @relation(fields: [connectionId], references: [connectionId], onDelete: Restrict)
 
   reports PhotoReport[]
 

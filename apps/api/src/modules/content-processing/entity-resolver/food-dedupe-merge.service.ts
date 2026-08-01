@@ -308,10 +308,12 @@ export class FoodDedupeMergeService {
             survivorKeys.add(key);
           }
         }
-        await tx.userListItem.updateMany({
-          where: { connectionId: connection.connectionId },
-          data: { connectionId: surviving.connectionId },
-        });
+        await this.anchorRehome.rehomeUserListItems(
+          tx,
+          'connectionId',
+          surviving.connectionId,
+          connection.connectionId,
+        );
         // curated picks + photos cascade on connection delete — repoint
         // BEFORE the loser row goes (shared user-anchor law)
         await this.anchorRehome.rehomeConnectionAnchors(
