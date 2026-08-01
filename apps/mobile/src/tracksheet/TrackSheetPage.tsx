@@ -786,7 +786,8 @@ export function TrackSheetPage({
         </View>
       </View>
       {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
-      <View style={styles.headerBottomPad} /> {band}
+      <View style={styles.headerBottomPad} />
+      {band}
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
   );
