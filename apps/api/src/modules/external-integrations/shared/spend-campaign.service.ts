@@ -620,17 +620,32 @@ export class SpendCampaignService {
     const governance = this.requireGovernance();
     const poolName = campaignPoolName(campaignId);
     await governance.pools.meter(poolName, roundedMicros);
-    // BREACH VERDICT FROM THE DATABASE (async-integrity step 5, H7): the
-    // process-local pool sees only THIS process's meter stream — a second
-    // worker (or a restart) each carried an independent envelope, so the
-    // real cross-process spend could sail past the cap unnoticed. The DB
-    // spentMicros increment is atomic; the durable total is the truth the
-    // verdict must read. The pool stays as the fast in-process gauge.
+    // BREACH VERDICT FROM THE INCREMENT'S OWN RESULT (step 5, H7 + red
+    // team F6): increment first (guarded, atomic), decide from the value
+    // the increment RETURNS. Deciding from a pre-read row was the same
+    // lost-update this file's docstring says was fixed — two concurrent
+    // recorders each read S and each conclude S+delta is under the
+    // envelope while S+2·delta breaches.
     const envelopeMicros = Math.round(
       Number(row.estimateMicros) *
         (1 + (row.toleranceFraction ?? ENVELOPE_BOOTSTRAP_TOLERANCE)),
     );
-    const durableSpent = Number(row.spentMicros) + roundedMicros;
+    const incremented = await this.prisma.$queryRaw<
+      Array<{ spent_micros: bigint }>
+    >`
+      UPDATE spend_campaigns
+      SET spent_micros = spent_micros + ${roundedMicros},
+          state = 'running'
+      WHERE campaign_id = ${campaignId}::uuid
+        AND state IN ('approved', 'running')
+      RETURNING spent_micros
+    `;
+    if (!incremented.length) {
+      // State moved under us (breached/completed elsewhere) — the guarded
+      // WHERE refused; treat as breached-style refusal for the caller.
+      throw new CampaignBreachedError(campaignId);
+    }
+    const durableSpent = Number(incremented[0].spent_micros);
     const breached = durableSpent >= envelopeMicros;
 
     if (breached) {
@@ -658,21 +673,19 @@ export class SpendCampaignService {
         // campaign's state flip is visible everywhere).
         dedupeKey: `campaign_breached:${campaignId}`,
       });
+      // Spend already recorded by the increment above — this flip is
+      // state-only (a second increment here would double-count).
       await this.prisma.spendCampaign.updateMany({
         where: { campaignId, state: { in: ['approved', 'running'] } },
         data: {
-          spentMicros: { increment: roundedMicros },
           state: 'breached',
           breachNote,
         },
       });
       return;
     }
-
-    await this.prisma.spendCampaign.updateMany({
-      where: { campaignId, state: { in: ['approved', 'running'] } },
-      data: { spentMicros: { increment: roundedMicros }, state: 'running' },
-    });
+    // Non-breach: nothing left to do — the guarded increment above already
+    // recorded the spend and flipped state to 'running'.
   }
 
   /**

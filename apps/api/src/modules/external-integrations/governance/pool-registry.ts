@@ -264,20 +264,35 @@ export class PoolRegistry {
       ) {
         return;
       }
+      const initialKey = state?.windowKey;
       const carried = state && state.windowKey === key ? state.unpersisted : 0;
+      let addSucceeded = false;
+      // Residual = consumption that landed DURING the awaits and is not yet
+      // persisted (step 5, H6 lost-update): if the in-memory state is
+      // already on THIS window, everything above `carried` is residual; if
+      // it's still on the pre-call window, this is a roll and the old
+      // window's tail follows the original semantics; a THIRD window means
+      // someone else rolled mid-call — leave their state alone (F7a).
+      const residualNow = (): number | null => {
+        const current = this.durable.get(pool.name);
+        if (!current) return 0;
+        if (current.windowKey === key) {
+          return current.unpersisted - carried;
+        }
+        if (current.windowKey === initialKey) return 0;
+        return null;
+      };
       try {
         if (carried > 0) {
           await this.store.add(pool.name, key, { consumed: carried });
         }
+        addSucceeded = true;
         const loaded = await this.store.load(pool.name, key);
-        // A consume() may have landed during the awaits above — subtract
-        // what was actually flushed instead of zeroing, so nothing metered
-        // is discarded (step 5, H6 lost-update).
-        const current = this.durable.get(pool.name);
-        const residual =
-          current && current.windowKey === key
-            ? current.unpersisted - carried
-            : 0;
+        const residualValue = residualNow();
+        if (residualValue === null) {
+          return;
+        }
+        const residual = residualValue;
         this.usage.set(pool.name, {
           windowStart: this.windowKeyStart(pool, at),
           used: (loaded?.consumed ?? 0) + Math.max(0, residual),
@@ -295,10 +310,18 @@ export class PoolRegistry {
           unpersisted: Math.max(0, residual),
         });
       } catch {
+        // If the add committed and only the load failed, the carried delta
+        // is already persisted — re-marking it unpersisted would flush it
+        // twice (red team F7b). Preserve any residual consumed mid-call.
+        const residualValue = residualNow();
+        if (residualValue === null) {
+          return;
+        }
         this.durable.set(pool.name, {
           windowKey: key,
           confirmed: false,
-          unpersisted: carried,
+          unpersisted:
+            (addSucceeded ? 0 : carried) + Math.max(0, residualValue),
         });
       }
     });

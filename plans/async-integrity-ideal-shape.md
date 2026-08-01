@@ -174,6 +174,60 @@ atomic per-batch writes. Redirects are chain-flattened and clean.
   30s-TTL gauge (by design a catastrophe brake; campaigns are the real
   cap); revisit if multi-worker ever ships.
 
+## RED-TEAM ROUND (2026-08-01, two fresh-context adversaries, all fixed same day)
+
+Mechanism attack found 9 (4 high) — all verified and fixed:
+
+- F1/F2: activation ran BEFORE the event write, so supersede-delete
+  destroyed old evidence while the replacement didn't exist (failed
+  chunks = permanent loss). Activation now happens INSIDE the
+  consolidated write tx, restricted to documents of chunks that produced
+  output; restaurants losing evidence join the rebuild set under their
+  rebuild locks.
+- F3: my stored-input gate/claim/stamp hashed the LIVE prompt, not the
+  run's EFFECTIVE (versioned) prompt — every shadow replay would have
+  silently no-opped and versioned claims never released. All three sites
+  now use resolveEffectivePrompt.
+- F4: replay's date-range/doc-list activation could take over documents
+  the run never extracted (destructive under supersede). Now intersects
+  with the run's extraction_input_documents.
+- F5: tombstone sweep's DELETE removed unmovable (archived-winner)
+  evidence and its same-snapshot moves could abort on the content unique
+  nightly. DISTINCT ON candidate selection + winner-active DELETE guard.
+- F6: campaign breach verdict was read-then-compute; now the guarded
+  UPDATE..RETURNING's own value decides (increment and verdict atomic).
+- F7: ensureWindow window-roll and add-succeeded/load-failed edges could
+  drop or double-persist deltas; residual math now window-aware.
+- F8: identity-key fold was asymmetric (curry/curries different locks) —
+  variant-closure fold; non-food adopt-probe now queries the SAME
+  stripped-name expression the lock keys on (Phil's/Phils adopt).
+- F9: ledger-repair runner deleted (job done; its keep-oldest rule now
+  conflicts with supersede semantics and re-arming was dangerous).
+
+End-state judge verdict: right scale (~85%), point mechanisms correct
+for a single-worker Postgres system; no outbox/event-sourcing needed
+(the ledger already is one). Adopted from it: M4 fixed (batch cache mint
+memoizes the PROMISE — cold-cache fan-out no longer parks N Prisma
+connections behind a vendor call). CONSCIOUS deferrals, recorded:
+
+- M3 (cachedContent name frozen into persisted batch requests): bounded
+  by the 25h reuse floor + registry young-cache guard; a real fix needs
+  the job to carry prompt identity — fold into any future batch-cache
+  work.
+- Law 4 (process-local guards): ACCEPTED single-worker posture — leases,
+  claims, and guarded transitions make a second worker SURVIVABLE, and
+  Railway runs one worker by configuration. Revisit only if replicas
+  ever ship; the judge's work-item-table unification is the shape to
+  build then.
+- (type, identity_key) DB unique: still waits on the restaurant/food
+  dedupe classes (existing twins would violate it — including the
+  Phil's/Phils class the audit found).
+- OWNER QUESTION carried to the re-extract work: supersede-by-DELETE vs
+  keeping superseded events + the projection's active-run filter (the
+  readers still apply it anyway). Delete is simpler and shipped;
+  keep-and-filter would preserve one-command re-activation of a prior
+  run. Decide before the first shadow-activation on prod.
+
 ## SEQUENCE (this becomes audit class ①, expanded)
 
 1. Stop the bleeding (data): repair C1's dark events while all runs

@@ -23,6 +23,13 @@ export interface ExtractionTraceContext {
   extractionRunId: string;
   sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>;
   extractionInputIdByChunkId: Map<string, string>;
+  /** Documents to activate for this run INSIDE the consolidated write tx —
+   *  supersede-delete + pointer flip must be atomic with the NEW events'
+   *  insertion (red team F1: activating before the write deleted the old
+   *  evidence while the replacement didn't exist yet; a failed chunk or a
+   *  crash made that loss permanent). Restricted by the caller to
+   *  documents of chunks that actually produced output. */
+  activateDocumentIds?: string[];
 }
 
 type CollectionRunStatus = 'running' | 'completed' | 'failed';
@@ -459,6 +466,20 @@ export class CollectionEvidenceService implements OnModuleInit {
     await this.prismaService.extractionCoverageClaim.deleteMany({
       where: { extractionRunId },
     });
+  }
+
+  /** Which documents do these extraction inputs cover (per the persisted
+   *  input→document links)? Used to restrict activation to chunks that
+   *  actually produced output. */
+  async documentIdsForInputs(inputIds: string[]): Promise<Set<string>> {
+    if (!inputIds.length) {
+      return new Set();
+    }
+    const rows = await this.prismaService.extractionInputDocument.findMany({
+      where: { inputId: { in: inputIds } },
+      select: { documentId: true },
+    });
+    return new Set(rows.map((row) => row.documentId));
   }
 
   /** Sweep companion: claims whose run died terminally without releasing,

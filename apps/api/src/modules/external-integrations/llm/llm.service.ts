@@ -1085,15 +1085,34 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     string,
     { name: string; expiresAtMs: number }
   >();
+  /** SINGLE-FLIGHT mint (red team M4): memoizing only the RESULT let a
+   *  cold-cache batch build fan N concurrent acquires into the registry,
+   *  each parking a Prisma connection on the advisory lock across a vendor
+   *  round-trip — a pool-exhaustion wedge. The in-flight promise is the
+   *  memo; late callers await the same mint. */
+  private batchSystemCacheMints = new Map<string, Promise<string | null>>();
   private static readonly BATCH_CACHE_TTL_MS = 30 * 60 * 60 * 1000;
   /** Refuse to attach a cache that cannot cover a full batch SLA from NOW. */
   private static readonly BATCH_CACHE_MIN_REMAINING_MS = 25 * 60 * 60 * 1000;
 
-  private async getOrCreateBatchSystemCache(
+  private getOrCreateBatchSystemCache(prompt: string): Promise<string | null> {
+    const key = createHash('sha256').update(prompt).digest('hex');
+    const inFlight = this.batchSystemCacheMints.get(key);
+    if (inFlight) {
+      return inFlight;
+    }
+    const mint = this.mintBatchSystemCache(prompt, key).finally(() => {
+      this.batchSystemCacheMints.delete(key);
+    });
+    this.batchSystemCacheMints.set(key, mint);
+    return mint;
+  }
+
+  private async mintBatchSystemCache(
     prompt: string,
+    key: string,
   ): Promise<string | null> {
     const now = Date.now();
-    const key = createHash('sha256').update(prompt).digest('hex');
     const held = this.batchSystemCaches.get(key);
     if (
       held &&

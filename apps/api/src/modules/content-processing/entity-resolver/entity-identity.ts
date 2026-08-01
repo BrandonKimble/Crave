@@ -24,16 +24,32 @@ import { foodNameVariants } from './food-lemma';
  *   No token sort — restaurant word order is branding.
  */
 export function entityIdentityKey(name: string, type: EntityType): string {
+  // ASCII-only strip, EXACTLY mirroring the SQL expression the non-food
+  // adopt-probe uses (lower + regexp_replace('[^a-z0-9 ]') + squeeze) — the
+  // TS key and the DB-computed key must agree byte-for-byte or the probe
+  // can't find what the lock serialized.
   const base = name
     .toLowerCase()
-    .replace(/[^\p{L}\p{N} ]/gu, '')
+    .replace(/[^a-z0-9 ]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
   if (!base) {
     return base;
   }
   if (type === EntityType.food || type === EntityType.ingredient) {
-    const collapsed = foodNameVariants(base).sort()[0] ?? base;
+    // VARIANT CLOSURE (red team F8): one level of variants is asymmetric —
+    // min(variants('curry')) = 'curries' but min(variants('curries')) =
+    // 'currie', so the pair took different locks. Expanding each variant's
+    // own variants makes both sides converge on the same closed set, and
+    // min over the closure is a canonical fold both agree on.
+    const firstOrder = foodNameVariants(base);
+    const closure = new Set<string>(firstOrder);
+    for (const variant of firstOrder) {
+      for (const second of foodNameVariants(variant)) {
+        closure.add(second);
+      }
+    }
+    const collapsed = Array.from(closure).sort()[0] ?? base;
     return collapsed.split(' ').sort().join(' ');
   }
   return base;

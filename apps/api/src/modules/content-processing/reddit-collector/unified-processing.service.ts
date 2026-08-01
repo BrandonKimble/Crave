@@ -1579,6 +1579,38 @@ export class UnifiedProcessingService implements OnModuleInit {
                 name: true,
               },
             });
+            if (
+              !existing &&
+              entityType !== 'food' &&
+              entityType !== 'ingredient'
+            ) {
+              // Non-food types: the lock key strips punctuation/possessives
+              // but the literal-name probe can't ("Phil's" vs "Phils") —
+              // probe the SAME stripped expression the lock keys on, or
+              // the widened lock serializes twins that then both create
+              // (red team F8). Foods use the variant probe above instead
+              // (their key is lemma-collapsed + token-sorted, which no SQL
+              // expression mirrors).
+              const strippedKey = entityIdentityKey(canonicalName, entityType);
+              const strippedMatches = await tx.$queryRaw<
+                Array<{ entity_id: string; name: string; aliases: string[] }>
+              >`
+                SELECT entity_id, name, aliases FROM core_entities
+                WHERE type = ${entityType}::"EntityType"
+                  AND status <> 'archived'
+                  AND btrim(regexp_replace(regexp_replace(lower(name),
+                        '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')) = ${strippedKey}
+                ORDER BY created_at
+                LIMIT 1
+              `;
+              if (strippedMatches.length > 0) {
+                existing = {
+                  entityId: strippedMatches[0].entity_id,
+                  name: strippedMatches[0].name,
+                  aliases: strippedMatches[0].aliases,
+                };
+              }
+            }
             if (!existing) {
               const tombstone = await tx.entity.findFirst({
                 where: {
@@ -1828,6 +1860,56 @@ export class UnifiedProcessingService implements OnModuleInit {
 
           if (restaurantEntityEvents.length > 0) {
             await this.recordRestaurantEntityEvents(tx, restaurantEntityEvents);
+          }
+
+          // ACTIVATION IS ATOMIC WITH THE WRITE (red team F1/F2): the
+          // supersede-delete and pointer flip commit together with the NEW
+          // events, so old evidence can never die before its replacement
+          // exists. Restaurants losing evidence in the delete join the
+          // rebuild set (they'd otherwise keep phantom projections), and
+          // their rebuild locks are taken here so a concurrent rebuild
+          // can't commit a pre-delete snapshot over the post-delete truth.
+          const activateDocumentIds =
+            sourceMetadata.extractionTrace?.activateDocumentIds ?? [];
+          if (
+            activateDocumentIds.length > 0 &&
+            sourceMetadata.extractionTrace
+          ) {
+            const activateRunId =
+              sourceMetadata.extractionTrace.extractionRunId;
+            const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
+              SELECT DISTINCT restaurant_id FROM (
+                SELECT restaurant_id FROM core_restaurant_entity_events
+                WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
+                  AND extraction_run_id <> ${activateRunId}::uuid
+                UNION
+                SELECT restaurant_id FROM core_restaurant_events
+                WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
+                  AND extraction_run_id <> ${activateRunId}::uuid
+              ) r
+            `;
+            for (const row of losing
+              .map((entry) => entry.restaurant_id)
+              .sort()) {
+              await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${row}`}))`;
+              affectedRestaurantIds.add(row);
+            }
+            await tx.restaurantEntityEvent.deleteMany({
+              where: {
+                sourceDocumentId: { in: activateDocumentIds },
+                extractionRunId: { not: activateRunId },
+              },
+            });
+            await tx.restaurantEvent.deleteMany({
+              where: {
+                sourceDocumentId: { in: activateDocumentIds },
+                extractionRunId: { not: activateRunId },
+              },
+            });
+            await tx.sourceDocument.updateMany({
+              where: { documentId: { in: activateDocumentIds } },
+              data: { activeExtractionRunId: activateRunId },
+            });
           }
 
           return {

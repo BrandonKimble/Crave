@@ -975,38 +975,57 @@ export class ProjectionRebuildService implements OnModuleInit {
    */
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async sweepTombstoneEvents(): Promise<void> {
+    // One WINNER ROW per target identity moves (DISTINCT ON) — two archived
+    // losers redirecting to the same winner with the same (run, doc,
+    // restaurant, type) would otherwise both move inside one snapshot and
+    // abort the whole statement on the content unique (red team F5).
     const repointed = await this.prismaService.$queryRaw<
       Array<{ restaurant_id: string }>
     >`
-      WITH moved AS (
-        UPDATE core_restaurant_entity_events ev
-        SET entity_id = r.to_entity_id
-        FROM core_entities e
+      WITH candidates AS (
+        SELECT DISTINCT ON (
+            ev.extraction_run_id, ev.source_document_id,
+            ev.restaurant_id, r.to_entity_id, ev.evidence_type)
+          ev.event_id, r.to_entity_id
+        FROM core_restaurant_entity_events ev
+        JOIN core_entities e
+          ON e.entity_id = ev.entity_id AND e.status = 'archived'
         JOIN entity_redirects r ON r.from_entity_id = e.entity_id
         JOIN core_entities winner
           ON winner.entity_id = r.to_entity_id AND winner.status = 'active'
-        WHERE ev.entity_id = e.entity_id
-          AND e.status = 'archived'
-          AND NOT EXISTS (
-            SELECT 1 FROM core_restaurant_entity_events dup
-            WHERE dup.extraction_run_id = ev.extraction_run_id
-              AND dup.source_document_id = ev.source_document_id
-              AND dup.restaurant_id = ev.restaurant_id
-              AND dup.entity_id = r.to_entity_id
-              AND dup.evidence_type = ev.evidence_type
-          )
+        WHERE NOT EXISTS (
+          SELECT 1 FROM core_restaurant_entity_events dup
+          WHERE dup.extraction_run_id = ev.extraction_run_id
+            AND dup.source_document_id = ev.source_document_id
+            AND dup.restaurant_id = ev.restaurant_id
+            AND dup.entity_id = r.to_entity_id
+            AND dup.evidence_type = ev.evidence_type
+        )
+        ORDER BY ev.extraction_run_id, ev.source_document_id,
+                 ev.restaurant_id, r.to_entity_id, ev.evidence_type,
+                 ev.event_id
+      ), moved AS (
+        UPDATE core_restaurant_entity_events ev
+        SET entity_id = candidates.to_entity_id
+        FROM candidates
+        WHERE ev.event_id = candidates.event_id
         RETURNING ev.restaurant_id
       )
       SELECT DISTINCT restaurant_id FROM moved
     `;
-    // Duplicates that could not move (the winner already holds the claim)
-    // are redundant copies — delete them.
+    // Delete ONLY redundant copies: rows whose redirect points at an ACTIVE
+    // winner (the claim either just moved or already exists there). Events
+    // whose redirect target is itself archived are NOT deletable — they are
+    // stranded recoverable evidence and stay counted below (red team F5:
+    // the previous delete removed them silently).
     await this.prismaService.$executeRaw`
       DELETE FROM core_restaurant_entity_events ev
-      USING core_entities e, entity_redirects r
+      USING core_entities e, entity_redirects r, core_entities winner
       WHERE ev.entity_id = e.entity_id
         AND e.status = 'archived'
         AND r.from_entity_id = e.entity_id
+        AND winner.entity_id = r.to_entity_id
+        AND winner.status = 'active'
     `;
     const unredirected = await this.prismaService.$queryRaw<
       Array<{ n: bigint | number }>

@@ -121,6 +121,32 @@ function buildPrisma() {
         },
       ),
     },
+    /** Mirrors recordSpend's guarded UPDATE..RETURNING (red team F6): the
+     *  increment and the returned total are one atomic step; state must be
+     *  approved/running or zero rows return. */
+    $queryRaw: jest.fn(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        const sql = strings.join('?');
+        if (sql.includes('UPDATE spend_campaigns')) {
+          const [micros, campaignId] = values as [number, string];
+          const existing = campaigns.get(campaignId);
+          if (
+            !existing ||
+            !['approved', 'running'].includes(existing.state as string)
+          ) {
+            return Promise.resolve([]);
+          }
+          const spent = Number(existing.spentMicros ?? 0) + micros;
+          campaigns.set(campaignId, {
+            ...existing,
+            spentMicros: BigInt(spent),
+            state: 'running',
+          });
+          return Promise.resolve([{ spent_micros: BigInt(spent) }]);
+        }
+        return Promise.resolve([]);
+      },
+    ),
   };
 }
 

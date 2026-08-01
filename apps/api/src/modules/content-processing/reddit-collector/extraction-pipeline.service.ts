@@ -453,6 +453,13 @@ export class ExtractionPipelineService implements OnModuleInit {
     // already covered under the current contract (completed-with-output or
     // live in-flight batch), skip the whole run. This is also the
     // re-extract runner's crash-restart cursor.
+    // The gate/claim contract is the run's EFFECTIVE prompt (a shadow
+    // replay's versioned prompt, not the live one) — hashing the live
+    // prompt here made every shadow re-extract read as "already covered"
+    // and silently no-op (red team F3).
+    const gatePromptHash = createHash('sha256')
+      .update(await this.resolveEffectivePrompt(params))
+      .digest('hex');
     const gateSourceIds = params.sourceDocuments.map(
       (document) => document.sourceId,
     );
@@ -460,9 +467,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       await this.collectionEvidenceService.findExtractionCoveredSourceIds({
         platform: params.platform ?? 'reddit',
         sourceIds: gateSourceIds,
-        systemPromptHash: createHash('sha256')
-          .update(this.llmService.getSystemPrompt())
-          .digest('hex'),
+        systemPromptHash: gatePromptHash,
         extractionSchemaVersion: 'v1',
       });
     if (
@@ -483,9 +488,6 @@ export class ExtractionPipelineService implements OnModuleInit {
     // but if EVERY uncovered doc is claimed by another live run, this
     // replay is a duplicate in flight and must stand down.
     {
-      const gatePromptHash = createHash('sha256')
-        .update(this.llmService.getSystemPrompt())
-        .digest('hex');
       const uncoveredDocIds = params.sourceDocuments
         .filter((document) => !gateCovered.has(document.sourceId))
         .map((document) => document.documentId);
@@ -579,11 +581,14 @@ export class ExtractionPipelineService implements OnModuleInit {
 
       // Adopt the (previously ownerless) coverage claims: the run now owns
       // them; terminal-state transitions release them.
+      // The stamp must hash the run's EFFECTIVE prompt — the same contract
+      // the claim was inserted under — or versioned-run claims are never
+      // adopted, never released, and block retries for 2h (red team F3).
       await this.collectionEvidenceService.stampCoverageClaims(
         extractionRunId,
         Array.from(new Set(params.sourceDocumentIdBySourceKey.values())),
         createHash('sha256')
-          .update(this.llmService.getSystemPrompt())
+          .update(await this.resolveEffectivePrompt(params.baseParams))
           .digest('hex'),
       );
 
@@ -615,14 +620,8 @@ export class ExtractionPipelineService implements OnModuleInit {
           sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
         });
 
-      if (params.activateDocumentIds.length > 0) {
-        await this.collectionEvidenceService.activateRunForDocuments(
-          extractionRunId,
-          params.activateDocumentIds,
-        );
-      }
-
       return await this.completeChunkPlan({
+        activateDocumentIds: params.activateDocumentIds,
         baseParams: params.baseParams,
         llmPosts: params.llmPosts,
         chunkMetadata: params.chunkData.metadata,
@@ -871,15 +870,9 @@ export class ExtractionPipelineService implements OnModuleInit {
       inputIdByChunkId,
     });
 
-    if (context.activateDocumentIds.length > 0) {
-      await this.collectionEvidenceService.activateRunForDocuments(
-        context.extractionRunId,
-        context.activateDocumentIds,
-      );
-    }
-
     const succeeded = chunkResults.filter((chunk) => chunk.success).length;
     await this.completeChunkPlan({
+      activateDocumentIds: context.activateDocumentIds,
       baseParams: context.baseParams,
       llmPosts: context.llmPosts,
       chunkMetadata: context.chunkInputs.map((chunk) => chunk.metadata),
@@ -910,6 +903,10 @@ export class ExtractionPipelineService implements OnModuleInit {
   /** POST-LLM half of the chunk plan — shared by the interactive path and the
    *  batch ingestor (identical downstream no matter how the LLM ran). */
   private async completeChunkPlan(args: {
+    /** Docs whose pointer should flip to this run — filtered below to the
+     *  subset whose chunk actually PRODUCED output, then applied inside the
+     *  consolidated write tx (red team F1). */
+    activateDocumentIds?: string[];
     baseParams: ExtractionPipelineBaseParams;
     llmPosts: LLMPost[];
     chunkMetadata: ChunkMetadata[];
@@ -981,10 +978,42 @@ export class ExtractionPipelineService implements OnModuleInit {
       args.llmPosts.length,
     );
     const temporalRange = this.computeTemporalRange(args.llmPosts) ?? undefined;
+    // Activation set = requested docs ∩ docs of chunks that produced
+    // output (post-quarantine). A failed/errored chunk's documents keep
+    // their previous pointer AND their previous evidence (red team F1).
+    let activateDocumentIds: string[] = [];
+    if (args.activateDocumentIds?.length) {
+      const successInputIds = args.chunkResults
+        .filter((chunk) => chunk.success !== false && chunk.result)
+        .map((chunk) => args.extractionInputIdByChunkId.get(chunk.chunkId))
+        .filter((value): value is string => Boolean(value));
+      const successDocIds =
+        await this.collectionEvidenceService.documentIdsForInputs(
+          successInputIds,
+        );
+      activateDocumentIds = args.activateDocumentIds.filter((documentId) =>
+        successDocIds.has(documentId),
+      );
+      const dropped =
+        args.activateDocumentIds.length - activateDocumentIds.length;
+      if (dropped > 0) {
+        this.logger.warn(
+          'Activation trimmed to successful chunks — failed chunks keep prior evidence',
+          {
+            extractionRunId: args.extractionRunId,
+            requested: args.activateDocumentIds.length,
+            activating: activateDocumentIds.length,
+            dropped,
+          },
+        );
+      }
+    }
+
     const extractionTrace: ExtractionTraceContext = {
       extractionRunId: args.extractionRunId,
       sourceDocumentIdBySourceKey: args.sourceDocumentIdBySourceKey,
       extractionInputIdByChunkId: args.extractionInputIdByChunkId,
+      activateDocumentIds,
     };
 
     const dbResult = await this.unifiedProcessingService.processLLMOutput(

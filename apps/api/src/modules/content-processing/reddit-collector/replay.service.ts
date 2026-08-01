@@ -471,7 +471,42 @@ export class ReplayService implements OnModuleInit {
       };
     }
 
-    const restaurantIds = await this.collectAffectedRestaurantIds(documentIds);
+    // A run may only take over documents it ACTUALLY EXTRACTED (red team
+    // F4): the caller's set is a date range or hand-picked list, and the
+    // supersede-delete is destructive — activating a doc the run never
+    // covered would delete the live evidence and replace it with nothing.
+    const extracted = await this.prismaService.extractionInputDocument.findMany(
+      {
+        where: {
+          documentId: { in: documentIds },
+          input: { extractionRunId: params.extractionRunId },
+        },
+        select: { documentId: true },
+      },
+    );
+    const extractedIds = Array.from(
+      new Set(extracted.map((row) => row.documentId)),
+    );
+    if (extractedIds.length < documentIds.length) {
+      this.logger.warn(
+        'Activation trimmed to documents the run actually extracted',
+        {
+          extractionRunId: params.extractionRunId,
+          requested: documentIds.length,
+          activating: extractedIds.length,
+        },
+      );
+    }
+    if (!extractedIds.length) {
+      return {
+        extractionRunId: params.extractionRunId,
+        documentCount: 0,
+        restaurantCount: 0,
+        connectionCount: 0,
+      };
+    }
+
+    const restaurantIds = await this.collectAffectedRestaurantIds(extractedIds);
 
     // Activation supersedes physically (same law as
     // CollectionEvidenceService.activateRunForDocuments): other runs'
@@ -479,18 +514,18 @@ export class ReplayService implements OnModuleInit {
     await this.prismaService.$transaction([
       this.prismaService.restaurantEntityEvent.deleteMany({
         where: {
-          sourceDocumentId: { in: documentIds },
+          sourceDocumentId: { in: extractedIds },
           extractionRunId: { not: params.extractionRunId },
         },
       }),
       this.prismaService.restaurantEvent.deleteMany({
         where: {
-          sourceDocumentId: { in: documentIds },
+          sourceDocumentId: { in: extractedIds },
           extractionRunId: { not: params.extractionRunId },
         },
       }),
       this.prismaService.sourceDocument.updateMany({
-        where: { documentId: { in: documentIds } },
+        where: { documentId: { in: extractedIds } },
         data: { activeExtractionRunId: params.extractionRunId },
       }),
     ]);
@@ -500,14 +535,14 @@ export class ReplayService implements OnModuleInit {
 
     this.logger.info('Activated extraction run for document subset', {
       extractionRunId: params.extractionRunId,
-      documentCount: documentIds.length,
+      documentCount: extractedIds.length,
       restaurantCount: rebuildResult.restaurantIds.length,
       connectionCount: rebuildResult.connectionIds.length,
     });
 
     return {
       extractionRunId: params.extractionRunId,
-      documentCount: documentIds.length,
+      documentCount: extractedIds.length,
       restaurantCount: rebuildResult.restaurantIds.length,
       connectionCount: rebuildResult.connectionIds.length,
     };

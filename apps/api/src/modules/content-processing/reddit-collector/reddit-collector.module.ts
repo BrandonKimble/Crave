@@ -17,7 +17,6 @@ import { KeywordSliceSelectionService } from './keyword-slice-selection.service'
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { CityReextractRunner } from './city-reextract.runner';
-import { LedgerRepairRunner } from './ledger-repair.runner';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { ChronologicalBatchProcessingWorker } from './chronological/chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
@@ -87,7 +86,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       KeywordAttemptHistoryService,
       KeywordSearchOrchestratorService,
       CityReextractRunner,
-      LedgerRepairRunner,
     ]
   : [];
 
