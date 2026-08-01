@@ -390,6 +390,22 @@ describe('containment laws, proven against PostGIS', () => {
       metroId,
     );
     try {
+      // Docket #6: ONE arm — today flows through the AGGREGATE (the fresh
+      // ledger arm is deleted), so the honest pipeline is rebuild-then-read.
+      // This also proves the aggregate's anchored branch end to end: the act
+      // lands at the anchor tile and the lineage walk serves the ancestor.
+      const { SignalDemandAggregateService } = await import(
+        '../signals/signal-demand-aggregate.service'
+      );
+      const aggLogger = {
+        setContext: () => aggLogger,
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+        debug: () => undefined,
+      } as never;
+      const agg = new SignalDemandAggregateService(prisma as never, aggLogger);
+      await agg.rebuildDay(new Date());
       const { DemandMassReader } = await import(
         '../polls/supply/demand-mass.reader'
       );
@@ -403,6 +419,18 @@ describe('containment laws, proven against PostGIS', () => {
         `DELETE FROM signals WHERE signal_id = $1::uuid`,
         signal.signal_id,
       );
+      // Re-rebuild today so the dev aggregate does not keep the test act.
+      const { SignalDemandAggregateService: Agg2 } = await import(
+        '../signals/signal-demand-aggregate.service'
+      );
+      const aggLogger2 = {
+        setContext: () => aggLogger2,
+        info: () => undefined,
+        warn: () => undefined,
+        error: () => undefined,
+        debug: () => undefined,
+      } as never;
+      await new Agg2(prisma as never, aggLogger2).rebuildDay(new Date());
     }
   });
 

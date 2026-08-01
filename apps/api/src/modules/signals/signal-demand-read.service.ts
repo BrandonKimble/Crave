@@ -11,26 +11,8 @@ import {
 } from '../polls/supply/poll-supply.constants';
 import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 
-/** SQL (red-team 1c + wave-5 F1): exclude fresh-lane acts whose
- *  (kind, request-id) pair FIRST occurred before today — the aggregate
- *  already counted them on their first day (window-wide first-occurrence-
- *  wins dedupe; one probe on Signal_dedupeRequestId_occurredAt_idx). The
- *  KIND is part of the act's identity: search + autocomplete_selection
- *  share meta.searchRequestId by design and are DISTINCT acts. */
-function freshFirstOccurrenceSql(todayStart: Date): Prisma.Sql {
-  return Prisma.sql`AND (
-        COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId') IS NULL
-        OR NOT EXISTS (
-          SELECT 1 FROM signals prior
-          WHERE (prior.meta->>'searchRequestId' IS NOT NULL
-                 OR prior.meta->>'cacheRevealRequestId' IS NOT NULL)
-            AND COALESCE(prior.meta->>'searchRequestId', prior.meta->>'cacheRevealRequestId')
-                = COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId')
-            AND prior.kind = s.kind
-            AND prior.occurred_at < ${utcInstantSql(todayStart)}
-        )
-      )`;
-}
+// freshFirstOccurrenceSql DELETED (docket #6): the fresh ledger arm it
+// gated is gone — the aggregate's window-wide dedupe is the only dedupe.
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -175,21 +157,13 @@ export class SignalDemandReadService {
     // redirect sources app-side, probe subject_id = ANY(expanded), fold back
     // to survivors via the same one-hop COALESCE.
     const expandedIds = await this.expandWithRedirectSources(params.entityIds);
-    const { todayKey, sinceDayKey, todayStart } = this.windowKeys(
-      params.windowDays,
-    );
+    const { todayKey, sinceDayKey } = this.windowKeys(params.windowDays);
     const kinds = (params.kinds ?? null) as string[] | null;
     const kindFilterAgg = kinds
       ? Prisma.sql`AND a.kind = ANY(${kinds}::text[])`
       : Prisma.empty;
-    const kindFilterFresh = kinds
-      ? Prisma.sql`AND s.kind = ANY(${kinds}::text[])`
-      : Prisma.empty;
     const actorFilterAgg = actorId
       ? Prisma.sql`AND a.actor_id = ${actorId}::uuid`
-      : Prisma.empty;
-    const actorFilterFresh = actorId
-      ? Prisma.sql`AND s.actor_id = ${actorId}::uuid`
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<
       { entity_id: string; demand_score: number }[]
@@ -205,41 +179,17 @@ export class SignalDemandReadService {
         LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
         WHERE a.place_id IS NULL
           AND a.subject_id = ANY(${expandedIds}::uuid[])
+          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
+          -- the fresh ledger arm — the law's second dialect — is deleted.
           AND a.day >= ${sinceDayKey}::date
-          AND a.day < ${todayKey}::date
           ${kindFilterAgg}
           ${actorFilterAgg}
           AND COALESCE(r.to_entity_id, a.subject_id) = ANY(${params.entityIds}::uuid[])
         GROUP BY 1, 2
       ),
-      fresh_acts AS (
-        SELECT
-          COALESCE(r.to_entity_id, s.subject_id) AS entity_id,
-          s.actor_id,
-          ${DEDUPE_KEY_SQL} AS dedupe_key,
-          MAX(${EVENT_COUNT_SQL})::float8 AS acts
-        FROM signals s
-        LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
-        WHERE s.subject_id = ANY(${expandedIds}::uuid[])
-          AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          ${kindFilterFresh}
-          ${actorFilterFresh}
-          ${freshFirstOccurrenceSql(todayStart)}
-          AND COALESCE(r.to_entity_id, s.subject_id) = ANY(${params.entityIds}::uuid[])
-        GROUP BY 1, 2, 3
-      ),
-      fresh AS (
-        SELECT entity_id, actor_id, SUM(acts) AS acts
-        FROM fresh_acts
-        GROUP BY 1, 2
-      ),
       by_actor AS (
         SELECT entity_id, actor_id, SUM(acts) AS acts
-        FROM (
-          SELECT * FROM agg
-          UNION ALL
-          SELECT * FROM fresh
-        ) u
+        FROM agg
         GROUP BY 1, 2
       )
       SELECT
@@ -270,15 +220,10 @@ export class SignalDemandReadService {
     if (!prefix && !keys.length) {
       return [];
     }
-    const { todayKey, sinceDayKey, todayStart } = this.windowKeys(
-      params.windowDays,
-    );
+    const { todayKey, sinceDayKey } = this.windowKeys(params.windowDays);
     const aggTextFilter = keys.length
       ? Prisma.sql`AND a.subject_text = ANY(${keys}::text[])`
       : Prisma.sql`AND a.subject_text LIKE ${`${this.escapeLike(prefix)}%`}`;
-    const freshTextFilter = keys.length
-      ? Prisma.sql`AND s.subject_text = ANY(${keys}::text[])`
-      : Prisma.sql`AND s.subject_text LIKE ${`${this.escapeLike(prefix)}%`}`;
     const rows = await this.prisma.$queryRaw<
       {
         query_key: string;
@@ -301,40 +246,16 @@ export class SignalDemandReadService {
         WHERE a.place_id IS NULL
           AND a.kind = 'search'
           AND a.subject_text IS NOT NULL
+          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
+          -- the fresh ledger arm — the law's second dialect — is deleted.
           AND a.day >= ${sinceDayKey}::date
-          AND a.day < ${todayKey}::date
           ${aggTextFilter}
-        GROUP BY 1, 2
-      ),
-      fresh_acts AS (
-        SELECT
-          s.subject_text AS query_key,
-          s.actor_id,
-          ${DEDUPE_KEY_SQL} AS dedupe_key,
-          MAX(${EVENT_COUNT_SQL})::float8 AS acts,
-          MAX(s.occurred_at) AS last_used
-        FROM signals s
-        WHERE s.kind = 'search'
-          AND s.subject_text IS NOT NULL
-          AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          ${freshTextFilter}
-          ${freshFirstOccurrenceSql(todayStart)}
-        GROUP BY 1, 2, 3
-      ),
-      fresh AS (
-        SELECT query_key, actor_id, SUM(acts) AS acts, SUM(acts) AS raw_count,
-               MAX(last_used) AS last_used
-        FROM fresh_acts
         GROUP BY 1, 2
       ),
       by_actor AS (
         SELECT query_key, actor_id, SUM(acts) AS acts,
                SUM(raw_count) AS raw_count, MAX(last_used) AS last_used
-        FROM (
-          SELECT * FROM agg
-          UNION ALL
-          SELECT * FROM fresh
-        ) u
+        FROM agg
         GROUP BY 1, 2
       )
       SELECT
@@ -821,9 +742,7 @@ export class SignalDemandReadService {
       return [];
     }
     const aggPlaceIds = await this.expandPlaceIdsWithAncestors(params.placeIds);
-    const { todayKey, sinceDayKey, todayStart } = this.windowKeys(
-      params.windowDays,
-    );
+    const { todayKey, sinceDayKey } = this.windowKeys(params.windowDays);
     const rows = await this.prisma.$queryRaw<
       {
         entity_id: string;
@@ -845,11 +764,12 @@ export class SignalDemandReadService {
         LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
         WHERE a.place_id = ANY(${aggPlaceIds}::uuid[])
           AND a.subject_id IS NOT NULL
+          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
+          -- the fresh ledger arm — the law's second dialect — is deleted.
           AND a.day >= ${sinceDayKey}::date
-          AND a.day < ${todayKey}::date
         GROUP BY 1, 2, 3
       ),
-      agg_recency AS (
+      by_actor AS (
         SELECT
           entity_id,
           actor_id,
@@ -858,34 +778,6 @@ export class SignalDemandReadService {
           )::float8 AS acts,
           MAX(last_seen_at) AS last_seen_at
         FROM agg
-        GROUP BY 1, 2
-      ),
-      fresh AS (
-        SELECT
-          COALESCE(r.to_entity_id, s.subject_id) AS entity_id,
-          s.actor_id,
-          COUNT(DISTINCT ${DEDUPE_KEY_SQL})::float8 AS acts,
-          MAX(s.occurred_at) AS last_seen_at
-        FROM signals s
-        LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
-        JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
-        WHERE s.subject_id IS NOT NULL
-          AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          -- P2 red-team F5 (2026-07-30): no separate prefilter — the
-          -- attribution law's own PK probes short-circuit on the cached
-          -- geometry bbox; any pre-check was a redundant second heap probe.
-          AND (${freshSignalAttributionSql('p')})
-          ${freshFirstOccurrenceSql(todayStart)}
-        GROUP BY 1, 2
-      ),
-      by_actor AS (
-        SELECT entity_id, actor_id, SUM(acts) AS acts,
-               MAX(last_seen_at) AS last_seen_at
-        FROM (
-          SELECT * FROM agg_recency
-          UNION ALL
-          SELECT * FROM fresh
-        ) u
         GROUP BY 1, 2
       ),
       scored AS (
@@ -1122,8 +1014,9 @@ export class SignalDemandReadService {
         LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
         WHERE a.place_id IS NULL
           AND a.subject_id = ANY(${expandedIds}::uuid[])
+          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
+          -- the fresh ledger arm — the law's second dialect — is deleted.
           AND a.day >= ${sinceDayKey}::date
-          AND a.day < ${todayKey}::date
           AND COALESCE(r.to_entity_id, a.subject_id) = ANY(${params.entityIds}::uuid[])
         GROUP BY 1, 2
       )

@@ -58,10 +58,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { freshSignalAttributionSql } from '../../signals/ground-containment';
 import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
-import { ACT_KEY_SQL, EVENT_COUNT_SQL } from '../../signals/act-identity';
-import { utcInstantSql } from '../../signals/sql-instant';
 import {
   COOLDOWN_GAUSSIAN_DAYS,
   DEMAND_HALF_LIFE_DAYS,
@@ -141,30 +138,6 @@ export class DemandMassReader {
   }
 
   /**
-   * FRESH-arm first-occurrence gate at ACT grain (mirrors the aggregate's
-   * window-wide dedupe): exclude today's rows of an act whose request id
-   * FIRST occurred before today — the aggregate already counted that act on
-   * its first day. The prior-probe matches on the 2-way parent key
-   * (searchRequestId / cacheRevealRequestId — the indexed expression): an
-   * ask's 3-way key IS its parent's searchRequestId, and by the echo
-   * invariant the parent 'search' row exists whenever any prior echo does,
-   * so the 2-way probe is complete at act grain.
-   */
-  private freshActFirstOccurrenceSql(todayStart: Date): Prisma.Sql {
-    return Prisma.sql`AND (
-        COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId') IS NULL
-        OR NOT EXISTS (
-          SELECT 1 FROM signals prior
-          WHERE (prior.meta->>'searchRequestId' IS NOT NULL
-                 OR prior.meta->>'cacheRevealRequestId' IS NOT NULL)
-            AND COALESCE(prior.meta->>'searchRequestId', prior.meta->>'cacheRevealRequestId')
-                = COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId')
-            AND prior.occurred_at < ${utcInstantSql(todayStart)}
-        )
-      )`;
-  }
-
-  /**
    * The LINEAGE CTE chain (§3 containment read): per requested root place,
    * every aggregate tile whose rows belong to it — itself, its DAG
    * DESCENDANTS (own + descendants' rows), and its DAG ANCESTORS at weight 1
@@ -230,7 +203,7 @@ export class DemandMassReader {
     if (!placeIds.length) {
       return [];
     }
-    const { todayKey, horizonKey, todayStart } = this.windowKeys(now);
+    const { todayKey, horizonKey } = this.windowKeys(now);
     const rows = await this.prisma.$queryRaw<
       { place_id: string; mass: number }[]
     >`
@@ -251,13 +224,18 @@ export class DemandMassReader {
           MAX(a.signal_count) AS acts
         FROM lineage l
         JOIN signal_demand_daily a ON a.place_id = l.tile
+        -- Docket #6 (owner-ratified 2026-07-30): ONE law, ONE implementation.
+        -- The aggregate INCLUDES today — the 15-minute rebuild cadence is the
+        -- freshness, and the fresh ledger arm (the attribution law's second
+        -- dialect, where the midnight divergence lived) is DELETED. Today's
+        -- rows land at day-grain with recency age 0 = flat 1.0, identical to
+        -- what the act-grain arm computed inside the 7-day flat window.
         WHERE a.day >= ${horizonKey}::date
-          AND a.day < ${todayKey}::date
           AND a.kind <> ALL(${ECHO_KINDS}::text[])
         GROUP BY l.root, a.actor_id, a.day, a.kind,
                  a.subject_type, a.subject_id, a.subject_text
       ),
-      agg_actor AS (
+      by_actor AS (
         SELECT
           root,
           actor_id,
@@ -266,49 +244,6 @@ export class DemandMassReader {
               * ${KIND_WEIGHT_PRIOR}
           )::float8 AS acts
         FROM day_acts
-        GROUP BY 1, 2
-      ),
-      fresh_acts AS (
-        -- TODAY from the ledger: true act-grain dedupe (echo rows collapse
-        -- into their parent act's key group), first-occurrence gate against
-        -- earlier days. Attribution speaks the aggregate's §2.6 law
-        -- (freshSignalAttributionSql): CONTAINMENT in either direction,
-        -- judged on the place's ONE ground (sketch envelope or outline) —
-        -- the wrap-aware lng intersect stays as the cheap PREFILTER
-        -- (containment implies intersection). AT TIME
-        -- ZONE 'UTC' law: occurred_at is naive UTC (live-proven wave-5).
-        SELECT
-          pb.place_id AS root,
-          s.actor_id,
-          ${ACT_KEY_SQL} AS act_key,
-          MAX(${EVENT_COUNT_SQL})::float8 AS acts
-        FROM places pb
-        JOIN signals s
-          -- P2 red-team F5 (2026-07-30): NO separate prefilter. The
-          -- attribution law itself is the PK probe — ST_Covers/ST_CoveredBy
-          -- short-circuit on the cached geometry bbox inside PostGIS, so any
-          -- hand-written pre-check (the old bbox/lng arms, and briefly an
-          -- EXISTS && probe) was a strictly redundant second heap probe per
-          -- (place, signal) pair on the hot path. The anchored (P5b) branch
-          -- is dispatched INSIDE the law's CASE.
-          ON (${freshSignalAttributionSql('pb')})
-        WHERE pb.place_id = ANY(${placeIds}::uuid[])
-          AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          ${this.freshActFirstOccurrenceSql(todayStart)}
-        GROUP BY 1, 2, 3
-      ),
-      fresh_actor AS (
-        SELECT root, actor_id, SUM(acts * ${KIND_WEIGHT_PRIOR}) AS acts
-        FROM fresh_acts
-        GROUP BY 1, 2
-      ),
-      by_actor AS (
-        SELECT root, actor_id, SUM(acts) AS acts
-        FROM (
-          SELECT * FROM agg_actor
-          UNION ALL
-          SELECT * FROM fresh_actor
-        ) u
         GROUP BY 1, 2
       )
       SELECT root AS place_id, SUM(ln(1 + acts) / ln(2))::float8 AS mass
@@ -342,7 +277,7 @@ export class DemandMassReader {
     if (!placeIds.length) {
       return [];
     }
-    const { todayKey, horizonKey, todayStart } = this.windowKeys(now);
+    const { todayKey, horizonKey } = this.windowKeys(now);
     const baselineEndDays = RECENCY_FLAT_DAYS;
     const baselineStartDays = RECENCY_FLAT_DAYS + COOLDOWN_GAUSSIAN_DAYS;
     const baselineWeeks = COOLDOWN_GAUSSIAN_DAYS / RECENCY_FLAT_DAYS;
@@ -372,7 +307,7 @@ export class DemandMassReader {
         FROM lineage l
         JOIN signal_demand_daily a ON a.place_id = l.tile
         WHERE a.day >= ${horizonKey}::date
-          AND a.day < ${todayKey}::date
+          -- Docket #6: no upper bound — the aggregate includes today.
           AND a.subject_type = 'entity'
           AND a.subject_id IS NOT NULL
           AND a.kind <> ALL(${ECHO_KINDS}::text[])
@@ -409,46 +344,10 @@ export class DemandMassReader {
         FROM resolved
         GROUP BY 1, 2, 3
       ),
-      fresh_acts AS (
-        -- Same §2.5(c) fresh-arm attribution law as placeDemandMass
-        -- (containment, polygon-first; lng intersect = prefilter only).
-        SELECT
-          pb.place_id AS root,
-          COALESCE(r.to_entity_id, s.subject_id) AS subject_id,
-          s.actor_id,
-          ${ACT_KEY_SQL} AS act_key,
-          MAX(${EVENT_COUNT_SQL})::float8 AS acts
-        FROM places pb
-        JOIN signals s
-          -- P2 red-team F5 (2026-07-30): NO separate prefilter. The
-          -- attribution law itself is the PK probe — ST_Covers/ST_CoveredBy
-          -- short-circuit on the cached geometry bbox inside PostGIS, so any
-          -- hand-written pre-check (the old bbox/lng arms, and briefly an
-          -- EXISTS && probe) was a strictly redundant second heap probe per
-          -- (place, signal) pair on the hot path. The anchored (P5b) branch
-          -- is dispatched INSIDE the law's CASE.
-          ON (${freshSignalAttributionSql('pb')})
-        LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
-        WHERE pb.place_id = ANY(${placeIds}::uuid[])
-          AND s.subject_type = 'entity'
-          AND s.subject_id IS NOT NULL
-          AND s.occurred_at >= ${utcInstantSql(todayStart)}
-          ${this.freshActFirstOccurrenceSql(todayStart)}
-        GROUP BY 1, 2, 3, 4
-      ),
-      fresh_actor AS (
-        -- Today is inside the flat cycle: full weight AND current-cycle acts.
-        SELECT
-          root,
-          subject_id,
-          actor_id,
-          SUM(acts * ${KIND_WEIGHT_PRIOR}) AS acts,
-          SUM(acts) AS current_acts,
-          0::float8 AS baseline_acts
-        FROM fresh_acts
-        GROUP BY 1, 2, 3
-      ),
       by_actor AS (
+        -- Docket #6: the aggregate INCLUDES today (15-minute cadence = the
+        -- freshness); the fresh ledger arm is deleted. agg_actor already
+        -- carries today's rows at flat recency with current-cycle credit.
         SELECT
           root,
           subject_id,
@@ -456,11 +355,7 @@ export class DemandMassReader {
           SUM(acts) AS acts,
           SUM(current_acts) AS current_acts,
           SUM(baseline_acts) AS baseline_acts
-        FROM (
-          SELECT * FROM agg_actor
-          UNION ALL
-          SELECT * FROM fresh_actor
-        ) u
+        FROM agg_actor
         GROUP BY 1, 2, 3
       ),
       per_subject AS (

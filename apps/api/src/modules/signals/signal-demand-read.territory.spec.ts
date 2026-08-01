@@ -77,7 +77,9 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     const demandSql = h.queries.find((q) =>
       q.text.includes('signal_demand_daily'),
     )!.text;
-    expect(demandSql).toContain('FROM signals');
+    // Docket #6: the substrate is read through its ONE derived aggregate
+    // (rebuilt from the ledger, today included); dying demand tables stay dead.
+    expect(demandSql).toContain('FROM signal_demand_daily');
     // NO query in the whole read touches a dying table or market keys.
     for (const query of h.queries) {
       expect(query.text).not.toContain('user_search_demand_daily');
@@ -152,73 +154,13 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     expect(demandSql).not.toMatch(/a\.kind\s*=/);
   });
 
-  it('the fresh TODAY arm is wrap-aware (wave-5 F4): the canonical crossing CASE, never a plain lng range test', async () => {
-    const h = createHarness();
-    await h.service.territoryEntityDemand({
-      placeIds: [PLACE_A],
-      windowDays: 30,
-      limit: 10,
-      entityTypes: ['restaurant'],
-    });
-    const query = h.queries.find((q) =>
-      q.text.includes('signal_demand_daily'),
-    )!;
-    const sql = flattenFragments(query);
-    // P2 (2026-07-30): wrap-awareness lives in the SIGNAL's envelope — a
-    // crossing geo (min > max) becomes the ST_Union of its two arms
-    // (geoEnvelopeSql), and the prefilter is the geometry GiST overlap
-    // against the place's ONE ground, not hand-written lng arithmetic.
-    expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
-    expect(sql).toContain('ST_Union(');
-    expect(sql).not.toContain('pre.geometry'); // F5: no separate prefilter
-  });
+  // Docket #6: fresh-arm pin died with the fresh arm.
 
-  it('the fresh TODAY arm judges membership by the §2.5(c) containment law (C3 cut): polygon-first, geometry-null bbox fallback — the lng intersect is only the prefilter', async () => {
-    const h = createHarness();
-    await h.service.territoryEntityDemand({
-      placeIds: [PLACE_A],
-      windowDays: 30,
-      limit: 10,
-      entityTypes: ['restaurant'],
-    });
-    const query = h.queries.find((q) =>
-      q.text.includes('signal_demand_daily'),
-    )!;
-    const sql = flattenFragments(query);
-    expect(sql).toContain('ST_Covers(pg.geometry,'); // place ground ⊇ geo
-    expect(sql).toContain('ST_CoveredBy(pg.geometry,'); // geo ⊇ place ground
-    expect(sql).toContain('place_geometries');
-  });
+  // Docket #6: fresh-arm pin died with the fresh arm.
 
-  it('the fresh cross-day dedupe is KIND-aware (wave-5 F1): search and autocomplete_selection share a request-id but are distinct acts', async () => {
-    const h = createHarness();
-    await h.service.territoryEntityDemand({
-      placeIds: [PLACE_A],
-      windowDays: 30,
-      limit: 10,
-      entityTypes: ['restaurant'],
-    });
-    const query = h.queries.find((q) =>
-      q.text.includes('signal_demand_daily'),
-    )!;
-    expect(flattenFragments(query)).toContain('prior.kind = s.kind');
-  });
+  // Docket #6: fresh-arm pin died with the fresh arm.
 
-  it('fresh-lane instants are coerced to naive UTC (wave-5, live-proven session-TZ skew)', async () => {
-    const h = createHarness();
-    await h.service.territoryEntityDemand({
-      placeIds: [PLACE_A],
-      windowDays: 30,
-      limit: 10,
-      entityTypes: ['restaurant'],
-    });
-    const query = h.queries.find((q) =>
-      q.text.includes('signal_demand_daily'),
-    )!;
-    // occurred_at is naive UTC; Dates bind as timestamptz — comparisons must
-    // pass through AT TIME ZONE 'UTC' or the session TZ shifts "today".
-    expect(flattenFragments(query)).toContain("AT TIME ZONE 'UTC'");
-  });
+  // Docket #6: fresh-arm pin died with the fresh arm.
 
   it('empty territory returns [] without querying', async () => {
     const h = createHarness();

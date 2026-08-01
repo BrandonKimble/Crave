@@ -116,10 +116,12 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       // Aggregate reads the GLOBAL tile only (never multiplied by place
       // attribution fan-out), today reads fresh from the ledger.
       expect(sql).toContain('a.place_id IS NULL');
-      expect(sql).toContain('FROM signals s');
+      // Docket #6: one arm — the aggregate (which includes today).
+      expect(sql).toContain('FROM signal_demand_daily');
+      expect(sql).not.toContain('FROM signals s');
       // Redirects at read, on BOTH lanes.
       expect(sql).toContain('r.from_entity_id = a.subject_id');
-      expect(sql).toContain('r.from_entity_id = s.subject_id');
+      expect(sql).toContain('r.from_entity_id = a.subject_id');
       // The §4 kernel: per-actor saturation before actors sum.
       expect(sql).toContain('LN(1 + acts) / LN(2)');
     });
@@ -191,7 +193,6 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       const sql = flatten(queries[0]);
       // Sargable probes on BOTH lanes...
       expect(sql).toContain('a.subject_id = ANY(');
-      expect(sql).toContain('s.subject_id = ANY(');
       // ...bound to the EXPANDED set, while the fold-back COALESCE stays on
       // the requested ids (exact old semantics).
       const arrays = allValues(queries[0]).filter(Array.isArray);
@@ -200,16 +201,8 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       expect(sql).toContain('COALESCE(r.to_entity_id, a.subject_id) = ANY(');
     });
 
-    it('fresh TODAY lane excludes request-ids first seen on an earlier day (red-team 1c — cross-midnight retries count once)', async () => {
-      const { service, queries } = createHarness();
-      await service.entityDemandScores({
-        entityIds: [ENTITY_ID],
-        windowDays: 30,
-      });
-      const sql = flatten(queries[0]);
-      expect(sql).toContain('NOT EXISTS');
-      expect(sql).toContain('prior.occurred_at <');
-    });
+    // Docket #6: fresh-arm pins died with the fresh arm — one law, one
+    // implementation; the aggregate includes today.
   });
 
   describe('queryDemand (global suggestion lane)', () => {

@@ -69,9 +69,6 @@ function createHarness() {
   return { reader, queries };
 }
 
-const FRESH_ACT_KEY =
-  "COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId', s.signal_id::text)";
-
 describe('the ECHO-KIND rule (act-grain law restated at kind granularity)', () => {
   it('ECHO_SIGNAL_KINDS is exactly the kinds whose writers always attach a parent act id (writer specs pin the invariant)', () => {
     // RED-able both ways: adding a kind here without a writer invariant, or
@@ -130,68 +127,21 @@ describe('containment lineage + MAX set-semantics (docket item 7 algebra)', () =
   });
 });
 
-describe('the two-arm freshness seam (aggregate closed days + fresh today)', () => {
-  it('the aggregate arm stops strictly BEFORE today; today reads fresh from the ledger', async () => {
-    const { reader, queries } = createHarness();
-    await reader.placeDemandMass([PLACE], NOW);
-    const sql = flatten(queries[0]);
-    expect(sql).toMatch(/a\.day < ¤::date/); // closed days only
-    expect(sql).toContain('s.occurred_at >='); // fresh arm floor = todayStart
-    // Naive-UTC instant law (wave-5, live-proven).
-    expect(sql).toContain("AT TIME ZONE 'UTC'");
-  });
-
-  it('the fresh arm keeps TRUE act-grain dedupe (4-way COALESCE incl. askSearchRequestId) with a first-occurrence gate against earlier days', async () => {
+describe('ONE-ARM demand (docket #6): the aggregate includes today', () => {
+  it("reads ONLY signal_demand_daily — the fresh ledger arm (the law's second dialect) is gone, and no upper day bound discards today", async () => {
     const { reader, queries } = createHarness();
     await reader.placeDemandMass([PLACE], NOW);
     await reader.subjectDemandMass([PLACE], NOW);
     for (const query of queries) {
       const sql = flatten(query);
-      expect(sql).toContain(FRESH_ACT_KEY);
-      // Cross-midnight retries: the aggregate counted the act on its first
-      // day — the anti-join probes the indexed 2-way parent key (complete at
-      // act grain by the echo invariant).
-      expect(sql).toContain('NOT EXISTS');
-      expect(sql).toContain('prior.occurred_at <');
-    }
-  });
-
-  it('the fresh arm has NO separate prefilter — the attribution law IS the check, wrap-aware via the signal envelope (P2 + red-team F5)', async () => {
-    const { reader, queries } = createHarness();
-    await reader.placeDemandMass([PLACE], NOW);
-    await reader.subjectDemandMass([PLACE], NOW);
-    for (const query of queries) {
-      const sql = flatten(query);
-      // Wrap-awareness lives in geoEnvelopeSql (two-arm ST_Union for a
-      // crossing geo) inside the law itself; ST_Covers/ST_CoveredBy
-      // short-circuit on the cached geometry bbox, so any pre-check was a
-      // redundant second heap probe per (place, signal) pair (red-team F5).
-      expect(sql).toContain('WHEN s.geo_min_lng <= s.geo_max_lng');
-      expect(sql).toContain('ST_Union(');
-      expect(sql).toContain('s.place_id IS NOT NULL'); // P5b dispatch CASE
-      expect(sql).not.toContain('pre.geometry');
-      expect(sql).not.toContain('bbox_max_lat');
-    }
-  });
-
-  it('the fresh arm attributes by the §2.6 single-ground CONTAINMENT law (C3 cut): the ONE geometry row judges — no fallback arm, intersection alone never counts', async () => {
-    const { reader, queries } = createHarness();
-    await reader.placeDemandMass([PLACE], NOW);
-    await reader.subjectDemandMass([PLACE], NOW);
-    for (const query of queries) {
-      const sql = flatten(query);
-      // Down direction (§3 (i)): place ground COVERS the signal envelope.
-      expect(sql).toContain('ST_Covers(pg.geometry,');
-      // Up direction (§3 (ii) / ancestor reach): signal envelope covers the
-      // place's ground.
-      expect(sql).toContain('ST_CoveredBy(pg.geometry,');
-      expect(sql).toContain('place_geometries');
-      // §2.6 grep-proof: ZERO COALESCE-fallback predicates — the judgment
-      // is a plain EXISTS on the geometry row, never bbox containment.
-      expect(sql).not.toContain('pg.geometry IS NOT NULL');
-      expect(sql).not.toMatch(/COALESCE\(\s*\(SELECT ST_Cover/);
-      // Crossing signal geos judge against the union of their two arms.
-      expect(sql).toContain('ST_Union(');
+      expect(sql).toContain('signal_demand_daily');
+      // The second dialect is dead: no ledger scan, no fresh dedupe gate,
+      // no per-query attribution predicates.
+      expect(sql).not.toContain('FROM signals s');
+      expect(sql).not.toContain('askSearchRequestId');
+      expect(sql).not.toContain('ST_Covers');
+      // And today is NOT discarded: no exclusive upper day bound remains.
+      expect(sql).not.toMatch(/a\.day < /);
     }
   });
 });
