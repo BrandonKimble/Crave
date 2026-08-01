@@ -9,49 +9,7 @@ import {
   DEMAND_HALF_LIFE_DAYS,
   RECENCY_FLAT_DAYS,
 } from '../polls/supply/poll-supply.constants';
-
-/**
- * §22 item 6 readers over the signals substrate — the ledger plus its derived
- * aggregate (signal_demand_daily). Every consumer that used to read the dying
- * event tables (user_entity_view_events / user_restaurant_views /
- * user_food_views / search_events / user_search_demand_daily) reads HERE.
- *
- * Read laws (§3):
- * - Identity is a judgment: subjectIds resolve through entity_redirects AT
- *   READ — the ledger and the aggregate are never rekeyed. For SARGABILITY
- *   (red-team 3c) requested ids are expanded APP-SIDE with their redirect
- *   SOURCES (one indexed entity_redirects lookup); the SQL then filters raw
- *   subject_id = ANY(expanded) — an index probe, never a per-row COALESCE
- *   scan — and folds back to survivor ids with the same one-hop COALESCE as
- *   before (identical semantics, sargable plan).
- * - Qualifiers are judged at read: client retry dedupe collapses on
- *   meta.searchRequestId / meta.cacheRevealRequestId; backfilled legacy rows
- *   carry meta.eventCount (their pre-dedup counters). Dedupe is WINDOW-wide
- *   and geo-free (red-team 1c, matching the aggregate rebuild): the fresh
- *   TODAY lanes exclude acts whose request-id already occurred BEFORE today —
- *   a cross-midnight retry counts once, on the day it first occurred.
- * - §3 place reads are CONTAINMENT reads (red-team 3a): the aggregate stores
- *   O(few) rows per signal (smallest containing place + coarsest contained
- *   tiling); place-scoped readers expand the requested places with their DAG
- *   ANCESTORS so a coarse-stored signal (statewide search → one TX row)
- *   reaches every member at weight 1, deduped to count once per act.
- * - Demand math is the ONE §4 kernel (flat RECENCY_FLAT_DAYS then
- *   DEMAND_HALF_LIFE_DAYS halving; per-actor log2 saturation before actors
- *   sum), here at DAY granularity over the aggregate: completed days read
- *   from signal_demand_daily (global tile, place_id NULL), TODAY reads fresh
- *   from the ledger (flat weight 1.0) — freshness without waiting on the
- *   aggregate cron.
- * - Kind weights are uniformly the K2 prior 1.0 (self-provisioning: new kinds
- *   participate automatically; per-kind measurement arrives via the estimator
- *   registry). The old rollup's hand-set per-kind weights (1.5 / 0.6 / 0.35)
- *   died with it.
- */
-
-/** SQL: the per-signal act-dedupe key (§3 judge-at-read). */
-const DEDUPE_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.signal_id::text)`;
-
-/** SQL: per-act weight (backfilled legacy rows carry meta.eventCount). */
-const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
+import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 
 /** SQL (red-team 1c + wave-5 F1): exclude fresh-lane acts whose
  *  (kind, request-id) pair FIRST occurred before today — the aggregate

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { geoEnvelopeSql } from './ground-containment';
+import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 
 /**
  * §3 signals aggregate (§22 item 6): day × actor × place × subject × kind — a
@@ -69,15 +70,6 @@ import { geoEnvelopeSql } from './ground-containment';
  *   byte-identical (stable checksums) no matter when or in which server
  *   timezone the rebuild runs.
  */
-
-/** SQL: the per-signal act-dedupe key (§3 judge-at-read). Always paired with
- *  s.kind — an act's identity is (kind, request-id): 'search' and
- *  'autocomplete_selection' share meta.searchRequestId on purpose (wave-5
- *  F1) and must both survive dedupe. */
-const DEDUPE_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.signal_id::text)`;
-
-/** SQL: per-row act weight (backfilled legacy rows carry meta.eventCount). */
-const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 

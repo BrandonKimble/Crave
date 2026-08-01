@@ -60,6 +60,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { freshSignalAttributionSql } from '../../signals/ground-containment';
 import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
+import { ACT_KEY_SQL, EVENT_COUNT_SQL } from '../../signals/act-identity';
 import { utcInstantSql } from '../../signals/sql-instant';
 import {
   COOLDOWN_GAUSSIAN_DAYS,
@@ -72,13 +73,9 @@ import {
 /** K2 prior: all signal kinds weigh 1.0 at launch (see module doc). */
 export const KIND_WEIGHT_PRIOR = 1.0;
 
-/** SQL: the per-actor ACT identity key (wave-5 F2) for the FRESH ledger arm.
- *  The ask's key value = the originating searchRequestId, so the echo rows of
- *  one act collapse into one group for free. */
-const ACT_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId', s.signal_id::text)`;
-
-/** SQL: per-act weight (backfilled legacy rows carry meta.eventCount). */
-const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
+// ACT_KEY_SQL / EVENT_COUNT_SQL moved to signals/act-identity (docket #8):
+// one home for the act-identity fragments, shared with the aggregate and the
+// read service so the arms cannot drift apart again.
 
 /** The echo kinds as a bindable text[] (see ECHO_SIGNAL_KINDS doc). */
 const ECHO_KINDS: string[] = [...ECHO_SIGNAL_KINDS];
