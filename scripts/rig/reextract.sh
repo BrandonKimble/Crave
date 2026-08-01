@@ -27,11 +27,9 @@ case "$VERB" in
     (cd "$API" && npx ts-node scripts/prompt-push.ts "$@")
     ;;
   estimate)
-    COMMUNITIES="${1:?communities (comma list) required}"
-    echo "Doc counts per community:"
-    psql "$(db_url)" -tAc "SELECT community, count(*) FROM collection_source_documents WHERE community = ANY(string_to_array('$COMMUNITIES', ',')) GROUP BY community;"
-    echo "Create+approve the campaign with the manifest flow (same machinery as onboarding):"
-    echo "  cd $API && npx ts-node scripts/resume-campaign.ts --help   # or prepareManifestEstimate via seed-archive pattern"
+    COMMUNITIES="${1:?communities (comma list) required}"; VERSION="${2:?prompt version}"
+    shift 2
+    (cd "$API" && npx ts-node scripts/reextract-estimate.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" "$@")
     ;;
   shadow)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"; CAMPAIGN="${3:?campaign id}"

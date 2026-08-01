@@ -75,4 +75,15 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 - `railway up` ships the WORKING TREE — deploy from a clean worktree of
   HEAD when other sessions have the tree dirty.
 - Report costs from the ledger AND run cost-reconcile; any one-off estimate
-  must include BOTH Gemini and Places lines.
+  must include BOTH Gemini and Places lines (a re-extract's Places line is
+  legitimately $0 — restaurants are already grounded).
+- The SQL verbs (diff, gc, status) run against LOCAL Postgres by default —
+  set `REEXTRACT_DB` to the target DB (the READ-ONLY credential in
+  `~/.crave-prod-readonly.env` for prod diff/status; superuser only for the
+  GC execute, deliberately).
+- Editing `prompts/collection-prompt.md` and deploying DOES NOTHING once
+  the registry is seeded — the registry's ACTIVE row rules. Prompt changes
+  go through push → shadow → activate, always.
+- Re-arming the runner mid-flight can re-pay for stored-input replays (the
+  pre-LLM coverage gate is strongest on the posts path) — before re-arming,
+  check `llm_batch_jobs` for non-terminal jobs and let them drain.

@@ -689,6 +689,11 @@ export class ExtractionPipelineService implements OnModuleInit {
         sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
       });
 
+    // Resolve the candidate prompt ONCE per submission, not per stub.
+    const promptOverride = params.baseParams.promptVersion
+      ? (await this.promptRegistry.getVersion(params.baseParams.promptVersion))
+          .content
+      : undefined;
     const jobId = await this.geminiBatchService.submit({
       purpose: 'collection_extraction',
       model: this.llmService.getContentModel(),
@@ -697,13 +702,7 @@ export class ExtractionPipelineService implements OnModuleInit {
           key: stub.chunkId,
           ...(await this.llmService.buildCollectionBatchRequest(
             stub.input,
-            params.baseParams.promptVersion
-              ? (
-                  await this.promptRegistry.getVersion(
-                    params.baseParams.promptVersion,
-                  )
-                ).content
-              : undefined,
+            promptOverride,
           )),
         })),
       ),
