@@ -308,39 +308,44 @@ export class CollectionEvidenceService implements OnModuleInit {
 
     const inputIdByChunkId = new Map<string, string>();
 
-    for (let index = 0; index < sortedChunks.length; index += 1) {
-      const chunk = sortedChunks[index];
-      const input = await this.prismaService.extractionInput.create({
-        data: {
-          extractionRunId: params.extractionRunId,
-          inputIndex: index,
-          inputPayload: this.toLightweightInputPayload(chunk.input),
-          sourceMap: this.toPersistedSourceMap(chunk.input),
-          rawOutput:
-            chunk.result === null
-              ? Prisma.JsonNull
-              : (chunk.result as unknown as Prisma.InputJsonValue),
-        },
-        select: { inputId: true },
-      });
-
-      const inputDocumentLinks = this.buildInputDocumentLinks(
-        chunk.input,
-        params.sourceDocumentIdBySourceKey,
-      );
-      if (inputDocumentLinks.length > 0) {
-        await this.prismaService.extractionInputDocument.createMany({
-          data: inputDocumentLinks.map((link) => ({
-            inputId: input.inputId,
-            documentId: link.documentId,
-            ordinal: link.ordinal,
-          })),
-          skipDuplicates: true,
+    // ONE transaction (step 4, M2): a crash mid-loop used to leave a
+    // partial input set, which made the coverage query understate coverage
+    // for this run's documents.
+    await this.prismaService.$transaction(async (tx) => {
+      for (let index = 0; index < sortedChunks.length; index += 1) {
+        const chunk = sortedChunks[index];
+        const input = await tx.extractionInput.create({
+          data: {
+            extractionRunId: params.extractionRunId,
+            inputIndex: index,
+            inputPayload: this.toLightweightInputPayload(chunk.input),
+            sourceMap: this.toPersistedSourceMap(chunk.input),
+            rawOutput:
+              chunk.result === null
+                ? Prisma.JsonNull
+                : (chunk.result as unknown as Prisma.InputJsonValue),
+          },
+          select: { inputId: true },
         });
-      }
 
-      inputIdByChunkId.set(chunk.chunkId, input.inputId);
-    }
+        const inputDocumentLinks = this.buildInputDocumentLinks(
+          chunk.input,
+          params.sourceDocumentIdBySourceKey,
+        );
+        if (inputDocumentLinks.length > 0) {
+          await tx.extractionInputDocument.createMany({
+            data: inputDocumentLinks.map((link) => ({
+              inputId: input.inputId,
+              documentId: link.documentId,
+              ordinal: link.ordinal,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        inputIdByChunkId.set(chunk.chunkId, input.inputId);
+      }
+    });
 
     return inputIdByChunkId;
   }
@@ -553,6 +558,19 @@ export class CollectionEvidenceService implements OnModuleInit {
             WHERE j.status IN ('persisting', 'pending', 'submitting', 'submitted', 'succeeded', 'ingesting')
               AND j.resume_context ->> 'extractionRunId' = r2.extraction_run_id::text
           )
+          -- NEVER delete a run the evidence ledger still references (step
+          -- 4): the run-delete CASCADES to its events, so compacting a run
+          -- with live evidence is silent, permanent evidence loss. With
+          -- supersede-on-activation this should be vacuously true; the
+          -- guard makes it impossible instead of expected.
+          AND NOT EXISTS (
+            SELECT 1 FROM core_restaurant_entity_events ev
+            WHERE ev.extraction_run_id = r2.extraction_run_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM core_restaurant_events ev
+            WHERE ev.extraction_run_id = r2.extraction_run_id
+          )
         LIMIT 500
       )
     `);
@@ -682,24 +700,15 @@ export class CollectionEvidenceService implements OnModuleInit {
     metadata?: Record<string, unknown>;
   }): Promise<string> {
     const scopeKey = params.scopeKey.trim();
-    const existing = await this.prismaService.collectionRun.findUnique({
+    // Upsert, not find-then-create (step 4, M2): concurrent parents on one
+    // scopeKey raced to a unique violation.
+    const collectionRun = await this.prismaService.collectionRun.upsert({
       where: { scopeKey },
-      select: { collectionRunId: true },
-    });
-
-    if (existing) {
-      await this.prismaService.collectionRun.update({
-        where: { collectionRunId: existing.collectionRunId },
-        data: {
-          status: 'running',
-          completedAt: null,
-        },
-      });
-      return existing.collectionRunId;
-    }
-
-    const collectionRun = await this.prismaService.collectionRun.create({
-      data: {
+      update: {
+        status: 'running',
+        completedAt: null,
+      },
+      create: {
         scopeKey,
         pipeline: params.pipeline,
         platform: params.platform?.trim() || null,

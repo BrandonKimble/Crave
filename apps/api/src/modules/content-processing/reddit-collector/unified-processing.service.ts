@@ -1408,6 +1408,53 @@ export class UnifiedProcessingService implements OnModuleInit {
             mentionsProcessed: llmOutput.mentions.length,
           });
 
+          // TIME-OF-USE REVALIDATION (async-integrity step 4, H2/H5):
+          // resolution ran minutes ago outside this transaction (and this
+          // map is reused verbatim across retries). A concurrent merge may
+          // have archived any resolved id since — writing events onto the
+          // tombstone makes them invisible to every projection (the
+          // rebuild does not follow redirects). Re-map archived ids
+          // through entity_redirects HERE, where the write happens.
+          {
+            const resolvedIds = Array.from(
+              new Set(tempIdToEntityIdMap.values()),
+            );
+            if (resolvedIds.length > 0) {
+              const archived = await tx.entity.findMany({
+                where: {
+                  entityId: { in: resolvedIds },
+                  status: EntityStatus.archived,
+                },
+                select: { entityId: true },
+              });
+              if (archived.length > 0) {
+                const redirects = await tx.entityRedirect.findMany({
+                  where: {
+                    fromEntityId: { in: archived.map((row) => row.entityId) },
+                  },
+                  select: { fromEntityId: true, toEntityId: true },
+                });
+                const forward = new Map(
+                  redirects.map((row) => [row.fromEntityId, row.toEntityId]),
+                );
+                for (const [tempId, entityId] of tempIdToEntityIdMap) {
+                  const target = forward.get(entityId);
+                  if (target) {
+                    tempIdToEntityIdMap.set(tempId, target);
+                  }
+                }
+                this.logger.warn(
+                  'Revalidated stale resolution ids at write time',
+                  {
+                    batchId,
+                    archivedResolved: archived.length,
+                    redirected: redirects.length,
+                  },
+                );
+              }
+            }
+          }
+
           if (
             Array.isArray(sourceLedgerRecords) &&
             sourceLedgerRecords.length > 0

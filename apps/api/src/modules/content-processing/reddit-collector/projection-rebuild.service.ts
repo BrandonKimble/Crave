@@ -134,6 +134,15 @@ export class ProjectionRebuildService implements OnModuleInit {
     tx: PrismaTransaction,
     restaurantIds: string[],
   ): Promise<string[]> {
+    // SERIALIZE PER RESTAURANT (async-integrity step 4, H4): rebuilds are
+    // full-replace (read events → delete → insert); two concurrent
+    // rebuilds of the same restaurant let the one with the STALER snapshot
+    // commit last and silently erase the fresher one's contribution. Ids
+    // are sorted so overlapping sets always lock in the same order (no
+    // deadlock). Same primitive as entity-identity creation locks.
+    for (const restaurantId of [...restaurantIds].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${restaurantId}`}))`;
+    }
     const [restaurantEvents, entityEvents] = await Promise.all([
       this.loadActiveRestaurantEvents(tx, restaurantIds),
       this.loadActiveRestaurantEntityEvents(tx, restaurantIds),
@@ -953,6 +962,75 @@ export class ProjectionRebuildService implements OnModuleInit {
    * the worker (bootstrap stops crons elsewhere). No env flag: this is
    * correctness self-healing, not spend.
    */
+  /**
+   * TOMBSTONE-EVENT SWEEP (async-integrity step 4, H3): every merge has an
+   * open tail — events written after the merge (from stale resolution
+   * snapshots) land on the archived loser, and the rebuild reads by
+   * restaurant with no redirect hop, so they silently vanish from the
+   * projection. Nightly: re-point events on archived entities through
+   * entity_redirects and rebuild the affected restaurants. Tombstone
+   * events with NO redirect are counted and logged — they need a human
+   * (or vocabulary) decision, never silence. Runs before the orphan
+   * repair so re-lit restaurants get rebuilt in the same night.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async sweepTombstoneEvents(): Promise<void> {
+    const repointed = await this.prismaService.$queryRaw<
+      Array<{ restaurant_id: string }>
+    >`
+      WITH moved AS (
+        UPDATE core_restaurant_entity_events ev
+        SET entity_id = r.to_entity_id
+        FROM core_entities e
+        JOIN entity_redirects r ON r.from_entity_id = e.entity_id
+        JOIN core_entities winner
+          ON winner.entity_id = r.to_entity_id AND winner.status = 'active'
+        WHERE ev.entity_id = e.entity_id
+          AND e.status = 'archived'
+          AND NOT EXISTS (
+            SELECT 1 FROM core_restaurant_entity_events dup
+            WHERE dup.extraction_run_id = ev.extraction_run_id
+              AND dup.source_document_id = ev.source_document_id
+              AND dup.restaurant_id = ev.restaurant_id
+              AND dup.entity_id = r.to_entity_id
+              AND dup.evidence_type = ev.evidence_type
+          )
+        RETURNING ev.restaurant_id
+      )
+      SELECT DISTINCT restaurant_id FROM moved
+    `;
+    // Duplicates that could not move (the winner already holds the claim)
+    // are redundant copies — delete them.
+    await this.prismaService.$executeRaw`
+      DELETE FROM core_restaurant_entity_events ev
+      USING core_entities e, entity_redirects r
+      WHERE ev.entity_id = e.entity_id
+        AND e.status = 'archived'
+        AND r.from_entity_id = e.entity_id
+    `;
+    const unredirected = await this.prismaService.$queryRaw<
+      Array<{ n: bigint | number }>
+    >`
+      SELECT count(*) AS n
+      FROM core_restaurant_entity_events ev
+      JOIN core_entities e ON e.entity_id = ev.entity_id
+      WHERE e.status = 'archived'
+    `;
+    const strandedCount = Number(unredirected[0]?.n ?? 0);
+    if (repointed.length > 0 || strandedCount > 0) {
+      this.logger.warn('Tombstone-event sweep', {
+        operation: 'tombstone_event_sweep',
+        rebuiltRestaurants: repointed.length,
+        strandedWithoutRedirect: strandedCount,
+      });
+    }
+    for (let i = 0; i < repointed.length; i += 50) {
+      await this.rebuildForRestaurants(
+        repointed.slice(i, i + 50).map((row) => row.restaurant_id),
+      );
+    }
+  }
+
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async repairOrphanedProjections(): Promise<{ repaired: number }> {
     const orphans = await this.prismaService.$queryRaw<

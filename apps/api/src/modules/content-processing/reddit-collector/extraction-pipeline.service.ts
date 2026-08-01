@@ -403,6 +403,32 @@ export class ExtractionPipelineService implements OnModuleInit {
     );
     const chunkDurationMs = Date.now() - chunkStartTime;
 
+    // ACTIVATION FROM THE EXTRACTED SET ONLY (async-integrity step 4, C1):
+    // a document's pointer may flip only to a run that actually extracts
+    // it. The pre-trim set included covered/trimmed documents — flipping
+    // their pointer DARKENED the covering run's evidence (and activation
+    // now supersede-DELETES other runs' events, which makes overreach
+    // destructive, not just dark).
+    const extractedDocumentIds = new Set<string>();
+    for (const post of params.llmPosts) {
+      // A covered post body rides along as CONTEXT ONLY
+      // (extract_from_post=false) — its pointer must stay on the run that
+      // covers it.
+      const postDocId =
+        post.extract_from_post === false
+          ? undefined
+          : sourceDocumentIdBySourceKey.get(
+              buildSourceDocumentKey('post', post.id),
+            );
+      if (postDocId) extractedDocumentIds.add(postDocId);
+      for (const comment of post.comments) {
+        const commentDocId = sourceDocumentIdBySourceKey.get(
+          buildSourceDocumentKey('comment', comment.id),
+        );
+        if (commentDocId) extractedDocumentIds.add(commentDocId);
+      }
+    }
+
     return this.processChunkPlan({
       baseParams: params,
       llmPosts: params.llmPosts,
@@ -410,7 +436,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       sourceDocumentIdBySourceKey,
       chunkDurationMs,
       activateDocumentIds: params.activateDocumentsBeforeProcessing
-        ? Array.from(new Set(sourceDocumentIdBySourceKey.values()))
+        ? Array.from(extractedDocumentIds)
         : [],
     });
   }
