@@ -842,6 +842,14 @@ survive re-derivation — the delivery layer grew TWO AUTHORITIES:
    settle if ever felt); a server-side rename inside a cached slice
    waits for the next slice fetch (verdict identity is the place id).
 
-REMAINING IDEAL DELTA (owner call, touches two precious surfaces + the
-owed sim pass): make home's title read the subject store (one authority)
-and give home the polls retry ladder. The law itself needs no change.
+LANDED 2026-08-01 (owner ruling, commit 0a287099): home's title reads
+the subject store — ONE title authority for every surface; resolvedCity
+survives as initial-paint fallback and content scope only. SIM-VERIFIED
+live (the human-eye leg): panned Austin downtown -> Lost Creek ->
+Barton Creek wilderness -> west; the title held "Austin" exactly while
+the vendor's polygon covered the view and flipped to "Dripping Springs"
+at the boundary, with [SUBJECT-STORE] commit logs confirming
+enter-eager finest-dominator judgments over a margin-escape-refreshed
+slice. The law itself needed no change. Remaining nicety: home could
+adopt the polls retry ladder (the failed-fetch retry edge already
+landed in 7d9022a0).
