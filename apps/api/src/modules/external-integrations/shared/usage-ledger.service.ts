@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CorrelationUtils, LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
+import { currentCampaignId } from './work-context';
 import { geminiCostMicros } from './gemini-pricing';
 import { SpendCampaignService } from './spend-campaign.service';
 
@@ -210,7 +211,13 @@ export class UsageLedgerService implements OnModuleDestroy {
    * breach, so a caught error here only needs a warn for visibility.
    */
   private meterCampaignSpend(event: UsageEvent): void {
-    if (!event.campaignId || !this.spendCampaigns) {
+    // AMBIENT ATTRIBUTION (final red team D4): an explicit campaignId still
+    // wins, but work running under a campaign context is attributed even
+    // when the call site knows nothing about campaigns. Before this, only
+    // the batch line carried an id — ~7% of the priced manifest — so the
+    // envelope could be overrun by multiples without ever breaching.
+    const campaignId = event.campaignId ?? currentCampaignId();
+    if (!campaignId || !this.spendCampaigns) {
       return;
     }
     if (event.service !== 'gemini') {
@@ -222,10 +229,10 @@ export class UsageLedgerService implements OnModuleDestroy {
         return;
       }
       this.spendCampaigns
-        .recordSpend(event.campaignId, micros)
+        .recordSpend(campaignId, micros)
         .catch((error: unknown) => {
           this.logger.warn('Campaign spend attribution failed', {
-            campaignId: event.campaignId,
+            campaignId,
             error:
               error instanceof Error
                 ? { message: error.message }

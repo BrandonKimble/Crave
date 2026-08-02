@@ -81,11 +81,12 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
   5,815 active foods are supported — the 583 unsupported ones are exactly
   what the sweep must not touch. Crons may stay ON during a shadow, which
   restores the design's actual promise: **collection never pauses.**
-- **The campaign envelope only meters the BATCH line (~7% of spend).**
-  Resolver/embedding/attribute calls carry no campaignId, so a breach may
-  never fire. Watch TOTAL ledger spend since campaign start, not just
-  `spend_campaigns.spent_micros`, and stop manually if it approaches the
-  envelope.
+- ~~The envelope only meters the batch line (~7%)~~ — **DELETED
+  2026-08-01**: spend attribution is now AMBIENT
+  (`shared/work-context.ts`). The runner and the batch-ingest tree run
+  inside a campaign context and the usage ledger reads it, so resolution,
+  embeddings and attribute calls meter automatically. The envelope now
+  guards what it was sized for, and a breach actually stops the work.
 - **Every verb targets `REEXTRACT_DB`** — including push/estimate/activate,
   which boot AppModule. Unset, they hit the LOCAL dev database and the prod
   worker will never find the candidate or campaign.

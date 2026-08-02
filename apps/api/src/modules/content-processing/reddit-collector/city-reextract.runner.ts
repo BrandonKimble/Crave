@@ -1,3 +1,4 @@
+import { runInWorkContext } from '../../external-integrations/shared/work-context';
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -87,17 +88,18 @@ export class CityReextractRunner implements OnApplicationBootstrap {
     }
     // Fire-and-forget on purpose: boot must complete so the batch ingest
     // pollers this run depends on are alive alongside it.
-    void this.run(communities, campaignId, activate, promptVersion).catch(
-      (error: unknown) => {
-        this.logger.error('City re-extract CRASHED', {
-          communities,
-          error:
-            error instanceof Error
-              ? { message: error.message, stack: error.stack }
-              : { message: String(error) },
-        });
-      },
-    );
+    void runInWorkContext(
+      { campaignId, label: `reextract:${communities.join('+')}` },
+      () => this.run(communities, campaignId, activate, promptVersion),
+    ).catch((error: unknown) => {
+      this.logger.error('City re-extract CRASHED', {
+        communities,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    });
   }
 
   private async run(

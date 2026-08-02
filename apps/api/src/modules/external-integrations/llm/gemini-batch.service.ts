@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService, buildCauseChain } from '../../../shared';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
+import { runInWorkContext } from '../shared/work-context';
 import { GovernanceService } from '../governance/governance.service';
 import { SpendCampaignService } from '../shared/spend-campaign.service';
 
@@ -665,17 +666,31 @@ export class GeminiBatchService implements OnModuleDestroy {
         orderBy: { itemIndex: 'asc' },
         select: { itemIndex: true, itemKey: true, response: true, error: true },
       });
-      await ingestor({
-        jobId,
-        purpose,
-        resumeContext: job.resumeContext,
-        items: items.map((item) => ({
-          itemIndex: item.itemIndex,
-          itemKey: item.itemKey,
-          response: item.response ?? null,
-          error: item.error,
-        })),
-      });
+      // AMBIENT CAMPAIGN (final red team D4): everything downstream of this
+      // call — entity resolution, name embeddings, attribute placement,
+      // cuisine extraction — is interactive spend the campaign PAID FOR in
+      // its manifest but never metered, because only the batch line carried
+      // a campaignId (~7% of the priced total). Establishing the context
+      // here attributes the whole ingest tree without any call site
+      // knowing campaigns exist.
+      await runInWorkContext(
+        {
+          campaignId: campaignIdFromResumeContext(job.resumeContext),
+          label: `batch-ingest:${purpose}`,
+        },
+        async () =>
+          ingestor({
+            jobId,
+            purpose,
+            resumeContext: job.resumeContext,
+            items: items.map((item) => ({
+              itemIndex: item.itemIndex,
+              itemKey: item.itemKey,
+              response: item.response ?? null,
+              error: item.error,
+            })),
+          }),
+      );
       // GUARDED terminal write: a zero-count result means the stale sweep
       // (or another poller) reclaimed this job mid-ingest — say so loudly
       // instead of silently resurrecting a row someone else owns.
