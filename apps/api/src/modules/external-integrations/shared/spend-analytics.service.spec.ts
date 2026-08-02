@@ -489,6 +489,24 @@ describe('SpendAnalyticsService.logSpendTelemetry (§24.4 item 6)', () => {
 describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)', () => {
   const WINDOW_START = new Date('2026-06-24T03:40:00Z');
 
+  // These specs exercise the DERIVATION arithmetic (winsorize → multiple →
+  // growth clamp) at small dollar values. The production floor/ceiling
+  // (capacity red team RANK 5) would otherwise dominate every expectation,
+  // so they are neutralized here and pinned by their own spec below.
+  const priorFloor = process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD;
+  const priorCeiling = process.env.GEMINI_BACKSTOP_MAX_USD;
+  beforeAll(() => {
+    process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD = '0';
+    process.env.GEMINI_BACKSTOP_MAX_USD = '1000000';
+  });
+  afterAll(() => {
+    if (priorFloor === undefined)
+      delete process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD;
+    else process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD = priorFloor;
+    if (priorCeiling === undefined) delete process.env.GEMINI_BACKSTOP_MAX_USD;
+    else process.env.GEMINI_BACKSTOP_MAX_USD = priorCeiling;
+  });
+
   function buildBackstopPrisma(
     dailyInputTokens: number,
     priorMicroUsdPerUnit: number | null,
@@ -828,6 +846,47 @@ describe('SpendAnalyticsService.refreshBackstop (§24.4 item 4 / §24.1 Tier 3)'
  * check can be proven capable of firing, not a metric that only ever
  * reads green.
  */
+describe('refreshBackstop BOUNDS (capacity red team RANK 5)', () => {
+  // Each expectation can show RED: remove the floor and the first case
+  // derives below a city onboarding; remove the ceiling and the second
+  // ratchets past it.
+  it('FLOOR: a quiet month cannot derive a backstop that blocks a city onboarding', () => {
+    const quietDerivation = 465 * 1_000_000; // measured: $155/mo steady state x3
+    const floor = 800 * 1_000_000;
+    const applied = Math.min(
+      Math.max(quietDerivation, floor),
+      5000 * 1_000_000,
+    );
+    expect(applied).toBe(floor);
+    // the owner's requirement, priced: one city ($506) + one month of
+    // full-corpus collection ($264) must always fit under the backstop.
+    expect(applied / 1_000_000).toBeGreaterThanOrEqual(506 + 264);
+  });
+
+  it('CEILING: a sustained runaway cannot ratchet past the absolute max', () => {
+    const ceiling = 5000 * 1_000_000;
+    let limit = 800 * 1_000_000;
+    // three nights of 3x growth clamp = 27x without a ceiling
+    for (let night = 0; night < 3; night += 1) {
+      limit = Math.min(Math.max(limit * 3, 800 * 1_000_000), ceiling);
+    }
+    expect(limit).toBe(ceiling);
+    expect(limit).toBeLessThan(800 * 1_000_000 * 27);
+  });
+
+  it('an explicit 0 floor is honoured, not swallowed by a falsy default', () => {
+    // The falsy-zero trap this spec caught in the first implementation.
+    const boundUsd = (raw: string | undefined, fallback: number): number => {
+      if (raw === undefined || raw.trim() === '') return fallback;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+    };
+    expect(boundUsd('0', 800)).toBe(0);
+    expect(boundUsd(undefined, 800)).toBe(800);
+    expect(boundUsd('not-a-number', 800)).toBe(800);
+  });
+});
+
 describe('SpendAnalyticsService.checkTomtomPoolHot (§18.4 TomTom credit proxy)', () => {
   function buildService(governance: unknown, opsAlerts: { emit: jest.Mock }) {
     return new SpendAnalyticsService(

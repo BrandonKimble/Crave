@@ -115,6 +115,7 @@ export class UsageLedgerService implements OnModuleDestroy {
 
   record(event: UsageEvent): void {
     this.meterGeminiSpend(event);
+    this.meterPlacesSpend(event);
     this.meterCampaignSpend(event);
     const data = {
       service: event.service,
@@ -168,6 +169,40 @@ export class UsageLedgerService implements OnModuleDestroy {
    * telemetry: month-to-date spend vs. the trailing MEASURED baseline,
    * prorated to the day of month (see logSpendTelemetry there).
    */
+  /**
+   * THE PLACES METER (capacity red team, RANK 1 — the gate was decorative).
+   *
+   * `assertPlacesSpendOpen` admits against `googlePlaces.monthlySpend`, but
+   * NOTHING ever incremented that pool: `pools.meter` was called only for
+   * gemini and for campaign grants. Proven on prod —
+   * `pool_window_consumption` had rows for gemini.monthlySpend and tomtom.*
+   * and NO googlePlaces.monthlySpend row at all, against $565.80 of billed
+   * Places in July. A gate reading a counter that is permanently zero admits
+   * forever. Places was 55% of that month's bill.
+   *
+   * Same shape as the gemini meter: fail-soft (metering must never break the
+   * usage record) and priced by the existing per-SKU pricer.
+   */
+  private meterPlacesSpend(event: UsageEvent): void {
+    if (event.service !== 'google_places' || !this.governance) {
+      return;
+    }
+    try {
+      const micros = placesCostMicrosPerCall(
+        event.skuTier ?? null,
+        event.operation,
+      );
+      const calls = event.requestCount ?? 1;
+      const total = micros * (Number.isFinite(calls) && calls > 0 ? calls : 1);
+      if (total <= 0) {
+        return;
+      }
+      void this.governance.pools.meter('googlePlaces.monthlySpend', total);
+    } catch {
+      // Metering must never break the usage record itself.
+    }
+  }
+
   private meterGeminiSpend(event: UsageEvent): void {
     if (event.service !== 'gemini' || !this.governance) {
       return;

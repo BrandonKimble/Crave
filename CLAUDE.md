@@ -92,7 +92,7 @@ Places line by summing gemini only. Run
 `./scripts/rig/cost-reconcile.sh [days]` after every one-off spend event
 (reload, city onboarding, backfill) and ~monthly. ANY one-off cost
 estimate must include BOTH lines: LLM (per-doc, measured) AND Places
-re-enrichment (~$0.067 per newly-created restaurant — RE-MEASURED 2026-08-02 from the raw ledger: $749.79 over 39,818 calls across 11,141 grounded restaurants. The old $0.028 figure was 2.4x understated because it counted only one enrichment event's Places lines).
+re-enrichment (~$0.045 per newly GROUNDED LOCATION — re-measured 2026-08-02 against the BigQuery billing export on the cleanest event, the 07-30/31 re-grounding: 7,115 locations, $323.10 billed. The long-standing $0.028 figure summed placeDetails ONLY, dropping findPlaceFromText + autocomplete — the same 'summed the wrong column' error as the $118 lesson, one level down. ALSO: the ledger under-meters Gemini ~1.7x, so BigQuery remains the only truth).
 
 ## Where product & business thinking lives (read before working on a feature)
 

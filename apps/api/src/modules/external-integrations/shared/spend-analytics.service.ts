@@ -856,10 +856,51 @@ export class SpendAnalyticsService {
         ? Math.round(priorRow.microUsdPerUnit)
         : (this.governance?.pools.poolStatus('gemini.monthlySpend').limit ??
           null);
-    const clampedLimitMicros =
+    const growthClamped =
       previousLimitMicros !== null && previousLimitMicros > 0
         ? Math.min(derivedLimitMicros, previousLimitMicros * BACKSTOP_MULTIPLE)
         : derivedLimitMicros;
+    // FLOOR + ABSOLUTE CEILING (capacity red team, RANK 5). Two failures the
+    // growth clamp alone cannot prevent, both measured:
+    //
+    // NO FLOOR → the backstop BLOCKS legitimate work automatically. After a
+    // quiet month at the measured $155 steady state the derivation lands
+    // ~$465 — which cannot fund a $506 city onboarding plus that month's
+    // collection. The owner's stated requirement (one city per month + full
+    // corpus collection) would be denied by our own safety rail, with no
+    // human decision anywhere. The floor is that requirement, priced.
+    //
+    // NO CEILING → a SUSTAINED runaway ratchets. Winsorizing kills a single
+    // bad day, but 30 bad days lift the limit 3x per night and compound
+    // (3 nights = 27x). The ceiling is the number above which no derivation
+    // is ever trusted without a human.
+    // Parse explicitly: `Number(env) || default` makes a deliberate 0
+    // silently become the default (the falsy-zero trap — caught by the
+    // derivation specs, which set the floor to 0 to isolate the arithmetic).
+    const boundUsd = (raw: string | undefined, fallback: number): number => {
+      if (raw === undefined || raw.trim() === '') return fallback;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+    };
+    const floorMicros = Math.round(
+      boundUsd(process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD, 800) * 1_000_000,
+    );
+    const ceilingMicros = Math.round(
+      boundUsd(process.env.GEMINI_BACKSTOP_MAX_USD, 5000) * 1_000_000,
+    );
+    const clampedLimitMicros = Math.min(
+      Math.max(growthClamped, floorMicros),
+      ceilingMicros,
+    );
+    if (clampedLimitMicros !== growthClamped) {
+      this.logger.info('Gemini backstop bounded', {
+        operation: 'refresh_backstop',
+        derivedUsd: derivedLimitMicros / 1e6,
+        growthClampedUsd: growthClamped / 1e6,
+        appliedUsd: clampedLimitMicros / 1e6,
+        boundHit: clampedLimitMicros === ceilingMicros ? 'ceiling' : 'floor',
+      });
+    }
     await this.prisma.spendUnitCost.upsert({
       where: {
         workClass_unit: {
