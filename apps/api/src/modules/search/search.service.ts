@@ -1104,6 +1104,28 @@ export class SearchService {
         : relaxed.exec.restaurants
       : strictPage.exec.restaurants;
 
+    // RANK IS A PROPERTY OF THE SERVED LIST (red team 2026-08-02).
+    //
+    // Each query run assigns `rank = rankStart + index` for ITS OWN result
+    // set. The pooled page-1 merge above concatenates two runs that each
+    // started at the same offset, re-sorts, and slices — so two different
+    // restaurants could carry the SAME rank. That is not cosmetic: the mobile
+    // map read model's tiebreak chain assumes equal rank means "same
+    // restaurant, different location", so duplicate ranks made the map's order
+    // group-representative noise.
+    //
+    // Reassigned once, here, at the boundary that decides the final order.
+    const rebaseRanks = <T extends { rank?: number }>(rows: T[]): T[] => {
+      const base = (pagination.page - 1) * pagination.take + 1;
+      rows.forEach((row, index) => {
+        row.rank = base + index;
+      });
+      return rows;
+    };
+    // Only the restaurant axis carries a server-assigned rank (it is what the
+    // map pins key off); dish rows have no rank field.
+    rebaseRanks(restaurants);
+
     const totalFoodResults = needsDishRelaxation
       ? strictProbe.exec.totalDishCount + relaxed.exec.totalDishCount
       : strictPage.exec.totalDishCount;

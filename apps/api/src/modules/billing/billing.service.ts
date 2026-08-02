@@ -465,6 +465,40 @@ export class BillingService {
   ): Promise<void> {
     const fromIds = this.asStringArray(event.transferred_from);
     const toIds = this.asStringArray(event.transferred_to);
+
+    // RESOLVE THE GAINING SIDE BEFORE REVOKING THE LOSING ONE (red team
+    // 2026-08-02). This used to revoke first and then, if the gaining
+    // account's state could not be fetched, silently `continue` — logging the
+    // event as processed while the user held access on NEITHER account. The
+    // realistic trigger is a lifetime or promotional entitlement, whose
+    // `expires_date` is null and which fetchRevenueCatEntitlementState skips.
+    //
+    // A transfer is a MOVE. Doing the destructive half of a move before
+    // knowing the constructive half can succeed is how a move becomes a
+    // delete.
+    const targets: Array<{
+      userId: string;
+      state: NonNullable<
+        Awaited<ReturnType<BillingService['fetchRevenueCatEntitlementState']>>
+      >;
+    }> = [];
+    for (const toId of toIds) {
+      const toUser = await this.lookupUserByAuthIdentifier(toId);
+      if (!toUser) {
+        this.logger.warn('RevenueCat transfer target has no user', { toId });
+        continue;
+      }
+      const state = await this.fetchRevenueCatEntitlementState(toId);
+      if (!state) {
+        // LOUD, and RETRYABLE. Throwing leaves both sides untouched and lets
+        // RevenueCat redeliver; swallowing it stranded the customer.
+        throw new ServiceUnavailableException(
+          `RevenueCat transfer: cannot resolve entitlement state for the gaining account (${toId}); refusing to revoke the losing account`,
+        );
+      }
+      targets.push({ userId: toUser.userId, state });
+    }
+
     for (const fromId of fromIds) {
       const fromUser = await this.lookupUserByAuthIdentifier(fromId);
       if (!fromUser) continue;
@@ -479,23 +513,17 @@ export class BillingService {
         grantsRevoked: revoked,
       });
     }
-    for (const toId of toIds) {
-      const toUser = await this.lookupUserByAuthIdentifier(toId);
-      if (!toUser) {
-        this.logger.warn('RevenueCat transfer target has no user', { toId });
-        continue;
-      }
-      const state = await this.fetchRevenueCatEntitlementState(toId);
-      if (!state) continue;
+
+    for (const { userId, state } of targets) {
       await this.entitlements.syncSubscriptionGrant({
-        userId: toUser.userId,
+        userId,
         sourceRef: `revenuecat:${state.transactionRef}`,
         expiresAt: state.expiresAt,
         active: state.expiresAt.getTime() > Date.now(),
         entitlementCode: state.entitlementCode,
       });
       this.logger.info('RevenueCat transfer: resynced gaining account', {
-        userId: toUser.userId,
+        userId,
         expiresAt: state.expiresAt.toISOString(),
       });
     }
