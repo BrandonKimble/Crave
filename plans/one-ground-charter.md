@@ -1070,6 +1070,36 @@ invalidation gets its own home (a rebuild floor the refresh consumes and
 clears) instead of being encoded as a backwards move in a counter whose
 whole job is to never move backwards.
 
-STATUS: A is landed. B–F and the watermark shape are derived but NOT
-built — each is a bounded piece of work with a named ideal, and none
-should be rushed at the end of a long session.
+STATUS: ALL LANDED (2026-08-01).
+A — the observation type (11ccc714): named | empty | failed; only
+'empty' carries a region, so remembering a fault is unrepresentable.
+B — the memory's identity (70b68ace): probed_regions upserts on the
+SAME quantized cell the single-flight already used. MEASURED: 100
+passes over one cell now leave 1 row, not 100.
+C — one retry law (cae3f78c): NETWORK_RETRY_BACKOFF_MS stated once;
+the slice fetch stops retrying forever (it was a network call every
+5s for as long as the app stayed open, offline).
+D — the attention clock (5d499f53): backgrounding ENDS the dwell
+episode, so a suspension can no longer be reported as attention
+into the demand aggregate.
+E — one reading of one fact (ee500c0a): the wrong-entity guard judges
+the same unioned geometry persistPolygon writes, so a multi-part
+entity is no longer terminally refused on its first feature.
+F — no unproven claim at a spend boundary (ee500c0a): --campaign-id is
+resolved to a real dispatchable campaign before anything can
+reference it.
+
+- the cursor carrying two facts (84cb222f): rebuild_floor is its own
+  column, claimed and cleared by the refresh, so a geometry upgrade's
+  re-attribution request can no longer be erased by a concurrent
+  pass's GREATEST.
+
+TWO LESSONS FROM LANDING THEM, both worth keeping:
+
+- Every one of these had a precedent this codebase had already ratified
+  somewhere else (identity-not-append; one law one implementation;
+  discriminated results; derived-at-source). The bugs were not new ideas
+  going wrong — they were old rulings not carried across.
+- Running the fix caught a defect reading it would not have: the floor
+  claim used UPDATE ... RETURNING, which yields the NEW row, so the first
+  version silently discarded every invalidation it claimed.
