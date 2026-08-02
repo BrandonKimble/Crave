@@ -3,6 +3,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma, Entity } from '@prisma/client';
 import {
   activeEntityEventCountSql,
+  rekeyRestaurantEventsToCanonical,
+  rekeyRestaurantEntityEventsToCanonical,
   activeCommunitiesArraySql,
   activeSupportExistsSql,
   dominantCommunitySql,
@@ -40,37 +42,38 @@ export class RestaurantEntityMergeService {
       duplicateId: duplicate.entityId,
     });
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      await this.mergeRestaurantEvents(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
-      await this.mergeRestaurantEntityEvents(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
-      await this.rehomeRestaurantEntityReferences(
-        tx,
-        canonical.entityId,
-        duplicate.entityId,
-      );
-      await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
-      await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        await this.mergeRestaurantEvents(
+          tx,
+          canonical.entityId,
+          duplicate.entityId,
+        );
+        await this.mergeRestaurantEntityEvents(
+          tx,
+          canonical.entityId,
+          duplicate.entityId,
+        );
+        await this.rehomeRestaurantEntityReferences(
+          tx,
+          canonical.entityId,
+          duplicate.entityId,
+        );
+        await this.mergeConnections(tx, canonical.entityId, duplicate.entityId);
+        await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
 
-      const updatedCanonical = await tx.entity.update({
-        where: { entityId: canonical.entityId },
-        data: canonicalUpdate,
-      });
+        const updatedCanonical = await tx.entity.update({
+          where: { entityId: canonical.entityId },
+          data: canonicalUpdate,
+        });
 
-      // ARCHIVE, never delete (audit §1: entity rows are FK-load-bearing —
-      // an in-flight extraction holding this id writes events AFTER the merge
-      // and a hard delete turns that into an FK crash, the exact class that
-      // wedged the stage-2 load). Bank the duplicate's name as an alias on
-      // the canonical so future mentions forward via the alias tier
-      // (resolution excludes archived rows from matching).
-      await tx.$executeRaw`
+        // ARCHIVE, never delete (audit §1: entity rows are FK-load-bearing —
+        // an in-flight extraction holding this id writes events AFTER the merge
+        // and a hard delete turns that into an FK crash, the exact class that
+        // wedged the stage-2 load). Bank the duplicate's name as an alias on
+        // the canonical so future mentions forward via the alias tier
+        // (resolution excludes archived rows from matching).
+        await tx.$executeRaw`
         UPDATE core_entities y
         SET aliases = (
           SELECT array_agg(DISTINCT a)
@@ -79,42 +82,47 @@ export class RestaurantEntityMergeService {
         FROM core_entities x
         WHERE y.entity_id = ${canonical.entityId}::uuid
           AND x.entity_id = ${duplicate.entityId}::uuid`;
-      await tx.entity.update({
-        where: { entityId: duplicate.entityId },
-        data: { status: 'archived' },
-      });
+        await tx.entity.update({
+          where: { entityId: duplicate.entityId },
+          data: { status: 'archived' },
+        });
 
-      // ARCHIVED IS NEVER RANKED (final red team #5, executed: 93 merge
-      // losers stayed publicly scored until the next full score pass —
-      // the 3AM merge and the score cron are independent, so the loser was
-      // user-rankable for the gap). Prune inside the merge tx.
-      await tx.$executeRaw`
+        // ARCHIVED IS NEVER RANKED (final red team #5, executed: 93 merge
+        // losers stayed publicly scored until the next full score pass —
+        // the 3AM merge and the score cron are independent, so the loser was
+        // user-rankable for the gap). Prune inside the merge tx.
+        await tx.$executeRaw`
         DELETE FROM core_public_entity_scores
         WHERE subject_id = ${duplicate.entityId}::uuid`;
 
-      // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
-      // signals ledger is never rekeyed — readers resolve duplicate
-      // subjectIds to the canonical at read. Chains are flattened so the
-      // readers' one-hop COALESCE stays complete (A→B then B→C rewrites
-      // A→C), and any stale redirect FROM the live canonical is dropped.
-      await tx.entityRedirect.updateMany({
-        where: { toEntityId: duplicate.entityId },
-        data: { toEntityId: canonical.entityId },
-      });
-      await tx.entityRedirect.deleteMany({
-        where: { fromEntityId: canonical.entityId },
-      });
-      await tx.entityRedirect.upsert({
-        where: { fromEntityId: duplicate.entityId },
-        update: { toEntityId: canonical.entityId },
-        create: {
-          fromEntityId: duplicate.entityId,
-          toEntityId: canonical.entityId,
-        },
-      });
+        // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
+        // signals ledger is never rekeyed — readers resolve duplicate
+        // subjectIds to the canonical at read. Chains are flattened so the
+        // readers' one-hop COALESCE stays complete (A→B then B→C rewrites
+        // A→C), and any stale redirect FROM the live canonical is dropped.
+        await tx.entityRedirect.updateMany({
+          where: { toEntityId: duplicate.entityId },
+          data: { toEntityId: canonical.entityId },
+        });
+        await tx.entityRedirect.deleteMany({
+          where: { fromEntityId: canonical.entityId },
+        });
+        await tx.entityRedirect.upsert({
+          where: { fromEntityId: duplicate.entityId },
+          update: { toEntityId: canonical.entityId },
+          create: {
+            fromEntityId: duplicate.entityId,
+            toEntityId: canonical.entityId,
+          },
+        });
 
-      return updatedCanonical;
-    });
+        return updatedCanonical;
+      },
+      // Explicit budget (round-10 violence red team): the default 5s
+      // killed large merges permanently-but-silently. Matches the
+      // rebuild's budget.
+      { timeout: 15 * 60 * 1000, maxWait: 30_000 },
+    );
 
     this.logger.info('Restaurant entity merge completed', {
       canonicalId: result.entityId,
@@ -132,43 +140,7 @@ export class RestaurantEntityMergeService {
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    const duplicateEvents = await tx.restaurantEvent.findMany({
-      where: { restaurantId: duplicateId },
-      select: {
-        eventId: true,
-        extractionRunId: true,
-        sourceDocumentId: true,
-        evidenceType: true,
-      },
-    });
-
-    for (const event of duplicateEvents) {
-      // Collision check mirrors the LIVE content unique (run, doc,
-      // restaurant, type) — the old mention-key check missed same-document
-      // collisions and the re-point then aborted on P2002 (round-2 red
-      // team, cold sweep #2).
-      const conflicting = await tx.restaurantEvent.findFirst({
-        where: {
-          extractionRunId: event.extractionRunId,
-          sourceDocumentId: event.sourceDocumentId,
-          restaurantId: canonicalId,
-          evidenceType: event.evidenceType,
-        },
-        select: { eventId: true },
-      });
-
-      if (conflicting) {
-        await tx.restaurantEvent.delete({
-          where: { eventId: event.eventId },
-        });
-        continue;
-      }
-
-      await tx.restaurantEvent.update({
-        where: { eventId: event.eventId },
-        data: { restaurantId: canonicalId },
-      });
-    }
+    await rekeyRestaurantEventsToCanonical(tx, canonicalId, duplicateId);
   }
 
   private async mergeRestaurantEntityEvents(
@@ -176,43 +148,7 @@ export class RestaurantEntityMergeService {
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    const duplicateEvents = await tx.restaurantEntityEvent.findMany({
-      where: { restaurantId: duplicateId },
-      select: {
-        eventId: true,
-        extractionRunId: true,
-        sourceDocumentId: true,
-        entityId: true,
-        evidenceType: true,
-      },
-    });
-
-    for (const event of duplicateEvents) {
-      // Mirrors the LIVE content unique (run, doc, restaurant, entity,
-      // type) — see the restaurant-event pass above.
-      const conflicting = await tx.restaurantEntityEvent.findFirst({
-        where: {
-          extractionRunId: event.extractionRunId,
-          sourceDocumentId: event.sourceDocumentId,
-          restaurantId: canonicalId,
-          entityId: event.entityId,
-          evidenceType: event.evidenceType,
-        },
-        select: { eventId: true },
-      });
-
-      if (conflicting) {
-        await tx.restaurantEntityEvent.delete({
-          where: { eventId: event.eventId },
-        });
-        continue;
-      }
-
-      await tx.restaurantEntityEvent.update({
-        where: { eventId: event.eventId },
-        data: { restaurantId: canonicalId },
-      });
-    }
+    await rekeyRestaurantEntityEventsToCanonical(tx, canonicalId, duplicateId);
   }
 
   private async rehomeRestaurantEntityReferences(

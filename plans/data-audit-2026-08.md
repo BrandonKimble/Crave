@@ -337,3 +337,34 @@ executed proof: r/austinfood "Joes" (Joe's Bakery ATX) credited to NYC's
 Joe's Pizza. P2.2 design: METRO-AWARE RESOLUTION (adopt only candidates
 with a location in the mention's metro; else mint + ground locally); per-
 metro chain entities rejected (fights the expansion model).
+
+## ROUND 10 (time + violence lenses, 2026-08-02) — CAMPAIGN CLOSED
+
+Aging simulation (9 nights, churn injected, judge stubbed both ways): system
+CONVERGES — byte-identical invariant panels once quiet, no metric trends or
+oscillates. Fixed from it: the nightly merge sweep had been THROWING every
+night since Aug 1 (42P01 missing alias; 66-restaurant backlog merged on
+first successful run — fix was already on HEAD via the parallel session);
+both sweep lanes now refuse the EMPTY fold (executed: a Chinese noodle shop
+was archived into a Russian dumpling house on the '' group); judgeRejected
+counter += not =.
+
+Violence (kill-mid-transaction, all 8 targets): the transactional core HELD
+— merge/activation/rebuild all roll back atomically under
+pg_terminate_backend at every injection point, advisory locks release on
+connection death, claims lease/reap correct in all five arms, savepoint
+transparent under real P2002 fire, P3009 blocks boot on partial schema,
+every sweep double-run byte-identical, 13 concurrency rounds with zero
+deadlocks/resurrections/drift. The one wound: the merge tx had NO timeout
+budget and per-event round-trips — P2028 abort above ~3,000 events
+(permanent, silent; prod's 583-event max was already at the cliff on WAN
+RTT arithmetic). Fixed: set-based re-key (two statements, in the scope
+service per the lockdown) + explicit 15-min budget; 5,000-event merge now
+completes in 231ms (was: permanent abort).
+
+Ops drift prong: RUN_LEDGER_REPAIR=1 found still armed on the prod worker
+since July — disarmed. Standing owner flags: CRONS_ENABLED=false +
+COLLECTION_SCHEDULER_ENABLED=false (the other session's kill-switches —
+nothing scheduled runs until reverted). Standing residue, deliberate:
+restHeld=8, dup_identity_groups=14 incl. exact-name chain twins (Blaze
+Pizza ×2) — P2.2 metro-aware-resolution territory.

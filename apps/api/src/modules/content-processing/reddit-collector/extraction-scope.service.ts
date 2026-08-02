@@ -231,6 +231,51 @@ export function dominantCommunitySql(restaurantRef: string): string {
     LIMIT 1)`;
 }
 
+/** SET-BASED merge re-key (round-10 violence red team: the per-event
+ *  loop paid two round-trips per event and blew the transaction budget
+ *  above ~3,000 events — on prod RTT the largest restaurant was already
+ *  at the cliff, so the pair could never merge, silently, forever).
+ *  Rows whose content key already exists on the winner DELETE; the rest
+ *  re-key. Lives HERE because consumers never name the event ledgers. */
+export async function rekeyRestaurantEventsToCanonical(
+  tx: Prisma.TransactionClient,
+  canonicalId: string,
+  duplicateId: string,
+): Promise<void> {
+  await tx.$executeRaw`
+    DELETE FROM core_restaurant_events ev
+    USING core_restaurant_events dup
+    WHERE ev.restaurant_id = ${duplicateId}::uuid
+      AND dup.restaurant_id = ${canonicalId}::uuid
+      AND dup.extraction_run_id = ev.extraction_run_id
+      AND dup.source_document_id = ev.source_document_id
+      AND dup.evidence_type = ev.evidence_type`;
+  await tx.$executeRaw`
+    UPDATE core_restaurant_events
+    SET restaurant_id = ${canonicalId}::uuid
+    WHERE restaurant_id = ${duplicateId}::uuid`;
+}
+
+export async function rekeyRestaurantEntityEventsToCanonical(
+  tx: Prisma.TransactionClient,
+  canonicalId: string,
+  duplicateId: string,
+): Promise<void> {
+  await tx.$executeRaw`
+    DELETE FROM core_restaurant_entity_events ev
+    USING core_restaurant_entity_events dup
+    WHERE ev.restaurant_id = ${duplicateId}::uuid
+      AND dup.restaurant_id = ${canonicalId}::uuid
+      AND dup.extraction_run_id = ev.extraction_run_id
+      AND dup.source_document_id = ev.source_document_id
+      AND dup.entity_id = ev.entity_id
+      AND dup.evidence_type = ev.evidence_type`;
+  await tx.$executeRaw`
+    UPDATE core_restaurant_entity_events
+    SET restaurant_id = ${canonicalId}::uuid
+    WHERE restaurant_id = ${duplicateId}::uuid`;
+}
+
 /** Active-support EXISTS on the connection projection — the D5 predicate.
  *  Exported so the dedupe sweeps consume THIS instead of an inline copy. */
 export function activeSupportExistsSql(entityRef: string): string {
