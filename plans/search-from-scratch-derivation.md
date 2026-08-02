@@ -380,6 +380,48 @@ Also still owed to the calibration tail: ~44-name placement curation
 Cutover harness 9/9 PASS (tier ordering, disjoint pagination, open-now,
 dietary-hard zero-result honesty, residue staging).
 
+**ROUND 5 IMPLEMENTATION (2026-08-02, owner: "implement the ideal
+abstractions" — commits 8cadbb95d → 77c7eb1bc, all empirically
+verified on the mirror):**
+
+- **Untyped demand flows directly** (8cadbb95d): short residue (≤2
+  tokens) records its on_demand_ask signal IMMEDIATELY (geo +
+  askSearchRequestId; proven end-to-end with a real actor);
+  loadUnmetCandidates admits untyped asks; the LLM segmenter demotes to
+  multi-entity residue SPLITTING (3+-token runs only). No schema change
+  — the collector's unmet lane reads signals, not the typed queue.
+- **Delete-dictionary lexicon + Damerau-Levenshtein** (5c0ee10ec):
+  derived_entity_word_deletes (nightly rebuild, ~600k rows/11s); edit
+  recall = one btree probe + JS DL on the shortlist — transpositions
+  cost 1 ('vgean' surfaces vegan-family at edit 0.80), constant in
+  corpus size; the per-row levenshtein() seq-scan arms are DELETED.
+  Edit-tier floors unchanged (0.95 absolute) until the re-sweep —
+  typo LINKS stay conservative by design.
+- **Unified linker** (d6b15235c): one retrieval per surface form over
+  ALL types → one pool → one decision → pickPlacedWinner pure fn. The
+  lane chain is gone; the rounds-3/4 exact-beats-fuzzy laws hold by
+  construction; consume guard moved into candidate ADMISSION.
+  Adversarial alternating-24: 5.6s → 3.6s. GUARD (77c7eb1bc):
+  non-exact restaurant candidates admitted only for restaurant-typed
+  inputs (junk residue fuzzy-captured restaurants and zeroed pages —
+  the type-scoped-floors warning materializing; re-sweep may relax).
+- **Tier-2 similar ring in the ONE execution** (6c7b0b7aa): §7.2
+  dissolved — ring rows ride the dish scan as provenance tier 2
+  (scan-admitted, never served, window-counted); similarAvailable is a
+  MEASURED count; prepareSimilarPreview + its second pooled execution
+  DELETED. Under SEARCH_DENSE_SIBLINGS_MODE=always (current config)
+  the ring is honestly empty (siblings are already members) — parity
+  with the old preview. OPEN: under mode=expansion the thin-trigger
+  absorbs the ring (coherent), but an 18-row chip-off/on totals delta
+  needs one fresh-context attribution before that mode ships.
+- **Deferred from phase 4**: one-statement-per-projection window counts
+  (post-fame-pin it buys ~15ms — pure elegance; do with the tier-3
+  count consolidation at the calibration tail). Vote-totals
+  conditionalization REJECTED on inspection: its columns feed wire
+  rows; the planner already prunes the join when unused.
+- Final regression sweep: 8/8 e2e (191–780ms bounded), pagination
+  disjoint, untyped ask verified with a real actor.
+
 **ROUND 5 — IDEAL-ABSTRACTION VERDICTS (2026-08-02, two architect
 reviews, not a bug hunt; commit 702b6f875 implements the pre-launch
 items):** the question was "what would a from-scratch design do here,"
