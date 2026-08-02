@@ -253,13 +253,17 @@ describe('§2 reconciler wiring (the growth machine is live at the search chokep
     expect(noteViewport).toHaveBeenCalledWith(VIEW);
   });
 
-  it('a search without bounds does not invoke the reconciler', async () => {
+  it('a search without bounds is REJECTED (viewport required) and never reaches the reconciler', async () => {
+    // R4-P1: a bounds-less pooled query is a 22-43s world scan — the
+    // viewport is a hard requirement of the search contract.
     const noteViewport = jest.fn();
     const { service } = createHarness({
       placesInView: [],
       reconciler: { noteViewport },
     });
-    await service.runQuery(buildRequest({ bounds: undefined }));
+    await expect(
+      service.runQuery(buildRequest({ bounds: undefined })),
+    ).rejects.toThrow('bounds (or viewportPolygon) is required');
     expect(noteViewport).not.toHaveBeenCalled();
   });
 

@@ -21,9 +21,8 @@ import { OnDemandRequestService } from './on-demand-request.service';
  * residues into ONE batch-priced call is a cost optimization that lands
  * with the cutover flip, not a precondition for the plumbing.
  *
- * Producer: the flag-gated gazetteer cutover records residue here; nothing
- * writes rows while the cutover is off, so the cron idles at one indexed
- * SELECT per pass.
+ * Producer: the gazetteer Understand (the only Understand) records
+ * unknown residue here on every search; the cron drains continuously.
  */
 @Injectable()
 export class UnsegmentedResidueService {
@@ -48,14 +47,10 @@ export class UnsegmentedResidueService {
   }): Promise<void> {
     const text = input.residueText.trim().slice(0, 500);
     if (!text) return;
-    // Dedup (red team ⑨): a trending unknown term must not multiply into
-    // one LLM segmentation call per search. One pending row per residue
-    // text is enough — the demand side already counts per-term interest.
-    const existing = await this.prisma.onDemandUnsegmentedResidue.findFirst({
-      where: { residueText: text, status: 'pending' },
-      select: { residueId: true },
-    });
-    if (existing) return;
+    // EVERY ask is recorded (red team R4-②): deduping rows collapsed 300
+    // users' interest into distinctUserCount=1 — demand ranking off by
+    // orders of magnitude. What must be deduped is the LLM CALL, and the
+    // drain does that by segmenting once per DISTINCT text.
     await this.prisma.onDemandUnsegmentedResidue.create({
       data: {
         residueText: text,
@@ -78,15 +73,28 @@ export class UnsegmentedResidueService {
       const pending = await this.prisma.onDemandUnsegmentedResidue.findMany({
         where: { status: 'pending', attempts: { lt: 3 } },
         orderBy: { createdAt: 'asc' },
-        take: 25,
+        take: 100,
       });
+      // ONE LLM call per DISTINCT residue text; one recordRequests per ROW
+      // (every ask keeps its user/engine/geo attribution).
+      const byText = new Map<string, typeof pending>();
       for (const row of pending) {
-        await this.segmentOne(row.residueId, row.residueText, {
-          engineIds: row.engineIds,
-          userId: row.userId,
-          searchRequestId: row.searchRequestId,
-        });
+        const bucket = byText.get(row.residueText) ?? [];
+        bucket.push(row);
+        byText.set(row.residueText, bucket);
       }
+      for (const [text, rows] of byText) {
+        await this.segmentGroup(text, rows);
+      }
+      // Retention (red team R4-P6): processed rows are audit crumbs, not
+      // records — the typed queue + signals are the durable record. 30
+      // days is plenty for debugging the segmenter.
+      await this.prisma.onDemandUnsegmentedResidue.deleteMany({
+        where: {
+          status: { in: ['segmented', 'discarded', 'failed'] },
+          processedAt: { lt: new Date(Date.now() - 30 * 24 * 3600 * 1000) },
+        },
+      });
     } catch (error) {
       this.logger.warn('Residue drain pass failed', {
         error: {
@@ -98,15 +106,17 @@ export class UnsegmentedResidueService {
     }
   }
 
-  private async segmentOne(
-    residueId: string,
+  private async segmentGroup(
     residueText: string,
-    meta: {
+    rows: Array<{
+      residueId: string;
       engineIds: string[];
       userId: string | null;
       searchRequestId: string | null;
-    },
+      context: unknown;
+    }>,
   ): Promise<void> {
+    const ids = rows.map((r) => r.residueId);
     try {
       const analysis = await this.llmService.analyzeSearchQuery(residueText);
       const typed: Array<{ term: string; entityType: EntityType }> = [
@@ -129,29 +139,39 @@ export class UnsegmentedResidueService {
       ].filter((entry) => entry.term.trim().length > 0);
 
       if (typed.length) {
-        await this.onDemandRequestService.recordRequests(
-          typed.map((entry) => ({
-            term: entry.term.trim(),
-            entityType: entry.entityType,
-            reason: 'unresolved',
-            engineIds: meta.engineIds,
-            metadata: {
+        // One recordRequests per staged ROW: each searcher's ask keeps its
+        // own user, engines, searchRequestId, and — critically — its
+        // BOUNDS (the signals layer drops geo-less asks).
+        for (const row of rows) {
+          const rowContext =
+            row.context && typeof row.context === 'object'
+              ? (row.context as Record<string, unknown>)
+              : {};
+          await this.onDemandRequestService.recordRequests(
+            typed.map((entry) => ({
+              term: entry.term.trim(),
+              entityType: entry.entityType,
+              reason: 'unresolved',
+              engineIds: row.engineIds,
+              metadata: {
+                source: 'residue_segmenter',
+                residueText,
+                searchRequestId: row.searchRequestId ?? undefined,
+              },
+            })),
+            { userId: row.userId },
+            {
               source: 'residue_segmenter',
-              residueText,
-              searchRequestId: meta.searchRequestId ?? undefined,
+              searchRequestId: row.searchRequestId,
+              ...(rowContext.bounds ? { bounds: rowContext.bounds } : {}),
             },
-          })),
-          { userId: meta.userId },
-          {
-            source: 'residue_segmenter',
-            searchRequestId: meta.searchRequestId,
-          },
-        );
+          );
+        }
       }
       // Junk needs no judgment: a residue that segments to nothing is
       // discarded — it failed to name anything collectible.
-      await this.prisma.onDemandUnsegmentedResidue.update({
-        where: { residueId },
+      await this.prisma.onDemandUnsegmentedResidue.updateMany({
+        where: { residueId: { in: ids } },
         data: {
           status: typed.length ? 'segmented' : 'discarded',
           processedAt: new Date(),
@@ -159,22 +179,19 @@ export class UnsegmentedResidueService {
         },
       });
     } catch (error) {
-      // Terminal state (red team ⑩): the third failure moves the row to
-      // 'failed' — visible, countable, and out of the drain's way; a row
-      // must never sit invisible at pending/attempts=3 forever.
-      const row = await this.prisma.onDemandUnsegmentedResidue.update({
-        where: { residueId },
+      // Terminal state: the third failure moves the rows to 'failed' —
+      // visible, countable, and out of the drain's way.
+      await this.prisma.onDemandUnsegmentedResidue.updateMany({
+        where: { residueId: { in: ids } },
         data: { attempts: { increment: 1 } },
-        select: { attempts: true },
       });
-      if (row.attempts >= 3) {
-        await this.prisma.onDemandUnsegmentedResidue.update({
-          where: { residueId },
-          data: { status: 'failed', processedAt: new Date() },
-        });
-      }
+      await this.prisma.onDemandUnsegmentedResidue.updateMany({
+        where: { residueId: { in: ids }, attempts: { gte: 3 } },
+        data: { status: 'failed', processedAt: new Date() },
+      });
       this.logger.warn('Residue segmentation failed (will retry)', {
-        residueId,
+        residueText,
+        rows: ids.length,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },

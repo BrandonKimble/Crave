@@ -170,6 +170,11 @@ export class EntityTextSearchService {
    * (autocomplete feature model / resolution + gazetteer LLM-matcher) decides the
    * final order/decision using the per-lane features carried on each candidate.
    */
+  /** Postgres levenshtein() rejects arguments over 255 chars — and no real
+   *  entity name approaches that. Terms past this bound return no
+   *  candidates instead of failing the edit arm per probe (red team R4). */
+  private static readonly MAX_PROBE_TERM_LENGTH = 200;
+
   async retrieveCandidates(
     term: string,
     entityTypes: EntityType[],
@@ -198,6 +203,12 @@ export class EntityTextSearchService {
       denseFallbackBelow?: number;
     } = {},
   ): Promise<RecallCandidate[]> {
+    if (
+      term.length > EntityTextSearchService.MAX_PROBE_TERM_LENGTH ||
+      !term.trim()
+    ) {
+      return [];
+    }
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
 

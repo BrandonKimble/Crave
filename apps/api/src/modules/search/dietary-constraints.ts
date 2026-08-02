@@ -6,15 +6,13 @@ import { LoggerService } from '../../shared';
  * Dietary hardness (spec §1.3, owner-ratified): a curated lifestyle set of
  * attribute entities (vegan / vegetarian / gluten free / halal / kosher,
  * flagged `constraint_class='dietary'` in the vocabulary) that the
- * relaxation ladder may NEVER drop. For a vegan user, relaxing "vegan" is
- * not degradation — it is a wrong answer.
+ * search may NEVER soften. For a vegan user, softening "vegan" is not
+ * degradation — it is a wrong answer.
  *
- * Round-2 review corrected the naive plan here: there is no per-id drop
- * mechanism to hook — relaxation zeroes a whole bucket's presence count.
- * So the exemption is applied where the buckets are BUILT: a dropping
- * stage keeps the dietary subset (and the stage presence reflects the
- * kept ids so the compiler still emits the clause), and the capability
- * computation only offers a stage when it has something SOFT to drop.
+ * CUTOVER 2026-08-02: the exemption lives in the pooled hard/soft split
+ * (executePooledStage): dietary-flagged ids stay in the WHERE membership
+ * as walls; every unflagged attribute becomes soft per-row provenance
+ * for the richness gate. (The old ladder-stage machinery is deleted.)
  */
 
 @Injectable()

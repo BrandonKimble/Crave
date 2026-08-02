@@ -342,6 +342,15 @@ export class SearchService {
   }
 
   async runQuery(request: SearchQueryRequestDto): Promise<SearchResponseDto> {
+    // VIEWPORT REQUIRED (red team R4-P1, measured): a bounds-less pooled
+    // request runs the fame-pin ST_Covers over EVERY location — 22–43s of
+    // DB time vs ~0.4s bounded, behind a 1200/min rate tier. Search is a
+    // map product; every legitimate client sends a viewport.
+    if (!request.bounds && !request.viewportPolygon) {
+      throw new BadRequestException(
+        'bounds (or viewportPolygon) is required for search',
+      );
+    }
     const start = Date.now();
     const searchRequestId = request.searchRequestId ?? randomUUID();
     request.searchRequestId = searchRequestId;
@@ -524,6 +533,15 @@ export class SearchService {
     // The probe IS the page — relaxation is gone, so nothing consumes a
     // clamped pre-page probe.
     const strictProbePagination = pagination;
+
+    // Launch the similar-preview widened run CONCURRENTLY with the page
+    // execution (red team R4: serializing it doubled page-1 latency).
+    const similarPreviewPromise = this.prepareSimilarPreview({
+      request,
+      planExpansion,
+      pagination,
+      topDishesLimit: TOP_DISHES_LIMIT,
+    });
 
     let strictProbe = await executeStage({
       restaurantPagination: strictProbePagination,
@@ -729,10 +747,25 @@ export class SearchService {
       // STARVED WORDS ARE THEIR OWN TRIGGER (spec §1.6; red team C2): the
       // gate admitting partial rows makes the page LOOK full — precisely
       // then, a zero-coverage word must still fire its demand signal.
-      const starved = this.computeStarvedSoftWords(
+      let starved = this.computeStarvedSoftWords(
         request,
         strictPage.exec.pooledSoftWordCounts,
       );
+      // HARD WORDS STARVE TOO (spec §6, red team R4-F5): a dietary wall is
+      // never soft-counted, but ZERO results with a dietary constraint IS
+      // the "vegan failed in this viewport" signal — name the word.
+      if (totalResults === 0) {
+        const hardStarved = await this.collectDietaryTerms(request);
+        if (hardStarved.terms.length) {
+          starved = {
+            attributeIds: [
+              ...(starved?.attributeIds ?? []),
+              ...hardStarved.attributeIds,
+            ],
+            terms: [...(starved?.terms ?? []), ...hardStarved.terms],
+          };
+        }
+      }
       const shouldTriggerOnDemand =
         this.shouldTriggerOnDemand(
           request,
@@ -891,13 +924,7 @@ export class SearchService {
           : null,
         metadata,
       };
-      await this.attachSimilarPreview({
-        response,
-        request,
-        planExpansion,
-        pagination,
-        topDishesLimit: TOP_DISHES_LIMIT,
-      });
+      this.applySimilarPreview(response, await similarPreviewPromise);
       return this.applySearchResponseProfile(response, request);
     }
   }
@@ -1563,11 +1590,20 @@ export class SearchService {
       constraints.ids.foodIds.length > 0 ||
       constraints.ids.restaurantIds.length > 0 ||
       constraints.ids.ingredientIds.length > 0;
+    // DoS bound (red team R4-P5): each soft id adds a full re-scan arm to
+    // the count query (+~85ms each, attacker-controlled by attribute word
+    // count). 8 covers every real query shape; beyond it the extra words
+    // still filter via provenance of the first 8.
+    const SOFT_ID_CAP = 8;
     const softFoodAttributeIds = hasPrimarySubject
-      ? constraints.ids.foodAttributeIds.filter((id) => !dietary.has(id))
+      ? constraints.ids.foodAttributeIds
+          .filter((id) => !dietary.has(id))
+          .slice(0, SOFT_ID_CAP)
       : [];
     const softRestaurantAttributeIds = hasPrimarySubject
-      ? constraints.ids.restaurantAttributeIds.filter((id) => !dietary.has(id))
+      ? constraints.ids.restaurantAttributeIds
+          .filter((id) => !dietary.has(id))
+          .slice(0, SOFT_ID_CAP)
       : [];
     // Hard-only membership: dietary attribute ids stay walls; soft ids move
     // to provenance. Presence bookkeeping is untouched — it describes the
@@ -1669,27 +1705,30 @@ export class SearchService {
    * (adding rows to a pure-score list can only push exacts DOWN), so the diff
    * needs no tier computation. Fail-open: any error leaves the response as-is.
    */
-  private async attachSimilarPreview(params: {
-    response: SearchResponseDto;
+  /** PREPARE half of the similar preview (red team R4 perf): the widened
+   *  pooled run has NO dependency on the served page, so it launches
+   *  CONCURRENTLY with the main execution — serializing it doubled every
+   *  page-1 latency (3.9s → 7.7s measured). Uses the pre-expansion seeded
+   *  planExpansion; if the thin-trigger expansion later widens the serving
+   *  set, the preview is marginally stale — acceptable for a UX hint, and
+   *  thin queries are where the serving set itself already widened. */
+  private async prepareSimilarPreview(params: {
     request: SearchQueryRequestDto;
     planExpansion: PlanExpansionState | null;
     pagination: PaginationState;
     topDishesLimit: number;
-  }): Promise<void> {
-    const { response, request, pagination } = params;
-    if (pagination.page !== 1) return;
-    if (request.includeSimilar === true) return; // already the pooled view
+  }): Promise<StageExecutionResult | null> {
+    const { request, pagination } = params;
+    if (pagination.page !== 1) return null;
+    if (request.includeSimilar === true) return null; // already the pooled view
     const anchorFoodIds = this.collectEntityIds(request.entities.food);
-    if (!anchorFoodIds.length) return;
+    if (!anchorFoodIds.length) return null;
     try {
       const siblings = await this.siblingExpansion.getSiblingFoodIds(
         anchorFoodIds,
         this.denseSiblingsCut,
       );
-      if (!siblings.length) {
-        response.metadata.similarAvailable = 0;
-        return;
-      }
+      if (!siblings.length) return null;
       const widened: PlanExpansionState = {
         twinIngredientIds: params.planExpansion?.twinIngredientIds ?? [],
         foodIds: params.planExpansion?.foodIds ?? [],
@@ -1709,11 +1748,9 @@ export class SearchService {
         },
       };
       const pageOne = { skip: 0, take: pagination.take };
-      // SAME REGIME AS THE SERVING PAGE (red team C5): in pooled 'on' the
-      // widened preview must be a pooled run too — a ladder run puts soft
-      // words back in the WHERE, and similarAvailable (widened − served)
-      // then compares totals built under different membership rules.
-      const widenedRun = await this.executePooledStage({
+      // SAME REGIME AS THE SERVING PAGE (red team C5): the widened preview
+      // is a pooled run — same membership rules as what it diffs against.
+      return await this.executePooledStage({
         request,
         planExpansion: widened,
         pagination,
@@ -1722,23 +1759,6 @@ export class SearchService {
         topDishesLimit: params.topDishesLimit,
         threshold: DEFAULT_PAGE_SIZE,
       });
-      const shownConnections = new Set(
-        response.dishes.map((d) => d.connectionId),
-      );
-      response.similarDishes = widenedRun.exec.dishes
-        .filter((d) => !shownConnections.has(d.connectionId))
-        .map((d) => ({ ...d, exactMatch: false }));
-      const shownRestaurants = new Set(
-        response.restaurants.map((r) => r.restaurantId),
-      );
-      response.similarRestaurants = widenedRun.exec.restaurants
-        .filter((r) => !shownRestaurants.has(r.restaurantId))
-        .map((r) => ({ ...r, exactMatch: false }));
-      response.metadata.similarAvailable = Math.max(
-        0,
-        widenedRun.exec.totalDishCount -
-          (response.metadata.totalFoodResults ?? 0),
-      );
     } catch (error) {
       this.logger.warn('Similar preview failed (failing open)', {
         error:
@@ -1746,7 +1766,36 @@ export class SearchService {
             ? { message: error.message }
             : { message: String(error) },
       });
+      return null;
     }
+  }
+
+  /** APPLY half: diff the widened run against the served response. */
+  private applySimilarPreview(
+    response: SearchResponseDto,
+    widenedRun: StageExecutionResult | null,
+  ): void {
+    if (!widenedRun) {
+      if (response.metadata) response.metadata.similarAvailable = 0;
+      return;
+    }
+    const shownConnections = new Set(
+      response.dishes.map((d) => d.connectionId),
+    );
+    response.similarDishes = widenedRun.exec.dishes
+      .filter((d) => !shownConnections.has(d.connectionId))
+      .map((d) => ({ ...d, exactMatch: false }));
+    const shownRestaurants = new Set(
+      response.restaurants.map((r) => r.restaurantId),
+    );
+    response.similarRestaurants = widenedRun.exec.restaurants
+      .filter((r) => !shownRestaurants.has(r.restaurantId))
+      .map((r) => ({ ...r, exactMatch: false }));
+    response.metadata.similarAvailable = Math.max(
+      0,
+      widenedRun.exec.totalDishCount -
+        (response.metadata.totalFoodResults ?? 0),
+    );
   }
 
   /** Query-food relatedness per food id: exact + is-a instances = 1.0, widened
@@ -2853,6 +2902,31 @@ export class SearchService {
    * the request's attribute entities (originalText preferred — the user's
    * word, not the canonical name).
    */
+  /** Dietary-flagged attribute entities present on the request, with the
+   *  user's words — the hard-constraint half of the starvation signal. */
+  private async collectDietaryTerms(
+    request: SearchQueryRequestDto,
+  ): Promise<{ attributeIds: string[]; terms: string[] }> {
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const attributeIds: string[] = [];
+    const terms: string[] = [];
+    const collect = (entities: QueryEntityDto[] | undefined) => {
+      for (const entity of entities ?? []) {
+        const hard = (entity.entityIds ?? []).filter((id) =>
+          dietaryIds.has(id),
+        );
+        if (hard.length) {
+          attributeIds.push(...hard);
+          const term = entity.originalText || entity.normalizedName;
+          if (term) terms.push(term);
+        }
+      }
+    };
+    collect(request.entities.foodAttributes);
+    collect(request.entities.restaurantAttributes);
+    return { attributeIds, terms };
+  }
+
   private computeStarvedSoftWords(
     request: SearchQueryRequestDto,
     pooledSoftWordCounts:

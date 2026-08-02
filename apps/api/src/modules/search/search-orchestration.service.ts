@@ -9,7 +9,6 @@ import {
 } from './dto/search-query.dto';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { LoggerService } from '../../shared';
-import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
   resolveSearchDebugMode,
   summarizeEntities,
@@ -38,7 +37,11 @@ export class SearchOrchestrationService {
     request: NaturalSearchRequestDto,
   ): Promise<SearchResponseDto> {
     const originalQuery = request.query;
-    const normalizedQuery = stripGenericTokens(originalQuery);
+    // NO WORD LIST (owner ruling 2026-08-02): the raw query goes straight
+    // to the gazetteer Understand — junk grounding is a data defect owned
+    // by extraction hygiene + the junk sweep, not a stop-list here (see
+    // search-generic-queries.spec.ts for the pinned post-cleanup contract).
+    const normalizedQuery = { text: originalQuery, isGenericOnly: false };
 
     if (this.debugMode !== 'off') {
       this.logger.info('Search debug: natural query received', {
@@ -78,46 +81,18 @@ export class SearchOrchestrationService {
       return response;
     }
 
-    if (normalizedQuery.isGenericOnly) {
-      const response = await this.searchService.runQuery({
-        entities: {},
-        bounds: request.bounds,
-        userLocation: request.userLocation,
-        openNow: request.openNow,
-        pagination: request.pagination,
-        includeSqlPreview: request.includeSqlPreview,
-        compactResponse: request.compactResponse,
-        priceLevels: request.priceLevels,
-        minimumVotes: request.minimumVotes,
-        userId: request.userId,
-        searchRequestId: request.searchRequestId,
-        submissionSource: 'shortcut',
-        submissionContext: request.submissionContext,
-      });
-
-      response.metadata.sourceQuery = originalQuery;
-      this.logPhaseTimings(response, originalQuery);
-
-      if (this.debugMode !== 'off') {
-        this.logger.info('Search debug: generic-only response', {
-          searchRequestId: response.metadata.searchRequestId,
-          resultCoverageStatus: response.metadata.resultCoverageStatus,
-          totalRestaurantResults: response.metadata.totalRestaurantResults,
-          totalFoodResults: response.metadata.totalFoodResults,
-          queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
-          onDemandQueued: response.metadata.onDemandQueued ?? false,
-        });
-      }
-
-      return response;
-    }
-
     const interpretation = await this.interpretationService.interpret({
       ...request,
       query: normalizedQuery.text,
     });
     interpretation.structuredRequest.sourceQuery = normalizedQuery.text;
-    interpretation.structuredRequest.searchRequestId = request.searchRequestId;
+    // Keep interpretation's minted id unless the CLIENT supplied one — a
+    // blind overwrite with undefined broke the ask↔search act correlation
+    // (residue staged under an id no later signal ever carries).
+    if (request.searchRequestId) {
+      interpretation.structuredRequest.searchRequestId =
+        request.searchRequestId;
+    }
     interpretation.structuredRequest.submissionSource =
       request.submissionSource ?? 'manual';
     interpretation.structuredRequest.submissionContext = {
@@ -252,8 +227,6 @@ export class SearchOrchestrationService {
         totalFoodResults: response.metadata.totalFoodResults,
         restaurantsOnPage: response.restaurants?.length ?? 0,
         dishesOnPage: response.dishes?.length ?? 0,
-        relaxationApplied: response.metadata.relaxationApplied ?? false,
-        relaxationStage: response.metadata.relaxationStage ?? null,
         queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
         onDemandQueued: response.metadata.onDemandQueued ?? false,
         onDemandEtaMs: response.metadata.onDemandEtaMs ?? null,

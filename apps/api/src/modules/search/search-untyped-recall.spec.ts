@@ -43,7 +43,6 @@ function makeService(
   return new SearchQueryInterpretationService(
     entityTextSearch as never,
     {} as never,
-    {} as never,
     dietary as never,
     {} as never,
     logger as never,

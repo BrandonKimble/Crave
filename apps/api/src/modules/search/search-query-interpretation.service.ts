@@ -28,7 +28,6 @@ import {
   LINKER_MARGIN,
   LINKER_MIN_FLOOR,
 } from './linker-calibration.generated';
-import { OnDemandRequestService } from './on-demand-request.service';
 import { EngineCoverageService } from './engine-coverage.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
@@ -85,7 +84,6 @@ export class SearchQueryInterpretationService {
 
   constructor(
     private readonly entityTextSearch: EntityTextSearchService,
-    private readonly onDemandRequestService: OnDemandRequestService,
     private readonly engineCoverage: EngineCoverageService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
     private readonly unsegmentedResidue: UnsegmentedResidueService,
@@ -141,7 +139,10 @@ export class SearchQueryInterpretationService {
     const groups = rawGroups;
     const gazetteerMs = performance.now() - gazetteerStart;
 
-    // Residue = token runs no grounded span covers.
+    // Residue = token runs no grounded span covers. Same 48-token cap as
+    // the scanner (red team R4-P7): text past the cap was never scanned,
+    // so treating it as residue would stage and LLM-segment text the
+    // gazetteer never looked at.
     const tokenRe = /[\p{L}\p{N}][\p{L}\p{N}'&.-]*/gu;
     const tokens: { text: string; start: number; end: number }[] = [];
     let tokenMatch: RegExpExecArray | null;
@@ -151,6 +152,7 @@ export class SearchQueryInterpretationService {
         start: tokenMatch.index,
         end: tokenMatch.index + tokenMatch[0].length,
       });
+      if (tokens.length >= 48) break;
     }
     const covered = (t: { start: number; end: number }) =>
       groups.some((g) => g.start <= t.start && g.end >= t.end);
@@ -192,7 +194,16 @@ export class SearchQueryInterpretationService {
     // a hard constraint must not be consumable into a fuzzy compound.
     const abuts = (aEnd: number, bStart: number) =>
       aEnd <= bStart && !tokens.some((t) => t.start >= aEnd && t.end <= bStart);
+    // PROBE BUDGET (red team R4-P2, measured): alternating known/junk
+    // tokens produced 283 sequential probes / 13.9s. Real queries carry
+    // 1–3 unknown spans; when the budget is spent, remaining runs skip
+    // probing and go straight to staging (the async lane still learns).
+    let probeBudget = 24;
     for (const run of residueRuns) {
+      if (probeBudget <= 0) {
+        unresolvedResidues.push(run.text);
+        continue;
+      }
       const left = groups.find(
         (g) =>
           !consumedGroups.has(g) &&
@@ -214,6 +225,8 @@ export class SearchQueryInterpretationService {
       ];
       let linked = false;
       for (const attempt of attempts) {
+        if (probeBudget <= 0) break;
+        probeBudget -= 1;
         const [result] = await this.linkViaHybridRecall([
           {
             tempId: `food:${uuid()}`,
@@ -227,10 +240,23 @@ export class SearchQueryInterpretationService {
         if (result?.entityId) {
           // A joined link consumes its ABUTTING non-dietary neighbour —
           // fuzzy included: the residue-join exists precisely for typo
-          // compounds ("brekfast tacos" → "breakfast taco"), which are
-          // fuzzy by definition. The dangerous consumptions (dietary
-          // spans, skip-text compounds) are blocked upstream by the
-          // never-join-dietary and strict-abutment guards.
+          // compounds ("brekfast tacos" → "breakfast taco"). GUARD (red
+          // team R4-F1): the compound's LEFTOVER — its name minus the
+          // consumed span's words — must actually BE the residue, within
+          // the same length-banded edit budget the recall lattice uses
+          // (0/1/2 edits). Without this, "vgean breakfast tacos" fuzzy-
+          // linked to "vegetarian breakfast taco" and silently swapped a
+          // dietary meaning the user never typed.
+          if (
+            attempt.consumes &&
+            !this.leftoverMatchesResidue(
+              result.matchedName ?? '',
+              attempt.consumes.text,
+              run.text,
+            )
+          ) {
+            continue;
+          }
           residueResults.push(result);
           if (attempt.consumes) consumedGroups.add(attempt.consumes);
           linked = true;
@@ -289,8 +315,11 @@ export class SearchQueryInterpretationService {
     structuredRequest.searchRequestId ??= uuid();
 
     // Unknown residue → the staging zone (typed queue rows are minted by
-    // the async batch segmenter, never from raw residue).
-    if (unresolvedResidues.length) {
+    // the async batch segmenter, never from raw residue). Cap per request
+    // (red team R4-P6): a real query has 1–3 unknown spans; one crafted
+    // 205-char query staged 20 rows.
+    const stagedResidues = unresolvedResidues.slice(0, 3);
+    if (stagedResidues.length) {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
@@ -300,14 +329,22 @@ export class SearchQueryInterpretationService {
           ).engines.map((engine) => engine.engineId)
         : [];
       await Promise.all(
-        unresolvedResidues.map((residueText) =>
+        stagedResidues.map((residueText) =>
           this.unsegmentedResidue
             .recordResidue({
               residueText,
               searchRequestId: structuredRequest.searchRequestId,
               engineIds,
               userId: request.userId ?? null,
-              context: { query: request.query, source: 'gazetteer_understand' },
+              context: {
+                query: request.query,
+                source: 'gazetteer_understand',
+                // GEO IS THE SIGNAL'S SPINE (red team R4-①): without
+                // bounds the drained ask records no geo and the signals
+                // layer DROPS it — the whole unresolved→collection loop
+                // goes dark. The viewport rides to the queue row.
+                ...(request.bounds ? { bounds: request.bounds } : {}),
+              },
             })
             .catch((error: unknown) => {
               this.logger.warn('Residue staging write failed (ignored)', {
@@ -334,7 +371,12 @@ export class SearchQueryInterpretationService {
         foodAttributes: [],
         restaurantAttributes: [],
       },
-      unresolved: [],
+      // Unknown residue IS the unresolved report (red team R4-④): the
+      // expansion trigger and coverage messaging read this — an empty
+      // array silently disabled the widening lane for typo/unknown terms.
+      unresolved: unresolvedResidues.length
+        ? [{ type: 'food' as EntityType, terms: unresolvedResidues }]
+        : [],
       phaseTimings,
     };
   }
@@ -396,6 +438,35 @@ export class SearchQueryInterpretationService {
         return live;
       },
     );
+  }
+
+  /** R4-F1 consume guard: strip the consumed span's tokens from the
+   *  candidate name; what remains must match the residue within the
+   *  recall lattice's length-banded edit budget (0 edits ≤2 chars, 1 for
+   *  3–5, 2 for 6+ — the SAME rule entity-text-search applies). */
+  private leftoverMatchesResidue(
+    candidateName: string,
+    spanText: string,
+    residueText: string,
+  ): boolean {
+    const tokens = (t: string) =>
+      t
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}']+/u)
+        .filter(Boolean);
+    const spanSet = new Set(tokens(spanText).map((t) => singularish(t)));
+    const leftover = tokens(candidateName)
+      .filter((t) => !spanSet.has(singularish(t)))
+      .join(' ');
+    const residue = tokens(residueText).join(' ');
+    // Empty leftover = the candidate IS the span — the residue contributed
+    // NOTHING and would be silently swallowed by the consume ("vgean
+    // breakfast tacos" linking to plain "breakfast taco" eats the dietary
+    // word). Reject; the span stays grounded and the residue stands alone
+    // (bare probe, then staging).
+    if (!leftover) return false;
+    const budget = residue.length <= 2 ? 0 : residue.length <= 5 ? 1 : 2;
+    return levenshtein(leftover, residue) <= budget;
   }
 
   private async linkViaLemmaVariants(
@@ -674,16 +745,6 @@ export class SearchQueryInterpretationService {
     };
   }
 
-  private hasSelectedAutocompleteEntity(
-    request: NaturalSearchRequestDto,
-  ): boolean {
-    return Boolean(
-      request.submissionContext?.matchType === 'entity' &&
-        request.submissionContext.selectedEntityId &&
-        request.submissionContext.selectedEntityType,
-    );
-  }
-
   private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
     const widthMiles = this.calculateBoundsWidthMiles(bounds);
     if (!widthMiles) {
@@ -880,4 +941,30 @@ export class SearchQueryInterpretationService {
         return entities;
     }
   }
+}
+
+/** Plural-insensitive token compare for the consume guard (number never
+ *  decides identity — mirrors the lemma-variant law). */
+function singularish(token: string): string {
+  return token.endsWith('s') && token.length > 3 ? token.slice(0, -1) : token;
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (!m || !n) return Math.max(m, n);
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+    prev = cur;
+  }
+  return prev[n];
 }
