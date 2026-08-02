@@ -22,6 +22,8 @@ import {
   LINK_ELIGIBLE_EVIDENCE,
   linkerFloorsForTier,
 } from './evidence-admission';
+import { DietaryConstraintRegistry } from './dietary-constraints';
+import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
 import {
   LINKER_MARGIN,
   LINKER_MIN_FLOOR,
@@ -79,6 +81,7 @@ export class SearchQueryInterpretationService {
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly engineCoverage: EngineCoverageService,
+    private readonly dietaryConstraints: DietaryConstraintRegistry,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -309,22 +312,123 @@ export class SearchQueryInterpretationService {
       HYBRID_LINK_CONCURRENCY,
       async (input): Promise<EntityResolutionResult> => {
         const live = await this.linkOneInput(input);
-        if (live.entityId || input.entityType !== 'food') {
+        if (live.entityId) {
           return live;
         }
-        // INGREDIENT FALLBACK LANE: a food-classified term with no dish link
-        // may name an ingredient ("burrata", "miso"). Retry the SAME
-        // conservative link against the ingredient vocabulary; dish links
-        // always win (fallback only). When BOTH fail, return the original
-        // food-typed miss so unresolved routing / on-demand collection sees
-        // the term as the food the query model classified it as.
-        const ingredientLink = await this.linkOneInput({
-          ...input,
-          entityType: 'ingredient',
-        });
-        return ingredientLink.entityId ? ingredientLink : live;
+        if (input.entityType === 'food') {
+          // INGREDIENT FALLBACK LANE: a food-classified term with no dish
+          // link may name an ingredient ("burrata", "miso"). Retry the SAME
+          // conservative link against the ingredient vocabulary; dish links
+          // always win (fallback only).
+          const ingredientLink = await this.linkOneInput({
+            ...input,
+            entityType: 'ingredient',
+          });
+          if (ingredientLink.entityId) return ingredientLink;
+        }
+        if (input.entityType === 'food' || input.entityType === 'ingredient') {
+          // STEP-2 LEMMA VARIANT PROBE (spec §4.2): exact grounding is
+          // alias-dependent and 1,003 of 1,085 single-word foods carry no
+          // plural alias — "empanadas" must ground via its number-variant
+          // family, never via alias luck or fuzzy floors.
+          const variantLink = await this.linkViaLemmaVariants(input);
+          if (variantLink?.entityId) return variantLink;
+        }
+        // STEP-2 UNTYPED EXACT RECALL (spec §4.2, the never-look defect):
+        // the guessed type looked in the wrong vocabulary — probe EVERY
+        // bucket, exact evidence only (floor-independent; fuzzy stays
+        // type-scoped until the linker re-sweep re-fits the floors), then
+        // place into ONE bucket: dietary flag wins by rule, otherwise the
+        // term follows its only type; genuine multi-type conflicts (the
+        // ~44-name curated list, calibration tail) fall back to a
+        // deterministic type order.
+        const crossType = await this.linkExactAcrossTypes(input);
+        return crossType ?? live;
       },
     );
+  }
+
+  private async linkViaLemmaVariants(
+    input: EntityResolutionInput,
+  ): Promise<EntityResolutionResult | null> {
+    const term = input.normalizedName?.trim().toLowerCase() ?? '';
+    if (!term) return null;
+    const variants = foodNameVariants(term).filter((v) => v !== term);
+    for (const variant of variants.slice(0, 4)) {
+      const candidates = await this.entityTextSearch.retrieveCandidates(
+        variant,
+        [input.entityType],
+        HYBRID_LINK_SHORTLIST_K,
+        { denseMode: 'none' },
+      );
+      const exact = candidates.find((c) => c.sparseEvidence === 'exact');
+      if (exact) {
+        return {
+          tempId: input.tempId,
+          entityId: exact.entityId,
+          confidence: 1,
+          resolutionTier: 'exact',
+          matchedName: exact.name,
+          originalInput: input,
+        };
+      }
+    }
+    return null;
+  }
+
+  private static readonly CROSS_TYPE_PLACEMENT_ORDER: EntityType[] = [
+    'food_attribute',
+    'food',
+    'restaurant_attribute',
+    'ingredient',
+    'restaurant',
+  ] as EntityType[];
+
+  private async linkExactAcrossTypes(
+    input: EntityResolutionInput,
+  ): Promise<EntityResolutionResult | null> {
+    const term = input.normalizedName?.trim() ?? '';
+    if (!term) return null;
+    const otherTypes =
+      SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.filter(
+        (t) => t !== input.entityType,
+      );
+    const candidates = await this.entityTextSearch.retrieveCandidates(
+      term,
+      otherTypes,
+      HYBRID_LINK_SHORTLIST_K,
+      { denseMode: 'none' },
+    );
+    const exacts = candidates.filter((c) => c.sparseEvidence === 'exact');
+    if (!exacts.length) return null;
+    // SINGLE-BUCKET PLACEMENT: dietary flag WINS by rule (spec §4.1 coupling
+    // — "vegan" is multi-type and must land where hardness applies) …
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const dietaryExact = exacts.find((c) => dietaryIds.has(c.entityId));
+    const winner =
+      dietaryExact ??
+      // … otherwise the term follows its only type, and a genuine
+      // multi-type tie resolves by the deterministic placement order
+      // (curated-list refinement lands with the calibration tail).
+      [...exacts].sort(
+        (a, b) =>
+          SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+            a.type,
+          ) -
+          SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+            b.type,
+          ),
+      )[0];
+    return {
+      tempId: input.tempId,
+      entityId: winner.entityId,
+      confidence: 1,
+      resolutionTier: 'exact',
+      matchedName: winner.name,
+      // Re-bucket: grouping keys off originalInput.entityType (the same
+      // mechanism the ingredient fallback lane uses).
+      originalInput: { ...input, entityType: winner.type },
+    };
   }
 
   private async linkOneInput(
