@@ -1698,6 +1698,21 @@ model OnDemandRequest {
 /// never enter the typed queue as-is. It lands HERE, and the async batch
 /// segmenter drains it into typed queue rows — the sync per-search LLM's
 /// segmentation job relocated, not a new capability.
+/// SymSpell-style delete dictionary over the entity vocabulary (round-5
+/// ideal abstraction): the edit-distance recall lane as one btree probe +
+/// JS Damerau-Levenshtein on the shortlist. DERIVED — rebuilt nightly.
+model EntityWordDelete {
+  deleteKey  String     @map("delete_key") @db.VarChar(64)
+  word       String     @db.VarChar(64)
+  entityId   String     @map("entity_id") @db.Uuid
+  entityType EntityType @map("entity_type")
+  isAlias    Boolean    @default(false) @map("is_alias")
+
+  @@id([deleteKey, word, entityId])
+  @@index([deleteKey], map: "idx_entity_word_deletes_key")
+  @@map("derived_entity_word_deletes")
+}
+
 model OnDemandUnsegmentedResidue {
   residueId       String    @id @default(dbgenerated("gen_random_uuid()")) @map("residue_id") @db.Uuid
   residueText     String    @map("residue_text") @db.VarChar(500)

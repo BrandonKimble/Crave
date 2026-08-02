@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
+import { EntityLexiconBuilderService } from './entity-lexicon-builder.service';
 import { EntityTextSearchService } from './entity-text-search.service';
 import { EntityEmbeddingReconcilerService } from './entity-embedding-reconciler.service';
 import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.service';
@@ -12,6 +13,7 @@ import { EntitySiblingEdgeBuilderService } from './entity-sibling-edge-builder.s
     EntityTextSearchService,
     EntityEmbeddingReconcilerService,
     EntitySiblingEdgeBuilderService,
+    EntityLexiconBuilderService,
   ],
   exports: [
     EntityTextSearchService,

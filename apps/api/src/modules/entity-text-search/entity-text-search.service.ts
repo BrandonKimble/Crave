@@ -66,6 +66,11 @@ export interface RecallCandidate {
 }
 
 import {
+  damerauLevenshtein,
+  deletionVariants,
+  editBudgetForLength,
+} from './entity-lexicon';
+import {
   groupEntitySpans,
   pickSpanWinner,
   type EntitySpanGroup,
@@ -430,19 +435,38 @@ export class EntityTextSearchService {
       }
 
       if (longTerms.length > 0) {
-        const rows = await this.fetchFtsTrgmRowsForTerms({
-          terms: longTerms,
-          entityTypes,
-          perTermLimit: safePerTermLimit,
-          engineId,
-          thresholdsByTerm,
-        });
+        const [rows, lexiconRowsByTerm] = await Promise.all([
+          this.fetchFtsTrgmRowsForTerms({
+            terms: longTerms,
+            entityTypes,
+            perTermLimit: safePerTermLimit,
+            engineId,
+            thresholdsByTerm,
+          }),
+          this.fetchLexiconEditRows({
+            terms: longTerms,
+            entityTypes,
+            engineId: engineId ?? null,
+          }),
+        ]);
         rows.forEach((row) => {
           const term = row.term ?? '';
           const bucket = fetchedRowsByTerm.get(term) ?? [];
           bucket.push(row);
           fetchedRowsByTerm.set(term, bucket);
         });
+        // Delete-dictionary edit lane merges BEHIND the lattice lanes: an
+        // entity already admitted by a stronger lane keeps its row; lexicon
+        // rows only add entities the trigram/FTS lanes missed (the
+        // transposition class).
+        for (const [term, lexRows] of lexiconRowsByTerm) {
+          const bucket = fetchedRowsByTerm.get(term) ?? [];
+          const present = new Set(bucket.map((r) => r.entityId));
+          for (const lexRow of lexRows) {
+            if (!present.has(lexRow.entityId)) bucket.push(lexRow);
+          }
+          fetchedRowsByTerm.set(term, bucket);
+        }
       }
 
       missingTerms.forEach((term) => {
@@ -728,6 +752,80 @@ export class EntityTextSearchService {
     `);
   }
 
+  /** DELETE-DICTIONARY edit lane (round-5 ideal): one btree probe over the
+   *  precomputed deletion variants, then Damerau-Levenshtein verification in
+   *  JS on the shortlist. Replaces the per-row levenshtein() seq scan; a
+   *  transposition ("vgean"→"vegan") honestly costs 1 here. */
+  private async fetchLexiconEditRows(options: {
+    terms: string[];
+    entityTypes: EntityType[];
+    engineId: string | null;
+  }): Promise<Map<string, EntitySearchRow[]>> {
+    const out = new Map<string, EntitySearchRow[]>();
+    const probes = options.terms
+      .map((term) => ({ term, budget: editBudgetForLength(term.length) }))
+      .filter((p) => p.budget > 0 && p.term.length >= 3 && p.term.length <= 64);
+    if (!probes.length) return out;
+
+    const allVariants = new Set<string>();
+    const variantsByTerm = new Map<string, Set<string>>();
+    for (const probe of probes) {
+      const variants = new Set(deletionVariants(probe.term, probe.budget));
+      variantsByTerm.set(probe.term, variants);
+      for (const v of variants) allVariants.add(v);
+    }
+
+    const typeArray = Prisma.sql`ARRAY[${Prisma.join(
+      options.entityTypes.map((t) => Prisma.sql`${t}::entity_type`),
+    )}]`;
+    const territoryFilter = await this.buildRestaurantEngineTerritoryFilter(
+      'e',
+      options.engineId,
+    );
+    const rows = await this.prisma.$queryRaw<
+      {
+        deleteKey: string;
+        word: string;
+        entityId: string;
+        name: string;
+        type: EntityType;
+      }[]
+    >(Prisma.sql`
+      SELECT DISTINCT d.delete_key AS "deleteKey", d.word, d.entity_id AS "entityId",
+             e.name, e.type
+      FROM derived_entity_word_deletes d
+      JOIN core_entities e ON e.entity_id = d.entity_id
+      WHERE d.delete_key = ANY(${Array.from(allVariants)}::text[])
+        AND d.entity_type = ANY(${typeArray})
+        AND e.status = 'active'::entity_status
+        ${territoryFilter}
+    `);
+
+    for (const probe of probes) {
+      const variants = variantsByTerm.get(probe.term)!;
+      const best = new Map<string, EntitySearchRow>();
+      for (const row of rows) {
+        if (!variants.has(row.deleteKey)) continue;
+        const distance = damerauLevenshtein(probe.term, row.word);
+        if (distance > probe.budget || distance === 0) continue;
+        const editScore =
+          1 - distance / Math.max(probe.term.length, row.word.length);
+        const existing = best.get(row.entityId);
+        if (!existing || (existing.editScore ?? 0) < editScore) {
+          best.set(row.entityId, {
+            term: probe.term,
+            entityId: row.entityId,
+            name: row.name,
+            type: row.type,
+            editScore,
+          } as EntitySearchRow);
+        }
+      }
+      if (best.size) out.set(probe.term, Array.from(best.values()));
+    }
+    return out;
+  }
+
   private async fetchFtsTrgmRowsForTerms(options: {
     terms: string[];
     entityTypes: EntityType[];
@@ -882,15 +980,11 @@ export class EntityTextSearchService {
                 THEN length(v.term)::real / NULLIF(length(crave_aliases_haystack_lower(e.aliases)), 0)
                 ELSE 0 END
             ) AS "containsCoverage",
-            -- Best per-word edit score within budget ("piza"→"pizza" = 0.8);
-            -- NULL when no word qualifies.
-            (
-              SELECT MAX(1.0 - levenshtein(w, v.term)::real / GREATEST(length(w), length(v.term)))
-              FROM unnest(string_to_array(lower(e.name), ' ')) AS w
-              WHERE length(w) > 0
-                AND abs(length(w) - length(v.term)) <= v.edit_budget
-                AND levenshtein(w, v.term) <= v.edit_budget
-            ) AS "editScore",
+            -- Edit-distance admission moved to the DELETE-DICTIONARY lane
+            -- (round-5 ideal): one btree probe + JS Damerau-Levenshtein —
+            -- transpositions reachable, constant in corpus size. The old
+            -- per-row levenshtein() subquery was the seq-scan cost center.
+            NULL::real AS "editScore",
             (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
@@ -918,16 +1012,6 @@ export class EntityTextSearchService {
               -- diluted whole string) — recovers typo'd/partial first words.
               OR word_similarity(v.term, lower(e.name)) >= v.similarity_threshold
               OR word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) >= v.similarity_threshold
-              -- Step 6: bounded per-token edit distance — the short-typo class
-              -- trigram misses ("frankln"→"franklin"). Length-windowed so a word
-              -- too different in length can't match; budget is length-banded.
-              OR EXISTS (
-                SELECT 1
-                FROM unnest(string_to_array(lower(e.name), ' ')) AS w
-                WHERE length(w) > 0
-                  AND abs(length(w) - length(v.term)) <= v.edit_budget
-                  AND levenshtein(w, v.term) <= v.edit_budget
-              )
             )
         ) scored
         ORDER BY
