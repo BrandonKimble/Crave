@@ -23,9 +23,10 @@ verification duties.
 
 ## Current state you inherit
 
-- Prod: current code, healthy; `CRONS_ENABLED=false` AND
-  `COLLECTION_SCHEDULER_ENABLED=false` (everything quiet — re-enable ONLY
-  after activation, last step). Registry: collection v1 active
+- Prod: current code, healthy. `CRONS_ENABLED` / `COLLECTION_SCHEDULER_ENABLED`
+  are currently false because the corpus is parked pending the prompt work —
+  turn them back ON before/during the shadow; the flow does NOT require them
+  off (see the skill's invariants). Registry: collection v1 active
   (hash cf421fe7…), v2–v6 = historical prompts, retired.
 - Prod GitHub auto-deploy is DISABLED for api+worker (watch patterns that
   never match) — deploy prod with `./scripts/rig/deploy.sh` only.
@@ -73,8 +74,14 @@ REEXTRACT_DB=$(grep -o 'postgresql://.*' ~/.crave-prod-readonly.env | sed 's/PRO
 #    then: gc-unsupported-entities.sql (dry → execute), anchor-audit clean,
 #    prompt-activate.ts N, redeploy prod (deploy.sh), cost-reconcile.sh
 
-# 5. ONLY NOW: re-enable prod — CRONS_ENABLED=true, COLLECTION_SCHEDULER_ENABLED=true
-#    then DISARM every REEXTRACT_* var.
+# 5. DISARM every REEXTRACT_* var + DISABLE_RESTAURANT_ENRICHMENT, then run
+#    scripts/enrich-restaurants.ts to ground restaurants live collection
+#    minted during the window.
+#    NOTE: crons and collection stay ON throughout — the merge sweeps now
+#    filter to active-supported vocabulary, so a shadow no longer needs the
+#    kill-switch. (Superseded the old "re-enable at the end" step, which
+#    contradicted the skill and would have left collection dead for the
+#    whole review window.)
 ```
 
 ## FIRST-RUN verification duties (you are calibrating the machinery)
@@ -108,6 +115,15 @@ REEXTRACT_DB=$(grep -o 'postgresql://.*' ~/.crave-prod-readonly.env | sed 's/PRO
    tree is dirty.
 
 ## If something goes wrong
+
+**If activation was INTERRUPTED** (crash, SIGTERM, laptop sleep): the pointer
+flips that committed are durable, the rebuild may not have run. Do NOT
+`rollback` and do NOT re-run blindly — first re-run
+`activate ... --reviewed --execute`: it now resolves the whole plan BEFORE
+mutating, saves it to `~/.crave-activation-plan-v<N>-<communities>.json`, and
+rebuilds the ENTIRE planned restaurant set every time, so a resume is
+idempotent and self-healing. Verify the printed plan counts match the first
+run's before continuing.
 
 Activation is reversible (owner decision 2026-08-01): the superseded
 generation's events are RETAINED, so `reextract.sh rollback <communities>

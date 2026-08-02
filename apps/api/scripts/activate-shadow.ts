@@ -17,6 +17,8 @@
  */
 import { NestFactory } from '@nestjs/core';
 import { createHash } from 'crypto';
+import { writeFileSync } from 'fs';
+import { join } from 'path';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CollectionEvidenceService } from '../src/modules/content-processing/reddit-collector/collection-evidence.service';
@@ -227,7 +229,15 @@ async function main(): Promise<void> {
         AND d.platform <> 'poll_surface'`;
     const ratio = Number(total) > 0 ? Number(shadowed) / Number(total) : 0;
     const minRatioRaw = arg('allow-partial');
+    // A3: arg() returns the NEXT argv token, so `--allow-partial --execute`
+    // yielded NaN and `ratio < NaN` is false — the 99% floor silently
+    // vanished. A malformed value must refuse, never open the gate.
     const minRatio = minRatioRaw ? Number(minRatioRaw) / 100 : 0.99;
+    if (!Number.isFinite(minRatio) || minRatio <= 0 || minRatio > 1) {
+      throw new Error(
+        `REFUSED: --allow-partial needs a percentage 1-100, got '${String(minRatioRaw)}'.`,
+      );
+    }
     console.log(
       `Shadow coverage: ${Number(shadowed)}/${Number(total)} docs (${(ratio * 100).toFixed(1)}%), floor ${(minRatio * 100).toFixed(1)}%`,
     );
@@ -247,31 +257,80 @@ async function main(): Promise<void> {
         'discard the old version after you are confident.',
     );
 
+    // PLAN BEFORE MUTATING (crash-consistency red team A1 — CRITICAL).
+    // The affected-restaurant set used to be accumulated INSIDE the flip
+    // loop from documentsOwnedByRun(), whose predicate is
+    // "docs still pointing at the run I replayed" — a predicate ACTIVATION
+    // ITSELF DESTROYS. So a crash-resume returned [] for every already-
+    // flipped run, rebuilt only the tail, and left the first half serving
+    // generation-A projections over a generation-B ledger FOREVER, while
+    // printing success. The pointer flip is idempotent; the rebuild was not.
+    //
+    // Now: resolve the entire plan (documents + affected restaurants) up
+    // front, persist it, and rebuild the WHOLE planned set on every run —
+    // including a resume. Re-running is then genuinely idempotent.
+    const plan: Array<{ runId: string; documentIds: string[] }> = [];
     const affectedRestaurants = new Set<string>();
-    let flipped = 0;
     for (const run of runs) {
       const documentIds = await scope.documentsOwnedByRun(run.run_id);
-      const restaurants =
-        await scope.affectedRestaurantsForDocuments(documentIds);
-      for (const id of restaurants) affectedRestaurants.add(id);
+      if (!documentIds.length) continue;
+      plan.push({ runId: run.run_id, documentIds });
+      for (const id of await scope.affectedRestaurantsForDocuments(documentIds))
+        affectedRestaurants.add(id);
+    }
+    const restaurantIds = Array.from(affectedRestaurants);
+    const planPath = join(
+      process.env.HOME ?? '.',
+      `.crave-activation-plan-v${promptVersion}-${communities.join('+')}.json`,
+    );
+    writeFileSync(
+      planPath,
+      JSON.stringify({ promptVersion, communities, plan, restaurantIds }),
+    );
+    console.log(
+      `Plan: ${plan.length} runs, ${plan.reduce((n, p) => n + p.documentIds.length, 0)} documents, ${restaurantIds.length} restaurants → ${planPath}`,
+    );
+    if (!plan.length) {
+      console.log(
+        'Nothing to activate (already activated? a resume rebuilds from the saved plan below).',
+      );
+    }
+
+    let flipped = 0;
+    for (const step of plan) {
       // RETAIN (rollback re-derivation): a generation switch keeps the
       // superseded events — readers filter on the active run, so they are
       // inert, and rollback stays a pointer flip. Space is reclaimed only
       // by explicitly discarding the old version.
-      await evidence.activateRunForDocuments(run.run_id, documentIds, {
+      await evidence.activateRunForDocuments(step.runId, step.documentIds, {
         supersede: 'retain',
       });
-      flipped += documentIds.length;
+      flipped += step.documentIds.length;
       if (flipped % 500 === 0) console.log(`  flipped ${flipped} documents…`);
     }
-    console.log(`Activated ${runs.length} runs / ${flipped} documents.`);
+    console.log(`Activated ${plan.length} runs / ${flipped} documents.`);
 
-    const restaurantIds = Array.from(affectedRestaurants);
-    console.log(
-      `Rebuilding projections for ${restaurantIds.length} restaurants (full surviving ledger — R5)…`,
-    );
-    await rebuild.rebuildForRestaurants(restaurantIds);
+    // Mark dirty BEFORE the rebuild (A5): over-marking is free; a crash
+    // between rebuild and mark would otherwise leave new filters with old
+    // ranking — the exact window markDirty exists to close.
     await rescore.markDirty(`shadow activation v${promptVersion}`);
+    // CHUNKED (A2): one transaction over every affected restaurant (2,631
+    // for austinfood alone) risks the 15-min timeout AND holds the GLOBAL
+    // food-category-edge advisory lock for its whole duration, stalling
+    // live collection. The repair sweep already batches at 100; activation
+    // now uses the same bound.
+    const REBUILD_CHUNK = 100;
+    console.log(
+      `Rebuilding projections for ${restaurantIds.length} restaurants in chunks of ${REBUILD_CHUNK} (full surviving ledger — R5)…`,
+    );
+    for (let i = 0; i < restaurantIds.length; i += REBUILD_CHUNK) {
+      await rebuild.rebuildForRestaurants(
+        restaurantIds.slice(i, i + REBUILD_CHUNK),
+      );
+      if ((i / REBUILD_CHUNK) % 5 === 0 && i > 0) {
+        console.log(`  rebuilt ${i}/${restaurantIds.length}…`);
+      }
+    }
     console.log(
       'DONE. Close with: reload/anchor-audit.sql, reload/gc-unsupported-entities.sql, prompt-activate.ts, cost-reconcile.sh',
     );

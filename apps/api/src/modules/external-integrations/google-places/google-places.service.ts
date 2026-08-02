@@ -14,6 +14,7 @@ import { AxiosError } from 'axios';
 import { LoggerService } from '../../../shared';
 import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
 import { UsageLedgerService } from '../shared/usage-ledger.service';
+import { GovernanceService } from '../governance/governance.service';
 import { ExternalApiService } from '../shared/external-integrations.types';
 
 const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
@@ -264,6 +265,7 @@ export class GooglePlacesService {
     private readonly configService: ConfigService,
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
     private readonly usageLedger: UsageLedgerService,
+    private readonly governance: GovernanceService,
   ) {
     this.logger = loggerService.setContext('GooglePlacesService');
     this.requestTimeout =
@@ -297,6 +299,11 @@ export class GooglePlacesService {
     );
     const fieldMask = fieldMaskFields.join(',');
 
+    // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
+    // rate limits shape burst, they are not a budget — the configured
+    // limits permit ~$2.8k/day. googlePlaces.monthlySpend was registered as
+    // the catastrophe backstop but nothing admitted against it.
+    await this.governance.assertPlacesSpendOpen();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'placeDetails',
@@ -422,6 +429,11 @@ export class GooglePlacesService {
       throw new BadRequestException('input is required for autocomplete');
     }
 
+    // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
+    // rate limits shape burst, they are not a budget — the configured
+    // limits permit ~$2.8k/day. googlePlaces.monthlySpend was registered as
+    // the catastrophe backstop but nothing admitted against it.
+    await this.governance.assertPlacesSpendOpen();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'placeAutocomplete',
@@ -589,6 +601,11 @@ export class GooglePlacesService {
       throw new BadRequestException('input is required for find place');
     }
 
+    // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
+    // rate limits shape burst, they are not a budget — the configured
+    // limits permit ~$2.8k/day. googlePlaces.monthlySpend was registered as
+    // the catastrophe backstop but nothing admitted against it.
+    await this.governance.assertPlacesSpendOpen();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'findPlaceFromText',

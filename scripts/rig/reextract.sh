@@ -62,6 +62,7 @@ case "$VERB" in
     ;;
   rollback)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"
+    require_int_version "$VERSION"
     shift 2
     echo "ROLLBACK of v$VERSION: docs flip back to their pre-activation runs (retained events make this exact)."
     (cd "$API" && run_node scripts/activate-shadow.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" --rollback "$@")

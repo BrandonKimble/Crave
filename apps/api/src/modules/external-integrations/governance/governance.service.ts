@@ -550,6 +550,61 @@ export class GovernanceService implements OnModuleInit {
     );
   }
 
+  /**
+   * THE PLACES DOLLAR GATE (capacity re-derivation, 2026-08-02).
+   *
+   * `googlePlaces.monthlySpend` was REGISTERED as "the catastrophe backstop"
+   * but nothing ever admitted against it — a decorative budget. Measured
+   * from the ledger: the rate limits alone permit ~$2,825/day ($84.7k/mo)
+   * while the July accident that prompted all this governance was $323 in
+   * one morning. Rate is not budget; this is the budget.
+   *
+   * Fail-closed exactly like the Gemini gate: an unconfirmable window
+   * refuses rather than admitting against an unknown balance.
+   */
+  async assertPlacesSpendOpen(): Promise<void> {
+    const monthKey = new Date().toISOString().slice(0, 7);
+    const verdict = await this.pools.admit('googlePlaces.monthlySpend');
+    if (verdict.admitted) {
+      return;
+    }
+    if (verdict.reason === 'unconfirmed') {
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'places_backstop',
+        title: 'Places spend budget cannot be confirmed',
+        body: 'The durable spend window failed to load, so month-to-date Places spend is unknown. Refusing vendor spend rather than admitting against a window that reads zero.',
+        dedupeKey: `places_backstop_unconfirmed:${monthKey}`,
+      });
+      throw new Error(
+        'Places spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance',
+      );
+    }
+    if (verdict.reason === 'poisoned') {
+      const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'places_backstop',
+        title: 'Places spend budget poisoned (vendor cap)',
+        body: `Places spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued.`,
+        dedupeKey: `places_backstop_poisoned:${monthKey}`,
+      });
+      throw new Error(
+        `Places spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`,
+      );
+    }
+    this.opsAlerts.emit({
+      severity: 'critical',
+      kind: 'places_backstop',
+      title: 'Places spend budget backstop fired',
+      body: 'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised.',
+      dedupeKey: `places_backstop:${monthKey}`,
+    });
+    throw new Error(
+      'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised',
+    );
+  }
+
   async draw<T>(
     poolName: string,
     workClass: string,

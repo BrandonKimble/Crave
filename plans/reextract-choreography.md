@@ -177,7 +177,7 @@ sentence. Verbs the agent runs:
   `spend_campaigns` table IS the re-extraction registry (state, envelope,
   spent, breach — the ops-dashboard Campaigns card already shows it).
 - `shadow` — replay under candidate prompt version, activate:false,
-  campaign-gated (isDispatchable), batch-drained. Quiescence checks built in.
+  campaign-gated (isDispatchable), batch-drained. Quiescence is a MANUAL pre-check (red team B4: never built — verify no non-terminal llm_batch_jobs for the target communities before arming).
 - `diff` — the reporter; outputs a structured review file:
   AUTO (exact/alias twins → merge; unchanged) vs AGENT-REVIEW (semantic
   twins by embedding distance, renamed anchors) vs OWNER-DECISION (starved
@@ -185,8 +185,7 @@ sentence. Verbs the agent runs:
   instructs the agent how to triage and what requires owner input.
 - `activate --communities <list|all|rolling>` — flip pointers + projection
   rebuild (R5 fix included) + anchored GC + anchor-audit + cost-reconcile.
-  Refuses while the campaign is breached or the review has open
-  OWNER-DECISION items.
+  Refuses a non-candidate version and a sub-99% shadow. NOTE (red team B4): it does NOT check the campaign state or the review file — `--reviewed` is an operator ATTESTATION, not a verified gate.
 - `status` — campaigns in flight, shadow coverage, review-queue counts,
   per-lane collection health.
 

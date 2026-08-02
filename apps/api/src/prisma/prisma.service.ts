@@ -46,6 +46,7 @@ export class PrismaService
 
   async onModuleInit() {
     this.logger = this.loggerService.setContext('PrismaService');
+    this.assertNotProdDatabaseFromDev();
     this.logPrismaClientMetadata();
 
     if (this.validationService) {
@@ -88,6 +89,41 @@ export class PrismaService
   async onModuleDestroy() {
     await this.$disconnect();
     this.logger.info('Database connections closed gracefully');
+  }
+
+  /**
+   * THE LAW, ENFORCED (env-split audit 2026-08-02): CLAUDE.md has said
+   * "NEVER point a local api at the prod DB" since the Railway cutover, but
+   * it was documentation only — nothing checked. A laptop process holding a
+   * Railway proxy URL writes to production with full superuser rights, and
+   * the shared prod/staging password meant no operator could tell the two
+   * apart by inspection.
+   *
+   * A non-production APP_ENV may not open a Railway-hosted database. Set
+   * ALLOW_REMOTE_DB=1 for the deliberate exception (a read-only audit
+   * script), which is then an explicit act rather than an accident.
+   */
+  private assertNotProdDatabaseFromDev(): void {
+    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '')
+      .trim()
+      .toLowerCase();
+    const isProdRuntime = appEnv === 'prod' || appEnv === 'production';
+    if (isProdRuntime || process.env.ALLOW_REMOTE_DB === '1') {
+      return;
+    }
+    const url = process.env.DATABASE_URL || '';
+    const remoteHost = /@[^/]*(rlwy\.net|railway\.internal|railway\.app)/i.test(
+      url,
+    );
+    if (remoteHost) {
+      throw new Error(
+        'REFUSED: a non-production process (APP_ENV=' +
+          (appEnv || 'unset') +
+          ') is pointed at a Railway-hosted database. This is the documented ' +
+          'never-point-local-at-prod law. Use the local DB, or set ' +
+          'ALLOW_REMOTE_DB=1 to override deliberately.',
+      );
+    }
   }
 
   private logPrismaClientMetadata(): void {

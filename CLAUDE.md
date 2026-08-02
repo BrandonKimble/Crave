@@ -92,7 +92,7 @@ Places line by summing gemini only. Run
 `./scripts/rig/cost-reconcile.sh [days]` after every one-off spend event
 (reload, city onboarding, backfill) and ~monthly. ANY one-off cost
 estimate must include BOTH lines: LLM (per-doc, measured) AND Places
-re-enrichment (~$0.028 per newly-created restaurant, measured 2026-07-30).
+re-enrichment (~$0.067 per newly-created restaurant — RE-MEASURED 2026-08-02 from the raw ledger: $749.79 over 39,818 calls across 11,141 grounded restaurants. The old $0.028 figure was 2.4x understated because it counted only one enrichment event's Places lines).
 
 ## Where product & business thinking lives (read before working on a feature)
 

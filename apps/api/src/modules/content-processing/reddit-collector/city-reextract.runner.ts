@@ -187,7 +187,13 @@ export class CityReextractRunner implements OnApplicationBootstrap {
       ok,
       failed,
       totalDocs,
-      note: 'Batch ingestion + projection rebuilds continue asynchronously; when the queue drains: run scripts/reload/anchor-audit.sql, reconcile costs (scripts/rig/cost-reconcile.sh), then remove REEXTRACT_COMMUNITIES/REEXTRACT_CAMPAIGN_ID and re-enable the scheduler.',
+      // The next steps DIFFER by mode (red team B7): the old wipe-flow's
+      // closing sequence was being logged even in shadow mode, telling an
+      // agent tailing worker logs at 3am to re-enable a scheduler that
+      // should never have been off and to skip the diff/activate review.
+      note: activate
+        ? 'ACTIVATE mode. Batch ingestion + projection rebuilds continue asynchronously; when the queue drains: run scripts/reload/anchor-audit.sql, reconcile costs (scripts/rig/cost-reconcile.sh), then remove the REEXTRACT_* vars.'
+        : 'SHADOW mode — nothing is live yet. When the batch queue drains: ./scripts/rig/reextract.sh diff <communities> <version>, triage the review file, THEN activate. Do NOT touch CRONS_ENABLED; crons stay on.',
     });
   }
 }
