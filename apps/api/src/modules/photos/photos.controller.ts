@@ -8,6 +8,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
@@ -23,6 +24,7 @@ import {
   IsEnum,
   IsIn,
   IsInt,
+  Max,
   Min,
   ValidateNested,
   IsISO8601,
@@ -105,6 +107,31 @@ export class PhotoStripRefDto {
   connectionId?: string;
 }
 
+/**
+ * Gallery paging. The service has supported limit/offset since it was written;
+ * the ROUTE never exposed them, so the endpoint returned at most the default
+ * page and a client had no way to ask for more (red team 2026-08-02).
+ *
+ * It was invisible until `totalCount` became honest: while the count was
+ * (wrongly) the length of the returned page, "60 of 60" looked consistent. Now
+ * a 500-photo restaurant reports 500 and hands back 60 — so the gap shows, and
+ * gets closed.
+ */
+export class RestaurantGalleryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  limit?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
+}
+
 export class GetPhotoStripsDto {
   @IsArray()
   @ArrayMinSize(1)
@@ -148,10 +175,14 @@ export class PhotosController {
   async restaurantGallery(
     @CurrentUser() viewer: User,
     @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
+    @Query() query: RestaurantGalleryQueryDto,
   ) {
     return this.photoReads
       .forViewer(viewer.userId)
-      .restaurantGallery(restaurantId);
+      .restaurantGallery(restaurantId, {
+        limit: query.limit,
+        offset: query.offset,
+      });
   }
 
   @Get('users/:userId/food-log')

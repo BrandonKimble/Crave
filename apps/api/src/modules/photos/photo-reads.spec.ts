@@ -94,6 +94,27 @@ describe('the exclusion is pushed into the query', () => {
     expect([...params.excludeUserIds].sort()).toEqual([BLOCKED_A, BLOCKED_B]);
   });
 
+  it('the page and the TOTAL are different numbers — the fixture that would have caught the regression', async () => {
+    // The bug this replaces: `totalCount` was set to the length of the
+    // filtered page. The original fixture used totalCount:2 with exactly 2
+    // photos, so the two quantities coincided and the mix-up was invisible.
+    // Here the underlying read reports a total of 87 while handing back a
+    // page of 3 — if anything downstream re-derives the count from the page,
+    // this fails.
+    const { model, reads } = build();
+    reads.restaurantGallery.mockResolvedValue({
+      restaurantId: 'r1',
+      totalCount: 87,
+      all: [1, 2, 3].map((n) => ({ photoId: `p${n}`, userId: 'a' })),
+      byDish: [],
+    });
+    const gallery = await model
+      .forViewer(VIEWER)
+      .restaurantGallery('r1', { limit: 3 });
+    expect(gallery.totalCount).toBe(87);
+    expect(gallery.all).toHaveLength(3);
+  });
+
   it('an anonymous viewer excludes nothing and asks the block store nothing', async () => {
     const { model, reads, blocks } = build();
     await model.forViewer(null).cardStrips([{ restaurantId: 'r1' }]);
@@ -144,5 +165,33 @@ describe('the seam is the only door', () => {
   it('the list-tile gallery reads through the seam, not PhotoReadService', () => {
     expect(tileGallery).toContain('forViewer(');
     expect(tileGallery).not.toContain('this.photoRead.');
+  });
+});
+
+// The ROUTE must expose what the service supports. The gallery service has
+// taken limit/offset since it was written, but the controller never read them
+// — so the endpoint could only ever return the default page while reporting a
+// larger honest total, with no way for a client to reach the rest.
+describe('gallery paging reaches the route', () => {
+  const controller = readFileSync(
+    join(__dirname, 'photos.controller.ts'),
+    'utf8',
+  );
+
+  it('the gallery route accepts and forwards limit/offset', () => {
+    const at = controller.indexOf('async restaurantGallery(');
+    expect(at).toBeGreaterThan(-1);
+    const body = controller.slice(at, at + 420);
+    expect(body).toContain('@Query()');
+    expect(body).toContain('limit: query.limit');
+    expect(body).toContain('offset: query.offset');
+  });
+
+  it('the paging DTO is bounded — an unbounded limit is a DoS lever', () => {
+    expect(controller).toContain('class RestaurantGalleryQueryDto');
+    const at = controller.indexOf('class RestaurantGalleryQueryDto');
+    const dto = controller.slice(at, at + 400);
+    expect(dto).toMatch(/@Max\(\d+\)/);
+    expect(dto).toMatch(/@Min\(1\)/);
   });
 });
