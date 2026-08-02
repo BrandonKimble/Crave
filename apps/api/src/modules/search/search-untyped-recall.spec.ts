@@ -46,6 +46,7 @@ function makeService(
     {} as never,
     {} as never,
     dietary as never,
+    {} as never,
     logger as never,
   );
 }

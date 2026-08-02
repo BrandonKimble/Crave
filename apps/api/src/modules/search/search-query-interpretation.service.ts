@@ -23,6 +23,8 @@ import {
   linkerFloorsForTier,
 } from './evidence-admission';
 import { DietaryConstraintRegistry } from './dietary-constraints';
+import { UnsegmentedResidueService } from './unsegmented-residue.service';
+import type { EntitySpanGroup } from '../entity-text-search/entity-text-search.service';
 import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
 import {
   LINKER_MARGIN,
@@ -68,6 +70,13 @@ const LINKER_TIE_EPSILON = 0.001;
 // Only genuine lexical evidence is link-eligible — never a weak/dense-only
 // collision (the ham/rum class); those must not nominate a link.
 
+const GAZETTEER_UNDERSTAND_TYPES: EntityType[] = [
+  'food',
+  'ingredient',
+  'food_attribute',
+  'restaurant_attribute',
+  'restaurant',
+] as EntityType[];
 const HYBRID_LINK_SHORTLIST_K = 5;
 const HYBRID_LINK_CONCURRENCY = 8;
 
@@ -82,6 +91,7 @@ export class SearchQueryInterpretationService {
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly engineCoverage: EngineCoverageService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
+    private readonly unsegmentedResidue: UnsegmentedResidueService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -89,10 +99,36 @@ export class SearchQueryInterpretationService {
       (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
   }
 
+  /** GAZETTEER-FIRST UNDERSTAND rollout mode (calibration instrument —
+   *  BUILD, don't flip; spec §4.0 sequencing):
+   *  'off' — sync LLM Understand (today's behavior);
+   *  'shadow' — LLM serves; the gazetteer segmentation runs alongside and
+   *    logs a compact diff (GAZETTEER SHADOW DIFF) so cutover quality is
+   *    MEASURED on real queries before any flip;
+   *  'on' — zero-per-search-LLM: gazetteer grounds known spans (single-
+   *    bucket placement, dietary wins), the linker probes residue JOINED
+   *    with adjacent grounded spans (the residue-join rule — "brekfast
+   *    tacos" must probe the COMPOUND, not fragments), and still-unknown
+   *    residue lands in the unsegmented staging zone for the async batch
+   *    segmenter. */
+  private gazetteerMode(): 'off' | 'shadow' | 'on' {
+    const raw = (process.env.SEARCH_GAZETTEER_UNDERSTAND ?? 'off')
+      .trim()
+      .toLowerCase();
+    return raw === 'on' || raw === 'shadow' ? raw : 'off';
+  }
+
   async interpret(
     request: NaturalSearchRequestDto,
   ): Promise<InterpretationResult> {
     const interpretationStart = performance.now();
+    const gazetteerMode = this.gazetteerMode();
+    if (gazetteerMode === 'on') {
+      return this.interpretViaGazetteer(request, interpretationStart);
+    }
+    if (gazetteerMode === 'shadow') {
+      this.fireGazetteerShadow(request);
+    }
     let analysis: LLMSearchQueryAnalysis;
     let llmMs = 0;
     const llmStart = performance.now();
@@ -249,6 +285,217 @@ export class SearchQueryInterpretationService {
       analysisMetadata: cleanedAnalysis.metadata,
       onDemandQueued: onDemandQueued || undefined,
       onDemandEtaMs,
+      phaseTimings,
+    };
+  }
+
+  /** SHADOW: measure gazetteer segmentation against the serving LLM path.
+   *  Never blocks or fails the request. */
+  private fireGazetteerShadow(request: NaturalSearchRequestDto): void {
+    const started = performance.now();
+    void this.entityTextSearch
+      .scanForKnownEntityGroups(request.query, GAZETTEER_UNDERSTAND_TYPES)
+      .then((groups) => {
+        this.logger.info('GAZETTEER SHADOW DIFF', {
+          query: request.query,
+          gazetteerMs: Math.round(performance.now() - started),
+          spans: groups.map((group) => ({
+            text: group.text,
+            types: Array.from(new Set(group.entities.map((e) => e.type))),
+          })),
+        });
+      })
+      .catch((error: unknown) => {
+        this.logger.warn('Gazetteer shadow failed (ignored)', {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
+  }
+
+  /** 'on' mode: zero-per-search-LLM Understand. Gazetteer grounds known
+   *  spans; the linker probes residue JOINED with adjacent grounded spans
+   *  (residue-join rule); unknown residue lands in the staging zone. */
+  private async interpretViaGazetteer(
+    request: NaturalSearchRequestDto,
+    interpretationStart: number,
+  ): Promise<InterpretationResult> {
+    const gazetteerStart = performance.now();
+    const groups = await this.entityTextSearch.scanForKnownEntityGroups(
+      request.query,
+      GAZETTEER_UNDERSTAND_TYPES,
+    );
+    const gazetteerMs = performance.now() - gazetteerStart;
+
+    // Residue = token runs no grounded span covers.
+    const tokenRe = /[\p{L}\p{N}][\p{L}\p{N}'&.-]*/gu;
+    const tokens: { text: string; start: number; end: number }[] = [];
+    let tokenMatch: RegExpExecArray | null;
+    while ((tokenMatch = tokenRe.exec(request.query)) !== null) {
+      tokens.push({
+        text: tokenMatch[0],
+        start: tokenMatch.index,
+        end: tokenMatch.index + tokenMatch[0].length,
+      });
+    }
+    const covered = (t: { start: number; end: number }) =>
+      groups.some((g) => g.start <= t.start && g.end >= t.end);
+    const residueRuns: { text: string; start: number; end: number }[] = [];
+    for (const token of tokens) {
+      if (covered(token)) continue;
+      const last = residueRuns[residueRuns.length - 1];
+      if (last && tokens.some((t) => t.start > last.end && t.end < token.start))
+        residueRuns.push({ ...token });
+      else if (last && last.end < token.start && !covered(token)) {
+        // extend the current run only across directly adjacent residue
+        const between = tokens.filter(
+          (t) => t.start >= last.end && t.end <= token.start,
+        );
+        if (between.every((t) => !covered(t))) {
+          last.text = request.query.slice(last.start, token.end);
+          last.end = token.end;
+        } else residueRuns.push({ ...token });
+      } else residueRuns.push({ ...token });
+    }
+
+    // RESIDUE-JOIN RULE: probe each run joined with its adjacent grounded
+    // spans FIRST — "brekfast tacos" must reach the COMPOUND "breakfast
+    // taco"; a lone "brekfast" probe fragments the span. A joined link
+    // CONSUMES the adjacent group (the compound replaces the bare span).
+    const consumedGroups = new Set<EntitySpanGroup>();
+    const residueResults: EntityResolutionResult[] = [];
+    const unresolvedResidues: string[] = [];
+    for (const run of residueRuns) {
+      const left = groups
+        .filter((g) => g.end <= run.start && !consumedGroups.has(g))
+        .sort((a, b) => b.end - a.end)[0];
+      const right = groups
+        .filter((g) => g.start >= run.end && !consumedGroups.has(g))
+        .sort((a, b) => a.start - b.start)[0];
+      const attempts: Array<{ text: string; consumes?: EntitySpanGroup }> = [
+        ...(right
+          ? [{ text: `${run.text} ${right.text}`, consumes: right }]
+          : []),
+        ...(left ? [{ text: `${left.text} ${run.text}`, consumes: left }] : []),
+        { text: run.text },
+      ];
+      let linked = false;
+      for (const attempt of attempts) {
+        const [result] = await this.linkViaHybridRecall([
+          {
+            tempId: `food:${uuid()}`,
+            normalizedName: attempt.text.toLowerCase(),
+            originalText: attempt.text,
+            entityType: 'food',
+            aliases: [attempt.text],
+            engineId: null,
+          },
+        ]);
+        if (result?.entityId) {
+          residueResults.push(result);
+          if (attempt.consumes) consumedGroups.add(attempt.consumes);
+          linked = true;
+          break;
+        }
+      }
+      if (!linked) unresolvedResidues.push(run.text);
+    }
+
+    // SINGLE-BUCKET PLACEMENT for grounded spans: dietary flag wins by
+    // rule; else the span follows its only type; multi-type ties resolve
+    // by the deterministic order (curated list = calibration tail).
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const placedResults: EntityResolutionResult[] = [];
+    for (const group of groups) {
+      if (consumedGroups.has(group)) continue;
+      const dietaryEntity = group.entities.find((e) =>
+        dietaryIds.has(e.entityId),
+      );
+      const winner =
+        dietaryEntity ??
+        [...group.entities].sort(
+          (a, b) =>
+            SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+              a.type,
+            ) -
+            SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+              b.type,
+            ),
+        )[0];
+      const tiedIds = group.entities
+        .filter((e) => e.type === winner.type)
+        .map((e) => e.entityId);
+      placedResults.push({
+        tempId: `${winner.type}:${uuid()}`,
+        entityId: winner.entityId,
+        entityIds: tiedIds.length > 1 ? tiedIds : undefined,
+        confidence: 1,
+        resolutionTier: 'exact',
+        matchedName: winner.name,
+        originalInput: {
+          tempId: `${winner.type}:${uuid()}`,
+          normalizedName: group.text.toLowerCase(),
+          originalText: group.text,
+          entityType: winner.type,
+          aliases: [group.text],
+          engineId: null,
+        },
+      });
+    }
+
+    const allResults = [...placedResults, ...residueResults];
+    const groupedEntities = this.groupResolvedEntities(allResults);
+    const structuredRequest = this.buildSearchRequest(request, groupedEntities);
+    structuredRequest.searchRequestId ??= uuid();
+
+    // Unknown residue → the staging zone (typed queue rows are minted by
+    // the async batch segmenter, never from raw residue).
+    if (unresolvedResidues.length) {
+      const viewportEligible = this.isViewportEligibleForOnDemand(
+        request.bounds,
+      );
+      const engineIds = viewportEligible
+        ? (
+            await this.engineCoverage.resolveViewportCoverage(request.bounds)
+          ).engines.map((engine) => engine.engineId)
+        : [];
+      await Promise.all(
+        unresolvedResidues.map((residueText) =>
+          this.unsegmentedResidue
+            .recordResidue({
+              residueText,
+              searchRequestId: structuredRequest.searchRequestId,
+              engineIds,
+              userId: request.userId ?? null,
+              context: { query: request.query, source: 'gazetteer_understand' },
+            })
+            .catch((error: unknown) => {
+              this.logger.warn('Residue staging write failed (ignored)', {
+                error: {
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                },
+              });
+            }),
+        ),
+      );
+    }
+
+    const phaseTimings = {
+      llmMs: 0,
+      gazetteerMs: Math.round(gazetteerMs),
+      interpretationMs: Math.round(performance.now() - interpretationStart),
+    };
+    return {
+      structuredRequest,
+      analysis: {
+        restaurants: [],
+        foods: [],
+        foodAttributes: [],
+        restaurantAttributes: [],
+      },
+      unresolved: [],
       phaseTimings,
     };
   }

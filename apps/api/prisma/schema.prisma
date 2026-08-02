@@ -1664,6 +1664,28 @@ model OnDemandRequest {
   @@map("collection_on_demand_requests")
 }
 
+/// STEP-2/zero-per-search-LLM staging zone (search-from-scratch spec §1.1):
+/// on_demand_requests.entity_type is NOT NULL, so raw ungrounded residue can
+/// never enter the typed queue as-is. It lands HERE, and the async batch
+/// segmenter drains it into typed queue rows — the sync per-search LLM's
+/// segmentation job relocated, not a new capability.
+model OnDemandUnsegmentedResidue {
+  residueId       String    @id @default(dbgenerated("gen_random_uuid()")) @map("residue_id") @db.Uuid
+  residueText     String    @map("residue_text") @db.VarChar(500)
+  searchRequestId String?   @map("search_request_id") @db.VarChar(64)
+  engineIds       String[]  @default([]) @map("engine_ids")
+  context         Json?     @default("{}")
+  userId          String?   @map("user_id") @db.Uuid
+  /// pending → segmented (typed rows minted) | discarded (junk / no terms)
+  status          String    @default("pending") @db.VarChar(16)
+  attempts        Int       @default(0)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  processedAt     DateTime? @map("processed_at")
+
+  @@index([status, createdAt], map: "idx_unsegmented_residue_status")
+  @@map("collection_on_demand_unsegmented_residue")
+}
+
 model OnDemandRequestUser {
   requestId   String          @map("request_id") @db.Uuid
   userId      String          @map("user_id") @db.Uuid

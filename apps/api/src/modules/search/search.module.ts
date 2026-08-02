@@ -28,6 +28,7 @@ import { RestaurantStatusService } from './restaurant-status.service';
 import { SearchEntityExpansionService } from './search-entity-expansion.service';
 import { SearchSiblingExpansionService } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
+import { UnsegmentedResidueService } from './unsegmented-residue.service';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { DietaryConstraintRegistry } from './dietary-constraints';
     SearchEntityExpansionService,
     SearchSiblingExpansionService,
     DietaryConstraintRegistry,
+    UnsegmentedResidueService,
   ],
   exports: [
     SearchService,
