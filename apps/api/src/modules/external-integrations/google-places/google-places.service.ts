@@ -436,7 +436,7 @@ export class GooglePlacesService {
     await this.governance.assertPlacesSpendOpen();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
-      operation: 'placeAutocomplete',
+      operation: 'autocomplete',
     });
 
     if (!rateLimit.allowed) {
@@ -564,7 +564,7 @@ export class GooglePlacesService {
         await this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
-          'placeAutocomplete',
+          'autocomplete',
         );
         throw this.buildTooManyRequestsError(
           'Google Places rate limit exceeded',
@@ -608,7 +608,7 @@ export class GooglePlacesService {
     await this.governance.assertPlacesSpendOpen();
     const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
-      operation: 'findPlaceFromText',
+      operation: 'textSearch',
     });
 
     if (!rateLimit.allowed) {
@@ -765,7 +765,7 @@ export class GooglePlacesService {
         await this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
-          'findPlaceFromText',
+          'textSearch',
         );
         throw this.buildTooManyRequestsError(
           'Google Places rate limit exceeded',

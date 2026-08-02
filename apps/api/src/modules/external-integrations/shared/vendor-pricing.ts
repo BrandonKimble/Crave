@@ -52,6 +52,28 @@ export const tomtomBlendedCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
 // the GOVERNOR while the standalone cost-report kept its own correct table
 // (two tables, the wrong one governing money — the exact drift class the
 // gemini rate-table unification killed). Rates: Cloud Billing catalog,
+/**
+ * THE name of a paid Google Places operation. One vocabulary for all three
+ * systems that reference it: the rate-limit scope, the usage ledger, and the
+ * config `operationLimits` keys.
+ *
+ * WHY (red team 2026-08-02). There used to be three. The rate limiter called
+ * text search `findPlaceFromText`, the ledger and this pricing table call it
+ * `textSearch`, and config had no key for it at all. So an owner reacting to a
+ * Places bill by adding `textSearch: { requestsPerMinute: 10 }` to
+ * operationLimits got NO EFFECT — the scope lookup missed and silently fell
+ * back to the 600/min service default. The cap you would most want to set was
+ * the one you could not set, on the most expensive Places call ($0.032/call
+ * versus placeDetails' $0.017), and nothing warned.
+ */
+export type PlacesOperation = 'placeDetails' | 'autocomplete' | 'textSearch';
+
+export const PLACES_OPERATIONS: readonly PlacesOperation[] = [
+  'placeDetails',
+  'autocomplete',
+  'textSearch',
+];
+
 // verified 2026-07-08; cost-report's table folded in here.
 const PLACES_RATES_MICRO_USD_PER_CALL: Record<string, number> = {
   'placeDetails:essentials': 5_000,

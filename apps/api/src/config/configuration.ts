@@ -353,12 +353,26 @@ export default () => {
         process.env.GOOGLE_PLACES_REQUESTS_PER_DAY || '150000',
         10,
       ),
+      // KEYED BY PlacesOperation — the SAME names the rate-limit scope, the
+      // usage ledger and the pricing table use (red team 2026-08-02). These
+      // used to be a third vocabulary: `placeAutocomplete` here vs
+      // `autocomplete` in the ledger, and text search had NO key at all while
+      // its scope was `findPlaceFromText`. Setting a textSearch limit was a
+      // silent no-op on the most expensive Places call.
       operationLimits: {
-        placeAutocomplete: {
+        autocomplete: {
           requestsPerMinute: 600, // same conservative per-method floor as above
           requestsPerDay: 150_000,
         },
         placeDetails: {
+          requestsPerMinute: 600,
+          requestsPerDay: 100_000,
+        },
+        // Text search is the expensive operation ($0.032/call at the pro SKU
+        // vs placeDetails' $0.017). It had no key, so it silently ran on the
+        // service default; it now has the same conservative floor as its
+        // siblings and is actually settable.
+        textSearch: {
           requestsPerMinute: 600,
           requestsPerDay: 100_000,
         },
