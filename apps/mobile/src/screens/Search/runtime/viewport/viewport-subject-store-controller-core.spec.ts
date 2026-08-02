@@ -15,6 +15,7 @@ import {
   type PlaceLike,
   type PlacesInViewSliceResponse,
 } from '@crave-search/shared';
+import { NETWORK_RETRY_MAX_ATTEMPTS } from '../../../../services/retry/network-retry-ladder';
 
 import {
   getViewportSubjectState,
@@ -407,6 +408,30 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
 
     // ...and nothing is reported: the episode ended with the attention.
     expect(recordDwell).not.toHaveBeenCalled();
+    dispose();
+  });
+
+  it('ONE RETRY LAW: the slice ladder is BOUNDED — offline stops paying radio instead of retrying forever', async () => {
+    // Disease C (re-derivation 2026-08-01): this consumer retried forever at
+    // a flat 5s with no visibility gate and no reconnect edge, while the two
+    // feeds capped at three rungs — three policies for one question, and the
+    // odd one out was a battery leak.
+    const boundsService = createViewportBoundsService(boundsOf(VIEW));
+    const fetchSlice = jest.fn(async () => {
+      throw new Error('offline');
+    });
+    const dispose = createViewportSubjectStoreController({
+      viewportBoundsService: boundsService,
+      fetchSlice,
+      recordDwell: jest.fn(),
+    });
+    await flushMicrotasks();
+    // Walk far past the whole ladder: the rungs are consumed, then silence.
+    for (let i = 0; i < 12; i += 1) {
+      jest.advanceTimersByTime(60_000);
+      await flushMicrotasks();
+    }
+    expect(fetchSlice.mock.calls.length).toBeLessThanOrEqual(NETWORK_RETRY_MAX_ATTEMPTS + 1);
     dispose();
   });
 

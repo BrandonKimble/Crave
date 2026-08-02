@@ -9,6 +9,7 @@ import {
   type PlacesInViewSliceResponse,
 } from '@crave-search/shared';
 
+import { nextRetryDelayMs } from '../../../../services/retry/network-retry-ladder';
 import {
   getViewportSubjectState,
   setViewportSubjectState,
@@ -90,8 +91,11 @@ export const VIEWPORT_SETTLE_QUIESCENCE_MS = MAP_PLANNER_NORMAL_WORK_FAIRNESS_PO
 /** K1 (feel pass may tune): the minimal honest "a human paused here" hold. */
 export const VIEWPORT_SUBJECT_DWELL_MS = 1_000;
 
-/** Failed slice fetch retry (only re-armed while a fetch is still needed). */
-export const SLICE_FETCH_RETRY_MS = 5_000;
+// The slice fetch uses THE shared retry law (disease C): it used to retry
+// FOREVER at a flat 5s with no visibility gate and no reconnect edge, so
+// going offline meant a network call every five seconds for as long as the
+// app stayed open. The ladder is bounded now, and a reconnect (or any
+// camera move, which re-enters ensureSliceFetch) starts a fresh one.
 
 // [SUBJECT-STORE] marker logs (temporary-but-committed, BUILDCHECK-style): the
 // owner's Austin→San Antonio pan repro greps these in /tmp/crave-metro.log.
@@ -162,6 +166,7 @@ export const createViewportSubjectStoreController = ({
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let dwellTimer: ReturnType<typeof setTimeout> | null = null;
   let sliceRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  let sliceRetryAttempt = 0;
   let sliceFetchInFlight = false;
   let fetchEpoch = 0;
   let settledEpisode: SettledEpisode | null = null;
@@ -348,6 +353,7 @@ export const createViewportSubjectStoreController = ({
         // outlive the success it was retrying for.
         clearTimer(sliceRetryTimer);
         sliceRetryTimer = null;
+        sliceRetryAttempt = 0;
         // Replace slice+marginBox atomically; the committed verdict stands
         // until the hysteresis pipeline re-judges (never blank mid-move).
         // Rows are stored VERBATIM (PlaceLike) — §2.5 ground rings and
@@ -397,6 +403,17 @@ export const createViewportSubjectStoreController = ({
         logSubjectStore('slice-fetch-failed', {
           message: error instanceof Error ? error.message : 'unknown',
         });
+        const delay = nextRetryDelayMs(sliceRetryAttempt);
+        if (delay == null) {
+          // Ladder exhausted: stop paying radio for an outage. Any camera
+          // move or a reconnect re-enters ensureSliceFetch with a fresh
+          // ladder, so this is a pause, never a permanent give-up.
+          logSubjectStore('slice-retry-exhausted', {
+            attempts: sliceRetryAttempt,
+          });
+          return;
+        }
+        sliceRetryAttempt += 1;
         clearTimer(sliceRetryTimer);
         sliceRetryTimer = setTimeout(() => {
           sliceRetryTimer = null;
@@ -404,7 +421,7 @@ export const createViewportSubjectStoreController = ({
           if (mapBounds != null) {
             ensureSliceFetch(geoBboxFromMapBounds(mapBounds));
           }
-        }, SLICE_FETCH_RETRY_MS);
+        }, delay);
       });
   };
 

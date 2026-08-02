@@ -22,6 +22,7 @@ import {
   useViewportSubjectVerdict,
 } from '../../store/viewport-subject-store';
 import type { MapBounds } from '../../types';
+import { NETWORK_RETRY_BACKOFF_MS } from '../../services/retry/network-retry-ladder';
 import { logger } from '../../utils';
 import type { TrackSheetListProps } from '../../tracksheet/TrackSheetPage';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
@@ -321,7 +322,6 @@ HomeShelfRowView.displayName = 'HomeShelfRowView';
 // §9.4 parity with the polls controller: on a failed load, retry quietly with
 // backoff; any fresh settle/pick/reconnect-triggered refresh supersedes the
 // pending retry and resets the ladder.
-const HOME_FEED_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000] as const;
 
 const useHomeFeedRuntime = (): void => {
   const visible = useHomeSceneStateStore((state) => state.visible);
@@ -385,12 +385,12 @@ const useHomeFeedRuntime = (): void => {
         // activation-diff on return covers the missed refresh honestly).
         if (
           useHomeSceneStateStore.getState().visible &&
-          retryAttempt < HOME_FEED_RETRY_BACKOFF_MS.length
+          retryAttempt < NETWORK_RETRY_BACKOFF_MS.length
         ) {
           retryTimeoutRef.current = setTimeout(() => {
             retryTimeoutRef.current = null;
             void refreshRef.current?.(retryAttempt + 1);
-          }, HOME_FEED_RETRY_BACKOFF_MS[retryAttempt]);
+          }, NETWORK_RETRY_BACKOFF_MS[retryAttempt]);
         }
         // Honest failure only when there is nothing to show; a stale feed stands.
         if (useHomeFeedStore.getState().feed == null) {
