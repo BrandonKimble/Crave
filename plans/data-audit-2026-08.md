@@ -368,3 +368,38 @@ COLLECTION_SCHEDULER_ENABLED=false (the other session's kill-switches —
 nothing scheduled runs until reverted). Standing residue, deliberate:
 restHeld=8, dup_identity_groups=14 incl. exact-name chain twins (Blaze
 Pizza ×2) — P2.2 metro-aware-resolution territory.
+
+## ROUND 11 — SEMANTIC GROUND-TRUTH AUDIT (2026-08-02, 70 claims hand-graded, ~150 docs read)
+
+Verdict: the CORPUS is trustworthy (restaurant attribution ~92%, praise
+10/10, negation 9/10, questions 10/10, multi-restaurant 11/12, list-post
+inflation not real, category quarantine works) — but the RANKING built on
+it is not yet:
+
+**TOP MACHINERY ITEM (owner decision, scoring phase): direct-evidence
+floor.** 48 of the top-100 dish connections rest on ONE direct mention —
+restaurant-level support carries any dish at a famous venue to ~10.0
+(63.1% of the 822 connections displaying 9–10 are single-mention). Live
+worst case: `nopales taco` @ LOS TACOS No.1 at 9.98 sourced ENTIRELY from
+one line of an unvisited trip plan. Proposed: display/ranking floor on
+direct dish evidence (support may not substitute for it). This is a
+score-constitution change → owner ratification.
+
+**P3 ADDITIONS (extraction classes found live, with doc ids in the round
+transcript):** plan/itinerary-as-endorsement (NEW — seeded 2 top-15
+claims); directory/event-listing-as-endorsement (NEW — one charity
+fundraiser directory minted 28 claims across 17 restaurants);
+availability-as-endorsement is STILL LIVE (P3 wrongly dropped it as
+"already encoded" — un-drop); rating-qualified-lukewarm read as praise
+("6/10 … a bit rich" → endorsement, NEW); negative-review-projected
+(rare, NEW); dish-inferred-from-venue-class (Dead Rabbit::cocktail never
+said, NEW); dish-minted-as-restaurant (Bihari Kabab, NEW). Confirmed
+already catalogued: fragments/menu-format nouns, grocery-ingredient
+dishes.
+
+**P3 EXTENSIONS (pipeline/provenance):** thread-level evidence is cited
+at document level (5/15 attribute citations point at a sibling comment's
+doc — any per-claim "source" UI shows the wrong quote); asserted-vs-
+inferred marking must cover ATTRIBUTES too, not just categories; the
+restaurant_attributes array is 80% places_api / 17% reddit_evidence / 3%
+cuisine_llm with no consumer-visible provenance discriminator.
