@@ -596,49 +596,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
   }
 
   /**
-   * Get status for all services.
-   */
-  async getAllStatuses(): Promise<RateLimitStatus[]> {
-    return Promise.all(
-      Object.values(ExternalApiService).map((service) =>
-        this.getStatus(service),
-      ),
-    );
-  }
-
-  /**
-   * Reset rate limits for a service (for testing/debugging).
-   */
-  async resetService(service: ExternalApiService): Promise<void> {
-    const servicePattern = `${this.redisKeyPrefix}:*:${service}*`;
-    let cursor = '0';
-    const keys: string[] = [];
-
-    do {
-      const [nextCursor, batch] = await this.redis.scan(
-        cursor,
-        'MATCH',
-        servicePattern,
-        'COUNT',
-        '1000',
-      );
-      cursor = nextCursor;
-      if (batch.length > 0) {
-        keys.push(...batch);
-      }
-    } while (cursor !== '0');
-
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
-    }
-
-    this.logger.info(`Rate limits reset for ${service}`, {
-      service,
-      deletedKeys: keys.length,
-    });
-  }
-
-  /**
    * Initialize rate limit configurations from environment.
    */
   private initializeRateLimitConfigs(): void {
@@ -706,14 +663,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     this.logger.info('Rate limit configurations initialized', {
       scopes: Array.from(this.rateLimitConfigs.keys()),
     });
-  }
-
-  private computePerSecond(requestsPerMinute: number): number {
-    if (!Number.isFinite(requestsPerMinute) || requestsPerMinute <= 0) {
-      return 0;
-    }
-
-    return Math.max(1, Math.floor(requestsPerMinute / 60));
   }
 
   private computePerHour(

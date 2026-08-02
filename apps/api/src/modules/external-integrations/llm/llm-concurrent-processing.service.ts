@@ -89,25 +89,6 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
   }
 
   /**
-   * Optimize concurrency settings based on actual performance testing
-   * Note: Rate limiting optimization is handled by SmartLLMProcessor
-   */
-  optimizeConfiguration(): void {
-    this.logger.debug(
-      'Concurrency optimization delegated to SmartLLMProcessor',
-      {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'optimize_configuration',
-        concurrencyLimit: this.concurrencyLimit,
-        note: 'Rate limiting optimization handled by SmartLLMProcessor',
-      },
-    );
-
-    // No-op: SmartLLMProcessor handles all rate limiting optimization
-    // This service only manages concurrency via pLimit
-  }
-
-  /**
    * Process multiple chunks concurrently with controlled concurrency
    *
    * @param chunkData - Chunks and metadata from chunking service
@@ -382,23 +363,6 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     };
   }
 
-  /**
-   * Get current queue status from p-limit
-   *
-   * @returns Queue status information
-   */
-  getQueueStatus(): {
-    activeCount: number;
-    pendingCount: number;
-    concurrencyLimit: number;
-  } {
-    return {
-      activeCount: this.limit.activeCount,
-      pendingCount: this.limit.pendingCount,
-      concurrencyLimit: this.concurrencyLimit,
-    };
-  }
-
   private async waitForGlobalCooldown(meta: ChunkMetadata): Promise<void> {
     let logged = false;
     while (true) {
@@ -486,46 +450,10 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     }
   }
 
-  /**
-   * Get performance statistics for monitoring
-   *
-   * @returns Performance statistics
-   */
-  getPerformanceStats(): {
-    concurrencyLimit: number;
-    currentlyActive: number;
-    currentlyPending: number;
-    utilizationRate: number;
-  } {
-    const utilizationRate = this.limit.activeCount / this.concurrencyLimit;
-
-    return {
-      concurrencyLimit: this.concurrencyLimit,
-      currentlyActive: this.limit.activeCount,
-      currentlyPending: this.limit.pendingCount,
-      utilizationRate,
-    };
-  }
-
   // REMOVED: All delay strategy logic
   // Rate limiting is now handled by SmartLLMProcessor's reservation system
   // which provides more precise timing than artificial delays
 
   // REMOVED: Burst rate calculation
   // SmartLLMProcessor handles all rate limiting calculations
-
-  /**
-   * Get current configuration for monitoring and debugging
-   */
-  getCurrentConfiguration(): {
-    workerCount: number;
-    rateLimitingMode: string;
-    note: string;
-  } {
-    return {
-      workerCount: this.concurrencyLimit,
-      rateLimitingMode: 'delegated_to_smart_processor',
-      note: 'All rate limiting handled by SmartLLMProcessor reservation system',
-    };
-  }
 }

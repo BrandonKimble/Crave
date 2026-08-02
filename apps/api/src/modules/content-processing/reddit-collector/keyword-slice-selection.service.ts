@@ -16,7 +16,7 @@
  * user_search_demand_daily reads are DEAD. Territory = the engine's member
  * places + DAG descendants (derived, never stored). The unmet family still
  * reads the on-demand ask-event gap record keyed by the engine's legacy
- * market-key name; that table moves onto the ledger in Phase C.
+ * market-key name (markets exterminated 2026-07-22; name is history).
  *
  * Expected-new-content model (§11) — DERIVED, no timers (no-fake-estimates
  * law, 2026-07-24): a harvested term is eligible again when
@@ -166,8 +166,8 @@ export interface KeywordSelectionSource {
   /** Platform handle (subreddit). */
   handle: string;
   engineId: string;
-  /** Engine natural key — the legacy collectable market key during Phase B/C
-   *  (the ask-event unmet lane and attempt-history legacy PK read by it). */
+  /** Engine natural key (historical market-key format; markets are gone —
+   *  the ask-event unmet lane and attempt-history PK still read it). */
   engineName: string;
   territoryPlaceIds: string[];
 }

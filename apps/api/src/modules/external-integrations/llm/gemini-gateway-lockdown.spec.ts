@@ -83,7 +83,6 @@ describe('Gemini gateway lockdown', () => {
       'llm.batchSystemCache',
       'llm.callGeminiApi',
       'gemini-batch.collection_extraction',
-      'embedding.embedContent',
     ]);
     // Red team F2: the gate's caller was wrongly exempted here, which meant
     // deleting its profile kept CI green (the only guard left was a boot

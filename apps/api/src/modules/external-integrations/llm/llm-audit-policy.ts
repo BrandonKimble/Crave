@@ -30,11 +30,6 @@ export function auditReasonsEnabled(): boolean {
   return cached;
 }
 
-/** Test seam. */
-export function resetAuditReasonCache(): void {
-  cached = null;
-}
-
 /**
  * Return the schema unchanged when audit reasons are on; otherwise a deep
  * clone with every property literally named `reason` removed (from

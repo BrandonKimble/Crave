@@ -1147,7 +1147,7 @@ export class KeywordSearchOrchestratorService {
       removeOnComplete: 100,
       // Failed jobs must not squat on stable jobIds (hot-spike slugs are
       // deterministic) — Bull silently no-ops an add() whose jobId is still
-      // in the failed set, permanently blocking that market::term. The
+      // in the failed set, permanently blocking that engine::term. The
       // worker's error log is the durable failure signal.
       removeOnFail: true,
       jobId: data.jobId || `${data.source}-${data.subreddit}-${cycleId}`,
@@ -1268,8 +1268,8 @@ export interface KeywordSearchJobData {
   sourceId?: string;
   /** §11: the (engine, term) attempt ledger key. */
   engineId?: string;
-  /** Engine natural key = legacy market key during Phase B/C (decision-ledger
-   *  traces + the attempt-history legacy PK). */
+  /** Engine natural key (historical market-key format; decision-ledger
+   *  traces + the attempt-history PK). */
   engineName?: string;
   /** Pacer's reserved reddit-pool estimate (§14.2 declared-vs-actual). */
   declaredRequests?: number;

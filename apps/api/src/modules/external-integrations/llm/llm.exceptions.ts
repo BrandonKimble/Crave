@@ -71,23 +71,6 @@ export class LLMRateLimitAbortError extends AppException {
 }
 
 /**
- * Exception thrown when LLM-powered user-facing functionality is unavailable.
- * Intended for request/response paths where we prefer a fast, explicit failure.
- */
-export class LLMUnavailableError extends AppException {
-  readonly errorCode = 'LLM_UNAVAILABLE';
-  readonly isOperational = true;
-
-  constructor(
-    message = 'Search is temporarily unavailable. Please try again.',
-    details?: string,
-  ) {
-    super(message, HttpStatus.SERVICE_UNAVAILABLE, { details });
-    this.name = 'LLMUnavailableError';
-  }
-}
-
-/**
  * Exception thrown when LLM network requests fail
  */
 export class LLMNetworkError extends AppException {

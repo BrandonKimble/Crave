@@ -181,18 +181,11 @@ export default () => {
         .filter((value) => value.length > 0),
     },
     stripe: {
+      // Checkout/portal session config (price id, success/cancel/return
+      // URLs) was deleted with the client rail (c2861853) — re-add it when
+      // the web checkout rail is rebuilt (see business-model.md, decided).
       secretKey: process.env.STRIPE_SECRET_KEY,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-      defaultPriceId: process.env.STRIPE_DEFAULT_PRICE_ID,
-      successUrl:
-        process.env.STRIPE_SUCCESS_URL ||
-        'http://localhost:3000/payments/success',
-      cancelUrl:
-        process.env.STRIPE_CANCEL_URL ||
-        'http://localhost:3000/payments/cancel',
-      billingPortalReturnUrl:
-        process.env.STRIPE_PORTAL_RETURN_URL ||
-        'http://localhost:3000/account/subscription',
     },
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME,
@@ -253,7 +246,7 @@ export default () => {
       // Fallbacks track the CURRENT production model (.env normally sets these);
       // a stale fallback silently downgraded two generations when env was absent.
       // gemini-3-flash-preview CHOSEN by the 150-post quality A/B
-      // (2026-07-11, scripts/collection-model-ab-v2.ts): equal blind-judged
+      // (2026-07-11, model A/B harness — since deleted, decision banked): equal blind-judged
       // attribution + zero true fabrication vs 3.5-flash, BETTER recall,
       // at ~1/3 the price ($6.60 vs $20.48 per 1k posts batch). Env override
       // exists for A/B work only — the default IS the decision.

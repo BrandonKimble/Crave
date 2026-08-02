@@ -9,43 +9,37 @@ import { EntityResolutionService } from '../src/modules/content-processing/entit
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 const NYC = 'region-us-ny-new-york';
-// term, type, market, expectation — variants of real seeded entities the old
+// term, type, expectation — variants of real seeded entities the old
 // Sørensen-Dice + restaurant-token heuristics used to handle, now via LLM.
 const CASES: {
   term: string;
   type: EntityType;
-  market?: string;
   expect: string;
 }[] = [
-  // restaurants (market-scoped): typo / accent / dropped-descriptor / brand
+  // restaurants: typo / accent / dropped-descriptor / brand
   {
     term: 'Noodle Villiage',
     type: EntityType.restaurant,
-    market: NYC,
     expect: 'Noodle Village',
   },
   {
     term: 'Caffe Panna',
     type: EntityType.restaurant,
-    market: NYC,
     expect: 'Caffè Panna',
   },
   {
     term: 'Almondine',
     type: EntityType.restaurant,
-    market: NYC,
     expect: 'Almondine Bakery',
   },
   {
     term: 'Quality Bistro NYC',
     type: EntityType.restaurant,
-    market: NYC,
     expect: 'Quality Bistro',
   },
   {
     term: 'Totally Fake Diner 9000',
     type: EntityType.restaurant,
-    market: NYC,
     expect: 'new',
   },
   // foods (global): spelling variant / added word / distinct

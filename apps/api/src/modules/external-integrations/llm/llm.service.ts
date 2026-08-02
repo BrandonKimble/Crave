@@ -56,7 +56,7 @@ import {
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
 } from './llm.types';
-import { LLMInputDto, LLMOutputDto } from './dto';
+import { LLMOutputDto } from './dto';
 import {
   LLMAuthenticationError,
   LLMConfigurationError,
@@ -336,14 +336,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           undefined,
       },
       retryOptions: {
-        maxRetries:
-          this.configService.get<number>('llm.retryOptions.maxRetries') || 3,
-        retryDelay:
-          this.configService.get<number>('llm.retryOptions.retryDelay') || 1000,
-        retryBackoffFactor:
-          this.configService.get<number>(
-            'llm.retryOptions.retryBackoffFactor',
-          ) || 2.0,
+        // Burned-in literals (cleanup 2026-08-01): configuration.ts has no
+        // llm.retryOptions block, so these configService.get reads were
+        // always undefined and the fallbacks were the real values.
+        maxRetries: 3,
+        retryDelay: 1000,
+        retryBackoffFactor: 2.0,
       },
       cache: {
         systemTtlSeconds:
@@ -1032,9 +1030,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
-      maxOutputTokens:
-        callerProfile('content.extract')?.maxOutputTokens ??
-        (this.llmConfig.maxTokens || 65536),
+      maxOutputTokens: callerProfile('content.extract')!.maxOutputTokens,
       responseMimeType: 'application/json',
       // The batch backend rejects responseJsonSchema (INVALID_ARGUMENT for
       // every item — attributed via single-variable slice tests) but accepts
@@ -1064,7 +1060,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     // that.
     const thinking = this.getThinkingConfig(
       this.llmConfig.model,
-      callerProfile('content.extract')?.context ?? 'content',
+      callerProfile('content.extract')!.context,
       undefined,
       'content.extract',
     );
@@ -3826,9 +3822,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Local helper for sleep (used in retry)
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-  }
 
   private attachFetchDiagnostics(): void {
     if (LLMService.fetchDiagnosticsAttached || typeof fetch !== 'function') {
@@ -4449,69 +4442,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       );
     }
   }
-
-  /**
-   * Test Gemini connectivity and authentication
-   */
-  async testConnection(): Promise<{
-    status: string;
-    message: string;
-    details?: LLMPerformanceMetrics;
-    error?: string;
-  }> {
-    try {
-      const testInput: LLMModelInput = {
-        posts: [
-          {
-            id: 'test',
-            title: 'Test connection',
-            content: 'Franklin BBQ has amazing brisket',
-            subreddit: 'austinfood',
-            author: 'test_user',
-            url: 'https://reddit.com/test',
-            score: 1,
-            created_at: new Date().toISOString(),
-            comments: [],
-          },
-        ],
-      };
-
-      await this.processContent(testInput);
-
-      return {
-        status: 'connected',
-        message: 'Gemini connection test passed',
-        details: this.performanceMetrics,
-        error: undefined,
-      };
-    } catch (error) {
-      return {
-        status: 'failed',
-        message: 'Gemini connection test failed',
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /**
-   * Get Gemini configuration (excluding sensitive data)
-   */
-  getLLMConfig(): Omit<LLMConfig, 'apiKey'> {
-    return {
-      model: this.llmConfig.model,
-      queryModel: this.queryModel,
-      baseUrl: this.llmConfig.baseUrl,
-      timeout: this.llmConfig.timeout,
-      maxTokens: this.llmConfig.maxTokens,
-      temperature: this.llmConfig.temperature,
-      topP: this.llmConfig.topP,
-      topK: this.llmConfig.topK,
-      candidateCount: this.llmConfig.candidateCount,
-      thinking: this.llmConfig.thinking,
-      retryOptions: this.llmConfig.retryOptions,
-    };
-  }
-
   /**
    * Get performance metrics
    */
@@ -4536,7 +4466,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Get service health status
-   * Compatible with BaseExternalApiService interface
    */
   getHealthStatus() {
     const status: 'healthy' | 'degraded' | 'unhealthy' =
@@ -4560,18 +4489,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         retryOptions: this.llmConfig.retryOptions,
       },
     };
-  }
-
-  /**
-   * Validate LLM input structure using custom validators
-   */
-  async validateInput(input: LLMModelInput): Promise<string[]> {
-    const inputDto = plainToClass(LLMInputDto, input);
-    const errors = await validate(inputDto);
-
-    return errors.flatMap((error) =>
-      error.constraints ? Object.values(error.constraints) : [],
-    );
   }
 
   /**

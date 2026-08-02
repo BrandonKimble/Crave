@@ -663,7 +663,6 @@ export class RedditService implements OnModuleInit {
 
   /**
    * Get service health status
-   * Compatible with BaseExternalApiService interface
    */
   getHealthStatus() {
     const successRate =

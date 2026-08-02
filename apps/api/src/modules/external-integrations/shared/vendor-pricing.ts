@@ -32,9 +32,6 @@ const EUR_TO_USD = 1.08;
 export const tomtomScarceCostMicrosPerDraw = Math.round(
   (3.0 * EUR_TO_USD * 1_000_000) / 1_000,
 ); // €3.00/1k → 3,240 micro-USD/draw
-export const tomtomCheapCostMicrosPerDraw = Math.round(
-  (1.0 * EUR_TO_USD * 1_000_000) / 1_000,
-); // €1.00/1k → 1,080 micro-USD/draw
 
 /** Honest UNSPLITTABLE-LEDGER blended rate: the usage ledger records TomTom
  *  draws without distinguishing cheap (geocode) from scarce (polygon) kinds,

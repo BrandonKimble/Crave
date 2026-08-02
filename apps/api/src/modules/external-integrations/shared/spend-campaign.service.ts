@@ -28,15 +28,6 @@ import { OpsAlertsService } from './ops-alerts.service';
  */
 export const ENVELOPE_BOOTSTRAP_TOLERANCE = 0.25;
 
-export type SpendCampaignState =
-  | 'draft'
-  | 'awaiting_approval'
-  | 'approved'
-  | 'running'
-  | 'completed'
-  | 'breached'
-  | 're_awaiting';
-
 export interface PrepareEstimateParams {
   name: string;
   workClass: string;

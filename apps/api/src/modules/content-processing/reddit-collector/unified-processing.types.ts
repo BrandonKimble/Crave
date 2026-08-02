@@ -35,17 +35,6 @@ export interface CreatedEntitySummary {
 }
 
 /**
- * Batch processing structure for unified pipeline
- */
-export interface UnifiedProcessingBatch {
-  batchId: string;
-  sourceBreakdown: Record<DataSourceType, number>;
-  totalItems: number;
-  processingStartTime: Date;
-  estimatedProcessingTime?: number;
-}
-
-/**
  * Result of unified processing operation
  */
 export interface ProcessingResult {
@@ -98,54 +87,4 @@ export interface ProcessingPerformanceMetrics {
   entitiesResolved: number;
   databaseOperations: number;
   lastReset: Date;
-}
-
-/**
- * Monitoring data for unified processing operations
- */
-export interface UnifiedProcessingMonitoring {
-  activeBatches: number;
-  queuedBatches: number;
-  recentPerformance: {
-    averageProcessingTime: number;
-    successRate: number;
-    throughputPerHour: number;
-  };
-  resourceUtilization: {
-    memoryUsageMB: number;
-    cpuUtilization: number;
-    databaseConnections: number;
-  };
-  integrationHealth: {
-    llmServiceHealth: 'healthy' | 'degraded' | 'unhealthy';
-    entityResolutionHealth: 'healthy' | 'degraded' | 'unhealthy';
-    databaseHealth: 'healthy' | 'degraded' | 'unhealthy';
-  };
-}
-
-/**
- * Configuration for processing quality and validation
- */
-export interface ProcessingQualityConfig {
-  minMentionsPerBatch: number;
-  maxProcessingTimeMs: number;
-  requiredSuccessRate: number;
-  enableValidation: boolean;
-  validationSampleSize: number;
-}
-
-/**
- * Quality validation result for processing batches
- */
-export interface ProcessingQualityResult {
-  batchId: string;
-  qualityScore: number;
-  validationChecks: {
-    dataIntegrity: boolean;
-    entityConsistency: boolean;
-    sourceAttribution: boolean;
-    performanceTarget: boolean;
-  };
-  recommendations: string[];
-  passedValidation: boolean;
 }

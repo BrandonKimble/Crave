@@ -35,10 +35,6 @@ interface LogBillingEventParams {
 @Injectable()
 export class BillingService {
   private readonly stripe: Stripe | null;
-  private readonly defaultPriceId?: string;
-  private readonly successUrl: string;
-  private readonly cancelUrl: string;
-  private readonly portalReturnUrl: string;
   private readonly defaultEntitlement: string;
 
   constructor(
@@ -54,18 +50,6 @@ export class BillingService {
           apiVersion: '2024-06-20',
         })
       : null;
-    this.defaultPriceId = this.configService.get<string>(
-      'stripe.defaultPriceId',
-    );
-    this.successUrl =
-      this.configService.get<string>('stripe.successUrl') ||
-      'http://localhost:3000/payments/success';
-    this.cancelUrl =
-      this.configService.get<string>('stripe.cancelUrl') ||
-      'http://localhost:3000/payments/cancel';
-    this.portalReturnUrl =
-      this.configService.get<string>('stripe.billingPortalReturnUrl') ||
-      'http://localhost:3000/account/subscription';
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
     // 'ourCode:rcEntitlementId,ourCode2:rcId2' -> Map<rcId, ourCode>

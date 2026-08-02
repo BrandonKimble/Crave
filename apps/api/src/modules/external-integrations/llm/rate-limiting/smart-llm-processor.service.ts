@@ -754,24 +754,6 @@ export class SmartLLMProcessor implements OnModuleInit {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /**
-   * Reset metrics (useful for testing)
-   */
-  async resetMetrics(): Promise<void> {
-    this.processedRequests = 0;
-    this.totalWaitTime = 0;
-    this.zeroWaitRequests = 0;
-    await this.rateLimiter.reset();
-    this.recentPromptTokens = [];
-    this.recentTotalTokens = [];
-    this.recentOutputTokens = [];
-    this.recentTpmUtilizations = [];
-
-    this.logger.info('Metrics reset', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-    });
-  }
-
   private getReservationMetrics(
     reservation: ReservationResult | null,
   ): ReservationMetrics | undefined {

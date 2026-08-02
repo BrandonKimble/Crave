@@ -1,49 +1,12 @@
 import { Type } from 'class-transformer';
 import {
   IsString,
-  IsNumber,
   IsArray,
   IsOptional,
   ValidateNested,
-  IsUrl,
-  IsDateString,
   IsBoolean,
-  IsIn,
-  Min,
 } from 'class-validator';
 import { IsSafeString } from '../../../../shared/pipes/custom-validators';
-
-/**
- * DTO for LLM entity reference with validation
- */
-export class LLMEntityRefDto {
-  @IsString()
-  @IsSafeString()
-  name: string;
-}
-
-/**
- * DTO for LLM source reference with validation
- */
-export class LLMSourceDto {
-  @IsString()
-  @IsIn(['post', 'comment'])
-  type: 'post' | 'comment';
-
-  @IsString()
-  @IsSafeString()
-  id: string;
-
-  @IsUrl()
-  url: string;
-
-  @IsNumber()
-  @Min(0)
-  upvotes: number;
-
-  @IsDateString()
-  created_at: string;
-}
 
 /**
  * DTO for LLM flat mention structure with validation

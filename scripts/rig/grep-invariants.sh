@@ -99,7 +99,7 @@ echo "=== THE PAGE L2 — one body interpreter; migrated scenes cannot branch ==
 # closed enum. SceneBodyReadyGate + hand-rolled LoadState machines are dead classes
 # IN MIGRATED FILES (the gate survives for unmigrated panels until their slices).
 check_eq "SceneBodyReadyGate/LoadState in MIGRATED panels (notif+profile+userProfile+bookmarks+listDetail)" 0 \
-  "$(cat $SRC/overlays/panels/NotificationsPanel.tsx $SRC/overlays/panels/ProfilePanel.tsx $SRC/overlays/panels/UserProfilePanel.tsx $SRC/overlays/panels/BookmarksPanel.tsx $SRC/overlays/panels/ListDetailPanel.tsx | grep -cE 'SceneBodyReadyGate|LoadState|TransitionShell|prewarmedMountedBodyHidden' || true)"
+  "$(cat $SRC/overlays/panels/NotificationsPanel.tsx $SRC/overlays/panels/ProfilePanel.tsx $SRC/overlays/panels/UserProfilePanel.tsx $SRC/overlays/panels/ListsPanel.tsx $SRC/overlays/panels/ListDetailPanel.tsx | grep -cE 'SceneBodyReadyGate|LoadState|TransitionShell|prewarmedMountedBodyHidden' || true)"
 # listDetail: classification is canonical even where the gate render survives (its
 # full spec migration rides the search-family slice) — the hand-rolled derivation
 # may not return.

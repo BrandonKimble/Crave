@@ -29,17 +29,6 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
-export interface RateLimitResult {
-  /** Time waited for rate limit token */
-  waitedMs: number;
-
-  /** Current TPM utilization */
-  tpmUtilization: number;
-
-  /** Available rate limit tokens */
-  tokensAvailable: number;
-}
-
 export interface RateLimitMetrics {
   /** RPM tracking */
   rpm: {
