@@ -325,6 +325,16 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
 
     // A DIFFERENT revision (a birth/promotion landed server-side) re-cuts
     // the slice even though the camera never moved.
+    harness.fetchSlice.mockImplementation(async () => ({
+      marginBox: MARGIN_BOX,
+      catalogWatermark: 'rev-2',
+      places: [TEXAS],
+    }));
+    noteCatalogWatermark('rev-2');
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(2);
+    // CONVERGENCE (red-team): the re-cut aligns seen to the slice's own
+    // watermark, so nothing is stale afterwards — no thrash.
     noteCatalogWatermark('rev-2');
     await flushMicrotasks();
     expect(harness.fetchSlice).toHaveBeenCalledTimes(2);
@@ -333,6 +343,25 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     jest.advanceTimersByTime(2 * 60 * 60 * 1_000);
     await flushMicrotasks();
     expect(harness.fetchSlice).toHaveBeenCalledTimes(2);
+
+    // EMPTY-REGION convergence (red-team round 3): a re-cut landing a NULL
+    // watermark (no grounds — mid-ocean) must align seen to null too, or
+    // the region reads permanently stale against the last grounded seen.
+    harness.fetchSlice.mockImplementation(async () => ({
+      marginBox: MARGIN_BOX,
+      catalogWatermark: null,
+      places: [],
+    }));
+    noteCatalogWatermark('rev-3');
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(3);
+    // seen aligned to null with the empty slice; neither time nor the
+    // (ignored) null feed signal re-fires. (A feed re-reporting a non-null
+    // revision against an empty slice IS a refetch — the boxes disagree
+    // about a ground, and at rest they are the same box, so it converges.)
+    jest.advanceTimersByTime(60 * 60 * 1_000);
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(3);
     harness.dispose();
   });
 

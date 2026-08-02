@@ -291,6 +291,11 @@ export const createViewportSubjectStoreController = ({
       return;
     }
     const { slice, marginBox, catalogWatermarkSeen } = getViewportSubjectState();
+    // Inequality = change detector, never an ordering. Mid-pan the feeds'
+    // margin box and the slice's fetch-time box can genuinely disagree about
+    // one boundary ground — that costs AT MOST one extra re-cut per feed
+    // response (feeds fire once per settle; the re-cut re-aligns seen), and
+    // at rest the boxes coincide, so it converges. Bounded chat, no loop.
     const sliceStale =
       slice != null && catalogWatermarkSeen != null && catalogWatermarkSeen !== sliceWatermark;
     if (slice != null && marginBox != null && bboxContains(marginBox, view) && !sliceStale) {
@@ -314,6 +319,16 @@ export const createViewportSubjectStoreController = ({
         setViewportSubjectState({
           slice: response.places,
           marginBox: response.marginBox,
+          // The slice IS the freshest regional truth — align the store's
+          // seen-watermark to it IN THE SAME WRITE, UNCONDITIONALLY (three
+          // red-team rounds, 2026-08-01: noting before the slice landed
+          // made the subscription see slice==null and refetch; noting
+          // after-but-separately left a stale re-cut "stale" until the next
+          // feed; and gating on != null made an EMPTY region — watermark
+          // null — permanently stale after arriving from a grounded one,
+          // refetching on every bounds change). seen means "the latest
+          // revision signal for the CURRENT region"; null is a real value.
+          catalogWatermarkSeen: response.catalogWatermark,
         });
         logSubjectStore('slice-landed', {
           places: response.places.length,

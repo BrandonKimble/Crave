@@ -383,7 +383,14 @@ const useHomeFeedRuntime = (): void => {
         lastRequestedBoundsRef.current = null;
         // §9.4 ladder (polls parity): quiet backoff retries; a newer refresh
         // (settle / pick / reconnect) supersedes via clearScheduledRetry.
-        if (retryAttempt < HOME_FEED_RETRY_BACKOFF_MS.length) {
+        // Red-team 2026-08-01: gate on LIVE visibility — a fetch in flight
+        // when the surface hides would otherwise arm a fresh timer AFTER the
+        // hide-cleanup ran, and the ladder would fetch while hidden (the
+        // activation-diff on return covers the missed refresh honestly).
+        if (
+          useHomeSceneStateStore.getState().visible &&
+          retryAttempt < HOME_FEED_RETRY_BACKOFF_MS.length
+        ) {
           retryTimeoutRef.current = setTimeout(() => {
             retryTimeoutRef.current = null;
             void refreshRef.current?.(retryAttempt + 1);
