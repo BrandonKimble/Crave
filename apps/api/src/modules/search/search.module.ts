@@ -29,6 +29,7 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
 import { SearchSiblingExpansionService } from './search-sibling-expansion.service';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
+import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.service';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { UnsegmentedResidueService } from './unsegmented-residue.service';
     SearchSiblingExpansionService,
     DietaryConstraintRegistry,
     UnsegmentedResidueService,
+    ScoringTerritoryRefreshService,
   ],
   exports: [
     SearchService,

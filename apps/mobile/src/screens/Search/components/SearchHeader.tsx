@@ -282,7 +282,15 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                       multiline={false}
                       numberOfLines={1}
                       autoCapitalize="none"
-                      autoCorrect={false}
+                      // TYPO LAYER 0 (ideal-abstraction review 2026-08-02):
+                      // the keyboard catches dictionary-word typos ("vgean"
+                      // → "vegan") before the server ever sees them — the
+                      // cheapest, most accurate layer, and it was off. If
+                      // iOS starts mangling dish names ("banh" → "band"),
+                      // the conservative fallback is autoCorrect={false} +
+                      // spellCheck={true} (squiggle, no silent substitute).
+                      autoCorrect={true}
+                      spellCheck={true}
                       clearButtonMode="never"
                     />
                   </Reanimated.View>

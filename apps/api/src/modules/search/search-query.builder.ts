@@ -251,10 +251,6 @@ export class SearchQueryBuilder {
       combinedRestaurantWhereSql,
       combinedRestaurantWherePreview,
     );
-    const geographicRestaurantsCte = this.buildGeographicRestaurantsCte(
-      locationWhereSql,
-      locationWherePreview,
-    );
 
     const filteredLocationsCte = this.buildFilteredLocationsCte(
       locationWhereSql,
@@ -478,7 +474,6 @@ ranked_restaurants AS (
     const withClause = Prisma.sql`
 WITH
   ${restaurantCte.sql},
-  ${geographicRestaurantsCte.sql},
   ${filteredLocationsCte.sql},
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
@@ -490,7 +485,6 @@ WITH
 
     const withPreview = `WITH
   ${restaurantCte.preview},
-  ${geographicRestaurantsCte.preview},
   ${filteredLocationsCte.preview},
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
@@ -584,8 +578,7 @@ LEFT JOIN LATERAL (
       ? Prisma.sql`
 WITH
   ${restaurantCte.sql},
-	  ${geographicRestaurantsCte.sql},
-	  ${filteredLocationsCte.sql},
+		  ${filteredLocationsCte.sql},
 	  ${selectedLocationsCte.sql},
 	  ${restaurantVoteTotalsCte.sql},
 	  ${publicRestaurantScoresCte.sql}
@@ -629,8 +622,7 @@ WITH
       : Prisma.sql`
 WITH
   ${restaurantCte.sql},
-	  ${geographicRestaurantsCte.sql},
-	  ${filteredLocationsCte.sql},
+		  ${filteredLocationsCte.sql},
 	  ${selectedLocationsCte.sql},
 	  ${restaurantVoteTotalsCte.sql},
 	  ${publicRestaurantScoresCte.sql}
@@ -649,7 +641,6 @@ WITH
       ? Prisma.sql`
 WITH
   ${restaurantCte.sql},
-  ${geographicRestaurantsCte.sql},
   ${filteredLocationsCte.sql},
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
@@ -797,10 +788,6 @@ filtered_restaurants AS (
       locationWhereSql,
       locationWherePreview,
     );
-    const geographicRestaurantsCte = this.buildGeographicRestaurantsCte(
-      locationWhereSql,
-      locationWherePreview,
-    );
 
     const { sql: selectedOrderSql, preview: selectedOrderPreview } =
       this.buildDistanceOrder(searchCenter, 'fl');
@@ -933,7 +920,6 @@ filtered_connections AS (
     const withClause = Prisma.sql`
 WITH
   ${restaurantCte},
-  ${geographicRestaurantsCte.sql},
   ${filteredLocationsCte.sql},
   ${selectedLocationsCte.sql},
   ${restaurantVoteTotalsCte.sql},
@@ -944,7 +930,6 @@ WITH
 
     const withPreview = `WITH
   ${restaurantCtePreview},
-  ${geographicRestaurantsCte.preview},
   ${filteredLocationsCte.preview},
   ${selectedLocationsCte.preview},
   ${restaurantVoteTotalsCte.preview},
@@ -1637,6 +1622,7 @@ filtered_locations AS (
     rl.hours,
     rl.utc_offset_minutes,
     rl.time_zone,
+    rl.in_scoring_territory,
     rl.is_primary,
     rl.last_polled_at,
     rl.created_at,
@@ -1652,46 +1638,10 @@ filtered_locations AS (
 
     const preview = `
 filtered_locations AS (
-  SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.phone_number, rl.website_url, rl.hours, rl.utc_offset_minutes, rl.time_zone, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
+  SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.phone_number, rl.website_url, rl.hours, rl.utc_offset_minutes, rl.time_zone, rl.in_scoring_territory, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
   FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
   WHERE ${wherePreview} AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL
-)`.trim();
-
-    return { sql, preview };
-  }
-
-  private buildGeographicRestaurantsCte(
-    locationWhereSql: Prisma.Sql,
-    locationWherePreview: string,
-  ): { sql: Prisma.Sql; preview: string } {
-    const sql = Prisma.sql`
-geographic_restaurants AS (
-  SELECT DISTINCT
-    r.entity_id
-  FROM core_entities r
-  JOIN core_restaurant_locations rl
-    ON rl.restaurant_id = r.entity_id
-  WHERE r.type = 'restaurant'
-    AND r.status <> 'archived'
-    AND ${locationWhereSql}
-    AND rl.latitude IS NOT NULL
-    AND rl.longitude IS NOT NULL
-    AND rl.google_place_id IS NOT NULL
-    AND rl.address IS NOT NULL
-)`;
-
-    const preview = `
-geographic_restaurants AS (
-  SELECT DISTINCT r.entity_id
-  FROM core_entities r
-  JOIN core_restaurant_locations rl ON rl.restaurant_id = r.entity_id
-  WHERE r.type = 'restaurant'
-    AND ${locationWherePreview}
-    AND rl.latitude IS NOT NULL
-    AND rl.longitude IS NOT NULL
-    AND rl.google_place_id IS NOT NULL
-    AND rl.address IS NOT NULL
 )`.trim();
 
     return { sql, preview };
@@ -1718,24 +1668,12 @@ geographic_restaurants AS (
     searchCenter: { lat: number; lng: number } | null | undefined,
     alias: string,
   ): { sql: Prisma.Sql; preview: string } {
-    const scoringTerritorySql = Prisma.sql`EXISTS (
-    SELECT 1
-    FROM core_public_entity_scores pes
-    JOIN sources src ON src.source_id = pes.provenance_source_id
-    LEFT JOIN engines eng ON eng.engine_id = src.engine_id
-    JOIN places p ON p.place_id = ANY(
-      CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids
-           ELSE ARRAY[src.anchor_place_id] END)
-    WHERE pes.subject_type = 'restaurant'
-      AND pes.subject_id = ${Prisma.raw(alias)}.restaurant_id
-      AND EXISTS (
-        SELECT 1 FROM place_geometries pgm
-        WHERE pgm.place_id = p.place_id
-          AND ST_Covers(pgm.geometry,
-                ST_SetSRID(ST_MakePoint(${Prisma.raw(alias)}.longitude::float8,
-                                        ${Prisma.raw(alias)}.latitude::float8), 4326)))
-  ) DESC`;
-    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND EXISTS (SELECT 1 FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(${alias}.longitude::float8, ${alias}.latitude::float8), 4326)))) DESC`;
+    // STORED fame-pin verdict (ideal-abstraction round 5, measured): the
+    // request-time ST_Covers EXISTS here was 99% of every pooled search's
+    // cost (3.45s metro → 27ms). in_scoring_territory is recomputed off
+    // the hot path (nightly + after score runs).
+    const scoringTerritorySql = Prisma.sql`${Prisma.raw(alias)}.in_scoring_territory DESC`;
+    const scoringTerritoryPreview = `${alias}.in_scoring_territory DESC`;
 
     if (
       !searchCenter ||

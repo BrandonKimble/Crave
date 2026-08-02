@@ -141,6 +141,10 @@ model RestaurantLocation {
 
   savedListItems UserListItem[]
 
+  /// Fame-pin verdict, STORED (ideal-abstraction round 5): recomputed
+  /// nightly + after score runs; was 99% of per-request search cost.
+  inScoringTerritory Boolean @default(false) @map("in_scoring_territory")
+
   @@index([restaurantId], map: "idx_restaurant_locations_restaurant")
   @@index([restaurantId, isPrimary], map: "idx_restaurant_locations_primary")
   @@index([restaurantId, websiteDomain], map: "idx_restaurant_locations_restaurant_domain")

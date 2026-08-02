@@ -15,8 +15,10 @@ const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
 // against the place's place_geometries row (sketch envelope or outline; no
 // COALESCE fallback arm). The old scoring_market_key → core_markets
 // ST_Covers key is DEAD.
-const TERRITORY_ORDER_SNIPPET =
-  "EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = fl.restaurant_id AND EXISTS (SELECT 1 FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(fl.longitude::float8, fl.latitude::float8), 4326)))) DESC";
+// STORED verdict (ideal-abstraction round 5): the fame-pin is a column,
+// recomputed off the hot path — the old in-query ST_Covers EXISTS was 99%
+// of every pooled search's cost.
+const TERRITORY_ORDER_SNIPPET = 'fl.in_scoring_territory DESC';
 
 function buildPlan(): QueryPlan {
   return {
