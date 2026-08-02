@@ -508,20 +508,35 @@ export class ReplayService implements OnModuleInit {
 
     const restaurantIds = await this.collectAffectedRestaurantIds(extractedIds);
 
-    // Activation supersedes physically (same law as
-    // CollectionEvidenceService.activateRunForDocuments): other runs'
-    // events for these documents die with the pointer flip.
+    // WITHIN-GENERATION supersede (final-final red team BLOCKER 2): the
+    // unscoped delete survived here after c6798321 fixed its sibling in
+    // unified-processing — an activate:true replay would destroy a RETAINED
+    // superseded generation's events, and --rollback's run-row guard could
+    // not see it. Same law, same scoping: only runs sharing this run's
+    // prompt hash are superseded; other generations stay inert until their
+    // explicit discard.
+    const activatingRun =
+      await this.prismaService.extractionRun.findUniqueOrThrow({
+        where: { extractionRunId: params.extractionRunId },
+        select: { systemPromptHash: true },
+      });
     await this.prismaService.$transaction([
       this.prismaService.restaurantEntityEvent.deleteMany({
         where: {
           sourceDocumentId: { in: extractedIds },
           extractionRunId: { not: params.extractionRunId },
+          extractionRun: {
+            systemPromptHash: activatingRun.systemPromptHash,
+          },
         },
       }),
       this.prismaService.restaurantEvent.deleteMany({
         where: {
           sourceDocumentId: { in: extractedIds },
           extractionRunId: { not: params.extractionRunId },
+          extractionRun: {
+            systemPromptHash: activatingRun.systemPromptHash,
+          },
         },
       }),
       this.prismaService.sourceDocument.updateMany({

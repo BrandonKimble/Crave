@@ -170,8 +170,12 @@ async function bootstrap() {
     .setVersion('1.0')
     .addBearerAuth()
     .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // SECURITY (final-final red team LOW 8): the full route map + DTO shapes
+  // were public in prod — reconnaissance for free. Dev/staging only.
+  if (!isProd) {
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   // Prefix all routes with /api/v1 (API versioning for future-proofing)
   // This allows us to introduce breaking changes in /api/v2 without affecting existing clients

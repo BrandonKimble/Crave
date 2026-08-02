@@ -9,11 +9,16 @@ import type { FastifyRequest } from 'fastify';
 import { timingSafeEqual } from 'node:crypto';
 
 /**
- * §18.4/§24.3 ops dashboard auth: a constant-time check of ?token= or
- * x-ops-token against process.env.OPS_DASH_TOKEN. Absent env → every ops
- * route 404s (the dashboard is OFF by construction, not merely unauth'd —
- * the surface must not even reveal it exists on a fresh env). Present env
- * + wrong/missing token → 401.
+ * §18.4/§24.3 ops dashboard auth: a constant-time check of the x-ops-token
+ * HEADER against process.env.OPS_DASH_TOKEN. Absent env → every ops route
+ * 404s (the dashboard is OFF by construction, not merely unauth'd — the
+ * surface must not even reveal it exists on a fresh env). Present env +
+ * wrong/missing token → 401.
+ *
+ * SECURITY (final-final red team #7): the old ?token= branch put the
+ * secret in the query string — which the logging interceptor, the
+ * exception filter, Sentry context, browser history, and proxy logs ALL
+ * record in cleartext. Header only, forever.
  */
 @Injectable()
 export class OpsTokenGuard implements CanActivate {
@@ -23,10 +28,7 @@ export class OpsTokenGuard implements CanActivate {
       throw new NotFoundException();
     }
     const request = context.switchToHttp().getRequest<FastifyRequest>();
-    const query = request.query as Record<string, unknown> | undefined;
-    const suppliedToken =
-      (typeof query?.token === 'string' ? query.token : undefined) ??
-      (request.headers['x-ops-token'] as string | undefined);
+    const suppliedToken = request.headers['x-ops-token'] as string | undefined;
     if (!suppliedToken || !constantTimeEquals(suppliedToken, configuredToken)) {
       throw new UnauthorizedException();
     }
