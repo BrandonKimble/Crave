@@ -456,3 +456,98 @@ future brokenness class ever needs a fifth arm.
 Post-deploy operational note: run scripts/backfill-identity-keys.ts
 against prod once (NULL keys violate nothing; the heal also converges
 them, but crons are currently off).
+
+## ROUND 12 (unscoped smell-hunt + architecture audit, 2026-08-02) — IDEAL SHAPE COMPLETE
+
+Architecture audit graded all 8 layers: evidence ledger, projections, ops
+rig = END-STATE IDEAL (leave alone); the failure signature "fails toward
+refusal, not corruption" held under audit. Its top-5 shape changes + the
+smell-hunter's 5 executed findings all LANDED and were proven:
+
+- IDENTITY IS ATOMIC WITH CREATION: identityInsertData() spreads both
+  keys into every entity.create payload (all 7 sites); the unique index
+  fires ON INSERT inside the savepoint (proven — it was structurally
+  unreachable before); entityIdentityKey returns NULL for letterless
+  names (the nfc: sentinel concept is deleted; entityLockKey stays
+  total); P2002 recovery probes by the constraint that actually failed.
+- THE MERGE COMPLETION CONTRACT is one implementation
+  (finalizeMergeCompletion + set-based re-keys + identity advisory locks
+  in the ledger module) used by BOTH merges — food merges get the 15-min
+  budget + set-based re-key (3,000-event taco-class merge: 57ms, was a
+  permanent silent P2028 abort), self-merge guards, alias banking, score
+  prune, redirect flatten. H3's "merges take identity locks" is now true
+  in code.
+- ONE NIGHTLY CONVERGENCE COORDINATOR (3AM): heal → food dedupe →
+  restaurant sweep → tombstone sweep → projection reconcile, awaited in
+  declared order, per-phase fail isolation (executed proof that
+  same-minute @Crons do NOT honor registration order). The four phase
+  crons lost their decorators.
+- Heal + backfill are convergent sweeps (per-row collision → logged
+  merge candidate, never all-or-nothing); dedupe runs even if heal
+  fails; heal rewrites legacy ''/nfc: sentinels to NULL (proven).
+- Reconciler also prunes connection-dim scores (the one derived table
+  the invariant missed); GC's ANY-event support definition + tombstone
+  preservation are now lockdown-spec-enforced; contentTokens routes
+  through canonicalFold (the fourth almost-fold is gone).
+  DEFERRED with reasons: identity_key→name_fold rename (cosmetic, churn >
+  value now); EventLedger/ExtractionScope module split (clarity only);
+  one-shot runner completion rows (class is down to one instance).
+
+## LANGUAGE & LOCALIZATION (rulings + architecture, 2026-08-02)
+
+**LAW (effective now): concept vocabularies are seeded as canonical
+slugs; language lives only in aliases, labels, and prompts.** Internal
+canonical concepts (cuisines, dietary, occasions, attributes, junk and
+provenance terms) stay English slugs — readable internal IDs, never
+user-facing strings. Any new lexicon must follow this or it re-bakes
+English in.
+
+**P3 ADDITION (prompt phase, item "language"):** the extraction prompt
+gains the cross-language normalization rule — a mention in ANY source
+language resolves to the canonical concept vocabulary ("picante" →
+`spicy`, "para llevar" → `takeout`) and the original surface form is
+preserved as an alias on the entity. Without this, non-English corpora
+would silently FORK the concept space (mint `picante` beside `spicy`)
+instead of enriching it. Verification for the rerun: feed a small
+Spanish fixture and assert zero new concept twins.
+
+**THE TWO SIDES OF THE COIN, and how they relate:** (A) data-side
+multilinguality (collection over non-English corpora) and (B) user-side
+localization (a Spanish speaker uses the English-corpus app on day one)
+are the SAME architecture consumed in two directions. The pivot is the
+canonical concept layer: (A) writes INTO it (LLM normalizes any-language
+text onto canonical concepts + banks aliases); (B) reads OUT of it
+(queries in any language resolve onto the same concepts; concepts render
+through per-locale labels). Neither requires the other to exist first.
+
+**User-side (B) architecture — industry-standard, and our system needs
+NO third-party language service for the core:**
+
+1. UI chrome → ordinary i18n locale files (react-i18next-style); the
+   LLM can draft the translation files; a TMS (Lokalise/Crowdin) only
+   if management pain appears later.
+2. Search queries in any language → ALREADY structurally supported: the
+   Gemini interpretation layer reads Spanish/Japanese natively; it needs
+   only the normalization rule above + per-locale gazetteer aliases so
+   the zero-LLM lane also hits ("vegetariano" → `vegetarian`).
+3. Data display: restaurant/dish NAMES are proper nouns — no translation
+   (Google Maps leaves them; so do we). Attribute/cuisine chips are a
+   CLOSED canonical set → per-locale label lookup tables (60-ish terms
+   per language, an afternoon each, LLM-draftable) — this is the payoff
+   of the concepts-vs-labels law: localizing DATA becomes a dictionary,
+   not machine translation.
+4. Review snippets/quotes → translate-on-read with original shown below
+   (the Google Maps NMT pattern) — the ONE place a vendor MT API
+   (Google Translate/DeepL) earns its keep, added when a market needs it.
+
+**Lemma + stopwords ruling (the "crude list" question):** both are
+ACCELERATORS, not correctness — the judge lane is the language-agnostic
+correctness backstop, and creation-time identity never asserts equality.
+The ideal abstraction is LANGUAGE PACKS: morphology (foodNameVariants +
+its mass-noun exceptions) and connector stopwords become the English
+pack of a per-language strategy; unknown languages default to
+judge-only (correct, just slower to converge). Do NOT replace the
+English rules with a generic stemmer (snowball over-stems food names —
+"frites"→"frit" — and would need the same exception governance it
+claims to remove). Refactor lands when a second language pack is
+actually written; until then the lists stay, understood as pack #1.
