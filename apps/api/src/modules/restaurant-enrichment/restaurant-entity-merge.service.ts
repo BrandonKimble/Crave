@@ -36,6 +36,11 @@ export class RestaurantEntityMergeService {
     canonicalUpdate: Prisma.EntityUpdateInput;
   }): Promise<RestaurantEntity> {
     const { canonical, duplicate, canonicalUpdate } = params;
+    if (canonical.entityId === duplicate.entityId) {
+      throw new Error(
+        `self-merge refused: ${canonical.entityId} (round-11 fuzz D1 — a self-merge silently annihilates the ledger)`,
+      );
+    }
 
     this.logger.info('Merging duplicate restaurant entity', {
       canonicalId: canonical.entityId,

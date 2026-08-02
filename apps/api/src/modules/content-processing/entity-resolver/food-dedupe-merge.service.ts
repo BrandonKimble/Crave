@@ -74,6 +74,28 @@ export class FoodDedupeMergeService {
         SET identity_key_sorted = ${entityIdentityKey(row.name, row.type as never)}
         WHERE entity_id = ${row.entityId}::uuid`;
     }
+    // FOOD RENAME HEAL (round-11 fuzz D2): the lemma fold has no SQL
+    // mirror, so a renamed food's staleness is only detectable by
+    // recomputing in TS. 8k rows, nightly, cheap.
+    const foods = await this.prisma.$queryRaw<
+      Array<{
+        entityId: string;
+        name: string;
+        type: string;
+        key: string | null;
+      }>
+    >`
+      SELECT entity_id AS "entityId", name, type::text AS type, identity_key_sorted AS key
+      FROM core_entities WHERE type IN ('food','ingredient')
+    `;
+    for (const row of foods) {
+      const expected = entityIdentityKey(row.name, row.type as never);
+      if (row.key !== expected) {
+        await this.prisma.$executeRaw`
+          UPDATE core_entities SET identity_key_sorted = ${expected}
+          WHERE entity_id = ${row.entityId}::uuid`;
+      }
+    }
   }
 
   async run(
@@ -192,6 +214,8 @@ export class FoodDedupeMergeService {
                      WHERE b.entity_id IN (cb.restaurant_id, cb.food_id))
         )
         AND a.identity_key_sorted IS NOT NULL
+        AND a.identity_key_sorted <> ''
+        AND a.identity_key_sorted NOT LIKE 'nfc:%'
         AND a.identity_key_sorted = b.identity_key_sorted
     `;
     // JUDGE-GATED, never auto (final-final red team: the column's first

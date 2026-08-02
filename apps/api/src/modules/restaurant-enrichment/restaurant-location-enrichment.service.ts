@@ -1661,6 +1661,18 @@ export class RestaurantLocationEnrichmentService {
       include: { primaryLocation: true, locations: true },
     });
 
+    // SELF-MERGE GUARD (round-11 fuzz D1): if the colliding place id is
+    // held by another location row of the SAME entity, this is not a
+    // duplicate pair — merging an entity into itself annihilated the
+    // ledger before the re-key guards existed. Refuse here too.
+    if (canonical && canonical.entityId === entity.entityId) {
+      this.logger.warn('Place-id collision resolves to self — skipping merge', {
+        entityId: entity.entityId,
+        placeId,
+      });
+      return { entityId: entity.entityId, status: 'skipped', reason: 'self' };
+    }
+
     if (!canonical) {
       this.logger.error(
         'Google Place ID conflict encountered but canonical entity missing',

@@ -242,6 +242,13 @@ export async function rekeyRestaurantEventsToCanonical(
   canonicalId: string,
   duplicateId: string,
 ): Promise<void> {
+  // SELF-MERGE ANNIHILATION GUARD (round-11 fuzz D1, executed: with
+  // canonical === duplicate the DELETE self-join matched every row
+  // against itself and silently destroyed the entire ledger, archived
+  // the restaurant, and wrote a self-redirect).
+  if (canonicalId === duplicateId) {
+    return;
+  }
   await tx.$executeRaw`
     DELETE FROM core_restaurant_events ev
     USING core_restaurant_events dup
@@ -261,6 +268,13 @@ export async function rekeyRestaurantEntityEventsToCanonical(
   canonicalId: string,
   duplicateId: string,
 ): Promise<void> {
+  // SELF-MERGE ANNIHILATION GUARD (round-11 fuzz D1, executed: with
+  // canonical === duplicate the DELETE self-join matched every row
+  // against itself and silently destroyed the entire ledger, archived
+  // the restaurant, and wrote a self-redirect).
+  if (canonicalId === duplicateId) {
+    return;
+  }
   await tx.$executeRaw`
     DELETE FROM core_restaurant_entity_events ev
     USING core_restaurant_entity_events dup

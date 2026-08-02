@@ -1603,6 +1603,17 @@ export class UnifiedProcessingService implements OnModuleInit {
               entityType,
             );
             resolution.normalizedName = canonicalName;
+            if (!canonicalName) {
+              // EMPTY NAME IS NOT AN ENTITY (round-11 fuzz D4: an active,
+              // servable restaurant with name='' minted straight through —
+              // outside every unique, every fold, every probe).
+              this.logger.warn('Empty entity name after normalize — skipped', {
+                batchId,
+                tempId: resolution.tempId,
+                entityType,
+              });
+              continue;
+            }
             // §13: identity is GLOBAL — the canonical-name guard is a
             // global (name, type) check; no market/presence lane, and no
             // skip for engineless communities. Geometric presence (locations
@@ -1650,9 +1661,15 @@ export class UnifiedProcessingService implements OnModuleInit {
               // that the lock had just serialized, so the second creator
               // minted the twin anyway.
               const sortedKey = entityIdentityKey(canonicalName, entityType);
-              const orderMatches = await tx.$queryRaw<
-                Array<{ entity_id: string; name: string; aliases: string[] }>
-              >`
+              const orderMatches = sortedKey.startsWith('nfc:')
+                ? [] // blank/degenerate names share 'nfc:'-keys — no identity (fuzz D3)
+                : await tx.$queryRaw<
+                    Array<{
+                      entity_id: string;
+                      name: string;
+                      aliases: string[];
+                    }>
+                  >`
                 SELECT entity_id, name, aliases FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'

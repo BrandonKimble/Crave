@@ -403,3 +403,26 @@ doc — any per-claim "source" UI shows the wrong quote); asserted-vs-
 inferred marking must cover ATTRIBUTES too, not just categories; the
 restaurant_attributes array is 80% places_api / 17% reddit_evidence / 3%
 cuisine_llm with no consumer-visible provenance discriminator.
+
+## ROUND 11 CLOSE-OUT (fuzz + semantic, 2026-08-02)
+
+Property fuzz (193 random ops, 3 seeds, 7 invariants after every op):
+redirect graph, junk-tombstone protection, retain/delete conservation,
+GC anchoring, counter truth at scale (939 connections, 0 drift) all HELD.
+Five defects found and FIXED (all proven by re-execution): D1 CRITICAL —
+self-merge annihilated the ledger through the set-based re-key (guards in
+both helpers + the merge service + the place-collision handler; refused
+with ledger intact); D2 — food renames never healed identity_key_sorted
+(TS recompute added to the nightly refresh); D3 — 'nfc:' fallback keys
+are a shared sink for blank names (food order-probe + twin lane now skip
+them); D4 — empty-name entities minted (skipped with a warn now); D5 —
+connections that outlive their evidence were never re-nominated (new
+repair arm, scoped to non-zero projections so the deliberately-preserved
+zeroed anchor rows don't churn — verified 0 nominated on the converged
+mirror).
+
+Semantic audit recorded above. CAMPAIGN VERDICT: eleven rounds; the
+machinery now fails toward refusal (guards throw, sweeps skip, txs roll
+back) rather than toward corruption; remaining work is PRODUCT truth
+(ranking floor, extraction prompt classes) — the next phase, not more
+red teams.

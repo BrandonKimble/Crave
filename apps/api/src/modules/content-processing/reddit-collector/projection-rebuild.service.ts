@@ -1272,6 +1272,30 @@ export class ProjectionRebuildService implements OnModuleInit {
           AND fe.entity_type = 'food'
           AND fe.evidence_type IN ('menu_item_food', 'food_category')
       )
+      -- REVERSE ORPHANS (round-11 fuzz D5): connections that OUTLIVED
+      -- their evidence — a restaurant whose events were superseded,
+      -- discarded, or drained keeps serving its old projection forever,
+      -- because the arms above only find events WITHOUT connections.
+      -- Archived-but-projected restaurants are the same class.
+      UNION
+      SELECT DISTINCT i.restaurant_id AS "restaurantId"
+      FROM core_restaurant_items i
+      LEFT JOIN core_entities host ON host.entity_id = i.restaurant_id
+      WHERE (
+        host.status <> 'active'
+        OR NOT EXISTS (
+          SELECT 1 FROM core_restaurant_entity_events oe
+          JOIN collection_source_documents od
+            ON od.document_id = oe.source_document_id
+           AND od.active_extraction_run_id = oe.extraction_run_id
+          WHERE oe.restaurant_id = i.restaurant_id
+        )
+      )
+        -- zeroed rows are the DELIBERATELY preserved anchored connections
+        -- (never ranked, kept for user lists) — re-nominating them nightly
+        -- is the structural-no-op churn round 9 eliminated. Only non-zero
+        -- projections that outlived their evidence get repaired.
+        AND (i.mention_count > 0 OR i.support_mention_count > 0)
       -- STALE-ARRAY REPAIR (final red team F4): migrations archive
       -- vocabulary in SQL, but restaurant_attributes / food_attributes
       -- arrays only recompute on rebuild — and a restaurant WITH
