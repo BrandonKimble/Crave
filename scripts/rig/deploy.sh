@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# One-command deploy (prod by default, staging with --env staging).
+# One-command deploy. THE FLOW IS staging -> production, in that order.
 #
-#   ./scripts/rig/deploy.sh                    # prod: api then worker
+#   ./scripts/rig/deploy.sh --env staging      # 1. always here first
+#   ./scripts/rig/deploy.sh                    # 2. then prod (api + worker)
 #   ./scripts/rig/deploy.sh api                # prod: one service
-#   ./scripts/rig/deploy.sh --env staging      # staging: api then worker
-#   ./scripts/rig/deploy.sh --force            # prod: skip the clean-tree guards
+#   ./scripts/rig/deploy.sh --force            # hotfix: skip EVERY guard
+#
+# Prod REFUSES unless staging is already running this exact commit and is
+# answering /health. Before that gate existed (2026-08-02) the no-argument
+# invocation went straight to production and staging was an optional
+# side-trip nothing checked — which is how prod ended up newer than staging,
+# with staging still serving a rate-limit bypass prod had been patched for.
 #
 # Encodes every deploy law we've burned time on:
 #  - ALWAYS deploys from the repo ROOT (`railway up` uploads the cwd as the

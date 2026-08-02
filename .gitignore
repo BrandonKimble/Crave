@@ -83,3 +83,10 @@ apps/*/src/**/*.js
 apps/*/test/**/*.js
 apps/*/scripts/**/*.js
 packages/*/src/**/*.js
+
+# Scratch harnesses. `railway up` uploads the working TREE, so an untracked
+# throwaway would otherwise ship to a real environment — and it blocks the
+# deploy script's clean-tree guard until someone deletes it. Ignored = it can
+# do neither.
+*.tmp.ts
+*.tmp.js
