@@ -53,11 +53,18 @@ export type ViewportSubjectState = {
   /**
    * Header ideal 2026-08-01: the latest catalog revision any FEED response
    * reported for the current region (feed runtimes write it via
-   * noteCatalogWatermark). The controller compares it to the slice's own
-   * stored watermark and refetches on CHANGE — this replaced the 1h TTL,
-   * whose hourly-drain rationale birth-synchronous outlines falsified.
+   * noteCatalogWatermark). Compared to sliceCatalogWatermark below; a
+   * difference re-cuts the slice — this replaced the 1h TTL, whose
+   * hourly-drain rationale birth-synchronous outlines falsified.
    */
   catalogWatermarkSeen: string | null;
+  /**
+   * The revision THE CURRENT SLICE was cut at. Lives beside slice/marginBox
+   * because the three are ONE fact with one lifetime (red-team 2026-08-01:
+   * as controller-closure state it reset on every remount while the slice
+   * survived, forcing a spurious re-cut, and the pair could desync).
+   */
+  sliceCatalogWatermark: string | null;
 };
 
 type Listener = () => void;
@@ -69,6 +76,7 @@ const INITIAL_STATE: ViewportSubjectState = {
   lastCommittedAt: null,
   settledBounds: null,
   catalogWatermarkSeen: null,
+  sliceCatalogWatermark: null,
 };
 
 let currentState: ViewportSubjectState = INITIAL_STATE;
@@ -89,7 +97,8 @@ export const setViewportSubjectState = (partial: Partial<ViewportSubjectState>):
     next.marginBox === currentState.marginBox &&
     next.lastCommittedAt === currentState.lastCommittedAt &&
     next.settledBounds === currentState.settledBounds &&
-    next.catalogWatermarkSeen === currentState.catalogWatermarkSeen
+    next.catalogWatermarkSeen === currentState.catalogWatermarkSeen &&
+    next.sliceCatalogWatermark === currentState.sliceCatalogWatermark
   ) {
     return;
   }

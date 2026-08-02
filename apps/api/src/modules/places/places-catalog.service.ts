@@ -394,11 +394,20 @@ export class PlacesCatalogService {
       ' OR ',
     );
     try {
+      // ORDER BY/LIMIT, not max(): with the fetched_at DESC index the
+      // planner walks it backward and stops at the first row inside the
+      // box, and falls back to the GiST bitmap scan when the box is small.
+      // MEASURED on the prod copy (2026-08-01): world zoom 61.3ms seq scan
+      // -> 0.063ms (the max() form could not use either index and scanned
+      // all 22,769 grounds on EVERY feed request, growing with the
+      // catalog); city zoom stays 0.18ms on the GiST path.
       const rows = await this.prisma.$queryRaw<Array<{ mark: Date | null }>>(
         Prisma.sql`
           /*places:catalog_watermark*/
-          SELECT max(g.fetched_at) AS mark FROM place_geometries g
+          SELECT g.fetched_at AS mark FROM place_geometries g
           WHERE ${overlapsAnyArm}
+          ORDER BY g.fetched_at DESC
+          LIMIT 1
         `,
       );
       return rows[0]?.mark ? rows[0].mark.toISOString() : null;

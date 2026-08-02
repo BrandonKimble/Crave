@@ -323,7 +323,18 @@ export const usePollsFeedRuntimeController = ({
         // request's failure is stale. While a retry is pending, hold the loading/refreshing
         // state (the skeleton stays up) and defer the failure verdict to the final give-up.
         const isLatestRefresh = refreshSeq === refreshSeqRef.current;
-        if (isLatestRefresh && retryAttempt < POLL_FEED_RETRY_BACKOFF_MS.length) {
+        // Red-team 2026-08-01 (the hole home closed first — polls is cited as
+        // the parity source and had it too): a fetch in flight when the
+        // surface hides would arm a timer AFTER the hide, and the ladder
+        // would fetch while hidden. The controller already owns the live
+        // gate; the settle-edge/activation-diff covers the missed refresh on
+        // return.
+        if (
+          isLatestRefresh &&
+          visibilityGateRef.current.visible &&
+          !visibilityGateRef.current.isSystemUnavailable &&
+          retryAttempt < POLL_FEED_RETRY_BACKOFF_MS.length
+        ) {
           scheduleRetry(retryAttempt + 1, 'fetch-failed');
         } else if (isLatestRefresh) {
           logBootstrap({ phase: 'feed-retry-give-up', attempts: retryAttempt });
@@ -403,8 +414,14 @@ export const usePollsFeedRuntimeController = ({
     })();
   }, [buildFeedQueryPayload, publishFeedSlice]);
 
-  // Never let a scheduled retry outlive the controller.
-  React.useEffect(() => clearScheduledPollFeedRetry, [clearScheduledPollFeedRetry]);
+  // Never let a scheduled retry outlive the controller — or the VISIBLE
+  // surface (red-team 2026-08-01, mirroring HomePanel's ladder cleanup).
+  React.useEffect(() => {
+    if (!visible) {
+      clearScheduledPollFeedRetry();
+    }
+    return clearScheduledPollFeedRetry;
+  }, [clearScheduledPollFeedRetry, visible]);
 
   // OFFLINE RESUME (foundation-hardening §A): the owner's law is that the offline
   // hang is FINITE on every surface. Search resumes its paused desire on reconnect;

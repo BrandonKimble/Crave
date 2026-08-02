@@ -355,13 +355,26 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     noteCatalogWatermark('rev-3');
     await flushMicrotasks();
     expect(harness.fetchSlice).toHaveBeenCalledTimes(3);
-    // seen aligned to null with the empty slice; neither time nor the
-    // (ignored) null feed signal re-fires. (A feed re-reporting a non-null
-    // revision against an empty slice IS a refetch — the boxes disagree
-    // about a ground, and at rest they are the same box, so it converges.)
+    // seen aligned to null with the empty slice; time alone never re-fires.
     jest.advanceTimersByTime(60 * 60 * 1_000);
     await flushMicrotasks();
     expect(harness.fetchSlice).toHaveBeenCalledTimes(3);
+
+    // ...and the honest positive case (red-team: the assertion above passes
+    // via the store's equality dedupe, so pin the real contract too): a feed
+    // reporting a REAL revision against a null-watermark slice IS a change,
+    // so it re-cuts exactly once and converges again.
+    harness.fetchSlice.mockImplementation(async () => ({
+      marginBox: MARGIN_BOX,
+      catalogWatermark: 'rev-4',
+      places: [TEXAS],
+    }));
+    noteCatalogWatermark('rev-4');
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(4);
+    noteCatalogWatermark('rev-4');
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(4);
     harness.dispose();
   });
 

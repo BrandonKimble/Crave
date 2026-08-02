@@ -153,10 +153,6 @@ export const createViewportSubjectStoreController = ({
   let sliceRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let sliceFetchInFlight = false;
   let fetchEpoch = 0;
-  // Header ideal 2026-08-01: the catalog revision this slice was cut at.
-  // Compared against the store's catalogWatermarkSeen (fed by feed
-  // responses); a CHANGE re-cuts the slice — no clock, no TTL.
-  let sliceWatermark: string | null = null;
   let settledEpisode: SettledEpisode | null = null;
   let pendingExitVerdict: ViewportSubjectVerdict | null = null;
   let lastLoggedCandidateIdentity: string | null = null;
@@ -290,14 +286,23 @@ export const createViewportSubjectStoreController = ({
     if (sliceFetchInFlight) {
       return;
     }
-    const { slice, marginBox, catalogWatermarkSeen } = getViewportSubjectState();
-    // Inequality = change detector, never an ordering. Mid-pan the feeds'
-    // margin box and the slice's fetch-time box can genuinely disagree about
-    // one boundary ground — that costs AT MOST one extra re-cut per feed
-    // response (feeds fire once per settle; the re-cut re-aligns seen), and
-    // at rest the boxes coincide, so it converges. Bounded chat, no loop.
+    const { slice, marginBox, catalogWatermarkSeen, sliceCatalogWatermark } =
+      getViewportSubjectState();
+    // Inequality = change detector, never an ordering. THE LOAD-BEARING
+    // INVARIANT (why a re-cut can never loop): the controller refetches with
+    // the SAME view the feeds asked about, and the server expands both by
+    // the same PLACES_SLICE_MARGIN_FACTOR — at rest settledBounds IS
+    // getBounds(), so identical box ⇒ identical revision ⇒ seen aligns and
+    // it converges. Mid-pan the boxes can differ about one boundary ground,
+    // costing at most one extra re-cut per feed response (feeds fire once
+    // per settle). MEASURED on prod (2026-08-01): the revision was
+    // IDENTICAL across 10%/25%/50% pans of a real Austin viewport — coarse
+    // ancestors in every box dominate the max — so this is bounded in
+    // theory and zero in practice.
     const sliceStale =
-      slice != null && catalogWatermarkSeen != null && catalogWatermarkSeen !== sliceWatermark;
+      slice != null &&
+      catalogWatermarkSeen != null &&
+      catalogWatermarkSeen !== sliceCatalogWatermark;
     if (slice != null && marginBox != null && bboxContains(marginBox, view) && !sliceStale) {
       return;
     }
@@ -311,7 +316,10 @@ export const createViewportSubjectStoreController = ({
           return;
         }
         sliceFetchInFlight = false;
-        sliceWatermark = response.catalogWatermark;
+        // F7 (red-team): a retry armed by an earlier failure must not
+        // outlive the success it was retrying for.
+        clearTimer(sliceRetryTimer);
+        sliceRetryTimer = null;
         // Replace slice+marginBox atomically; the committed verdict stands
         // until the hysteresis pipeline re-judges (never blank mid-move).
         // Rows are stored VERBATIM (PlaceLike) — §2.5 ground rings and
@@ -328,6 +336,7 @@ export const createViewportSubjectStoreController = ({
           // null — permanently stale after arriving from a grounded one,
           // refetching on every bounds change). seen means "the latest
           // revision signal for the CURRENT region"; null is a real value.
+          sliceCatalogWatermark: response.catalogWatermark,
           catalogWatermarkSeen: response.catalogWatermark,
         });
         logSubjectStore('slice-landed', {
@@ -420,11 +429,16 @@ export const createViewportSubjectStoreController = ({
     if (seen === lastReactedWatermark) {
       return;
     }
-    lastReactedWatermark = seen;
     const bounds = viewportBoundsService.getBounds();
-    if (bounds) {
-      ensureSliceFetch(geoBboxFromMapBounds(bounds));
+    if (!bounds) {
+      // Bounds can flap null during startup churn — do NOT consume the
+      // change signal we couldn't act on (red-team 2026-08-01: swallowing
+      // it left the slice stale until an unrelated revision moved, because
+      // a feed re-reporting the same value writes no store change).
+      return;
     }
+    lastReactedWatermark = seen;
+    ensureSliceFetch(geoBboxFromMapBounds(bounds));
   });
 
   return () => {
