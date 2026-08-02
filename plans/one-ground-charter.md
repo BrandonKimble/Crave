@@ -907,3 +907,31 @@ and its impossible gap-fill branch). Tripwires kept, each with its
 documented reason. Remaining known-stale: search.service's unused
 promotion injection (another session's file is mid-edit; remove on next
 touch).
+
+## WATERMARK RED-TEAM ROUNDS (2026-08-01, commits 089559d3 + 90ea8ebd)
+
+Cache invalidation is where "change, never clock" designs die, so the
+watermark got two adversarial rounds. Convergence holes closed: seen is
+aligned to the slice's revision in the SAME store write, null included
+(an empty ocean region was otherwise permanently "stale", refetching on
+every camera tick); the wakeup no longer consumes a change it could not
+act on (null bounds during startup churn); the slice and the revision it
+was cut at now live together in the store as ONE fact (as closure state
+it reset per remount and could desync); the retry ladder cannot outlive
+a hidden surface — on POLLS too, which the home fix had cited as its
+parity source while carrying the same hole.
+
+MEASURED (both decisive, both against real prod data):
+
+- The margin-box divergence caveat is theoretical, not real: the
+  revision was IDENTICAL across 10%/25%/50% pans of an Austin viewport
+  (ground counts 40 -> 35, max unchanged) — coarse ancestors present in
+  every box dominate max(fetched_at).
+- The watermark read was a 61.3ms seq scan over all 22,769 grounds at
+  world zoom on EVERY feed request. Rewritten to ORDER BY fetched_at
+  DESC LIMIT 1 with a matching index (migration 20260801130000):
+  0.063ms, ~1000x, planner still choosing the GiST path for small
+  boxes. NOTE for future rounds: a reviewer reasoned that a btree
+  "cannot help a spatial predicate" — the measurement refuted it (the
+  planner walks the index backward and stops at the first row inside
+  the box). Measure; do not reason about planners.
