@@ -1,3 +1,4 @@
+import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -87,6 +88,7 @@ export class PollEntitySeedService {
         name,
         type: EntityType.food,
         aliases: [],
+        ...identityInsertData(name, EntityType.food),
       },
     });
 
@@ -131,6 +133,7 @@ export class PollEntitySeedService {
         name,
         type: params.entityType,
         aliases: [],
+        ...identityInsertData(name, params.entityType),
       },
     });
 
@@ -386,7 +389,15 @@ export class PollEntitySeedService {
           adopted: true,
         };
       }
-      const entity = await tx.entity.create({ data: entityData });
+      const entity = await tx.entity.create({
+        data: {
+          ...entityData,
+          ...identityInsertData(
+            (entityData as { name: string }).name,
+            EntityType.restaurant,
+          ),
+        },
+      });
       const locationData = this.restaurantEnrichment.buildLocationCreateInput(
         entity.entityId,
         match.place,

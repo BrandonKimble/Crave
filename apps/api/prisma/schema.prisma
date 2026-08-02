@@ -27,12 +27,17 @@ model Entity {
   /// native cuisine slot (so live search keeps working); the facet column
   /// IS the identity in the meantime. Null = ordinary attribute.
   facet                               String?                       @db.VarChar(16)
-  /// DB-GENERATED (stored) stripped-name identity key — btrim(regexp
-  /// lower/strip/squeeze). Never write it from the client; Postgres
-  /// computes it. Backs uq_attribute_identity_key (attributes-only
-  /// partial unique — foods need the TS lemma fold, restaurants await
-  /// the P2.2 chain model) and the creation-probe index.
+  /// APP-WRITTEN canonical fold of the name (canonicalFold in
+  /// entity-identity.ts — THE only implementation; Postgres Unicode
+  /// classes are platform-dependent so no SQL mirror exists). NULL =
+  /// the name has no foldable identity (emoji-only). Backs
+  /// uq_attribute_identity_key (attributes-only partial unique) and the
+  /// creation-probe index. Write it ONLY via identityInsertData().
   identityKey                         String?                       @map("identity_key")
+  /// APP-WRITTEN type-aware identity (foods: lemma-folded + token-
+  /// sorted; others: = identityKey). The food twin probes and dedupe
+  /// lanes join on this. Write it ONLY via identityInsertData().
+  identityKeySorted                   String?                       @map("identity_key_sorted")
   canonicalDomain                     String?                       @map("canonical_domain") @db.VarChar(255)
   aliases                             String[]                      @default([])
   /// KNOWLEDGE TIER (food entities only): synthesized canonical ingredient

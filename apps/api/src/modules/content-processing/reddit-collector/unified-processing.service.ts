@@ -22,6 +22,8 @@ import { EntityResolutionService } from '../entity-resolver/entity-resolution.se
 import {
   canonicalFold,
   entityIdentityKey,
+  entityLockKey,
+  identityInsertData,
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
 import { derivedBboxSelectSql } from '../../places/places-catalog.service';
@@ -1631,7 +1633,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             // key: number variants, ACTIVE rows only (an archived loser must
             // never be adopted — its merge redirect is followed instead, so
             // post-merge mentions land on the surviving canonical).
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${entityIdentityKey(canonicalName, entityType)}`}))`;
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${entityLockKey(canonicalName, entityType)}`}))`;
             const probeNames = identityProbeNames(canonicalName, entityType);
             let existing = await tx.entity.findFirst({
               where: {
@@ -1662,8 +1664,8 @@ export class UnifiedProcessingService implements OnModuleInit {
               // that the lock had just serialized, so the second creator
               // minted the twin anyway.
               const sortedKey = entityIdentityKey(canonicalName, entityType);
-              const orderMatches = sortedKey.startsWith('nfc:')
-                ? [] // blank/degenerate names share 'nfc:'-keys — no identity (fuzz D3)
+              const orderMatches = !sortedKey
+                ? [] // no foldable identity — nothing to probe
                 : await tx.$queryRaw<
                     Array<{
                       entity_id: string;
@@ -1710,8 +1712,8 @@ export class UnifiedProcessingService implements OnModuleInit {
               // (their key is lemma-collapsed + token-sorted, which no SQL
               // expression mirrors).
               const strippedKey = entityIdentityKey(canonicalName, entityType);
-              const strippedMatches = strippedKey.startsWith('nfc:')
-                ? [] // empty fold = no shared identity to probe (HIGH-1)
+              const strippedMatches = !strippedKey
+                ? [] // no foldable identity — nothing to probe
                 : await tx.$queryRaw<
                     Array<{
                       entity_id: string;
@@ -1888,7 +1890,12 @@ export class UnifiedProcessingService implements OnModuleInit {
               await tx.$executeRaw`SAVEPOINT entity_create`;
               try {
                 createdEntity = await tx.entity.create({
-                  data: entityData,
+                  data: {
+                    ...entityData,
+                    // atomic with the row — the unique index fires ON THE
+                    // INSERT, inside the savepoint, as designed
+                    ...identityInsertData(canonicalName, entityType),
+                  },
                   select: { entityId: true },
                 });
                 await tx.$executeRaw`RELEASE SAVEPOINT entity_create`;
@@ -1898,16 +1905,34 @@ export class UnifiedProcessingService implements OnModuleInit {
                   error.code === 'P2002'
                 ) {
                   await tx.$executeRaw`ROLLBACK TO SAVEPOINT entity_create`;
-                  const winner = await tx.$queryRaw<
-                    Array<{ entity_id: string }>
-                  >`
-                    SELECT entity_id FROM core_entities
-                    WHERE type = ${entityType}::entity_type
-                      AND identity_key = ${canonicalFold(canonicalName)}
-                      AND identity_key <> ''
-                    ORDER BY (status <> 'archived') DESC, created_at
-                    LIMIT 1
-                  `;
+                  // Probe by the constraint that ACTUALLY failed (round-12
+                  // F4: the name-unique on ingredients can fire while the
+                  // winner has a NULL identity key — a key-only probe found
+                  // nothing and rethrew, aborting the batch).
+                  const rawTarget = (
+                    error.meta as { target?: unknown } | undefined
+                  )?.target;
+                  const target = Array.isArray(rawTarget)
+                    ? rawTarget.join(',')
+                    : typeof rawTarget === 'string'
+                      ? rawTarget
+                      : '';
+                  const winner = target.includes('name')
+                    ? await tx.$queryRaw<Array<{ entity_id: string }>>`
+                        SELECT entity_id FROM core_entities
+                        WHERE type = ${entityType}::entity_type
+                          AND lower(name) = lower(${canonicalName})
+                        ORDER BY (status <> 'archived') DESC, created_at
+                        LIMIT 1
+                      `
+                    : await tx.$queryRaw<Array<{ entity_id: string }>>`
+                        SELECT entity_id FROM core_entities
+                        WHERE type = ${entityType}::entity_type
+                          AND identity_key = ${canonicalFold(canonicalName) || null}
+                          AND identity_key IS NOT NULL
+                        ORDER BY (status <> 'archived') DESC, created_at
+                        LIMIT 1
+                      `;
                   if (!winner.length) {
                     throw error;
                   }
@@ -1926,11 +1951,6 @@ export class UnifiedProcessingService implements OnModuleInit {
               if (createdEntity) {
                 entityId = createdEntity.entityId;
                 createdNew = true;
-                await tx.$executeRaw`
-                  UPDATE core_entities
-                  SET identity_key = ${canonicalFold(canonicalName)},
-                      identity_key_sorted = ${entityIdentityKey(canonicalName, entityType)}
-                  WHERE entity_id = ${createdEntity.entityId}::uuid`;
 
                 if (entityType === 'restaurant') {
                   const location = await tx.restaurantLocation.create({

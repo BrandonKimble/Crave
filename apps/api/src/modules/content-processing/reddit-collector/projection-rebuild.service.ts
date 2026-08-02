@@ -1,5 +1,4 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
 import { Connection, EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -1017,7 +1016,6 @@ export class ProjectionRebuildService implements OnModuleInit {
    * (or vocabulary) decision, never silence. Runs before the orphan
    * repair so re-lit restaurants get rebuilt in the same night.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async sweepTombstoneEvents(): Promise<void> {
     // One WINNER ROW per target identity moves (DISTINCT ON) — two archived
     // losers redirecting to the same winner with the same (run, doc,
@@ -1240,7 +1238,6 @@ export class ProjectionRebuildService implements OnModuleInit {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async repairOrphanedProjections(): Promise<{ repaired: number }> {
     // THE RECONCILER (ideal-shape pass, 2026-08-02). This used to be a
     // growing checklist of hand-enumerated brokenness ("events with no
@@ -1309,6 +1306,16 @@ export class ProjectionRebuildService implements OnModuleInit {
         });
       }
     }
+    // Scores are a derived table too (round-12 audit layer 6): prune
+    // connection-dim rows whose connection no longer exists — the one
+    // derived table the reconcile-everything invariant didn't yet cover.
+    await this.prismaService.$executeRaw`
+      DELETE FROM core_public_entity_scores ps
+      WHERE ps.subject_type = 'connection'
+        AND NOT EXISTS (
+          SELECT 1 FROM core_restaurant_items i
+          WHERE i.connection_id = ps.subject_id
+        )`;
     this.logger.info('Orphaned-projection repair complete', {
       operation: 'projection_orphan_repair',
       repaired,

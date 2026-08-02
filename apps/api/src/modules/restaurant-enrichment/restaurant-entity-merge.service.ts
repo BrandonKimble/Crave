@@ -1,14 +1,16 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma, Entity } from '@prisma/client';
+import { Prisma, Entity, EntityType } from '@prisma/client';
 import {
   activeEntityEventCountSql,
+  acquireIdentityMergeLocks,
+  finalizeMergeCompletion,
   rekeyRestaurantEventsToCanonical,
   rekeyRestaurantEntityEventsToCanonical,
   activeCommunitiesArraySql,
   activeSupportExistsSql,
   dominantCommunitySql,
 } from '../content-processing/reddit-collector/extraction-scope.service';
+import { entityLockKey } from '../content-processing/entity-resolver/entity-identity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
@@ -49,6 +51,12 @@ export class RestaurantEntityMergeService {
 
     const result = await this.prisma.$transaction(
       async (tx) => {
+        // Same identity locks the creation path takes (H3 — round-12
+        // audit: the plan asserted this, the code didn't do it).
+        await acquireIdentityMergeLocks(tx, 'restaurant', [
+          entityLockKey(canonical.name, EntityType.restaurant),
+          entityLockKey(duplicate.name, EntityType.restaurant),
+        ]);
         await this.mergeRestaurantEvents(
           tx,
           canonical.entityId,
@@ -72,54 +80,14 @@ export class RestaurantEntityMergeService {
           data: canonicalUpdate,
         });
 
-        // ARCHIVE, never delete (audit §1: entity rows are FK-load-bearing —
-        // an in-flight extraction holding this id writes events AFTER the merge
-        // and a hard delete turns that into an FK crash, the exact class that
-        // wedged the stage-2 load). Bank the duplicate's name as an alias on
-        // the canonical so future mentions forward via the alias tier
-        // (resolution excludes archived rows from matching).
-        await tx.$executeRaw`
-        UPDATE core_entities y
-        SET aliases = (
-          SELECT array_agg(DISTINCT a)
-          FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
-        )
-        FROM core_entities x
-        WHERE y.entity_id = ${canonical.entityId}::uuid
-          AND x.entity_id = ${duplicate.entityId}::uuid`;
-        await tx.entity.update({
-          where: { entityId: duplicate.entityId },
-          data: { status: 'archived' },
-        });
-
-        // ARCHIVED IS NEVER RANKED (final red team #5, executed: 93 merge
-        // losers stayed publicly scored until the next full score pass —
-        // the 3AM merge and the score cron are independent, so the loser was
-        // user-rankable for the gap). Prune inside the merge tx.
-        await tx.$executeRaw`
-        DELETE FROM core_public_entity_scores
-        WHERE subject_id = ${duplicate.entityId}::uuid`;
-
-        // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
-        // signals ledger is never rekeyed — readers resolve duplicate
-        // subjectIds to the canonical at read. Chains are flattened so the
-        // readers' one-hop COALESCE stays complete (A→B then B→C rewrites
-        // A→C), and any stale redirect FROM the live canonical is dropped.
-        await tx.entityRedirect.updateMany({
-          where: { toEntityId: duplicate.entityId },
-          data: { toEntityId: canonical.entityId },
-        });
-        await tx.entityRedirect.deleteMany({
-          where: { fromEntityId: canonical.entityId },
-        });
-        await tx.entityRedirect.upsert({
-          where: { fromEntityId: duplicate.entityId },
-          update: { toEntityId: canonical.entityId },
-          create: {
-            fromEntityId: duplicate.entityId,
-            toEntityId: canonical.entityId,
-          },
-        });
+        // Alias bank + archive + score prune + redirect flatten: ONE
+        // contract shared with the food merge (round-12 audit — the two
+        // copy-pasted tails had diverged; see finalizeMergeCompletion).
+        await finalizeMergeCompletion(
+          tx,
+          canonical.entityId,
+          duplicate.entityId,
+        );
 
         return updatedCanonical;
       },
@@ -338,7 +306,6 @@ export class RestaurantEntityMergeService {
    * else the more-evidenced side. Idempotent; cheap at zero dupes. Manual
    * lever: scripts/merge-duplicate-restaurants.ts (report / --apply).
    */
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async sweepSameNameDuplicatesCron(): Promise<void> {
     await this.sweepSameNameDuplicates({ apply: true });
   }

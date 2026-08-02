@@ -1,3 +1,4 @@
+import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -2614,6 +2615,7 @@ export class RestaurantLocationEnrichmentService {
         name: canonicalName,
         type: EntityType.restaurant_attribute,
         aliases: RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [],
+        ...identityInsertData(canonicalName, EntityType.restaurant_attribute),
       },
       select: { entityId: true },
     });

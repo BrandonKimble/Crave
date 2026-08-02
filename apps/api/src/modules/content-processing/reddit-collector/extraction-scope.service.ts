@@ -290,6 +290,94 @@ export async function rekeyRestaurantEntityEventsToCanonical(
     WHERE restaurant_id = ${duplicateId}::uuid`;
 }
 
+/** Set-based ENTITY-dimension re-key (food/attribute merges re-point
+ *  ev.entity_id, not ev.restaurant_id) — same shape and reasons as the
+ *  restaurant-dimension pair above (round-12 audit: the food merge kept
+ *  the per-event loop with the default 5s budget; a taco/tacos merge —
+ *  2,478 events — could never complete, silently, forever). */
+export async function rekeyEntityDimensionEventsToCanonical(
+  tx: Prisma.TransactionClient,
+  canonicalId: string,
+  duplicateId: string,
+): Promise<void> {
+  if (canonicalId === duplicateId) {
+    return;
+  }
+  await tx.$executeRaw`
+    DELETE FROM core_restaurant_entity_events ev
+    USING core_restaurant_entity_events dup
+    WHERE ev.entity_id = ${duplicateId}::uuid
+      AND dup.entity_id = ${canonicalId}::uuid
+      AND dup.extraction_run_id = ev.extraction_run_id
+      AND dup.source_document_id = ev.source_document_id
+      AND dup.restaurant_id = ev.restaurant_id
+      AND dup.evidence_type = ev.evidence_type`;
+  await tx.$executeRaw`
+    UPDATE core_restaurant_entity_events
+    SET entity_id = ${canonicalId}::uuid
+    WHERE entity_id = ${duplicateId}::uuid`;
+}
+
+/** THE MERGE COMPLETION CONTRACT — one implementation for every entity
+ *  merge (round-12 audit: the restaurant and food merges each carried a
+ *  copy-pasted tail that had DIVERGED; the divergence is where the live
+ *  defects lived). Alias-banks the loser's names on the winner
+ *  (case-preserving), archives the loser, optionally prunes its public
+ *  scores, and flattens the redirect graph (A→B then B→C rewrites A→C;
+ *  stale redirects FROM the live winner drop). */
+export async function finalizeMergeCompletion(
+  tx: Prisma.TransactionClient,
+  canonicalId: string,
+  duplicateId: string,
+  options: { pruneLoserScores?: boolean } = {},
+): Promise<void> {
+  if (canonicalId === duplicateId) {
+    throw new Error(`self-merge refused: ${canonicalId}`);
+  }
+  await tx.$executeRaw`
+    UPDATE core_entities y
+    SET aliases = (
+      SELECT array_agg(DISTINCT a)
+      FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
+    )
+    FROM core_entities x
+    WHERE y.entity_id = ${canonicalId}::uuid
+      AND x.entity_id = ${duplicateId}::uuid`;
+  await tx.$executeRaw`
+    UPDATE core_entities SET status = 'archived'
+    WHERE entity_id = ${duplicateId}::uuid`;
+  if (options.pruneLoserScores !== false) {
+    await tx.$executeRaw`
+      DELETE FROM core_public_entity_scores
+      WHERE subject_id = ${duplicateId}::uuid`;
+  }
+  await tx.$executeRaw`
+    UPDATE entity_redirects SET to_entity_id = ${canonicalId}::uuid
+    WHERE to_entity_id = ${duplicateId}::uuid`;
+  await tx.$executeRaw`
+    DELETE FROM entity_redirects WHERE from_entity_id = ${canonicalId}::uuid`;
+  await tx.$executeRaw`
+    INSERT INTO entity_redirects (from_entity_id, to_entity_id)
+    VALUES (${duplicateId}::uuid, ${canonicalId}::uuid)
+    ON CONFLICT (from_entity_id)
+    DO UPDATE SET to_entity_id = ${canonicalId}::uuid`;
+}
+
+/** Identity advisory locks for a merge — the SAME locks the creation
+ *  path takes (async-integrity H3; round-12 audit: the plan asserted
+ *  this and the code didn't do it — a creator could adopt the loser
+ *  while the merge archived it). Sorted so overlapping merges cannot
+ *  deadlock. */
+export async function acquireIdentityMergeLocks(
+  tx: Prisma.TransactionClient,
+  entityType: string,
+  lockKeys: string[],
+): Promise<void> {
+  for (const key of [...lockKeys].sort()) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`entity:${entityType}:${key}`}))`;
+  }
+}
+
 /** Active-support EXISTS on the connection projection — the D5 predicate.
  *  Exported so the dedupe sweeps consume THIS instead of an inline copy. */
 export function activeSupportExistsSql(entityRef: string): string {

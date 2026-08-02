@@ -23,11 +23,27 @@ async function main(): Promise<void> {
           Prisma.sql`(${r.entity_id}::uuid, ${canonicalFold(r.name)}, ${entityIdentityKey(r.name, r.type as never)})`,
       ),
     );
-    await prisma.$executeRaw`
-      UPDATE core_entities e
-      SET identity_key = v.k, identity_key_sorted = v.s
-      FROM (VALUES ${values}) AS v(id, k, s)
-      WHERE e.entity_id = v.id`;
+    try {
+      await prisma.$executeRaw`
+        UPDATE core_entities e
+        SET identity_key = v.k, identity_key_sorted = v.s
+        FROM (VALUES ${values}) AS v(id, k, s)
+        WHERE e.entity_id = v.id`;
+    } catch {
+      // one collision must not drop 500 rows — fall back to per-row and
+      // log the colliders as merge candidates (round-12 F2)
+      for (const r of chunk) {
+        try {
+          await prisma.$executeRaw`
+            UPDATE core_entities
+            SET identity_key = ${canonicalFold(r.name) || null},
+                identity_key_sorted = ${entityIdentityKey(r.name, r.type as never)}
+            WHERE entity_id = ${r.entity_id}::uuid`;
+        } catch {
+          console.warn('collision (merge candidate):', r.type, r.name);
+        }
+      }
+    }
   }
   const left = await prisma.$queryRaw<Array<{ n: number }>>`
     SELECT count(*)::int AS n FROM core_entities WHERE identity_key IS NULL`;

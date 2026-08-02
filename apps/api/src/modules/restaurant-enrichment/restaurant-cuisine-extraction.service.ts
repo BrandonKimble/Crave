@@ -1,3 +1,4 @@
+import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
@@ -326,6 +327,7 @@ export class RestaurantCuisineExtractionService {
           name: cuisine,
           type: EntityType.restaurant_attribute,
           aliases: scopedAliases.length ? scopedAliases : [cuisine],
+          ...identityInsertData(cuisine, EntityType.restaurant_attribute),
         },
         select: { entityId: true },
       });

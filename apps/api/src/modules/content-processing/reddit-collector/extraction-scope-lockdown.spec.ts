@@ -139,3 +139,23 @@ describe('extraction scope is defined exactly once', () => {
     );
   });
 });
+
+describe('the GC support definition (round-11/12 — tombstones are memory)', () => {
+  it('gc-unsupported-entities.sql counts ANY surviving event as support and never touches archived rows', () => {
+    const sql = readFileSync(
+      join(API_ROOT, 'scripts', 'reload', 'gc-unsupported-entities.sql'),
+      'utf-8',
+    );
+    // ANY-event support (deliberately NOT the active-run scope predicate):
+    // the retained generation is rollback evidence — an active-run-only GC
+    // deleted it once (F1). This line failing means someone re-scoped it.
+    expect(sql).toContain(
+      'UNION SELECT restaurant_id FROM core_restaurant_entity_events',
+    );
+    expect(sql).not.toMatch(
+      /active_extraction_run_id[\s\S]*FROM core_restaurant_entity_events/,
+    );
+    // tombstones are memory: GC only collects unsupported ACTIVE rows
+    expect(sql).toContain("e.status <> 'archived'");
+  });
+});

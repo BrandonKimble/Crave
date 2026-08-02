@@ -10,6 +10,7 @@ import { RestaurantJanitorService } from './restaurant-janitor.service';
 import { RestaurantEnrichmentQueueService } from './restaurant-enrichment-queue.service';
 import { RestaurantEnrichmentWorker } from './restaurant-enrichment.worker';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
+import { NightlyConvergenceService } from './nightly-convergence.service';
 import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { RestaurantCuisineExtractionWorker } from './restaurant-cuisine-extraction.worker';
@@ -49,6 +50,7 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     RestaurantJanitorService,
     RestaurantEnrichmentQueueService,
     RestaurantEntityMergeService,
+    NightlyConvergenceService,
     RestaurantCuisineExtractionService,
     RestaurantCuisineExtractionQueueService,
     RestaurantSecondaryLocationExpansionQueueService,

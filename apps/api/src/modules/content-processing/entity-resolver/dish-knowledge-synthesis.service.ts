@@ -1,3 +1,4 @@
+import { identityInsertData } from './entity-identity';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, EntityType } from '@prisma/client';
@@ -185,7 +186,11 @@ export class DishKnowledgeSynthesisService {
     }
     try {
       const created = await this.prisma.entity.create({
-        data: { name: normalized, type: EntityType.ingredient },
+        data: {
+          name: normalized,
+          type: EntityType.ingredient,
+          ...identityInsertData(normalized, EntityType.ingredient),
+        },
         select: { entityId: true },
       });
       return { entityId: created.entityId, created: true };

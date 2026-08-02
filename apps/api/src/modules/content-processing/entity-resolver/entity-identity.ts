@@ -70,13 +70,18 @@ export function canonicalFold(name: string): string {
   );
 }
 
-export function entityIdentityKey(name: string, type: EntityType): string {
+/** The stored identity for a name, or NULL when the name has no
+ *  foldable identity (emoji-only / punctuation-only). NULL is the native
+ *  "no identity" of the partial unique index and of every probe — the
+ *  old 'nfc:' sentinel hand-emulated that in four places and could still
+ *  twin ("🍕" vs "🍕 "); round-12 architecture audit deleted the concept. */
+export function entityIdentityKey(
+  name: string,
+  type: EntityType,
+): string | null {
   const base = canonicalFold(name);
   if (!base) {
-    // DEGENERATE NAMES ONLY (post-unicode-fold this is emoji-only /
-    // punctuation-only names — real scripts all survive the fold now).
-    // Distinct per name, deterministic for the lock; probes skip it.
-    return `nfc:${name.normalize('NFC').toLowerCase().trim()}`;
+    return null;
   }
   if (type === EntityType.food || type === EntityType.ingredient) {
     // PER-TOKEN fold, then sort (round-3 empirical red team: folding the
@@ -113,6 +118,33 @@ function tokenFold(token: string): string {
     }
   }
   return Array.from(closure).sort()[0] ?? token;
+}
+
+/** The advisory-lock key — TOTAL (every name locks on something):
+ *  the stored identity when one exists, else the raw normalized name.
+ *  Locking and identity are different functions with different totality
+ *  requirements; conflating them is what created the nfc: sentinel. */
+export function entityLockKey(name: string, type: EntityType): string {
+  return (
+    entityIdentityKey(name, type) ??
+    `raw:${name.normalize('NFC').toLowerCase().trim()}`
+  );
+}
+
+/** The ONE way identity columns enter the database: spread this into
+ *  every entity create payload. Keys are atomic with the row — no
+ *  window where an entity exists without identity (round-12: six
+ *  keyless creation sites defeated the unique index and every probe,
+ *  and the post-insert UPDATE left the P2002 savepoint guarding the
+ *  wrong statement). */
+export function identityInsertData(
+  name: string,
+  type: EntityType,
+): { identityKey: string | null; identityKeySorted: string | null } {
+  return {
+    identityKey: canonicalFold(name) || null,
+    identityKeySorted: entityIdentityKey(name, type),
+  };
 }
 
 /**
