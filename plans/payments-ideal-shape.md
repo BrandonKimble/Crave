@@ -79,9 +79,13 @@ business/monetization-and-gating.md (dish-level = premium, restaurant-level
   record + Layer-2 `subscription` grant. RC is receipt-validation + store
   truth ONLY — never the access truth (our ledger is, because RC can't see
   comps/rewards).
-- **Web (and the future Epic-ruling external-link paywall):** Stripe
-  checkout → webhook → same grant path. The external-payment play later is
-  ONLY a new way to open this existing flow — no architectural change.
+- **Web (and the Epic-ruling external-link paywall — DECIDED 2026-08-01,
+  this is happening, Strava dual-button pattern):** Stripe checkout →
+  webhook → same grant path. The external-payment play is ONLY a new way to
+  open this existing flow — no architectural change. NOTE: the checkout
+  _client_ rail (createCheckoutSession/createPortalSession + CheckoutSession
+  table) was deleted in `c2861853` as "a rail that doesn't exist" — restore
+  from that commit's parent when building this; the webhook side never left.
 - **Restore/cross-device:** access rides the ledger keyed to the Crave user,
   so login = access; store restore just reconciles Layer 1.
 

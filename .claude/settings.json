@@ -1,0 +1,70 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source scripts/rig/svc-env.sh)",
+
+      "Bash(railway status:*)",
+      "Bash(railway logs:*)",
+      "Bash(railway variables:*)",
+      "Bash(railway list:*)",
+      "Bash(railway whoami:*)",
+
+      "Bash(gcloud config list:*)",
+      "Bash(gcloud services list:*)",
+      "Bash(gcloud projects list:*)",
+      "Bash(bq query:*)",
+      "Bash(bq ls:*)",
+      "Bash(bq show:*)",
+      "Bash(./scripts/rig/cost-reconcile.sh:*)",
+
+      "Bash(stripe products list:*)",
+      "Bash(stripe prices list:*)",
+      "Bash(stripe customers list:*)",
+      "Bash(stripe customers retrieve:*)",
+      "Bash(stripe subscriptions list:*)",
+      "Bash(stripe events list:*)",
+      "Bash(stripe version:*)",
+
+      "Bash(sentry-cli info:*)",
+      "Bash(sentry-cli issues list:*)",
+      "Bash(sentry-cli releases list:*)",
+      "Bash(sentry-cli projects list:*)",
+
+      "Bash(cld ping:*)",
+      "Bash(cld usage:*)",
+      "Bash(cld search:*)",
+      "Bash(cld admin resources:*)",
+      "Bash(cld admin usage:*)",
+
+      "Bash(resend domains list:*)",
+      "Bash(resend emails list:*)",
+      "Bash(resend api-keys list:*)",
+
+      "Bash(npx eas-cli whoami:*)",
+      "Bash(npx eas-cli build:list:*)",
+      "Bash(npx clerk --help:*)",
+
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh auth status:*)",
+
+      "Bash(redis-cli ping:*)",
+      "Bash(redis-cli info:*)"
+    ],
+    "ask": [
+      "Bash(resend emails send:*)",
+      "Bash(cld admin destroy:*)",
+      "Bash(cld admin delete_resources:*)",
+      "Bash(cld uploader destroy:*)",
+      "Bash(./scripts/rig/deploy.sh:*)",
+      "Bash(railway up:*)",
+      "Bash(railway redeploy:*)",
+      "Bash(npx eas-cli build:*)",
+      "Bash(npx eas-cli submit:*)",
+      "Bash(npx clerk init:*)"
+    ]
+  }
+}

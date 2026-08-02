@@ -1,0 +1,10 @@
+# Canonical bundle id. Confirmed 2026-08-02 against App Store Connect itself:
+# app id 6793724490, "Crave - Find what to eat". app.config.js was corrected to
+# match on the same date.
+app_identifier(ENV["ASC_APP_BUNDLE_ID"] || "com.brandonkimble.cravesearch")
+
+# Apple Developer Team ID, from ios/cravesearch.xcodeproj (DEVELOPMENT_TEAM).
+team_id(ENV["ASC_TEAM_ID"] || "FDT67MY727")
+
+# No apple_id / itc_team_id on purpose: with an App Store Connect API key,
+# fastlane authenticates via JWT and never needs an Apple ID password or 2FA.

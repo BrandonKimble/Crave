@@ -109,7 +109,7 @@ Set `CLERK_ADMIN_USER_IDS` (API) and `EXPO_PUBLIC_ADMIN_USER_IDS` (mobile) to th
 #### Native Apple sign-in flow
 
 - The mobile Apple button now prioritizes Expo's `expo-apple-authentication` module, which presents the native sheet and returns Apple identity + authorization tokens. This requires an iOS build (simulator or device) created with EAS or `expo run:ios`; Expo Go cannot render the sheet because it lacks the Apple capability.
-- `app.config.js` enables the `usesAppleSignIn` entitlement and registers the `expo-apple-authentication` config plugin. Make sure the bundle identifier `com.crave.search` is provisioned for Sign in with Apple in the Apple Developer portal.
+- `app.config.js` enables the `usesAppleSignIn` entitlement and registers the `expo-apple-authentication` config plugin. Make sure the bundle identifier `com.brandonkimble.cravesearch` is provisioned for Sign in with Apple in the Apple Developer portal.
 - The API exposes `POST /api/auth/apple/native` which accepts `{ identityToken, authorizationCode, email?, givenName?, familyName? }`, exchanges the payload with Clerk's Backend API (`strategy=oauth_native`), and returns the Clerk `sessionId` needed by the mobile client.
 - Clerk must have the Apple provider fully configured (Services ID, Key ID, Team ID, and the same redirect URI `com.crave://oauth-native-callback`). You can override the Clerk REST base with `CLERK_API_URL`, but it defaults to `https://api.clerk.com/v1`.
 - When testing locally, verify that `CLERK_SECRET_KEY` in `apps/api/.env` belongs to the same instance where you configured Apple, otherwise Clerk will reject the token exchange.

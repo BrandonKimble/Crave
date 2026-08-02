@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-  <dict/>
+  <dict>
+    <!-- Required for iOS to issue a device push token. Without it,
+         Notifications.getExpoPushTokenAsync() (see src/providers/AuthProvider.tsx)
+         fails on a real device. "development" is correct for debug and
+         dev-client builds; EAS release signing supplies "production" from the
+         provisioning profile. -->
+    <key>aps-environment</key>
+    <string>development</string>
+  </dict>
 </plist>

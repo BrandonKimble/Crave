@@ -28,8 +28,10 @@ import {
   onboardingSteps,
   getSingleChoiceLabel,
   getMultiChoiceLabels,
-  type OnboardingStep, STEP_IDS,
+  type OnboardingStep,
+  STEP_IDS,
 } from '../constants/onboarding';
+import { OnboardingTeaser } from './onboarding/OnboardingTeaser';
 import {
   DEFAULT_ONBOARDING_STEP_ID,
   useOnboardingStore,
@@ -318,6 +320,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         STEP_IDS.spotYouLove,
         STEP_IDS.diningGoals,
         STEP_IDS.notifications,
+        STEP_IDS.teaser,
       ]),
     []
   );
@@ -327,10 +330,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       if (step.id === STEP_IDS.username) {
         return false;
       }
-      if (
-        step.id === STEP_IDS.waitlistInfo ||
-        step.id === STEP_IDS.accountWaitlist
-      ) {
+      if (step.id === STEP_IDS.waitlistInfo || step.id === STEP_IDS.accountWaitlist) {
         return isWaitlistSelection;
       }
       if (step.id === STEP_IDS.accountLive) {
@@ -653,7 +653,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         ? (answers[STEP_IDS.diningFrequency] as string)
         : undefined;
     const budgetSelection =
-      typeof answers[STEP_IDS.budget] === 'string' ? (answers[STEP_IDS.budget] as string) : undefined;
+      typeof answers[STEP_IDS.budget] === 'string'
+        ? (answers[STEP_IDS.budget] as string)
+        : undefined;
     const frequencyLabel = frequencySelection
       ? getSingleChoiceLabel(STEP_IDS.diningFrequency, frequencySelection)
       : undefined;
@@ -777,6 +779,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         return true;
       case 'graph':
       case 'carousel':
+      case 'teaser':
         return true;
       case 'single-choice': {
         const selected = answers[activeStep.id];
@@ -1081,8 +1084,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               🚀 {requestedCity} is coming soon!
             </Text>
             <Text variant="body" style={styles.waitlistMessageText}>
-              The bigger a city's waitlist, the sooner we build it. Save your spot — and bring
-              your friends — and we'll tell you the moment {requestedCity} is ready.
+              The bigger a city's waitlist, the sooner we build it. Save your spot — and bring your
+              friends — and we'll tell you the moment {requestedCity} is ready.
             </Text>
             <View style={styles.waitlistBenefits}>
               <Text variant="caption" weight="semibold" style={styles.waitlistBenefitTitle}>
@@ -1137,8 +1140,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   );
 
   const renderProcessing = (step: Extract<OnboardingStep, { type: 'processing' }>) => {
-    const budgetValue = typeof answers[STEP_IDS.budget] === 'string' ? (answers[STEP_IDS.budget] as string) : undefined;
-    const budgetDisplay = budgetValue ? getSingleChoiceLabel(STEP_IDS.budget, budgetValue) : 'Flexible';
+    const budgetValue =
+      typeof answers[STEP_IDS.budget] === 'string'
+        ? (answers[STEP_IDS.budget] as string)
+        : undefined;
+    const budgetDisplay = budgetValue
+      ? getSingleChoiceLabel(STEP_IDS.budget, budgetValue)
+      : 'Flexible';
 
     const highlights = step.showSummary
       ? [
@@ -1149,15 +1157,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           {
             label: 'Cravings',
             value:
-              getMultiChoiceLabels(STEP_IDS.cuisines, answers[STEP_IDS.cuisines] as string[]).join(', ') ||
-              'Open to anything',
+              getMultiChoiceLabels(STEP_IDS.cuisines, answers[STEP_IDS.cuisines] as string[]).join(
+                ', '
+              ) || 'Open to anything',
           },
           {
             label: 'Go-tos',
             value:
-              getMultiChoiceLabels(STEP_IDS.alwaysCraving, answers[STEP_IDS.alwaysCraving] as string[]).join(
-                ', '
-              ) || 'Anything great',
+              getMultiChoiceLabels(
+                STEP_IDS.alwaysCraving,
+                answers[STEP_IDS.alwaysCraving] as string[]
+              ).join(', ') || 'Anything great',
           },
           {
             label: 'You choose for',
@@ -1169,9 +1179,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           {
             label: 'Priorities',
             value:
-              getMultiChoiceLabels(STEP_IDS.diningGoals, answers[STEP_IDS.diningGoals] as string[]).join(
-                ', '
-              ) || 'The best food, period',
+              getMultiChoiceLabels(
+                STEP_IDS.diningGoals,
+                answers[STEP_IDS.diningGoals] as string[]
+              ).join(', ') || 'The best food, period',
           },
         ]
       : [];
@@ -1489,7 +1500,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               : 3.5;
 
           const budgetSelection =
-            typeof answers[STEP_IDS.budget] === 'string' ? (answers[STEP_IDS.budget] as string) : undefined;
+            typeof answers[STEP_IDS.budget] === 'string'
+              ? (answers[STEP_IDS.budget] as string)
+              : undefined;
 
           // Map budget ID to dollar range
           const budgetMap: Record<string, string> = {
@@ -1999,6 +2012,29 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         return <CarouselStepView step={step} />;
       case 'notification':
         return renderNotification(step);
+      case 'teaser': {
+        const teaserCity =
+          typeof answers[STEP_IDS.location] === 'string'
+            ? (answers[STEP_IDS.location] as string)
+            : '';
+        const teaserDishIds = Array.isArray(answers[STEP_IDS.alwaysCraving])
+          ? (answers[STEP_IDS.alwaysCraving] as string[])
+          : [];
+        const teaserContextIds = Array.isArray(answers[STEP_IDS.contexts])
+          ? (answers[STEP_IDS.contexts] as string[])
+          : [];
+        const teaserCuisineIds = Array.isArray(answers[STEP_IDS.cuisines])
+          ? (answers[STEP_IDS.cuisines] as string[])
+          : [];
+        return (
+          <OnboardingTeaser
+            city={teaserCity}
+            dishIds={teaserDishIds}
+            contextIds={teaserContextIds}
+            cuisineIds={teaserCuisineIds}
+          />
+        );
+      }
       default:
         return null;
     }

@@ -1,0 +1,74 @@
+# Crave — App Store Connect lanes
+#
+# Auth is an App Store Connect API KEY (JWT), never an Apple ID password.
+# The .p8 lives OUTSIDE the repo; only its path is configured. See README-asc.md.
+#
+# Run from apps/mobile:   bundle exec fastlane <lane>   (or: fastlane <lane>)
+
+opt_out_usage
+default_platform(:ios)
+
+# Build the API key object every lane shares. Fails loudly with an actionable
+# message rather than letting fastlane fall back to interactive Apple ID login.
+def asc_key
+  missing = %w[ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_PATH].reject { |k| ENV[k].to_s.strip != "" }
+  unless missing.empty?
+    UI.user_error!("Missing #{missing.join(', ')} — set them in apps/mobile/.env. See fastlane/README-asc.md")
+  end
+
+  path = File.expand_path(ENV["ASC_PRIVATE_KEY_PATH"])
+  UI.user_error!("ASC private key not found at #{path}") unless File.exist?(path)
+
+  app_store_connect_api_key(
+    key_id: ENV["ASC_KEY_ID"],
+    issuer_id: ENV["ASC_ISSUER_ID"],
+    key_filepath: path,
+    duration: 1200,
+    in_house: false,
+  )
+end
+
+platform :ios do
+  desc "Prove the ASC API key works. Read-only — changes nothing."
+  lane :verify_asc do
+    asc_key
+    UI.message("Key #{ENV['ASC_KEY_ID']} authenticating…")
+
+    # Round-trips the JWT against ASC and resolves the app record.
+    Spaceship::ConnectAPI.auth(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      filepath: File.expand_path(ENV["ASC_PRIVATE_KEY_PATH"]),
+    )
+    app = Spaceship::ConnectAPI::App.find(CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier))
+
+    if app.nil?
+      UI.important("Key authenticated, but no app record found for " \
+                   "#{CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)}.")
+      UI.important("That is expected if the app has not been created in App Store Connect yet.")
+    else
+      UI.success("✅ Authenticated. App: #{app.name} (#{app.bundle_id}), id #{app.id}")
+    end
+  end
+
+  desc "List TestFlight builds."
+  lane :builds do
+    asc_key
+    UI.message(
+      Spaceship::ConnectAPI::Build.all(app_id: Spaceship::ConnectAPI::App.find(
+        CredentialsManager::AppfileConfig.try_fetch_value(:app_identifier)
+      )&.id).map { |b| "#{b.version} (#{b.processing_state})" }.join("\n")
+    )
+  end
+
+  desc "Upload an already-built .ipa to TestFlight. Pass ipa:path/to.ipa"
+  lane :beta do |options|
+    UI.user_error!("Pass ipa:<path> — this lane uploads, it does not build.") unless options[:ipa]
+    pilot(
+      api_key: asc_key,
+      ipa: options[:ipa],
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+    )
+  end
+end

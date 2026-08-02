@@ -49,11 +49,26 @@ all of them, and the wider decline-cascade family this scene normalizes:
 ## Margin lever
 
 Dual-rail billing is live in `apps/api/src/modules/billing`: RevenueCat iOS
-(~85% net under Small Business) + Stripe webhooks (web ~97% net; the web
-checkout _client_ rail was deleted 2026-07-09 and would need rebuilding).
-Steering renewals/returning users to Apple-legal out-of-app web checkout is a
-~12-point margin swing — a post-launch project, noted in blueprint §11's parked
-items alongside the web-to-app funnel pattern.
+(~85% net under Small Business) + Stripe webhooks (web ~97% net).
+
+**DECIDED 2026-08-01 (owner): the Stripe web checkout rail IS the plan.**
+Strava-pattern dual-button paywall — primary button opens external web
+checkout (Stripe, ~97% net, Apple-commission-free on the US storefront under
+the April 2025 Epic v. Apple contempt ruling), secondary button does native
+IAP via RevenueCat. RevenueCat alone cannot do this — it is not a payment
+processor; even RC Web Billing runs on a connected Stripe account plus RC's
+own fee. We run our own Stripe Checkout and unify entitlements via our
+access-grant ledger (RC's Stripe integration optional).
+
+The checkout/portal _client_ rail was deleted 2026-07-09 in commit
+`c2861853` under the then-true rationale "models a rail that doesn't exist"
+— that rationale is now obsolete. Restore it from
+`git show c2861853^:apps/api/src/modules/billing/billing.service.ts` (plus
+the CheckoutSession table + DTOs in the same commit); webhook/refund/cancel
+plumbing was never deleted and still works. The ~12-point margin swing from
+steering renewals to web checkout stands. Sequencing decided 2026-08-01:
+**pre-launch shape** (tracked in product/pre-launch.md, Launch shape) —
+supersedes blueprint §11's post-launch parking.
 
 ## Funding stance
 

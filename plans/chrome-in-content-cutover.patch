@@ -1,0 +1,258 @@
+diff --git a/apps/mobile/ios/TrackScrollKit/Sources/TrackScrollPhysics.m b/apps/mobile/ios/TrackScrollKit/Sources/TrackScrollPhysics.m
+index 6c9ec9d9..1e93cad5 100644
+--- a/apps/mobile/ios/TrackScrollKit/Sources/TrackScrollPhysics.m
++++ b/apps/mobile/ios/TrackScrollKit/Sources/TrackScrollPhysics.m
+@@ -66,6 +66,15 @@ @interface TrackScrollDelegateProxy : NSObject <UIScrollViewDelegate>
+ @property (nonatomic, weak) UIView *shellTailView;
+ @property (nonatomic, weak) UIView *shellChromeView;
+ @property (nonatomic, strong) CALayer *shellBandMask;
++/// THE MASK FOLLOWS THE ROWS. The band mask used to sit on scrollView.layer,
++/// which composites the WHOLE sublayer tree — so it clipped an in-content
++/// chrome too, and THAT is the only reason the chrome ever had to exist twice.
++/// It now sits on the row-bearing views: every content subview EXCEPT the
++/// header that holds the chrome, plus the leader nested inside that header.
++/// Rows still never render in the chrome band; the chrome is simply not a row.
++/// (FlashList never writes layer.mask — verified by grep of its sources.)
++@property (nonatomic, weak) UIView *chromeContentView;
++@property (nonatomic, weak) UIView *leaderView;
+ @property (nonatomic, assign) CGFloat shellExpandedTop;
+ @property (nonatomic, assign) CGFloat shellTrackH;
+ @property (nonatomic, assign) CGFloat shellChromeHeight;
+@@ -538,8 +547,48 @@ - (void)scrollViewDidScroll:(UIScrollView *)scrollView
+         }
+       }
+     }
++    UIView *chromeContent = self.chromeContentView;
++    if (chromeContent != nil) {
++      // Resolve content + header FROM THE CHROME (never by subview index — a
++      // mis-resolve masks the header too and the whole chrome vanishes).
++      UIView *contentView = nil;
++      UIView *headerView = nil;
++      for (UIView *node = chromeContent; node != nil; node = node.superview) {
++        if (node.superview == scrollView) { contentView = node; break; }
++        headerView = node;
++      }
++      if (contentView != nil && headerView != nil) {
++        const CGFloat bandBottom = tau + sheetTop + self.shellChromeHeight;
++        const CGFloat w = CGRectGetWidth(scrollView.bounds);
++        const CGFloat h = CGRectGetHeight(scrollView.bounds);
++        // ROBUST RULE: mask every content subview that does NOT contain the
++        // chrome. Comparing against a walked-up "headerView" made the mask
++        // depend on resolving the hierarchy exactly right — and when that
++        // missed, the header itself got masked and the entire chrome vanished
++        // (twice). Containment cannot miss.
++        NSMutableArray<UIView *> *rowViews = [NSMutableArray array];
++        for (UIView *sub in contentView.subviews) {
++          if (![chromeContent isDescendantOfView:sub]) { [rowViews addObject:sub]; }
++        }
++        if (self.leaderView != nil) { [rowViews addObject:self.leaderView]; }
++        [CATransaction begin];
++        [CATransaction setDisableActions:YES];
++        for (UIView *view in rowViews) {
++          CALayer *rowMask = view.layer.mask;
++          if (rowMask == nil) {
++            rowMask = [CALayer layer];
++            rowMask.backgroundColor = [UIColor blackColor].CGColor;
++            view.layer.mask = rowMask;
++          }
++          const CGPoint origin = [view convertPoint:CGPointZero toView:contentView];
++          const CGRect next = CGRectMake(-w, bandBottom - origin.y, w * 3.0, h * 6.0);
++          if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
++        }
++        [CATransaction commit];
++      }
++    }
+     CALayer *mask = self.shellBandMask;
+-    if (mask != nil) {
++    if (chromeContent == nil && mask != nil) {
+       // Layer space = bounds space = contentOffset-tracked: screen y Y lives
+       // at layer y (τ + Y). The band bottom is sheetTop + chromeHeight.
+       const CGRect b = scrollView.bounds;
+@@ -556,8 +605,28 @@ - (void)scrollViewDidScroll:(UIScrollView *)scrollView
+     }
+   }
+   // THE PIN: zero-lag, same frame as the offset. translate = max(0, τ − H).
++  // THE PIN, DERIVED. The chrome sits at content y = H, so its natural screen
++  // y is expandedTop + H − τ while the sheet's edge is
++  // expandedTop + max(0, (H+σ) − τ) − tug. The pin is the difference:
++  //     pin = σ + max(0, τ − (H+σ)) − tug
++  // Below the boundary it holds the chrome σ down (the stash: rows keep their
++  // scroll while the sheet moves); above it, the chrome sticks at the edge
++  // while rows scroll under; during an overshoot it rides the tug so chrome
++  // and rows travel as one body.
+   UIView *chrome = self.pinnedChromeView;
+-  if (chrome != nil && edge >= 0) {
++  if (chrome != nil && self.shellEnabled) {
++    const CGFloat tauNow = scrollView.contentOffset.y;
++    const CGFloat boundary = self.shellTrackH + self.stashSigma;
++    const CGFloat tugNow =
++        (self.postureOvershootActive && tauNow > boundary) ? (tauNow - boundary) : 0.0;
++    const CGFloat hold = self.stashSigma + MAX(0.0, tauNow - boundary) - tugNow;
++    const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
++    if ([chrome isKindOfClass:[TrackShellSlotView class]]) {
++      [(TrackShellSlotView *)chrome trackApplyTransform:next];
++    } else if (!CGAffineTransformEqualToTransform(chrome.transform, next)) {
++      chrome.transform = next;
++    }
++  } else if (chrome != nil && edge >= 0) {
+     const CGFloat hold = MAX(0.0, scrollView.contentOffset.y - edge);
+     const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
+     if (!CGAffineTransformEqualToTransform(chrome.transform, next)) {
+@@ -1092,6 +1161,11 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
+     proxy.shellFrostView = resolve(config[@"frostTag"]);
+     proxy.shellTailView = resolve(config[@"tailTag"]);
+     proxy.shellChromeView = resolve(config[@"chromeTag"]);
++    proxy.chromeContentView = resolve(config[@"chromeContentTag"]);
++    proxy.leaderView = resolve(config[@"leaderTag"]);
++    if (proxy.chromeContentView != nil && scrollView.layer.mask != nil) {
++      scrollView.layer.mask = nil;  // the rows carry it now
++    }
+     // THE NIL-ASSERT (XII red team 3): a chrome tag that fails to resolve
+     // means the shell never transforms that view -- the header parks at the
+     // screen top with no error anywhere. Bark loudly instead of silently.
+@@ -1178,7 +1252,9 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
+       body[@"slotTransformTY"] = @(chromeSlotAudit.transform.ty);
+       body[@"slotWindow"] = @(chromeSlotAudit.window != nil);
+     }
+-    UIView *chrome = chromeSlotAudit ?: proxy.shellChromeView;
++    // The chrome is CONTENT: audit the PINNED view (whose window y must equal
++    // the sheet's top edge), not a shell slot that no longer exists.
++    UIView *chrome = proxy.pinnedChromeView ?: (chromeSlotAudit ?: proxy.shellChromeView);
+     body[@"chromeBound"] = @(chrome != nil);
+     if (chrome != nil) {
+       body[@"chromeAttached"] = @(chrome.window != nil);
+diff --git a/apps/mobile/src/tracksheet/TrackSheetPage.tsx b/apps/mobile/src/tracksheet/TrackSheetPage.tsx
+index 1f311071..fbcab93d 100644
+--- a/apps/mobile/src/tracksheet/TrackSheetPage.tsx
++++ b/apps/mobile/src/tracksheet/TrackSheetPage.tsx
+@@ -80,12 +80,19 @@ const SCREEN = Dimensions.get('window');
+ const slotCache = globalThis as { __TrackShellSlotNative?: unknown };
+ const TrackShellSlotNative = (slotCache.__TrackShellSlotNative ??=
+   requireNativeComponent('TrackShellSlot'));
+-function TrackShellSlot(
+-  props: ViewProps & { slotRole: 'frost' | 'chrome' | 'tail'; children?: React.ReactNode }
+-): React.ReactElement {
++// forwardRef is LOAD-BEARING: a ref on a plain function component is silently
++// dropped, so the engine never learns the view's tag and the chrome simply
++// does not paint (cost a full cutover once).
++const TrackShellSlot = React.forwardRef<
++  unknown,
++  ViewProps & {
++    slotRole: 'frost' | 'chrome' | 'tail' | 'chromeContent';
++    children?: React.ReactNode;
++  }
++>(function TrackShellSlot(props, ref): React.ReactElement {
+   const Native = TrackShellSlotNative as unknown as React.ComponentClass<Record<string, unknown>>;
+-  return <Native {...(props as unknown as Record<string, unknown>)} />;
+-}
++  return <Native ref={ref as never} {...(props as unknown as Record<string, unknown>)} />;
++});
+ 
+ // THE CARVE (responsibility audit #2): the legs' scroll views fill the screen,
+ // but the sheet only OWNS from sheetTop down. This native wrapper's hitTest
+@@ -348,7 +355,9 @@ export function TrackSheetPage({
+       nativePhysics.bindShell(trackTagRef.current, {
+         frostTag: frostTagRef.current,
+         tailTag: tailTagRef.current,
+-        chromeTag: chromeVisualTagRef.current,
++        chromeTag: null,
++        chromeContentTag: chromeContentTagRef.current,
++        leaderTag: leaderTagRef.current,
+         expandedTop: geometry.expandedTop,
+         trackH,
+         chromeHeight,
+@@ -400,11 +409,10 @@ export function TrackSheetPage({
+             return;
+           }
+           const problems: string[] = [];
+-          if (!audit.chromeBound) {
+-            problems.push('chrome UNBOUND');
+-          } else if (!audit.chromeAttached) {
+-            problems.push('chrome DETACHED (dead backing view)');
+-          } else if (
++          // THE CHROME IS CONTENT: "bound to the shell" is the wrong question
++          // now. The invariant that still must hold — and that regressed three
++          // times — is positional: the chrome's window y IS the sheet's edge.
++          if (
+             audit.chromeWindowY != null &&
+             audit.expectedSheetTop != null &&
+             Math.abs(audit.chromeWindowY - audit.expectedSheetTop) > 1
+@@ -484,6 +492,22 @@ export function TrackSheetPage({
+   // tag, and if it is the PRESENTED leg the engine attaches to it (attach is
+   // per-scroll-view, idempotent, retried) and the shell re-binds.
+   const EMPTY_DATA: readonly never[] = [];
++  const chromeContentTagRef = React.useRef<number | null>(null);
++  const leaderTagRef = React.useRef<number | null>(null);
++  const chromeContentRef = React.useCallback((node: unknown) => {
++    const tag = node == null ? null : findNodeHandle(node as never);
++    if (tag !== chromeContentTagRef.current) {
++      chromeContentTagRef.current = tag;
++      applyPinRef.current?.();
++    }
++  }, []);
++  const leaderRef = React.useCallback((node: View | null) => {
++    const tag = node == null ? null : findNodeHandle(node);
++    if (tag !== leaderTagRef.current) {
++      leaderTagRef.current = tag;
++      applyPinRef.current?.();
++    }
++  }, []);
+   const trackTagOnlyRef = React.useRef<number | null>(null);
+   const trackListRef = React.useCallback(
+     (instance: React.Component | null) => {
+@@ -834,19 +858,26 @@ export function TrackSheetPage({
+     ]
+   );
+ 
+-  // Per-leg header: [spacer H][chrome band][leader]. The chrome TOUCH TWIN
+-  // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
+-  // would steal it); hidden legs reserve the same band height so their
+-  // content offsets stay comparable across flips.
+-  // THE TOUCH TWIN IS GONE. The header no longer renders inside the content —
+-  // it lives once, in the chrome slot, and redirects its own touches into this
+-  // scroll view (TrackShellSlotView hitTest). The content only RESERVES the
+-  // band so rows start below the chrome; nothing in here paints a header, so
+-  // two headers on screen is unrepresentable rather than merely avoided.
++  const presentedChromeElement =
++    visualChromeLegs.find((entry) => entry.sceneKey === presentedSceneKey)?.element ?? null;
++  // THE CHROME IS CONTENT (grab-from-anywhere): the owner's law is that you
++  // grab the sheet from ANYWHERE — a chip, the plus button, the handle — and
++  // the PAN'S DIRECTION decides what happens. UIScrollView implements exactly
++  // that (delaysContentTouches / canCancelContentTouches, and a nested
++  // directional-locked scroller for the strip) but ONLY for touches inside its
++  // own subtree. So the one chrome lives here, and the band mask moves off the
++  // scroll view onto the ROW-BEARING views (bindShell) so it is not clipped.
+   const headerForLeg = (leg: TrackSheetLeg | null, _isPresented: boolean) => (
+     <View style={styles.chromeLane}>
+-      <View style={{ height: trackH + legChromeHeight(leg) }} pointerEvents="none" />
+-      {leg?.listLeader ?? null}
++      <View style={{ height: trackH }} pointerEvents="none" />
++      <TrackShellSlot slotRole="chromeContent" ref={chromeContentRef as never}>
++        {presentedChromeElement}
++      </TrackShellSlot>
++      {leg?.listLeader != null ? (
++        <View ref={leaderRef} collapsable={false}>
++          {leg.listLeader}
++        </View>
++      ) : null}
+     </View>
+   );
+   const legFooter = React.useMemo(
+@@ -1105,17 +1136,6 @@ export function TrackSheetPage({
+         <View style={[StyleSheet.absoluteFill, { backgroundColor: surfaceColor }]} />
+       </TrackShellSlot>
+ 
+-      {/* THE ONE CHROME. It TAKES touches now (the twin that used to supply the
+-          buttons is gone): the slot's hitTest keeps marked controls and hands
+-          every other point to the presented leg's scroll view, so the header
+-          drags the sheet exactly like a row does. box-none on the wrapper so
+-          the region outside the chrome's own bounds stays the map's. */}
+-      <View style={styles.chromeOverlay} pointerEvents="box-none">
+-        <TrackShellSlot slotRole="chrome">
+-          {visualChromeLegs.find((entry) => entry.sceneKey === presentedSceneKey)?.element ?? null}
+-        </TrackShellSlot>
+-      </View>
+-
+       {debugHud ? (
+         <View style={styles.hud} pointerEvents="none">
+           <Reanimated.Text style={styles.hudText}>{hud}</Reanimated.Text>

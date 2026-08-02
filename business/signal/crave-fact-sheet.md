@@ -80,6 +80,20 @@ ingestion survives).
 
 ## City economics (the numbers the multi-city question turns on)
 
+> **MEASURED UPDATE (2026-07-26, from the geo/cost-governance session — supersedes
+> the estimates below):** Austin full 3-year load ACTUAL = **$226** (39k docs,
+> 3,416 restaurants ≈ complete; saturation curve validated, fitted ceiling matched
+> the real ~4,400–4,700 universe). Formula: ~$3.2 per 1,000 docs (all Gemini work)
+>
+> - ~$0.040 per new restaurant (Places). NYC = $1,668 estimate ($2,085 auto-stop),
+>   519k docs, ~12,500 restaurants — the CEILING case (largest food subreddit);
+>   chicagofood/FoodLosAngeles are NYC-tier; most cities are Austin-tier ($200–400).
+>   Keep-up after load: cents-to-dimes per city per day. Cost governance: every load
+>   is a pre-approved campaign with hash + auto-stop at estimate × 1.25. Constraint:
+>   owner's Google AI Studio cap ($500) must be raised before any big load.
+>   Payback at blueprint pricing (~$34 net/annual sub): an Austin-tier city repays
+>   its load at ~7–12 annual subscribers; NYC at ~50.
+
 - **Austin (launch city) full archive load ≈ $600 expected ($560–780 band)**,
   LLM-dominated, at ~$37 per 1,000 posts (Gemini Batch ≈ 50% off) + Google
   Places tail $25–160 (~$0.044/new restaurant) + relevance pre-filter <$1/city.

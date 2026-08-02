@@ -117,6 +117,10 @@ interface CarouselStep extends BaseStep {
   }>;
 }
 
+interface TeaserStep extends BaseStep {
+  type: 'teaser';
+}
+
 // New notification permission step
 interface NotificationStep extends BaseStep {
   type: 'notification';
@@ -138,7 +142,8 @@ export type OnboardingStep =
   | UsernameStep
   | GraphStep
   | CarouselStep
-  | NotificationStep;
+  | NotificationStep
+  | TeaserStep;
 
 // Single source of truth for step ids. Consumers (recap, waitlist chips,
 // notification personalization, visibility rules) must reference these
@@ -161,6 +166,7 @@ export const STEP_IDS = {
   spotYouLove: 'spot-you-love',
   diningGoals: 'dining-goals',
   notifications: 'notifications',
+  teaser: 'teaser',
   location: 'location',
   waitlistInfo: 'waitlist-info',
   accountLive: 'account-live',
@@ -176,7 +182,8 @@ export const onboardingSteps: OnboardingStep[] = [
     id: STEP_IDS.hero,
     type: 'hero',
     title: 'Know what to order, not just where to go',
-    description: "We rank dishes, not just restaurants—so you know what's worth ordering.",
+    description:
+      'Dinner decided in five minutes, not an hour of reviews. We read everything your city says about its food — and keep score.',
     image: placeholderImage,
     showAppScreenshot: true,
     ctaLabel: 'Show me how',
@@ -184,22 +191,22 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: STEP_IDS.useCases,
     type: 'carousel',
-    title: 'Crave works for every food decision',
+    title: 'Sound familiar?',
     slides: [
       {
-        scenario: 'Planning where to eat',
+        scenario: '“What do you feel like?” …silence',
         visual: 'map-icon',
-        copy: 'Type “ramen” or “birthday dinner” and see ranked dishes with real vote counts.',
+        copy: "The nightly scroll that ends at the same three spots — while the best thing five minutes away stays a stranger. Crave shows you what you've been missing, ranked.",
       },
       {
-        scenario: 'Stuck in line at a new spot',
-        visual: 'menu-icon',
-        copy: 'Open the menu view and get instant guidance on the top-performing dishes.',
-      },
-      {
-        scenario: 'Exploring a new neighborhood',
+        scenario: 'New city, one dinner, zero clue',
         visual: 'explore-icon',
-        copy: "Drag the map anywhere—results follow the area you're looking at in real time.",
+        copy: 'Google hands you a wall of 4.6s. Crave hands you the answer — pan the map and see the dishes actually worth your one night there.',
+      },
+      {
+        scenario: 'Right restaurant, wrong order',
+        visual: 'menu-icon',
+        copy: "The menu won't tell you what's good. We will — every dish scored by the people who ate it and came back raving.",
       },
     ],
     ctaLabel: "Let's go",
@@ -291,7 +298,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: STEP_IDS.calendarGraph,
     type: 'graph',
     graphType: 'calendar-comparison',
-    title: 'Never waste money on disappointing meals',
+    title: 'Never waste another meal',
     ctaLabel: "Let's do it",
   },
 
@@ -393,7 +400,8 @@ export const onboardingSteps: OnboardingStep[] = [
     id: STEP_IDS.spotYouLove,
     type: 'multi-choice',
     question: 'Name a spot you already love',
-    helper: 'One or two favorites, anywhere — it anchors your taste so day one feels right. Optional.',
+    helper:
+      'One or two favorites, anywhere — it anchors your taste so day one feels right. Optional.',
     options: [],
     required: false,
     allowCustomInput: true,
@@ -437,11 +445,16 @@ export const onboardingSteps: OnboardingStep[] = [
 
   // PHASE 5: WAITLIST PREVIEW + ACCOUNT
   {
+    id: STEP_IDS.teaser,
+    type: 'teaser',
+    ctaLabel: 'Unlock every answer',
+  },
+  {
     id: STEP_IDS.accountLive,
     type: 'account',
-    title: 'Save your progress',
+    title: 'Your answers are waiting',
     description:
-      'Create an account so your bookmarks, preferences, and saved searches sync everywhere.',
+      'Create your account so your rankings, saves, and taste profile follow you everywhere.',
     disclaimer:
       "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Create account',
@@ -467,7 +480,10 @@ export const onboardingSteps: OnboardingStep[] = [
 ];
 
 // Helper to get readable label for a single-choice answer
-export const getSingleChoiceLabel = (stepId: OnboardingStepId, value: string): string | undefined => {
+export const getSingleChoiceLabel = (
+  stepId: OnboardingStepId,
+  value: string
+): string | undefined => {
   const step = onboardingSteps.find((s) => s.id === stepId);
   if (!step || (step.type !== 'single-choice' && step.type !== 'location')) {
     return undefined;

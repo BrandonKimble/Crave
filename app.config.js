@@ -11,7 +11,13 @@ module.exports = {
       package: 'com.crave.search',
     },
     ios: {
-      bundleIdentifier: 'com.crave.search',
+      // Canonical, and authoritative because App Store Connect holds the app
+      // record under it (app id 6793724490, "Crave - Find what to eat").
+      // The Xcode project, every maestro flow, and the RevenueCat project all
+      // agree. This value was 'com.crave.search' until 2026-08-02 — a prebuild
+      // would have rewritten the native id and broken provisioning + the
+      // RevenueCat product mapping. Do not change it without changing ASC.
+      bundleIdentifier: 'com.brandonkimble.cravesearch',
       usesAppleSignIn: true,
     },
   },

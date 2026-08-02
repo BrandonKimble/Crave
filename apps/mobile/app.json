@@ -19,6 +19,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.brandonkimble.cravesearch",
       "deploymentTarget": "15.1",
+      "entitlements": {
+        "aps-environment": "development"
+      },
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Allow $(PRODUCT_NAME) to connect to your local network for development",
         "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to use the camera so you can add photos of your food"
