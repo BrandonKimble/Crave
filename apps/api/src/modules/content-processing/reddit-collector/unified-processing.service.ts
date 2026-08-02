@@ -2462,16 +2462,32 @@ export class UnifiedProcessingService implements OnModuleInit {
     activateRunId: string,
     activateDocumentIds: string[],
   ): Promise<string[]> {
+    // WITHIN-GENERATION scope (rollback re-derivation, follow-up defect):
+    // this supersede used to delete EVERY other run's events for the
+    // re-collected documents — including a RETAINED superseded generation,
+    // silently destroying its rollback target on routine live churn. The
+    // within/cross distinction must hold here too: live churn only
+    // supersedes runs of the SAME prompt (its own generation); other
+    // generations' events are inert (readers filter on the active run) and
+    // are reclaimed only by the explicit discard of their version.
+    const activatingRun = await tx.extractionRun.findUniqueOrThrow({
+      where: { extractionRunId: activateRunId },
+      select: { systemPromptHash: true },
+    });
     const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
-      SELECT DISTINCT restaurant_id FROM (
-        SELECT restaurant_id FROM core_restaurant_entity_events
-        WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
-          AND extraction_run_id <> ${activateRunId}::uuid
+      SELECT DISTINCT ev.restaurant_id FROM (
+        SELECT e.restaurant_id, e.extraction_run_id
+        FROM core_restaurant_entity_events e
+        WHERE e.source_document_id = ANY(${activateDocumentIds}::uuid[])
+          AND e.extraction_run_id <> ${activateRunId}::uuid
         UNION
-        SELECT restaurant_id FROM core_restaurant_events
-        WHERE source_document_id = ANY(${activateDocumentIds}::uuid[])
-          AND extraction_run_id <> ${activateRunId}::uuid
-      ) r
+        SELECT e.restaurant_id, e.extraction_run_id
+        FROM core_restaurant_events e
+        WHERE e.source_document_id = ANY(${activateDocumentIds}::uuid[])
+          AND e.extraction_run_id <> ${activateRunId}::uuid
+      ) ev
+      JOIN collection_extraction_runs r ON r.extraction_run_id = ev.extraction_run_id
+      WHERE r.system_prompt_hash = ${activatingRun.systemPromptHash}
     `;
     const losingIds = losing.map((entry) => entry.restaurant_id).sort();
     for (const restaurantId of losingIds) {
@@ -2481,12 +2497,18 @@ export class UnifiedProcessingService implements OnModuleInit {
       where: {
         sourceDocumentId: { in: activateDocumentIds },
         extractionRunId: { not: activateRunId },
+        extractionRun: {
+          systemPromptHash: activatingRun.systemPromptHash,
+        },
       },
     });
     await tx.restaurantEvent.deleteMany({
       where: {
         sourceDocumentId: { in: activateDocumentIds },
         extractionRunId: { not: activateRunId },
+        extractionRun: {
+          systemPromptHash: activatingRun.systemPromptHash,
+        },
       },
     });
     await tx.sourceDocument.updateMany({
