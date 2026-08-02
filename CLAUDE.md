@@ -20,11 +20,16 @@ find a stray branch or worktree, treat it as cruft to surface, not something to 
 
 ## Workflow: prod deploys + sim target (2026-07-25)
 
-- **RESOLVED (2026-08-02): the MANUAL-DEPLOYS-ONLY watchPattern dance is GONE.**
-  No GitHub repo is connected to prod api/worker (verified: no source block in
-  service config; recent deploys all CLI-triggered) and the never-match
-  patterns were removed — `deploy.sh` just works, and its SKIPPED check stays
-  as a tripwire. Never re-add watchPatterns to prod. Also: prod postgres has a small
+- **watchPatterns / SKIPPED (CORRECTED 2026-08-02 — the earlier "RESOLVED"
+  claim was WRONG).** No GitHub repo is connected to prod api/worker, but a
+  prod CLI deploy STILL SKIPPED live (skippedReason "No changes to watched
+  files") because a watchPattern lived on the DASHBOARD service setting AND in
+  Railway's merged manifest — dashboard + railway.json MERGE, so a clean
+  railway.json is not enough. Both are cleared now (verified []). deploy.sh's
+  SKIPPED check is UNCONDITIONAL after every `railway up` (it printed "Deploy
+  complete" WHILE skipping), and the smoke asserts /health.commit == HEAD, not
+  uptime — a skipped deploy no longer smokes green. If SKIPPED recurs: clear
+  watchPatterns on BOTH the dashboard and railway.json. Also: prod postgres has a small
   /dev/shm — heavy migrations (STORED-column rewrites, event-table-wide joins)
   must `SET max_parallel_workers_per_gather = 0; SET
 max_parallel_maintenance_workers = 0;` or they die with "could not resize

@@ -4,7 +4,6 @@ import {
   PhotoReadService,
   type CardStripDto,
   type FoodLogGroupDto,
-  type PhotoStripItemDto,
   type RestaurantGalleryDto,
 } from './photo-read.service';
 
@@ -32,6 +31,17 @@ import {
  * what was missing was a boundary that makes the viewer mandatory. Wrapping
  * keeps one authority for how photos are fetched and adds one authority for
  * who may see them.
+ *
+ * THE EXCLUSION IS PUSHED DOWN, NOT APPLIED UP (red team 2026-08-02). The
+ * first version of this seam filtered the RESULT in memory. That was wrong in
+ * two ways at once: strips are capped at STRIP_SIZE by a ROW_NUMBER window
+ * and the gallery is a LIMIT/OFFSET page, so removing rows afterwards returned
+ * SHORT pages with no way to backfill; and `totalCount` — which came from a
+ * real COUNT over every photo — got replaced by the length of the truncated
+ * page, so a 200-photo restaurant reported 60 and a card strip could never
+ * report more than 10. An exclusion applied after LIMIT is not an exclusion,
+ * it is a truncation. The blocked set now travels into the WHERE clause of
+ * both the page and the count.
  */
 @Injectable()
 export class PhotoReads {
@@ -60,48 +70,49 @@ export class ViewerScopedPhotoReads {
   async cardStrips(
     refs: Array<{ restaurantId: string; connectionId?: string }>,
   ): Promise<{ strips: CardStripDto[] }> {
-    const hidden = await this.hiddenAuthors();
-    const { strips } = await this.reads.cardStrips(refs);
-    return {
-      strips: strips.map((strip) => ({
-        ...strip,
-        photos: this.visible(strip.photos, hidden),
-        // totalCount must reflect what the viewer can SEE. Reporting the
-        // unfiltered count leaks the existence of hidden photos and makes
-        // "N photos" disagree with the N rendered.
-        totalCount: this.visible(strip.photos, hidden).length,
-      })),
-    };
+    return this.reads.cardStrips(refs, {
+      excludeUserIds: await this.hiddenAuthors(),
+    });
+  }
+
+  /**
+   * The raw strip read. Wrapped because the list-tile gallery consumes it
+   * directly — a second door into unfiltered photos that the first version of
+   * this seam left open while claiming forgetting was unrepresentable.
+   */
+  async stripPhotos(
+    params: Omit<
+      Parameters<PhotoReadService['stripPhotos']>[0],
+      'excludeUserIds'
+    >,
+  ): ReturnType<PhotoReadService['stripPhotos']> {
+    return this.reads.stripPhotos({
+      ...params,
+      excludeUserIds: await this.hiddenAuthors(),
+    });
   }
 
   async restaurantGallery(
-    ...args: Parameters<PhotoReadService['restaurantGallery']>
+    restaurantId: string,
+    params: { limit?: number; offset?: number } = {},
   ): Promise<RestaurantGalleryDto> {
-    const hidden = await this.hiddenAuthors();
-    const gallery = await this.reads.restaurantGallery(...args);
-    const all = this.visible(gallery.all, hidden);
-    return {
-      ...gallery,
-      all,
-      totalCount: all.length,
-      byDish: gallery.byDish.map((section) => ({
-        ...section,
-        photos: this.visible(section.photos, hidden),
-      })),
-    };
+    return this.reads.restaurantGallery(restaurantId, {
+      ...params,
+      excludeUserIds: await this.hiddenAuthors(),
+    });
   }
 
+  /**
+   * NOT author-filtered, deliberately. A food log is scoped to ONE person, so
+   * every photo in it has the same author — an author exclusion is either a
+   * no-op or it empties the whole log. The meaningful gate is the blocked-PAIR
+   * check the controller already performs, which returns an empty log so the
+   * profile can render "unavailable".
+   */
   async userFoodLog(
     ...args: Parameters<PhotoReadService['userFoodLog']>
   ): Promise<FoodLogGroupDto[]> {
-    const hidden = await this.hiddenAuthors();
-    const groups = await this.reads.userFoodLog(...args);
-    return groups
-      .map((group) => ({
-        ...group,
-        photos: this.visible(group.photos, hidden),
-      }))
-      .filter((group) => group.photos.length > 0);
+    return this.reads.userFoodLog(...args);
   }
 
   /**
@@ -109,16 +120,10 @@ export class ViewerScopedPhotoReads {
    * viewer's blocked-peer set, not just the people the viewer blocked.
    * Empty for an anonymous viewer — there is no relationship to filter on.
    */
-  private async hiddenAuthors(): Promise<Set<string>> {
-    if (!this.viewerUserId) return new Set();
-    return this.blocks.blockedPeerIds(this.viewerUserId);
-  }
-
-  private visible(
-    photos: PhotoStripItemDto[],
-    hidden: Set<string>,
-  ): PhotoStripItemDto[] {
-    if (hidden.size === 0) return photos;
-    return photos.filter((photo) => !hidden.has(photo.userId));
+  private async hiddenAuthors(): Promise<readonly string[]> {
+    if (!this.viewerUserId) return EMPTY;
+    return [...(await this.blocks.blockedPeerIds(this.viewerUserId))];
   }
 }
+
+const EMPTY: readonly string[] = [];

@@ -96,5 +96,16 @@ BEGIN
   EXECUTE 'SELECT count(*) FROM public.polls WHERE created_by_user_id IS NOT NULL' INTO n;
   IF n > 0 THEN RAISE EXCEPTION 'PII SCRUB FAILED: polls retain % creator id(s)', n; END IF;
 
+  -- STAGING SENTINEL (red-team P2, 2026-08-02): a positive marker that this
+  -- database IS staging. The refresh scripts refuse `DROP SCHEMA` unless this
+  -- table exists — prod will NEVER have it, so a misdirected host (a stale
+  -- proxy port after a service recreate) is refused instead of wiped. It
+  -- costs nothing and is the real guard the old string-compare pretended to be.
+  CREATE TABLE IF NOT EXISTS public._staging_sentinel (
+    note text NOT NULL,
+    stamped_at timestamptz NOT NULL DEFAULT now()
+  );
+  INSERT INTO public._staging_sentinel (note) VALUES ('this database is STAGING');
+
   RAISE NOTICE 'PII scrub verified: zero user-keyed rows remain (polls/poll_topics kept, de-identified).';
 END $$;

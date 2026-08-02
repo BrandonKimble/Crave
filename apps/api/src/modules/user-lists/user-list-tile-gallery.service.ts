@@ -6,6 +6,7 @@ import {
   PhotoStripItemDto,
 } from '../photos/photo-read.service';
 import { UserListMapper, hasCustomOrder } from './user-list.mappers';
+import { PhotoReads } from '../photos/photo-reads';
 
 /** One 2x2 home-tile slot (wave2 §7, plans/media-images-ledger.md §3):
  *  slots fill TL(0)→TR(1)→BL(2)→BR(3). Default lists are sparse-at-the-end
@@ -55,11 +56,20 @@ export class UserListTileGalleryService {
     private readonly prisma: PrismaService,
     private readonly mapper: UserListMapper,
     private readonly photoRead: PhotoReadService,
+    private readonly photoReads: PhotoReads,
   ) {}
 
+  /**
+   * VIEWER-SCOPED (red team 2026-08-02). This read went straight to
+   * PhotoReadService, so a blocked author's photo could front a tile in the
+   * viewer's own list — the photo seam had closed that door only for
+   * PhotosController. A second door is not a boundary.
+   */
   async loadTileImages(
     lists: TileGalleryListRef[],
+    viewerUserId: string | null,
   ): Promise<Map<string, UserListTileImageDto[]>> {
+    const scoped = this.photoReads.forViewer(viewerUserId);
     const result = new Map<string, UserListTileImageDto[]>();
     if (!lists.length) {
       return result;
@@ -104,7 +114,7 @@ export class UserListTileGalleryService {
 
     const ownStripsPromise = Promise.all(
       [...ownPoolByOwner.entries()].map(([userId, pool]) =>
-        this.photoRead
+        scoped
           .stripPhotos({ restaurantIds: [...pool], userId })
           .then((own) => [userId, own.byRestaurant] as const),
       ),
@@ -113,7 +123,7 @@ export class UserListTileGalleryService {
       this.mapper.loadPublicScores(CraveScoreSubjectType.restaurant, [
         ...restaurantIds,
       ]),
-      this.photoRead.stripPhotos({ restaurantIds: [...restaurantIds] }),
+      scoped.stripPhotos({ restaurantIds: [...restaurantIds] }),
     ]);
     const ownByOwner = new Map<string, Map<string, PhotoStripItemDto[]>>(
       await ownStripsPromise,

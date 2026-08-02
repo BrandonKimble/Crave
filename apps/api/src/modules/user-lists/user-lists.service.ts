@@ -143,6 +143,9 @@ export class UserListsService {
           ownerUserId: list.ownerUserId,
           useOwnPhotos: list.useOwnPhotos,
         })),
+        // The viewer whose lists these are — tiles must not front a photo by
+        // someone they have blocked (red team 2026-08-02).
+        userId,
       ),
     ]);
     return this.orderHomeLists(lists).map((list) => ({

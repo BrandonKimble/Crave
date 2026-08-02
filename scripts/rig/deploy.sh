@@ -131,7 +131,15 @@ if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
   # prod deploy; a pending or absent run only warns (the staging gate above
   # is the hard promotion gate — CI is the async safety net, and a solo
   # deploy should not idle 10 minutes for it). --force skips, loudly.
-  if command -v gh >/dev/null 2>&1; then
+  # A gh AUTH failure must be distinguishable from a clean bill of health
+  # (red-team P1): `gh run list` returns empty BOTH when there is no run AND
+  # when the token is expired, so we probe auth separately and SAY when the
+  # verdict is unavailable rather than silently proceeding as if green.
+  if ! command -v gh >/dev/null 2>&1; then
+    echo "==> CI: gh not installed — verdict UNAVAILABLE, proceeding (staging gate stands)."
+  elif ! gh auth status >/dev/null 2>&1; then
+    echo "==> CI: gh not authenticated — verdict UNAVAILABLE, proceeding (staging gate stands)."
+  else
     CI_STATE="$(gh run list --commit "$HEAD_SHA" --workflow CI \
       --json status,conclusion -q '.[0] | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
     case "$CI_STATE" in
@@ -151,7 +159,7 @@ fi
 
 if [[ "$ENVIRONMENT" == "production" ]]; then
   echo "==> Pushing main first (origin must match what ships) ..."
-  git push origin main
+  git push origin HEAD:main
 
   echo "==> Pre-migration snapshot of prod DB ..."
   BACKUP_DIR="$HOME/.crave-deploy-backups"
@@ -225,7 +233,7 @@ done
 if [[ "$ENVIRONMENT" == "staging" && -z "$(git status --porcelain)" ]]; then
   if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
     echo "==> Pushing main so CI starts now (promotion will consult it) ..."
-    git push origin main || echo "  (push failed — not fatal for staging; CI just won't pre-run)"
+    git push origin HEAD:main || echo "  (push failed — not fatal for staging; CI just won't pre-run)"
   fi
 fi
 
@@ -236,21 +244,26 @@ deploy_one() {
     # `|| true`: under `set -euo pipefail` a non-zero railway exit would kill
     # the script HERE, before the retry loop ever sees the failure.
     out="$(railway up --service "$svc" --environment "$ENVIRONMENT" --ci 2>&1 | tail -1 || true)"
-    if [[ "$out" == *"Deploy complete"* ]]; then
+    # SKIPPED IS CHECKED UNCONDITIONALLY (red-team P0, 2026-08-02, proven live:
+    # `railway up` printed "Deploy complete" while Railway SKIPPED the upload —
+    # skippedReason "No changes to watched files", because a stale dashboard
+    # watchPattern re-applied at deploy time. The old code only checked SKIPPED
+    # on the FAILURE branch, so a skip that printed "Deploy complete" sailed
+    # through and prod silently kept the old code while the stamp lied. Never
+    # trust the CLI's last line — ask Railway what the newest deployment did.
+    local newest
+    newest="$(railway deployment list --service "$svc" --environment "$ENVIRONMENT" 2>/dev/null | sed -n 2p)"
+    if grep -q "SKIPPED" <<<"$newest"; then
+      echo "FAILED: Railway SKIPPED the $svc upload (\"No changes to watched files\")." >&2
+      echo "  A watchPattern is still set — check railway.json AND the dashboard service settings" >&2
+      echo "  (they MERGE; a dashboard pattern survives a clean railway.json). Clear both, then retry." >&2
+      exit 1
+    fi
+    if [[ "$out" == *"Deploy complete"* ]] && ! grep -qiE "SKIPPED|FAILED|CRASHED" <<<"$newest"; then
       echo "==> $svc: Deploy complete"
       return 0
     fi
-    # SKIPPED trap — RESOLVED 2026-08-02: no GitHub repo is connected to
-    # prod api/worker (verified via service config: no source block) and the
-    # never-match watchPatterns were removed, so CLI deploys no longer skip.
-    # The detection stays as a tripwire: if SKIPPED ever reappears, someone
-    # re-added patterns or reconnected a repo.
-    if railway deployment list --service "$svc" --environment "$ENVIRONMENT" 2>/dev/null | sed -n 2p | grep -q "SKIPPED"; then
-      echo "FAILED: Railway SKIPPED the upload — the manual-deploys watch pattern blocks CLI deploys too." >&2
-      echo "Open the window (watchPatterns [\"**\"] via Railway MCP/dashboard), deploy, close it — or disconnect the repo in the dashboard and remove the patterns permanently." >&2
-      exit 1
-    fi
-    echo "==> $svc: terminal FAILED ($out)"
+    echo "==> $svc: not confirmed shipped ($out / $newest)"
   done
   echo "FAILED: $svc did not deploy after one retry — inspect Railway build logs." >&2
   exit 1
@@ -260,23 +273,50 @@ for svc in "${SERVICES[@]}"; do
   deploy_one "$svc"
 done
 
-echo "==> Smoke: /health ..."
-body="$(curl -s -m 20 "$HEALTH_URL")"
-code="$(curl -s -m 20 -o /dev/null -w "%{http_code}" "$HEALTH_URL")"
+echo "==> Smoke: /health (asserting the RUNNING commit == HEAD) ..."
+# EXACT, NOT FUZZY (red-team P1, 2026-08-02): the old check used uptime>900 as
+# a proxy for "new container". A skipped or crash-looped deploy within 15 min
+# of the last one passed it green — which is exactly how a SKIPPED prod deploy
+# smoked clean today. /health echoes DEPLOYED_GIT_SHA, so we can demand the
+# exact answer: the process must report HEAD. Poll a bit — the new container
+# boots + runs migrations after `railway up` returns. ONE curl gets code+body
+# (two separate curls can hit different containers).
+HEAD_FULL="$(git rev-parse HEAD)"
+running=""; code=""
+for _ in $(seq 1 20); do
+  resp="$(curl -s -m 20 -w $'\n%{http_code}' "$HEALTH_URL" 2>/dev/null || true)"
+  code="$(printf '%s' "$resp" | tail -1)"
+  body="$(printf '%s' "$resp" | sed '$d')"
+  running="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("commit",""))' 2>/dev/null || true)"
+  [[ "$code" == "200" && "$running" == "$HEAD_FULL" ]] && break
+  sleep 6
+done
 if [[ "$code" != "200" ]]; then
   echo "FAILED: /health returned $code after deploy." >&2
   exit 1
 fi
-# FRESHNESS ASSERT (final red team): migrations run at CONTAINER BOOT, after
-# `railway up` says "Deploy complete". If the new container crashloops on a
-# bad migration, Railway keeps the OLD one serving — and /health returns a
-# static version string, so the smoke passed with a 200 from the code the
-# deploy was supposed to replace. A long uptime proves we smoked the old
-# container.
-uptime_s="$(printf '%s' "$body" | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("uptime", 0)))' 2>/dev/null || echo 0)"
-if [[ "$uptime_s" -gt 900 ]]; then
-  echo "FAILED: /health is 200 but uptime is ${uptime_s}s — the OLD container is still serving." >&2
-  echo "The new container likely crashlooped (check migrations): railway logs --service api --environment $ENVIRONMENT" >&2
+if [[ "$running" != "$HEAD_FULL" ]]; then
+  echo "FAILED: /health is 200 but the RUNNING commit is not HEAD." >&2
+  echo "  running: ${running:0:9}" >&2
+  echo "  HEAD:    ${HEAD_FULL:0:9}" >&2
+  echo "  The deploy did not ship (SKIPPED, crash-looped, or slow). The stamp is" >&2
+  echo "  corrected to what is ACTUALLY running so /health never lies:" >&2
+  # HONEST STAMP ON FAILURE (red-team P0): never leave the speculative stamp
+  # claiming a commit prod does not run. Reset it to the observed reality.
+  for svc in "${SERVICES[@]}"; do
+    railway variables --service "$svc" --environment "$ENVIRONMENT" \
+      --set "DEPLOYED_GIT_SHA=${running:-unknown}" --skip-deploys >/dev/null 2>&1 || true
+  done
+  echo "  railway logs --service api --environment $ENVIRONMENT   # investigate" >&2
   exit 1
 fi
-echo "==> Deployed $(git rev-parse --short HEAD) to $ENVIRONMENT — /health 200 (uptime ${uptime_s}s)."
+# WORKER shipped? It serves no HTTP /health, so assert its newest deployment
+# is SUCCESS (a silently-skipped worker was invisible before — red-team P1).
+if [[ " ${SERVICES[*]} " == *" worker "* ]]; then
+  wstat="$(railway deployment list --service worker --environment "$ENVIRONMENT" 2>/dev/null | sed -n 2p)"
+  if ! grep -q "SUCCESS" <<<"$wstat"; then
+    echo "FAILED: worker's newest deployment is not SUCCESS ($wstat)." >&2
+    exit 1
+  fi
+fi
+echo "==> Deployed ${HEAD_FULL:0:9} to $ENVIRONMENT — /health 200, running commit == HEAD."

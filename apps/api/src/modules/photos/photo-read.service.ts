@@ -68,6 +68,9 @@ export class PhotoReadService {
    *  `userId` narrows the strips to ONE uploader's photos (the "Use your
    *  photos" tile-gallery law) — same ordering policy, restricted pool. */
   async stripPhotos(params: {
+    /** Authors the viewer must not see. Applied IN the query so the page and
+     *  the count agree; see windowedStrip. */
+    excludeUserIds?: readonly string[];
     restaurantIds?: string[];
     connectionIds?: string[];
     userId?: string;
@@ -86,6 +89,7 @@ export class PhotoReadService {
       const [rows, counts] = await Promise.all([
         this.windowedStrip('connection_id', params.connectionIds, {
           userId: params.userId,
+          excludeUserIds: params.excludeUserIds,
         }),
         this.prisma.photo.groupBy({
           by: ['connectionId'],
@@ -94,6 +98,11 @@ export class PhotoReadService {
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
             ...(params.userId ? { userId: params.userId } : {}),
+            // The count must exclude what the page excludes, or "N photos"
+            // disagrees with what renders.
+            ...(params.excludeUserIds?.length
+              ? { userId: { notIn: [...params.excludeUserIds] } }
+              : {}),
           },
           _count: { photoId: true },
         }),
@@ -112,6 +121,7 @@ export class PhotoReadService {
       const [rows, counts] = await Promise.all([
         this.windowedStrip('restaurant_id', params.restaurantIds, {
           userId: params.userId,
+          excludeUserIds: params.excludeUserIds,
         }),
         this.prisma.photo.groupBy({
           by: ['restaurantId'],
@@ -120,6 +130,9 @@ export class PhotoReadService {
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
             ...(params.userId ? { userId: params.userId } : {}),
+            ...(params.excludeUserIds?.length
+              ? { userId: { notIn: [...params.excludeUserIds] } }
+              : {}),
           },
           _count: { photoId: true },
         }),
@@ -149,6 +162,7 @@ export class PhotoReadService {
    *  ordering policy as everything else. */
   async cardStrips(
     refs: Array<{ restaurantId: string; connectionId?: string }>,
+    options: { excludeUserIds?: readonly string[] } = {},
   ): Promise<{ strips: CardStripDto[] }> {
     const connectionIds = [
       ...new Set(
@@ -165,7 +179,11 @@ export class PhotoReadService {
       byConnection,
       countsByRestaurant,
       countsByConnection,
-    } = await this.stripPhotos({ restaurantIds, connectionIds });
+    } = await this.stripPhotos({
+      restaurantIds,
+      connectionIds,
+      excludeUserIds: options.excludeUserIds,
+    });
     return {
       strips: refs.map((ref) => {
         const key = ref.connectionId ?? ref.restaurantId;
@@ -187,12 +205,25 @@ export class PhotoReadService {
   private async windowedStrip(
     keyColumn: 'restaurant_id' | 'connection_id',
     ids: string[],
-    options: { perKey?: number; userId?: string } = {},
+    options: {
+      perKey?: number;
+      userId?: string;
+      excludeUserIds?: readonly string[];
+    } = {},
   ): Promise<PhotoStripRow[]> {
     const perKey = options.perKey ?? STRIP_SIZE;
     const column = Prisma.raw(keyColumn);
     const uploaderFilter = options.userId
       ? Prisma.sql`AND user_id = ${options.userId}::uuid`
+      : Prisma.empty;
+    // BLOCKED AUTHORS ARE EXCLUDED INSIDE THE WINDOW, before ROW_NUMBER caps
+    // the strip (red team 2026-08-02). Filtering the RESULT instead returned
+    // short strips — 3 of 10 when a prolific author was blocked — because the
+    // window had already discarded the next eligible rows, and it made the
+    // count uncomputable. An exclusion applied after LIMIT is not an
+    // exclusion; it is a truncation.
+    const blockFilter = options.excludeUserIds?.length
+      ? Prisma.sql`AND user_id <> ALL(${[...options.excludeUserIds]}::uuid[])`
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<RawStripRow[]>`
       SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
@@ -207,6 +238,7 @@ export class PhotoReadService {
         WHERE ${column} = ANY(${ids}::uuid[])
           AND status = 'live' AND visibility = 'public'
           ${uploaderFilter}
+          ${blockFilter}
       ) windowed
       WHERE rn <= ${perKey}
       ORDER BY rn ASC
@@ -231,30 +263,37 @@ export class PhotoReadService {
   /** The restaurant gallery (selector-row shaped: All + per-dish). */
   async restaurantGallery(
     restaurantId: string,
-    params: { limit?: number; offset?: number } = {},
+    params: {
+      limit?: number;
+      offset?: number;
+      excludeUserIds?: readonly string[];
+    } = {},
   ): Promise<RestaurantGalleryDto> {
     const limit = Math.min(params.limit ?? 60, 120);
     const offset = params.offset ?? 0;
+    // The exclusion goes in the WHERE of both the page and the count, so
+    // pagination stays full and "N photos" matches what renders. Filtering
+    // the result instead produced short pages and a totalCount that was
+    // really the page length (red team 2026-08-02).
+    const blocked = params.excludeUserIds?.length
+      ? { userId: { notIn: [...params.excludeUserIds] } }
+      : {};
+    const visibleWhere = {
+      restaurantId,
+      status: PhotoStatus.live,
+      visibility: PhotoVisibility.public,
+      ...blocked,
+    };
     const [all, totalCount, dishRows] = await Promise.all([
       this.prisma.photo.findMany({
-        where: {
-          restaurantId,
-          status: PhotoStatus.live,
-          visibility: PhotoVisibility.public,
-        },
+        where: visibleWhere,
         orderBy: { uploadedAt: 'desc' },
         skip: offset,
         take: limit,
         select: PHOTO_STRIP_SELECT,
       }),
-      this.prisma.photo.count({
-        where: {
-          restaurantId,
-          status: PhotoStatus.live,
-          visibility: PhotoVisibility.public,
-        },
-      }),
-      this.dishSlices(restaurantId),
+      this.prisma.photo.count({ where: visibleWhere }),
+      this.dishSlices(restaurantId, params.excludeUserIds),
     ]);
     const byDishMap = new Map<string, PhotoStripItemDto[]>();
     for (const row of dishRows) {
@@ -278,8 +317,12 @@ export class PhotoReadService {
    *  DB — never a full scan of a photo-heavy restaurant). */
   private async dishSlices(
     restaurantId: string,
+    excludeUserIds?: readonly string[],
     perDish = 20,
   ): Promise<PhotoStripRow[]> {
+    const blockFilter = excludeUserIds?.length
+      ? Prisma.sql`AND user_id <> ALL(${[...excludeUserIds]}::uuid[])`
+      : Prisma.empty;
     const rows = await this.prisma.$queryRaw<RawStripRow[]>`
       SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
              caption, taken_at, uploaded_at, focus_score
@@ -291,6 +334,7 @@ export class PhotoReadService {
         ) AS rn
         FROM photos
         WHERE restaurant_id = ${restaurantId}::uuid
+          ${blockFilter}
           AND status = 'live' AND visibility = 'public'
           AND connection_id IS NOT NULL
       ) windowed

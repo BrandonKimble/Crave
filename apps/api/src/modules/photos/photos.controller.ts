@@ -135,7 +135,6 @@ export class ReportPhotoDto {
 export class PhotosController {
   constructor(
     private readonly photos: PhotosService,
-    private readonly reads: PhotoReadService,
     private readonly events: PhotoEventService,
     private readonly blocks: UserBlockService,
     private readonly photoReads: PhotoReads,

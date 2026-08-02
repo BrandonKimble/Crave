@@ -60,6 +60,20 @@ echo "==> Dumping LOCAL '$LOCAL_DB' ..."
 pg_dump -d "$LOCAL_DB" -Fc --no-owner --no-privileges -f "$DUMP_FILE"
 
 echo "==> Recreating staging schema ..."
+# POSITIVE STAGING ASSERTION (red-team P2): refuse to DROP unless the CONNECTED
+# database carries the staging sentinel (scrub-staging-user-data.sql plants it
+# every run). Prod never has it, so a stale/misdirected host is refused, not
+# wiped. First-ever run has no sentinel yet — pass ALLOW_FRESH_STAGING=1 once.
+SENTINEL="$(stg_psql -t -A -c "SELECT to_regclass('public._staging_sentinel') IS NOT NULL;" 2>/dev/null || echo error)"
+if [[ "$SENTINEL" != "t" ]]; then
+  if [[ "${ALLOW_FRESH_STAGING:-0}" == "1" ]]; then
+    echo "==> No staging sentinel (fresh staging, ALLOW_FRESH_STAGING=1) — proceeding."
+  else
+    echo "REFUSED: target DB has no _staging_sentinel — it may NOT be staging (or is a first run)." >&2
+    echo "  If this really is fresh staging: ALLOW_FRESH_STAGING=1 $0" >&2
+    exit 1
+  fi
+fi
 stg_psql -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
 stg_psql -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS postgis; CREATE EXTENSION IF NOT EXISTS pg_trgm; CREATE EXTENSION IF NOT EXISTS vector;" || true
 

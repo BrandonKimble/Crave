@@ -3,131 +3,146 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PhotoReads } from './photo-reads';
 
-// BLOCKING IS A PROPERTY OF THE READ, NOT A REMEMBERED PRECONDITION.
+// BLOCKING IS A PROPERTY OF THE QUERY, NOT OF THE RESULT.
 //
 // It used to be enforced at call sites. Some controllers remembered;
 // PhotoReadService contained ZERO block logic; and `cardStrips` took no viewer
 // at all, so it was structurally incapable of enforcing the rule while still
-// returning each photo's authoring `userId`. "Did we remember the check?" was
-// answerable only by reading every call site, and every new read endpoint was
-// a fresh chance to forget.
+// returning each photo's authoring `userId`.
+//
+// The FIRST version of this seam then filtered the result in memory, which was
+// wrong in two ways at once (red team 2026-08-02): strips are capped by a
+// ROW_NUMBER window and galleries are LIMIT/OFFSET pages, so removing rows
+// afterwards returned SHORT pages with no way to backfill; and `totalCount` —
+// a real COUNT over every photo — became the length of the truncated page, so
+// a 200-photo restaurant reported 60 and a strip could never exceed 10.
+//
+// An exclusion applied after LIMIT is not an exclusion, it is a truncation.
+// These tests assert the blocked set travels INTO the read.
 
 const VIEWER = 'viewer-1';
-const BLOCKED = 'blocked-author';
-const OK = 'ok-author';
-
-function photo(userId: string, photoId: string) {
-  return {
-    photoId,
-    userId,
-    connectionId: null,
-    caption: null,
-    takenAt: null,
-    uploadedAt: new Date('2026-08-01T00:00:00Z'),
-    urls: {},
-  };
-}
+const BLOCKED_A = 'blocked-a';
+const BLOCKED_B = 'blocked-b';
 
 function build() {
   const reads = {
-    cardStrips: jest.fn().mockResolvedValue({
-      strips: [
-        {
-          key: 'r1',
-          totalCount: 2,
-          photos: [photo(OK, 'p1'), photo(BLOCKED, 'p2')],
-        },
-      ],
+    cardStrips: jest.fn().mockResolvedValue({ strips: [] }),
+    restaurantGallery: jest
+      .fn()
+      .mockResolvedValue({
+        restaurantId: 'r1',
+        totalCount: 0,
+        all: [],
+        byDish: [],
+      }),
+    userFoodLog: jest.fn().mockResolvedValue([]),
+    stripPhotos: jest.fn().mockResolvedValue({
+      byRestaurant: new Map(),
+      byConnection: new Map(),
+      countsByRestaurant: new Map(),
+      countsByConnection: new Map(),
     }),
-    restaurantGallery: jest.fn().mockResolvedValue({
-      restaurantId: 'r1',
-      totalCount: 2,
-      all: [photo(OK, 'p1'), photo(BLOCKED, 'p2')],
-      byDish: [{ connectionId: 'c1', photos: [photo(BLOCKED, 'p2')] }],
-    }),
-    userFoodLog: jest.fn().mockResolvedValue([
-      { restaurantId: 'r1', restaurantName: 'A', photos: [photo(OK, 'p1')] },
-      {
-        restaurantId: 'r2',
-        restaurantName: 'B',
-        photos: [photo(BLOCKED, 'p2')],
-      },
-    ]),
   };
   const blocks = {
-    blockedPeerIds: jest.fn().mockResolvedValue(new Set([BLOCKED])),
+    blockedPeerIds: jest
+      .fn()
+      .mockResolvedValue(new Set([BLOCKED_A, BLOCKED_B])),
   };
-  return { model: new PhotoReads(reads as never, blocks as never), blocks };
+  return {
+    model: new PhotoReads(reads as never, blocks as never),
+    reads,
+    blocks,
+  };
 }
 
-describe('viewer-scoped photo reads', () => {
-  it('cardStrips drops a blocked author — the read that COULD NOT enforce this before', async () => {
-    const { model } = build();
-    const { strips } = await model
+describe('the exclusion is pushed into the query', () => {
+  it('cardStrips passes the blocked set down, and does not post-filter', async () => {
+    const { model, reads } = build();
+    await model.forViewer(VIEWER).cardStrips([{ restaurantId: 'r1' }]);
+    const options = reads.cardStrips.mock.calls[0][1] as {
+      excludeUserIds: readonly string[];
+    };
+    expect([...options.excludeUserIds].sort()).toEqual([BLOCKED_A, BLOCKED_B]);
+  });
+
+  it('restaurantGallery passes it down WITHOUT clobbering limit/offset', async () => {
+    // The page params must survive — an earlier draft spread them in the wrong
+    // order and would have silently reset pagination.
+    const { model, reads } = build();
+    await model
       .forViewer(VIEWER)
-      .cardStrips([{ restaurantId: 'r1' }]);
-    expect(strips[0].photos.map((p) => p.photoId)).toEqual(['p1']);
+      .restaurantGallery('r1', { limit: 30, offset: 60 });
+    const params = reads.restaurantGallery.mock.calls[0][1] as {
+      limit: number;
+      offset: number;
+      excludeUserIds: readonly string[];
+    };
+    expect(params.limit).toBe(30);
+    expect(params.offset).toBe(60);
+    expect([...params.excludeUserIds].sort()).toEqual([BLOCKED_A, BLOCKED_B]);
   });
 
-  it('totalCount reflects what the viewer can SEE', async () => {
-    // Reporting the unfiltered count leaks the existence of hidden photos and
-    // makes "N photos" disagree with the N actually rendered.
-    const { model } = build();
-    const { strips } = await model
-      .forViewer(VIEWER)
-      .cardStrips([{ restaurantId: 'r1' }]);
-    expect(strips[0].totalCount).toBe(1);
+  it('stripPhotos is wrapped too — the list-tile gallery consumes it directly', async () => {
+    // This was the second door: user-list-tile-gallery called PhotoReadService
+    // straight, so a blocked author could front a tile while the seam claimed
+    // forgetting was unrepresentable.
+    const { model, reads } = build();
+    await model.forViewer(VIEWER).stripPhotos({ restaurantIds: ['r1'] });
+    const params = reads.stripPhotos.mock.calls[0][0] as {
+      excludeUserIds: readonly string[];
+    };
+    expect([...params.excludeUserIds].sort()).toEqual([BLOCKED_A, BLOCKED_B]);
   });
 
-  it('the gallery filters BOTH the all-list and every dish section', async () => {
-    const { model } = build();
-    const gallery = await model.forViewer(VIEWER).restaurantGallery('r1');
-    expect(gallery.all.map((p) => p.photoId)).toEqual(['p1']);
-    expect(gallery.byDish[0].photos).toEqual([]);
-    expect(gallery.totalCount).toBe(1);
-  });
-
-  it('a food-log group that becomes empty disappears rather than rendering blank', async () => {
-    const { model } = build();
-    const groups = await model.forViewer(VIEWER).userFoodLog('u2', VIEWER);
-    expect(groups.map((g) => g.restaurantId)).toEqual(['r1']);
-  });
-
-  it('an anonymous viewer filters nothing and asks the block store nothing', async () => {
-    const { model, blocks } = build();
-    const { strips } = await model
-      .forViewer(null)
-      .cardStrips([{ restaurantId: 'r1' }]);
-    expect(strips[0].photos).toHaveLength(2);
+  it('an anonymous viewer excludes nothing and asks the block store nothing', async () => {
+    const { model, reads, blocks } = build();
+    await model.forViewer(null).cardStrips([{ restaurantId: 'r1' }]);
+    const options = reads.cardStrips.mock.calls[0][1] as {
+      excludeUserIds: readonly string[];
+    };
+    expect(options.excludeUserIds).toEqual([]);
     expect(blocks.blockedPeerIds).not.toHaveBeenCalled();
   });
 
-  it('blocking is BOTH directions — it uses the peer set, not just who the viewer blocked', async () => {
+  it('blocking is BOTH directions — it uses the peer set', async () => {
     const { model, blocks } = build();
     await model.forViewer(VIEWER).cardStrips([{ restaurantId: 'r1' }]);
     expect(blocks.blockedPeerIds).toHaveBeenCalledWith(VIEWER);
   });
+
+  it('the food log is NOT author-filtered, deliberately', async () => {
+    // A food log is scoped to ONE person, so an author exclusion is either a
+    // no-op or it empties the whole log. The meaningful gate is the blocked-
+    // PAIR check the controller performs.
+    const { model, reads } = build();
+    await model.forViewer(VIEWER).userFoodLog('u2', VIEWER);
+    expect(reads.userFoodLog).toHaveBeenCalledWith('u2', VIEWER);
+  });
 });
 
 describe('the seam is the only door', () => {
-  const controller = readFileSync(
-    join(__dirname, 'photos.controller.ts'),
-    'utf8',
+  const read = (p: string) => readFileSync(join(__dirname, p), 'utf8');
+  const controller = read('photos.controller.ts');
+  const tileGallery = read(
+    join('..', 'user-lists', 'user-list-tile-gallery.service.ts'),
   );
 
   it('no photo route reads through the unscoped service', () => {
-    // `this.reads.<method>` is the pre-seam shape. If it reappears, a route
-    // is reading photos without naming a viewer again.
     const unscoped = [...controller.matchAll(/this\.reads\.(\w+)\(/g)].map(
       (m) => m[1],
     );
     expect(unscoped).toEqual([]);
   });
 
-  it('every read route goes through forViewer', () => {
+  it('every photo read route goes through forViewer', () => {
     const scoped = [
       ...controller.matchAll(/photoReads\s*\n?\s*\.?forViewer\(/g),
     ];
     expect(scoped.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('the list-tile gallery reads through the seam, not PhotoReadService', () => {
+    expect(tileGallery).toContain('forViewer(');
+    expect(tileGallery).not.toContain('this.photoRead.');
   });
 });

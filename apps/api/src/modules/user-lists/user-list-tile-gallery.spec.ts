@@ -47,10 +47,14 @@ function makeService(params: {
         countsByConnection: new Map(),
       }),
   };
+  // The service reads through the VIEWER-SCOPED seam now, so the harness
+  // supplies PhotoReads whose forViewer() yields the same stub.
+  const photoReads = { forViewer: () => photoRead };
   return new UserListTileGalleryService(
     prisma as never,
     mapper as never,
     photoRead as never,
+    photoReads as never,
   );
 }
 
@@ -105,7 +109,7 @@ describe('UserListTileGalleryService', () => {
         ['r-mid', photo('mid')],
       ]),
     });
-    const tiles = (await service.loadTileImages([ref('l1')])).get('l1')!;
+    const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
     expect(tiles.map((t) => t.restaurantId)).toEqual([
       'r-high',
       'r-mid',
@@ -133,7 +137,7 @@ describe('UserListTileGalleryService', () => {
         ['r-high', photo('high')],
       ]),
     });
-    const tiles = (await service.loadTileImages([ref('l1')])).get('l1')!;
+    const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
     expect(tiles.map((t) => t.restaurantId)).toEqual(['r-low', 'r-high']);
   });
 
@@ -157,7 +161,7 @@ describe('UserListTileGalleryService', () => {
         ['r-a', 'r-b', 'r-c', 'r-d', 'r-e'].map((id) => [id, photo(id)]),
       ),
     });
-    const tiles = (await service.loadTileImages([ref('l1')])).get('l1')!;
+    const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
     expect(tiles).toHaveLength(4);
     expect(tiles.map((t) => t.restaurantId)).toEqual([
       'r-a',
@@ -176,7 +180,7 @@ describe('UserListTileGalleryService', () => {
       ]),
       topPhotos: new Map([['r-b', photo('b')]]),
     });
-    const tiles = (await service.loadTileImages([ref('l1')])).get('l1')!;
+    const tiles = (await service.loadTileImages([ref('l1')], null)).get('l1')!;
     expect(tiles).toEqual([
       {
         slot: 0,
@@ -193,7 +197,9 @@ describe('UserListTileGalleryService', () => {
       scores: new Map(),
       topPhotos: new Map(),
     });
-    expect((await service.loadTileImages([ref('l1')])).has('l1')).toBe(false);
+    expect((await service.loadTileImages([ref('l1')], null)).has('l1')).toBe(
+      false,
+    );
   });
 
   describe('use your photos (wave2 §2 / audit ND #2)', () => {
@@ -220,7 +226,7 @@ describe('UserListTileGalleryService', () => {
         ]),
       });
       const tiles = (
-        await service.loadTileImages([ref('l1', true, 'owner-1')])
+        await service.loadTileImages([ref('l1', true, 'owner-1')], null)
       ).get('l1')!;
       // Slot 1 (r-b) stays EMPTY — not filled by the stranger photo, not
       // yielded to r-c; r-c keeps its own rank slot 2.
@@ -245,7 +251,7 @@ describe('UserListTileGalleryService', () => {
         topPhotos: new Map<string, StubPhoto>([['r-b', photo('stranger-b')]]),
       });
       const tiles = (
-        await service.loadTileImages([ref('l1', false, 'owner-1')])
+        await service.loadTileImages([ref('l1', false, 'owner-1')], null)
       ).get('l1')!;
       expect(tiles).toEqual([
         expect.objectContaining({ slot: 0, restaurantId: 'r-b' }),
@@ -259,7 +265,9 @@ describe('UserListTileGalleryService', () => {
         topPhotos: new Map<string, StubPhoto>([['r-a', photo('stranger-a')]]),
       });
       expect(
-        (await service.loadTileImages([ref('l1', true, 'owner-1')])).has('l1'),
+        (await service.loadTileImages([ref('l1', true, 'owner-1')], null)).has(
+          'l1',
+        ),
       ).toBe(false);
     });
   });
