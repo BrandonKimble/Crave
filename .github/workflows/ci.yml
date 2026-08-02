@@ -12,7 +12,11 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15
+        # Same image family as PROD (postgis + pgvector + timescale) — the
+        # entitlement integration specs need a real schema, and migrations
+        # need the extensions. This also makes every CI run a migration
+        # rehearsal on a prod-shaped Postgres.
+        image: timescale/timescaledb-ha:pg17
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -53,6 +57,12 @@ jobs:
       - name: Generate Prisma client
         working-directory: apps/api
         run: yarn prisma generate
+
+      - name: Apply migrations to the test database
+        working-directory: apps/api
+        run: yarn prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crave_search_test?schema=public
 
       - name: Lint
         run: yarn lint
