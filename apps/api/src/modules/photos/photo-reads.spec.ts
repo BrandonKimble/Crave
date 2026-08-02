@@ -24,17 +24,17 @@ const VIEWER = 'viewer-1';
 const BLOCKED_A = 'blocked-a';
 const BLOCKED_B = 'blocked-b';
 
+type Call = Record<string, unknown>;
+
 function build() {
   const reads = {
     cardStrips: jest.fn().mockResolvedValue({ strips: [] }),
-    restaurantGallery: jest
-      .fn()
-      .mockResolvedValue({
-        restaurantId: 'r1',
-        totalCount: 0,
-        all: [],
-        byDish: [],
-      }),
+    restaurantGallery: jest.fn().mockResolvedValue({
+      restaurantId: 'r1',
+      totalCount: 0,
+      all: [],
+      byDish: [],
+    }),
     userFoodLog: jest.fn().mockResolvedValue([]),
     stripPhotos: jest.fn().mockResolvedValue({
       byRestaurant: new Map(),
@@ -59,7 +59,7 @@ describe('the exclusion is pushed into the query', () => {
   it('cardStrips passes the blocked set down, and does not post-filter', async () => {
     const { model, reads } = build();
     await model.forViewer(VIEWER).cardStrips([{ restaurantId: 'r1' }]);
-    const options = reads.cardStrips.mock.calls[0][1] as {
+    const options = (reads.cardStrips.mock.calls as Call[][])[0][1] as {
       excludeUserIds: readonly string[];
     };
     expect([...options.excludeUserIds].sort()).toEqual([BLOCKED_A, BLOCKED_B]);
@@ -72,7 +72,7 @@ describe('the exclusion is pushed into the query', () => {
     await model
       .forViewer(VIEWER)
       .restaurantGallery('r1', { limit: 30, offset: 60 });
-    const params = reads.restaurantGallery.mock.calls[0][1] as {
+    const params = (reads.restaurantGallery.mock.calls as Call[][])[0][1] as {
       limit: number;
       offset: number;
       excludeUserIds: readonly string[];
@@ -88,7 +88,7 @@ describe('the exclusion is pushed into the query', () => {
     // forgetting was unrepresentable.
     const { model, reads } = build();
     await model.forViewer(VIEWER).stripPhotos({ restaurantIds: ['r1'] });
-    const params = reads.stripPhotos.mock.calls[0][0] as {
+    const params = (reads.stripPhotos.mock.calls as Call[][])[0][0] as {
       excludeUserIds: readonly string[];
     };
     expect([...params.excludeUserIds].sort()).toEqual([BLOCKED_A, BLOCKED_B]);
@@ -97,7 +97,7 @@ describe('the exclusion is pushed into the query', () => {
   it('an anonymous viewer excludes nothing and asks the block store nothing', async () => {
     const { model, reads, blocks } = build();
     await model.forViewer(null).cardStrips([{ restaurantId: 'r1' }]);
-    const options = reads.cardStrips.mock.calls[0][1] as {
+    const options = (reads.cardStrips.mock.calls as Call[][])[0][1] as {
       excludeUserIds: readonly string[];
     };
     expect(options.excludeUserIds).toEqual([]);

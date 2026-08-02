@@ -36,7 +36,6 @@ import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { UserBlockService } from '../identity/user-block.service';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 import { PhotosService } from './photos.service';
-import { PhotoReadService } from './photo-read.service';
 import { PhotoEventService } from './photo-event.service';
 import { CloudinaryService } from './cloudinary.service';
 import { PhotoReads } from './photo-reads';
