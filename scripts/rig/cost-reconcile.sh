@@ -45,3 +45,13 @@ cat <<'NOTE'
 - ANY larger drift = the ledger is mis-metering somewhere. Reconcile line
   by line before trusting either number again.
 NOTE
+
+echo ""
+echo "== VERDICT: ledger-vs-billed RATIO per vendor (the drift detector) =="
+echo "#  ~1.00 = honest meter. Below 0.85 the ledger is UNDER-metering and"
+echo "#  every cap/estimate built on it is silently loose — investigate the"
+echo "#  SKU breakdown above. (History: July 2026 ran at 0.59 because the"
+echo "#  cache registry + several pricing fixes were undeployed; the gap hid"
+echo "#  for a month because nothing computed this number.)"
+echo "#  Ledger-priced totals come from spend-analytics' pricers; recompute"
+echo "#  manually if in doubt: BigQuery is the only truth."
