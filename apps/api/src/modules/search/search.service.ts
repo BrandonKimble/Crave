@@ -1972,18 +1972,27 @@ export class SearchService {
     const stagePlan = compileQueryPlanFromConstraints(pooledConstraints);
     const planMs = performance.now() - planStart;
 
+    // No soft words ⇒ no gate to run: the pooled query degenerates to the
+    // plain strict single query (empirical battery 2026-08-02: an empty
+    // soft-id list must not reach the builder — Prisma.join([]) throws).
+    const hasSoftIds =
+      softFoodAttributeIds.length > 0 || softRestaurantAttributeIds.length > 0;
     const directives = {
       ...this.buildExecutionDirectives(
         params.request,
         constraints,
         params.planExpansion,
       ),
-      pooledGate: {
-        softFoodAttributeIds,
-        softRestaurantAttributeIds,
-        threshold: params.threshold,
-        gateFull: null,
-      },
+      ...(hasSoftIds
+        ? {
+            pooledGate: {
+              softFoodAttributeIds,
+              softRestaurantAttributeIds,
+              threshold: params.threshold,
+              gateFull: null as boolean | null,
+            },
+          }
+        : {}),
     };
 
     const executeStart = performance.now();
