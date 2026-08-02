@@ -281,24 +281,27 @@ echo "==> Smoke: /health (asserting the RUNNING commit == HEAD) ..."
 # exact answer: the process must report HEAD. Poll a bit — the new container
 # boots + runs migrations after `railway up` returns. ONE curl gets code+body
 # (two separate curls can hit different containers).
-HEAD_FULL="$(git rev-parse HEAD)"
+# Compare against the STAMP we wrote, not bare HEAD — a dirty STAGING deploy
+# stamps HEAD-dirty (by design), and asserting bare HEAD would fail every
+# dirty staging smoke. $STAMP_SHA is exactly what the new container must echo.
+EXPECT_SHA="$STAMP_SHA"
 running=""; code=""
 for _ in $(seq 1 20); do
   resp="$(curl -s -m 20 -w $'\n%{http_code}' "$HEALTH_URL" 2>/dev/null || true)"
   code="$(printf '%s' "$resp" | tail -1)"
   body="$(printf '%s' "$resp" | sed '$d')"
   running="$(printf '%s' "$body" | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("commit",""))' 2>/dev/null || true)"
-  [[ "$code" == "200" && "$running" == "$HEAD_FULL" ]] && break
+  [[ "$code" == "200" && "$running" == "$EXPECT_SHA" ]] && break
   sleep 6
 done
 if [[ "$code" != "200" ]]; then
   echo "FAILED: /health returned $code after deploy." >&2
   exit 1
 fi
-if [[ "$running" != "$HEAD_FULL" ]]; then
+if [[ "$running" != "$EXPECT_SHA" ]]; then
   echo "FAILED: /health is 200 but the RUNNING commit is not HEAD." >&2
   echo "  running: ${running:0:9}" >&2
-  echo "  HEAD:    ${HEAD_FULL:0:9}" >&2
+  echo "  expected: ${EXPECT_SHA:0:9}" >&2
   echo "  The deploy did not ship (SKIPPED, crash-looped, or slow). The stamp is" >&2
   echo "  corrected to what is ACTUALLY running so /health never lies:" >&2
   # HONEST STAMP ON FAILURE (red-team P0): never leave the speculative stamp
@@ -319,4 +322,4 @@ if [[ " ${SERVICES[*]} " == *" worker "* ]]; then
     exit 1
   fi
 fi
-echo "==> Deployed ${HEAD_FULL:0:9} to $ENVIRONMENT — /health 200, running commit == HEAD."
+echo "==> Deployed ${EXPECT_SHA:0:9} to $ENVIRONMENT — /health 200, running commit matches the stamp."
