@@ -20,6 +20,16 @@ find a stray branch or worktree, treat it as cruft to surface, not something to 
 
 ## Workflow: prod deploys + sim target (2026-07-25)
 
+- **GOTCHA (2026-08-02): the MANUAL-DEPLOYS-ONLY watchPattern guard also SKIPS
+  CLI `railway up` deploys** (every deploy lands status SKIPPED, no error). To
+  deploy: clear `watchPatterns` to `[]` on api+worker (Railway MCP
+  update-service), run deploy.sh, then RESTORE
+  `["MANUAL-DEPLOYS-ONLY/never-matches"]`. Also: prod postgres has a small
+  /dev/shm — heavy migrations (STORED-column rewrites, event-table-wide joins)
+  must `SET max_parallel_workers_per_gather = 0; SET
+max_parallel_maintenance_workers = 0;` or they die with "could not resize
+  shared memory segment" and P3009-crash-loop the boot.
+
 - **Deploy with `./scripts/rig/deploy.sh [api|worker]`** (default: both). It encodes
   the burned-in laws: repo-ROOT build context (a subdir cwd breaks the Docker build),
   push-main-first, watch each deploy to terminal state, single retry, /health smoke.
