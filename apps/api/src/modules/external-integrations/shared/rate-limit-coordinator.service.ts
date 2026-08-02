@@ -306,8 +306,18 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       request.operation,
     );
     if (!config) {
-      this.logger.warn(
-        `No rate limit configuration found for service: ${request.service}`,
+      // ABSENT CONFIG DENIES (red team 2026-08-02). This returned
+      // `allowed: true` — an unregistered service was UNLIMITED. Harmless
+      // today only because the single caller (Places) always resolves a
+      // config via a `|| 600` default, which means the fail-open has never
+      // been exercised and nothing would notice if it started being.
+      //
+      // It is the dormant form of the rate-limit path allowlist that rotted
+      // into a total bypass: a registration removed as "dead" leaves every
+      // call site compiling and silently uncapped. A ceiling nobody
+      // configured is not a ceiling, and this guards paid third-party APIs.
+      this.logger.error(
+        `No rate limit configuration for service: ${request.service} — DENYING`,
         {
           service: request.service,
           operation: request.operation,
@@ -315,7 +325,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         },
       );
       return {
-        allowed: true,
+        allowed: false,
         currentUsage: 0,
         limit: 0,
         resetTime: new Date(),
