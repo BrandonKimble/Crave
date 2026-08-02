@@ -105,14 +105,28 @@ owner — three of the six changed after checking prompt+code):**
   dishes. Fix = data repair aligned to the prompt design (revive or
   re-point food-side cuisine rows, delete cuisine-dishes) + rerun. NOT a
   new facet, NOT a new entity type.
-- **P2.2 chains NARROWS.** Nobody chose the pinning; it's emergent:
-  Places' location-biased matching works correctly but only fires at
-  entity CREATION; resolution is global name-match-first, so later
-  mentions from any city attach to the first-created branch (Austin
-  Shake Shack praise → Manhattan-grounded entity) with no Places call.
-  Narrowed ruling: make RESTAURANT resolution metro-scoped (per-metro
-  chain entities, each grounded locally) — recommended; a resolver
-  change, not schema. Owner has seen this framing; awaiting yes/no.
+- **P2.2 chains — RULED 2026-08-02 (owner agreed): METRO-AWARE
+  RESOLUTION, not per-metro entities.** The shipped model is correct and
+  stays: ONE brand entity, grounded once via location-biased Places,
+  secondary expansion attaching every same-domain + same-brand-name
+  place as an additional location (Jet's Pizza ×56), search geo-scoped
+  by locations, votes on the entity. The defect is that RESOLUTION is
+  global name-match-first — executed proof: r/austinfood "I love mi
+  tradicion and comadre, I'll also throw Joes into the mix" (Joe's
+  Bakery, Austin) credited to NYC's Joe's Pizza entity. THE RULING: a
+  mention may only ADOPT a candidate that has a location in (or near)
+  the mention's community metro; otherwise it MINTS a new entity,
+  grounded locally by the existing enrichment. True chains stay whole
+  (their expanded locations pass the metro test in every metro they
+  operate); same-name strangers stay separate. Resolver change, no
+  schema. Cross-metro TALK stays legal (NYC discussing Franklin
+  Barbecue is real testimony about the Austin entity — the metro test
+  gates which ENTITY a name resolves to, it never drops evidence).
+  Rejected: per-metro chain entities (fights the expansion model).
+  BUILD ORDER: red-team this shape first, then implement in the
+  resolver during the database/extraction-prompt phase; repair the 81
+  existing cross-metro-evidence entities (split misattributed events by
+  re-resolving under the metro rule) as part of the rerun.
 - **P2.3 dietary NARROWS to a data fix.** The both-sides design is
   legitimate testimony ("the pad thai is vegan" food-side vs "fully
   vegan place" venue-side) — do NOT derive one from the other. Real
