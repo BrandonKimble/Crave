@@ -34,5 +34,14 @@
     "../../packages/shared/src/**/*",
     "onboard-subreddit.ts"
   ],
-  "exclude": ["dist/**/*", "node_modules/**/*", "../../scripts/**/*"]
+  "exclude": [
+    "dist/**/*",
+    "node_modules/**/*",
+    "../../scripts/**/*",
+    // Red-team/exploratory harnesses: throwaway by convention (see the
+    // search-session records). They are run with ts-node ad hoc and must
+    // never gate CI — shipped scripts (reload, reextract, activate) stay
+    // covered because they live in scripts/ root, not this subdir.
+    "scripts/search-harness/rt-*.ts"
+  ]
 }

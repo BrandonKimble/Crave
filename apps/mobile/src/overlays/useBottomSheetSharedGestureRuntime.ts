@@ -664,8 +664,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         // measured (polls, bespoke) is UNKNOWN and the pan declines; a measured short
         // page (max 0, known) rubber-bands legitimately.
         const atBottom =
-          boundaryFactsKnown.value &&
-          scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
+          boundaryFactsKnown.value && scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
         if (atExpanded && atBottom && !isInMomentum.value) {
           stateManager.activate();
           overscrollPanActive.value = true;
@@ -678,6 +677,9 @@ export const useBottomSheetSharedGestureRuntime = ({
             contentOverscroll.value,
             scrollViewportHeight.value
           );
+          // Reanimated: a plain write CANCELS the in-flight spring
+          // (write-cancels-animation); the self-assign IS the cancellation.
+          // eslint-disable-next-line no-self-assign
           contentOverscroll.value = contentOverscroll.value;
         }
       })
@@ -686,8 +688,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         if (!overscrollPanActive.value || gestureEnabledValue.value !== 1) {
           return;
         }
-        const pulled =
-          overscrollCatchPull.value + (overscrollStartTouchY.value - event.absoluteY);
+        const pulled = overscrollCatchPull.value + (overscrollStartTouchY.value - event.absoluteY);
         contentOverscroll.value =
           pulled > 0 ? nativeRubberBandDistance(pulled, scrollViewportHeight.value) : 0;
       })
@@ -751,6 +752,7 @@ export const useBottomSheetSharedGestureRuntime = ({
     // worklet defined inside this memo. Empty deps = ONE mint per runtime mount —
     // Gesture.Native relations minted by any container at any time stay valid for
     // that container's entire life (the polls disease is unrepresentable).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // (no react-hooks plugin in this package's eslint — empty deps are the
+    // deliberate contract here, documented above)
   }, []);
 };

@@ -19,6 +19,7 @@ const list = (listId: string) => ({
 describe('home shelf rows (section composition + getItemType)', () => {
   it('composes one row per non-empty shelf, in server order', () => {
     const feed: HomeFeedResponse = {
+      catalogWatermark: null,
       resolvedCity: { placeId: 'c1', name: 'Austin' },
       shelves: [
         { shelfKey: 'best_of', title: 'Best of Austin', lists: [list('a')] },
@@ -34,6 +35,7 @@ describe('home shelf rows (section composition + getItemType)', () => {
 
   it('resolvedCity null → the ONE pick-a-city row from liveCities', () => {
     const feed: HomeFeedResponse = {
+      catalogWatermark: null,
       resolvedCity: null,
       shelves: [],
       liveCities: [{ placeId: 'c1', name: 'Austin' }],
@@ -45,17 +47,26 @@ describe('home shelf rows (section composition + getItemType)', () => {
   });
 
   it('resolvedCity null with NO live cities → zero rows (honest empty, never fake)', () => {
-    expect(buildHomeShelfRows({ resolvedCity: null, shelves: [], liveCities: [] })).toEqual([]);
+    expect(
+      buildHomeShelfRows({
+        catalogWatermark: null,
+        resolvedCity: null,
+        shelves: [],
+        liveCities: [],
+      })
+    ).toEqual([]);
     expect(buildHomeShelfRows(null)).toEqual([]);
   });
 
   it('getItemType distinguishes shelf rows from the city picker; keys are shelf keys', () => {
     const shelfRow = buildHomeShelfRows({
+      catalogWatermark: null,
       resolvedCity: { placeId: 'c1', name: 'Austin' },
       shelves: [{ shelfKey: 'best_of', title: 'Best', lists: [list('a')] }],
       liveCities: [],
     })[0];
     const pickerRow = buildHomeShelfRows({
+      catalogWatermark: null,
       resolvedCity: null,
       shelves: [],
       liveCities: [{ placeId: 'c1', name: 'Austin' }],
