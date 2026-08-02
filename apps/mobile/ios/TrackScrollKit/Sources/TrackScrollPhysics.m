@@ -66,6 +66,17 @@
 @property (nonatomic, weak) UIView *shellTailView;
 @property (nonatomic, weak) UIView *shellChromeView;
 @property (nonatomic, strong) CALayer *shellBandMask;
+/// MASK OWNERSHIP IS EXCLUSIVE (2026-08-01). Rows must not paint in the chrome
+/// band, so SOMETHING must clip them — but a CALayer mask composites the whole
+/// sublayer tree, so a mask on the SCROLL VIEW also clips anything inside it.
+/// Hence exactly two legal modes:
+///   chrome OUTSIDE the scroll view -> the SCROLL VIEW carries the band mask.
+///   chrome INSIDE  the scroll view -> the ROWS carry it, and the scroll view
+///                                     must carry NONE.
+/// Being in both modes at once is what made the in-content chrome invisible:
+/// the removal ran earlier in bindShell than the (unconditional) install.
+@property (nonatomic, weak) UIView *chromeContentView;
+@property (nonatomic, weak) UIView *leaderView;
 @property (nonatomic, assign) CGFloat shellExpandedTop;
 @property (nonatomic, assign) CGFloat shellTrackH;
 @property (nonatomic, assign) CGFloat shellChromeHeight;
@@ -538,8 +549,43 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
         }
       }
     }
+    // THE ROW MASKS (chrome-is-content mode): every content subview that does
+    // NOT contain the chrome gets the band mask, plus the leader nested inside
+    // the header. Containment, never index-walking — a mis-resolve here masks
+    // the header itself and the whole chrome disappears.
+    UIView *chromeContent = self.chromeContentView;
+    if (chromeContent != nil) {
+      UIView *contentView = nil;
+      for (UIView *node = chromeContent; node != nil; node = node.superview) {
+        if (node.superview == scrollView) { contentView = node; break; }
+      }
+      if (contentView != nil) {
+        const CGFloat bandBottom = tau + sheetTop + self.shellChromeHeight;
+        const CGFloat w = CGRectGetWidth(scrollView.bounds);
+        const CGFloat h = CGRectGetHeight(scrollView.bounds);
+        NSMutableArray<UIView *> *rowViews = [NSMutableArray array];
+        for (UIView *sub in contentView.subviews) {
+          if (![chromeContent isDescendantOfView:sub]) { [rowViews addObject:sub]; }
+        }
+        if (self.leaderView != nil) { [rowViews addObject:self.leaderView]; }
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        for (UIView *view in rowViews) {
+          CALayer *rowMask = view.layer.mask;
+          if (rowMask == nil) {
+            rowMask = [CALayer layer];
+            rowMask.backgroundColor = [UIColor blackColor].CGColor;
+            view.layer.mask = rowMask;
+          }
+          const CGPoint origin = [view convertPoint:CGPointZero toView:contentView];
+          const CGRect next = CGRectMake(-w, bandBottom - origin.y, w * 3.0, h * 6.0);
+          if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
+        }
+        [CATransaction commit];
+      }
+    }
     CALayer *mask = self.shellBandMask;
-    if (mask != nil) {
+    if (chromeContent == nil && mask != nil) {
       // Layer space = bounds space = contentOffset-tracked: screen y Y lives
       // at layer y (τ + Y). The band bottom is sheetTop + chromeHeight.
       const CGRect b = scrollView.bounds;
@@ -556,8 +602,27 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     }
   }
   // THE PIN: zero-lag, same frame as the offset. translate = max(0, τ − H).
+  // THE PIN, DERIVED. The chrome sits at content y = H, so its natural screen
+  // y is expandedTop + H − τ while the sheet's edge is
+  // expandedTop + max(0, (H+σ) − τ) − tug. The pin is the difference:
+  //     pin = σ + max(0, τ − (H+σ)) − tug
+  // Below the boundary it holds the chrome σ down (the stash); above it the
+  // chrome sticks at the edge while rows scroll under; during an overshoot it
+  // rides the tug so chrome and rows travel as one body.
   UIView *chrome = self.pinnedChromeView;
-  if (chrome != nil && edge >= 0) {
+  if (chrome != nil && self.chromeContentView != nil && self.shellEnabled) {
+    const CGFloat tauNow = scrollView.contentOffset.y;
+    const CGFloat boundary = self.shellTrackH + self.stashSigma;
+    const CGFloat tugNow =
+        (self.postureOvershootActive && tauNow > boundary) ? (tauNow - boundary) : 0.0;
+    const CGFloat hold = self.stashSigma + MAX(0.0, tauNow - boundary) - tugNow;
+    const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
+    if ([chrome isKindOfClass:[TrackShellSlotView class]]) {
+      [(TrackShellSlotView *)chrome trackApplyTransform:next];
+    } else if (!CGAffineTransformEqualToTransform(chrome.transform, next)) {
+      chrome.transform = next;
+    }
+  } else if (chrome != nil && edge >= 0) {
     const CGFloat hold = MAX(0.0, scrollView.contentOffset.y - edge);
     const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
     if (!CGAffineTransformEqualToTransform(chrome.transform, next)) {
@@ -889,13 +954,15 @@ static TrackScrollDelegateProxy *TrackAdoptScrollView(UIScrollView *scrollView, 
     proxy.shellExpandedTop = gTrackShellExpandedTop;
     proxy.shellTrackH = gTrackShellTrackH;
     proxy.shellChromeHeight = chromeH;
-    if (proxy.shellBandMask == nil) {
-      CALayer *mask = [CALayer layer];
-      mask.backgroundColor = [UIColor blackColor].CGColor;
-      proxy.shellBandMask = mask;
-      scrollView.layer.mask = mask;
-    } else if (scrollView.layer.mask != proxy.shellBandMask) {
-      scrollView.layer.mask = proxy.shellBandMask;
+    if (proxy.chromeContentView == nil) {
+      if (proxy.shellBandMask == nil) {
+        CALayer *mask = [CALayer layer];
+        mask.backgroundColor = [UIColor blackColor].CGColor;
+        proxy.shellBandMask = mask;
+        scrollView.layer.mask = mask;
+      } else if (scrollView.layer.mask != proxy.shellBandMask) {
+        scrollView.layer.mask = proxy.shellBandMask;
+      }
     }
     proxy.hostScrollView = scrollView;
     proxy.shellEnabled = YES;
@@ -1105,7 +1172,15 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
     gTrackShellExpandedTop = proxy.shellExpandedTop;
     gTrackShellTrackH = proxy.shellTrackH;
     proxy.shellChromeHeight = [config[@"chromeHeight"] doubleValue];
-    if (proxy.shellBandMask == nil) {
+    proxy.chromeContentView = resolve(config[@"chromeContentTag"]);
+    proxy.leaderView = resolve(config[@"leaderTag"]);
+    if (proxy.chromeContentView != nil) {
+      // THE ROWS OWN THE MASK NOW. Clear any scroll-view mask this proxy
+      // installed in the other mode — leaving it is what clipped the chrome.
+      if (scrollView.layer.mask != nil) {
+        scrollView.layer.mask = nil;
+      }
+    } else if (proxy.shellBandMask == nil) {
       CALayer *mask = [CALayer layer];
       mask.backgroundColor = [UIColor blackColor].CGColor;
       proxy.shellBandMask = mask;
@@ -1178,7 +1253,9 @@ RCT_EXPORT_METHOD(auditShell:(nonnull NSNumber *)reactTag
       body[@"slotTransformTY"] = @(chromeSlotAudit.transform.ty);
       body[@"slotWindow"] = @(chromeSlotAudit.window != nil);
     }
-    UIView *chrome = chromeSlotAudit ?: proxy.shellChromeView;
+    // The chrome is CONTENT now: audit the PINNED view, whose window y must be
+    // the sheet's top edge. "Bound to the shell" is the wrong question.
+    UIView *chrome = proxy.pinnedChromeView ?: (chromeSlotAudit ?: proxy.shellChromeView);
     body[@"chromeBound"] = @(chrome != nil);
     if (chrome != nil) {
       body[@"chromeAttached"] = @(chrome.window != nil);

@@ -80,12 +80,18 @@ const SCREEN = Dimensions.get('window');
 const slotCache = globalThis as { __TrackShellSlotNative?: unknown };
 const TrackShellSlotNative = (slotCache.__TrackShellSlotNative ??=
   requireNativeComponent('TrackShellSlot'));
-function TrackShellSlot(
-  props: ViewProps & { slotRole: 'frost' | 'chrome' | 'tail'; children?: React.ReactNode }
-): React.ReactElement {
+// forwardRef is LOAD-BEARING: a ref on a plain function component is silently
+// dropped, so the engine never learns the view's tag.
+const TrackShellSlot = React.forwardRef<
+  unknown,
+  ViewProps & {
+    slotRole: 'frost' | 'chrome' | 'tail' | 'chromeContent';
+    children?: React.ReactNode;
+  }
+>(function TrackShellSlot(props, ref): React.ReactElement {
   const Native = TrackShellSlotNative as unknown as React.ComponentClass<Record<string, unknown>>;
-  return <Native {...(props as unknown as Record<string, unknown>)} />;
-}
+  return <Native ref={ref as never} {...(props as unknown as Record<string, unknown>)} />;
+});
 
 // THE CARVE (responsibility audit #2): the legs' scroll views fill the screen,
 // but the sheet only OWNS from sheetTop down. This native wrapper's hitTest
@@ -345,10 +351,15 @@ export function TrackSheetPage({
       return;
     }
     if (nativePhysics?.bindShell != null) {
+      if (nativePhysics?.pinChrome != null) {
+        nativePhysics.pinChrome(trackTagRef.current, chromeContentTagRef.current);
+      }
       nativePhysics.bindShell(trackTagRef.current, {
         frostTag: frostTagRef.current,
         tailTag: tailTagRef.current,
-        chromeTag: chromeVisualTagRef.current,
+        chromeTag: null,
+        chromeContentTag: chromeContentTagRef.current,
+        leaderTag: leaderTagRef.current,
         expandedTop: geometry.expandedTop,
         trackH,
         chromeHeight,
@@ -400,11 +411,8 @@ export function TrackSheetPage({
             return;
           }
           const problems: string[] = [];
-          if (!audit.chromeBound) {
-            problems.push('chrome UNBOUND');
-          } else if (!audit.chromeAttached) {
-            problems.push('chrome DETACHED (dead backing view)');
-          } else if (
+          // Positional invariant only: the chrome's window y IS the sheet edge.
+          if (
             audit.chromeWindowY != null &&
             audit.expectedSheetTop != null &&
             Math.abs(audit.chromeWindowY - audit.expectedSheetTop) > 1
@@ -484,6 +492,22 @@ export function TrackSheetPage({
   // tag, and if it is the PRESENTED leg the engine attaches to it (attach is
   // per-scroll-view, idempotent, retried) and the shell re-binds.
   const EMPTY_DATA: readonly never[] = [];
+  const chromeContentTagRef = React.useRef<number | null>(null);
+  const leaderTagRef = React.useRef<number | null>(null);
+  const chromeContentRef = React.useCallback((node: unknown) => {
+    const tag = node == null ? null : findNodeHandle(node as never);
+    if (tag !== chromeContentTagRef.current) {
+      chromeContentTagRef.current = tag;
+      applyPinRef.current?.();
+    }
+  }, []);
+  const leaderRef = React.useCallback((node: View | null) => {
+    const tag = node == null ? null : findNodeHandle(node);
+    if (tag !== leaderTagRef.current) {
+      leaderTagRef.current = tag;
+      applyPinRef.current?.();
+    }
+  }, []);
   const trackTagOnlyRef = React.useRef<number | null>(null);
   const trackListRef = React.useCallback(
     (instance: React.Component | null) => {
@@ -868,6 +892,8 @@ export function TrackSheetPage({
     ]
   );
 
+  const presentedChromeElement =
+    visualChromeLegs.find((entry) => entry.sceneKey === presentedSceneKey)?.element ?? null;
   // Per-leg header: [spacer H][chrome band][leader]. The chrome TOUCH TWIN
   // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
   // would steal it); hidden legs reserve the same band height so their
@@ -877,10 +903,24 @@ export function TrackSheetPage({
   // scroll view (TrackShellSlotView hitTest). The content only RESERVES the
   // band so rows start below the chrome; nothing in here paints a header, so
   // two headers on screen is unrepresentable rather than merely avoided.
+  // THE CHROME IS CONTENT. Every touch inside the scroll view is a potential
+  // sheet drag, and UIScrollView's own delaysContentTouches /
+  // canCancelContentTouches decides tap-vs-drag after MOVEMENT — which is the
+  // old system's axis-locked pan, implemented by UIKit. A nested horizontal
+  // scroller (the strip) wins horizontal by the same rule. None of that is
+  // expressible while the chrome sits outside the scroll view, because
+  // hitTest must choose at touch-DOWN, before direction exists.
   const headerForLeg = (leg: TrackSheetLeg | null, _isPresented: boolean) => (
     <View style={styles.chromeLane}>
-      <View style={{ height: trackH + legChromeHeight(leg) }} pointerEvents="none" />
-      {leg?.listLeader ?? null}
+      <View style={{ height: trackH }} pointerEvents="none" />
+      <TrackShellSlot slotRole="chromeContent" ref={chromeContentRef as never}>
+        {presentedChromeElement}
+      </TrackShellSlot>
+      {leg?.listLeader != null ? (
+        <View ref={leaderRef} collapsable={false}>
+          {leg.listLeader}
+        </View>
+      ) : null}
     </View>
   );
   const legFooter = React.useMemo(
@@ -1138,17 +1178,6 @@ export function TrackSheetPage({
       <TrackShellSlot slotRole="tail" style={styles.founding} pointerEvents="none">
         <View style={[StyleSheet.absoluteFill, { backgroundColor: surfaceColor }]} />
       </TrackShellSlot>
-
-      {/* THE ONE CHROME. It TAKES touches now (the twin that used to supply the
-          buttons is gone): the slot's hitTest keeps marked controls and hands
-          every other point to the presented leg's scroll view, so the header
-          drags the sheet exactly like a row does. box-none on the wrapper so
-          the region outside the chrome's own bounds stays the map's. */}
-      <View style={styles.chromeOverlay} pointerEvents="box-none">
-        <TrackShellSlot slotRole="chrome">
-          {visualChromeLegs.find((entry) => entry.sceneKey === presentedSceneKey)?.element ?? null}
-        </TrackShellSlot>
-      </View>
 
       {debugHud ? (
         <View style={styles.hud} pointerEvents="none">
