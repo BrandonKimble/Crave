@@ -2,7 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
-import { normalizeAppEnv } from '../../../../shared/config/app-env';
+import { resolveAppEnv } from '../../../../shared/config/app-env';
 
 export interface ReservationMetrics {
   currentRPM: number;
@@ -143,9 +143,7 @@ export class CentralizedRateLimiter {
     // used a third dialect — and BOTH strings become Redis key prefixes. Two
     // spellings across a rolling deploy means two disjoint rate-limit windows
     // and a silently doubled ceiling on the vendor calls that cost the most.
-    const appEnv = normalizeAppEnv(
-      process.env.APP_ENV || process.env.CRAVE_ENV,
-    );
+    const appEnv = resolveAppEnv();
     const defaultKeyPrefix = `crave:${appEnv}:llm-rate-limiter`;
     const explicitKeyPrefix = process.env.LLM_RATE_LIMIT_PREFIX;
     this.keyPrefix =

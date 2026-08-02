@@ -20,7 +20,8 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenAI, FinishReason } from '@google/genai';
+import { FinishReason } from '@google/genai';
+import { GatedGeminiClient } from './gated-gemini-client';
 import { Agent, setGlobalDispatcher, type Dispatcher } from 'undici';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
@@ -214,7 +215,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     successRate: 100,
   };
 
-  private genAI!: GoogleGenAI;
+  private gemini!: GatedGeminiClient;
   private redisClient: Redis | null = null;
   private systemInstructionCache: GeminiCacheEntry | null = null; // Cache for collection processing instructions
   private systemInstructionCacheExpiresAt: number | null = null;
@@ -404,8 +405,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       this.queryResultCacheLocalMaxEntries = 0;
     }
 
-    // Initialize GoogleGenAI client
-    this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
+    // THE Gemini client. Paid surfaces run the spend gate inside the client,
+    // so no call site can skip it — see gated-gemini-client.ts.
+    this.gemini = new GatedGeminiClient(this.llmConfig.apiKey, () =>
+      this.assertSpendBudgetOpen(),
+    );
     this.redisClient = this.redisService.getOrThrow();
 
     // Load system prompt from collection-prompt.md
@@ -3373,7 +3377,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
         const response = await (async () => {
           try {
-            return await this.genAI.models.generateContent({
+            return await this.gemini.generateContent({
               model: targetModel,
               contents: [
                 {
@@ -4071,20 +4075,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         // exactly what embeddings proved can be forgotten (red team
         // 2026-08-02). An assert is a pool read, so paying for it twice on
         // the batch path is cheaper than a second caller shipping without it.
-        this.assertSpendBudgetOpen().then(() =>
-          this.genAI.batches.create(params as never),
-        ) as Promise<{
-          name?: string;
-        }>,
+        this.gemini.createBatch(params),
       cancel: async (name) => {
-        await this.genAI.batches.cancel({ name });
+        await this.gemini.cancelBatch(name);
       },
-      get: async (name) =>
-        this.genAI.batches.get({ name }) as Promise<GeminiBatchJobRemote>,
+      get: async (name) => this.gemini.getBatch<GeminiBatchJobRemote>(name),
       findByDisplayName: async (displayName) => {
-        const pager = await this.genAI.batches.list({
-          config: { pageSize: 100 },
-        });
+        const pager = await this.gemini.listBatches(100);
         // The pager auto-walks pages; cap the scan — adoption only matters
         // for a crash retried within the lease window (minutes), so the
         // job is among the most recent if it exists at all.
@@ -4124,10 +4121,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // never has to remember. It is also the hot path — embedQuery runs on
       // search, whose only brake is a Redis cache that degrades to a live
       // embed when Redis is down.
-      await this.assertSpendBudgetOpen();
-      return this.genAI.models.embedContent(params as never) as Promise<{
-        embeddings?: Array<{ values?: number[] }>;
-      }>;
+      return this.gemini.embedContent(params);
     };
   }
 
@@ -4137,8 +4131,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         // Context-cache mints are billed in token-hours, so a mint is a paid
         // call and must pass the same backstop as generation (red team
         // 2026-08-02).
-        await this.assertSpendBudgetOpen();
-        const cache = await this.genAI.caches.create({
+        const cache = await this.gemini.createCache({
           model,
           config: { systemInstruction, ttl: `${ttlSeconds}s` },
         });
@@ -4153,13 +4146,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         };
       },
       updateTtl: async (name, ttlSeconds) => {
-        await this.genAI.caches.update({
-          name,
-          config: { ttl: `${ttlSeconds}s` },
-        });
+        await this.gemini.updateCacheTtl(name, `${ttlSeconds}s`);
       },
       delete: async (name) => {
-        await this.genAI.caches.delete({ name });
+        await this.gemini.deleteCache(name);
       },
     };
   }

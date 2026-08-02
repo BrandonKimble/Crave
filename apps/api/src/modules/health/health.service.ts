@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import type { Redis } from 'ioredis';
-import { normalizeAppEnv } from '../../shared/config/app-env';
+import { resolveAppEnv } from '../../shared/config/app-env';
 
 export interface HealthCheckResult {
   status: 'healthy' | 'unhealthy' | 'degraded';
@@ -74,7 +74,7 @@ export class HealthService {
       // `unknown` is honest: it means nothing stamped this, which is itself
       // the answer (a hand-rolled deploy that bypassed the script).
       commit: process.env.DEPLOYED_GIT_SHA || 'unknown',
-      appEnv: normalizeAppEnv(process.env.APP_ENV || process.env.CRAVE_ENV),
+      appEnv: resolveAppEnv(),
       uptime: Math.floor((Date.now() - this.startTime) / 1000),
       checks: {
         database,
