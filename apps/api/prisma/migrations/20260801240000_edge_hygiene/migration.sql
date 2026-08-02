@@ -1,3 +1,8 @@
+-- Serial plans (see 20260801230000): prod /dev/shm cannot host parallel
+-- workers' DSM segments for these event-table-wide joins.
+SET max_parallel_workers_per_gather = 0;
+SET max_parallel_maintenance_workers = 0;
+
 -- CLASS ⑤ (data audit 2026-08): category-edge hygiene + pipeline hygiene.
 
 -- 1. symmetric pairs: the lower-support direction is the wrong one

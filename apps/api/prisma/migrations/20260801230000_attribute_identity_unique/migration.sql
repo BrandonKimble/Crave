@@ -8,6 +8,15 @@
 --   - RESTAURANTS are deliberately EXCLUDED: legitimate chain branches
 --     share a stripped name (Blaze Pizza x2); a unique index would forbid
 --     them. Blocked on the P2.2 chain/branch model.
+
+-- SERIAL EXECUTION (learned on prod 2026-08-02): the STORED-column table
+-- rewrite + index rebuilds tried to grab a ~1GB dynamic shared memory
+-- segment for parallel workers and died on the container's small /dev/shm
+-- ("could not resize shared memory segment ... No space left on device").
+-- Serial plans use local memory and spill to disk instead.
+SET max_parallel_workers_per_gather = 0;
+SET max_parallel_maintenance_workers = 0;
+
 ALTER TABLE core_entities
   ADD COLUMN IF NOT EXISTS identity_key TEXT
   GENERATED ALWAYS AS (
