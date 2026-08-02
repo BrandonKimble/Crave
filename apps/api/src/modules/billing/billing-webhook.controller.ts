@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import { BillingService } from './billing.service';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 
 type RawBodyRequest = FastifyRequest & { rawBody?: Buffer | string };
 
@@ -13,6 +14,7 @@ export class BillingWebhookController {
   constructor(private readonly billingService: BillingService) {}
 
   @Post('stripe')
+  @RateLimitTier('webhook')
   async handleStripeWebhook(
     @Headers('stripe-signature') signature: string,
     @Req() request: RawBodyRequest,
@@ -27,6 +29,7 @@ export class BillingWebhookController {
   }
 
   @Post('revenuecat')
+  @RateLimitTier('webhook')
   async handleRevenueCatWebhook(
     @Body() payload: RevenueCatWebhookDto,
     @Headers('authorization') authorization?: string,

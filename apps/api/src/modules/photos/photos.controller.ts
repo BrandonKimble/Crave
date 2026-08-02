@@ -12,6 +12,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import type { User } from '@prisma/client';
 import { PhotoEventType, PhotoVisibility } from '@prisma/client';
 import { Type } from 'class-transformer';
@@ -239,6 +240,7 @@ export class PhotosWebhookController {
   ) {}
 
   @Post('cloudinary')
+  @RateLimitTier('webhook')
   @HttpCode(200)
   async handleCloudinary(
     @Req() request: { rawBody?: Buffer | string; body?: unknown },

@@ -7,6 +7,7 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { TeaserService } from './teaser.service';
 
 export class TeaserPreviewDto {
@@ -43,7 +44,10 @@ export class TeaserPreviewDto {
 export class TeaserController {
   constructor(private readonly teaser: TeaserService) {}
 
+  // Unauthenticated and pre-paywall does not mean uncapped: every cache miss
+  // runs several raw geo queries against Postgres.
   @Post('preview')
+  @RateLimitTier('publicRead')
   @HttpCode(200)
   async preview(@Body() body: TeaserPreviewDto) {
     const payload = await this.teaser.preview(

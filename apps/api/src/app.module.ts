@@ -41,6 +41,14 @@ import { isSchedulerRuntime } from './shared/utils/process-role';
 
 const runtimeWithSchedulers = isSchedulerRuntime();
 
+function isDebugRoutesEnabled(): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  if (process.env.APP_ENV === 'prod' || process.env.APP_ENV === 'staging') {
+    return false;
+  }
+  return process.env.ENABLE_DEBUG_ROUTES === 'true';
+}
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -109,8 +117,19 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     CustomThrottlerModule,
     // Legal/compliance: Privacy policy and terms of service (required for app stores)
     LegalModule,
-    // Debug module enabled only outside production
-    ...(process.env.NODE_ENV === 'production' ? [] : [DebugModule]),
+    // DEBUG ROUTES: OPT IN, NEVER OPT OUT (audit 2026-08-01).
+    //
+    // These endpoints exist to throw errors and to write caller-supplied text
+    // into Sentry. Exposed, they are a free way to burn our Sentry event
+    // quota (metered, real money) and to flood error monitoring with
+    // attacker-authored noise so a real incident scrolls past unseen.
+    //
+    // The old test was `NODE_ENV !== 'production'`, which FAILS OPEN: a
+    // container that never set NODE_ENV — a new service, a preview deploy, a
+    // misconfigured env — serves them publicly. Absence of configuration must
+    // never grant exposure, so the module is now off unless something says
+    // otherwise, out loud.
+    ...(isDebugRoutesEnabled() ? [DebugModule] : []),
   ],
   controllers: [AppController],
   providers: [],

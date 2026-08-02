@@ -19,7 +19,9 @@ export type RateLimitTierName =
   | 'auth' // 10 req/min - login attempts
   | 'sensitive' // 20 req/min - billing, username claims
   | 'premium' // 300 req/min - premium users
-  | 'heavyGeoRead'; // 30 req/min - unauthenticated viewport reads
+  | 'heavyGeoRead' // 30 req/min - unauthenticated viewport reads
+  | 'publicRead' // unauthenticated public reads (share links, teaser)
+  | 'webhook'; // vendor callbacks - generous, but never unbounded
 
 const tierLimits: Partial<
   Record<
@@ -72,6 +74,26 @@ const tierLimits: Partial<
     short: { limit: 5 },
     medium: { limit: 15 },
     long: { limit: 30 },
+  },
+  // Unauthenticated, pre-auth public reads (share links, the onboarding
+  // teaser). They touch Postgres, so "no auth" cannot also mean "no
+  // ceiling" — but a real person opening a shared list bursts a handful of
+  // requests, never dozens.
+  publicRead: {
+    short: { limit: 10 },
+    medium: { limit: 40 },
+    long: { limit: 120 },
+  },
+  // Vendor callbacks (Stripe, RevenueCat, Cloudinary). These used to skip
+  // rate limiting ENTIRELY, which made every invalid-signature request a
+  // free crypto verify plus a DB lookup — an unauthenticated CPU burn with
+  // no ceiling at all. The limit is set far above any real vendor delivery
+  // rate: it exists to stop a flood from one source, not to shape traffic.
+  // Vendors retry on 429, so the failure mode is delay, not lost events.
+  webhook: {
+    short: { limit: 50 },
+    medium: { limit: 300 },
+    long: { limit: 2000 },
   },
   premium: {
     short: { limit: 60 },

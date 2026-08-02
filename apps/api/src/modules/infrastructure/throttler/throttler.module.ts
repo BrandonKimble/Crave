@@ -19,16 +19,23 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
  *
  * Endpoints can override these defaults using @Throttle() or @SkipThrottle()
  *
- * Excluded from rate limiting:
- * - /health/* - Health check endpoints
- * - /billing/webhooks/* - Payment provider webhooks
+ * Excluded from rate limiting: /health only. See below.
  */
 /**
- * The ONLY paths that skip rate limiting, matched exactly. Health checks
- * must answer during an incident, and the three webhooks carry their own
- * signature/secret verification and are called by vendors we cannot
- * throttle. Anything not on this list is limited — including anything that
- * merely LOOKS like one of these.
+ * The ONLY paths that skip rate limiting, matched exactly.
+ *
+ * ONE MECHANISM, NOT TWO (2026-08-01). This list used to carry the webhooks
+ * too, and a substring test over it was the bypass that disabled throttling
+ * app-wide. An allowlist of paths that opt OUT is a second, parallel way to
+ * decide a request's ceiling, and it is the one nobody re-reads — so it is
+ * the one that rots. Webhooks now carry a generous `webhook` TIER instead,
+ * which is the same mechanism every other route uses; being on the wrong
+ * side of a tier costs a vendor a 429, whereas being on the wrong side of
+ * this list costs us the entire ceiling.
+ *
+ * Health stays here because it must answer during an incident — a probe that
+ * 429s turns a partial outage into a total one — and because it reads no
+ * database and spends nothing.
  */
 /**
  * Verified-subject memo for the throttler tracker. Keyed by the raw token, so
@@ -74,13 +81,22 @@ async function resolveVerifiedSubject(
   return subject;
 }
 
+/**
+ * Exported so the exemption decision is DIRECTLY testable. It was previously
+ * an anonymous closure inside the module factory, reachable only by booting
+ * the whole app — which is precisely why a one-line substring bug sat in
+ * production unnoticed. See throttler-exemptions.spec.ts.
+ */
+export function isRateLimitExempt(context: ExecutionContext): boolean {
+  const request = context.switchToHttp().getRequest<{ url?: string }>();
+  const path = (request.url ?? '').split('?')[0];
+  return RATE_LIMIT_EXEMPT_PATHS.has(path);
+}
+
 const RATE_LIMIT_EXEMPT_PATHS = new Set([
   '/health',
   '/health/live',
   '/health/ready',
-  '/api/v1/billing/webhooks/stripe',
-  '/api/v1/billing/webhooks/revenuecat',
-  '/api/v1/photos/webhooks/cloudinary',
 ]);
 
 @Module({
@@ -144,8 +160,6 @@ const RATE_LIMIT_EXEMPT_PATHS = new Set([
           );
           return subject ? `user:${subject}` : ip;
         },
-        // Skip rate limiting for these routes.
-        //
         // EXACT PATHS, NEVER SUBSTRING (security audit 2026-08-01, proven
         // against the running API). Fastify's `request.url` is path AND
         // QUERY STRING, and this used `url.includes('/webhooks/')` — so
@@ -155,11 +169,7 @@ const RATE_LIMIT_EXEMPT_PATHS = new Set([
         // param. Every ceiling in the app — auth, LLM search spend, the
         // heavy viewport reads, comment spam — was one query param away
         // from not existing.
-        skipIf: (context: ExecutionContext) => {
-          const request = context.switchToHttp().getRequest<{ url?: string }>();
-          const path = (request.url ?? '').split('?')[0];
-          return RATE_LIMIT_EXEMPT_PATHS.has(path);
-        },
+        skipIf: isRateLimitExempt,
         // Custom error message
         errorMessage: 'Too many requests. Please slow down and try again.',
       }),
