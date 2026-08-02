@@ -6,7 +6,12 @@ import type { SignalKind } from './signals.service';
 import { freshSignalAttributionSql } from './ground-containment';
 import { utcInstantSql } from './sql-instant';
 import { dayRecencySql } from '../polls/supply/poll-supply.constants';
-import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
+import {
+  DEDUPE_KEY_SQL,
+  EVENT_COUNT_SQL,
+  dayActsFilterSql,
+} from './act-identity';
+import { ECHO_SIGNAL_KINDS } from './signals.service';
 
 // freshFirstOccurrenceSql DELETED (docket #6): the fresh ledger arm it
 // gated is gone — the aggregate's window-wide dedupe is the only dedupe.
@@ -761,10 +766,28 @@ export class SignalDemandReadService {
         FROM signal_demand_daily a
         LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
         WHERE a.place_id = ANY(${aggPlaceIds}::uuid[])
-          AND a.subject_id IS NOT NULL
           -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
           -- the fresh ledger arm — the law's second dialect — is deleted.
-          AND a.day >= ${sinceDayKey}::date
+          --
+          -- THE SAME §4 rule the demand-mass reader uses (red team
+          -- 2026-08-02). This arm previously omitted the echo exclusion and
+          -- the entity-subject filter, and left the kind out of the grain --
+          -- collapsing every kind of a day into one MAX. Same entity, same
+          -- day, a different score from the other reader, and this is the one
+          -- the collector's territory read uses to decide what gets enriched.
+          AND ${dayActsFilterSql(ECHO_SIGNAL_KINDS, sinceDayKey)}
+        GROUP BY 1, 2, 3, a.kind
+      ),
+      -- The agg CTE is now per-KIND, so a day's acts SUM across kinds before the
+      -- recency weight is applied — two kinds on one day are two acts.
+      by_day AS (
+        SELECT
+          entity_id,
+          actor_id,
+          day,
+          SUM(day_acts)::float8 AS day_acts,
+          MAX(last_seen_at) AS last_seen_at
+        FROM agg
         GROUP BY 1, 2, 3
       ),
       by_actor AS (
@@ -775,7 +798,7 @@ export class SignalDemandReadService {
             day_acts * ${dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
           )::float8 AS acts,
           MAX(last_seen_at) AS last_seen_at
-        FROM agg
+        FROM by_day
         GROUP BY 1, 2
       ),
       scored AS (
