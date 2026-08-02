@@ -1087,8 +1087,19 @@ LIMIT ${pagination.take};`.trim();
   } {
     const includeRestaurantAttributes =
       options?.includeRestaurantAttributes ?? true;
-    const conditions: Prisma.Sql[] = [Prisma.sql`r.type = 'restaurant'`];
-    const conditionPreview: string[] = [`r.type = 'restaurant'`];
+    // ARCHIVED IS NEVER SERVED — as a PREDICATE, not an accident of
+    // score-table membership (final-final red team MEDIUM-1: the only
+    // thing hiding 242 archived-but-scored restaurants was the location
+    // gate; any archive path that doesn't strip locations would surface
+    // them with nothing standing in the way).
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`r.type = 'restaurant'`,
+      Prisma.sql`r.status <> 'archived'`,
+    ];
+    const conditionPreview: string[] = [
+      `r.type = 'restaurant'`,
+      `r.status <> 'archived'`,
+    ];
 
     if (filters.restaurantIds.length) {
       conditions.push(this.buildInClause('r.entity_id', filters.restaurantIds));
@@ -1133,10 +1144,18 @@ LIMIT ${pagination.take};`.trim();
       return { sql: Prisma.sql`TRUE`, preview: 'TRUE' };
     }
 
-    const directMatchSql = this.buildArrayOverlapClause(
+    // Archived attribute ids must not be a working filter (final-final
+    // red team MEDIUM-1: 11 live restaurants still match on archived
+    // vocabulary through the raw array overlap).
+    const directMatchSql = Prisma.sql`(${this.buildArrayOverlapClause(
       'r.restaurant_attributes',
       filters.restaurantAttributeIds,
-    );
+    )} AND EXISTS (
+      SELECT 1 FROM core_entities attr_live
+      WHERE attr_live.entity_id = ANY(r.restaurant_attributes)
+        AND attr_live.entity_id = ANY(${filters.restaurantAttributeIds}::uuid[])
+        AND attr_live.status <> 'archived'
+    ))`;
     // ONE ADMISSION RULE (2026-07-27, measured): this used to OR in a
     // core_restaurant_entity_signals EXISTS, which made the RESTAURANT list
     // admit places the DISH list rejected for the same attribute — the two
@@ -1654,6 +1673,7 @@ geographic_restaurants AS (
   JOIN core_restaurant_locations rl
     ON rl.restaurant_id = r.entity_id
   WHERE r.type = 'restaurant'
+    AND r.status <> 'archived'
     AND ${locationWhereSql}
     AND rl.latitude IS NOT NULL
     AND rl.longitude IS NOT NULL

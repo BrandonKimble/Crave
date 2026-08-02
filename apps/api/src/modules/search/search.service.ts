@@ -1,6 +1,11 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
-import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
+import {
+  EntityType,
+  OnDemandReason,
+  Prisma,
+  EntityStatus,
+} from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -1423,6 +1428,24 @@ export class SearchService {
   }
 
   async listRestaurantDishes(restaurantId: string): Promise<FoodResultDto[]> {
+    // Same redirect-hop + archived guard as getRestaurantProfile (HIGH-3).
+    const redirect = await this.prisma.entityRedirect.findUnique({
+      where: { fromEntityId: restaurantId },
+      select: { toEntityId: true },
+    });
+    const resolvedId = redirect?.toEntityId ?? restaurantId;
+    const host = await this.prisma.entity.findFirst({
+      where: {
+        entityId: resolvedId,
+        type: EntityType.restaurant,
+        status: { not: EntityStatus.archived },
+      },
+      select: { entityId: true },
+    });
+    if (!host) {
+      return [];
+    }
+    restaurantId = host.entityId;
     const toNumber = (value: unknown): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) {
         return value;
@@ -1584,10 +1607,20 @@ export class SearchService {
         ? (value as Record<string, unknown>)
         : null;
 
+    // MERGED-AWAY IDS LIVE ON in shares/lists/notifications: resolve one
+    // redirect hop, and never serve an archived husk (final-final red
+    // team HIGH-3 — executed: an archived merge loser rendered a full
+    // profile).
+    const redirect = await this.prisma.entityRedirect.findUnique({
+      where: { fromEntityId: restaurantId },
+      select: { toEntityId: true },
+    });
+    const resolvedRestaurantId = redirect?.toEntityId ?? restaurantId;
     const restaurant = await this.prisma.entity.findFirst({
       where: {
-        entityId: restaurantId,
+        entityId: resolvedRestaurantId,
         type: EntityType.restaurant,
+        status: { not: EntityStatus.archived },
       },
       select: {
         entityId: true,
@@ -3423,6 +3456,25 @@ export class SearchService {
 
     if (!hasTargets) {
       return totalResults === 0 ? 'full' : 'full';
+    }
+
+    // A NAMED term that resolved to ZERO ids is unresolved — not a
+    // generic browse wearing full coverage (final-final red team
+    // MEDIUM-2: {normalizedName:'unicorn meat', entityIds:[]} returned
+    // the same top-25 as an empty request and called it full).
+    const lanes = [
+      ...(request.entities.food ?? []),
+      ...(request.entities.foodAttributes ?? []),
+      ...(request.entities.restaurants ?? []),
+      ...(request.entities.restaurantAttributes ?? []),
+    ];
+    const hasNamedUnresolvedLane = lanes.some(
+      (lane) =>
+        (lane.normalizedName ?? '').trim().length > 0 &&
+        (lane.entityIds ?? []).filter(Boolean).length === 0,
+    );
+    if (hasNamedUnresolvedLane) {
+      return 'unresolved';
     }
 
     if (totalResults === 0) {

@@ -1264,7 +1264,10 @@ export class UnifiedProcessingService implements OnModuleInit {
     value: string | undefined,
     type?: string,
   ): string {
-    const sanitized = (value ?? '').trim().replace(/\s+/g, ' ');
+    // 255-CLAMP (final-final red team LOW-1): core_entities.name is
+    // varchar(255); an over-long LLM-emitted name threw P2000 past the
+    // P2002-only savepoint catch and aborted the whole batch transaction.
+    const sanitized = (value ?? '').trim().replace(/\s+/g, ' ').slice(0, 255);
     if (!sanitized.length) {
       return sanitized;
     }
@@ -1689,9 +1692,15 @@ export class UnifiedProcessingService implements OnModuleInit {
               // (their key is lemma-collapsed + token-sorted, which no SQL
               // expression mirrors).
               const strippedKey = entityIdentityKey(canonicalName, entityType);
-              const strippedMatches = await tx.$queryRaw<
-                Array<{ entity_id: string; name: string; aliases: string[] }>
-              >`
+              const strippedMatches = strippedKey.startsWith('nfc:')
+                ? [] // empty fold = no shared identity to probe (HIGH-1)
+                : await tx.$queryRaw<
+                    Array<{
+                      entity_id: string;
+                      name: string;
+                      aliases: string[];
+                    }>
+                  >`
                 SELECT entity_id, name, aliases FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
@@ -1877,6 +1886,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                     SELECT entity_id FROM core_entities
                     WHERE type = ${entityType}::entity_type
                       AND identity_key = crave_fold(${canonicalName})
+                      AND identity_key <> ''
                     ORDER BY (status <> 'archived') DESC, created_at
                     LIMIT 1
                   `;

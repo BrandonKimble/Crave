@@ -290,3 +290,36 @@ Prod facts recorded: rescore converged 02:11; sweep crons live at 4AM UTC
 nightly; archived signal/score residue clears via the (now healable-only)
 repair + tombstone sweeps; one restaurant (Sway→sway thai, 8 events) awaits
 the sweep. Worker DOWN pending this deploy.
+
+## FINAL-FINAL RED TEAM (round 9 — read surfaces + whole-session synergy, 2026-08-02)
+
+Two Opus agents (read surfaces/hostile inputs; whole-session contradictions)
+
+- rulings-vs-data prong. Fixed, all proven by execution: GC preserved
+  tombstones (91% of its kill list was junk-verdict + merge-loser memory) and
+  now cleans redirects both directions; identity_key_sorted app-written column
+  unifies the four divergent food-twin predicates (order lane judge-gated —
+  "dumpling soup"≠"soup dumplings"); empty fold is no identity (nfc: fallback
+  key, index + probes exclude ''; '食べ放題' no longer sinks 'Шведский стол');
+  Turkish-İ combining-dot strip re-unifies the TS/SQL fold (twin restaurants
+  minted live in the race harness before; corpus parity 17,559/17,559 after);
+  restaurant profile + dishes resolve one redirect hop and never serve
+  archived; search carries explicit r.status predicates + archived attribute
+  ids stop matching; named-but-unresolved lanes report 'unresolved' instead of
+  full-coverage generic browse; names clamp to 255 (P2000 aborted whole
+  batches). Verified unbreakable: compaction guards, supersede coherence,
+  RESTRICT FKs vs all delete paths, ballot lane one-voter-one-count (first
+  real execution), activation poll_surface guard (proven load-bearing with a
+  red control), curated filters, redirect graph.
+
+RULINGS RE-ANSWERED WITH DATA (for the prompt/database phase): cuisine
+"stranded 11k" already fixed (0 stranded; 58 cross-type redirects encode the
+one-canonical-per-cuisine shape — keep it, note it in the prompt); 16
+cuisines + vegan still exist as active DISHES → rerun cleanup list; dietary
+dupes structurally impossible now; edges-are-truth already shipped (residual
+158/2,886 pairs inert); chains: the model is brand-entity + multi-location +
+geo-scoped search (correct), the defect is GLOBAL name-first resolution —
+executed proof: r/austinfood "Joes" (Joe's Bakery ATX) credited to NYC's
+Joe's Pizza. P2.2 design: METRO-AWARE RESOLUTION (adopt only candidates
+with a location in the mention's metro; else mint + ground locally); per-
+metro chain entities rejected (fights the expansion model).

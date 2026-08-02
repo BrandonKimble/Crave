@@ -45,18 +45,31 @@ for (let i = 0; i < FOLD_ACCENTS_FROM.length; i += 1) {
  *  (tex-mex == tex mex — round-6: strip-to-nothing split hyphenated
  *  cuisines) → trim. */
 export function canonicalFold(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[\u0080-\uffff]/g, (ch) => FOLD_ACCENT_MAP[ch] ?? ch)
-    .replace(/['’‘ʼ]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+  return (
+    name
+      .toLowerCase()
+      // Turkish dotted capital İ: JS toLowerCase yields "i" + combining
+      // dot U+0307, which the punctuation arm turned into a SPACE — the
+      // lock key diverged from SQL lower('İ')='i' and twin restaurants
+      // minted live (final-final red team HIGH-2). Postgres produces no
+      // combining mark here; strip it so the mirrors stay byte-identical.
+      .replace(/\u0307/g, '')
+      .replace(/[\u0080-\uffff]/g, (ch) => FOLD_ACCENT_MAP[ch] ?? ch)
+      .replace(/['’‘ʼ]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+  );
 }
 
 export function entityIdentityKey(name: string, type: EntityType): string {
   const base = canonicalFold(name);
   if (!base) {
-    return base;
+    // EMPTY FOLD IS NOT AN IDENTITY (final-final red team HIGH-1: every
+    // non-Latin name — CJK, Cyrillic, emoji — folded to '' and the first
+    // one became the adoption sink for all the rest). Fall back to the
+    // NFC-normalized lowercased name itself: script-preserving, distinct
+    // per name, still deterministic for the lock.
+    return `nfc:${name.normalize('NFC').toLowerCase().trim()}`;
   }
   if (type === EntityType.food || type === EntityType.ingredient) {
     // PER-TOKEN fold, then sort (round-3 empirical red team: folding the
