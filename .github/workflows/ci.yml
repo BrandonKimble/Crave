@@ -125,6 +125,11 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      # the guard hard-refuses to run without ripgrep (a green that means
+      # nothing is worse than red) — ubuntu-latest doesn't ship it
+      - name: Install ripgrep
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+
       - name: 'Static guard: enforce no-bypass-search-runtime'
         run: scripts/no-bypass-search-runtime.sh
 
