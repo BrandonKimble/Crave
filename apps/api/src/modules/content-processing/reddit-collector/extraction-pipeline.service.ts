@@ -182,6 +182,10 @@ export class ExtractionPipelineService implements OnModuleInit {
     baseParams: ExtractionPipelineBaseParams,
   ): Promise<string> {
     if (!baseParams.promptVersion) {
+      // FAIL CLOSED (D6): if this process could not read the registry's
+      // ACTIVE prompt, refuse to extract rather than run under the asset
+      // file — an unregistered prompt hash voids coverage corpus-wide.
+      this.promptRegistry.assertCollectionPromptAvailable();
       return this.llmService.getSystemPrompt();
     }
     if ((baseParams.llmMode ?? this.collectionLlmMode) !== 'batch') {

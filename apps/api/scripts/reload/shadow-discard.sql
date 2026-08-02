@@ -11,7 +11,7 @@
 BEGIN;
 
 CREATE TEMP TABLE candidate AS
-SELECT content_hash FROM llm_prompts WHERE version = :'version'::int;
+SELECT content_hash FROM llm_prompts WHERE kind = 'collection_system' AND version = :'version'::int;
 
 -- HARD ASSERT: never discard an ACTIVATED generation. If any document's
 -- active run carries this hash, this is not a shadow — abort.

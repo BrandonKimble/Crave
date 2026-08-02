@@ -220,6 +220,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private systemInstructionCacheExpiresAt: number | null = null;
   private systemCacheRefreshTimer: NodeJS.Timeout | null = null;
   private systemCacheRefreshInFlight: Promise<void> | null = null;
+  /** Bumped by every setActiveSystemPrompt swap. A cache refresh that was
+   *  already in flight when the prompt changed must NOT install its result
+   *  (final red team F2). */
+  private promptGeneration = 0;
   private systemCacheTtlMs = 0;
   private systemCacheRefreshLeadMs = 0;
   private queryResultCacheTtlSeconds = 0;
@@ -526,6 +530,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     const correlationId = CorrelationUtils.getCorrelationId();
     const previousCacheId = this.systemInstructionCache?.name ?? null;
+    const generation = this.promptGeneration;
 
     this.logger.info('Creating explicit cache for system instructions', {
       correlationId,
@@ -549,6 +554,23 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     });
 
     const expiresAt = expiresAtMs;
+    // STALE-GENERATION GUARD (final red team F2): the boot refresh is
+    // fire-and-forget, so the registry's setActiveSystemPrompt can land
+    // WHILE this mint is in flight. Installing it anyway made Gemini serve
+    // the OLD prompt from cache while the run was recorded under the NEW
+    // prompt hash — the exact coverage lie the registry exists to prevent.
+    if (this.promptGeneration !== generation) {
+      this.logger.warn(
+        'Discarding system-instruction cache minted for a superseded prompt',
+        {
+          correlationId,
+          operation: 'refresh_system_cache',
+          reason,
+          cacheId: cacheName,
+        },
+      );
+      return;
+    }
     this.systemInstructionCache = { name: cacheName };
     this.systemInstructionCacheExpiresAt = expiresAt;
 
@@ -1169,9 +1191,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    *  3h cache refresh cycle picks it up on its own schedule. */
   setActiveSystemPrompt(content: string): void {
     if (content === this.systemPrompt) return;
+    this.promptGeneration += 1;
     this.systemPrompt = content;
     this.systemInstructionCache = null;
     this.systemInstructionCacheExpiresAt = null;
+    // Drop the in-flight marker too: that promise is minting the OLD
+    // prompt's cache and its result is now discarded by the generation
+    // guard, so a fresh refresh must be allowed to start immediately.
+    this.systemCacheRefreshInFlight = null;
   }
 
   getContentModel(): string {

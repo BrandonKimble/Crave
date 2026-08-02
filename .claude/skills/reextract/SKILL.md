@@ -13,10 +13,18 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 
 ## Invariants (never violate)
 
-- **Collection never pauses for prompt iteration.** Live lanes extract under
-  the ACTIVE prompt version; the candidate runs SHADOW replays
-  (activate:false). The kill-switches (CRONS_ENABLED,
-  COLLECTION_SCHEDULER_ENABLED) are emergency brakes, not workflow steps.
+- **The design intent is that collection never pauses** — live lanes extract
+  under the ACTIVE prompt while the candidate runs SHADOW replays
+  (activate:false). **Today there is one honest caveat** (final red team
+  D5): the nightly 3AM dedupe/merge sweeps have no run-provenance filter, so
+  they would consume shadow-minted vocabulary. The mitigation is
+  `CRONS_ENABLED=false` for the shadow window — and because the collection
+  pacer tick is itself a `@Cron`, that ALSO pauses collection. So until the
+  sweeps are provenance-filtered, a shadow window does pause collection.
+  That is fine: shadow windows are days and the catch-up ceiling is ~35
+  comfortable days (foodnyc at 13.4 posts/day is the only fast lane), and
+  lanes resume from their cursors automatically. Do not "fix" this by
+  leaving crons on.
 - **No spend without an approved campaign.** The runner and batch submit
   refuse without `isDispatchable`. Never work around it.
 - **Never activate a candidate prompt without a closed diff review.**
@@ -64,6 +72,33 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
    by region as each community's shadow drains — activation is
    per-document, rolling is native. Disarm the REEXTRACT\_\* env vars when
    done.
+
+## Hard invariants proven by the final red team (2026-08-01)
+
+- **Activation is ONE-WAY.** The pointer flip deletes the superseded runs'
+  events and compaction reaps the emptied runs within the hour. There is no
+  rollback after `--execute` — only re-paying a full extraction. Treat the
+  diff review as the last exit.
+- **`activate` refuses a non-candidate version and a shadow below 99%
+  coverage.** Both refusals are correct; do not `--allow-partial` without
+  the owner, and never work around the candidate check.
+- **CRONS_ENABLED must stay `false` for the whole shadow window.** The
+  nightly 3AM dedupe/merge sweeps have no run-provenance filter: they treat
+  shadow-minted entities as real vocabulary, can archive a LIVE entity in
+  favour of a candidate's, rekey user list items into it, and spend
+  un-campaigned judge calls. `discard` cannot undo a merge.
+- **The campaign envelope only meters the BATCH line (~7% of spend).**
+  Resolver/embedding/attribute calls carry no campaignId, so a breach may
+  never fire. Watch TOTAL ledger spend since campaign start, not just
+  `spend_campaigns.spent_micros`, and stop manually if it approaches the
+  envelope.
+- **Every verb targets `REEXTRACT_DB`** — including push/estimate/activate,
+  which boot AppModule. Unset, they hit the LOCAL dev database and the prod
+  worker will never find the candidate or campaign.
+- **After disarming, run `scripts/enrich-restaurants.ts`.** The shadow sets
+  `DISABLE_RESTAURANT_ENRICHMENT` service-wide, so restaurants minted by
+  LIVE collection during the window never got Places grounding, and the
+  backfill has no cron.
 
 ## Gotchas learned the hard way
 

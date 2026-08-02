@@ -96,26 +96,84 @@ async function main(): Promise<void> {
     console.log(
       `Shadow runs for v${promptVersion} (${promptHash.slice(0, 12)}…): ${runs.length} runs, ${totalDocs} documents across ${communities.join(', ')}`,
     );
+
+    // COMPLETENESS GATE (final red team D8): a breached campaign or failed
+    // batches leave the shadow partially drained. The runner logs per-run
+    // failures and still prints DONE, so a 60%-complete shadow looks
+    // finished. Activating it yields a corpus half-extracted under each
+    // prompt — and per D1 there is no way back.
+    const [{ shadowed, total }] = await prisma.$queryRaw<
+      Array<{ shadowed: bigint; total: bigint }>
+    >`
+      SELECT
+        count(*) FILTER (WHERE EXISTS (
+          SELECT 1
+          FROM collection_extraction_input_documents eid
+          JOIN collection_extraction_inputs ei ON ei.input_id = eid.input_id
+          JOIN collection_extraction_runs r
+            ON r.extraction_run_id = ei.extraction_run_id
+          WHERE eid.document_id = d.document_id
+            AND r.system_prompt_hash = ${promptHash}
+            AND r.status = 'completed'
+            AND ei.raw_output IS NOT NULL
+        )) AS shadowed,
+        count(*) AS total
+      FROM collection_source_documents d
+      WHERE d.community = ANY(${communities})
+        AND d.platform <> 'poll_surface'`;
+    const ratio = Number(total) > 0 ? Number(shadowed) / Number(total) : 0;
+    const minRatioRaw = arg('allow-partial');
+    const minRatio = minRatioRaw ? Number(minRatioRaw) / 100 : 0.99;
+    console.log(
+      `Shadow coverage: ${Number(shadowed)}/${Number(total)} docs (${(ratio * 100).toFixed(1)}%), floor ${(minRatio * 100).toFixed(1)}%`,
+    );
+    if (ratio < minRatio) {
+      throw new Error(
+        `REFUSED: shadow is only ${(ratio * 100).toFixed(1)}% complete. Let the batch queue drain, or accept explicitly with --allow-partial <pct>.`,
+      );
+    }
+
     if (!execute) {
       console.log('DRY RUN — re-run with --execute to flip activation.');
       return;
     }
+    console.log(
+      'WARNING: activation is ONE-WAY. activateRunForDocuments deletes the ' +
+        "superseded runs' events for these documents, and compaction removes " +
+        'the emptied runs within the hour — "flip back" would activate EMPTY ' +
+        'runs. Rolling back means re-paying the full extraction.',
+    );
 
     const affectedRestaurants = new Set<string>();
     let flipped = 0;
     for (const run of runs) {
+      // OWNERSHIP PREDICATE (final red team D2): a document rides in MORE
+      // THAN ONE run's inputs whenever it was pulled in as thread context
+      // (extract_from_post=false) or by an overlapping keyword lane —
+      // measured on prod: 13,912 docs (15.5%) have a non-owner run link.
+      // Without this, whichever replay is processed LAST wins the pointer,
+      // so a context-only replay (which extracted nothing) could take
+      // ownership and the supersede-delete would destroy the real mentions.
+      // Only flip docs whose CURRENT active run is the run we replayed.
       const docs = await prisma.$queryRaw<Array<{ document_id: string }>>`
         SELECT DISTINCT eid.document_id
         FROM collection_extraction_inputs ei
         JOIN collection_extraction_input_documents eid ON eid.input_id = ei.input_id
         JOIN collection_source_documents d ON d.document_id = eid.document_id
+        JOIN collection_extraction_runs r
+          ON r.extraction_run_id = ei.extraction_run_id
         WHERE ei.extraction_run_id = ${run.run_id}::uuid
-          AND d.platform <> 'poll_surface'`;
+          AND d.platform <> 'poll_surface'
+          AND d.active_extraction_run_id
+              = (r.metadata->>'replayOfExtractionRunId')::uuid`;
       const documentIds = docs.map((doc) => doc.document_id);
       const restaurants = await prisma.$queryRaw<
         Array<{ restaurant_id: string }>
       >`
         SELECT DISTINCT restaurant_id FROM core_restaurant_entity_events
+        WHERE source_document_id = ANY(${documentIds}::uuid[])
+        UNION
+        SELECT DISTINCT restaurant_id FROM core_restaurant_events
         WHERE source_document_id = ANY(${documentIds}::uuid[])`;
       for (const row of restaurants) affectedRestaurants.add(row.restaurant_id);
       await evidence.activateRunForDocuments(run.run_id, documentIds);

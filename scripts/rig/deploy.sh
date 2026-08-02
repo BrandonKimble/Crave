@@ -35,16 +35,21 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --env) ENVIRONMENT="$2"; shift 2 ;;
     --force) FORCE=1; shift ;;
+    --no-snapshot) ALLOW_NO_SNAPSHOT=1; shift ;;
     *) SERVICES+=("$1"); shift ;;
   esac
 done
 [[ ${#SERVICES[@]} -eq 0 ]] && SERVICES=(api worker)
 
-if [[ "$ENVIRONMENT" == "production" ]]; then
-  HEALTH_URL="https://api-production-a56f.up.railway.app/health"
-else
-  HEALTH_URL="https://api-staging-25ca.up.railway.app/health"
-fi
+# VALIDATE THE ENV (final red team): `--env prod` (a plausible typo) is
+# neither "production" nor "staging", so every prod guard was skipped —
+# no dirty-tree check, no origin check, NO SNAPSHOT — while the smoke
+# curled STAGING's /health. Green output, unguarded prod deploy.
+case "$ENVIRONMENT" in
+  production) HEALTH_URL="https://api-production-a56f.up.railway.app/health" ;;
+  staging)    HEALTH_URL="https://api-staging-25ca.up.railway.app/health" ;;
+  *) echo "REFUSED: unknown --env '$ENVIRONMENT' (expected production|staging)." >&2; exit 1 ;;
+esac
 
 if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
   # Untracked (non-ignored) files ship too — `railway up` uploads the tree,
@@ -87,17 +92,20 @@ if u:
     print(p.username, p.password, p.path.lstrip("/"))
 ')" || DB_CREDS=""
   if [[ -z "$DB_CREDS" ]]; then
-    echo "WARNING: could not resolve prod DATABASE_URL — skipping snapshot." >&2
+    # FAIL CLOSED (final red team): an expired Railway session or a CLI
+    # output change yielded empty creds and the deploy CONTINUED — applying
+    # migrations with no backup at all, the exact case the snapshot exists
+    # for. `2>/dev/null` hid the reason, so it was silent too.
+    echo "REFUSED: could not resolve prod DATABASE_URL for the pre-migration snapshot." >&2
+    echo "Check 'railway whoami' / 'railway variables --service api --environment production', or re-run with --no-snapshot to deploy unprotected." >&2
+    [[ "${ALLOW_NO_SNAPSHOT:-0}" == "1" ]] || exit 1
   else
     read -r DB_USER DB_PASS DB_NAME <<<"$DB_CREDS"
     SNAP="$BACKUP_DIR/prod-$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD).dump"
     PGPASSWORD="$DB_PASS" pg_dump --no-owner -Fc \
       -h sakura.proxy.rlwy.net -p 48622 -U "$DB_USER" -d "$DB_NAME" -f "$SNAP"
     echo "==> Snapshot: $SNAP ($(du -h "$SNAP" | cut -f1))"
-    # Keep the newest 2 (not 1): if a bad migration is only noticed after the
-    # NEXT deploy, the newest dump is already post-corruption — the one before
-    # it is the recovery point. Fixed-size (~900MB), never accumulates.
-    ls -t "$BACKUP_DIR"/prod-*.dump 2>/dev/null | tail -n +3 | xargs rm -f 2>/dev/null || true
+    ls -t "$BACKUP_DIR"/prod-*.dump 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
   fi
 fi
 
@@ -123,9 +131,22 @@ for svc in "${SERVICES[@]}"; do
 done
 
 echo "==> Smoke: /health ..."
+body="$(curl -s -m 20 "$HEALTH_URL")"
 code="$(curl -s -m 20 -o /dev/null -w "%{http_code}" "$HEALTH_URL")"
 if [[ "$code" != "200" ]]; then
   echo "FAILED: /health returned $code after deploy." >&2
   exit 1
 fi
-echo "==> Deployed $(git rev-parse --short HEAD) to $ENVIRONMENT — /health 200."
+# FRESHNESS ASSERT (final red team): migrations run at CONTAINER BOOT, after
+# `railway up` says "Deploy complete". If the new container crashloops on a
+# bad migration, Railway keeps the OLD one serving — and /health returns a
+# static version string, so the smoke passed with a 200 from the code the
+# deploy was supposed to replace. A long uptime proves we smoked the old
+# container.
+uptime_s="$(printf '%s' "$body" | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("uptime", 0)))' 2>/dev/null || echo 0)"
+if [[ "$uptime_s" -gt 900 ]]; then
+  echo "FAILED: /health is 200 but uptime is ${uptime_s}s — the OLD container is still serving." >&2
+  echo "The new container likely crashlooped (check migrations): railway logs --service api --environment $ENVIRONMENT" >&2
+  exit 1
+fi
+echo "==> Deployed $(git rev-parse --short HEAD) to $ENVIRONMENT — /health 200 (uptime ${uptime_s}s)."

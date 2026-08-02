@@ -45,6 +45,8 @@ export interface RegisteredPrompt {
 @Injectable()
 export class PromptRegistryService implements OnModuleInit {
   private logger!: LoggerService;
+  private collectionPromptUnavailable: string | null = null;
+  private activeCollectionVersion: number | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -54,31 +56,57 @@ export class PromptRegistryService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     this.logger = this.loggerService.setContext('PromptRegistryService');
+    // COLLECTION PROMPT FIRST, AND FAIL CLOSED (final red team D4/D6).
+    // D4: one try around every kind meant a relevance-gate seed failure
+    // skipped the collection swap entirely. D6: fail-OPEN to the asset file
+    // is safe only while the asset still equals the active version — the
+    // moment a candidate is activated, an asset-prompt boot produces a hash
+    // no run carries, so findExtractionCoveredSourceIds reports NOTHING
+    // covered and the live lanes re-extract the corpus ungoverned. That is
+    // the July 2026 accident. Extraction must stop instead.
     try {
-      // Seed every tenant kind; swap the in-process collection prompt.
-      for (const kind of Object.keys(SEED_ASSETS)) {
-        if (kind !== COLLECTION_SYSTEM_PROMPT_KIND) {
-          await this.ensureSeededAndGetActive(kind);
-        }
-      }
       const active = await this.ensureSeededAndGetActive();
-      // Swap the in-process prompt to the registry's active version — the
-      // asset file is only the v1 seed; the registry is the runtime truth.
       this.llmService.setActiveSystemPrompt(active.content);
+      this.activeCollectionVersion = active.version;
       this.logger.info('Collection prompt registry ready', {
         activeVersion: active.version,
         contentHash: active.contentHash.slice(0, 12),
       });
     } catch (error) {
-      // Fail-open to the asset file already loaded by LLMService: a registry
-      // outage must not take extraction down with it.
+      this.collectionPromptUnavailable =
+        error instanceof Error ? error.message : String(error);
       this.logger.error(
-        'Prompt registry init failed — running on the asset-file prompt',
-        {
+        'FAIL CLOSED: collection prompt registry unavailable — extraction is ' +
+          'blocked in this process rather than running under an unregistered ' +
+          'prompt (which would void coverage for the whole corpus)',
+        { error: { message: this.collectionPromptUnavailable } },
+      );
+    }
+    // Other tenants seed independently: one kind's failure must never
+    // strand another (D4). The relevance gate fails OPEN by design — its
+    // verdict hash records the prompt it actually used.
+    for (const kind of Object.keys(SEED_ASSETS)) {
+      if (kind === COLLECTION_SYSTEM_PROMPT_KIND) continue;
+      try {
+        await this.ensureSeededAndGetActive(kind);
+      } catch (error) {
+        this.logger.error('Prompt registry seed failed for kind', {
+          kind,
           error: {
             message: error instanceof Error ? error.message : String(error),
           },
-        },
+        });
+      }
+    }
+  }
+
+  /** Throws when this process could not establish the ACTIVE collection
+   *  prompt. Called by the extraction path so a registry outage stops work
+   *  instead of silently re-extracting under an unregistered prompt. */
+  assertCollectionPromptAvailable(): void {
+    if (this.collectionPromptUnavailable) {
+      throw new Error(
+        `Collection prompt registry unavailable: ${this.collectionPromptUnavailable}`,
       );
     }
   }

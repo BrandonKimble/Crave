@@ -19,18 +19,24 @@ cd "$(dirname "$0")/../.."
 API=apps/api
 VERB="${1:-}"; shift || true
 
-db_url() { # target db for SQL verbs: local api db unless REEXTRACT_DB set
+db_url() { # target db for ALL verbs: local api db unless REEXTRACT_DB set
   echo "${REEXTRACT_DB:-postgresql://postgres:postgres@localhost:5432/crave_search}"
 }
 
+# D3 (final red team): push/estimate/activate boot AppModule via ts-node and
+# would silently use apps/api/.env's LOCAL DATABASE_URL — registering the
+# candidate and approving the campaign in the LAPTOP database while the prod
+# worker looked for them. Every verb now targets the same resolved db_url.
+run_node() { DATABASE_URL="$(db_url)" npx ts-node "$@"; }
+
 case "$VERB" in
   push)
-    (cd "$API" && npx ts-node scripts/prompt-push.ts "$@")
+    (cd "$API" && run_node scripts/prompt-push.ts "$@")
     ;;
   estimate)
     COMMUNITIES="${1:?communities (comma list) required}"; VERSION="${2:?prompt version}"
     shift 2
-    (cd "$API" && npx ts-node scripts/reextract-estimate.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" "$@")
+    (cd "$API" && run_node scripts/reextract-estimate.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" "$@")
     ;;
   shadow)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"; CAMPAIGN="${3:?campaign id}"
@@ -68,8 +74,12 @@ case "$VERB" in
     ;;
   activate)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"
+    shift 2
+    # D11: forward ALL remaining flags — activate-shadow refuses --execute
+    # without --reviewed, and a single "${3:-}" could never carry both,
+    # pushing the operator off the sanctioned path into a raw invocation.
     echo "Step 1/4: flip document pointers + projection rebuild (dry-run first)"
-    (cd "$API" && npx ts-node scripts/activate-shadow.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" "${3:-}")
+    (cd "$API" && run_node scripts/activate-shadow.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" "$@")
     echo "Step 2/4 (after --execute): psql \$DB -f $API/scripts/reload/gc-unsupported-entities.sql   (then -v execute=1)"
     echo "Step 3/4: activate the prompt for LIVE collection: (cd $API && npx ts-node scripts/prompt-activate.ts $VERSION) + redeploy workers"
     echo "Step 4/4: ./scripts/rig/cost-reconcile.sh"

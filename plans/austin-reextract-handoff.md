@@ -109,7 +109,11 @@ REEXTRACT_DB=$(grep -o 'postgresql://.*' ~/.crave-prod-readonly.env | sed 's/PRO
 
 ## If something goes wrong
 
-Activation is reversible (old runs still exist — flip pointers back).
+Activation is **NOT** reversible (final red team D1): the flip deletes the
+superseded runs' events and compaction reaps the emptied runs within an
+hour, so flipping back activates EMPTY runs. Before `--execute` you can
+abandon freely (`reextract.sh discard <version>`); after it, recovery means
+re-paying a full extraction. The diff review is the last exit.
 Never reach for `wipe-city-derived.sql` unless the ledger itself is
 corrupt. Place-grounded restaurants are never deleted under any path —
 that's the $118 law. Ask the owner before any step that spends or deletes.

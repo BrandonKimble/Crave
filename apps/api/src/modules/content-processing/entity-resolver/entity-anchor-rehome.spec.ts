@@ -95,6 +95,25 @@ describe('EntityAnchorRehomeService', () => {
     ).toHaveLength(4);
   });
 
+  it('scopes the endorsement collision guard to the OUTER row (F1: it deleted real votes)', async () => {
+    // Final red team F1: an unqualified split_part(subject_id, …) inside the
+    // EXISTS binds to the subquery's own relation `k`, so the guard compared
+    // k's half against itself and DELETED a vote it should have converted.
+    // Proven on SQL: buggy guard would_delete=1, fixed guard would_delete=0.
+    const { tx, calls } = buildTx();
+    await service().rehomeEntityAnchors(tx as never, WINNER, LOSER);
+    const deletes = calls
+      .filter((call) => call.table === '$executeRaw')
+      .map((call) => JSON.stringify(call.args))
+      .filter((text) => text.includes('DELETE FROM poll_endorsements'));
+    expect(deletes).toHaveLength(3);
+    const composite = deletes.filter((text) => text.includes('split_part'));
+    expect(composite).toHaveLength(2);
+    for (const text of composite) {
+      expect(text).toContain('split_part(e.subject_id');
+    }
+  });
+
   it('rewrites entityId inside poll_comments.entity_spans JSONB', async () => {
     const { tx, calls } = buildTx();
     await service().rehomeEntityAnchors(tx as never, WINNER, LOSER);

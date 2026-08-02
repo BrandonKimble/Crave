@@ -102,18 +102,32 @@ export class EntityAnchorRehomeService {
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    const shapes: Array<{ from: Prisma.Sql; to: Prisma.Sql }> = [
+    // `toForExists` MUST qualify the surviving half with the OUTER row (e).
+    // Final red team F1: an unqualified split_part(subject_id, …) inside the
+    // EXISTS binds to `k`, the subquery's own relation — so the guard
+    // compared k's half against itself (always true) instead of comparing
+    // the outer row's other half. A user holding canonicalR::dishA and
+    // dupR::dishB in one poll had the dishB vote DELETED instead of
+    // converted, inside the merge transaction, with no error.
+    const shapes: Array<{
+      from: Prisma.Sql;
+      to: Prisma.Sql;
+      toForExists: Prisma.Sql;
+    }> = [
       {
         from: Prisma.sql`${duplicateId}`,
         to: Prisma.sql`${canonicalId}`,
+        toForExists: Prisma.sql`${canonicalId}`,
       },
       {
         from: Prisma.sql`${duplicateId} || '::' || split_part(subject_id, '::', 2)`,
         to: Prisma.sql`${canonicalId} || '::' || split_part(subject_id, '::', 2)`,
+        toForExists: Prisma.sql`${canonicalId} || '::' || split_part(e.subject_id, '::', 2)`,
       },
       {
         from: Prisma.sql`split_part(subject_id, '::', 1) || '::' || ${duplicateId}`,
         to: Prisma.sql`split_part(subject_id, '::', 1) || '::' || ${canonicalId}`,
+        toForExists: Prisma.sql`split_part(e.subject_id, '::', 1) || '::' || ${canonicalId}`,
       },
     ];
     for (const shape of shapes) {
@@ -125,7 +139,7 @@ export class EntityAnchorRehomeService {
             WHERE k.poll_id = e.poll_id
               AND k.subject_type = e.subject_type
               AND k.user_id = e.user_id
-              AND k.subject_id = ${shape.to}
+              AND k.subject_id = ${shape.toForExists}
           )`);
       await tx.$executeRaw(Prisma.sql`
         UPDATE poll_endorsements
