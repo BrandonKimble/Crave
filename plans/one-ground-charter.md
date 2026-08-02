@@ -935,3 +935,42 @@ MEASURED (both decisive, both against real prod data):
   "cannot help a spatial predicate" — the measurement refuted it (the
   planner walks the index backward and stops at the first row inside
   the box). Measure; do not reason about planners.
+
+## THE FINAL RED TEAM (2026-08-01, commit abd082e3) — cross-change defects
+
+Two Opus 5 agents on dimensions no single-commit review had covered
+(INTERACTIONS between this session's changes, operational/deploy safety,
+the wrap-bbox blast radius, the mobile state machine) plus an owner-side
+hunt. Every finding was a pair of individually-correct changes that were
+JOINTLY wrong — the class that per-commit review structurally cannot see:
+
+- SPEND: the awaited birth promote × the seed scripts' sketchChain loop
+  = an inline, UNCAMPAIGNED scarce polygon fetch per minted place (~33k
+  draws, ~$107, no ceiling for a US grid run). Fixed by the birth
+  trigger ('birth' promotes now; 'bulk_seed' lets the drain pay) AND by
+  plumbing campaignId through to the queue row — the TomTom pools are
+  per-MINUTE rate windows, so a spend CAMPAIGN is the only budget
+  ceiling that exists. seed-region takes --campaign-id and now prints
+  the DEFERRED bill its mints incur.
+- SPEND-FOREVER: the adapter's missing-country throw × the seeder's
+  per-cell skip left the RECONCILER unprotected — the throw unwound past
+  rememberAskedRegion, so malformed ground re-probed on every settle
+  forever. Per-anchor skip now.
+- SCALING CLIFF: docket #7's durability × an unfiltered global read =
+  one row per probing pass (per dwell, per search) read wholesale on
+  every settle. View-scoped read + partial indexes (20260801140000) +
+  hourly-throttled prune. The original migration's "tens of rows"
+  sizing note was wrong about its own growth law and now says so.
+- WRAP BBOX: the Aleutian law × the camera fitter = a place-chip jump to
+  a seam-straddling place flew to the COMPLEMENT (US -> Caspian Sea).
+  Unwrapped with the shared arc law before the fitter; map untouched.
+- MOBILE: a vendor RENAME could never reach a title (identity token
+  excludes the name); every title subscribed to the whole store.
+- DELETED: both census seeders — doctrinally retired AND broken (they
+  mint id-less nodes upsertSketch refuses).
+
+OPEN, for the owner, before the deploy pause lifts: verify staging's
+\_prisma_migrations checksum for 20260801200000_cuisine_facet — that
+migration was edited after staging went live (another session, now
+committed in 3d23fc06); a mismatch fails `prisma migrate deploy` at
+container boot.
