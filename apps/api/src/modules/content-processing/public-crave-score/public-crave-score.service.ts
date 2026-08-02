@@ -829,6 +829,10 @@ export class PublicCraveScoreService {
         COALESCE(SUM(m.source_upvotes * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLifeFast})), 0)::numeric AS upvotes_fast
       FROM core_restaurant_items c
       JOIN core_entities r ON r.entity_id = c.restaurant_id
+        -- ARCHIVED IS NEVER RANKED (big-one red team: 308 archived
+        -- restaurants held freshly-computed scores — merged losers and
+        -- junk sinks were user-rankable)
+        AND r.status = 'active'
       JOIN core_restaurant_item_mentions m ON m.connection_id = c.connection_id
       LEFT JOIN collection_source_documents d ON d.document_id = m.source_document_id
       LEFT JOIN sources src
@@ -866,6 +870,7 @@ export class PublicCraveScoreService {
       LEFT JOIN sources src
         ON src.platform = d.platform AND lower(src.handle) = lower(d.community)
       WHERE e.type = 'restaurant'
+        AND e.status = 'active'
         AND ${restFixtureFilter}
       GROUP BY e.entity_id, src.source_id, src.platform
     `;

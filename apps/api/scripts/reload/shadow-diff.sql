@@ -12,7 +12,11 @@
 BEGIN;
 
 CREATE TEMP TABLE target_docs AS
-SELECT document_id, source_id FROM collection_source_documents
+-- active_extraction_run_id scopes "active evidence" to the run each doc
+-- actually points at — without it, OTHER shadow versions' events count as
+-- active support and mask real regressions (big-one red team, gap 4b).
+SELECT document_id, source_id, active_extraction_run_id
+FROM collection_source_documents
 WHERE community = ANY(string_to_array(:'communities', ','));
 
 CREATE TEMP TABLE shadow_runs AS
@@ -41,10 +45,12 @@ WITH active_entities AS (
   SELECT DISTINCT ev.entity_id
   FROM core_restaurant_entity_events ev
   JOIN target_docs d ON d.document_id = ev.source_document_id
+   AND d.active_extraction_run_id = ev.extraction_run_id
   UNION
   SELECT DISTINCT ev.restaurant_id
   FROM core_restaurant_entity_events ev
   JOIN target_docs d ON d.document_id = ev.source_document_id
+   AND d.active_extraction_run_id = ev.extraction_run_id
 ),
 shadow_entities AS (
   SELECT DISTINCT ev.entity_id

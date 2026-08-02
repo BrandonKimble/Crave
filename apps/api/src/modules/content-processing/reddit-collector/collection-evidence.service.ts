@@ -257,6 +257,12 @@ export class CollectionEvidenceService implements OnModuleInit {
           )
           OR (
             r.status = 'running'
+            -- SAME CONTRACT ONLY (big-one red team #2): without the hash
+            -- predicate, a live lane treated docs held by an in-flight
+            -- SHADOW (candidate-prompt) job as covered and silently
+            -- skipped them under the ACTIVE prompt — and vice versa. The
+            -- claim path got this fix (F3); this sibling branch had not.
+            AND r.system_prompt_hash = ${params.systemPromptHash}
             AND EXISTS (
               SELECT 1 FROM llm_batch_jobs j
               WHERE j.resume_context->>'extractionRunId' = r.extraction_run_id::text
@@ -572,6 +578,17 @@ export class CollectionEvidenceService implements OnModuleInit {
           AND NOT EXISTS (
             SELECT 1 FROM collection_source_documents d
             WHERE d.active_extraction_run_id = r2.extraction_run_id
+          )
+          -- A CANDIDATE prompt's runs are awaiting diff/activation — no
+          -- document points at them BY DESIGN, and a zero-mention shadow
+          -- run has no events either. Compacting it destroys the "the new
+          -- prompt correctly found nothing" verdict and re-arms re-pay
+          -- (big-one red team #2). Runs of any non-retired registered
+          -- prompt are never compacted.
+          AND NOT EXISTS (
+            SELECT 1 FROM llm_prompts p
+            WHERE p.content_hash = r2.system_prompt_hash
+              AND p.status <> 'retired'
           )
           AND NOT EXISTS (
             SELECT 1 FROM llm_batch_jobs j

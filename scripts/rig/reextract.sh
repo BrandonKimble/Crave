@@ -8,6 +8,7 @@
 #   shadow    <communities> <version> <campaign>   arm the shadow replay (worker env)
 #   diff      <communities> <version>          shadow-diff + anchor-audit → review file
 #   activate  <communities> <version>          flip pointers + rebuild + GC + audit
+#   discard   <version>                        abandon a candidate (runs+events+claims deleted, prompt retired, GC)
 #   status                                     campaigns, shadow runs, lane health
 #
 # Spend law: shadow/activate refuse without an approved campaign (runner +
@@ -39,10 +40,17 @@ case "$VERB" in
       --set "REEXTRACT_COMMUNITIES=$COMMUNITIES" \
       --set "REEXTRACT_CAMPAIGN_ID=$CAMPAIGN" \
       --set "REEXTRACT_PROMPT_VERSION=$VERSION" \
-      --set "REEXTRACT_ACTIVATE=false"
+      --set "REEXTRACT_ACTIVATE=false" \
+      --set "DISABLE_RESTAURANT_ENRICHMENT=true"
     echo "Worker redeploy fires the one-shot runner at boot. Watch: railway logs --service worker --environment $ENVIRONMENT"
     echo "AFTER the batch queue drains: ./scripts/rig/reextract.sh diff $COMMUNITIES $VERSION"
-    echo "Then DISARM: railway variable delete REEXTRACT_COMMUNITIES --service worker --environment $ENVIRONMENT (etc.)"
+    echo "Then DISARM: railway variable delete REEXTRACT_COMMUNITIES / REEXTRACT_CAMPAIGN_ID / REEXTRACT_PROMPT_VERSION / REEXTRACT_ACTIVATE / DISABLE_RESTAURANT_ENRICHMENT --service worker --environment $ENVIRONMENT"
+    ;;
+  discard)
+    VERSION="${1:?prompt version}"
+    echo "DISCARDING candidate v$VERSION: runs+events+claims deleted, prompt retired, then GC."
+    psql "$(db_url)" -v version="$VERSION" -f "$API/scripts/reload/shadow-discard.sql"
+    psql "$(db_url)" -f "$API/scripts/reload/gc-unsupported-entities.sql"
     ;;
   diff)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"
@@ -52,7 +60,8 @@ case "$VERB" in
     mkdir -p logs
     {
       psql "$(db_url)" -v communities="$COMMUNITIES" -v prompt_hash="$HASH" -f "$API/scripts/reload/shadow-diff.sql"
-      psql "$(db_url)" -v since="$(date -u -v-14d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ)" -f "$API/scripts/reload/anchor-audit.sql"
+      SINCE=$(psql "$(db_url)" -tAc "SELECT COALESCE(min(started_at), now() - interval '14 days')::timestamptz FROM collection_extraction_runs WHERE system_prompt_hash='$HASH';")
+      psql "$(db_url)" -v since="$SINCE" -f "$API/scripts/reload/anchor-audit.sql"
     } | tee "$OUT"
     echo ""
     echo "REVIEW FILE: $OUT — triage per .claude/skills/reextract (AUTO / AGENT-REVIEW / OWNER-DECISION)."

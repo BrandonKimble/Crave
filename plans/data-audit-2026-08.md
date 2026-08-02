@@ -226,3 +226,26 @@ Remaining before the re-extraction: FULL projection rebuild on prod
 (runner armed post-deploy) + Crave Score refresh; Places backfill
 campaign estimate awaiting owner approval; P2.2 (chain/branch) and P2.3
 (dietary side) rulings; then the prompt-review cycle (P3 checklist).
+
+## P3 RECONCILIATION (big-one red team #5, 2026-08-02 — do this in the
+
+prompt-review cycle before pushing any candidate)
+
+ADD (7 confirmed defects missing from P3): possessive/punctuation name
+splits (emit ONE stable surface form); word-order food variants;
+truncated food tokens (the `jap`←jalapeños class — slur risk); context-
+stripped fragment attributes (`frozen`); attribute near-synonym
+splintering (`generous portions`/`jumbo`); `cocktails`-into-
+food_categories cross-namespace leakage; asserted-vs-inferred category
+marking (needs an output-schema field).
+
+DROP (already fully encoded in the shipped prompt): cuisine-as-food ban,
+occasion→restaurant_attribute, concessive recall, closed-venue policy
+(P3's item is STALE — §1.4/§1.5 already cover it), availability-vs-
+endorsement, menu-format nouns.
+
+TWO CONTRADICTIONS needing prompt-text REVERSAL, not addition: §1.2
+currently teaches slash-joined names as a venue SERIES (the exact
+mechanism of the Uchi/ko split); §3.2 + two flagship examples emit
+`rich` as a food attribute while P3 bans bare intensity words. Owner
+should see both before the rewrite.

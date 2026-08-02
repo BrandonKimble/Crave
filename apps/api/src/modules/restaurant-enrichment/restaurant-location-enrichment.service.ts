@@ -496,6 +496,13 @@ export class RestaurantLocationEnrichmentService {
     const restaurants = await this.prisma.entity.findMany({
       where: {
         type: EntityType.restaurant,
+        // ARCHIVED IS NEVER ENRICHED (big-one red team #6): all 308
+        // archived restaurants are ungrounded, so an unfiltered window
+        // spends its head-of-window budget RE-GROUNDING tombstones (junk
+        // sinks + merge losers), partially undoing the class-③ archive —
+        // ~$0.028 each, recurring every run. Same idiom as the janitor
+        // and refreshStaleLocations.
+        status: EntityStatus.active,
         OR: [
           { primaryLocation: null },
           { locations: { none: {} } },
@@ -548,6 +555,11 @@ export class RestaurantLocationEnrichmentService {
 
     if (!entity) {
       return { entityId, status: 'not_found', reason: 'entity not found' };
+    }
+    if (entity.status === EntityStatus.archived) {
+      // Closes the worker/--entity= paths too (big-one red team #6/#3c):
+      // a dead entity must never buy Places data.
+      return { entityId, status: 'skipped', reason: 'archived' };
     }
 
     return this.enrichRestaurant(entity, options);

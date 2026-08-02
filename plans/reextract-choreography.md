@@ -205,3 +205,27 @@ verbs too (`onboard` = sources row + lanes + funded archive load).
 Staging auto-deploys from main (verify trigger connected); prod manual only
 via deploy.sh — disconnect prod's GitHub trigger (dashboard, owner). No
 GitHub Actions until a second committer.
+
+## SHADOW VOCABULARY CONTRACT (big-one red team, 2026-08-02 — supersedes
+
+any earlier "nothing user-visible changes during shadow" phrasing)
+
+A shadow DOES mint real entities in the live vocabulary (there is no
+provisional status yet — recorded as the honest end-state option). The
+contract that makes this safe:
+
+- Projections/scores never read shadow evidence (active-run filter), so
+  rankings are untouched.
+- Places enrichment is DISABLED during shadows (the shadow verb sets
+  DISABLE_RESTAURANT_ENRICHMENT=true) — a candidate prompt can never buy
+  vendor data.
+- A rejected candidate is removed with `reextract.sh discard <version>`:
+  runs+events+claims deleted, prompt retired, then
+  gc-unsupported-entities.sql (now active-run-filtered) collects the
+  minted vocabulary. Discard hard-refuses if any document ACTIVATED the
+  version.
+- Zero-mention shadow runs are compaction-immune while their prompt is
+  non-retired (the "correctly found nothing" verdict survives to
+  activation).
+- The in-flight coverage check is prompt-hash-scoped: shadows and live
+  lanes never mask each other's coverage.

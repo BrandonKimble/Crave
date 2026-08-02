@@ -19,9 +19,18 @@ UNION SELECT unnest(food_attributes) FROM core_restaurant_items
 UNION SELECT unnest(ingredients) FROM core_restaurant_items
 UNION SELECT unnest(restaurant_attributes) FROM core_entities WHERE restaurant_attributes IS NOT NULL
 UNION SELECT unnest(canonical_ingredients) FROM core_entities WHERE canonical_ingredients IS NOT NULL
-UNION SELECT restaurant_id FROM core_restaurant_entity_events
-UNION SELECT entity_id FROM core_restaurant_entity_events
-UNION SELECT restaurant_id FROM core_restaurant_events;
+-- ACTIVE-RUN ONLY (big-one red team #3d): an event from a shadow/
+-- superseded run is not "support" — without this filter every entity a
+-- rejected candidate prompt minted was permanently GC-immune.
+UNION SELECT ev.restaurant_id FROM core_restaurant_entity_events ev
+  JOIN collection_source_documents d ON d.document_id = ev.source_document_id
+  WHERE d.active_extraction_run_id = ev.extraction_run_id
+UNION SELECT ev.entity_id FROM core_restaurant_entity_events ev
+  JOIN collection_source_documents d ON d.document_id = ev.source_document_id
+  WHERE d.active_extraction_run_id = ev.extraction_run_id
+UNION SELECT ev.restaurant_id FROM core_restaurant_events ev
+  JOIN collection_source_documents d ON d.document_id = ev.source_document_id
+  WHERE d.active_extraction_run_id = ev.extraction_run_id;
 
 CREATE TEMP TABLE doomed AS
 SELECT e.entity_id FROM core_entities e

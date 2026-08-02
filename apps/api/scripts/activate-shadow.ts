@@ -5,9 +5,13 @@
  * restaurant from the full surviving ledger (red team R5: cross-community
  * counters must rebuild too).
  *
- *   npx ts-node scripts/activate-shadow.ts --communities a,b --prompt-version N [--execute]
+ *   npx ts-node scripts/activate-shadow.ts --communities a,b --prompt-version N [--reviewed] [--execute]
  *
  * Dry-run by default: prints run/document counts and refuses to write.
+ * --execute additionally requires --reviewed: the operator's attestation
+ * that reload/shadow-diff.sql ran and its anchored LOST-SUPPORT rows got
+ * owner decisions (big-one red team, gap 1b — activation is the one
+ * irreversible step; the diff is its gate, not a suggestion).
  * Close with reload/anchor-audit.sql + gc-unsupported-entities.sql, then
  * prompt-activate.ts <N> so LIVE collection extracts under the new prompt.
  */
@@ -32,9 +36,16 @@ async function main(): Promise<void> {
     .filter(Boolean);
   const promptVersion = Number.parseInt(arg('prompt-version') ?? '', 10);
   const execute = process.argv.includes('--execute');
+  const reviewed = process.argv.includes('--reviewed');
   if (!communities.length || !Number.isFinite(promptVersion)) {
     console.error(
-      'Usage: activate-shadow.ts --communities a,b --prompt-version N [--execute]',
+      'Usage: activate-shadow.ts --communities a,b --prompt-version N [--reviewed] [--execute]',
+    );
+    process.exit(1);
+  }
+  if (execute && !reviewed) {
+    console.error(
+      'REFUSED: --execute requires --reviewed. Run reload/shadow-diff.sql, resolve anchored LOST-SUPPORT rows with the owner, then re-run with --reviewed.',
     );
     process.exit(1);
   }
@@ -67,6 +78,7 @@ async function main(): Promise<void> {
       WHERE r.system_prompt_hash = ${promptHash}
         AND r.status = 'completed'
         AND d.community = ANY(${communities})
+        AND d.platform <> 'poll_surface'
       GROUP BY r.extraction_run_id
       ORDER BY min(r.created_at)`;
 
@@ -86,7 +98,9 @@ async function main(): Promise<void> {
         SELECT DISTINCT eid.document_id
         FROM collection_extraction_inputs ei
         JOIN collection_extraction_input_documents eid ON eid.input_id = ei.input_id
-        WHERE ei.extraction_run_id = ${run.run_id}::uuid`;
+        JOIN collection_source_documents d ON d.document_id = eid.document_id
+        WHERE ei.extraction_run_id = ${run.run_id}::uuid
+          AND d.platform <> 'poll_surface'`;
       const documentIds = docs.map((doc) => doc.document_id);
       const restaurants = await prisma.$queryRaw<
         Array<{ restaurant_id: string }>

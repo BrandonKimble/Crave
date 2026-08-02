@@ -1165,6 +1165,19 @@ export class ProjectionRebuildService implements OnModuleInit {
       Number(stranded[0]?.entity_dim ?? 0) +
       Number(stranded[0]?.restaurant_dim ?? 0) +
       Number(stranded[0]?.praise_dim ?? 0);
+    // Archived restaurants' derived rows are dead weight the per-batch
+    // rebuild never sweeps (it only touches the batch's restaurantIds) —
+    // big-one red team: 900 stale signal rows + scores survived archival.
+    await this.prismaService.$executeRaw`
+      DELETE FROM core_restaurant_entity_signals s
+      USING core_entities e
+      WHERE e.entity_id = s.restaurant_id AND e.status = 'archived'
+    `;
+    await this.prismaService.$executeRaw`
+      DELETE FROM core_public_entity_scores ps
+      USING core_entities e
+      WHERE e.entity_id = ps.subject_id AND e.status = 'archived'
+    `;
     const rebuildSet = Array.from(
       new Set(
         [...repointed, ...dupDeleted, ...restRepointed, ...praiseRepointed].map(

@@ -32,9 +32,9 @@ INSERT INTO cuisine_lexicon VALUES
 ('indian'),('indonesian'),('iranian'),('isan'),('italian'),('izakaya'),
 ('jamaican'),('japanese'),('jewish'),('korean'),('korean bbq'),('lebanese'),
 ('louisiana'),('malaysian'),('mediterranean'),('mexican'),('middle eastern'),
-('neapolitan'),('nepalese'),('nepali'),('pakistani'),('palestinian'),
+('neapolitan'),('nepali'),('pakistani'),('palestinian'),
 ('persian'),('peruvian'),('polish'),('roman'),('russian'),('sichuan'),
-('sicilian'),('soul food'),('spanish'),('szechuan'),('taiwanese'),
+('sicilian'),('soul food'),('spanish'),('taiwanese'),
 ('tex-mex'),('tex mex'),('thai'),('turkish'),('vietnamese');
 
 -- FOLD: apostrophes strip, other punctuation becomes a space —
@@ -88,6 +88,34 @@ WHERE btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0
   AND c.fold = cn.fold
   AND e.type = 'food_attribute' AND e.status = 'active'
   AND e.entity_id <> c.entity_id;
+
+-- CROSS-FOLD SYNONYMS (big-one red team #5 surfacing check): spelling
+-- variants whose folds differ from their canonical cuisine — they must
+-- NOT mint their own canonical; every row under them (any status, both
+-- attribute types) archives + redirects into the target fold's canonical.
+CREATE TEMP TABLE cuisine_synonyms (variant TEXT PRIMARY KEY, target_fold TEXT);
+INSERT INTO cuisine_synonyms VALUES
+('barbecue', 'bbq'), ('bar-b-q', 'bbq'), ('bar b que', 'bbq'),
+('szechuan', 'sichuan'), ('nepalese', 'nepali');
+
+UPDATE core_entities e SET status = 'archived'
+FROM cuisine_synonyms syn
+WHERE btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+      = btrim(regexp_replace(regexp_replace(lower(syn.variant), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+  AND e.type IN ('food_attribute','restaurant_attribute')
+  AND e.status = 'active';
+
+INSERT INTO entity_redirects (from_entity_id, to_entity_id)
+SELECT e.entity_id, c.entity_id
+FROM core_entities e
+JOIN cuisine_synonyms syn
+  ON btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+     = btrim(regexp_replace(regexp_replace(lower(syn.variant), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+JOIN cuisine_canonicals c ON c.fold = syn.target_fold
+WHERE e.type IN ('food_attribute','restaurant_attribute')
+  AND e.status = 'archived'
+  AND e.entity_id <> c.entity_id
+ON CONFLICT (from_entity_id) DO NOTHING;
 
 -- ------------------------------------------------------------ redirects
 INSERT INTO entity_redirects (from_entity_id, to_entity_id)
