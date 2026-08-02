@@ -124,11 +124,17 @@ export class SignalDemandAggregateService {
       // landing mid-pass (raising an EARLIER floor) is never swallowed.
       // Over-rebuilding is safe by design — each day is delete+reinsert.
       const [cursor] = await this.prisma.$queryRaw<
-        { watermark: Date | null; floor: Date | null; next_watermark: Date }[]
+        {
+          watermark: Date | null;
+          floor: Date | null;
+          floor_seq: bigint;
+          next_watermark: Date;
+        }[]
       >`
         SELECT
           watermark,
           rebuild_floor AS floor,
+          rebuild_floor_seq AS floor_seq,
           now() - make_interval(secs => ${WATERMARK_LAG_SECONDS})
             AS next_watermark
         FROM signal_demand_rebuild_state
@@ -138,6 +144,7 @@ export class SignalDemandAggregateService {
       // and how far back the ground changed under us.
       const cursorAt = cursor?.watermark ?? null;
       const floorAt = cursor?.floor ?? null;
+      const floorSeq = cursor?.floor_seq ?? BigInt(0);
       const watermark =
         floorAt && cursorAt
           ? floorAt < cursorAt
@@ -173,13 +180,14 @@ export class SignalDemandAggregateService {
                 signal_demand_rebuild_state.watermark,
                 EXCLUDED.watermark
               ),
-              -- RETIRE the floor only if it is still the one this pass
-              -- rebuilt for: a promotion that raised an earlier floor while
-              -- we were rebuilding keeps it for the next pass, and a crash
-              -- before this point leaves it pending rather than losing it.
+              -- RETIRE the floor only if NOTHING has asked for a rebuild
+              -- since this pass read it. Comparing the SEQUENCE, not the
+              -- value: a ms-truncated timestamp round-trip could never match
+              -- a us-precision floor (28% of signals carry sub-ms times), and
+              -- LEAST can leave the value byte-identical for a DIFFERENT
+              -- request. A crash before this point leaves the floor pending.
               rebuild_floor = CASE
-                WHEN signal_demand_rebuild_state.rebuild_floor
-                     IS NOT DISTINCT FROM ${floorAt ? floorAt.toISOString() : null}::timestamptz
+                WHEN signal_demand_rebuild_state.rebuild_floor_seq = ${floorSeq}
                 THEN NULL
                 ELSE signal_demand_rebuild_state.rebuild_floor
               END,

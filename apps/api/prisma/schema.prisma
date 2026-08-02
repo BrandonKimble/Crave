@@ -2247,6 +2247,11 @@ model SignalDemandRebuildState {
   /// that advances the watermark — a request can no longer be erased by a
   /// concurrent pass's GREATEST.
   rebuildFloor DateTime? @map("rebuild_floor") @db.Timestamptz()
+  /// Bumped by every invalidation. The refresh retires the floor only if
+  /// this is unchanged — comparing a SEQUENCE, not a timestamp, because a
+  /// ms-truncated round-trip could never match a us-precision value and
+  /// LEAST can leave the value identical for a DIFFERENT request.
+  rebuildFloorSeq BigInt @default(0) @map("rebuild_floor_seq")
 }
 
 // Pseudonymous actor mapping — the severable deletion story (§3).

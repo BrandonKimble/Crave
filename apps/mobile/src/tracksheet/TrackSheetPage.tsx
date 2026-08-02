@@ -1082,6 +1082,10 @@ export function TrackSheetPage({
           trackTagRef.current != null
         ) {
           nativePhysics.refuse(trackTagRef.current, pending.restored);
+          // ONE-SHOT: the restore belongs to the switch that scheduled it.
+          // Leaving it armed let every later attach (the recycler re-attaches
+          // constantly) re-run the switch formula against a stale scroll.
+          pendingRestoreRef.current = null;
         }
       }),
     [physics]

@@ -21,4 +21,11 @@ UPDATE places p SET
 FROM place_geometries g
 WHERE g.place_id = p.place_id
   AND g.geometry IS NOT NULL
+  -- OUTLINE-GRADE ONLY. The coupling this mirrors runs after a real vendor
+  -- polygon lands; running it over SKETCH rectangles would stamp a bbox
+  -- centre into the column the promotion wrong-entity guard treats as the
+  -- place's anchor — replacing an honest "no anchor yet, defer" with
+  -- fabricated evidence. On prod all 52 rows are outlined, but this
+  -- migration also runs on staging, local and every future fresh database.
+  AND g.provider_boundary_id IS NOT NULL
   AND p.centroid_lat IS NULL;

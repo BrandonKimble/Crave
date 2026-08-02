@@ -73,6 +73,18 @@ export const PLACE_BIRTH_LISTENER = Symbol('PLACE_BIRTH_LISTENER');
 export const GROUND_SIMPLIFY_VIEW_FRACTION = 512;
 
 /**
+ * §16 DERIVED — candidate ceiling for one viewport read. The §2.5 law needs
+ * only places that can hold >= 1/3 of the view (attention) or >= 2/3
+ * (dominator), so at most 3 places can hold attention and the dominator is
+ * always among the largest present. Ordered by ground area descending, a few
+ * hundred candidates is orders of magnitude more than the law can consume;
+ * the rest are the tiny-place tail that ships bytes and changes no verdict.
+ * What changes it: a law that reads more than the top dominators, never
+ * tuning.
+ */
+export const PLACES_IN_VIEW_CANDIDATE_CAP = 400;
+
+/**
  * One node of a reverse-geocode chain, as handed to sketchChain. Everything
  * beyond the identity tuple is optional: §2's sketch mechanics may learn a
  * node's bbox only on a LATER probe (forward geocode is once-ever per node),
@@ -477,6 +489,17 @@ export class PlacesCatalogService {
                ${derivedBboxSelectSql('g')}
         FROM place_geometries g
         WHERE ${overlapsAnyArm}
+        -- COARSEST FIRST, and bounded. Abuse audit 2026-08-01: this read had
+        -- no LIMIT, so a world-span view seq-scanned every ground and
+        -- serialized 11 MB of GeoJSON per request — reachable at 100/min from
+        -- an UNAUTHENTICATED endpoint. The §2.5 law only ever names a
+        -- DOMINATOR (>=2/3 of the view), and at any scale the places that can
+        -- dominate are the largest ones present, so ordering by ground area
+        -- descending means the cap can never drop a candidate that could have
+        -- won. What it drops is the long tail of tiny places that could not
+        -- clear 1/3 of the view — invisible to the judgment, expensive to ship.
+        ORDER BY ST_Area(g.geometry) DESC
+        LIMIT ${PLACES_IN_VIEW_CANDIDATE_CAP}
       `);
       for (const row of rows) {
         if (!row.geojson) continue;

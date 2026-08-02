@@ -213,6 +213,19 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     //   reach = max(0, viewport − (contentH − trackH))
     //   keep  = max(0, τ − (contentH − viewport))
     //   insetBottom = max(reach, keep)
+    // [TRACKCLAMP] trace: a content SHRINK (child page) can pull tau down
+    // before the inset covers it — the suspected "sheet jerks down then
+    // settles" on child entry. Logged so it can be attributed, not guessed.
+    {
+      UIScrollView *cs = (UIScrollView *)object;
+      const CGFloat vp = CGRectGetHeight(cs.bounds);
+      const CGFloat ch = cs.contentSize.height;
+      const CGFloat maxOffsetNow = ch + cs.contentInset.bottom - vp;
+      if (cs.contentOffset.y > maxOffsetNow + 0.5) {
+        NSLog(@"[TRACKCLAMP] tau=%.1f > maxOffset=%.1f (contentH=%.1f inset=%.1f vp=%.1f)",
+              cs.contentOffset.y, maxOffsetNow, ch, cs.contentInset.bottom, vp);
+      }
+    }
     if (!self.postureDragActive) {
       [self applyRangeLawTo:(UIScrollView *)object];
     }
@@ -270,7 +283,16 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     const CGFloat effEdge = self.ballisticEdge + self.stashSigma;
     const CGFloat listY = MAX(0.0, tau - effEdge);
     const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, (self.shellTrackH + self.stashSigma) - tau);
-    const CGFloat touchY = [scrollView.panGestureRecognizer locationInView:scrollView.superview].y;
+    // WINDOW COORDINATES, NOT SUPERVIEW (2026-08-01). sheetTop is a SCREEN y
+    // (it is built from shellExpandedTop), so the touch must be measured in
+    // the same space. Measuring in scrollView.superview only agrees when that
+    // superview sits exactly at the screen origin — and the track's scroll
+    // view is nested under the touch-carve view, the nav-exclusion mask and
+    // the safe-area providers. Any offset makes this test MISS, the drag never
+    // becomes a posture drag, and a header pull runs the plain continuum
+    // instead: the list scrolls back to the top before the sheet moves, which
+    // is the owner's "the scroll jumps to the top when I drag the sheet down".
+    const CGFloat touchY = [scrollView.panGestureRecognizer locationInView:nil].y;
     if (touchY >= sheetTop - 1 && touchY <= sheetTop + self.shellChromeHeight + 1) {
       if (listY > 0.5) {
         self.stashSigma += listY;
@@ -862,6 +884,17 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
     }
     TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
     if (proxy == nil) {
+      return;
+    }
+    // THE FINGER OWNS TAU (attributed live, 2026-08-01). refuse() is the SWITCH
+    // formula — a switch-time operation. It was firing DURING a drag (FlashList
+    // re-renders while you scroll, its ref fires, the engine re-attaches, and
+    // the attach subscriber replayed a stale pending restore), which wiped the
+    // stash sigma and yanked tau: the owner's "the scroll jumps to the top when
+    // I drag the sheet down". No scene changed; nothing had the right to move
+    // the track. While the user is touching it, this is a no-op — the same law
+    // that already makes a seat yield to the thumb.
+    if (scrollView.isTracking || scrollView.isDragging) {
       return;
     }
     const CGFloat tau = scrollView.contentOffset.y;

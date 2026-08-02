@@ -18,7 +18,8 @@ export type RateLimitTierName =
   | 'autocomplete' // 120 req/min - rapid typing
   | 'auth' // 10 req/min - login attempts
   | 'sensitive' // 20 req/min - billing, username claims
-  | 'premium'; // 300 req/min - premium users
+  | 'premium' // 300 req/min - premium users
+  | 'heavyGeoRead'; // 30 req/min - unauthenticated viewport reads
 
 const tierLimits: Partial<
   Record<
@@ -59,6 +60,18 @@ const tierLimits: Partial<
     short: { limit: 5 },
     medium: { limit: 15 },
     long: { limit: 60 },
+  },
+  // Abuse audit 2026-08-01: a viewport read clips and serializes every
+  // ground touching the view. It is reachable UNAUTHENTICATED (IP-tracked)
+  // on the polls feed, and a world-span box costs ~200ms of Postgres and a
+  // multi-MB payload even after the candidate cap. The map only ever moves
+  // at human speed, so a human never notices this ceiling and a script hits
+  // it immediately. What changes it: a measured legitimate burst, never
+  // tuning.
+  heavyGeoRead: {
+    short: { limit: 5 },
+    medium: { limit: 15 },
+    long: { limit: 30 },
   },
   premium: {
     short: { limit: 60 },

@@ -829,7 +829,11 @@ export class PlacesPromotionService {
       -- flight then wrote GREATEST(captured, pulled-back) and erased the
       -- request — permanently, with nothing to retry it. The floor is its
       -- own fact; the refresh consumes and clears it.
-      SET rebuild_floor = LEAST(
+      -- Every invalidation bumps the sequence, even when LEAST leaves the
+      -- timestamp unchanged — that is precisely the case that used to be
+      -- swallowed by a value comparison.
+      SET rebuild_floor_seq = st.rebuild_floor_seq + 1,
+          rebuild_floor = LEAST(
             COALESCE(st.rebuild_floor, affected.oldest),
             affected.oldest - interval '1 second'
           ),

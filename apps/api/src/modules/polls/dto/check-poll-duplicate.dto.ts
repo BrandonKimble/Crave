@@ -1,18 +1,23 @@
 import { Type } from 'class-transformer';
 import {
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
   ValidateNested,
+  IsLatitude,
+  IsLongitude,
 } from 'class-validator';
 
 class CoordinateDto {
-  @IsNumber()
+  // Abuse audit 2026-08-01: bare @IsNumber accepted lat 1e308 / lng -99999,
+  // which flowed into ST_MakeEnvelope and became the world-envelope seq scan
+  // on an UNAUTHENTICATED endpoint. Every other geo DTO in the codebase uses
+  // the range validators; these three did not.
+  @IsLatitude()
   lat!: number;
 
-  @IsNumber()
+  @IsLongitude()
   lng!: number;
 }
 
