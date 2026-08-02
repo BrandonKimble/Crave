@@ -106,12 +106,6 @@ interface EntityPresenceSummary {
   restaurantAttributes: number;
 }
 
-/** How dense sibling co-inclusion participates in the food filter.
- *  'off' — never; 'expansion' — only inside the thin-results plan expansion;
- *  'always' — seeded before the FIRST strict probe, so every stage (probe,
- *  re-probe, relaxed, counts) sees the widened set. */
-type DenseSiblingsMode = 'off' | 'expansion' | 'always';
-
 interface PlanExpansionState {
   foodIds: string[];
   foodAttributeIds: string[];
@@ -210,7 +204,6 @@ export class SearchService {
   private readonly expansionFoodCap: number;
   private readonly expansionAttributeCap: number;
   private readonly expansionMaxTermsPerType: number;
-  private readonly denseSiblingsMode: DenseSiblingsMode;
   private readonly denseSiblingsCut: SiblingCutOptions;
   private readonly expansionBudgetMs: number;
   private readonly sectionedRanking: boolean;
@@ -248,7 +241,6 @@ export class SearchService {
     this.expansionFoodCap = this.resolveExpansionFoodCap();
     this.expansionAttributeCap = this.resolveExpansionAttributeCap();
     this.expansionMaxTermsPerType = this.resolveExpansionMaxTermsPerType();
-    this.denseSiblingsMode = this.resolveDenseSiblingsMode();
     this.denseSiblingsCut = this.resolveDenseSiblingsCut();
     this.expansionBudgetMs = this.resolveExpansionBudgetMs();
     this.sectionedRanking = this.resolveSectionedRanking();
@@ -3118,37 +3110,18 @@ export class SearchService {
     return 1_500;
   }
 
-  /** The effective "include similar dishes" decision for one request: an
-   *  explicit request param (the user's toggle) ALWAYS wins; absent, the env
-   *  mode decides ('always' widens up front, 'expansion' widens only in the
-   *  thin-results plan expansion, 'off' never). */
+  /** The "include similar dishes" decision (SETTLED, pre-launch.md): the
+   *  client always sends the explicit toggle; the old env mode
+   *  (SEARCH_DENSE_SIBLINGS_MODE) was dead weight for real traffic and is
+   *  DELETED. Chip ON widens membership up front; chip OFF (or absent)
+   *  never silently widens — the tier-2 ring counts what the chip would
+   *  add, and thinness speaks through the demand signal, not through
+   *  serving rows the user opted out of. */
   private siblingsWanted(
     request: SearchQueryRequestDto,
     context: 'preProbe' | 'expansion',
   ): boolean {
-    if (typeof request.includeSimilar === 'boolean') {
-      // Explicit toggle: widen up-front when on; NEVER silently widen when off.
-      return context === 'preProbe' && request.includeSimilar;
-    }
-    return context === 'preProbe'
-      ? this.denseSiblingsMode === 'always'
-      : this.denseSiblingsMode === 'expansion';
-  }
-
-  /** Dense sibling co-inclusion mode — see DenseSiblingsMode. Default
-   *  'expansion' (siblings only widen thin searches); 'always' is the
-   *  main-search experiment flag, 'off' the kill switch. */
-  private resolveDenseSiblingsMode(): DenseSiblingsMode {
-    const raw = process.env.SEARCH_DENSE_SIBLINGS_MODE?.trim().toLowerCase();
-    if (raw === 'off' || raw === 'expansion' || raw === 'always') {
-      return raw;
-    }
-    if (raw) {
-      this.logger.warn('Invalid SEARCH_DENSE_SIBLINGS_MODE; using default', {
-        raw,
-      });
-    }
-    return 'expansion';
+    return context === 'preProbe' && request.includeSimilar === true;
   }
 
   /** The production sibling cut, env-tunable without an edge rebuild (the table
@@ -3222,7 +3195,6 @@ export class SearchService {
           expansion.foodIdsFromPrimaryFoodAttributeText.length,
         denseSiblingFoodsAdded: expansion.denseSiblingFoodIds.length,
         categoryMemberFoodsAdded: expansion.categoryMemberFoodIds.length,
-        denseSiblingsMode: this.denseSiblingsMode,
       },
     };
   }

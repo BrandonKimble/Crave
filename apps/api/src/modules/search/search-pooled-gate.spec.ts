@@ -173,7 +173,11 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     for (const count of [dishCount, restCount]) {
       const sql = count.sql.replace(/\s+/g, ' ');
       expect(sql).toContain('soft_word_counts');
-      expect(sql).toContain('json_object_agg');
+      // Round-5 close-out: counts are FILTER windows in the ONE count scan
+      // (json_build_object over MAXed window columns) — the old UNION ALL
+      // re-scanned the pool once per soft id.
+      expect(sql).toContain('json_build_object');
+      expect(sql).not.toContain('UNION ALL');
       // every soft id is bound as its own FILTER-counted row (ids ride as
       // parameters, so assert on the bound values)
       expect(count.values).toEqual(

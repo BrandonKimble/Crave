@@ -152,7 +152,7 @@ export class SearchQueryRequestDto {
    * "Include similar" scope toggle (owner-settled product shape): false/absent →
    * exact + category-member instances only; true → dense sibling dishes join the
    * pool (pure Crave-Score ranking either way). When PRESENT this overrides the
-   * server's SEARCH_DENSE_SIBLINGS_MODE default — including suppressing the
+   * server's explicit-toggle law (the old env mode is deleted) — including suppressing the
    * silent thin-results widening when explicitly false.
    */
   @IsOptional()

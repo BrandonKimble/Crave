@@ -588,36 +588,47 @@ WITH
       pooledGate!.softFoodAttributeIds.length +
         pooledGate!.softRestaurantAttributeIds.length >
       0
-        ? Prisma.sql`(SELECT json_object_agg(w.id, w.n) FROM (
-	    ${Prisma.join(
-        [
-          // POPULATION = the actual pool (red team A1): the arms must join
-          // the same geo/score CTEs the pool joins, or the counts include
-          // out-of-viewport / unlocated / unscored restaurants and a word
-          // with zero IN-POOL coverage never reads as starved.
-          ...pooledGate!.softRestaurantAttributeIds.map(
-            (id) =>
-              Prisma.sql`SELECT ${id}::text AS id, count(*) FILTER (WHERE fr2.restaurant_attributes @> ARRAY[${id}]::uuid[])::int AS n FROM filtered_restaurants fr2 JOIN public_restaurant_scores prs2 ON prs2.subject_id = fr2.entity_id JOIN selected_locations sl2 ON sl2.restaurant_id = fr2.entity_id`,
-          ),
-          ...pooledGate!.softFoodAttributeIds.map(
-            (id) =>
-              Prisma.sql`SELECT ${id}::text AS id, count(*) FILTER (WHERE EXISTS (
-                SELECT 1 FROM core_restaurant_items c
-                WHERE c.restaurant_id = fr2.entity_id
-                  AND c.food_attributes @> ARRAY[${id}]::uuid[]
-                  ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``}
-              ))::int AS n FROM filtered_restaurants fr2 JOIN public_restaurant_scores prs2 ON prs2.subject_id = fr2.entity_id JOIN selected_locations sl2 ON sl2.restaurant_id = fr2.entity_id`,
-          ),
-        ],
-        ' UNION ALL ',
-      )}
-	  ) w)`
+        ? Prisma.sql`json_build_object(${Prisma.join(
+            [
+              ...pooledGate!.softRestaurantAttributeIds.map(
+                (id, i) =>
+                  Prisma.sql`${id}::text, COALESCE(MAX(rrx.rswc_r_${Prisma.raw(String(i))}), 0)::int`,
+              ),
+              ...pooledGate!.softFoodAttributeIds.map(
+                (id, i) =>
+                  Prisma.sql`${id}::text, COALESCE(MAX(rrx.rswc_f_${Prisma.raw(String(i))}), 0)::int`,
+              ),
+            ],
+            ', ',
+          )})`
         : Prisma.sql`NULL`
     } AS soft_word_counts
 	FROM (
 	  SELECT fr.entity_id AS restaurant_id,
 	    ${restTierExpr!} AS match_tier,
-	    count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count
+	    count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count${
+        pooledGate!.softRestaurantAttributeIds.length
+          ? Prisma.sql`,
+	    ${Prisma.join(
+        pooledGate!.softRestaurantAttributeIds.map(
+          (id, i) =>
+            Prisma.sql`count(*) FILTER (WHERE fr.restaurant_attributes @> ARRAY[${id}]::uuid[]) OVER () AS rswc_r_${Prisma.raw(String(i))}`,
+        ),
+        ',\n	    ',
+      )}`
+          : Prisma.sql``
+      }${
+        pooledGate!.softFoodAttributeIds.length
+          ? Prisma.sql`,
+	    ${Prisma.join(
+        pooledGate!.softFoodAttributeIds.map(
+          (id, i) =>
+            Prisma.sql`count(*) FILTER (WHERE EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = fr.entity_id AND c.food_attributes @> ARRAY[${id}]::uuid[] ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``})) OVER () AS rswc_f_${Prisma.raw(String(i))}`,
+        ),
+        ',\n	    ',
+      )}`
+          : Prisma.sql``
+      }
 	  FROM filtered_restaurants fr
 	  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
 	  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
@@ -983,27 +994,42 @@ LIMIT ${pagination.take}`;
     // STEP 5 (spec §1.6): per-word starvation — one count per soft id so
     // the demand signal can say WHICH word found nothing here, not "few
     // results". json object keyed by attribute id; small bounded lists.
-    const dishSoftWordCountsSql =
-      pooledGate &&
-      pooledGate.softFoodAttributeIds.length +
-        pooledGate.softRestaurantAttributeIds.length >
-        0
-        ? Prisma.sql`(SELECT json_object_agg(w.id, w.n) FROM (
-          ${Prisma.join(
-            [
-              ...pooledGate.softFoodAttributeIds.map(
-                (id) =>
-                  Prisma.sql`SELECT ${id}::text AS id, count(*) FILTER (WHERE fci2.food_attributes @> ARRAY[${id}]::uuid[])::int AS n FROM filtered_connections fci2`,
-              ),
-              ...pooledGate.softRestaurantAttributeIds.map(
-                (id) =>
-                  Prisma.sql`SELECT ${id}::text AS id, count(*) FILTER (WHERE fci2.restaurant_attributes_arr @> ARRAY[${id}]::uuid[])::int AS n FROM filtered_connections fci2`,
-              ),
-            ],
-            ' UNION ALL ',
-          )}
-        ) w)`
-        : Prisma.sql`NULL`;
+    // Per-word coverage WITHOUT re-scans (round-5 phase-4 close-out): the
+    // old UNION ALL re-scanned filtered_connections once per soft id
+    // (+~85ms each, attacker-controlled). Each id is now ONE window column
+    // in the wrapper the count query already has — computed over the
+    // PRE-GATE pool (starvation is a fact about the pool, not the page).
+    const softIds = pooledGate
+      ? [
+          ...pooledGate.softFoodAttributeIds.map((id) => ({
+            id,
+            column: 'food_attributes',
+          })),
+          ...pooledGate.softRestaurantAttributeIds.map((id) => ({
+            id,
+            column: 'restaurant_attributes_arr',
+          })),
+        ]
+      : [];
+    const softCountWindowsSql = softIds.length
+      ? Prisma.sql`,
+    ${Prisma.join(
+      softIds.map(
+        (entry, i) =>
+          Prisma.sql`count(*) FILTER (WHERE fci.${Prisma.raw(entry.column)} @> ARRAY[${entry.id}]::uuid[]) OVER () AS swc_${Prisma.raw(String(i))}`,
+      ),
+      ',\n    ',
+    )}`
+      : Prisma.sql``;
+    const dishSoftWordCountsSql = softIds.length
+      ? Prisma.sql`json_build_object(${Prisma.join(
+          softIds.map(
+            (entry, i) =>
+              Prisma.sql`${entry.id}::text, COALESCE(MAX(fc.swc_${Prisma.raw(String(i))}), 0)::int`,
+          ),
+          ', ',
+        )})`
+      : Prisma.sql`NULL`;
     const countSql = pooledGate
       ? Prisma.sql`
 ${withClause}
@@ -1016,7 +1042,7 @@ SELECT
 FROM (
   SELECT fci.*,
     count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count,
-    count(*) FILTER (WHERE fci.pooled_tier = 2) OVER () AS similar_count
+    count(*) FILTER (WHERE fci.pooled_tier = 2) OVER () AS similar_count${softCountWindowsSql}
   FROM filtered_connections fci
 ) fc
 ${pooledGateWhereSql}`
