@@ -118,6 +118,28 @@ if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
     echo "Deploy to staging first: ./scripts/rig/deploy.sh --env staging" >&2
     exit 1
   fi
+
+  # ── CI VERDICT (2026-08-02, the 100-red-runs lesson) ────────────────────
+  # CI failed 100 consecutive runs and nothing noticed, because nothing
+  # consulted it. Rule: a KNOWN-RED CI on this exact commit hard-stops a
+  # prod deploy; a pending or absent run only warns (the staging gate above
+  # is the hard promotion gate — CI is the async safety net, and a solo
+  # deploy should not idle 10 minutes for it). --force skips, loudly.
+  if command -v gh >/dev/null 2>&1; then
+    CI_STATE="$(gh run list --commit "$HEAD_SHA" --workflow CI \
+      --json status,conclusion -q '.[0] | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
+    case "$CI_STATE" in
+      completed:success)
+        echo "==> CI: green for ${HEAD_SHA:0:9}" ;;
+      completed:*)
+        echo "REFUSED: CI is RED for ${HEAD_SHA:0:9} (${CI_STATE#completed:})." >&2
+        echo "  gh run list --commit $HEAD_SHA   # see what failed" >&2
+        echo "Fix it (or --force for a hotfix, loudly)." >&2
+        exit 1 ;;
+      *)
+        echo "==> CI: no completed run for ${HEAD_SHA:0:9} yet (${CI_STATE:-none}) — proceeding; check it after." ;;
+    esac
+  fi
   echo "==> Promotion gate: staging is healthy on ${HEAD_SHA:0:9}."
 fi
 

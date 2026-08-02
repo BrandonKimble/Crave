@@ -30,6 +30,17 @@ find a stray branch or worktree, treat it as cruft to surface, not something to 
 max_parallel_maintenance_workers = 0;` or they die with "could not resize
   shared memory segment" and P3009-crash-loop the boot.
 
+- **THE DEPLOY LAW (2026-08-02): staging → production, always.**
+  `./scripts/rig/deploy.sh --env staging` first, then `./scripts/rig/deploy.sh`
+  for prod. Prod REFUSES unless (a) staging's /health reports it is running
+  the EXACT commit being shipped, and (b) CI for that commit is not known-red
+  (pending/absent only warns — CI is the async safety net, staging is the
+  hard gate; it failed 100 straight runs unnoticed before 2026-08-02 because
+  nothing consulted it). `--force` is the loud hotfix escape. /health self-
+  reports commit + appEnv, so "what is this env running" is a fact, not a
+  guess. Staging DB fills: `push-local-db-to-staging.sh` (staging == your
+  local corpus, the default pit-stop) or `refresh-staging-from-prod.sh`
+  (prod corpus, zero users, for prod-parity checks).
 - **Deploy with `./scripts/rig/deploy.sh [api|worker]`** (default: both). It encodes
   the burned-in laws: repo-ROOT build context (a subdir cwd breaks the Docker build),
   push-main-first, watch each deploy to terminal state, single retry, /health smoke.
