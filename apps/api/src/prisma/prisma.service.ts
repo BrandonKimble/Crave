@@ -10,6 +10,39 @@ import { DatabaseConfig } from '../config/database-config.interface';
 import { DatabaseValidationService } from '../config/database-validation.service';
 import { LoggerService } from '../shared';
 
+/**
+ * Pin every pooled connection's session TimeZone to UTC.
+ *
+ * THE CLASS THIS DELETES (2026-08-02). 162 of this schema's timestamp columns
+ * are `timestamp WITHOUT time zone` holding UTC wall-clock. Prisma binds a JS
+ * Date as `timestamptz`, and comparing the two makes Postgres coerce the naive
+ * column through the SESSION's TimeZone — so a hand-written query silently
+ * means something different depending on where the server thinks it is.
+ *
+ * It had already been found once, in the signals module, and fixed there with
+ * a local helper. The lesson could not travel: the polls feed was separately
+ * discovered to be UNABLE TO LOAD A SECOND PAGE on a dev box running
+ * America/Chicago (one real cursor matched 3,175 rows where the correct
+ * comparison matched 16,528), and the placeholder-cleanup UPDATE's scope moved
+ * with the timezone too. Production runs UTC, so all of it was invisible there
+ * — which also means dev and prod were quietly running different semantics.
+ *
+ * Pinning the connection fixes every naive column and every raw query at once,
+ * including ones not yet written, and makes dev match prod. Verified against
+ * the local database: with the pin, the exact comparison that returned 3,175
+ * returns 16,528.
+ *
+ * `options=-c timezone=UTC` is sent at connection setup, so it applies to
+ * every connection the pool opens. The space MUST be %20 — urlencode's `+`
+ * makes Postgres reject the parameter outright.
+ */
+export function pinSessionTimeZoneUtc(url: string): string {
+  if (!url) return url;
+  // Already pinned (or explicitly overridden) — never fight an explicit choice.
+  if (/[?&]options=/.test(url)) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}options=-c%20timezone%3DUTC`;
+}
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -37,7 +70,9 @@ export class PrismaService
     super({
       datasources: {
         db: {
-          url: dbConfig?.url || process.env.DATABASE_URL || '',
+          url: pinSessionTimeZoneUtc(
+            dbConfig?.url || process.env.DATABASE_URL || '',
+          ),
         },
       },
       log: logConfig,

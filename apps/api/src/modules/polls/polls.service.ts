@@ -49,6 +49,7 @@ import {
 import { PlacesCatalogService } from '../places/places-catalog.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
+import { utcInstant } from '../../shared/sql/utc-instant';
 import {
   GeoBbox,
   PLACES_SLICE_MARGIN_FACTOR,
@@ -107,31 +108,6 @@ const POLL_TIME_WINDOW_MS: Partial<Record<PollListTime, number>> = {
 function resolvePollTimeCutoff(time: PollListTime | undefined): Date | null {
   const windowMs = time != null ? POLL_TIME_WINDOW_MS[time] : undefined;
   return windowMs != null ? new Date(Date.now() - windowMs) : null;
-}
-
-/**
- * A JS Date, rendered for comparison against our NAIVE timestamp columns.
- *
- * THE BUG THIS EXISTS TO KILL (attributed 2026-08-02, empirically). Every
- * timestamp column on polls/poll_comments/poll_endorsements is `timestamp
- * WITHOUT time zone`, storing UTC wall-clock. Prisma binds a JS Date as
- * `timestamptz`. Comparing the two makes Postgres coerce the naive column
- * using the SESSION's TimeZone — so the answer depends on where the server
- * thinks it is.
- *
- * Measured on a dev box running America/Chicago, against one real feed
- * cursor: the timestamptz form matched 3,175 polls where the correct naive
- * comparison matched 16,528. The polls feed could not load a second page at
- * all — page 1 reported "more" and page 2 came back empty, on every sort.
- * Production runs UTC, where the offset is zero and the bug is invisible;
- * that is precisely what makes it a landmine rather than an outage.
- *
- * `AT TIME ZONE 'UTC'` converts the bound instant to the same naive UTC frame
- * the column is stored in, so the comparison means the same thing under any
- * session timezone.
- */
-function naiveUtc(value: Date): Prisma.Sql {
-  return Prisma.sql`(${value}::timestamptz AT TIME ZONE 'UTC')`;
 }
 
 @Injectable()
@@ -361,7 +337,7 @@ export class PollsService {
       AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
       ${
         launchedAfter
-          ? Prisma.sql`AND p.launched_at >= ${naiveUtc(launchedAfter)}`
+          ? Prisma.sql`AND p.launched_at >= ${utcInstant(launchedAfter)}`
           : Prisma.empty
       }
       AND p.place_id = ANY(${placeIds}::uuid[])
@@ -371,7 +347,7 @@ export class PollsService {
       const cursor =
         params.cursor?.sort === PollListSort.new ? params.cursor : null;
       const keyset = cursor
-        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${naiveUtc(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
+        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${utcInstant(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
         : Prisma.empty;
       const rows = await this.prisma.$queryRaw<
         Array<{ poll_id: string; created_at: Date }>
@@ -410,7 +386,7 @@ export class PollsService {
           SUM(
             EXP(
               -LN(2) / ${POLL_TRENDING_HALF_LIFE_DAYS}::float8
-              * (EXTRACT(EPOCH FROM (${naiveUtc(new Date(refMs))} - en.last_ts)) / 86400.0)
+              * (EXTRACT(EPOCH FROM (${utcInstant(new Date(refMs))} - en.last_ts)) / 86400.0)
             )
           ),
           0
@@ -421,7 +397,7 @@ export class PollsService {
         ? params.cursor
         : null;
     const keyset = cursor
-      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${naiveUtc(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
+      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${utcInstant(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<
       Array<{ poll_id: string; created_at: Date; metric: number }>

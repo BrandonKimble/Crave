@@ -11,6 +11,7 @@ import {
 import { CollectorSourceRegistryService } from '../../content-processing/reddit-collector/collector-source-registry.service';
 import { GovernanceService } from '../governance/governance.service';
 import { OpsAlertsService } from './ops-alerts.service';
+import { utcInstant } from '../../../shared/sql/utc-instant';
 
 /**
  * §24.2 the measured unit-cost table (plans/geo-demand-foundation-rebuild.md
@@ -275,8 +276,8 @@ export class SpendAnalyticsService {
         -- into the per-document rate against a doc_count that was never
         -- extracted (deflates the measured rate). NULL = pre-outcome rows.
         AND e.outcome IS DISTINCT FROM 'failed'
-        AND e.created_at >= ${windowStart}
-        AND e.created_at < ${windowEnd}
+        AND e.created_at >= ${utcInstant(windowStart)}
+        AND e.created_at < ${utcInstant(windowEnd)}
         AND j.resume_context ->> 'extractionRunId' IS NOT NULL
     `;
 
@@ -554,8 +555,8 @@ export class SpendAnalyticsService {
           JOIN collection_extraction_runs r
             ON r.extraction_run_id = ei.extraction_run_id
           WHERE r.status = 'completed'
-            AND r.completed_at >= ${windowStart}
-            AND r.completed_at < ${windowEnd}`)
+            AND r.completed_at >= ${utcInstant(windowStart)}
+            AND r.completed_at < ${utcInstant(windowEnd)}`)
       )[0]?.n ?? 0,
     );
     if (docsExtracted >= MIN_SAMPLE_UNITS) {
@@ -769,8 +770,8 @@ export class SpendAnalyticsService {
       JOIN sources s ON s.platform = 'reddit' AND lower(s.handle) = lower(d.community)
       WHERE e.service = 'gemini'
         AND e.caller = 'gemini-batch.collection_extraction'
-        AND e.created_at >= ${windowStart}
-        AND e.created_at < ${windowEnd}
+        AND e.created_at >= ${utcInstant(windowStart)}
+        AND e.created_at < ${utcInstant(windowEnd)}
         AND j.resume_context ->> 'extractionRunId' IS NOT NULL
         AND d.lane IN ('chronological', 'keyword')
     `;

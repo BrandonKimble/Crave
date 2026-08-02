@@ -35,35 +35,15 @@ const AWARE_COLUMN_SITES = new Set([
 ]);
 
 /**
- * KNOWN-UNFRAMED, AND TRACKED RATHER THAN HIDDEN.
+ * EMPTY, AND IT MUST STAY THAT WAY.
  *
- * Each of these compares a NAIVE column against a bound Date, verified against
- * information_schema on 2026-08-02:
- *
- *   collection_source_documents.collected_at / .source_created_at   NAIVE
- *   source_collection_lanes.due_at / .last_ran_at                   NAIVE
- *   collection_runs.started_at, collection_extraction_runs.started_at NAIVE
- *   demand_scoring_runs.started_at                                  NAIVE
- *   signals.occurred_at (and every partition)                       NAIVE
- *   api_usage_ledger.created_at                                     NAIVE
- *
- * They are LATENT, not broken: production and staging both run UTC, where the
- * offset is zero. They are listed — not skipped silently — so the count can
- * only go down, and so a new comparison cannot join them by accident.
- *
- * The real fix is the schema, not these call sites: 162 of this database's
- * timestamp columns are `timestamp WITHOUT time zone` while 31 are `with`, and
- * an instant should be stored as an instant. That is an owner-scale migration
- * (see product/pre-launch.md), not a 3am edit inside another session's tree.
+ * Every raw comparison against a naive column is now framed. This list exists
+ * so that if one ever has to be exempted, the exemption is written down with a
+ * reason rather than discovered later. The second test below asserts the list
+ * matches reality exactly, so a fixed file cannot linger here and become a
+ * place a NEW violation hides.
  */
-const KNOWN_UNFRAMED = new Set([
-  'modules/analytics/demand-scoring-trace.service.ts',
-  'modules/content-processing/reddit-collector/collector-pacer.service.ts',
-  'modules/content-processing/reddit-collector/collector-source-registry.service.ts',
-  'modules/external-integrations/shared/spend-analytics.service.ts',
-  'modules/ops-dashboard/ops-summary.service.ts',
-  'modules/signals/signal-demand-read.service.ts',
-]);
+const KNOWN_UNFRAMED = new Set<string>([]);
 
 function tsFiles(dir: string): string[] {
   const out: string[] = [];
@@ -97,7 +77,13 @@ function unframedComparisons(): string[] {
       const window = source.slice(cmp.index, (cmp.index ?? 0) + 200);
       // Either the conversion is written inline, or it comes from a helper
       // whose whole job is to apply it.
-      if (window.includes(`AT TIME ZONE`) || window.includes('naiveUtc('))
+      // Inline conversion, or the shared helper (under either the canonical
+      // name or the signals-module alias that predates it).
+      if (
+        window.includes(`AT TIME ZONE`) ||
+        window.includes('utcInstant(') ||
+        window.includes('utcInstantSql(')
+      )
         continue;
       offenders.push(`${rel}: ${cmp[0].replace(/\s+/g, ' ').slice(0, 80)}`);
     }
@@ -122,7 +108,11 @@ describe('raw SQL timestamp frame', () => {
         /(\w*_at)\s*(?:<=|>=|<|>|=|BETWEEN)\s*(\$\{[^}]*\})/g,
       )) {
         const window = source.slice(cmp.index, (cmp.index ?? 0) + 200);
-        if (window.includes(`AT TIME ZONE`) || window.includes('naiveUtc('))
+        if (
+          window.includes(`AT TIME ZONE`) ||
+          window.includes('utcInstant(') ||
+          window.includes('utcInstantSql(')
+        )
           continue;
         stillOffending.add(rel);
       }

@@ -48,6 +48,7 @@ import { KeywordSliceSelectionService } from './keyword-slice-selection.service'
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { buildKeywordSortPlan } from './keyword-sort-plan';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { utcInstant } from '../../../shared/sql/utc-instant';
 
 /** Vendor fact (reddit-collection-adapter): /new serves ≤1000 posts. */
 const REDDIT_NEW_WINDOW_POSTS = 1000;
@@ -394,8 +395,8 @@ export class CollectorPacerService implements OnModuleInit {
       WHERE cr.pipeline = 'chronological'
         AND cr.metadata ? 'expectedBatches'
         AND cr.metadata ? 'sourceId'
-        AND cr.started_at >= ${now}::timestamp - (${LOOKBACK_HOURS} * interval '1 hour')
-        AND cr.started_at <= ${now}::timestamp - (${PENDING_WINDOW_GRACE_HOURS} * interval '1 hour')
+        AND cr.started_at >= ${utcInstant(now)} - (${LOOKBACK_HOURS} * interval '1 hour')
+        AND cr.started_at <= ${utcInstant(now)} - (${PENDING_WINDOW_GRACE_HOURS} * interval '1 hour')
       ORDER BY cr.metadata->>'sourceId', cr.started_at DESC
     `;
     for (const row of rows) {
@@ -459,7 +460,7 @@ export class CollectorPacerService implements OnModuleInit {
       SELECT count(*) AS n FROM collection_source_documents
       WHERE community = ${handle}
         AND source_type = 'post'
-        AND source_created_at >= ${now}::timestamp - (${ARRIVAL_LOOKBACK_DAYS} * interval '1 day')
+        AND source_created_at >= ${utcInstant(now)} - (${ARRIVAL_LOOKBACK_DAYS} * interval '1 day')
     `;
     const postsPerDay = Number(rows[0]?.n ?? 0) / ARRIVAL_LOOKBACK_DAYS;
     if (!(postsPerDay > 0)) {

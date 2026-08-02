@@ -17,6 +17,7 @@ import { descendantPlaceIds } from '../../places/place-dag-read';
 import { LoggerService } from '../../../shared';
 import { REDDIT_LANES } from './reddit-collection-adapter';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
+import { utcInstant } from '../../../shared/sql/utc-instant';
 
 export interface CollectorLane {
   sourceId: string;
@@ -207,7 +208,7 @@ export class CollectorSourceRegistryService {
       SELECT l.*, s.platform, s.handle, s.anchor_place_id, s.engine_id
       FROM source_collection_lanes l
       JOIN sources s ON s.source_id = l.source_id
-      WHERE l.enabled AND l.due_at <= ${now} AND NOT l.cost_paused
+      WHERE l.enabled AND l.due_at <= ${utcInstant(now)} AND NOT l.cost_paused
       ORDER BY (EXTRACT(EPOCH FROM (${now}::timestamp - l.due_at))
                 / GREATEST(l.lateness_tolerance_days * 86400, 1)) DESC
     `;
@@ -348,7 +349,7 @@ export class CollectorSourceRegistryService {
         : null;
     await this.prisma.$executeRaw`
       UPDATE source_collection_lanes
-      SET due_at = ${now}::timestamp + make_interval(
+      SET due_at = ${utcInstant(now)} + make_interval(
             secs => COALESCE(${derived}::float8, cadence_days) * 86400
           ),
           -- HONEST COLUMN (charter §3). due_at carried the derived interval
@@ -360,7 +361,7 @@ export class CollectorSourceRegistryService {
           -- measurement. ensureLanes is ON CONFLICT DO NOTHING, so the
           -- declaration never overwrites a measured value.
           cadence_days = COALESCE(${derived}::float8, cadence_days),
-          last_ran_at = ${now},
+          last_ran_at = ${utcInstant(now)},
           updated_at = now()
       WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
         -- CONCURRENCY GUARD (red team R14): advancing is CLAIMING. Two
@@ -368,7 +369,7 @@ export class CollectorSourceRegistryService {
         -- from their own "now" (last-write-wins on cadence_days too). Only
         -- a lane that is still DUE can be advanced; the loser's UPDATE
         -- matches zero rows and the lane advances exactly once.
-        AND due_at <= ${now}
+        AND due_at <= ${utcInstant(now)}
     `;
   }
 

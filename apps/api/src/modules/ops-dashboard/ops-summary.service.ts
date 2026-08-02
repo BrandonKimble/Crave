@@ -11,6 +11,7 @@ import {
 } from '../content-processing/reddit-collector/collector-source-registry.service';
 import { pricedGeminiRow } from '../external-integrations/shared/gemini-pricing';
 import { median } from '../external-integrations/shared/spend-analytics.service';
+import { utcInstant } from '../../shared/sql/utc-instant';
 import {
   placesCostMicrosPerCall,
   tomtomBlendedCostMicrosPerDraw,
@@ -717,7 +718,7 @@ export class OpsSummaryService {
         >`
           SELECT lower(community) AS community,
                  COUNT(*) AS docs_total,
-                 COUNT(*) FILTER (WHERE collected_at >= ${since}) AS docs_24h
+                 COUNT(*) FILTER (WHERE collected_at >= ${utcInstant(since)}) AS docs_24h
           FROM collection_source_documents
           WHERE community IS NOT NULL
           GROUP BY lower(community)

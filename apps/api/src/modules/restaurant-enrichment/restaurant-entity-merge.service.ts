@@ -451,9 +451,9 @@ export class RestaurantEntityMergeService {
         SELECT entity_id,
                crave_fold(name) AS key,
                EXISTS (SELECT 1 FROM core_restaurant_locations l
-                       WHERE l.restaurant_id = core_entities.entity_id
+                       WHERE l.restaurant_id = e2.entity_id
                          AND l.google_place_id IS NOT NULL) AS grounded
-        FROM core_entities
+        FROM core_entities e2
         WHERE type = 'restaurant' AND status = 'active'
           AND ${Prisma.raw(activeSupportExistsSql('e2.entity_id'))}
       )
