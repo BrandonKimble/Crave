@@ -411,14 +411,18 @@ verified on the mirror):**
   MEASURED count; prepareSimilarPreview + its second pooled execution
   DELETED. Under SEARCH_DENSE_SIBLINGS_MODE=always (current config)
   the ring is honestly empty (siblings are already members) — parity
-  with the old preview. OPEN: under mode=expansion the thin-trigger
-  absorbs the ring (coherent), but an 18-row chip-off/on totals delta
-  needs one fresh-context attribution before that mode ships.
-- **Deferred from phase 4**: one-statement-per-projection window counts
-  (post-fame-pin it buys ~15ms — pure elegance; do with the tier-3
-  count consolidation at the calibration tail). Vote-totals
-  conditionalization REJECTED on inspection: its columns feed wire
-  rows; the planner already prunes the join when unused.
+  with the old preview. (The mode=expansion open item DISSOLVED when the
+  env mode was deleted — 65cae9175.)
+- **Phase-4 CLOSED OUT (65cae9175, owner: no more deferring)**: the
+  per-soft-id UNION re-scans are gone (FILTER windows in the ONE count
+  scan each projection already had; ground-truth identical, 162ms even
+  world-scope). "One statement per projection" is REJECTED with a
+  reason, not deferred: COUNT(DISTINCT) has no window form in Postgres,
+  so the separate count statement IS the correct shape. Vote-totals
+  conditionalization REJECTED (columns feed wire rows; the planner
+  already prunes). SEARCH_DENSE_SIBLINGS_MODE DELETED (pre-launch.md
+  had settled it: the client always sends the explicit toggle) — which
+  DISSOLVES the mode=expansion 18-row open item; no such mode exists.
 - Final regression sweep: 8/8 e2e (191–780ms bounded), pagination
   disjoint, untyped ask verified with a real actor.
 
