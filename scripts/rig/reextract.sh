@@ -8,6 +8,7 @@
 #   shadow    <communities> <version> <campaign>   arm the shadow replay (worker env)
 #   diff      <communities> <version>          shadow-diff + anchor-audit → review file
 #   activate  <communities> <version>          flip pointers + rebuild + GC + audit
+#   rollback  <communities> <version>          flip BACK to the pre-activation runs (real: events retained)
 #   discard   <version>                        abandon a candidate (runs+events+claims deleted, prompt retired, GC)
 #   status                                     campaigns, shadow runs, lane health
 #
@@ -51,6 +52,12 @@ case "$VERB" in
     echo "Worker redeploy fires the one-shot runner at boot. Watch: railway logs --service worker --environment $ENVIRONMENT"
     echo "AFTER the batch queue drains: ./scripts/rig/reextract.sh diff $COMMUNITIES $VERSION"
     echo "Then DISARM: railway variable delete REEXTRACT_COMMUNITIES / REEXTRACT_CAMPAIGN_ID / REEXTRACT_PROMPT_VERSION / REEXTRACT_ACTIVATE / DISABLE_RESTAURANT_ENRICHMENT --service worker --environment $ENVIRONMENT"
+    ;;
+  rollback)
+    COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"
+    shift 2
+    echo "ROLLBACK of v$VERSION: docs flip back to their pre-activation runs (retained events make this exact)."
+    (cd "$API" && run_node scripts/activate-shadow.ts --communities "$COMMUNITIES" --prompt-version "$VERSION" --rollback "$@")
     ;;
   discard)
     VERSION="${1:?prompt version}"

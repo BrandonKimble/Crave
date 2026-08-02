@@ -67,10 +67,13 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 
 ## Hard invariants proven by the final red team (2026-08-01)
 
-- **Activation is ONE-WAY.** The pointer flip deletes the superseded runs'
-  events and compaction reaps the emptied runs within the hour. There is no
-  rollback after `--execute` — only re-paying a full extraction. Treat the
-  diff review as the last exit.
+- ~~Activation is one-way~~ — **DELETED 2026-08-01**: cross-generation
+  activation now RETAINS the superseded events (readers filter on the
+  active run, so they are inert), and `rollback <communities> <version>` is
+  a pointer flip back plus a projection rebuild — proven as an exact round
+  trip. The old generation's space is reclaimed only when you explicitly
+  `discard` it; do that only once you are confident, because discard is
+  what makes rollback impossible.
 - **`activate` refuses a non-candidate version and a shadow below 99%
   coverage.** Both refusals are correct; do not `--allow-partial` without
   the owner, and never work around the candidate check.

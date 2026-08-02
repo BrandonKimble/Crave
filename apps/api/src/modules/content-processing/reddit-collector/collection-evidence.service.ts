@@ -371,14 +371,41 @@ export class CollectionEvidenceService implements OnModuleInit {
    * accumulated when this was measured; one forgotten join = 2-4x
    * double-counting). The ledger now simply IS the active truth.
    */
+  /**
+   * Two supersede semantics, one deliberate distinction (rollback
+   * re-derivation, 2026-08-01):
+   *
+   * - 'delete' (default) — WITHIN-generation churn: the same prompt
+   *   re-extracts a document because new comments arrived. The newest run
+   *   strictly supersedes; retaining would accumulate unbounded junk on
+   *   every re-collection. This is the live-ingest path's semantics.
+   * - 'retain' — CROSS-generation switches (activate-shadow): the corpus
+   *   flips to a NEW prompt's runs after owner review. The superseded
+   *   generation's events stay, every reader already filters on the active
+   *   run (universal per the big-one red team), so they are inert — and
+   *   rollback becomes a pointer flip instead of a re-paid extraction.
+   *   Space is reclaimed only by the EXPLICIT discard of the old version
+   *   (shadow-discard.sql deletes its events, after which compaction's
+   *   existing no-events guard lets the run rows reap).
+   */
   async activateRunForDocuments(
     extractionRunId: string,
     documentIds: string[],
+    options: { supersede?: 'delete' | 'retain' } = {},
   ): Promise<void> {
     if (!documentIds.length) {
       return;
     }
+    const supersede = options.supersede ?? 'delete';
     const ids = Array.from(new Set(documentIds));
+    const flip = this.prismaService.sourceDocument.updateMany({
+      where: { documentId: { in: ids } },
+      data: { activeExtractionRunId: extractionRunId },
+    });
+    if (supersede === 'retain') {
+      await this.prismaService.$transaction([flip]);
+      return;
+    }
     await this.prismaService.$transaction([
       this.prismaService.restaurantEntityEvent.deleteMany({
         where: {
@@ -392,10 +419,7 @@ export class CollectionEvidenceService implements OnModuleInit {
           extractionRunId: { not: extractionRunId },
         },
       }),
-      this.prismaService.sourceDocument.updateMany({
-        where: { documentId: { in: ids } },
-        data: { activeExtractionRunId: extractionRunId },
-      }),
+      flip,
     ]);
   }
 

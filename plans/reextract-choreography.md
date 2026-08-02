@@ -132,15 +132,16 @@ existing primitives:
    per entity: unchanged / renamed (same resolution target, new surface) /
    new / lost-support — with user-anchor annotations. Nothing user-visible
    changes during any of this. Activation = flip the documents'
-   `active_extraction_run_id` + projection rebuild — atomic and reviewable
-   first, but **ONE-WAY** (final red team D1): `activateRunForDocuments`
-   physically deletes the superseded runs' events for those documents in
-   the same transaction, and `compactSupersededRuns` removes the emptied
-   runs within the hour. "Flip back" would activate EMPTY runs. The review
-   IS the rollback — there is no undo after `--execute`. (Making activation
-   non-destructive is possible now that every reader filters on the active
-   run, but supersede-delete is the content-identity design's law; changing
-   it is an owner decision, not a doc edit.)
+   `active_extraction_run_id` + projection rebuild — atomic, reviewable
+   first, and (owner decision 2026-08-01) genuinely REVERSIBLE: a
+   cross-generation activation RETAINS the superseded events
+   (`supersede:'retain'`), so `rollback` is a pointer flip back + rebuild —
+   proven as an exact round trip on the real schema. Within-generation
+   live-ingest supersede still deletes (same prompt, superset extraction,
+   no rollback semantics — retention there would accumulate junk on every
+   re-collection). Space for a superseded generation is reclaimed ONLY by
+   the explicit discard verb, which is the one step that forecloses
+   rollback.
 3. **Anchored GC replaces the wipe.** After activation, entities with zero
    active-run support AND no anchor/reference get garbage-collected —
    the wipe's preservation laws become the GC's laws. The wipe script

@@ -38,6 +38,7 @@ async function main(): Promise<void> {
   const promptVersion = Number.parseInt(arg('prompt-version') ?? '', 10);
   const execute = process.argv.includes('--execute');
   const reviewed = process.argv.includes('--reviewed');
+  const rollback = process.argv.includes('--rollback');
   if (!communities.length || !Number.isFinite(promptVersion)) {
     console.error(
       'Usage: activate-shadow.ts --communities a,b --prompt-version N [--reviewed] [--execute]',
@@ -65,6 +66,80 @@ async function main(): Promise<void> {
     const scope = app.get(ExtractionScopeService);
 
     const prompt = await registry.getVersion(promptVersion);
+
+    if (rollback) {
+      // ROLLBACK (the point of retain): every document whose ACTIVE run is
+      // one of version N's shadow runs flips back to the run that shadow
+      // replayed (metadata.replayOfExtractionRunId — written by
+      // replay.service at submit time). The superseded generation's events
+      // were retained, so this restores the previous graph exactly; the
+      // projection rebuild re-derives it. Refuses if the old version's
+      // events were already discarded.
+      const promptHashForRollback = createHash('sha256')
+        .update(prompt.content)
+        .digest('hex');
+      const flips = await prisma.$queryRaw<
+        Array<{ document_id: string; old_run_id: string }>
+      >`
+        SELECT d.document_id, (r.metadata->>'replayOfExtractionRunId')::uuid AS old_run_id
+        FROM collection_source_documents d
+        JOIN collection_extraction_runs r
+          ON r.extraction_run_id = d.active_extraction_run_id
+        WHERE r.system_prompt_hash = ${promptHashForRollback}
+          AND r.metadata->>'replayOfExtractionRunId' IS NOT NULL
+          AND d.community = ANY(${communities})`;
+      console.log(
+        `Rollback of v${promptVersion}: ${flips.length} documents flip back to their pre-activation runs.`,
+      );
+      if (!flips.length) return;
+      const [{ orphaned }] = await prisma.$queryRaw<
+        Array<{ orphaned: bigint }>
+      >`
+        SELECT count(*) AS orphaned FROM (
+          SELECT DISTINCT (r.metadata->>'replayOfExtractionRunId')::uuid AS old_run
+          FROM collection_source_documents d
+          JOIN collection_extraction_runs r
+            ON r.extraction_run_id = d.active_extraction_run_id
+          WHERE r.system_prompt_hash = ${promptHashForRollback}
+            AND r.metadata->>'replayOfExtractionRunId' IS NOT NULL
+            AND d.community = ANY(${communities})
+        ) o
+        WHERE NOT EXISTS (
+          SELECT 1 FROM collection_extraction_runs pr
+          WHERE pr.extraction_run_id = o.old_run
+        )`;
+      if (Number(orphaned) > 0) {
+        throw new Error(
+          `REFUSED: ${Number(orphaned)} pre-activation runs no longer exist — the old generation was discarded. Rollback would activate nothing; recovery is a re-extraction.`,
+        );
+      }
+      if (!execute) {
+        console.log('DRY RUN — re-run with --rollback --execute to flip back.');
+        return;
+      }
+      const byOldRun = new Map<string, string[]>();
+      for (const flip of flips) {
+        const list = byOldRun.get(flip.old_run_id) ?? [];
+        list.push(flip.document_id);
+        byOldRun.set(flip.old_run_id, list);
+      }
+      const affected = new Set<string>();
+      for (const [oldRunId, docIds] of byOldRun) {
+        for (const id of await scope.affectedRestaurantsForDocuments(docIds))
+          affected.add(id);
+        await evidence.activateRunForDocuments(oldRunId, docIds, {
+          supersede: 'retain',
+        });
+      }
+      console.log(
+        `Flipped ${flips.length} documents back across ${byOldRun.size} runs. Rebuilding ${affected.size} restaurants…`,
+      );
+      await rebuild.rebuildForRestaurants(Array.from(affected));
+      console.log(
+        'ROLLBACK DONE. Remember: if the prompt was already activated for live collection, run prompt-activate for the previous version too.',
+      );
+      return;
+    }
     // ONLY A CANDIDATE IS ACTIVATABLE (final red team): pointed at the
     // ACTIVE version this selects every historical run under that hash
     // (measured: 46 runs / 50,804 docs for v1) and would silently reshuffle
@@ -142,10 +217,9 @@ async function main(): Promise<void> {
       return;
     }
     console.log(
-      'WARNING: activation is ONE-WAY. activateRunForDocuments deletes the ' +
-        "superseded runs' events for these documents, and compaction removes " +
-        'the emptied runs within the hour — "flip back" would activate EMPTY ' +
-        'runs. Rolling back means re-paying the full extraction.',
+      'Activation RETAINS the superseded generation (rollback is a pointer ' +
+        'flip: --rollback). Space is reclaimed only when you explicitly ' +
+        'discard the old version after you are confident.',
     );
 
     const affectedRestaurants = new Set<string>();
@@ -155,7 +229,13 @@ async function main(): Promise<void> {
       const restaurants =
         await scope.affectedRestaurantsForDocuments(documentIds);
       for (const id of restaurants) affectedRestaurants.add(id);
-      await evidence.activateRunForDocuments(run.run_id, documentIds);
+      // RETAIN (rollback re-derivation): a generation switch keeps the
+      // superseded events — readers filter on the active run, so they are
+      // inert, and rollback stays a pointer flip. Space is reclaimed only
+      // by explicitly discarding the old version.
+      await evidence.activateRunForDocuments(run.run_id, documentIds, {
+        supersede: 'retain',
+      });
       flipped += documentIds.length;
       if (flipped % 500 === 0) console.log(`  flipped ${flipped} documents…`);
     }
