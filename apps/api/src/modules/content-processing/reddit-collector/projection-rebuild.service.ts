@@ -210,9 +210,18 @@ export class ProjectionRebuildService implements OnModuleInit {
     await tx.$executeRawUnsafe(
       `INSERT INTO derived_food_category_edges (food_id, category_id, conn_support, food_conns)
        SELECT c.food_id, cat_id, count(*),
-              (SELECT count(*) FROM core_restaurant_items c2 WHERE c2.food_id = c.food_id)
+              -- STARVED anchors are excluded from BOTH sides of the edge
+              -- arithmetic (final-final red team #6): a zeroed connection
+              -- has empty categories (never a numerator) but used to count
+              -- in the denominator, so one starved anchor could break the
+              -- unanimity arm and delete a category edge every OTHER
+              -- restaurant's membership depends on. Starved = neither
+              -- supports nor penalizes.
+              (SELECT count(*) FROM core_restaurant_items c2
+               WHERE c2.food_id = c.food_id AND c2.mention_count > 0)
        FROM core_restaurant_items c, unnest(c.categories) AS cat_id
        WHERE cat_id <> c.food_id
+         AND c.mention_count > 0
          AND c.food_id IN (
            SELECT DISTINCT food_id FROM core_restaurant_items
            WHERE restaurant_id = ANY($1::uuid[])
@@ -220,7 +229,8 @@ export class ProjectionRebuildService implements OnModuleInit {
        GROUP BY c.food_id, cat_id
        HAVING (count(*) >= 2
            OR count(*) = (SELECT count(*) FROM core_restaurant_items c3
-                          WHERE c3.food_id = c.food_id))
+                          WHERE c3.food_id = c.food_id
+                            AND c3.mention_count > 0))
           -- mint-time twins of the edge_hygiene cleanup (round-6 red team:
           -- cleanup was transient because rebuilds re-minted what it
           -- deleted): no containment inversions, and of a symmetric pair
@@ -973,6 +983,13 @@ export class ProjectionRebuildService implements OnModuleInit {
             ingredients: [],
           },
         });
+        // F5 (final-final red team): zeroing counters but LEAVING the
+        // mention ledger let the scorer keep scoring starved anchors from
+        // dead evidence — 5 of 115 zeroed connections still held live
+        // scores. The ledger is derived; clear it with the counters.
+        await tx.restaurantItemMention.deleteMany({
+          where: { connectionId: { in: Array.from(anchored) } },
+        });
       }
     }
 
@@ -1015,6 +1032,13 @@ export class ProjectionRebuildService implements OnModuleInit {
             ev.restaurant_id, r.to_entity_id, ev.evidence_type)
           ev.event_id, r.to_entity_id
         FROM core_restaurant_entity_events ev
+        -- ACTIVE-run only (final-final red team #3): retained superseded
+        -- generations are inert to every reader — re-pointing them buys
+        -- nothing and silently corrupts the rollback target. Leave them
+        -- byte-identical until their explicit discard.
+        JOIN collection_source_documents sd
+          ON sd.document_id = ev.source_document_id
+         AND sd.active_extraction_run_id = ev.extraction_run_id
         JOIN core_entities e
           ON e.entity_id = ev.entity_id AND e.status = 'archived'
         JOIN entity_redirects r ON r.from_entity_id = e.entity_id
@@ -1052,8 +1076,12 @@ export class ProjectionRebuildService implements OnModuleInit {
     >`
       WITH gone AS (
         DELETE FROM core_restaurant_entity_events ev
-        USING core_entities e, entity_redirects r, core_entities winner
+        USING core_entities e, entity_redirects r, core_entities winner,
+              collection_source_documents sd
         WHERE ev.entity_id = e.entity_id
+          -- ACTIVE-run only (final-final red team #3): see the repoint CTE.
+          AND sd.document_id = ev.source_document_id
+          AND sd.active_extraction_run_id = ev.extraction_run_id
           AND e.status = 'archived'
           AND r.from_entity_id = e.entity_id
           AND winner.entity_id = r.to_entity_id
@@ -1219,11 +1247,52 @@ export class ProjectionRebuildService implements OnModuleInit {
     >`
       SELECT DISTINCT ev.restaurant_id AS "restaurantId"
       FROM core_restaurant_entity_events ev
+      -- ACTIVE-run only (final-final red team #4): a restaurant living only
+      -- in RETAINED superseded events is not an orphan — it is correctly
+      -- absent from projections. Unfiltered, it would be re-flagged and
+      -- warn-logged every night, forever.
+      JOIN collection_source_documents sd
+        ON sd.document_id = ev.source_document_id
+       AND sd.active_extraction_run_id = ev.extraction_run_id
       JOIN core_entities e
         ON e.entity_id = ev.restaurant_id AND e.status = 'active'
       WHERE NOT EXISTS (
         SELECT 1 FROM core_restaurant_items i
         WHERE i.restaurant_id = ev.restaurant_id
+      )
+      -- HEALABLE ONLY (final red team #4, executed: 1,057 structural
+      -- no-op rebuilds re-ran every night forever — 1,053 had no food
+      -- events at all, so no rebuild can ever mint their connection).
+      AND EXISTS (
+        SELECT 1 FROM core_restaurant_entity_events fe
+        JOIN collection_source_documents fd
+          ON fd.document_id = fe.source_document_id
+         AND fd.active_extraction_run_id = fe.extraction_run_id
+        WHERE fe.restaurant_id = ev.restaurant_id
+          AND fe.entity_type = 'food'
+          AND fe.evidence_type IN ('menu_item_food', 'food_category')
+      )
+      -- STALE-ARRAY REPAIR (final red team F4): migrations archive
+      -- vocabulary in SQL, but restaurant_attributes / food_attributes
+      -- arrays only recompute on rebuild — and a restaurant WITH
+      -- connections never qualified as an orphan, so its arrays pointed at
+      -- archived entities forever unless it happened to be re-collected.
+      UNION
+      SELECT e.entity_id AS "restaurantId"
+      FROM core_entities e
+      WHERE e.type = 'restaurant' AND e.status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM unnest(e.restaurant_attributes) attr_id
+          JOIN core_entities a ON a.entity_id = attr_id
+          WHERE a.status <> 'active'
+        )
+      UNION
+      SELECT DISTINCT i.restaurant_id AS "restaurantId"
+      FROM core_restaurant_items i
+      WHERE EXISTS (
+        SELECT 1 FROM unnest(i.food_attributes || i.categories || i.ingredients) ref_id
+        JOIN core_entities a ON a.entity_id = ref_id
+        WHERE a.status <> 'active'
       )
     `;
     if (!orphans.length) {

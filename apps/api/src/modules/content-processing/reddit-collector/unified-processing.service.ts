@@ -20,6 +20,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { buildCauseChain, LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import {
+  canonicalFold,
   entityIdentityKey,
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
@@ -493,8 +494,10 @@ export class UnifiedProcessingService implements OnModuleInit {
         );
 
         return {
-          entitiesCreated:
-            batchResult.entityResolution?.newEntitiesCreated || 0,
+          // DB TRUTH, not resolver intent (final red team #7): the adopt
+          // probes turn many 'new' verdicts into adoptions; counting intent
+          // systematically inflated this metric post-hardening.
+          entitiesCreated: batchResult.databaseOperations?.entitiesCreated || 0,
           connectionsCreated:
             batchResult.databaseOperations?.connectionsCreated || 0,
           affectedConnectionIds:
@@ -528,7 +531,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       );
 
       return {
-        entitiesCreated: batchResult.entityResolution?.newEntitiesCreated || 0,
+        entitiesCreated: batchResult.databaseOperations?.entitiesCreated || 0,
         connectionsCreated:
           batchResult.databaseOperations?.connectionsCreated || 0,
         affectedConnectionIds:
@@ -1638,11 +1641,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               // minted the twin anyway). Token-sorted stripped names are
               // DB-computable; number variance is already covered by the
               // variant probe above.
-              const sortedKey = canonicalName
-                .toLowerCase()
-                .replace(/'/g, '')
-                .replace(/[^a-z0-9]+/g, ' ')
-                .trim()
+              const sortedKey = canonicalFold(canonicalName)
                 .split(' ')
                 .sort()
                 .join(' ');
@@ -1654,9 +1653,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                   AND status <> 'archived'
                   AND (
                     SELECT string_agg(w, ' ' ORDER BY w)
-                    FROM unnest(string_to_array(
-                      btrim(regexp_replace(regexp_replace(lower(name),
-                        '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')), ' ')) w
+                    FROM unnest(string_to_array(crave_fold(name), ' ')) w
                   ) = ${sortedKey}
                 ORDER BY created_at
                 LIMIT 1
@@ -1699,8 +1696,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 SELECT entity_id, name, aliases FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
-                  AND btrim(regexp_replace(regexp_replace(lower(name),
-                        '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) = ${strippedKey}
+                  AND crave_fold(name) = ${strippedKey}
                 ORDER BY created_at
                 LIMIT 1
               `;
@@ -1734,6 +1730,28 @@ export class UnifiedProcessingService implements OnModuleInit {
                     },
                     select: { entityId: true, aliases: true, name: true },
                   });
+                } else {
+                  // REJECTED tombstone (final red team F5): archived with NO
+                  // redirect is a junk verdict, not an absence. Falling
+                  // through to create re-minted every rejected term as a
+                  // fresh 'pending' row on its next mention (1,608 junk
+                  // terms measured re-mintable), re-paying adjudication
+                  // forever. ADOPT the tombstone id instead: the event
+                  // write's junk sink sees the archived id and drops the
+                  // mention — same verdict, zero churn.
+                  existing = await tx.entity.findFirst({
+                    where: { entityId: tombstone.entityId },
+                    select: { entityId: true, aliases: true, name: true },
+                  });
+                  this.logger.info(
+                    'Rejected-tombstone adopt — junk verdict reused',
+                    {
+                      batchId,
+                      entityType,
+                      name: canonicalName,
+                      tombstoneId: tombstone.entityId,
+                    },
+                  );
                 }
               }
             }
@@ -1835,29 +1853,76 @@ export class UnifiedProcessingService implements OnModuleInit {
                 entityData.generalPraiseUpvotes = null;
               }
 
-              const createdEntity = await tx.entity.create({
-                data: entityData,
-              });
-
-              entityId = createdEntity.entityId;
-              createdNew = true;
-
-              if (entityType === 'restaurant') {
-                const location = await tx.restaurantLocation.create({
-                  data: {
-                    restaurantId: createdEntity.entityId,
-                    latitude: null,
-                    longitude: null,
-                    isPrimary: true,
-                  },
+              // uq_attribute_identity_key race (final red team): the lock
+              // serializes same-key creators, but a P2002 here (a
+              // concurrent path outside the lock) previously aborted the
+              // WHOLE batch transaction. SAVEPOINT so the tx survives the
+              // unique violation, then adopt the winner.
+              let createdEntity: { entityId: string } | null = null;
+              await tx.$executeRaw`SAVEPOINT entity_create`;
+              try {
+                createdEntity = await tx.entity.create({
+                  data: entityData,
+                  select: { entityId: true },
                 });
-
-                await tx.entity.update({
-                  where: { entityId: createdEntity.entityId },
-                  data: { primaryLocationId: location.locationId },
-                });
+                await tx.$executeRaw`RELEASE SAVEPOINT entity_create`;
+              } catch (error) {
+                if (
+                  error instanceof Prisma.PrismaClientKnownRequestError &&
+                  error.code === 'P2002'
+                ) {
+                  await tx.$executeRaw`ROLLBACK TO SAVEPOINT entity_create`;
+                  const winner = await tx.$queryRaw<
+                    Array<{ entity_id: string }>
+                  >`
+                    SELECT entity_id FROM core_entities
+                    WHERE type = ${entityType}::entity_type
+                      AND status <> 'archived'
+                      AND identity_key = crave_fold(${canonicalName})
+                    ORDER BY created_at
+                    LIMIT 1
+                  `;
+                  if (!winner.length) {
+                    throw error;
+                  }
+                  this.logger.warn('P2002 on create — adopted winner', {
+                    batchId,
+                    entityType,
+                    name: canonicalName,
+                    entityId: winner[0].entity_id,
+                  });
+                  entityId = winner[0].entity_id;
+                } else {
+                  throw error;
+                }
               }
 
+              if (createdEntity) {
+                entityId = createdEntity.entityId;
+                createdNew = true;
+
+                if (entityType === 'restaurant') {
+                  const location = await tx.restaurantLocation.create({
+                    data: {
+                      restaurantId: createdEntity.entityId,
+                      latitude: null,
+                      longitude: null,
+                      isPrimary: true,
+                    },
+                  });
+
+                  await tx.entity.update({
+                    where: { entityId: createdEntity.entityId },
+                    data: { primaryLocationId: location.locationId },
+                  });
+                }
+              }
+
+              if (!entityId) {
+                throw new Error(
+                  'unreachable: create or P2002-adopt must set entityId',
+                );
+              }
               this.logger.debug('Created new entity during batch processing', {
                 batchId,
                 tempId: resolution.tempId,

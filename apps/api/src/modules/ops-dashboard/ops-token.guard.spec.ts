@@ -8,7 +8,9 @@ import { OpsTokenGuard } from './ops-token.guard';
 /**
  * §18.4 auth: absent OPS_DASH_TOKEN -> 404 (the dashboard is OFF, not
  * merely unauth'd); present env + wrong/missing token -> 401; present env
- * + matching token (via ?token= query or x-ops-token header) -> admits.
+ * + matching token (x-ops-token header ONLY — the ?token= branch was removed by the
+ * final-final red team #7 security fix; URL tokens leak into logs) ->
+ * admits.
  */
 
 function buildContext(
@@ -56,12 +58,12 @@ describe('OpsTokenGuard', () => {
     ).toThrow(UnauthorizedException);
   });
 
-  it('admits a matching ?token= query param', () => {
+  it('REFUSES a matching ?token= query param (URL tokens leak into logs)', () => {
     process.env.OPS_DASH_TOKEN = 'secret-token';
     const guard = new OpsTokenGuard();
-    expect(guard.canActivate(buildContext({ token: 'secret-token' }, {}))).toBe(
-      true,
-    );
+    expect(() =>
+      guard.canActivate(buildContext({ token: 'secret-token' }, {})),
+    ).toThrow(UnauthorizedException);
   });
 
   it('admits a matching x-ops-token header', () => {

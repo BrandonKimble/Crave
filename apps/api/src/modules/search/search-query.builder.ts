@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { activeRestaurantEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 
@@ -144,17 +145,17 @@ export class SearchQueryBuilder {
     // dishes OR is praised by name). The INNER join to v3 scores still excludes
     // truly-empty restaurants (no items, no events). Restaurant/entity filters
     // can widen match eligibility.
+    // ACTIVE-run scoped (final-final red team #1): the bare event EXISTS
+    // kept a restaurant search-eligible on a RETAINED superseded
+    // generation's events — a restaurant the new prompt correctly dropped
+    // would never leave search. The fragment is the scope service's ONE
+    // definition; never hand-roll this join.
     const inventoryExistsSql = Prisma.sql`(EXISTS (
       SELECT 1
       FROM core_restaurant_items c
       WHERE c.restaurant_id = r.entity_id
-    ) OR EXISTS (
-      SELECT 1
-      FROM core_restaurant_events ev
-      WHERE ev.restaurant_id = r.entity_id
-    ))`;
-    const inventoryExistsPreview =
-      '(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id) OR EXISTS (SELECT 1 FROM core_restaurant_events ev WHERE ev.restaurant_id = r.entity_id))';
+    ) OR ${Prisma.raw(activeRestaurantEventExistsSql('r.entity_id'))})`;
+    const inventoryExistsPreview = `(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = r.entity_id) OR ${activeRestaurantEventExistsSql('r.entity_id')})`;
 
     const connectionMatch = this.buildConnectionMatchConditions(filters);
     const { sql: connectionMatchSql } = connectionMatch;
@@ -563,7 +564,10 @@ LEFT JOIN LATERAL (
       res.mention_count,
       e.name
     FROM core_restaurant_entity_signals res
+    -- archived vocabulary must never RENDER either (final red team #3):
+    -- the admission path was already filtered; this is the display path.
     JOIN core_entities e ON e.entity_id = res.entity_id
+      AND e.status <> 'archived'
     WHERE res.restaurant_id = rr.restaurant_id
       AND ${signalMatch.sql}
     ORDER BY res.mention_count DESC, e.name ASC

@@ -249,3 +249,44 @@ currently teaches slash-joined names as a venue SERIES (the exact
 mechanism of the Uchi/ko split); §3.2 + two flagship examples emit
 `rich` as a food attribute while P3 bans bare intensity words. Owner
 should see both before the rewrite.
+
+## FINAL RED TEAM (round 8 — "the big one before prompt work", 2026-08-02)
+
+Two Opus agents (cross-system synergy; live-pipeline execution) + prod-state
+prong. Everything executed: mirror rollback experiments, real cron bodies in
+apply mode, prod read batteries. Confirmed clean: identity-lock concurrency
+(1 food + 1 attr from racing twins), junk sink, redirect follow, merge/dedupe
+convergence (2nd pass byte-identical no-op), rebuild idempotence + counter
+invariant 0 mismatches, score archived-exclusion, claims race (1 winner),
+compaction guard, activation trimming, claims/discard boundary, redirect graph
+(0 cycles/dangling/2-hops on prod), fold parity TS↔SQL 17,564/17,564.
+
+FIXED from this round (all proven by re-execution):
+
+- F1 GC destroyed the retained generation rollback depends on → support =
+  ANY surviving event again; reclamation happens through discard.
+- F6 supersede:'delete' was cross-generation → hash-scoped in the service.
+- F3 Unicode-blind fold → crave_fold() DB function + byte-identical TS
+  canonicalFold (migration 20260802010000, accent translate + curly-quote
+  strip); all SQL sites now call the function.
+- #1 nightly merge cross-metro false positives (Gueros→Gueros Brooklyn,
+  Andiamo→ANDIAMO PIZZA — would have fired at 3AM; worker taken down at
+  02:58 UTC to stop it) → DOMINANT-community gate; re-run: andiamo holds,
+  gueros never reaches judgment.
+- #2 praise lane counted superseded generations → active-run join via new
+  activeRestaurantEventsSourceSql() fragment (injection probe: 16→16).
+- #5 merge losers stayed publicly scored → prune inside merge tx.
+- F4/#3 stale attribute arrays (2,370+1,972 restaurants) never revisited →
+  repairOrphanedProjections now selects stale-array restaurants; search tag
+  rows filter archived; #4 structural no-op orphans excluded (food-event
+  EXISTS).
+- F5 junk re-mint (1,608 terms) → rejected-tombstone adopt; P2002 on create
+  → savepoint + adopt winner. #6 word-order twin lane (token-multiset,
+  OR-support). #7 entitiesCreated reports DB truth.
+- Lockdown conformance: new scope fragments (communities/dominant/sources);
+  ops-token spec aligned with the header-only security fix.
+
+Prod facts recorded: rescore converged 02:11; sweep crons live at 4AM UTC
+nightly; archived signal/score residue clears via the (now healable-only)
+repair + tombstone sweeps; one restaurant (Sway→sway thai, 8 events) awaits
+the sweep. Worker DOWN pending this deploy.

@@ -1,4 +1,6 @@
+import { activeEntityEventsSourceSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
@@ -721,13 +723,11 @@ export class OpsSummaryService {
           GROUP BY lower(community)
         `,
         this.prisma.$queryRaw<Array<{ community: string; entities: bigint }>>`
-          SELECT lower(d.community) AS community,
-                 COUNT(DISTINCT e.entity_id) AS entities
-          FROM core_restaurant_entity_events e
-          JOIN collection_source_documents d
-            ON d.document_id = e.source_document_id
-          WHERE d.community IS NOT NULL
-          GROUP BY lower(d.community)
+          SELECT lower(d_scope.community) AS community,
+                 COUNT(DISTINCT ev_scope.entity_id) AS entities
+          FROM ${Prisma.raw(activeEntityEventsSourceSql())}
+          WHERE d_scope.community IS NOT NULL
+          GROUP BY lower(d_scope.community)
         `,
       ]);
     } catch (error) {

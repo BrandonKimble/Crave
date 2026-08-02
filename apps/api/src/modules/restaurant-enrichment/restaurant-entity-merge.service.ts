@@ -1,6 +1,11 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma, Entity } from '@prisma/client';
+import {
+  activeEntityEventCountSql,
+  activeCommunitiesArraySql,
+  dominantCommunitySql,
+} from '../content-processing/reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
@@ -77,6 +82,14 @@ export class RestaurantEntityMergeService {
         where: { entityId: duplicate.entityId },
         data: { status: 'archived' },
       });
+
+      // ARCHIVED IS NEVER RANKED (final red team #5, executed: 93 merge
+      // losers stayed publicly scored until the next full score pass —
+      // the 3AM merge and the score cron are independent, so the loser was
+      // user-rankable for the gap). Prune inside the merge tx.
+      await tx.$executeRaw`
+        DELETE FROM core_public_entity_scores
+        WHERE subject_id = ${duplicate.entityId}::uuid`;
 
       // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
       // signals ledger is never rekeyed — readers resolve duplicate
@@ -410,11 +423,11 @@ export class RestaurantEntityMergeService {
     const groups = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
-      SELECT btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) AS name,
+      SELECT crave_fold(name) AS name,
              array_agg(entity_id ORDER BY created_at) AS entity_ids
       FROM core_entities
       WHERE type = 'restaurant' AND status = 'active'
-      GROUP BY btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+      GROUP BY crave_fold(name)
       HAVING count(*) >= 2
     `;
     // PREFIX LANE (class ③): the stub/qualifier duplicate classes —
@@ -429,7 +442,7 @@ export class RestaurantEntityMergeService {
     >`
       WITH stripped AS (
         SELECT entity_id,
-               btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) AS key,
+               crave_fold(name) AS key,
                EXISTS (SELECT 1 FROM core_restaurant_locations l
                        WHERE l.restaurant_id = core_entities.entity_id
                          AND l.google_place_id IS NOT NULL) AS grounded
@@ -470,16 +483,15 @@ export class RestaurantEntityMergeService {
           place_ids: string[];
           domain: string | null;
           communities: string[];
+          dominant_community: string | null;
         }>
       >`
         SELECT e.entity_id,
-               COALESCE((SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.restaurant_id = e.entity_id), 0)::int AS mention_count,
+               ${Prisma.raw(activeEntityEventCountSql('e.entity_id'))} AS mention_count,
                COALESCE((SELECT array_agg(DISTINCT l.google_place_id) FILTER (WHERE l.google_place_id IS NOT NULL) FROM core_restaurant_locations l WHERE l.restaurant_id = e.entity_id), '{}') AS place_ids,
                e.canonical_domain AS domain,
-               COALESCE((SELECT array_agg(DISTINCT lower(d.community)) FILTER (WHERE d.community IS NOT NULL)
-                         FROM core_restaurant_entity_events ev
-                         JOIN collection_source_documents d ON d.document_id = ev.source_document_id
-                         WHERE ev.restaurant_id = e.entity_id), '{}') AS communities
+               ${Prisma.raw(activeCommunitiesArraySql('e.entity_id'))} AS communities,
+               ${Prisma.raw(dominantCommunitySql('e.entity_id'))} AS dominant_community
         FROM core_entities e
         WHERE e.entity_id = ANY(${group.entity_ids}::uuid[])
           -- round-6 red team: an earlier merge THIS RUN may have archived a
@@ -511,9 +523,14 @@ export class RestaurantEntityMergeService {
       const domainA = domainOf(a);
       const domainB = domainOf(b);
       const sharedPlaceId = a.place_ids.some((p) => b.place_ids.includes(p));
-      const sharedCommunity = a.communities.some((c) =>
-        b.communities.includes(c),
-      );
+      // DOMINANT community, not ANY overlap (final red team #1, executed:
+      // one stray foodnyc mention on Austin's "Gueros" satisfied the old
+      // any-overlap gate and the nightly cron archived a 38-event Austin
+      // corpus into 3-event "Gueros Brooklyn"). Same-metro identity means
+      // the two corpora LIVE in the same place, not that they ever touched.
+      const sharedDominantCommunity =
+        a.dominant_community !== null &&
+        a.dominant_community === b.dominant_community;
       let mergeable: boolean;
       if (sharedPlaceId || (domainA && domainB && domainA === domainB)) {
         mergeable = true;
@@ -521,7 +538,8 @@ export class RestaurantEntityMergeService {
         mergeable = false; // two distinct owned domains = two businesses
       } else {
         mergeable =
-          sharedCommunity || (!a.communities.length && !b.communities.length);
+          sharedDominantCommunity ||
+          (!a.communities.length && !b.communities.length);
       }
       if (!mergeable) {
         held += 1;

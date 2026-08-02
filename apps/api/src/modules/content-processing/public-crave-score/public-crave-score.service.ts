@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { activeRestaurantEventsSourceSql } from '../reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import {
@@ -853,7 +854,12 @@ export class PublicCraveScoreService {
           MAX(mentioned_at) AS mentioned_at,
           MAX(source_upvotes) AS upv,
           (array_agg(source_document_id ORDER BY mentioned_at DESC))[1] AS source_document_id
-        FROM core_restaurant_events
+        -- ACTIVE-RUN ONLY (final red team #2): the dish lane inherits this
+        -- guard through the rebuilt mentions table, but praise read events
+        -- directly — a retained superseded generation (activate-shadow
+        -- 'retain') would inflate praise mass. Executed proof: one event on
+        -- a never-activated run grew praise_dedup 5 → 6 without this join.
+        FROM ${Prisma.raw(activeRestaurantEventsSourceSql())}
         GROUP BY restaurant_id, mention_key
       )
       SELECT

@@ -23,17 +23,38 @@ import { foodNameVariants } from './food-lemma';
  *   punctuation/possessives ("Phil's" == "Phils"), collapse whitespace.
  *   No token sort — restaurant word order is branding.
  */
-export function entityIdentityKey(name: string, type: EntityType): string {
-  // THE canonical fold, mirrored byte-for-byte by every SQL site
-  // (identity_key generated column, probes, sweeps, migrations):
-  // apostrophes STRIP (Phil's == Phils), all other punctuation becomes a
-  // SPACE (tex-mex == tex mex — round-6 red team: strip-to-nothing split
-  // hyphenated cuisines instead of uniting them).
-  const base = name
+/** Accent translate table (final red team F3): the fold's `[^a-z0-9]+`
+ *  arm turned every accented char into a SPACE, so "crème brûlée" and
+ *  "creme brulee" held different keys and the unique index + advisory
+ *  lock were both blind to the twin. One explicit 1:1 map, mirrored
+ *  byte-for-byte by the DB's crave_fold() function — do not use NFKD
+ *  here, the SQL side can't, and the two MUST stay identical. */
+const FOLD_ACCENTS_FROM =
+  'àáâãäåāăąçćčèéêëēĕėęěìíîïĩīĭįñńňòóôõöøōŏőùúûüũūŭůűųýÿžźżšśşğłđřťßæœ';
+const FOLD_ACCENTS_TO =
+  'aaaaaaaaaccceeeeeeeeeiiiiiiiinnnooooooooouuuuuuuuuuyyzzzsssgldrtsao';
+const FOLD_ACCENT_MAP: Record<string, string> = {};
+for (let i = 0; i < FOLD_ACCENTS_FROM.length; i += 1) {
+  FOLD_ACCENT_MAP[FOLD_ACCENTS_FROM[i]] = FOLD_ACCENTS_TO[i];
+}
+
+/** THE canonical fold — mirrored byte-for-byte by the DB function
+ *  crave_fold(text) (identity_key generated column, probes, sweeps).
+ *  lower → accents fold (F3) → apostrophes STRIP, straight AND curly
+ *  (Phil's == Phils == Phil’s) → all other punctuation becomes ONE SPACE
+ *  (tex-mex == tex mex — round-6: strip-to-nothing split hyphenated
+ *  cuisines) → trim. */
+export function canonicalFold(name: string): string {
+  return name
     .toLowerCase()
-    .replace(/'/g, '')
+    .replace(/[\u0080-\uffff]/g, (ch) => FOLD_ACCENT_MAP[ch] ?? ch)
+    .replace(/['’‘ʼ]/g, '')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+export function entityIdentityKey(name: string, type: EntityType): string {
+  const base = canonicalFold(name);
   if (!base) {
     return base;
   }

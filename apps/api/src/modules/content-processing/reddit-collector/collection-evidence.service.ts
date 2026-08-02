@@ -406,19 +406,36 @@ export class CollectionEvidenceService implements OnModuleInit {
       await this.prismaService.$transaction([flip]);
       return;
     }
+    // WITHIN-GENERATION ONLY (final red team F6): 'delete' means "the same
+    // prompt re-extracted this document" — so it may only delete events
+    // from runs under the SAME prompt hash. Unscoped, a live re-ingest
+    // deleted a retained old generation (killing rollback) and other
+    // candidates' shadow evidence for the touched documents. This mirrors
+    // applyActivationSupersede's hash filter; cross-generation deletion
+    // belongs exclusively to the explicit discard.
+    const activating = await this.prismaService.extractionRun.findUniqueOrThrow(
+      {
+        where: { extractionRunId },
+        select: { systemPromptHash: true },
+      },
+    );
     await this.prismaService.$transaction([
-      this.prismaService.restaurantEntityEvent.deleteMany({
-        where: {
-          sourceDocumentId: { in: ids },
-          extractionRunId: { not: extractionRunId },
-        },
-      }),
-      this.prismaService.restaurantEvent.deleteMany({
-        where: {
-          sourceDocumentId: { in: ids },
-          extractionRunId: { not: extractionRunId },
-        },
-      }),
+      this.prismaService.$executeRaw`
+        DELETE FROM core_restaurant_entity_events ev
+        USING collection_extraction_runs r
+        WHERE ev.source_document_id = ANY(${ids}::uuid[])
+          AND ev.extraction_run_id <> ${extractionRunId}::uuid
+          AND r.extraction_run_id = ev.extraction_run_id
+          AND r.system_prompt_hash = ${activating.systemPromptHash}
+      `,
+      this.prismaService.$executeRaw`
+        DELETE FROM core_restaurant_events ev
+        USING collection_extraction_runs r
+        WHERE ev.source_document_id = ANY(${ids}::uuid[])
+          AND ev.extraction_run_id <> ${extractionRunId}::uuid
+          AND r.extraction_run_id = ev.extraction_run_id
+          AND r.system_prompt_hash = ${activating.systemPromptHash}
+      `,
       flip,
     ]);
   }
@@ -618,6 +635,18 @@ export class CollectionEvidenceService implements OnModuleInit {
             SELECT 1 FROM llm_batch_jobs j
             WHERE j.status IN ('persisting', 'pending', 'submitting', 'submitted', 'succeeded', 'ingesting')
               AND j.resume_context ->> 'extractionRunId' = r2.extraction_run_id::text
+          )
+          -- ROLLBACK ANCHOR (final-final red team #2): a run that some
+          -- ACTIVE run replayed is the flip-back target for those documents
+          -- — even when it legitimately has ZERO events (zero-mention docs,
+          -- a large class). Compacting it makes --rollback refuse for the
+          -- whole community within the hour of prompt retirement. Spared
+          -- until the superseded generation is explicitly discarded.
+          AND NOT EXISTS (
+            SELECT 1 FROM collection_extraction_runs act
+            JOIN collection_source_documents d2
+              ON d2.active_extraction_run_id = act.extraction_run_id
+            WHERE (act.metadata->>'replayOfExtractionRunId')::uuid = r2.extraction_run_id
           )
           -- NEVER delete a run the evidence ledger still references (step
           -- 4): the run-delete CASCADES to its events, so compacting a run

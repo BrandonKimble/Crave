@@ -146,3 +146,91 @@ export class ExtractionScopeService {
     return rows.map((row) => row.entity_id);
   }
 }
+
+/**
+ * Pure SQL fragments of THE active-scope definition, for readers that embed
+ * raw SQL (search eligibility, curated ranking, merge inputs, ops counts).
+ * Final-final red team #1: five readers queried the raw event ledgers with
+ * NO active-run filter — with retain-activation, a superseded generation's
+ * events would keep dead restaurants search-eligible, double-count curated
+ * mention volume, and skew merge decisions (the "23,358 dark rows, 2-4x
+ * double-counting" incident class). The fragment lives HERE so the
+ * definition cannot fork; readers import it, never hand-roll the join.
+ */
+export function activeRestaurantEventExistsSql(restaurantRef: string): string {
+  return `EXISTS (
+    SELECT 1 FROM core_restaurant_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE ev_scope.restaurant_id = ${restaurantRef}
+  )`;
+}
+
+export function activeRestaurantEventCountSql(restaurantRef: string): string {
+  return `(SELECT count(*)::int FROM core_restaurant_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE ev_scope.restaurant_id = ${restaurantRef})`;
+}
+
+export function activeEntityEventCountSql(restaurantRef: string): string {
+  return `(SELECT count(*)::int FROM core_restaurant_entity_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE ev_scope.restaurant_id = ${restaurantRef})`;
+}
+
+/** FROM-clause source for readers that aggregate over ACTIVE restaurant
+ *  events directly (praise lane — final red team #2: praise read the raw
+ *  ledger and counted retained superseded generations). Exposes ev_scope. */
+export function activeRestaurantEventsSourceSql(): string {
+  return `core_restaurant_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id`;
+}
+
+/** FROM-clause source over ACTIVE entity events (ops rollups). */
+export function activeEntityEventsSourceSql(): string {
+  return `core_restaurant_entity_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id`;
+}
+
+/** ACTIVE-scope community aggregates for merge identity judgments (final
+ *  red team #1: any-overlap community gating cross-metro-merged Gueros →
+ *  Gueros Brooklyn off one stray mention; identity wants the DOMINANT
+ *  community of each side). */
+export function activeCommunitiesArraySql(restaurantRef: string): string {
+  return `COALESCE((SELECT array_agg(DISTINCT lower(d_scope.community)) FILTER (WHERE d_scope.community IS NOT NULL)
+    FROM core_restaurant_entity_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE ev_scope.restaurant_id = ${restaurantRef}), '{}')`;
+}
+
+export function dominantCommunitySql(restaurantRef: string): string {
+  return `(SELECT lower(d_scope.community)
+    FROM core_restaurant_entity_events ev_scope
+    JOIN collection_source_documents d_scope
+      ON d_scope.document_id = ev_scope.source_document_id
+     AND d_scope.active_extraction_run_id = ev_scope.extraction_run_id
+    WHERE ev_scope.restaurant_id = ${restaurantRef} AND d_scope.community IS NOT NULL
+    GROUP BY lower(d_scope.community)
+    ORDER BY count(*) DESC, lower(d_scope.community)
+    LIMIT 1)`;
+}
+
+/** Active-support EXISTS on the connection projection — the D5 predicate.
+ *  Exported so the dedupe sweeps consume THIS instead of an inline copy. */
+export function activeSupportExistsSql(entityRef: string): string {
+  return `EXISTS (
+    SELECT 1 FROM core_restaurant_items c_scope
+    WHERE ${entityRef} IN (c_scope.restaurant_id, c_scope.food_id)
+  )`;
+}

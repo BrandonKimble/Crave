@@ -19,18 +19,19 @@ UNION SELECT unnest(food_attributes) FROM core_restaurant_items
 UNION SELECT unnest(ingredients) FROM core_restaurant_items
 UNION SELECT unnest(restaurant_attributes) FROM core_entities WHERE restaurant_attributes IS NOT NULL
 UNION SELECT unnest(canonical_ingredients) FROM core_entities WHERE canonical_ingredients IS NOT NULL
--- ACTIVE-RUN ONLY (big-one red team #3d): an event from a shadow/
--- superseded run is not "support" — without this filter every entity a
--- rejected candidate prompt minted was permanently GC-immune.
-UNION SELECT ev.restaurant_id FROM core_restaurant_entity_events ev
-  JOIN collection_source_documents d ON d.document_id = ev.source_document_id
-  WHERE d.active_extraction_run_id = ev.extraction_run_id
-UNION SELECT ev.entity_id FROM core_restaurant_entity_events ev
-  JOIN collection_source_documents d ON d.document_id = ev.source_document_id
-  WHERE d.active_extraction_run_id = ev.extraction_run_id
-UNION SELECT ev.restaurant_id FROM core_restaurant_events ev
-  JOIN collection_source_documents d ON d.document_id = ev.source_document_id
-  WHERE d.active_extraction_run_id = ev.extraction_run_id;
+-- ANY SURVIVING EVENT IS SUPPORT (final red team F1 — this REVERSES the
+-- big-one's active-run-only filter, which was the wrong shape): a RETAINED
+-- generation's events (activate-shadow supersede:'retain') exist precisely
+-- so rollback stays a pointer flip, and these ids CASCADE-delete events.
+-- An active-run-only GC deleted retained-generation-supported vocabulary
+-- and took the rollback evidence with it. The reclamation point for a dead
+-- generation is the EXPLICIT `reextract.sh discard`, which deletes that
+-- generation's events first — after which these entities lose support and
+-- collect here naturally. Run GC after discard, never between an
+-- activation and its rollback decision.
+UNION SELECT restaurant_id FROM core_restaurant_entity_events
+UNION SELECT entity_id FROM core_restaurant_entity_events
+UNION SELECT restaurant_id FROM core_restaurant_events;
 
 CREATE TEMP TABLE doomed AS
 SELECT e.entity_id FROM core_entities e

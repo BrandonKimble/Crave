@@ -148,6 +148,62 @@ export class FoodDedupeMergeService {
       numberVariantPairs.flatMap((p) => [p.a_id, p.b_id]),
     );
 
+    // 0b. WORD-ORDER TWINS (final red team #6): identical token multiset
+    // after the canonical fold ("square pizza"/"pizza square" — the exact
+    // twin class the identity lock was built for, still in the graph
+    // because the trigram lane requires BOTH sides supported and one twin
+    // never got items). Deterministic like the number lane: decided in
+    // code, no judge. OR-support suffices — merging an unsupported twin
+    // into its supported double cannot promote shadow vocabulary, the
+    // supported side wins. Same conflation caveat as the creation-time
+    // order-probe (round 4): logged loudly, none genuinely distinct today.
+    const orderTwinPairs = await this.prisma.$queryRaw<
+      { a_id: string; a_name: string; b_id: string; b_name: string }[]
+    >`
+      SELECT a.entity_id a_id, a.name a_name, b.entity_id b_id, b.name b_name
+      FROM core_entities a
+      JOIN core_entities b ON a.entity_id < b.entity_id
+      WHERE a.type = 'food' AND b.type = 'food'
+        AND a.status = 'active' AND b.status = 'active'
+        AND (
+          EXISTS (SELECT 1 FROM core_restaurant_items ca
+                  WHERE a.entity_id IN (ca.restaurant_id, ca.food_id))
+          OR EXISTS (SELECT 1 FROM core_restaurant_items cb
+                     WHERE b.entity_id IN (cb.restaurant_id, cb.food_id))
+        )
+        AND (SELECT string_agg(w, ' ' ORDER BY w)
+             FROM unnest(string_to_array(crave_fold(a.name), ' ')) w)
+          = (SELECT string_agg(w, ' ' ORDER BY w)
+             FROM unnest(string_to_array(crave_fold(b.name), ' ')) w)
+    `;
+    for (const pair of orderTwinPairs) {
+      if (
+        consumedByNumberLane.has(pair.a_id) ||
+        consumedByNumberLane.has(pair.b_id) ||
+        mergedByNumber.has(pair.a_id) ||
+        mergedByNumber.has(pair.b_id)
+      ) {
+        continue;
+      }
+      if (dryRun) {
+        this.logger.info('Would merge word-order twin foods', {
+          a: pair.a_name,
+          b: pair.b_name,
+          via: 'token-multiset',
+        });
+      } else {
+        this.logger.warn('Merging word-order twin foods', {
+          a: pair.a_name,
+          b: pair.b_name,
+          via: 'token-multiset',
+        });
+        await this.mergeFoodPair(pair.a_id, pair.b_id);
+        consumedByNumberLane.add(pair.a_id);
+        consumedByNumberLane.add(pair.b_id);
+      }
+      summary.autoMerged += 1;
+    }
+
     // 1. Candidate pairs: high trigram similarity, both active foods, and not
     // substring-related (substrings are legitimate specific-vs-general dishes,
     // e.g. "chicken sandwich" ⊂ "chicken parm sandwich").
