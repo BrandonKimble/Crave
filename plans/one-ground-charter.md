@@ -1015,3 +1015,61 @@ session (each deserves its own pass):
 - seed-region does not validate --campaign-id: a malformed id makes
   every enqueue fail silently (mints with no promotion rows); a
   non-dispatchable one wedges the queue.
+
+## THE RE-DERIVATION (2026-08-01) — the diseases beneath the open list
+
+Owner question: "do you know the ideal shape for everything?" Honest
+answer at the time: no — eight findings were recorded as eight bugs. They
+are not eight bugs. Read as a set they name SIX diseases, each with an
+ideal shape, and each already has a precedent this codebase ratified
+somewhere else and failed to apply here.
+
+A. A FAILURE RECORDED AS FACT. (malformed 200; all-faulted pass; and
+historically the census "no place here" and the missing-country bug.)
+The probe result had TWO states where reality has THREE — `{chain: []}`
+meant both "observed nothing" and "failed to observe" — so a fault was
+remembered as ground truth for 30 days, and anything that failed had to
+throw, discarding paid work. IDEAL, LANDED (commit 11ccc714):
+named | empty | failed, where only 'empty' carries a region, making the
+bug class UNREPRESENTABLE. Precedent it should have copied:
+PolygonFetchResult (ok|denied|miss) one type below it.
+
+B. A MEMORY WITHOUT IDENTITY. (probed_regions growth; dedupe; prune.)
+The catalog learned this the expensive way — identity is the vendor's
+key, upsert, never append. The asked-region memory is append-only: one
+row per pass, forever, so growth tracks TRAFFIC instead of GEOGRAPHY.
+IDEAL: key it by the cell the reconciler ALREADY computes for
+single-flight (cellKey/MAX_CELL_LEVEL) and UPSERT with a refreshed
+observedAt. Growth becomes bounded by the world, dedupe is structural,
+and the LIMIT/prune questions dissolve.
+
+C. RETRY INVENTED PER CONSUMER. (slice retry unbounded/no backoff/no
+reconnect, vs two feed ladders with three rungs + visibility +
+reconnect, vs the drain's own attempt counting.) IDEAL: one retry law
+stated once and parameterized — the same treatment act-identity and
+dayRecencySql got, applied to failure handling.
+
+D. A MEASUREMENT THAT OUTLIVES ITS SUBJECT. (backgrounded dwell reports
+fabricated attention into the demand aggregate.) IDEAL: attention is
+measured on an attention CLOCK that only advances while foregrounded
+and visible — not wall-clock. A no-fake-estimates violation until then.
+
+E. TWO READINGS OF ONE FACT IN ONE FLOW. (the wrong-entity guard tests
+features[0]; persistPolygon unions ALL features.) The arc's headline
+disease, still present in one flow. IDEAL: derive the entity's geometry
+ONCE, then both judge and store that.
+
+F. AN UNPROVEN CLAIM AT A SPEND BOUNDARY. (--campaign-id accepted
+unvalidated: malformed = every enqueue fails silently; non-dispatchable
+= the queue wedges.) IDEAL: resolve the claim to a real, dispatchable
+campaign before any spend can reference it.
+
+And the watermark race is its own shape: ONE MONOTONE CURSOR CARRYING TWO
+FACTS ("how far we have built" and "what must be rebuilt"). IDEAL:
+invalidation gets its own home (a rebuild floor the refresh consumes and
+clears) instead of being encoded as a backwards move in a counter whose
+whole job is to never move backwards.
+
+STATUS: A is landed. B–F and the watermark shape are derived but NOT
+built — each is a bounded piece of work with a named ideal, and none
+should be rushed at the end of a long session.
