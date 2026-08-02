@@ -974,3 +974,44 @@ OPEN, for the owner, before the deploy pause lifts: verify staging's
 migration was edited after staging went live (another session, now
 committed in 3d23fc06); a mismatch fails `prisma migrate deploy` at
 container boot.
+
+## RED-TEAM ROUND 3 (2026-08-01, commit bc66e158) — new lenses, three BLOCKERs
+
+Lenses never used before: (a) the PREVIOUS round's own fixes, which
+nobody had reviewed; (b) failure-injection + concurrency; (c) empirical
+execution against the real DB rather than reading. Yield was high, which
+argues the lens mattered — not that the code is fragile.
+
+FIXED (see the commit for detail): the bbox-less place that could never
+gain ground (widen was UPDATE-only); `attempts` incremented but read by
+nothing, so an unsatisfiable row drew a scarce polygon EVERY HOUR
+FOREVER; the advisory lock taken per-birth over a connection pool (a
+leak would starve every drain in every process); one poison row blocking
+the whole queue; a forward fault discarding an already-paid reverse
+chain; the parked-camera header wedge; and two false EXCLUSIONS in the
+asked-region predicate (cos(lat) pad, stored wrap boxes) — both measured
+against real data, both now pinned in an integration test because a unit
+mock cannot execute a spatial predicate.
+
+STILL OPEN — recorded honestly rather than patched at the end of a long
+session (each deserves its own pass):
+
+- The demand-watermark pull-back races the aggregate refresh
+  (`GREATEST` overwrite): a sketch->outline upgrade may never
+  re-attribute, and nothing retries. Wants a rebuild-floor column the
+  refresh consumes, not a shared monotone cursor.
+- The wrong-entity guard tests `features[0]` while persistPolygon unions
+  ALL features — a multi-part entity can be terminally refused wrongly.
+- A malformed/partial vendor 200 is still recorded as a durable "nothing
+  here" (the sibling of the country-code case already fixed).
+- probed_regions grows unbounded within a HOT view (no dedupe on write,
+  no LIMIT on read); the prune is traffic-driven, so a quiet period
+  never prunes.
+- The viewport slice retry is unbounded, backoff-free and has no
+  reconnect edge (both feed controllers have all three).
+- A dwell timer surviving app backgrounding reports fabricated attention
+  into the demand aggregate — a no-fake-estimates violation.
+- An all-faulted pass still records the whole VIEW as asked for 30 days.
+- seed-region does not validate --campaign-id: a malformed id makes
+  every enqueue fail silently (mints with no promotion rows); a
+  non-dispatchable one wedges the queue.
