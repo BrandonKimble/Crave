@@ -229,7 +229,14 @@ export class SearchQueryInterpretationService {
       for (const attempt of attempts) {
         if (probeBudget <= 0) break;
         probeBudget -= 1;
-        const [result] = await this.linkViaHybridRecall([
+        // COMPOUND LAW AS ADMISSION (R4-F1, sharpened in R5): for a joined
+        // probe, only candidates whose LEFTOVER (name minus the consumed
+        // span's words) matches the residue within the lattice's edit
+        // budget are selectable — "vgean breakfast tacos" can never link
+        // "vegetarian breakfast taco", while a near-tied wrong candidate
+        // can no longer sink the whole attempt.
+        const consumedSpan = attempt.consumes;
+        const result = await this.linkUnified(
           {
             tempId: `food:${uuid()}`,
             normalizedName: attempt.text.toLowerCase(),
@@ -238,27 +245,18 @@ export class SearchQueryInterpretationService {
             aliases: [attempt.text],
             engineId: null,
           },
-        ]);
+          consumedSpan
+            ? {
+                candidateGuard: (candidate) =>
+                  this.leftoverMatchesResidue(
+                    candidate.name,
+                    consumedSpan.text,
+                    run.text,
+                  ),
+              }
+            : {},
+        );
         if (result?.entityId) {
-          // A joined link consumes its ABUTTING non-dietary neighbour —
-          // fuzzy included: the residue-join exists precisely for typo
-          // compounds ("brekfast tacos" → "breakfast taco"). GUARD (red
-          // team R4-F1): the compound's LEFTOVER — its name minus the
-          // consumed span's words — must actually BE the residue, within
-          // the same length-banded edit budget the recall lattice uses
-          // (0/1/2 edits). Without this, "vgean breakfast tacos" fuzzy-
-          // linked to "vegetarian breakfast taco" and silently swapped a
-          // dietary meaning the user never typed.
-          if (
-            attempt.consumes &&
-            !this.leftoverMatchesResidue(
-              result.matchedName ?? '',
-              attempt.consumes.text,
-              run.text,
-            )
-          ) {
-            continue;
-          }
           residueResults.push(result);
           if (attempt.consumes) consumedGroups.add(attempt.consumes);
           linked = true;
@@ -398,65 +396,6 @@ export class SearchQueryInterpretationService {
     };
   }
 
-  /**
-   * P1.4 4.D: link extracted query terms to existing entities via the shared
-   * recall core (the same lexical+dense retrieval autocomplete and ingestion
-   * use), replacing the legacy resolveBatch Sørensen-Dice path. This kills the
-   * per-service scorer divergence (search used pg_trgm while resolution used
-   * Sørensen-Dice on the same strings). No LLM here (query-time), so the link
-   * decision is a conservative lexical rule; unconfident terms stay unresolved
-   * and flow to on-demand collection.
-   */
-  private async linkViaHybridRecall(
-    inputs: EntityResolutionInput[],
-  ): Promise<EntityResolutionResult[]> {
-    return this.mapLimit(
-      inputs,
-      HYBRID_LINK_CONCURRENCY,
-      async (input): Promise<EntityResolutionResult> => {
-        const live = await this.linkOneInput(input);
-        if (live.entityId && live.resolutionTier === 'exact') {
-          return live;
-        }
-        if (input.entityType === 'food' || input.entityType === 'ingredient') {
-          // STEP-2 LEMMA VARIANT PROBE (spec §4.2): exact grounding is
-          // alias-dependent and 1,003 of 1,085 single-word foods carry no
-          // plural alias — "empanadas" must ground via its number-variant
-          // family, never via alias luck or FUZZY floors. Runs BEFORE a
-          // non-exact typed link is accepted (empirical red team 2026-08-01:
-          // "empanadas" was fuzzy-linking to "birria empanada" while the
-          // variant EXACT "empanada" existed — the variant is the same
-          // word; a fuzzy neighbour is not).
-          const variantLink = await this.linkViaLemmaVariants(input);
-          if (variantLink?.entityId) return variantLink;
-        }
-        // CROSS-TYPE EXACT beats typed FUZZY (red team ③, same law as the
-        // lemma fix): exact evidence in another vocabulary is the same
-        // word; a fuzzy neighbour in the guessed one is not. Probe the
-        // other vocabularies BEFORE accepting a non-exact typed link.
-        const crossTypeEarly = await this.linkExactAcrossTypes(input);
-        if (crossTypeEarly?.entityId) {
-          return crossTypeEarly;
-        }
-        if (live.entityId) {
-          return live;
-        }
-        if (input.entityType === 'food') {
-          // INGREDIENT FALLBACK LANE: a food-classified term with no dish
-          // link may name an ingredient ("burrata", "miso"). Retry the SAME
-          // conservative link against the ingredient vocabulary; dish links
-          // always win (fallback only).
-          const ingredientLink = await this.linkOneInput({
-            ...input,
-            entityType: 'ingredient',
-          });
-          if (ingredientLink.entityId) return ingredientLink;
-        }
-        return live;
-      },
-    );
-  }
-
   /** R4-F1 consume guard: strip the consumed span's tokens from the
    *  candidate name; what remains must match the residue within the
    *  recall lattice's length-banded edit budget (0 edits ≤2 chars, 1 for
@@ -486,93 +425,39 @@ export class SearchQueryInterpretationService {
     return levenshtein(leftover, residue) <= budget;
   }
 
-  private async linkViaLemmaVariants(
-    input: EntityResolutionInput,
-  ): Promise<EntityResolutionResult | null> {
-    const term = input.normalizedName?.trim().toLowerCase() ?? '';
-    if (!term) return null;
-    const variants = foodNameVariants(term).filter((v) => v !== term);
-    for (const variant of variants.slice(0, 4)) {
-      const candidates = await this.entityTextSearch.retrieveCandidates(
-        variant,
-        [input.entityType],
-        HYBRID_LINK_SHORTLIST_K,
-        { denseMode: 'none' },
-      );
-      const exact = candidates.find((c) => c.sparseEvidence === 'exact');
-      if (exact) {
-        return {
-          tempId: input.tempId,
-          entityId: exact.entityId,
-          confidence: 1,
-          resolutionTier: 'exact',
-          matchedName: exact.name,
-          originalInput: input,
-        };
-      }
-    }
-    return null;
-  }
-
-  private static readonly CROSS_TYPE_PLACEMENT_ORDER: EntityType[] = [
-    'food_attribute',
-    'food',
-    'restaurant_attribute',
-    'ingredient',
-    'restaurant',
-  ] as EntityType[];
-
-  private async linkExactAcrossTypes(
-    input: EntityResolutionInput,
-  ): Promise<EntityResolutionResult | null> {
-    const term = input.normalizedName?.trim() ?? '';
-    if (!term) return null;
-    const otherTypes =
-      SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.filter(
-        (t) => t !== input.entityType,
-      );
-    const candidates = await this.entityTextSearch.retrieveCandidates(
-      term,
-      otherTypes,
-      HYBRID_LINK_SHORTLIST_K,
-      { denseMode: 'none' },
+  /**
+   * UNIFIED LINKER (round-5 ideal, phase 3): ONE retrieval per surface form
+   * over ALL types → one candidate pool → one decision → pure placement.
+   * The old sequential lane chain (typed probe → lemma variants →
+   * cross-type exact → ingredient fallback) encoded evidence precedence as
+   * CONTROL FLOW — rounds 3 and 4 each re-found "an exact in an unreached
+   * lane lost to a fuzzy in a reached one". Here the laws hold by
+   * construction: exact anywhere beats non-exact everywhere; the calibrated
+   * floors judge the best non-exact candidate regardless of which
+   * vocabulary or surface form produced it; placement (dietary wins, else
+   * deterministic order) is a pure function over the winner set.
+   * Surface forms = the term + its lemma variants — "empanadas" reaches
+   * "empanada" as a true EXACT, never via alias luck or fuzzy floors.
+   */
+  private async linkViaHybridRecall(
+    inputs: EntityResolutionInput[],
+  ): Promise<EntityResolutionResult[]> {
+    return this.mapLimit(inputs, HYBRID_LINK_CONCURRENCY, (input) =>
+      this.linkUnified(input),
     );
-    const exacts = candidates.filter((c) => c.sparseEvidence === 'exact');
-    if (!exacts.length) return null;
-    // SINGLE-BUCKET PLACEMENT: dietary flag WINS by rule (spec §4.1 coupling
-    // — "vegan" is multi-type and must land where hardness applies) …
-    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
-    const dietaryExact = exacts.find((c) => dietaryIds.has(c.entityId));
-    const winner =
-      dietaryExact ??
-      // … otherwise the term follows its only type, and a genuine
-      // multi-type tie resolves by the deterministic placement order
-      // (curated-list refinement lands with the calibration tail).
-      [...exacts].sort(
-        (a, b) =>
-          SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
-            a.type,
-          ) -
-          SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
-            b.type,
-          ),
-      )[0];
-    return {
-      tempId: input.tempId,
-      entityId: winner.entityId,
-      confidence: 1,
-      resolutionTier: 'exact',
-      matchedName: winner.name,
-      // Re-bucket: grouping keys off originalInput.entityType (the same
-      // mechanism the ingredient fallback lane uses).
-      originalInput: { ...input, entityType: winner.type },
-    };
   }
 
-  private async linkOneInput(
+  private async linkUnified(
     input: EntityResolutionInput,
+    opts: {
+      /** Residue-join compound law as ADMISSION (R5 fix): for a joined
+       *  probe, only candidates whose leftover matches the residue are
+       *  selectable — post-hoc rejection abandoned the whole attempt when
+       *  a near-tied wrong candidate happened to sort first. */
+      candidateGuard?: (candidate: { name: string }) => boolean;
+    } = {},
   ): Promise<EntityResolutionResult> {
-    const term = input.normalizedName?.trim() ?? '';
+    const term = input.normalizedName?.trim().toLowerCase() ?? '';
     const unmatched: EntityResolutionResult = {
       tempId: input.tempId,
       entityId: null,
@@ -582,92 +467,141 @@ export class SearchQueryInterpretationService {
     };
     if (!term) return unmatched;
 
-    const candidates = await this.entityTextSearch.retrieveCandidates(
-      term,
-      [input.entityType],
-      HYBRID_LINK_SHORTLIST_K,
-      {
-        // Market scoping DIED with the election (leg 2): recall is global —
-        // the conservative exact/0.82 lexical rule plus viewport-filtered
-        // results bound the damage of a distant-city restaurant link, and
-        // territory-as-retrieval-prior is the §13 replacement.
-        // Dense OFF: the link decider reads only sparseSimilarity, so dense
-        // candidates are never selectable here — the dense call was measured
-        // pure dead cost. Re-enable when a decider can consume dense evidence.
-        denseMode: 'none',
-      },
+    const surfaceForms = Array.from(
+      new Set([term, ...foodNameVariants(term).slice(0, 4)]),
     );
-    if (candidates.length === 0) return unmatched;
-
-    // LIVE decision (the current exact-name + 0.82 rule — behavior unchanged).
-    let live: EntityResolutionResult;
-    // Exact by EVIDENCE CLASS, not raw name-string equality: the matcher's
-    // 'exact' tier already folds in normalized-name and alias exacts, so an
-    // apostrophe/alias case ("joes pizza" → canonical "joe's pizza") links as
-    // a true exact instead of being mislabeled 'fuzzy' by a literal compare.
-    const exact = candidates.find((c) => c.sparseEvidence === 'exact');
-    if (exact) {
-      live = {
-        tempId: input.tempId,
-        entityId: exact.entityId,
-        confidence: 1,
-        resolutionTier: 'exact',
-        matchedName: exact.name,
-        originalInput: input,
-      };
-    } else {
-      // Link-eligible lexical candidates only (drop weak/dense-only), ranked
-      // by sparseSimilarity — every tier now carries an HONEST score
-      // (containment=coverage, edit=1−lev/len), so one sort is meaningful.
-      const eligible = candidates
-        .filter(
-          (c) =>
-            c.sparseEvidence != null &&
-            LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
-        )
-        .sort((a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
-      const top = eligible[0];
-      const topSim = top?.sparseSimilarity ?? 0;
-      const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
-      const floors = linkerFloorsForTier(top?.sparseEvidence ?? null);
-      // Link when the winner clears its TIER's absolute floor, OR is an
-      // uncontested singleton above the tier's singleton floor, OR is
-      // dominant over the runner-up by the margin. Below the min floor,
-      // never link.
-      const linkable =
-        top != null &&
-        topSim >= LINKER_MIN_FLOOR &&
-        (topSim >= floors.absolute ||
-          (eligible.length === 1 && topSim >= floors.singleton) ||
-          (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
-      if (linkable && top) {
-        // TIE PLURALITY: same-tier candidates within epsilon of the top are
-        // indistinguishable by evidence — reveal ALL of them (the ids array
-        // feeds one OR-filter group; results show every plausible read)
-        // instead of stamping a coin flip with confidence.
-        const tiedIds = eligible
-          .filter(
-            (c) =>
-              c.sparseEvidence === top.sparseEvidence &&
-              topSim - (c.sparseSimilarity ?? 0) <= LINKER_TIE_EPSILON,
-          )
-          .map((c) => c.entityId);
-        live = {
-          tempId: input.tempId,
-          entityId: top.entityId,
-          entityIds: tiedIds.length > 1 ? tiedIds : undefined,
-          confidence: tiedIds.length > 1 ? topSim / tiedIds.length : topSim,
-          resolutionTier: 'fuzzy',
-          matchedName: top.name,
-          originalInput: input,
-        };
-      } else {
-        live = unmatched;
+    const candidateLists = await Promise.all(
+      surfaceForms.map((form) =>
+        this.entityTextSearch.retrieveCandidates(
+          form,
+          GAZETTEER_UNDERSTAND_TYPES,
+          HYBRID_LINK_SHORTLIST_K,
+          // Dense OFF: the decider reads only sparseSimilarity — the dense
+          // call was measured pure dead cost on this path.
+          { denseMode: 'none' },
+        ),
+      ),
+    );
+    // Best evidence per entity across all surface forms.
+    const byEntity = new Map<string, (typeof candidateLists)[0][0]>();
+    for (const list of candidateLists) {
+      for (const candidate of list) {
+        const existing = byEntity.get(candidate.entityId);
+        if (!existing) {
+          byEntity.set(candidate.entityId, candidate);
+          continue;
+        }
+        const candidateExact = candidate.sparseEvidence === 'exact';
+        const existingExact = existing.sparseEvidence === 'exact';
+        const better =
+          candidateExact !== existingExact
+            ? candidateExact
+            : (candidate.sparseSimilarity ?? 0) >
+              (existing.sparseSimilarity ?? 0);
+        if (better) {
+          byEntity.set(candidate.entityId, candidate);
+        }
       }
     }
+    let candidates = Array.from(byEntity.values());
+    if (opts.candidateGuard) {
+      candidates = candidates.filter((c) => opts.candidateGuard!(c));
+    }
+    if (!candidates.length) return unmatched;
 
-    return live;
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+
+    // EXACT ANYWHERE BEATS NON-EXACT EVERYWHERE (the rounds-3/4 law, now
+    // structural): if any surface form is an exact somewhere, the winner
+    // comes from the exact set — placement decides WHICH bucket.
+    const exacts = candidates.filter((c) => c.sparseEvidence === 'exact');
+    if (exacts.length) {
+      const winner = this.pickPlacedWinner(exacts, dietaryIds);
+      const tiedIds = exacts
+        .filter((c) => c.type === winner.type)
+        .map((c) => c.entityId);
+      return {
+        tempId: input.tempId,
+        entityId: winner.entityId,
+        entityIds: tiedIds.length > 1 ? tiedIds : undefined,
+        confidence: 1,
+        resolutionTier: 'exact',
+        matchedName: winner.name,
+        // Single-bucket placement rides originalInput.entityType (the
+        // grouping key) — same mechanism the gazetteer placement uses.
+        originalInput: { ...input, entityType: winner.type },
+      };
+    }
+
+    // Non-exact: the calibrated decision, unchanged in shape — eligible
+    // tiers only, sim-ranked, the TOP candidate judged by its tier's
+    // sweep-derived floors (absolute / singleton / margin).
+    const eligible = candidates
+      .filter(
+        (c) =>
+          c.sparseEvidence != null &&
+          LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+      )
+      .sort((a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
+    const top = eligible[0];
+    const topSim = top?.sparseSimilarity ?? 0;
+    const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
+    const floors = linkerFloorsForTier(top?.sparseEvidence ?? null);
+    const linkable =
+      top != null &&
+      topSim >= LINKER_MIN_FLOOR &&
+      (topSim >= floors.absolute ||
+        (eligible.length === 1 && topSim >= floors.singleton) ||
+        (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
+    if (!linkable || !top) return unmatched;
+    // TIE PLURALITY: same-tier candidates within epsilon are
+    // indistinguishable by evidence — reveal ALL of them.
+    const tied = eligible.filter(
+      (c) =>
+        c.sparseEvidence === top.sparseEvidence &&
+        topSim - (c.sparseSimilarity ?? 0) <= LINKER_TIE_EPSILON,
+    );
+    const winner = this.pickPlacedWinner(tied, dietaryIds);
+    const tiedIds = tied
+      .filter((c) => c.type === winner.type)
+      .map((c) => c.entityId);
+    return {
+      tempId: input.tempId,
+      entityId: winner.entityId,
+      entityIds: tiedIds.length > 1 ? tiedIds : undefined,
+      confidence: tiedIds.length > 1 ? topSim / tiedIds.length : topSim,
+      resolutionTier: 'fuzzy',
+      matchedName: winner.name,
+      originalInput: { ...input, entityType: winner.type },
+    };
   }
+
+  /** PURE PLACEMENT (shared law with the gazetteer span placement):
+   *  dietary flag WINS by rule; otherwise the deterministic type order —
+   *  the ~44-name curated list refines this at the calibration tail. */
+  private pickPlacedWinner<
+    T extends { entityId: string; type: EntityType; name: string },
+  >(candidates: T[], dietaryIds: ReadonlySet<string>): T {
+    const dietary = candidates.find((c) => dietaryIds.has(c.entityId));
+    if (dietary) return dietary;
+    return [...candidates].sort(
+      (a, b) =>
+        SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+          a.type,
+        ) -
+        SearchQueryInterpretationService.CROSS_TYPE_PLACEMENT_ORDER.indexOf(
+          b.type,
+        ),
+    )[0];
+  }
+
+  private static readonly CROSS_TYPE_PLACEMENT_ORDER: EntityType[] = [
+    'food_attribute',
+    'food',
+    'restaurant_attribute',
+    'ingredient',
+    'restaurant',
+  ] as EntityType[];
 
   /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
   private async mapLimit<T, R>(

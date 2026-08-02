@@ -163,7 +163,7 @@ describe('step-2 untyped recall + single-bucket placement', () => {
     expect(results[0].originalInput.entityType).toBe('restaurant_attribute');
   });
 
-  it('typed exact link still wins outright (no cross-type call for resolved terms)', async () => {
+  it('unified retrieval: one all-types call per surface form; exact wins', async () => {
     const retrieve = jest.fn((term: string, types: string[]) => {
       if (term === 'taco' && types.includes('food')) {
         return [
@@ -187,6 +187,13 @@ describe('step-2 untyped recall + single-bucket placement', () => {
       }
     ).linkViaHybridRecall([input('taco', 'food')]);
     expect(results[0].entityId).toBe(EMPANADA_FOOD);
-    expect(retrieve).toHaveBeenCalledTimes(1);
+    // ONE retrieval per surface form (taco + lemma variant tacos), each
+    // over ALL types — the lane chain's per-lane round trips are gone.
+    expect(retrieve).toHaveBeenCalledTimes(2);
+    for (const call of retrieve.mock.calls) {
+      expect(call[1]).toEqual(
+        expect.arrayContaining(['food', 'restaurant_attribute', 'restaurant']),
+      );
+    }
   });
 });
