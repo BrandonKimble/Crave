@@ -276,6 +276,7 @@ export class PlacesPromotionService {
                    enqueued_at         AS "enqueuedAt",
                    promoted_at         AS "promotedAt",
                    attempts            AS "attempts",
+               miss_attempts       AS "missAttempts",
                    last_attempt_at     AS "lastAttemptAt",
                    provider_boundary_id AS "providerBoundaryId",
                    campaign_id         AS "campaignId"
@@ -307,6 +308,7 @@ export class PlacesPromotionService {
                enqueued_at         AS "enqueuedAt",
                promoted_at         AS "promotedAt",
                attempts            AS "attempts",
+               miss_attempts       AS "missAttempts",
                last_attempt_at     AS "lastAttemptAt",
                provider_boundary_id AS "providerBoundaryId",
                campaign_id         AS "campaignId"
@@ -553,18 +555,18 @@ export class PlacesPromotionService {
     }
     if (polygon.kind === 'miss') {
       draws.scarce += 1;
-      if (item.attempts + 1 >= MISS_ATTEMPTS_BEFORE_RETIRE) {
+      if (item.missAttempts + 1 >= MISS_ATTEMPTS_BEFORE_RETIRE) {
         // The vendor has answered "no polygon for this id" enough times to
         // be a FACT about its model, not a transient — retire the row
         // terminally instead of re-drawing on it every hour forever.
         this.logger.warn(
           'Promotion retired: vendor has no polygon for this geometry id after repeated asks',
-          { placeId: item.placeId, attempts: item.attempts + 1 },
+          { placeId: item.placeId, missAttempts: item.missAttempts + 1 },
         );
         await this.recordRefusal(item.placeId, now);
         return 'attempted';
       }
-      await this.recordAttempt(item.placeId, now);
+      await this.recordMiss(item.placeId, now);
       return 'attempted';
     }
     draws.scarce += 1;
@@ -854,6 +856,23 @@ export class PlacesPromotionService {
     await this.prisma.placeGeometryPromotion.update({
       where: { placeId },
       data: { attempts: { increment: 1 }, lastAttemptAt: now },
+    });
+  }
+
+  /**
+   * A MISS is the vendor saying it has no polygon for this geometry id —
+   * the only evidence that may retire a row. Kept apart from `attempts`
+   * (transport errors, deferrals, per-item throws), which must never close
+   * a place's one path to a ground.
+   */
+  private async recordMiss(placeId: string, now: Date): Promise<void> {
+    await this.prisma.placeGeometryPromotion.update({
+      where: { placeId },
+      data: {
+        attempts: { increment: 1 },
+        missAttempts: { increment: 1 },
+        lastAttemptAt: now,
+      },
     });
   }
 

@@ -288,7 +288,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(fetchPolygon).toHaveBeenCalledWith('geo-t');
     });
 
-    it('a consumed-draw miss increments attempts (no cap) and the item stays queued', async () => {
+    it('a consumed-draw miss increments the MISS counter (a fault is not a miss) and the item stays queued', async () => {
       const fetchPolygon = jest.fn().mockResolvedValue({ kind: 'miss' });
       const { service, prisma } = makeHarness({
         queueRows: [makeQueueRow({ providerBoundaryId: 'geo-cached' })],
@@ -298,7 +298,15 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       await service.drainQueue(now);
       expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
         where: { placeId: PLACE_ID },
-        data: { attempts: { increment: 1 }, lastAttemptAt: now },
+        // A MISS is the vendor saying it has no polygon for this id — the
+        // only evidence that may retire a row. `attempts` also rises (it is
+        // the fault counter) but the CEILING reads missAttempts, so two
+        // transport errors can no longer terminally refuse a good row.
+        data: {
+          attempts: { increment: 1 },
+          missAttempts: { increment: 1 },
+          lastAttemptAt: now,
+        },
       });
       // Never promoted.
       expect(prisma.place.update).not.toHaveBeenCalled();

@@ -153,6 +153,13 @@ export type ViewportSubjectStoreControllerDeps = {
    * attention is only real while the app is being looked at.
    */
   subscribeForeground?: (listener: (isForeground: boolean) => void) => () => void;
+  /**
+   * Reconnect edge, INJECTED. The retry-law commit claimed "a reconnect
+   * re-enters ensureSliceFetch" — it did not: this controller subscribed to
+   * nothing connectivity-related, unlike both feed controllers. Coming back
+   * online is exactly when a slice that failed offline should be re-cut.
+   */
+  subscribeReconnect?: (listener: () => void) => () => void;
 };
 
 /** Start the controller; returns its dispose function. */
@@ -161,6 +168,7 @@ export const createViewportSubjectStoreController = ({
   fetchSlice,
   recordDwell,
   subscribeForeground,
+  subscribeReconnect,
 }: ViewportSubjectStoreControllerDeps): (() => void) => {
   let disposed = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -430,6 +438,10 @@ export const createViewportSubjectStoreController = ({
       return;
     }
     latestMapBounds = mapBounds;
+    // A camera move is new intent: it starts a FRESH retry ladder. Without
+    // this the ladder stayed exhausted for the session and every later
+    // fetch got exactly one attempt — bounded, but not what was documented.
+    sliceRetryAttempt = 0;
     const view = geoBboxFromMapBounds(mapBounds);
     // Motion voids the previous settled episode and any pending exit commit.
     settledEpisode = null;
@@ -476,6 +488,16 @@ export const createViewportSubjectStoreController = ({
   // starts a fresh, honest episode on the next camera tick or settle.
   const unsubscribeForeground = subscribeForeground?.((isForeground) => {
     if (isForeground) {
+      // Re-establish on return. Red-team: dropping the episode on background
+      // was right, but a PARKED camera emits no bounds, so nothing ever
+      // re-created one — and the slice-landed re-judge is gated on an
+      // episode existing, so the header could serve a stale verdict
+      // indefinitely. That is the parked-camera wedge, reopened on the
+      // background→foreground edge. Re-entering the ordinary bounds path
+      // rebuilds the episode through the same settle machinery.
+      if (latestMapBounds != null) {
+        handleBoundsChange(latestMapBounds);
+      }
       return;
     }
     clearTimer(settleTimer);
@@ -484,6 +506,15 @@ export const createViewportSubjectStoreController = ({
     dwellTimer = null;
     settledEpisode = null;
     pendingExitVerdict = null;
+  });
+
+  const unsubscribeReconnect = subscribeReconnect?.(() => {
+    // Back online: a fresh ladder and an immediate re-cut of whatever the
+    // camera is looking at now.
+    sliceRetryAttempt = 0;
+    if (latestMapBounds != null) {
+      ensureSliceFetch(geoBboxFromMapBounds(latestMapBounds));
+    }
   });
 
   // Seed from the current bounds (startup bounds land before this mounts).
@@ -518,6 +549,7 @@ export const createViewportSubjectStoreController = ({
     unsubscribe();
     unsubscribeWatermark();
     unsubscribeForeground?.();
+    unsubscribeReconnect?.();
     clearTimer(settleTimer);
     clearTimer(dwellTimer);
     clearTimer(sliceRetryTimer);

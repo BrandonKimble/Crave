@@ -29,7 +29,10 @@ import {
   noteCatalogWatermark,
   subscribeViewportSubjectState,
 } from '../../../store/viewport-subject-store';
-import { NETWORK_RETRY_BACKOFF_MS } from '../../../services/retry/network-retry-ladder';
+import {
+  NETWORK_RETRY_MAX_ATTEMPTS,
+  nextRetryDelayMs,
+} from '../../../services/retry/network-retry-ladder';
 import { logger } from '../../../utils';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
@@ -250,8 +253,8 @@ export const usePollsFeedRuntimeController = ({
         logBootstrap({
           phase: 'feed-retry-scheduled',
           attempt: nextAttempt,
-          maxAttempts: NETWORK_RETRY_BACKOFF_MS.length,
-          delayMs: NETWORK_RETRY_BACKOFF_MS[nextAttempt - 1],
+          maxAttempts: NETWORK_RETRY_MAX_ATTEMPTS,
+          delayMs: nextRetryDelayMs(nextAttempt - 1) ?? 0,
           reason,
         });
         retryTimeoutRef.current = setTimeout(
@@ -262,7 +265,7 @@ export const usePollsFeedRuntimeController = ({
               retryAttempt: nextAttempt,
             });
           },
-          NETWORK_RETRY_BACKOFF_MS[nextAttempt - 1]
+          nextRetryDelayMs(nextAttempt - 1) ?? 0
         );
       };
 
@@ -284,7 +287,7 @@ export const usePollsFeedRuntimeController = ({
         // because a refresh only clears it when it actually fetches (below) — scheduleRetry
         // clears too, but only to REPLACE the handle with the rung it schedules in the same call.
         logBootstrap({ phase: 'feed-refresh-no-payload', retryAttempt });
-        if (retryAttempt > 0 && retryAttempt < NETWORK_RETRY_BACKOFF_MS.length) {
+        if (retryAttempt > 0 && retryAttempt < NETWORK_RETRY_MAX_ATTEMPTS) {
           scheduleRetry(retryAttempt + 1, 'no-payload');
         }
         if (!retryScheduled) {
@@ -333,7 +336,7 @@ export const usePollsFeedRuntimeController = ({
           isLatestRefresh &&
           visibilityGateRef.current.visible &&
           !visibilityGateRef.current.isSystemUnavailable &&
-          retryAttempt < NETWORK_RETRY_BACKOFF_MS.length
+          retryAttempt < NETWORK_RETRY_MAX_ATTEMPTS
         ) {
           scheduleRetry(retryAttempt + 1, 'fetch-failed');
         } else if (isLatestRefresh) {

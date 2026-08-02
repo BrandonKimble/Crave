@@ -1,6 +1,8 @@
 import React from 'react';
 import { AppState } from 'react-native';
 
+import { subscribeToReconnect } from '../../../../store/systemStatusStore';
+
 import { fetchPlacesInView } from '../../../../services/places';
 import { recordViewportDwell } from '../../../../services/signals';
 import { createViewportSubjectStoreController } from './viewport-subject-store-controller-core';
@@ -33,6 +35,7 @@ export const useViewportSubjectStoreControllerRuntime = ({
         recordDwell: recordViewportDwell,
         // Disease D: attention is only real while the app is being looked
         // at — the controller drops its episode when we background.
+        subscribeReconnect: subscribeToReconnect,
         subscribeForeground: (listener) => {
           const subscription = AppState.addEventListener('change', (next) =>
             listener(next === 'active')

@@ -2114,6 +2114,11 @@ model PlaceGeometryPromotion {
   trigger            String    @db.VarChar(32)
   enqueuedAt         DateTime  @default(now()) @map("enqueued_at")
   promotedAt         DateTime? @map("promoted_at")
+  /// A FAULT IS NOT A MISS (2026-08-01): the ceiling that retires a row
+  /// reads THIS, incremented only when the vendor says it has no polygon
+  /// for the id. `attempts` below stays the fault counter (transport
+  /// errors, deferrals) and retires nothing.
+  missAttempts       Int      @default(0) @map("miss_attempts")
   attempts           Int       @default(0)
   lastAttemptAt      DateTime? @map("last_attempt_at")
   /// Docket #2: TERMINAL refusal — the vendor provably does not model this

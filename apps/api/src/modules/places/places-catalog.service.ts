@@ -871,6 +871,16 @@ export class PlacesCatalogService {
     placeId: string,
     hull: GeoBbox,
   ): Promise<void> {
+    // A degenerate hull cannot form a polygon, and the INSERT arm below
+    // builds one from the hull ALONE — ST_MakeEnvelope would yield a
+    // POINT/LINESTRING and the MultiPolygon column would reject it, throwing
+    // out of sketchChain and aborting the whole reconcile pass or seed cell.
+    // The old bare UPDATE could never hit this (envelope-of-collect against
+    // an existing polygon is always a polygon); writeSketchGround has
+    // guarded exactly this from the start.
+    if (hull.minLat >= hull.maxLat || hull.minLng === hull.maxLng) {
+      return;
+    }
     if (!bboxCrossesAntimeridian(hull)) {
       // UPSERT, not UPDATE (red-team 2026-08-01, BLOCKER): a node can arrive
       // BBOX-LESS at birth — the forward-geocode budget is 5 for a 6-rung
