@@ -148,13 +148,11 @@ reason that will stop being true.
       relevance gate's PERSISTED verdict reasons stay ON by design (~$0.08/city,
       permanent record of excluded signal). Flip `LLM_AUDIT_REASONS=true`
       temporarily whenever tuning judge prompts in prod.
-- [ ] **Disconnect the GitHub repo from prod api+worker in the Railway
-      dashboard** (service → Settings → Source), then remove the never-match
-      watchPatterns. Discovered 2026-08-01: the patterns that disable
-      auto-deploy ALSO make Railway SKIP CLI deploys, so deploy.sh currently
-      needs a pattern window opened/closed around every prod deploy. The
-      disconnect makes deploy.sh just work and closes the push-to-deploy
-      hole for real.
+- [x] **~~Disconnect the GitHub repo from prod api+worker~~ DONE 2026-08-02**:
+      verified no source repo is connected (service config has no source
+      block; recent prod deploys all CLI-triggered) and the never-match
+      watchPatterns are removed — deploy.sh just works now. Its SKIPPED
+      check remains as a tripwire.
 - [ ] **Upgrade Railway to Pro + enable daily Postgres backups** — scheduled
       volume backups (dashboard: postgis-db service → volume → Backups) are
       Pro-plan-only. This is the only automated backup for prod Postgres;

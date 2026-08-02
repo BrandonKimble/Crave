@@ -120,12 +120,11 @@ deploy_one() {
       echo "==> $svc: Deploy complete"
       return 0
     fi
-    # SKIPPED trap (final-final red team, discovered live): the never-match
-    # watchPatterns that disable GitHub auto-deploy on prod ALSO make
-    # Railway SKIP CLI uploads — railway up exits quietly and the deployment
-    # list shows SKIPPED. Until the repo is disconnected in the dashboard
-    # (the real fix; then the patterns come off), a prod deploy needs the
-    # pattern window opened first and closed after.
+    # SKIPPED trap — RESOLVED 2026-08-02: no GitHub repo is connected to
+    # prod api/worker (verified via service config: no source block) and the
+    # never-match watchPatterns were removed, so CLI deploys no longer skip.
+    # The detection stays as a tripwire: if SKIPPED ever reappears, someone
+    # re-added patterns or reconnected a repo.
     if railway deployment list --service "$svc" --environment "$ENVIRONMENT" 2>/dev/null | sed -n 2p | grep -q "SKIPPED"; then
       echo "FAILED: Railway SKIPPED the upload — the manual-deploys watch pattern blocks CLI deploys too." >&2
       echo "Open the window (watchPatterns [\"**\"] via Railway MCP/dashboard), deploy, close it — or disconnect the repo in the dashboard and remove the patterns permanently." >&2
