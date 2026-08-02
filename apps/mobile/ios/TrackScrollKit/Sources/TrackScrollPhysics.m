@@ -96,6 +96,18 @@
 /// bounds are insets, never per-frame writes), so an upward header drag gets
 /// UIKit's own rubber band at the boundary instead of scrolling the list.
 @property (nonatomic, assign) BOOL postureDragActive;
+/// ── THE LEGITIMACY FILTER (2026-08-02) ──────────────────────────────────────
+/// The one-number fusion (sheet travel IS contentOffset) is the foundation:
+/// it is what makes the handoff seamless and lets scroll momentum carry into
+/// the sheet. Its price is that UIKit co-owns the number — it clamps
+/// contentOffset synchronously when content/insets/bounds change, and every
+/// jerk this arc has chased was one of those clamps escaping a per-path
+/// guard. The filter states the law ONCE instead: τ may only change under a
+/// finger, momentum, a live spring, or an explicit engine write. Any other
+/// change is reverted inside the same transaction — before paint — and barks,
+/// so a missed prevention path becomes a logged non-event instead of a jerk.
+@property (nonatomic, assign) CGFloat lastLegitimateTau;
+@property (nonatomic, assign) NSInteger engineWriteDepth;
 /// THE HEADER-GATED RELEASE (ported from the old resolveHeaderGatedSnapValue):
 /// a drag resolves against where it STARTED, not against where it ended, so a
 /// release is one deliberate step and never a nearest-detent lottery.
@@ -124,6 +136,7 @@
             velocityY:(double)v0;
 - (void)stopSpring;
 - (void)applyRangeLawTo:(UIScrollView *)scrollView;
+- (void)engineWrite:(UIScrollView *)scrollView offsetY:(CGFloat)offsetY;
 @end
 
 /// ── THE POSTURE REGISTER (residents red team, 2026-08-01) ───────────────────
@@ -440,8 +453,38 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
   }
 }
 
+- (void)engineWrite:(UIScrollView *)scrollView offsetY:(CGFloat)offsetY
+{
+  self.engineWriteDepth += 1;
+  [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offsetY) animated:NO];
+  self.engineWriteDepth -= 1;
+}
+
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
+  // THE LEGITIMACY FILTER: classify this change before anything reacts to it.
+  const CGFloat tauIn = scrollView.contentOffset.y;
+  const BOOL legitimate = scrollView.isTracking || scrollView.isDragging ||
+      scrollView.isDecelerating || self.springLink != nil || self.engineWriteDepth > 0;
+  if (legitimate) {
+    self.lastLegitimateTau = tauIn;
+  } else if (fabs(tauIn - self.lastLegitimateTau) > 0.5) {
+    // Nobody asked for this movement — a UIKit clamp (or a stray writer).
+    // Make the legitimate τ reachable, put it back before paint, and bark so
+    // the missing prevention path gets named.
+    const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
+    const CGFloat needed = ceil(self.lastLegitimateTau - scrollView.contentSize.height + viewport);
+    if (scrollView.contentInset.bottom < needed) {
+      UIEdgeInsets insets = scrollView.contentInset;
+      insets.bottom = needed;
+      scrollView.contentInset = insets;
+    }
+    NSLog(@"[TRACKFILTER] reverted unauthorized tau %.1f -> %.1f (contentH=%.1f inset=%.1f)",
+          tauIn, self.lastLegitimateTau, scrollView.contentSize.height,
+          scrollView.contentInset.bottom);
+    [self engineWrite:scrollView offsetY:self.lastLegitimateTau];
+    return;
+  }
   // THE DISSOLVE: τ back at (or past) the effective boundary means the sheet
   // is fully expanded and the content offset IS the old scroll — σ has done
   // its job and evaporates. sheetTop is unchanged by algebra; nothing moves.
@@ -681,7 +724,7 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   // own curve every frame and wins after the spring ends. Only
   // setContentOffset:animated:NO kills it (decel=1 -> 0 in the trace). Same
   // offset, so the kill itself moves nothing.
-  [scrollView setContentOffset:scrollView.contentOffset animated:NO];
+  [self engineWrite:scrollView offsetY:scrollView.contentOffset.y];
   self.springScrollView = scrollView;
   self.springStart = CACurrentMediaTime();
   self.springTarget = target;
@@ -712,11 +755,11 @@ static const double kTrackSpringOmega = 13.038404810405298; // sqrt(170)
   const double speed = fabs(d - self.springLastD) / MAX(link.duration, 1.0 / 240.0);
   self.springLastD = d;
   if ((fabs(d) < 0.25 && speed < 8.0) || t > 2.0) {
-    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, self.springTarget) animated:NO];
+    [self engineWrite:scrollView offsetY:self.springTarget];
     [self stopSpring];
     return;
   }
-  [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, self.springTarget + d) animated:NO];
+  [self engineWrite:scrollView offsetY:self.springTarget + d];
 }
 
 @end
@@ -776,6 +819,7 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
     if (proxy == nil) {
       proxy = [TrackScrollDelegateProxy new];
+      proxy.lastLegitimateTau = scrollView.contentOffset.y;
       proxy.original = scrollView.delegate;
       objc_setAssociatedObject(scrollView, kTrackProxyKey, proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
       scrollView.delegate = proxy;
@@ -908,7 +952,7 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
     // a new bug class, and an inflated inset that no contentSize change came
     // to tighten would let the sheet scroll into a void.)
     if (fabs(tau - target) > 0.5) {
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
+      [proxy engineWrite:scrollView offsetY:target];
     }
   }];
 }
@@ -934,8 +978,12 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
     // SYNCHRONOUS with this UI block (the switch formula's re-fuse): an extra
     // dispatch hop let the freshly swapped content render one frame at the
     // OLD deep tau — the owner's "content floating up in the sky" flash.
-    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
-                        animated:NO];
+    if (fuseProxy != nil) {
+      [fuseProxy engineWrite:scrollView offsetY:offset.doubleValue];
+    } else {
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
+                          animated:NO];
+    }
   }];
 }
 
@@ -1060,7 +1108,11 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
   const CGFloat target = posture + restore;
   gTrackPostureOwner = scrollView;
   if (fabs(scrollView.contentOffset.y - target) > 0.5) {
-    [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
+    if (proxy != nil) {
+      [proxy engineWrite:scrollView offsetY:target];
+    } else {
+      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
+    }
   }
   // Re-aim the shell NOW, in this transaction — setContentOffset with an
   // unchanged value fires no didScroll, and a fresh leg has no proxy at all.
