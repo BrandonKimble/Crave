@@ -40,6 +40,9 @@ function buildConstraints(
     hadFoodAttributeGroup: false,
     hadRestaurantAttributeGroup: false,
     primaryFoodAttributeQuery: false,
+    grounding: {
+      food: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
+    },
     ids: {
       restaurantIds: [],
       foodIds: [FOOD_ID],

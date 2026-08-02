@@ -36,6 +36,9 @@ function constraints(): SearchConstraints {
     hadFoodAttributeGroup: true,
     hadRestaurantAttributeGroup: true,
     primaryFoodAttributeQuery: false,
+    grounding: {
+      food: { anchors: [], family: [], similar: {}, twinIngredientIds: [] },
+    },
     ids: {
       restaurantIds: [],
       foodIds: [FOOD_ID],

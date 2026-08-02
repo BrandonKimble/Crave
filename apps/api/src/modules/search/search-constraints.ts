@@ -25,6 +25,27 @@ export interface ConstraintResolvedIds {
   ingredientIds: string[];
 }
 
+/**
+ * STEP-4 STRUCTURED GROUNDING (spec §1.2, anti-flattening law): the query's
+ * food grounding kept STRUCTURED to the builder boundary. The flat
+ * `ids.foodIds` array is a DERIVED VIEW of this structure (anchors ∪ family
+ * ∪ similar), never the source of truth — exactness, relevance, and
+ * widening all read the structure instead of reconstructing it.
+ *
+ * - anchors: the entities the span names (the exact query foods);
+ * - family: is-a instances (category edges + head-final name variants) —
+ *   MEANING, not widening: tier 0, relevance 1;
+ * - similar: graded relatedness (dense siblings, mentions-it names,
+ *   lexical adds) — tier 1, each id with its calibrated relevance;
+ * - twinIngredientIds: same-named ingredient entities (containment union).
+ */
+export interface FoodGrounding {
+  anchors: string[];
+  family: string[];
+  similar: Record<string, number>;
+  twinIngredientIds: string[];
+}
+
 export interface SearchConstraints {
   stage: RelaxationStage;
   format: 'dual_list';
@@ -35,6 +56,8 @@ export interface SearchConstraints {
   hadFoodAttributeGroup: boolean;
   hadRestaurantAttributeGroup: boolean;
   primaryFoodAttributeQuery: boolean;
+  /** Structured food grounding — `ids.foodIds` is derived from it. */
+  grounding: { food: FoodGrounding };
   ids: ConstraintResolvedIds;
   filters: {
     bounds?: MapBoundsDto;

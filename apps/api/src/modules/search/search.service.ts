@@ -37,7 +37,11 @@ import {
   ON_DEMAND_MIN_RESULTS,
   ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES,
 } from './on-demand-tuning.constants';
-import type { SearchConstraints, RelaxationStage } from './search-constraints';
+import type {
+  FoodGrounding,
+  SearchConstraints,
+  RelaxationStage,
+} from './search-constraints';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import {
   OnDemandRequestService,
@@ -1866,26 +1870,20 @@ export class SearchService {
     const textFoodIds =
       planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
     const hasPrimaryFoodAttributeQuery = constraints.primaryFoodAttributeQuery;
-    // Sectioned ranking: tier 0 = the resolved query foods PLUS their canonical
-    // category MEMBERS (is-a instances — "neapolitan pizza" IS the pizza you
-    // asked for); tier 1 = dense siblings + lexical fuzzy adds (similar, not
-    // instances). Fires only when the filter actually got widened past tier 0.
-    const baseFoodIds = this.sectionedRanking
-      ? this.collectEntityIds(request.entities.food)
-      : [];
-    const exactFoodIds = baseFoodIds.length
-      ? Array.from(
-          new Set([
-            ...baseFoodIds,
-            ...(planExpansion?.categoryMemberFoodIds ?? []),
-          ]),
-        )
-      : [];
+    // Sectioned ranking (STEP-4: read from the STRUCTURE): tier 0 =
+    // anchors + family (is-a instances — "neapolitan pizza" IS the pizza
+    // you asked for); tier 1 = the similar set. Fires only when similar
+    // actually widened the membership past tier 0.
+    const grounding = constraints.grounding.food;
+    const exactFoodIds =
+      this.sectionedRanking && grounding.anchors.length
+        ? Array.from(new Set([...grounding.anchors, ...grounding.family]))
+        : [];
     const widened =
       exactFoodIds.length > 0 &&
       constraints.ids.foodIds.length > exactFoodIds.length;
 
-    const twinIngredientIds = planExpansion?.twinIngredientIds ?? [];
+    const twinIngredientIds = grounding.twinIngredientIds;
     if (
       !hasPrimaryFoodAttributeQuery &&
       !widened &&
@@ -1988,9 +1986,8 @@ export class SearchService {
     };
 
     const executeStart = performance.now();
-    const relevanceByFoodId = this.buildRelevanceMap(
-      params.request,
-      params.planExpansion,
+    const relevanceByFoodId = this.relevanceFromGrounding(
+      constraints.grounding.food,
     );
     const exec = await this.queryExecutor.executeDual({
       plan: stagePlan,
@@ -2137,9 +2134,8 @@ export class SearchService {
     );
 
     const executeStart = performance.now();
-    const relevanceByFoodId = this.buildRelevanceMap(
-      params.request,
-      params.planExpansion,
+    const relevanceByFoodId = this.relevanceFromGrounding(
+      constraints.grounding.food,
     );
     const exec = await this.queryExecutor.executeDual({
       plan: stagePlan,
@@ -2268,17 +2264,16 @@ export class SearchService {
   /** Query-food relatedness per food id: exact + is-a instances = 1.0, widened
    *  ids (siblings/lexical) carry their graded scores from plan expansion.
    *  Null when the query resolved no food (browse/restaurant queries). */
-  private buildRelevanceMap(
-    request: SearchQueryRequestDto,
-    planExpansion: PlanExpansionState | null,
+  /** STEP-4: graded relatedness is a VIEW of the grounding structure —
+   *  anchors and family are the thing itself (1); similar carries its
+   *  calibrated relevance. No side-map reconstruction. */
+  private relevanceFromGrounding(
+    grounding: FoodGrounding,
   ): Record<string, number> | null {
-    const baseFoodIds = this.collectEntityIds(request.entities.food);
-    if (!baseFoodIds.length) return null;
-    const map: Record<string, number> = {
-      ...(planExpansion?.relevanceByFoodId ?? {}),
-    };
-    for (const id of baseFoodIds) map[id] = 1;
-    for (const id of planExpansion?.categoryMemberFoodIds ?? []) map[id] = 1;
+    if (!grounding.anchors.length) return null;
+    const map: Record<string, number> = { ...grounding.similar };
+    for (const id of grounding.anchors) map[id] = 1;
+    for (const id of grounding.family) map[id] = 1;
     return map;
   }
 
@@ -2346,6 +2341,32 @@ export class SearchService {
     );
     const baseFoodIds = this.collectEntityIds(request.entities.food);
 
+    // STEP-4 STRUCTURED GROUNDING (spec §1.2): build the structure ONCE;
+    // the flat foodIds array below is a derived view of it (anchors ∪
+    // family ∪ similar, only when anchors exist — widening never invents
+    // a subject). Downstream consumers (exact tier, relevance attach,
+    // widened detection) read the structure, not reconstructions.
+    const similar: Record<string, number> = {};
+    if (baseFoodIds.length && planExpansion) {
+      const relevance = planExpansion.relevanceByFoodId;
+      for (const id of [
+        ...planExpansion.foodIds,
+        ...planExpansion.denseSiblingFoodIds,
+      ]) {
+        if (id) similar[id] = relevance[id] ?? 1;
+      }
+    }
+    const foodGrounding: FoodGrounding = {
+      anchors: baseFoodIds,
+      family: baseFoodIds.length
+        ? dedupe(planExpansion?.categoryMemberFoodIds ?? [])
+        : [],
+      similar,
+      twinIngredientIds: baseFoodIds.length
+        ? dedupe(planExpansion?.twinIngredientIds ?? [])
+        : [],
+    };
+
     return {
       stage,
       format: inputs.format,
@@ -2356,15 +2377,14 @@ export class SearchService {
       hadFoodAttributeGroup,
       hadRestaurantAttributeGroup,
       primaryFoodAttributeQuery,
+      grounding: { food: foodGrounding },
       ids: {
         restaurantIds: baseRestaurantIds,
-        foodIds: mergeIfBase(baseFoodIds, [
-          ...(planExpansion?.foodIds ?? []),
-          // Dense siblings + canonical category members — kept distinguishable
-          // upstream (own fields) so a future relevancy sort can rank
-          // exact-first; merged here on every stage like lexical expansion.
-          ...(planExpansion?.denseSiblingFoodIds ?? []),
-          ...(planExpansion?.categoryMemberFoodIds ?? []),
+        // DERIVED VIEW of the structure — the membership the builder needs,
+        // with exactness/relevance living in `grounding`, not rebuilt later.
+        foodIds: mergeIfBase(foodGrounding.anchors, [
+          ...Object.keys(foodGrounding.similar),
+          ...foodGrounding.family,
         ]),
         foodAttributeIds: mergeIfBase(
           foodAttributeIds,
