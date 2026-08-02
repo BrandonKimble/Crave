@@ -24,6 +24,22 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
 
 ## Launch shape (owner-decided build work, not data-gated)
 
+- [ ] **Decide the timestamp story: 162 naive columns vs 31 aware.** This
+      database stores instants in `timestamp WITHOUT time zone` 162 times and
+      `timestamp WITH time zone` 31 times. Prisma binds a JS Date as
+      `timestamptz`, so any HAND-WRITTEN SQL comparing the two makes Postgres
+      coerce the naive column using the session's TimeZone — the query means
+      something different depending on where the server thinks it is. Prisma's
+      own query builder knows each column's type and is unaffected; only raw
+      SQL is exposed. Found 2026-08-02 when the polls feed turned out to be
+      unable to load a second page on a dev box running America/Chicago (a
+      real cursor matched 3,175 rows where the correct comparison matched
+      16,528). Three sites are fixed with an explicit `AT TIME ZONE 'UTC'`;
+      six more are listed in `apps/api/src/shared/sql-timestamp-frame.guard.spec.ts`
+      and are LATENT ONLY BECAUSE prod and staging both run UTC. The guard
+      test stops new ones appearing. The durable fix is migrating the columns
+      to `timestamptz`, which is an owner-scale schema decision.
+
 - [ ] **DEPLOY THE RATE-LIMIT FIX — production is exploitable right now.**
       Commit `e7d20549` closes a throttler bypass: appending `?x=/webhooks/`
       to any URL disabled rate limiting entirely. MEASURED against live prod

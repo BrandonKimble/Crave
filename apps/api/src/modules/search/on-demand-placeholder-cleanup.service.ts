@@ -80,7 +80,15 @@ export class OnDemandPlaceholderCleanupService
         WHERE e.type = 'restaurant'
           AND e.status <> 'archived'
           AND e.restaurant_metadata->>'origin' = 'on_demand'
-          AND e.created_at < ${cutoff}
+          -- NAIVE COLUMN, EXPLICIT FRAME (audit 2026-08-02). core_entities
+          -- .created_at is timestamp WITHOUT time zone, holding UTC wall
+          -- clock, but Prisma binds a JS Date as timestamptz — so Postgres
+          -- coerces the column using the SESSION TimeZone, and this
+          -- mutation's SCOPE silently depends on where the server thinks it
+          -- is. West of UTC it under-archives; east of UTC it archives rows
+          -- NEWER than the retention window. Same defect that made the polls
+          -- feed unpageable, but on an UPDATE.
+          AND e.created_at < (${cutoff}::timestamptz AT TIME ZONE 'UTC')
           AND NOT EXISTS (
             SELECT 1
             FROM core_restaurant_items c
