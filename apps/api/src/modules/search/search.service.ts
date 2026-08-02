@@ -534,15 +534,6 @@ export class SearchService {
     // clamped pre-page probe.
     const strictProbePagination = pagination;
 
-    // Launch the similar-preview widened run CONCURRENTLY with the page
-    // execution (red team R4: serializing it doubled page-1 latency).
-    const similarPreviewPromise = this.prepareSimilarPreview({
-      request,
-      planExpansion,
-      pagination,
-      topDishesLimit: TOP_DISHES_LIMIT,
-    });
-
     let strictProbe = await executeStage({
       restaurantPagination: strictProbePagination,
       dishPagination: strictProbePagination,
@@ -924,7 +915,10 @@ export class SearchService {
           : null,
         metadata,
       };
-      this.applySimilarPreview(response, await similarPreviewPromise);
+      // similarAvailable is a MEASURED window count from the one execution
+      // (tier-2 ring rows in the same scan) — no second pipeline run.
+      response.metadata.similarAvailable =
+        strictPage.exec.similarAvailable ?? 0;
       return this.applySearchResponseProfile(response, request);
     }
   }
@@ -1627,9 +1621,29 @@ export class SearchService {
     const stagePlan = compileQueryPlanFromConstraints(pooledConstraints);
     const planMs = performance.now() - planStart;
 
-    // No soft words ⇒ no gate to run: the pooled query degenerates to the
-    // plain strict single query (empirical battery 2026-08-02: an empty
-    // soft-id list must not reach the builder — Prisma.join([]) throws).
+    // TIER-2 SIMILAR RING (round-5, spec §7.2 dissolved): the sibling ring
+    // rides the SAME dish scan as provenance tier 2 — counted, never
+    // served. The Include-similar chip re-queries with the ring as tier-1
+    // MEMBERS (the siblingsWanted path), so no second execution exists.
+    let similarFoodIds: string[] = [];
+    if (params.request.includeSimilar !== true) {
+      const anchorIds = this.collectEntityIds(params.request.entities.food);
+      if (anchorIds.length) {
+        const memberIds = new Set(constraints.ids.foodIds);
+        similarFoodIds = (
+          await this.siblingExpansion.getSiblingFoodIds(
+            anchorIds,
+            this.denseSiblingsCut,
+          )
+        )
+          .map((sibling) => sibling.siblingId)
+          .filter((id) => !memberIds.has(id));
+      }
+    }
+
+    // No soft words AND no ring ⇒ no gate to run: the pooled query
+    // degenerates to the plain strict single query (an empty soft-id list
+    // must not reach the builder — Prisma.join([]) throws).
     const hasSoftIds =
       softFoodAttributeIds.length > 0 || softRestaurantAttributeIds.length > 0;
     const directives = {
@@ -1638,7 +1652,7 @@ export class SearchService {
         constraints,
         params.planExpansion,
       ),
-      ...(hasSoftIds
+      ...(hasSoftIds || similarFoodIds.length
         ? {
             pooledGate: {
               softFoodAttributeIds,
@@ -1652,6 +1666,7 @@ export class SearchService {
                 params.restaurantPagination.take,
               ),
               gateFull: null as boolean | null,
+              ...(similarFoodIds.length ? { similarFoodIds } : {}),
             },
           }
         : {}),
@@ -1705,98 +1720,6 @@ export class SearchService {
    * (adding rows to a pure-score list can only push exacts DOWN), so the diff
    * needs no tier computation. Fail-open: any error leaves the response as-is.
    */
-  /** PREPARE half of the similar preview (red team R4 perf): the widened
-   *  pooled run has NO dependency on the served page, so it launches
-   *  CONCURRENTLY with the main execution — serializing it doubled every
-   *  page-1 latency (3.9s → 7.7s measured). Uses the pre-expansion seeded
-   *  planExpansion; if the thin-trigger expansion later widens the serving
-   *  set, the preview is marginally stale — acceptable for a UX hint, and
-   *  thin queries are where the serving set itself already widened. */
-  private async prepareSimilarPreview(params: {
-    request: SearchQueryRequestDto;
-    planExpansion: PlanExpansionState | null;
-    pagination: PaginationState;
-    topDishesLimit: number;
-  }): Promise<StageExecutionResult | null> {
-    const { request, pagination } = params;
-    if (pagination.page !== 1) return null;
-    if (request.includeSimilar === true) return null; // already the pooled view
-    const anchorFoodIds = this.collectEntityIds(request.entities.food);
-    if (!anchorFoodIds.length) return null;
-    try {
-      const siblings = await this.siblingExpansion.getSiblingFoodIds(
-        anchorFoodIds,
-        this.denseSiblingsCut,
-      );
-      if (!siblings.length) return null;
-      const widened: PlanExpansionState = {
-        twinIngredientIds: params.planExpansion?.twinIngredientIds ?? [],
-        foodIds: params.planExpansion?.foodIds ?? [],
-        foodAttributeIds: params.planExpansion?.foodAttributeIds ?? [],
-        restaurantAttributeIds:
-          params.planExpansion?.restaurantAttributeIds ?? [],
-        foodIdsFromPrimaryFoodAttributeText:
-          params.planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [],
-        categoryMemberFoodIds:
-          params.planExpansion?.categoryMemberFoodIds ?? [],
-        denseSiblingFoodIds: siblings.map((s) => s.siblingId),
-        relevanceByFoodId: {
-          ...(params.planExpansion?.relevanceByFoodId ?? {}),
-          ...Object.fromEntries(
-            siblings.map((s) => [s.siblingId, s.relevance]),
-          ),
-        },
-      };
-      const pageOne = { skip: 0, take: pagination.take };
-      // SAME REGIME AS THE SERVING PAGE (red team C5): the widened preview
-      // is a pooled run — same membership rules as what it diffs against.
-      return await this.executePooledStage({
-        request,
-        planExpansion: widened,
-        pagination,
-        restaurantPagination: pageOne,
-        dishPagination: pageOne,
-        topDishesLimit: params.topDishesLimit,
-        threshold: DEFAULT_PAGE_SIZE,
-      });
-    } catch (error) {
-      this.logger.warn('Similar preview failed (failing open)', {
-        error:
-          error instanceof Error
-            ? { message: error.message }
-            : { message: String(error) },
-      });
-      return null;
-    }
-  }
-
-  /** APPLY half: diff the widened run against the served response. */
-  private applySimilarPreview(
-    response: SearchResponseDto,
-    widenedRun: StageExecutionResult | null,
-  ): void {
-    if (!widenedRun) {
-      if (response.metadata) response.metadata.similarAvailable = 0;
-      return;
-    }
-    const shownConnections = new Set(
-      response.dishes.map((d) => d.connectionId),
-    );
-    response.similarDishes = widenedRun.exec.dishes
-      .filter((d) => !shownConnections.has(d.connectionId))
-      .map((d) => ({ ...d, exactMatch: false }));
-    const shownRestaurants = new Set(
-      response.restaurants.map((r) => r.restaurantId),
-    );
-    response.similarRestaurants = widenedRun.exec.restaurants
-      .filter((r) => !shownRestaurants.has(r.restaurantId))
-      .map((r) => ({ ...r, exactMatch: false }));
-    response.metadata.similarAvailable = Math.max(
-      0,
-      widenedRun.exec.totalDishCount -
-        (response.metadata.totalFoodResults ?? 0),
-    );
-  }
 
   /** Query-food relatedness per food id: exact + is-a instances = 1.0, widened
    *  ids (siblings/lexical) carry their graded scores from plan expansion.

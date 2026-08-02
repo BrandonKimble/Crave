@@ -270,6 +270,10 @@ interface ExecuteDualResult {
   /** Pooled tier-0 (all-words) counts per projection — the honest
    *  strict-equivalent coverage number (red team C4). */
   pooledFullCounts?: { dishes: number; restaurants: number };
+  /** Tier-2 (similar ring) window count from the SAME dish scan — the
+   *  Include-similar chip's number is a measured fact, not a subtraction
+   *  of two executions (round-5, spec §7.2 dissolved). */
+  similarAvailable?: number;
   restaurants: RestaurantResultDto[];
   dishes: FoodResultDto[];
   totalRestaurantCount: number;
@@ -618,6 +622,7 @@ LIMIT 3
       total_connections: bigint;
       total_restaurants: bigint;
       full_connections?: bigint | null;
+      similar_connections?: bigint | null;
       soft_word_counts?: Record<string, number> | null;
     };
     const runDishQueries = (
@@ -802,6 +807,9 @@ LIMIT 3
             dishes: Number(dishCountResult[0]?.full_connections ?? 0),
             restaurants: restaurantAxis.fullRestaurants ?? 0,
           }
+        : undefined,
+      similarAvailable: directives?.pooledGate
+        ? Number(dishCountResult[0]?.similar_connections ?? 0)
         : undefined,
       metadata: {
         boundsApplied:

@@ -43,5 +43,12 @@ export interface SearchExecutionDirectives {
     softRestaurantAttributeIds: string[];
     threshold: number;
     gateFull: boolean | null;
+    /** TIER-2 SIMILAR RING (round-5 ideal, spec §7.2 dissolved): the dense
+     *  sibling ids ride the SAME dish scan as provenance tier 2 — admitted
+     *  to the scan (an OR arm), EXCLUDED from the served page, counted by
+     *  the window (similarAvailable becomes a measured fact). The
+     *  Include-similar chip flips membership (ring becomes tier-1 members)
+     *  instead of re-running the pipeline. Dish axis only. */
+    similarFoodIds?: string[];
   };
 }

@@ -101,7 +101,11 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
   it('dish: the gate is a WINDOW count, not a re-evaluated subquery (the 20s regression)', () => {
     const sql = dishSqlText(directives());
     expect(sql).toContain('OVER () AS pooled_full_count');
-    expect(sql).toContain('fc.pooled_tier = 0 OR fc.pooled_full_count <');
+    // Tier 2 (similar ring) is scan-only — the gate arm now names tier 1
+    // explicitly so ring rows can never serve on the default page.
+    expect(sql).toContain(
+      'fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count <',
+    );
     expect(sql).not.toContain('pooled_gate AS');
   });
 
@@ -176,6 +180,56 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
         expect.arrayContaining([SOFT_FOOD_ATTR, SOFT_REST_ATTR]),
       );
     }
+  });
+
+  it('tier-2 similar ring: scan-admitted, never served, window-counted', () => {
+    const d = directives();
+    d.pooledGate!.similarFoodIds = ['66666666-6666-6666-6666-666666666666'];
+    const q = builder.buildDishQuery({
+      plan: plan(),
+      pagination: { skip: 0, take: 25 },
+      searchCenter: null,
+      directives: d,
+    });
+    const sql = q.dataSql.sql.replace(/\s+/g, ' ');
+    // ring rows are tier 2 in the CASE, admitted by an OR arm...
+    expect(sql).toContain('THEN 2');
+    expect(sql).toContain('OR c.food_id = ANY(');
+    // ...and the served page excludes them (tier-1 arm named explicitly)
+    expect(sql).toContain(
+      'fc.pooled_tier = 0 OR (fc.pooled_tier = 1 AND fc.pooled_full_count <',
+    );
+    // similarAvailable is a window count in the SAME count scan
+    expect(q.countSql.sql).toContain('similar_count');
+    expect(q.countSql.sql).toContain('AS similar_connections');
+  });
+
+  it('ring-only gate (no soft words) builds without empty-array joins', () => {
+    const d: SearchExecutionDirectives = {
+      pooledGate: {
+        softFoodAttributeIds: [],
+        softRestaurantAttributeIds: [],
+        threshold: 25,
+        gateFull: null,
+        similarFoodIds: ['66666666-6666-6666-6666-666666666666'],
+      },
+    };
+    expect(() =>
+      builder.buildDishQuery({
+        plan: plan(),
+        pagination: { skip: 0, take: 25 },
+        searchCenter: null,
+        directives: d,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      builder.buildRestaurantQuery({
+        plan: plan(),
+        pagination: { skip: 0, take: 25 },
+        searchCenter: null,
+        directives: d,
+      }),
+    ).not.toThrow();
   });
 
   it('no pooledGate ⇒ byte-stable legacy shape (no pooled artifacts)', () => {
