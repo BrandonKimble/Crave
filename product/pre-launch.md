@@ -24,97 +24,42 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
 
 ## Launch shape (owner-decided build work, not data-gated)
 
-### Red-team 2026-08-02 — confirmed, NOT yet fixed
+### Red-team 2026-08-02 — what remains
 
-Three adversarial passes (correctness, architecture, money+client). Everything
-below was verified at the source; the fixed items are in git. These remain,
-ranked. Each says why it is not broken _today_, because most are latent for a
-reason that will stop being true.
+Almost everything the three adversarial passes found is now FIXED (see git
+from `d8f520316` onward): the ledger-vs-billed dollar gap, the janitor's
+candidate-count policy, the paywall's anonymous short-circuit, the LLM
+Redis-outage fail-open, the three-name Places vocabulary, the two demand-mass
+implementations, the RevenueCat transfer that could revoke both sides, and
+rank duplication in the pooled search merge.
 
-- [ ] **Ledger dollars vs billed dollars: every ceiling is ~1.7x looser than
-      it reads.** The reconciliation multiplier (from the BigQuery export) is
-      applied when GROSSING an estimate for owner approval, and nowhere else.
-      Campaign envelopes are minted in billed dollars and drained in ledger
-      dollars, and the Tier-3 backstop derives 3x from ledger-priced trailing
-      spend. At the known ~1.7x Gemini under-metering the real backstop is
-      ~5.1x billed. Ideal: gross at the single pricing seam so estimate,
-      meter, envelope and backstop are one currency by construction.
-- [ ] **The paywall waves through callers who send no credentials.** The
-      interceptor short-circuits on `if (!userId) return next.handle()`, and
-      auth is per-route with `OptionalClerkAuthGuard` on several. So an
-      anonymous caller gets content a lapsed subscriber is 403'd from.
-      Publicness is inferred from ABSENCE rather than declared, even though
-      `@AllowUnentitled` already exists and is carefully applied. Latent only
-      because `ENTITLEMENT_GATING` is off. Ideal: invert — non-exempt route
-      requires an entitled AUTHENTICATED user. Run `log` mode in prod before
-      `enforce`; the exempt set has never been exercised against real traffic.
+Three items are genuinely open:
+
+- [ ] **The pooled search merge does not match the SQL ordering authority.**
+      Page 1 of a relaxed search merges the strict and relaxed arms and sorts
+      by `craveScore`, while the SQL orders by `rising DESC NULLS LAST,
+crave_score_exact, crave_score, total_upvotes, restaurant_id`. So a
+      rising-sorted relaxed page 1 is not rising-sorted, and the builder's own
+      invariant ("the map badge == the results-list position") is broken for
+      that one page. Fixing it means plumbing `rising`, `craveScoreExact` and
+      `totalUpvotes` onto the response rows — a real change to the search
+      response shape on the app's most important surface, which wants its own
+      session and a sim pass, not a tail-end edit.
 - [ ] **`hasAccess` fails open on any error** while every spend gate fails
-      closed. Defensible (an outage should not lock out payers) but it is the
-      opposite default from money and it is unbounded — a schema drift opens
-      the paywall permanently with only a log line. Owner decision, left as-is
-      deliberately: flipping it can lock out paying customers.
-- [ ] **The janitor's retry/archive policy reads a field that means something
-      else.** It gates on `lastEnrichmentAttempt->>'count' >= 3`, but the only
-      writer sets `count = ranked.length` — the number of Google CANDIDATES,
-      not attempts. So a restaurant is archived because Google returned the
-      most evidence, and every `error`-status placeholder (which writes no
-      count) is re-enriched every week forever at real Places spend. Latent
-      only because `LOCATION_LIFECYCLE_CRON_ENABLED=false`. **Do not enable
-      that cron until this is fixed.** Ideal: a typed attempt counter column.
-- [ ] **RPM/TPM admission covers one of ~13 LLM call paths.** The reservation
-      engine lives in SmartLLMProcessor, reachable only from chunked content
-      extraction; search interpretation, the relevance gate and photo-vision
-      call Gemini with no rate admission. The `gemini.tokens` drift instrument
-      therefore measures one path of a multi-path system. Ideal: move the
-      reservation next to `assertSpendBudgetOpen` inside `callLLMApi`.
-- [ ] **Redis down removes LLM rate limiting entirely.** The reservation
-      falls back to a ~1.5s sleep and returns `guaranteed: false`, which the
-      caller only ever copies into a log payload. N workers then fire with no
-      ceiling. The Places coordinator already has an in-process emergency
-      counter for exactly this; the LLM path never got one.
-- [ ] **`textSearch` cannot be rate-limited through config.** One Places
-      operation carries three names (rate scope `findPlaceFromText`, ledger
-      `textSearch`, and no config key at all), so adding a `textSearch` limit
-      silently does nothing and falls back to 600/min — on the most expensive
-      Places call. Ideal: one exported operation union used as all three keys.
-- [ ] **The §4 demand-mass law has two incompatible SQL implementations** —
-      one excludes echo kinds and groups by kind, the other does neither. Same
-      entity, same day, different scores; the collector uses the looser one to
-      decide what gets enriched.
-- [ ] **Ranking: the SQL authority is re-implemented differently in TS** for
-      the strict+relaxed page-1 merge (drops `rising`, uses a coarser score),
-      and per-run `rank` survives that merge without recomputation — the map
-      read model assumes equal rank means same restaurant. Ideal: rank is
-      assigned once, at the response boundary.
-- [ ] **Autocomplete fires per keystroke** (`AUTOCOMPLETE_DEBOUNCE_MS = 0`)
-      and the server's recall fan-out includes an embedding arm. Now that
-      embeddings are gated this is bounded, but the debounce is an owner
-      choice that deserves re-pricing, not a number I should invent.
-- [ ] **RevenueCat TRANSFER can revoke both sides**: it revokes the loser,
-      then silently `continue`s if the gaining side has no fetchable state
-      (a lifetime/promotional entitlement has `expires_date: null` and is
-      skipped), logging the event as processed.
-- [ ] **A 1,461-line repository framework serves two repositories**, one with
-      zero consumers, while 95 services use Prisma directly — including the
-      one that injects a repository and then reaches past it. Either commit to
-      the boundary or delete it; the 599-line base-class spec is currently an
-      always-green measurement of code the system barely uses.
+      closed. Left deliberately: an outage should not lock out paying
+      customers, and flipping it is a product decision with a real downside.
+      It is bounded by an error log today; if you want it tighter, the honest
+      shape is a third state (indeterminate) that alerts rather than silently
+      granting forever.
+- [ ] **Autocomplete fires on every keystroke** (`AUTOCOMPLETE_DEBOUNCE_MS =
+0`). Now that the embedding arm is spend-gated this is bounded, but the
+      debounce is an owner choice — §16 says a number must be a fact, a
+      derivation, or your decision, and this one is yours.
 
-- [ ] **Decide the timestamp story: 162 naive columns vs 31 aware.** This
-      database stores instants in `timestamp WITHOUT time zone` 162 times and
-      `timestamp WITH time zone` 31 times. Prisma binds a JS Date as
-      `timestamptz`, so any HAND-WRITTEN SQL comparing the two makes Postgres
-      coerce the naive column using the session's TimeZone — the query means
-      something different depending on where the server thinks it is. Prisma's
-      own query builder knows each column's type and is unaffected; only raw
-      SQL is exposed. Found 2026-08-02 when the polls feed turned out to be
-      unable to load a second page on a dev box running America/Chicago (a
-      real cursor matched 3,175 rows where the correct comparison matched
-      16,528). Three sites are fixed with an explicit `AT TIME ZONE 'UTC'`;
-      six more are listed in `apps/api/src/shared/sql-timestamp-frame.guard.spec.ts`
-      and are LATENT ONLY BECAUSE prod and staging both run UTC. The guard
-      test stops new ones appearing. The durable fix is migrating the columns
-      to `timestamptz`, which is an owner-scale schema decision.
+Also carried forward from the architecture pass, as judgement calls rather
+than defects: the 1,461-line repository framework serving two repositories
+(commit to the boundary or delete it), and the absence of branded id types
+anywhere in the codebase.
 
 - [ ] **DEPLOY THE RATE-LIMIT FIX — production is exploitable right now.**
       Commit `e7d20549` closes a throttler bypass: appending `?x=/webhooks/`
