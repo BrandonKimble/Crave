@@ -10,7 +10,7 @@ import type {
 import { usePollsFeedControlsStore } from './polls-feed-controls-store';
 import { usePollsFeedRuntimeController } from './polls-feed-runtime-controller';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
-import { useViewportSubjectState } from '../../../store/viewport-subject-store';
+import { useViewportSubjectVerdict } from '../../../store/viewport-subject-store';
 
 type UsePollsPanelFeedRuntimeArgs = Pick<
   UsePollsPanelSpecOptions,
@@ -82,21 +82,16 @@ export const usePollsPanelFeedRuntime = ({
   // header.placeName survives ONLY as the initial-paint fallback until the
   // store's first commit (verdict null); after that the store wins, so the
   // title tracks the live viewport instead of the last-fetched feed bounds.
-  const viewportSubject = useViewportSubjectState();
+  const verdict = useViewportSubjectVerdict();
   const effectivePlaceName =
-    viewportSubject.verdict != null
-      ? viewportSubject.verdict.kind === 'place'
-        ? viewportSubject.verdict.placeName
-        : null
-      : headerPlaceName;
+    verdict != null ? (verdict.kind === 'place' ? verdict.placeName : null) : headerPlaceName;
   const headerVisualModel = React.useMemo(
     () =>
       buildPollsHeaderVisualModel({
         placeName: effectivePlaceName,
-        isResolvingPlace:
-          viewportSubject.verdict == null && loading && !effectivePlaceName && polls.length === 0,
+        isResolvingPlace: verdict == null && loading && !effectivePlaceName && polls.length === 0,
       }),
-    [effectivePlaceName, loading, polls.length, viewportSubject.verdict]
+    [effectivePlaceName, loading, polls.length, verdict]
   );
 
   const { loadMorePolls, isFeedSliceAwaiting } = usePollsFeedRuntimeController({

@@ -53,7 +53,11 @@ import {
  * so bare-constructed test/script instances stay valid.
  */
 export interface PlaceBirthListener {
-  enqueue(placeId: string, trigger: string): Promise<void>;
+  enqueue(
+    placeId: string,
+    trigger: string,
+    campaignId?: string | null,
+  ): Promise<void>;
 }
 export const PLACE_BIRTH_LISTENER = Symbol('PLACE_BIRTH_LISTENER');
 
@@ -269,8 +273,32 @@ export class PlacesCatalogService {
    * never fork, never shrink.
    *
    * Returns the upserted places in the SAME order as the input chain.
+   *
+   * BIRTH TRIGGER (red-team 2026-08-01, cross-change finding): a newborn's
+   * outline is fetched SYNCHRONOUSLY only for trigger 'birth' — the
+   * user-driven reconciler settle, where someone is about to look at the
+   * place and the vendor-bbox window must close now. BULK callers (the seed
+   * scripts) pass 'bulk_seed': the row still enqueues, but the governed
+   * drain does the fetch, which is the seeders' own stated law ("NO direct
+   * vendor calls happen here... budgeted by this campaign's envelope").
+   * Without this, every seeded place spent an inline, UNCAMPAIGNED scarce
+   * draw — a ~22k-probe US grid seed would have burned the scarce pool
+   * outside its budget envelope and serialized an HTTP fetch per place.
    */
-  async sketchChain(chain: PlaceSketchNode[]): Promise<Place[]> {
+  async sketchChain(
+    chain: PlaceSketchNode[],
+    options: {
+      birthTrigger?: 'birth' | 'bulk_seed';
+      /**
+       * SPEND CAMPAIGN for the outlines these births will earn. The TomTom
+       * pools are per-MINUTE rate windows, so a campaign is the ONLY budget
+       * ceiling on the scarce polygon draws the drain will make — a bulk run
+       * without one is unbounded spend (red-team 2026-08-01).
+       */
+      campaignId?: string | null;
+    } = {},
+  ): Promise<Place[]> {
+    const birthTrigger = options.birthTrigger ?? 'birth';
     const results: Place[] = [];
     // Broadest-first walk so parent ids exist for child edges. A REFUSED
     // node (id-less, non-fallback — the final dissolution) is dropped and
@@ -278,7 +306,12 @@ export class PlacesCatalogService {
     // minted ancestor rather than losing the whole chain.
     let parentPlaceId: string | undefined;
     for (let i = chain.length - 1; i >= 0; i -= 1) {
-      const place = await this.upsertSketch(chain[i], parentPlaceId);
+      const place = await this.upsertSketch(
+        chain[i],
+        parentPlaceId,
+        birthTrigger,
+        options.campaignId ?? null,
+      );
       if (!place) continue;
       results.unshift(place);
       parentPlaceId = place.placeId;
@@ -572,6 +605,8 @@ export class PlacesCatalogService {
   private async upsertSketch(
     node: PlaceSketchNode,
     parentPlaceId: string | undefined,
+    birthTrigger: 'birth' | 'bulk_seed',
+    campaignId: string | null,
   ): Promise<Place | null> {
     const name = normalizePlaceName(node.name);
 
@@ -626,16 +661,19 @@ export class PlacesCatalogService {
           await this.writeSketchGround(created.placeId, node.bbox);
         }
         // §2.5(d) POLYGON AT BIRTH: every new place enters the governed
-        // promotion queue immediately, and the birth drain is AWAITED
-        // (2026-08-01) — sketchChain runs off the hot path (the reconciler's
-        // background settle), so the vendor-bbox window closes within the
-        // same settle instead of "whenever the tick runs". Best-effort by
-        // design: if a drain is already running, the in-process latch
-        // returns immediately and the belt-and-suspenders re-entry lands
-        // the outline next tick. A drain failure must never kill the birth.
+        // promotion queue immediately. For trigger 'birth' (the user-driven
+        // reconciler settle) the newborn's outline is AWAITED, so the
+        // vendor-bbox window closes within the same settle; 'bulk_seed'
+        // enqueues only and lets the governed drain pay, under its campaign
+        // envelope. Best-effort either way: a promote failure must never
+        // kill the birth.
         if (this.birthListener) {
           try {
-            await this.birthListener.enqueue(created.placeId, 'birth');
+            await this.birthListener.enqueue(
+              created.placeId,
+              birthTrigger,
+              campaignId,
+            );
           } catch (error) {
             this.logger.warn('birth promotion enqueue failed — next tick', {
               placeId: created.placeId,

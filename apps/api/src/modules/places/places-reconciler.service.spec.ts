@@ -91,27 +91,28 @@ function makeHarness(options: {
     resolveGeometryId: jest.fn().mockResolvedValue({ kind: 'miss' as const }),
     fetchPolygon: jest.fn().mockResolvedValue({ kind: 'miss' as const }),
   };
+  const prismaMock = (() => {
+    // Stateful memory mock: the asked-region tests are ABOUT the memory,
+    // so the mock must actually remember (docket #7 moved it to the DB).
+    const rows: any[] = [];
+    return {
+      probedRegion: {
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findMany: jest.fn().mockImplementation(() => Promise.resolve(rows)),
+        create: jest.fn().mockImplementation(({ data }: any) => {
+          rows.push({ ...data, observedAt: new Date() });
+          return Promise.resolve(data);
+        }),
+      },
+    };
+  })();
   const service = new PlacesReconcilerService(
     catalog,
     probe,
-    (() => {
-      // Stateful memory mock: the asked-region tests are ABOUT the memory,
-      // so the mock must actually remember (docket #7 moved it to the DB).
-      const rows: any[] = [];
-      return {
-        probedRegion: {
-          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-          findMany: jest.fn().mockImplementation(() => Promise.resolve(rows)),
-          create: jest.fn().mockImplementation(({ data }: any) => {
-            rows.push({ ...data, observedAt: new Date() });
-            return Promise.resolve(data);
-          }),
-        },
-      };
-    })() as never,
+    prismaMock as never,
     logger,
   );
-  return { service, catalog, probe };
+  return { service, catalog, probe, prismaMock };
 }
 
 describe('PlacesReconcilerService — §2 background naming', () => {
@@ -328,6 +329,40 @@ describe('PlacesReconcilerService — §2 background naming', () => {
       },
     });
     await service.whenIdle();
+  });
+
+  it('the asked-region read is SCOPED TO THE VIEW, and the TTL prune is throttled off the settle path (red-team 2026-08-01)', async () => {
+    const { service, prismaMock } = makeHarness({});
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+
+    // The read filters on the view's own extent — a global read would make
+    // durability a scaling cliff (one row per probing pass, per dwell and
+    // per search submit, retained 30 days, then run through
+    // O(anchors x regions) distance math on EVERY settle).
+    const where = prismaMock.probedRegion.findMany.mock.calls[0][0].where;
+    expect(where.observedAt.gte).toBeInstanceOf(Date);
+    expect(where.OR).toHaveLength(2);
+    const [discArm, boxArm] = where.OR;
+    expect(discArm.kind).toBe('disc');
+    expect(discArm.centerLat.gte).toBeLessThanOrEqual(VIEW.minLat);
+    expect(discArm.centerLat.lte).toBeGreaterThanOrEqual(VIEW.maxLat);
+    expect(boxArm.kind).toBe('box');
+    expect(boxArm.maxLat.gte).toBe(VIEW.minLat);
+    expect(boxArm.minLat.lte).toBe(VIEW.maxLat);
+
+    // Prune is throttled per process: a second settle does not re-delete.
+    const prunesAfterFirst =
+      prismaMock.probedRegion.deleteMany.mock.calls.length;
+    expect(prunesAfterFirst).toBe(1);
+    service.noteViewport({
+      minLat: VIEW.minLat + 5,
+      maxLat: VIEW.maxLat + 5,
+      minLng: VIEW.minLng + 5,
+      maxLng: VIEW.maxLng + 5,
+    });
+    await service.whenIdle();
+    expect(prismaMock.probedRegion.deleteMany).toHaveBeenCalledTimes(1);
   });
 
   it('never blocks, never throws: noteViewport returns synchronously and probe failures are swallowed + logged', async () => {

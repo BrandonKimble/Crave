@@ -27,7 +27,7 @@ import type { MapBounds } from '../../types';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
-import { useViewportSubjectState } from '../../store/viewport-subject-store';
+import { useViewportSubjectVerdict } from '../../store/viewport-subject-store';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -430,7 +430,7 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
   // placeName (creation-context snapshot) is only the pre-first-commit
   // fallback, so the title names where the map actually IS, not where the
   // feed last fetched.
-  const { verdict: subjectVerdict } = useViewportSubjectState();
+  const subjectVerdict = useViewportSubjectVerdict();
   const headerTitle = subjectVerdict
     ? subjectVerdict.kind === 'place'
       ? `Add a poll in ${subjectVerdict.placeName}`

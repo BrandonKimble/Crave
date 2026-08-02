@@ -2071,7 +2071,10 @@ model PlaceGeometry {
 
 // §2 Tier-2 polygon promotion queue (scarce pool, "earned moments"): placeId
 // PK ⇒ enqueue is idempotent (queued OR promoted = conflict no-op). trigger
-// is OPEN vocabulary (§1 stance: stored, never switched on). attempts counts
+// is OPEN vocabulary, with ONE deliberate exception (2026-08-01): the
+// promotion service switches on 'birth' to promote a newborn synchronously
+// for a user-driven settle — every other trigger, including 'bulk_seed' and
+// 'paid_seed', waits for the governed drain. attempts counts
 // draw-consuming misses (no cap — the pool bounds spend); lastAttemptAt gates
 // retry to the next MONTH window (the K4 monthly pool is the backoff clock);
 // providerBoundaryId caches a cheap-resolved TomTom geometry id across
@@ -2093,6 +2096,10 @@ model ProbedRegion {
 
   @@index([observedAt])
   @@map("probed_regions")
+  // Raw-SQL PARTIAL indexes (migration 20260801140000) for the view-scoped
+  // read: idx_probed_regions_box_extent ON (min_lat,max_lat,min_lng,max_lng)
+  // WHERE kind='box'; idx_probed_regions_disc_center ON
+  // (center_lat,center_lng) WHERE kind='disc'.
 }
 
 model PlaceGeometryPromotion {

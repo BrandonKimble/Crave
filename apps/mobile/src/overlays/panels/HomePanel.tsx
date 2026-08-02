@@ -19,7 +19,7 @@ import {
   getViewportSubjectState,
   noteCatalogWatermark,
   subscribeViewportSubjectState,
-  useViewportSubjectState,
+  useViewportSubjectVerdict,
 } from '../../store/viewport-subject-store';
 import type { MapBounds } from '../../types';
 import { logger } from '../../utils';
@@ -52,13 +52,9 @@ const SURFACE = themeColors.surface;
 // 'this-area' / null → 'Explore' (owner note: reads as a page, not a splash).
 const HomePersistentHeaderTitle = React.memo(() => {
   const resolvedCityName = useHomeFeedStore((state) => state.feed?.resolvedCity?.name ?? null);
-  const viewportSubject = useViewportSubjectState();
+  const verdict = useViewportSubjectVerdict();
   const liveTitle =
-    viewportSubject.verdict != null
-      ? viewportSubject.verdict.kind === 'place'
-        ? viewportSubject.verdict.placeName
-        : null
-      : resolvedCityName;
+    verdict != null ? (verdict.kind === 'place' ? verdict.placeName : null) : resolvedCityName;
   return (
     <View style={styles.persistentHeaderTitleGroup}>
       <PollsHeaderTitleText title={liveTitle ?? 'Explore'} />

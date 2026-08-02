@@ -3,8 +3,9 @@
 -- in a per-process array — forgotten on every restart, invisible to sibling
 -- processes. One honest home. The judgment (probedRegionAnswersAnchor, the
 -- scale gate) stays in TS; this table is the memory only. No GiST yet on
--- purpose (§16): row count is governed-probe scale (tens), and an index for
--- tens of rows is a pretend optimization — add it with the first measured
+-- purpose (§16): the read is view-scoped and its indexes arrive in
+-- 20260801140000 (the "tens of rows" sizing this note originally claimed was
+-- WRONG — see that migration; a GiST for the exact shapes is still deferred — add it with the first measured
 -- need.
 CREATE TABLE probed_regions (
   region_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),

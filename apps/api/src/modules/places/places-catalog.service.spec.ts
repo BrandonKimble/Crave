@@ -582,6 +582,33 @@ describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
     expect(birthListener.enqueue).toHaveBeenCalledWith(
       created.placeId,
       'birth',
+      null,
+    );
+  });
+
+  it('BULK callers never spend inline: a bulk_seed chain enqueues with its own trigger, so the governed drain (not the mint) pays for the outline', async () => {
+    // Red-team 2026-08-01, cross-change finding: the awaited birth promote
+    // is for a USER settle. The seed scripts call sketchChain in a loop —
+    // with trigger 'birth' every seeded place spent an inline, UNCAMPAIGNED
+    // scarce polygon draw, breaking the seeders' own stated law ("NO direct
+    // vendor calls happen here... budgeted by this campaign's envelope") and
+    // serializing an HTTP fetch per place across a ~22k-probe grid run.
+    const { service, birthListener, create } = makeHarness([null]);
+    const [created] = await service.sketchChain([austinNode], {
+      birthTrigger: 'bulk_seed',
+    });
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(birthListener.enqueue).toHaveBeenCalledWith(
+      created.placeId,
+      'bulk_seed',
+      null,
+    );
+    // The promotion service promotes synchronously ONLY for 'birth', so a
+    // non-birth trigger provably cannot draw inline.
+    expect(birthListener.enqueue).not.toHaveBeenCalledWith(
+      created.placeId,
+      'birth',
+      null,
     );
   });
 

@@ -144,3 +144,15 @@ export const viewportSubjectVerdictIdentity = (verdict: ViewportSubjectVerdict |
 /** Mouth-side read: re-renders on every store commit (useSyncExternalStore). */
 export const useViewportSubjectState = (): ViewportSubjectState =>
   React.useSyncExternalStore(subscribeViewportSubjectState, getViewportSubjectState);
+
+/**
+ * THE title/verdict read — subscribe to what you consume (red-team
+ * 2026-08-01). Every mouth that renders a place NAME needs only the verdict,
+ * but the state-wide hook re-rendered them on every settledBounds turnover
+ * (once per settle, guaranteed) and every watermark move. `verdict` is
+ * carried by reference through the partial-merge write, so Object.is here is
+ * exact: a re-render happens only when the verdict object is genuinely
+ * replaced — an identity change or a rename.
+ */
+export const useViewportSubjectVerdict = (): ViewportSubjectVerdict | null =>
+  React.useSyncExternalStore(subscribeViewportSubjectState, () => currentState.verdict);

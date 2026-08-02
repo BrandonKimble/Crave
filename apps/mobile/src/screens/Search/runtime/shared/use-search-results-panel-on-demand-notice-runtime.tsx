@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { Text } from '../../../../components';
 import styles from '../../styles';
-import { useViewportSubjectState } from '../../../../store/viewport-subject-store';
+import { useViewportSubjectVerdict } from '../../../../store/viewport-subject-store';
 import type { SearchResultsPayload } from './search-results-panel-runtime-state-contract';
 import { resolveOnDemandNoticeText, type OnDemandNoticeMetadata } from './on-demand-notice-copy';
 
@@ -20,8 +20,7 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
   // client subject verdict once committed; the response-metadata place names
   // are only the pre-first-commit fallback (chain simplifies to: store →
   // metadata names → 'this area').
-  const viewportSubject = useViewportSubjectState();
-  const subjectVerdict = viewportSubject.verdict;
+  const subjectVerdict = useViewportSubjectVerdict();
   return React.useMemo(() => {
     const metadata = (resolvedResults?.metadata ?? {}) as OnDemandNoticeMetadata;
 

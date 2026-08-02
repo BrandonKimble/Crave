@@ -2,6 +2,7 @@ import React from 'react';
 import { Dimensions } from 'react-native';
 
 import useSearchSubmitOwnerValue from '../../hooks/use-search-submit-owner';
+import { bboxCenter, bboxLatSpan, bboxLngSpan } from '@crave-search/shared';
 import { registerMapCameraBboxFlyHandler } from '../../../../store/map-camera-command-store';
 import { commitFitAllCamera, resolveWorldFitSafeRegion } from '../camera/resolve-fit-all-camera';
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
@@ -114,9 +115,19 @@ export const useSearchRootSubmitControlRuntime = ({
   );
   // THE public bbox fly seam (home-surface Job 4): non-search surfaces (polls
   // place chip, home city picker) command the camera through the SAME fitAll
-  // executor list worlds ride — a bbox fits as its two diagonal corners. This
-  // runtime hook's effects fire (it is a real committed runtime), so the
-  // module-scope registration lives here, next to the arbiter it needs.
+  // executor list worlds ride. This runtime hook's effects fire (it is a real
+  // committed runtime), so the module-scope registration lives here, next to
+  // the arbiter it needs.
+  //
+  // WRAP-AWARE (red-team 2026-08-01): a bbox may CROSS the antimeridian
+  // (minLng > maxLng — the shared convention, and the US country row now
+  // derives one under the largest-gap law). Handing the fitter two raw
+  // corners made its planar min/max scan read that bbox inside-out and fly
+  // to the exact COMPLEMENT of the place — the US jumped to the Caspian Sea,
+  // fully zoomed out. So the bbox is UNWRAPPED here with the shared law
+  // (bboxCenter/bboxLatSpan/bboxLngSpan, all arc-aware) into a diagonal pair
+  // about its true center; the fitter's arithmetic then yields the right
+  // center and span with no change to the map surface itself.
   React.useEffect(
     () =>
       registerMapCameraBboxFlyHandler((bbox) => {
@@ -130,11 +141,14 @@ export const useSearchRootSubmitControlRuntime = ({
           searchBarBottomPx,
           sheetMiddleTopPx: sharedSheetSnapPoints.middle,
         });
+        const center = bboxCenter(bbox);
+        const halfLat = bboxLatSpan(bbox) / 2;
+        const halfLng = bboxLngSpan(bbox) / 2;
         return commitFitAllCamera({
           arbiter: cameraIntentArbiter,
           members: [
-            { latitude: bbox.minLat, longitude: bbox.minLng },
-            { latitude: bbox.maxLat, longitude: bbox.maxLng },
+            { latitude: center.lat - halfLat, longitude: center.lng - halfLng },
+            { latitude: center.lat + halfLat, longitude: center.lng + halfLng },
           ],
           safeRegion,
         });

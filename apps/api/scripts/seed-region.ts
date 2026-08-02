@@ -54,6 +54,7 @@ import {
   TomtomChainProbe,
 } from '../src/modules/places/tomtom-chain-probe.port';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import { tomtomScarceCostMicrosPerDraw } from '../src/modules/external-integrations/shared/vendor-pricing';
 
 /**
  * §16 K4 vendor fact: ~5 QPS on the Search endpoints. The governed pool is the
@@ -101,6 +102,12 @@ async function main(): Promise<void> {
   const spacingKm = Number(arg('--spacing-km') ?? NaN);
   const maxProbes = Number(arg('--max-probes') ?? Infinity);
   const execute = process.argv.includes('--execute');
+  // SPEND CAMPAIGN for the outlines this run's newborns will earn (red-team
+  // 2026-08-01). The TomTom pools are per-MINUTE rate windows only, so the
+  // campaign envelope is the ONLY budget ceiling on the scarce polygon draws
+  // the governed drain will later make for these places. Without one, a
+  // country-scale grid run queues unbounded scarce spend.
+  const campaignId = arg('--campaign-id') ?? null;
 
   if (!Number.isFinite(spacingKm) || spacingKm <= 0) {
     throw new Error('--spacing-km <positive number> is required');
@@ -139,7 +146,10 @@ async function main(): Promise<void> {
         out(`[seed] bootstrap: the vendor models nothing at that point.`);
         return;
       }
-      const minted = await catalog.sketchChain(result.chain);
+      const minted = await catalog.sketchChain(result.chain, {
+        birthTrigger: 'bulk_seed',
+        campaignId,
+      });
       out(`[seed] bootstrap minted/matched ${minted.length} rungs:`);
       for (const p of minted) out(`         ${p.providerLevelCode}  ${p.name}`);
       out(`[seed] now re-run with --region "<one of those names>".`);
@@ -307,6 +317,21 @@ async function main(): Promise<void> {
     out(
       `[seed] wall clock     ~${Math.ceil((planned * SPACING_MS) / 60000)} min at ${SPACING_MS}ms pacing`,
     );
+    // THE DEFERRED BILL (red-team 2026-08-01): the probes above are cheap-pool
+    // draws, but every place this run MINTS earns a SCARCE polygon later,
+    // through the governed drain. That spend is invisible here unless it is
+    // said out loud — and it is bounded only by a campaign envelope.
+    out(
+      `[seed] deferred spend each MINTED place later earns one scarce polygon` +
+        ` draw (~$${(tomtomScarceCostMicrosPerDraw / 1_000_000).toFixed(5)} each)` +
+        ` via the governed drain — NOT spent by this run`,
+    );
+    out(
+      campaignId
+        ? `[seed] campaign      ${campaignId} — the drain meters those draws against its envelope`
+        : `[seed] campaign      NONE (--campaign-id absent): those draws will have NO budget ceiling.` +
+            ` The TomTom pools are per-minute RATE windows only. Pass --campaign-id for a country-scale run.`,
+    );
     out('');
 
     if (!execute) {
@@ -352,7 +377,10 @@ async function main(): Promise<void> {
         if (result.chain.length === 0) {
           empty += 1;
         } else {
-          const places = await catalog.sketchChain(result.chain);
+          const places = await catalog.sketchChain(result.chain, {
+            birthTrigger: 'bulk_seed',
+            campaignId,
+          });
           mintedRungs += places.length;
         }
       } catch (e) {

@@ -6,16 +6,24 @@
  * (place_geometry_promotions, placeId PK) records the earned moment; a
  * governed hourly drain turns queued places into place_geometries rows.
  *
- * TRIGGERS (cleanup 2026-08-01 — every other trigger of the old earned-
- * moment apparatus is DELETED with docket #1; only these two enqueue):
- *   - birth      — §2.5(d) POLYGON AT BIRTH: the catalog's create chokepoint
- *     (PlacesCatalogService.upsertSketch via PLACE_BIRTH_LISTENER) enqueues
- *     every newly sketched place, and the birth promotes THE NEWBORN,
- *     awaited by the reconciler's background settle (red-teamed: never the
- *     whole queue). The hourly sweep is the retry tail only.
- *   - paid_seed  — §2.5(e) SEED ORDER: the coarse seed campaign
- *     (scripts/seed-coarse-polygons.ts) batch-enqueues, fire-and-forget,
- *     under the PAID scarce budget (§16 K1 in governance.service).
+ * TRIGGERS (cleanup 2026-08-01 — every trigger of the old earned-moment
+ * apparatus is DELETED with docket #1; these three remain). 'birth' is the
+ * ONE trigger this service switches on, and the distinction it draws is:
+ * IS A USER WAITING FOR THIS PLACE'S OUTLINE?
+ *   - birth      — YES. §2.5(d) POLYGON AT BIRTH: the catalog's create
+ *     chokepoint (upsertSketch via PLACE_BIRTH_LISTENER) enqueues every
+ *     newly sketched place, and a birth promotes THE NEWBORN, awaited by
+ *     the reconciler's user-driven settle (red-teamed: never the whole
+ *     queue). The hourly sweep is the retry tail only.
+ *   - bulk_seed  — NO. The seed scripts mint in a loop; they enqueue and
+ *     let the governed drain pay, which is their own stated law (a
+ *     synchronous promote per mint spent inline UNCAMPAIGNED scarce draws
+ *     — the cross-change defect this trigger exists to prevent).
+ *   - paid_seed  — NO. §2.5(e) SEED ORDER: a batch enqueue under a SPEND
+ *     CAMPAIGN envelope (place_geometry_promotions.campaign_id). Rows
+ *     WITHOUT a campaign have no budget ceiling at all — the TomTom pools
+ *     are per-MINUTE rate windows only (governance.service), so the
+ *     campaign is the only spend bound. Bulk callers should pass one.
  *
  * DRAIN (governed lane):
  *   - Hourly cadence: §16 K3-shaped operational plumbing ("a polygon an
@@ -49,13 +57,14 @@ import { tomtomScarceCostMicrosPerDraw } from '../external-integrations/shared/v
 const VENDOR_QPS_SPACING_MS = 500;
 
 /**
- * §16 DERIVED — per-tick drain read bound: the scarce pool's monthly budget
- * (tomtom.scarcePolygons, §16 K1 owner price-tag in governance.service) is
- * the REAL spend limiter; a single tick can never usefully touch more rows
- * than the whole month admits, so the row LIMIT equals that budget. It
- * exists only to bound per-tick row churn on a deeply backlogged queue
- * (paid_seed enqueues ~23k rows at once) — it is not a pacing knob. What
- * changes it: the owner re-pricing the scarce pool, never tuning.
+ * §16 K3 operational bound — per-tick drain READ size. RATIONALE CORRECTED
+ * 2026-08-01 (red-team): this used to claim it "equals the scarce pool's
+ * monthly budget" — there is NO monthly TomTom pool; the pools are
+ * per-minute rate windows, and the only spend ceiling is a row's spend
+ * CAMPAIGN. So this number is not a budget: it bounds per-tick row churn on
+ * a deeply backlogged queue (a batch seed enqueues ~23k rows at once), and
+ * the per-minute pool plus the 500ms spacing do the real pacing. What
+ * changes it: measured churn pressure, never tuning.
  */
 const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
 
@@ -106,11 +115,15 @@ export class PlacesPromotionService {
    * gone with the fallback lane itself, 2026-08-01 — every place is a
    * vendor mirror now, so every place may earn an outline.)
    */
-  async enqueue(placeId: string, trigger: string): Promise<void> {
+  async enqueue(
+    placeId: string,
+    trigger: string,
+    campaignId?: string | null,
+  ): Promise<void> {
     try {
       await this.prisma.$executeRaw(Prisma.sql`
-        INSERT INTO place_geometry_promotions (place_id, trigger)
-        SELECT p.place_id, ${trigger}
+        INSERT INTO place_geometry_promotions (place_id, trigger, campaign_id)
+        SELECT p.place_id, ${trigger}, ${campaignId ?? null}::uuid
         FROM places p
         WHERE p.place_id = ${placeId}::uuid
           AND NOT EXISTS (

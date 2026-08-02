@@ -200,11 +200,25 @@ export const createViewportSubjectStoreController = ({
     verdict: ViewportSubjectVerdict,
     cause: 'enter-eager' | 'exit-dwell'
   ): boolean => {
-    const previousIdentity = viewportSubjectVerdictIdentity(getViewportSubjectState().verdict);
+    const current = getViewportSubjectState().verdict;
+    const previousIdentity = viewportSubjectVerdictIdentity(current);
     const nextIdentity = viewportSubjectVerdictIdentity(verdict);
     const changed = previousIdentity !== nextIdentity;
+    // A vendor RENAME keeps the identity (the placeId) but changes the name
+    // every mouth renders. Red-team 2026-08-01: identity-only writes meant a
+    // corrected name arriving on a slice re-cut could NEVER reach the title
+    // — the old name served for the whole session. lastCommittedAt is left
+    // alone on a name-only refresh so the dwell dedupe (which keys on
+    // identity) is undisturbed: this is the same subject, better named.
+    const renamed =
+      !changed &&
+      verdict.kind === 'place' &&
+      current?.kind === 'place' &&
+      current.placeName !== verdict.placeName;
     if (changed) {
       setViewportSubjectState({ verdict, lastCommittedAt: Date.now() });
+    } else if (renamed) {
+      setViewportSubjectState({ verdict });
     }
     logSubjectStore('commit', {
       cause,

@@ -40,10 +40,15 @@ import {
   PROBE_SPEAKS_FOR_METERS,
   TOMTOM_CHAIN_PROBE,
   TomtomChainProbe,
+  TomtomChainProbeResult,
 } from './tomtom-chain-probe.port';
 
 /** §2: region observations live 30 days. */
 export const NEGATIVE_OBSERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** §16 K3 operational cadence: the TTL prune is housekeeping, not a read —
+ *  once an hour per process is plenty for a 30-day TTL. */
+const PRUNE_MIN_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * Asked-ground memory (§2's "negative region cache", generalized — red-team
@@ -96,6 +101,9 @@ export function viewportCellKey(view: GeoBbox): string {
 
 @Injectable()
 export class PlacesReconcilerService {
+  /** Throttle clock for the TTL prune (see pruneExpiredRegions). */
+  private lastRegionPruneAtMs = 0;
+
   private readonly logger: LoggerService;
 
   /** Single-flight per cell (§2): cellKey → in-flight reconcile. */
@@ -171,7 +179,7 @@ export class PlacesReconcilerService {
       ...inView.map(
         (entry): ProbedRegion => ({ kind: 'box', bbox: entry.bbox }),
       ),
-      ...(await this.freshAskedRegions()),
+      ...(await this.freshAskedRegions(view)),
     ];
 
     // Step 2 (§2): ≤3 anchors, center + largest-uncovered-region candidates.
@@ -194,7 +202,29 @@ export class PlacesReconcilerService {
       ) {
         continue; // answered by an earlier probe in this same pass
       }
-      const result = await this.probe.probe(anchor);
+      let result: TomtomChainProbeResult;
+      try {
+        result = await this.probe.probe(anchor);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === 'tomtom_missing_country_code') {
+          // PER-ANCHOR vendor contract violation. Red-team 2026-08-01: the
+          // adapter's throw (192628d6) and the seed script's per-cell skip
+          // (bf350c35) were each correct and JOINTLY WRONG — nothing taught
+          // the reconciler, so the throw unwound past the remaining anchors
+          // AND past rememberAskedRegion below, and every future settle of
+          // this cell re-probed forever. That is the spend-forever shape
+          // docket #7 exists to prevent. Skip the anchor, keep the pass.
+          this.logger.warn('Probe anchor skipped (vendor contract violation)', {
+            anchor,
+            detail: message,
+          });
+          continue;
+        }
+        // Pool denial / config absence are RUN-GLOBAL faults: the ground was
+        // never asked, so the pass must not write an asked-region memory.
+        throw error;
+      }
       if (result.chain.length === 0) {
         // "No place here" IS an observation — region-scale, 30d TTL (§2).
         await this.rememberAskedRegion(result.probedRegion);
@@ -225,15 +255,49 @@ export class PlacesReconcilerService {
     await this.rememberAskedRegion({ kind: 'box', bbox: view });
   }
 
-  /** Docket #7: the durable read. Expired rows are pruned lazily here —
-   *  the TTL is the only writer of absence. */
-  private async freshAskedRegions(): Promise<ProbedRegion[]> {
+  /**
+   * Docket #7: the durable read — SCOPED TO THE VIEW (red-team 2026-08-01).
+   *
+   * A region can only answer an anchor of THIS view, and every anchor lies
+   * inside the view, so a region that does not intersect the view can never
+   * matter. The first cut read every unexpired row GLOBALLY: durability had
+   * turned a per-process array (bounded, restart-reset) into an unbounded
+   * table on the same unfiltered path — one row per probing pass, per dwell
+   * and per search submit, retained 30 days, then Decimal-deserialized and
+   * run through O(anchors x regions) distance math on every settle. That is
+   * a scaling cliff, not a memory.
+   *
+   * Latitude filters always (no wrap on lat). Longitude filters only for a
+   * non-crossing view — a seam-crossing view keeps the honest wider read
+   * rather than a wrong predicate. Discs are matched on their centre with a
+   * degree pad for their radius (~100m of vendor reach).
+   */
+  private async freshAskedRegions(view: GeoBbox): Promise<ProbedRegion[]> {
     const cutoff = new Date(Date.now() - NEGATIVE_OBSERVATION_TTL_MS);
-    await this.prisma.probedRegion.deleteMany({
-      where: { observedAt: { lt: cutoff } },
-    });
+    await this.pruneExpiredRegions(cutoff);
+    const pad = PROBE_SPEAKS_FOR_METERS / METERS_PER_DEGREE_LAT;
+    const latWindow = { gte: view.minLat - pad, lte: view.maxLat + pad };
+    const crossesSeam = view.minLng > view.maxLng;
+    const lngWindow = { gte: view.minLng - pad, lte: view.maxLng + pad };
     const rows = await this.prisma.probedRegion.findMany({
-      where: { observedAt: { gte: cutoff } },
+      where: {
+        observedAt: { gte: cutoff },
+        OR: [
+          {
+            kind: 'disc',
+            centerLat: latWindow,
+            ...(crossesSeam ? {} : { centerLng: lngWindow }),
+          },
+          {
+            kind: 'box',
+            maxLat: { gte: view.minLat },
+            minLat: { lte: view.maxLat },
+            ...(crossesSeam
+              ? {}
+              : { maxLng: { gte: view.minLng }, minLng: { lte: view.maxLng } }),
+          },
+        ],
+      },
     });
     return rows.map(
       (row): ProbedRegion =>
@@ -256,6 +320,24 @@ export class PlacesReconcilerService {
               },
             },
     );
+  }
+
+  /**
+   * TTL prune, throttled to once per PRUNE_MIN_INTERVAL_MS per process
+   * (red-team 2026-08-01: an unconditional deleteMany ran on EVERY settle).
+   * Per-process state is right here — this is an operational cadence, not a
+   * memory of truth; a missed prune only delays row cleanup, and the read
+   * filters on the cutoff regardless.
+   */
+  private async pruneExpiredRegions(cutoff: Date): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastRegionPruneAtMs < PRUNE_MIN_INTERVAL_MS) {
+      return;
+    }
+    this.lastRegionPruneAtMs = now;
+    await this.prisma.probedRegion.deleteMany({
+      where: { observedAt: { lt: cutoff } },
+    });
   }
 
   /** Docket #7: the durable write. Never throws — losing one memory row
