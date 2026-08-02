@@ -57,18 +57,19 @@ Redis-outage fail-open, the three-name Places vocabulary, the two demand-mass
 implementations, the RevenueCat transfer that could revoke both sides, and
 rank duplication in the pooled search merge.
 
-Three items are genuinely open:
+Open in this lane:
 
-- [ ] **The pooled search merge does not match the SQL ordering authority.**
-      Page 1 of a relaxed search merges the strict and relaxed arms and sorts
-      by `craveScore`, while the SQL orders by `rising DESC NULLS LAST,
-crave_score_exact, crave_score, total_upvotes, restaurant_id`. So a
-      rising-sorted relaxed page 1 is not rising-sorted, and the builder's own
-      invariant ("the map badge == the results-list position") is broken for
-      that one page. Fixing it means plumbing `rising`, `craveScoreExact` and
-      `totalUpvotes` onto the response rows — a real change to the search
-      response shape on the app's most important surface, which wants its own
-      session and a sim pass, not a tail-end edit.
+- [~] **The pooled search merge ordering — HANDED OFF.** Page 1 of a relaxed
+  search re-sorts in JS by `craveScore` while the SQL orders by `rising,
+crave_score_exact, crave_score, total_upvotes, restaurant_id`, so a
+  rising-sorted relaxed page 1 is not rising-sorted and the ordering rule
+  visibly changes at the page-2 boundary. The result SET is correct and
+  sections still hold; only the arrangement within page 1 is wrong.
+  Superseded rather than patched: the session that owns search is cutting
+  over to the step-3 POOLED query (`SEARCH_POOLED_MODE`), one query whose
+  single ORDER BY covers every page — which deletes the merge, the
+  exclusion list and this defect together.
+
 - [ ] **`hasAccess` fails open on any error** while every spend gate fails
       closed. Left deliberately: an outage should not lock out paying
       customers, and flipping it is a product decision with a real downside.
@@ -85,16 +86,12 @@ than defects: the 1,461-line repository framework serving two repositories
 (commit to the boundary or delete it), and the absence of branded id types
 anywhere in the codebase.
 
-- [ ] **DEPLOY THE RATE-LIMIT FIX — production is exploitable right now.**
-      Commit `e7d20549` closes a throttler bypass: appending `?x=/webhooks/`
-      to any URL disabled rate limiting entirely. MEASURED against live prod
-      on 2026-08-01: 40 parallel unauthenticated POSTs to
-      `/api/v1/auth/apple/native` gave 12x400 + 28x429 plain, and 40x400 with
-      ZERO 429 with the query param. Every ceiling in the app — auth
-      brute-force, LLM search spend, the heavy viewport reads — is currently
-      one query param away from not existing. The fix is on `main` and cannot
-      reach prod until the watchPatterns/repo-disconnect item below is done,
-      so that item is now security-blocking, not cleanup.
+- [x] **DEPLOY THE RATE-LIMIT FIX — DONE, verified live 2026-08-02.** The
+      throttler bypass (`?x=/webhooks/` disabled rate limiting entirely) is
+      closed in production. Re-measured after the deploy: 30 parallel
+      unauthenticated POSTs to `/api/v1/auth/apple/native` gave 10x400 +
+      20x429 WITH the query param — identical to the control. Before the fix
+      the same probe returned 40x400 and zero 429s.
 
 - [ ] **Rebuild the Stripe web checkout rail + Strava-pattern dual-button
       paywall** (decided 2026-08-01: pre-launch shape). Primary paywall button
