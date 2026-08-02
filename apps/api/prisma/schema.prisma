@@ -46,7 +46,7 @@ model Entity {
   canonicalIngredients                String[]                      @default([]) @map("canonical_ingredients") @db.Uuid
   /// Stamp for the offline dish-knowledge pass (canonical ingredients +
   /// established aliases). NULL = not yet synthesized.
-  knowledgeSynthesizedAt              DateTime?                     @map("knowledge_synthesized_at")
+  knowledgeSynthesizedAt              DateTime?                     @map("knowledge_synthesized_at") @db.Timestamptz(3)
   nameEmbedding                       Unsupported("vector(768)")?   @map("name_embedding")
   nameEmbeddingStale                  Boolean                       @default(false) @map("name_embedding_stale")
   restaurantAttributes                String[]                      @default([]) @map("restaurant_attributes") @db.Uuid
@@ -63,16 +63,16 @@ model Entity {
   /// at real Places spend. Incremented, never replaced.
   enrichmentFailureCount              Int                           @default(0) @map("enrichment_failure_count")
   primaryLocationId                   String?                       @unique @map("primary_location_id") @db.Uuid
-  lastUpdated                         DateTime                      @default(now()) @map("last_updated")
-  createdAt                           DateTime                      @default(now()) @map("created_at")
+  lastUpdated                         DateTime                      @default(now()) @map("last_updated") @db.Timestamptz(3)
+  createdAt                           DateTime                      @default(now()) @map("created_at") @db.Timestamptz(3)
   generalPraiseUpvotes                Int?                          @default(0) @map("general_praise_upvotes")
   city                                String?                       @map("city") @db.VarChar(255)
   region                              String?                       @map("region") @db.VarChar(255)
   country                             String?                       @map("country") @db.VarChar(2)
   postalCode                          String?                       @map("postal_code") @db.VarChar(32)
   priceLevel                          Int?                          @map("price_level")
-  priceLevelUpdatedAt                 DateTime?                     @map("price_level_updated_at")
-  lastPolledAt                        DateTime?                     @map("last_polled_at")
+  priceLevelUpdatedAt                 DateTime?                     @map("price_level_updated_at") @db.Timestamptz(3)
+  lastPolledAt                        DateTime?                     @map("last_polled_at") @db.Timestamptz(3)
   foodConnections                     Connection[]                  @relation("FoodEntity")
   restaurantConnections               Connection[]                  @relation("RestaurantEntity")
   onDemandRequests                    OnDemandRequest[]
@@ -134,13 +134,13 @@ model RestaurantLocation {
   utcOffsetMinutes Int?      @map("utc_offset_minutes")
   timeZone         String?   @map("time_zone") @db.VarChar(64)
   isPrimary        Boolean   @default(false) @map("is_primary")
-  lastPolledAt     DateTime? @map("last_polled_at")
+  lastPolledAt     DateTime? @map("last_polled_at") @db.Timestamptz(3)
   /// Google businessStatus from the last refresh poll (CLOSED_PERMANENTLY etc.);
   /// written by refreshStaleLocations, acted on by the janitor.
   businessStatus   String?   @map("business_status") @db.VarChar(32)
   movedPlaceId     String?   @map("moved_place_id") @db.VarChar(255)
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @default(now()) @map("updated_at")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
   restaurant       Entity    @relation("RestaurantLocations", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   primaryFor       Entity?   @relation("PrimaryLocation")
 
@@ -178,9 +178,9 @@ model Connection {
   isCategoryItem      Boolean                 @default(false) @map("is_category_item")
   supportMentionCount Int                     @default(0) @map("support_mention_count")
   supportTotalUpvotes Int                     @default(0) @map("support_total_upvotes")
-  lastMentionedAt     DateTime?               @map("last_mentioned_at")
-  lastUpdated         DateTime                @default(now()) @map("last_updated")
-  createdAt           DateTime                @default(now()) @map("created_at")
+  lastMentionedAt     DateTime?               @map("last_mentioned_at") @db.Timestamptz(3)
+  lastUpdated         DateTime                @default(now()) @map("last_updated") @db.Timestamptz(3)
+  createdAt           DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   food                Entity                  @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant          Entity                  @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
   userListItems       UserListItem[]
@@ -219,7 +219,7 @@ model EntitySiblingEdge {
   cosine          Float
   forwardRank     Int      @map("forward_rank")
   mutualRank      Int?     @map("mutual_rank")
-  builtAt         DateTime @default(now()) @map("built_at")
+  builtAt         DateTime @default(now()) @map("built_at") @db.Timestamptz(3)
 
   @@id([anchorEntityId, siblingEntityId])
   @@map("derived_entity_sibling_edges")
@@ -237,7 +237,7 @@ model FoodCategoryEdge {
   categoryId  String   @map("category_id") @db.Uuid
   connSupport Int      @map("conn_support")
   foodConns   Int      @map("food_conns")
-  builtAt     DateTime @default(now()) @map("built_at")
+  builtAt     DateTime @default(now()) @map("built_at") @db.Timestamptz(3)
 
   @@id([foodId, categoryId])
   @@index([categoryId], map: "idx_food_category_edges_category")
@@ -257,8 +257,8 @@ model LlmPrompt {
   /// candidate | active | retired (CHECK + one-active-per-kind partial unique)
   status      String    @default("candidate") @db.VarChar(16)
   notes       String?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  activatedAt DateTime? @map("activated_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  activatedAt DateTime? @map("activated_at") @db.Timestamptz(3)
 
   @@unique([kind, version], map: "llm_prompts_kind_version_key")
   @@map("llm_prompts")
@@ -280,12 +280,12 @@ model LlmBatchJob {
   /// Lease for in-flight claims (status 'submitting'/'ingesting'): a live
   /// worker heartbeats this forward; an expired lease means the worker died
   /// and any poller may reclaim the job. NULL outside claimed states.
-  leaseExpiresAt  DateTime?         @map("lease_expires_at")
-  submittedAt     DateTime?         @map("submitted_at")
-  completedAt     DateTime?         @map("completed_at")
-  ingestedAt      DateTime?         @map("ingested_at")
-  createdAt       DateTime          @default(now()) @map("created_at")
-  updatedAt       DateTime          @updatedAt @map("updated_at")
+  leaseExpiresAt  DateTime?         @map("lease_expires_at") @db.Timestamptz(3)
+  submittedAt     DateTime?         @map("submitted_at") @db.Timestamptz(3)
+  completedAt     DateTime?         @map("completed_at") @db.Timestamptz(3)
+  ingestedAt      DateTime?         @map("ingested_at") @db.Timestamptz(3)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
   items           LlmBatchJobItem[]
 
   @@index([status], map: "idx_llm_batch_jobs_status")
@@ -317,12 +317,12 @@ model GeminiContextCache {
   promptHash String    @map("prompt_hash") @db.VarChar(64)
   tokenCount Int       @map("token_count")
   caller     String    @db.VarChar(128)
-  createdAt  DateTime  @default(now()) @map("created_at")
-  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
   /// Set when superseded/invalidated. A retired row is never returned by
   /// lookup; the vendor object is deleted when no in-flight batch job
   /// references it, else the vendor TTL reaps it.
-  retiredAt  DateTime? @map("retired_at")
+  retiredAt  DateTime? @map("retired_at") @db.Timestamptz(3)
 
   @@index([model, promptHash, retiredAt], map: "idx_gemini_context_caches_lookup")
   @@map("gemini_context_caches")
@@ -365,7 +365,7 @@ model ApiUsageEvent {
   /// Idempotency key for at-most-once records (e.g. one row per batch job).
   /// Callers that can legitimately record multiple rows leave it null.
   dedupeKey    String?  @unique @map("dedupe_key") @db.VarChar(256)
-  createdAt    DateTime @default(now()) @map("created_at")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([service, createdAt], map: "idx_api_usage_service_created")
   @@index([runKey], map: "idx_api_usage_run_key")
@@ -382,7 +382,7 @@ model CollectionRelevanceVerdict {
   reason     String?  @db.VarChar(256)
   model      String   @db.VarChar(128)
   promptHash String?  @map("prompt_hash") @db.VarChar(16)
-  judgedAt   DateTime @default(now()) @map("judged_at")
+  judgedAt   DateTime @default(now()) @map("judged_at") @db.Timestamptz(3)
 
   @@id([platform, postId])
   @@index([keep], map: "idx_relevance_verdicts_keep")
@@ -401,7 +401,7 @@ model LlmDecisionRecord {
   decision  Json
   model     String   @db.VarChar(128)
   metadata  Json?
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([kind, createdAt], map: "idx_llm_decisions_kind_created")
   @@map("llm_decision_records")
@@ -418,16 +418,16 @@ model AccessGrant {
   entitlementCode String    @map("entitlement_code") @db.VarChar(64)
   source          String    @db.VarChar(32)
   sourceRef       String?   @map("source_ref") @db.VarChar(256)
-  startsAt        DateTime  @default(now()) @map("starts_at")
+  startsAt        DateTime  @default(now()) @map("starts_at") @db.Timestamptz(3)
   /// Absolute grants only: period end; NULL = lifetime. Day-XOR-absolute is
   /// CHECK-enforced (a grant never carries both).
-  expiresAt       DateTime? @map("expires_at")
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(3)
   /// Day grants only: duration of coverage, derived to wall-clock at read.
   grantedDays     Int?      @map("granted_days")
-  revokedAt       DateTime? @map("revoked_at")
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(3)
   revokedReason   String?   @map("revoked_reason") @db.VarChar(256)
   metadata        Json?
-  createdAt       DateTime  @default(now()) @map("created_at")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   user            User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@index([userId, entitlementCode], map: "idx_access_grants_user_code")
@@ -450,8 +450,8 @@ model SourceCollectionLane {
   /// §14.3 lateness tolerance — the K1 sentence "days late is fine, months is
   /// not" as a number. Chronological declares ≈ its cadence.
   latenessToleranceDays Float     @map("lateness_tolerance_days")
-  dueAt                 DateTime  @default(now()) @map("due_at")
-  lastRanAt             DateTime? @map("last_ran_at")
+  dueAt                 DateTime  @default(now()) @map("due_at") @db.Timestamptz(3)
+  lastRanAt             DateTime? @map("last_ran_at") @db.Timestamptz(3)
   /// Lane-kind state: chronological {lastProcessedAt}, keyword
   /// {lastTopRelevanceRunAt}. Cursor advance semantics per §10.
   state                 Json?
@@ -470,8 +470,8 @@ model SourceCollectionLane {
   costBaselineMicros    Float?    @map("cost_baseline_micros")
   costBaselineDevMicros Float?    @map("cost_baseline_dev_micros")
   costPaused            Boolean   @default(false) @map("cost_paused")
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @default(now()) @map("updated_at")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@id([sourceId, lane])
   @@index([enabled, dueAt], map: "idx_source_collection_lanes_due")
@@ -489,9 +489,9 @@ model SpendUnitCost {
   unit            String   @db.VarChar(32)
   microUsdPerUnit Float    @map("micro_usd_per_unit")
   sampleUnits     BigInt   @map("sample_units")
-  windowStart     DateTime @map("window_start")
-  windowEnd       DateTime @map("window_end")
-  refreshedAt     DateTime @default(now()) @map("refreshed_at")
+  windowStart     DateTime @map("window_start") @db.Timestamptz(3)
+  windowEnd       DateTime @map("window_end") @db.Timestamptz(3)
+  refreshedAt     DateTime @default(now()) @map("refreshed_at") @db.Timestamptz(3)
 
   @@id([workClass, unit])
   @@map("spend_unit_costs")
@@ -525,9 +525,9 @@ model SpendCampaign {
   /// | 'breached' | 're_awaiting' (§24.3).
   state       String    @default("draft") @db.VarChar(24)
   spentMicros BigInt    @default(0) @map("spent_micros")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  approvedAt  DateTime? @map("approved_at")
-  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  approvedAt  DateTime? @map("approved_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
   breachNote  String?   @map("breach_note")
 
   @@index([state, workClass])
@@ -549,8 +549,8 @@ model OpsAlert {
   title          String    @db.VarChar(200)
   body           String
   dedupeKey      String?   @unique @map("dedupe_key") @db.VarChar(128)
-  createdAt      DateTime  @default(now()) @map("created_at")
-  acknowledgedAt DateTime? @map("acknowledged_at")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz(3)
 
   @@map("ops_alerts")
 }
@@ -563,7 +563,7 @@ model Engine {
   /// Stable natural key.
   name           String   @unique @db.VarChar(255)
   memberPlaceIds String[] @default([]) @map("member_place_ids") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("engines")
 }
@@ -574,8 +574,8 @@ model Engine {
 model RescoreState {
   id            Int       @id @default(1)
   dirty         Boolean   @default(false)
-  dirtySince    DateTime? @map("dirty_since")
-  lastRescoreAt DateTime? @map("last_rescore_at")
+  dirtySince    DateTime? @map("dirty_since") @db.Timestamptz(3)
+  lastRescoreAt DateTime? @map("last_rescore_at") @db.Timestamptz(3)
 
   @@map("rescore_state")
 }
@@ -584,7 +584,7 @@ model RestaurantItemMention {
   id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId     String     @map("connection_id") @db.Uuid
   kind             String     @db.VarChar(16)
-  mentionedAt      DateTime   @map("mentioned_at")
+  mentionedAt      DateTime   @map("mentioned_at") @db.Timestamptz(3)
   sourceUpvotes    Int        @default(0) @map("source_upvotes")
   /// §8 provenance unification: the document this contribution came from —
   /// the scorer resolves it to a SOURCE (the calibration room) at read.
@@ -666,7 +666,7 @@ model ProcessedSource {
   pipeline    String   @db.VarChar(32)
   sourceId    String   @map("source_id") @db.VarChar(64)
   community   String?  @db.VarChar(100)
-  processedAt DateTime @default(now()) @map("processed_at")
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
 
   @@id([pipeline, sourceId])
   @@index([pipeline], map: "idx_processed_source_pipeline")
@@ -685,8 +685,8 @@ model SourceDocument {
   title                  String?                   @db.Text
   body                   String?                   @db.Text
   url                    String?                   @db.VarChar(2048)
-  sourceCreatedAt        DateTime                  @map("source_created_at")
-  collectedAt            DateTime                  @default(now()) @map("collected_at")
+  sourceCreatedAt        DateTime                  @map("source_created_at") @db.Timestamptz(3)
+  collectedAt            DateTime                  @default(now()) @map("collected_at") @db.Timestamptz(3)
   scoreSnapshot          Int?                      @map("score_snapshot")
   rawPayload             Json?                     @map("raw_payload")
   /// §24 Task 2: chronological|keyword|archive lane tag, stamped from the
@@ -716,8 +716,8 @@ model CollectionRun {
   platform        String?         @db.VarChar(32)
   community       String?         @db.VarChar(255)
   status          String          @db.VarChar(32)
-  startedAt       DateTime        @default(now()) @map("started_at")
-  completedAt     DateTime?       @map("completed_at")
+  startedAt       DateTime        @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt     DateTime?       @map("completed_at") @db.Timestamptz(3)
   metadata        Json?           @default("{}")
   extractionRuns  ExtractionRun[]
 
@@ -739,8 +739,8 @@ model ExtractionRun {
   chunkingConfig          Json                    @default("{}") @map("chunking_config")
   extractionSchemaVersion String                  @default("v1") @map("extraction_schema_version") @db.VarChar(32)
   status                  String                  @db.VarChar(32)
-  startedAt               DateTime                @default(now()) @map("started_at")
-  completedAt             DateTime?               @map("completed_at")
+  startedAt               DateTime                @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt             DateTime?               @map("completed_at") @db.Timestamptz(3)
   metadata                Json?                   @default("{}")
   collectionRun           CollectionRun?          @relation(fields: [collectionRunId], references: [collectionRunId], onDelete: SetNull)
   inputs                  ExtractionInput[]
@@ -767,7 +767,7 @@ model ExtractionCoverageClaim {
   documentId      String   @map("document_id") @db.Uuid
   promptHash      String   @map("prompt_hash") @db.VarChar(64)
   extractionRunId String?  @map("extraction_run_id") @db.Uuid
-  claimedAt       DateTime @default(now()) @map("claimed_at")
+  claimedAt       DateTime @default(now()) @map("claimed_at") @db.Timestamptz(3)
 
   @@id([documentId, promptHash])
   @@index([extractionRunId], map: "idx_coverage_claims_run")
@@ -781,7 +781,7 @@ model ExtractionInput {
   inputPayload           Json                      @map("input_payload")
   sourceMap              Json?                     @map("source_map")
   rawOutput              Json?                     @map("raw_output")
-  createdAt              DateTime                  @default(now()) @map("created_at")
+  createdAt              DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   extractionRun          ExtractionRun             @relation(fields: [extractionRunId], references: [extractionRunId], onDelete: Cascade)
   sourceDocuments        ExtractionInputDocument[]
   restaurantEvents       RestaurantEvent[]
@@ -813,10 +813,10 @@ model RestaurantEvent {
   restaurantId     String          @map("restaurant_id") @db.Uuid
   mentionKey       String          @map("mention_key") @db.VarChar(255)
   evidenceType     String          @map("evidence_type") @db.VarChar(64)
-  mentionedAt      DateTime        @map("mentioned_at")
+  mentionedAt      DateTime        @map("mentioned_at") @db.Timestamptz(3)
   sourceUpvotes    Int             @default(0) @map("source_upvotes")
   metadata         Json?           @default("{}")
-  createdAt        DateTime        @default(now()) @map("created_at")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   extractionRun    ExtractionRun   @relation(fields: [extractionRunId], references: [extractionRunId], onDelete: Cascade)
   input            ExtractionInput @relation(fields: [inputId], references: [inputId], onDelete: Cascade)
   sourceDocument   SourceDocument  @relation(fields: [sourceDocumentId], references: [documentId], onDelete: Cascade)
@@ -845,10 +845,10 @@ model RestaurantEntityEvent {
   entityType       EntityType      @map("entity_type")
   evidenceType     String          @map("evidence_type") @db.VarChar(64)
   isMenuItem       Boolean?        @map("is_menu_item")
-  mentionedAt      DateTime        @map("mentioned_at")
+  mentionedAt      DateTime        @map("mentioned_at") @db.Timestamptz(3)
   sourceUpvotes    Int             @default(0) @map("source_upvotes")
   metadata         Json?           @default("{}")
-  createdAt        DateTime        @default(now()) @map("created_at")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   extractionRun    ExtractionRun   @relation(fields: [extractionRunId], references: [extractionRunId], onDelete: Cascade)
   input            ExtractionInput @relation(fields: [inputId], references: [inputId], onDelete: Cascade)
   sourceDocument   SourceDocument  @relation(fields: [sourceDocumentId], references: [documentId], onDelete: Cascade)
@@ -878,7 +878,7 @@ model RestaurantAttributeEvidence {
   attributeId  String   @map("attribute_id") @db.Uuid
   sourceClass  String   @map("source_class")
   observations Int      @default(1)
-  computedAt   DateTime @default(now()) @map("computed_at")
+  computedAt   DateTime @default(now()) @map("computed_at") @db.Timestamptz(3)
   restaurant   Entity   @relation("RestaurantAttributeEvidenceRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   attribute    Entity   @relation("RestaurantAttributeEvidenceAttribute", fields: [attributeId], references: [entityId], onDelete: Cascade)
 
@@ -892,8 +892,8 @@ model RestaurantEntitySignal {
   entityId     String     @map("entity_id") @db.Uuid
   entityType   EntityType @map("entity_type")
   mentionCount Int        @default(0) @map("mention_count")
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   restaurant   Entity     @relation("RestaurantEntitySignalRestaurant", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   entity       Entity     @relation("RestaurantEntitySignalTarget", fields: [entityId], references: [entityId], onDelete: Cascade)
 
@@ -917,8 +917,8 @@ model PollTopic {
   status                      PollTopicStatus
   metadata                    Json?           @default("{}")
   createdByUserId             String?         @map("created_by_user_id") @db.Uuid
-  createdAt                   DateTime        @default(now()) @map("created_at")
-  updatedAt                   DateTime        @updatedAt @map("updated_at")
+  createdAt                   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   targetDishId                String?         @map("target_dish_id") @db.Uuid
   targetRestaurantId          String?         @map("target_restaurant_id") @db.Uuid
   targetFoodAttributeId       String?         @map("target_food_attribute_id") @db.Uuid
@@ -947,16 +947,16 @@ model Poll {
   /// §22 item 4 re-key: polls attach to placeId (place catalog).
   placeId            String?                @map("place_id") @db.Uuid
   region             String?                @db.VarChar(255)
-  scheduledFor       DateTime?              @map("scheduled_for")
-  launchedAt         DateTime?              @map("launched_at")
-  closedAt           DateTime?              @map("closed_at")
-  graduatedAt        DateTime?              @map("graduated_at")
+  scheduledFor       DateTime?              @map("scheduled_for") @db.Timestamptz(3)
+  launchedAt         DateTime?              @map("launched_at") @db.Timestamptz(3)
+  closedAt           DateTime?              @map("closed_at") @db.Timestamptz(3)
+  graduatedAt        DateTime?              @map("graduated_at") @db.Timestamptz(3)
   allowUserAdditions Boolean                @default(true) @map("allow_user_additions")
   audienceFilters    Json?                  @map("audience_filters")
   metadata           Json?                  @default("{}")
   createdByUserId    String?                @map("created_by_user_id") @db.Uuid
-  createdAt          DateTime               @default(now()) @map("created_at")
-  updatedAt          DateTime               @updatedAt @map("updated_at")
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
   comments           PollComment[]
   leaderboardEntries PollLeaderboardEntry[]
   endorsements       PollEndorsement[]
@@ -988,9 +988,9 @@ model PollComment {
   moderationStatus PollCommentModerationStatus @default(pending) @map("moderation_status")
   extractionStatus PollCommentExtractionStatus @default(pending) @map("extraction_status")
   entitySpans      Json?                       @map("entity_spans")
-  loggedAt         DateTime                    @default(now()) @map("logged_at")
-  editedAt         DateTime?                   @map("edited_at")
-  deletedAt        DateTime?                   @map("deleted_at")
+  loggedAt         DateTime                    @default(now()) @map("logged_at") @db.Timestamptz(3)
+  editedAt         DateTime?                   @map("edited_at") @db.Timestamptz(3)
+  deletedAt        DateTime?                   @map("deleted_at") @db.Timestamptz(3)
   poll             Poll                        @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
   user             User                        @relation(fields: [userId], references: [userId], onDelete: Cascade)
   parent           PollComment?                @relation("PollCommentThread", fields: [parentCommentId], references: [commentId], onDelete: NoAction, onUpdate: NoAction)
@@ -1012,7 +1012,7 @@ model PollComment {
 model PollCommentLike {
   commentId String      @map("comment_id") @db.Uuid
   userId    String      @map("user_id") @db.Uuid
-  loggedAt  DateTime    @default(now()) @map("logged_at")
+  loggedAt  DateTime    @default(now()) @map("logged_at") @db.Timestamptz(3)
   comment   PollComment @relation(fields: [commentId], references: [commentId], onDelete: Cascade)
   user      User        @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
@@ -1034,7 +1034,7 @@ model PollLeaderboardEntry {
   distinctEndorsers Int                        @default(0) @map("distinct_endorsers")
   score             Decimal                    @default(0) @db.Decimal(18, 6)
   rank              Int                        @default(0)
-  updatedAt         DateTime                   @updatedAt @map("updated_at")
+  updatedAt         DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
   poll              Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
 
   @@id([pollId, subjectType, subjectId])
@@ -1053,7 +1053,7 @@ model PollEndorsement {
   // composite (dish-axis) — a plain string, not a UUID column.
   subjectId   String                     @map("subject_id")
   userId      String                     @map("user_id") @db.Uuid
-  createdAt   DateTime                   @default(now()) @map("created_at")
+  createdAt   DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   poll        Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
   user        User                       @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
@@ -1079,8 +1079,8 @@ model NotificationDevice {
   // subtree, which is the same honest no-push.
   homePlaceId   String?              @map("home_place_id") @db.Uuid
   metadata      Json?                @default("{}")
-  createdAt     DateTime             @default(now()) @map("created_at")
-  updatedAt     DateTime             @updatedAt @map("updated_at")
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   notifications Notification[]
 
   @@index([userId], map: "idx_notification_devices_user_id")
@@ -1093,13 +1093,13 @@ model Notification {
   type           NotificationType    @map("notification_type")
   status         NotificationStatus  @default(pending) @map("status")
   payload        Json?               @default("{}")
-  scheduledFor   DateTime?           @map("scheduled_for")
-  sentAt         DateTime?           @map("sent_at")
+  scheduledFor   DateTime?           @map("scheduled_for") @db.Timestamptz(3)
+  sentAt         DateTime?           @map("sent_at") @db.Timestamptz(3)
   attempts       Int                 @default(0)
   lastError      String?             @map("last_error") @db.VarChar(500)
   deviceId       String?             @map("device_id") @db.Uuid
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   device         NotificationDevice? @relation(fields: [deviceId], references: [deviceId])
 
   @@index([status], map: "idx_notifications_status")
@@ -1116,8 +1116,8 @@ model UserNotification {
   userId             String           @map("user_id") @db.Uuid
   type               NotificationType @map("notification_type")
   payload            Json?            @default("{}")
-  readAt             DateTime?        @map("read_at")
-  createdAt          DateTime         @default(now()) @map("created_at")
+  readAt             DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   user               User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)], map: "idx_user_notifications_user_created")
@@ -1128,12 +1128,12 @@ model DemandScoringRun {
   runId              String                    @id @default(dbgenerated("gen_random_uuid()")) @map("run_id") @db.Uuid
   consumerKind       DemandScoringConsumerKind @map("consumer_kind")
   engineName         String?                   @map("engine_name") @db.VarChar(255)
-  cycleStartAt       DateTime                  @map("cycle_start_at")
-  cycleEndAt         DateTime                  @map("cycle_end_at")
+  cycleStartAt       DateTime                  @map("cycle_start_at") @db.Timestamptz(3)
+  cycleEndAt         DateTime                  @map("cycle_end_at") @db.Timestamptz(3)
   scorerVersion      String                    @map("scorer_version") @db.VarChar(64)
   traceAllCandidates Boolean                   @default(false) @map("trace_all_candidates")
-  startedAt          DateTime                  @default(now()) @map("started_at")
-  finishedAt         DateTime?                 @map("finished_at")
+  startedAt          DateTime                  @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt         DateTime?                 @map("finished_at") @db.Timestamptz(3)
   metadata           Json?                     @default("{}")
   candidates         DemandScoringCandidate[]
 
@@ -1165,7 +1165,7 @@ model DemandScoringCandidate {
   decisionState   DemandScoringDecisionState @map("decision_state")
   decisionReason  String?                    @map("decision_reason") @db.VarChar(255)
   factorBreakdown Json?                      @default("{}") @map("factor_breakdown")
-  createdAt       DateTime                   @default(now()) @map("created_at")
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   entity          Entity?                    @relation(fields: [entityId], references: [entityId], onDelete: SetNull)
   run             DemandScoringRun           @relation(fields: [runId], references: [runId], onDelete: Cascade)
 
@@ -1183,21 +1183,21 @@ model User {
   displayName              String?                   @map("display_name") @db.VarChar(255)
   avatarUrl                String?                   @map("avatar_url") @db.VarChar(2048)
   usernameStatus           UsernameStatus            @default(unset) @map("username_status")
-  usernameUpdatedAt        DateTime?                 @map("username_updated_at")
+  usernameUpdatedAt        DateTime?                 @map("username_updated_at") @db.Timestamptz(3)
   onboardingStatus         OnboardingStatus          @default(not_started) @map("onboarding_status")
-  onboardingCompletedAt    DateTime?                 @map("onboarding_completed_at")
+  onboardingCompletedAt    DateTime?                 @map("onboarding_completed_at") @db.Timestamptz(3)
   onboardingVersion        Int                       @default(1) @map("onboarding_version")
   onboardingSelectedCity   String?                   @map("onboarding_selected_city") @db.VarChar(255)
   onboardingPreviewCity    String?                   @map("onboarding_preview_city") @db.VarChar(255)
   onboardingResponses      Json?                     @map("onboarding_responses")
-  createdAt                DateTime                  @default(now()) @map("created_at")
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   stripeCustomerId         String?                   @map("stripe_customer_id") @db.VarChar(255)
   authProvider             AuthProvider              @default(clerk) @map("auth_provider")
   authProviderUserId       String?                   @unique @map("auth_provider_user_id") @db.VarChar(255)
-  deletedAt                DateTime?                 @map("deleted_at")
-  lastSignInAt             DateTime?                 @map("last_sign_in_at")
+  deletedAt                DateTime?                 @map("deleted_at") @db.Timestamptz(3)
+  lastSignInAt             DateTime?                 @map("last_sign_in_at") @db.Timestamptz(3)
   revenueCatAppUserId      String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
-  updatedAt                DateTime                  @updatedAt @map("updated_at")
+  updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
   subscriptions            Subscription[]
   accessGrants             AccessGrant[]
   photos                   Photo[]
@@ -1236,7 +1236,7 @@ model User {
 
 model UserStats {
   userId    String   @id @map("user_id") @db.Uuid
-  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@map("user_stats")
@@ -1245,7 +1245,7 @@ model UserStats {
 model UserFollow {
   followerUserId  String   @map("follower_user_id") @db.Uuid
   followingUserId String   @map("following_user_id") @db.Uuid
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   follower        User     @relation("UserFollows", fields: [followerUserId], references: [userId], onDelete: Cascade)
   following       User     @relation("UserFollowers", fields: [followingUserId], references: [userId], onDelete: Cascade)
 
@@ -1261,7 +1261,7 @@ model UserFollow {
 model UserBlock {
   blockerUserId String   @map("blocker_user_id") @db.Uuid
   blockedUserId String   @map("blocked_user_id") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   blocker       User     @relation("UserBlocksAuthored", fields: [blockerUserId], references: [userId], onDelete: Cascade)
   blocked       User     @relation("UserBlocksReceived", fields: [blockedUserId], references: [userId], onDelete: Cascade)
 
@@ -1279,7 +1279,7 @@ model PollCommentReport {
   reporterUserId String      @map("reporter_user_id") @db.Uuid
   /// spam | harassment | off_topic | other (validated at the DTO seam).
   reason         String      @db.VarChar(32)
-  createdAt      DateTime    @default(now()) @map("created_at")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   comment        PollComment @relation(fields: [commentId], references: [commentId], onDelete: Cascade)
   reporter       User        @relation("PollCommentReportsAuthored", fields: [reporterUserId], references: [userId], onDelete: Cascade)
 
@@ -1296,7 +1296,7 @@ model UserReport {
   reportedUserId String   @map("reported_user_id") @db.Uuid
   /// spam | harassment | impersonation | other (validated at the DTO seam).
   reason         String   @db.VarChar(32)
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   reporter       User     @relation("UserReportsAuthored", fields: [reporterUserId], references: [userId], onDelete: Cascade)
   reported       User     @relation("UserReportsReceived", fields: [reportedUserId], references: [userId], onDelete: Cascade)
 
@@ -1314,9 +1314,9 @@ model Conversation {
   pairKey        String   @unique(map: "uq_conversations_pair_key") @map("pair_key")
   /// Denormalized hot-path columns for inbox sort/preview (single-writer:
   /// only MessagingService.sendMessage updates them, same tx as the insert).
-  lastMessageAt  DateTime @map("last_message_at")
+  lastMessageAt  DateTime @map("last_message_at") @db.Timestamptz(3)
   lastMessageId  String?  @map("last_message_id") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   participants ConversationParticipant[]
   messages     Message[]
@@ -1330,11 +1330,11 @@ model ConversationParticipant {
   userId            String    @map("user_id") @db.Uuid
   /// Read cursor: createdAt of the newest message this user has seen.
   /// Monotonic (server clamps backward moves). Source of truth for unread.
-  lastReadMessageAt DateTime? @map("last_read_message_at")
+  lastReadMessageAt DateTime? @map("last_read_message_at") @db.Timestamptz(3)
   /// Request-lane resolution (§1.1). Set on explicit accept only; first-reply
   /// promotion is DERIVED (viewer has sent a message), never written here.
-  acceptedAt        DateTime? @map("accepted_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
+  acceptedAt        DateTime? @map("accepted_at") @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   conversation Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [userId], onDelete: Cascade)
@@ -1360,7 +1360,7 @@ model Message {
   /// Client-supplied idempotency key; unique per (conversation, sender) so a
   /// retried send replays the SAME row instead of duplicating.
   clientDedupeId   String?           @map("client_dedupe_id") @db.VarChar(64)
-  createdAt        DateTime          @default(now()) @map("created_at")
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   conversation Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
   sender       User         @relation("MessagesSent", fields: [senderUserId], references: [userId], onDelete: Cascade)
@@ -1374,7 +1374,7 @@ model Message {
 model ReservedUsername {
   username  String   @id @db.Citext
   reason    String?  @db.VarChar(255)
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("user_reserved_usernames")
 }
@@ -1382,7 +1382,7 @@ model ReservedUsername {
 model UsernameHistory {
   userId    String   @map("user_id") @db.Uuid
   username  String   @db.Citext
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@id([userId, username])
@@ -1416,8 +1416,8 @@ model UserList {
   /// Wave-2 §2 "Use your photos": the list's tile gallery renders the owner's own
   /// photos (sparse, placeholder-filled) instead of the top-ranked restaurant photos.
   useOwnPhotos  Boolean                @default(false) @map("use_own_photos")
-  createdAt     DateTime               @default(now()) @map("created_at")
-  updatedAt     DateTime               @updatedAt @map("updated_at")
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
   owner         User                   @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
   items         UserListItem[]
   shareEvents   UserListShareEvent[]
@@ -1444,8 +1444,8 @@ model UserListItem {
   /// what makes shared lists feel authored.
   note          String?             @db.VarChar(512)
   position      Int                 @default(0) @map("position")
-  createdAt     DateTime            @default(now()) @map("created_at")
-  updatedAt     DateTime            @updatedAt @map("updated_at")
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
   list          UserList            @relation(fields: [listId], references: [listId], onDelete: Cascade)
   addedByUser   User?               @relation(fields: [addedByUserId], references: [userId], onDelete: SetNull)
   /// USER-LAYER LAW (2026-08-01 red team R1): user rows must NEVER be
@@ -1472,7 +1472,7 @@ model UserListCollaborator {
   listId          String   @map("list_id") @db.Uuid
   userId          String   @map("user_id") @db.Uuid
   invitedByUserId String?  @map("invited_by_user_id") @db.Uuid
-  createdAt       DateTime @default(now()) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   list            UserList @relation(fields: [listId], references: [listId], onDelete: Cascade)
   user            User     @relation("UserListCollaboratorUser", fields: [userId], references: [userId], onDelete: Cascade)
   invitedByUser   User?    @relation("UserListCollaboratorInviter", fields: [invitedByUserId], references: [userId], onDelete: SetNull)
@@ -1493,7 +1493,7 @@ model UserListShareEvent {
   /// `opened:<slug>:<viewerUserId>` (authed) / `opened:<slug>:<YYYY-MM-DD>`
   /// (anon). P2002 = already counted = no-op. Null for created/revoked.
   dedupeKey String?                @unique(map: "user_list_share_events_dedupe_key") @map("dedupe_key") @db.VarChar(160)
-  createdAt DateTime               @default(now()) @map("created_at")
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
   list      UserList               @relation(fields: [listId], references: [listId], onDelete: Cascade)
 
   @@index([listId], map: "idx_user_list_share_events_list")
@@ -1505,23 +1505,23 @@ model Subscription {
   subscriptionId         String                @id @default(dbgenerated("gen_random_uuid()")) @map("subscription_id") @db.Uuid
   userId                 String                @map("user_id") @db.Uuid
   status                 SubscriptionStatus
-  currentPeriodStart     DateTime?             @map("current_period_start")
-  currentPeriodEnd       DateTime?             @map("current_period_end")
+  currentPeriodStart     DateTime?             @map("current_period_start") @db.Timestamptz(3)
+  currentPeriodEnd       DateTime?             @map("current_period_end") @db.Timestamptz(3)
   cancelAtPeriodEnd      Boolean               @default(false) @map("cancel_at_period_end")
-  cancelledAt            DateTime?             @map("cancelled_at")
-  createdAt              DateTime              @default(now()) @map("created_at")
+  cancelledAt            DateTime?             @map("cancelled_at") @db.Timestamptz(3)
+  createdAt              DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
   entitlementCode        String?               @map("entitlement_code") @db.VarChar(255)
   externalCustomerId     String?               @map("external_customer_id") @db.VarChar(255)
   externalSubscriptionId String?               @map("external_subscription_id") @db.VarChar(255)
   lastEventId            String?               @map("last_event_id") @db.VarChar(255)
-  lastEventReceivedAt    DateTime?             @map("last_event_received_at")
+  lastEventReceivedAt    DateTime?             @map("last_event_received_at") @db.Timestamptz(3)
   metadata               Json?                 @default("{}")
   planName               String?               @map("plan_name") @db.VarChar(255)
   platform               SubscriptionPlatform? @map("platform")
   priceId                String?               @map("price_id") @db.VarChar(255)
   productId              String?               @map("product_id") @db.VarChar(255)
   provider               SubscriptionProvider  @map("provider")
-  updatedAt              DateTime              @updatedAt @map("updated_at")
+  updatedAt              DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
   user                   User                  @relation(fields: [userId], references: [userId])
 
   @@unique([provider, externalSubscriptionId], map: "subscriptions_provider_external_unique")
@@ -1544,13 +1544,13 @@ model BillingEventLog {
   eventType       String                @map("event_type") @db.VarChar(255)
   status          BillingEventStatus    @default(received)
   payload         Json                  @default("{}")
-  receivedAt      DateTime              @default(now()) @map("received_at")
-  processedAt     DateTime?             @map("processed_at")
+  receivedAt      DateTime              @default(now()) @map("received_at") @db.Timestamptz(3)
+  processedAt     DateTime?             @map("processed_at") @db.Timestamptz(3)
   errorMessage    String?               @map("error_message")
   retryCount      Int                   @default(0) @map("retry_count")
   correlationId   String?               @map("correlation_id") @db.VarChar(255)
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@unique([source, externalEventId], map: "billing_event_unique_external")
   @@index([status], map: "idx_billing_event_status")
@@ -1577,8 +1577,8 @@ model Photo {
   visibility      PhotoVisibility @default(public)
   caption         String?         @db.VarChar(512)
   /// EXIF DateTimeOriginal (capture time) — GPS is NEVER persisted.
-  takenAt         DateTime?       @map("taken_at")
-  uploadedAt      DateTime        @default(now()) @map("uploaded_at")
+  takenAt         DateTime?       @map("taken_at") @db.Timestamptz(3)
+  uploadedAt      DateTime        @default(now()) @map("uploaded_at") @db.Timestamptz(3)
   /// Cloudinary quality_analysis focus score 0..1 (blur<->sharp).
   focusScore      Float?          @map("focus_score")
   width           Int?
@@ -1588,9 +1588,9 @@ model Photo {
   /// Unmatched dish name from the "Other..." free text — demand signal;
   /// re-linkable when the dish materializes.
   pendingDishName String?         @map("pending_dish_name") @db.VarChar(256)
-  moderatedAt     DateTime?       @map("moderated_at")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
+  moderatedAt     DateTime?       @map("moderated_at") @db.Timestamptz(3)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   user            User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
   /// USER-LAYER LAW (R1): a user's photo must never die with a derived row.
   restaurant      Entity          @relation("RestaurantPhotos", fields: [restaurantId], references: [entityId], onDelete: Restrict)
@@ -1631,7 +1631,7 @@ model PhotoReport {
   /// Reporter's "what's wrong" pick (page-registry §8.6): not_food |
   /// inappropriate | wrong_entity | other. Nullable — legacy rows predate it.
   reason    String?  @db.VarChar(32)
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   photo     Photo    @relation(fields: [photoId], references: [photoId], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
@@ -1648,7 +1648,7 @@ model PhotoEvent {
   eventType  String   @map("event_type") @db.VarChar(16)
   /// Coalesced count for batched impressions.
   eventCount Int      @default(1) @map("event_count")
-  createdAt  DateTime @default(now()) @map("created_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([photoId, eventType], map: "idx_photo_events_photo_type")
   @@index([createdAt(sort: Desc)], map: "idx_photo_events_created")
@@ -1677,11 +1677,11 @@ model OnDemandRequest {
   /// engine_id.
   engineId              String                @map("engine_id") @db.VarChar(255)
   distinctUserCount     Int                   @default(0) @map("distinct_user_count")
-  lastSeenAt            DateTime              @default(now()) @map("last_seen_at")
-  lastQueuedAt          DateTime?             @map("last_queued_at")
+  lastSeenAt            DateTime              @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  lastQueuedAt          DateTime?             @map("last_queued_at") @db.Timestamptz(3)
   metadata              Json?                 @default("{}")
-  createdAt             DateTime              @default(now()) @map("created_at")
-  updatedAt             DateTime              @updatedAt @map("updated_at")
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
   entityId              String?               @map("entity_id") @db.Uuid
   entityIdentityKey     String                @default("no_entity") @map("entity_identity_key") @db.VarChar(64)
   reason                OnDemandReason
@@ -1728,8 +1728,8 @@ model OnDemandUnsegmentedResidue {
   /// pending → segmented (typed rows minted) | discarded (junk / no terms)
   status          String    @default("pending") @db.VarChar(16)
   attempts        Int       @default(0)
-  createdAt       DateTime  @default(now()) @map("created_at")
-  processedAt     DateTime? @map("processed_at")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  processedAt     DateTime? @map("processed_at") @db.Timestamptz(3)
 
   @@index([status, createdAt], map: "idx_unsegmented_residue_status")
   @@map("collection_on_demand_unsegmented_residue")
@@ -1738,8 +1738,8 @@ model OnDemandUnsegmentedResidue {
 model OnDemandRequestUser {
   requestId   String          @map("request_id") @db.Uuid
   userId      String          @map("user_id") @db.Uuid
-  firstSeenAt DateTime        @default(now()) @map("first_seen_at")
-  lastSeenAt  DateTime        @default(now()) @map("last_seen_at")
+  firstSeenAt DateTime        @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt  DateTime        @default(now()) @map("last_seen_at") @db.Timestamptz(3)
   askCount    Int             @default(1) @map("ask_count")
   request     OnDemandRequest @relation(fields: [requestId], references: [requestId], onDelete: Cascade)
   user        User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
@@ -1756,8 +1756,8 @@ model KeywordAttemptHistory {
   /// §11 attempt ledger: the schedulable unit is (engine, term); engineName
   /// is the engine's natural key.
   engineId            String?                @map("engine_id") @db.Uuid
-  lastAttemptAt       DateTime?              @map("last_attempt_at")
-  lastSuccessAt       DateTime?              @map("last_success_at")
+  lastAttemptAt       DateTime?              @map("last_attempt_at") @db.Timestamptz(3)
+  lastSuccessAt       DateTime?              @map("last_success_at") @db.Timestamptz(3)
   lastOutcome         KeywordAttemptOutcome? @map("last_outcome")
   /// Harvest snapshot (no-fake-estimates law): when the query last actually
   /// ran against the vendor, how many results it returned, and how big the
@@ -1766,8 +1766,8 @@ model KeywordAttemptHistory {
   lastHarvestAt       DateTime?              @map("last_harvest_at") @db.Timestamptz(6)
   lastResultCount     Int?                   @map("last_result_count")
   corpusDocsAtHarvest Int?                   @map("corpus_docs_at_harvest")
-  createdAt           DateTime               @default(now()) @map("created_at")
-  updatedAt           DateTime               @updatedAt @map("updated_at")
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([engineName, normalizedTerm])
   @@index([engineName], map: "idx_collection_keyword_attempt_history_engine_name")
@@ -2078,7 +2078,7 @@ model Place {
   timeZone          String?       @map("time_zone") @db.VarChar(64)
   provider          String        @default("tomtom") @db.VarChar(32)
   providerPlaceId   String?       @map("provider_place_id") @db.VarChar(128)
-  createdAt         DateTime      @default(now()) @map("created_at")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   curatedLists      CuratedList[]
 
   /// THE identity key (one-ground charter P3): the vendor's stable geometry
@@ -2109,7 +2109,7 @@ model Place {
 model PlaceGeometry {
   placeId            String   @id @map("place_id") @db.Uuid
   providerBoundaryId String?  @map("provider_boundary_id") @db.VarChar(128)
-  fetchedAt          DateTime @default(now()) @map("fetched_at")
+  fetchedAt          DateTime @default(now()) @map("fetched_at") @db.Timestamptz(3)
 
   /// The catalog-revision read (header freshness): newest ground write in a
   /// region. DESC so the planner can walk it backward and stop at the first
@@ -2161,19 +2161,19 @@ model ProbedRegion {
 model PlaceGeometryPromotion {
   placeId            String    @id @map("place_id") @db.Uuid
   trigger            String    @db.VarChar(32)
-  enqueuedAt         DateTime  @default(now()) @map("enqueued_at")
-  promotedAt         DateTime? @map("promoted_at")
+  enqueuedAt         DateTime  @default(now()) @map("enqueued_at") @db.Timestamptz(3)
+  promotedAt         DateTime? @map("promoted_at") @db.Timestamptz(3)
   /// A FAULT IS NOT A MISS (2026-08-01): the ceiling that retires a row
   /// reads THIS, incremented only when the vendor says it has no polygon
   /// for the id. `attempts` below stays the fault counter (transport
   /// errors, deferrals) and retires nothing.
   missAttempts       Int      @default(0) @map("miss_attempts")
   attempts           Int       @default(0)
-  lastAttemptAt      DateTime? @map("last_attempt_at")
+  lastAttemptAt      DateTime? @map("last_attempt_at") @db.Timestamptz(3)
   /// Docket #2: TERMINAL refusal — the vendor provably does not model this
   /// place separately (entity claimed at the same level, or the polygon
   /// does not contain the anchor). A fact, never retried.
-  refusedAt          DateTime? @map("refused_at")
+  refusedAt          DateTime? @map("refused_at") @db.Timestamptz(3)
   providerBoundaryId String?   @map("provider_boundary_id") @db.VarChar(128)
   /// §24 Task 3: the spend campaign that enqueued this item (e.g. the coarse
   /// polygon seed's pilot campaign), when one exists. Organic/header/poll
@@ -2270,7 +2270,7 @@ model SignalDemandDaily {
   subjectId      String?  @map("subject_id") @db.Uuid
   subjectText    String?  @map("subject_text") @db.VarChar(255)
   signalCount    Int      @map("signal_count")
-  lastOccurredAt DateTime @map("last_occurred_at")
+  lastOccurredAt DateTime @map("last_occurred_at") @db.Timestamptz(3)
 
   @@index([day])
   @@index([subjectId, day])
@@ -2308,7 +2308,7 @@ model SignalActor {
   actorId    String    @id @default(dbgenerated("gen_random_uuid()")) @map("actor_id") @db.Uuid
   userId     String?   @unique @map("user_id") @db.Uuid
   deviceKey  String?   @unique @map("device_key") @db.VarChar(128)
-  createdAt  DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   /// Flag-flip seam for confirmed sybil rings; read-side filtering lands with
   /// the first ring — plans/vote-integrity-ladder.md.
   excludedAt DateTime? @map("excluded_at") @db.Timestamptz(6)
@@ -2338,7 +2338,7 @@ model UserDevice {
 model EntityRedirect {
   fromEntityId String   @id @map("from_entity_id") @db.Uuid
   toEntityId   String   @map("to_entity_id") @db.Uuid
-  redirectedAt DateTime @default(now()) @map("redirected_at")
+  redirectedAt DateTime @default(now()) @map("redirected_at") @db.Timestamptz(3)
 
   @@index([toEntityId])
   @@map("entity_redirects")
@@ -2357,7 +2357,7 @@ model Source {
   handle        String   @db.VarChar(255)
   anchorPlaceId String?  @map("anchor_place_id") @db.Uuid
   engineId      String?  @map("engine_id") @db.Uuid
-  createdAt     DateTime @default(now()) @map("created_at")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@unique([platform, handle], map: "sources_platform_handle_key")
   @@index([anchorPlaceId], map: "idx_sources_anchor_place")
@@ -2395,7 +2395,7 @@ model CuratedList {
   /// Recipe-decided cadence label: monthly '2026-07', weekly '2026-W30',
   /// daily '2026-07-26'. Supersede = delete other rotations in the same tx.
   rotationKey String            @map("rotation_key") @db.VarChar(16)
-  builtAt     DateTime          @default(now()) @map("built_at")
+  builtAt     DateTime          @default(now()) @map("built_at") @db.Timestamptz(3)
   itemCount   Int               @map("item_count")
   city        Place             @relation(fields: [cityPlaceId], references: [placeId], onDelete: Cascade)
   owner       User?             @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
@@ -2445,9 +2445,9 @@ model PollPlaceSupply {
   frontier        Int
   phase           String    @db.VarChar(16)
   credit          Decimal   @default(0) @db.Decimal(18, 6)
-  creditUpdatedAt DateTime? @map("credit_updated_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  creditUpdatedAt DateTime? @map("credit_updated_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("poll_place_supply")
 }
@@ -2462,7 +2462,7 @@ model PollWeeklyTick {
   weekOf         String   @map("week_of") @db.VarChar(10)
   publishedCount Int      @map("published_count")
   factors        Json?
-  publishedAt    DateTime @default(now()) @map("published_at")
+  publishedAt    DateTime @default(now()) @map("published_at") @db.Timestamptz(3)
 
   @@unique([placeId, weekOf], map: "poll_weekly_ticks_place_week_key")
   @@map("poll_weekly_ticks")

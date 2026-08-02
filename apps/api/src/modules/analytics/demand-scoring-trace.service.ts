@@ -9,7 +9,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { utcInstant } from '../../shared/sql/utc-instant';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_TRACE_RETENTION_DAYS = 180;
@@ -140,7 +139,7 @@ export class DemandScoringTraceService {
           USING demand_scoring_runs r
           WHERE c.run_id = r.run_id
             AND r.trace_all_candidates = true
-            AND r.started_at < ${utcInstant(traceAllCutoff)}
+            AND r.started_at < ${traceAllCutoff}
             AND c.selected = false
             AND c.factor_breakdown->>'traceScope' = 'all_candidate'
         `,

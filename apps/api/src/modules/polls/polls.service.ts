@@ -50,7 +50,6 @@ import { PlacesCatalogService } from '../places/places-catalog.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
 import { UserBlockService } from '../identity/user-block.service';
-import { utcInstant } from '../../shared/sql/utc-instant';
 import {
   GeoBbox,
   PLACES_SLICE_MARGIN_FACTOR,
@@ -339,7 +338,7 @@ export class PollsService {
       AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
       ${
         launchedAfter
-          ? Prisma.sql`AND p.launched_at >= ${utcInstant(launchedAfter)}`
+          ? Prisma.sql`AND p.launched_at >= ${launchedAfter}`
           : Prisma.empty
       }
       AND p.place_id = ANY(${placeIds}::uuid[])
@@ -349,7 +348,7 @@ export class PollsService {
       const cursor =
         params.cursor?.sort === PollListSort.new ? params.cursor : null;
       const keyset = cursor
-        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${utcInstant(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
+        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${new Date(cursor.createdAtMs)}, ${cursor.pollId}::uuid)`
         : Prisma.empty;
       const rows = await this.prisma.$queryRaw<
         Array<{ poll_id: string; created_at: Date }>
@@ -388,7 +387,7 @@ export class PollsService {
           SUM(
             EXP(
               -LN(2) / ${POLL_TRENDING_HALF_LIFE_DAYS}::float8
-              * (EXTRACT(EPOCH FROM (${utcInstant(new Date(refMs))} - en.last_ts)) / 86400.0)
+              * (EXTRACT(EPOCH FROM (${new Date(refMs)} - en.last_ts)) / 86400.0)
             )
           ),
           0
@@ -399,7 +398,7 @@ export class PollsService {
         ? params.cursor
         : null;
     const keyset = cursor
-      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${utcInstant(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
+      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${new Date(cursor.createdAtMs)}, ${cursor.pollId}::uuid)`
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<
       Array<{ poll_id: string; created_at: Date; metric: number }>
