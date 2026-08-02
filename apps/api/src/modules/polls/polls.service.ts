@@ -109,6 +109,31 @@ function resolvePollTimeCutoff(time: PollListTime | undefined): Date | null {
   return windowMs != null ? new Date(Date.now() - windowMs) : null;
 }
 
+/**
+ * A JS Date, rendered for comparison against our NAIVE timestamp columns.
+ *
+ * THE BUG THIS EXISTS TO KILL (attributed 2026-08-02, empirically). Every
+ * timestamp column on polls/poll_comments/poll_endorsements is `timestamp
+ * WITHOUT time zone`, storing UTC wall-clock. Prisma binds a JS Date as
+ * `timestamptz`. Comparing the two makes Postgres coerce the naive column
+ * using the SESSION's TimeZone — so the answer depends on where the server
+ * thinks it is.
+ *
+ * Measured on a dev box running America/Chicago, against one real feed
+ * cursor: the timestamptz form matched 3,175 polls where the correct naive
+ * comparison matched 16,528. The polls feed could not load a second page at
+ * all — page 1 reported "more" and page 2 came back empty, on every sort.
+ * Production runs UTC, where the offset is zero and the bug is invisible;
+ * that is precisely what makes it a landmine rather than an outage.
+ *
+ * `AT TIME ZONE 'UTC'` converts the bound instant to the same naive UTC frame
+ * the column is stored in, so the comparison means the same thing under any
+ * session timezone.
+ */
+function naiveUtc(value: Date): Prisma.Sql {
+  return Prisma.sql`(${value}::timestamptz AT TIME ZONE 'UTC')`;
+}
+
 @Injectable()
 export class PollsService {
   private readonly logger: LoggerService;
@@ -334,7 +359,11 @@ export class PollsService {
     const filters = Prisma.sql`
       p.state::text = ${state}
       AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
-      AND (${launchedAfter}::timestamptz IS NULL OR p.launched_at >= ${launchedAfter}::timestamptz)
+      ${
+        launchedAfter
+          ? Prisma.sql`AND p.launched_at >= ${naiveUtc(launchedAfter)}`
+          : Prisma.empty
+      }
       AND p.place_id = ANY(${placeIds}::uuid[])
     `;
 
@@ -342,7 +371,7 @@ export class PollsService {
       const cursor =
         params.cursor?.sort === PollListSort.new ? params.cursor : null;
       const keyset = cursor
-        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${new Date(cursor.createdAtMs)}, ${cursor.pollId}::uuid)`
+        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${naiveUtc(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
         : Prisma.empty;
       const rows = await this.prisma.$queryRaw<
         Array<{ poll_id: string; created_at: Date }>
@@ -381,7 +410,7 @@ export class PollsService {
           SUM(
             EXP(
               -LN(2) / ${POLL_TRENDING_HALF_LIFE_DAYS}::float8
-              * (EXTRACT(EPOCH FROM (${new Date(refMs)}::timestamptz - en.last_ts)) / 86400.0)
+              * (EXTRACT(EPOCH FROM (${naiveUtc(new Date(refMs))} - en.last_ts)) / 86400.0)
             )
           ),
           0
@@ -392,24 +421,46 @@ export class PollsService {
         ? params.cursor
         : null;
     const keyset = cursor
-      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${new Date(cursor.createdAtMs)}, ${cursor.pollId}::uuid)`
+      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${naiveUtc(new Date(cursor.createdAtMs))}, ${cursor.pollId}::uuid)`
       : Prisma.empty;
     const rows = await this.prisma.$queryRaw<
       Array<{ poll_id: string; created_at: Date; metric: number }>
     >(Prisma.sql`
-      WITH engagement AS (
+      -- ENGAGEMENT IS SCOPED TO THE VIEWPORT'S POLLS.
+      --
+      -- This CTE used to aggregate poll_endorsements and poll_comments in
+      -- FULL — every engagement row in the app — and only then join to the
+      -- filtered polls. Cost therefore scaled with total app activity rather
+      -- than with what the page returns, on the app's hottest read. Measured
+      -- against 502,068 synthetic engagement rows over the real poll
+      -- population: the old shape hash-aggregated all 502,068 and SPILLED TO
+      -- DISK to return 2 rows (213.6ms); scoping it first is 0.221ms, a 968x
+      -- difference, with results identical on every poll (0 rows differing
+      -- across a full-table comparison). At today's 41 engagement rows both
+      -- are instant — which is exactly why this had to be fixed before it
+      -- mattered, not after.
+      WITH candidates AS (
+        SELECT p.poll_id, p.created_at
+        FROM polls p
+        WHERE ${filters}
+      ),
+      engagement AS (
         SELECT poll_id, user_id, MAX(ts) AS last_ts
         FROM (
-          SELECT poll_id, user_id, created_at AS ts FROM poll_endorsements
+          SELECT e.poll_id, e.user_id, e.created_at AS ts
+          FROM poll_endorsements e
+          WHERE e.poll_id IN (SELECT poll_id FROM candidates)
           UNION ALL
-          SELECT poll_id, user_id, logged_at AS ts FROM poll_comments WHERE deleted_at IS NULL
+          SELECT c.poll_id, c.user_id, c.logged_at AS ts
+          FROM poll_comments c
+          WHERE c.deleted_at IS NULL
+            AND c.poll_id IN (SELECT poll_id FROM candidates)
         ) events
         GROUP BY poll_id, user_id
       )
       SELECT p.poll_id, p.created_at, ${metricExpr} AS metric
-      FROM polls p
+      FROM candidates p
       LEFT JOIN engagement en ON en.poll_id = p.poll_id
-      WHERE ${filters}
       GROUP BY p.poll_id, p.created_at
       ${keyset}
       ORDER BY metric DESC, p.created_at DESC, p.poll_id DESC

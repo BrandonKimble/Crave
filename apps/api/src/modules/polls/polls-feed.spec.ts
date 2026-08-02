@@ -93,11 +93,17 @@ function createHarness(options: {
         );
       }
       if (sql.includes('ORDER BY p.created_at DESC')) {
-        // The 'new'-sort page query. Filter template param order:
-        // state, mode, mode, launchedAfter, launchedAfter, placeIds,
-        // [cursorDate, cursorId], limit+1. (The legacy marketKeys arm died
-        // with the legacy-poll-expiry leg — every row is place-keyed.)
-        const placeIds = values[5] as string[];
+        // The 'new'-sort page query.
+        //
+        // Params are located BY SHAPE, not by index. They used to be read
+        // positionally with the layout spelled out in a comment, so a change
+        // to the WHERE clause silently shifted every read — which is exactly
+        // what happened when the launchedAfter null-trick (which bound the
+        // same value twice) was replaced by a conditional clause. placeIds is
+        // the only array parameter, so it can simply be found.
+        const placeIds = values.find((value) =>
+          Array.isArray(value),
+        ) as string[];
         const limit = values[values.length - 1] as number;
         const hasCursor = sql.includes('(p.created_at, p.poll_id) <');
         let rows = options.pollTable.filter(
