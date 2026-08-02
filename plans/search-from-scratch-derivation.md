@@ -329,6 +329,43 @@ plus one flattening):
 
 change visible results BY DESIGN — the header no longer claims otherwise)
 
+**BUILD STATUS (2026-08-01, all structural steps LANDED + empirically
+verified on the mirror; commits 4a538e49 → 1e50ef3f):** step 1 dietary
+hardness ✅ (earlier); step 2 ✅ untyped exact recall + lemma variant
+probes + single-bucket placement (dietary wins; deterministic order;
+curated list = calibration tail) in the linker chain, 4 specs +
+real-data premises verified; step 3 ✅ pooled window-gate behind
+SEARCH_POOLED_MODE=off|shadow|on (shadow diff harness; relax forced off
+in 'on'), smoke-verified incl. openness-aware gate + hydrate-never-
+gates, 9 shape specs; step 4 ✅ structured grounding
+(SearchConstraints.grounding.food; flat foodIds/exactFoodIds/relevance
+are derived views — the three reconstruction mechanisms are deleted) +
+one evidence-admission authority (evidence-admission.ts, per-consumer
+floors); step 5 ✅ per-word starvation (soft_word_counts in both pooled
+counts → executor → starvedWords on demand context + narrowed
+requests). Zero-per-search-LLM plumbing ✅: unsegmented staging table +
+env-gated async segmenter cron + SEARCH_GAZETTEER_UNDERSTAND=
+off|shadow|on (residue-join rule implemented in 'on'). Calibration
+instruments ✅ built, readings PARKED (calibration-instruments.ts:
+conflicts/junk/threshold; linker-calibration-sweep.ts pre-existing).
+Nothing is FLIPPED: pooled off, gazetteer off, segmenter off — the
+ladder still serves until shadow parity is measured.
+
+**EMPIRICAL RED TEAM (2026-08-02, real Nest context + mirror DB, no
+mocks) — 6/6 PASS** after one real finding fixed: (1) lemma probe:
+"empanadas" grounds to "empanada" tier=exact — the finding was that a
+FUZZY typed link ("birria empanada") was accepted before the variant
+EXACT ran; ordering fixed (2bd80cdd1); (2) untyped re-bucket: a
+food-typed attribute-only term lands in restaurant_attribute; (3)
+gazetteer-on grounds compound span "breakfast tacos"; (4) junk residue
+"blorptastic" writes exactly one staging row; (5) pooled-on runQuery
+end-to-end: 25 dishes, tier-ordered, bounds applied, total=560; (6)
+starved-word computation yields exactly the zero-coverage term.
+Harness gotchas recorded: bounds DTO is northEast/southWest (wrong
+casing silently disables bounds → world-scope queries look like a
+hang); stopCronsForScript does NOT stop BullMQ queue workers (a
+long-lived harness will process real jobs — mirror only, but beware).
+
 0. RE-SEQUENCED (owner 2026-07-30): the program is now **search STRUCTURE
    (this plan, now) → data audit + prompt review cycle (its own third
    plan) → charter reload → search CALIBRATION tail.** Only the
