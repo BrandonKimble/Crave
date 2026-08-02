@@ -29,6 +29,7 @@ import {
   LINKER_MIN_FLOOR,
 } from './linker-calibration.generated';
 import { EngineCoverageService } from './engine-coverage.service';
+import { SignalsService } from '../signals/signals.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
 const METERS_PER_MILE = 1609.34;
@@ -87,6 +88,7 @@ export class SearchQueryInterpretationService {
     private readonly engineCoverage: EngineCoverageService,
     private readonly dietaryConstraints: DietaryConstraintRegistry,
     private readonly unsegmentedResidue: UnsegmentedResidueService,
+    private readonly signals: SignalsService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -314,12 +316,15 @@ export class SearchQueryInterpretationService {
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
     structuredRequest.searchRequestId ??= uuid();
 
-    // Unknown residue → the staging zone (typed queue rows are minted by
-    // the async batch segmenter, never from raw residue). Cap per request
-    // (red team R4-P6): a real query has 1–3 unknown spans; one crafted
-    // 205-char query staged 20 rows.
-    const stagedResidues = unresolvedResidues.slice(0, 3);
-    if (stagedResidues.length) {
+    // UNTYPED DEMAND FLOWS DIRECTLY (ideal-abstraction round 5): the
+    // collector's unmet lane reads on_demand_ask SIGNALS, not the typed
+    // queue — a user asking for a word we lack is a complete collection
+    // seed with no type needed. Short residue (≤2 tokens) records its ask
+    // immediately; only 3+-token runs stage for the async LLM SPLITTER
+    // (multi-entity residue like "khachapuri and adjika" genuinely needs
+    // judgment — typing does not). Cap 3/request (red team R4-P6).
+    const cappedResidues = unresolvedResidues.slice(0, 3);
+    if (cappedResidues.length) {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
@@ -328,34 +333,46 @@ export class SearchQueryInterpretationService {
             await this.engineCoverage.resolveViewportCoverage(request.bounds)
           ).engines.map((engine) => engine.engineId)
         : [];
-      await Promise.all(
-        stagedResidues.map((residueText) =>
-          this.unsegmentedResidue
-            .recordResidue({
-              residueText,
-              searchRequestId: structuredRequest.searchRequestId,
-              engineIds,
-              userId: request.userId ?? null,
-              context: {
-                query: request.query,
-                source: 'gazetteer_understand',
-                // GEO IS THE SIGNAL'S SPINE (red team R4-①): without
-                // bounds the drained ask records no geo and the signals
-                // layer DROPS it — the whole unresolved→collection loop
-                // goes dark. The viewport rides to the queue row.
-                ...(request.bounds ? { bounds: request.bounds } : {}),
+      const now = new Date();
+      for (const residueText of cappedResidues) {
+        const tokenCount = residueText.split(/\s+/).filter(Boolean).length;
+        if (tokenCount <= 2) {
+          // Direct untyped ask — geo is the signal's spine (R4-①).
+          this.signals.record({
+            kind: 'on_demand_ask',
+            userId: request.userId ?? null,
+            subject: { entityId: null, term: residueText },
+            geo: this.signals.bboxFromBounds(request.bounds ?? null),
+            occurredAt: now,
+            meta: {
+              askSearchRequestId:
+                structuredRequest.searchRequestId ?? undefined,
+              reason: 'unresolved',
+              source: 'gazetteer_residue',
+            },
+          });
+          continue;
+        }
+        await this.unsegmentedResidue
+          .recordResidue({
+            residueText,
+            searchRequestId: structuredRequest.searchRequestId,
+            engineIds,
+            userId: request.userId ?? null,
+            context: {
+              query: request.query,
+              source: 'gazetteer_understand',
+              ...(request.bounds ? { bounds: request.bounds } : {}),
+            },
+          })
+          .catch((error: unknown) => {
+            this.logger.warn('Residue staging write failed (ignored)', {
+              error: {
+                message: error instanceof Error ? error.message : String(error),
               },
-            })
-            .catch((error: unknown) => {
-              this.logger.warn('Residue staging write failed (ignored)', {
-                error: {
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                },
-              });
-            }),
-        ),
-      );
+            });
+          });
+      }
     }
 
     const phaseTimings = {

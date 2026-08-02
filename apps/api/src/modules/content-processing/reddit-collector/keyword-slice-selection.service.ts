@@ -902,35 +902,39 @@ export class KeywordSliceSelectionService {
       limit: MAX_TERMS_PER_CYCLE * 10,
     });
 
-    return rows
-      .filter((row): row is typeof row & { entityType: EntityType } =>
-        (Object.values(EntityType) as string[]).includes(row.entityType),
+    // UNTYPED DEMAND IS DEMAND (ideal-abstraction round 5): dispatch is a
+    // literal keyword search on `term` — the type was never consulted, yet
+    // this filter silently DROPPED every untyped ask (gazetteer residue).
+    // A user asking for a word we lack is a complete collection seed.
+    return rows.map((request) => ({
+      term: request.term,
+      normalizedTerm: '',
+      slice: 'unmet',
+      score: this.calculateUnmetScore({
+        distinctUsers: request.distinctUserCount,
+        demandScore: request.demandScore,
+        reason: request.reason as OnDemandReason,
+        resultRestaurantCount: request.resultRestaurantCount,
+        resultFoodCount: request.resultFoodCount,
+        lastSeenAt: request.lastSeenAt,
+        now,
+      }),
+      entityType: (Object.values(EntityType) as string[]).includes(
+        request.entityType,
       )
-      .map((request) => ({
-        term: request.term,
-        normalizedTerm: '',
-        slice: 'unmet',
-        score: this.calculateUnmetScore({
-          distinctUsers: request.distinctUserCount,
-          demandScore: request.demandScore,
-          reason: request.reason as OnDemandReason,
-          resultRestaurantCount: request.resultRestaurantCount,
-          resultFoodCount: request.resultFoodCount,
-          lastSeenAt: request.lastSeenAt,
-          now,
-        }),
-        entityType: request.entityType,
-        origin: {
-          reason: request.reason,
-          distinctUserCount: request.distinctUserCount,
-          demandScore: request.demandScore,
-          askCount: request.askCount,
-          entityId: request.entityId,
-          resultRestaurantCount: request.resultRestaurantCount ?? 0,
-          resultFoodCount: request.resultFoodCount ?? 0,
-          lastSeenAt: request.lastSeenAt.toISOString(),
-        },
-      }));
+        ? (request.entityType as EntityType)
+        : undefined,
+      origin: {
+        reason: request.reason,
+        distinctUserCount: request.distinctUserCount,
+        demandScore: request.demandScore,
+        askCount: request.askCount,
+        entityId: request.entityId,
+        resultRestaurantCount: request.resultRestaurantCount ?? 0,
+        resultFoodCount: request.resultFoodCount ?? 0,
+        lastSeenAt: request.lastSeenAt.toISOString(),
+      },
+    }));
   }
 
   /**
