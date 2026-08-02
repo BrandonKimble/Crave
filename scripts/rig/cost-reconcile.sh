@@ -23,8 +23,15 @@ WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${DAYS} DA
 GROUP BY 1,2 HAVING SUM(cost) > 0.05 ORDER BY 3 DESC"
 
 echo "== OUR LEDGER (prod, same window) =="
-PRODURL=$(railway variables --service api --kv 2>/dev/null | grep -m1 '^DATABASE_URL=' | cut -d= -f2-)
+# Capture THEN grep — `railway | grep -m1` closes the pipe early, railway
+# dies of SIGPIPE (141), and pipefail turns a working lookup into a silent
+# exit 1 (race: only when railway is still writing when grep quits).
+RAILWAY_VARS=$(railway variables --service api --environment production --kv 2>/dev/null)
+PRODURL=$(printf '%s\n' "$RAILWAY_VARS" | grep -m1 '^DATABASE_URL=' | cut -d= -f2-)
 export PGPASSWORD=$(echo "$PRODURL" | sed -E 's|postgresql://[^:]+:([^@]+)@.*|\1|')
+# The laptop cannot resolve postgis-db.railway.internal — build the PROXY url
+# for anything that dials from here (the psql below and --publish).
+PROD_PROXY_URL="postgresql://postgres:${PGPASSWORD}@sakura.proxy.rlwy.net:48622/crave_search"
 psql -h sakura.proxy.rlwy.net -p 48622 -U postgres -d crave_search -c "
 SELECT service, operation, sku_tier, mode, count(*) AS calls,
   sum(input_tokens) AS in_tok, sum(cached_tokens) AS cached_tok,
@@ -75,7 +82,7 @@ if [[ "${2:-}" == "--publish" ]]; then
     WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${DAYS} DAY)
       AND service.description LIKE '%Places%'" | tail -1)
   echo "billed: gemini=\$${BILLED_GEMINI:-0} places=\$${BILLED_PLACES:-0}"
-  (cd "$(dirname "$0")/../../apps/api" && DATABASE_URL="$PRODURL" ALLOW_REMOTE_DB=1 \
+  (cd "$(dirname "$0")/../../apps/api" && DATABASE_URL="$PROD_PROXY_URL" ALLOW_REMOTE_DB=1 \
     npx ts-node scripts/publish-reconciliation.ts \
       --days "$DAYS" \
       --billed-gemini-usd "${BILLED_GEMINI:-0}" \
