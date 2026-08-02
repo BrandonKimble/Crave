@@ -63,6 +63,7 @@ function makePrisma() {
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     conversationParticipant: {
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -217,11 +218,40 @@ describe('sendMessage', () => {
   it('send updates the conversation denorm in the same transaction', async () => {
     await service.sendMessage(ME, CONVO, { kind: 'text' as any, body: 'hi' });
     expect(prisma.$transaction).toHaveBeenCalled();
-    expect(prisma.conversation.update).toHaveBeenCalledWith(
+    expect(prisma.conversation.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ lastMessageId: MSG }),
       }),
     );
+  });
+
+  // THE RACE (red team 2026-08-02). Two participants sending at once are two
+  // transactions. `created_at` defaults to CURRENT_TIMESTAMP, which Postgres
+  // freezes at BEGIN — verified: unchanged across a 300ms pg_sleep while
+  // clock_timestamp advanced — so a transaction that STARTED earlier can reach
+  // this row lock LATER and stamp its older timestamp over the newer one.
+  //
+  // lastMessageAt is the inbox sort key AND its pagination cursor, and
+  // lastMessageId picks the preview row, so the symptom is a conversation
+  // sinking in the inbox while showing an older message, never self-repairing
+  // until the next send. The write must therefore be conditional, exactly like
+  // the read-cursor update on the next line.
+  it('the denorm write is MONOTONIC — an older send cannot overwrite a newer one', async () => {
+    await service.sendMessage(ME, CONVO, { kind: 'text' as any, body: 'hi' });
+
+    const call = prisma.conversation.updateMany.mock.calls[0][0] as {
+      where: { conversationId: string; OR?: Array<Record<string, unknown>> };
+    };
+    expect(call.where.conversationId).toBe(CONVO);
+    // Only advance when this message is genuinely newer (or nothing is set).
+    expect(call.where.OR).toEqual([
+      // Clock-independent "nothing recorded yet": lastMessageAt is seeded from
+      // the API's clock at conversation creation while messages take theirs
+      // from Postgres, so the FIRST message can look older than the empty
+      // conversation. Keying the empty case on lastMessageId avoids that.
+      { lastMessageId: null },
+      { lastMessageAt: { lt: textMessage().createdAt } },
+    ]);
   });
 
   it('dedupe replay: P2002 on clientDedupeId returns the ORIGINAL message', async () => {

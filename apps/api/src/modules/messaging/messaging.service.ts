@@ -361,9 +361,40 @@ export class MessagingService {
             clientDedupeId: dto.clientDedupeId ?? null,
           },
         });
-        // Single-writer denorm (§2.1): only this tx touches the hot columns.
-        await tx.conversation.update({
-          where: { conversationId },
+        // MONOTONIC DENORM (red team 2026-08-02). The old comment here claimed
+        // "single-writer: only this tx touches the hot columns" — true of a
+        // single send, false of two. Two participants sending at once are two
+        // transactions, and an unconditional write is last-writer-wins on a
+        // column that must only move forward.
+        //
+        // The window is wide, not theoretical: `created_at` defaults to
+        // CURRENT_TIMESTAMP, which Postgres freezes at BEGIN (verified: it is
+        // unchanged across a 300ms pg_sleep while clock_timestamp advances).
+        // So a transaction that STARTED earlier can reach this row lock later
+        // and stamp its older timestamp over the newer one.
+        //
+        // That is not cosmetic: lastMessageAt is the inbox sort key AND its
+        // pagination cursor, and lastMessageId picks the preview row. The
+        // symptom is a conversation sinking in the inbox while showing an
+        // older message, and it never self-repairs until the next send.
+        //
+        // The guard is the same one the very next statement already applies to
+        // the read cursor — it was simply never applied here.
+        await tx.conversation.updateMany({
+          where: {
+            conversationId,
+            OR: [
+              // No message recorded yet. Deliberately keyed on lastMessageId
+              // (null until the first send) rather than on a timestamp
+              // comparison: `lastMessageAt` is seeded at conversation creation
+              // from the API's `new Date()` while messages take theirs from
+              // Postgres CURRENT_TIMESTAMP. Two clocks order one sequence, so
+              // the first message can legitimately look OLDER than the empty
+              // conversation and would otherwise never register.
+              { lastMessageId: null },
+              { lastMessageAt: { lt: created.createdAt } },
+            ],
+          },
           data: {
             lastMessageAt: created.createdAt,
             lastMessageId: created.messageId,
