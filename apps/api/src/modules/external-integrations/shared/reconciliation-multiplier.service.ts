@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 /**
@@ -31,7 +31,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
  * the pre-reconciliation state), and only cost-reconcile writes it.
  */
 @Injectable()
-export class ReconciliationMultiplierService {
+export class ReconciliationMultiplierService implements OnApplicationBootstrap {
   /**
    * Cached because this is read on the metering hot path, once per usage
    * event. The value changes only when cost-reconcile publishes, which is a
@@ -43,6 +43,17 @@ export class ReconciliationMultiplierService {
   private readonly cache = new Map<string, { value: number; at: number }>();
 
   constructor(@Optional() private readonly prisma?: PrismaService) {}
+
+  /**
+   * Warm the cache at boot (red-team cost P2, 2026-08-02): prime() had ZERO
+   * production callers, so every process started cold — minting envelopes in
+   * billed dollars while draining the opening events at x1 (ledger), the
+   * exact mint-in-billed/drain-in-ledger asymmetry this seam exists to kill,
+   * for the first events of every boot. Priming here closes that window.
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    await this.prime();
+  }
 
   /**
    * Gross ledger micros into billed micros for `service`.

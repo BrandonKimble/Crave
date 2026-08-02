@@ -564,24 +564,9 @@ export class RestaurantLocationEnrichmentService {
       return { entityId, status: 'skipped', reason: 'archived' };
     }
 
-    // HONEST DENOMINATOR (round-six cost red team #1/#2): the ledger row
-    // must say WHY this Places spend happened. First grounding of an
-    // ungrounded restaurant is 'grounding.new' (the per-new-restaurant
-    // rate's numerator); a forced re-enrichment of an already-grounded one
-    // is 'grounding.refresh' (July's $369 re-grounding event — which used
-    // to contaminate the new-restaurant rate by 51%, and would itself have
-    // estimated as ~$0). Ambient, so every Places call in this tree
-    // inherits it without signature threading.
-    const alreadyGrounded =
-      Boolean(entity.primaryLocation?.googlePlaceId) ||
-      Boolean(entity.locations?.some((loc) => loc.googlePlaceId));
-    return runInWorkContext(
-      {
-        ...(currentWorkContext() ?? {}),
-        attribution: alreadyGrounded ? 'grounding.refresh' : 'grounding.new',
-      },
-      () => this.enrichRestaurant(entity, options),
-    );
+    // Attribution is derived inside enrichRestaurant (the single chokepoint),
+    // so every path — this one, the bulk loop, the worker — is covered.
+    return this.enrichRestaurant(entity, options);
   }
 
   /**
@@ -724,9 +709,15 @@ export class RestaurantLocationEnrichmentService {
       return;
     }
 
-    const details = await this.googlePlacesService.getPlaceDetails(
-      normalizedPlaceId,
-      { includeRaw: true },
+    // Secondary-location expansion re-reads an ALREADY-grounded place
+    // (red-team cost P1) — refresh spend, never new-grounding. Attribute it
+    // so it lands in the regrounding rate, not the new-restaurant numerator.
+    const details = await runInWorkContext(
+      { ...(currentWorkContext() ?? {}), attribution: 'grounding.refresh' },
+      () =>
+        this.googlePlacesService.getPlaceDetails(normalizedPlaceId, {
+          includeRaw: true,
+        }),
     );
     const resolvedDetails = await this.resolveEligiblePlaceDetails({
       details,
@@ -946,7 +937,31 @@ export class RestaurantLocationEnrichmentService {
     return this.buildLocationUpsertData(restaurantId, null, place).create;
   }
 
+  // THE single chokepoint every enrichment path funnels through — bulk loop,
+  // by-id, worker. Attribution is derived HERE (red-team cost P1, 2026-08-02:
+  // the bulk `enrichMissingRestaurants` loop and secondary expansion called
+  // the inner directly, bypassing the wrapper that used to live only on
+  // enrichRestaurantById — so their Places spend wrote NULL attribution, was
+  // dropped from the rate numerator while its restaurants stayed in the
+  // denominator, and biased the per-restaurant rate low). Setting it here
+  // means no caller can bypass it.
   private async enrichRestaurant(
+    entity: RestaurantEntity,
+    options: RestaurantEnrichmentOptions,
+  ): Promise<RestaurantEnrichmentResult> {
+    const alreadyGrounded =
+      Boolean(entity.primaryLocation?.googlePlaceId) ||
+      Boolean(entity.locations?.some((loc) => loc.googlePlaceId));
+    return runInWorkContext(
+      {
+        ...(currentWorkContext() ?? {}),
+        attribution: alreadyGrounded ? 'grounding.refresh' : 'grounding.new',
+      },
+      () => this.enrichRestaurantInner(entity, options),
+    );
+  }
+
+  private async enrichRestaurantInner(
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
   ): Promise<RestaurantEnrichmentResult> {

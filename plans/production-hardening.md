@@ -365,7 +365,13 @@ Launching with a separate worker makes “it deployed” != “it’s healthy”
      `attach -v "postgis-db-<timestamp>" -y`, then redeploy the service.
   4. PROOF: the post-backup marker table was GONE on the restored volume
      (`to_regclass` = f) — the snapshot genuinely rewinds data.
-     Rehearsal cleanup: staging swapped back to its original volume, snapshot
+     INTERRUPTION SAFETY (red-team P2): the completion is a manual detach→attach.
+  If the process dies BETWEEN `detach` and `attach`, prod is left with NO
+  attached volume until you re-run attach — not data loss (both volumes still
+  exist), but prod is down mid-swap. If interrupted after detach, immediately
+  `railway volume -s postgis-db -e production attach -v <orig|restored>` before
+  anything else.
+  Rehearsal cleanup: staging swapped back to its original volume, snapshot
      volume deleted, marker dropped. For a REAL prod restore, steps 1–3 on the
      prod instance are the whole runbook (plus the app services reconnect on
      their own — DATABASE_URL doesn't change).

@@ -29,6 +29,17 @@ STG_PORT=38651
 STG_DB=crave_search
 STG_USER=postgres
 
+# HARD NOT-PROD GUARD (red-team P1, 2026-08-02): every destructive op below
+# (DROP SCHEMA, TRUNCATE) targets $STG_HOST. A one-char edit or a future proxy
+# rotation that reused prod's host would aim them at PRODUCTION. Refuse if the
+# staging host/port ever resolves to prod's.
+PROD_HOST_GUARD=sakura.proxy.rlwy.net
+if [[ "$STG_HOST" == "$PROD_HOST_GUARD" || "$STG_HOST" == "$PROD_HOST" ]]; then
+  echo "REFUSED: STG_HOST ($STG_HOST) equals the prod host — destructive ops would hit PROD." >&2
+  exit 1
+fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ -z "${CRAVE_PROD_PG_PASSWORD:-}" ]]; then
   if [[ -n "${PGPASSWORD_FILE:-}" && -f "${PGPASSWORD_FILE}" ]]; then
     CRAVE_PROD_PG_PASSWORD="$(cat "${PGPASSWORD_FILE}")"
@@ -104,18 +115,14 @@ PGPASSWORD="$CRAVE_STAGING_PG_PASSWORD" pg_restore \
   -h "$STG_HOST" -p "$STG_PORT" -U "$STG_USER" -d "$STG_DB" \
   -L "$TOC" --section=post-data --no-owner --no-privileges -j 1 "$DUMP_FILE"
 
-echo "==> SCRUB: removing ALL user data ..."
-# TRUNCATE ... CASCADE follows the FK graph, so every table referencing
-# users (lists, list items, photos, votes, follows, devices, notifications,
-# reports, username history, on-demand request joins — and anything added
-# later) is emptied WITHOUT this script having to enumerate the schema.
-# Curated lists are owner-account-owned, so they go too — staging exists to
-# test the corpus, not list content.
-stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE users CASCADE;"
-stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE user_reserved_usernames;" || true
-# Ledger + campaign history is PROD spend truth; keeping it in staging skews
-# staging-side rate derivation and reconcile runs. Fresh meters.
-stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE api_usage_ledger, spend_campaigns;" || true
+echo "==> SCRUB: removing user PII (shared, fail-closed) ..."
+# Single source of truth: scrub-staging-user-data.sql DISCOVERS every
+# user-keyed table from the catalog, drops it, keeps polls/poll_topics as
+# de-identified content, and RAISES if any PII row survives (the whole
+# refresh aborts on a RAISE — set -e + ON_ERROR_STOP). Replaces the old
+# `TRUNCATE users CASCADE`, which left FK-less push tokens / device
+# fingerprints / raw search text in staging (red-team P0).
+stg_psql -v ON_ERROR_STOP=1 -f "$SCRIPT_DIR/scrub-staging-user-data.sql"
 
 echo "==> Verifying: corpus present, users empty ..."
 DOCS=$(stg_psql -t -A -c "SELECT count(*) FROM collection_source_documents;")

@@ -217,6 +217,18 @@ for svc in "${SERVICES[@]}"; do
   }
 done
 
+# CI-EARLY-START (red-team P1: the prod CI-verdict check ran before any push,
+# so the standard flow never had a CI run to consult). A CLEAN staging deploy
+# pushes main now, so CI runs while you poke staging — and the prod promotion
+# later finds a real verdict. A dirty staging deploy pushes nothing (there is
+# uncommitted work; the -dirty stamp already blocks promotion).
+if [[ "$ENVIRONMENT" == "staging" && -z "$(git status --porcelain)" ]]; then
+  if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+    echo "==> Pushing main so CI starts now (promotion will consult it) ..."
+    git push origin main || echo "  (push failed — not fatal for staging; CI just won't pre-run)"
+  fi
+fi
+
 deploy_one() {
   local svc="$1" attempt out
   for attempt in 1 2; do

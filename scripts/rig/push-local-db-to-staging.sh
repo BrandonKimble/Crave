@@ -25,6 +25,15 @@ STG_PORT=38651
 STG_DB=crave_search
 STG_USER=postgres
 
+# HARD NOT-PROD GUARD (red-team P1): destructive ops target $STG_HOST; refuse
+# if it ever equals prod's host.
+PROD_HOST_GUARD=sakura.proxy.rlwy.net
+if [[ "$STG_HOST" == "$PROD_HOST_GUARD" ]]; then
+  echo "REFUSED: STG_HOST ($STG_HOST) equals the prod host — refusing destructive ops." >&2
+  exit 1
+fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 KEEP_USERS=0
 [[ "${1:-}" == "--keep-users" ]] && KEEP_USERS=1
 
@@ -92,12 +101,15 @@ PGPASSWORD="$CRAVE_STAGING_PG_PASSWORD" pg_restore \
   -L "$TOC" --section=post-data --no-owner --no-privileges -j 1 "$DUMP_FILE"
 
 if [[ "$KEEP_USERS" -eq 0 ]]; then
-  echo "==> SCRUB: removing user data (pass --keep-users to skip) ..."
-  stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE users CASCADE;"
-  stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE user_reserved_usernames;" || true
+  echo "==> SCRUB: removing user PII (shared, fail-closed) ..."
+  # Shared scrub — same fail-closed guarantee as refresh-staging (red-team
+  # P0/P1): catalog-discovered, RAISES if any PII survives, so a local DB
+  # that happened to hold prod users cannot reach a live staging un-scrubbed.
+  stg_psql -v ON_ERROR_STOP=1 -f "$SCRIPT_DIR/scrub-staging-user-data.sql"
+else
+  # --keep-users: still drop spend history (local meters, not staging's).
+  stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE api_usage_ledger, spend_campaigns;" || true
 fi
-# Ledger/campaign rows from local are local-spend history; staging meters fresh.
-stg_psql -v ON_ERROR_STOP=1 -c "TRUNCATE api_usage_ledger, spend_campaigns;" || true
 
 echo "==> Verifying ..."
 DOCS=$(stg_psql -t -A -c "SELECT count(*) FROM collection_source_documents;")
@@ -105,6 +117,12 @@ ENTS=$(stg_psql -t -A -c "SELECT count(*) FROM core_entities;")
 USERS=$(stg_psql -t -A -c "SELECT count(*) FROM users;")
 if [[ "$DOCS" -eq 0 || "$ENTS" -eq 0 ]]; then
   echo "FAILED: restore verified EMPTY (docs=$DOCS entities=$ENTS)." >&2
+  exit 1
+fi
+# FAIL CLOSED on the scrub (red-team P1): if we scrubbed, users MUST be 0 —
+# never declare success with real accounts sitting in staging.
+if [[ "$KEEP_USERS" -eq 0 && "$USERS" -ne 0 ]]; then
+  echo "FAILED: scrub left $USERS user rows — DO NOT USE this staging DB." >&2
   exit 1
 fi
 echo "==> Done: $DOCS documents, $ENTS entities, $USERS users."

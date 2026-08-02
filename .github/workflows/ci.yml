@@ -80,6 +80,17 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
+      # The DB-backed integration specs are IGNORED by `yarn test`
+      # (testPathIgnorePatterns) and were never run in CI — the real Postgres
+      # above was serving only the migration rehearsal (red-team P1). Run them.
+      - name: Test (DB integration specs)
+        working-directory: apps/api
+        run: yarn test:db
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crave_search_test?schema=public
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
   search-runtime-contract-tests:
     # Contract-check job: static validation of the search-runtime cutover
     # guards. PRUNED 2026-08-02: the perf-shortcut fixture harness steps
@@ -101,9 +112,12 @@ jobs:
       # runtime files the completed cutovers deleted/renamed) — removed
       # 2026-08-02 along with their scripts' CI steps. The root-ownership
       # gate still validates against the live tree.
-      - name: 'Contract-check: root ownership gate config loads'
+      - name: 'Contract-check: root ownership gate (enforced slice S7)'
+        # S6 is NOT in enforcedSliceIds, so gating on it short-circuits to
+        # pass:true regardless of code — an always-green lie (red-team P1).
+        # S7 is enforced, so this check can actually fail.
         run: |
-          bash scripts/search-runtime-root-ownership-gate.sh S6
+          bash scripts/search-runtime-root-ownership-gate.sh S7
 
   no-bypass-search-runtime:
     name: no-bypass-search-runtime (static guard)
