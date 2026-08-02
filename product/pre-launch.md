@@ -24,6 +24,30 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
 
 ## Launch shape (owner-decided build work, not data-gated)
 
+- [ ] **CI HAS FAILED 100 CONSECUTIVE RUNS — lint, type-check, build and the
+      entire test suite have never run there.** Found 2026-08-02. The `build`
+      job dies at `yarn install --frozen-lockfile` because
+      `patches/@rnmapbox+maps+10.2.9.patch` no longer applies: the package was
+      bumped to 10.3.1 and the patch was never regenerated. Nothing noticed
+      because deploys are manual CLI and consult no CI.
+
+      Two consequences beyond the red build. First, every "tests green" claim
+      in this repo — mine included — has been LOCAL ONLY. Second, that patch
+      is not applied on ANY machine, including developer laptops, so its 1,007
+      lines of real map-camera customisation (`ProfilePresentationCameraHost
+      Registry`, `nativeHostKey`, `animationCompletionId`) are silently absent
+      — which is exactly the two long-standing mobile tsc errors in
+      `search-map.tsx` and `use-search-runtime-camera-intent-runtime.ts`.
+
+      The patch is 1,007 lines of real source buried in 12,497 lines of
+      accidentally-captured Android BUILD ARTIFACTS (`android/build/**`).
+      Stripping those is mechanical, but retargeting at 10.3.1 is not:
+      `RNMBXCameraViewManager.m` no longer exists upstream and two other files
+      moved, so the customisation has to be re-applied to the new structure
+      and verified with a native build. That belongs to whoever owns the map.
+      A second CI job (`search-runtime-contract-tests`) fails separately with
+      exit 127 — a missing `node` in that step.
+
 ### Red-team 2026-08-02 — what remains
 
 Almost everything the three adversarial passes found is now FIXED (see git
