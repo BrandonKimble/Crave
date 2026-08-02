@@ -2236,6 +2236,12 @@ model SignalDemandRebuildState {
   updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@map("signal_demand_rebuild_state")
+  /// INVALIDATION, not a cursor move (migration 20260801160000): the
+  /// oldest instant that must be rebuilt because the ground under it
+  /// changed. The refresh CONSUMES and clears it in the same transaction
+  /// that advances the watermark — a request can no longer be erased by a
+  /// concurrent pass's GREATEST.
+  rebuildFloor DateTime? @map("rebuild_floor") @db.Timestamptz()
 }
 
 // Pseudonymous actor mapping — the severable deletion story (§3).

@@ -116,16 +116,45 @@ export class SignalDemandAggregateService {
     }
     this.refreshInFlight = true;
     try {
+      // CLAIM the invalidation floor in the same read that takes the cursor:
+      // the floor is cleared here, so a concurrent promotion can raise a NEW
+      // one for work this pass has not yet done and it will survive (the old
+      // design let this pass's GREATEST erase it). Over-rebuilding is safe
+      // by design — each day is delete+reinsert.
       const [cursor] = await this.prisma.$queryRaw<
-        { watermark: Date | null; next_watermark: Date }[]
+        { watermark: Date | null; floor: Date | null; next_watermark: Date }[]
       >`
+        WITH before AS (
+          -- Every CTE in a statement sees the SAME snapshot, so this reads
+          -- the floor as it was BEFORE the clear below. (UPDATE ... RETURNING
+          -- yields the NEW row — returning the cleared value would have
+          -- silently discarded every invalidation. Caught by running it.)
+          SELECT watermark, rebuild_floor FROM signal_demand_rebuild_state
+          WHERE id = 1
+        ),
+        claimed AS (
+          UPDATE signal_demand_rebuild_state
+          SET rebuild_floor = NULL
+          WHERE id = 1 AND rebuild_floor IS NOT NULL
+          RETURNING 1
+        )
         SELECT
-          (SELECT watermark FROM signal_demand_rebuild_state WHERE id = 1)
-            AS watermark,
+          (SELECT watermark FROM before) AS watermark,
+          (SELECT rebuild_floor FROM before) AS floor,
           now() - make_interval(secs => ${WATERMARK_LAG_SECONDS})
-            AS next_watermark
+            AS next_watermark,
+          (SELECT count(*) FROM claimed) AS claimed_count
       `;
-      const watermark = cursor?.watermark ?? null;
+      // The pass rebuilds from the EARLIER of the two: how far we had built,
+      // and how far back the ground changed under us.
+      const cursorAt = cursor?.watermark ?? null;
+      const floorAt = cursor?.floor ?? null;
+      const watermark =
+        floorAt && cursorAt
+          ? floorAt < cursorAt
+            ? floorAt
+            : cursorAt
+          : (floorAt ?? cursorAt);
       // Bind the watermark as an EXPLICIT-offset string: a bare Date binds as
       // a naive timestamp and would be re-read in the session time zone.
       const watermarkFilter = watermark

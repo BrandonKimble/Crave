@@ -810,10 +810,10 @@ export class PlacesPromotionService {
    * signals NEWER than its watermark — so a sketch→outline upgrade would
    * otherwise leave every already-aggregated day attributed against the old
    * rectangle forever. The honest hook reuses the aggregate's own invariant
-   * ("any signal whose recorded_at is past the watermark reaches its own day
-   * slice"): pull the watermark back to just before the OLDEST signal whose
-   * geo touches this place's new ground, and the next hourly refresh
-   * re-derives those days with the true polygon. Direct SQL on the ONE-ROW
+   * ("any signal whose recorded_at is past the cursor reaches its own day
+   * slice"): record a REBUILD FLOOR at just before the OLDEST signal whose
+   * geo touches this place's new ground, and the next refresh re-derives
+   * those days with the true polygon. Direct SQL on the ONE-ROW
    * state table (signal_demand_rebuild_state) rather than a service dep:
    * SignalsModule already imports PlacesModule (module cycle), and the
    * watermark is the aggregate's designed public seam for "revisit these
@@ -822,8 +822,13 @@ export class PlacesPromotionService {
   private async pullDemandWatermarkBack(placeId: string): Promise<void> {
     await this.prisma.$executeRaw(Prisma.sql`
       UPDATE signal_demand_rebuild_state st
-      SET watermark = LEAST(
-            st.watermark,
+      -- INVALIDATION, not a cursor move (re-derivation 2026-08-01): this
+      -- used to drag the monotone WATERMARK backwards, and a refresh in
+      -- flight then wrote GREATEST(captured, pulled-back) and erased the
+      -- request — permanently, with nothing to retry it. The floor is its
+      -- own fact; the refresh consumes and clears it.
+      SET rebuild_floor = LEAST(
+            COALESCE(st.rebuild_floor, affected.oldest),
             affected.oldest - interval '1 second'
           ),
           updated_at = now()
