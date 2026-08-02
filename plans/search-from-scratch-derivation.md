@@ -380,6 +380,48 @@ Also still owed to the calibration tail: ~44-name placement curation
 Cutover harness 9/9 PASS (tier ordering, disjoint pagination, open-now,
 dietary-hard zero-result honesty, residue staging).
 
+**RED TEAM ROUND 4 (2026-08-02, post-cutover, the final one — commit
+a900a2562): three FRESH Opus lenses (cutover integrity, hot-path
+perf/DoS, spec conformance) + adversarial battery. Key finds, all fixed
+and re-verified:** the unresolved→collection demand loop had gone 100%
+DARK post-cutover (geo-less asks are dropped by the signals layer;
+bounds now ride staging; per-ask attribution restored; searchRequestId
+correlation fixed; unresolved reporting re-enabled). The residue-join
+could SWALLOW a dietary typo ('vgean breakfast tacos' → vegetarian, or
+silently eaten) — consume guard: the compound's leftover must match the
+residue within the recall lattice's own edit budget. Dietary
+zero-results now fire the starved signal WITH the word. Perf (measured):
+bounds-less requests rejected (22–43s world scan); probe budget
+24/request (13.9s adversarial → 5.6s); similar preview concurrent
+(page-1 no longer doubled); levenshtein clamp; soft-id/staging/token
+caps; 30-day staging retention. The stop-list is now genuinely gone
+(orchestration still had it).
+
+**SPEC AMENDMENTS (round 4 — the doc now matches shipped reality):**
+
+- §1.5/§6 "one score-sorted list": SUPERSEDED by the owner's 2026-08-01
+  modifier ruling — the served order is TIER-FIRST (all-word rows fill
+  page 1), score-sovereign WITHIN tier. Requirement 4's "never visible
+  order" reads as: provenance orders TIERS, score orders within.
+- §7.3 "OR stays / behavior-preserving": SUPERSEDED by the same ruling
+  (richness-gate semantics shipped).
+- §4.2 full multi-type placement (OR within a span): STILL OPEN — the
+  constraint model remains AND-composed; single-bucket placement ships;
+  venue-side dietary twins are not consulted when the food-side wins
+  (coverage remedy stays the §7.1 extraction-side prompt pass).
+- §1.1 overlap policy (decide at build): DECIDED — contained shorter
+  matches are NOT retained as spans; family meaning flows from category
+  edges/name variants in Ground instead.
+- DIETARY TOGGLE STRIP: still an OPEN PRODUCT ITEM (no DTO field, no
+  mobile UI) — the query-text dietary lane is live, the toggles are not.
+- §7.2 similar-chip dissolution: NOT dissolved — it is a second pooled
+  execution, now CONCURRENT with the page (latency-neutral-ish);
+  true single-execution provenance remains future work.
+- SCALE FLAG: per-probe linker recall is a seq scan LINEAR in corpus
+  size (~85–160ms at 17k entities; ~10x at 200k) — index work owed
+  before multi-city scale. Gazetteer scan itself is fully indexed
+  (1.4ms measured) and scales fine.
+
 **RED TEAM ROUND 3 (2026-08-02, the big one): three independent Opus
 reviewers (SQL/executor, recall/interpretation, wiring-vs-spec) + a
 25-check empirical battery. 15 confirmed findings, all fixed in
