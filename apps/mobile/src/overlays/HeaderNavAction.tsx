@@ -42,13 +42,18 @@ export const HeaderNavAction: React.FC<HeaderNavActionProps> = ({
   const plusOpacityStyle = useAnimatedStyle(() => ({ opacity: 1 - progress.value }), [progress]);
   const closeOpacityStyle = useAnimatedStyle(() => ({ opacity: progress.value }), [progress]);
 
-  const handlePressOut = React.useCallback(() => {
+  // FIRE ON PRESS, NOT ON PRESS-OUT (2026-08-01). RN calls onPressOut on
+  // TERMINATION as well as on release — so when the sheet's scroll steals the
+  // touch mid-drag (which is exactly the "drag the sheet from the plus button"
+  // gesture), the action fired anyway. onPress fires only when the press was
+  // NOT cancelled, which keeps the press-up feel and lets a drag be a drag.
+  const handlePress = React.useCallback(() => {
     onPress();
   }, [onPress]);
 
   return (
     <Pressable
-      onPressOut={handlePressOut}
+      onPress={handlePress}
       accessible={true}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
