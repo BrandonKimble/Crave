@@ -10,6 +10,7 @@ import { PhotosService } from './photos.service';
 import { PhotosController, PhotosWebhookController } from './photos.controller';
 import { PhotoReconciliationService } from './photo-reconciliation.service';
 import { PhotoReadService } from './photo-read.service';
+import { PhotoReads } from './photo-reads';
 import { PhotoEventService } from './photo-event.service';
 
 /**
@@ -34,8 +35,9 @@ import { PhotoEventService } from './photo-event.service';
     PhotosService,
     PhotoReconciliationService,
     PhotoReadService,
+    PhotoReads,
     PhotoEventService,
   ],
-  exports: [PhotosService, CloudinaryService, PhotoReadService],
+  exports: [PhotosService, CloudinaryService, PhotoReadService, PhotoReads],
 })
 export class PhotosModule {}

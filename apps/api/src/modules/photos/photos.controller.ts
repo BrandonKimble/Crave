@@ -39,6 +39,7 @@ import { PhotosService } from './photos.service';
 import { PhotoReadService } from './photo-read.service';
 import { PhotoEventService } from './photo-event.service';
 import { CloudinaryService } from './cloudinary.service';
+import { PhotoReads } from './photo-reads';
 
 export class CreateUploadTicketDto {
   @IsUUID('4')
@@ -137,13 +138,22 @@ export class PhotosController {
     private readonly reads: PhotoReadService,
     private readonly events: PhotoEventService,
     private readonly blocks: UserBlockService,
+    private readonly photoReads: PhotoReads,
   ) {}
 
+  // EVERY photo read names its viewer (2026-08-02). Blocking used to be
+  // enforced per call site — some remembered, PhotoReadService itself had no
+  // block logic at all, and cardStrips could not have enforced it because it
+  // took no viewer. The seam makes the viewer mandatory and filters inside
+  // the read, so forgetting is unrepresentable rather than reviewable.
   @Get('restaurants/:restaurantId/gallery')
   async restaurantGallery(
+    @CurrentUser() viewer: User,
     @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
   ) {
-    return this.reads.restaurantGallery(restaurantId);
+    return this.photoReads
+      .forViewer(viewer.userId)
+      .restaurantGallery(restaurantId);
   }
 
   @Get('users/:userId/food-log')
@@ -151,20 +161,24 @@ export class PhotosController {
     @CurrentUser() viewer: User,
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ) {
-    // §8.6 blocking enforcement (food-log seam): a blocked pair sees an
-    // empty log — the profile body already renders "unavailable".
+    // §8.6: a blocked pair sees an empty log — the profile body already
+    // renders "unavailable". The explicit pair check stays because it short-
+    // circuits the WHOLE log (not just that author's rows); the viewer-scoped
+    // read is the backstop that no longer depends on anyone remembering.
     if (await this.blocks.isBlockedPair(viewer.userId, userId)) {
       return [];
     }
-    return this.reads.userFoodLog(userId, viewer.userId);
+    return this.photoReads
+      .forViewer(viewer.userId)
+      .userFoodLog(userId, viewer.userId);
   }
 
   /** Batch card-strip read: one POST per visible screen of cards (search
    *  results / favorites rows / restaurant dish list all consume it lazily
    *  without touching the search executor DTOs). */
   @Post('strips')
-  async strips(@Body() dto: GetPhotoStripsDto) {
-    return this.reads.cardStrips(dto.refs);
+  async strips(@CurrentUser() viewer: User, @Body() dto: GetPhotoStripsDto) {
+    return this.photoReads.forViewer(viewer.userId).cardStrips(dto.refs);
   }
 
   @Post('events')
