@@ -78,16 +78,45 @@ export class EntitlementEnforcementInterceptor implements NestInterceptor {
       .getRequest<{ user?: { userId?: string }; url?: string }>();
     const userId = request.user?.userId;
     if (!userId) {
-      // No authenticated user: public/own-auth surface — not this wall's job.
-      return next.handle();
+      // PUBLICNESS IS DECLARED, NEVER INFERRED FROM ABSENCE (red team
+      // 2026-08-02). This used to wave through any request with no
+      // authenticated user, reasoning "public surface, not this wall's job".
+      // But auth here is PER-ROUTE and often OptionalClerkAuthGuard, which
+      // sets request.user only when a token is present — so the wall let an
+      // ANONYMOUS caller through while 403ing a lapsed subscriber who
+      // presented one. Simply omitting the Authorization header was the
+      // bypass.
+      //
+      // The @AllowUnentitled vocabulary above already exists and is carefully
+      // applied; it was just never reached, because the absence check ran
+      // first. A non-exempt route now requires an entitled AUTHENTICATED
+      // user, which is what "behind the paywall" was always meant to mean.
+      return this.refuse(context, request, next, mode, null);
     }
     const allowed = await this.entitlements.hasAccess(userId);
     if (allowed) {
       return next.handle();
     }
+    return this.refuse(context, request, next, mode, userId);
+  }
+
+  /**
+   * One refusal path for both reasons a caller can fail the wall: no
+   * authenticated user at all, or an authenticated user without entitlement.
+   * They were two separate outcomes before, which is how one of them ended up
+   * silently being "allow".
+   */
+  private refuse(
+    context: ExecutionContext,
+    request: { url?: string },
+    next: CallHandler,
+    mode: 'log' | 'enforce',
+    userId: string | null,
+  ): Observable<unknown> {
     if (mode === 'log') {
       this.logger.info('Paywall WOULD block (log mode)', {
-        userId,
+        userId: userId ?? '(anonymous)',
+        reason: userId ? 'not_entitled' : 'unauthenticated',
         url: request.url,
         handler: context.getHandler().name,
       });

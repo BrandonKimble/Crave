@@ -33,6 +33,7 @@ import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { CurrentUser } from '../../shared';
 import type { AuthenticatedRequest } from '../../shared';
 import { UserDevicesService } from '../identity/user-devices.service';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 @Controller('polls')
 export class PollsController {
@@ -112,6 +113,11 @@ export class PollsController {
 
   // W3 (page-registry §8.4): the restaurant Discussions aggregation — mention
   // tags + thread-merged mention cards. MUST stay above `@Get(':pollId')`.
+  // PUBLIC BY DECLARATION, not by the absence of a token (2026-08-02): the
+  // paywall now blocks an anonymous caller on any surface that has not said
+  // it is public. These four reads are the share-link surface — opening a
+  // shared poll must not require an account, let alone a subscription.
+  @AllowUnentitled()
   @Get('restaurants/:restaurantId/mentions')
   @UseGuards(OptionalClerkAuthGuard)
   getRestaurantMentions(
@@ -128,12 +134,14 @@ export class PollsController {
     });
   }
 
+  @AllowUnentitled()
   @Get(':pollId')
   @UseGuards(OptionalClerkAuthGuard)
   getPoll(@Param('pollId', new ParseUUIDPipe()) pollId: string) {
     return this.pollsService.getPoll(pollId);
   }
 
+  @AllowUnentitled()
   @Get(':pollId/comments')
   @UseGuards(OptionalClerkAuthGuard)
   listComments(
@@ -205,6 +213,7 @@ export class PollsController {
     return this.pollsService.toggleCommentLike(commentId, user.userId);
   }
 
+  @AllowUnentitled()
   @Get(':pollId/leaderboard')
   @UseGuards(OptionalClerkAuthGuard)
   getLeaderboard(
