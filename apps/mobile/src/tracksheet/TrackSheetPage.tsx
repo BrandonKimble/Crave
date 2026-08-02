@@ -807,22 +807,37 @@ export function TrackSheetPage({
   // `legs` is rebuilt whenever ANY scene's data changes, so keying the chrome
   // off it remounted the strip on unrelated data ticks — and a remounted strip
   // re-measures its chips, which is what makes the toggle strip appear late.
-  // The chrome only actually depends on the scene's TITLE and STRIP CHILDREN;
-  // cache per scene on exactly those so data churn cannot touch it.
+  // THE CACHE KEY MUST INCLUDE EVERY PROP THE CHROME CLOSES OVER — including
+  // its HANDLERS. Keying on title + strip children alone handed back an
+  // element holding a STALE onNavActionPress, so the close button on child
+  // pages silently did nothing (the element was built when the action was
+  // still "create"). A memo that omits a closure is not a cache, it is a
+  // freeze. Data churn is excluded because leg DATA is not in this list.
   const chromeElementCacheRef = React.useRef(
-    new Map<
-      string,
-      { title: React.ReactNode; stripChildren: React.ReactNode; element: React.ReactElement }
-    >()
+    new Map<string, { signature: readonly unknown[]; element: React.ReactElement }>()
   );
   const visualChromeLegs = React.useMemo(
     () =>
       legs.map((leg) => {
+        const signature: readonly unknown[] = [
+          leg.title,
+          leg.stripChildren,
+          navActionProgress,
+          navActionLabel,
+          onNavActionPress,
+          onGrabHandlePress,
+          grabHandleHidden,
+          headerExtras,
+          plateHoles,
+          surfaceColor,
+          title,
+          dividerStyle,
+        ];
         const cached = chromeElementCacheRef.current.get(leg.sceneKey);
         if (
           cached != null &&
-          cached.title === leg.title &&
-          cached.stripChildren === leg.stripChildren
+          cached.signature.length === signature.length &&
+          cached.signature.every((value, index) => value === signature[index])
         ) {
           return { sceneKey: leg.sceneKey, element: cached.element };
         }
@@ -835,11 +850,7 @@ export function TrackSheetPage({
             </View>
           ) : null;
         const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg), true);
-        chromeElementCacheRef.current.set(leg.sceneKey, {
-          title: leg.title,
-          stripChildren: leg.stripChildren,
-          element,
-        });
+        chromeElementCacheRef.current.set(leg.sceneKey, { signature, element });
         return { sceneKey: leg.sceneKey, element };
       }),
     [

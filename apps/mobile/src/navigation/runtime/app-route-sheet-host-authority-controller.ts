@@ -534,10 +534,23 @@ const syncRuntimeConfigSharedValues = (
   runOnUI(syncRuntimeConfigSharedValuesOnUI)(values, snapshot);
 };
 
+// THE PUBLICATION IS A MIRROR, NOT A CONTROL (attributed 2026-08-01).
+// In the gorhom era sheetY WAS the sheet's position, so seeding it MOVED the
+// sheet — these seed paths are from that world. Under ONE TRACK the sheet's
+// position is the track's contentOffset, and this value is only a published
+// MIRROR of it. Seeding it therefore moves nothing; it just lies to every
+// consumer for a few frames. That is the owner's search chrome that "shrinks
+// right when I click, expands again, then shrinks when the sheet actually
+// slides up": the seed teleported the mirror to the destination snap, the
+// chrome reacted, the track's real publication overwrote it back, and then
+// the actual spring ran. One value, two writers, and the second one was a
+// ghost limb. Under the flip, only the track writes it.
 const seedSheetYOnUI = (sheetY: SharedValue<number>, value: number): void => {
   'worklet';
   sheetY.value = value;
 };
+
+const shouldSeedPublishedSheetY = (): boolean => !getTrackFlipState().on;
 
 class AppRouteSheetHostAuthorityController {
   private nativeAdapterSnapshot: AppRouteSheetHostNativeAdapterSnapshot;
@@ -1551,7 +1564,9 @@ class AppRouteSheetHostAuthorityController {
       if (shouldSeedIncomingSheetPosition) {
         const inheritedSheetY = previousSheetYValue.value;
         nextSheetYValue.value = inheritedSheetY;
-        runOnUI(seedSheetYOnUI)(nextSheetYValue, inheritedSheetY);
+        if (shouldSeedPublishedSheetY()) {
+          runOnUI(seedSheetYOnUI)(nextSheetYValue, inheritedSheetY);
+        }
       }
       this.bodySnapshot = nextSnapshot;
       if (notify && notifyBody) {
@@ -1707,7 +1722,9 @@ class AppRouteSheetHostAuthorityController {
       const initialSheetY = activeRenderableShellSpec?.snapPoints[seedSnap];
       const mountedSheetYValue = this.resolveMountedSheetYValue(resolvedSurfaceInput);
       if (typeof initialSheetY === 'number' && mountedSheetYValue != null) {
-        runOnUI(seedSheetYOnUI)(mountedSheetYValue, initialSheetY);
+        if (shouldSeedPublishedSheetY()) {
+          runOnUI(seedSheetYOnUI)(mountedSheetYValue, initialSheetY);
+        }
       }
     });
   }
@@ -1871,7 +1888,9 @@ class AppRouteSheetHostAuthorityController {
       const desiredSheetY = activeRenderableShellSpec.snapPoints[desiredSnap];
       const mountedSheetYValue = this.resolveMountedSheetYValue(resolvedSurfaceInput);
       if (typeof desiredSheetY === 'number' && mountedSheetYValue != null) {
-        runOnUI(seedSheetYOnUI)(mountedSheetYValue, desiredSheetY);
+        if (shouldSeedPublishedSheetY()) {
+          runOnUI(seedSheetYOnUI)(mountedSheetYValue, desiredSheetY);
+        }
       }
 
       this.scheduleInitialVisibleSnapBootstrap({
