@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import type { RelaxationStage } from './search-constraints';
 
 /**
  * Dietary hardness (spec §1.3, owner-ratified): a curated lifestyle set of
@@ -17,40 +16,6 @@ import type { RelaxationStage } from './search-constraints';
  * kept ids so the compiler still emits the clause), and the capability
  * computation only offers a stage when it has something SOFT to drop.
  */
-
-/** The stage-drop rule as a pure function, unit-testable without the
- *  service: which attribute ids survive a given relaxation stage. */
-export function attributeIdsForStage(params: {
-  stage: RelaxationStage;
-  foodAttributeIds: string[];
-  restaurantAttributeIds: string[];
-  dietaryIds: ReadonlySet<string>;
-}): { foodAttributeIds: string[]; restaurantAttributeIds: string[] } {
-  const dropsFood =
-    params.stage === 'relaxed_food_attributes' ||
-    params.stage === 'relaxed_modifiers';
-  const dropsRestaurant =
-    params.stage === 'relaxed_restaurant_attributes' ||
-    params.stage === 'relaxed_modifiers';
-  return {
-    foodAttributeIds: dropsFood
-      ? params.foodAttributeIds.filter((id) => params.dietaryIds.has(id))
-      : params.foodAttributeIds,
-    restaurantAttributeIds: dropsRestaurant
-      ? params.restaurantAttributeIds.filter((id) => params.dietaryIds.has(id))
-      : params.restaurantAttributeIds,
-  };
-}
-
-/** A relaxation stage is only worth offering when it can actually drop
- *  something — a bucket that is ALL dietary has no soft ids to sacrifice,
- *  and running the stage would re-execute the identical query. */
-export function hasSoftAttributeIds(
-  ids: string[],
-  dietaryIds: ReadonlySet<string>,
-): boolean {
-  return ids.some((id) => !dietaryIds.has(id));
-}
 
 @Injectable()
 export class DietaryConstraintRegistry {

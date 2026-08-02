@@ -1,8 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { performance } from 'perf_hooks';
-import { EntityType, OnDemandReason } from '@prisma/client';
+import { EntityType } from '@prisma/client';
 import { v4 as uuid } from 'uuid';
-import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMSearchQueryAnalysis } from '../external-integrations/llm/llm.types';
 import {
   EntityResolutionInput,
@@ -10,7 +9,6 @@ import {
 } from '../content-processing/entity-resolver/entity-resolution.types';
 import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 import { LoggerService } from '../../shared';
-import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
   NaturalSearchRequestDto,
   QueryEntityDto,
@@ -86,7 +84,6 @@ export class SearchQueryInterpretationService {
   private readonly includePhaseTimings: boolean;
 
   constructor(
-    private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly engineCoverage: EngineCoverageService,
@@ -99,219 +96,13 @@ export class SearchQueryInterpretationService {
       (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
   }
 
-  /** GAZETTEER-FIRST UNDERSTAND rollout mode (calibration instrument —
-   *  BUILD, don't flip; spec §4.0 sequencing):
-   *  'off' — sync LLM Understand (today's behavior);
-   *  'shadow' — LLM serves; the gazetteer segmentation runs alongside and
-   *    logs a compact diff (GAZETTEER SHADOW DIFF) so cutover quality is
-   *    MEASURED on real queries before any flip;
-   *  'on' — zero-per-search-LLM: gazetteer grounds known spans (single-
-   *    bucket placement, dietary wins), the linker probes residue JOINED
-   *    with adjacent grounded spans (the residue-join rule — "brekfast
-   *    tacos" must probe the COMPOUND, not fragments), and still-unknown
-   *    residue lands in the unsegmented staging zone for the async batch
-   *    segmenter. */
-  private gazetteerMode(): 'off' | 'shadow' | 'on' {
-    const raw = (process.env.SEARCH_GAZETTEER_UNDERSTAND ?? 'off')
-      .trim()
-      .toLowerCase();
-    return raw === 'on' || raw === 'shadow' ? raw : 'off';
-  }
-
   async interpret(
     request: NaturalSearchRequestDto,
   ): Promise<InterpretationResult> {
-    const interpretationStart = performance.now();
-    const gazetteerMode = this.gazetteerMode();
-    if (gazetteerMode === 'on') {
-      return this.interpretViaGazetteer(request, interpretationStart);
-    }
-    if (gazetteerMode === 'shadow') {
-      this.fireGazetteerShadow(request);
-    }
-    let analysis: LLMSearchQueryAnalysis;
-    let llmMs = 0;
-    const llmStart = performance.now();
-    try {
-      analysis = await this.llmService.analyzeSearchQuery(request.query);
-    } catch (error) {
-      llmMs = performance.now() - llmStart;
-      const originalMessage =
-        error instanceof Error ? error.message : String(error);
-      this.logger.warn('Search query interpretation failed', {
-        query: request.query,
-        error: {
-          message: originalMessage,
-          stack: error instanceof Error ? error.stack : undefined,
-          name: error instanceof Error ? error.name : undefined,
-        },
-      });
-
-      // LLM outage must DEGRADE search, not kill it: fall back to a browse — an
-      // empty analysis means no entity filters, so downstream returns all results
-      // ranked by Crave Score instead of throwing. A dead LLM should never take
-      // search down.
-      analysis = {
-        restaurants: [],
-        foods: [],
-        foodAttributes: [],
-        restaurantAttributes: [],
-      };
-    }
-    llmMs = performance.now() - llmStart;
-
-    const cleanedAnalysis = this.stripGenericTokensFromAnalysis(analysis);
-    const analysisCounts = this.getAnalysisEntityCounts(cleanedAnalysis);
-    this.logger.info('Search query LLM analysis summary', {
-      query: request.query,
-      analysisCounts,
-      sampleRestaurants: cleanedAnalysis.restaurants.slice(0, 3),
-      sampleFoods: cleanedAnalysis.foods.slice(0, 3),
-      sampleFoodAttributes: cleanedAnalysis.foodAttributes.slice(0, 3),
-      sampleRestaurantAttributes: cleanedAnalysis.restaurantAttributes.slice(
-        0,
-        3,
-      ),
-    });
-
-    this.logger.debug('Query interpretation foods breakdown', {
-      query: request.query,
-      foods: cleanedAnalysis.foods,
-    });
-
-    const { inputs: resolutionInputs } =
-      this.buildResolutionInputs(cleanedAnalysis);
-    let entityResolutionMs = 0;
-    const resolutionStart = performance.now();
-    const resolutionResultList: EntityResolutionResult[] =
-      resolutionInputs.length
-        ? await this.linkViaHybridRecall(resolutionInputs)
-        : [];
-    entityResolutionMs = performance.now() - resolutionStart;
-
-    const groupedEntities = this.groupResolvedEntities(resolutionResultList);
-
-    const structuredRequest = this.buildSearchRequest(request, groupedEntities);
-    // Mint the searchRequestId HERE (runQuery reuses a present id) so the two
-    // on-demand signal sites — interpretation-time 'unresolved' below and
-    // search-time 'low_result' inside runQuery — share one id and their ask
-    // events dedupe per request instead of double-counting.
-    structuredRequest.searchRequestId ??= uuid();
-
-    const unresolved = this.collectUnresolvedTerms(
-      resolutionResultList,
-      request,
-    );
-
-    const structuredEntityCounts = this.getEntityGroupCounts(
-      structuredRequest.entities,
-    );
-    this.logger.info('Entity resolution summary for natural query', {
-      query: request.query,
-      resolutionInputs: resolutionInputs.length,
-      resolvedCounts: structuredEntityCounts,
-      unresolved,
-    });
-
-    let onDemandQueued = false;
-    let onDemandEtaMs: number | undefined;
-    let onDemandMs = 0;
-    if (unresolved.length) {
-      const onDemandStart = performance.now();
-      const viewportEligible = this.isViewportEligibleForOnDemand(
-        request.bounds,
-      );
-      // ENGINE re-key (§10/§11): queue targets are the engines whose
-      // territory covers the ask's viewport. No covering engine → no queue
-      // row, but the on_demand_ask signal (viewport geo) still records —
-      // the ledger's territory read serves the uncovered-ask lane.
-      const engineIds = viewportEligible
-        ? (
-            await this.engineCoverage.resolveViewportCoverage(request.bounds)
-          ).engines.map((engine) => engine.engineId)
-        : [];
-      const onDemandContext: Record<string, unknown> = {
-        query: request.query,
-        searchRequestId: structuredRequest.searchRequestId,
-      };
-      if (request.bounds) {
-        onDemandContext.bounds = request.bounds;
-      }
-      const locationBias = this.buildLocationBias(request);
-      if (locationBias) {
-        onDemandContext.locationBias = locationBias;
-      }
-
-      const reason: OnDemandReason = 'unresolved';
-      const unresolvedRequests = unresolved.flatMap((group) =>
-        group.terms.map((term) => ({
-          term,
-          entityType: group.type,
-          reason,
-          engineIds,
-          metadata: { source: 'natural_query', unresolvedType: group.type },
-        })),
-      );
-
-      if (unresolvedRequests.length > 0) {
-        const recordedRequests =
-          await this.onDemandRequestService.recordRequests(
-            unresolvedRequests,
-            { userId: request.userId ?? null },
-            onDemandContext,
-          );
-        onDemandQueued =
-          viewportEligible &&
-          engineIds.length > 0 &&
-          recordedRequests.length > 0;
-      }
-      onDemandMs = performance.now() - onDemandStart;
-    }
-
-    const phaseTimings = {
-      llmMs: Math.round(llmMs),
-      entityResolutionMs: Math.round(entityResolutionMs),
-      onDemandMs: Math.round(onDemandMs),
-      interpretationMs: Math.round(performance.now() - interpretationStart),
-    };
-    if (this.includePhaseTimings) {
-      this.logger.debug('Search interpretation timings', { phaseTimings });
-    }
-
-    return {
-      structuredRequest,
-      analysis: cleanedAnalysis,
-      unresolved,
-      analysisMetadata: cleanedAnalysis.metadata,
-      onDemandQueued: onDemandQueued || undefined,
-      onDemandEtaMs,
-      phaseTimings,
-    };
-  }
-
-  /** SHADOW: measure gazetteer segmentation against the serving LLM path.
-   *  Never blocks or fails the request. */
-  private fireGazetteerShadow(request: NaturalSearchRequestDto): void {
-    const started = performance.now();
-    void this.entityTextSearch
-      .scanForKnownEntityGroups(request.query, GAZETTEER_UNDERSTAND_TYPES)
-      .then((groups) => {
-        this.logger.info('GAZETTEER SHADOW DIFF', {
-          query: request.query,
-          gazetteerMs: Math.round(performance.now() - started),
-          spans: groups.map((group) => ({
-            text: group.text,
-            types: Array.from(new Set(group.entities.map((e) => e.type))),
-          })),
-        });
-      })
-      .catch((error: unknown) => {
-        this.logger.warn('Gazetteer shadow failed (ignored)', {
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        });
-      });
+    // CUTOVER 2026-08-02 (zero-per-search-LLM, spec §1.1): the gazetteer
+    // IS the Understand. The sync LLM path is deleted; the LLM's only
+    // remaining search job is the async residue segmenter.
+    return this.interpretViaGazetteer(request, performance.now());
   }
 
   /** 'on' mode: zero-per-search-LLM Understand. Gazetteer grounds known
@@ -341,13 +132,13 @@ export class SearchQueryInterpretationService {
       GAZETTEER_UNDERSTAND_TYPES,
       { engineId: scanEngineId },
     );
-    // Generic-token guard (red team ①): rank/location generics ("best",
-    // "top", "near") exist as junk ENTITY NAMES today, so a closed-set
-    // scan grounds them — "best tacos" must not become restaurant:Best.
-    // The LLM path strips these per term; the gazetteer strips per span.
-    const groups = rawGroups.filter(
-      (g) => !stripGenericTokens(g.text).isGenericOnly,
-    );
+    // NO WORD LIST (owner ruling 2026-08-02): junk grounding ("best" as a
+    // restaurant, "dinner" as a food) is a DATA-QUALITY defect — junk
+    // entities exist in the graph. The fix is the extraction-hygiene
+    // prompt work + the retroactive junk sweep, not a non-exhaustive
+    // stop-list here. TODO(post-cleanup): enable the pinned generic-query
+    // cases in search-generic-queries.spec.ts once the graph is clean.
+    const groups = rawGroups;
     const gazetteerMs = performance.now() - gazetteerStart;
 
     // Residue = token runs no grounded span covers.
@@ -423,9 +214,6 @@ export class SearchQueryInterpretationService {
       ];
       let linked = false;
       for (const attempt of attempts) {
-        // Generic-only residue ("best", "near me") is junk by rule — it
-        // neither probes nor stages.
-        if (stripGenericTokens(attempt.text).isGenericOnly) continue;
         const [result] = await this.linkViaHybridRecall([
           {
             tempId: `food:${uuid()}`,
@@ -449,7 +237,7 @@ export class SearchQueryInterpretationService {
           break;
         }
       }
-      if (!linked && !stripGenericTokens(run.text).isGenericOnly) {
+      if (!linked) {
         unresolvedResidues.push(run.text);
       }
     }
@@ -549,48 +337,6 @@ export class SearchQueryInterpretationService {
       unresolved: [],
       phaseTimings,
     };
-  }
-
-  private buildResolutionInputs(analysis: LLMSearchQueryAnalysis): {
-    inputs: EntityResolutionInput[];
-  } {
-    const inputs: EntityResolutionInput[] = [];
-
-    const addEntries = (names: string[], entityType: EntityType): string[] => {
-      const seen = new Set<string>();
-      const tempIds: string[] = [];
-      for (const name of names) {
-        const stripped = stripGenericTokens(name);
-        const normalized = stripped.text.trim();
-        if (!normalized.length || stripped.isGenericOnly) {
-          continue;
-        }
-        const key = `${entityType}:${normalized.toLowerCase()}`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        const tempId = `${entityType}:${uuid()}`;
-        tempIds.push(tempId);
-        inputs.push({
-          tempId,
-          normalizedName: normalized,
-          originalText: normalized,
-          entityType,
-          aliases: [normalized],
-          engineId: null,
-        });
-      }
-      return tempIds;
-    };
-
-    addEntries(analysis.restaurants, 'restaurant');
-    addEntries(analysis.foods, 'food');
-    addEntries(analysis.foodAttributes, 'food_attribute');
-    addEntries(analysis.restaurantAttributes, 'restaurant_attribute');
-    addEntries(analysis.ingredients ?? [], 'ingredient');
-
-    return { inputs };
   }
 
   /**
@@ -854,42 +600,6 @@ export class SearchQueryInterpretationService {
     return results;
   }
 
-  private stripGenericTokensFromAnalysis(
-    analysis: LLMSearchQueryAnalysis,
-  ): LLMSearchQueryAnalysis {
-    return {
-      ...analysis,
-      restaurants: this.stripGenericTokensFromTerms(analysis.restaurants),
-      foods: this.stripGenericTokensFromTerms(analysis.foods),
-      foodAttributes: this.stripGenericTokensFromTerms(analysis.foodAttributes),
-      restaurantAttributes: this.stripGenericTokensFromTerms(
-        analysis.restaurantAttributes,
-      ),
-      ingredients: this.stripGenericTokensFromTerms(analysis.ingredients ?? []),
-    };
-  }
-
-  private stripGenericTokensFromTerms(terms: string[]): string[] {
-    const result: string[] = [];
-    const seen = new Set<string>();
-
-    for (const term of terms) {
-      const stripped = stripGenericTokens(term);
-      const normalized = stripped.text.trim();
-      if (!normalized.length || stripped.isGenericOnly) {
-        continue;
-      }
-      const key = normalized.toLowerCase();
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      result.push(normalized);
-    }
-
-    return result;
-  }
-
   private groupResolvedEntities(
     results: EntityResolutionResult[],
   ): QueryEntityGroupDto {
@@ -962,36 +672,6 @@ export class SearchQueryInterpretationService {
         : undefined,
       ingredients: ingredientEntities.length ? ingredientEntities : undefined,
     };
-  }
-
-  private collectUnresolvedTerms(
-    results: EntityResolutionResult[],
-    request: NaturalSearchRequestDto,
-  ): Array<{ type: EntityType; terms: string[] }> {
-    if (this.hasSelectedAutocompleteEntity(request)) {
-      return [];
-    }
-
-    const unresolvedMap = new Map<EntityType, Set<string>>();
-
-    for (const result of results) {
-      if (result.entityId) {
-        continue;
-      }
-      const scope = result.originalInput.entityType;
-      if (!unresolvedMap.has(scope)) {
-        unresolvedMap.set(scope, new Set<string>());
-      }
-      const term = result.originalInput.originalText.trim();
-      if (term.length) {
-        unresolvedMap.get(scope)!.add(term);
-      }
-    }
-
-    return Array.from(unresolvedMap.entries()).map(([type, terms]) => ({
-      type,
-      terms: Array.from(terms.values()),
-    }));
   }
 
   private hasSelectedAutocompleteEntity(
@@ -1199,28 +879,5 @@ export class SearchQueryInterpretationService {
       default:
         return entities;
     }
-  }
-
-  private getAnalysisEntityCounts(
-    analysis: LLMSearchQueryAnalysis,
-  ): Record<string, number> {
-    return {
-      restaurants: analysis.restaurants.length,
-      foods: analysis.foods.length,
-      foodAttributes: analysis.foodAttributes.length,
-      restaurantAttributes: analysis.restaurantAttributes.length,
-      ingredients: analysis.ingredients?.length ?? 0,
-    };
-  }
-
-  private getEntityGroupCounts(
-    group: QueryEntityGroupDto,
-  ): Record<string, number> {
-    return {
-      restaurants: group.restaurants?.length ?? 0,
-      food: group.food?.length ?? 0,
-      foodAttributes: group.foodAttributes?.length ?? 0,
-      restaurantAttributes: group.restaurantAttributes?.length ?? 0,
-    };
   }
 }

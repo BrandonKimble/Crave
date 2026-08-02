@@ -32,11 +32,7 @@ import {
   SearchSiblingExpansionService,
   type SiblingCutOptions,
 } from './search-sibling-expansion.service';
-import {
-  DietaryConstraintRegistry,
-  attributeIdsForStage,
-  hasSoftAttributeIds,
-} from './dietary-constraints';
+import { DietaryConstraintRegistry } from './dietary-constraints';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 import {
   ON_DEMAND_MIN_RESULTS,
@@ -143,16 +139,6 @@ interface PlanExpansionState {
   relevanceByFoodId: Record<string, number>;
 }
 
-type RelaxationCapabilities = {
-  hasFoodAttributes: boolean;
-  hasRestaurantAttributes: boolean;
-  hasPrimaryEntities: boolean;
-  canDropFoodAttributes: boolean;
-  canDropRestaurantAttributes: boolean;
-  canDropAllModifiers: boolean;
-  canRelax: boolean;
-};
-
 type DualExecutionResult = Awaited<
   ReturnType<SearchQueryExecutor['executeDual']>
 >;
@@ -166,7 +152,6 @@ interface StageExecutionResult {
 type SearchExplainInput = {
   request: SearchQueryRequestDto;
   pagination: PaginationState;
-  relaxationCapabilities: RelaxationCapabilities;
   strictCoverageCount: number;
   hasUnresolvedTerms: boolean;
   planExpansion: PlanExpansionState | null;
@@ -221,7 +206,6 @@ export class SearchService {
   private readonly debugMode: SearchDebugMode;
   /** STEP-3 POOLED QUERY rollout: off | shadow (ladder serves, pooled
    *  diffed + logged) | on (pooled serves; ladder branch inert). */
-  private readonly pooledMode: 'off' | 'shadow' | 'on';
   private readonly expansionStrictCoverageTarget: number;
   private readonly expansionFoodCap: number;
   private readonly expansionAttributeCap: number;
@@ -259,7 +243,6 @@ export class SearchService {
     this.includePhaseTimings = this.resolveIncludePhaseTimings();
     this.explainEnabled = this.resolveExplainEnabled();
     this.debugMode = resolveSearchDebugMode();
-    this.pooledMode = this.resolvePooledMode();
     this.expansionStrictCoverageTarget =
       this.resolveExpansionStrictCoverageTarget();
     this.expansionFoodCap = this.resolveExpansionFoodCap();
@@ -425,10 +408,6 @@ export class SearchService {
       });
     }
 
-    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
-    const relaxation = this.resolveRelaxationCapabilities(request, dietaryIds);
-    const canRelax = relaxation.canRelax;
-
     let planExpansion: PlanExpansionState | null = null;
     let expansionAnalysisMetadata: Record<string, unknown> | null = null;
 
@@ -514,40 +493,21 @@ export class SearchService {
     }
 
     const executeStage = async (params: {
-      stage: RelaxationStage;
       restaurantPagination: { skip: number; take: number };
       dishPagination: { skip: number; take: number };
-      excludeRestaurantIds?: string[];
-      excludeConnectionIds?: string[];
       includeSqlPreview?: boolean;
     }): Promise<StageExecutionResult> => {
-      // POOLED 'on': one gated execution replaces every ladder stage. The
-      // relaxation triggers are forced off below, so this is the only
-      // stage that ever runs — exclusion ids are ladder plumbing and are
-      // deliberately ignored (nothing is excluded from a single stream).
-      if (this.pooledMode === 'on') {
-        return this.executePooledStage({
-          request,
-          planExpansion,
-          pagination,
-          restaurantPagination: params.restaurantPagination,
-          dishPagination: params.dishPagination,
-          topDishesLimit: TOP_DISHES_LIMIT,
-          threshold: RELAX_STRICT_THRESHOLD,
-          includeSqlPreview: params.includeSqlPreview,
-        });
-      }
-      return this.executeSearchStage({
+      // CUTOVER 2026-08-02: the pooled gate IS the execution — one gated
+      // query per projection replaced the relaxation ladder entirely.
+      return this.executePooledStage({
         request,
-        stage: params.stage,
         planExpansion,
         pagination,
         restaurantPagination: params.restaurantPagination,
         dishPagination: params.dishPagination,
         topDishesLimit: TOP_DISHES_LIMIT,
+        threshold: RELAX_STRICT_THRESHOLD,
         includeSqlPreview: params.includeSqlPreview,
-        excludeRestaurantIds: params.excludeRestaurantIds,
-        excludeConnectionIds: params.excludeConnectionIds,
       });
     };
 
@@ -561,14 +521,11 @@ export class SearchService {
     // POOLED 'on': relaxation is off, so the probe's only consumers are
     // dead — clamping would just run the SAME pooled query twice on page
     // ≥2 (red team C6). The probe IS the page.
-    const strictProbePagination =
-      this.pooledMode === 'on' ||
-      (pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD)
-        ? pagination
-        : { skip: 0, take: Math.max(RELAX_STRICT_THRESHOLD, 10) };
+    // The probe IS the page — relaxation is gone, so nothing consumes a
+    // clamped pre-page probe.
+    const strictProbePagination = pagination;
 
     let strictProbe = await executeStage({
-      stage: 'strict',
       restaurantPagination: strictProbePagination,
       dishPagination: strictProbePagination,
       includeSqlPreview: false,
@@ -578,12 +535,10 @@ export class SearchService {
     // totals are inflated (soft words left the membership), so the honest
     // strict-equivalent is the TIER-0 (all-words) count (red team C4) —
     // otherwise thin queries never expand, exactly the ring they need.
-    const strictCoverageCount =
-      this.pooledMode === 'on' && strictProbe.exec.pooledFullCounts
-        ? strictProbe.exec.pooledFullCounts.restaurants +
-          strictProbe.exec.pooledFullCounts.dishes
-        : strictProbe.exec.totalRestaurantCount +
-          strictProbe.exec.totalDishCount;
+    const strictCoverageCount = strictProbe.exec.pooledFullCounts
+      ? strictProbe.exec.pooledFullCounts.restaurants +
+        strictProbe.exec.pooledFullCounts.dishes
+      : strictProbe.exec.totalRestaurantCount + strictProbe.exec.totalDishCount;
     const unresolvedGroups =
       request.submissionContext?.unresolvedEntities ?? [];
     const hasUnresolvedTerms = unresolvedGroups.some(
@@ -731,7 +686,6 @@ export class SearchService {
           });
         }
         strictProbe = await executeStage({
-          stage: 'strict',
           restaurantPagination: strictProbePagination,
           dishPagination: strictProbePagination,
           includeSqlPreview: false,
@@ -742,35 +696,8 @@ export class SearchService {
     const plan = strictProbe.stagePlan;
     phaseTimings.queryPlanMs = Math.round(strictProbe.timings.planMs);
 
-    const strictRestaurantExactCount = strictProbe.exec.restaurants.length;
-    const strictDishExactCount = strictProbe.exec.dishes.length;
-
-    // POOLED 'on': the gate already made the strict-vs-partial decision
-    // inside the single execution — the ladder's relax triggers never fire.
-    const canRelaxEffective = this.pooledMode === 'on' ? false : canRelax;
-    const needsRestaurantRelaxation =
-      canRelaxEffective && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
-    const needsDishRelaxation =
-      canRelaxEffective && strictDishExactCount < RELAX_STRICT_THRESHOLD;
-
-    // Strict execution for the requested page. Lazy on purpose: (a) the probe IS
-    // the page when page 1 ran with real pagination; (b) when BOTH axes relax,
-    // strictPage's rows are never read (the relax path pools from strictProbe),
-    // so executing a full strict page there was pure wasted work — alias the
-    // probe instead; (c) otherwise (an axis stays strict, or a sub-threshold
-    // page-1 take) execute the real page.
-    const probeServesAsPage =
-      pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD;
-    const strictPage = probeServesAsPage
-      ? strictProbe
-      : !needsRestaurantRelaxation || !needsDishRelaxation
-        ? await executeStage({
-            stage: 'strict',
-            restaurantPagination: pagination,
-            dishPagination: pagination,
-            includeSqlPreview,
-          })
-        : strictProbe;
+    // The probe ran with the request's real pagination — it IS the page.
+    const strictPage = strictProbe;
 
     const primaryFoodTermRaw =
       request.entities.food?.[0]?.originalText ??
@@ -780,8 +707,7 @@ export class SearchService {
       ? primaryFoodTermRaw.trim()
       : null;
 
-    // No relaxation: existing behavior.
-    if (!needsRestaurantRelaxation && !needsDishRelaxation) {
+    {
       phaseTimings.queryExecuteMs = Math.round(strictPage.timings.executeMs);
       if (strictPage.exec.timings) {
         Object.assign(phaseTimings, strictPage.exec.timings);
@@ -876,7 +802,6 @@ export class SearchService {
       this.attachSearchExplain(metadata, {
         request,
         pagination,
-        relaxationCapabilities: relaxation,
         strictCoverageCount,
         hasUnresolvedTerms,
         planExpansion,
@@ -973,395 +898,8 @@ export class SearchService {
         pagination,
         topDishesLimit: TOP_DISHES_LIMIT,
       });
-      this.firePooledShadow({
-        request,
-        planExpansion,
-        pagination,
-        topDishesLimit: TOP_DISHES_LIMIT,
-        threshold: RELAX_STRICT_THRESHOLD,
-        response,
-        searchRequestId,
-      });
       return this.applySearchResponseProfile(response, request);
     }
-
-    // Relaxation path (per-list; still score-ranked). Use strict IDs to exclude duplicates.
-    const candidateStages: RelaxationStage[] = [];
-    if (relaxation.canDropRestaurantAttributes)
-      candidateStages.push('relaxed_restaurant_attributes');
-    if (relaxation.canDropFoodAttributes)
-      candidateStages.push('relaxed_food_attributes');
-
-    const selectedStage = await this.selectRelaxationStage({
-      candidateStages,
-      threshold: RELAX_STRICT_THRESHOLD,
-      canDropAllModifiers: relaxation.canDropAllModifiers,
-      needsRestaurantRelaxation,
-      needsDishRelaxation,
-      probe: async (stage) => {
-        const probeResult = await executeStage({
-          stage,
-          restaurantPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
-          dishPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
-          includeSqlPreview: false,
-        });
-        return {
-          restaurants: probeResult.exec.restaurants,
-          dishes: probeResult.exec.dishes,
-        };
-      },
-    });
-
-    const strictRestaurantIds = strictProbe.exec.restaurants
-      .map((row) => row.restaurantId)
-      .filter((value): value is string => typeof value === 'string');
-    const strictConnectionIds = strictProbe.exec.dishes
-      .map((row) => row.connectionId)
-      .filter((value): value is string => typeof value === 'string');
-
-    const relaxedRestaurantPagination = needsRestaurantRelaxation
-      ? (() => {
-          const exactCount = strictRestaurantExactCount;
-          const relaxedSkip = Math.max(
-            0,
-            (pagination.page - 1) * pagination.pageSize - exactCount,
-          );
-          const relaxedTake =
-            pagination.page === 1
-              ? Math.max(0, pagination.pageSize - exactCount)
-              : pagination.pageSize;
-          return { skip: relaxedSkip, take: relaxedTake };
-        })()
-      : pagination;
-
-    const relaxedDishPagination = needsDishRelaxation
-      ? (() => {
-          const exactCount = strictDishExactCount;
-          const relaxedSkip = Math.max(
-            0,
-            (pagination.page - 1) * pagination.pageSize - exactCount,
-          );
-          const relaxedTake =
-            pagination.page === 1
-              ? Math.max(0, pagination.pageSize - exactCount)
-              : pagination.pageSize;
-          return { skip: relaxedSkip, take: relaxedTake };
-        })()
-      : pagination;
-
-    const relaxed = await executeStage({
-      stage: selectedStage,
-      restaurantPagination: relaxedRestaurantPagination,
-      dishPagination: relaxedDishPagination,
-      excludeRestaurantIds: needsRestaurantRelaxation
-        ? strictRestaurantIds
-        : undefined,
-      excludeConnectionIds: needsDishRelaxation
-        ? strictConnectionIds
-        : undefined,
-      includeSqlPreview,
-    });
-
-    phaseTimings.queryExecuteMs = Math.round(relaxed.timings.executeMs);
-    if (relaxed.exec.timings) {
-      Object.assign(phaseTimings, relaxed.exec.timings);
-    }
-
-    // PURE CRAVE-SCORE RANKING (owner decision): the strict (exact) matches and
-    // the relaxed (modifier-dropped) fallback are pooled and ordered by Crave
-    // Score ALONE. A genuinely-relevant but low-score match can fall below a
-    // higher-score looser match, and we accept that.
-    // FUTURE (see product/scoring.md — "relevant top section"): we may pin a
-    // small, deliberate section of the top ~3 MOST-RELEVANT results above the
-    // main rank, with the main Crave-Score rank excluding those pinned rows.
-    // That is a separate presentation layer, not a change to the score itself.
-    // Pooled page-1 lists are sliced to the requested take: with the probe take
-    // clamped to the relaxation threshold, the strict pool can exceed a
-    // sub-threshold pageSize (idempotent when already within the page).
-    // Sectioned relevancy holds ACROSS the strict+relaxed pool too: exact-match
-    // tier first, pure Crave Score within each tier (rows without a tier sort
-    // as exact — sectioning didn't apply to that query).
-    const tierOf = (row: { exactMatch?: boolean }) =>
-      row.exactMatch === false ? 1 : 0;
-    const pooledOrder = (
-      a: { exactMatch?: boolean; craveScore: number },
-      b: { exactMatch?: boolean; craveScore: number },
-    ) => tierOf(a) - tierOf(b) || b.craveScore - a.craveScore;
-
-    const dishes = needsDishRelaxation
-      ? pagination.page === 1
-        ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
-            .sort(pooledOrder)
-            .slice(0, pagination.take)
-        : relaxed.exec.dishes
-      : strictPage.exec.dishes;
-
-    const restaurants = needsRestaurantRelaxation
-      ? pagination.page === 1
-        ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
-            .sort(pooledOrder)
-            .slice(0, pagination.take)
-        : relaxed.exec.restaurants
-      : strictPage.exec.restaurants;
-
-    // RANK IS A PROPERTY OF THE SERVED LIST (red team 2026-08-02).
-    //
-    // Each query run assigns `rank = rankStart + index` for ITS OWN result
-    // set. The pooled page-1 merge above concatenates two runs that each
-    // started at the same offset, re-sorts, and slices — so two different
-    // restaurants could carry the SAME rank. That is not cosmetic: the mobile
-    // map read model's tiebreak chain assumes equal rank means "same
-    // restaurant, different location", so duplicate ranks made the map's order
-    // group-representative noise.
-    //
-    // Reassigned once, here, at the boundary that decides the final order.
-    const rebaseRanks = <T extends { rank?: number }>(rows: T[]): T[] => {
-      const base = (pagination.page - 1) * pagination.take + 1;
-      rows.forEach((row, index) => {
-        row.rank = base + index;
-      });
-      return rows;
-    };
-    // Only the restaurant axis carries a server-assigned rank (it is what the
-    // map pins key off); dish rows have no rank field.
-    rebaseRanks(restaurants);
-
-    const totalFoodResults = needsDishRelaxation
-      ? strictProbe.exec.totalDishCount + relaxed.exec.totalDishCount
-      : strictPage.exec.totalDishCount;
-    const totalRestaurantResults = needsRestaurantRelaxation
-      ? strictProbe.exec.totalRestaurantCount +
-        relaxed.exec.totalRestaurantCount
-      : strictPage.exec.totalRestaurantCount;
-    const totalResults = totalFoodResults + totalRestaurantResults;
-
-    const viewportEligible = this.isViewportEligibleForOnDemand(request.bounds);
-    const onDemandEngineContext = {
-      engineIds: viewportEligible
-        ? engineViewportCoverage.engines.map((engine) => engine.engineId)
-        : [],
-    };
-
-    const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
-      request,
-      plan.format,
-      strictRestaurantExactCount,
-    );
-    const onDemandResult = shouldTriggerOnDemand
-      ? await this.recordLowResultOnDemand({
-          request,
-          planFormat: plan.format,
-          restaurantCount: strictRestaurantExactCount,
-          dishCount: strictDishExactCount,
-          viewportEligible,
-          onDemandEngineContext,
-          expansionSignals: expansionAnalysisMetadata,
-          relaxation: {
-            stage: selectedStage,
-            threshold: RELAX_STRICT_THRESHOLD,
-            dropped: {
-              foodAttributes:
-                selectedStage === 'relaxed_food_attributes' ||
-                selectedStage === 'relaxed_modifiers',
-              restaurantAttributes:
-                selectedStage === 'relaxed_restaurant_attributes' ||
-                selectedStage === 'relaxed_modifiers',
-            },
-          },
-        })
-      : { queued: false, etaMs: undefined };
-    const onDemandQueued = onDemandResult.queued;
-
-    const resultCoverageStatus = this.calculateCoverageStatus({
-      request,
-      totalFoodResults,
-      totalRestaurantResults,
-      triggeredOnDemand: onDemandQueued,
-    });
-
-    const metadata: SearchResponseMetadataDto = {
-      totalFoodResults,
-      totalRestaurantResults,
-      queryExecutionTimeMs: Date.now() - start,
-      searchRequestId,
-      boundsApplied:
-        strictPage.exec.metadata.boundsApplied ||
-        relaxed.exec.metadata.boundsApplied,
-      openNowApplied:
-        strictPage.exec.metadata.openNowApplied ||
-        relaxed.exec.metadata.openNowApplied,
-      openNowSupportedRestaurants:
-        (strictPage.exec.metadata.openNowSupportedRestaurants ?? 0) +
-        (relaxed.exec.metadata.openNowSupportedRestaurants ?? 0),
-      openNowUnsupportedRestaurants:
-        (strictPage.exec.metadata.openNowUnsupportedRestaurants ?? 0) +
-        (relaxed.exec.metadata.openNowUnsupportedRestaurants ?? 0),
-      openNowUnsupportedRestaurantIds: Array.from(
-        new Set([
-          ...(strictPage.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
-          ...(relaxed.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
-        ]),
-      ),
-      openNowFilteredOut:
-        (strictPage.exec.metadata.openNowFilteredOut ?? 0) +
-        (relaxed.exec.metadata.openNowFilteredOut ?? 0),
-      priceFilterApplied:
-        strictPage.exec.metadata.priceFilterApplied ||
-        relaxed.exec.metadata.priceFilterApplied,
-      minimumVotesApplied:
-        strictPage.exec.metadata.minimumVotesApplied ||
-        relaxed.exec.metadata.minimumVotesApplied,
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      resultCoverageStatus,
-      primaryFoodTerm: primaryFoodTerm || undefined,
-      // §2 header law: catalog-derived value, frozen field name (see the
-      // no-relaxation metadata site).
-      displayPlaceName,
-      // ENGINE-COVERAGE (leg 2): see the no-relaxation metadata site.
-      engineCoverageShare: engineViewportCoverage.share,
-      engineCoverage:
-        engineViewportCoverage.engines.length > 0
-          ? engineViewportCoverage.engines
-          : undefined,
-      onDemandQueued: onDemandQueued || undefined,
-      onDemandEtaMs: undefined,
-      exactDishCountOnPage:
-        needsDishRelaxation && pagination.page === 1
-          ? strictDishExactCount
-          : undefined,
-      exactRestaurantCountOnPage:
-        needsRestaurantRelaxation && pagination.page === 1
-          ? strictRestaurantExactCount
-          : undefined,
-      relaxationApplied:
-        (needsRestaurantRelaxation || needsDishRelaxation) &&
-        pagination.page === 1
-          ? true
-          : undefined,
-      relaxationStage: selectedStage,
-    };
-
-    this.attachPhaseTimings(metadata, phaseTimings);
-    this.mergeAnalysisMetadata(metadata, expansionAnalysisMetadata);
-    this.attachSearchExplain(metadata, {
-      request,
-      pagination,
-      relaxationCapabilities: relaxation,
-      strictCoverageCount,
-      hasUnresolvedTerms,
-      planExpansion,
-      strictCounts: {
-        restaurantsOnPage: strictRestaurantExactCount,
-        dishesOnPage: strictDishExactCount,
-        totalRestaurants: strictProbe.exec.totalRestaurantCount,
-        totalDishes: strictProbe.exec.totalDishCount,
-      },
-      relaxation: {
-        applied: true,
-        stage: selectedStage,
-        threshold: RELAX_STRICT_THRESHOLD,
-      },
-      onDemand: {
-        triggered: shouldTriggerOnDemand,
-        queued: onDemandQueued,
-      },
-    });
-
-    if (
-      request.openNow &&
-      !strictPage.exec.metadata.openNowApplied &&
-      !relaxed.exec.metadata.openNowApplied
-    ) {
-      this.logger.warn(
-        'Open-now filter requested but insufficient metadata to evaluate',
-        { unsupportedCount: metadata.openNowUnsupportedRestaurants },
-      );
-    }
-
-    if (pagination.page === 1) {
-      try {
-        this.recordQueryImpressions(request, {
-          searchRequestId,
-          totalResults,
-          totalFoodResults,
-          totalRestaurantResults,
-          queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-          resultCoverageStatus,
-        });
-      } catch (error) {
-        this.logger.warn('Failed to record search query impressions', {
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-          },
-        });
-      }
-    }
-
-    this.logger.debug('Search query executed', {
-      dishCount: dishes.length,
-      restaurantCount: restaurants.length,
-      metadata,
-    });
-
-    if (this.debugMode !== 'off') {
-      this.logger.info('Search debug: runQuery end (relaxation)', {
-        searchRequestId,
-        queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-        resultCoverageStatus: metadata.resultCoverageStatus,
-        totals: {
-          totalRestaurantResults,
-          totalFoodResults,
-        },
-        onDemandQueued: metadata.onDemandQueued ?? false,
-        onDemandEtaMs: metadata.onDemandEtaMs ?? null,
-        relaxationApplied: metadata.relaxationApplied ?? false,
-        relaxationStage: metadata.relaxationStage ?? null,
-        exactCountsOnPage: {
-          exactRestaurants: metadata.exactRestaurantCountOnPage ?? null,
-          exactDishes: metadata.exactDishCountOnPage ?? null,
-        },
-        pageCounts: {
-          restaurantsOnPage: restaurants.length,
-          dishesOnPage: dishes.length,
-        },
-        phaseTimings:
-          this.debugMode === 'verbose' && Object.keys(phaseTimings).length
-            ? phaseTimings
-            : undefined,
-        analysisMetadataSearchExplain:
-          this.debugMode === 'verbose'
-            ? (metadata.analysisMetadata?.searchExplain ?? null)
-            : undefined,
-      });
-    }
-
-    const response: SearchResponseDto = {
-      format: plan.format,
-      plan,
-      dishes,
-      restaurants,
-      sqlPreview: includeSqlPreview ? (relaxed.exec.sqlPreview ?? null) : null,
-      metadata,
-    };
-    await this.attachSimilarPreview({
-      response,
-      request,
-      planExpansion,
-      pagination,
-      topDishesLimit: TOP_DISHES_LIMIT,
-    });
-    this.firePooledShadow({
-      request,
-      planExpansion,
-      pagination,
-      topDishesLimit: TOP_DISHES_LIMIT,
-      threshold: RELAX_STRICT_THRESHOLD,
-      response,
-      searchRequestId,
-    });
-    return this.applySearchResponseProfile(response, request);
   }
 
   private applySearchResponseProfile(
@@ -1979,11 +1517,6 @@ export class SearchService {
     };
   }
 
-  private resolvePooledMode(): 'off' | 'shadow' | 'on' {
-    const raw = (process.env.SEARCH_POOLED_MODE ?? 'off').trim().toLowerCase();
-    return raw === 'on' || raw === 'shadow' ? raw : 'off';
-  }
-
   /**
    * STEP-3 POOLED EXECUTION (spec §1.4; owner rulings 2026-08-01): ONE
    * query per projection. Membership = hard constraints only (subject +
@@ -2018,7 +1551,6 @@ export class SearchService {
         minimumVotes,
       },
       params.planExpansion,
-      dietaryIds,
     );
     const dietary = new Set(dietaryIds);
     // SUBJECT IS SACRED (spec §1.4.1; red team C1): softening applies to
@@ -2129,158 +1661,6 @@ export class SearchService {
   }
 
   /**
-   * SHADOW HARNESS: run the pooled query alongside the ladder-served
-   * response and log a compact ordered-id diff. Never blocks or fails the
-   * request. Known intended divergences (spec §1.5): the page-1 row-loss
-   * bug the pooled query FIXES, and gate-admitted partial rows where the
-   * ladder dropped a whole bucket.
-   */
-  private firePooledShadow(params: {
-    request: SearchQueryRequestDto;
-    planExpansion: PlanExpansionState | null;
-    pagination: PaginationState;
-    topDishesLimit: number;
-    threshold: number;
-    response: SearchResponseDto;
-    searchRequestId: string;
-  }): void {
-    if (this.pooledMode !== 'shadow') return;
-    void this.executePooledStage({
-      request: params.request,
-      planExpansion: params.planExpansion,
-      pagination: params.pagination,
-      restaurantPagination: params.pagination,
-      dishPagination: params.pagination,
-      topDishesLimit: params.topDishesLimit,
-      threshold: params.threshold,
-    })
-      .then((pooled) => {
-        const ids = (rows: Array<{ restaurantId?: string }>) =>
-          rows.map((row) => row.restaurantId ?? '').join(',');
-        const dishIds = (rows: Array<{ connectionId?: string }>) =>
-          rows.map((row) => row.connectionId ?? '').join(',');
-        const ladderRestaurants = ids(params.response.restaurants ?? []);
-        const pooledRestaurants = ids(pooled.exec.restaurants);
-        const ladderDishes = dishIds(params.response.dishes ?? []);
-        const pooledDishes = dishIds(pooled.exec.dishes);
-        const identical =
-          ladderRestaurants === pooledRestaurants &&
-          ladderDishes === pooledDishes;
-        this.logger.info('POOLED SHADOW DIFF', {
-          searchRequestId: params.searchRequestId,
-          identical,
-          sourceQuery: params.request.sourceQuery ?? null,
-          restaurants: identical
-            ? undefined
-            : { ladder: ladderRestaurants, pooled: pooledRestaurants },
-          dishes: identical
-            ? undefined
-            : { ladder: ladderDishes, pooled: pooledDishes },
-          totals: {
-            ladder: {
-              restaurants: params.response.metadata.totalRestaurantResults,
-              dishes: params.response.metadata.totalFoodResults,
-            },
-            pooled: {
-              restaurants: pooled.exec.totalRestaurantCount,
-              dishes: pooled.exec.totalDishCount,
-            },
-          },
-          pooledMs: Math.round(pooled.timings.executeMs),
-        });
-      })
-      .catch((error: unknown) => {
-        this.logger.warn('POOLED SHADOW failed (ignored)', {
-          searchRequestId: params.searchRequestId,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        });
-      });
-  }
-
-  private async executeSearchStage(params: {
-    request: SearchQueryRequestDto;
-    stage: RelaxationStage;
-    planExpansion: PlanExpansionState | null;
-    pagination: PaginationState;
-    restaurantPagination: { skip: number; take: number };
-    dishPagination: { skip: number; take: number };
-    topDishesLimit: number;
-    includeSqlPreview?: boolean;
-    excludeRestaurantIds?: string[];
-    excludeConnectionIds?: string[];
-  }): Promise<StageExecutionResult> {
-    const planStart = performance.now();
-    const priceLevels = this.normalizePriceLevels(params.request.priceLevels);
-    const minimumVotes = this.normalizeMinimumVotes(
-      params.request.minimumVotes,
-    );
-    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
-    const constraints = this.buildSearchConstraints(
-      params.request,
-      params.stage,
-      {
-        format: 'dual_list',
-        priceLevels,
-        minimumVotes,
-      },
-      params.planExpansion,
-      dietaryIds,
-    );
-    const stagePlan = compileQueryPlanFromConstraints(constraints);
-    const planMs = performance.now() - planStart;
-
-    const directives = this.buildExecutionDirectives(
-      params.request,
-      constraints,
-      params.planExpansion,
-    );
-
-    const executeStart = performance.now();
-    const relevanceByFoodId = this.relevanceFromGrounding(
-      constraints.grounding.food,
-    );
-    const exec = await this.queryExecutor.executeDual({
-      plan: stagePlan,
-      request: params.request,
-      pagination: params.pagination,
-      restaurantPagination: params.restaurantPagination,
-      dishPagination: params.dishPagination,
-      topDishesLimit: params.topDishesLimit,
-      includeSqlPreview: params.includeSqlPreview,
-      excludeRestaurantIds: params.excludeRestaurantIds,
-      excludeConnectionIds: params.excludeConnectionIds,
-      directives,
-    });
-    const executeMs = performance.now() - executeStart;
-
-    // Attach graded relatedness (see PlanExpansionState.relevanceByFoodId) —
-    // one choke point so strict, re-probe, and relaxed rows all carry it.
-    if (relevanceByFoodId) {
-      for (const dish of exec.dishes) {
-        dish.relevance =
-          relevanceByFoodId[dish.foodId] ??
-          (dish.exactMatch === false ? undefined : 1);
-      }
-      for (const restaurant of exec.restaurants) {
-        const snippetScores = (restaurant.topFood ?? [])
-          .map(
-            (snippet) =>
-              relevanceByFoodId[snippet.foodId] ??
-              (restaurant.exactMatch === false ? undefined : 1),
-          )
-          .filter((value): value is number => typeof value === 'number');
-        restaurant.relevance = snippetScores.length
-          ? Math.max(...snippetScores)
-          : undefined;
-      }
-    }
-
-    return { stagePlan, exec, timings: { planMs, executeMs } };
-  }
-
-  /**
    * Page-1 union prefetch for the "Include similar" toggle: on an EXACT-view
    * page-1 response, also compute the pooled-view page 1 (one extra dual query,
    * only when siblings exist) and attach the rows NOT already shown — tagged
@@ -2333,26 +1713,15 @@ export class SearchService {
       // widened preview must be a pooled run too — a ladder run puts soft
       // words back in the WHERE, and similarAvailable (widened − served)
       // then compares totals built under different membership rules.
-      const widenedRun =
-        this.pooledMode === 'on'
-          ? await this.executePooledStage({
-              request,
-              planExpansion: widened,
-              pagination,
-              restaurantPagination: pageOne,
-              dishPagination: pageOne,
-              topDishesLimit: params.topDishesLimit,
-              threshold: DEFAULT_PAGE_SIZE,
-            })
-          : await this.executeSearchStage({
-              request,
-              stage: 'strict',
-              planExpansion: widened,
-              pagination,
-              restaurantPagination: pageOne,
-              dishPagination: pageOne,
-              topDishesLimit: params.topDishesLimit,
-            });
+      const widenedRun = await this.executePooledStage({
+        request,
+        planExpansion: widened,
+        pagination,
+        restaurantPagination: pageOne,
+        dishPagination: pageOne,
+        topDishesLimit: params.topDishesLimit,
+        threshold: DEFAULT_PAGE_SIZE,
+      });
       const shownConnections = new Set(
         response.dishes.map((d) => d.connectionId),
       );
@@ -2405,31 +1774,17 @@ export class SearchService {
       minimumVotes: number | null;
     },
     planExpansion?: PlanExpansionState | null,
-    dietaryIds: ReadonlySet<string> = new Set(),
   ): SearchConstraints {
     const inputPresence = this.getEntityPresenceSummary(request);
+    // CUTOVER: relaxation stages are gone — dietary hardness lives in the
+    // pooled hard/soft split (executePooledStage), not in staged drops.
     const stagePresence = { ...inputPresence };
-
-    // DIETARY HARDNESS (spec §1.3): a dropping stage keeps the dietary
-    // subset — the flagged ids survive every stage, and the presence count
-    // reflects what SURVIVED so the compiler still emits the clause.
-    const staged = attributeIdsForStage({
-      stage,
+    const staged = {
       foodAttributeIds: this.collectEntityIds(request.entities.foodAttributes),
       restaurantAttributeIds: this.collectEntityIds(
         request.entities.restaurantAttributes,
       ),
-      dietaryIds,
-    });
-    if (stage === 'relaxed_food_attributes' || stage === 'relaxed_modifiers') {
-      stagePresence.foodAttributes = staged.foodAttributeIds.length;
-    }
-    if (
-      stage === 'relaxed_restaurant_attributes' ||
-      stage === 'relaxed_modifiers'
-    ) {
-      stagePresence.restaurantAttributes = staged.restaurantAttributeIds.length;
-    }
+    };
 
     const hadFoodGroup = Boolean(request.entities.food?.length);
     const hadRestaurantGroup = Boolean(request.entities.restaurants?.length);
@@ -2531,125 +1886,6 @@ export class SearchService {
     };
   }
 
-  private resolveRelaxationCapabilities(
-    request: SearchQueryRequestDto,
-    dietaryIds: ReadonlySet<string>,
-  ): RelaxationCapabilities {
-    const hasFoodAttributes = Boolean(request.entities.foodAttributes?.length);
-    const hasRestaurantAttributes = Boolean(
-      request.entities.restaurantAttributes?.length,
-    );
-    const hasPrimaryEntities = Boolean(
-      request.entities.food?.length || request.entities.restaurants?.length,
-    );
-
-    // DIETARY HARDNESS (spec §1.3): a stage is offered only when it has
-    // something SOFT to drop. A bucket that is all-dietary keeps its ids
-    // through every stage (see buildSearchConstraints), so offering the
-    // stage would re-execute an identical query — and, before this fix,
-    // would have DROPPED a vegan user's one non-negotiable word.
-    const hasSoftFood = hasSoftAttributeIds(
-      this.collectEntityIds(request.entities.foodAttributes),
-      dietaryIds,
-    );
-    const hasSoftRestaurant = hasSoftAttributeIds(
-      this.collectEntityIds(request.entities.restaurantAttributes),
-      dietaryIds,
-    );
-
-    const canDropFoodAttributes =
-      hasFoodAttributes && hasSoftFood
-        ? hasPrimaryEntities || hasRestaurantAttributes
-        : false;
-    const canDropRestaurantAttributes =
-      hasRestaurantAttributes && hasSoftRestaurant
-        ? hasPrimaryEntities || hasFoodAttributes
-        : false;
-    const canDropAllModifiers =
-      hasPrimaryEntities && (hasSoftFood || hasSoftRestaurant);
-    const canRelax = canDropFoodAttributes || canDropRestaurantAttributes;
-
-    return {
-      hasFoodAttributes,
-      hasRestaurantAttributes,
-      hasPrimaryEntities,
-      canDropFoodAttributes,
-      canDropRestaurantAttributes,
-      canDropAllModifiers,
-      canRelax,
-    };
-  }
-
-  private async selectRelaxationStage(params: {
-    candidateStages: RelaxationStage[];
-    threshold: number;
-    canDropAllModifiers: boolean;
-    needsRestaurantRelaxation: boolean;
-    needsDishRelaxation: boolean;
-    probe: (
-      stage: RelaxationStage,
-    ) => Promise<{ restaurants: unknown[]; dishes: unknown[] }>;
-  }): Promise<RelaxationStage> {
-    const {
-      candidateStages,
-      threshold,
-      canDropAllModifiers,
-      needsRestaurantRelaxation,
-      needsDishRelaxation,
-      probe,
-    } = params;
-
-    const scoreCounts = (counts: { restaurants: number; dishes: number }) => {
-      if (needsRestaurantRelaxation && needsDishRelaxation) {
-        return Math.min(counts.restaurants, counts.dishes);
-      }
-      if (needsRestaurantRelaxation) {
-        return counts.restaurants;
-      }
-      return counts.dishes;
-    };
-
-    const cache = new Map<
-      RelaxationStage,
-      { restaurants: number; dishes: number }
-    >();
-    const probeCounts = async (stage: RelaxationStage) => {
-      const cached = cache.get(stage);
-      if (cached) {
-        return cached;
-      }
-      const result = await probe(stage);
-      const counts = {
-        restaurants: result.restaurants.length,
-        dishes: result.dishes.length,
-      };
-      cache.set(stage, counts);
-      return counts;
-    };
-
-    let selectedStage: RelaxationStage = canDropAllModifiers
-      ? 'relaxed_modifiers'
-      : (candidateStages[0] ?? 'strict');
-
-    if (candidateStages.length === 1) {
-      selectedStage = candidateStages[0];
-    } else if (candidateStages.length === 2) {
-      const [a, b] = candidateStages;
-      const aCounts = await probeCounts(a);
-      const bCounts = await probeCounts(b);
-      selectedStage = scoreCounts(aCounts) >= scoreCounts(bCounts) ? a : b;
-    }
-
-    if (canDropAllModifiers && selectedStage !== 'relaxed_modifiers') {
-      const selectedCounts = await probeCounts(selectedStage);
-      if (scoreCounts(selectedCounts) < threshold) {
-        selectedStage = 'relaxed_modifiers';
-      }
-    }
-
-    return selectedStage;
-  }
-
   private attachPhaseTimings(
     metadata: SearchResponseMetadataDto,
     phaseTimings: Record<string, number>,
@@ -2713,7 +1949,7 @@ export class SearchService {
       0,
     );
 
-    const explainStage: RelaxationStage = input.relaxation.stage ?? 'strict';
+    const explainStage = 'strict' as const;
     const priceLevels = this.normalizePriceLevels(input.request.priceLevels);
     const minimumVotes = this.normalizeMinimumVotes(input.request.minimumVotes);
     const constraints = this.buildSearchConstraints(
@@ -2769,7 +2005,6 @@ export class SearchService {
       },
       relaxation: {
         ...input.relaxation,
-        capabilities: input.relaxationCapabilities,
       },
       onDemand: input.onDemand,
     };
@@ -2785,11 +2020,6 @@ export class SearchService {
       engineIds: string[];
     };
     expansionSignals?: Record<string, unknown> | null;
-    relaxation?: {
-      stage: RelaxationStage;
-      threshold: number;
-      dropped: { foodAttributes: boolean; restaurantAttributes: boolean };
-    };
     /** STEP-5: pooled mode's per-word starvation verdict. When present, the
      *  attribute-typed demand requests narrow to the starved words only. */
     starved?: { attributeIds: string[]; terms: string[] };
@@ -2817,22 +2047,6 @@ export class SearchService {
           : {}),
         ...(params.starved ? { starvedWords: params.starved.terms } : {}),
       };
-
-      if (params.relaxation) {
-        context.counts = {
-          stage: 'strict',
-          page: {
-            restaurants: params.restaurantCount,
-            dishes: params.dishCount,
-          },
-        };
-        context.relaxation = {
-          ran: true,
-          toStage: params.relaxation.stage,
-          threshold: params.relaxation.threshold,
-          dropped: params.relaxation.dropped,
-        };
-      }
 
       if (
         typeof params.request.userLocation?.lat === 'number' &&

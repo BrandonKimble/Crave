@@ -1,11 +1,9 @@
 import type { EntityType } from '@prisma/client';
 import type { MapBoundsDto } from './dto/search-query.dto';
 
-export type RelaxationStage =
-  | 'strict'
-  | 'relaxed_restaurant_attributes'
-  | 'relaxed_food_attributes'
-  | 'relaxed_modifiers';
+/** CUTOVER 2026-08-02: the relaxation ladder is deleted — 'strict' is the
+ *  only stage; the pooled richness gate replaced staged drops. */
+export type RelaxationStage = 'strict';
 
 export interface ConstraintInputPresence {
   restaurants: number;

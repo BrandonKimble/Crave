@@ -41,7 +41,6 @@ function makeService(
     debug: jest.fn(),
   };
   return new SearchQueryInterpretationService(
-    {} as never,
     entityTextSearch as never,
     {} as never,
     {} as never,

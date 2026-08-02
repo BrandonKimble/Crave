@@ -69,14 +69,9 @@ export class UnsegmentedResidueService {
 
   @Cron('*/10 * * * *')
   async drainBatch(): Promise<void> {
-    // FLAG COUPLING (red team ⑥): gazetteer 'on' is the staging producer,
-    // so it IMPLIES the drain — otherwise flipping one flag silently stops
-    // on-demand collection while residue piles up unbounded.
-    const gazetteerOn =
-      (process.env.SEARCH_GAZETTEER_UNDERSTAND ?? '').trim().toLowerCase() ===
-      'on';
-    if (process.env.SEARCH_RESIDUE_SEGMENTER_ENABLED !== 'true' && !gazetteerOn)
-      return;
+    // CUTOVER: the gazetteer Understand is the only producer and is always
+    // on — the drain runs unconditionally (idles at one indexed SELECT
+    // when the staging zone is empty).
     if (this.drainInFlight) return;
     this.drainInFlight = true;
     try {
