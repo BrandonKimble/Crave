@@ -4,7 +4,6 @@ import { FoodDedupeMergeService } from './food-dedupe-merge.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
-import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { SharedModule } from '../../../shared/shared.module';
 import { LLMModule } from '../../external-integrations/llm/llm.module';
@@ -18,13 +17,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
  * Implements PRD Section 9.2.1 - Alias management: Automatic alias creation, duplicate prevention, scope-aware resolution
  */
 @Module({
-  imports: [
-    RepositoryModule,
-    PrismaModule,
-    SharedModule,
-    LLMModule,
-    EntityTextSearchModule,
-  ],
+  imports: [PrismaModule, SharedModule, LLMModule, EntityTextSearchModule],
   providers: [
     EntityResolutionService,
     FoodDedupeMergeService,

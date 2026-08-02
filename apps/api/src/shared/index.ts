@@ -26,7 +26,6 @@ export { LoggingInterceptor } from './logging/logging.interceptor';
 export { CorrelationUtils } from './logging/correlation.utils';
 
 // Utilities
-export { PrismaErrorMapper } from './utils/prisma-error-mapper';
 export { TextSanitizerService } from './sanitization/text-sanitizer.service';
 
 // Module

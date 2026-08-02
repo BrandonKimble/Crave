@@ -14,7 +14,6 @@ import {
   runInWorkContext,
   currentWorkContext,
 } from '../external-integrations/shared/work-context';
-import { EntityRepository } from '../../repositories/entity.repository';
 import {
   GooglePlacesService,
   GooglePlacesV1AutocompleteSuggestion,
@@ -459,7 +458,6 @@ export class RestaurantLocationEnrichmentService {
   private readonly transactionMaxWaitMs: number;
 
   constructor(
-    private readonly entityRepository: EntityRepository,
     private readonly prisma: PrismaService,
     private readonly googlePlacesService: GooglePlacesService,
     private readonly llmService: LLMService,

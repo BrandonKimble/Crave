@@ -5,7 +5,6 @@ import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
 import { PublicCraveScoreModule } from '../public-crave-score';
-import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { ArchiveStreamProcessorService } from './archive/archive-stream-processor.service';
 import { ArchiveZstdDecompressor } from './archive/archive-zstd-decompressor.service';
@@ -143,8 +142,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
     AttributeOntologyModule, // Adjudicates pending attributes after collection batches
-    PublicCraveScoreModule,
-    RepositoryModule, // Provides repository services for database access
+    PublicCraveScoreModule, // Provides repository services for database access
     BullModule.registerQueue({
       name: 'chronological-collection',
     }),

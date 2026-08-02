@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
-import { RepositoryModule } from '../../repositories/repository.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
@@ -35,7 +34,6 @@ import { ScoringTerritoryRefreshService } from './scoring-territory-refresh.serv
   imports: [
     SharedModule,
     PrismaModule,
-    RepositoryModule,
     RedditCollectorModule,
     EntityResolverModule,
     ExternalIntegrationsModule,

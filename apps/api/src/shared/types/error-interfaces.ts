@@ -194,9 +194,9 @@ export function getErrorCode(error: unknown): string | undefined {
  *   if (isPrismaError(error)) {
  *     switch (error.code) {
  *       case 'P2002':
- *         return new UniqueConstraintException(this.entityName, error.meta?.target);
+ *         return new DatabaseException('unique constraint', error.meta?.target);
  *       case 'P2003':
- *         return new ForeignKeyConstraintException(this.entityName, error.meta?.field_name);
+ *         return new DatabaseException('foreign key', error.meta?.field_name);
  *       default:
  *         return new DatabaseOperationException(operation, this.entityName, error);
  *     }

@@ -2,7 +2,6 @@ import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bull';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
-import { RepositoryModule } from '../../repositories/repository.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
@@ -31,7 +30,6 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
   imports: [
     SharedModule,
     PrismaModule,
-    RepositoryModule,
     ExternalIntegrationsModule,
     EntityResolverModule,
     PublicCraveScoreModule,

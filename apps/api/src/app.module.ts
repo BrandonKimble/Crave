@@ -7,7 +7,6 @@ import { DiscoveryModule } from '@nestjs/core';
 import { RedisModule } from '@liaoliaots/nestjs-redis';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
-import { RepositoryModule } from './repositories/repository.module';
 import { ExternalIntegrationsModule } from './modules/external-integrations/external-integrations.module';
 import { RedditCollectorModule } from './modules/content-processing/reddit-collector/reddit-collector.module';
 import { AppController } from './app.controller';
@@ -81,7 +80,6 @@ const runtimeWithSchedulers = isSchedulerRuntime();
       }),
     }),
     PrismaModule,
-    RepositoryModule,
     ExternalIntegrationsModule,
     RedditCollectorModule,
     SearchModule,

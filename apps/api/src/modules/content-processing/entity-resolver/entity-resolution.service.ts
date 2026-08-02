@@ -5,7 +5,6 @@ import { EntityStatus, EntityType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { EntityRepository } from '../../../repositories/entity.repository';
 import { foodNameVariants } from './food-lemma';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -96,7 +95,6 @@ export class EntityResolutionService implements OnModuleInit {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly entityRepository: EntityRepository,
     private readonly aliasManagementService: AliasManagementService,
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
@@ -255,7 +253,12 @@ export class EntityResolutionService implements OnModuleInit {
       for (const result of results) {
         if (result.entityId) {
           // Fetch entity details for each resolved entity
-          const entity = await this.entityRepository.findById(result.entityId);
+          // Direct Prisma (2026-08-02). This was the ONLY real call into a
+          // 1,461-line repository framework whose findById was findUnique
+          // wrapped in logging. See the deletion commit for the reasoning.
+          const entity = await this.prisma.entity.findUnique({
+            where: { entityId: result.entityId },
+          });
           if (entity) {
             entityDetails.set(result.entityId, {
               entityId: entity.entityId,
