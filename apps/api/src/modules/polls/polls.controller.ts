@@ -44,9 +44,14 @@ export class PollsController {
 
   // The legacy market-keyed GET / feed is DEAD (§22 item 5): the feed is the
   // viewport-scoped POST /polls/query below (places-in-view + cursor).
+  // AUTHENTICATED (2026-08-01): this is the heaviest read in the app — it
+  // clips and serializes every catalog ground touching the viewport. Left
+  // anonymous it was a free, IP-tracked way to spend our Postgres. The
+  // share-link reads below stay anonymous deliberately: opening a shared
+  // poll must not require an account.
   @Post('query')
   @RateLimitTier('heavyGeoRead')
-  @UseGuards(OptionalClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {
     return this.pollsService.queryPolls(body, user?.userId ?? null);
   }
@@ -59,9 +64,11 @@ export class PollsController {
   }
 
   // Stage-1 creation dedup — fast text-similarity check before any LLM resolution.
+  // AUTHENTICATED: this exists only to serve the creation flow, which is
+  // authenticated anyway — there was never a reason for it to be open.
   @Post('check-duplicate')
   @RateLimitTier('heavyGeoRead')
-  @UseGuards(OptionalClerkAuthGuard)
+  @UseGuards(ClerkAuthGuard)
   checkDuplicate(@Body() dto: CheckPollDuplicateDto) {
     return this.pollsService.checkDuplicate(dto);
   }
