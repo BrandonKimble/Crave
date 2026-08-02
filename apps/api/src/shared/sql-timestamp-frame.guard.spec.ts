@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { codeOnly } from './testing/code-only';
 
 // A REPO-WIDE GUARD, because fixing instances does not fix the class.
 //
@@ -63,7 +64,7 @@ function unframedComparisons(): string[] {
   for (const file of tsFiles(SRC)) {
     const rel = relative(SRC, file).split('\\').join('/');
     if (AWARE_COLUMN_SITES.has(rel) || KNOWN_UNFRAMED.has(rel)) continue;
-    const source = readFileSync(file, 'utf8');
+    const source = codeOnly(readFileSync(file, 'utf8'));
 
     // Scanned over the WHOLE file, not over `Prisma.sql`...`` blocks. An
     // earlier version matched the template literal with [^`]*, which stops at
@@ -74,7 +75,16 @@ function unframedComparisons(): string[] {
     for (const cmp of source.matchAll(
       /(\w*_at)\s*(?:<=|>=|<|>|=|BETWEEN)\s*(\$\{[^}]*\})/g,
     )) {
-      const window = source.slice(cmp.index, (cmp.index ?? 0) + 200);
+      // IN the expression, not NEAR it (red team 2026-08-02). A 200-char
+      // forward window let a DOWNSTREAM framed comparison mask an UPSTREAM
+      // unframed one — and real WHERE clauses have several time comparisons
+      // within 200 chars, so that was the common case, not a corner. The
+      // window is now the matched comparison plus the small tail its own
+      // conversion would occupy.
+      const window = source.slice(
+        cmp.index,
+        (cmp.index ?? 0) + cmp[0].length + 40,
+      );
       // Either the conversion is written inline, or it comes from a helper
       // whose whole job is to apply it.
       // Inline conversion, or the shared helper (under either the canonical
@@ -103,11 +113,20 @@ describe('raw SQL timestamp frame', () => {
     for (const file of tsFiles(SRC)) {
       const rel = relative(SRC, file).split('\\').join('/');
       if (!KNOWN_UNFRAMED.has(rel)) continue;
-      const source = readFileSync(file, 'utf8');
+      const source = codeOnly(readFileSync(file, 'utf8'));
       for (const cmp of source.matchAll(
         /(\w*_at)\s*(?:<=|>=|<|>|=|BETWEEN)\s*(\$\{[^}]*\})/g,
       )) {
-        const window = source.slice(cmp.index, (cmp.index ?? 0) + 200);
+        // IN the expression, not NEAR it (red team 2026-08-02). A 200-char
+        // forward window let a DOWNSTREAM framed comparison mask an UPSTREAM
+        // unframed one — and real WHERE clauses have several time comparisons
+        // within 200 chars, so that was the common case, not a corner. The
+        // window is now the matched comparison plus the small tail its own
+        // conversion would occupy.
+        const window = source.slice(
+          cmp.index,
+          (cmp.index ?? 0) + cmp[0].length + 40,
+        );
         if (
           window.includes(`AT TIME ZONE`) ||
           window.includes('utcInstant(') ||

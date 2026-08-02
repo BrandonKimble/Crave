@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { codeOnly } from '../../shared/testing/code-only';
 
 // ONE LAW, TWO READERS.
 //
@@ -18,8 +19,12 @@ import { join } from 'node:path';
 // half of this law was hoisted into dayRecencySql for exactly this reason; the
 // act-identity half was left behind.
 
+// COMMENT-STRIPPED (red team 2026-08-02). Every assertion here is text
+// presence, so `AND TRUE /* was dayActsFilterSql(...) */` satisfied the guard
+// with the filter gone. A scanner that reads prose as implementation is a
+// search for the word we hoped to find.
 function read(...parts: string[]): string {
-  return readFileSync(join(__dirname, ...parts), 'utf8');
+  return codeOnly(readFileSync(join(__dirname, ...parts), 'utf8'));
 }
 
 const massReader = read('..', 'polls', 'supply', 'demand-mass.reader.ts');
@@ -40,7 +45,10 @@ describe('the §4 daily-acts law has one statement', () => {
     // The mass reader names them directly; the signals reader now passes them
     // into the shared filter. Either way, neither may count an echo.
     expect(massReader).toContain('ECHO_KINDS');
-    expect(signalsReader).toContain('ECHO_SIGNAL_KINDS');
+    // Asserted at the CALL, not anywhere in the file — the bare name was
+    // satisfied by the import statement alone, which stayed green with the
+    // filter deleted.
+    expect(signalsReader).toMatch(/dayActsFilterSql\(\s*ECHO_SIGNAL_KINDS/);
   });
 
   it('both readers keep KIND in the daily grain', () => {

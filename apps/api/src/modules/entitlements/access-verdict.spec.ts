@@ -45,17 +45,15 @@ describe('access verdict', () => {
     expect(i.kind === 'indeterminate' && i.message).toBe('connection refused');
   });
 
-  it('every verdict kind is handled — a new kind cannot be silently ignored', () => {
-    // resolveVerdict switches exhaustively; if a kind is ever added without a
-    // branch, TypeScript fails the build rather than falling through to a
-    // default that quietly means "allow".
-    const kinds = (
-      [
-        granted('c'),
-        denied('no_grant'),
-        indeterminate('unexpected_error', 'x'),
-      ] as AccessVerdict[]
-    ).map((v) => v.kind);
-    expect(new Set(kinds).size).toBe(3);
+  it('an unknown kind cannot slip through as ALLOWED', () => {
+    // The previous version built three verdicts with three constructors and
+    // asserted they had three distinct kinds — a restatement of the
+    // constructors that could not fail. What matters is the DEFAULT: a value
+    // the switch does not recognize must not resolve to `true` under either
+    // policy, because "allow on anything unfamiliar" is how the boolean
+    // failed in the first place.
+    const rogue = { kind: 'deferred', untilMs: 1 } as unknown as AccessVerdict;
+    expect(resolveVerdict(rogue, 'deny')).not.toBe(true);
+    expect(resolveVerdict(rogue, 'allow')).not.toBe(true);
   });
 });

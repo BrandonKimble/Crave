@@ -79,8 +79,12 @@ describe('app environment', () => {
     // Readers disagreed on whether APP_ENV=production normalized to `prod`.
     // These strings become Redis prefixes, so two spellings meant two disjoint
     // rate-limit windows and a silently doubled global ceiling.
-    expect(normalizeAppEnv('production')).toBe(normalizeAppEnv('prod'));
-    expect(normalizeAppEnv('development')).toBe(normalizeAppEnv('dev'));
-    expect(normalizeAppEnv('STAGING')).toBe(normalizeAppEnv('stage'));
+    expect(normalizeAppEnv('production')).toBe('prod');
+    // Asserted against the LITERAL, not against another unrecognized string:
+    // `development` and `dev` both fall through the same default, so
+    // comparing them to each other can never fail (red team 2026-08-02).
+    expect(normalizeAppEnv('development')).toBe('dev');
+    expect(normalizeAppEnv('STAGING')).toBe('staging');
+    expect(normalizeAppEnv('stage')).toBe('staging');
   });
 });

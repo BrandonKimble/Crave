@@ -1,5 +1,8 @@
 import 'reflect-metadata';
 import { CentralizedRateLimiter } from './centralized-rate-limiter.service';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { codeOnly } from '../../../../shared/testing/code-only';
 
 // REDIS DOWN USED TO MEAN NO LLM RATE LIMIT AT ALL.
 //
@@ -100,5 +103,35 @@ describe('LLM rate limiter: outage guard', () => {
     expect(guard.outageMinuteCounters.size).toBe(1);
     guard.reserveLocallyDuringOutage(60_000 * 500);
     expect(guard.outageMinuteCounters.size).toBe(1);
+  });
+});
+
+// THE ARITHMETIC IS NOT THE PROPERTY. The tests above drive the private guard
+// directly, so severing its one call site — restoring the original bug exactly
+// — left them all green (red team 2026-08-02). What actually matters is that
+// the OUTAGE PATH consults it and the caller sleeps on the result.
+describe('the outage path is wired to the guard', () => {
+  const limiter = codeOnly(
+    readFileSync(
+      join(__dirname, 'centralized-rate-limiter.service.ts'),
+      'utf8',
+    ),
+  );
+  const processor = codeOnly(
+    readFileSync(join(__dirname, 'smart-llm-processor.service.ts'), 'utf8'),
+  );
+
+  it('the reservation failure path calls the guard', () => {
+    // Scoped to the catch block, not the whole file: a definition elsewhere
+    // must not satisfy "the failure path uses it".
+    const at = limiter.indexOf('} catch (error) {');
+    expect(at).toBeGreaterThan(-1);
+    const failurePath = limiter.slice(at, at + 900);
+    expect(failurePath).toContain('reserveLocallyDuringOutage(');
+  });
+
+  it('the caller actually WAITS on waitMs — a returned delay nobody sleeps on is not a limit', () => {
+    expect(processor).toMatch(/waitMs/);
+    expect(processor).toMatch(/(sleep|setTimeout|delay)/i);
   });
 });
