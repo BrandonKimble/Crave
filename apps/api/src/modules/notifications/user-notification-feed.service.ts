@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserBlockService } from '../identity/user-block.service';
 
 const DEFAULT_PAGE_SIZE = 30;
 
@@ -9,7 +10,10 @@ const DEFAULT_PAGE_SIZE = 30;
  *  read-state aware. Distinct from the push-delivery ledger. */
 @Injectable()
 export class UserNotificationFeedService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly blocks: UserBlockService,
+  ) {}
 
   async enqueue(args: {
     userId: string;
@@ -53,9 +57,18 @@ export class UserNotificationFeedService {
           .filter((id): id is string => id != null),
       ),
     );
-    const actors = actorIds.length
+    // §8.6 BLOCKING (red team 2026-08-02). This was the last read surface that
+    // joined actor identity without a block filter: A follows B, B blocks A,
+    // and A's avatar, handle and display name still rendered in B's feed — on
+    // the screen B is most likely to open right after blocking. Every other
+    // module applies UserBlockService; this one was simply missed.
+    const hidden = actorIds.length
+      ? await this.blocks.blockedPeerIds(userId)
+      : new Set<string>();
+    const visibleActorIds = actorIds.filter((id) => !hidden.has(id));
+    const actors = visibleActorIds.length
       ? await this.prisma.user.findMany({
-          where: { userId: { in: actorIds } },
+          where: { userId: { in: visibleActorIds } },
           select: {
             userId: true,
             username: true,

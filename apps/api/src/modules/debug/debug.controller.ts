@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 /**
  * Debug Controller for testing Sentry and other integrations
@@ -11,6 +12,11 @@ import * as Sentry from '@sentry/nestjs';
  * - GET /debug/sentry-test - Triggers a test error to verify Sentry
  * - POST /debug/sentry-message - Sends a test message to Sentry
  */
+// Exempt from the paywall. These routes are dev-only (the module is not
+// registered unless ENABLE_DEBUG_ROUTES opts in), but the rule is absolute: a
+// controller that produces no request.user declares itself public, so the
+// enumeration guard has no special cases to hide behind.
+@AllowUnentitled()
 @Controller('debug')
 export class DebugController {
   /**
