@@ -540,7 +540,15 @@ export class SearchQueryInterpretationService {
       .filter(
         (c) =>
           c.sparseEvidence != null &&
-          LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+          LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence) &&
+          // RESTAURANT NAMES LINK ON EXACT ONLY for non-restaurant inputs:
+          // the floors were swept on type-scoped recall, and a residue
+          // fragment fuzzy-capturing a restaurant becomes an AND filter
+          // that zeroes the page ("from a" → three tied restaurants →
+          // 0 results, found in the round-5 regression sweep). The
+          // re-sweep may relax this; exact restaurant links (tacodeli)
+          // are untouched.
+          (c.type !== 'restaurant' || input.entityType === 'restaurant'),
       )
       .sort((a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
     const top = eligible[0];
