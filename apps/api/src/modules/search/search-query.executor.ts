@@ -172,6 +172,7 @@ interface RestaurantQueryRow {
  */
 interface RestaurantOpenNowCandidateRow {
   restaurant_id: string;
+  pooled_tier?: number | null;
   hours?: Prisma.JsonValue | null;
   utc_offset_minutes?: Prisma.Decimal | number | string | null;
   time_zone?: string | null;
@@ -610,6 +611,7 @@ LIMIT 3
         baseOptions: restaurantQueryOptions,
         pagination: effectiveRestaurantPagination,
         referenceDate,
+        pooledGate: directives?.pooledGate ?? null,
       }),
       dishQuery
         ? Promise.all([
@@ -2136,6 +2138,9 @@ LIMIT 3
     baseOptions: BuildRestaurantQueryOptions;
     pagination: { skip: number; take: number };
     referenceDate: Date;
+    pooledGate?: {
+      threshold: number;
+    } | null;
   }): Promise<{
     rows: RestaurantQueryRow[];
     total: number;
@@ -2147,6 +2152,7 @@ LIMIT 3
       baseOptions,
       pagination,
       referenceDate,
+      pooledGate,
     } = params;
 
     if (!restaurantQuery) {
@@ -2180,7 +2186,26 @@ LIMIT 3
     const candidateRows = await this.prisma.$queryRaw<
       RestaurantOpenNowCandidateRow[]
     >(restaurantQuery.candidateSql);
-    const candidates = candidateRows.map((row) => ({
+    let effectiveCandidateRows = candidateRows;
+    if (pooledGate) {
+      // STEP-3 GATE, OPENNESS-AWARE (spec §1.4.4a): the in-SQL count would
+      // judge scarcity on pre-openness rows (50 matches, 3 open would not
+      // relax). Decide here on the OPEN full set: when open all-word rows
+      // can fill a page, partial rows leave the candidate list entirely —
+      // the hydrate preserves candidate order, so nothing recomputes
+      // (§1.4.4b by construction).
+      const openFullCount = candidateRows.filter(
+        (row) =>
+          row.pooled_tier === 0 &&
+          this.resolveCandidateOpenNow(row, referenceDate) === true,
+      ).length;
+      if (openFullCount >= pooledGate.threshold) {
+        effectiveCandidateRows = candidateRows.filter(
+          (row) => row.pooled_tier === 0,
+        );
+      }
+    }
+    const candidates = effectiveCandidateRows.map((row) => ({
       restaurantId: row.restaurant_id,
       isOpen: this.resolveCandidateOpenNow(row, referenceDate),
     }));

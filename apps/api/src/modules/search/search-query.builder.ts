@@ -181,6 +181,30 @@ export class SearchQueryBuilder {
       ? Prisma.sql`COALESCE(tm.has_signal_match, FALSE)`
       : Prisma.sql`FALSE`;
 
+    // STEP-3 POOLED GATE (spec §1.4): tier 0 = restaurant satisfies EVERY
+    // soft attribute id — venue side via containment on its own attributes,
+    // food side via a connection that matches the (hard) food arms AND all
+    // soft food-attribute ids. Soft ids are OUT of membership (the service
+    // passes hard-only ids in the plan).
+    const pooledGate = directives?.pooledGate ?? null;
+    const pooledRestFullExpr = (alias: string): Prisma.Sql | null =>
+      pooledGate
+        ? Prisma.sql`(${
+            pooledGate.softRestaurantAttributeIds.length
+              ? Prisma.sql`${Prisma.raw(alias)}.restaurant_attributes @> ${pooledGate.softRestaurantAttributeIds}::uuid[]`
+              : Prisma.sql`TRUE`
+          } AND ${
+            pooledGate.softFoodAttributeIds.length
+              ? Prisma.sql`EXISTS (
+                  SELECT 1 FROM core_restaurant_items c
+                  WHERE c.restaurant_id = ${Prisma.raw(alias)}.entity_id
+                    AND c.food_attributes @> ${pooledGate.softFoodAttributeIds}::uuid[]
+                    ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``}
+                )`
+              : Prisma.sql`TRUE`
+          })`
+        : null;
+
     const excludeRestaurantsSql = excludeRestaurantIds.length
       ? Prisma.sql`AND NOT (${this.buildInClause(
           'r.entity_id',
@@ -253,6 +277,31 @@ export class SearchQueryBuilder {
       ? `WHERE COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`
       : '';
 
+    // THE GATE (owner ruling 2026-08-01): tier-1 rows admitted only when
+    // tier-0 rows cannot fill one page. ONE PASS via a window count — a
+    // gate CTE referenced from WHERE gets inlined and re-executes per row
+    // (measured seconds); the window aggregate computes once. The hydrate
+    // path (restrictIds) NEVER gates — the executor already decided on the
+    // openness-aware candidate set and the order is id-position-preserved
+    // (spec §1.4.4a/b).
+    const pooledGateActive = Boolean(pooledGate) && !restrictIds;
+    const pooledRestGateWhereSql = pooledGateActive
+      ? pooledGate!.gateFull === null
+        ? Prisma.sql`WHERE rrx.match_tier = 0 OR rrx.pooled_full_count < ${pooledGate!.threshold}`
+        : pooledGate!.gateFull
+          ? Prisma.sql`WHERE rrx.match_tier = 0`
+          : Prisma.sql`WHERE TRUE`
+      : Prisma.sql``;
+    // Outer ORDER for the pooled wrapper must use OUTPUT column names (the
+    // inner aliases prs/rvt/fr are out of scope there).
+    const pooledOuterOrderSql = (() => {
+      const normalized = (plan.ranking.restaurantOrder || '').toLowerCase();
+      const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+      return normalized.includes('rising')
+        ? Prisma.sql`rrx.rising DESC NULLS LAST, rrx.crave_score_exact ${Prisma.raw(direction)}, rrx.crave_score ${Prisma.raw(direction)}, rrx.total_upvotes ${Prisma.raw(direction)}, rrx.restaurant_id ASC`
+        : Prisma.sql`rrx.crave_score_exact ${Prisma.raw(direction)}, rrx.crave_score ${Prisma.raw(direction)}, rrx.total_upvotes ${Prisma.raw(direction)}, rrx.restaurant_id ASC`;
+    })();
+
     const restaurantOrder = this.resolveRestaurantOrderSql(
       plan.ranking.restaurantOrder,
     );
@@ -262,13 +311,18 @@ export class SearchQueryBuilder {
     const restExactIds = directives?.sectionedRanking
       ? (directives.exactFoodIds ?? [])
       : [];
-    const restTierExpr = restExactIds.length
-      ? Prisma.sql`CASE WHEN EXISTS (
+    const pooledRestTierExpr = pooledGate
+      ? Prisma.sql`CASE WHEN ${pooledRestFullExpr('fr')} THEN 0 ELSE 1 END`
+      : null;
+    const restTierExpr =
+      pooledRestTierExpr ??
+      (restExactIds.length
+        ? Prisma.sql`CASE WHEN EXISTS (
           SELECT 1 FROM core_restaurant_items ce
           WHERE ce.restaurant_id = fr.entity_id
             AND ce.food_id = ANY(${restExactIds}::uuid[])
         ) THEN 0 ELSE 1 END`
-      : null;
+        : null);
     const restTierSelect = restTierExpr
       ? Prisma.sql`${restTierExpr} AS match_tier,`
       : Prisma.sql`NULL::int AS match_tier,`;
@@ -293,7 +347,60 @@ export class SearchQueryBuilder {
       : `${restTierOrderPreview}${restaurantOrder.preview}`;
 
     // Build the ranked restaurants CTE with LATERAL JOIN for top dishes
-    const rankedRestaurantsCte = Prisma.sql`
+    const rankedRestaurantsCte = pooledGateActive
+      ? Prisma.sql`
+ranked_restaurants AS (
+  SELECT rrx.* FROM (
+  SELECT
+    fr.entity_id AS restaurant_id,
+    ${restTierSelect}
+    count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count,
+    fr.name AS restaurant_name,
+    fr.aliases AS restaurant_aliases,
+    fr.restaurant_metadata,
+    fr.price_level,
+    fr.price_level_updated_at,
+    prs.display_score AS crave_score,
+    prs.percentile_rank AS crave_score_exact,
+    prs.rising,
+    prs.score_info,
+    'restaurant'::text AS score_subject_type,
+    fr.entity_id AS score_subject_id,
+    COALESCE(rvt.total_upvotes, 0) AS total_upvotes,
+    COALESCE(rvt.total_mentions, 0) AS total_mentions,
+    sl.location_id,
+    sl.google_place_id,
+    sl.latitude,
+    sl.longitude,
+    sl.address,
+    sl.city,
+    sl.region,
+    sl.country,
+    sl.postal_code,
+    sl.phone_number,
+    sl.website_url,
+    sl.hours,
+    sl.utc_offset_minutes,
+    sl.time_zone,
+    sl.is_primary,
+    sl.last_polled_at,
+    sl.created_at AS location_created_at,
+    sl.updated_at AS location_updated_at,
+    la.locations_json,
+    la.location_count
+  FROM filtered_restaurants fr
+  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
+  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
+  LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
+	  ${minimumVotesWhereSql}
+  ) rrx
+  ${pooledRestGateWhereSql}
+  ORDER BY rrx.match_tier ASC, ${pooledOuterOrderSql}
+  OFFSET ${pagination.skip}
+  LIMIT ${pagination.take}
+)`
+      : Prisma.sql`
 ranked_restaurants AS (
   SELECT
     fr.entity_id AS restaurant_id,
@@ -341,7 +448,6 @@ ranked_restaurants AS (
 	  OFFSET ${pagination.skip}
 	  LIMIT ${pagination.take}
 	)`;
-
     const rankedRestaurantsCtePreview = `
 ranked_restaurants AS (
   SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
@@ -465,7 +571,29 @@ LEFT JOIN LATERAL (
   ) tag_rows
 ) tm ON ${signalMatch.hasConditions ? Prisma.sql`TRUE` : Prisma.sql`FALSE`}`;
 
-    const countSql = Prisma.sql`
+    const countSql = pooledGateActive
+      ? Prisma.sql`
+WITH
+  ${restaurantCte.sql},
+	  ${geographicRestaurantsCte.sql},
+	  ${filteredLocationsCte.sql},
+	  ${selectedLocationsCte.sql},
+	  ${restaurantVoteTotalsCte.sql},
+	  ${publicRestaurantScoresCte.sql}
+	SELECT COUNT(DISTINCT rrx.restaurant_id)::bigint AS total_restaurants,
+	  COALESCE(MAX(rrx.pooled_full_count), 0)::bigint AS full_restaurants
+	FROM (
+	  SELECT fr.entity_id AS restaurant_id,
+	    ${restTierExpr!} AS match_tier,
+	    count(*) FILTER (WHERE ${restTierExpr!} = 0) OVER () AS pooled_full_count
+	  FROM filtered_restaurants fr
+	  JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
+	  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
+	  LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+	  ${minimumVotesWhereSql}
+	) rrx
+	${pooledRestGateWhereSql}`
+      : Prisma.sql`
 WITH
   ${restaurantCte.sql},
 	  ${geographicRestaurantsCte.sql},
@@ -496,6 +624,7 @@ WITH
   ranked_candidates AS (
     SELECT
       fr.entity_id AS restaurant_id,
+      ${pooledRestTierExpr ? Prisma.sql`${pooledRestTierExpr} AS pooled_tier,` : Prisma.sql`NULL::int AS pooled_tier,`}
       sl.hours,
       sl.utc_offset_minutes,
       sl.time_zone
@@ -507,12 +636,12 @@ WITH
     ORDER BY ${restTierOrder}${restaurantOrder.sql}
     LIMIT ${OPEN_NOW_CANDIDATE_CAP}
   )
-SELECT restaurant_id, hours, utc_offset_minutes, time_zone
+SELECT restaurant_id, pooled_tier, hours, utc_offset_minutes, time_zone
 FROM ranked_candidates`
       : null;
 
     const preview = `
-${withPreview}
+${pooledGateActive ? '-- [POOLED GATE ACTIVE: soft attrs are provenance; window gate; preview shows base shape]\n' : ''}${withPreview}
 SELECT rr.*, COALESCE(td.top_dishes, '[]') AS top_dishes, COALESCE(td.total_dish_count, 0) AS total_dish_count, COALESCE(tm.matched_tags, '[]') AS matched_tags, CASE WHEN ... THEN 'mixed' END AS match_evidence_type, (COALESCE(td.total_dish_count, 0) > 0) AS has_menu_items
 FROM ranked_restaurants rr
 LEFT JOIN LATERAL (...top dishes subquery with LIMIT ${topDishesLimit}...) td ON true
@@ -556,6 +685,28 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
       preview: locationWherePreview,
       boundsApplied,
     } = this.buildLocationConditions(filters);
+
+    // STEP-3 POOLED GATE (spec §1.4): tier 0 = the row satisfies EVERY soft
+    // attribute id ("all words"); tier 1 = partial. Soft ids are OUT of the
+    // WHERE membership (the service passes hard-only ids in the plan), so
+    // one execution holds the whole pool; the gate below decides whether
+    // tier-1 rows are admitted.
+    const pooledGate = directives?.pooledGate ?? null;
+    const pooledFullExprSql = pooledGate
+      ? Prisma.sql`(${
+          pooledGate.softFoodAttributeIds.length
+            ? Prisma.sql`c.food_attributes @> ${pooledGate.softFoodAttributeIds}::uuid[]`
+            : Prisma.sql`TRUE`
+        } AND ${
+          pooledGate.softRestaurantAttributeIds.length
+            ? Prisma.sql`fr.restaurant_attributes @> ${pooledGate.softRestaurantAttributeIds}::uuid[]`
+            : Prisma.sql`TRUE`
+        })`
+      : null;
+    const pooledTierCteSelectSql = pooledFullExprSql
+      ? Prisma.sql`,
+    CASE WHEN ${pooledFullExprSql} THEN 0 ELSE 1 END AS pooled_tier`
+      : Prisma.sql``;
 
     // Build connection conditions (food entity search)
     const {
@@ -648,6 +799,7 @@ filtered_connections AS (
     fr.entity_id AS restaurant_entity_id,
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
+    fr.restaurant_attributes AS restaurant_attributes_arr,
     prs.display_score AS restaurant_crave_score,
     prs.percentile_rank AS restaurant_crave_score_exact,
     prs.rising AS restaurant_rising,
@@ -663,7 +815,7 @@ filtered_connections AS (
     sl.city,
     sl.hours,
     sl.utc_offset_minutes,
-    sl.time_zone
+    sl.time_zone${pooledTierCteSelectSql}
   FROM core_restaurant_items c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
@@ -701,16 +853,41 @@ filtered_connections AS (
     // SECTIONED RELEVANCY: exact-match rows (tier 0) rank before widened rows
     // (tier 1 — siblings/categories/lexical), pure Crave Score WITHIN each tier;
     // every row carries match_tier so the client can draw the section divider.
+    // Under the pooled gate, match_tier IS the pooled tier (all-words vs
+    // partial) — same wire contract, richer meaning.
     const exactIds = directives?.sectionedRanking
       ? (directives.exactFoodIds ?? [])
       : [];
-    const tierSelectSql = exactIds.length
-      ? Prisma.sql`, CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END AS match_tier`
-      : Prisma.sql`, NULL::int AS match_tier`;
-    const tierOrderSql = exactIds.length
-      ? Prisma.sql`CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END ASC, `
+    const tierSelectSql = pooledGate
+      ? Prisma.sql`, fc.pooled_tier AS match_tier`
+      : exactIds.length
+        ? Prisma.sql`, CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END AS match_tier`
+        : Prisma.sql`, NULL::int AS match_tier`;
+    const tierOrderSql = pooledGate
+      ? Prisma.sql`fc.pooled_tier ASC, `
+      : exactIds.length
+        ? Prisma.sql`CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END ASC, `
+        : Prisma.sql``;
+    const tierOrderPreview = pooledGate
+      ? 'pooled_tier ASC, '
+      : exactIds.length
+        ? 'match_tier ASC, '
+        : '';
+
+    // THE GATE (owner ruling 2026-08-01: page 1 fills with all-word matches;
+    // partial admitted only when they cannot fill it). ONE PASS, window
+    // count — a gate CTE referenced from WHERE gets INLINED by Postgres and
+    // re-executes per row (measured 20.9s); the window aggregate is
+    // computed once over the pool (round-2's proven 5.98ms shape).
+    // gateFull parameterizes the openness-aware decision (spec §1.4.4a);
+    // null decides in-SQL from the window count.
+    const pooledGateWhereSql = pooledGate
+      ? pooledGate.gateFull === null
+        ? Prisma.sql`WHERE fc.pooled_tier = 0 OR fc.pooled_full_count < ${pooledGate.threshold}`
+        : pooledGate.gateFull
+          ? Prisma.sql`WHERE fc.pooled_tier = 0`
+          : Prisma.sql``
       : Prisma.sql``;
-    const tierOrderPreview = exactIds.length ? 'match_tier ASC, ' : '';
 
     // Build WITH clause
     const withClause = Prisma.sql`
@@ -735,7 +912,20 @@ WITH
   ${publicConnectionScoresCte.preview},
   ${filteredConnectionsCtePreview}`;
 
-    const dataSql = Prisma.sql`
+    const dataSql = pooledGate
+      ? Prisma.sql`
+${withClause}
+SELECT fc.*, fc.pooled_tier AS match_tier
+FROM (
+  SELECT fci.*,
+    count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count
+  FROM filtered_connections fci
+) fc
+${pooledGateWhereSql}
+ORDER BY fc.pooled_tier ASC, ${order.sql}
+OFFSET ${pagination.skip}
+LIMIT ${pagination.take}`
+      : Prisma.sql`
 ${withClause}
 SELECT *${tierSelectSql}
 FROM filtered_connections fc
@@ -743,7 +933,22 @@ ORDER BY ${tierOrderSql}${order.sql}
 OFFSET ${pagination.skip}
 LIMIT ${pagination.take}`;
 
-    const countSql = Prisma.sql`
+    // Pooled count = the ADMITTED set (what pagination walks), plus the
+    // full-tier count so callers can report gate provenance.
+    const countSql = pooledGate
+      ? Prisma.sql`
+${withClause}
+SELECT
+  COUNT(*)::bigint AS total_connections,
+  COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants,
+  MAX(fc.pooled_full_count)::bigint AS full_connections
+FROM (
+  SELECT fci.*,
+    count(*) FILTER (WHERE fci.pooled_tier = 0) OVER () AS pooled_full_count
+  FROM filtered_connections fci
+) fc
+${pooledGateWhereSql}`
+      : Prisma.sql`
 ${withClause}
 SELECT
   COUNT(*)::bigint AS total_connections,
@@ -751,7 +956,7 @@ SELECT
 FROM filtered_connections fc`;
 
     const preview = `
-${withPreview}
+${pooledGate ? '-- [POOLED GATE ACTIVE: soft attrs are provenance; window gate; preview shows base shape]\n' : ''}${withPreview}
 SELECT *
 FROM filtered_connections fc
 ORDER BY ${tierOrderPreview}${order.preview}

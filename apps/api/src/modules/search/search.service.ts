@@ -209,6 +209,9 @@ export class SearchService {
   private readonly includePhaseTimings: boolean;
   private readonly explainEnabled: boolean;
   private readonly debugMode: SearchDebugMode;
+  /** STEP-3 POOLED QUERY rollout: off | shadow (ladder serves, pooled
+   *  diffed + logged) | on (pooled serves; ladder branch inert). */
+  private readonly pooledMode: 'off' | 'shadow' | 'on';
   private readonly expansionStrictCoverageTarget: number;
   private readonly expansionFoodCap: number;
   private readonly expansionAttributeCap: number;
@@ -246,6 +249,7 @@ export class SearchService {
     this.includePhaseTimings = this.resolveIncludePhaseTimings();
     this.explainEnabled = this.resolveExplainEnabled();
     this.debugMode = resolveSearchDebugMode();
+    this.pooledMode = this.resolvePooledMode();
     this.expansionStrictCoverageTarget =
       this.resolveExpansionStrictCoverageTarget();
     this.expansionFoodCap = this.resolveExpansionFoodCap();
@@ -507,6 +511,22 @@ export class SearchService {
       excludeConnectionIds?: string[];
       includeSqlPreview?: boolean;
     }): Promise<StageExecutionResult> => {
+      // POOLED 'on': one gated execution replaces every ladder stage. The
+      // relaxation triggers are forced off below, so this is the only
+      // stage that ever runs — exclusion ids are ladder plumbing and are
+      // deliberately ignored (nothing is excluded from a single stream).
+      if (this.pooledMode === 'on') {
+        return this.executePooledStage({
+          request,
+          planExpansion,
+          pagination,
+          restaurantPagination: params.restaurantPagination,
+          dishPagination: params.dishPagination,
+          topDishesLimit: TOP_DISHES_LIMIT,
+          threshold: RELAX_STRICT_THRESHOLD,
+          includeSqlPreview: params.includeSqlPreview,
+        });
+      }
       return this.executeSearchStage({
         request,
         stage: params.stage,
@@ -703,10 +723,13 @@ export class SearchService {
     const strictRestaurantExactCount = strictProbe.exec.restaurants.length;
     const strictDishExactCount = strictProbe.exec.dishes.length;
 
+    // POOLED 'on': the gate already made the strict-vs-partial decision
+    // inside the single execution — the ladder's relax triggers never fire.
+    const canRelaxEffective = this.pooledMode === 'on' ? false : canRelax;
     const needsRestaurantRelaxation =
-      canRelax && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
+      canRelaxEffective && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
     const needsDishRelaxation =
-      canRelax && strictDishExactCount < RELAX_STRICT_THRESHOLD;
+      canRelaxEffective && strictDishExactCount < RELAX_STRICT_THRESHOLD;
 
     // Strict execution for the requested page. Lazy on purpose: (a) the probe IS
     // the page when page 1 ran with real pagination; (b) when BOTH axes relax,
@@ -918,6 +941,15 @@ export class SearchService {
         planExpansion,
         pagination,
         topDishesLimit: TOP_DISHES_LIMIT,
+      });
+      this.firePooledShadow({
+        request,
+        planExpansion,
+        pagination,
+        topDishesLimit: TOP_DISHES_LIMIT,
+        threshold: RELAX_STRICT_THRESHOLD,
+        response,
+        searchRequestId,
       });
       return this.applySearchResponseProfile(response, request);
     }
@@ -1266,6 +1298,15 @@ export class SearchService {
       planExpansion,
       pagination,
       topDishesLimit: TOP_DISHES_LIMIT,
+    });
+    this.firePooledShadow({
+      request,
+      planExpansion,
+      pagination,
+      topDishesLimit: TOP_DISHES_LIMIT,
+      threshold: RELAX_STRICT_THRESHOLD,
+      response,
+      searchRequestId,
     });
     return this.applySearchResponseProfile(response, request);
   }
@@ -1861,6 +1902,196 @@ export class SearchService {
         ? twinIngredientIds
         : undefined,
     };
+  }
+
+  private resolvePooledMode(): 'off' | 'shadow' | 'on' {
+    const raw = (process.env.SEARCH_POOLED_MODE ?? 'off').trim().toLowerCase();
+    return raw === 'on' || raw === 'shadow' ? raw : 'off';
+  }
+
+  /**
+   * STEP-3 POOLED EXECUTION (spec §1.4; owner rulings 2026-08-01): ONE
+   * query per projection. Membership = hard constraints only (subject +
+   * family + dietary + structural); every SOFT (non-dietary) attribute id
+   * becomes per-row provenance, and the in-query gate admits partial rows
+   * only when all-word rows cannot fill a page. Replaces the probe →
+   * relax → exclusion-list → stitch ladder with a single execution whose
+   * pagination is plain OFFSET/LIMIT over one deterministic order.
+   */
+  private async executePooledStage(params: {
+    request: SearchQueryRequestDto;
+    planExpansion: PlanExpansionState | null;
+    pagination: PaginationState;
+    restaurantPagination: { skip: number; take: number };
+    dishPagination: { skip: number; take: number };
+    topDishesLimit: number;
+    threshold: number;
+    includeSqlPreview?: boolean;
+  }): Promise<StageExecutionResult> {
+    const planStart = performance.now();
+    const priceLevels = this.normalizePriceLevels(params.request.priceLevels);
+    const minimumVotes = this.normalizeMinimumVotes(
+      params.request.minimumVotes,
+    );
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const constraints = this.buildSearchConstraints(
+      params.request,
+      'strict',
+      {
+        format: 'dual_list',
+        priceLevels,
+        minimumVotes,
+      },
+      params.planExpansion,
+      dietaryIds,
+    );
+    const dietary = new Set(dietaryIds);
+    const softFoodAttributeIds = constraints.ids.foodAttributeIds.filter(
+      (id) => !dietary.has(id),
+    );
+    const softRestaurantAttributeIds =
+      constraints.ids.restaurantAttributeIds.filter((id) => !dietary.has(id));
+    // Hard-only membership: dietary attribute ids stay walls; soft ids move
+    // to provenance. Presence bookkeeping is untouched — it describes the
+    // QUERY the user asked, not the WHERE we execute.
+    const pooledConstraints: SearchConstraints = {
+      ...constraints,
+      ids: {
+        ...constraints.ids,
+        foodAttributeIds: constraints.ids.foodAttributeIds.filter((id) =>
+          dietary.has(id),
+        ),
+        restaurantAttributeIds: constraints.ids.restaurantAttributeIds.filter(
+          (id) => dietary.has(id),
+        ),
+      },
+    };
+    const stagePlan = compileQueryPlanFromConstraints(pooledConstraints);
+    const planMs = performance.now() - planStart;
+
+    const directives = {
+      ...this.buildExecutionDirectives(
+        params.request,
+        constraints,
+        params.planExpansion,
+      ),
+      pooledGate: {
+        softFoodAttributeIds,
+        softRestaurantAttributeIds,
+        threshold: params.threshold,
+        gateFull: null,
+      },
+    };
+
+    const executeStart = performance.now();
+    const relevanceByFoodId = this.buildRelevanceMap(
+      params.request,
+      params.planExpansion,
+    );
+    const exec = await this.queryExecutor.executeDual({
+      plan: stagePlan,
+      request: params.request,
+      pagination: params.pagination,
+      restaurantPagination: params.restaurantPagination,
+      dishPagination: params.dishPagination,
+      topDishesLimit: params.topDishesLimit,
+      includeSqlPreview: params.includeSqlPreview,
+      directives,
+    });
+    const executeMs = performance.now() - executeStart;
+
+    if (relevanceByFoodId) {
+      for (const dish of exec.dishes) {
+        dish.relevance =
+          relevanceByFoodId[dish.foodId] ??
+          (dish.exactMatch === false ? undefined : 1);
+      }
+      for (const restaurant of exec.restaurants) {
+        const snippetScores = (restaurant.topFood ?? [])
+          .map(
+            (snippet) =>
+              relevanceByFoodId[snippet.foodId] ??
+              (restaurant.exactMatch === false ? undefined : 1),
+          )
+          .filter((value): value is number => typeof value === 'number');
+        restaurant.relevance = snippetScores.length
+          ? Math.max(...snippetScores)
+          : undefined;
+      }
+    }
+
+    return { stagePlan, exec, timings: { planMs, executeMs } };
+  }
+
+  /**
+   * SHADOW HARNESS: run the pooled query alongside the ladder-served
+   * response and log a compact ordered-id diff. Never blocks or fails the
+   * request. Known intended divergences (spec §1.5): the page-1 row-loss
+   * bug the pooled query FIXES, and gate-admitted partial rows where the
+   * ladder dropped a whole bucket.
+   */
+  private firePooledShadow(params: {
+    request: SearchQueryRequestDto;
+    planExpansion: PlanExpansionState | null;
+    pagination: PaginationState;
+    topDishesLimit: number;
+    threshold: number;
+    response: SearchResponseDto;
+    searchRequestId: string;
+  }): void {
+    if (this.pooledMode !== 'shadow') return;
+    void this.executePooledStage({
+      request: params.request,
+      planExpansion: params.planExpansion,
+      pagination: params.pagination,
+      restaurantPagination: params.pagination,
+      dishPagination: params.pagination,
+      topDishesLimit: params.topDishesLimit,
+      threshold: params.threshold,
+    })
+      .then((pooled) => {
+        const ids = (rows: Array<{ restaurantId?: string }>) =>
+          rows.map((row) => row.restaurantId ?? '').join(',');
+        const dishIds = (rows: Array<{ connectionId?: string }>) =>
+          rows.map((row) => row.connectionId ?? '').join(',');
+        const ladderRestaurants = ids(params.response.restaurants ?? []);
+        const pooledRestaurants = ids(pooled.exec.restaurants);
+        const ladderDishes = dishIds(params.response.dishes ?? []);
+        const pooledDishes = dishIds(pooled.exec.dishes);
+        const identical =
+          ladderRestaurants === pooledRestaurants &&
+          ladderDishes === pooledDishes;
+        this.logger.info('POOLED SHADOW DIFF', {
+          searchRequestId: params.searchRequestId,
+          identical,
+          sourceQuery: params.request.sourceQuery ?? null,
+          restaurants: identical
+            ? undefined
+            : { ladder: ladderRestaurants, pooled: pooledRestaurants },
+          dishes: identical
+            ? undefined
+            : { ladder: ladderDishes, pooled: pooledDishes },
+          totals: {
+            ladder: {
+              restaurants: params.response.metadata.totalRestaurantResults,
+              dishes: params.response.metadata.totalFoodResults,
+            },
+            pooled: {
+              restaurants: pooled.exec.totalRestaurantCount,
+              dishes: pooled.exec.totalDishCount,
+            },
+          },
+          pooledMs: Math.round(pooled.timings.executeMs),
+        });
+      })
+      .catch((error: unknown) => {
+        this.logger.warn('POOLED SHADOW failed (ignored)', {
+          searchRequestId: params.searchRequestId,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      });
   }
 
   private async executeSearchStage(params: {

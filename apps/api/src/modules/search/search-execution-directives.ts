@@ -22,4 +22,26 @@ export interface SearchExecutionDirectives {
    * that CONTAINS burrata.
    */
   twinIngredientIds?: string[];
+  /**
+   * STEP-3 POOLED RICHNESS GATE (spec §1.4; owner rulings 2026-08-01):
+   * soft (non-dietary) attribute constraints leave the WHERE membership and
+   * become per-row PROVENANCE — a row matching EVERY soft id is tier 0
+   * ("all words"), anything else tier 1. The gate admits tier-1 rows ONLY
+   * when tier-0 rows cannot fill one page (threshold), in the SAME
+   * execution: page 1 filled with all-word matches when they exist,
+   * otherwise partial matches join, score-ordered within tier. tier →
+   * match_tier → exactMatch, so the chip and pooled ordering ride the
+   * existing plumbing.
+   *
+   * gateFull: the PARAMETERIZED gate decision (spec §1.4.4a/b). null =
+   * decide in-SQL from the pre-openness candidate count. true/false =
+   * the caller already decided on the openness-aware set (open-now
+   * restaurant axis) — SQL applies the verdict without recounting.
+   */
+  pooledGate?: {
+    softFoodAttributeIds: string[];
+    softRestaurantAttributeIds: string[];
+    threshold: number;
+    gateFull: boolean | null;
+  };
 }
