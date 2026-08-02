@@ -100,26 +100,6 @@ function TrackTouchCarve(props: ViewProps & { children?: React.ReactNode }): Rea
   return <Native {...(props as unknown as Record<string, unknown>)} />;
 }
 
-// THE LEG SLOT (atomic switch): presentation is ENGINE-OWNED. Each leg's rows
-// and its visual chrome mount inside one of these; the native switch
-// transaction flips alphas, seeds the incoming offset, and re-aims the shell
-// in ONE CATransaction. React styles here must NEVER carry opacity — a React
-// opacity lands on the interop wrapper and multiplies the engine's alpha.
-const legSlotCache = globalThis as { __TrackLegSlotNative?: unknown };
-const TrackLegSlotNative = (legSlotCache.__TrackLegSlotNative ??=
-  requireNativeComponent('TrackLegSlot'));
-function TrackLegSlot(
-  props: ViewProps & {
-    legKey: string;
-    legKind: 'rows' | 'chrome';
-    initialPresented: boolean;
-    children?: React.ReactNode;
-  }
-): React.ReactElement {
-  const Native = TrackLegSlotNative as unknown as React.ComponentClass<Record<string, unknown>>;
-  return <Native {...(props as unknown as Record<string, unknown>)} />;
-}
-
 const AnimatedFlashList = Reanimated.createAnimatedComponent(
   FlashList as unknown as React.ComponentClass<Record<string, unknown>>
 );
@@ -503,33 +483,25 @@ export function TrackSheetPage({
   // THE LEG REFS: one cached callback per scene; a mounting leg records its
   // tag, and if it is the PRESENTED leg the engine attaches to it (attach is
   // per-scroll-view, idempotent, retried) and the shell re-binds.
-  const legTagsRef = React.useRef(new Map<string, number>());
-  const legRefCacheRef = React.useRef(
-    new Map<string, (instance: React.Component | null) => void>()
+  const EMPTY_DATA: readonly never[] = [];
+  const trackTagOnlyRef = React.useRef<number | null>(null);
+  const trackListRef = React.useCallback(
+    (instance: React.Component | null) => {
+      if (instance == null) {
+        trackTagOnlyRef.current = null;
+        return;
+      }
+      const tag = findNodeHandle(instance);
+      if (tag == null || tag === trackTagOnlyRef.current) {
+        return;
+      }
+      trackTagOnlyRef.current = tag;
+      trackTagRef.current = tag;
+      attachToTag(tag);
+      applyPin();
+    },
+    [attachToTag, applyPin]
   );
-  const legListRef = (sceneKey: string) => {
-    let cb = legRefCacheRef.current.get(sceneKey);
-    if (cb == null) {
-      cb = (instance: React.Component | null) => {
-        if (instance == null) {
-          legTagsRef.current.delete(sceneKey);
-          return;
-        }
-        const tag = findNodeHandle(instance);
-        if (tag == null) {
-          return;
-        }
-        legTagsRef.current.set(sceneKey, tag);
-        if (sceneKey === presentedSceneKeyRef.current) {
-          trackTagRef.current = tag;
-          attachToTag(tag);
-          applyPin();
-        }
-      };
-      legRefCacheRef.current.set(sceneKey, cb);
-    }
-    return cb;
-  };
 
   // THE PUBLICATION BRIDGE: one-way, UI-thread mirrors — the track is the ONE
   // writer; legacy readers see the exact values the old sheet used to publish.
@@ -871,10 +843,10 @@ export function TrackSheetPage({
   // scroll view (TrackShellSlotView hitTest). The content only RESERVES the
   // band so rows start below the chrome; nothing in here paints a header, so
   // two headers on screen is unrepresentable rather than merely avoided.
-  const headerForLeg = (leg: TrackSheetLeg, _isPresented: boolean) => (
+  const headerForLeg = (leg: TrackSheetLeg | null, _isPresented: boolean) => (
     <View style={styles.chromeLane}>
       <View style={{ height: trackH + legChromeHeight(leg) }} pointerEvents="none" />
-      {leg.listLeader ?? null}
+      {leg?.listLeader ?? null}
     </View>
   );
   const legFooter = React.useMemo(
@@ -914,6 +886,12 @@ export function TrackSheetPage({
     rowRendererCacheRef.current.set(leg.sceneKey, { source: leg, render });
     return render;
   };
+
+  const presentedRenderer = React.useMemo(
+    () => (presentedLeg != null ? rendererForLeg(presentedLeg) : () => null),
+    // rendererForLeg closes over surfaceColor/rowSurfaceStyle only.
+    [presentedLeg, surfaceColor]
+  );
 
   // THE SHORT-PAGE FILL LAW (ground-up, 2026-07-27): every detent must be
   // REACHABLE — UIKit clamps settles to (contentH − viewport), so a short page
@@ -974,16 +952,9 @@ export function TrackSheetPage({
       return;
     }
     prevSceneKeyRef.current = sceneKey;
-    // THE LEG FLIP: the engine attaches to the presented leg's scroll view
-    // (attach is per-scroll-view, idempotent, retried); the shell re-binds to
-    // it; refuse() then re-fuses posture + the leg's own scroll. A fresh
-    // leg's proxy may attach async — subscribeAttached re-applies the restore.
-    const nextTag = legTagsRef.current.get(sceneKey) ?? null;
-    if (nextTag != null) {
-      trackTagRef.current = nextTag;
-      attachToTag(nextTag);
-      applyPin();
-    }
+    // THE SCENE SWAP: one track, one scroll view, one posture. Nothing
+    // attaches, re-binds, or changes owner — the sheet does not move because
+    // there is nothing for it to move to. Only the data changes.
     const sigmaNow = physics.sigma.value;
     if (prev != null) {
       // The outgoing scroll = the stash (scroll carried by a header drag) plus
@@ -997,11 +968,13 @@ export function TrackSheetPage({
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
     pendingRestoreRef.current = { sceneKey, restored };
     const nativePhysics = NativeModules.TrackScrollPhysics;
-    // THE SWITCH TRANSACTION: seed + shell re-aim + alpha flip in ONE native
-    // CATransaction (a disagreeing frame is unwritable). A not-yet-registered
-    // leg PENDS natively and executes inside its own registering transaction.
-    if (nativePhysics?.switchTo != null) {
-      nativePhysics.switchTo(sceneKey, restored, legChromeHeightBySceneRef.current(sceneKey));
+    // THE SWITCH FORMULA, as originally derived — and correct again now that
+    // there is ONE scroll view. refuse() re-fuses the sheet's CURRENT posture
+    // with the incoming scene's remembered scroll, computing both natively
+    // from fresh tau/sigma. It only ever misbehaved because N resident legs
+    // meant it read posture from whichever view happened to be attached.
+    if (nativePhysics?.refuse != null && trackTagRef.current != null) {
+      nativePhysics.refuse(trackTagRef.current, restored);
     }
     if (__DEV__) {
       // THE SWITCH PERF PROBE: JS-thread stall around the switch commit —
@@ -1020,21 +993,6 @@ export function TrackSheetPage({
       });
     }
   }, [presentedSceneKey, tau, trackH, attachToTag, applyPin]);
-  // THE BOOT TRANSACTION (missing-header fix): presentation must be COMMANDED,
-  // never inferred. Seeding it from "whichever leg slot registers first while
-  // claiming initialPresented" is a mount-order race — lose it and every leg
-  // sits at alpha 0, which is the owner's "the home header is just missing
-  // after a reload". Run the same transaction the switch runs, once, for the
-  // scene we boot into.
-  React.useEffect(() => {
-    const nativePhysics = NativeModules.TrackScrollPhysics;
-    if (nativePhysics?.switchTo == null) {
-      return;
-    }
-    const sceneKey = presentedSceneKeyRef.current;
-    nativePhysics.switchTo(sceneKey, 0, legChromeHeightBySceneRef.current(sceneKey));
-  }, []);
-
   // A freshly mounted leg attaches async: re-apply the pending restore once
   // the proxy exists (stamped by scene so a later switch cancels it).
   const pendingRestoreRef = React.useRef<{ sceneKey: string; restored: number } | null>(null);
@@ -1043,21 +1001,13 @@ export function TrackSheetPage({
       physics.subscribeAttached(() => {
         const pending = pendingRestoreRef.current;
         const nativePhysics = NativeModules.TrackScrollPhysics;
-        // Resolve the tag FRESH from the presented scene: on a fresh-leg flip
-        // trackTagRef may still hold the outgoing leg (its tag registered
-        // before the incoming leg mounted).
         if (
           pending != null &&
           pending.sceneKey === presentedSceneKeyRef.current &&
-          nativePhysics?.switchTo != null
+          nativePhysics?.refuse != null &&
+          trackTagRef.current != null
         ) {
-          // Idempotent: the transaction re-derives from the register, so a
-          // replay after attach lands on the same target.
-          nativePhysics.switchTo(
-            pending.sceneKey,
-            pending.restored,
-            legChromeHeightBySceneRef.current(pending.sceneKey)
-          );
+          nativePhysics.refuse(trackTagRef.current, pending.restored);
         }
       }),
     [physics]
@@ -1108,49 +1058,44 @@ export function TrackSheetPage({
           interop WRAPPER hit-tests, not our subclass — box-none makes the
           wrapper defer to the carve view, whose hitTest override rules. */}
       <TrackTouchCarve style={StyleSheet.absoluteFill} pointerEvents="box-none">
-        {legs.map((leg) => {
-          const isPresented = leg.sceneKey === presentedSceneKey;
-          return (
-            <TrackLegSlot
-              key={leg.sceneKey}
-              legKey={leg.sceneKey}
-              legKind="rows"
-              initialPresented={leg.sceneKey === initialSceneKeyRef.current}
-              style={styles.legLayer}
-              pointerEvents={isPresented ? 'auto' : 'none'}
-            >
-              <AnimatedFlashList
-                ref={legListRef(leg.sceneKey) as unknown as React.Ref<React.Component>}
-                style={StyleSheet.absoluteFill}
-                contentContainerStyle={{ paddingTop: geometry.expandedTop }}
-                data={leg.list.data}
-                renderItem={rendererForLeg(leg) as never}
-                keyExtractor={leg.list.keyExtractor}
-                getItemType={leg.list.getItemType}
-                ItemSeparatorComponent={leg.list.ItemSeparatorComponent}
-                ListEmptyComponent={leg.list.ListEmptyComponent}
-                onEndReached={leg.list.onEndReached}
-                onEndReachedThreshold={leg.list.onEndReachedThreshold}
-                extraData={leg.list.extraData}
-                drawDistance={SCREEN.height}
-                maintainVisibleContentPosition={{ disabled: true }}
-                renderScrollComponent={TrackScrollComponent}
-                ListHeaderComponent={headerForLeg(leg, isPresented)}
-                ListFooterComponent={legFooter}
-                showsVerticalScrollIndicator={false}
-                bounces
-                alwaysBounceVertical
-                scrollEventThrottle={16}
-                scrollEnabled={isPresented}
-                onScroll={isPresented ? onScroll : undefined}
-                automaticallyAdjustContentInsets={false}
-                onContentSizeChange={(_w: number, h: number) =>
-                  handleContentSizeChange(leg.sceneKey, h)
-                }
-              />
-            </TrackLegSlot>
-          );
-        })}
+        {/* THE ONE TRACK — literally one. Resident LEGS (a scroll view per
+            scene) made posture a property of whichever view happened to be
+            attached: N scroll views, N rival claims on where the sheet is, and
+            every hard bug of this arc descended from reconciling them (the
+            posture register, the switch transaction, leg adoption, ownership
+            rules, the boot-seed race, the teleport). Residency is preserved
+            where it actually pays — the scenes' data hooks live in the HOST
+            and stay warm regardless of what is presented, and per-scene scroll
+            is a remembered number restored by the switch formula. Only the
+            row VIEWS re-render, which is what FlashList's recycler is for. */}
+        <AnimatedFlashList
+          ref={trackListRef as unknown as React.Ref<React.Component>}
+          style={StyleSheet.absoluteFill}
+          contentContainerStyle={{ paddingTop: geometry.expandedTop }}
+          data={presentedLeg?.list.data ?? EMPTY_DATA}
+          renderItem={presentedRenderer as never}
+          keyExtractor={presentedLeg?.list.keyExtractor}
+          getItemType={presentedLeg?.list.getItemType}
+          ItemSeparatorComponent={presentedLeg?.list.ItemSeparatorComponent}
+          ListEmptyComponent={presentedLeg?.list.ListEmptyComponent}
+          onEndReached={presentedLeg?.list.onEndReached}
+          onEndReachedThreshold={presentedLeg?.list.onEndReachedThreshold}
+          extraData={presentedLeg?.list.extraData}
+          drawDistance={SCREEN.height}
+          maintainVisibleContentPosition={{ disabled: true }}
+          renderScrollComponent={TrackScrollComponent}
+          ListHeaderComponent={headerForLeg(presentedLeg, true)}
+          ListFooterComponent={legFooter}
+          showsVerticalScrollIndicator={false}
+          bounces
+          alwaysBounceVertical
+          scrollEventThrottle={16}
+          automaticallyAdjustContentInsets={false}
+          onScroll={onScroll}
+          onContentSizeChange={(_w: number, h: number) =>
+            handleContentSizeChange(presentedSceneKey, h)
+          }
+        />
       </TrackTouchCarve>
 
       {/* THE TAIL: white below the content's end (translateY = max(sheetTop,
@@ -1167,17 +1112,7 @@ export function TrackSheetPage({
           the region outside the chrome's own bounds stays the map's. */}
       <View style={styles.chromeOverlay} pointerEvents="box-none">
         <TrackShellSlot slotRole="chrome">
-          {visualChromeLegs.map((entry) => (
-            <TrackLegSlot
-              key={entry.sceneKey}
-              legKey={entry.sceneKey}
-              legKind="chrome"
-              initialPresented={entry.sceneKey === initialSceneKeyRef.current}
-              style={styles.legChromeLayer}
-            >
-              {entry.element}
-            </TrackLegSlot>
-          ))}
+          {visualChromeLegs.find((entry) => entry.sceneKey === presentedSceneKey)?.element ?? null}
         </TrackShellSlot>
       </View>
 
