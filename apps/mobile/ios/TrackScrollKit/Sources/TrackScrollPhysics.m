@@ -213,19 +213,6 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     //   reach = max(0, viewport − (contentH − trackH))
     //   keep  = max(0, τ − (contentH − viewport))
     //   insetBottom = max(reach, keep)
-    // [TRACKCLAMP] trace: a content SHRINK (child page) can pull tau down
-    // before the inset covers it — the suspected "sheet jerks down then
-    // settles" on child entry. Logged so it can be attributed, not guessed.
-    {
-      UIScrollView *cs = (UIScrollView *)object;
-      const CGFloat vp = CGRectGetHeight(cs.bounds);
-      const CGFloat ch = cs.contentSize.height;
-      const CGFloat maxOffsetNow = ch + cs.contentInset.bottom - vp;
-      if (cs.contentOffset.y > maxOffsetNow + 0.5) {
-        NSLog(@"[TRACKCLAMP] tau=%.1f > maxOffset=%.1f (contentH=%.1f inset=%.1f vp=%.1f)",
-              cs.contentOffset.y, maxOffsetNow, ch, cs.contentInset.bottom, vp);
-      }
-    }
     if (!self.postureDragActive) {
       [self applyRangeLawTo:(UIScrollView *)object];
     }
@@ -911,6 +898,27 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
       if (proxy.onSigmaChanged) {
         proxy.onSigmaChanged(0);
       }
+    }
+    // THE SWITCH FLOOR (child-jerk fix, 2026-08-01). A switch swaps the
+    // content, and the incoming scene is often SHORTER (a child form after a
+    // long feed). The instant contentSize shrinks, UIKit clamps the offset to
+    // contentH + inset − viewport — which is BELOW the posture we just
+    // preserved — and the seat spring then lifts it back: the owner's "the
+    // sheet jerks down before it settles at the top". Measured: tau fell 647.7
+    // -> 560 between the switch and the seat with NO programmatic writer.
+    //
+    // The engine's prior-grow guard exists for exactly this and does not cover
+    // this path, so the SWITCH states the requirement itself: before the
+    // content can change, make the target posture reachable against ANY new
+    // content height by growing the inset to cover it. The range law tightens
+    // this back to the exact formula on the next contentSize notification —
+    // growing an inset never moves content; only shrinking can.
+    const CGFloat viewportNow = CGRectGetHeight(scrollView.bounds);
+    const CGFloat floorInset = ceil(MAX(tau, target) + viewportNow);
+    UIEdgeInsets switchInsets = scrollView.contentInset;
+    if (switchInsets.bottom < floorInset) {
+      switchInsets.bottom = floorInset;
+      scrollView.contentInset = switchInsets;
     }
     if (fabs(tau - target) > 0.5) {
       [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
