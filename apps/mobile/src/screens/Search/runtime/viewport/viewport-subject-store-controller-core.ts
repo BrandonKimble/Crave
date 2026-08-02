@@ -139,6 +139,16 @@ export type ViewportSubjectStoreControllerDeps = {
   fetchSlice: (view: GeoBbox) => Promise<PlacesInViewSliceResponse>;
   /** The §3 viewport_dwell observation (production: services/signals). */
   recordDwell: (bounds: MapBounds, dwellMs: number) => void;
+  /**
+   * Foreground signal, INJECTED (this module is react-native-free by
+   * contract, so AppState cannot be imported here). Disease D
+   * (re-derivation 2026-08-01): dwell is measured on the WALL CLOCK, so a
+   * timer armed before the app was backgrounded kept counting and reported
+   * a 40-minute suspension as 40 minutes of human attention — straight into
+   * the demand aggregate. A MEASUREMENT MUST NOT OUTLIVE ITS SUBJECT:
+   * attention is only real while the app is being looked at.
+   */
+  subscribeForeground?: (listener: (isForeground: boolean) => void) => () => void;
 };
 
 /** Start the controller; returns its dispose function. */
@@ -146,6 +156,7 @@ export const createViewportSubjectStoreController = ({
   viewportBoundsService,
   fetchSlice,
   recordDwell,
+  subscribeForeground,
 }: ViewportSubjectStoreControllerDeps): (() => void) => {
   let disposed = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -442,6 +453,22 @@ export const createViewportSubjectStoreController = ({
     }, VIEWPORT_SETTLE_QUIESCENCE_MS);
   };
 
+  // Disease D: backgrounding ENDS the current attention episode. The
+  // settle/dwell timers are cleared and the episode dropped, so no dwell can
+  // be reported for time nobody was looking; returning to the foreground
+  // starts a fresh, honest episode on the next camera tick or settle.
+  const unsubscribeForeground = subscribeForeground?.((isForeground) => {
+    if (isForeground) {
+      return;
+    }
+    clearTimer(settleTimer);
+    settleTimer = null;
+    clearTimer(dwellTimer);
+    dwellTimer = null;
+    settledEpisode = null;
+    pendingExitVerdict = null;
+  });
+
   // Seed from the current bounds (startup bounds land before this mounts).
   handleBoundsChange(viewportBoundsService.getBounds());
   const unsubscribe = viewportBoundsService.subscribe(handleBoundsChange);
@@ -473,6 +500,7 @@ export const createViewportSubjectStoreController = ({
     disposed = true;
     unsubscribe();
     unsubscribeWatermark();
+    unsubscribeForeground?.();
     clearTimer(settleTimer);
     clearTimer(dwellTimer);
     clearTimer(sliceRetryTimer);

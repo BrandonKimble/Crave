@@ -378,6 +378,38 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
     harness.dispose();
   });
 
+  it('A MEASUREMENT MUST NOT OUTLIVE ITS SUBJECT: backgrounding ends the episode, so no dwell is reported for time nobody was looking', async () => {
+    // Disease D (re-derivation 2026-08-01): dwell ran on the WALL CLOCK, so a
+    // timer armed before the app was suspended reported the whole suspension
+    // as human attention — straight into the demand aggregate, a
+    // no-fake-estimates violation.
+    const foregroundRef: { fn: ((isForeground: boolean) => void) | null } = {
+      fn: null,
+    };
+    const boundsService = createViewportBoundsService(boundsOf(VIEW));
+    const recordDwell = jest.fn();
+    const dispose = createViewportSubjectStoreController({
+      viewportBoundsService: boundsService,
+      fetchSlice: jest.fn(async () => sliceResponse([TEXAS])),
+      recordDwell,
+      subscribeForeground: (listener) => {
+        foregroundRef.fn = listener;
+        return () => undefined;
+      },
+    });
+    jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS + 1);
+    await flushMicrotasks();
+
+    // Background BEFORE the dwell completes...
+    foregroundRef.fn?.(false);
+    jest.advanceTimersByTime(VIEWPORT_SUBJECT_DWELL_MS * 40);
+    await flushMicrotasks();
+
+    // ...and nothing is reported: the episode ended with the attention.
+    expect(recordDwell).not.toHaveBeenCalled();
+    dispose();
+  });
+
   it('fires the §3 viewport_dwell observation once per meaningful viewport', async () => {
     const harness = startController([TEXAS, MEXICO]);
     await flushMicrotasks();
