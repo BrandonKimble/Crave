@@ -200,6 +200,11 @@ export class SearchQueryBuilder {
                   SELECT 1 FROM core_restaurant_items c
                   WHERE c.restaurant_id = ${Prisma.raw(alias)}.entity_id
                     AND c.food_attributes @> ${pooledGate.softFoodAttributeIds}::uuid[]
+                    ${
+                      directives?.exactFoodIds?.length
+                        ? Prisma.sql`AND c.food_id = ANY(${directives.exactFoodIds}::uuid[])`
+                        : Prisma.sql``
+                    }
                     ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``}
                 )`
               : Prisma.sql`TRUE`
@@ -589,9 +594,13 @@ WITH
 	  (SELECT json_object_agg(w.id, w.n) FROM (
 	    ${Prisma.join(
         [
+          // POPULATION = the actual pool (red team A1): the arms must join
+          // the same geo/score CTEs the pool joins, or the counts include
+          // out-of-viewport / unlocated / unscored restaurants and a word
+          // with zero IN-POOL coverage never reads as starved.
           ...pooledGate!.softRestaurantAttributeIds.map(
             (id) =>
-              Prisma.sql`SELECT ${id}::text AS id, count(*) FILTER (WHERE fr2.restaurant_attributes @> ARRAY[${id}]::uuid[])::int AS n FROM filtered_restaurants fr2`,
+              Prisma.sql`SELECT ${id}::text AS id, count(*) FILTER (WHERE fr2.restaurant_attributes @> ARRAY[${id}]::uuid[])::int AS n FROM filtered_restaurants fr2 JOIN public_restaurant_scores prs2 ON prs2.subject_id = fr2.entity_id JOIN selected_locations sl2 ON sl2.restaurant_id = fr2.entity_id`,
           ),
           ...pooledGate!.softFoodAttributeIds.map(
             (id) =>
@@ -600,7 +609,7 @@ WITH
                 WHERE c.restaurant_id = fr2.entity_id
                   AND c.food_attributes @> ARRAY[${id}]::uuid[]
                   ${connectionMatch.hasConditions ? Prisma.sql`AND ${connectionMatchSql}` : Prisma.sql``}
-              ))::int AS n FROM filtered_restaurants fr2`,
+              ))::int AS n FROM filtered_restaurants fr2 JOIN public_restaurant_scores prs2 ON prs2.subject_id = fr2.entity_id JOIN selected_locations sl2 ON sl2.restaurant_id = fr2.entity_id`,
           ),
         ],
         ' UNION ALL ',
@@ -724,6 +733,13 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
         } AND ${
           pooledGate.softRestaurantAttributeIds.length
             ? Prisma.sql`fr.restaurant_attributes @> ${pooledGate.softRestaurantAttributeIds}::uuid[]`
+            : Prisma.sql`TRUE`
+        } AND ${
+          // Red team A6: when widening is active, tier 0 additionally
+          // requires the EXACT food set (anchors + family) — a sibling row
+          // matching every soft word must not wear the exact-match chip.
+          directives?.exactFoodIds?.length
+            ? Prisma.sql`c.food_id = ANY(${directives.exactFoodIds}::uuid[])`
             : Prisma.sql`TRUE`
         })`
       : null;
@@ -985,7 +1001,7 @@ ${withClause}
 SELECT
   COUNT(*)::bigint AS total_connections,
   COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants,
-  MAX(fc.pooled_full_count)::bigint AS full_connections,
+  COALESCE(MAX(fc.pooled_full_count), 0)::bigint AS full_connections,
   ${dishSoftWordCountsSql} AS soft_word_counts
 FROM (
   SELECT fci.*,

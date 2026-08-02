@@ -322,9 +322,31 @@ export class SearchQueryInterpretationService {
     interpretationStart: number,
   ): Promise<InterpretationResult> {
     const gazetteerStart = performance.now();
-    const groups = await this.entityTextSearch.scanForKnownEntityGroups(
+    // Territory scoping (red team ⑧): restaurant spans must not ground
+    // globally across a multi-city corpus — resolve the viewport's covering
+    // engine and scope the scan's restaurant arm to its territory.
+    let scanEngineId: string | null = null;
+    if (request.bounds) {
+      try {
+        const coverage = await this.engineCoverage.resolveViewportCoverage(
+          request.bounds,
+        );
+        scanEngineId = coverage.engines[0]?.engineId ?? null;
+      } catch {
+        scanEngineId = null;
+      }
+    }
+    const rawGroups = await this.entityTextSearch.scanForKnownEntityGroups(
       request.query,
       GAZETTEER_UNDERSTAND_TYPES,
+      { engineId: scanEngineId },
+    );
+    // Generic-token guard (red team ①): rank/location generics ("best",
+    // "top", "near") exist as junk ENTITY NAMES today, so a closed-set
+    // scan grounds them — "best tacos" must not become restaurant:Best.
+    // The LLM path strips these per term; the gazetteer strips per span.
+    const groups = rawGroups.filter(
+      (g) => !stripGenericTokens(g.text).isGenericOnly,
     );
     const gazetteerMs = performance.now() - gazetteerStart;
 
@@ -353,7 +375,10 @@ export class SearchQueryInterpretationService {
           (t) => t.start >= last.end && t.end <= token.start,
         );
         if (between.every((t) => !covered(t))) {
-          last.text = request.query.slice(last.start, token.end);
+          // Join TOKEN texts, never the raw slice — raw punctuation between
+          // tokens ("aaa, bbb") would poison exact/alias probes and the
+          // staging record (red team ⑪).
+          last.text = `${last.text} ${token.text}`;
           last.end = token.end;
         } else residueRuns.push({ ...token });
       } else residueRuns.push({ ...token });
@@ -366,13 +391,29 @@ export class SearchQueryInterpretationService {
     const consumedGroups = new Set<EntitySpanGroup>();
     const residueResults: EntityResolutionResult[] = [];
     const unresolvedResidues: string[] = [];
+    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
+    const isDietaryGroup = (g: EntitySpanGroup) =>
+      g.entities.some((e) => dietaryIds.has(e.entityId));
+    // STRICT adjacency (red team ⑤): a joinable neighbour must ABUT the
+    // run — no tokens between them. "Nearest non-consumed" silently
+    // skipped intervening text and built compounds that never appeared
+    // in the query. DIETARY spans are never join candidates (red team ④):
+    // a hard constraint must not be consumable into a fuzzy compound.
+    const abuts = (aEnd: number, bStart: number) =>
+      aEnd <= bStart && !tokens.some((t) => t.start >= aEnd && t.end <= bStart);
     for (const run of residueRuns) {
-      const left = groups
-        .filter((g) => g.end <= run.start && !consumedGroups.has(g))
-        .sort((a, b) => b.end - a.end)[0];
-      const right = groups
-        .filter((g) => g.start >= run.end && !consumedGroups.has(g))
-        .sort((a, b) => a.start - b.start)[0];
+      const left = groups.find(
+        (g) =>
+          !consumedGroups.has(g) &&
+          !isDietaryGroup(g) &&
+          abuts(g.end, run.start),
+      );
+      const right = groups.find(
+        (g) =>
+          !consumedGroups.has(g) &&
+          !isDietaryGroup(g) &&
+          abuts(run.end, g.start),
+      );
       const attempts: Array<{ text: string; consumes?: EntitySpanGroup }> = [
         ...(right
           ? [{ text: `${run.text} ${right.text}`, consumes: right }]
@@ -382,6 +423,9 @@ export class SearchQueryInterpretationService {
       ];
       let linked = false;
       for (const attempt of attempts) {
+        // Generic-only residue ("best", "near me") is junk by rule — it
+        // neither probes nor stages.
+        if (stripGenericTokens(attempt.text).isGenericOnly) continue;
         const [result] = await this.linkViaHybridRecall([
           {
             tempId: `food:${uuid()}`,
@@ -393,19 +437,26 @@ export class SearchQueryInterpretationService {
           },
         ]);
         if (result?.entityId) {
+          // A joined link consumes its ABUTTING non-dietary neighbour —
+          // fuzzy included: the residue-join exists precisely for typo
+          // compounds ("brekfast tacos" → "breakfast taco"), which are
+          // fuzzy by definition. The dangerous consumptions (dietary
+          // spans, skip-text compounds) are blocked upstream by the
+          // never-join-dietary and strict-abutment guards.
           residueResults.push(result);
           if (attempt.consumes) consumedGroups.add(attempt.consumes);
           linked = true;
           break;
         }
       }
-      if (!linked) unresolvedResidues.push(run.text);
+      if (!linked && !stripGenericTokens(run.text).isGenericOnly) {
+        unresolvedResidues.push(run.text);
+      }
     }
 
     // SINGLE-BUCKET PLACEMENT for grounded spans: dietary flag wins by
     // rule; else the span follows its only type; multi-type ties resolve
     // by the deterministic order (curated list = calibration tail).
-    const dietaryIds = await this.dietaryConstraints.getDietaryIds();
     const placedResults: EntityResolutionResult[] = [];
     for (const group of groups) {
       if (consumedGroups.has(group)) continue;
@@ -574,6 +625,14 @@ export class SearchQueryInterpretationService {
           const variantLink = await this.linkViaLemmaVariants(input);
           if (variantLink?.entityId) return variantLink;
         }
+        // CROSS-TYPE EXACT beats typed FUZZY (red team ③, same law as the
+        // lemma fix): exact evidence in another vocabulary is the same
+        // word; a fuzzy neighbour in the guessed one is not. Probe the
+        // other vocabularies BEFORE accepting a non-exact typed link.
+        const crossTypeEarly = await this.linkExactAcrossTypes(input);
+        if (crossTypeEarly?.entityId) {
+          return crossTypeEarly;
+        }
         if (live.entityId) {
           return live;
         }
@@ -588,16 +647,7 @@ export class SearchQueryInterpretationService {
           });
           if (ingredientLink.entityId) return ingredientLink;
         }
-        // STEP-2 UNTYPED EXACT RECALL (spec §4.2, the never-look defect):
-        // the guessed type looked in the wrong vocabulary — probe EVERY
-        // bucket, exact evidence only (floor-independent; fuzzy stays
-        // type-scoped until the linker re-sweep re-fits the floors), then
-        // place into ONE bucket: dietary flag wins by rule, otherwise the
-        // term follows its only type; genuine multi-type conflicts (the
-        // ~44-name curated list, calibration tail) fall back to a
-        // deterministic type order.
-        const crossType = await this.linkExactAcrossTypes(input);
-        return crossType ?? live;
+        return live;
       },
     );
   }

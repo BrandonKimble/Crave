@@ -553,8 +553,12 @@ export class SearchService {
     // leaving the strict exclusion set incomplete (duplicate rows across the
     // strict/relaxed pages). take ≥ threshold guarantees that WHENEVER relaxation
     // can fire (strict count < threshold) the probe holds the COMPLETE strict set.
+    // POOLED 'on': relaxation is off, so the probe's only consumers are
+    // dead — clamping would just run the SAME pooled query twice on page
+    // ≥2 (red team C6). The probe IS the page.
     const strictProbePagination =
-      pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD
+      this.pooledMode === 'on' ||
+      (pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD)
         ? pagination
         : { skip: 0, take: Math.max(RELAX_STRICT_THRESHOLD, 10) };
 
@@ -565,8 +569,16 @@ export class SearchService {
       includeSqlPreview: false,
     });
 
+    // Coverage for the expansion trigger: in pooled mode the admitted-set
+    // totals are inflated (soft words left the membership), so the honest
+    // strict-equivalent is the TIER-0 (all-words) count (red team C4) —
+    // otherwise thin queries never expand, exactly the ring they need.
     const strictCoverageCount =
-      strictProbe.exec.totalRestaurantCount + strictProbe.exec.totalDishCount;
+      this.pooledMode === 'on' && strictProbe.exec.pooledFullCounts
+        ? strictProbe.exec.pooledFullCounts.restaurants +
+          strictProbe.exec.pooledFullCounts.dishes
+        : strictProbe.exec.totalRestaurantCount +
+          strictProbe.exec.totalDishCount;
     const unresolvedGroups =
       request.submissionContext?.unresolvedEntities ?? [];
     const hasUnresolvedTerms = unresolvedGroups.some(
@@ -783,11 +795,19 @@ export class SearchService {
           : [],
       };
 
-      const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
+      // STARVED WORDS ARE THEIR OWN TRIGGER (spec §1.6; red team C2): the
+      // gate admitting partial rows makes the page LOOK full — precisely
+      // then, a zero-coverage word must still fire its demand signal.
+      const starved = this.computeStarvedSoftWords(
         request,
-        plan.format,
-        totalRestaurantResults,
+        strictPage.exec.pooledSoftWordCounts,
       );
+      const shouldTriggerOnDemand =
+        this.shouldTriggerOnDemand(
+          request,
+          plan.format,
+          totalRestaurantResults,
+        ) || Boolean(starved);
       const onDemandResult = shouldTriggerOnDemand
         ? await this.recordLowResultOnDemand({
             request,
@@ -797,10 +817,7 @@ export class SearchService {
             viewportEligible,
             onDemandEngineContext,
             expansionSignals: expansionAnalysisMetadata,
-            starved: this.computeStarvedSoftWords(
-              request,
-              strictPage.exec.pooledSoftWordCounts,
-            ),
+            starved,
           })
         : { queued: false, etaMs: undefined };
       const onDemandQueued = onDemandResult.queued;
@@ -1949,23 +1966,38 @@ export class SearchService {
       dietaryIds,
     );
     const dietary = new Set(dietaryIds);
-    const softFoodAttributeIds = constraints.ids.foodAttributeIds.filter(
-      (id) => !dietary.has(id),
-    );
-    const softRestaurantAttributeIds =
-      constraints.ids.restaurantAttributeIds.filter((id) => !dietary.has(id));
+    // SUBJECT IS SACRED (spec §1.4.1; red team C1): softening applies to
+    // MODIFIERS of a subject. When the attributes ARE the subject (no
+    // food/restaurant/ingredient grounding), stripping them would leave
+    // membership = the whole viewport — the ladder refuses this drop
+    // (canDropFoodAttributes requires primary entities) and so do we:
+    // the query runs as a plain strict single query, attributes as walls.
+    const hasPrimarySubject =
+      constraints.ids.foodIds.length > 0 ||
+      constraints.ids.restaurantIds.length > 0 ||
+      constraints.ids.ingredientIds.length > 0;
+    const softFoodAttributeIds = hasPrimarySubject
+      ? constraints.ids.foodAttributeIds.filter((id) => !dietary.has(id))
+      : [];
+    const softRestaurantAttributeIds = hasPrimarySubject
+      ? constraints.ids.restaurantAttributeIds.filter((id) => !dietary.has(id))
+      : [];
     // Hard-only membership: dietary attribute ids stay walls; soft ids move
     // to provenance. Presence bookkeeping is untouched — it describes the
     // QUERY the user asked, not the WHERE we execute.
+    const softSet = new Set([
+      ...softFoodAttributeIds,
+      ...softRestaurantAttributeIds,
+    ]);
     const pooledConstraints: SearchConstraints = {
       ...constraints,
       ids: {
         ...constraints.ids,
-        foodAttributeIds: constraints.ids.foodAttributeIds.filter((id) =>
-          dietary.has(id),
+        foodAttributeIds: constraints.ids.foodAttributeIds.filter(
+          (id) => !softSet.has(id),
         ),
         restaurantAttributeIds: constraints.ids.restaurantAttributeIds.filter(
-          (id) => dietary.has(id),
+          (id) => !softSet.has(id),
         ),
       },
     };
@@ -1988,7 +2020,14 @@ export class SearchService {
             pooledGate: {
               softFoodAttributeIds,
               softRestaurantAttributeIds,
-              threshold: params.threshold,
+              // One page = what the CLIENT asked for (red team A3): a
+              // pageSize above the default must not come back short
+              // because the gate closed at 25.
+              threshold: Math.max(
+                params.threshold,
+                params.dishPagination.take,
+                params.restaurantPagination.take,
+              ),
               gateFull: null as boolean | null,
             },
           }
@@ -2235,15 +2274,30 @@ export class SearchService {
         },
       };
       const pageOne = { skip: 0, take: pagination.take };
-      const widenedRun = await this.executeSearchStage({
-        request,
-        stage: 'strict',
-        planExpansion: widened,
-        pagination,
-        restaurantPagination: pageOne,
-        dishPagination: pageOne,
-        topDishesLimit: params.topDishesLimit,
-      });
+      // SAME REGIME AS THE SERVING PAGE (red team C5): in pooled 'on' the
+      // widened preview must be a pooled run too — a ladder run puts soft
+      // words back in the WHERE, and similarAvailable (widened − served)
+      // then compares totals built under different membership rules.
+      const widenedRun =
+        this.pooledMode === 'on'
+          ? await this.executePooledStage({
+              request,
+              planExpansion: widened,
+              pagination,
+              restaurantPagination: pageOne,
+              dishPagination: pageOne,
+              topDishesLimit: params.topDishesLimit,
+              threshold: DEFAULT_PAGE_SIZE,
+            })
+          : await this.executeSearchStage({
+              request,
+              stage: 'strict',
+              planExpansion: widened,
+              pagination,
+              restaurantPagination: pageOne,
+              dishPagination: pageOne,
+              topDishesLimit: params.topDishesLimit,
+            });
       const shownConnections = new Set(
         response.dishes.map((d) => d.connectionId),
       );
@@ -3536,10 +3590,13 @@ export class SearchService {
       return undefined;
     }
     const starvedSet = new Set(starvedIds);
+    const measured = ids;
+    const ids_in_scope = (id: string) => measured.has(id);
     const terms: string[] = [];
     const collect = (entities: QueryEntityDto[] | undefined) => {
       for (const entity of entities ?? []) {
-        if ((entity.entityIds ?? []).some((id) => starvedSet.has(id))) {
+        const ids = (entity.entityIds ?? []).filter((id) => ids_in_scope(id));
+        if (ids.length && ids.every((id) => starvedSet.has(id))) {
           const term = entity.originalText || entity.normalizedName;
           if (term) {
             terms.push(term);
@@ -4021,6 +4078,11 @@ export class SearchService {
     // score ranking; a link asserts identity), one authority.
     const passesExpansionEvidence = admitsForExpansion;
 
+    // DIETARY EXCLUSION (spec §7.1; red team C7): dietary attributes are
+    // hard walls and explicitly OUT of lexical expansion — a fuzzy-admitted
+    // dietary id would otherwise become a non-relaxable constraint the
+    // user never asked for.
+    const expansionDietaryIds = await this.dietaryConstraints.getDietaryIds();
     const foodIds = foods
       .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
@@ -4028,11 +4090,18 @@ export class SearchService {
     const foodAttributeIds = foodAttributes
       .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
-      .filter((id) => !existingFoodAttributeIds.has(id));
+      .filter(
+        (id) =>
+          !existingFoodAttributeIds.has(id) && !expansionDietaryIds.has(id),
+      );
     const restaurantAttributeIds = restaurantAttributes
       .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
-      .filter((id) => !existingRestaurantAttributeIds.has(id));
+      .filter(
+        (id) =>
+          !existingRestaurantAttributeIds.has(id) &&
+          !expansionDietaryIds.has(id),
+      );
 
     let foodIdsFromPrimaryFoodAttributeText: string[] = [];
     if (

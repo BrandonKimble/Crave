@@ -48,6 +48,14 @@ export class UnsegmentedResidueService {
   }): Promise<void> {
     const text = input.residueText.trim().slice(0, 500);
     if (!text) return;
+    // Dedup (red team ⑨): a trending unknown term must not multiply into
+    // one LLM segmentation call per search. One pending row per residue
+    // text is enough — the demand side already counts per-term interest.
+    const existing = await this.prisma.onDemandUnsegmentedResidue.findFirst({
+      where: { residueText: text, status: 'pending' },
+      select: { residueId: true },
+    });
+    if (existing) return;
     await this.prisma.onDemandUnsegmentedResidue.create({
       data: {
         residueText: text,
@@ -61,7 +69,14 @@ export class UnsegmentedResidueService {
 
   @Cron('*/10 * * * *')
   async drainBatch(): Promise<void> {
-    if (process.env.SEARCH_RESIDUE_SEGMENTER_ENABLED !== 'true') return;
+    // FLAG COUPLING (red team ⑥): gazetteer 'on' is the staging producer,
+    // so it IMPLIES the drain — otherwise flipping one flag silently stops
+    // on-demand collection while residue piles up unbounded.
+    const gazetteerOn =
+      (process.env.SEARCH_GAZETTEER_UNDERSTAND ?? '').trim().toLowerCase() ===
+      'on';
+    if (process.env.SEARCH_RESIDUE_SEGMENTER_ENABLED !== 'true' && !gazetteerOn)
+      return;
     if (this.drainInFlight) return;
     this.drainInFlight = true;
     try {
@@ -149,10 +164,20 @@ export class UnsegmentedResidueService {
         },
       });
     } catch (error) {
-      await this.prisma.onDemandUnsegmentedResidue.update({
+      // Terminal state (red team ⑩): the third failure moves the row to
+      // 'failed' — visible, countable, and out of the drain's way; a row
+      // must never sit invisible at pending/attempts=3 forever.
+      const row = await this.prisma.onDemandUnsegmentedResidue.update({
         where: { residueId },
         data: { attempts: { increment: 1 } },
+        select: { attempts: true },
       });
+      if (row.attempts >= 3) {
+        await this.prisma.onDemandUnsegmentedResidue.update({
+          where: { residueId },
+          data: { status: 'failed', processedAt: new Date() },
+        });
+      }
       this.logger.warn('Residue segmentation failed (will retry)', {
         residueId,
         error: {

@@ -267,6 +267,9 @@ interface ExecuteDualResult {
     dish: Record<string, number> | null;
     restaurant: Record<string, number> | null;
   };
+  /** Pooled tier-0 (all-words) counts per projection — the honest
+   *  strict-equivalent coverage number (red team C4). */
+  pooledFullCounts?: { dishes: number; restaurants: number };
   restaurants: RestaurantResultDto[];
   dishes: FoodResultDto[];
   totalRestaurantCount: number;
@@ -611,39 +614,67 @@ LIMIT 3
     // rows + an empty count without touching the DB, so all downstream mapping
     // (contexts, open-now filter, map*) flows through unchanged and returns [].
     const dbStart = performance.now();
-    const [restaurantAxis, [dishRows, dishCountResult]] = await Promise.all([
-      this.resolveRestaurantAxis({
+    type DishCountRow = {
+      total_connections: bigint;
+      total_restaurants: bigint;
+      full_connections?: bigint | null;
+      soft_word_counts?: Record<string, number> | null;
+    };
+    const runDishQueries = (
+      query: NonNullable<typeof dishQuery>,
+    ): Promise<[DishQueryRow[], DishCountRow[]]> =>
+      Promise.all([
+        this.prisma.$queryRaw<DishQueryRow[]>(query.dataSql),
+        this.prisma.$queryRaw<DishCountRow[]>(query.countSql),
+      ]);
+    const emptyDish: [DishQueryRow[], DishCountRow[]] = [[], []];
+
+    let restaurantAxis: Awaited<ReturnType<typeof this.resolveRestaurantAxis>>;
+    let dishRows: DishQueryRow[];
+    let dishCountResult: DishCountRow[];
+    if (directives?.pooledGate && needsOpenFilter && dishQuery) {
+      // ONE GATE DECISION PER REQUEST (spec §1.4.4a; red team A4/C3):
+      // under open-now the restaurant axis decides the gate on the OPEN
+      // full set — the dish query must inherit that verdict instead of
+      // re-judging scarcity on pre-openness rows. Sequenced by necessity;
+      // this path also finally exercises gateFull true/false in SQL
+      // (red team A5/C8).
+      restaurantAxis = await this.resolveRestaurantAxis({
         restaurantQuery,
         needsOpenFilter,
         baseOptions: restaurantQueryOptions,
         pagination: effectiveRestaurantPagination,
         referenceDate,
         pooledGate: directives?.pooledGate ?? null,
-      }),
-      dishQuery
-        ? Promise.all([
-            this.prisma.$queryRaw<DishQueryRow[]>(dishQuery.dataSql),
-            this.prisma.$queryRaw<
-              Array<{
-                total_connections: bigint;
-                total_restaurants: bigint;
-                full_connections?: bigint | null;
-                soft_word_counts?: Record<string, number> | null;
-              }>
-            >(dishQuery.countSql),
-          ])
-        : Promise.resolve<
-            [
-              DishQueryRow[],
-              Array<{
-                total_connections: bigint;
-                total_restaurants: bigint;
-                full_connections?: bigint | null;
-                soft_word_counts?: Record<string, number> | null;
-              }>,
-            ]
-          >([[], []]),
-    ]);
+      });
+      const verdict = restaurantAxis.openGateFull;
+      const dishQueryEffective =
+        typeof verdict === 'boolean'
+          ? this.queryBuilder.buildDishQuery({
+              plan,
+              pagination: effectiveDishPagination,
+              searchCenter,
+              excludeConnectionIds,
+              directives: {
+                ...directives,
+                pooledGate: { ...directives.pooledGate, gateFull: verdict },
+              },
+            })
+          : dishQuery;
+      [dishRows, dishCountResult] = await runDishQueries(dishQueryEffective);
+    } else {
+      [restaurantAxis, [dishRows, dishCountResult]] = await Promise.all([
+        this.resolveRestaurantAxis({
+          restaurantQuery,
+          needsOpenFilter,
+          baseOptions: restaurantQueryOptions,
+          pagination: effectiveRestaurantPagination,
+          referenceDate,
+          pooledGate: directives?.pooledGate ?? null,
+        }),
+        dishQuery ? runDishQueries(dishQuery) : Promise.resolve(emptyDish),
+      ]);
+    }
     const restaurantRows = restaurantAxis.rows;
     const dbQueryMs = performance.now() - dbStart;
 
@@ -764,6 +795,12 @@ LIMIT 3
         ? {
             dish: dishCountResult[0]?.soft_word_counts ?? null,
             restaurant: restaurantAxis.softWordCounts ?? null,
+          }
+        : undefined,
+      pooledFullCounts: directives?.pooledGate
+        ? {
+            dishes: Number(dishCountResult[0]?.full_connections ?? 0),
+            restaurants: restaurantAxis.fullRestaurants ?? 0,
           }
         : undefined,
       metadata: {
@@ -2168,6 +2205,11 @@ LIMIT 3
     rows: RestaurantQueryRow[];
     total: number;
     softWordCounts?: Record<string, number> | null;
+    fullRestaurants?: number;
+    /** Openness-aware gate verdict (spec §1.4.4a): set on the two-phase
+     *  path so the DISH query can be parameterized with the SAME decision
+     *  (red team A4/C3) instead of judging scarcity pre-openness. */
+    openGateFull?: boolean | null;
     openNowPrefiltered: boolean;
   }> {
     const {
@@ -2184,6 +2226,8 @@ LIMIT 3
         rows: [],
         total: 0,
         softWordCounts: null,
+        fullRestaurants: 0,
+        openGateFull: null,
         openNowPrefiltered: false,
       };
     }
@@ -2193,6 +2237,8 @@ LIMIT 3
       rows: RestaurantQueryRow[];
       total: number;
       softWordCounts?: Record<string, number> | null;
+      fullRestaurants?: number;
+      openGateFull?: boolean | null;
       openNowPrefiltered: boolean;
     }> => {
       const [rows, countResult] = await Promise.all([
@@ -2209,6 +2255,8 @@ LIMIT 3
         rows,
         total: Number(countResult[0]?.total_restaurants ?? 0),
         softWordCounts: countResult[0]?.soft_word_counts ?? null,
+        fullRestaurants: Number(countResult[0]?.full_restaurants ?? 0),
+        openGateFull: null,
         openNowPrefiltered: false,
       };
     };
@@ -2222,6 +2270,7 @@ LIMIT 3
       RestaurantOpenNowCandidateRow[]
     >(restaurantQuery.candidateSql);
     let effectiveCandidateRows = candidateRows;
+    let openGateFull: boolean | null = null;
     if (pooledGate) {
       // STEP-3 GATE, OPENNESS-AWARE (spec §1.4.4a): the in-SQL count would
       // judge scarcity on pre-openness rows (50 matches, 3 open would not
@@ -2234,12 +2283,29 @@ LIMIT 3
           row.pooled_tier === 0 &&
           this.resolveCandidateOpenNow(row, referenceDate) === true,
       ).length;
-      if (openFullCount >= pooledGate.threshold) {
+      openGateFull = openFullCount >= pooledGate.threshold;
+      if (openGateFull) {
         effectiveCandidateRows = candidateRows.filter(
           (row) => row.pooled_tier === 0,
         );
       }
     }
+    // Red team A2/C9: the two-phase path used to drop the count row
+    // entirely, nulling soft_word_counts on every open-now request — a
+    // venue-side word then read as starved off the dish map alone. The
+    // coverage denominator is the graph, not the hour, so the openness-
+    // blind count is the right one to keep.
+    const pooledCountRow = pooledGate
+      ? (
+          await this.prisma.$queryRaw<
+            Array<{
+              total_restaurants: bigint;
+              full_restaurants?: bigint | null;
+              soft_word_counts?: Record<string, number> | null;
+            }>
+          >(restaurantQuery.countSql)
+        )[0]
+      : undefined;
     const candidates = effectiveCandidateRows.map((row) => ({
       restaurantId: row.restaurant_id,
       isOpen: this.resolveCandidateOpenNow(row, referenceDate),
@@ -2257,7 +2323,9 @@ LIMIT 3
       return {
         rows: [],
         total: selection.total,
-        softWordCounts: null,
+        softWordCounts: pooledCountRow?.soft_word_counts ?? null,
+        fullRestaurants: Number(pooledCountRow?.full_restaurants ?? 0),
+        openGateFull,
         openNowPrefiltered: true,
       };
     }
@@ -2274,7 +2342,9 @@ LIMIT 3
     return {
       rows,
       total: selection.total,
-      softWordCounts: null,
+      softWordCounts: pooledCountRow?.soft_word_counts ?? null,
+      fullRestaurants: Number(pooledCountRow?.full_restaurants ?? 0),
+      openGateFull,
       openNowPrefiltered: true,
     };
   }
