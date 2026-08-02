@@ -380,6 +380,30 @@ Also still owed to the calibration tail: ~44-name placement curation
 Cutover harness 9/9 PASS (tier ordering, disjoint pagination, open-now,
 dietary-hard zero-result honesty, residue staging).
 
+**ROUND 5 — IDEAL-ABSTRACTION VERDICTS (2026-08-02, two architect
+reviews, not a bug hunt; commit 702b6f875 implements the pre-launch
+items):** the question was "what would a from-scratch design do here,"
+per area. Verdicts:
+
+| area              | verdict                                                                                                                                                                                                                                                                                                                            | when                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Query shape       | AS-IS except the fame-pin: the ST_Covers EXISTS was 99% of every search's cost (measured 3.45s→27ms). NOW A STORED COLUMN (in_scoring_territory, nightly refresh). Metro search measured 6.4s→0.2–0.4s. ✅ DONE                                                                                                                    | done                                          |
+| Typo layer 0      | Client keyboard autocorrect was OFF on the search input. NOW ON (autoCorrect+spellCheck; fallback documented). ✅ DONE                                                                                                                                                                                                             | done                                          |
+| Typo layers 1–2   | Autocomplete-as-primary-input (UX polish, substrate exists); server = Damerau-Levenshtein over a SymSpell-style delete-dictionary lexicon — fixes transpositions ('vgean') AND the linear-scan scaling in one derived table. No LLM, no word lists, no invented constants.                                                         | lexicon build, then re-sweep                  |
+| Linker chain      | NOT ideal: the sequential lane chain encodes evidence precedence as control flow (rounds 3–4 each re-found 'exact loses to fuzzy' in a new lane). IDEAL = ONE all-types retrieval → tiered candidate set → pure placement fn. Floors survive as the comparator's table. MUST land before the floor re-sweep or we calibrate twice. | calibration tail                              |
+| Residue-join      | Correct but rule-dense (every rule a red-team scar). IDEAL = DP segmentation over the token lattice — join/consume/abutment/dietary/budget rules become unrepresentable. Needs the lexicon (constant-time span lookup) + a scoring sweep.                                                                                          | calibration tail, with the linker unification |
+| Async segmenter   | Lane ideal; the accident is on_demand_requests.entity_type NOT NULL — untyped demand is dropped by loadUnmetCandidates. IDEAL: nullable type, untyped text enters demand directly; LLM demoted to multi-entity residue SPLITTING only. Removes a cron outage from the demand loop's critical path.                                 | pre-launch (S)                                |
+| Four-ish queries  | ONE statement per projection, counts as window functions in the same scan (starvation counts become free). Post-fame-pin the absolute win is ~15ms — cleanliness, not urgency.                                                                                                                                                     | calibration tail                              |
+| Similar preview   | IDEAL = tier-2 provenance in the SAME execution (similarAvailable = a window count; chip flips one predicate). Deletes 4 SQL statements + the staleness class.                                                                                                                                                                     | calibration tail                              |
+| Open-now          | IDEAL = SQL open intervals + IANA tz backfill (time_zone is NULL on ALL rows — JS evaluation buys no DST correctness today; fixed-offset is DST-naive by construction). Collapses the entire two-phase machine + gateFull plumbing.                                                                                                | calibration tail (tz backfill first)          |
+| Expansion fetches | IDEAL = write-time family closure (2 more derived\_ tables); removes the last unindexed per-request scans + the 3-anchor cap. ~15ms today.                                                                                                                                                                                         | at scale                                      |
+| Learn loop        | IDEAL AS-IS: failure signal produced by the failing execution itself; starvation vs residue kept distinct; ask recorded per user, LLM deduped per text.                                                                                                                                                                            | —                                             |
+
+Small builder notes from the measurement pass: dead geographic_restaurants
+CTE deleted (✅); restaurant_vote_totals should be built conditionally on
+minimumVotes (planner prunes it today — one decision away from a 41k-row
+scan).
+
 **RED TEAM ROUND 4 (2026-08-02, post-cutover, the final one — commit
 a900a2562): three FRESH Opus lenses (cutover integrity, hot-path
 perf/DoS, spec conformance) + adversarial battery. Key finds, all fixed
