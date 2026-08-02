@@ -78,7 +78,7 @@ function makeHarness(options: {
       options.probeImpl ??
         (() =>
           Promise.resolve({
-            chain: [],
+            kind: 'empty' as const,
             // Tiny negative region: never answers the other anchors.
             probedRegion: {
               kind: 'disc' as const,
@@ -233,6 +233,7 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     const { service, catalog, probe } = makeHarness({
       probeImpl: () =>
         Promise.resolve({
+          kind: 'named' as const,
           chain,
           probedRegion: { kind: 'box' as const, bbox: VIEW },
         }),
@@ -255,7 +256,7 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     const { service, probe } = makeHarness({
       probeImpl: () =>
         Promise.resolve({
-          chain: [], // no place here
+          kind: 'empty' as const, // the vendor OBSERVED nothing here
           // A big "nothing here" region: expressed as the BOX it honestly
           // is (a probed viewport), not a squared disc.
           probedRegion: {
@@ -291,6 +292,7 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     const { service, probe } = makeHarness({
       probeImpl: () =>
         Promise.resolve({
+          kind: 'named' as const,
           chain: [
             {
               name: 'Bigland',
@@ -338,7 +340,7 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     expect(probe.probe).toHaveBeenCalledTimes(1);
 
     resolveProbe({
-      chain: [],
+      kind: 'empty' as const,
       // Commensurate region → answers the pass's remaining anchors so the
       // flight drains.
       probedRegion: {
@@ -362,6 +364,27 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     });
     await service.whenIdle();
     expect(prismaMock.probedRegion.deleteMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('A FAILURE IS NOT AN OBSERVATION: a faulted anchor remembers nothing, and an all-faulted pass never marks the view asked', async () => {
+    // The observation type (2026-08-01) makes this unrepresentable rather
+    // than merely discouraged: only 'empty' carries a region to remember.
+    // Before it, a malformed vendor body / a missing country field / an
+    // unnamed ladder all reduced to `{chain: []}` and were written as a
+    // 30-day "nothing lives here" over ground the vendor never denied.
+    const { service, probe, prismaMock } = makeHarness({
+      probeImpl: () =>
+        Promise.resolve({
+          kind: 'failed' as const,
+          reason: 'tomtom_body_shape',
+        }),
+    });
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+    // Anchors were attempted...
+    expect(probe.probe.mock.calls.length).toBeGreaterThan(0);
+    // ...and NOTHING was remembered: not the disc, not the view box.
+    expect(prismaMock.probedRegion.create).not.toHaveBeenCalled();
   });
 
   it('never blocks, never throws: noteViewport returns synchronously and probe failures are swallowed + logged', async () => {

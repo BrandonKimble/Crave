@@ -208,6 +208,10 @@ export class PlacesReconcilerService {
     // every result. Budget is structural: `anchors` is already capped at
     // MAX_PROBE_ANCHORS.
     let answered: ProbedRegion[] = [];
+    // Did ANY anchor actually produce an observation this pass? If none did,
+    // the view was not 'asked exhaustively' and must not be remembered as
+    // such — a 30-day suppression of ground the vendor may name tomorrow.
+    let observedAny = false;
     for (const anchor of anchors) {
       if (
         answered.some((region) =>
@@ -216,31 +220,23 @@ export class PlacesReconcilerService {
       ) {
         continue; // answered by an earlier probe in this same pass
       }
-      let result: TomtomChainProbeResult;
-      try {
-        result = await this.probe.probe(anchor);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (message === 'tomtom_missing_country_code') {
-          // PER-ANCHOR vendor contract violation. Red-team 2026-08-01: the
-          // adapter's throw (192628d6) and the seed script's per-cell skip
-          // (bf350c35) were each correct and JOINTLY WRONG — nothing taught
-          // the reconciler, so the throw unwound past the remaining anchors
-          // AND past rememberAskedRegion below, and every future settle of
-          // this cell re-probed forever. That is the spend-forever shape
-          // docket #7 exists to prevent. Skip the anchor, keep the pass.
-          this.logger.warn('Probe anchor skipped (vendor contract violation)', {
-            anchor,
-            detail: message,
-          });
-          continue;
-        }
-        // Pool denial / config absence are RUN-GLOBAL faults: the ground was
-        // never asked, so the pass must not write an asked-region memory.
-        throw error;
+      // Pool denial / config absence still THROW and abort the pass: the
+      // ground was never asked, so no memory may be written at all. Every
+      // vendor-ANSWERED outcome comes back typed instead.
+      const result: TomtomChainProbeResult = await this.probe.probe(anchor);
+      if (result.kind === 'failed') {
+        // A FAILURE IS NOT AN OBSERVATION (observation type, 2026-08-01):
+        // skip this anchor, remember nothing, keep the pass. No string
+        // sentinel to match on — the type carries the distinction.
+        this.logger.warn('Probe anchor skipped (vendor did not answer)', {
+          anchor,
+          reason: result.reason,
+        });
+        continue;
       }
-      if (result.chain.length === 0) {
-        // "No place here" IS an observation — region-scale, 30d TTL (§2).
+      observedAny = true;
+      if (result.kind === 'empty') {
+        // The vendor OBSERVED that nothing lives here — region-scale, 30d.
         await this.rememberAskedRegion(result.probedRegion);
         answered = [...answered, result.probedRegion];
         continue;
@@ -266,7 +262,9 @@ export class PlacesReconcilerService {
     // ground doesn't re-spend draws every settle when its finest chain is
     // over-scale (see NegativeObservation doc). Recorded only when a probe
     // actually fired (a fully-answered pass costs nothing to repeat).
-    await this.rememberAskedRegion({ kind: 'box', bbox: view });
+    if (observedAny) {
+      await this.rememberAskedRegion({ kind: 'box', bbox: view });
+    }
   }
 
   /**

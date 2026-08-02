@@ -217,10 +217,19 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       throw new Error('tomtom_config_missing');
     }
 
-    const entry = await this.reverseGeocode(anchor);
-    if (!entry?.address) {
-      // Vendor says nothing lives here — a first-class §2 observation.
-      return { chain: [], probedRegion };
+    const outcome = await this.reverseGeocode(anchor);
+    if (outcome.kind === 'failed') {
+      // The body did not match the vendor's contract — WE failed to observe.
+      return { kind: 'failed', reason: outcome.reason };
+    }
+    const entry = outcome.entry;
+    if (!entry) {
+      // The vendor answered, well-formed, with no addresses: it OBSERVED
+      // that nothing lives here. The one case that may be remembered.
+      return { kind: 'empty', probedRegion };
+    }
+    if (!entry.address) {
+      return { kind: 'failed', reason: 'tomtom_address_missing' };
     }
 
     const address = entry.address;
@@ -231,9 +240,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       // TomTom's country rung is universal). Ladder-audit 2026-08-01: the
       // old `return { chain: [], probedRegion }` recorded this as a §2
       // "nothing lives here" negative observation — a missing FIELD written
-      // as an absence of GROUND, suppressing re-probes for the TTL. An
-      // operational fault throws, exactly like the missing-key case above.
-      throw new Error('tomtom_missing_country_code');
+      // as an absence of GROUND, suppressing re-probes for the TTL. It is
+      // now a typed FAILURE — no throw (which discarded the paid reverse
+      // call), no memory, no string sentinel to match on.
+      return { kind: 'failed', reason: 'tomtom_missing_country_code' };
     }
     const subdivisionCode =
       address.countrySubdivisionCode?.trim() ||
@@ -257,7 +267,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       });
     }
     if (chain.length === 0) {
-      return { chain: [], probedRegion };
+      // Well-formed, carries a country code, yet names NO rung of the
+      // ladder: a contract violation, not an observation of emptiness.
+      return { kind: 'failed', reason: 'tomtom_named_no_rungs' };
     }
 
     // The returned entity's own bbox + stable geometry id come free.
@@ -291,7 +303,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       }
     }
 
-    return { chain, probedRegion };
+    return { kind: 'named', chain, probedRegion };
   }
 
   /**
@@ -334,7 +346,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   /** One governed reverse geocode; a pool denial reads as "no answer now". */
   private async reverseGeocode(
     anchor: GeoPoint,
-  ): Promise<TomtomReverseAddressEntry | null> {
+  ): Promise<
+    | { kind: 'ok'; entry: TomtomReverseAddressEntry | null }
+    | { kind: 'failed'; reason: string }
+  > {
     const url = `${this.reverseBaseUrl}/${anchor.lat},${anchor.lng}.json`;
     let response: AxiosResponse<TomtomReverseResponse> | null;
     try {
@@ -368,10 +383,13 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       // negative observation — the ground was never asked.
       throw new Error('tomtom_pool_denied');
     }
-    const entries = Array.isArray(response.data?.addresses)
-      ? response.data.addresses
-      : [];
-    return entries[0] ?? null;
+    // A well-formed 200 has an `addresses` ARRAY (possibly empty). Anything
+    // else is a contract violation, NOT an observation of emptiness — the
+    // distinction the observation type exists to make.
+    if (!Array.isArray(response.data?.addresses)) {
+      return { kind: 'failed', reason: 'tomtom_body_shape' };
+    }
+    return { kind: 'ok', entry: response.data.addresses[0] ?? null };
   }
 
   /**

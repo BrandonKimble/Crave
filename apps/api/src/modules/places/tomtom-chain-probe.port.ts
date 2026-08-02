@@ -28,26 +28,34 @@ import { PlaceSketchNode } from './places-catalog.service';
  */
 export const PROBE_SPEAKS_FOR_METERS = 100;
 
-export interface TomtomChainProbeResult {
-  /**
-   * Reverse-geocode chain, MOST SPECIFIC FIRST (neighbourhood → … → country),
-   * each node carrying its bbox when known (forward-geocode step). Empty =
-   * "no place here".
-   */
-  chain: PlaceSketchNode[];
-  /**
-   * The region this probe SPEAKS FOR — §2's negative observation is
-   * region-scale, never a bare point.
-   *
-   * A DISC (one-ground charter P5, 2026-07-27): a reverse geocode answers for
-   * a RADIUS around its anchor, so that is what we record. It used to be
-   * squared into a bbox, which overclaimed the corners — a square of side 2r
-   * covers 4r² where the disc covers πr², so ~21% of the "asked" area had
-   * never been asked, and a real place sitting there could be permanently
-   * suppressed from discovery.
-   */
-  probedRegion: ProbedRegion;
-}
+/**
+ * THE OBSERVATION TYPE (abstraction re-derivation, 2026-08-01).
+ *
+ * Reality has THREE states and the old shape could express only two:
+ * `{ chain: [] }` meant BOTH "the vendor observed nothing here" and "we
+ * failed to observe" — and everything that failed had to throw, which threw
+ * away work already paid for. That single conflation produced a whole
+ * BUG CLASS, repeatedly: the census "no place here", the missing-country
+ * bug, the malformed-200 bug, and the all-anchors-faulted pass. Each was
+ * fixed one at a time; the TYPE is why they kept coming back.
+ *
+ * A FAILURE IS NOT AN OBSERVATION. Only an observation may be remembered,
+ * and now only 'empty' carries a region to remember — so recording a fault
+ * as ground truth is UNREPRESENTABLE rather than merely discouraged.
+ * (PolygonFetchResult below has had this shape all along: ok|denied|miss.)
+ *
+ * The region a probe SPEAKS FOR is a DISC (P5, 2026-07-27): a reverse
+ * geocode answers for a RADIUS around its anchor. Squaring it overclaimed
+ * the corners — 4r² vs πr², so ~21% of "asked" ground had never been asked
+ * and a real place sitting there could be suppressed from discovery.
+ */
+export type TomtomChainProbeResult =
+  /** The vendor NAMED this ground: the chain, most specific first. */
+  | { kind: 'named'; chain: PlaceSketchNode[]; probedRegion: ProbedRegion }
+  /** The vendor OBSERVED nothing here — a first-class §2 negative. */
+  | { kind: 'empty'; probedRegion: ProbedRegion }
+  /** WE failed to observe. Never a memory; never ground truth. */
+  | { kind: 'failed'; reason: string };
 
 export type PolygonFetchResult =
   | { kind: 'ok'; geojson: GeoJsonFeatureCollection }
