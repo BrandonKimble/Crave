@@ -803,9 +803,29 @@ export function TrackSheetPage({
   // it never remounts and its strip's touch layer never re-measures. Only the
   // presented leg's twin feeds the pin (ref gated at fire time + on flip).
   // The VISUAL twin stays single in the stable overlay with the flip band.
+  // CHROME IDENTITY IS PER SCENE, NOT PER LEG (strip-lateness fix, 2026-08-01).
+  // `legs` is rebuilt whenever ANY scene's data changes, so keying the chrome
+  // off it remounted the strip on unrelated data ticks — and a remounted strip
+  // re-measures its chips, which is what makes the toggle strip appear late.
+  // The chrome only actually depends on the scene's TITLE and STRIP CHILDREN;
+  // cache per scene on exactly those so data churn cannot touch it.
+  const chromeElementCacheRef = React.useRef(
+    new Map<
+      string,
+      { title: React.ReactNode; stripChildren: React.ReactNode; element: React.ReactElement }
+    >()
+  );
   const visualChromeLegs = React.useMemo(
     () =>
       legs.map((leg) => {
+        const cached = chromeElementCacheRef.current.get(leg.sceneKey);
+        if (
+          cached != null &&
+          cached.title === leg.title &&
+          cached.stripChildren === leg.stripChildren
+        ) {
+          return { sceneKey: leg.sceneKey, element: cached.element };
+        }
         const band =
           leg.stripChildren != null ? (
             <View style={{ height: TOGGLE_STRIP_BAND_HEIGHT }}>
@@ -814,10 +834,13 @@ export function TrackSheetPage({
               </TrackSheetDockedStrip>
             </View>
           ) : null;
-        return {
-          sceneKey: leg.sceneKey,
-          element: renderChrome(null, leg.title ?? title, band, legChromeHeight(leg), true),
-        };
+        const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg), true);
+        chromeElementCacheRef.current.set(leg.sceneKey, {
+          title: leg.title,
+          stripChildren: leg.stripChildren,
+          element,
+        });
+        return { sceneKey: leg.sceneKey, element };
       }),
     [
       legs,

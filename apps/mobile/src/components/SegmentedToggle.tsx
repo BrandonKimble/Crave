@@ -217,6 +217,7 @@ export function SegmentedToggle<T extends string>({
       segmentWidths.value = nextWidths;
       if (nextWidths.every((width) => width > 0)) {
         layoutReady.value = 1;
+        runOnJS(setAnimatedPillReady)(true);
       }
       if (stripSlotKey != null && stripWarmRestore != null) {
         stripWarmRestore.reportControlLayouts(stripSlotKey, [...layoutsRef.current]);
@@ -241,6 +242,17 @@ export function SegmentedToggle<T extends string>({
   }, [animateSelection, indexFor, onChange, options]);
 
   const segmentCount = options.length;
+  // LAYOUT-FIRST FIRST PAINT (2026-08-01). The animated pill can only be
+  // positioned once every segment has MEASURED, so on a first-ever mount (no
+  // warm seed) it stays invisible until onLayout lands — which is after paint,
+  // behind whatever else the JS thread is doing. That is the toggle strip
+  // "coming in late". A layout-positioned twin paints the selected segment's
+  // pill on frame ONE (it needs no measurement — flex already knows where the
+  // segment is) and disappears the moment the animated one is ready, so the
+  // control is never in a state where its selection is invisible.
+  const hasSeededGeometry = initialGeometryRef.current.widths.every((width) => width > 0);
+  const [animatedPillReady, setAnimatedPillReady] = React.useState(hasSeededGeometry);
+  const selectedIndexForPaint = indexFor(value);
   const highlightStyle = useAnimatedStyle(() => {
     if (segmentCount < 2) {
       return { opacity: 0 };
@@ -356,6 +368,20 @@ export function SegmentedToggle<T extends string>({
           pointerEvents="none"
           style={[styles.highlight, { backgroundColor: accentColor }, highlightStyle]}
         />
+        {!animatedPillReady && segmentCount >= 2 ? (
+          <View style={styles.layoutFirstPillRow} pointerEvents="none">
+            {options.map((option, index) => (
+              <View key={option.value} style={styles.layoutFirstPillCell}>
+                {index === selectedIndexForPaint ? (
+                  <View
+                    style={[styles.layoutFirstPill, { backgroundColor: accentColor }]}
+                    pointerEvents="none"
+                  />
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
         {options.map((option, index) => (
           <SegmentLabel
             key={option.value}
@@ -400,6 +426,29 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
+    borderRadius: TOGGLE_BORDER_RADIUS,
+  },
+  // The layout-first pill: same row geometry as the labels, so flex puts it
+  // exactly where the animated pill will land — no measurement required.
+  layoutFirstPillRow: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+  },
+  layoutFirstPillCell: {
+    flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  layoutFirstPill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
     borderRadius: TOGGLE_BORDER_RADIUS,
   },
   labelStack: {

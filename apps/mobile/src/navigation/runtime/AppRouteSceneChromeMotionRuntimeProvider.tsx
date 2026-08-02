@@ -85,19 +85,22 @@ const resolveRouteChromeTransitionConfig = ({
   if (showSaveListOverlay) {
     return buildSaveChromeSnaps(searchBarTop, insetsTop);
   }
-  if (routeChromeOverlayState.routeChromeOverlayMode === 'expandedMiddle') {
-    return buildExpandedMiddleChromeSnaps(searchBarTop, insetsTop);
-  }
-  const shouldUsePollsChrome =
-    routeChromeOverlayState.routeChromeOverlayMode === 'search' &&
-    chromeSurfaceTarget === 'dockedScene';
-  if (shouldUsePollsChrome) {
-    return buildExpandedMiddleChromeSnaps(searchBarTop, insetsTop);
-  }
-  return {
-    expanded: snapPoints.expanded,
-    middle: snapPoints.middle,
-  };
+  // ONE RULER (2026-08-01). The search chrome is a pure function of the
+  // sheet's ACTUAL top edge — but this resolver used to hand it a DIFFERENT
+  // interpolation range per scene (geometric anchors for the docked scene, the
+  // scene's own snap points otherwise). A tab switch therefore changed the
+  // RULER at commit while the sheet had not moved a pixel: the same position
+  // re-mapped to a new progress and the chrome jumped, settled back, and only
+  // then animated for real as the sheet actually flew. That is the owner's
+  // "shrinks, expands, then shrinks again" — two clocks for one visual, with
+  // the mapping function as the second clock.
+  //
+  // The response zone is now ALWAYS the geometric one, anchored to the search
+  // bar the chrome actually is. It is scene-independent, so no switch can
+  // remap it and the chrome can only ever move because the SHEET moved.
+  // (The save-list overlay stays: it is a genuine MODE — a different surface
+  // — not a scene switch.)
+  return buildExpandedMiddleChromeSnaps(searchBarTop, insetsTop);
 };
 
 const getSearchBarTop = (routeHostOverlayGeometry: RouteHostOverlayGeometryBinding): number =>
