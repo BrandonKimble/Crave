@@ -24,6 +24,17 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
 
 ## Launch shape (owner-decided build work, not data-gated)
 
+- [ ] **DEPLOY THE RATE-LIMIT FIX — production is exploitable right now.**
+      Commit `e7d20549` closes a throttler bypass: appending `?x=/webhooks/`
+      to any URL disabled rate limiting entirely. MEASURED against live prod
+      on 2026-08-01: 40 parallel unauthenticated POSTs to
+      `/api/v1/auth/apple/native` gave 12x400 + 28x429 plain, and 40x400 with
+      ZERO 429 with the query param. Every ceiling in the app — auth
+      brute-force, LLM search spend, the heavy viewport reads — is currently
+      one query param away from not existing. The fix is on `main` and cannot
+      reach prod until the watchPatterns/repo-disconnect item below is done,
+      so that item is now security-blocking, not cleanup.
+
 - [ ] **Rebuild the Stripe web checkout rail + Strava-pattern dual-button
       paywall** (decided 2026-08-01: pre-launch shape). Primary paywall button
       opens external Stripe web checkout (Apple-commission-free on the US
