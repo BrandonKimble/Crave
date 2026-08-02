@@ -366,6 +366,20 @@ casing silently disables bounds → world-scope queries look like a
 hang); stopCronsForScript does NOT stop BullMQ queue workers (a
 long-lived harness will process real jobs — mirror only, but beware).
 
+**THE CUTOVER (2026-08-02, owner ruling — commit 648b1731d):** pooled
+gate + gazetteer Understand are CANONICAL; the relaxation ladder, both
+shadow harnesses, both mode flags, the sync per-search LLM Understand,
+and the generic-token stop-list are DELETED (net −1,240 lines).
+Interpretation llmMs=0, 6–40ms measured. Junk grounding ("best" as a
+restaurant, "dinner" as a food) is ACCEPTED, TEMPORARY degradation until
+the extraction-hygiene prompt passes + junk sweep; the post-cleanup
+contract is pinned as a skipped TODO suite
+(search-generic-queries.spec.ts) — enable it when the graph is clean.
+Also still owed to the calibration tail: ~44-name placement curation
+(restaurant/food twins), linker re-sweep, threshold re-measure.
+Cutover harness 9/9 PASS (tier ordering, disjoint pagination, open-now,
+dietary-hard zero-result honesty, residue staging).
+
 **RED TEAM ROUND 3 (2026-08-02, the big one): three independent Opus
 reviewers (SQL/executor, recall/interpretation, wiring-vs-spec) + a
 25-check empirical battery. 15 confirmed findings, all fixed in
