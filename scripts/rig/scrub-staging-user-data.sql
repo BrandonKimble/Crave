@@ -35,6 +35,14 @@ DECLARE
   -- died of was in the TRUNCATE *completeness*, which is now catalog-driven;
   -- a 2-row keep list guarded by the verifier is safe.
   keep_content text[] := ARRAY['polls', 'poll_topics'];
+  -- Tables whose contact-shaped columns are PUBLIC BUSINESS data, not a
+  -- person's. Explicit and reviewable ON PURPOSE: anything contact-shaped that
+  -- is NOT on this list fails the verifier, so a new table holding real
+  -- addresses/emails/phones stops the refresh until a human classifies it.
+  -- (A restaurant's phone_number is the business's, not a user's.)
+  business_contact_tables text[] := ARRAY[
+    'core_restaurant_locations', 'core_entities', 'collection_source_documents'
+  ];
   -- Hard-contact PII columns (non-user_id). Every ownership column
   -- (user_id, blocker_user_id, owner_user_id, sender_user_id, …) is caught
   -- by the `LIKE '%user_id'` pattern instead.
@@ -54,7 +62,7 @@ BEGIN
       ON t.table_schema = c.table_schema AND t.table_name = c.table_name
     WHERE c.table_schema = 'public'
       AND t.table_type = 'BASE TABLE'
-      AND (c.column_name ~ '(^|_)(user|actor)_id$'
+      AND (c.column_name ~ '(^|_)(user|actor|owner|sender|reporter|follower|blocker|blocked|creator)_id$'
            OR c.column_name = ANY(pii_exact))
       AND NOT (c.table_name = ANY(keep_content))
     ORDER BY c.table_name
@@ -103,6 +111,10 @@ BEGIN
         -- always-failing verifier gets disabled, which is how you end up
         -- with no verifier at all.
         OR c.column_name ~ '(push_token|device_key|pair_key|residue_text|subject_text|ip_hash|subnet_hash)'
+        -- Generic contact shapes: flagged UNLESS the table is declared
+        -- business data above. New + unclassified = refuse, never assume.
+        OR (c.column_name ~ '(email|phone)'
+            AND NOT (c.table_name = ANY(business_contact_tables)))
       )
       AND NOT (c.table_name = ANY(keep_content))
   LOOP
