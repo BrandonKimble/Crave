@@ -214,7 +214,7 @@ fi
 # when staging ran committed X. (Prod itself can't be dirty: guarded above.)
 STAMP_SHA="$(git rev-parse HEAD)"
 [[ -n "$(git status --porcelain)" ]] && STAMP_SHA="${STAMP_SHA}-dirty"
-echo "==> Stamping DEPLOYED_GIT_SHA=$STAMP_SHA on $ENVIRONMENT ..."
+echo "==> Setting DEPLOYED_GIT_SHA=$STAMP_SHA (build arg -> baked into the image) ..."
 for svc in "${SERVICES[@]}"; do
   railway variables --service "$svc" --environment "$ENVIRONMENT" \
     --set "DEPLOYED_GIT_SHA=$STAMP_SHA" --skip-deploys >/dev/null 2>&1 || {
@@ -319,14 +319,12 @@ if [[ "$running" != "$EXPECT_SHA" ]]; then
   echo "FAILED: /health is 200 but the RUNNING commit is not HEAD." >&2
   echo "  running: ${running:0:9}" >&2
   echo "  expected: ${EXPECT_SHA:0:9}" >&2
-  echo "  The deploy did not ship (SKIPPED, crash-looped, or slow). The stamp is" >&2
-  echo "  corrected to what is ACTUALLY running so /health never lies:" >&2
-  # HONEST STAMP ON FAILURE (red-team P0): never leave the speculative stamp
-  # claiming a commit prod does not run. Reset it to the observed reality.
-  for svc in "${SERVICES[@]}"; do
-    railway variables --service "$svc" --environment "$ENVIRONMENT" \
-      --set "DEPLOYED_GIT_SHA=${running:-unknown}" --skip-deploys >/dev/null 2>&1 || true
-  done
+  echo "  The deploy did not ship (SKIPPED, crash-looped, or slow)." >&2
+  # NO CORRECTIVE RE-STAMP NEEDED ANYMORE (foundation audit 2026-08-02): the
+  # sha is BAKED INTO THE IMAGE (apps/api/Dockerfile), so /health reports what
+  # the running image actually is. It cannot be forged by a failed deploy, and
+  # there is nothing to go back and fix. The env var below is now only the
+  # BUILD ARG source, not the runtime truth.
   echo "  railway logs --service api --environment $ENVIRONMENT   # investigate" >&2
   exit 1
 fi

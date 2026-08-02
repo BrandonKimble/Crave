@@ -34,7 +34,15 @@ DECLARE
   -- truncated. Deliberately tiny and explicit — the fragility the old scrub
   -- died of was in the TRUNCATE *completeness*, which is now catalog-driven;
   -- a 2-row keep list guarded by the verifier is safe.
-  keep_content text[] := ARRAY['polls', 'poll_topics'];
+  -- CONTENT, not user data (verified 2026-08-02): `curated_lists` is
+  -- EDITORIAL home-surface content — 672 rows locally, all scope='global'
+  -- with a NULL owner_user_id. Its `owner_user_id` column matched the
+  -- person-column pattern, so the scrub was TRUNCATE-ing the entire home
+  -- surface out of staging. Personal (weekly-tasting) curated lists ARE
+  -- user-owned and are deleted below; global ones are kept. This is the
+  -- structural cost of classifying by column NAME — see the data-class
+  -- declaration proposal in the red-team notes.
+  keep_content text[] := ARRAY['polls', 'poll_topics', 'curated_lists'];
   -- Tables whose contact-shaped columns are PUBLIC BUSINESS data, not a
   -- person's. Explicit and reviewable ON PURPOSE: anything contact-shaped that
   -- is NOT on this list fails the verifier, so a new table holding real
@@ -48,6 +56,14 @@ DECLARE
   -- by the `LIKE '%user_id'` pattern instead.
   pii_exact text[] := ARRAY['expo_push_token', 'device_key', 'pair_key', 'residue_text'];
 BEGIN
+  -- 0. CURATED LISTS: delete the PERSONAL ones (user-owned), keep global
+  --    editorial content and sever any owner linkage on what remains.
+  IF to_regclass('public.curated_lists') IS NOT NULL THEN
+    DELETE FROM public.curated_lists WHERE scope = 'personal';
+    UPDATE public.curated_lists SET owner_user_id = NULL
+      WHERE owner_user_id IS NOT NULL;
+  END IF;
+
   -- 1. KEEP-CONTENT: null the soft creator ref, do NOT truncate.
   UPDATE public.polls SET created_by_user_id = NULL WHERE created_by_user_id IS NOT NULL;
   IF to_regclass('public.poll_topics') IS NOT NULL THEN
@@ -65,6 +81,11 @@ BEGIN
       AND (c.column_name ~ '(^|_)(user|actor|owner|sender|reporter|follower|blocker|blocked|creator)_id$'
            OR c.column_name = ANY(pii_exact))
       AND NOT (c.table_name = ANY(keep_content))
+      -- `users` matches on its OWN primary key (user_id) and would be
+      -- TRUNCATE ... CASCADE'd here — which unconditionally wipes every
+      -- referencing table, including editorial curated_lists. It is handled
+      -- explicitly below with DELETE, which honours real FK rows.
+      AND c.table_name <> 'users'
     ORDER BY c.table_name
   LOOP
     EXECUTE format('TRUNCATE TABLE public.%I RESTART IDENTITY CASCADE', r.table_name);
@@ -73,7 +94,13 @@ BEGIN
 
   -- 3. The users root + reserved usernames + spend history (prod truth,
   --    not staging's to meter against).
-  TRUNCATE TABLE public.users RESTART IDENTITY CASCADE;
+  -- DELETE, not TRUNCATE CASCADE (2026-08-02): `TRUNCATE users CASCADE`
+  -- truncates every referencing table UNCONDITIONALLY, which wiped the 672
+  -- global editorial `curated_lists` (their FK is ON DELETE CASCADE even
+  -- though their owner_user_id is NULL). DELETE honours the actual FK rows,
+  -- so rows we deliberately severed above (owner set to NULL) survive, while
+  -- genuine per-user children still cascade away.
+  DELETE FROM public.users;
   IF to_regclass('public.user_reserved_usernames') IS NOT NULL THEN
     EXECUTE 'TRUNCATE TABLE public.user_reserved_usernames';
   END IF;
@@ -126,6 +153,10 @@ BEGIN
   --    (b) no user linkage survives in the kept content tables
   EXECUTE 'SELECT count(*) FROM public.polls WHERE created_by_user_id IS NOT NULL' INTO n;
   IF n > 0 THEN RAISE EXCEPTION 'PII SCRUB FAILED: polls retain % creator id(s)', n; END IF;
+  IF to_regclass('public.curated_lists') IS NOT NULL THEN
+    EXECUTE 'SELECT count(*) FROM public.curated_lists WHERE owner_user_id IS NOT NULL' INTO n;
+    IF n > 0 THEN RAISE EXCEPTION 'PII SCRUB FAILED: curated_lists retain % owner id(s)', n; END IF;
+  END IF;
 
   -- STAGING SENTINEL (red-team P2, 2026-08-02): a positive marker that this
   -- database IS staging. The refresh scripts refuse `DROP SCHEMA` unless this

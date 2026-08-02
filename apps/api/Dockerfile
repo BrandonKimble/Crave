@@ -101,6 +101,19 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
+# BUILD IDENTITY, BAKED IN (red-team foundation audit 2026-08-02).
+# `/health.commit` used to read a Railway ENV VAR that deploy.sh wrote
+# SPECULATIVELY, before the deploy succeeded — so a SKIPPED/failed deploy left
+# prod claiming a commit it never ran (this happened). The script had grown
+# FOUR compensations for that one missing property, including re-writing the
+# stamp after discovering it was wrong. A fact you have to go back and correct
+# was never a fact. The running process's identity is now a property of the
+# IMAGE it was built from, so a failed deploy cannot forge it.
+# Placed LAST on purpose: a changed sha invalidates only this ~0-byte layer,
+# so yarn install / build layers still hit cache.
+ARG DEPLOYED_GIT_SHA=unknown
+ENV DEPLOYED_GIT_SHA=$DEPLOYED_GIT_SHA
+
 # Start the application
 # Railway will inject DATABASE_URL and other env vars at runtime.
 # `prisma migrate deploy` first: applies any pending committed migrations
