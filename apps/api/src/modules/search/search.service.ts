@@ -792,6 +792,10 @@ export class SearchService {
             viewportEligible,
             onDemandEngineContext,
             expansionSignals: expansionAnalysisMetadata,
+            starved: this.computeStarvedSoftWords(
+              request,
+              strictPage.exec.pooledSoftWordCounts,
+            ),
           })
         : { queued: false, etaMs: undefined };
       const onDemandQueued = onDemandResult.queued;
@@ -2647,11 +2651,15 @@ export class SearchService {
       threshold: number;
       dropped: { foodAttributes: boolean; restaurantAttributes: boolean };
     };
+    /** STEP-5: pooled mode's per-word starvation verdict. When present, the
+     *  attribute-typed demand requests narrow to the starved words only. */
+    starved?: { attributeIds: string[]; terms: string[] };
   }): Promise<{ queued: boolean; etaMs?: number }> {
     try {
       const lowResultRequests = this.buildLowResultRequests(
         params.request,
         params.onDemandEngineContext,
+        params.starved?.attributeIds,
       );
       if (!lowResultRequests.length) {
         return { queued: false, etaMs: undefined };
@@ -2668,6 +2676,7 @@ export class SearchService {
         ...(params.expansionSignals
           ? { signals: params.expansionSignals }
           : {}),
+        ...(params.starved ? { starvedWords: params.starved.terms } : {}),
       };
 
       if (params.relaxation) {
@@ -3464,11 +3473,61 @@ export class SearchService {
     return earthRadiusMiles * c;
   }
 
+  /**
+   * STEP-5 per-word starvation (spec §1.6): a soft attribute id is STARVED
+   * when its in-pool coverage count is zero on every projection that could
+   * carry it — the word found NOTHING here, so the demand signal names it
+   * precisely instead of re-mining every query term. Terms resolve through
+   * the request's attribute entities (originalText preferred — the user's
+   * word, not the canonical name).
+   */
+  private computeStarvedSoftWords(
+    request: SearchQueryRequestDto,
+    pooledSoftWordCounts:
+      | {
+          dish: Record<string, number> | null;
+          restaurant: Record<string, number> | null;
+        }
+      | undefined,
+  ): { attributeIds: string[]; terms: string[] } | undefined {
+    if (!pooledSoftWordCounts) {
+      return undefined;
+    }
+    const dish = pooledSoftWordCounts.dish ?? {};
+    const restaurant = pooledSoftWordCounts.restaurant ?? {};
+    const ids = new Set<string>([
+      ...Object.keys(dish),
+      ...Object.keys(restaurant),
+    ]);
+    const starvedIds = Array.from(ids).filter(
+      (id) => (dish[id] ?? 0) === 0 && (restaurant[id] ?? 0) === 0,
+    );
+    if (!starvedIds.length) {
+      return undefined;
+    }
+    const starvedSet = new Set(starvedIds);
+    const terms: string[] = [];
+    const collect = (entities: QueryEntityDto[] | undefined) => {
+      for (const entity of entities ?? []) {
+        if ((entity.entityIds ?? []).some((id) => starvedSet.has(id))) {
+          const term = entity.originalText || entity.normalizedName;
+          if (term) {
+            terms.push(term);
+          }
+        }
+      }
+    };
+    collect(request.entities.foodAttributes);
+    collect(request.entities.restaurantAttributes);
+    return { attributeIds: starvedIds, terms };
+  }
+
   private buildLowResultRequests(
     request: SearchQueryRequestDto,
     engineContext: {
       engineIds: string[];
     },
+    starvedAttributeIds?: string[],
   ): OnDemandRequestInput[] {
     const engineIds = Array.from(
       new Set(
@@ -3517,10 +3576,29 @@ export class SearchService {
       }
     };
 
+    // STEP-5 narrowing: when pooled mode proved WHICH words starved, only
+    // those attribute entities become demand requests — a word with in-pool
+    // coverage isn't the reason results ran low.
+    const starvedSet = starvedAttributeIds?.length
+      ? new Set(starvedAttributeIds)
+      : null;
+    const onlyStarved = (entities: QueryEntityDto[] | undefined) =>
+      starvedSet
+        ? (entities ?? []).filter((entity) =>
+            (entity.entityIds ?? []).some((id) => starvedSet.has(id)),
+          )
+        : entities;
+
     pushEntities(request.entities.food, 'food');
-    pushEntities(request.entities.foodAttributes, 'food_attribute');
+    pushEntities(
+      onlyStarved(request.entities.foodAttributes),
+      'food_attribute',
+    );
     pushEntities(request.entities.restaurants, 'restaurant');
-    pushEntities(request.entities.restaurantAttributes, 'restaurant_attribute');
+    pushEntities(
+      onlyStarved(request.entities.restaurantAttributes),
+      'restaurant_attribute',
+    );
 
     return results;
   }

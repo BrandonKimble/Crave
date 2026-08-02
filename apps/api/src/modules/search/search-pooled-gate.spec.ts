@@ -150,6 +150,31 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     expect(sql).not.toContain('pooled_full_count');
   });
 
+  it('step-5: both pooled count queries report per-soft-id coverage (soft_word_counts)', () => {
+    const dishCount = builder.buildDishQuery({
+      plan: plan(),
+      pagination: { skip: 0, take: 25 },
+      searchCenter: null,
+      directives: directives(),
+    }).countSql;
+    const restCount = builder.buildRestaurantQuery({
+      plan: plan(),
+      pagination: { skip: 0, take: 25 },
+      searchCenter: null,
+      directives: directives(),
+    }).countSql;
+    for (const count of [dishCount, restCount]) {
+      const sql = count.sql.replace(/\s+/g, ' ');
+      expect(sql).toContain('soft_word_counts');
+      expect(sql).toContain('json_object_agg');
+      // every soft id is bound as its own FILTER-counted row (ids ride as
+      // parameters, so assert on the bound values)
+      expect(count.values).toEqual(
+        expect.arrayContaining([SOFT_FOOD_ATTR, SOFT_REST_ATTR]),
+      );
+    }
+  });
+
   it('no pooledGate ⇒ byte-stable legacy shape (no pooled artifacts)', () => {
     const sql = dishSqlText({});
     expect(sql).not.toContain('pooled');

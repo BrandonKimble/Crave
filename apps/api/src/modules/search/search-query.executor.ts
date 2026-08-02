@@ -260,6 +260,13 @@ interface ExecuteSingleParams extends Omit<ExecuteDualParams, 'axes'> {
 }
 
 interface ExecuteDualResult {
+  /** STEP-5 per-word starvation provenance (pooled mode only): in-pool
+   *  coverage count per soft attribute id, per projection — 0 means "this
+   *  WORD found nothing here", the precise demand signal. */
+  pooledSoftWordCounts?: {
+    dish: Record<string, number> | null;
+    restaurant: Record<string, number> | null;
+  };
   restaurants: RestaurantResultDto[];
   dishes: FoodResultDto[];
   totalRestaurantCount: number;
@@ -617,13 +624,23 @@ LIMIT 3
         ? Promise.all([
             this.prisma.$queryRaw<DishQueryRow[]>(dishQuery.dataSql),
             this.prisma.$queryRaw<
-              Array<{ total_connections: bigint; total_restaurants: bigint }>
+              Array<{
+                total_connections: bigint;
+                total_restaurants: bigint;
+                full_connections?: bigint | null;
+                soft_word_counts?: Record<string, number> | null;
+              }>
             >(dishQuery.countSql),
           ])
         : Promise.resolve<
             [
               DishQueryRow[],
-              Array<{ total_connections: bigint; total_restaurants: bigint }>,
+              Array<{
+                total_connections: bigint;
+                total_restaurants: bigint;
+                full_connections?: bigint | null;
+                soft_word_counts?: Record<string, number> | null;
+              }>,
             ]
           >([[], []]),
     ]);
@@ -743,6 +760,12 @@ LIMIT 3
       dishes,
       totalRestaurantCount,
       totalDishCount,
+      pooledSoftWordCounts: directives?.pooledGate
+        ? {
+            dish: dishCountResult[0]?.soft_word_counts ?? null,
+            restaurant: restaurantAxis.softWordCounts ?? null,
+          }
+        : undefined,
       metadata: {
         boundsApplied:
           (restaurantQuery?.metadata.boundsApplied ?? false) ||
@@ -2144,6 +2167,7 @@ LIMIT 3
   }): Promise<{
     rows: RestaurantQueryRow[];
     total: number;
+    softWordCounts?: Record<string, number> | null;
     openNowPrefiltered: boolean;
   }> {
     const {
@@ -2156,24 +2180,35 @@ LIMIT 3
     } = params;
 
     if (!restaurantQuery) {
-      return { rows: [], total: 0, openNowPrefiltered: false };
+      return {
+        rows: [],
+        total: 0,
+        softWordCounts: null,
+        openNowPrefiltered: false,
+      };
     }
 
     // Non-open path: the base rich page + its count, exactly as before.
     const runBase = async (): Promise<{
       rows: RestaurantQueryRow[];
       total: number;
+      softWordCounts?: Record<string, number> | null;
       openNowPrefiltered: boolean;
     }> => {
       const [rows, countResult] = await Promise.all([
         this.prisma.$queryRaw<RestaurantQueryRow[]>(restaurantQuery.dataSql),
-        this.prisma.$queryRaw<Array<{ total_restaurants: bigint }>>(
-          restaurantQuery.countSql,
-        ),
+        this.prisma.$queryRaw<
+          Array<{
+            total_restaurants: bigint;
+            full_restaurants?: bigint | null;
+            soft_word_counts?: Record<string, number> | null;
+          }>
+        >(restaurantQuery.countSql),
       ]);
       return {
         rows,
         total: Number(countResult[0]?.total_restaurants ?? 0),
+        softWordCounts: countResult[0]?.soft_word_counts ?? null,
         openNowPrefiltered: false,
       };
     };
@@ -2219,7 +2254,12 @@ LIMIT 3
     }
 
     if (selection.pageIds.length === 0) {
-      return { rows: [], total: selection.total, openNowPrefiltered: true };
+      return {
+        rows: [],
+        total: selection.total,
+        softWordCounts: null,
+        openNowPrefiltered: true,
+      };
     }
 
     // PHASE 2: hydrate the open page (rich query restricted to the page ids, order preserved).
@@ -2231,7 +2271,12 @@ LIMIT 3
     const rows = await this.prisma.$queryRaw<RestaurantQueryRow[]>(
       hydrateQuery.dataSql,
     );
-    return { rows, total: selection.total, openNowPrefiltered: true };
+    return {
+      rows,
+      total: selection.total,
+      softWordCounts: null,
+      openNowPrefiltered: true,
+    };
   }
 
   // Resolve a candidate row's openness with the SAME machinery the map coverage layer uses:
