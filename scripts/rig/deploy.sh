@@ -93,13 +93,22 @@ fi
 # allowlist mistake all over again.
 if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
   HEAD_SHA="$(git rev-parse HEAD)"
-  STAGING_SHA="$(railway variables --service api --environment staging --json 2>/dev/null \
-    | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("DEPLOYED_GIT_SHA",""))' 2>/dev/null || true)"
+  # Ask the RUNNING PROCESS what it is, not Railway what we intended. /health
+  # answers liveness and identity in one call: a crashlooping staging cannot
+  # reply at all, and a stale one replies with the wrong sha. The variable is
+  # intent; this is fact.
+  STAGING_HEALTH="$(curl -fsS --max-time 10 "https://api-staging-25ca.up.railway.app/health" 2>/dev/null || true)"
+  if [[ -z "$STAGING_HEALTH" ]]; then
+    echo "REFUSED: staging is not answering /health — it cannot vouch for this code." >&2
+    echo "  Deploy it first: ./scripts/rig/deploy.sh --env staging" >&2
+    exit 1
+  fi
+  STAGING_SHA="$(printf '%s' "$STAGING_HEALTH" \
+    | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("commit",""))' 2>/dev/null || true)"
 
-  if [[ -z "$STAGING_SHA" ]]; then
-    echo "REFUSED: staging has no DEPLOYED_GIT_SHA — it has never been deployed by this script," >&2
-    echo "so there is no evidence this code has run anywhere but a laptop." >&2
-    echo "  Run: ./scripts/rig/deploy.sh --env staging" >&2
+  if [[ -z "$STAGING_SHA" || "$STAGING_SHA" == "unknown" ]]; then
+    echo "REFUSED: staging cannot say which commit it is running (commit=${STAGING_SHA:-missing})." >&2
+    echo "Something deployed it outside this script. Re-deploy: ./scripts/rig/deploy.sh --env staging" >&2
     exit 1
   fi
   if [[ "$STAGING_SHA" != "$HEAD_SHA" ]]; then
@@ -107,11 +116,6 @@ if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
     echo "  staging: ${STAGING_SHA:0:9}" >&2
     echo "  HEAD:    ${HEAD_SHA:0:9}" >&2
     echo "Deploy to staging first: ./scripts/rig/deploy.sh --env staging" >&2
-    exit 1
-  fi
-  # Healthy, not merely deployed — a crashlooping staging proves nothing.
-  if ! curl -fsS --max-time 10 "https://api-staging-25ca.up.railway.app/health" >/dev/null 2>&1; then
-    echo "REFUSED: staging is not answering /health. It is running this commit but is not well." >&2
     exit 1
   fi
   echo "==> Promotion gate: staging is healthy on ${HEAD_SHA:0:9}."
@@ -153,6 +157,26 @@ if u:
     ls -t "$BACKUP_DIR"/prod-*.dump 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
   fi
 fi
+
+# STAMP WHAT IS ABOUT TO SHIP — BEFORE the deploy, so the new container boots
+# carrying it and /health can report the truth immediately. Stamping afterwards
+# (the first version of this, 2026-08-02) left the RUNNING process reporting
+# `unknown` until the following deploy: the value was always one behind, which
+# is worse than absent because it looks authoritative.
+#
+# `railway up` uploads a working tree and Railway records no commit for a CLI
+# deploy, so without this an environment cannot say which code it runs —
+# establishing that for staging took probing its live rate-limit behaviour.
+echo "==> Stamping DEPLOYED_GIT_SHA=$(git rev-parse --short HEAD) on $ENVIRONMENT ..."
+for svc in "${SERVICES[@]}"; do
+  railway variables --service "$svc" --environment "$ENVIRONMENT" \
+    --set "DEPLOYED_GIT_SHA=$(git rev-parse HEAD)" --skip-deploys >/dev/null 2>&1 || {
+    echo "REFUSED: could not stamp DEPLOYED_GIT_SHA on $svc." >&2
+    echo "Deploying anyway would leave the environment unable to identify itself," >&2
+    echo "and the promotion gate would refuse every future prod deploy." >&2
+    exit 1
+  }
+done
 
 deploy_one() {
   local svc="$1" attempt out
@@ -204,14 +228,4 @@ if [[ "$uptime_s" -gt 900 ]]; then
   echo "The new container likely crashlooped (check migrations): railway logs --service api --environment $ENVIRONMENT" >&2
   exit 1
 fi
-# STAMP WHAT SHIPPED. `railway up` uploads a working tree and Railway records
-# no commit for a CLI deploy, so without this an environment cannot say which
-# code it is running — answering that for staging on 2026-08-02 required
-# probing its live rate-limit behaviour. /health echoes this back.
-for svc in "${SERVICES[@]}"; do
-  railway variables --service "$svc" --environment "$ENVIRONMENT" \
-    --set "DEPLOYED_GIT_SHA=$(git rev-parse HEAD)" --skip-deploys >/dev/null 2>&1 || \
-    echo "WARNING: could not stamp DEPLOYED_GIT_SHA on $svc — the promotion gate will refuse the next prod deploy." >&2
-done
-
 echo "==> Deployed $(git rev-parse --short HEAD) to $ENVIRONMENT — /health 200 (uptime ${uptime_s}s)."
