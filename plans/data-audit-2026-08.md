@@ -194,3 +194,35 @@ plural twins since it shipped), long food names (real menu items),
 single-evidence tail (80% real — do NOT mass-prune), coverage discipline
 (zero-event docs are mostly correctly-rejected chatter; ~20% recall
 misses addressed by P3 recall rules).
+
+## EXECUTION RECORD — CLASSES ② through ⑤ (2026-08-01/02)
+
+All four classes built, red-teamed twice (static + execution adversaries),
+dress-rehearsed on a fresh prod mirror, and deployed:
+
+- ② Cuisine facet: 61 canonical rows (facet='cuisine'), redirects from
+  every archived variant (both attribute types AND active food_attribute
+  twins), 11k stranded-event backlog drained; junk sinks now DROP at
+  write time. Tombstone classes explicit: merged→redirect,
+  reclassified→redirect, rejected→sink.
+- ③ Restaurant hygiene: ~60 confirmed non-restaurants archived (user-
+  anchored venues EXEMPT — H-E-B/Whole Foods stay); nightly dedupe sweep
+  upgraded to the canonical fold + a prefix lane (ungrounded-stub only,
+  ambiguity-guarded, same evidence hierarchy — cross-metro shapes HOLD,
+  verified empirically); food dedupe gains the nightly cron.
+- ④ Vocabulary: occasion attributes redirected cross-type, duplicate
+  rows merged, templated/sentiment aliases stripped, alias hygiene
+  rules; identity_key GENERATED column + self-healing partial UNIQUE for
+  attribute types (foods = lock+probe+sweep; restaurants await P2.2).
+- ⑤ One category source of truth (derived edges; rollup verified
+  EXACT against hand-computed totals on real data), edge minting
+  threshold at mint time, hygiene pins.
+
+THE CANONICAL FOLD (round-6 lesson, defined once, mirrored everywhere):
+lower → strip apostrophes → non-alphanumeric runs become ONE space →
+trim. Any new comparison site must use exactly this.
+
+Remaining before the re-extraction: FULL projection rebuild on prod
+(runner armed post-deploy) + Crave Score refresh; Places backfill
+campaign estimate awaiting owner approval; P2.2 (chain/branch) and P2.3
+(dietary side) rulings; then the prompt-review cycle (P3 checklist).
