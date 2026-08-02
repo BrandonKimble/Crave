@@ -101,6 +101,38 @@ function makeHarness(options: {
       // Postgres in places-containment.integration.spec. Here the raw read
       // just returns what was remembered, which is what these behavioural
       // tests are about.
+      $executeRaw: jest.fn().mockImplementation((...args: any[]) => {
+        // The write is RAW now (partial unique on the cell). Values ride in
+        // order: kind, cellKey, disc lat/lng/radius, box min/max...
+        const v = (args[0]?.values ?? []) as any[];
+        const [
+          kind,
+          cellKey,
+          cLat,
+          cLng,
+          radius,
+          minLat,
+          minLng,
+          maxLat,
+          maxLng,
+        ] = v;
+        const key = `${cellKey}:${kind}`;
+        const row = {
+          __key: key,
+          kind,
+          centerLat: cLat,
+          centerLng: cLng,
+          radiusMeters: radius,
+          minLat,
+          minLng,
+          maxLat,
+          maxLng,
+        };
+        const at = rows.findIndex((r: any) => r.__key === key);
+        if (at >= 0) rows[at] = row;
+        else rows.push(row);
+        return Promise.resolve(1);
+      }),
       $queryRaw: jest.fn().mockImplementation(() =>
         Promise.resolve(
           rows.map((r: any) => ({
@@ -117,10 +149,6 @@ function makeHarness(options: {
       ),
       probedRegion: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-        create: jest.fn().mockImplementation(({ data }: any) => {
-          rows.push({ ...data, observedAt: new Date() });
-          return Promise.resolve(data);
-        }),
       },
     };
   })();
@@ -384,7 +412,7 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     // Anchors were attempted...
     expect(probe.probe.mock.calls.length).toBeGreaterThan(0);
     // ...and NOTHING was remembered: not the disc, not the view box.
-    expect(prismaMock.probedRegion.create).not.toHaveBeenCalled();
+    expect(prismaMock.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('never blocks, never throws: noteViewport returns synchronously and probe failures are swallowed + logged', async () => {

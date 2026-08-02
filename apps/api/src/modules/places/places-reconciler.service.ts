@@ -146,7 +146,7 @@ export class PlacesReconcilerService {
       // pass observes for everyone (stampede self-extinguishes, §2).
       return;
     }
-    const flight = this.reconcile(view)
+    const flight = this.reconcile(view, cellKey)
       .catch((error: unknown) => {
         this.logger.warn(
           'viewport reconcile failed (will retry on a later settle)',
@@ -174,7 +174,7 @@ export class PlacesReconcilerService {
     }
   }
 
-  private async reconcile(view: GeoBbox): Promise<void> {
+  private async reconcile(view: GeoBbox, cellKey: string): Promise<void> {
     // Step 1 (§2): what already answers? Stored place bboxes plus fresh
     // negative region observations both count as "known ground" — but only
     // at COMMENSURATE-OR-SMALLER scale: probeAnchors applies the same
@@ -237,7 +237,7 @@ export class PlacesReconcilerService {
       observedAny = true;
       if (result.kind === 'empty') {
         // The vendor OBSERVED that nothing lives here — region-scale, 30d.
-        await this.rememberAskedRegion(result.probedRegion);
+        await this.rememberAskedRegion(result.probedRegion, cellKey);
         answered = [...answered, result.probedRegion];
         continue;
       }
@@ -263,7 +263,7 @@ export class PlacesReconcilerService {
     // over-scale (see NegativeObservation doc). Recorded only when a probe
     // actually fired (a fully-answered pass costs nothing to repeat).
     if (observedAny) {
-      await this.rememberAskedRegion({ kind: 'box', bbox: view });
+      await this.rememberAskedRegion({ kind: 'box', bbox: view }, cellKey);
     }
   }
 
@@ -368,31 +368,53 @@ export class PlacesReconcilerService {
 
   /** Docket #7: the durable write. Never throws — losing one memory row
    *  costs at most a re-spent cheap probe, never a failed settle. */
-  private async rememberAskedRegion(region: ProbedRegion): Promise<void> {
+  private async rememberAskedRegion(
+    region: ProbedRegion,
+    cellKey: string,
+  ): Promise<void> {
     try {
-      await this.prisma.probedRegion.create({
-        data:
-          region.kind === 'disc'
-            ? {
-                kind: 'disc',
-                centerLat: region.center.lat,
-                centerLng: region.center.lng,
-                radiusMeters: region.radiusMeters,
-              }
-            : {
-                kind: 'box',
-                minLat: region.bbox.minLat,
-                minLng: region.bbox.minLng,
-                maxLat: region.bbox.maxLat,
-                maxLng: region.bbox.maxLng,
-              },
-      });
+      // UPSERT ON THE CELL, never append (disease B, 2026-08-01). The
+      // catalog learned this the expensive way: a memory without identity
+      // is a log. Keyed by the same quantized cell the single-flight guard
+      // already uses, one observation REPLACES the previous one for that
+      // cell, so the table is bounded by the world at the levels people
+      // look at instead of by traffic — and dedupe stops being a policy.
+      // RAW, matching the PARTIAL unique (cell_key, kind) WHERE cell_key IS
+      // NOT NULL — Prisma cannot express a partial unique, and declaring a
+      // full one would drift from the migration.
+      const disc = region.kind === 'disc' ? region : null;
+      const box = region.kind === 'box' ? region : null;
+      await this.prisma.$executeRaw(Prisma.sql`
+        /*places:remember_asked_region*/
+        INSERT INTO probed_regions (
+          region_id, kind, cell_key, center_lat, center_lng, radius_meters,
+          min_lat, min_lng, max_lat, max_lng, observed_at
+        ) VALUES (
+          gen_random_uuid(), ${region.kind}, ${cellKey},
+          ${disc ? disc.center.lat : null}, ${disc ? disc.center.lng : null},
+          ${disc ? disc.radiusMeters : null},
+          ${box ? box.bbox.minLat : null}, ${box ? box.bbox.minLng : null},
+          ${box ? box.bbox.maxLat : null}, ${box ? box.bbox.maxLng : null},
+          now()
+        )
+        ON CONFLICT (cell_key, kind) WHERE cell_key IS NOT NULL
+        DO UPDATE SET
+          center_lat = EXCLUDED.center_lat,
+          center_lng = EXCLUDED.center_lng,
+          radius_meters = EXCLUDED.radius_meters,
+          min_lat = EXCLUDED.min_lat,
+          min_lng = EXCLUDED.min_lng,
+          max_lat = EXCLUDED.max_lat,
+          max_lng = EXCLUDED.max_lng,
+          observed_at = EXCLUDED.observed_at
+      `);
     } catch (error) {
-      this.logger.warn('asked-region write failed (worst case: one re-probe)', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
+      this.logger.warn(
+        'Asked-region memory write failed (re-probe costs a cheap draw)',
+        {
+          detail: error instanceof Error ? error.message : String(error),
         },
-      });
+      );
     }
   }
 }

@@ -2096,6 +2096,13 @@ model ProbedRegion {
 
   @@index([observedAt])
   @@map("probed_regions")
+  /// DISEASE B (2026-08-01): the memory's IDENTITY — the same quantized
+  /// cell the reconciler's single-flight already uses. One live row per
+  /// (cell, kind) via the partial unique uq_probed_regions_cell_kind
+  /// (migration 20260801150000), so growth is bounded by GEOGRAPHY, not
+  /// traffic. Legacy rows carry null and expire under the TTL.
+  cellKey            String?  @map("cell_key") @db.VarChar(64)
+
   // Raw-SQL PARTIAL indexes (migration 20260801140000) for the view-scoped
   // read: idx_probed_regions_box_extent ON (min_lat,max_lat,min_lng,max_lng)
   // WHERE kind='box'; idx_probed_regions_disc_center ON
