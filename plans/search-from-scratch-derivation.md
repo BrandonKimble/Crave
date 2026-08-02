@@ -366,6 +366,31 @@ casing silently disables bounds → world-scope queries look like a
 hang); stopCronsForScript does NOT stop BullMQ queue workers (a
 long-lived harness will process real jobs — mirror only, but beware).
 
+**RED TEAM ROUND 3 (2026-08-02, the big one): three independent Opus
+reviewers (SQL/executor, recall/interpretation, wiring-vs-spec) + a
+25-check empirical battery. 15 confirmed findings, all fixed in
+3046df58d and re-verified (final harness 11/11 PASS, suite 84/84).
+Highlights: subject-is-sacred for attribute-only queries (pooled now
+matches ladder); ONE gate decision per request under open-now (gateFull
+parameterization is finally live); soft-word coverage counts scoped to
+the actual pool; starved words trigger demand even on full-looking
+gated pages; expansion trigger uses tier-0 counts; generic spans and
+generic residue blocked in gazetteer mode; cross-type EXACT beats typed
+FUZZY; residue-join hardened (dietary never consumable, strict
+abutment) while keeping fuzzy typo-compounds; gazetteer scan territory-
+scoped; staging dedup + terminal-failure state + drain implied by
+gazetteer 'on'. Cross-checked clean by the reviewers: structured-
+grounding parity with the pre-refactor code (set-identical in every
+branch), evidence-admission unification byte-identical for both
+consumers, pooled page-2 stability, hydrate-never-gates, order-variant
+coverage, empty-array guards. Remaining KNOWN quality gaps are all
+calibration-tail items by design: junk vocabulary grounds until the
+sweep; the ~44-name placement conflicts (incl. real restaurant names
+colliding with food twins, e.g. 'tacodeli') resolve by deterministic
+order until curated; the linker re-sweep re-fits floors for untyped
+recall; residue probing is food-typed-first (costlier but correct via
+cross-type exact).**
+
 0. RE-SEQUENCED (owner 2026-07-30): the program is now **search STRUCTURE
    (this plan, now) → data audit + prompt review cycle (its own third
    plan) → charter reload → search CALIBRATION tail.** Only the
