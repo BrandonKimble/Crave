@@ -36,13 +36,23 @@ UNION SELECT restaurant_id FROM core_restaurant_events;
 CREATE TEMP TABLE doomed AS
 SELECT e.entity_id FROM core_entities e
 WHERE e.entity_id NOT IN (SELECT entity_id FROM preserved_entities)
-  AND e.entity_id NOT IN (SELECT entity_id FROM referenced_ids WHERE entity_id IS NOT NULL);
+  AND e.entity_id NOT IN (SELECT entity_id FROM referenced_ids WHERE entity_id IS NOT NULL)
+  -- TOMBSTONES ARE MEMORY (final-final red team blocker 1, executed: 91%
+  -- of GC's kill list was archived rows — 1,716 junk verdicts whose
+  -- deletion re-arms the re-mint churn tombstone-adopt exists to stop,
+  -- and 365 merge losers whose deletion silently UNDOES the merge at the
+  -- next mention). Archived rows are cheap (~2k) and their entire value
+  -- is being remembered; GC only collects unsupported ACTIVE vocabulary.
+  AND e.status <> 'archived'
+  -- latent silent-nulling seam: demand candidates are ON DELETE SET NULL
+  AND e.entity_id NOT IN (SELECT entity_id FROM demand_scoring_candidates WHERE entity_id IS NOT NULL);
 
 SELECT count(*) AS gc_candidates FROM doomed;
 SELECT type, count(*) FROM core_entities WHERE entity_id IN (SELECT entity_id FROM doomed) GROUP BY type;
 
 \if :{?execute}
-  DELETE FROM entity_redirects WHERE to_entity_id IN (SELECT entity_id FROM doomed);
+  DELETE FROM entity_redirects WHERE to_entity_id IN (SELECT entity_id FROM doomed)
+     OR from_entity_id IN (SELECT entity_id FROM doomed);
   DELETE FROM core_public_entity_scores WHERE subject_id IN (SELECT entity_id FROM doomed);
   DELETE FROM core_restaurant_locations WHERE restaurant_id IN (SELECT entity_id FROM doomed);
   DELETE FROM derived_entity_sibling_edges WHERE anchor_entity_id IN (SELECT entity_id FROM doomed) OR sibling_entity_id IN (SELECT entity_id FROM doomed);

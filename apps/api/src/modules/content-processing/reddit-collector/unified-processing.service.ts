@@ -20,7 +20,6 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { buildCauseChain, LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import {
-  canonicalFold,
   entityIdentityKey,
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
@@ -1641,20 +1640,20 @@ export class UnifiedProcessingService implements OnModuleInit {
               // minted the twin anyway). Token-sorted stripped names are
               // DB-computable; number variance is already covered by the
               // variant probe above.
-              const sortedKey = canonicalFold(canonicalName)
-                .split(' ')
-                .sort()
-                .join(' ');
+              // THE LOCK'S OWN KEY (final-final red team high-2): probe on
+              // identity_key_sorted — the app-written lemma-fold+sort key the
+              // advisory lock serializes on. Raw crave_fold token-sorting
+              // missed plural×reorder twins ("duck confit"/"confit ducks")
+              // that the lock had just serialized, so the second creator
+              // minted the twin anyway.
+              const sortedKey = entityIdentityKey(canonicalName, entityType);
               const orderMatches = await tx.$queryRaw<
                 Array<{ entity_id: string; name: string; aliases: string[] }>
               >`
                 SELECT entity_id, name, aliases FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
-                  AND (
-                    SELECT string_agg(w, ' ' ORDER BY w)
-                    FROM unnest(string_to_array(crave_fold(name), ' ')) w
-                  ) = ${sortedKey}
+                  AND identity_key_sorted = ${sortedKey}
                 ORDER BY created_at
                 LIMIT 1
               `;
@@ -1877,9 +1876,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                   >`
                     SELECT entity_id FROM core_entities
                     WHERE type = ${entityType}::entity_type
-                      AND status <> 'archived'
                       AND identity_key = crave_fold(${canonicalName})
-                    ORDER BY created_at
+                    ORDER BY (status <> 'archived') DESC, created_at
                     LIMIT 1
                   `;
                   if (!winner.length) {
@@ -1900,6 +1898,10 @@ export class UnifiedProcessingService implements OnModuleInit {
               if (createdEntity) {
                 entityId = createdEntity.entityId;
                 createdNew = true;
+                await tx.$executeRaw`
+                  UPDATE core_entities
+                  SET identity_key_sorted = ${entityIdentityKey(canonicalName, entityType)}
+                  WHERE entity_id = ${createdEntity.entityId}::uuid`;
 
                 if (entityType === 'restaurant') {
                   const location = await tx.restaurantLocation.create({

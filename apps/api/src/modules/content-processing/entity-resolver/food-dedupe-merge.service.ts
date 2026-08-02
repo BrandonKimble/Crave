@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
+import { entityIdentityKey } from './entity-identity';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
@@ -51,7 +52,28 @@ export class FoodDedupeMergeService {
    *  globally (isSchedulerRuntime). */
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async runNightly(): Promise<void> {
+    await this.refreshSortedIdentityKeys();
     await this.run({ dryRun: false });
+  }
+
+  /** identity_key_sorted is APP-WRITTEN (the lemma fold has no SQL
+   *  mirror). Creates write it inline; renames and pre-column rows heal
+   *  here nightly before the lanes that join on it run. */
+  async refreshSortedIdentityKeys(): Promise<void> {
+    const stale = await this.prisma.$queryRaw<
+      Array<{ entityId: string; name: string; type: string }>
+    >`
+      SELECT entity_id AS "entityId", name, type::text AS type
+      FROM core_entities
+      WHERE identity_key_sorted IS NULL
+         OR (type NOT IN ('food','ingredient') AND identity_key_sorted <> identity_key)
+    `;
+    for (const row of stale) {
+      await this.prisma.$executeRaw`
+        UPDATE core_entities
+        SET identity_key_sorted = ${entityIdentityKey(row.name, row.type as never)}
+        WHERE entity_id = ${row.entityId}::uuid`;
+    }
   }
 
   async run(
@@ -169,37 +191,51 @@ export class FoodDedupeMergeService {
           OR EXISTS (SELECT 1 FROM core_restaurant_items cb
                      WHERE b.entity_id IN (cb.restaurant_id, cb.food_id))
         )
-        AND (SELECT string_agg(w, ' ' ORDER BY w)
-             FROM unnest(string_to_array(crave_fold(a.name), ' ')) w)
-          = (SELECT string_agg(w, ' ' ORDER BY w)
-             FROM unnest(string_to_array(crave_fold(b.name), ' ')) w)
+        AND a.identity_key_sorted IS NOT NULL
+        AND a.identity_key_sorted = b.identity_key_sorted
     `;
-    for (const pair of orderTwinPairs) {
-      if (
-        consumedByNumberLane.has(pair.a_id) ||
-        consumedByNumberLane.has(pair.b_id) ||
-        mergedByNumber.has(pair.a_id) ||
-        mergedByNumber.has(pair.b_id)
-      ) {
-        continue;
-      }
-      if (dryRun) {
-        this.logger.info('Would merge word-order twin foods', {
+    // JUDGE-GATED, never auto (final-final red team: the column's first
+    // backfill immediately surfaced "dumpling soup"/"soup dumplings" —
+    // token-multiset-identical yet genuinely DIFFERENT dishes. Word order
+    // can be meaning; only the judge may collapse it.)
+    const orderPairsToJudge = orderTwinPairs.filter(
+      (pair) =>
+        !consumedByNumberLane.has(pair.a_id) &&
+        !consumedByNumberLane.has(pair.b_id) &&
+        !mergedByNumber.has(pair.a_id) &&
+        !mergedByNumber.has(pair.b_id),
+    );
+    if (orderPairsToJudge.length && !dryRun) {
+      const verdicts = await this.llmService.matchEntitiesBatch({
+        kind: 'food',
+        items: orderPairsToJudge.map((pair) => ({
+          term: pair.a_name,
+          candidates: [{ id: 1, name: pair.b_name }],
+        })),
+      });
+      for (let i = 0; i < orderPairsToJudge.length; i += 1) {
+        const pair = orderPairsToJudge[i];
+        if (verdicts[i]?.decision !== 'match') {
+          summary.judgeRejected += 1;
+          continue;
+        }
+        this.logger.warn('Merging word-order twin foods (judge-approved)', {
           a: pair.a_name,
           b: pair.b_name,
-          via: 'token-multiset',
-        });
-      } else {
-        this.logger.warn('Merging word-order twin foods', {
-          a: pair.a_name,
-          b: pair.b_name,
-          via: 'token-multiset',
+          via: 'token-multiset+judge',
         });
         await this.mergeFoodPair(pair.a_id, pair.b_id);
         consumedByNumberLane.add(pair.a_id);
         consumedByNumberLane.add(pair.b_id);
+        summary.judgeMerged += 1;
       }
-      summary.autoMerged += 1;
+    } else if (orderPairsToJudge.length) {
+      for (const pair of orderPairsToJudge) {
+        this.logger.info('Would judge word-order twin foods', {
+          a: pair.a_name,
+          b: pair.b_name,
+        });
+      }
     }
 
     // 1. Candidate pairs: high trigram similarity, both active foods, and not
