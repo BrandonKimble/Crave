@@ -31,6 +31,7 @@ import { ExtractionPipelineService } from './extraction-pipeline.service';
 import { RelevanceGateService } from './relevance-gate.service';
 import { CollectorPacerService } from './collector-pacer.service';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
+import { ExtractionScopeService } from './extraction-scope.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
@@ -41,6 +42,7 @@ import { isWorkerRuntime } from '../../../shared/utils/process-role';
 import { SpendAnalyticsService } from '../../external-integrations/shared/spend-analytics.service';
 
 const redditCollectorCoreProviders = [
+  ExtractionScopeService,
   CollectionEvidenceService,
   ExtractionPipelineService,
   RelevanceGateService,

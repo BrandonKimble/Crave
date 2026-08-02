@@ -53,39 +53,58 @@ object the schema doesn't have.
 
 ## 3. The ideal shape (derived from scratch)
 
-### 3.1 Generation is a row
+### 3.1 CORRECTION — entities are IDENTITY, never generation-scoped
 
-```
-extraction_generations(
-  generation_id, prompt_kind, prompt_version, scope_communities[],
-  state,            -- draft | shadowing | ready | active | superseded | discarded
-  campaign_id,      -- the funded envelope, if any
-  doc_total, doc_extracted,          -- completeness is a FACT, not a query
-  created_at, activated_at, superseded_at
-)
-```
+My first draft of this section said "every derived row carries
+`generation_id` — entities, connections, scores, edges." **That is wrong,
+and testing it against the anchor law is what caught it.**
 
-Runs belong to a generation. Documents belong to a generation. **And every
-derived row carries `generation_id`** — entities, connections, scores,
-edges.
+Measured: 181 user list items anchor to 41 entities. The whole reason a
+user's saved restaurant survives a re-extraction is that the entity ID is
+_shared across generations_ — resolution lands new mentions back onto the
+same row. Stamp a generation on entities and a user's list item points at a
+"non-current" entity the instant a generation flips. The abstraction would
+break the exact property the system exists to protect.
 
-Consequences, each of which deletes a defect class:
+So the layers are NOT uniformly generation-scoped. The correct model:
 
-- **"Is this active?" becomes `generation_id = <active>`** — one predicate,
-  zero joins. D2/D7/D12/gap-4b become unwriteable.
-- **Activation becomes one UPDATE** (`state='active'` on the new,
-  `'superseded'` on the old). Atomic by construction. D8's completeness
-  gate is a column comparison, not a 4-table query.
-- **Activation becomes genuinely REVERSIBLE** — the superseded generation's
-  derived rows still exist, just not active. D1's false claim becomes true.
-  Reclaiming space is a separate, explicit `discard` on a superseded
-  generation.
-- **Shadow-minted vocabulary is naturally invisible**: the merge sweeps
-  filter to the active generation, so D5 evaporates without a cron
-  kill-switch — which means **collection genuinely never pauses**, restoring
-  the property the current design claims but doesn't have.
-- **F3's zombies** get a real answer: a starved connection is simply one
-  with no support in the active generation.
+| Layer                                    | Generation-scoped?                         | Why                                                                          |
+| ---------------------------------------- | ------------------------------------------ | ---------------------------------------------------------------------------- |
+| Documents                                | no                                         | source truth, immutable                                                      |
+| Evidence (events)                        | **yes** — already, via `extraction_run_id` | this is what makes a shadow possible                                         |
+| **Identity** (`core_entities`)           | **NO — deliberately shared**               | user anchors, redirects, and alias history live here; sharing IS the feature |
+| Projections (connections, scores, edges) | derived from ACTIVE evidence only          | rebuilt, not versioned                                                       |
+
+The real defect was never "the derived layer lacks a generation column."
+It is that **the domain question — "what is active / owned / affected?" —
+is hand-written as ad-hoc SQL at 37 call sites instead of existing once.**
+A generation table would not have fixed that; it would have added a 38th
+place to get it wrong.
+
+### 3.1b The actual fix: ONE definition per domain question
+
+Every defect maps to a question that should have exactly one tested
+implementation:
+
+| Question                                           | Defects it caused | Home                                                                                                          |
+| -------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| which documents does this run OWN?                 | D2                | `documentsOwnedByRun()`                                                                                       |
+| which restaurants does this document set affect?   | D7                | `affectedRestaurantsForDocuments()` (already existed in replay.service — activate-shadow just didn't call it) |
+| which runs are THIS shadow, for THESE communities? | D12, gap 4b       | `shadowRunsFor()`                                                                                             |
+| which entities have ACTIVE support?                | D5, F3            | `entitiesWithActiveSupport()`                                                                                 |
+
+Two structural supports make those definitions clean:
+
+1. **Run lineage as real columns, not JSON.** `replay_of_run_id` (FK) and
+   `prompt_version` (FK) instead of `metadata->>'replayOfExtractionRunId'`
+   and a hash join. D2's fix is ugly precisely because the relationship is
+   buried in JSON.
+2. **A CI lockdown spec** forbidding raw `active_extraction_run_id` /
+   `system_prompt_hash` joins outside that one module — the pattern
+   `gemini-gateway-lockdown.spec.ts` already proves works.
+
+Generations may still earn a row later for _completeness_ tracking (D8) —
+but as a **scope/progress record**, never as a tag on identity.
 
 ### 3.2 Readers cannot forget the filter
 
@@ -95,8 +114,14 @@ predicate, and the raw `core_*` tables become writable only by the rebuild/
 activation machinery:
 
 ```
-CREATE VIEW entities  AS SELECT * FROM core_entities      WHERE generation_id = active_generation();
-CREATE VIEW dishes    AS SELECT * FROM core_restaurant_items WHERE generation_id = active_generation();
+-- Readers never join to documents/runs themselves; the definition lives once.
+CREATE VIEW active_entity_support AS
+  SELECT DISTINCT e.entity_id
+  FROM core_entities e
+  JOIN core_restaurant_items c ON e.entity_id IN (c.restaurant_id, c.food_id);
+-- (connections ARE the active projection: the rebuild only builds them from
+--  events whose run is the document's ACTIVE run, so "has a connection" IS
+--  "has active support" — no new column needed.)
 ```
 
 Enforced the way the one-gateway law is already enforced: a CI spec that
@@ -140,14 +165,12 @@ against a scratch database. `reextract.sh` becomes a thin alias.
 
 ## 4. Migration path (each step independently valuable)
 
-1. **Add `generation_id` to the derived tables, nullable**, plus the
-   `extraction_generations` table. Backfill the existing corpus as
-   generation 1 (active). Nothing reads it yet — zero risk.
-2. **Write the views + the CI reader lockdown.** Flip readers over one
-   module at a time; the spec fails loudly on regressions.
-3. **Rebuild/activation writes `generation_id`.** Activation becomes a
-   state flip; keep the old physical delete OFF (that alone makes rollback
-   real).
+1. **One `ExtractionScopeService`** owning the four questions above, with
+   specs. Additive — nothing changes behaviour on day one.
+2. **Move every call site onto it**, then add the CI lockdown spec so a
+   38th hand-rolled join cannot appear.
+3. **Run lineage as real columns** (`replay_of_run_id`, `prompt_version`)
+   so the definitions stop parsing JSON.
 4. **Merge sweeps + GC filter by generation** → delete the CRONS_ENABLED
    invariant from the runbook, because it stops being needed.
 5. **Ambient work-context for spend** → delete the "envelope meters 7%"

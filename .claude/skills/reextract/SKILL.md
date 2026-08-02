@@ -13,18 +13,10 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 
 ## Invariants (never violate)
 
-- **The design intent is that collection never pauses** — live lanes extract
-  under the ACTIVE prompt while the candidate runs SHADOW replays
-  (activate:false). **Today there is one honest caveat** (final red team
-  D5): the nightly 3AM dedupe/merge sweeps have no run-provenance filter, so
-  they would consume shadow-minted vocabulary. The mitigation is
-  `CRONS_ENABLED=false` for the shadow window — and because the collection
-  pacer tick is itself a `@Cron`, that ALSO pauses collection. So until the
-  sweeps are provenance-filtered, a shadow window does pause collection.
-  That is fine: shadow windows are days and the catch-up ceiling is ~35
-  comfortable days (foodnyc at 13.4 posts/day is the only fast lane), and
-  lanes resume from their cursors automatically. Do not "fix" this by
-  leaving crons on.
+- **Collection never pauses for prompt iteration.** Live lanes extract under
+  the ACTIVE prompt version while the candidate runs SHADOW replays
+  (activate:false). This is now TRUE rather than aspirational: the merge
+  sweeps filter to active-supported vocabulary, so crons stay ON.
 - **No spend without an approved campaign.** The runner and batch submit
   refuse without `isDispatchable`. Never work around it.
 - **Never activate a candidate prompt without a closed diff review.**
@@ -82,11 +74,13 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 - **`activate` refuses a non-candidate version and a shadow below 99%
   coverage.** Both refusals are correct; do not `--allow-partial` without
   the owner, and never work around the candidate check.
-- **CRONS_ENABLED must stay `false` for the whole shadow window.** The
-  nightly 3AM dedupe/merge sweeps have no run-provenance filter: they treat
-  shadow-minted entities as real vocabulary, can archive a LIVE entity in
-  favour of a candidate's, rekey user list items into it, and spend
-  un-campaigned judge calls. `discard` cannot undo a merge.
+- ~~CRONS_ENABLED must stay false for the shadow window~~ — **DELETED
+  2026-08-01**: the dedupe sweeps now only consider vocabulary with ACTIVE
+  support (`core_restaurant_items` membership), so shadow-minted entities
+  are invisible to them by construction. Measured on the corpus: 5,232 of
+  5,815 active foods are supported — the 583 unsupported ones are exactly
+  what the sweep must not touch. Crons may stay ON during a shadow, which
+  restores the design's actual promise: **collection never pauses.**
 - **The campaign envelope only meters the BATCH line (~7% of spend).**
   Resolver/embedding/attribute calls carry no campaignId, so a breach may
   never fire. Watch TOTAL ledger spend since campaign start, not just

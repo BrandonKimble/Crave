@@ -21,6 +21,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { CollectionEvidenceService } from '../src/modules/content-processing/reddit-collector/collection-evidence.service';
 import { ProjectionRebuildService } from '../src/modules/content-processing/reddit-collector/projection-rebuild.service';
+import { ExtractionScopeService } from '../src/modules/content-processing/reddit-collector/extraction-scope.service';
 import { PromptRegistryService } from '../src/modules/external-integrations/llm/prompt-registry.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
@@ -59,6 +60,9 @@ async function main(): Promise<void> {
     const registry = app.get(PromptRegistryService);
     const evidence = app.get(CollectionEvidenceService);
     const rebuild = app.get(ProjectionRebuildService);
+    // ONE HOME for "owned / affected" (foundational re-derivation): this
+    // script hand-rolled both and got both wrong (D2, D7).
+    const scope = app.get(ExtractionScopeService);
 
     const prompt = await registry.getVersion(promptVersion);
     // ONLY A CANDIDATE IS ACTIVATABLE (final red team): pointed at the
@@ -147,35 +151,10 @@ async function main(): Promise<void> {
     const affectedRestaurants = new Set<string>();
     let flipped = 0;
     for (const run of runs) {
-      // OWNERSHIP PREDICATE (final red team D2): a document rides in MORE
-      // THAN ONE run's inputs whenever it was pulled in as thread context
-      // (extract_from_post=false) or by an overlapping keyword lane —
-      // measured on prod: 13,912 docs (15.5%) have a non-owner run link.
-      // Without this, whichever replay is processed LAST wins the pointer,
-      // so a context-only replay (which extracted nothing) could take
-      // ownership and the supersede-delete would destroy the real mentions.
-      // Only flip docs whose CURRENT active run is the run we replayed.
-      const docs = await prisma.$queryRaw<Array<{ document_id: string }>>`
-        SELECT DISTINCT eid.document_id
-        FROM collection_extraction_inputs ei
-        JOIN collection_extraction_input_documents eid ON eid.input_id = ei.input_id
-        JOIN collection_source_documents d ON d.document_id = eid.document_id
-        JOIN collection_extraction_runs r
-          ON r.extraction_run_id = ei.extraction_run_id
-        WHERE ei.extraction_run_id = ${run.run_id}::uuid
-          AND d.platform <> 'poll_surface'
-          AND d.active_extraction_run_id
-              = (r.metadata->>'replayOfExtractionRunId')::uuid`;
-      const documentIds = docs.map((doc) => doc.document_id);
-      const restaurants = await prisma.$queryRaw<
-        Array<{ restaurant_id: string }>
-      >`
-        SELECT DISTINCT restaurant_id FROM core_restaurant_entity_events
-        WHERE source_document_id = ANY(${documentIds}::uuid[])
-        UNION
-        SELECT DISTINCT restaurant_id FROM core_restaurant_events
-        WHERE source_document_id = ANY(${documentIds}::uuid[])`;
-      for (const row of restaurants) affectedRestaurants.add(row.restaurant_id);
+      const documentIds = await scope.documentsOwnedByRun(run.run_id);
+      const restaurants =
+        await scope.affectedRestaurantsForDocuments(documentIds);
+      for (const id of restaurants) affectedRestaurants.add(id);
       await evidence.activateRunForDocuments(run.run_id, documentIds);
       flipped += documentIds.length;
       if (flipped % 500 === 0) console.log(`  flipped ${flipped} documents…`);

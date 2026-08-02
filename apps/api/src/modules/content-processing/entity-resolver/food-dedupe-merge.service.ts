@@ -74,10 +74,23 @@ export class FoodDedupeMergeService {
     // database that has had a dedupe sweep all along. Number variance is
     // decided in code (food-lemma.ts), never by similarity or by the judge,
     // so it gets its own lane with no floor and no LLM call.
-    const activeFoods = await this.prisma.entity.findMany({
-      where: { type: 'food', status: 'active' },
-      select: { entityId: true, name: true },
-    });
+    // ACTIVE-SUPPORT ONLY (foundational re-derivation, D5): this sweep used
+    // to see EVERY active food, including vocabulary a SHADOW extraction
+    // minted. It could then judge a shadow-minted food and a live one the
+    // same, archive the LIVE one, and rekey user list items into a
+    // candidate that might be discarded — which `discard` cannot undo.
+    // "Has a connection" IS "has active support": the projection rebuild
+    // only writes connections from the document's ACTIVE run.
+    const activeFoods = await this.prisma.$queryRaw<
+      Array<{ entityId: string; name: string }>
+    >`
+      SELECT e.entity_id AS "entityId", e.name
+      FROM core_entities e
+      WHERE e.type = 'food' AND e.status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM core_restaurant_items c
+          WHERE e.entity_id IN (c.restaurant_id, c.food_id)
+        )`;
     const seenNumberPair = new Set<string>();
     const numberVariantPairs: {
       a_id: string;
@@ -146,6 +159,11 @@ export class FoodDedupeMergeService {
       JOIN core_entities b ON a.entity_id < b.entity_id
       WHERE a.type = 'food' AND b.type = 'food'
         AND a.status = 'active' AND b.status = 'active'
+        -- active-support only (D5): never merge shadow-minted vocabulary
+        AND EXISTS (SELECT 1 FROM core_restaurant_items ca
+                    WHERE a.entity_id IN (ca.restaurant_id, ca.food_id))
+        AND EXISTS (SELECT 1 FROM core_restaurant_items cb
+                    WHERE b.entity_id IN (cb.restaurant_id, cb.food_id))
         AND similarity(a.name, b.name) > ${floor}
         AND position(a.name IN b.name) = 0
         AND position(b.name IN a.name) = 0
