@@ -22,6 +22,18 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
       across the load and whether recall misses trace to missing aliases. Worker only if the data
       says the prompt-field floor is insufficient.
 
+## Launch shape (owner-decided build work, not data-gated)
+
+- [ ] **Rebuild the Stripe web checkout rail + Strava-pattern dual-button
+      paywall** (decided 2026-08-01: pre-launch shape). Primary paywall button
+      opens external Stripe web checkout (Apple-commission-free on the US
+      storefront per the April 2025 Epic v. Apple contempt ruling); secondary
+      button does native IAP via RevenueCat. Restore the client rail
+      (createCheckoutSession/createPortalSession, DTOs, CheckoutSession table)
+      from commit `c2861853^` — webhook/refund/cancel plumbing never left.
+      Full context: business/business-model.md (Margin lever) +
+      plans/payments-ideal-shape.md (Purchase flows).
+
 ## Ops / cost
 
 - [ ] **Enable the location-refresh cron** (`refreshStaleLocations`) at launch — freshness only
@@ -33,6 +45,20 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
       relevance gate's PERSISTED verdict reasons stay ON by design (~$0.08/city,
       permanent record of excluded signal). Flip `LLM_AUDIT_REASONS=true`
       temporarily whenever tuning judge prompts in prod.
+- [ ] **Disconnect the GitHub repo from prod api+worker in the Railway
+      dashboard** (service → Settings → Source), then remove the never-match
+      watchPatterns. Discovered 2026-08-01: the patterns that disable
+      auto-deploy ALSO make Railway SKIP CLI deploys, so deploy.sh currently
+      needs a pattern window opened/closed around every prod deploy. The
+      disconnect makes deploy.sh just work and closes the push-to-deploy
+      hole for real.
+- [ ] **Upgrade Railway to Pro + enable daily Postgres backups** — scheduled
+      volume backups (dashboard: postgis-db service → volume → Backups) are
+      Pro-plan-only. This is the only automated backup for prod Postgres;
+      until then coverage is deploy-time only (pre-migration `pg_dump` in
+      `scripts/rig/deploy.sh`, last 5 kept in `~/.crave-deploy-backups`).
+      After enabling, run one restore rehearsal (see
+      plans/production-hardening.md §8).
 - [ ] **Google usage ledger review** — after the first month of real traffic, read the internal
       call ledger + Cloud billing export; hunt inefficiencies.
 
