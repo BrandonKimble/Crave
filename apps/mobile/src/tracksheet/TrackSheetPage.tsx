@@ -1041,6 +1041,15 @@ export function TrackSheetPage({
     }
     const restored = sceneScrollMemoryRef.current.get(sceneKey) ?? 0;
     pendingRestoreRef.current = { sceneKey, restored };
+    // RE-ASSERT THE SHELL CONFIG (found by READING the switch path, 2026-08-02).
+    // "Nothing re-binds on a switch" was right about POSITION — but bindShell
+    // also carries per-scene CONFIG, and chromeHeight is scene-dependent
+    // (strip scenes 108.25, plain 68.25). With applyPin only firing from
+    // mount-time refs, a polls -> child switch left the band mask and the
+    // stash band 40pt TALL (rows hidden under the shorter header), and the
+    // reverse switch left them 40pt SHORT (rows painting into the strip band).
+    // Idempotent, config-only: position still never moves on a switch.
+    applyPinRef.current?.();
     const nativePhysics = NativeModules.TrackScrollPhysics;
     // THE SWITCH FORMULA, as originally derived — and correct again now that
     // there is ONE scroll view. refuse() re-fuses the sheet's CURRENT posture
