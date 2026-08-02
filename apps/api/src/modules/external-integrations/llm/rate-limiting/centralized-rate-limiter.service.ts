@@ -20,6 +20,10 @@ export interface ReservationMetrics {
 export interface ReservationErrorMetrics {
   error: string;
   fallbackMode: boolean;
+  /** What the in-process emergency guard did while Redis was unreachable. */
+  localMinuteUsage?: number;
+  localMinuteLimit?: number;
+  throttledLocally?: boolean;
 }
 
 export interface ReservationResult {
@@ -425,13 +429,32 @@ export class CentralizedRateLimiter {
         },
       });
 
-      // Fallback: wait with exponential backoff
-      const fallbackWaitMs = 1000 + Math.random() * 1000;
+      // EMERGENCY LOCAL GUARD (red team 2026-08-02). This used to return a
+      // ~1.5s sleep and `guaranteed: false`, and the caller only ever copied
+      // that flag into a log payload — so a Redis blip removed LLM rate
+      // limiting ENTIRELY: N concurrent workers each waited 1.5s and then
+      // fired, with no ceiling at all. The Places coordinator already had an
+      // in-process minute counter for exactly this case; the LLM path never
+      // got one.
+      //
+      // The local ceiling is safeRPM divided across the replicas we may be
+      // running (LLM_EXPECTED_REPLICAS, default 1 — a single-process
+      // deployment is the honest default, and over-dividing would throttle
+      // legitimate work harder than Redis-up ever would). This is a
+      // degradation, not a substitute: it bounds the blast radius of an
+      // outage rather than reproducing the distributed limiter.
+      const emergency = this.reserveLocallyDuringOutage(now);
       return {
-        reservationTime: now + fallbackWaitMs,
-        waitMs: fallbackWaitMs,
+        reservationTime: emergency.reservationTime,
+        waitMs: emergency.waitMs,
         guaranteed: false,
-        metrics: { error: 'reservation_failed', fallbackMode: true },
+        metrics: {
+          error: 'reservation_failed',
+          fallbackMode: true,
+          localMinuteUsage: emergency.usage,
+          localMinuteLimit: emergency.limit,
+          throttledLocally: emergency.throttled,
+        },
         reservationMember: '',
       };
     }
@@ -803,5 +826,67 @@ export class CentralizedRateLimiter {
         },
       });
     }
+  }
+
+  /**
+   * In-process minute ceiling used only while the distributed limiter is
+   * unreachable. Mirrors the Places coordinator's emergency guard.
+   */
+  private readonly outageMinuteCounters = new Map<
+    number,
+    { count: number; expiresAt: number }
+  >();
+
+  private reserveLocallyDuringOutage(now: number): {
+    reservationTime: number;
+    waitMs: number;
+    usage: number;
+    limit: number;
+    throttled: boolean;
+  } {
+    const replicas = Math.max(
+      1,
+      Number.parseInt(process.env.LLM_EXPECTED_REPLICAS ?? '1', 10) || 1,
+    );
+    const limit = Math.max(1, Math.floor(this.safeRPM / replicas));
+    const bucket = Math.floor(now / 60_000);
+
+    for (const [key, entry] of this.outageMinuteCounters) {
+      if (entry.expiresAt <= now) this.outageMinuteCounters.delete(key);
+    }
+
+    const entry = this.outageMinuteCounters.get(bucket) ?? {
+      count: 0,
+      expiresAt: (bucket + 1) * 60_000,
+    };
+
+    if (entry.count >= limit) {
+      // Hold until the next minute rather than firing anyway. A caller that
+      // waits is a caller that did not spend.
+      const waitMs = Math.max(1, entry.expiresAt - now);
+      this.logger.warn(
+        'Rate limiter unreachable; holding request on the local minute guard',
+        { usage: entry.count, limit, waitMs, replicas },
+      );
+      return {
+        reservationTime: entry.expiresAt,
+        waitMs,
+        usage: entry.count,
+        limit,
+        throttled: true,
+      };
+    }
+
+    entry.count += 1;
+    this.outageMinuteCounters.set(bucket, entry);
+    // Spread the minute's allowance rather than releasing it all at once.
+    const waitMs = Math.max(0, Math.floor(60_000 / limit));
+    return {
+      reservationTime: now + waitMs,
+      waitMs,
+      usage: entry.count,
+      limit,
+      throttled: false,
+    };
   }
 }
