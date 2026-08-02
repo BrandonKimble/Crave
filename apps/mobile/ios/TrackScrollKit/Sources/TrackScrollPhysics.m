@@ -899,27 +899,14 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
         proxy.onSigmaChanged(0);
       }
     }
-    // THE SWITCH FLOOR (child-jerk fix, 2026-08-01). A switch swaps the
-    // content, and the incoming scene is often SHORTER (a child form after a
-    // long feed). The instant contentSize shrinks, UIKit clamps the offset to
-    // contentH + inset − viewport — which is BELOW the posture we just
-    // preserved — and the seat spring then lifts it back: the owner's "the
-    // sheet jerks down before it settles at the top". Measured: tau fell 647.7
-    // -> 560 between the switch and the seat with NO programmatic writer.
-    //
-    // The engine's prior-grow guard exists for exactly this and does not cover
-    // this path, so the SWITCH states the requirement itself: before the
-    // content can change, make the target posture reachable against ANY new
-    // content height by growing the inset to cover it. The range law tightens
-    // this back to the exact formula on the next contentSize notification —
-    // growing an inset never moves content; only shrinking can.
-    const CGFloat viewportNow = CGRectGetHeight(scrollView.bounds);
-    const CGFloat floorInset = ceil(MAX(tau, target) + viewportNow);
-    UIEdgeInsets switchInsets = scrollView.contentInset;
-    if (switchInsets.bottom < floorInset) {
-      switchInsets.bottom = floorInset;
-      scrollView.contentInset = switchInsets;
-    }
+    // (No switch-time inset floor here. It was added on a WRONG attribution —
+    // that the KVO prior-grow guard did not cover the child-page content
+    // swap. A/B with the floor disabled proved the guard fires and tau holds:
+    //   [GUARD] PRIOR tau=647.7 contentH=3744.3 inset=0.0
+    //   [GUARD] AFTER tau=647.7 contentH=1430.0 inset=1434.0
+    // One guard, one place. A second writer of the same inset would have been
+    // a new bug class, and an inflated inset that no contentSize change came
+    // to tighten would let the sheet scroll into a void.)
     if (fabs(tau - target) > 0.5) {
       [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
     }
