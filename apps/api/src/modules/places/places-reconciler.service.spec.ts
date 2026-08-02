@@ -379,6 +379,39 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     await service.whenIdle();
   });
 
+  it('EACH REGION IS KEYED BY THE GROUND IT SPEAKS FOR: two empty anchors in one view keep TWO discs, never overwrite each other', async () => {
+    // Red-team of my own disease-B fix: keying every region by the VIEW's
+    // cell meant a pass with two "nothing here" anchors wrote the same
+    // (cell,'disc') key twice — the second silently ERASED the first, and
+    // the discarded anchor re-probed on every future settle. A disc speaks
+    // for ~100m around ITS OWN anchor (MAX_CELL_LEVEL is derived to be
+    // exactly that scale); a box speaks for the view it exhausted.
+    let call = 0;
+    const { service, prismaMock } = makeHarness({
+      probeImpl: () => {
+        call += 1;
+        return Promise.resolve({
+          kind: 'empty' as const,
+          probedRegion: {
+            kind: 'disc' as const,
+            // Two anchors far enough apart to be different 100m cells.
+            center: { lat: 0.1 * call, lng: 0.1 * call },
+            radiusMeters: 100,
+          },
+        });
+      },
+    });
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+
+    const discKeys = prismaMock.$executeRaw.mock.calls
+      .map((c: any) => (c[0]?.values ?? [])[1])
+      .filter((k: unknown): k is string => typeof k === 'string');
+    // Distinct anchors ⇒ distinct memories.
+    expect(new Set(discKeys).size).toBe(discKeys.length);
+    expect(discKeys.length).toBeGreaterThan(1);
+  });
+
   it('the TTL prune is throttled OFF the settle path (housekeeping, not a read)', async () => {
     const { service, prismaMock } = makeHarness({});
     service.noteViewport(VIEW);

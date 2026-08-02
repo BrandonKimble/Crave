@@ -116,34 +116,23 @@ export class SignalDemandAggregateService {
     }
     this.refreshInFlight = true;
     try {
-      // CLAIM the invalidation floor in the same read that takes the cursor:
-      // the floor is cleared here, so a concurrent promotion can raise a NEW
-      // one for work this pass has not yet done and it will survive (the old
-      // design let this pass's GREATEST erase it). Over-rebuilding is safe
-      // by design — each day is delete+reinsert.
+      // READ the invalidation floor; do NOT clear it here. Clearing on read
+      // meant a crash mid-rebuild lost the request entirely — strictly worse
+      // than the design this replaced, where the pulled-back watermark
+      // survived a crash. The floor is retired at the END, and only if it
+      // still holds the value this pass actually rebuilt for, so a promotion
+      // landing mid-pass (raising an EARLIER floor) is never swallowed.
+      // Over-rebuilding is safe by design — each day is delete+reinsert.
       const [cursor] = await this.prisma.$queryRaw<
         { watermark: Date | null; floor: Date | null; next_watermark: Date }[]
       >`
-        WITH before AS (
-          -- Every CTE in a statement sees the SAME snapshot, so this reads
-          -- the floor as it was BEFORE the clear below. (UPDATE ... RETURNING
-          -- yields the NEW row — returning the cleared value would have
-          -- silently discarded every invalidation. Caught by running it.)
-          SELECT watermark, rebuild_floor FROM signal_demand_rebuild_state
-          WHERE id = 1
-        ),
-        claimed AS (
-          UPDATE signal_demand_rebuild_state
-          SET rebuild_floor = NULL
-          WHERE id = 1 AND rebuild_floor IS NOT NULL
-          RETURNING 1
-        )
         SELECT
-          (SELECT watermark FROM before) AS watermark,
-          (SELECT rebuild_floor FROM before) AS floor,
+          watermark,
+          rebuild_floor AS floor,
           now() - make_interval(secs => ${WATERMARK_LAG_SECONDS})
-            AS next_watermark,
-          (SELECT count(*) FROM claimed) AS claimed_count
+            AS next_watermark
+        FROM signal_demand_rebuild_state
+        WHERE id = 1
       `;
       // The pass rebuilds from the EARLIER of the two: how far we had built,
       // and how far back the ground changed under us.
@@ -184,6 +173,16 @@ export class SignalDemandAggregateService {
                 signal_demand_rebuild_state.watermark,
                 EXCLUDED.watermark
               ),
+              -- RETIRE the floor only if it is still the one this pass
+              -- rebuilt for: a promotion that raised an earlier floor while
+              -- we were rebuilding keeps it for the next pass, and a crash
+              -- before this point leaves it pending rather than losing it.
+              rebuild_floor = CASE
+                WHEN signal_demand_rebuild_state.rebuild_floor
+                     IS NOT DISTINCT FROM ${floorAt ? floorAt.toISOString() : null}::timestamptz
+                THEN NULL
+                ELSE signal_demand_rebuild_state.rebuild_floor
+              END,
               updated_at = now()
       `;
       if (dayRows.length) {

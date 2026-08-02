@@ -100,6 +100,29 @@ export const MAX_CELL_LEVEL = Math.ceil(
  * distinct. A zero-span (degenerate) view falls to the deepest level via the
  * MAX_CELL_LEVEL cap — no span floor needed.
  */
+/**
+ * THE MEMORY'S IDENTITY, per region kind (red-team of disease B, same day):
+ * a region is keyed by the ground IT speaks for, at the scale it speaks at.
+ *
+ * The first cut keyed EVERY region by the VIEW's cell, which was wrong for
+ * discs: a pass probes up to MAX_PROBE_ANCHORS anchors, so two anchors of
+ * one view both returning "nothing here" wrote the same (cell,'disc') key
+ * and the second OVERWROTE the first — a negative observation silently
+ * lost, and the discarded anchor re-probed on every future settle. A disc
+ * speaks for ~100m around ITS OWN anchor, and MAX_CELL_LEVEL is derived to
+ * be exactly that scale, so that is its identity. A box speaks for the view
+ * it exhausted, so the view's cell is its identity.
+ */
+export function regionCellKey(region: ProbedRegion): string {
+  if (region.kind === 'box') {
+    return viewportCellKey(region.bbox);
+  }
+  const quantum = 360 / 2 ** MAX_CELL_LEVEL;
+  const cellLat = Math.floor(region.center.lat / quantum);
+  const cellLng = Math.floor(region.center.lng / quantum);
+  return `${MAX_CELL_LEVEL}:${cellLat}:${cellLng}`;
+}
+
 export function viewportCellKey(view: GeoBbox): string {
   const lngSpan = bboxLngSpan(view);
   const level = Math.max(
@@ -146,7 +169,7 @@ export class PlacesReconcilerService {
       // pass observes for everyone (stampede self-extinguishes, §2).
       return;
     }
-    const flight = this.reconcile(view, cellKey)
+    const flight = this.reconcile(view)
       .catch((error: unknown) => {
         this.logger.warn(
           'viewport reconcile failed (will retry on a later settle)',
@@ -174,7 +197,7 @@ export class PlacesReconcilerService {
     }
   }
 
-  private async reconcile(view: GeoBbox, cellKey: string): Promise<void> {
+  private async reconcile(view: GeoBbox): Promise<void> {
     // Step 1 (§2): what already answers? Stored place bboxes plus fresh
     // negative region observations both count as "known ground" — but only
     // at COMMENSURATE-OR-SMALLER scale: probeAnchors applies the same
@@ -237,7 +260,7 @@ export class PlacesReconcilerService {
       observedAny = true;
       if (result.kind === 'empty') {
         // The vendor OBSERVED that nothing lives here — region-scale, 30d.
-        await this.rememberAskedRegion(result.probedRegion, cellKey);
+        await this.rememberAskedRegion(result.probedRegion);
         answered = [...answered, result.probedRegion];
         continue;
       }
@@ -263,7 +286,7 @@ export class PlacesReconcilerService {
     // over-scale (see NegativeObservation doc). Recorded only when a probe
     // actually fired (a fully-answered pass costs nothing to repeat).
     if (observedAny) {
-      await this.rememberAskedRegion({ kind: 'box', bbox: view }, cellKey);
+      await this.rememberAskedRegion({ kind: 'box', bbox: view });
     }
   }
 
@@ -368,10 +391,8 @@ export class PlacesReconcilerService {
 
   /** Docket #7: the durable write. Never throws — losing one memory row
    *  costs at most a re-spent cheap probe, never a failed settle. */
-  private async rememberAskedRegion(
-    region: ProbedRegion,
-    cellKey: string,
-  ): Promise<void> {
+  private async rememberAskedRegion(region: ProbedRegion): Promise<void> {
+    const cellKey = regionCellKey(region);
     try {
       // UPSERT ON THE CELL, never append (disease B, 2026-08-01). The
       // catalog learned this the expensive way: a memory without identity
