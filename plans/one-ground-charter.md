@@ -887,3 +887,23 @@ Prod readonly + local dev DB + real vendor + real drain. RESULTS:
   against prod), prod cron behavior itself (deliberately paused), and
   the malformed-country vendor path (no reproducible trigger — TomTom
   answers well-formed).
+
+## CLEANUP CLOSE-OUT (2026-08-01, commit 796feeed + spec follow-up)
+
+The last three parked items landed: home retry ladder (§9.4 polls
+parity); the CATALOG-REVISION WATERMARK replaced the slice's 1h TTL
+(catalogWatermark = max ground fetched_at over the slice-margin region,
+piggybacked on /places/in-view + both feeds; the subject store re-cuts
+the slice on CHANGE, never a clock — pinned: a changed revision
+refetches, a 2h clock advance alone does nothing); PlaceSketchNode
+.provider deleted. A 20-finding dead-code sweep then cleared everything
+the arc ever touched: dead exports (bboxAnswersAnchor), three orphaned
+promotion injections, dead counters/fields/params, the mobile
+wire-shape shims (server never wraps — verified), the visiblePolls
+alias, and every stale comment asserting deleted architecture (two-arm
+demand headers, county-axis ghosts, month-as-backoff, the earned-moment
+trigger roster, pre-P4 controller reasoning, the resolveIdentity ghost
+and its impossible gap-fill branch). Tripwires kept, each with its
+documented reason. Remaining known-stale: search.service's unused
+promotion injection (another session's file is mid-edit; remove on next
+touch).
