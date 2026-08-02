@@ -1,13 +1,32 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import { RestaurantCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
 import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
+import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
 
 /** Phase C re-key: entity seeding is biased by the creation PLACE (centroid +
  *  region hints) — the old market context is dead. */
+/**
+ * §16 K3: how long a vendor MISS stays true. The vendor's catalog does
+ * change, so a miss is a fact with a shelf life — long enough to kill a
+ * retry loop, short enough that a genuinely new restaurant becomes findable
+ * the same week. What changes it: measured vendor catalog latency.
+ */
+const VENDOR_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Shortlist for the free local identity check (bounded, lexical only). */
+const LOCAL_MATCH_SHORTLIST = 8;
+
+/**
+ * §16 K1 (product sentence): "the restaurant they mean is the one near the
+ * poll". A metro-scale radius — same name, same metro, is the same place;
+ * same name two cities over is not, and that case goes to the vendor.
+ */
+const LOCAL_MATCH_RADIUS_METERS = 50_000;
+
 export type PollPlaceContext = {
   center?: { lat: number; lng: number };
   city?: string | null;
@@ -36,6 +55,7 @@ export class PollEntitySeedService {
     private readonly aliasManagement: AliasManagementService,
     private readonly restaurantEnrichment: RestaurantLocationEnrichmentService,
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
+    private readonly entityTextSearch: EntityTextSearchService,
   ) {
     this.logger = loggerService.setContext('PollEntitySeedService');
   }
@@ -117,6 +137,109 @@ export class PollEntitySeedService {
     return { entityId: created.entityId, name: created.name, created: true };
   }
 
+  /**
+   * Free local identity check: does our catalog already hold this restaurant,
+   * near the poll's place? Lexical recall only (no embedding call), accepted
+   * only on strong evidence, and confirmed by a LOCATION inside the poll's
+   * place — a "Joe's Pizza" in another city must not answer for this one.
+   * Returns null whenever we are not sure, which sends the caller to Google.
+   */
+  private async matchKnownRestaurant(
+    name: string,
+    place: PollPlaceContext,
+  ): Promise<ResolvedEntity | null> {
+    try {
+      const candidates = await this.entityTextSearch.retrieveCandidates(
+        name,
+        [EntityType.restaurant],
+        LOCAL_MATCH_SHORTLIST,
+        { denseMode: 'none' },
+      );
+      const strong = candidates.filter(
+        (candidate) =>
+          candidate.sparseEvidence === 'exact' ||
+          candidate.sparseEvidence === 'prefix',
+      );
+      if (!strong.length || !place.center) {
+        return null;
+      }
+      // Geographic confirmation: one of the strong candidates must actually
+      // have a location near the poll's centre. Bounded by the shortlist, one
+      // indexed query, no vendor call.
+      const [near] = await this.prisma.$queryRaw<
+        Array<{ entity_id: string; name: string }>
+      >(Prisma.sql`
+        SELECT e.entity_id, e.name
+        FROM core_entities e
+        JOIN core_restaurant_locations rl ON rl.restaurant_id = e.entity_id
+        WHERE e.entity_id IN (${Prisma.join(strong.map((c) => c.entityId))}::uuid[])
+          AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+          AND ST_DWithin(
+                ST_SetSRID(ST_MakePoint(rl.longitude::float8, rl.latitude::float8), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(${place.center.lng}::float8, ${place.center.lat}::float8), 4326)::geography,
+                ${LOCAL_MATCH_RADIUS_METERS}
+              )
+        LIMIT 1
+      `);
+      if (!near) {
+        return null;
+      }
+      this.logger.info(
+        'Poll subject resolved from our own catalog (no vendor call)',
+        {
+          entityId: near.entity_id,
+          name: near.name,
+        },
+      );
+      return { entityId: near.entity_id, name: near.name, created: false };
+    } catch (error) {
+      // A local-check failure must never block creation — fall through to
+      // the vendor exactly as before.
+      this.logger.warn(
+        'Local restaurant match failed; falling through to vendor',
+        {
+          detail: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return null;
+    }
+  }
+
+  /** Identity of a vendor question: the name, in the metro it was asked about. */
+  private vendorLookupKey(name: string, place: PollPlaceContext): string {
+    const cell = place.center
+      ? `${place.center.lat.toFixed(1)},${place.center.lng.toFixed(1)}`
+      : 'nowhere';
+    return `places:${cell}:${name.toLowerCase()}`.slice(0, 200);
+  }
+
+  private async recentlyMissed(key: string): Promise<boolean> {
+    try {
+      const cutoff = new Date(Date.now() - VENDOR_MISS_TTL_MS);
+      const row = await this.prisma.vendorLookupMiss.findFirst({
+        where: { lookupKey: key, observedAt: { gte: cutoff } },
+        select: { lookupKey: true },
+      });
+      return row != null;
+    } catch {
+      // A memory failure must never block creation — ask the vendor.
+      return false;
+    }
+  }
+
+  private async rememberMiss(key: string): Promise<void> {
+    try {
+      const now = new Date();
+      await this.prisma.vendorLookupMiss.upsert({
+        where: { lookupKey: key },
+        create: { lookupKey: key, vendor: 'google_places', observedAt: now },
+        update: { observedAt: now },
+      });
+    } catch {
+      // Losing one memory costs one re-ask, never a failed creation.
+    }
+  }
+
   async resolveRestaurant(params: {
     entityId?: string | null;
     name?: string | null;
@@ -132,6 +255,36 @@ export class PollEntitySeedService {
       throw new BadRequestException('Restaurant name is required');
     }
 
+    // ASK OURSELVES FIRST (2026-08-01). The collection pipeline has always
+    // answered "which restaurant is this text?" from our OWN catalog —
+    // entity-resolution.service runs the shared recall core and only then
+    // judges. Poll creation asked GOOGLE first and consulted our catalog
+    // afterwards, keyed on the place id Google returned: we were paying a
+    // vendor to identify restaurants we already had, and every failed name
+    // cost money and produced nothing. Two implementations of one question,
+    // and the paid one was the weaker.
+    //
+    // The pre-check is deliberately CONSERVATIVE and FREE: lexical recall
+    // only (denseMode 'none' — an embedding call costs money too), and a
+    // hit counts only on exact/prefix-grade evidence. Anything softer falls
+    // through to Google, which is what a vendor is actually for. A local hit
+    // is also the better product answer: the poll binds to the entity that
+    // already carries our reviews and score, instead of minting a near-twin.
+    const local = await this.matchKnownRestaurant(name, params.place);
+    if (local) {
+      return local;
+    }
+
+    // REMEMBER WHAT YOU ASKED. A name the vendor already failed to resolve is
+    // an answer with a shelf life — re-asking pays to learn the same nothing.
+    // Same law as the geo side's probed_regions, same reason.
+    const missKey = this.vendorLookupKey(name, params.place);
+    if (await this.recentlyMissed(missKey)) {
+      throw new BadRequestException(
+        'Restaurant could not be verified. Please choose a real place.',
+      );
+    }
+
     const match = await this.restaurantEnrichment.resolvePlaceForInput({
       name,
       city: params.place.city ?? undefined,
@@ -142,6 +295,7 @@ export class PollEntitySeedService {
     });
 
     if (!match) {
+      await this.rememberMiss(missKey);
       throw new BadRequestException(
         'Restaurant could not be verified. Please choose a real place.',
       );
@@ -149,6 +303,7 @@ export class PollEntitySeedService {
 
     const placeId = match.place.id?.trim();
     if (!placeId) {
+      await this.rememberMiss(missKey);
       throw new BadRequestException(
         'Restaurant could not be verified. Please choose a real place.',
       );

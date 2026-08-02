@@ -633,18 +633,34 @@ export class PollsService {
     const windowStart = new Date(
       Date.now() - POLL_USER_WEEKLY_CAP_WINDOW_DAYS * MS_PER_DAY,
     );
-    const recentCount = await this.prisma.poll.count({
-      where: {
-        createdByUserId: userId,
-        placeId,
-        launchedAt: { gte: windowStart },
-      },
+    // COUNT ATTEMPTS, NOT SUCCESSES (2026-08-01). This gate runs before the
+    // spend, which was always right — but it counted polls the user
+    // successfully CREATED. A name that fails vendor verification throws
+    // AFTER the paid lookups and writes no poll row, so the counter never
+    // moved and the same user could retry forever, paying us out one lookup
+    // at a time. A turnstile that only counts the people who got through,
+    // while charging everyone who tries.
+    const recentAttempts = await this.prisma.pollCreationAttempt.count({
+      where: { userId, placeId, attemptedAt: { gte: windowStart } },
     });
-    if (recentCount >= POLL_USER_WEEKLY_CAP) {
+    if (recentAttempts >= POLL_USER_WEEKLY_CAP) {
       throw new BadRequestException(
         `You've used your ${POLL_USER_WEEKLY_CAP} polls this week in this area. ` +
           `Try again in a few days, or jump into an existing discussion.`,
       );
+    }
+    // Record the attempt BEFORE any vendor or LLM call. Best-effort: a
+    // bookkeeping failure must not block a legitimate creation.
+    try {
+      await this.prisma.pollCreationAttempt.create({
+        data: { userId, placeId },
+      });
+    } catch (error) {
+      this.logger.warn('Poll attempt bookkeeping failed (creation proceeds)', {
+        userId,
+        placeId,
+        detail: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

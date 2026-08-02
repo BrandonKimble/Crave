@@ -193,6 +193,35 @@ export class GovernanceService implements OnModuleInit {
       },
       reservationTtlMs: 60_000,
     });
+    // GOOGLE PLACES MONTHLY SPEND — the catastrophe backstop (owner-priced
+    // 2026-08-01: $200/month, the same shape as gemini.monthlySpend's cap).
+    //
+    // Places had RATE limits (150k/day, 12k/min, Redis-backed and global)
+    // but no DOLLAR ceiling — and at the metered rates those limits permit
+    // roughly $2.5k/day. Rate is not budget. Unlike TomTom, this spend does
+    // NOT converge: TomTom cost is per PLACE and a place is outlined once,
+    // so it asymptotes as your geography fills in, while Places is driven by
+    // user TEXT, which is infinite.
+    //
+    // This is the LAST line, not the everyday control. What keeps us off it
+    // is asking our own catalog first (poll-entity-seed.matchKnownRestaurant)
+    // and remembering misses (vendor_lookup_misses).
+    const placesCapUsd = parseFloat(
+      process.env.GOOGLE_PLACES_MONTHLY_SPEND_CAP_USD || '',
+    );
+    this.pools.register({
+      name: 'googlePlaces.monthlySpend',
+      credential: 'default',
+      window: {
+        kind: 'perMonth',
+        limit: Math.round(
+          (Number.isFinite(placesCapUsd) && placesCapUsd > 0
+            ? placesCapUsd
+            : 200) * 1_000_000,
+        ),
+      },
+      reservationTtlMs: 60_000,
+    });
     // Reddit pool (§12.5 client rewrite executed): vendor fact K4 is
     // 1000-per-10-minutes / 100-per-minute; the per-minute window is the
     // binding constraint. This pool is THE one reddit window and ledger

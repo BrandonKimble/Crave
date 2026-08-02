@@ -939,6 +939,12 @@ model Poll {
   @@index([placeId], map: "idx_polls_place_id")
   @@index([createdByUserId], map: "idx_polls_created_by_user")
   @@map("polls")
+  /// Hot-path indexes (raw SQL, migration 20260802040000): the feed's
+  /// place+recency sort, launched_at window, and the safety-net sweep's
+  /// (state, updated_at) selection.
+  @@index([placeId, createdAt(sort: Desc)], map: "idx_polls_place_created_at")
+  @@index([launchedAt(sort: Desc)], map: "idx_polls_launched_at")
+  @@index([state, updatedAt(sort: Desc)], map: "idx_polls_state_updated_at")
 }
 
 /// The discussion-thread spine (Phase 2 schema; CRUD + sort land in Phase 4).
@@ -2447,4 +2453,32 @@ model PoolWindowConsumption {
 
   @@id([poolName, windowKey])
   @@map("pool_window_consumption")
+}
+
+/// REMEMBER WHAT YOU ASKED — the probed_regions law applied to the vendor's
+/// other mouth. A name Google could not resolve is an ANSWER; asking again
+/// pays to learn the same nothing. Only MISSES live here: a hit creates the
+/// entity, and the entity is the memory. The TTL is the only writer of
+/// absence, because the vendor's catalog changes.
+model VendorLookupMiss {
+  lookupKey  String   @id @map("lookup_key") @db.VarChar(200)
+  vendor     String   @db.VarChar(32)
+  observedAt DateTime @default(now()) @map("observed_at") @db.Timestamptz()
+
+  @@index([observedAt])
+  @@map("vendor_lookup_misses")
+}
+
+/// COUNT ATTEMPTS, NOT SUCCESSES. The weekly cap used to count polls that
+/// were successfully created, so a creation that failed vendor verification
+/// — after paying for it — never moved the counter and could be retried
+/// forever. An attempt is recorded before any vendor call.
+model PollCreationAttempt {
+  attemptId   String   @id @default(uuid()) @map("attempt_id") @db.Uuid
+  userId      String   @map("user_id")
+  placeId     String   @map("place_id") @db.Uuid
+  attemptedAt DateTime @default(now()) @map("attempted_at") @db.Timestamptz()
+
+  @@index([userId, placeId, attemptedAt(sort: Desc)])
+  @@map("poll_creation_attempts")
 }

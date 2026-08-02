@@ -42,6 +42,15 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     topic: null,
   };
   const prisma = {
+    // COUNT ATTEMPTS, NOT SUCCESSES: the cap reads the attempt ledger now,
+    // because a creation that failed vendor verification used to cost money
+    // and move no counter.
+    pollCreationAttempt: {
+      count: jest
+        .fn<Promise<number>, [{ where: Record<string, unknown> }]>()
+        .mockResolvedValue(options.priorPollCount ?? 0),
+      create: jest.fn().mockResolvedValue({}),
+    },
     poll: {
       count: jest
         .fn<Promise<number>, [{ where: Record<string, unknown> }]>()
@@ -149,8 +158,9 @@ describe('poll creation place re-key (Phase C)', () => {
       ),
     ).rejects.toThrow(/polls this week in this area/);
 
-    const where = prisma.poll.count.mock.calls[0][0].where;
-    expect(where.createdByUserId).toBe(USER_ID);
+    // The cap now reads the ATTEMPT ledger, not created polls.
+    const where = prisma.pollCreationAttempt.count.mock.calls[0][0].where;
+    expect(where.userId).toBe(USER_ID);
     expect(where.placeId).toBe(PLACE_ID);
     expect(where).not.toHaveProperty('marketKey');
     expect(prisma.poll.create).not.toHaveBeenCalled();
