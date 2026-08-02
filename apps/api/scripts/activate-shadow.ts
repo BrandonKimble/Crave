@@ -61,6 +61,16 @@ async function main(): Promise<void> {
     const rebuild = app.get(ProjectionRebuildService);
 
     const prompt = await registry.getVersion(promptVersion);
+    // ONLY A CANDIDATE IS ACTIVATABLE (final red team): pointed at the
+    // ACTIVE version this selects every historical run under that hash
+    // (measured: 46 runs / 50,804 docs for v1) and would silently reshuffle
+    // which run each document points at — a one-keystroke corpus mutation.
+    if (prompt.status !== 'candidate') {
+      throw new Error(
+        `REFUSED: prompt v${promptVersion} is '${prompt.status}', not 'candidate'. ` +
+          `activate-shadow only flips documents onto a candidate's shadow runs.`,
+      );
+    }
     const promptHash = createHash('sha256')
       .update(prompt.content)
       .digest('hex');
@@ -80,7 +90,7 @@ async function main(): Promise<void> {
         AND d.community = ANY(${communities})
         AND d.platform <> 'poll_surface'
       GROUP BY r.extraction_run_id
-      ORDER BY min(r.created_at)`;
+      ORDER BY min(r.started_at)`;
 
     const totalDocs = runs.reduce((sum, run) => sum + Number(run.doc_count), 0);
     console.log(
@@ -127,4 +137,11 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+void main().catch((error: unknown) => {
+  // LOUD FAILURE (final red team): `void main()` swallowed a thrown query
+  // error and exited 0 with no output — activate-shadow silently no-opped
+  // while reporting success, the worst possible outcome for the one
+  // irreversible step. Never let a spend/mutation script exit 0 on error.
+  console.error(error instanceof Error ? error.stack : String(error));
+  process.exit(1);
+});

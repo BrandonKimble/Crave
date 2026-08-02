@@ -47,4 +47,11 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+void main().catch((error: unknown) => {
+  // LOUD FAILURE (final red team): `void main()` swallowed a thrown query
+  // error and exited 0 with no output — activate-shadow silently no-opped
+  // while reporting success, the worst possible outcome for the one
+  // irreversible step. Never let a spend/mutation script exit 0 on error.
+  console.error(error instanceof Error ? error.stack : String(error));
+  process.exit(1);
+});
