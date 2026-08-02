@@ -18,6 +18,7 @@
  * The policy covers only EPHEMERAL reasons that would be paid for and
  * discarded (entity match, attribute placement, poll subject).
  */
+import { isProdEnv, resolveAppEnv } from '../../../shared/config/app-env';
 
 let cached: boolean | null = null;
 
@@ -26,7 +27,9 @@ export function auditReasonsEnabled(): boolean {
   const explicit = process.env.LLM_AUDIT_REASONS?.trim().toLowerCase();
   if (explicit === 'true') cached = true;
   else if (explicit === 'false') cached = false;
-  else cached = process.env.APP_ENV?.trim().toLowerCase() !== 'prod';
+  // ONE resolver (red team 2026-08-02). This read APP_ENV only, so a
+  // process relying on the NODE_ENV fallback was treated as non-prod.
+  else cached = !isProdEnv(resolveAppEnv());
   return cached;
 }
 

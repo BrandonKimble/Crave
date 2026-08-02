@@ -47,3 +47,22 @@ export function isProdEnv(env: AppEnv): boolean {
 export function isDeployedEnv(env: AppEnv): boolean {
   return env === 'prod' || env === 'staging';
 }
+
+/**
+ * Resolve the environment from the process, INCLUDING the NODE_ENV fallback.
+ *
+ * `normalizeAppEnv` normalizes a value you already have. This resolves which
+ * value to use: APP_ENV, else CRAVE_ENV, else infer from NODE_ENV. Five
+ * services hand-rolled exactly this — each spelling `appEnv === 'prod' ||
+ * nodeEnv === 'production'` slightly differently — and two of the strings
+ * became Redis key prefixes (red team 2026-08-02).
+ *
+ * The inference can only ever yield dev or prod. Staging must name itself,
+ * because "looks like production" is the guess that made staging
+ * indistinguishable from prod in the first place.
+ */
+export function resolveAppEnv(env: NodeJS.ProcessEnv = process.env): AppEnv {
+  const raw = env.APP_ENV || env.CRAVE_ENV;
+  if (raw && raw.trim()) return normalizeAppEnv(raw);
+  return env.NODE_ENV?.trim().toLowerCase() === 'production' ? 'prod' : 'dev';
+}

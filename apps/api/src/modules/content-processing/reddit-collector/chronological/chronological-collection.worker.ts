@@ -14,6 +14,7 @@ import { RedditApiError } from '../../../external-integrations/reddit/reddit.exc
 import { filterAndTransformToLLM } from '../../../external-integrations/reddit/reddit-data-filter';
 import { LLMPost } from '../../../external-integrations/llm/llm.types';
 import { Prisma } from '@prisma/client';
+import { isProdEnv, resolveAppEnv } from '../../../../shared/config/app-env';
 
 export interface ChronologicalCollectionJobData {
   subreddit: string; // Changed from subreddits array to single subreddit
@@ -840,15 +841,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       return 1000;
     }
 
-    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '')
-      .trim()
-      .toLowerCase();
-    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-    if (
-      appEnv === 'prod' ||
-      appEnv === 'production' ||
-      nodeEnv === 'production'
-    ) {
+    // ONE resolver (red team 2026-08-02).
+    if (isProdEnv(resolveAppEnv())) {
       return 1000;
     }
 

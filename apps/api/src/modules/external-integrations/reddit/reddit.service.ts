@@ -23,6 +23,7 @@ import {
 import { GovernanceService } from '../governance/governance.service';
 import type { PoolDenial } from '../governance/pool-registry';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
+import { isProdEnv, resolveAppEnv } from '../../../shared/config/app-env';
 
 /**
  * §14.1: the reddit vendor adapter's pool, declared at the client chokepoint
@@ -1433,10 +1434,8 @@ export class RedditService implements OnModuleInit {
   ): Promise<BatchKeywordSearchResponse> {
     const startTime = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
-    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
-    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-    const isProd =
-      appEnv.toLowerCase() === 'prod' || nodeEnv.toLowerCase() === 'production';
+    // ONE resolver (red team 2026-08-02) — five services hand-rolled this.
+    const isProd = isProdEnv(resolveAppEnv());
     const maxConsecutiveRateLimitErrors = (() => {
       if (isProd) {
         return null;

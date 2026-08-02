@@ -58,6 +58,7 @@ import { PlacesReconcilerService } from '../places/places-reconciler.service';
 import { resolveHeaderPlace, type GeoBbox } from '@crave-search/shared';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
+import { isProdEnv, resolveAppEnv } from '../../shared/config/app-env';
 import {
   resolveSearchDebugMode,
   summarizeEntities,
@@ -2993,9 +2994,8 @@ export class SearchService {
   }
 
   private resolveIsDevEnvironment(): boolean {
-    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
-    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-    const isProd = appEnv.toLowerCase() === 'prod' || nodeEnv === 'production';
+    // ONE resolver (red team 2026-08-02) — five services hand-rolled this.
+    const isProd = isProdEnv(resolveAppEnv());
     return !isProd;
   }
 

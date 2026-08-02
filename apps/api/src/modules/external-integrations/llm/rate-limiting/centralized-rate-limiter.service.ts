@@ -2,6 +2,7 @@ import { Injectable, Inject } from '@nestjs/common';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
+import { normalizeAppEnv } from '../../../../shared/config/app-env';
 
 export interface ReservationMetrics {
   currentRPM: number;
@@ -137,14 +138,14 @@ export class CentralizedRateLimiter {
     this.logger = this.loggerService.setContext('CentralizedRateLimiter');
     this.redis = this.redisService.getOrThrow();
 
-    const appEnv = (() => {
-      const raw = process.env.APP_ENV || process.env.CRAVE_ENV;
-      if (raw && raw.trim()) {
-        return raw.trim();
-      }
-      const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-      return nodeEnv === 'production' ? 'prod' : 'dev';
-    })();
+    // ONE NORMALIZER (red team 2026-08-02). This trimmed but never lowercased
+    // and never mapped `production` -> `prod`, while the Places coordinator
+    // used a third dialect — and BOTH strings become Redis key prefixes. Two
+    // spellings across a rolling deploy means two disjoint rate-limit windows
+    // and a silently doubled ceiling on the vendor calls that cost the most.
+    const appEnv = normalizeAppEnv(
+      process.env.APP_ENV || process.env.CRAVE_ENV,
+    );
     const defaultKeyPrefix = `crave:${appEnv}:llm-rate-limiter`;
     const explicitKeyPrefix = process.env.LLM_RATE_LIMIT_PREFIX;
     this.keyPrefix =

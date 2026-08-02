@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import type { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { normalizeAppEnv } from '../../../shared/config/app-env';
 import {
   ExternalApiService,
   RateLimitConfig,
@@ -106,17 +107,12 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       return explicitPrefix.trim();
     }
 
-    const appEnvRaw =
-      process.env.APP_ENV || process.env.CRAVE_ENV || process.env.NODE_ENV;
-    const appEnv =
-      typeof appEnvRaw === 'string' && appEnvRaw.trim()
-        ? appEnvRaw.trim().toLowerCase() === 'production'
-          ? 'prod'
-          : appEnvRaw.trim().toLowerCase() === 'development'
-            ? 'dev'
-            : appEnvRaw.trim()
-        : 'dev';
-
+    // ONE NORMALIZER — see centralized-rate-limiter. This hand-rolled ternary
+    // chain handled production/development but not `stage`, and disagreed with
+    // the LLM limiter's dialect; both strings are Redis key prefixes.
+    const appEnv = normalizeAppEnv(
+      process.env.APP_ENV || process.env.CRAVE_ENV || process.env.NODE_ENV,
+    );
     return `crave:${appEnv}:external-rate-limit`;
   }
 
