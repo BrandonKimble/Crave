@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import { Observable } from 'rxjs';
 import { LoggerService } from '../../shared';
 import { EntitlementService } from './entitlement.service';
+import { resolveVerdict } from './access-verdict';
 
 export const ALLOW_UNENTITLED_KEY = 'allow_unentitled';
 
@@ -93,8 +94,21 @@ export class EntitlementEnforcementInterceptor implements NestInterceptor {
       // user, which is what "behind the paywall" was always meant to mean.
       return this.refuse(context, request, next, mode, null);
     }
-    const allowed = await this.entitlements.hasAccess(userId);
-    if (allowed) {
+    const verdict = await this.entitlements.accessVerdict(userId);
+
+    // THE PAYWALL'S POLICY FOR "DON'T KNOW", STATED OUT LOUD.
+    //
+    // `allow`. This wall guards the whole product surface, so denying on an
+    // entitlement-store outage would lock out every PAYING customer over an
+    // infrastructure blip — a worse failure than briefly serving a lapsed one.
+    // That is the same conclusion the old fail-open reached, but it is now a
+    // DECISION AT A CALL SITE rather than a lie forced by a boolean return,
+    // and it is one line to change per surface.
+    //
+    // Anything that SPENDS (vendor calls, LLM search) must choose `deny`
+    // instead — money is not availability. resolveVerdict makes each surface
+    // say which it is.
+    if (resolveVerdict(verdict, 'allow')) {
       return next.handle();
     }
     return this.refuse(context, request, next, mode, userId);

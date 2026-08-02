@@ -56,9 +56,9 @@ afterAll(async () => {
 
 describe('EntitlementService (ledger integration)', () => {
   it('denies by default and grants trial access', async () => {
-    expect(await service.hasAccess(userId)).toBe(false);
+    expect((await service.accessVerdict(userId)).kind).toBe('denied');
     await service.grant({ userId, source: 'trial_base', days: 14 });
-    expect(await service.hasAccess(userId)).toBe(true);
+    expect((await service.accessVerdict(userId)).kind).toBe('granted');
     const summary = await service.summarize(userId);
     expect(summary.source).toBe('trial_base');
     expect(summary.expiresAt).not.toBeNull();
@@ -169,7 +169,7 @@ describe('EntitlementService (ledger integration)', () => {
       expiresAt: null,
       active: true,
     });
-    expect(await service.hasAccess(userId)).toBe(false);
+    expect((await service.accessVerdict(userId)).kind).toBe('denied');
   });
 
   it('subscription sync: create, renew extends, deactivate revokes — idempotent per sourceRef', async () => {
@@ -199,7 +199,7 @@ describe('EntitlementService (ledger integration)', () => {
       expiresAt: null,
       active: false,
     });
-    expect(await service.hasAccess(userId)).toBe(false);
+    expect((await service.accessVerdict(userId)).kind).toBe('denied');
   });
 
   it('paidUntil vs coverageUntil: a paying subscriber with banked days is never told access comes from a reward', async () => {

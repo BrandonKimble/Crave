@@ -5,6 +5,12 @@ import { Redis } from 'ioredis';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import {
+  denied,
+  granted,
+  indeterminate,
+  type AccessVerdict,
+} from './access-verdict';
 
 /**
  * ONE declaration per grant source (no parallel lists — see the repo's
@@ -382,17 +388,24 @@ export class EntitlementService {
     await this.recomputeCache(params.userId, code);
   }
 
-  /** THE runtime gate check (the app-wide paywall interceptor's question).
-   *  Fail-open on infrastructure errors (billing outage must not take down
-   *  the product), fail-closed on "no grant". */
-  async hasAccess(userId: string): Promise<boolean> {
+  /**
+   * THE runtime access question, answered honestly.
+   *
+   * Returns a VERDICT, not a boolean — see access-verdict.ts. The old
+   * signature could not express "I could not find out", so its catch block
+   * asserted `true` on every infrastructure error: one global lie, chosen on
+   * behalf of every caller, and wrong for any caller that spends money.
+   *
+   * Callers name their own policy for the unknown case via resolveVerdict().
+   */
+  async accessVerdict(userId: string): Promise<AccessVerdict> {
     const code = this.defaultCode;
     try {
       const cacheKey = this.cacheKey(userId, code);
       if (this.redis) {
         const cached = await this.redis.get(cacheKey).catch(() => null);
-        if (cached === '1') return true;
-        if (cached === '0') return false;
+        if (cached === '1') return granted(code);
+        if (cached === '0') return denied('no_grant');
       }
       const summary = await this.summarize(userId);
       if (this.redis) {
@@ -405,16 +418,21 @@ export class EntitlementService {
           .set(cacheKey, summary.active ? '1' : '0', 'EX', ttl, 'NX')
           .catch(() => undefined);
       }
-      return summary.active;
+      return summary.active ? granted(code) : denied('no_grant');
     } catch (error) {
-      this.logger.error('hasAccess failed — failing open', {
-        userId,
-        error:
-          error instanceof Error
-            ? { message: error.message }
-            : { message: String(error) },
-      });
-      return true;
+      const message = error instanceof Error ? error.message : String(error);
+      // LOUD. An indeterminate verdict is an incident: the entitlement store
+      // is not answering. It is emphatically not "everyone is a subscriber",
+      // which is what returning true used to mean, silently, forever.
+      this.logger.error(
+        'accessVerdict INDETERMINATE — entitlement store did not answer',
+        {
+          userId,
+          operation: 'access_verdict_indeterminate',
+          error: { message },
+        },
+      );
+      return indeterminate('store_unavailable', message);
     }
   }
 

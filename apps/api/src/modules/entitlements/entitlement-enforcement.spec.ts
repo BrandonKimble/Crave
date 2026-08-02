@@ -39,7 +39,13 @@ function build(options: { exempt: boolean; entitled: boolean }) {
       getAllAndOverride: () => options.exempt,
     } as never,
     {
-      hasAccess: jest.fn().mockResolvedValue(options.entitled),
+      accessVerdict: jest
+        .fn()
+        .mockResolvedValue(
+          options.entitled
+            ? { kind: 'granted', entitlementCode: 'crave_plus' }
+            : { kind: 'denied', reason: 'no_grant' },
+        ),
       defaultCode: 'crave_plus',
     } as never,
     {
@@ -88,6 +94,29 @@ describe('paywall: enforce mode', () => {
     await expect(
       interceptor.intercept(contextFor({ userId: 'u1' }), next as never),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('an INDETERMINATE verdict allows here — the wall guards availability, and says so', async () => {
+    // The paywall's chosen policy for "don't know" is `allow`: denying on an
+    // entitlement-store outage would lock out every PAYING customer over an
+    // infrastructure blip. Same outcome as the old fail-open, but now a
+    // decision at a call site rather than a lie forced by a boolean return —
+    // and one line to flip per surface. Anything that SPENDS must choose deny.
+    const { interceptor, next } = build({ exempt: false, entitled: false });
+    (
+      interceptor as unknown as {
+        entitlements: { accessVerdict: jest.Mock };
+      }
+    ).entitlements.accessVerdict.mockResolvedValue({
+      kind: 'indeterminate',
+      cause: 'store_unavailable',
+      message: 'redis down',
+    });
+    const result = await interceptor.intercept(
+      contextFor({ userId: 'u1' }),
+      next as never,
+    );
+    await expect(firstValueFrom(result)).resolves.toBe('body');
   });
 
   it('allows an entitled user', async () => {
