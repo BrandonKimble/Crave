@@ -11,8 +11,37 @@
 ALTER TABLE core_entities
   ADD COLUMN IF NOT EXISTS identity_key TEXT
   GENERATED ALWAYS AS (
-    btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g'))
+    btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
   ) STORED;
+
+-- SELF-HEALING pre-dedupe (red team: prod's vocabulary drifts between the
+-- snapshot and the deploy — one new duplicate would abort this migration
+-- and crash-loop every boot). Generic: for any (type, key) group with >1
+-- active attribute row, the most-evidenced survives; the rest archive
+-- with redirects.
+CREATE TEMP TABLE attr_key_dupes AS
+SELECT e.entity_id AS from_id,
+  (SELECT k.entity_id FROM core_entities k
+   WHERE k.type = e.type AND k.status <> 'archived'
+     AND btrim(regexp_replace(regexp_replace(lower(k.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+       = btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+   ORDER BY (SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.entity_id = k.entity_id) DESC,
+            k.created_at
+   LIMIT 1) AS to_id
+FROM core_entities e
+WHERE e.type IN ('food_attribute','restaurant_attribute') AND e.status <> 'archived'
+  AND EXISTS (
+    SELECT 1 FROM core_entities o
+    WHERE o.type = e.type AND o.status <> 'archived' AND o.entity_id <> e.entity_id
+      AND btrim(regexp_replace(regexp_replace(lower(o.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+        = btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
+  );
+DELETE FROM attr_key_dupes WHERE from_id = to_id;
+UPDATE core_entities SET status = 'archived'
+WHERE entity_id IN (SELECT from_id FROM attr_key_dupes);
+INSERT INTO entity_redirects (from_entity_id, to_entity_id)
+SELECT from_id, to_id FROM attr_key_dupes
+ON CONFLICT (from_entity_id) DO NOTHING;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_attribute_identity_key
   ON core_entities (type, identity_key)

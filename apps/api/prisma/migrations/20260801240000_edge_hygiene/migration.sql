@@ -28,19 +28,6 @@ DELETE FROM derived_food_category_edges e
 WHERE e.conn_support < 2
   AND e.conn_support < e.food_conns;
 
--- 4. the shadow rule's admission flag: parents with dish-level children
---    at the same restaurant must be category items or the one-claim-once
---    rule never considers them.
-UPDATE core_restaurant_items parent SET is_category_item = true
-WHERE parent.is_category_item = false
-  AND EXISTS (
-    SELECT 1 FROM core_restaurant_items child
-    JOIN derived_food_category_edges e
-      ON e.food_id = child.food_id AND e.category_id = parent.food_id
-    WHERE child.restaurant_id = parent.restaurant_id
-      AND child.connection_id <> parent.connection_id
-  );
-
 -- 5. phantom connections: mentions but zero backing events, not
 --    user-anchored, not curated
 DELETE FROM core_restaurant_items c
@@ -60,8 +47,12 @@ UPDATE collection_source_documents d
 SET active_extraction_run_id = NULL
 FROM collection_extraction_runs r
 WHERE r.extraction_run_id = d.active_extraction_run_id
-  AND r.status = 'failed';
-DELETE FROM collection_source_documents WHERE community LIKE 'region-us-%';
+  AND r.status = 'failed'
+  -- pinned to the audit's named stale run (2026-07-06 foodnyc); live
+  -- transient failures are the schedulers' business, not a migration's
+  AND r.started_at < '2026-07-10';
+DELETE FROM collection_source_documents
+WHERE community IN ('region-us-tx-austin', 'region-us-ny-new-york');
 
 SELECT
   (SELECT count(*) FROM derived_food_category_edges) AS edges_after,

@@ -1640,8 +1640,8 @@ export class UnifiedProcessingService implements OnModuleInit {
               // variant probe above.
               const sortedKey = canonicalName
                 .toLowerCase()
-                .replace(/[^a-z0-9 ]/g, '')
-                .replace(/\s+/g, ' ')
+                .replace(/'/g, '')
+                .replace(/[^a-z0-9]+/g, ' ')
                 .trim()
                 .split(' ')
                 .sort()
@@ -1656,7 +1656,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                     SELECT string_agg(w, ' ' ORDER BY w)
                     FROM unnest(string_to_array(
                       btrim(regexp_replace(regexp_replace(lower(name),
-                        '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')), ' ')) w
+                        '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')), ' ')) w
                   ) = ${sortedKey}
                 ORDER BY created_at
                 LIMIT 1
@@ -1700,7 +1700,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
                   AND btrim(regexp_replace(regexp_replace(lower(name),
-                        '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) = ${strippedKey}
+                        '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) = ${strippedKey}
                 ORDER BY created_at
                 LIMIT 1
               `;

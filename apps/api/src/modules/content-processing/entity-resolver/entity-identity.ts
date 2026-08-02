@@ -24,14 +24,15 @@ import { foodNameVariants } from './food-lemma';
  *   No token sort — restaurant word order is branding.
  */
 export function entityIdentityKey(name: string, type: EntityType): string {
-  // ASCII-only strip, EXACTLY mirroring the SQL expression the non-food
-  // adopt-probe uses (lower + regexp_replace('[^a-z0-9 ]') + squeeze) — the
-  // TS key and the DB-computed key must agree byte-for-byte or the probe
-  // can't find what the lock serialized.
+  // THE canonical fold, mirrored byte-for-byte by every SQL site
+  // (identity_key generated column, probes, sweeps, migrations):
+  // apostrophes STRIP (Phil's == Phils), all other punctuation becomes a
+  // SPACE (tex-mex == tex mex — round-6 red team: strip-to-nothing split
+  // hyphenated cuisines instead of uniting them).
   const base = name
     .toLowerCase()
-    .replace(/[^a-z0-9 ]/g, '')
-    .replace(/\s+/g, ' ')
+    .replace(/'/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
     .trim();
   if (!base) {
     return base;

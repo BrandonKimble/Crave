@@ -410,11 +410,11 @@ export class RestaurantEntityMergeService {
     const groups = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
-      SELECT btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) AS name,
+      SELECT btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) AS name,
              array_agg(entity_id ORDER BY created_at) AS entity_ids
       FROM core_entities
       WHERE type = 'restaurant' AND status = 'active'
-      GROUP BY btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g'))
+      GROUP BY btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
       HAVING count(*) >= 2
     `;
     // PREFIX LANE (class ③): the stub/qualifier duplicate classes —
@@ -429,7 +429,7 @@ export class RestaurantEntityMergeService {
     >`
       WITH stripped AS (
         SELECT entity_id,
-               btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\\s+', ' ', 'g')) AS key,
+               btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) AS key,
                EXISTS (SELECT 1 FROM core_restaurant_locations l
                        WHERE l.restaurant_id = core_entities.entity_id
                          AND l.google_place_id IS NOT NULL) AS grounded
@@ -482,6 +482,10 @@ export class RestaurantEntityMergeService {
                          WHERE ev.restaurant_id = e.entity_id), '{}') AS communities
         FROM core_entities e
         WHERE e.entity_id = ANY(${group.entity_ids}::uuid[])
+          -- round-6 red team: an earlier merge THIS RUN may have archived a
+          -- member; judging a stale snapshot could merge a tombstone (the
+          -- length guard below then skips the pair for free)
+          AND e.status = 'active'
         ORDER BY e.created_at
       `;
       if (details.length < 2) continue;

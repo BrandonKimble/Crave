@@ -37,10 +37,11 @@ INSERT INTO cuisine_lexicon VALUES
 ('sicilian'),('soul food'),('spanish'),('szechuan'),('taiwanese'),
 ('tex-mex'),('tex mex'),('thai'),('turkish'),('vietnamese');
 
--- stripped fold so 'tex mex' and 'tex-mex' share one canonical
+-- FOLD: apostrophes strip, other punctuation becomes a space —
+-- 'tex mex' and 'tex-mex' share one canonical AND "Phil's"=='Phils'
 CREATE TEMP TABLE cuisine_names AS
 SELECT name,
-  btrim(regexp_replace(regexp_replace(lower(name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')) AS fold
+  btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) AS fold
 FROM cuisine_lexicon;
 
 -- --------------------------------------------------- canonical per fold
@@ -51,7 +52,7 @@ SELECT DISTINCT ON (cn.fold)
   cn.fold, e.entity_id, e.name
 FROM cuisine_names cn
 JOIN core_entities e
-  ON btrim(regexp_replace(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')) = cn.fold
+  ON btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) = cn.fold
  AND e.type = 'restaurant_attribute' AND e.status = 'active'
 ORDER BY cn.fold,
   (SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.entity_id = e.entity_id) DESC;
@@ -62,7 +63,7 @@ FROM (
   SELECT DISTINCT ON (cn.fold) cn.fold, e.name AS best_name
   FROM cuisine_names cn
   JOIN core_entities e
-    ON btrim(regexp_replace(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')) = cn.fold
+    ON btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) = cn.fold
    AND e.type IN ('food_attribute','restaurant_attribute')
    AND e.status = 'archived'
   WHERE cn.fold NOT IN (SELECT fold FROM cuisine_canonicals)
@@ -78,12 +79,22 @@ WHERE NOT EXISTS (SELECT 1 FROM core_entities e WHERE e.entity_id = c.entity_id)
 UPDATE core_entities e SET facet = 'cuisine'
 FROM cuisine_canonicals c WHERE e.entity_id = c.entity_id;
 
+-- ACTIVE food_attribute cuisines fold too (round-6 red team: 'bbq' lived
+-- on as an active food_attribute with 35 events split away from the
+-- canonical) — archive them into the fold before writing redirects.
+UPDATE core_entities e SET status = 'archived'
+FROM cuisine_names cn, cuisine_canonicals c
+WHERE btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) = cn.fold
+  AND c.fold = cn.fold
+  AND e.type = 'food_attribute' AND e.status = 'active'
+  AND e.entity_id <> c.entity_id;
+
 -- ------------------------------------------------------------ redirects
 INSERT INTO entity_redirects (from_entity_id, to_entity_id)
 SELECT e.entity_id, c.entity_id
 FROM core_entities e
 JOIN cuisine_names cn
-  ON btrim(regexp_replace(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')) = cn.fold
+  ON btrim(regexp_replace(regexp_replace(lower(e.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) = cn.fold
 JOIN cuisine_canonicals c ON c.fold = cn.fold
 WHERE e.type IN ('food_attribute','restaurant_attribute')
   AND e.status = 'archived'

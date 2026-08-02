@@ -194,6 +194,11 @@ export class ProjectionRebuildService implements OnModuleInit {
     restaurantIds: string[],
   ): Promise<void> {
     if (!restaurantIds.length) return;
+    // GLOBAL edge lock (round-6 red team): edge rows are keyed by FOOD and
+    // shared across restaurants — two rebuild txs holding disjoint
+    // restaurant locks contend on the same hot-food edges in unsynchronized
+    // order (deadlock shape). One lock serializes only this phase.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('rebuild:food-category-edges'))`;
     await tx.$executeRawUnsafe(
       `DELETE FROM derived_food_category_edges
        WHERE food_id IN (
@@ -213,9 +218,19 @@ export class ProjectionRebuildService implements OnModuleInit {
            WHERE restaurant_id = ANY($1::uuid[])
          )
        GROUP BY c.food_id, cat_id
-       HAVING count(*) >= 2
+       HAVING (count(*) >= 2
            OR count(*) = (SELECT count(*) FROM core_restaurant_items c3
-                          WHERE c3.food_id = c.food_id)`,
+                          WHERE c3.food_id = c.food_id))
+          -- mint-time twins of the edge_hygiene cleanup (round-6 red team:
+          -- cleanup was transient because rebuilds re-minted what it
+          -- deleted): no containment inversions, and of a symmetric pair
+          -- only the better-supported direction mints
+          AND NOT EXISTS (
+            SELECT 1 FROM core_entities f, core_entities cat
+            WHERE f.entity_id = c.food_id AND cat.entity_id = cat_id
+              AND position(lower(f.name) IN lower(cat.name)) > 0
+              AND lower(f.name) <> lower(cat.name)
+          )`,
       restaurantIds,
     );
   }

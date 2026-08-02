@@ -9,7 +9,8 @@
 -- non-dining venues are here.
 CREATE TEMP TABLE junk_restaurants AS
 SELECT entity_id FROM core_entities
-WHERE type = 'restaurant' AND status = 'active' AND lower(name) IN (
+WHERE type = 'restaurant' AND status = 'active'
+  AND btrim(regexp_replace(regexp_replace(lower(name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')) IN (
   -- CPG brands (the frozen-pizza-at-HEB thread)
   'digiorno','home run inn','screamin sicilian','promised land','red baron',
   'tombstone','freschetta','totinos','hot pockets','newmans own','udis',
@@ -32,6 +33,16 @@ WHERE type = 'restaurant' AND status = 'active' AND lower(name) IN (
   'ko','php','median','best quality daughter','water stop',
   'charlie vergos rendezvous bbq','rutts hutt','lions choice','zupardis'
 );
+
+-- USER-ANCHOR EXEMPTION (round-6 red team: H-E-B carried 43 curated list
+-- items + photos — archiving a venue users have anchored breaks their
+-- surfaces). Anchored venues stay ACTIVE; the re-extraction prompt's
+-- venue taxonomy owns their eventual classification.
+DELETE FROM junk_restaurants j
+WHERE EXISTS (SELECT 1 FROM curated_list_items cl WHERE cl.restaurant_id = j.entity_id OR cl.entity_id = j.entity_id)
+   OR EXISTS (SELECT 1 FROM user_list_items u WHERE u.restaurant_id = j.entity_id)
+   OR EXISTS (SELECT 1 FROM photos p WHERE p.restaurant_id = j.entity_id)
+   OR EXISTS (SELECT 1 FROM poll_topics t WHERE t.target_restaurant_id = j.entity_id);
 
 UPDATE core_entities SET status = 'archived'
 WHERE entity_id IN (SELECT entity_id FROM junk_restaurants);

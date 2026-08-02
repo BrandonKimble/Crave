@@ -10,16 +10,15 @@ FROM core_entities fa
 JOIN LATERAL (
   SELECT ra.entity_id FROM core_entities ra
   WHERE ra.type = 'restaurant_attribute' AND ra.status = 'active'
-    AND btrim(regexp_replace(regexp_replace(lower(ra.name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g'))
+    AND btrim(regexp_replace(regexp_replace(lower(ra.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g'))
         IN (
-          btrim(regexp_replace(regexp_replace(lower(fa.name), '[^a-z0-9 ]', '', 'g'), '\s+', ' ', 'g')),
+          btrim(regexp_replace(regexp_replace(lower(fa.name), '''', '', 'g'), '[^a-z0-9]+', ' ', 'g')),
           CASE lower(fa.name)
             WHEN 'seasonal' THEN 'seasonal menu'
-            WHEN 'late-night' THEN 'late night'
-            WHEN 'all you can eat' THEN 'allyoucaneat'
           END
         )
-  ORDER BY (SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.entity_id = ra.entity_id) DESC
+  ORDER BY (SELECT count(*) FROM core_restaurant_entity_events ev WHERE ev.entity_id = ra.entity_id) DESC,
+           ra.created_at
   LIMIT 1
 ) ra ON true
 WHERE fa.type = 'food_attribute' AND fa.status = 'active'
