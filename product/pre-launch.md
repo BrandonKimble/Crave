@@ -164,6 +164,24 @@ reason that will stop being true.
       plans/production-hardening.md §8).
 - [ ] **Google usage ledger review** — after the first month of real traffic, read the internal
       call ledger + Cloud billing export; hunt inefficiencies.
+- [ ] **Cloudinary environment split (paid)** — the account is on the FREE plan
+      (one product environment), so staging and prod share credentials with only
+      prefix separation, and the account-level API secret is shared. At launch:
+      upgrade to a plan with multiple product environments (Cloudinary
+      dashboard → Settings → Product environments → New environment, name it
+      `crave-staging`), copy its cloud name/key/secret into the Railway staging
+      api+worker vars (`CLOUDINARY_*`), and rotate the prod secret afterward.
+      (Deferred 2026-08-02: owner chose not to start paid plans yet.)
+- [ ] **Stripe live-mode activation (needs business details)** — prod still runs
+      test keys. Dashboard → Activate account (business info, bank account),
+      then swap `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` on prod api to the
+      live values and re-point the webhook endpoint in live mode. Pairs with the
+      Stripe web-checkout rail rebuild above.
+- [ ] **Clerk dedicated staging application (optional)** — staging currently
+      uses the dev instance of the prod Clerk app (pk_test/sk_test), which is
+      Clerk's intended staging story and fine pre-launch. If real staging users
+      ever matter: Clerk dashboard → top-left app switcher → Create application
+      → name `crave-staging` → copy its dev keys into Railway staging vars.
 
 ## Explicitly NOT parked here (answered with current data, 2026-07-05+)
 
