@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { GEMINI_CALLER_PROFILES } from './gemini-caller-profiles';
+import { codeOnly } from '../../../shared/testing/code-only';
 
 /**
  * THE TOPOLOGY GUARD. Every Gemini cost bug this month was one defect in N
@@ -79,9 +80,16 @@ describe('Gemini gateway lockdown', () => {
       'caches.create',
       'batches.create',
     ];
-    const gateway = readFileSync(
-      join(SRC_ROOT, 'modules/external-integrations/llm/llm.service.ts'),
-      'utf8',
+    // COMMENT-STRIPPED (red team 2026-08-02). A comment sixteen lines above
+    // the generateContent call already contained the string
+    // `assertSpendBudgetOpen`, so deleting the ACTUAL gate on the main
+    // generation path left this test green. A scanner that reads prose as
+    // implementation is a search for the word we hoped to find.
+    const gateway = codeOnly(
+      readFileSync(
+        join(SRC_ROOT, 'modules/external-integrations/llm/llm.service.ts'),
+        'utf8',
+      ),
     );
     const lines = gateway.split('\n');
 

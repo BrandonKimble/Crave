@@ -53,7 +53,6 @@ function makeService(params: {
   return new UserListTileGalleryService(
     prisma as never,
     mapper as never,
-    photoRead as never,
     photoReads as never,
   );
 }

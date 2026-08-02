@@ -69,6 +69,23 @@ export class ReconciliationMultiplierService implements OnApplicationBootstrap {
     return multiplier === 1 ? ledgerMicros : ledgerMicros * multiplier;
   }
 
+  /**
+   * The AWAITED, DB-fresh ratio. Use this wherever you can afford a round
+   * trip — notably when MINTING a campaign envelope, so mint and drain cannot
+   * be quoted at different ratios.
+   *
+   * The synchronous `gross()` below exists only because the metering path is
+   * fire-and-forget and cannot await; it under-grosses on a cold cache. If the
+   * estimate side used fresh and the meter side used cold, an envelope would
+   * be minted at 1.7x and its opening events drained at 1.0x — reintroducing
+   * the exact mint/drain currency split this service was built to end (red
+   * team 2026-08-02).
+   */
+  async multiplierForFresh(service: string): Promise<number> {
+    await this.refresh(service);
+    return this.multiplierFor(service);
+  }
+
   /** The cached ratio for `service`; 1 when never reconciled. */
   multiplierFor(service: string): number {
     const hit = this.cache.get(service);

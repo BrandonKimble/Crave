@@ -2,6 +2,13 @@ import 'reflect-metadata';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PhotoReads } from './photo-reads';
+import { filesImporting } from '../../shared/testing/import-scan';
+
+const SRC = join(__dirname, '..', '..');
+const tileGallery = readFileSync(
+  join(SRC, 'modules/user-lists/user-list-tile-gallery.service.ts'),
+  'utf8',
+);
 
 // BLOCKING IS A PROPERTY OF THE QUERY, NOT OF THE RESULT.
 //
@@ -142,29 +149,37 @@ describe('the exclusion is pushed into the query', () => {
 });
 
 describe('the seam is the only door', () => {
-  const read = (p: string) => readFileSync(join(__dirname, p), 'utf8');
-  const controller = read('photos.controller.ts');
-  const tileGallery = read(
-    join('..', 'user-lists', 'user-list-tile-gallery.service.ts'),
-  );
-
-  it('no photo route reads through the unscoped service', () => {
-    const unscoped = [...controller.matchAll(/this\.reads\.(\w+)\(/g)].map(
-      (m) => m[1],
-    );
-    expect(unscoped).toEqual([]);
+  // IMPORT-BASED, WHOLE-TREE (red team 2026-08-02). The previous version of
+  // this block did two things wrong at once. It grepped `this.reads.` against
+  // the controller — whose field is named `photoReads`, so the pattern matched
+  // NOTHING and the test asserted that nothing equals nothing. And it read two
+  // hard-coded files, so a third consumer was invisible in exactly the way the
+  // tile gallery had been.
+  //
+  // Containment is a property of the whole tree, so the guard has to be too.
+  it('nothing outside the photos seam imports PhotoReadService', () => {
+    const offenders = filesImporting('PhotoReadService', {
+      root: SRC,
+      allow: [
+        // The seam itself, and the module that provides it.
+        'modules/photos/photo-reads.ts',
+        'modules/photos/photos.module.ts',
+        // The service's own file.
+        'modules/photos/photo-read.service.ts',
+      ],
+    });
+    expect(offenders).toEqual([]);
   });
 
-  it('every photo read route goes through forViewer', () => {
-    const scoped = [
-      ...controller.matchAll(/photoReads\s*\n?\s*\.?forViewer\(/g),
-    ];
-    expect(scoped.length).toBeGreaterThanOrEqual(3);
+  it('the scanner can see a real import (it is not vacuously green)', () => {
+    // If the walker silently matched nothing, the assertion above would pass
+    // forever. Prove it finds a symbol we know is imported widely.
+    const seen = filesImporting('PrismaService', { root: SRC });
+    expect(seen.length).toBeGreaterThan(10);
   });
 
-  it('the list-tile gallery reads through the seam, not PhotoReadService', () => {
+  it('the list-tile gallery reads through the seam', () => {
     expect(tileGallery).toContain('forViewer(');
-    expect(tileGallery).not.toContain('this.photoRead.');
   });
 });
 

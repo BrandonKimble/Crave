@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { asId, type PlaceId, type RestaurantId, type UserId } from './ids';
+import { codeOnly } from '../testing/code-only';
 
 // TWO FAILURE MODES, TWO MECHANISMS.
 //
@@ -58,23 +59,44 @@ describe('same-type id pairs take named participants', () => {
 
   for (const [file, method] of cases) {
     it(`${method} cannot be called positionally`, () => {
-      const source = read(file);
+      const source = codeOnly(read(file));
       const at = source.indexOf(`async ${method}(`);
       expect({ method, found: at >= 0 }).toEqual({ method, found: true });
-      // The signature must destructure an object, not accept `x: string,`
-      // followed by another id.
-      const signature = source.slice(at, at + 260);
-      expect({ method, destructured: signature.includes('{') }).toEqual({
-        method,
-        destructured: true,
-      });
-      const positionalIdPair =
-        /\(\s*\w*[Ii]d\s*:\s*string\s*,\s*\w*[Ii]d\s*:\s*string/.test(
-          signature,
+
+      // Read the PARAMETER LIST only — from the opening paren to its match.
+      // The previous version sliced 260 chars and asked whether it contained
+      // `{`, which is true of every method that has a BODY. Reverting
+      // blockUser to positional therefore stayed green (red team 2026-08-02).
+      const open = source.indexOf('(', at);
+      let depth = 0;
+      let close = open;
+      for (let i = open; i < source.length; i++) {
+        if (source[i] === '(') depth++;
+        else if (source[i] === ')') {
+          depth--;
+          if (depth === 0) {
+            close = i;
+            break;
+          }
+        }
+      }
+      const params = source.slice(open + 1, close);
+
+      // The participants must arrive as ONE destructured object, so order
+      // carries no meaning. Two bare parameters — under ANY names, not just
+      // ones ending in `Id`, since renaming to `blocker`/`blocked` was the
+      // obvious evasion — is the shape being forbidden.
+      const destructured = /^\s*\{/.test(params);
+      expect({ method, destructured }).toEqual({ method, destructured: true });
+
+      const topLevel = params.replace(/\{[^}]*\}/g, 'OBJ');
+      const positionalPair =
+        /\bOBJ\s*:\s*\{?|\w+\s*:\s*string\s*,\s*\w+\s*:\s*string/.test(
+          topLevel.replace(/OBJ/g, ''),
         );
-      expect({ method, positionalIdPair }).toEqual({
+      expect({ method, positionalPair }).toEqual({
         method,
-        positionalIdPair: false,
+        positionalPair: false,
       });
     });
   }

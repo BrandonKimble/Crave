@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
+import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
 import { OpsAlertsService } from './ops-alerts.service';
 
 /**
@@ -246,6 +247,8 @@ export class SpendCampaignService {
     loggerService: LoggerService,
     private readonly opsAlerts: OpsAlertsService,
     @Optional() private readonly governance?: GovernanceService,
+    @Optional()
+    private readonly reconciliation?: ReconciliationMultiplierService,
   ) {
     this.logger = loggerService.setContext('SpendCampaignService');
   }
@@ -429,22 +432,15 @@ export class SpendCampaignService {
     // manifest the owner approves is in BILLED dollars; absent (never
     // reconciled), the multiplier is 1 and the estimate is honestly labeled
     // ledger-priced. Never invented — only cost-reconcile writes it.
-    const reconMultiplier = async (service: string): Promise<number> => {
-      const row = await this.prisma.spendUnitCost.findUnique({
-        where: {
-          workClass_unit: {
-            workClass: `reconciliation.${service}`,
-            unit: 'multiplier',
-          },
-        },
-      });
-      const value = row?.microUsdPerUnit;
-      return typeof value === 'number' && Number.isFinite(value) && value > 0
-        ? value
-        : 1;
-    };
-    const geminiMultiplier = await reconMultiplier('gemini');
-    const placesMultiplier = await reconMultiplier('google_places');
+    // ONE READER (red team 2026-08-02). This used to be a private copy of the
+    // lookup, so the estimate side read the DB fresh while the meter side read
+    // a cache that returns 1.0 when cold — mint at 1.7x, drain at 1.0x, which
+    // is the currency split the shared service exists to prevent. Same
+    // service, awaited variant, one cache.
+    const geminiMultiplier =
+      (await this.reconciliation?.multiplierForFresh('gemini')) ?? 1;
+    const placesMultiplier =
+      (await this.reconciliation?.multiplierForFresh('google_places')) ?? 1;
     const multiplierFor = (workClass: string): number =>
       workClass.startsWith('gemini.')
         ? geminiMultiplier

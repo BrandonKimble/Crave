@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CraveScoreSubjectType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  PhotoReadService,
-  PhotoStripItemDto,
-} from '../photos/photo-read.service';
+import { PhotoStripItemDto } from '../photos/photo-read.service';
 import { UserListMapper, hasCustomOrder } from './user-list.mappers';
 import { PhotoReads } from '../photos/photo-reads';
 
@@ -55,7 +52,6 @@ export class UserListTileGalleryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mapper: UserListMapper,
-    private readonly photoRead: PhotoReadService,
     private readonly photoReads: PhotoReads,
   ) {}
 

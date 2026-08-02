@@ -38,6 +38,10 @@ import { PhotoEventService } from './photo-event.service';
     PhotoReads,
     PhotoEventService,
   ],
-  exports: [PhotosService, CloudinaryService, PhotoReadService, PhotoReads],
+  // PhotoReadService is NOT exported: the seam is the only way out of this
+  // module. Exporting it kept a live, DI-resolvable, unfiltered handle
+  // available to every other module — which is how the tile gallery breached
+  // the seam in the first place (red team 2026-08-02).
+  exports: [PhotosService, CloudinaryService, PhotoReads],
 })
 export class PhotosModule {}
