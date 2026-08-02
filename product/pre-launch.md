@@ -48,43 +48,32 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
       A second CI job (`search-runtime-contract-tests`) fails separately with
       exit 127 — a missing `node` in that step.
 
-### Red-team 2026-08-02 — what remains
+### Red-team 2026-08-02 — CLOSED
 
-Almost everything the three adversarial passes found is now FIXED (see git
-from `d8f520316` onward): the ledger-vs-billed dollar gap, the janitor's
-candidate-count policy, the paywall's anonymous short-circuit, the LLM
-Redis-outage fail-open, the three-name Places vocabulary, the two demand-mass
-implementations, the RevenueCat transfer that could revoke both sides, and
-rank duplication in the pooled search merge.
+Everything the three adversarial passes found is fixed, and the four remaining
+items were rederived from scratch rather than patched (commits `8fb058861` ->
+`cf40035aa`):
 
-Open in this lane:
+- **Access is a verdict, not a boolean.** `granted | denied | indeterminate`.
+  The old boolean forced its catch block to invent an assertion from the
+  ABSENCE of information; callers now name their own policy for the unknown
+  case, because a shared-poll read and an LLM-backed search genuinely want
+  opposite defaults.
+- **Photo reads are viewer-scoped.** Blocking was enforced at call sites and
+  `cardStrips` could not enforce it at all (no viewer parameter). The seam is
+  named after the invariant, so forgetting is unrepresentable.
+- **Ids: two mechanisms for two failure modes.** Brands for cross-type pairs;
+  named object parameters for same-type pairs, which brands cannot catch and
+  which are the more dangerous half (blocking the wrong person).
+- **The repository framework is deleted** — 1,804 lines net, for a single
+  `findUnique`.
+- **The autocomplete debounce is a UX number**, not a spend lever; cost lives
+  server-side in the spend gate and the rate tier.
 
-- [~] **The pooled search merge ordering — HANDED OFF.** Page 1 of a relaxed
-  search re-sorts in JS by `craveScore` while the SQL orders by `rising,
-crave_score_exact, crave_score, total_upvotes, restaurant_id`, so a
-  rising-sorted relaxed page 1 is not rising-sorted and the ordering rule
-  visibly changes at the page-2 boundary. The result SET is correct and
-  sections still hold; only the arrangement within page 1 is wrong.
-  Superseded rather than patched: the session that owns search is cutting
-  over to the step-3 POOLED query (`SEARCH_POOLED_MODE`), one query whose
-  single ORDER BY covers every page — which deletes the merge, the
-  exclusion list and this defect together.
-
-- [ ] **`hasAccess` fails open on any error** while every spend gate fails
-      closed. Left deliberately: an outage should not lock out paying
-      customers, and flipping it is a product decision with a real downside.
-      It is bounded by an error log today; if you want it tighter, the honest
-      shape is a third state (indeterminate) that alerts rather than silently
-      granting forever.
-- [ ] **Autocomplete fires on every keystroke** (`AUTOCOMPLETE_DEBOUNCE_MS =
-0`). Now that the embedding arm is spend-gated this is bounded, but the
-      debounce is an owner choice — §16 says a number must be a fact, a
-      derivation, or your decision, and this one is yours.
-
-Also carried forward from the architecture pass, as judgement calls rather
-than defects: the 1,461-line repository framework serving two repositories
-(commit to the boundary or delete it), and the absence of branded id types
-anywhere in the codebase.
+Remaining in this lane: nothing. Two mechanical follow-ups, neither a defect —
+branding the ~90 other adjacent-id signatures (mechanical, do it as files are
+touched), and the `canonicalId/duplicateId` cluster, skipped only because two
+sessions were editing those files.
 
 - [x] **DEPLOY THE RATE-LIMIT FIX — DONE, verified live 2026-08-02.** The
       throttler bypass (`?x=/webhooks/` disabled rate limiting entirely) is
