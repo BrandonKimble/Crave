@@ -9,7 +9,26 @@ import {
 } from './search-autocomplete-request-runtime';
 import type { useSearchAutocompleteRequestStateRuntime } from './use-search-autocomplete-request-state-runtime';
 
-const AUTOCOMPLETE_DEBOUNCE_MS = 0;
+/**
+ * A UX AFFORDANCE, NOT A COST CONTROL (2026-08-02).
+ *
+ * This was 0 — one request per keystroke — and it was being reasoned about as
+ * a spend lever, because the server's autocomplete recall includes an
+ * embedding arm that bills per token. That framing was the actual mistake: a
+ * client-side debounce is a REQUEST THAT THE CLIENT BE POLITE, and the server
+ * must never depend on client politeness for its cost envelope any more than
+ * it does for auth. Cost is now enforced server-side where it belongs — the
+ * embedding call passes the Gemini spend gate, and the endpoint carries the
+ * `autocomplete` rate tier.
+ *
+ * With cost handled elsewhere, the only remaining question is what feels best
+ * to a person typing, which is an owner judgement made by looking at the
+ * screen. 90ms is short enough to feel instantaneous (well under the ~100ms
+ * threshold where input stops feeling immediate) while collapsing the burst of
+ * a fast typist into a single request per pause. Change it because the list
+ * feels laggy or flickers — never to save money, which it no longer does.
+ */
+const AUTOCOMPLETE_DEBOUNCE_MS = 90;
 
 export const useSearchAutocompleteRequestExecutionRuntime = ({
   trimmed,
