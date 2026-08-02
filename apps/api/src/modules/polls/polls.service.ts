@@ -740,6 +740,34 @@ export class PollsService {
     let targetRestaurantId: string | null = null;
     let targetFoodAttributeId: string | null = null;
     let targetRestaurantAttributeId: string | null = null;
+    // MODERATE THE USER-SUPPLIED ENTITY NAME BEFORE RESOLVING IT.
+    //
+    // Resolution is where we spend: it can call Google Places and it CREATES
+    // a permanent entity row. Title moderation ran only after that, so a poll
+    // whose name was abusive still cost us a Places lookup and left an
+    // orphaned entity carrying the abusive text — rejected at the door, but
+    // paid for and persisted. Moderating the name first makes the refusal
+    // free and leaves nothing behind. Names selected by id are already ours
+    // and skip this.
+    const suppliedName = [
+      dto.targetDishId ? null : dto.targetDishName,
+      dto.targetRestaurantId ? null : dto.targetRestaurantName,
+      dto.targetFoodAttributeId ? null : dto.targetFoodAttributeName,
+      dto.targetRestaurantAttributeId
+        ? null
+        : dto.targetRestaurantAttributeName,
+    ]
+      .find((value) => typeof value === 'string' && value.trim().length > 0)
+      ?.trim();
+    if (suppliedName) {
+      const nameModeration = await this.moderation.moderateText(suppliedName);
+      if (!nameModeration.allowed) {
+        throw new BadRequestException(
+          `Name rejected by moderation: ${nameModeration.reason}`,
+        );
+      }
+    }
+
     let question = '';
 
     switch (topicType) {
