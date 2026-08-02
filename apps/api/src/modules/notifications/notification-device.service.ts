@@ -79,13 +79,15 @@ export class NotificationDeviceService {
     });
   }
 
-  async unregisterDevice(token: string): Promise<void> {
+  async unregisterDevice(token: string, userId: string): Promise<void> {
     const normalizedToken = token.trim();
     if (!normalizedToken) {
       return;
     }
+    // Scoped to the caller: a token is not a capability to delete someone
+    // else's device (audit 2026-08-01).
     await this.prisma.notificationDevice.deleteMany({
-      where: { expoPushToken: normalizedToken },
+      where: { expoPushToken: normalizedToken, userId },
     });
 
     this.logger.debug('Unregistered notification device', {

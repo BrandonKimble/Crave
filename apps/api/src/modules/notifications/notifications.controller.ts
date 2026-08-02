@@ -17,7 +17,8 @@ export class NotificationsController {
 
   // RT-15 (red-team 2026-07-10): register is AUTHED and the binding derives from the
   // session — a client-supplied userId let any caller bind a victim's userId to an
-  // attacker-controlled push token. Unregister stays capability-by-token.
+  // attacker-controlled push token. Unregister is authed and owner-scoped too
+  // as of 2026-08-01 (see below).
   @AllowUnentitled()
   @UseGuards(ClerkAuthGuard)
   @Post('devices/register')
@@ -29,9 +30,20 @@ export class NotificationsController {
     return { status: 'ok' };
   }
 
+  // AUTHENTICATED + OWNER-SCOPED (audit 2026-08-01). This was an
+  // unauthenticated, unthrottled DESTRUCTIVE write: anyone holding (or
+  // guessing) a push token could delete that device row. The register side
+  // was hardened; unregister was left as capability-by-token, and push
+  // tokens are not treated as secrets anywhere else in this codebase.
   @Post('devices/unregister')
-  async unregisterDevice(@Body() dto: UnregisterDeviceDto) {
-    await this.deviceService.unregisterDevice(dto.token);
+  // Unentitled too: logging out must never be gated on a subscription.
+  @AllowUnentitled()
+  @UseGuards(ClerkAuthGuard)
+  async unregisterDevice(
+    @CurrentUser() user: User,
+    @Body() dto: UnregisterDeviceDto,
+  ) {
+    await this.deviceService.unregisterDevice(dto.token, user.userId);
     return { status: 'ok' };
   }
 

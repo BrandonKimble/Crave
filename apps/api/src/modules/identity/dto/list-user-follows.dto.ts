@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, Min } from 'class-validator';
+import { IsInt, IsOptional, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class ListUserFollowsDto {
@@ -12,5 +12,8 @@ export class ListUserFollowsDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  // Unbounded page size is a memory/DoS vector — every other paginated
+  // DTO in this codebase already caps (audit 2026-08-01).
+  @Max(50)
   limit?: number;
 }

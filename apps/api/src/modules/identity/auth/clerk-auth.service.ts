@@ -282,8 +282,23 @@ export class ClerkAuthService {
     return [];
   }
 
+  /**
+   * A hard-coded bearer token that authenticates as a real user. Its value is
+   * in this repository, so anywhere it is live, ANYONE can call every
+   * authenticated endpoint.
+   *
+   * It is gated on an EXPLICIT OPT-IN (audit 2026-08-01), not merely on "we
+   * don't look like prod". The old NODE_ENV/appEnv test failed open: any
+   * deployed environment that forgot to set both variables the way this
+   * function expects — a staging box, a preview deploy, a container whose
+   * NODE_ENV was never set at all — silently accepted a published password.
+   * Absence of configuration must never grant access.
+   */
   private isDevPerfScenarioToken(token: string): boolean {
     if (token !== DEV_PERF_SCENARIO_AUTH_TOKEN) {
+      return false;
+    }
+    if (process.env.ENABLE_DEV_PERF_SCENARIO_AUTH !== 'true') {
       return false;
     }
     return (

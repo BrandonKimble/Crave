@@ -1,4 +1,5 @@
 import { Controller, Get, Ip } from '@nestjs/common';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 import { IpLocationService } from './ip-location.service';
 import { PlacesCatalogService } from './places-catalog.service';
@@ -19,7 +20,11 @@ export class LaunchPositionController {
     private readonly catalog: PlacesCatalogService,
   ) {}
 
+  // TIERED (audit 2026-08-01): every call makes an outbound ipapi.co request
+  // with no cache — an anonymous, untiered way to burn a third-party quota
+  // (and, past the free tier, money) and to hold a socket per request.
   @Get('launch-position')
+  @RateLimitTier('heavyGeoRead')
   async launchPosition(@Ip() ip: string) {
     const located = await this.ipLocation.resolveForIp(ip);
     if (!located) {

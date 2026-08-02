@@ -12,6 +12,7 @@ import {
   ValidateNested,
   MaxLength,
   Min,
+  Max,
 } from 'class-validator';
 import { CoordinateDto, MapBoundsDto } from '../../search/dto/search-query.dto';
 import type { RestaurantStatusPreviewDto } from '../../search/dto/restaurant-status-preview.dto';
@@ -38,6 +39,9 @@ export class AutocompleteRequestDto {
   @Type(() => Number)
   @IsPositive()
   @Min(1)
+  // Unbounded page size is a memory/DoS vector — every other paginated
+  // DTO in this codebase already caps (audit 2026-08-01).
+  @Max(25)
   limit?: number;
 
   @IsOptional()

@@ -130,14 +130,14 @@ export class PollsController {
 
   @Get(':pollId')
   @UseGuards(OptionalClerkAuthGuard)
-  getPoll(@Param('pollId') pollId: string) {
+  getPoll(@Param('pollId', new ParseUUIDPipe()) pollId: string) {
     return this.pollsService.getPoll(pollId);
   }
 
   @Get(':pollId/comments')
   @UseGuards(OptionalClerkAuthGuard)
   listComments(
-    @Param('pollId') pollId: string,
+    @Param('pollId', new ParseUUIDPipe()) pollId: string,
     @Query() query: ListCommentsQueryDto,
     @CurrentUser() user?: User | null,
   ) {
@@ -152,7 +152,7 @@ export class PollsController {
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   postComment(
-    @Param('pollId') pollId: string,
+    @Param('pollId', new ParseUUIDPipe()) pollId: string,
     @Body() dto: CreateCommentDto,
     @CurrentUser() user: User,
   ) {
@@ -163,7 +163,7 @@ export class PollsController {
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   editComment(
-    @Param('commentId') commentId: string,
+    @Param('commentId', new ParseUUIDPipe()) commentId: string,
     @Body() dto: EditCommentDto,
     @CurrentUser() user: User,
   ) {
@@ -174,7 +174,7 @@ export class PollsController {
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   deleteComment(
-    @Param('commentId') commentId: string,
+    @Param('commentId', new ParseUUIDPipe()) commentId: string,
     @CurrentUser() user: User,
   ) {
     return this.pollsService.deleteComment(commentId, user.userId);
@@ -186,7 +186,7 @@ export class PollsController {
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   reportComment(
-    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Param('commentId', new ParseUUIDPipe()) commentId: string,
     @Body() dto: ReportCommentDto,
     @CurrentUser() user: User,
   ) {
@@ -199,7 +199,7 @@ export class PollsController {
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   toggleCommentLike(
-    @Param('commentId') commentId: string,
+    @Param('commentId', new ParseUUIDPipe()) commentId: string,
     @CurrentUser() user: User,
   ) {
     return this.pollsService.toggleCommentLike(commentId, user.userId);
@@ -208,7 +208,7 @@ export class PollsController {
   @Get(':pollId/leaderboard')
   @UseGuards(OptionalClerkAuthGuard)
   getLeaderboard(
-    @Param('pollId') pollId: string,
+    @Param('pollId', new ParseUUIDPipe()) pollId: string,
     @CurrentUser() user?: User | null,
   ) {
     return this.pollsService.getPollLeaderboard(pollId, user?.userId ?? null);
@@ -218,7 +218,7 @@ export class PollsController {
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   togglePollEndorsement(
-    @Param('pollId') pollId: string,
+    @Param('pollId', new ParseUUIDPipe()) pollId: string,
     @Body() dto: EndorsePollSubjectDto,
     @CurrentUser() user: User,
     @Req() request: AuthenticatedRequest,
