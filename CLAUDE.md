@@ -269,3 +269,28 @@ uninstall+reinstall (clears the client's cached revision). Related rig traps: th
 onboarding card swallows the first tap of a fresh session (tap Continue/X first), and
 `echo >>` markers in /tmp/crave-metro.log get CLOBBERED (Metro's fd is truncate-mode) — scan
 tails, not offsets.
+
+## Memory: BUILD TRUST — cwd drift + dead-strip made "the binary lacks my code" (2026-08-01)
+
+Cost half a day and a reverted cutover. Two independent traps, both mine, both silent:
+
+- **CWD DRIFT.** The Bash tool's working directory PERSISTS between calls. Edit
+  scripts written with repo-relative paths (`apps/mobile/...`) silently target
+  the wrong path — or nothing — when a previous call left cwd at
+  `apps/mobile/ios`. Symptom: the script prints success, `grep` later finds the
+  code missing, and you conclude the build is lying. **LAW: every edit script
+  and every grep uses an ABSOLUTE path.**
+- **SILENT SKIPPED BUILD.** `grep -c X file && xcodebuild ...` skips the build
+  entirely when the grep misses (exit 1). You then install a stale binary and
+  "verify" against code that was never compiled. **LAW: never chain a
+  verification with the build — separate calls.**
+- **DEAD-STRIP FALSE NEGATIVE.** An unreferenced marker (`(void)@"MARK";`)
+  compiles into the .o and .a but the linker strips it from the app — so a
+  `strings` check reports the build as stale when it isn't. A build marker must
+  be REFERENCED (e.g. an element of the `supportedEvents` array).
+
+THE VERIFIED BUILD-TRUST RECIPE (90s, no simulator): plant a referenced marker
+→ `grep -c` the ABSOLUTE source path → build in its own call → `strings` the
+**cravesearch.debug.dylib** (Xcode 16 puts app code there; the `cravesearch`
+executable is a thin shim and contains NONE of the app's symbols — checking it
+gives a false "not linked" for everything, including RN itself).
