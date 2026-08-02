@@ -145,6 +145,25 @@ export class EntityAnchorRehomeService {
         UPDATE poll_endorsements
         SET subject_id = ${shape.to}
         WHERE subject_id = ${shape.from}`);
+      // LEADERBOARD FOLLOWS THE VOTES (product red team F4): leaving the
+      // derived bars keyed to the loser desynced them from the rekeyed
+      // endorsements — the user's own vote visibly un-ticked, a re-tap
+      // wrote a SECOND endorsement under the dead id, and the next rebuild
+      // split the dish into two bars. Same three shapes; a collision keeps
+      // the winner's bar (counts reconcile on the next rebuild).
+      await tx.$executeRaw(Prisma.sql`
+        DELETE FROM poll_leaderboard_entries e
+        WHERE e.subject_id = ${shape.from}
+          AND EXISTS (
+            SELECT 1 FROM poll_leaderboard_entries k
+            WHERE k.poll_id = e.poll_id
+              AND k.subject_type = e.subject_type
+              AND k.subject_id = ${shape.toForExists}
+          )`);
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE poll_leaderboard_entries
+        SET subject_id = ${shape.to}
+        WHERE subject_id = ${shape.from}`);
     }
   }
 

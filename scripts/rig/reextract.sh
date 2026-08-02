@@ -30,6 +30,13 @@ db_url() { # target db for ALL verbs: local api db unless REEXTRACT_DB set
 # worker looked for them. Every verb now targets the same resolved db_url.
 run_node() { DATABASE_URL="$(db_url)" npx ts-node "$@"; }
 
+# LOW 9 (security red team): $VERSION is interpolated into SQL strings —
+# operator-controlled, not remote, but a typo like "v3" produced a confusing
+# psql error instead of a clean refusal. Integers only, validated once.
+require_int_version() {
+  [[ "$1" =~ ^[0-9]+$ ]] || { echo "REFUSED: version must be an integer, got '$1'" >&2; exit 1; }
+}
+
 case "$VERB" in
   push)
     (cd "$API" && run_node scripts/prompt-push.ts "$@")
@@ -61,12 +68,14 @@ case "$VERB" in
     ;;
   discard)
     VERSION="${1:?prompt version}"
+    require_int_version "$VERSION"
     echo "DISCARDING candidate v$VERSION: runs+events+claims deleted, prompt retired, then GC."
     psql "$(db_url)" -v version="$VERSION" -f "$API/scripts/reload/shadow-discard.sql"
     psql "$(db_url)" -f "$API/scripts/reload/gc-unsupported-entities.sql"
     ;;
   diff)
     COMMUNITIES="${1:?communities}"; VERSION="${2:?prompt version}"
+    require_int_version "$VERSION"
     HASH=$(psql "$(db_url)" -tAc "SELECT content_hash FROM llm_prompts WHERE kind='collection_system' AND version=$VERSION;")
     [[ -n "$HASH" ]] || { echo "No prompt v$VERSION registered" >&2; exit 1; }
     OUT="logs/reextract-review-$(date +%Y%m%d-%H%M%S).txt"

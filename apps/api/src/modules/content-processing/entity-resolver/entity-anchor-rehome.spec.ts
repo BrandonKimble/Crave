@@ -68,9 +68,9 @@ describe('EntityAnchorRehomeService', () => {
       'targetRestaurantId',
     ]);
     // raws: 2 topic array_replace + 6 endorsement (3 shapes × delete+update)
-    // + 1 comment entity_spans rewrite
+    // + 6 leaderboard (same shapes — F4) + 1 comment entity_spans rewrite
     expect(calls.filter((call) => call.table === '$executeRaw')).toHaveLength(
-      9,
+      15,
     );
   });
 

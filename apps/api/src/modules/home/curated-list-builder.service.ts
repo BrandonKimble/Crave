@@ -23,6 +23,7 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
+import { activeRestaurantEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
@@ -624,8 +625,7 @@ export class CuratedListBuilderService {
                 mention_count sums were the first cut and produced a city
                 MEDIAN OF ZERO (most restaurants carry mentions as events,
                 not item rows) — structurally emptying hidden_gems. */
-             (SELECT count(*)::int FROM core_restaurant_events ev
-               WHERE ev.restaurant_id = e.entity_id) AS mention_volume,
+             ${Prisma.raw(activeRestaurantEventCountSql('e.entity_id'))} AS mention_volume,
              pes.display_score::float8 AS display_score,
              pes.percentile_rank::float8 AS percentile_rank,
              pes.rising::float8 AS rising
@@ -666,6 +666,11 @@ export class CuratedListBuilderService {
       JOIN core_public_entity_scores pes
         ON pes.subject_type = 'connection' AND pes.subject_id = c.connection_id
       WHERE c.restaurant_id = ANY(${restaurantIds}::uuid[])
+        -- STARVED anchors never become curated picks (product red team F2):
+        -- 115 curated dish rows pointed at zeroed connections and the
+        -- mobile adapter rendered them as Crave Score 0 — a fabricated
+        -- number under the no-fake-estimates law.
+        AND c.mention_count > 0
     `);
   }
 

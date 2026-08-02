@@ -6,6 +6,7 @@ import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
+import { activeSupportExistsSql } from '../reddit-collector/extraction-scope.service';
 
 export interface DedupeMergeSummary {
   candidatePairs: number;
@@ -83,14 +84,11 @@ export class FoodDedupeMergeService {
     // only writes connections from the document's ACTIVE run.
     const activeFoods = await this.prisma.$queryRaw<
       Array<{ entityId: string; name: string }>
-    >`
+    >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name
       FROM core_entities e
       WHERE e.type = 'food' AND e.status = 'active'
-        AND EXISTS (
-          SELECT 1 FROM core_restaurant_items c
-          WHERE e.entity_id IN (c.restaurant_id, c.food_id)
-        )`;
+        AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}`);
     const seenNumberPair = new Set<string>();
     const numberVariantPairs: {
       a_id: string;
@@ -215,11 +213,10 @@ export class FoodDedupeMergeService {
       JOIN core_entities b ON a.entity_id < b.entity_id
       WHERE a.type = 'food' AND b.type = 'food'
         AND a.status = 'active' AND b.status = 'active'
-        -- active-support only (D5): never merge shadow-minted vocabulary
-        AND EXISTS (SELECT 1 FROM core_restaurant_items ca
-                    WHERE a.entity_id IN (ca.restaurant_id, ca.food_id))
-        AND EXISTS (SELECT 1 FROM core_restaurant_items cb
-                    WHERE b.entity_id IN (cb.restaurant_id, cb.food_id))
+        -- active-support only (D5): never merge shadow-minted vocabulary.
+        -- The predicate is the scope service's ONE definition, imported.
+        AND ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
+        AND ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
         AND similarity(a.name, b.name) > ${floor}
         AND position(a.name IN b.name) = 0
         AND position(b.name IN a.name) = 0

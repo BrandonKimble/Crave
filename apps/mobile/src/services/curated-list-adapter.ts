@@ -53,7 +53,9 @@ const mapCuratedItemToRestaurantResult = (item: CuratedListDetailItem): Restaura
   rank: item.rank,
   scoreSubjectType: 'restaurant',
   scoreSubjectId: item.restaurantId ?? item.entityId,
-  craveScore: item.craveScore ?? 0,
+  // Non-null by the honesty filter at the call site (score-less rows are
+  // dropped, never rendered as 0 — no-fake-estimates law).
+  craveScore: item.craveScore!,
   ...(item.craveScoreExact != null ? { craveScoreExact: item.craveScoreExact } : {}),
   rising: item.rising,
   latitude: item.latitude,
@@ -76,7 +78,9 @@ const mapCuratedItemToFoodResult = (
   restaurantAliases: [],
   scoreSubjectType: 'connection',
   scoreSubjectId: item.connectionId,
-  craveScore: item.craveScore ?? 0,
+  // Non-null by the honesty filter at the call site (score-less rows are
+  // dropped, never rendered as 0 — no-fake-estimates law).
+  craveScore: item.craveScore!,
   ...(item.craveScoreExact != null ? { craveScoreExact: item.craveScoreExact } : {}),
   rising: item.rising,
   mentionCount: 0,
@@ -97,12 +101,20 @@ export const mapCuratedDetailToSearchResponse = (
       ? detail.items
           .filter(
             (item): item is CuratedListDetailItem & { connectionId: string } =>
-              item.connectionId != null
+              // Honesty rule (no-fake-estimates law, product red team F2):
+              // a score-less item was rendered as Crave Score 0 — a
+              // fabricated number. A curated pick without a score has lost
+              // its evidence since the list was built; drop it rather than
+              // invent one. (The builder now skips these at build time; this
+              // guards rows built before that fix.)
+              item.connectionId != null && item.craveScore != null
           )
           .map(mapCuratedItemToFoodResult)
       : [];
   const restaurants =
-    listType === 'restaurant' ? detail.items.map(mapCuratedItemToRestaurantResult) : [];
+    listType === 'restaurant'
+      ? detail.items.filter((item) => item.craveScore != null).map(mapCuratedItemToRestaurantResult)
+      : [];
   return {
     format: 'dual_list',
     plan: {

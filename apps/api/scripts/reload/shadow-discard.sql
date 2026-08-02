@@ -36,7 +36,7 @@ USING candidate c
 WHERE r.system_prompt_hash = c.content_hash;
 
 UPDATE llm_prompts SET status = 'retired'
-WHERE version = :'version'::int;
+WHERE kind = 'collection_system' AND version = :'version'::int;
 
 SELECT 'discarded version ' || :'version' AS result;
 COMMIT;

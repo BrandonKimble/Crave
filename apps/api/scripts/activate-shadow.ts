@@ -23,6 +23,7 @@ import { CollectionEvidenceService } from '../src/modules/content-processing/red
 import { ProjectionRebuildService } from '../src/modules/content-processing/reddit-collector/projection-rebuild.service';
 import { ExtractionScopeService } from '../src/modules/content-processing/reddit-collector/extraction-scope.service';
 import { PromptRegistryService } from '../src/modules/external-integrations/llm/prompt-registry.service';
+import { RescoreCoordinatorService } from '../src/modules/content-processing/public-crave-score/rescore-coordinator.service';
 import { stopCronsForScript } from '../src/shared/utils/stop-crons';
 
 function arg(name: string): string | undefined {
@@ -45,7 +46,9 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
-  if (execute && !reviewed) {
+  // --rollback is the RECOVERY path: never gate an urgent flip-back on the
+  // shadow-diff attestation (that gate exists for forward activation).
+  if (execute && !reviewed && !rollback) {
     console.error(
       'REFUSED: --execute requires --reviewed. Run reload/shadow-diff.sql, resolve anchored LOST-SUPPORT rows with the owner, then re-run with --reviewed.',
     );
@@ -64,6 +67,7 @@ async function main(): Promise<void> {
     // ONE HOME for "owned / affected" (foundational re-derivation): this
     // script hand-rolled both and got both wrong (D2, D7).
     const scope = app.get(ExtractionScopeService);
+    const rescore = app.get(RescoreCoordinatorService);
 
     const prompt = await registry.getVersion(promptVersion);
 
@@ -87,9 +91,26 @@ async function main(): Promise<void> {
           ON r.extraction_run_id = d.active_extraction_run_id
         WHERE r.system_prompt_hash = ${promptHashForRollback}
           AND r.metadata->>'replayOfExtractionRunId' IS NOT NULL
+          AND d.platform <> 'poll_surface'
+          AND d.community = ANY(${communities})`;
+      // NOT-ROLLED-BACK honesty (final-final red team #3ii): docs live
+      // collection re-extracted since activation sit on live runs with NO
+      // replay lineage — they cannot flip and correctly keep their newest
+      // extraction. Report them; a silent partial rollback advertised as an
+      // "exact round trip" is how the last accident class started.
+      const [{ unrollable }] = await prisma.$queryRaw<
+        Array<{ unrollable: bigint }>
+      >`
+        SELECT count(*) AS unrollable
+        FROM collection_source_documents d
+        JOIN collection_extraction_runs r
+          ON r.extraction_run_id = d.active_extraction_run_id
+        WHERE r.system_prompt_hash = ${promptHashForRollback}
+          AND r.metadata->>'replayOfExtractionRunId' IS NULL
+          AND d.platform <> 'poll_surface'
           AND d.community = ANY(${communities})`;
       console.log(
-        `Rollback of v${promptVersion}: ${flips.length} documents flip back to their pre-activation runs.`,
+        `Rollback of v${promptVersion}: ${flips.length} documents flip back; ${Number(unrollable)} stay on live re-extractions (no replay lineage — they keep their newest extraction).`,
       );
       if (!flips.length) return;
       const [{ orphaned }] = await prisma.$queryRaw<
@@ -135,6 +156,10 @@ async function main(): Promise<void> {
         `Flipped ${flips.length} documents back across ${byOldRun.size} runs. Rebuilding ${affected.size} restaurants…`,
       );
       await rebuild.rebuildForRestaurants(Array.from(affected));
+      // Scores must follow the graph (product red team F3): without this,
+      // search serves generation-A ranking over generation-B filters until
+      // an unrelated collection batch happens to dirty the flag.
+      await rescore.markDirty(`shadow rollback v${promptVersion}`);
       console.log(
         'ROLLBACK DONE. Remember: if the prompt was already activated for live collection, run prompt-activate for the previous version too.',
       );
@@ -246,6 +271,7 @@ async function main(): Promise<void> {
       `Rebuilding projections for ${restaurantIds.length} restaurants (full surviving ledger — R5)…`,
     );
     await rebuild.rebuildForRestaurants(restaurantIds);
+    await rescore.markDirty(`shadow activation v${promptVersion}`);
     console.log(
       'DONE. Close with: reload/anchor-audit.sql, reload/gc-unsupported-entities.sql, prompt-activate.ts, cost-reconcile.sh',
     );

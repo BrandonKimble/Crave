@@ -4,6 +4,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { activeRestaurantEventExistsSql } from '../content-processing/reddit-collector/extraction-scope.service';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -79,7 +80,7 @@ export class SearchCoverageService {
       // restaurant should still get a dot. In dish-mode (includeTopDish=true) the INNER top-dish
       // JOIN LATERAL below still requires a matching dish, so dishless restaurants correctly stay
       // off the dish layer.
-      Prisma.sql`(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id) OR EXISTS (SELECT 1 FROM core_restaurant_events ev WHERE ev.restaurant_id = e.entity_id))`,
+      Prisma.sql`(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id) OR ${Prisma.raw(activeRestaurantEventExistsSql('e.entity_id'))})`,
     ];
 
     // TR5-N: price filter — same semantics as the ranked lane (entity price_level IN set).

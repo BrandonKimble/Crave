@@ -105,6 +105,30 @@ describe('extraction scope is defined exactly once', () => {
     expect(body).toContain('core_restaurant_events');
   });
 
+  it('the active-scope fragment consumers import it, never inline it', () => {
+    // Final-final red team #7: the D5 predicate was hand-copied inline in
+    // the exact file it was invented for, unenforced. Every consumer of an
+    // event-ledger read outside the allowlist must import a fragment.
+    const consumers = [
+      'modules/search/search-query.builder.ts',
+      'modules/search/search-coverage.service.ts',
+      'modules/home/curated-list-builder.service.ts',
+      'modules/restaurant-enrichment/restaurant-entity-merge.service.ts',
+      'modules/content-processing/entity-resolver/food-dedupe-merge.service.ts',
+    ];
+    for (const rel of consumers) {
+      const text = readFileSync(join(SRC, rel), 'utf-8');
+      expect(text).toContain('extraction-scope.service');
+    }
+    // and no bare event-ledger EXISTS survives in those readers
+    for (const rel of consumers.slice(0, 3)) {
+      const text = readFileSync(join(SRC, rel), 'utf-8');
+      expect(text).not.toMatch(
+        /EXISTS \(\s*SELECT 1\s*FROM core_restaurant_events ev\s*WHERE/,
+      );
+    }
+  });
+
   it('the activation script uses the shared definitions, not its own SQL', () => {
     const text = readFileSync(join(SCRIPTS, 'activate-shadow.ts'), 'utf-8');
     expect(text).toContain('ExtractionScopeService');

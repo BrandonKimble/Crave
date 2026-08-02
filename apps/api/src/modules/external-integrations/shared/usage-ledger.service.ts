@@ -3,6 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { CorrelationUtils, LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
 import { currentCampaignId } from './work-context';
+import { placesCostMicrosPerCall } from './vendor-pricing';
 import { geminiCostMicros } from './gemini-pricing';
 import { SpendCampaignService } from './spend-campaign.service';
 
@@ -220,11 +221,24 @@ export class UsageLedgerService implements OnModuleDestroy {
     if (!campaignId || !this.spendCampaigns) {
       return;
     }
-    if (event.service !== 'gemini') {
-      return; // Only gemini spend is priced today (gemini-pricing.ts).
-    }
     try {
-      const micros = geminiCostMicros(event);
+      // SERVICE → PRICER dispatch (final-final red team #5): the old
+      // `service !== 'gemini'` early-return meant Places spend under a
+      // campaign was never metered — while the manifest PRICES a Places
+      // line and the $118 lesson was Places. The stale comment claimed
+      // Places wasn't priced; vendor-pricing.ts has priced it per-SKU since
+      // 2026-07-30. One meter, every priced vendor.
+      let micros = 0;
+      if (event.service === 'gemini') {
+        micros = geminiCostMicros(event);
+      } else if (event.service === 'google_places') {
+        micros = placesCostMicrosPerCall(
+          event.skuTier ?? null,
+          event.operation,
+        );
+      } else {
+        return; // unpriced vendors stay out of the envelope
+      }
       if (micros <= 0) {
         return;
       }

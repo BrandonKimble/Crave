@@ -1832,7 +1832,10 @@ export class PollsService {
       .map((s) => s.subjectId);
     if (entityIds.length) {
       const entities = await this.prisma.entity.findMany({
-        where: { entityId: { in: entityIds } },
+        // F4 (product red team): an archived loser's bar must not keep
+        // rendering the dead name as if live; the rekey handles rows, this
+        // handles any straggler until the next rebuild.
+        where: { entityId: { in: entityIds }, status: 'active' },
         select: { entityId: true, name: true, type: true },
       });
       for (const e of entities) {
