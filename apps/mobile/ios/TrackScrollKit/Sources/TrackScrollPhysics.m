@@ -549,37 +549,55 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
         }
       }
     }
-    // THE ROW MASKS (chrome-is-content mode): every content subview that does
-    // NOT contain the chrome gets the band mask, plus the leader nested inside
-    // the header. Containment, never index-walking — a mis-resolve here masks
-    // the header itself and the whole chrome disappears.
+    // THE ROW MASKS — THE PATH RULE (rewritten 2026-08-01 after a regression).
+    // The invariant is one sentence: EVERYTHING THAT IS NOT THE CHROME IS
+    // CLIPPED AT THE BAND. My first cut masked only the DIRECT children of the
+    // content view that did not contain the chrome — which silently masks
+    // NOTHING the moment the recycler nests the header and the cells under a
+    // single wrapper (that wrapper contains the chrome, so it was skipped).
+    // Under Fabric interop it does exactly that, so content stopped being
+    // clipped at all: rows showed through the header's cutouts and ran off the
+    // top of the screen.
+    //
+    // Depth-independent rule instead: walk the chrome's ancestor path from the
+    // content view down, and at EVERY level mask the siblings that are off the
+    // path. Nothing about the recycler's internal nesting can defeat it, and
+    // views ON the path have their masks cleared so a re-parent cannot leave a
+    // stale clip behind.
     UIView *chromeContent = self.chromeContentView;
     if (chromeContent != nil) {
       UIView *contentView = nil;
+      NSMutableArray<UIView *> *chromePath = [NSMutableArray array];
       for (UIView *node = chromeContent; node != nil; node = node.superview) {
+        [chromePath insertObject:node atIndex:0];
         if (node.superview == scrollView) { contentView = node; break; }
       }
       if (contentView != nil) {
         const CGFloat bandBottom = tau + sheetTop + self.shellChromeHeight;
         const CGFloat w = CGRectGetWidth(scrollView.bounds);
         const CGFloat h = CGRectGetHeight(scrollView.bounds);
-        NSMutableArray<UIView *> *rowViews = [NSMutableArray array];
-        for (UIView *sub in contentView.subviews) {
-          if (![chromeContent isDescendantOfView:sub]) { [rowViews addObject:sub]; }
-        }
-        if (self.leaderView != nil) { [rowViews addObject:self.leaderView]; }
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
-        for (UIView *view in rowViews) {
-          CALayer *rowMask = view.layer.mask;
-          if (rowMask == nil) {
-            rowMask = [CALayer layer];
-            rowMask.backgroundColor = [UIColor blackColor].CGColor;
-            view.layer.mask = rowMask;
+        for (UIView *onPath in chromePath) {
+          // A view on the path must never be clipped — it carries the chrome.
+          if (onPath.layer.mask != nil) { onPath.layer.mask = nil; }
+          // ...and the CHROME ITSELF is the end of the path: everything inside
+          // it IS the chrome, so nothing in there may be clipped. Walking past
+          // this masked the header's own contents and the chrome disappeared
+          // while the rows clipped correctly — the boundary, not the rule.
+          if (onPath == chromeContent) { continue; }
+          for (UIView *sibling in onPath.subviews) {
+            if ([chromePath containsObject:sibling]) { continue; }
+            CALayer *rowMask = sibling.layer.mask;
+            if (rowMask == nil) {
+              rowMask = [CALayer layer];
+              rowMask.backgroundColor = [UIColor blackColor].CGColor;
+              sibling.layer.mask = rowMask;
+            }
+            const CGPoint origin = [sibling convertPoint:CGPointZero toView:contentView];
+            const CGRect next = CGRectMake(-w, bandBottom - origin.y, w * 3.0, h * 6.0);
+            if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
           }
-          const CGPoint origin = [view convertPoint:CGPointZero toView:contentView];
-          const CGRect next = CGRectMake(-w, bandBottom - origin.y, w * 3.0, h * 6.0);
-          if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
         }
         [CATransaction commit];
       }
