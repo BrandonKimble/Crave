@@ -150,6 +150,7 @@ describe('system-default guards + home ordering (UserListsService)', () => {
         bboxFromPoint: () => null,
         bboxFromRestaurantLocation: () => Promise.resolve(null),
       } as never,
+      blocks as never,
     );
     return { service, prisma, itemCreate };
   }

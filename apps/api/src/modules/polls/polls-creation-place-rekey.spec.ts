@@ -93,6 +93,7 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     { record: jest.fn(), centroidGeoFromPlace: jest.fn() } as never, // signals
     placesCatalog as never,
     {} as never, // viewportVerdict (feed-only; unused in this spec)
+    { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
   );
   return { service, prisma, placesCatalog };
 }

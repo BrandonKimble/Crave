@@ -116,8 +116,12 @@ describe('NotificationDeviceService.findDevices — §4 subtree-membership read'
   it('filters on homePlaceId IN the given subtree (NULL homes excluded by IN semantics)', async () => {
     const { service, prisma } = createHarness();
     await service.findDevices({ homePlaceIdIn: [TOWN] });
+    // The liveness filter is part of the CONTRACT, not incidental: a soft-
+    // deleted account's device row must never be pushable (red-team
+    // 2026-08-02 — notification_devices has no FK to users, so deletion
+    // cascaded nothing and deleted accounts kept receiving pushes).
     expect(prisma.notificationDevice.findMany).toHaveBeenCalledWith({
-      where: { homePlaceId: { in: [TOWN] } },
+      where: { homePlaceId: { in: [TOWN] }, userId: { not: null } },
     });
   });
 

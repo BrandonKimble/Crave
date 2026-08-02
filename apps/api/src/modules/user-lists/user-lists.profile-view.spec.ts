@@ -54,6 +54,7 @@ function makeService(lists: any[], cityRows: any[] = []) {
       bboxFromPoint: () => null,
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
+    blocks as never,
   );
   return { prisma, service };
 }

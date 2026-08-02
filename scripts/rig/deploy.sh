@@ -251,8 +251,25 @@ deploy_one() {
     # on the FAILURE branch, so a skip that printed "Deploy complete" sailed
     # through and prod silently kept the old code while the stamp lied. Never
     # trust the CLI's last line — ask Railway what the newest deployment did.
-    local newest
-    newest="$(railway deployment list --service "$svc" --environment "$ENVIRONMENT" 2>/dev/null | sed -n 2p)"
+    # DO NOT let this assignment kill the script (red-team P1): under
+    # `set -o pipefail` a failing `railway deployment list` (expired session,
+    # CLI flag rename) made the assignment non-zero and `set -e` killed us
+    # HERE — after `railway up` already fired and the stamp was already
+    # written — with NO message at all. The operator sees a hang, prod may be
+    # mid-deploy, and the stamp claims an unverified commit. Capture the
+    # status and refuse LOUDLY instead. stderr is kept (not /dev/null'd) so
+    # the cause is visible.
+    local newest newest_status
+    set +e
+    newest="$(railway deployment list --service "$svc" --environment "$ENVIRONMENT" 2>&1 | sed -n 2p)"
+    newest_status=$?
+    set -e
+    if [[ "$newest_status" -ne 0 ]]; then
+      echo "FAILED: could not read $svc's deployment status from Railway ($newest)." >&2
+      echo "  `railway up` may already have fired — verify what is running before retrying:" >&2
+      echo "  railway deployment list --service $svc --environment $ENVIRONMENT" >&2
+      exit 1
+    fi
     if grep -q "SKIPPED" <<<"$newest"; then
       echo "FAILED: Railway SKIPPED the $svc upload (\"No changes to watched files\")." >&2
       echo "  A watchPattern is still set — check railway.json AND the dashboard service settings" >&2
@@ -316,7 +333,14 @@ fi
 # WORKER shipped? It serves no HTTP /health, so assert its newest deployment
 # is SUCCESS (a silently-skipped worker was invisible before — red-team P1).
 if [[ " ${SERVICES[*]} " == *" worker "* ]]; then
-  wstat="$(railway deployment list --service worker --environment "$ENVIRONMENT" 2>/dev/null | sed -n 2p)"
+  set +e
+  wstat="$(railway deployment list --service worker --environment "$ENVIRONMENT" 2>&1 | sed -n 2p)"
+  wstat_status=$?
+  set -e
+  if [[ "$wstat_status" -ne 0 ]]; then
+    echo "FAILED: could not read worker deployment status ($wstat)." >&2
+    exit 1
+  fi
   if ! grep -q "SUCCESS" <<<"$wstat"; then
     echo "FAILED: worker's newest deployment is not SUCCESS ($wstat)." >&2
     exit 1

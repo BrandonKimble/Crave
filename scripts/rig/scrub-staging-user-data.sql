@@ -54,7 +54,8 @@ BEGIN
       ON t.table_schema = c.table_schema AND t.table_name = c.table_name
     WHERE c.table_schema = 'public'
       AND t.table_type = 'BASE TABLE'
-      AND (c.column_name LIKE '%user_id' OR c.column_name = ANY(pii_exact))
+      AND (c.column_name ~ '(^|_)(user|actor)_id$'
+           OR c.column_name = ANY(pii_exact))
       AND NOT (c.table_name = ANY(keep_content))
     ORDER BY c.table_name
   LOOP
@@ -76,7 +77,14 @@ BEGIN
   END IF;
 
   -- 4. VERIFY FAIL-CLOSED.
-  --    (a) hard-PII / ownership columns hold zero rows in every non-kept table
+  --    (a) INDEPENDENT NET (red-team P0, 2026-08-02): the verifier used to
+  --    reuse the TRUNCATE's own predicate, so any column shape the truncate
+  --    missed was invisible to the check too — it printed "verified" while
+  --    signals.actor_id / subject_text (raw typed search text + the viewer's
+  --    viewport bbox ~ location) sat untouched. A verifier that shares its
+  --    subject's blind spot cannot fail on the thing that matters. This net
+  --    is deliberately WIDER than the truncate: any identity-ish or
+  --    contact-ish column name at all.
   FOR r IN
     SELECT DISTINCT c.table_name
     FROM information_schema.columns c
@@ -84,7 +92,18 @@ BEGIN
       ON t.table_schema = c.table_schema AND t.table_name = c.table_name
     WHERE c.table_schema = 'public'
       AND t.table_type = 'BASE TABLE'
-      AND (c.column_name LIKE '%user_id' OR c.column_name = ANY(pii_exact))
+      AND (
+        -- Any column naming a PERSON. Broader than the truncate predicate on
+        -- purpose — this is what catches a shape the truncate forgot.
+        c.column_name ~ '(^|_)(user|actor|owner|sender|reporter|follower|blocker|blocked|creator)_id$'
+        -- Contact/telemetry columns that are person-scoped BY NATURE. NOT
+        -- generic 'email'/'phone': a restaurant's phone_number is public
+        -- BUSINESS data in the corpus (core_restaurant_locations), and
+        -- flagging it would make this check cry wolf on every run — an
+        -- always-failing verifier gets disabled, which is how you end up
+        -- with no verifier at all.
+        OR c.column_name ~ '(push_token|device_key|pair_key|residue_text|subject_text|ip_hash|subnet_hash)'
+      )
       AND NOT (c.table_name = ANY(keep_content))
   LOOP
     EXECUTE format('SELECT count(*) FROM public.%I', r.table_name) INTO n;

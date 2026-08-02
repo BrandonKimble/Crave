@@ -88,6 +88,23 @@ export class AccountDeletionService {
         }
       }
       await this.entitlements.revokeAllForUser(user.userId, 'account_deleted');
+      // HARD-CONTACT PII MUST ACTUALLY BE DELETED (red-team 2026-08-02).
+      // This is a SOFT delete (the users row is anonymized so content
+      // attribution and financial records survive), and these tables carry
+      // NO FK to users — so nothing cascaded and the deleted account kept a
+      // live push token, device fingerprints, and a permanent username
+      // linkage. These are exactly the columns the staging PII scrub
+      // (scripts/rig/scrub-staging-user-data.sql) defines as hard-contact
+      // PII; deletion and the scrub now agree on what "user data" means.
+      await this.prisma.notificationDevice.deleteMany({
+        where: { userId: user.userId },
+      });
+      await this.prisma.userDevice.deleteMany({
+        where: { userId: user.userId },
+      });
+      await this.prisma.usernameHistory.deleteMany({
+        where: { userId: user.userId },
+      });
       await this.prisma.user.update({
         where: { userId: user.userId },
         data: {

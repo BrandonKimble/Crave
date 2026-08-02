@@ -152,6 +152,7 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
       bboxFromPoint: () => null,
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
+    blocks as never,
   );
   return { service, prisma, shareEventCreate };
 }

@@ -17,6 +17,12 @@ function makeService(overrides?: {
     user: {
       update: overrides?.userUpdate ?? jest.fn().mockResolvedValue({}),
     },
+    // Hard-PII tables deletion now purges (no FK to users, so nothing cascades).
+    notificationDevice: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    userDevice: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    usernameHistory: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
   };
   const clerkAuth = {
     deleteClerkUser:

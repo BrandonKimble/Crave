@@ -28,9 +28,11 @@ const POLL_ID = 'ceb6f804-5efc-48fc-95ad-f3ecb61ae8a7';
 
 function captureFeedSql(sort: PollListSort, withCursor: boolean) {
   const captured: string[] = [];
+  const capturedValues: unknown[][] = [];
   const prisma = {
-    $queryRaw: jest.fn((sql: { sql: string }) => {
+    $queryRaw: jest.fn((sql: { sql: string; values: unknown[] }) => {
       captured.push(sql.sql);
+      capturedValues.push(sql.values);
       return Promise.resolve([]);
     }),
   };
@@ -46,6 +48,7 @@ function captureFeedSql(sort: PollListSort, withCursor: boolean) {
     {} as never,
     {} as never,
     {} as never,
+    { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
   );
 
   const cursor = withCursor
@@ -82,7 +85,7 @@ function captureFeedSql(sort: PollListSort, withCursor: boolean) {
       // real cursor round-trip rather than a hand-built object.
       cursor: cursor ? decodePollFeedCursor(cursor, sort) : null,
     });
-    return captured.join('\n');
+    return { sql: captured.join('\n'), values: capturedValues.flat() };
   })();
 }
 
@@ -97,25 +100,45 @@ describe('poll feed timestamp frame', () => {
     for (const withCursor of [false, true]) {
       const label = `${sort}${withCursor ? ' (paging)' : ' (first page)'}`;
 
-      it(`states the UTC frame on every Date it binds — ${label}`, async () => {
-        const sql = await captureFeedSql(sort, withCursor);
+      it(`every bound Date is converted — ${label}`, async () => {
+        const { sql, values } = await captureFeedSql(sort, withCursor);
 
-        // Every bound instant must be converted into the naive frame the
-        // columns are stored in. Prisma renders parameters as `?`, so this
-        // looks for a `?::timestamptz` that is NOT immediately converted —
-        // the exact shape that shipped.
-        const bareTimestamptz = /\?::timestamptz(?!\s*AT TIME ZONE)/.exec(sql);
-        expect({
+        // PAIR EACH PARAMETER WITH ITS SLOT (red team 2026-08-02).
+        //
+        // The previous check searched for `?::timestamptz` NOT followed by
+        // `AT TIME ZONE`. Prisma renders a bound Date as a bare `?` — the
+        // string `::timestamptz` appears ONLY because utcInstant put it there.
+        // So the detector looked for a shape that only the FIXED code emits,
+        // and the broken shape (a bare `?`) was invisible. Six of seven tests
+        // were vacuous: reverting a real bind stayed green.
+        //
+        // The honest question is positional: for every Date argument, is its
+        // `?` inside an `AT TIME ZONE 'UTC'` conversion?
+        const slots = sql.split('?');
+        const unconverted: number[] = [];
+        values.forEach((value, index) => {
+          if (!(value instanceof Date)) return;
+          // The text immediately AFTER this parameter's slot.
+          const after = slots[index + 1] ?? '';
+          if (!/^\s*(::timestamptz\s*)?AT TIME ZONE 'UTC'/.test(after)) {
+            unconverted.push(index);
+          }
+        });
+
+        expect({ sort, withCursor, unconverted }).toEqual({
           sort,
           withCursor,
-          offender: bareTimestamptz?.[0] ?? null,
-        }).toEqual({ sort, withCursor, offender: null });
+          unconverted: [],
+        });
       });
     }
   }
 
   it('actually emits the conversion (the assertion above can see it)', async () => {
-    const sql = await captureFeedSql(PollListSort.trending, true);
+    const { sql, values } = await captureFeedSql(PollListSort.trending, true);
     expect(sql).toContain(`AT TIME ZONE 'UTC'`);
+    // And the pairing above actually had Dates to inspect — otherwise the
+    // positional check would pass over an empty set.
+    expect(values.some((v) => v instanceof Date)).toBe(true);
   });
 });

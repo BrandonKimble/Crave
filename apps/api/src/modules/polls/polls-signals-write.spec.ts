@@ -100,6 +100,7 @@ function createHarness(
     signals, // signals ledger (§3 dual-write)
     {} as never, // placesCatalog (feed-only; unused in this spec)
     {} as never, // viewportVerdict (feed-only; unused in this spec)
+    { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
   );
   const internals = service as unknown as {
     rebuildPollLeaderboard: (pollId: string) => Promise<void>;

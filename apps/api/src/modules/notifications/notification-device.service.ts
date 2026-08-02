@@ -75,7 +75,17 @@ export class NotificationDeviceService {
       return [];
     }
     return this.prisma.notificationDevice.findMany({
-      where: { homePlaceId: { in: filter.homePlaceIdIn } },
+      // LIVE USERS ONLY (red-team 2026-08-02): account deletion is a SOFT
+      // delete that anonymizes the users row, and notification_devices has no
+      // FK to users — so the expo push token SURVIVED deletion and this read,
+      // which filtered on home place alone, kept pushing to deleted accounts.
+      // The device rows themselves are now removed at deletion (see
+      // account-deletion.service); this filter is the belt to that braces, so
+      // any row that outlives a deletion still cannot be pushed to.
+      where: {
+        homePlaceId: { in: filter.homePlaceIdIn },
+        userId: { not: null },
+      },
     });
   }
 

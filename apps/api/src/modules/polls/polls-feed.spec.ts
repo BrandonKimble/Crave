@@ -224,6 +224,7 @@ function createHarness(options: {
     { record: jest.fn() } as never, // signals
     placesCatalog as never,
     viewportVerdict,
+    { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
   );
   return { service, prisma, placesCatalog };
 }

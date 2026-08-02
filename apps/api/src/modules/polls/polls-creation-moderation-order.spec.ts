@@ -101,6 +101,7 @@ function createHarness() {
     { record: jest.fn(), centroidGeoFromPlace: jest.fn() } as never,
     placesCatalog as never,
     {} as never, // viewportVerdict
+    { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
   );
   return { service, moderation, pollEntitySeedService, prisma, tx };
 }

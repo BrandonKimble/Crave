@@ -199,6 +199,7 @@ function makeHarness(opts: {
       bboxFromPoint: () => null,
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
+    blocks as never,
   );
   return {
     service,

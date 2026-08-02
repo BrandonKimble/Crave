@@ -49,6 +49,7 @@ import {
 import { PlacesCatalogService } from '../places/places-catalog.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
+import { UserBlockService } from '../identity/user-block.service';
 import { utcInstant } from '../../shared/sql/utc-instant';
 import {
   GeoBbox,
@@ -126,6 +127,7 @@ export class PollsService {
     private readonly signals: SignalsService,
     private readonly placesCatalog: PlacesCatalogService,
     private readonly viewportVerdict: ViewportVerdictService,
+    private readonly blocks: UserBlockService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -1446,8 +1448,24 @@ export class PollsService {
       throw new NotFoundException('Poll not found');
     }
 
+    // BLOCK FILTER (red-team 2026-08-02): the thread is the app's main UGC
+    // surface and had NO block filtering, while restaurant-mentions.service
+    // filters the SAME PollComment rows for the same viewer — an oversight,
+    // not a decision. Bidirectional + viewer-scoped, identical semantics to
+    // that sibling: an authed viewer never sees a blocked peer's comments;
+    // anonymous viewers get no filter (nothing to scope by).
+    const blockedPeers = userId
+      ? await this.blocks.blockedPeerIds(userId)
+      : new Set<string>();
+
     const comments = await this.prisma.pollComment.findMany({
-      where: { pollId, deletedAt: null },
+      where: {
+        pollId,
+        deletedAt: null,
+        ...(blockedPeers.size
+          ? { userId: { notIn: Array.from(blockedPeers) } }
+          : {}),
+      },
       orderBy:
         sort === 'new'
           ? [{ loggedAt: 'desc' }]

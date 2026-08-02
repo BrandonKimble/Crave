@@ -38,6 +38,7 @@ import {
 } from './user-list.mappers';
 import { UserListTileGalleryService } from './user-list-tile-gallery.service';
 import { SignalsService } from '../signals/signals.service';
+import { UserBlockService } from '../identity/user-block.service';
 
 export type { UserListViewerRole, UserListSort };
 
@@ -91,6 +92,7 @@ export class UserListsService {
     private readonly mapper: UserListMapper,
     private readonly tileGallery: UserListTileGalleryService,
     private readonly signals: SignalsService,
+    private readonly blocks: UserBlockService,
   ) {}
 
   async listForUser(userId: string, query: ListUserListsDto) {
@@ -545,6 +547,18 @@ export class UserListsService {
     dto: UserListResultsDto,
   ): Promise<ListResultsSource> {
     const targetUserId = dto.targetUserId ?? userId;
+    // BLOCK CHECK (red-team 2026-08-02): targetUserId arrives in the REQUEST
+    // BODY and the only gate here was `visibility: public`. The sibling
+    // profile route (user-lists.public.controller) correctly returns [] for a
+    // blocked pair, so a blocked viewer could still read the target's whole
+    // public-list union through this virtual-All branch — the profile's
+    // primary "All" read. Same bidirectional, viewer-scoped semantics.
+    if (
+      targetUserId !== userId &&
+      (await this.blocks.isBlockedPair(userId, targetUserId))
+    ) {
+      throw new NotFoundException('List not found');
+    }
     const lists = await this.prisma.userList.findMany({
       where:
         targetUserId === userId
