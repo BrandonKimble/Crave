@@ -99,10 +99,6 @@ function createHarness(
     {} as never, // entityTextSearch
     signals, // signals ledger (§3 dual-write)
     {} as never, // placesCatalog (feed-only; unused in this spec)
-    {
-      enqueue: jest.fn().mockResolvedValue(undefined),
-      noteHeaderAnswer: jest.fn(),
-    } as never, // placesPromotions
     {} as never, // viewportVerdict (feed-only; unused in this spec)
   );
   const internals = service as unknown as {

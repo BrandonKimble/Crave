@@ -127,7 +127,6 @@ function createHarness(options: HarnessOptions = {}) {
     demandMass as never,
     new PollSupplyEstimators(),
     notifications as never,
-    placesPromotions as never,
     createLogger() as never,
   );
   service.sleep = jest.fn().mockResolvedValue(undefined);

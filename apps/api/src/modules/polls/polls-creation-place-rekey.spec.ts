@@ -72,10 +72,6 @@ function createHarness(options: { priorPollCount?: number } = {}) {
       .fn()
       .mockResolvedValue({ mode: 'discussion', axis: null }),
   };
-  const placesPromotions = {
-    enqueue: jest.fn().mockResolvedValue(undefined),
-    noteHeaderAnswer: jest.fn(),
-  };
   const service = new PollsService(
     prisma as never,
     createLogger() as never,
@@ -87,10 +83,9 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     {} as never, // entityTextSearch
     { record: jest.fn(), centroidGeoFromPlace: jest.fn() } as never, // signals
     placesCatalog as never,
-    placesPromotions as never,
     {} as never, // viewportVerdict (feed-only; unused in this spec)
   );
-  return { service, prisma, placesCatalog, placesPromotions };
+  return { service, prisma, placesCatalog };
 }
 
 describe('poll creation place re-key (Phase C)', () => {

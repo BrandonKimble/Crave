@@ -200,16 +200,11 @@ function createHarness(options: {
     ),
   };
 
-  const placesPromotions = {
-    enqueue: jest.fn().mockResolvedValue(undefined),
-    noteHeaderAnswer: jest.fn(),
-  };
   // The REAL shared seam (Job: one law, one implementation) wired over the
   // same fakes — the feed exercises the extracted composition end-to-end.
   const viewportVerdict = new ViewportVerdictService(
     prisma as never,
     placesCatalog as never,
-    placesPromotions as never,
   );
   const service = new PollsService(
     prisma as never,
@@ -222,7 +217,6 @@ function createHarness(options: {
     {} as never, // entityTextSearch
     { record: jest.fn() } as never, // signals
     placesCatalog as never,
-    placesPromotions as never,
     viewportVerdict,
   );
   return { service, prisma, placesCatalog };
