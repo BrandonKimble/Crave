@@ -36,19 +36,36 @@ function buildPrisma(params: {
     _sum: { requestCount: number | null };
     _count: { _all: number };
   };
-  placesEvents?: Array<{ skuTier: string | null; requestCount: number }>;
+  placesEvents?: Array<{
+    skuTier: string | null;
+    requestCount: number;
+    operation?: string;
+    attribution?: string | null;
+  }>;
   laneJoinRows: unknown[];
   /** §24.2 per-class rate denominators (refreshPipelineClassRates) — all
    *  default 0 so pre-existing fixtures publish no per-class rows. */
   docsCollected?: number;
   verdictsJudged?: number;
   newRestaurants?: number;
+  /** Honest interactive denominator (round-six): docs through completed
+   *  extraction runs in the window. Default 0 → no umbrella row publishes. */
+  docsExtracted?: number;
 }) {
   const queryRawCalls = [params.joinedRows, params.laneJoinRows];
   let queryRawIndex = 0;
   const upsert = jest.fn().mockResolvedValue(undefined);
   return {
-    $queryRaw: jest.fn().mockImplementation(() => {
+    $queryRaw: jest.fn().mockImplementation((query: unknown) => {
+      // The docsExtracted count is dispatched by CONTENT, not queue order —
+      // it was added mid-sequence and must not shift the two joined-row
+      // answers below.
+      const sqlText =
+        (query as { sql?: string; strings?: string[] })?.sql ??
+        ((query as { strings?: string[] })?.strings ?? []).join(' ');
+      if (sqlText.includes('collection_extraction_input_documents')) {
+        return Promise.resolve([{ n: BigInt(params.docsExtracted ?? 0) }]);
+      }
       const value = queryRawCalls[queryRawIndex];
       queryRawIndex += 1;
       return Promise.resolve(value);
@@ -994,6 +1011,8 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
     docsCollected: number;
     verdictsJudged: number;
     newRestaurants: number;
+    docsExtracted?: number;
+    refreshDetailsCalls?: number;
   }) {
     const gateEvent = mkEvent('relevance-gate.judgeBatch', 2_000_000, 100_000);
     const embedEvent = mkEvent('embedding.embed', 1_000_000, 0);
@@ -1003,8 +1022,31 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
       joinedRows: [],
       unattributedGeminiEvents: [gateEvent, embedEvent, blurEvent, searchEvent],
       tomtomAgg: emptyAgg(),
-      placesEvents: [{ skuTier: 'essentials', requestCount: 300 }],
+      // Attribution-tagged (round-six honest denominators): 300 new-grounding
+      // calls, 200 refresh details calls, and 50 LEGACY untagged calls that
+      // must count in NEITHER numerator.
+      placesEvents: [
+        {
+          skuTier: 'essentials',
+          operation: 'textSearch',
+          requestCount: 300,
+          attribution: 'grounding.new',
+        },
+        {
+          skuTier: 'essentials',
+          operation: 'placeDetails',
+          requestCount: counts.refreshDetailsCalls ?? 200,
+          attribution: 'grounding.refresh',
+        },
+        {
+          skuTier: 'essentials',
+          operation: 'placeDetails',
+          requestCount: 50,
+          attribution: null,
+        },
+      ],
       laneJoinRows: [],
+      docsExtracted: counts.docsExtracted ?? counts.docsCollected,
       ...counts,
     });
     const service = new SpendAnalyticsService(
@@ -1037,13 +1079,27 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
     const interactive = rows.find(
       (r) => r.workClass === 'gemini.interactive_pipeline',
     );
+    // Denominator is docs EXTRACTED (defaults to docsCollected in build()).
     expect(interactive).toMatchObject({ unit: 'document', sampleUnits: 200 });
     expect(interactive!.microUsdPerUnit).toBeCloseTo(cost(blurEvent) / 200);
 
+    // ONLY 'grounding.new' spend in the numerator — the refresh calls and
+    // the legacy untagged calls must not contaminate the rate (the July
+    // $369 re-grounding lesson).
     const places = rows.find((r) => r.workClass === 'google_places.enrichment');
     expect(places).toMatchObject({ unit: 'restaurant', sampleUnits: 150 });
     expect(places!.microUsdPerUnit).toBeCloseTo(
-      (placesCostMicrosPerCall('essentials') * 300) / 150,
+      (placesCostMicrosPerCall('essentials', 'textSearch') * 300) / 150,
+    );
+
+    // The refresh cause gets its OWN rate over its own denominator — the
+    // class a re-grounding campaign estimates against.
+    const regrounding = rows.find(
+      (r) => r.workClass === 'google_places.regrounding',
+    );
+    expect(regrounding).toMatchObject({ unit: 'location', sampleUnits: 200 });
+    expect(regrounding!.microUsdPerUnit).toBeCloseTo(
+      (placesCostMicrosPerCall('essentials', 'placeDetails') * 200) / 200,
     );
 
     const ratio = rows.find(
@@ -1059,6 +1115,9 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
       docsCollected: 50,
       verdictsJudged: 40,
       newRestaurants: 30,
+      // The regrounding denominator is the refresh-details CALL count itself
+      // — shrink it below MIN_SAMPLE_UNITS too.
+      refreshDetailsCalls: 40,
     });
     const rows = await service.refreshUnitCosts(WINDOW_END);
     for (const workClass of [
@@ -1066,6 +1125,7 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
       'gemini.embedding',
       'gemini.interactive_pipeline',
       'google_places.enrichment',
+      'google_places.regrounding',
       'pipeline.entities_per_kilodoc',
     ]) {
       expect(rows.find((r) => r.workClass === workClass)).toBeUndefined();

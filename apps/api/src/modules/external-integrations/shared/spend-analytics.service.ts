@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { pricedGeminiRow } from './gemini-pricing';
@@ -534,9 +535,30 @@ export class SpendAnalyticsService {
         windowStart,
         windowEnd,
       });
+    }
 
-      // gemini.interactive_pipeline / document — non-batch, non-search,
-      // non-gate, non-embedding umbrella (legacy blur rows included).
+    // gemini.interactive_pipeline / document — non-batch, non-search,
+    // non-gate, non-embedding umbrella (legacy blur rows included).
+    // HONEST DENOMINATOR (round-six cost #2): this spend is driven per
+    // document EXTRACTED, not per document collected — a re-extract window
+    // processes the whole corpus while collecting almost nothing, which
+    // inflated the per-doc rate 13.4x. The denominator is now documents
+    // that actually went through completed extraction runs in the window,
+    // which is also exactly what a manifest's docCount means.
+    const docsExtracted = Number(
+      (
+        await this.prisma.$queryRaw<Array<{ n: bigint }>>(Prisma.sql`
+          SELECT count(*)::bigint AS n
+          FROM collection_extraction_input_documents eid
+          JOIN collection_extraction_inputs ei ON ei.input_id = eid.input_id
+          JOIN collection_extraction_runs r
+            ON r.extraction_run_id = ei.extraction_run_id
+          WHERE r.status = 'completed'
+            AND r.completed_at >= ${windowStart}
+            AND r.completed_at < ${windowEnd}`)
+      )[0]?.n ?? 0,
+    );
+    if (docsExtracted >= MIN_SAMPLE_UNITS) {
       const interactiveSpend = await this.geminiSpendMicrosForCallers(
         windowStart,
         windowEnd,
@@ -553,33 +575,72 @@ export class SpendAnalyticsService {
       out.push({
         workClass: 'gemini.interactive_pipeline',
         unit: 'document',
-        microUsdPerUnit: interactiveSpend / docsCollected,
-        sampleUnits: docsCollected,
+        microUsdPerUnit: interactiveSpend / docsExtracted,
+        sampleUnits: docsExtracted,
         windowStart,
         windowEnd,
       });
     }
 
-    // google_places.enrichment / restaurant + entities_per_kilodoc
+    // google_places.enrichment / restaurant + entities_per_kilodoc.
+    // HONEST DENOMINATOR (round-six cost #1, the 51% contamination): the
+    // old numerator was ALL Places spend in the window — so July's $369
+    // re-grounding of already-grounded locations was divided over that
+    // month's NEW restaurants, doubling the per-new-restaurant rate, while
+    // a pure re-grounding campaign itself would have estimated ~$0. The
+    // ledger now carries `attribution` ('grounding.new' vs
+    // 'grounding.refresh', set ambiently at the enrichment entry points);
+    // each cause gets its own rate over its own denominator. Legacy rows
+    // with NULL attribution are EXCLUDED from both numerators — a stale
+    // honest rate beats a fresh contaminated one; the guard below keeps the
+    // previous published row standing until attributed sample accrues.
     const newRestaurants = await this.prisma.entity.count({
       where: { type: 'restaurant', createdAt: createdWindow },
     });
-    if (newRestaurants >= MIN_SAMPLE_UNITS) {
-      const placesRows = await this.prisma.apiUsageEvent.findMany({
-        where: { service: 'google_places', createdAt: createdWindow },
-        select: { skuTier: true, operation: true, requestCount: true },
-      });
-      let placesSpend = 0;
-      for (const row of placesRows) {
-        placesSpend +=
-          placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
-          (row.requestCount ?? 0);
+    const placesRows = await this.prisma.apiUsageEvent.findMany({
+      where: { service: 'google_places', createdAt: createdWindow },
+      select: {
+        skuTier: true,
+        operation: true,
+        requestCount: true,
+        attribution: true,
+      },
+    });
+    let newGroundingSpend = 0;
+    let refreshSpend = 0;
+    let refreshDetailsCalls = 0;
+    for (const row of placesRows) {
+      const rowMicros =
+        placesCostMicrosPerCall(row.skuTier ?? null, row.operation) *
+        (row.requestCount ?? 0);
+      if (row.attribution === 'grounding.new') {
+        newGroundingSpend += rowMicros;
+      } else if (row.attribution === 'grounding.refresh') {
+        refreshSpend += rowMicros;
+        if (row.operation === 'placeDetails') {
+          // One details call per location — the refresh unit's denominator.
+          refreshDetailsCalls += row.requestCount ?? 0;
+        }
       }
+    }
+    if (newRestaurants >= MIN_SAMPLE_UNITS && newGroundingSpend > 0) {
       out.push({
         workClass: 'google_places.enrichment',
         unit: 'restaurant',
-        microUsdPerUnit: placesSpend / newRestaurants,
+        microUsdPerUnit: newGroundingSpend / newRestaurants,
         sampleUnits: newRestaurants,
+        windowStart,
+        windowEnd,
+      });
+    }
+    if (refreshDetailsCalls >= MIN_SAMPLE_UNITS && refreshSpend > 0) {
+      // The rate a re-grounding/refresh campaign estimates against — the
+      // class the July event had no line for.
+      out.push({
+        workClass: 'google_places.regrounding',
+        unit: 'location',
+        microUsdPerUnit: refreshSpend / refreshDetailsCalls,
+        sampleUnits: refreshDetailsCalls,
         windowStart,
         windowEnd,
       });

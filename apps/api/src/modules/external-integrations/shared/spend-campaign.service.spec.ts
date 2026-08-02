@@ -47,6 +47,17 @@ function buildPrisma() {
       ),
     },
     spendCampaign: {
+      findMany: jest.fn(
+        ({ where }: { where: { workClass: string; state: string } }) =>
+          Promise.resolve(
+            Array.from(campaigns.values()).filter(
+              (row) =>
+                row.workClass === where.workClass &&
+                row.state === where.state &&
+                row.estimateMicros !== null,
+            ),
+          ),
+      ),
       create: jest.fn(({ data }: { data: Record<string, unknown> }) => {
         seq += 1;
         const campaignId = `campaign-${seq}`;

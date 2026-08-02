@@ -39,6 +39,7 @@ import { AxiosError, AxiosResponse } from 'axios';
 import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import {
@@ -175,6 +176,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
     private readonly governance: GovernanceService,
+    private readonly usageLedger: UsageLedgerService,
     private readonly opsAlerts: OpsAlertsService,
     configService: ConfigService,
     loggerService: LoggerService,
@@ -343,6 +345,20 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     return true;
   }
 
+  /** TOMTOM IS ON THE LEDGER (round-six cost #3): these draws drain real
+   *  prepaid credit and debit campaign envelopes, but wrote no
+   *  api_usage_ledger row — so cost-reconcile and the campaign post-mortem
+   *  could never see them. One row per CONSUMED draw (a pool denial never
+   *  reached the vendor and records nothing). Fire-and-forget like every
+   *  ledger write. */
+  private recordDraw(operation: string): void {
+    this.usageLedger.record({
+      service: 'tomtom',
+      operation,
+      caller: 'tomtom-chain-probe',
+    });
+  }
+
   /** One governed reverse geocode; a pool denial reads as "no answer now". */
   private async reverseGeocode(
     anchor: GeoPoint,
@@ -376,6 +392,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         throw new Error('tomtom_pool_denied');
       }
       throw error;
+    }
+    if (response) {
+      this.recordDraw('reverseGeocode');
     }
     if (!response) {
       // Typed not-now: the probe simply doesn't happen this cycle. Signal it
@@ -518,6 +537,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       }
       throw error;
     }
+    if (response) {
+      this.recordDraw('geocode');
+    }
     if (!response) {
       return { kind: 'denied' };
     }
@@ -576,6 +598,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         return { kind: 'denied' };
       }
       throw error;
+    }
+    if (response) {
+      this.recordDraw('additionalData');
     }
     if (!response) {
       return { kind: 'denied' };

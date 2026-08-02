@@ -28,6 +28,12 @@ export interface WorkContext {
   campaignId?: string;
   /** Human label for logs/diagnostics (e.g. 'reextract:austinfood:v7'). */
   label?: string;
+  /** WHY the spend happens, when the caller name alone can't say — the
+   *  honest-denominator dimension (e.g. Places 'grounding.new' vs
+   *  'grounding.refresh'). Written to api_usage_ledger.attribution so rate
+   *  derivation can slice by cause instead of dividing everything by one
+   *  denominator (the 51%-contaminated-Places-rate lesson). */
+  attribution?: string;
 }
 
 const storage = new AsyncLocalStorage<WorkContext>();
@@ -48,4 +54,9 @@ export function currentWorkContext(): WorkContext | undefined {
  *  explicit attribution still wins and nothing existing changes meaning. */
 export function currentCampaignId(): string | undefined {
   return storage.getStore()?.campaignId;
+}
+
+/** The spend-cause attribution of the current work, if any. */
+export function currentAttribution(): string | undefined {
+  return storage.getStore()?.attribution;
 }

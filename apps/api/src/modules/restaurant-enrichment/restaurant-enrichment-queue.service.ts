@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { LoggerService } from '../../shared';
+import { currentCampaignId } from '../external-integrations/shared/work-context';
 
 const QUEUE_NAME = 'restaurant-primary-enrichment';
 const JOB_NAME = 'enrich-restaurant';
@@ -9,6 +10,11 @@ const JOB_NAME = 'enrich-restaurant';
 export interface RestaurantEnrichmentJobData {
   restaurantId: string;
   requestedAt: string;
+  /** Campaign funding the work that ENQUEUED this job. AsyncLocalStorage
+   *  does not cross the BullMQ boundary (round-six cost #4: the envelope was
+   *  sized for Places spend it never debited), so the ambient campaign is
+   *  captured into the payload here and re-established in the worker. */
+  campaignId?: string;
   sourceLocale?: { city?: string | null; region?: string | null } | null;
   countryCode?: string | null;
   locationBias?: { lat: number; lng: number; radiusMeters?: number } | null;
@@ -45,6 +51,7 @@ export class RestaurantEnrichmentQueueService {
       {
         restaurantId: normalized,
         requestedAt: new Date().toISOString(),
+        campaignId: currentCampaignId(),
         ...context,
       },
       {

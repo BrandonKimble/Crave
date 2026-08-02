@@ -262,8 +262,36 @@ export class SpendCampaignService {
 
   /** DERIVED envelope tolerance for a work class (§24.1(d), §24.6): the
    *  measured declared-vs-actual drift when one exists, floored at the K2
-   *  bootstrap; the bootstrap outright when no drift sample exists yet. */
-  private deriveTolerance(workClass: string): number {
+   *  bootstrap; the bootstrap outright when no drift sample exists yet.
+   *
+   *  DURABLE (round-six cost #5): the in-memory drawLedger dies at process
+   *  exit, and every estimate runs in a FRESH script process — so the
+   *  tolerance was structurally stuck at the 0.25 bootstrap forever. The
+   *  declared-vs-actual pairs were already durable all along: completed
+   *  spend_campaigns rows carry (estimateMicros, spentMicros). Read THEM.
+   *  The in-memory measureDrift stays as a same-process supplement for
+   *  pool-level draws, but campaign tolerance derives from the table. */
+  private async deriveTolerance(workClass: string): Promise<number> {
+    const completed = await this.prisma.spendCampaign.findMany({
+      where: {
+        workClass,
+        state: 'completed',
+        estimateMicros: { not: null },
+      },
+      select: { estimateMicros: true, spentMicros: true },
+    });
+    let declared = 0;
+    let actual = 0;
+    for (const row of completed) {
+      declared += Number(row.estimateMicros ?? 0);
+      actual += Number(row.spentMicros ?? 0);
+    }
+    if (declared > 0) {
+      return Math.max(
+        Math.abs(actual / declared - 1),
+        ENVELOPE_BOOTSTRAP_TOLERANCE,
+      );
+    }
     const drift = this.requireGovernance().pools.measureDrift(workClass);
     if (drift === null) {
       return ENVELOPE_BOOTSTRAP_TOLERANCE;
@@ -290,7 +318,7 @@ export class SpendCampaignService {
       throw new NoPublishedRateError(params.workClass, params.unit);
     }
     const estimateMicros = Math.round(params.unitCount * rate.microUsdPerUnit);
-    const toleranceFraction = this.deriveTolerance(params.workClass);
+    const toleranceFraction = await this.deriveTolerance(params.workClass);
     const estimateHash = hashEstimate({
       workClass: params.workClass,
       unit: params.unit,
@@ -391,6 +419,38 @@ export class SpendCampaignService {
         ? Math.round(params.expectedNewRestaurants)
         : Math.round((docCount * entitiesPerKilodoc) / 1000);
 
+    // BILLED-DOLLAR GROSSING (round-six ideal shape, the BigQuery feedback
+    // edge): every rate above is LEDGER-priced, and the ledger's honesty is
+    // measured against the BigQuery billing export by cost-reconcile.sh
+    // --publish, which writes the billed÷ledger multiplier per service into
+    // spend_unit_costs ('reconciliation.<service>' / 'multiplier' — the
+    // value is a RATIO, not currency, same encoding rule as
+    // entities_per_kilodoc). When present, each line is grossed so the
+    // manifest the owner approves is in BILLED dollars; absent (never
+    // reconciled), the multiplier is 1 and the estimate is honestly labeled
+    // ledger-priced. Never invented — only cost-reconcile writes it.
+    const reconMultiplier = async (service: string): Promise<number> => {
+      const row = await this.prisma.spendUnitCost.findUnique({
+        where: {
+          workClass_unit: {
+            workClass: `reconciliation.${service}`,
+            unit: 'multiplier',
+          },
+        },
+      });
+      const value = row?.microUsdPerUnit;
+      return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? value
+        : 1;
+    };
+    const geminiMultiplier = await reconMultiplier('gemini');
+    const placesMultiplier = await reconMultiplier('google_places');
+    const multiplierFor = (workClass: string): number =>
+      workClass.startsWith('gemini.')
+        ? geminiMultiplier
+        : workClass.startsWith('google_places.')
+          ? placesMultiplier
+          : 1;
     const makeLine = (
       spec: { workClass: string; unit: string },
       unitCount: number,
@@ -400,7 +460,9 @@ export class SpendCampaignService {
       unit: spec.unit,
       unitCount,
       microUsdPerUnit,
-      estimateMicros: Math.round(unitCount * microUsdPerUnit),
+      estimateMicros: Math.round(
+        unitCount * microUsdPerUnit * multiplierFor(spec.workClass),
+      ),
     });
     const lines: ManifestEstimateLine[] = [
       makeLine(MANIFEST_EXTRACTION, docCount, extractionRate),
@@ -413,7 +475,7 @@ export class SpendCampaignService {
       (sum, line) => sum + line.estimateMicros,
       0,
     );
-    const toleranceFraction = this.deriveTolerance(
+    const toleranceFraction = await this.deriveTolerance(
       MANIFEST_EXTRACTION.workClass,
     );
     const estimateHash = hashManifest({
@@ -738,7 +800,7 @@ export class SpendCampaignService {
       throw new NoPublishedRateError(row.workClass, row.unit);
     }
     const estimateMicros = Math.round(row.unitCount * rate.microUsdPerUnit);
-    const toleranceFraction = this.deriveTolerance(row.workClass);
+    const toleranceFraction = await this.deriveTolerance(row.workClass);
     const estimateHash = hashEstimate({
       workClass: row.workClass,
       unit: row.unit,

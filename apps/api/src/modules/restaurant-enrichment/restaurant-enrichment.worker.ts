@@ -2,6 +2,7 @@ import { Inject, OnModuleInit } from '@nestjs/common';
 import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { LoggerService } from '../../shared';
+import { runInWorkContext } from '../external-integrations/shared/work-context';
 import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
 import {
   RESTAURANT_ENRICHMENT_QUEUE_NAME,
@@ -31,10 +32,14 @@ export class RestaurantEnrichmentWorker implements OnModuleInit {
       });
       return;
     }
-    await this.enrichment.enrichRestaurantById(restaurantId, {
-      sourceLocale: job.data.sourceLocale ?? undefined,
-      countryCode: job.data.countryCode ?? undefined,
-      locationBias: job.data.locationBias ?? undefined,
-    });
+    // Re-establish the enqueuer's campaign context — ALS dies at the queue
+    // boundary, and this worker is where the actual Places dollars happen.
+    await runInWorkContext({ campaignId: job.data.campaignId }, () =>
+      this.enrichment.enrichRestaurantById(restaurantId, {
+        sourceLocale: job.data.sourceLocale ?? undefined,
+        countryCode: job.data.countryCode ?? undefined,
+        locationBias: job.data.locationBias ?? undefined,
+      }),
+    );
   }
 }

@@ -10,6 +10,10 @@ import {
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { parse as parseDomain } from 'tldts';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  runInWorkContext,
+  currentWorkContext,
+} from '../external-integrations/shared/work-context';
 import { EntityRepository } from '../../repositories/entity.repository';
 import {
   GooglePlacesService,
@@ -562,7 +566,24 @@ export class RestaurantLocationEnrichmentService {
       return { entityId, status: 'skipped', reason: 'archived' };
     }
 
-    return this.enrichRestaurant(entity, options);
+    // HONEST DENOMINATOR (round-six cost red team #1/#2): the ledger row
+    // must say WHY this Places spend happened. First grounding of an
+    // ungrounded restaurant is 'grounding.new' (the per-new-restaurant
+    // rate's numerator); a forced re-enrichment of an already-grounded one
+    // is 'grounding.refresh' (July's $369 re-grounding event — which used
+    // to contaminate the new-restaurant rate by 51%, and would itself have
+    // estimated as ~$0). Ambient, so every Places call in this tree
+    // inherits it without signature threading.
+    const alreadyGrounded =
+      Boolean(entity.primaryLocation?.googlePlaceId) ||
+      Boolean(entity.locations?.some((loc) => loc.googlePlaceId));
+    return runInWorkContext(
+      {
+        ...(currentWorkContext() ?? {}),
+        attribution: alreadyGrounded ? 'grounding.refresh' : 'grounding.new',
+      },
+      () => this.enrichRestaurant(entity, options),
+    );
   }
 
   /**
@@ -598,6 +619,27 @@ export class RestaurantLocationEnrichmentService {
     });
 
     const summary = { checked: 0, updated: 0, closedOrMoved: 0, failed: 0 };
+    // Volatile-data re-polls are refresh spend, never new-grounding spend.
+    return runInWorkContext(
+      { ...(currentWorkContext() ?? {}), attribution: 'grounding.refresh' },
+      () => this.refreshStaleLocationsInner(stale, summary),
+    );
+  }
+
+  private async refreshStaleLocationsInner(
+    stale: Awaited<ReturnType<PrismaService['restaurantLocation']['findMany']>>,
+    summary: {
+      checked: number;
+      updated: number;
+      closedOrMoved: number;
+      failed: number;
+    },
+  ): Promise<{
+    checked: number;
+    updated: number;
+    closedOrMoved: number;
+    failed: number;
+  }> {
     for (const location of stale) {
       summary.checked += 1;
       try {

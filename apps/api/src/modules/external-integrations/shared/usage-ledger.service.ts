@@ -2,7 +2,7 @@ import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CorrelationUtils, LoggerService } from '../../../shared';
 import { GovernanceService } from '../governance/governance.service';
-import { currentCampaignId } from './work-context';
+import { currentCampaignId, currentAttribution } from './work-context';
 import { placesCostMicrosPerCall } from './vendor-pricing';
 import { geminiCostMicros } from './gemini-pricing';
 import { SpendCampaignService } from './spend-campaign.service';
@@ -35,6 +35,9 @@ export interface UsageEvent {
    *  extraction (resumeContext.campaignId, set at submit time) — see
    *  gemini-batch.service.ts's pollOne. */
   campaignId?: string;
+  /** Spend-cause dimension (see work-context.ts) — explicit wins, ambient
+   *  fills in. e.g. Places 'grounding.new' | 'grounding.refresh'. */
+  attribution?: string;
 }
 
 /** Places fields that force the Enterprise+Atmosphere SKU. */
@@ -138,6 +141,13 @@ export class UsageLedgerService implements OnModuleDestroy {
       // a real run-scoped dimension without touching a single call site.
       runKey: event.runKey ?? CorrelationUtils.getCorrelationId() ?? null,
       dedupeKey: event.dedupeKey ?? null,
+      // CAMPAIGN + CAUSE ON THE ROW ITSELF (round-six ideal shape): the
+      // envelope debit below already read the ambient campaign, but the
+      // LEDGER row didn't carry it — so "what did campaign X cost, by
+      // service" needed join archaeology. Same ambient fallback rules:
+      // explicit wins, ambient fills in, null means organic.
+      campaignId: event.campaignId ?? currentCampaignId() ?? null,
+      attribution: event.attribution ?? currentAttribution() ?? null,
     };
     // createMany + skipDuplicates makes keyed records idempotent (unique
     // dedupe_key): crash/retry re-records are no-ops, so callers never have

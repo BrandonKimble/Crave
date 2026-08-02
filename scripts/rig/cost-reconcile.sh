@@ -55,3 +55,29 @@ echo "#  cache registry + several pricing fixes were undeployed; the gap hid"
 echo "#  for a month because nothing computed this number.)"
 echo "#  Ledger-priced totals come from spend-analytics' pricers; recompute"
 echo "#  manually if in doubt: BigQuery is the only truth."
+
+# == THE FEEDBACK EDGE (round-six ideal shape) ==
+# `--publish` (2nd arg) closes the loop: sums BILLED per vendor from BigQuery
+# over the same window and writes the billed/ledger multiplier into
+# spend_unit_costs (reconciliation.<vendor> / multiplier) on PROD — which
+# prepareManifestEstimate reads to gross every estimate line to BILLED
+# dollars. Ledger pricing happens in publish-reconciliation.ts with the SAME
+# pricers the live meter uses; nothing here invents a rate.
+if [[ "${2:-}" == "--publish" ]]; then
+  echo ""
+  echo "== PUBLISHING reconciliation multipliers to prod spend_unit_costs =="
+  BILLED_GEMINI=$(bq query --use_legacy_sql=false --format=csv "
+    SELECT ROUND(SUM(cost),2) FROM \`${BQ_TABLE}\`
+    WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${DAYS} DAY)
+      AND service.description LIKE '%Gemini%'" | tail -1)
+  BILLED_PLACES=$(bq query --use_legacy_sql=false --format=csv "
+    SELECT ROUND(SUM(cost),2) FROM \`${BQ_TABLE}\`
+    WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${DAYS} DAY)
+      AND service.description LIKE '%Places%'" | tail -1)
+  echo "billed: gemini=\$${BILLED_GEMINI:-0} places=\$${BILLED_PLACES:-0}"
+  (cd "$(dirname "$0")/../../apps/api" && DATABASE_URL="$PRODURL" ALLOW_REMOTE_DB=1 \
+    npx ts-node scripts/publish-reconciliation.ts \
+      --days "$DAYS" \
+      --billed-gemini-usd "${BILLED_GEMINI:-0}" \
+      --billed-places-usd "${BILLED_PLACES:-0}")
+fi

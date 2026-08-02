@@ -335,6 +335,16 @@ model ApiUsageEvent {
   outcome       String? @db.VarChar(16)
   caller       String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
   runKey       String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
+  /// Owner-approved spend campaign this row's cost belongs to (ambient
+  /// work-context or explicit). NULL = organic/uncampaigned spend. Makes
+  /// "what did campaign X actually cost, per service" a one-query fact.
+  campaignId   String?  @map("campaign_id") @db.Uuid
+  /// WHY the spend happened, when the caller alone can't say — e.g. Places
+  /// 'grounding.new' (first grounding of a restaurant) vs 'grounding.refresh'
+  /// (re-grounding an already-grounded location). The honest-denominator
+  /// column: rate derivation slices on it so a re-grounding event can never
+  /// contaminate the per-new-restaurant rate again.
+  attribution  String?  @db.VarChar(64)
   /// Idempotency key for at-most-once records (e.g. one row per batch job).
   /// Callers that can legitimately record multiple rows leave it null.
   dedupeKey    String?  @unique @map("dedupe_key") @db.VarChar(256)
@@ -342,6 +352,7 @@ model ApiUsageEvent {
 
   @@index([service, createdAt], map: "idx_api_usage_service_created")
   @@index([runKey], map: "idx_api_usage_run_key")
+  @@index([campaignId], map: "idx_api_usage_campaign")
   @@map("api_usage_ledger")
 }
 
