@@ -395,7 +395,22 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     centroid: GeoPoint | null;
     providerPlaceId: string | null;
   } | null> {
-    const outcome = await this.forwardGeocodeMatch(node);
+    // The adapter's own contract: "a denial on a FORWARD call just leaves
+    // that node bbox-less". Red-team 2026-08-01: a NON-429 transport error
+    // rethrew instead, discarding the whole chain from an ALREADY-PAID
+    // reverse geocode and forcing the next settle to pay for it again. A
+    // forward fault is per-node and non-fatal, by the stated law.
+    let outcome: Awaited<ReturnType<typeof this.forwardGeocodeMatch>>;
+    try {
+      outcome = await this.forwardGeocodeMatch(node);
+    } catch (error) {
+      this.logger.warn('forwardGeocode faulted — node stays bbox-less', {
+        name: node.name,
+        level: node.providerLevelCode,
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
     if (outcome.kind !== 'ok') {
       return null; // denial: bbox-less until a later probe; miss: logged below
     }

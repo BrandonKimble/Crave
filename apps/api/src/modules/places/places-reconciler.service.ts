@@ -22,11 +22,13 @@
  * never blocks, never throws) is exactly the shape the pacer lane will absorb.
  */
 import { Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
   GeoBbox,
   METERS_PER_DEGREE_LAT,
+  MIN_COS_LAT,
   bboxArea,
   bboxLngSpan,
   ProbedRegion,
@@ -42,6 +44,18 @@ import {
   TomtomChainProbe,
   TomtomChainProbeResult,
 } from './tomtom-chain-probe.port';
+
+/** Raw row shape of the view-scoped asked-region read. */
+type ProbedRegionRow = {
+  kind: string;
+  center_lat: unknown;
+  center_lng: unknown;
+  radius_meters: unknown;
+  min_lat: unknown;
+  min_lng: unknown;
+  max_lat: unknown;
+  max_lng: unknown;
+};
 
 /** §2: region observations live 30 days. */
 export const NEGATIVE_OBSERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -275,48 +289,62 @@ export class PlacesReconcilerService {
   private async freshAskedRegions(view: GeoBbox): Promise<ProbedRegion[]> {
     const cutoff = new Date(Date.now() - NEGATIVE_OBSERVATION_TTL_MS);
     await this.pruneExpiredRegions(cutoff);
-    const pad = PROBE_SPEAKS_FOR_METERS / METERS_PER_DEGREE_LAT;
-    const latWindow = { gte: view.minLat - pad, lte: view.maxLat + pad };
+    // The pad covers a DISC's reach: its centre may sit outside the view
+    // while its radius reaches in. MEASURED 2026-08-01 against the real DB:
+    // one pad for both axes is WRONG — a degree of LONGITUDE shrinks with
+    // latitude, so the vendor's 100m spans more degrees of lng the further
+    // from the equator. At lat 60 a disc 66.7m outside the view (inside its
+    // 100m reach) was EXCLUDED, its anchor read unanswered, and the cell
+    // re-probed every settle: the spend-forever class this read exists to
+    // prevent, reintroduced as a scale bug.
+    const padLat = PROBE_SPEAKS_FOR_METERS / METERS_PER_DEGREE_LAT;
+    const worstLat = Math.max(Math.abs(view.minLat), Math.abs(view.maxLat));
+    const cosLat = Math.max(Math.cos((worstLat * Math.PI) / 180), MIN_COS_LAT);
+    const padLng = padLat / cosLat;
+    // RAW, not a query-builder filter, for one reason: a stored box may
+    // itself CROSS THE SEAM (boxes are written verbatim from the view, so a
+    // crossing view stores min_lng > max_lng). Such a row can answer anchors
+    // at any longitude, and no field-to-field comparison expresses that in
+    // the builder. A crossing QUERY view likewise drops the lng test rather
+    // than apply a wrong one; latitude always filters (no wrap on lat).
     const crossesSeam = view.minLng > view.maxLng;
-    const lngWindow = { gte: view.minLng - pad, lte: view.maxLng + pad };
-    const rows = await this.prisma.probedRegion.findMany({
-      where: {
-        observedAt: { gte: cutoff },
-        OR: [
-          {
-            kind: 'disc',
-            centerLat: latWindow,
-            ...(crossesSeam ? {} : { centerLng: lngWindow }),
-          },
-          {
-            kind: 'box',
-            maxLat: { gte: view.minLat },
-            minLat: { lte: view.maxLat },
-            ...(crossesSeam
-              ? {}
-              : { maxLng: { gte: view.minLng }, minLng: { lte: view.maxLng } }),
-          },
-        ],
-      },
-    });
+    const rows = await this.prisma.$queryRaw<ProbedRegionRow[]>(Prisma.sql`
+      /*places:fresh_asked_regions*/
+      SELECT kind, center_lat, center_lng, radius_meters,
+             min_lat, min_lng, max_lat, max_lng
+      FROM probed_regions
+      WHERE observed_at >= ${cutoff}
+        AND (
+          (kind = 'disc'
+            AND center_lat BETWEEN ${view.minLat - padLat}::numeric AND ${view.maxLat + padLat}::numeric
+            AND (${crossesSeam}
+                 OR center_lng BETWEEN ${view.minLng - padLng}::numeric AND ${view.maxLng + padLng}::numeric))
+          OR
+          (kind = 'box'
+            AND max_lat >= ${view.minLat}::numeric AND min_lat <= ${view.maxLat}::numeric
+            AND (${crossesSeam}
+                 OR min_lng > max_lng
+                 OR (max_lng >= ${view.minLng}::numeric AND min_lng <= ${view.maxLng}::numeric)))
+        )
+    `);
     return rows.map(
       (row): ProbedRegion =>
         row.kind === 'disc'
           ? {
               kind: 'disc',
               center: {
-                lat: Number(row.centerLat),
-                lng: Number(row.centerLng),
+                lat: Number(row.center_lat),
+                lng: Number(row.center_lng),
               },
-              radiusMeters: Number(row.radiusMeters),
+              radiusMeters: Number(row.radius_meters),
             }
           : {
               kind: 'box',
               bbox: {
-                minLat: Number(row.minLat),
-                minLng: Number(row.minLng),
-                maxLat: Number(row.maxLat),
-                maxLng: Number(row.maxLng),
+                minLat: Number(row.min_lat),
+                minLng: Number(row.min_lng),
+                maxLat: Number(row.max_lat),
+                maxLng: Number(row.max_lng),
               },
             },
     );

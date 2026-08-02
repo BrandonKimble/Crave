@@ -872,15 +872,27 @@ export class PlacesCatalogService {
     hull: GeoBbox,
   ): Promise<void> {
     if (!bboxCrossesAntimeridian(hull)) {
+      // UPSERT, not UPDATE (red-team 2026-08-01, BLOCKER): a node can arrive
+      // BBOX-LESS at birth — the forward-geocode budget is 5 for a 6-rung
+      // ladder, and a denial/miss leaves the node without one — so no ground
+      // row is written at birth. A bare UPDATE then matched ZERO rows on
+      // every later observation while the code believed it had widened, and
+      // the place stayed invisible to placesInView, smallestContaining and
+      // all attribution FOREVER (promotion is its only other repair path,
+      // and a refusal closes that too). The INSERT arm makes the first
+      // bbox-carrying observation create the ground it widens.
       await this.prisma.$executeRaw`
-        UPDATE place_geometries SET
+        INSERT INTO place_geometries (place_id, provider_boundary_id, fetched_at, geometry)
+        VALUES (
+          ${placeId}::uuid, NULL, now(),
+          ST_Multi(ST_MakeEnvelope(${hull.minLng}::float8, ${hull.minLat}::float8,
+                                   ${hull.maxLng}::float8, ${hull.maxLat}::float8, 4326))
+        )
+        ON CONFLICT (place_id) DO UPDATE SET
           geometry = ST_Multi(ST_Envelope(ST_Collect(
-            geometry,
-            ST_MakeEnvelope(${hull.minLng}::float8, ${hull.minLat}::float8,
-                            ${hull.maxLng}::float8, ${hull.maxLat}::float8, 4326)))),
+            place_geometries.geometry, EXCLUDED.geometry))),
           fetched_at = now()
-        WHERE place_id = ${placeId}::uuid
-          AND provider_boundary_id IS NULL
+        WHERE place_geometries.provider_boundary_id IS NULL
           -- Red-team F2 (2026-07-30, TOCTOU): the seam-free/crossing dispatch
           -- was decided on a STALE read. If a concurrent merge crossed this
           -- row's sketch in between, planar ST_Envelope over a two-arm
@@ -888,7 +900,8 @@ export class PlacesCatalogService {
           -- and grow-only means it never heals. The live-row span guard makes
           -- the stale branch a no-op instead (the next sketch re-widens
           -- through the crossing path).
-          AND (ST_XMax(geometry) - ST_XMin(geometry)) < 180`;
+          AND (ST_XMax(place_geometries.geometry)
+               - ST_XMin(place_geometries.geometry)) < 180`;
       return;
     }
     await this.writeSketchGround(placeId, hull);

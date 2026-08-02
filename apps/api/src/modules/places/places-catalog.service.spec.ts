@@ -283,19 +283,23 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     expect(executeRaw).toHaveBeenCalledTimes(1);
     const [template, ...values] = executeRaw.mock.calls[0];
     const sql = (template as string[]).join('?');
-    expect(sql).toContain('UPDATE place_geometries');
+    // UPSERT, not UPDATE (red-team 2026-08-01): a node can arrive BBOX-LESS
+    // at birth (the forward-geocode budget is 5 for a 6-rung ladder), so no
+    // ground row exists to update — a bare UPDATE matched zero rows and the
+    // place stayed groundless, and therefore invisible, forever.
+    expect(sql).toContain('INSERT INTO place_geometries');
+    expect(sql).toContain('ON CONFLICT (place_id) DO UPDATE');
     expect(sql).toContain('ST_Envelope(ST_Collect(');
     expect(sql).toContain('ST_MakeEnvelope(');
     expect(sql).toContain('provider_boundary_id IS NULL');
-    // The HULL of known∪observed rides in (minLng, minLat, maxLng, maxLat)
-    // plus the row id: known 30.2..30.4 × -97.9..-97.6 ∪ observed
-    // 30.1..30.3 × -97.95..-97.7 = 30.1..30.4 × -97.95..-97.6.
+    // The HULL of known∪observed rides in: known 30.2..30.4 × -97.9..-97.6 ∪
+    // observed 30.1..30.3 × -97.95..-97.7 = 30.1..30.4 × -97.95..-97.6.
     expect(values).toEqual([
+      existing.placeId,
       expect.closeTo(-97.95, 6),
       expect.closeTo(30.1, 6),
       expect.closeTo(-97.6, 6),
       expect.closeTo(30.4, 6),
-      existing.placeId,
     ]);
     // Bbox-only merge re-reads the row for the post-widen truth.
     expect(findUniqueOrThrow).toHaveBeenCalledWith({

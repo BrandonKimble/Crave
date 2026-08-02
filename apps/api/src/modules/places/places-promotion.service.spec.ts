@@ -202,6 +202,10 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(sql).toContain('provider_boundary_id IS NOT NULL');
       expect(sql).not.toContain('geometry IS NOT NULL');
       expect(values).toContain('poll_created');
+      // The queue row carries its SPEND CAMPAIGN (red-team 2026-08-01): the
+      // TomTom pools are per-MINUTE rate windows, so a campaign envelope is
+      // the only budget ceiling a bulk run can have.
+      expect(sql).toContain('campaign_id');
     });
 
     it('a BIRTH promotes THE NEWBORN only — targeted row select, never the whole-queue drain (red-team 2026-08-01: a backlogged drain ran ~83min of spacing and processed the newborn LAST)', async () => {
@@ -221,6 +225,19 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(targeted).toContain('place_id = ');
       expect(targeted).not.toContain('ORDER BY enqueued_at');
       expect(targeted).not.toContain('LIMIT');
+    });
+
+    it('a bulk_seed enqueue carries its campaign and does NOT promote inline', async () => {
+      const { service, prisma, executeRawCalls } = makeHarness({});
+      const drainSpy = jest.spyOn(service, 'drainQueue');
+      await service.enqueue(PLACE_ID, 'bulk_seed', 'camp-1');
+      const { values } = executeRawCalls[0];
+      expect(values).toContain('bulk_seed');
+      expect(values).toContain('camp-1');
+      // Only 'birth' promotes synchronously — a bulk mint must never spend
+      // inline, and it must never trigger the whole-queue drain either.
+      expect(drainSpy).not.toHaveBeenCalled();
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
 
     it('re-enqueue is a no-op by construction and enqueue never throws', async () => {

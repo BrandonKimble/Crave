@@ -79,6 +79,18 @@ const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
  */
 export const PROMOTION_DRAIN_ADVISORY_LOCK_KEY = 0x706f6c79; // 'poly'
 
+/**
+ * §16 K3 operational ceiling: consumed-draw MISSES before a row is retired.
+ * Red-team 2026-08-01 (BLOCKER): `attempts` was incremented and read by
+ * NOTHING — no WHERE, no cap — so a row whose geometry id the vendor can
+ * never satisfy (no matching providerID, an error item, a non-collection
+ * body, zero polygon features) drew a scarce polygon EVERY HOUR FOREVER.
+ * The per-minute pool bounds rate, not this. Three asks across three hours
+ * is enough to distinguish a transient from "the vendor does not have it";
+ * a transport error is NOT a miss and never counts here.
+ */
+const MISS_ATTEMPTS_BEFORE_RETIRE = 3;
+
 /** Per-item drain outcome (see promoteOne). 'stop' ends the whole pass. */
 type DrainOutcome = 'promoted' | 'skipped' | 'attempted' | 'stop';
 
@@ -236,6 +248,15 @@ export class PlacesPromotionService {
    * never drawn concurrently; if either is held, the newborn simply waits
    * for the hourly sweep — the queue is the lateness buffer. Never throws.
    */
+  // NO CROSS-PROCESS ADVISORY LOCK HERE (red-team 2026-08-01, BLOCKER): the
+  // drain's lock is session-scoped but acquired/released over a CONNECTION
+  // POOL, so a mismatched release leaks it until that connection closes —
+  // and taking it PER BIRTH (on the api process, from every settle) made a
+  // rare leak likely, which would silently starve every drain in every
+  // process forever. A single targeted row needs no cross-process mutex
+  // anyway: the governed pool is the spend gate, `promoted_at IS NULL`
+  // bounds duplication to at most one wasted draw on a genuine race, and
+  // the in-process latch still prevents fighting this process's own sweep.
   private async promoteNewborn(placeId: string): Promise<void> {
     if (this.draining) {
       // The hourly sweep owns this tick; its unfiltered WHERE picks the
@@ -247,18 +268,7 @@ export class PlacesPromotionService {
     }
     this.draining = true;
     try {
-      const lock = await this.prisma.$queryRaw<Array<{ locked: boolean }>>(
-        Prisma.sql`
-          SELECT pg_try_advisory_lock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS locked
-        `,
-      );
-      if (!lock[0]?.locked) {
-        this.logger.info('Newborn promote deferred (lock held elsewhere)', {
-          placeId,
-        });
-        return;
-      }
-      try {
+      {
         const rows = await this.prisma.$queryRaw<PlaceGeometryPromotion[]>(
           Prisma.sql`
             SELECT place_id            AS "placeId",
@@ -277,25 +287,6 @@ export class PlacesPromotionService {
         );
         if (rows[0]) {
           await this.promoteOne(rows[0], new Date());
-        }
-      } finally {
-        // Red-team bf350c35 F1: this path acquires PER BIRTH (far more
-        // round-trips than the hourly sweep), so a silent pooled-session
-        // unlock miss here could starve every sweep in every process while
-        // they log the WRONG cause ("another process drains"). Same warn
-        // contract as drainQueue — a leaked lock must be attributable.
-        const unlocked = await this.prisma
-          .$queryRaw<Array<{ unlocked: boolean }>>(
-            Prisma.sql`
-              SELECT pg_advisory_unlock(${PROMOTION_DRAIN_ADVISORY_LOCK_KEY}) AS unlocked
-            `,
-          )
-          .catch(() => null);
-        if (!unlocked?.[0]?.unlocked) {
-          this.logger.warn(
-            'Newborn promote advisory unlock did not release (pooled-session mismatch; lock clears when its connection closes)',
-            { placeId },
-          );
         }
       }
     } catch (error) {
@@ -351,7 +342,26 @@ export class PlacesPromotionService {
           continue;
         }
       }
-      const outcome = await this.promoteOne(item, now);
+      // Per-item isolation (red-team 2026-08-01): drainPass selects
+      // oldest-first and records nothing on a throw, so ONE poison row (bad
+      // GeoJSON reaching ST_GeomFromGeoJSON, a concurrently-deleted row,
+      // a stamp failure) used to abort the pass and be retried FIRST next
+      // tick — blocking the entire queue indefinitely. Record the attempt
+      // and move on; the row ages out through the miss ceiling.
+      let outcome: DrainOutcome;
+      try {
+        outcome = await this.promoteOne(item, now);
+      } catch (error) {
+        this.logger.warn(
+          'Promotion item threw — attempt recorded, pass continues',
+          {
+            placeId: item.placeId,
+            detail: error instanceof Error ? error.message : String(error),
+          },
+        );
+        await this.recordAttempt(item.placeId, now).catch(() => undefined);
+        continue;
+      }
       if (outcome === 'stop') {
         break;
       }
@@ -543,6 +553,17 @@ export class PlacesPromotionService {
     }
     if (polygon.kind === 'miss') {
       draws.scarce += 1;
+      if (item.attempts + 1 >= MISS_ATTEMPTS_BEFORE_RETIRE) {
+        // The vendor has answered "no polygon for this id" enough times to
+        // be a FACT about its model, not a transient — retire the row
+        // terminally instead of re-drawing on it every hour forever.
+        await this.recordRefusal(
+          item.placeId,
+          'vendor has no polygon for this geometry id after repeated asks',
+          now,
+        );
+        return 'attempted';
+      }
       await this.recordAttempt(item.placeId, now);
       return 'attempted';
     }

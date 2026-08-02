@@ -326,10 +326,13 @@ export const createViewportSubjectStoreController = ({
     logSubjectStore('slice-fetch', { cause, view });
     void fetchSlice(view)
       .then((response) => {
+        // Clear the in-flight flag ABOVE the guard: if a superseded response
+        // ever returned early with the flag still set, the controller would
+        // never fetch again for the whole session.
+        sliceFetchInFlight = false;
         if (disposed || epoch !== fetchEpoch) {
           return;
         }
-        sliceFetchInFlight = false;
         // F7 (red-team): a retry armed by an earlier failure must not
         // outlive the success it was retrying for.
         clearTimer(sliceRetryTimer);
@@ -363,12 +366,23 @@ export const createViewportSubjectStoreController = ({
           // settled view now instead of waiting for another camera move.
           resolveAtSettle();
         }
+        // THE PARKED-CAMERA WEDGE (red-team 2026-08-01): only a bounds CHANGE
+        // re-arms a fetch, and the success path never re-checked the live
+        // camera. Pan away while a fetch for the old view is in flight, then
+        // STOP: the stale slice lands, its marginBox no longer covers the
+        // view, computeResolution returns null, UNKNOWN never overwrites —
+        // and nothing ever fetches again. The header serves the previous
+        // city's name (or 'Explore') indefinitely. ensureSliceFetch's own
+        // coverage guard makes this a no-op in the normal case.
+        if (latestMapBounds) {
+          ensureSliceFetch(geoBboxFromMapBounds(latestMapBounds));
+        }
       })
       .catch((error: unknown) => {
+        sliceFetchInFlight = false;
         if (disposed || epoch !== fetchEpoch) {
           return;
         }
-        sliceFetchInFlight = false;
         logSubjectStore('slice-fetch-failed', {
           message: error instanceof Error ? error.message : 'unknown',
         });

@@ -525,6 +525,55 @@ describe('containment laws, proven against PostGIS', () => {
     expect(row!.bbox.maxLng).toBeCloseTo(-66.9, 3);
   });
 
+  it('THE ASKED-REGION READ: the view-scoped predicate keeps every region that can answer an anchor — including a high-latitude disc and a stored WRAP box', async () => {
+    // The instrument that can show RED. A unit mock cannot execute a spatial
+    // predicate, so both defects found on 2026-08-01 were invisible to a
+    // green suite: (1) one pad for both axes dropped a disc 66.7m outside a
+    // lat-60 view but INSIDE its 100m reach; (2) a stored seam-crossing box
+    // (min_lng > max_lng, written verbatim from a crossing view) failed the
+    // plain lng test. A false EXCLUSION means the anchor reads unanswered
+    // and the cell re-probes forever — spend.
+    const PROBE_METERS = 100;
+    const METERS_PER_DEG_LAT = 111_320;
+    await prisma.$executeRawUnsafe('DELETE FROM probed_regions');
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO probed_regions (region_id, kind, center_lat, center_lng, radius_meters, observed_at)
+       VALUES (gen_random_uuid(), 'disc', 60.0, 10.0012, 100, now()),
+              (gen_random_uuid(), 'disc', 0.0, 10.0012, 100, now())`,
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO probed_regions (region_id, kind, min_lat, min_lng, max_lat, max_lng, observed_at)
+       VALUES (gen_random_uuid(), 'box', 59.9, 172.0, 60.1, -66.0, now()),
+              (gen_random_uuid(), 'box', 70.0, 20.0, 71.0, 21.0, now())`,
+    );
+
+    const view = { minLat: 59.99, minLng: 9.99, maxLat: 60.01, maxLng: 10.0 };
+    const padLat = PROBE_METERS / METERS_PER_DEG_LAT;
+    const padLng = padLat / Math.max(Math.cos((60.01 * Math.PI) / 180), 0.01);
+    const rows = await prisma.$queryRawUnsafe<Array<{ kind: string }>>(
+      `SELECT kind FROM probed_regions
+       WHERE observed_at >= now() - interval '30 days'
+         AND (
+           (kind = 'disc'
+             AND center_lat BETWEEN ${view.minLat - padLat} AND ${view.maxLat + padLat}
+             AND center_lng BETWEEN ${view.minLng - padLng} AND ${view.maxLng + padLng})
+           OR
+           (kind = 'box'
+             AND max_lat >= ${view.minLat} AND min_lat <= ${view.maxLat}
+             AND (min_lng > max_lng
+                  OR (max_lng >= ${view.minLng} AND min_lng <= ${view.maxLng})))
+         )`,
+    );
+
+    // KEPT: the high-lat disc (reaches in) and the stored wrap box (answers
+    // any longitude). DROPPED: the equatorial disc (134m away, out of reach)
+    // and the far box.
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((r) => r.kind === 'disc')).toHaveLength(1);
+    expect(rows.filter((r) => r.kind === 'box')).toHaveLength(1);
+    await prisma.$executeRawUnsafe('DELETE FROM probed_regions');
+  });
+
   it('THE SEAM: a view crossing the antimeridian returns only the places actually there', async () => {
     // SCOPE, stated honestly: the union-envelope bug shipped on 2026-07-27
     // was a PERFORMANCE defect, not a correctness one. Measured on the dev

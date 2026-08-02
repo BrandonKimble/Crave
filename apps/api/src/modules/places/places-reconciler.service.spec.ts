@@ -96,9 +96,27 @@ function makeHarness(options: {
     // so the mock must actually remember (docket #7 moved it to the DB).
     const rows: any[] = [];
     return {
+      // The view-scoped READ is raw SQL, and a mock cannot honestly execute a
+      // spatial predicate — so the PREDICATE's law is pinned against real
+      // Postgres in places-containment.integration.spec. Here the raw read
+      // just returns what was remembered, which is what these behavioural
+      // tests are about.
+      $queryRaw: jest.fn().mockImplementation(() =>
+        Promise.resolve(
+          rows.map((r: any) => ({
+            kind: r.kind,
+            center_lat: r.centerLat ?? null,
+            center_lng: r.centerLng ?? null,
+            radius_meters: r.radiusMeters ?? null,
+            min_lat: r.minLat ?? null,
+            min_lng: r.minLng ?? null,
+            max_lat: r.maxLat ?? null,
+            max_lng: r.maxLng ?? null,
+          })),
+        ),
+      ),
       probedRegion: {
         deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-        findMany: jest.fn().mockImplementation(() => Promise.resolve(rows)),
         create: jest.fn().mockImplementation(({ data }: any) => {
           rows.push({ ...data, observedAt: new Date() });
           return Promise.resolve(data);
@@ -331,30 +349,11 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     await service.whenIdle();
   });
 
-  it('the asked-region read is SCOPED TO THE VIEW, and the TTL prune is throttled off the settle path (red-team 2026-08-01)', async () => {
+  it('the TTL prune is throttled OFF the settle path (housekeeping, not a read)', async () => {
     const { service, prismaMock } = makeHarness({});
     service.noteViewport(VIEW);
     await service.whenIdle();
-
-    // The read filters on the view's own extent — a global read would make
-    // durability a scaling cliff (one row per probing pass, per dwell and
-    // per search submit, retained 30 days, then run through
-    // O(anchors x regions) distance math on EVERY settle).
-    const where = prismaMock.probedRegion.findMany.mock.calls[0][0].where;
-    expect(where.observedAt.gte).toBeInstanceOf(Date);
-    expect(where.OR).toHaveLength(2);
-    const [discArm, boxArm] = where.OR;
-    expect(discArm.kind).toBe('disc');
-    expect(discArm.centerLat.gte).toBeLessThanOrEqual(VIEW.minLat);
-    expect(discArm.centerLat.lte).toBeGreaterThanOrEqual(VIEW.maxLat);
-    expect(boxArm.kind).toBe('box');
-    expect(boxArm.maxLat.gte).toBe(VIEW.minLat);
-    expect(boxArm.minLat.lte).toBe(VIEW.maxLat);
-
-    // Prune is throttled per process: a second settle does not re-delete.
-    const prunesAfterFirst =
-      prismaMock.probedRegion.deleteMany.mock.calls.length;
-    expect(prunesAfterFirst).toBe(1);
+    expect(prismaMock.probedRegion.deleteMany).toHaveBeenCalledTimes(1);
     service.noteViewport({
       minLat: VIEW.minLat + 5,
       maxLat: VIEW.maxLat + 5,
