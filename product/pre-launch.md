@@ -98,12 +98,11 @@ anywhere in the codebase.
       block; recent prod deploys all CLI-triggered) and the never-match
       watchPatterns are removed — deploy.sh just works now. Its SKIPPED
       check remains as a tripwire.
-- [ ] **Upgrade Railway to Pro + enable daily Postgres backups** — scheduled
-      volume backups (dashboard: postgis-db service → volume → Backups) are
-      Pro-plan-only. This is the only automated backup for prod Postgres;
-      until then coverage is deploy-time only (pre-migration `pg_dump` in
-      `scripts/rig/deploy.sh`, last 5 kept in `~/.crave-deploy-backups`).
-      After enabling, run one restore rehearsal (see
+- [x] **~~Upgrade Railway to Pro + enable daily Postgres backups~~ DONE
+      2026-08-02**: Pro active, daily schedule on the prod postgis volume
+      (04:58 UTC, 6-day retention), first backup taken immediately, and the
+      volume-restore path REHEARSED and RED-proven on staging (restore mints
+      a new volume; complete with a volume swap — full runbook in
       plans/production-hardening.md §8).
 - [ ] **Google usage ledger review** — after the first month of real traffic, read the internal
       call ledger + Cloud billing export; hunt inefficiencies.

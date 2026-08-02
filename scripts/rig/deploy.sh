@@ -72,6 +72,45 @@ if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
   fi
 fi
 
+# ── PROMOTION GATE: prod ships only what staging has already run ──────────
+#
+# THE SHAPE THIS FIXES (2026-08-02). `deploy.sh` with no arguments went
+# straight to PRODUCTION, and staging was an optional side-trip nothing
+# checked. Measured that day: prod had the newest code while staging was
+# running a build from the previous night — still carrying a rate-limit bypass
+# prod had already been patched for. Staging was not a stage in a pipeline; it
+# was a parallel environment someone occasionally remembered.
+#
+# A gate is the only thing that makes staging mean anything. Prod now refuses
+# unless staging is running THIS EXACT COMMIT and is healthy. --force is the
+# hotfix escape and says so loudly, because a gate with a silent bypass is the
+# allowlist mistake all over again.
+if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
+  HEAD_SHA="$(git rev-parse HEAD)"
+  STAGING_SHA="$(railway variables --service api --environment staging --json 2>/dev/null \
+    | python3 -c 'import json,sys; print((json.load(sys.stdin) or {}).get("DEPLOYED_GIT_SHA",""))' 2>/dev/null || true)"
+
+  if [[ -z "$STAGING_SHA" ]]; then
+    echo "REFUSED: staging has no DEPLOYED_GIT_SHA — it has never been deployed by this script," >&2
+    echo "so there is no evidence this code has run anywhere but a laptop." >&2
+    echo "  Run: ./scripts/rig/deploy.sh --env staging" >&2
+    exit 1
+  fi
+  if [[ "$STAGING_SHA" != "$HEAD_SHA" ]]; then
+    echo "REFUSED: staging is running different code than you are about to ship to PROD." >&2
+    echo "  staging: ${STAGING_SHA:0:9}" >&2
+    echo "  HEAD:    ${HEAD_SHA:0:9}" >&2
+    echo "Deploy to staging first: ./scripts/rig/deploy.sh --env staging" >&2
+    exit 1
+  fi
+  # Healthy, not merely deployed — a crashlooping staging proves nothing.
+  if ! curl -fsS --max-time 10 "https://api-staging-25ca.up.railway.app/health" >/dev/null 2>&1; then
+    echo "REFUSED: staging is not answering /health. It is running this commit but is not well." >&2
+    exit 1
+  fi
+  echo "==> Promotion gate: staging is healthy on ${HEAD_SHA:0:9}."
+fi
+
 if [[ "$ENVIRONMENT" == "production" ]]; then
   echo "==> Pushing main first (origin must match what ships) ..."
   git push origin main
@@ -159,4 +198,14 @@ if [[ "$uptime_s" -gt 900 ]]; then
   echo "The new container likely crashlooped (check migrations): railway logs --service api --environment $ENVIRONMENT" >&2
   exit 1
 fi
+# STAMP WHAT SHIPPED. `railway up` uploads a working tree and Railway records
+# no commit for a CLI deploy, so without this an environment cannot say which
+# code it is running — answering that for staging on 2026-08-02 required
+# probing its live rate-limit behaviour. /health echoes this back.
+for svc in "${SERVICES[@]}"; do
+  railway variables --service "$svc" --environment "$ENVIRONMENT" \
+    --set "DEPLOYED_GIT_SHA=$(git rev-parse HEAD)" --skip-deploys >/dev/null 2>&1 || \
+    echo "WARNING: could not stamp DEPLOYED_GIT_SHA on $svc — the promotion gate will refuse the next prod deploy." >&2
+done
+
 echo "==> Deployed $(git rev-parse --short HEAD) to $ENVIRONMENT — /health 200 (uptime ${uptime_s}s)."

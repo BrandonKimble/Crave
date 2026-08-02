@@ -346,13 +346,34 @@ Launching with a separate worker makes “it deployed” != “it’s healthy”
 
 ### Backups / restore drill
 
-- **PRE-LAUNCH (blocked on plan tier)**: Railway's scheduled volume backups
-  (daily/weekly snapshots on the postgis-db volume, dashboard: service →
-  volume → Backups) require the **Pro plan**. Upgrade to Pro and enable daily
-  backups before launch — this is the only automated point-in-time-ish
-  protection for prod Postgres. Until then the coverage is: pre-migration
-  `pg_dump` snapshot on every prod deploy (`scripts/rig/deploy.sh`, keeps
-  last 5 in `~/.crave-deploy-backups`) — deploy-time only, not scheduled.
+- **DONE 2026-08-02 — Railway Pro + daily volume backups are LIVE.** Owner
+  upgraded to Pro; daily schedule enabled on the PROD postgis volume via the
+  GraphQL API (`volumeInstanceBackupScheduleUpdate`, kinds [DAILY] — cron
+  58 4 \* \* \* UTC, retention 6 days), and a first manual backup was taken
+  immediately (2,240 MB referenced). The pre-migration `pg_dump` on every
+  prod deploy (last 5 in `~/.crave-deploy-backups`) stays as the
+  second, independent rail.
+- **VOLUME-RESTORE REHEARSAL RUN 2026-08-02 (staging, RED-proven).** How
+  Railway restore ACTUALLY works — it never overwrites in place:
+  1. Backup taken → marker table planted AFTER the backup →
+     `volumeInstanceBackupRestore` invoked.
+  2. Restore mints a NEW volume named `postgis-db-<timestamp>` from the
+     snapshot, attached to NOTHING. The original volume is untouched (this
+     is why a redeploy alone changes nothing — we proved that the hard way).
+  3. Complete it with a volume swap:
+     `railway volume -s <svc> -e <env> detach -v postgis-db-volume -y`,
+     `attach -v "postgis-db-<timestamp>" -y`, then redeploy the service.
+  4. PROOF: the post-backup marker table was GONE on the restored volume
+     (`to_regclass` = f) — the snapshot genuinely rewinds data.
+     Rehearsal cleanup: staging swapped back to its original volume, snapshot
+     volume deleted, marker dropped. For a REAL prod restore, steps 1–3 on the
+     prod instance are the whole runbook (plus the app services reconnect on
+     their own — DATABASE_URL doesn't change).
+- The GraphQL wrinkle: the CLI has no backup verbs; use the API with the
+  `accessToken` (NOT `token`) from `~/.railway/config.json` against
+  backboard.railway.com/graphql/v2. Backups list via
+  `volumeInstanceBackupList(volumeInstanceId:)`; prod volumeInstance id
+  8fece9b0-580e-44e4-a45c-6bb1123ade0c.
 - **RESTORE DRILL RUN 2026-08-01** (prod dump → scratch DB on staging PG).
   Verified: core_entities 17,518 / mentions 46,608 / polls 17,931 / users 17 —
   exact match to prod. The working recipe:
@@ -374,8 +395,8 @@ space left on device` — the pgvector HNSW index on
     time: `SET max_parallel_maintenance_workers = 0;` then re-run the
     `CREATE INDEX ... USING hnsw` statement (serial build, works anywhere;
     queries work without the index meanwhile, just slower vector search).
-  - RPO today: last prod deploy's snapshot (deploy-time only) → daily once
-    Railway Pro backups are on. RTO: ~15 min (restore measured ~10 min for
+  - RPO today: ≤24h (daily volume backup, 04:58 UTC) and at most the last
+    deploy for schema-affecting incidents (pre-migration dump). RTO: ~15 min (restore measured ~10 min for
     450MB over the proxy + index rebuild). Rehearse quarterly; drop the
     scratch DB after (`DROP DATABASE restore_target` — staging volume is
     only 4.9GB).
