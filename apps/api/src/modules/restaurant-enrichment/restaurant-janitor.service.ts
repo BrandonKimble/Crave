@@ -97,13 +97,22 @@ export class RestaurantJanitorService {
     };
 
     // 1. Terminal no-match placeholders → archive.
+    //
+    // THE COUNTER IS A REAL COLUMN NOW (red team 2026-08-02). This policy read
+    // `restaurant_metadata->'lastEnrichmentAttempt'->>'count'`, whose only
+    // writer set it to `ranked.length` — the number of Google CANDIDATES
+    // returned, not attempts. Two live consequences: a restaurant was archived
+    // because Google returned the MOST evidence for it, and every
+    // `error`-status attempt (which wrote no count) stayed at 0 forever and
+    // was re-enriched every week at real Places spend. A policy contract
+    // expressed as a JSON path in a raw SQL string in another file has no way
+    // to notice when its writer means something else.
     const unmatched = await this.prisma.$queryRaw<{ entity_id: string }[]>`
       SELECT entity_id FROM core_entities
       WHERE type = 'restaurant' AND status = 'active'
         AND restaurant_metadata::jsonb -> 'lastEnrichmentAttempt' ->> 'status'
               IN ('no_match', 'error')
-        AND COALESCE((restaurant_metadata::jsonb -> 'lastEnrichmentAttempt' ->> 'count')::int, 0)
-              >= ${threshold}
+        AND enrichment_failure_count >= ${threshold}
         AND NOT EXISTS (
           SELECT 1 FROM core_restaurant_locations l
           WHERE l.restaurant_id = core_entities.entity_id
@@ -122,8 +131,7 @@ export class RestaurantJanitorService {
     const retryable = await this.prisma.$queryRaw<{ entity_id: string }[]>`
       SELECT entity_id FROM core_entities
       WHERE type = 'restaurant' AND status = 'active'
-        AND COALESCE((restaurant_metadata::jsonb -> 'lastEnrichmentAttempt' ->> 'count')::int, 0)
-              < ${threshold}
+        AND enrichment_failure_count < ${threshold}
         AND NOT EXISTS (
           SELECT 1 FROM core_restaurant_locations l
           WHERE l.restaurant_id = core_entities.entity_id

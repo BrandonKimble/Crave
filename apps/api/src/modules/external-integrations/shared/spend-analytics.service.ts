@@ -12,6 +12,7 @@ import { CollectorSourceRegistryService } from '../../content-processing/reddit-
 import { GovernanceService } from '../governance/governance.service';
 import { OpsAlertsService } from './ops-alerts.service';
 import { utcInstant } from '../../../shared/sql/utc-instant';
+import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
 
 /**
  * §24.2 the measured unit-cost table (plans/geo-demand-foundation-rebuild.md
@@ -128,6 +129,8 @@ export class SpendAnalyticsService {
     // unit-cost/backstop-row refresh must never depend on live pool access
     // (governance.service.ts re-reads the written row at its OWN boot).
     @Optional() private readonly governance?: GovernanceService,
+    @Optional()
+    private readonly reconciliation?: ReconciliationMultiplierService,
   ) {
     this.logger = loggerService.setContext('SpendAnalyticsService');
   }
@@ -893,8 +896,15 @@ export class SpendAnalyticsService {
       (sum, total) => sum + Math.min(total, p90),
       0,
     );
+    // BILLED DOLLARS (red team 2026-08-02). trailingSpendMicros is summed from
+    // pricedGeminiRow — LEDGER dollars. The pool this limit governs is now
+    // metered in BILLED dollars, so deriving the ceiling from ungrossed spend
+    // would set a limit in one currency against a counter in another and make
+    // the effective backstop tighter than intended. Both sides use the same
+    // published ratio; absent reconciliation it is 1 and nothing changes.
+    const geminiMultiplier = this.reconciliation?.multiplierFor('gemini') ?? 1;
     const derivedLimitMicros = Math.round(
-      trailingSpendMicros * BACKSTOP_MULTIPLE,
+      trailingSpendMicros * geminiMultiplier * BACKSTOP_MULTIPLE,
     );
     if (derivedLimitMicros <= 0) {
       // No measured spend yet in the trailing window — nothing to derive;

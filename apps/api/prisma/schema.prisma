@@ -49,6 +49,14 @@ model Entity {
   longitude                           Decimal?                      @db.Decimal(11, 8)
   address                             String?                       @db.VarChar(500)
   restaurantMetadata                  Json?                         @map("restaurant_metadata")
+  /// How many times enrichment has TERMINALLY FAILED for this entity. A real
+  /// counter, because the janitor's archive/retry policy used to read
+  /// `restaurant_metadata->lastEnrichmentAttempt->count`, whose only writer
+  /// set it to the number of Google CANDIDATES returned — so the restaurants
+  /// with the MOST evidence were archived, and every `error`-status
+  /// placeholder (which wrote no count at all) was re-enriched weekly forever
+  /// at real Places spend. Incremented, never replaced.
+  enrichmentFailureCount              Int                           @default(0) @map("enrichment_failure_count")
   primaryLocationId                   String?                       @unique @map("primary_location_id") @db.Uuid
   lastUpdated                         DateTime                      @default(now()) @map("last_updated")
   createdAt                           DateTime                      @default(now()) @map("created_at")

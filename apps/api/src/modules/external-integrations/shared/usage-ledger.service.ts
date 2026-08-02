@@ -5,6 +5,7 @@ import { GovernanceService } from '../governance/governance.service';
 import { currentCampaignId, currentAttribution } from './work-context';
 import { placesCostMicrosPerCall } from './vendor-pricing';
 import { geminiCostMicros } from './gemini-pricing';
+import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
 import { SpendCampaignService } from './spend-campaign.service';
 
 export interface UsageEvent {
@@ -112,6 +113,8 @@ export class UsageLedgerService implements OnModuleDestroy {
     // Optional for the same reason — a script graph without the campaign
     // service simply never attributes campaign spend (events still record).
     @Optional() private readonly spendCampaigns?: SpendCampaignService,
+    @Optional()
+    private readonly reconciliation?: ReconciliationMultiplierService,
   ) {
     this.logger = loggerService.setContext('UsageLedgerService');
   }
@@ -207,7 +210,14 @@ export class UsageLedgerService implements OnModuleDestroy {
       if (total <= 0) {
         return;
       }
-      void this.governance.pools.meter('googlePlaces.monthlySpend', total);
+      // BILLED, not ledger (red team 2026-08-02). The pool this feeds IS the
+      // catastrophe backstop, so it must count the dollars Google actually
+      // charges — otherwise the ceiling is looser than it reads by exactly
+      // our metering error.
+      void this.governance.pools.meter(
+        'googlePlaces.monthlySpend',
+        this.reconciliation?.gross('google_places', total) ?? total,
+      );
     } catch {
       // Metering must never break the usage record itself.
     }
@@ -243,7 +253,13 @@ export class UsageLedgerService implements OnModuleDestroy {
       if (micros <= 0) {
         return;
       }
-      void this.governance.pools.meter('gemini.monthlySpend', micros);
+      // BILLED, not ledger — see meterPlacesSpend. Gemini is the one with the
+      // measured ~1.7x under-metering, so this is where the "3x backstop" was
+      // really ~5.1x.
+      void this.governance.pools.meter(
+        'gemini.monthlySpend',
+        this.reconciliation?.gross('gemini', micros) ?? micros,
+      );
     } catch {
       // Metering must never break the usage record itself.
     }
@@ -290,8 +306,14 @@ export class UsageLedgerService implements OnModuleDestroy {
       if (micros <= 0) {
         return;
       }
+      // The envelope is MINTED in billed dollars (prepareManifestEstimate
+      // grosses every line for owner approval), so it must be DRAINED in
+      // billed dollars. Minting in one currency and draining in another is
+      // the whole defect.
+      const billedMicros =
+        this.reconciliation?.gross(event.service, micros) ?? micros;
       this.spendCampaigns
-        .recordSpend(campaignId, micros)
+        .recordSpend(campaignId, billedMicros)
         .catch((error: unknown) => {
           this.logger.warn('Campaign spend attribution failed', {
             campaignId,

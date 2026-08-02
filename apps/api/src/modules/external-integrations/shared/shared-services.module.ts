@@ -7,6 +7,7 @@ import { GovernanceModule } from '../governance/governance.module';
 import { DecisionLedgerService } from './decision-ledger.service';
 import { SpendCampaignService } from './spend-campaign.service';
 import { OpsAlertsService } from './ops-alerts.service';
+import { ReconciliationMultiplierService } from './reconciliation-multiplier.service';
 
 /**
  * Shared services module for external integrations
@@ -20,6 +21,7 @@ import { OpsAlertsService } from './ops-alerts.service';
     GovernanceModule, // gemini.monthlySpend metering at the ledger chokepoint
   ],
   providers: [
+    ReconciliationMultiplierService,
     RateLimitCoordinatorService,
     UsageLedgerService,
     DecisionLedgerService,
@@ -27,6 +29,7 @@ import { OpsAlertsService } from './ops-alerts.service';
     OpsAlertsService,
   ],
   exports: [
+    ReconciliationMultiplierService,
     RateLimitCoordinatorService,
     UsageLedgerService,
     DecisionLedgerService,

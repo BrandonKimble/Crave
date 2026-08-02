@@ -4036,6 +4036,12 @@ export class RestaurantLocationEnrichmentService {
         where: { entityId: entity.entityId },
         data: {
           restaurantMetadata: mergedMetadata,
+          // A REAL attempt counter, incremented (never replaced). The
+          // janitor's archive/retry policy used to read
+          // metadata.lastEnrichmentAttempt.count, whose only writer set it to
+          // the number of Google CANDIDATES — so the restaurants with the most
+          // evidence got archived. See the migration for the full account.
+          enrichmentFailureCount: { increment: 1 },
           lastUpdated: new Date(),
         },
       });
@@ -4078,6 +4084,9 @@ export class RestaurantLocationEnrichmentService {
         where: { entityId: entity.entityId },
         data: {
           restaurantMetadata: mergedMetadata,
+          // The `error` path wrote NO count at all, so these placeholders sat
+          // at 0 forever and were re-enriched every week at real Places spend.
+          enrichmentFailureCount: { increment: 1 },
           lastUpdated: new Date(),
         },
       });

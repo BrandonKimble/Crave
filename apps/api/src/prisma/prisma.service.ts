@@ -149,7 +149,26 @@ export class PrismaService
     // database, so under the old test it had to declare itself `prod` to boot
     // at all, which is how staging ended up indistinguishable from production
     // everywhere else. A hosted DB is legitimate for any DEPLOYED runtime.
-    if (isDeployedEnv(appEnv) || process.env.ALLOW_REMOTE_DB === '1') {
+    if (isDeployedEnv(appEnv)) {
+      // SELF-RETIRING BRIDGE (2026-08-02). ALLOW_REMOTE_DB=1 was set on
+      // staging so it would boot under BOTH the old prod-only guard and this
+      // one while APP_ENV moved from `prod` to `staging`. Reaching this line
+      // proves the new guard is live, so the override is now dead weight that
+      // silently disables the never-point-local-at-prod protection. Say so
+      // every boot until someone removes it — a reminder that appears exactly
+      // when it becomes true beats one written in a document.
+      if (process.env.ALLOW_REMOTE_DB === '1') {
+        this.logger?.warn(
+          'ALLOW_REMOTE_DB=1 is set on a DEPLOYED environment and is no ' +
+            'longer needed — this build allows a hosted database for any ' +
+            'deployed runtime. Remove the override: ' +
+            `railway variables -s <svc> --environment ${appEnv} --unset ALLOW_REMOTE_DB`,
+          { operation: 'allow_remote_db_bridge_obsolete', appEnv },
+        );
+      }
+      return;
+    }
+    if (process.env.ALLOW_REMOTE_DB === '1') {
       return;
     }
     const url = process.env.DATABASE_URL || '';
