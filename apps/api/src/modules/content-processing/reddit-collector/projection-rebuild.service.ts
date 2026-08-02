@@ -962,6 +962,15 @@ export class ProjectionRebuildService implements OnModuleInit {
             totalUpvotes: 0,
             supportMentionCount: 0,
             supportTotalUpvotes: 0,
+            // F3 (final red team): zeroing only the counters left the row
+            // fully matchable — search matches on categories/food_attributes
+            // and reads last_mentioned_at, so an evidence-free connection
+            // kept appearing in attribute/category lanes with a fresh
+            // recency signal. A starved anchor survives; it does not rank.
+            lastMentionedAt: null,
+            categories: [],
+            foodAttributes: [],
+            ingredients: [],
           },
         });
       }

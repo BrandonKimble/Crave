@@ -76,7 +76,20 @@ export class RelevanceGateService implements OnModuleInit {
       this.prompt = (
         await this.promptRegistry.getActive(RELEVANCE_GATE_PROMPT_KIND)
       ).content;
-    } catch {
+    } catch (error) {
+      // F7 (final red team): this was a bare `catch {}` — a worker running
+      // the gate on the asset file instead of the registry's active version
+      // was undetectable. Correctness is still fine (the config
+      // discriminator hashes the prompt actually used), but the divergence
+      // must be visible.
+      this.logger.warn(
+        'Relevance-gate prompt registry unavailable — falling back to the shipped asset',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
       this.prompt = readFileSync(
         join(
           __dirname,
