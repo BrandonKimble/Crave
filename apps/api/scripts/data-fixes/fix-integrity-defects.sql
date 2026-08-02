@@ -227,9 +227,57 @@ FROM _merge_map m WHERE l.restaurant_id = m.loser;
 -- A4. core_restaurant_items (Connection): repoint food_id and restaurant_id.
 --     unique(restaurant_id, food_id) -> on collision keep the winner's row and
 --     drop the loser's (verified 0 collisions today; guarded for future/rerun).
+-- ANCHOR GUARD (final red team F5): user_list_items.connection_id and
+-- photos.connection_id are ON DELETE RESTRICT since 2026-08-01, so an
+-- unguarded fold ABORTS the whole script. Repoint the user's anchors onto
+-- the surviving connection first, then drop only unanchored losers — the
+-- same law wipe-city-derived.sql and gc-unsupported-entities.sql encode.
+UPDATE user_list_items u SET connection_id = keep.connection_id
+FROM core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE u.connection_id = c.connection_id
+  AND c.food_id = m.loser AND keep.food_id = m.winner
+  AND keep.restaurant_id = c.restaurant_id
+  AND NOT EXISTS (SELECT 1 FROM user_list_items k
+                  WHERE k.list_id = u.list_id AND k.connection_id = keep.connection_id);
+DELETE FROM user_list_items u USING core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE u.connection_id = c.connection_id
+  AND c.food_id = m.loser AND keep.food_id = m.winner
+  AND keep.restaurant_id = c.restaurant_id;
+UPDATE photos p SET connection_id = keep.connection_id
+FROM core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE p.connection_id = c.connection_id
+  AND c.food_id = m.loser AND keep.food_id = m.winner
+  AND keep.restaurant_id = c.restaurant_id;
+UPDATE curated_list_items cl SET connection_id = keep.connection_id
+FROM core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE cl.connection_id = c.connection_id
+  AND c.food_id = m.loser AND keep.food_id = m.winner
+  AND keep.restaurant_id = c.restaurant_id;
 DELETE FROM core_restaurant_items c USING core_restaurant_items keep, _merge_map m
 WHERE c.food_id = m.loser AND keep.food_id = m.winner AND keep.restaurant_id = c.restaurant_id;
 UPDATE core_restaurant_items c SET food_id = m.winner FROM _merge_map m WHERE c.food_id = m.loser;
+-- Same anchor guard for the restaurant-side fold (F5).
+UPDATE user_list_items u SET connection_id = keep.connection_id
+FROM core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE u.connection_id = c.connection_id
+  AND c.restaurant_id = m.loser AND keep.restaurant_id = m.winner
+  AND keep.food_id = c.food_id
+  AND NOT EXISTS (SELECT 1 FROM user_list_items k
+                  WHERE k.list_id = u.list_id AND k.connection_id = keep.connection_id);
+DELETE FROM user_list_items u USING core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE u.connection_id = c.connection_id
+  AND c.restaurant_id = m.loser AND keep.restaurant_id = m.winner
+  AND keep.food_id = c.food_id;
+UPDATE photos p SET connection_id = keep.connection_id
+FROM core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE p.connection_id = c.connection_id
+  AND c.restaurant_id = m.loser AND keep.restaurant_id = m.winner
+  AND keep.food_id = c.food_id;
+UPDATE curated_list_items cl SET connection_id = keep.connection_id
+FROM core_restaurant_items c, core_restaurant_items keep, _merge_map m
+WHERE cl.connection_id = c.connection_id
+  AND c.restaurant_id = m.loser AND keep.restaurant_id = m.winner
+  AND keep.food_id = c.food_id;
 DELETE FROM core_restaurant_items c USING core_restaurant_items keep, _merge_map m
 WHERE c.restaurant_id = m.loser AND keep.restaurant_id = m.winner AND keep.food_id = c.food_id;
 UPDATE core_restaurant_items c SET restaurant_id = m.winner FROM _merge_map m WHERE c.restaurant_id = m.loser;

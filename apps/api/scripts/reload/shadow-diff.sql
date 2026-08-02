@@ -19,9 +19,17 @@ SELECT document_id, source_id, active_extraction_run_id
 FROM collection_source_documents
 WHERE community = ANY(string_to_array(:'communities', ','));
 
+-- COMMUNITY-SCOPED (final red team D12): unscoped, an entity the candidate
+-- stopped supporting in THIS community but still supports elsewhere looked
+-- supported — silently suppressing an OWNER-DECISION row in a rolling or
+-- global campaign. Mirrors ExtractionScopeService.shadowRunsFor().
 CREATE TEMP TABLE shadow_runs AS
-SELECT extraction_run_id FROM collection_extraction_runs
-WHERE system_prompt_hash = :'prompt_hash' AND status = 'completed';
+SELECT DISTINCT r.extraction_run_id
+FROM collection_extraction_runs r
+JOIN collection_extraction_inputs ei ON ei.extraction_run_id = r.extraction_run_id
+JOIN collection_extraction_input_documents eid ON eid.input_id = ei.input_id
+JOIN target_docs td ON td.document_id = eid.document_id
+WHERE r.system_prompt_hash = :'prompt_hash' AND r.status = 'completed';
 
 \ir preserved-anchors.sql
 
