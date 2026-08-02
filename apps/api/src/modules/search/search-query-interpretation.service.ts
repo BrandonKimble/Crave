@@ -559,6 +559,21 @@ export class SearchQueryInterpretationService {
       HYBRID_LINK_CONCURRENCY,
       async (input): Promise<EntityResolutionResult> => {
         const live = await this.linkOneInput(input);
+        if (live.entityId && live.resolutionTier === 'exact') {
+          return live;
+        }
+        if (input.entityType === 'food' || input.entityType === 'ingredient') {
+          // STEP-2 LEMMA VARIANT PROBE (spec §4.2): exact grounding is
+          // alias-dependent and 1,003 of 1,085 single-word foods carry no
+          // plural alias — "empanadas" must ground via its number-variant
+          // family, never via alias luck or FUZZY floors. Runs BEFORE a
+          // non-exact typed link is accepted (empirical red team 2026-08-01:
+          // "empanadas" was fuzzy-linking to "birria empanada" while the
+          // variant EXACT "empanada" existed — the variant is the same
+          // word; a fuzzy neighbour is not).
+          const variantLink = await this.linkViaLemmaVariants(input);
+          if (variantLink?.entityId) return variantLink;
+        }
         if (live.entityId) {
           return live;
         }
@@ -572,14 +587,6 @@ export class SearchQueryInterpretationService {
             entityType: 'ingredient',
           });
           if (ingredientLink.entityId) return ingredientLink;
-        }
-        if (input.entityType === 'food' || input.entityType === 'ingredient') {
-          // STEP-2 LEMMA VARIANT PROBE (spec §4.2): exact grounding is
-          // alias-dependent and 1,003 of 1,085 single-word foods carry no
-          // plural alias — "empanadas" must ground via its number-variant
-          // family, never via alias luck or fuzzy floors.
-          const variantLink = await this.linkViaLemmaVariants(input);
-          if (variantLink?.entityId) return variantLink;
         }
         // STEP-2 UNTYPED EXACT RECALL (spec §4.2, the never-look defect):
         // the guessed type looked in the wrong vocabulary — probe EVERY
