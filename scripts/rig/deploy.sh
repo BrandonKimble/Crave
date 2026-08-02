@@ -111,6 +111,12 @@ if [[ "$ENVIRONMENT" == "production" && "$FORCE" -ne 1 ]]; then
     echo "Something deployed it outside this script. Re-deploy: ./scripts/rig/deploy.sh --env staging" >&2
     exit 1
   fi
+  if [[ "$STAGING_SHA" == *-dirty ]]; then
+    echo "REFUSED: staging is running a DIRTY tree (${STAGING_SHA})." >&2
+    echo "  It last deployed uncommitted changes, so it did not prove committed HEAD." >&2
+    echo "  Commit, then re-deploy staging: ./scripts/rig/deploy.sh --env staging" >&2
+    exit 1
+  fi
   if [[ "$STAGING_SHA" != "$HEAD_SHA" ]]; then
     echo "REFUSED: staging is running different code than you are about to ship to PROD." >&2
     echo "  staging: ${STAGING_SHA:0:9}" >&2
@@ -189,10 +195,21 @@ fi
 # `railway up` uploads a working tree and Railway records no commit for a CLI
 # deploy, so without this an environment cannot say which code it runs —
 # establishing that for staging took probing its live rate-limit behaviour.
-echo "==> Stamping DEPLOYED_GIT_SHA=$(git rev-parse --short HEAD) on $ENVIRONMENT ..."
+# DIRTY-TREE HONESTY (red-team 2026-08-02): `railway up` ships the WORKING
+# TREE, but the stamp was `git rev-parse HEAD` unconditionally — so a staging
+# deploy from a dirty tree (staging skips the clean-tree guard BY DESIGN, it
+# exists to test uncommitted work) reported a CLEAN sha it was NOT running.
+# The prod gate's exact-match then accepted "staging proved abc123" when
+# staging actually ran abc123 + uncommitted diffs. The stamp now carries a
+# `-dirty` suffix when the tree is dirty, so the gate's `==` refuses it and
+# forces a clean staging deploy before prod — "staging proved X" is true ONLY
+# when staging ran committed X. (Prod itself can't be dirty: guarded above.)
+STAMP_SHA="$(git rev-parse HEAD)"
+[[ -n "$(git status --porcelain)" ]] && STAMP_SHA="${STAMP_SHA}-dirty"
+echo "==> Stamping DEPLOYED_GIT_SHA=$STAMP_SHA on $ENVIRONMENT ..."
 for svc in "${SERVICES[@]}"; do
   railway variables --service "$svc" --environment "$ENVIRONMENT" \
-    --set "DEPLOYED_GIT_SHA=$(git rev-parse HEAD)" --skip-deploys >/dev/null 2>&1 || {
+    --set "DEPLOYED_GIT_SHA=$STAMP_SHA" --skip-deploys >/dev/null 2>&1 || {
     echo "REFUSED: could not stamp DEPLOYED_GIT_SHA on $svc." >&2
     echo "Deploying anyway would leave the environment unable to identify itself," >&2
     echo "and the promotion gate would refuse every future prod deploy." >&2
