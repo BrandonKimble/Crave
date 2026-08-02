@@ -179,6 +179,25 @@ export const usePollsFeedRuntimeController = ({
    * new response's options no longer contain snaps the slicer back to All
    * (a control write, so the press edge refetches the unfiltered feed).
    */
+  /**
+   * ROOM-SCOPED LIVE UPDATES (2026-08-01). The server used to broadcast every
+   * poll mutation to every connected client, and this feed refreshed on ALL of
+   * them — one comment anywhere cost a full `/polls/query` viewport read on
+   * every device with the feed open. Delivery is scoped to rooms now, so the
+   * feed must declare which polls it is actually showing. The whole set is
+   * re-declared each time (the server replaces, not merges), and again on
+   * reconnect, because room membership dies with the connection.
+   */
+  const syncPollSubscriptions = React.useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket) {
+      return;
+    }
+    socket.emit('poll:subscribe', {
+      pollIds: loadedPollsRef.current.map((poll) => poll.pollId),
+    });
+  }, []);
+
   const publishFeedSlice = React.useCallback(
     (params: {
       polls: Poll[];
@@ -188,6 +207,7 @@ export const usePollsFeedRuntimeController = ({
       placeOptions: PollFeedPlaceOption[];
     }) => {
       loadedPollsRef.current = params.polls;
+      syncPollSubscriptions();
       nextCursorRef.current = params.nextCursor;
       hasEverAppliedSliceRef.current = true;
       setPolls(params.polls);
@@ -206,7 +226,7 @@ export const usePollsFeedRuntimeController = ({
       // jump, never persistent control state.
       controls.setPlaceOptions(params.placeOptions);
     },
-    [setHeaderPlaceName, setPollFeedLoadFailed, setPolls, setPromise]
+    [setHeaderPlaceName, setPollFeedLoadFailed, setPolls, setPromise, syncPollSubscriptions]
   );
 
   const buildFeedQueryPayload = React.useCallback(
@@ -578,11 +598,20 @@ export const usePollsFeedRuntimeController = ({
     socketRef.current = io(`${base}/polls`, {
       transports: ['websocket'],
     });
+    socketRef.current.on('connect', syncPollSubscriptions);
+    syncPollSubscriptions();
     const socketTaskRef: {
       current: ReturnType<typeof InteractionManager.runAfterInteractions> | null;
     } = { current: null };
 
-    const handleSocketUpdate = () => {
+    const handleSocketUpdate = (payload?: { pollId?: string }) => {
+      // Rooms already scope delivery; this is the second lock. A membership
+      // that outlived the slice it was created for must not be able to buy a
+      // full viewport refetch.
+      const updatedPollId = payload?.pollId;
+      if (updatedPollId && !loadedPollsRef.current.some((poll) => poll.pollId === updatedPollId)) {
+        return;
+      }
       if (interactionRef?.current.isInteracting) {
         if (socketTaskRef.current) {
           return;
@@ -603,10 +632,11 @@ export const usePollsFeedRuntimeController = ({
     socketRef.current.on('poll:update', handleSocketUpdate);
 
     return () => {
+      socketRef.current?.off('connect', syncPollSubscriptions);
       socketRef.current?.disconnect();
       socketTaskRef.current?.cancel();
     };
-  }, [interactionRef, refreshPollFeed, visible]);
+  }, [interactionRef, refreshPollFeed, syncPollSubscriptions, visible]);
 
   return React.useMemo(
     () => ({

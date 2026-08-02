@@ -712,6 +712,13 @@ export const usePollDetailPanelSpec = ({
     if (!baseUrl) return;
     const base = baseUrl.replace(/\/api(?:\/v\d+)?$/, '');
     const socket = io(`${base}/polls`, { transports: ['websocket'] });
+    // ROOM-SCOPED DELIVERY (2026-08-01): the server no longer broadcasts every
+    // poll update to every client, so a socket that does not subscribe hears
+    // nothing. Re-announce on reconnect — room membership dies with the
+    // connection.
+    const subscribe = () => socket.emit('poll:subscribe', { pollIds: [pollId] });
+    subscribe();
+    socket.on('connect', subscribe);
     let task: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
     const handleUpdate = (payload: { pollId?: string }) => {
       if (payload?.pollId !== pollId || task) return; // global broadcast — only ours; coalesce bursts
@@ -723,6 +730,7 @@ export const usePollDetailPanelSpec = ({
     socket.on('poll:update', handleUpdate);
     return () => {
       socket.off('poll:update', handleUpdate);
+      socket.off('connect', subscribe);
       socket.disconnect();
       task?.cancel();
     };
