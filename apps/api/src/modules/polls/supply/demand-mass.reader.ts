@@ -7,24 +7,18 @@
  * Demand mass per (place[, subject]) at the current instant:
  *   Σ over actors of log2(1 + Σ over that actor's acts of
  *     kindWeight · recencyWeight)
- * read as TWO ARMS (mirroring SignalDemandReadService):
- * - CLOSED DAYS from signal_demand_daily — the §3 containment-tiling
- *   aggregate. A place's tiles are its LINEAGE: itself + DAG descendants
- *   (a signal contained in a neighborhood is stored there and belongs to the
- *   city) + DAG ancestors at weight 1 (a coarse West-Texas-wide search stored
- *   at TX reaches Austin through the TX row — ratified as self-healing
- *   imprecision). MAX set-semantics across the lineage tiles per
- *   (actor, day, kind, subject): a signal stored at both a member and an
- *   ancestor counts ONCE (§3 SET semantics at aggregate grain — the same law
- *   territoryEntityDemand reads by).
- * - FRESH TODAY from the ledger (flat weight — day age 0 is inside the flat
- *   cycle), with TRUE act-grain dedupe (the wave-5 F2 COALESCE including
- *   askSearchRequestId) and the aggregate's OWN attribution law
- *   (freshSignalAttributionSql: containment in either direction, judged on
- *   the place's ONE ground — §2.6 single representation; the canonical
- *   wrap-aware lng predicate survives as the prefilter); a cross-midnight
- *   retry is excluded by a first-occurrence anti-join (the aggregate already
- *   counted the act on its first day).
+ * read from ONE ARM (docket #6, 2026-07-31: the fresh ledger arm — the
+ * law's second dialect — is DELETED; the aggregate INCLUDES today and the
+ * 15-min rebuild cadence is the freshness contract):
+ * - signal_demand_daily — the §3 containment-tiling aggregate. A place's
+ *   tiles are its LINEAGE: itself + DAG descendants (a signal contained in
+ *   a neighborhood is stored there and belongs to the city) + DAG ancestors
+ *   at weight 1 (a coarse West-Texas-wide search stored at TX reaches
+ *   Austin through the TX row — ratified as self-healing imprecision). MAX
+ *   set-semantics across the lineage tiles per (actor, day, kind, subject):
+ *   a signal stored at both a member and an ancestor counts ONCE (§3 SET
+ *   semantics at aggregate grain — the same law territoryEntityDemand
+ *   reads by).
  *
  * ACT IDENTITY ON THE AGGREGATE (the core subtlety of the swap): the
  * post-wave-5 aggregate deliberately keeps ALL kinds, and one user act writes
@@ -167,7 +161,6 @@ export class DemandMassReader {
   private windowKeys(now: Date): {
     todayKey: string;
     horizonKey: string;
-    todayStart: Date;
   } {
     const todayStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -178,7 +171,6 @@ export class DemandMassReader {
     return {
       todayKey: todayStart.toISOString().slice(0, 10),
       horizonKey: horizon.toISOString().slice(0, 10),
-      todayStart,
     };
   }
 

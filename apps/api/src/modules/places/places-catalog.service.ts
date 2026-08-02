@@ -84,7 +84,6 @@ export interface PlaceSketchNode {
   centroid?: GeoPoint | null;
   /** Offline centroid→tz at creation (§1); optional at sketch time. */
   timeZone?: string | null;
-  provider?: string;
   /** The provider's stable geometry id — adopted as an alias (§1). */
   providerPlaceId?: string | null;
 }
@@ -378,6 +377,41 @@ export class PlacesCatalogService {
    * Failure posture (§2.6 unchanged): an error yields NO candidates for this
    * read (warn logged) rather than falling back to a weaker judgment.
    */
+  /**
+   * The catalog REVISION for a region (header ideal, 2026-08-01): the newest
+   * ground write intersecting the box. Every ground write bumps fetched_at
+   * (sketch birth, widen, promotion — verified), so this is the one honest
+   * change signal for everything a viewport slice serves. Piggybacked on
+   * feed responses so the client slice revalidates ON CHANGE, never on a
+   * clock — the derived-at-source-write law applied to cache freshness
+   * (replaces the 1h TTL whose drain-cadence rationale birth-synchronous
+   * outlines falsified). Compared as a change DETECTOR (inequality), never
+   * ordered — callers may compute it over slightly different boxes.
+   */
+  async catalogWatermark(view: GeoBbox): Promise<string | null> {
+    const overlapsAnyArm = Prisma.join(
+      this.viewArms(view).map((arm) => Prisma.sql`g.geometry && ${arm}`),
+      ' OR ',
+    );
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ mark: Date | null }>>(
+        Prisma.sql`
+          /*places:catalog_watermark*/
+          SELECT max(g.fetched_at) AS mark FROM place_geometries g
+          WHERE ${overlapsAnyArm}
+        `,
+      );
+      return rows[0]?.mark ? rows[0].mark.toISOString() : null;
+    } catch (error) {
+      // Freshness signal only — a failed read means "no signal", never a
+      // failed feed.
+      this.logger.warn('catalogWatermark read failed', {
+        detail: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
   private async groundsIntersectingView(
     view: GeoBbox,
   ): Promise<Map<string, { ground: PlaceGround; bbox: GeoBbox }>> {
@@ -569,7 +603,10 @@ export class PlacesCatalogService {
             centroidLat: node.centroid?.lat,
             centroidLng: node.centroid?.lng,
             timeZone: node.timeZone ?? null,
-            ...(node.provider ? { provider: node.provider } : {}),
+            // places.provider stays a stored vendor fact with schema default
+            // 'tomtom' — the node no longer carries it (post-fallback-lane
+            // there is exactly one provider; the column records, never
+            // switches).
             providerPlaceId: node.providerPlaceId,
           },
         });
@@ -693,14 +730,11 @@ export class PlacesCatalogService {
 
     const data: Prisma.PlaceUpdateInput = {};
 
-    if (node.providerPlaceId) {
-      if (!existing.providerPlaceId) {
-        data.providerPlaceId = node.providerPlaceId;
-      }
-      // An id DISAGREEMENT can no longer reach here: resolveIdentity
-      // disqualifies differently-id'd candidates and the id-first lookup
-      // matches exactly (one-ground charter P3). Nothing to reconcile.
-    }
+    // Identity IS the composite key: `existing` was found via findUnique on
+    // (providerPlaceId, providerLevelCode), so the ids here are equal by
+    // construction — nothing to adopt, nothing to reconcile (cleanup
+    // 2026-08-01: the impossible gap-fill branch this note replaced was a
+    // ghost of the deleted name-identity machinery).
 
     if (parentPlaceId && !existing.parentPlaceIds.includes(parentPlaceId)) {
       // Atomic append — duplicates are possible under concurrency and fine

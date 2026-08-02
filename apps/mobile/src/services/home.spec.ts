@@ -71,6 +71,7 @@ describe('home feed client normalization', () => {
       resolvedCity: null,
       shelves: [],
       liveCities: [],
+      catalogWatermark: null,
     });
   });
 });

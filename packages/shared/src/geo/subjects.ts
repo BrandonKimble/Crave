@@ -19,9 +19,9 @@
  *     attention, unnamed ground otherwise).
  *
  * §2.5(c) polygon = truth, bbox = INDEX only: a candidate's coverage is the
- * POLYGON-clip share when its real ground is known (ground.ts), and the
- * bbox-intersection share ONLY as the honest fallback where no polygon has
- * landed yet (§2.5(f) — degradation, never a judge where a polygon exists).
+ * POLYGON-clip share of its ONE ground (§2.6: a sketch-grade place's ground
+ * is its envelope rectangle — same representation, never a separate bbox
+ * arm).
  * This kills the Mexico-bbox lie: a country whose rectangular index box
  * contains the view but whose real ground touches 5% of it can never name
  * the header once its polygon is known — and even bbox-only, the FINEST
@@ -32,9 +32,10 @@
  * branch (a containing place covers the view entirely, so it IS a dominator
  * — the fallback is subsumed, not lost).
  *
- * KEPT: probeAnchors / bboxAnswersAnchor / isTooBigForView — they are about
- * PROBE coverage (§2 sketch mechanics) and the §4 feed-at-that-zoom
- * boundary, not headers; the reconciler still runs on them.
+ * KEPT: probeAnchors / probedRegionAnswersAnchor / isTooBigForView — they
+ * are about PROBE coverage (§2 sketch mechanics) and the §4
+ * feed-at-that-zoom boundary, not headers; the reconciler still runs on
+ * them.
  *
  * Hysteresis (commit on settle+dwell, enter/exit asymmetry) is the CALLER's
  * concern — this function is the memoryless judgment hysteresis wraps.
@@ -90,15 +91,15 @@ export interface SubjectCandidate {
   // coverageOfView + placeArea, both ground-derived. Carrying a bbox here
   // was dead payload that invited a second, weaker source of truth.
   /**
-   * §2.5 coverage: area(real ground ∩ view)/area(view) when the polygon is
-   * known; area(bbox ∩ view)/area(view) as the honest fallback otherwise.
+   * §2.5/§2.6 coverage: area(ground ∩ view)/area(view) — ONE representation
+   * (a sketch-grade place's ground IS its envelope rectangle; no bbox arm).
    * Build it with resolvePlaceCoverage so both runtimes feed identical
    * numbers.
    */
   coverageOfView: number;
   /**
-   * The "finest" ranking key: real-ground area when known, bbox area
-   * otherwise — same cos-weighted degrees² metric either way.
+   * The "finest" ranking key: ground area (a sketch envelope's area equals
+   * its bbox area) — cos-weighted degrees².
    */
   placeArea: number;
   /**
@@ -229,25 +230,13 @@ export type HeaderResolution =
 /**
  * The §2 "too big" scale disqualifier — NO LONGER a header arm (§2.5 killed
  * it) but still the law behind (a) the reconciler's answered test
- * (bboxAnswersAnchor: an over-scale sketched country must not suppress
+ * (probedRegionAnswersAnchor: an over-scale sketched country must not suppress
  * street-zoom probing) and (b) the §4 feed-at-that-zoom boundary
  * (poll-feed-membership). A region is over-scale for the view when the view
  * is < ATTENTION_FRACTION of it.
  */
 export function isTooBigForView(viewArea: number, regionArea: number): boolean {
   return regionArea > 0 && viewArea + EPSILON < ATTENTION_FRACTION * regionArea;
-}
-
-/**
- * Does a KNOWN region (stored place bbox or negative observation) answer a
- * probe anchor for THIS view? Point-in-bbox alone is not enough: an
- * over-scale region (a sketched country under a street-zoom view) knows
- * nothing about the finer places the view actually needs, so it must not
- * suppress the probe. Applied SYMMETRICALLY to places and negative
- * observations.
- */
-export function bboxAnswersAnchor(viewArea: number, bbox: GeoBbox, anchor: GeoPoint): boolean {
-  return !isTooBigForView(viewArea, bboxArea(bbox)) && bboxContainsPoint(bbox, anchor);
 }
 
 /**
@@ -299,8 +288,10 @@ export function pointToProbedRegionDistance(point: GeoPoint, region: ProbedRegio
 
 /**
  * Does a region we already asked about answer this anchor for THIS view?
- * Same two-part law as bboxAnswersAnchor — contains the point AND is not
- * over-scale — now honest about the region's real shape.
+ * Two-part law: contains the point AND is not over-scale (an over-scale
+ * region — a sketched country under a street-zoom view — knows nothing
+ * about the finer places the view needs, so it must not suppress the
+ * probe).
  */
 export function probedRegionAnswersAnchor(
   viewArea: number,
@@ -385,7 +376,7 @@ const GRID_FRACTIONS: readonly number[] = Array.from(
  * candidates per view — "center + largest-uncovered-region candidates",
  * approximated (per the §2 sketch mechanics' cheapness stance) as fixed
  * interior candidate points NOT answered by any known bbox (stored places ∪
- * fresh negative observations). "Answered" is SCALE-AWARE (bboxAnswersAnchor):
+ * fresh negative observations). "Answered" is SCALE-AWARE (probedRegionAnswersAnchor):
  * only regions that are not over-scale for the view count — a sketched
  * country or state covers every point inside it but answers nothing at
  * street zoom, so probing (and lazy neighborhood entry, §1) continues there.

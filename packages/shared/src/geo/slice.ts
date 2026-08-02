@@ -61,5 +61,12 @@ export function expandBboxByFactor(view: GeoBbox, factor: number): GeoBbox {
  */
 export interface PlacesInViewSliceResponse {
   marginBox: GeoBbox;
+  /**
+   * Catalog revision for the marginBox (max ground fetched_at) — the slice
+   * stores it and revalidates when a later feed response carries a DIFFERENT
+   * watermark (change detector, never ordered). null = no grounds / no
+   * signal.
+   */
+  catalogWatermark: string | null;
   places: PlaceLike[];
 }

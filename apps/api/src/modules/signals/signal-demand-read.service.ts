@@ -814,9 +814,9 @@ export class SignalDemandReadService {
    * §11 UNMET family input — user-expressed collection gaps
    * (kind = 'on_demand_ask') read by ENGINE TERRITORY (Phase C: replaced the
    * engine-name-keyed collection_on_demand_ask_events read). Territory
-   * membership is the §2.5(c) containment law against the member places
-   * (polygon-judged where ground exists; bbox intersect is only the
-   * prefilter) — the same fresh-arm shape as territoryEntityDemand. Meta qualifiers (reason,
+   * membership is the §2.5(c) containment law against the member places —
+   * freshSignalAttributionSql on the ONE ground, no prefilter (P2: the
+   * predicates ride the geometry GiST). Meta qualifiers (reason,
    * entityType, result counts) are judged at read; the two ask sites of one
    * search share meta.askSearchRequestId and collapse to one ask per
    * (request, term). Entity identity resolves through redirects at read.
@@ -1124,7 +1124,6 @@ export class SignalDemandReadService {
   private windowKeys(windowDays: number): {
     todayKey: string;
     sinceDayKey: string;
-    todayStart: Date;
   } {
     const now = new Date();
     const todayStart = new Date(
@@ -1136,7 +1135,6 @@ export class SignalDemandReadService {
     return {
       todayKey: todayStart.toISOString().slice(0, 10),
       sinceDayKey: since.toISOString().slice(0, 10),
-      todayStart,
     };
   }
 

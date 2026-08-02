@@ -14,7 +14,6 @@ import {
   resolveFeedMembership,
 } from '../polls/poll-feed-membership';
 import { PlacesCatalogService } from './places-catalog.service';
-import { PlacesPromotionService } from './places-promotion.service';
 import { descendantPlaceIds, isSubdivisionOrBigger } from './place-dag-read';
 
 export interface ViewportVerdict {
@@ -34,7 +33,6 @@ export class ViewportVerdictService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly placesCatalog: PlacesCatalogService,
-    private readonly placesPromotions: PlacesPromotionService,
   ) {}
 
   /** §6/§2/§4: in-view membership + header verdict + descendant expansion. */
@@ -43,7 +41,6 @@ export class ViewportVerdictService {
     const candidates: FeedPlaceCandidate[] = placesInView.map((entry) => ({
       placeId: entry.place.placeId,
       name: entry.place.name,
-      bbox: entry.bbox,
       coverageOfView: entry.coverageOfView,
       placeArea: entry.placeArea,
       parentPlaceIds: entry.parentPlaceIds,

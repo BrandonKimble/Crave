@@ -129,6 +129,10 @@ export type PollFeedPlaceOptionRow = {
 
 export type PollQueryResponse = {
   header: { placeName: string | null };
+  /** Catalog revision for the request's slice-margin region (header ideal
+   *  2026-08-01) — reported to the subject store, which revalidates its
+   *  slice on CHANGE. */
+  catalogWatermark: string | null;
   promise: PollFeedPromise | null;
   polls: Poll[];
   /** Opaque keyset cursor for the next page; null = end of feed. */
@@ -153,9 +157,6 @@ export type PollQueryPayload = {
   sort?: PollFeedSort;
   type?: PollFeedType;
   time?: PollFeedTime;
-  /** §6 place slicer (server-truth): slice the feed to this place's DAG
-   *  subtree (self + descendants). Omit for the unfiltered feed. */
-  placeFilterId?: string;
 };
 
 export type CreatePollPayload = {
@@ -183,16 +184,6 @@ const normalizePollList = (payload: unknown): Poll[] => {
   }
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
-    if (Array.isArray(anyPayload.data)) {
-      return anyPayload.data as Poll[];
-    }
-    if (
-      anyPayload.polls &&
-      typeof anyPayload.polls === 'object' &&
-      Array.isArray((anyPayload.polls as Record<string, unknown>).data)
-    ) {
-      return (anyPayload.polls as { data: Poll[] }).data;
-    }
     if (Array.isArray(anyPayload.polls)) {
       return anyPayload.polls as Poll[];
     }
@@ -248,9 +239,6 @@ const normalizePlaceOptions = (value: unknown): PollFeedPlaceOptionRow[] => {
 const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
-    if (anyPayload.data) {
-      return normalizePollQueryResponse(anyPayload.data);
-    }
     if (Array.isArray(anyPayload.polls)) {
       const header = anyPayload.header as { placeName?: unknown } | undefined;
       return {
@@ -260,6 +248,8 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
               ? header.placeName.trim()
               : null,
         },
+        catalogWatermark:
+          typeof anyPayload.catalogWatermark === 'string' ? anyPayload.catalogWatermark : null,
         promise: normalizePollFeedPromise(anyPayload.promise),
         polls: normalizePollList(anyPayload.polls),
         nextCursor: typeof anyPayload.nextCursor === 'string' ? anyPayload.nextCursor : null,
@@ -270,6 +260,7 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
 
   return {
     header: { placeName: null },
+    catalogWatermark: null,
     promise: null,
     polls: normalizePollList(payload),
     nextCursor: null,
@@ -278,17 +269,8 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
 };
 
 const normalizePoll = (payload: unknown): Poll | null => {
-  if (payload && typeof payload === 'object') {
-    if ('pollId' in payload) {
-      return payload as Poll;
-    }
-    const anyPayload = payload as Record<string, unknown>;
-    if (anyPayload.data && typeof anyPayload.data === 'object') {
-      return normalizePoll(anyPayload.data);
-    }
-    if (anyPayload.poll) {
-      return normalizePoll(anyPayload.poll);
-    }
+  if (payload && typeof payload === 'object' && 'pollId' in payload) {
+    return payload as Poll;
   }
   return null;
 };

@@ -47,10 +47,13 @@ import {
   resolvePollClosesAt,
 } from './poll-timing';
 import { PlacesCatalogService } from '../places/places-catalog.service';
-import { PlacesPromotionService } from '../places/places-promotion.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
-import { GeoBbox } from '@crave-search/shared';
+import {
+  GeoBbox,
+  PLACES_SLICE_MARGIN_FACTOR,
+  expandBboxByFactor,
+} from '@crave-search/shared';
 import {
   PollFeedCursor,
   decodePollFeedCursor,
@@ -121,7 +124,6 @@ export class PollsService {
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly signals: SignalsService,
     private readonly placesCatalog: PlacesCatalogService,
-    private readonly placesPromotions: PlacesPromotionService,
     private readonly viewportVerdict: ViewportVerdictService,
   ) {
     this.logger = loggerService.setContext('PollsService');
@@ -227,10 +229,16 @@ export class PollsService {
       limit,
       cursor,
     });
-    const polls = await this.hydrateFeedPolls(page.pollIds, viewerUserId);
+    const [polls, catalogWatermark] = await Promise.all([
+      this.hydrateFeedPolls(page.pollIds, viewerUserId),
+      this.placesCatalog.catalogWatermark(
+        expandBboxByFactor(view, PLACES_SLICE_MARGIN_FACTOR),
+      ),
+    ]);
 
     return this.buildFeedResponse({
       headerPlaceName: verdict.headerPlace?.name ?? null,
+      catalogWatermark,
       polls,
       nextCursor: page.nextCursor,
       // §6 cold-start promise: first page, zero polls, but the viewport DOES
@@ -508,6 +516,7 @@ export class PollsService {
     nextCursor: string | null;
     promiseEligible: boolean;
     placeOptions: Array<{ placeId: string; name: string; pollCount: number }>;
+    catalogWatermark?: string | null;
   }) {
     const { headerPlaceName, polls, nextCursor, placeOptions } = params;
     const promise =
@@ -518,6 +527,11 @@ export class PollsService {
         : null;
     return {
       header: { placeName: headerPlaceName },
+      // Header ideal 2026-08-01: the catalog revision for the request's
+      // slice-margin region — the client subject store revalidates its
+      // slice when this DIFFERS from the slice's own watermark (change,
+      // never clock).
+      catalogWatermark: params.catalogWatermark ?? null,
       promise,
       polls,
       nextCursor,

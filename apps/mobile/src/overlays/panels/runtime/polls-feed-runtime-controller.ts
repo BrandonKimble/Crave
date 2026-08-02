@@ -26,6 +26,7 @@ import { shouldRefetchPollsFeedForSettledBounds } from './polls-feed-refetch-edg
 import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import {
   getViewportSubjectState,
+  noteCatalogWatermark,
   subscribeViewportSubjectState,
 } from '../../../store/viewport-subject-store';
 import { logger } from '../../../utils';
@@ -305,6 +306,7 @@ export const usePollsFeedRuntimeController = ({
         if (refreshSeq !== refreshSeqRef.current) {
           return 'superseded';
         }
+        noteCatalogWatermark(response.catalogWatermark ?? null);
         publishFeedSlice({
           polls: response.polls,
           headerPlaceName: response.header.placeName,
@@ -380,6 +382,7 @@ export const usePollsFeedRuntimeController = ({
           ...loadedPollsRef.current,
           ...response.polls.filter((poll) => !loadedIds.has(poll.pollId)),
         ];
+        noteCatalogWatermark(response.catalogWatermark ?? null);
         publishFeedSlice({
           polls: appended,
           headerPlaceName: response.header.placeName,

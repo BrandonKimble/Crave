@@ -54,7 +54,7 @@ export const NEGATIVE_OBSERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  * over-scale for the view (the near-universal US street-zoom case) NOTHING
  * finer can ever be learned — without this memory the same 3 anchors
  * re-spend governed draws on every future settle of the same ground,
- * forever. The scale gate (bboxAnswersAnchor) still applies on read, so an
+ * forever. The scale gate (probedRegionAnswersAnchor) still applies on read, so an
  * asked region answers commensurate-or-coarser future views and a genuinely
  * finer zoom re-asks once per scale band per TTL.
  */
@@ -156,7 +156,8 @@ export class PlacesReconcilerService {
     // Step 1 (§2): what already answers? Stored place bboxes plus fresh
     // negative region observations both count as "known ground" — but only
     // at COMMENSURATE-OR-SMALLER scale: probeAnchors applies the same
-    // too-big disqualifier as isCommensurate (bboxAnswersAnchor), so a
+    // too-big disqualifier as isTooBigForView (probedRegionAnswersAnchor's
+    // scale half), so a
     // sketched country/state never marks street-zoom ground "answered" and
     // lazy neighborhood entry (§1) stays alive. Symmetric for negative
     // observations (in practice ~200 m regions, so the scale arm rarely

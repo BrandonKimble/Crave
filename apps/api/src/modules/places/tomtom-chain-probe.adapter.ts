@@ -254,7 +254,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         countryCode,
         // A country is not inside a subdivision — identity stops at itself.
         subdivisionCode: rung.levelCode === 'Country' ? null : subdivisionCode,
-        provider: 'tomtom',
       });
     }
     if (chain.length === 0) {
@@ -396,11 +395,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     centroid: GeoPoint | null;
     providerPlaceId: string | null;
   } | null> {
-    const outcome = await this.forwardGeocodeMatch(
-      node,
-      'chain-probe',
-      GEOMETRY_ID_CANDIDATE_LIMIT,
-    );
+    const outcome = await this.forwardGeocodeMatch(node);
     if (outcome.kind !== 'ok') {
       return null; // denial: bbox-less until a later probe; miss: logged below
     }
@@ -435,12 +430,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   // place carries its geometry id from birth, composite (id, level) unique).
 
   /**
-   * The one governed forward-geocode call, shared by the probe's bbox fill
-   * and the promotion drain's geometry-id resolution. County-qualified query
-   * (§1 county axis): "Lakeside, Tarrant, TX" makes the limit=1 lookup land
-   * on THE observed same-name municipality instead of whichever the vendor
-   * ranks first. Residual wrong-twin answers (vendor ignoring the qualifier)
-   * are caught downstream by the merge law's disjoint-bbox guard.
+   * The one governed forward-geocode call — single caller (the probe's bbox
+   * fill; the drain-side geometry-id resolver is deleted, dockets #1/#4).
+   * Query = "name, subdivisionCode" (the county qualifier died with the
+   * county column); candidates are validated downstream by ANCHOR
+   * CONTAINMENT, which is stronger than any name qualifier.
    * `denied` = pool not-now; `miss` = admitted but wrong-entity/no result —
    * a wrong-entity or wrong-country match must not donate its answer to this
    * identity (§1's merge would widen a place with foreign geometry it can
@@ -451,8 +445,6 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       PlaceSketchNode,
       'name' | 'subdivisionCode' | 'countryCode' | 'providerLevelCode'
     >,
-    workClass: string,
-    limit = 1,
   ): Promise<
     | {
         kind: 'ok';
@@ -471,18 +463,21 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     const url = `${this.geocodeBaseUrl}/${query}.json`;
     let response: AxiosResponse<TomtomGeocodeResponse> | null;
     try {
-      response = await this.governance.draw('tomtom.geocode', workClass, () =>
-        firstValueFrom(
-          this.httpService.get<TomtomGeocodeResponse>(url, {
-            params: {
-              key: this.apiKey as string,
-              entityTypeSet: node.providerLevelCode,
-              countrySet: node.countryCode,
-              limit,
-            },
-            timeout: this.timeoutMs,
-          }),
-        ),
+      response = await this.governance.draw(
+        'tomtom.geocode',
+        'chain-probe',
+        () =>
+          firstValueFrom(
+            this.httpService.get<TomtomGeocodeResponse>(url, {
+              params: {
+                key: this.apiKey as string,
+                entityTypeSet: node.providerLevelCode,
+                countrySet: node.countryCode,
+                limit: GEOMETRY_ID_CANDIDATE_LIMIT,
+              },
+              timeout: this.timeoutMs,
+            }),
+          ),
       );
     } catch (error) {
       if (this.poisonPoolOn429(error, 'tomtom.geocode')) {
@@ -587,12 +582,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   }
 
   /**
-   * Does the catalog already hold a bbox for this identity tuple? County-axis
-   * aware: a county-carrying node can only be absorbed by its exact-county
-   * row or by a county-unknown row (gap-fill target) — a DIFFERENT-county
-   * same-name sibling's bbox must not suppress the forward geocode, or the
-   * observed twin would stay bbox-less forever. A county-less node keeps the
-   * county-blind read (any candidate's bbox counts, mirroring rules u1–u4).
+   * Does the catalog already hold ground for this identity tuple? Asked BY
+   * ENTITY — the composite (id, level) — never by name (THE FINAL
+   * DISSOLUTION; the county-axis sibling logic this once described is
+   * deleted).
    */
   private async catalogKnowsBbox(node: PlaceSketchNode): Promise<boolean> {
     // FINAL DISSOLUTION (2026-07-30): "knows the extent" is asked BY ENTITY —
@@ -642,9 +635,9 @@ function parseReverseBoundingBox(
 }
 
 /**
- * §2.5 resolve-time twin disambiguation: how many geocode candidates to draw
- * when the caller supplies a validation bbox. Vendor duplicate sets observed
- * so far are 2-4 records deep; 5 is headroom, still one cheap draw.
+ * §2.5 twin disambiguation: how many geocode candidates to draw for the
+ * anchor-containment pick. Vendor duplicate sets observed so far are 2-4
+ * records deep; 5 is headroom, still one cheap draw.
  */
 const GEOMETRY_ID_CANDIDATE_LIMIT = 5;
 

@@ -6,11 +6,10 @@ import { Prisma } from '@prisma/client';
  * ONE ground representation (place_geometries.geometry; sketch-grade rows
  * hold the bbox envelope as a rectangular polygon), so containment is a
  * plain ST_Covers/ST_CoveredBy against that column, no fallback arm. Stated
- * ONCE here and consumed by every fresh-arm ledger read (demand-mass reader,
- * signal-demand territory reads) so both arms of the aggregate∪fresh union
- * speak the aggregate's attribution law (signal-demand-aggregate.service
- * `containing`/`contained` CTEs restate the same predicates inline over the
- * rebuild's candidate sets).
+ * ONCE here; post-docket-#6 the sole ledger consumer is territoryUnmetAsks
+ * (ask CONTENT, never demand mass). The aggregate rebuild
+ * (signal-demand-aggregate.service `containing`/`contained` CTEs) restates
+ * the same predicates inline over its candidate sets.
  *
  * Two directions, one law:
  * - place COVERS geo  — the §3 (i) "containing" direction (own-place row);
@@ -165,10 +164,9 @@ export function placeAnchoredAttributionSql(
  * §2.6). Post-docket-#6 it serves ONE caller — territoryUnmetAsks, which
  * reads ask CONTENT from the ledger (never demand mass; the fresh demand
  * arm is deleted). A ledger signal belongs to a place read iff one CONTAINS
- * the other — always judged on the place's ONE ground. The call sites keep
- * their cheap bbox-intersection join conditions as the PREFILTER
- * (containment in either direction implies intersection, so the prefilter
- * never drops a true candidate). Residual seam, documented: a coarse geo
+ * the other — always judged on the place's ONE ground (no prefilter — P2:
+ * ST_Covers/ST_CoveredBy ride the geometry GiST directly). Residual seam,
+ * documented: a coarse geo
  * that STRADDLES the place (neither contains the other) reaches the place
  * through a shared-ancestor aggregate tile once its day closes — the fresh
  * arm honestly excludes it for at most one day rather than counting by

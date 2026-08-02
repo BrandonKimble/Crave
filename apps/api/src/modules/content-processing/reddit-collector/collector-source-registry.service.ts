@@ -284,9 +284,9 @@ export class CollectorSourceRegistryService {
 
   /**
    * Engine territory = member places + their places-DAG DESCENDANTS (§5:
-   * derived union, never stored). Ancestor rows need no special handling
-   * under the aggregate's intersection attribution — a state-wide signal
-   * intersecting a member's bbox already carries a member-place row.
+   * derived union, never stored). Ancestor rows need no special handling —
+   * coarse signals reach members through the read-time ancestor expansion
+   * (§3 containment-tiling law), never intersection.
    */
   async territoryPlaceIds(engineId: string): Promise<string[]> {
     const engine = await this.getEngine(engineId);

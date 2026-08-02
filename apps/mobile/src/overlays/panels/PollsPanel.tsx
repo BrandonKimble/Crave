@@ -629,7 +629,6 @@ export const usePollsPanelListSceneParts = (): {
     loading,
     isSystemUnavailable,
     polls,
-    visiblePolls,
     resolvedSnap,
     pollFeedLoadFailed,
     headerPlaceName,
@@ -639,7 +638,7 @@ export const usePollsPanelListSceneParts = (): {
   } = pollsPanelFeedRuntime;
 
   const shouldShowCollapsedSpinner = loading || (isSystemUnavailable && polls.length === 0);
-  const hasVisiblePolls = visiblePolls.length > 0;
+  const hasVisiblePolls = polls.length > 0;
   const isExpandedSurface = resolvedSnap === 'middle' || resolvedSnap === 'expanded';
 
   const renderItem = React.useCallback(
@@ -654,7 +653,7 @@ export const usePollsPanelListSceneParts = (): {
   // skeleton, never a "create the first poll" message mid-toggle).
   const listData: readonly Poll[] =
     hasVisiblePolls && !isFeedSliceAwaiting && !shouldShowCollapsedSpinner
-      ? visiblePolls
+      ? polls
       : EMPTY_POLL_LIST;
 
   // §6 cursor pagination trigger. FlashList's onEndReached never fires under the

@@ -224,6 +224,10 @@ function createHarness(options: {
   const service = new HomeFeedService(
     prisma as never,
     viewportVerdict as never,
+    // Watermark provider (header ideal 2026-08-01): a fixed revision string.
+    {
+      catalogWatermark: jest.fn().mockResolvedValue('2026-08-01T00:00:00.000Z'),
+    } as never,
     createLogger() as never,
   );
   return { service, prisma };

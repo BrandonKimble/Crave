@@ -12,6 +12,7 @@ import {
 import {
   getViewportSubjectState,
   setViewportSubjectState,
+  subscribeViewportSubjectState,
   viewportSubjectVerdictIdentity,
   type ViewportSubjectVerdict,
 } from '../../../../store/viewport-subject-store';
@@ -89,22 +90,6 @@ export const VIEWPORT_SETTLE_QUIESCENCE_MS = MAP_PLANNER_NORMAL_WORK_FAIRNESS_PO
 /** K1 (feel pass may tune): the minimal honest "a human paused here" hold. */
 export const VIEWPORT_SUBJECT_DWELL_MS = 1_000;
 
-/**
- * Slice cache soft TTL — RATIONALE SUPERSEDED, value stands (header
- * red-team 2026-08-01). The original derivation pegged this to the hourly
- * promotion drain, but outlines are BIRTH-SYNCHRONOUS now (docket #1 +
- * promoteNewborn) — the hourly sweep is only the retry tail, so "the drain
- * cadence" no longer names the clock that changes ground truth. What the
- * TTL honestly is today: a K3 staleness ceiling for a camera parked inside
- * one margin box — new births in an already-sketched, already-named area
- * are rare and low-stakes (a header rename, never a wrong judgment), so an
- * hour bounds the lie cheaply. The IDEAL replacement (charter, header
- * section): a catalog-revision watermark piggybacked on feed responses so
- * the slice revalidates on change, not on a clock — build it when header
- * staleness is first MEASURED as a felt defect, not before.
- */
-export const VIEWPORT_SLICE_TTL_MS = 60 * 60 * 1_000;
-
 /** Failed slice fetch retry (only re-armed while a fetch is still needed). */
 export const SLICE_FETCH_RETRY_MS = 5_000;
 
@@ -168,7 +153,10 @@ export const createViewportSubjectStoreController = ({
   let sliceRetryTimer: ReturnType<typeof setTimeout> | null = null;
   let sliceFetchInFlight = false;
   let fetchEpoch = 0;
-  let sliceFetchedAt = 0;
+  // Header ideal 2026-08-01: the catalog revision this slice was cut at.
+  // Compared against the store's catalogWatermarkSeen (fed by feed
+  // responses); a CHANGE re-cuts the slice — no clock, no TTL.
+  let sliceWatermark: string | null = null;
   let settledEpisode: SettledEpisode | null = null;
   let pendingExitVerdict: ViewportSubjectVerdict | null = null;
   let lastLoggedCandidateIdentity: string | null = null;
@@ -302,14 +290,15 @@ export const createViewportSubjectStoreController = ({
     if (sliceFetchInFlight) {
       return;
     }
-    const { slice, marginBox } = getViewportSubjectState();
-    const sliceExpired = slice != null && Date.now() - sliceFetchedAt > VIEWPORT_SLICE_TTL_MS;
-    if (slice != null && marginBox != null && bboxContains(marginBox, view) && !sliceExpired) {
+    const { slice, marginBox, catalogWatermarkSeen } = getViewportSubjectState();
+    const sliceStale =
+      slice != null && catalogWatermarkSeen != null && catalogWatermarkSeen !== sliceWatermark;
+    if (slice != null && marginBox != null && bboxContains(marginBox, view) && !sliceStale) {
       return;
     }
     sliceFetchInFlight = true;
     const epoch = ++fetchEpoch;
-    const cause = slice == null ? 'no-slice' : sliceExpired ? 'ttl-refresh' : 'margin-escape';
+    const cause = slice == null ? 'no-slice' : sliceStale ? 'watermark-refresh' : 'margin-escape';
     logSubjectStore('slice-fetch', { cause, view });
     void fetchSlice(view)
       .then((response) => {
@@ -317,7 +306,7 @@ export const createViewportSubjectStoreController = ({
           return;
         }
         sliceFetchInFlight = false;
-        sliceFetchedAt = Date.now();
+        sliceWatermark = response.catalogWatermark;
         // Replace slice+marginBox atomically; the committed verdict stands
         // until the hysteresis pipeline re-judges (never blank mid-move).
         // Rows are stored VERBATIM (PlaceLike) — §2.5 ground rings and
@@ -405,9 +394,28 @@ export const createViewportSubjectStoreController = ({
   handleBoundsChange(viewportBoundsService.getBounds());
   const unsubscribe = viewportBoundsService.subscribe(handleBoundsChange);
 
+  // Header ideal 2026-08-01: a feed response reporting a NEWER catalog
+  // revision re-cuts the slice even with the camera parked inside its
+  // marginBox — ensureSliceFetch's watermark-stale arm does the judging; this
+  // subscription is just the wake-up (feeds land right after settles, so the
+  // camera is typically quiescent and slice-landed re-judges immediately).
+  let lastReactedWatermark = getViewportSubjectState().catalogWatermarkSeen;
+  const unsubscribeWatermark = subscribeViewportSubjectState(() => {
+    const seen = getViewportSubjectState().catalogWatermarkSeen;
+    if (seen === lastReactedWatermark) {
+      return;
+    }
+    lastReactedWatermark = seen;
+    const bounds = viewportBoundsService.getBounds();
+    if (bounds) {
+      ensureSliceFetch(geoBboxFromMapBounds(bounds));
+    }
+  });
+
   return () => {
     disposed = true;
     unsubscribe();
+    unsubscribeWatermark();
     clearTimer(settleTimer);
     clearTimer(dwellTimer);
     clearTimer(sliceRetryTimer);

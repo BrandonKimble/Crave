@@ -6,57 +6,29 @@
  * (place_geometry_promotions, placeId PK) records the earned moment; a
  * governed hourly drain turns queued places into place_geometries rows.
  *
- * TRIGGERS (§2/§2.5) — a birth promotes THE NEWBORN, awaited by the
- * catalog's background settle (2026-08-01, red-teamed: never the whole
- * queue); every other enqueue stays fire-and-forget and never blocks
- * anything:
- *   (0) birth            — §2.5(d) POLYGON AT BIRTH (ratified 2026-07-22):
- *       the catalog's create chokepoint (PlacesCatalogService.upsertSketch,
- *       via PLACE_BIRTH_LISTENER) enqueues EVERY newly sketched place; the
- *       promotion queue is the ORDINARY intake now, and the hourly drain
- *       cadence is the only latency (birth→outline within the hour is fine);
- *   (a) poll_created     — polls.service createPoll after place resolution;
- *   (b) source_attached  — the §10 onboarding verb for the source's anchor
- *       place. The lazy
- *       poll_surface source (§5) is deliberately NOT wired: its place
- *       already entered via (a)/(c) by construction (a poll_surface row is
- *       only minted at first graduation of that place's polls);
- *   (c) credit_prefetch  — the weekly ritual's §2 derived pre-fetch:
- *       credit + creditRate × Δt_to_tick ≥ 1 (creditRate is per-week, the
- *       tick is weekly, so the formula is credit + creditRate ≥ 1);
- *   (d) paid_seed        — §2.5(e) SEED ORDER: the coarse seed campaign
- *       (scripts/seed-coarse-polygons.ts) batch-enqueues border countries +
- *       states + counties (the diagonal-shape class that lies about its
- *       ground) first, municipalities paced behind, organic forever-lazy —
- *       ratified 2026-07-22 with the PAID scarce budget (§16 K1 in
- *       governance.service);
- *   (e) header_answers   — a place that answers the header more than once
- *       within the memory TTL joins the queue (noteHeaderAnswer; in-memory,
- *       same interim stance as the reconciler's negative-region cache).
- *       Under birth-intake (0) this is a belt-and-suspenders re-entry for
- *       pre-§2.5 rows and consumed-draw misses.
- *
- * POINT-ANSWER-BEATS-BBOX: resolved by construction under §2.5 — the header
- * read is polygon-native (resolvePlaceCoverage: polygon = truth, bbox =
- * index-only fallback), so bbox dominance can no longer out-vote real
- * ground; the old interim parenthetical has no seam left to arbitrate.
+ * TRIGGERS (cleanup 2026-08-01 — every other trigger of the old earned-
+ * moment apparatus is DELETED with docket #1; only these two enqueue):
+ *   - birth      — §2.5(d) POLYGON AT BIRTH: the catalog's create chokepoint
+ *     (PlacesCatalogService.upsertSketch via PLACE_BIRTH_LISTENER) enqueues
+ *     every newly sketched place, and the birth promotes THE NEWBORN,
+ *     awaited by the reconciler's background settle (red-teamed: never the
+ *     whole queue). The hourly sweep is the retry tail only.
+ *   - paid_seed  — §2.5(e) SEED ORDER: the coarse seed campaign
+ *     (scripts/seed-coarse-polygons.ts) batch-enqueues, fire-and-forget,
+ *     under the PAID scarce budget (§16 K1 in governance.service).
  *
  * DRAIN (governed lane):
- *   - Hourly cadence: §16 K3-shaped operational plumbing (same clock as the
- *     ritual tick; "a polygon an hour late is fine" — the queue itself is the
- *     lateness buffer). §21.2: destined to be a registered pacer lane.
- *   - Oldest-first; the SCARCE POOL bounds spend (hardClosed, owner-priced
- *     monthly budget — §16 K1 in governance.service) — no invented batch
- *     cap; the per-tick row LIMIT below is churn-bounding only.
- *   - Two-step vendor flow: a tomtom-provider place's providerPlaceId IS the
- *     stable geometry id (§1, live-validated); a census-seeded place (GEOID
- *     alias) first spends ONE cheap forward geocode (county-qualified) to
- *     learn it — cached on the queue row so a later scarce denial never
- *     re-spends the cheap draw.
- *   - Denial ≠ attempt: a pool's typed not-now leaves the row untouched
- *     (next window). A consumed-draw miss increments attempts (no cap — the
- *     pool bounds spend) and re-tries in the NEXT month window: the K4
- *     monthly pool is the backoff clock, not an invented constant.
+ *   - Hourly cadence: §16 K3-shaped operational plumbing ("a polygon an
+ *     hour late is fine" — the queue itself is the lateness buffer).
+ *   - Oldest-first; the pools bound spend — no invented batch cap; the
+ *     per-tick row LIMIT below is churn-bounding only.
+ *   - One-step vendor flow: a place's providerPlaceId IS the stable
+ *     geometry id (§1, live-validated). (The census cheap-geocode two-step
+ *     died with the census resolve lane.)
+ *   - Denial ≠ attempt: a pool's typed not-now leaves the row untouched.
+ *     A consumed-draw miss increments attempts and simply retries next
+ *     tick — the per-minute pool (docket #2, the vendor's own grain)
+ *     bounds a runaway; refusal is TERMINAL.
  *   - (the §17c fallback lane is DELETED, 2026-08-01 — every place is a
  *     vendor mirror now, so every place may earn an outline.)
  */
@@ -71,10 +43,7 @@ import {
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
 import { SpendCampaignService } from '../external-integrations/shared/spend-campaign.service';
-import {
-  tomtomCheapCostMicrosPerDraw,
-  tomtomScarceCostMicrosPerDraw,
-} from '../external-integrations/shared/vendor-pricing';
+import { tomtomScarceCostMicrosPerDraw } from '../external-integrations/shared/vendor-pricing';
 
 /** §16 K4-derived: 2 vendor calls per item ÷ ~5 QPS vendor window → 500ms. */
 const VENDOR_QPS_SPACING_MS = 500;
@@ -195,10 +164,10 @@ export class PlacesPromotionService {
   }
 
   /**
-   * Drain queued places oldest-first through the governed vendor flow. An
-   * item attempted THIS month window is skipped until the next window (the
-   * K4 monthly pool is the backoff clock). The pass ends early on any pool
-   * denial (hardClosed month pools: nothing later in the queue would admit
+   * Drain queued places oldest-first through the governed vendor flow.
+   * Transient failures simply retry next tick (docket #2: the month-as-
+   * backoff clause is dead; the per-minute pool bounds a runaway). The pass
+   * ends early on any pool denial (nothing later in the queue would admit
    * either) or on a vendor transport error (consumed draw, systemic).
    */
   async drainQueue(now: Date): Promise<void> {
@@ -395,7 +364,7 @@ export class PlacesPromotionService {
     item: PlaceGeometryPromotion,
     now: Date,
   ): Promise<DrainOutcome> {
-    const draws = { cheap: 0, scarce: 0 };
+    const draws = { scarce: 0 };
     try {
       return await this.promoteOneUnmetered(item, now, draws);
     } finally {
@@ -412,12 +381,12 @@ export class PlacesPromotionService {
    */
   private async meterCampaignSpend(
     item: PlaceGeometryPromotion,
-    draws: { cheap: number; scarce: number },
+    // Scarce-only (cleanup 2026-08-01): the cheap-geocode step died with the
+    // census resolve lane; nothing draws cheap in this flow anymore.
+    draws: { scarce: number },
   ): Promise<void> {
     const campaignId = item.campaignId;
-    const spendMicros =
-      draws.cheap * tomtomCheapCostMicrosPerDraw +
-      draws.scarce * tomtomScarceCostMicrosPerDraw;
+    const spendMicros = draws.scarce * tomtomScarceCostMicrosPerDraw;
     if (!campaignId || !this.spendCampaigns || spendMicros <= 0) {
       return;
     }
@@ -438,7 +407,7 @@ export class PlacesPromotionService {
   private async promoteOneUnmetered(
     item: PlaceGeometryPromotion,
     now: Date,
-    draws: { cheap: number; scarce: number },
+    draws: { scarce: number },
   ): Promise<DrainOutcome> {
     const place = await this.prisma.place.findUnique({
       where: { placeId: item.placeId },

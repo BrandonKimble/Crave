@@ -34,11 +34,11 @@ import { ViewportVerdictService } from './viewport-verdict.service';
  * field): the §2.5 law's dominators include every place whose ground covers
  * the view — and covering implies intersecting, so every such place (however
  * over-scale: city, state, country) already intersects the margin box and is
- * already in `places`. placesInView's DB prefilter keeps crossing rows and
- * both lat/lng arms over-inclusive, so no covering node can be dropped. The
- * only rows it excludes are bbox-LESS places — and a bbox-less place has no
- * index presence at all (its polygon, once landed, widens the bbox at the
- * drain). Shipping a second "smallestContaining + ancestors" list would be
+ * already in `places`. placesInView's candidate find is the geometry GiST
+ * (`geometry && arm`, per-arm at the seam — P4a), so no covering node can
+ * be dropped; the only rows it excludes are GROUND-LESS places, which are
+ * honestly not containers (§2.6). Shipping a second "smallestContaining +
+ * ancestors" list would be
  * redundant derivable data; the slice rows are sufficient for the whole
  * header law.
  */
@@ -87,9 +87,13 @@ export class PlacesController {
       query.toBbox(),
       PLACES_SLICE_MARGIN_FACTOR,
     );
-    const rows = await this.catalog.placesInView(marginBox);
+    const [rows, catalogWatermark] = await Promise.all([
+      this.catalog.placesInView(marginBox),
+      this.catalog.catalogWatermark(marginBox),
+    ]);
     return {
       marginBox,
+      catalogWatermark,
       // Lean PlaceLike rows: bbox (index) + identity + DAG edges + the §2.6
       // ONE ground — ALWAYS present (a sketch-grade place ships its 5-point
       // envelope rectangle; outlines are simplified to the MARGIN box span

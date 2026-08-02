@@ -14,9 +14,8 @@
  *   - An empty chain is a first-class result: "no place here" is a
  *     region-scale observation over `probedBbox` (30d TTL — reconciler side).
  *
- * The real adapter also rides the governed TomTom cheap pool (§14 / §22
- * "TomTom pools governed FIRST — the one ungoverned money"), which is exactly
- * why it is NOT built here: governance wiring belongs to the Phase-B cutover.
+ * The real adapter (tomtom-chain-probe.adapter.ts) rides the governed
+ * TomTom pools (§14 / §22); this port keeps the reconciler vendor-blind.
  */
 import { GeoPoint, ProbedRegion } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';

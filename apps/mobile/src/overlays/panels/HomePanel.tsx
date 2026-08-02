@@ -17,6 +17,7 @@ import { fetchHomeFeed, type HomeFeedCity, type HomeShelfList } from '../../serv
 import { subscribeToReconnect } from '../../store/systemStatusStore';
 import {
   getViewportSubjectState,
+  noteCatalogWatermark,
   subscribeViewportSubjectState,
   useViewportSubjectState,
 } from '../../store/viewport-subject-store';
@@ -321,49 +322,92 @@ HomeShelfRowView.displayName = 'HomeShelfRowView';
 // ─── Feed runtime: settled-viewport keyed fetch (the SAME subject-store seam +
 // settle-edge/activation-diff pattern the polls feed uses; the settle tick's
 // 240ms quiescence IS the debounce).
+// §9.4 parity with the polls controller: on a failed load, retry quietly with
+// backoff; any fresh settle/pick/reconnect-triggered refresh supersedes the
+// pending retry and resets the ladder.
+const HOME_FEED_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000] as const;
+
 const useHomeFeedRuntime = (): void => {
   const visible = useHomeSceneStateStore((state) => state.visible);
   const lastRequestedBoundsRef = React.useRef<MapBounds | null>(null);
   const fetchSeqRef = React.useRef(0);
+  const retryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshRef = React.useRef<((retryAttempt?: number) => Promise<void>) | null>(null);
 
-  const refreshHomeFeed = React.useCallback(async () => {
-    const bounds = getViewportSubjectState().settledBounds;
-    if (!bounds) {
-      return;
-    }
-    lastRequestedBoundsRef.current = bounds;
-    const seq = ++fetchSeqRef.current;
-    const store = useHomeFeedStore.getState();
-    if (store.feed == null) {
-      store.setStatus('loading');
-    }
-    try {
-      const feed = await fetchHomeFeed(bounds, {
-        pickedCityId: useHomeFeedStore.getState().pickedCityId,
-      });
-      if (seq !== fetchSeqRef.current) {
-        return; // superseded by a newer settle
-      }
-      useHomeFeedStore.getState().setFeed(feed);
-    } catch (error) {
-      if (seq !== fetchSeqRef.current) {
-        return;
-      }
-      logger.warn('Failed to load home feed', {
-        message: error instanceof Error ? error.message : 'unknown',
-      });
-      // Header red-team 2026-08-01: a failed fetch must NOT hold its bounds
-      // as "requested" — that made a re-settle on the IDENTICAL bounds a
-      // non-edge, so the stale resolvedCity title served indefinitely with
-      // no retry path. Clearing the ref makes the next settle (even on the
-      // same camera) an honest retry edge.
-      lastRequestedBoundsRef.current = null;
-      // Honest failure only when there is nothing to show; a stale feed stands.
-      if (useHomeFeedStore.getState().feed == null) {
-        useHomeFeedStore.getState().setStatus('failed');
-      }
+  const clearScheduledRetry = React.useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
     }
   }, []);
+
+  const refreshHomeFeed = React.useCallback(
+    async (retryAttempt = 0) => {
+      const bounds = getViewportSubjectState().settledBounds;
+      if (!bounds) {
+        return;
+      }
+      // A fresh call (any trigger) owns recovery now — drop any pending retry.
+      clearScheduledRetry();
+      lastRequestedBoundsRef.current = bounds;
+      const seq = ++fetchSeqRef.current;
+      const store = useHomeFeedStore.getState();
+      if (store.feed == null) {
+        store.setStatus('loading');
+      }
+      try {
+        const feed = await fetchHomeFeed(bounds, {
+          pickedCityId: useHomeFeedStore.getState().pickedCityId,
+        });
+        if (seq !== fetchSeqRef.current) {
+          return; // superseded by a newer settle
+        }
+        useHomeFeedStore.getState().setFeed(feed);
+        // Header ideal 2026-08-01: report the response's catalog revision —
+        // the subject store re-cuts its slice when this differs from the
+        // slice's own watermark (change, never clock).
+        noteCatalogWatermark(feed.catalogWatermark ?? null);
+      } catch (error) {
+        if (seq !== fetchSeqRef.current) {
+          return;
+        }
+        logger.warn('Failed to load home feed', {
+          message: error instanceof Error ? error.message : 'unknown',
+          retryAttempt,
+        });
+        // Header red-team 2026-08-01: a failed fetch must NOT hold its bounds
+        // as "requested" — that made a re-settle on the IDENTICAL bounds a
+        // non-edge, so the stale resolvedCity title served indefinitely with
+        // no retry path. Clearing the ref makes the next settle (even on the
+        // same camera) an honest retry edge.
+        lastRequestedBoundsRef.current = null;
+        // §9.4 ladder (polls parity): quiet backoff retries; a newer refresh
+        // (settle / pick / reconnect) supersedes via clearScheduledRetry.
+        if (retryAttempt < HOME_FEED_RETRY_BACKOFF_MS.length) {
+          retryTimeoutRef.current = setTimeout(() => {
+            retryTimeoutRef.current = null;
+            void refreshRef.current?.(retryAttempt + 1);
+          }, HOME_FEED_RETRY_BACKOFF_MS[retryAttempt]);
+        }
+        // Honest failure only when there is nothing to show; a stale feed stands.
+        if (useHomeFeedStore.getState().feed == null) {
+          useHomeFeedStore.getState().setStatus('failed');
+        }
+      }
+    },
+    [clearScheduledRetry]
+  );
+  refreshRef.current = refreshHomeFeed;
+
+  // The ladder must not outlive the surface: leaving home cancels any pending
+  // retry (the activation-diff on return refetches if bounds moved, and the
+  // cleared lastRequestedBounds makes even same-bounds return an edge).
+  React.useEffect(() => {
+    if (!visible) {
+      clearScheduledRetry();
+    }
+    return clearScheduledRetry;
+  }, [clearScheduledRetry, visible]);
 
   React.useEffect(() => {
     if (!visible) {

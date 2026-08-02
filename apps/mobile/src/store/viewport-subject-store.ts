@@ -17,7 +17,7 @@ import type { MapBounds } from '../types';
  *
  * verdict semantics (§2.5 polygon-native header law, ratified 2026-07-22):
  *   - { kind: 'place' }     → the finest dominator: the smallest place whose
- *                             real ground (or honest bbox fallback) covers
+ *                             the ONE ground (sketch rows: the envelope rectangle) covers
  *                             ≥ 2/3 of the view — "Polls in Austin".
  *   - { kind: 'this-area' } → the §2.5 reservation: a genuine multi-place
  *                             straddle or unnamed ground — "Polls in this
@@ -50,6 +50,14 @@ export type ViewportSubjectState = {
    * Null until the first settle (cold start).
    */
   settledBounds: MapBounds | null;
+  /**
+   * Header ideal 2026-08-01: the latest catalog revision any FEED response
+   * reported for the current region (feed runtimes write it via
+   * noteCatalogWatermark). The controller compares it to the slice's own
+   * stored watermark and refetches on CHANGE — this replaced the 1h TTL,
+   * whose hourly-drain rationale birth-synchronous outlines falsified.
+   */
+  catalogWatermarkSeen: string | null;
 };
 
 type Listener = () => void;
@@ -60,6 +68,7 @@ const INITIAL_STATE: ViewportSubjectState = {
   marginBox: null,
   lastCommittedAt: null,
   settledBounds: null,
+  catalogWatermarkSeen: null,
 };
 
 let currentState: ViewportSubjectState = INITIAL_STATE;
@@ -79,12 +88,24 @@ export const setViewportSubjectState = (partial: Partial<ViewportSubjectState>):
     next.slice === currentState.slice &&
     next.marginBox === currentState.marginBox &&
     next.lastCommittedAt === currentState.lastCommittedAt &&
-    next.settledBounds === currentState.settledBounds
+    next.settledBounds === currentState.settledBounds &&
+    next.catalogWatermarkSeen === currentState.catalogWatermarkSeen
   ) {
     return;
   }
   currentState = next;
   notify();
+};
+
+/**
+ * Feed runtimes report the catalog revision their responses carried (null =
+ * no signal, ignored — never clears a known revision).
+ */
+export const noteCatalogWatermark = (watermark: string | null): void => {
+  if (watermark == null) {
+    return;
+  }
+  setViewportSubjectState({ catalogWatermarkSeen: watermark });
 };
 
 /** Test/session-reset hook; not used by production flows. */

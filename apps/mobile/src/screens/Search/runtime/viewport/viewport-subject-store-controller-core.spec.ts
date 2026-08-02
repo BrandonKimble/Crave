@@ -19,6 +19,7 @@ import {
 import {
   getViewportSubjectState,
   resetViewportSubjectStore,
+  noteCatalogWatermark,
 } from '../../../../store/viewport-subject-store';
 import type { MapBounds } from '../../../../types';
 import { createViewportBoundsService } from './viewport-bounds-service';
@@ -85,6 +86,7 @@ const MEXICO = place({
 
 const sliceResponse = (places: PlaceLike[]): PlacesInViewSliceResponse => ({
   marginBox: MARGIN_BOX,
+  catalogWatermark: 'rev-1',
   places,
 });
 
@@ -306,6 +308,31 @@ describe('viewport subject controller core (§2.5 polygon-native)', () => {
       candidate: 'unknown',
       reason: 'no-slice',
     });
+    harness.dispose();
+  });
+
+  it('re-cuts the slice when a feed reports a CHANGED catalog watermark — and never on a clock (header ideal 2026-08-01)', async () => {
+    const harness = startController([TEXAS]);
+    jest.advanceTimersByTime(VIEWPORT_SETTLE_QUIESCENCE_MS + 1);
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(1);
+
+    // Same revision reported (the common case: feed watermark == slice's) —
+    // no refetch.
+    noteCatalogWatermark('rev-1');
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(1);
+
+    // A DIFFERENT revision (a birth/promotion landed server-side) re-cuts
+    // the slice even though the camera never moved.
+    noteCatalogWatermark('rev-2');
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(2);
+
+    // Time alone never refetches: no TTL survives.
+    jest.advanceTimersByTime(2 * 60 * 60 * 1_000);
+    await flushMicrotasks();
+    expect(harness.fetchSlice).toHaveBeenCalledTimes(2);
     harness.dispose();
   });
 

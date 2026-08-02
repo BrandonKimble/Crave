@@ -181,6 +181,7 @@ function createHarness(options: {
   };
 
   const placesCatalog = {
+    catalogWatermark: jest.fn().mockResolvedValue('2026-08-01T00:00:00.000Z'),
     placesInView: jest.fn().mockResolvedValue(
       options.placesInView.map((entry) => {
         const half = Math.sqrt(entry.placeArea) / 2;

@@ -55,7 +55,6 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { NotificationsService } from '../../notifications/notifications.service';
-import { PlacesPromotionService } from '../../places/places-promotion.service';
 import { gaussianRamp } from '../../analytics/demand-scoring/curves';
 import { DemandMassReader, SubjectDemandMass } from './demand-mass.reader';
 import { PollSupplyEstimators, CohortOutcome } from './poll-supply-estimators';
@@ -134,7 +133,6 @@ export class PollWeeklyRitualService {
     private readonly demandMass: DemandMassReader,
     private readonly estimators: PollSupplyEstimators,
     private readonly notifications: NotificationsService,
-    private readonly placesPromotions: PlacesPromotionService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollWeeklyRitualService');

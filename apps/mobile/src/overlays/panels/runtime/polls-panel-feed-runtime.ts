@@ -31,8 +31,6 @@ export type PollsPanelFeedRuntime = {
   /** §6 cold-start promise state (weekly drop pending on an empty seeded town). */
   promise: PollFeedPromise | null;
   resolvedSnap: UsePollsPanelSpecOptions['currentSnap'] | PollsPanelInitialSnapPoint;
-  /** The loaded pages, sliced by the §6 place filter (client-side this leg). */
-  visiblePolls: Poll[];
   /** Cursor pagination: append the next keyset page (single-flight; no-op at end). */
   loadMorePolls: () => void;
   /**
@@ -75,11 +73,9 @@ export const usePollsPanelFeedRuntime = ({
   const resolvedSnap = currentSnap ?? initialSnap;
   const headerAction: 'create' | 'close' =
     resolvedSnap === 'collapsed' || resolvedSnap === 'hidden' ? 'create' : 'close';
-  // §6 place slicer — SERVER-SIDE since the placeFilterId cut: the filter is a
-  // NETWORK control (polls-feed-controls-store diff → refetch with
-  // placeFilterId), so the loaded pages ARE the sliced feed. No render-time
-  // client filter remains.
-  const visiblePolls = polls;
+  // §6 place slicing died with Job 4 (place selection flies the camera; no
+  // placeFilterId is ever sent) — the loaded pages ARE the feed; no
+  // render-time client filter exists.
   // HEADER SUBJECT-STORE (ratified 2026-07-21): the client subject store is the
   // TITLE AUTHORITY — the same §2 law run on-device against the sliding catalog
   // slice, committed via settle+dwell hysteresis. The feed response's
@@ -139,7 +135,6 @@ export const usePollsPanelFeedRuntime = ({
       polls,
       promise,
       resolvedSnap,
-      visiblePolls,
       loadMorePolls,
       isFeedSliceAwaiting,
     }),
@@ -154,7 +149,6 @@ export const usePollsPanelFeedRuntime = ({
       polls,
       promise,
       resolvedSnap,
-      visiblePolls,
       loadMorePolls,
       isFeedSliceAwaiting,
     ]

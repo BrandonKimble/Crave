@@ -14,10 +14,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserListType, Prisma } from '@prisma/client';
-import { GeoBbox } from '@crave-search/shared';
+import {
+  GeoBbox,
+  PLACES_SLICE_MARGIN_FACTOR,
+  expandBboxByFactor,
+} from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
+import { PlacesCatalogService } from '../places/places-catalog.service';
 import {
   MIN_VIABLE_LIST_ITEMS,
   RECIPE_CUISINE_BEST_PREFIX,
@@ -50,6 +55,9 @@ export interface HomeFeedResponse {
   shelves: HomeShelf[];
   /** Live cities with curated content — the 'pick a city' vocabulary. */
   liveCities: Array<{ placeId: string; name: string }>;
+  /** Catalog revision for the request's slice-margin region (header ideal
+   *  2026-08-01) — the client slice revalidates on CHANGE, never a clock. */
+  catalogWatermark: string | null;
 }
 
 export interface CuratedListDetailItem {
@@ -106,6 +114,7 @@ export class HomeFeedService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly viewportVerdict: ViewportVerdictService,
+    private readonly placesCatalog: PlacesCatalogService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('HomeFeedService');
@@ -116,9 +125,12 @@ export class HomeFeedService {
     userId: string,
     pickedCityId?: string,
   ): Promise<HomeFeedResponse> {
-    const [verdict, liveCities] = await Promise.all([
+    const [verdict, liveCities, catalogWatermark] = await Promise.all([
       this.viewportVerdict.resolveViewportVerdict(view),
       this.listCities(),
+      this.placesCatalog.catalogWatermark(
+        expandBboxByFactor(view, PLACES_SLICE_MARGIN_FACTOR),
+      ),
     ]);
     const cityIds = new Set(liveCities.map((city) => city.placeId));
     // The viewport verdict WINS whenever it honestly resolves to a live city.
@@ -137,7 +149,7 @@ export class HomeFeedService {
     if (!resolvedCityId) {
       // Honest fallback: no containing city with content — the client shows
       // the pick-a-city shelf from liveCities.
-      return { resolvedCity: null, shelves: [], liveCities };
+      return { resolvedCity: null, shelves: [], liveCities, catalogWatermark };
     }
     const resolvedCity = liveCities.find(
       (city) => city.placeId === resolvedCityId,
@@ -235,7 +247,7 @@ export class HomeFeedService {
         });
       }
     }
-    return { resolvedCity, shelves, liveCities };
+    return { resolvedCity, shelves, liveCities, catalogWatermark };
   }
 
   async getListDetail(

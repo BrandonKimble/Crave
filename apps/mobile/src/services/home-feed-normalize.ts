@@ -57,7 +57,7 @@ const normalizeShelf = (raw: unknown): HomeShelf | null => {
 
 export const normalizeHomeFeedResponse = (raw: unknown): HomeFeedResponse => {
   if (raw == null || typeof raw !== 'object') {
-    return { resolvedCity: null, shelves: [], liveCities: [] };
+    return { resolvedCity: null, shelves: [], liveCities: [], catalogWatermark: null };
   }
   const payload = raw as Record<string, unknown>;
   const shelves = Array.isArray(payload.shelves)
@@ -70,5 +70,7 @@ export const normalizeHomeFeedResponse = (raw: unknown): HomeFeedResponse => {
     resolvedCity: normalizeCity(payload.resolvedCity),
     shelves,
     liveCities,
+    catalogWatermark:
+      typeof payload.catalogWatermark === 'string' ? payload.catalogWatermark : null,
   };
 };
