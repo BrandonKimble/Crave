@@ -4066,7 +4066,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   batchTransportOps(): BatchTransportOps {
     return {
       create: async (params) =>
-        this.genAI.batches.create(params as never) as Promise<{
+        // Gated in the OP, not only in gemini-batch.service's submit(). The
+        // caller's gate is correct but it is a call site, and a call site is
+        // exactly what embeddings proved can be forgotten (red team
+        // 2026-08-02). An assert is a pool read, so paying for it twice on
+        // the batch path is cheaper than a second caller shipping without it.
+        this.assertSpendBudgetOpen().then(() =>
+          this.genAI.batches.create(params as never),
+        ) as Promise<{
           name?: string;
         }>,
       cancel: async (name) => {
@@ -4103,15 +4110,34 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     contents: string[];
     config?: { taskType?: string; outputDimensionality?: number };
   }) => Promise<{ embeddings?: Array<{ values?: number[] }> }> {
-    return async (params) =>
-      this.genAI.models.embedContent(params as never) as Promise<{
+    return async (params) => {
+      // THE SPEND GATE BELONGS HERE, NOT AT THE CALL SITE (red team
+      // 2026-08-02). embedContent is billed per input token, and this was the
+      // one paid Gemini path with no admission check: generation gates in
+      // callLLMApi and batch gates in submit(), so when the Tier-3 backstop
+      // fired or the vendor poisoned the pool, GENERATION STOPPED AND
+      // EMBEDDINGS KEPT SPENDING. The typed-vendor-op carve-out that moved
+      // client ownership here quietly took the gate with it.
+      //
+      // It sits inside the returned op rather than beside each caller for the
+      // same reason generateForCaller does it: a caller cannot forget what it
+      // never has to remember. It is also the hot path — embedQuery runs on
+      // search, whose only brake is a Redis cache that degrades to a live
+      // embed when Redis is down.
+      await this.assertSpendBudgetOpen();
+      return this.genAI.models.embedContent(params as never) as Promise<{
         embeddings?: Array<{ values?: number[] }>;
       }>;
+    };
   }
 
   private cacheVendorOps(): CacheVendorOps {
     return {
       create: async ({ model, systemInstruction, ttlSeconds }) => {
+        // Context-cache mints are billed in token-hours, so a mint is a paid
+        // call and must pass the same backstop as generation (red team
+        // 2026-08-02).
+        await this.assertSpendBudgetOpen();
         const cache = await this.genAI.caches.create({
           model,
           config: { systemInstruction, ttl: `${ttlSeconds}s` },

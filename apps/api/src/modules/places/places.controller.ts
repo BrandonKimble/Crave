@@ -56,8 +56,13 @@ export class PlacesController {
    * the one implementation). Nulls when the viewport resolves to no covering
    * place — the client renders its "this area" copy.
    */
+  // heavyGeoRead, not default (red team 2026-08-02). That tier was created
+  // for exactly this shape and its own comment describes these two endpoints
+  // — they were simply never moved onto it. Authenticated, so this is not an
+  // exposure fix: it is that 100/min of viewport reads is a Postgres-and-
+  // egress bill a human panning a map never approaches.
   @Get('viewport-verdict')
-  @RateLimitTier('default')
+  @RateLimitTier('heavyGeoRead')
   async viewportVerdictRead(
     @Query() query: PlacesInViewQueryDto,
   ): Promise<{ placeId: string | null; placeName: string | null }> {
@@ -74,8 +79,10 @@ export class PlacesController {
     };
   }
 
+  // See viewport-verdict above: in-view additionally EXPANDS the requested
+  // box by the slice margin before serializing every ground it touches.
   @Get('in-view')
-  @RateLimitTier('default')
+  @RateLimitTier('heavyGeoRead')
   async placesInView(
     @Query() query: PlacesInViewQueryDto,
   ): Promise<PlacesInViewSliceResponse> {

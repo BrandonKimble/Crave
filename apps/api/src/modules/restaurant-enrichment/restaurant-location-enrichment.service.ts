@@ -1142,7 +1142,16 @@ export class RestaurantLocationEnrichmentService {
       }
       latestDetails = resolvedDetails.details;
 
-      const resolvedPlaceDetails = placeDetails;
+      // THE REDIRECT WAS COMPUTED AND THEN THROWN AWAY (red team 2026-08-02).
+      // resolveEligiblePlaceDetails follows Google's moved-place redirect and
+      // re-fetches the NEW place; this line used `placeDetails`, which is
+      // `details.place` from before that call — the CLOSED place. Every
+      // downstream write consumed it, so a moved restaurant was grounded on
+      // the dead place id while its matchMetadata claimed the redirect had
+      // been followed. The sibling caller (resolvePlaceForInput) already
+      // returns `resolvedDetails.details.place` correctly; only this path
+      // diverged.
+      const resolvedPlaceDetails = resolvedDetails.details.place;
       const resolvedMatchMetadata = matchMetadata;
 
       const { updateData, updatedFields } = this.buildEntityUpdate(

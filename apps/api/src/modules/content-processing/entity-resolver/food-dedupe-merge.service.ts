@@ -301,7 +301,7 @@ export class FoodDedupeMergeService {
         .filter((entry) => entry.same)
         .map((entry) => ({ pair: entry.pair, via: 'judge' as const })),
     ];
-    summary.judgeRejected = judged.filter((entry) => !entry.same).length;
+    summary.judgeRejected += judged.filter((entry) => !entry.same).length;
 
     for (const { pair, via } of toMerge) {
       if (dryRun) {

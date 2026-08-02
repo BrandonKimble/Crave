@@ -1,3 +1,8 @@
+import {
+  isProdEnv,
+  normalizeAppEnv,
+  type AppEnv,
+} from '../shared/config/app-env';
 /**
  * Determines optimal database connection pool size based on environment
  * and application requirements from PRD sections 6.6.1 and 6.1.2
@@ -40,33 +45,23 @@ function getDatabaseUrl(): string {
   );
 }
 
-function resolveAppEnv(): string {
+function resolveAppEnv(): AppEnv {
   const raw = process.env.APP_ENV || process.env.CRAVE_ENV;
   if (raw && raw.trim()) {
-    const normalized = raw.trim().toLowerCase();
-    if (normalized === 'production') {
-      return 'prod';
-    }
-    if (normalized === 'development') {
-      return 'dev';
-    }
-    return raw.trim();
+    return normalizeAppEnv(raw);
   }
-
-  const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-  if (nodeEnv === 'production') {
-    return 'prod';
-  }
-  return 'dev';
+  // No APP_ENV: infer from NODE_ENV. This can only ever yield dev or prod —
+  // staging must name itself, because "looks like production" is exactly the
+  // inference that made staging indistinguishable from prod.
+  return process.env.NODE_ENV?.toLowerCase() === 'production' ? 'prod' : 'dev';
 }
 
-function isProductionAppEnv(appEnv: string): boolean {
-  const normalized = appEnv.toLowerCase();
-  return normalized === 'prod' || normalized === 'production';
+function isProductionAppEnv(appEnv: AppEnv): boolean {
+  return isProdEnv(appEnv);
 }
 
 function resolveScopedEnv(
-  appEnv: string,
+  appEnv: AppEnv,
   values: {
     dev?: string;
     prod?: string;

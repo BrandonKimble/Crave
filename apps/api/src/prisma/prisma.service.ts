@@ -5,6 +5,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { isDeployedEnv, normalizeAppEnv } from '../shared/config/app-env';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { DatabaseConfig } from '../config/database-config.interface';
 import { DatabaseValidationService } from '../config/database-validation.service';
@@ -139,11 +140,16 @@ export class PrismaService
    * script), which is then an explicit act rather than an accident.
    */
   private assertNotProdDatabaseFromDev(): void {
-    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '')
-      .trim()
-      .toLowerCase();
-    const isProdRuntime = appEnv === 'prod' || appEnv === 'production';
-    if (isProdRuntime || process.env.ALLOW_REMOTE_DB === '1') {
+    const appEnv = normalizeAppEnv(
+      process.env.APP_ENV || process.env.CRAVE_ENV,
+    );
+    // DEPLOYED, not PROD (2026-08-02). This asked "am I production?" to decide
+    // whether a hosted database was legitimate — two different questions
+    // through one boolean. Staging runs on Railway against its own Railway
+    // database, so under the old test it had to declare itself `prod` to boot
+    // at all, which is how staging ended up indistinguishable from production
+    // everywhere else. A hosted DB is legitimate for any DEPLOYED runtime.
+    if (isDeployedEnv(appEnv) || process.env.ALLOW_REMOTE_DB === '1') {
       return;
     }
     const url = process.env.DATABASE_URL || '';
@@ -152,7 +158,7 @@ export class PrismaService
     );
     if (remoteHost) {
       throw new Error(
-        'REFUSED: a non-production process (APP_ENV=' +
+        'REFUSED: a non-deployed process (APP_ENV=' +
           (appEnv || 'unset') +
           ') is pointed at a Railway-hosted database. This is the documented ' +
           'never-point-local-at-prod law. Use the local DB, or set ' +

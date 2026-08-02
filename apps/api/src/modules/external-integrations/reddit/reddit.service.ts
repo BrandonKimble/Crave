@@ -22,6 +22,7 @@ import {
 } from '../shared/external-integrations.types';
 import { GovernanceService } from '../governance/governance.service';
 import type { PoolDenial } from '../governance/pool-registry';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 /**
  * §14.1: the reddit vendor adapter's pool, declared at the client chokepoint
@@ -345,10 +346,13 @@ export class RedditService implements OnModuleInit {
   private shouldRequireCredentials(): boolean {
     // COLLECTION_SCHEDULER_ENABLED is the single collection switch
     // (KEYWORD_SEARCH_ENABLED retired with the consolidated scheduler).
-    return (
-      (this.configService.get<string>('COLLECTION_SCHEDULER_ENABLED') ||
-        process.env.COLLECTION_SCHEDULER_ENABLED ||
-        '') === 'true'
+    // ONE reader (red team 2026-08-02). This compared case-sensitively while
+    // the collector pacer lowercased, so COLLECTION_SCHEDULER_ENABLED=TRUE
+    // started the pacer dispatching collection while THIS returned false and
+    // Reddit credential validation was skipped.
+    return isEnvFlagEnabled(
+      this.configService.get<string>('COLLECTION_SCHEDULER_ENABLED') ??
+        process.env.COLLECTION_SCHEDULER_ENABLED,
     );
   }
 

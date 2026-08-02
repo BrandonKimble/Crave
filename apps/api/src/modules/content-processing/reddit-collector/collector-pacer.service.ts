@@ -49,6 +49,7 @@ import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.
 import { buildKeywordSortPlan } from './keyword-sort-plan';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { utcInstant } from '../../../shared/sql/utc-instant';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 /** Vendor fact (reddit-collection-adapter): /new serves ≤1000 posts. */
 const REDDIT_NEW_WINDOW_POSTS = 1000;
@@ -93,9 +94,7 @@ export class CollectorPacerService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectorPacer');
-    this.enabled =
-      String(process.env.COLLECTION_SCHEDULER_ENABLED ?? '').toLowerCase() ===
-      'true';
+    this.enabled = isEnvFlagEnabled(process.env.COLLECTION_SCHEDULER_ENABLED);
   }
 
   @Cron(CronExpression.EVERY_10_MINUTES)

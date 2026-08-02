@@ -56,6 +56,85 @@ describe('Gemini gateway lockdown', () => {
     expect(offenders).toEqual([]);
   });
 
+  /**
+   * EVERY PAID SDK SURFACE PASSES THE SPEND GATE.
+   *
+   * The gateway work moved client ownership for embeddings and batch into
+   * typed vendor ops — and quietly left `embedContent` without the admission
+   * check that generation and batch both have. So when the Tier-3 backstop
+   * fired or the vendor poisoned the pool, generation stopped and EMBEDDINGS
+   * KEPT SPENDING (red team 2026-08-02). embedContent bills per input token
+   * and runs on the search hot path, where a Redis outage turns every query
+   * into a live embed.
+   *
+   * The lesson matches this file's premise: auditing call sites is what
+   * failed, so the topology is the invariant instead. A surface that COSTS
+   * MONEY must have the gate between the enclosing function's start and the
+   * call; a free surface (get/list/cancel/update/delete) must not need one.
+   */
+  it('every paid Gemini SDK surface is preceded by the spend gate', () => {
+    const PAID = [
+      'models.generateContent',
+      'models.embedContent',
+      'caches.create',
+      'batches.create',
+    ];
+    const gateway = readFileSync(
+      join(SRC_ROOT, 'modules/external-integrations/llm/llm.service.ts'),
+      'utf8',
+    );
+    const lines = gateway.split('\n');
+
+    const ungated: string[] = [];
+    for (const [index, line] of lines.entries()) {
+      const surface = PAID.find((paid) => line.includes(`this.genAI.${paid}`));
+      if (!surface) continue;
+      // Scope to the ENCLOSING METHOD, not a fixed line window. A fixed
+      // window reported generateContent as ungated because callLLMApi's gate
+      // sits 534 lines above the call inside a retry loop — a false positive
+      // that would have trained everyone to ignore this test.
+      let start = 0;
+      for (let back = index; back >= 0; back--) {
+        if (
+          /^ {2}(private |public |protected )?(async )?[A-Za-z_]\w*\(/.test(
+            lines[back],
+          )
+        ) {
+          start = back;
+          break;
+        }
+      }
+      const body = lines.slice(start, index).join('\n');
+      if (!body.includes('assertSpendBudgetOpen')) {
+        ungated.push(`${surface} @ llm.service.ts:${index + 1}`);
+      }
+    }
+    expect(ungated).toEqual([]);
+  });
+
+  it('the paid-surface scanner is not vacuously green', () => {
+    // If the SDK is ever reached by a name this list does not know, the test
+    // above passes while spending real money. Pin that the names it looks for
+    // are actually present in the gateway.
+    const gateway = readFileSync(
+      join(SRC_ROOT, 'modules/external-integrations/llm/llm.service.ts'),
+      'utf8',
+    );
+    for (const paid of [
+      'models.generateContent',
+      'models.embedContent',
+      'caches.create',
+      'batches.create',
+    ]) {
+      expect({ paid, present: gateway.includes(`this.genAI.${paid}`) }).toEqual(
+        {
+          paid,
+          present: true,
+        },
+      );
+    }
+  });
+
   it('every usageCaller in the codebase has a caller profile', () => {
     // Two ways to make a Gemini GENERATION call: the internal option key
     // (usageCaller) and the public gateway (generateForCaller). Plain

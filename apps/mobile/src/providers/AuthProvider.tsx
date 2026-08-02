@@ -278,7 +278,38 @@ const PushNotificationRegistrar: React.FC = () => {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   if (!publishableKey) {
+    // A RELEASE build with no Clerk key used to render the whole app with NO
+    // AUTHENTICATION AT ALL, silently — no provider, no error, no log. Every
+    // request went out anonymous and the app looked like it worked (red team
+    // 2026-08-02). The key can only arrive from EAS dashboard secrets, which
+    // are not versioned in this repo, so "someone forgot" is a live
+    // possibility rather than a hypothetical.
+    //
+    // Dev keeps the permissive path — running without Clerk configured is a
+    // normal local state. A release build says so loudly, exactly as
+    // services/purchases.ts already does for a test RevenueCat key.
+    if (!__DEV__) {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[auth] RELEASE build has no EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY — ' +
+          'the app would run fully UNAUTHENTICATED. Set the production ' +
+          'Clerk key in EAS secrets.'
+      );
+    }
     return <>{children}</>;
+  }
+
+  if (!__DEV__ && publishableKey.startsWith('pk_test_')) {
+    // Same class, quieter failure: a release built from a local .env ships
+    // the TEST Clerk instance, so real users authenticate against a test
+    // directory. Loud, and it still renders — refusing to boot the app over
+    // this would be worse than a wrong-directory sign-in.
+    // eslint-disable-next-line no-console
+    console.error(
+      '[auth] RELEASE build carries a Clerk TEST publishable key ' +
+        '(pk_test_) — users will authenticate against the test instance. ' +
+        'Ship the pk_live_ key.'
+    );
   }
 
   return (

@@ -434,6 +434,10 @@ export class RestaurantEntityMergeService {
       -- predicate, same import, same law.
       WHERE type = 'restaurant' AND status = 'active'
         AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}
+        -- EMPTY FOLD IS NOT AN IDENTITY (round-10 aging sim, executed:
+        -- every non-Latin name folds to '' and the sweep merged a Chinese
+        -- noodle shop into a Russian dumpling house on the empty group).
+        AND crave_fold(name) <> ''
       GROUP BY crave_fold(name)
       HAVING count(*) >= 2
     `;
@@ -455,6 +459,7 @@ export class RestaurantEntityMergeService {
                          AND l.google_place_id IS NOT NULL) AS grounded
         FROM core_entities e2
         WHERE type = 'restaurant' AND status = 'active'
+          AND crave_fold(name) <> ''
           AND ${Prisma.raw(activeSupportExistsSql('e2.entity_id'))}
       )
       SELECT b.key AS name, ARRAY[a.entity_id, b.entity_id] AS entity_ids

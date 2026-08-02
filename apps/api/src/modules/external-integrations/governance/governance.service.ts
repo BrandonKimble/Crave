@@ -29,6 +29,23 @@ const GEMINI_BACKSTOP_WORK_CLASS = 'backstop.gemini';
  * becomes an error outcome, never brands a cooldown, never trips a fail-open
  * judgment layer.
  */
+/**
+ * Read a monthly spend cap in USD from the environment.
+ *
+ * ZERO IS A VALID, MEANINGFUL VALUE — it is how an owner says "stop spending".
+ * `Number(env || fallback)` silently converts it to the fallback, which turns
+ * a halt instruction into a live budget. Only an ABSENT or unparseable value
+ * falls back.
+ */
+export function readSpendCapUsd(
+  raw: string | undefined,
+  fallback: number,
+): number {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 @Injectable()
 export class GovernanceService implements OnModuleInit {
   readonly pools: PoolRegistry;
@@ -181,15 +198,23 @@ export class GovernanceService implements OnModuleInit {
     // 'backstop.gemini' spend_unit_costs row, this env var is DEAD for every
     // subsequent boot (governance reads the derived row instead) — it only
     // matters for the very first boot before any derivation has run.
-    const capUsd = Number(process.env.GEMINI_MONTHLY_SPEND_CAP_USD || '300');
+    // THE FALSY-ZERO TRAP (red team 2026-08-02). `Number(env || '300')` makes
+    // a DELIBERATE 0 become 300: an owner setting the cap to zero to halt
+    // Gemini spend during an incident would restart into a $300 ceiling —
+    // the exact opposite of the instruction. spend-analytics.service.ts had
+    // already written a paragraph about this trap and parsed the same
+    // variable correctly; the file that sets the actual boot limit never got
+    // the fix. One variable, one parser now.
+    const capUsd = readSpendCapUsd(
+      process.env.GEMINI_MONTHLY_SPEND_CAP_USD,
+      300,
+    );
     this.pools.register({
       name: 'gemini.monthlySpend',
       credential: 'default',
       window: {
         kind: 'perMonth',
-        limit: Math.round(
-          (Number.isFinite(capUsd) && capUsd > 0 ? capUsd : 300) * 1_000_000,
-        ),
+        limit: Math.round(capUsd * 1_000_000),
       },
       reservationTtlMs: 60_000,
     });
@@ -206,19 +231,19 @@ export class GovernanceService implements OnModuleInit {
     // This is the LAST line, not the everyday control. What keeps us off it
     // is asking our own catalog first (poll-entity-seed.matchKnownRestaurant)
     // and remembering misses (vendor_lookup_misses).
-    const placesCapUsd = parseFloat(
-      process.env.GOOGLE_PLACES_MONTHLY_SPEND_CAP_USD || '',
+    // Same parser as Gemini above. It used parseFloat, which additionally
+    // accepts trailing junk ("200usd" -> 200) — two spellings of one concept
+    // in one file.
+    const placesCapUsd = readSpendCapUsd(
+      process.env.GOOGLE_PLACES_MONTHLY_SPEND_CAP_USD,
+      200,
     );
     this.pools.register({
       name: 'googlePlaces.monthlySpend',
       credential: 'default',
       window: {
         kind: 'perMonth',
-        limit: Math.round(
-          (Number.isFinite(placesCapUsd) && placesCapUsd > 0
-            ? placesCapUsd
-            : 200) * 1_000_000,
-        ),
+        limit: Math.round(placesCapUsd * 1_000_000),
       },
       reservationTtlMs: 60_000,
     });
