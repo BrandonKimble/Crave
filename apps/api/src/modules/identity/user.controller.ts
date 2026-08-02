@@ -140,7 +140,10 @@ export class UserController {
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    return this.userFollowService.followUser(user.userId, userId);
+    return this.userFollowService.followUser({
+      followerUserId: user.userId,
+      followingUserId: userId,
+    });
   }
 
   @Delete(':userId/follow')
@@ -148,7 +151,10 @@ export class UserController {
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    return this.userFollowService.unfollowUser(user.userId, userId);
+    return this.userFollowService.unfollowUser({
+      followerUserId: user.userId,
+      followingUserId: userId,
+    });
   }
 
   /** §8.6 blocking (Apple 1.2 UGC). Blocking also severs follow edges. */
@@ -157,10 +163,19 @@ export class UserController {
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    const result = await this.userBlockService.blockUser(user.userId, userId);
+    const result = await this.userBlockService.blockUser({
+      blockerUserId: user.userId,
+      blockedUserId: userId,
+    });
     // Sever the social edges both ways (idempotent no-ops when absent).
-    await this.userFollowService.unfollowUser(user.userId, userId);
-    await this.userFollowService.unfollowUser(userId, user.userId);
+    await this.userFollowService.unfollowUser({
+      followerUserId: user.userId,
+      followingUserId: userId,
+    });
+    await this.userFollowService.unfollowUser({
+      followerUserId: userId,
+      followingUserId: user.userId,
+    });
     return result;
   }
 
@@ -169,7 +184,10 @@ export class UserController {
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
-    return this.userBlockService.unblockUser(user.userId, userId);
+    return this.userBlockService.unblockUser({
+      blockerUserId: user.userId,
+      blockedUserId: userId,
+    });
   }
 
   /** §9b profileActions (Apple 1.2 UGC): report a user. Records only —
@@ -180,6 +198,9 @@ export class UserController {
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: ReportUserDto,
   ) {
-    return this.userReportService.reportUser(user.userId, userId, dto.reason);
+    return this.userReportService.reportUser(
+      { reporterUserId: user.userId, reportedUserId: userId },
+      dto.reason,
+    );
   }
 }

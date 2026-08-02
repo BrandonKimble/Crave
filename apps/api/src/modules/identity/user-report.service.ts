@@ -27,9 +27,14 @@ export type UserReportReason = (typeof USER_REPORT_REASONS)[number];
 export class UserReportService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Named participants — reporting the wrong direction is unrecoverable and
+   *  invisible. Both ids are users, so a brand cannot separate them; see
+   *  user-block.service.blockUser and shared/types/ids.ts. */
   async reportUser(
-    reporterUserId: string,
-    reportedUserId: string,
+    {
+      reporterUserId,
+      reportedUserId,
+    }: { reporterUserId: string; reportedUserId: string },
     reason: UserReportReason,
   ) {
     if (reporterUserId === reportedUserId) {

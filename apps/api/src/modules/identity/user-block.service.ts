@@ -21,7 +21,28 @@ export class UserBlockService {
 
   /** Idempotent block. Also severs the follow edges BOTH ways (industry
    *  semantics: blocking force-unfollows in both directions). */
-  async blockUser(blockerUserId: string, blockedUserId: string) {
+  /**
+   * NAMED PARTICIPANTS, NOT POSITIONS (2026-08-02).
+   *
+   * Both ids are users, so a brand cannot tell them apart — the type system
+   * is blind to `blockUser(b, a)`. And the consequence of transposing is that
+   * the WRONG PERSON gets blocked, silently, with two opaque uuids that
+   * survive code review. user.controller.ts already calls
+   * `unfollowUser(a, b)` and `unfollowUser(b, a)` on adjacent lines
+   * deliberately; that is correct today and one keystroke from a bug nothing
+   * would catch.
+   *
+   * An object parameter removes ORDER from the contract entirely. It is the
+   * fix for same-type id pairs, exactly as branding is the fix for
+   * cross-type ones (see shared/types/ids.ts).
+   */
+  async blockUser({
+    blockerUserId,
+    blockedUserId,
+  }: {
+    blockerUserId: string;
+    blockedUserId: string;
+  }) {
     if (blockerUserId === blockedUserId) {
       throw new BadRequestException('Cannot block yourself');
     }
@@ -42,7 +63,14 @@ export class UserBlockService {
   }
 
   /** Idempotent unblock. */
-  async unblockUser(blockerUserId: string, blockedUserId: string) {
+  /** Named participants — see blockUser. */
+  async unblockUser({
+    blockerUserId,
+    blockedUserId,
+  }: {
+    blockerUserId: string;
+    blockedUserId: string;
+  }) {
     await this.prisma.userBlock.deleteMany({
       where: { blockerUserId, blockedUserId },
     });

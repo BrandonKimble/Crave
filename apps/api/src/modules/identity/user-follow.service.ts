@@ -18,7 +18,19 @@ export class UserFollowService {
     private readonly blocks: UserBlockService,
   ) {}
 
-  async followUser(followerUserId: string, followingUserId: string) {
+  /**
+   * NAMED PARTICIPANTS, NOT POSITIONS (2026-08-02). Both ids are users, so a
+   * brand cannot separate them; transposing follows the wrong direction
+   * silently. The controller genuinely calls unfollow in both directions on
+   * adjacent lines after a block — correct, and one keystroke from a bug.
+   */
+  async followUser({
+    followerUserId,
+    followingUserId,
+  }: {
+    followerUserId: string;
+    followingUserId: string;
+  }) {
     if (followerUserId === followingUserId) {
       throw new BadRequestException('Cannot follow yourself');
     }
@@ -80,7 +92,14 @@ export class UserFollowService {
     return { followed: true };
   }
 
-  async unfollowUser(followerUserId: string, followingUserId: string) {
+  /** Named participants — see followUser. */
+  async unfollowUser({
+    followerUserId,
+    followingUserId,
+  }: {
+    followerUserId: string;
+    followingUserId: string;
+  }) {
     await this.prisma.userFollow.deleteMany({
       where: {
         followerUserId,

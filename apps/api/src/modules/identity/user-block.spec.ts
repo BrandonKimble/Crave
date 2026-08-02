@@ -48,14 +48,16 @@ describe('UserBlockService (§8.6)', () => {
   });
 
   it('rejects self-block', async () => {
-    await expect(service.blockUser(ME, ME)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.blockUser({ blockerUserId: ME, blockedUserId: ME }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('block is idempotent (P2002 = already blocked = success)', async () => {
     prisma.userBlock.create.mockRejectedValueOnce(p2002());
-    await expect(service.blockUser(ME, THEM)).resolves.toEqual({
+    await expect(
+      service.blockUser({ blockerUserId: ME, blockedUserId: THEM }),
+    ).resolves.toEqual({
       blocked: true,
     });
   });
@@ -124,9 +126,9 @@ describe('UserFollowService block enforcement (§8.6 seams)', () => {
 
   it('followUser refuses a blocked pair (either direction)', async () => {
     prisma.userBlock.findFirst.mockResolvedValueOnce({ blockerUserId: THEM });
-    await expect(service.followUser(ME, THEM)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.followUser({ followerUserId: ME, followingUserId: THEM }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
     expect(prisma.userFollow.create).not.toHaveBeenCalled();
   });
 
