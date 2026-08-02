@@ -228,6 +228,10 @@ const MANIFEST_PLACES = {
   workClass: 'google_places.enrichment',
   unit: 'restaurant',
 } as const;
+const MANIFEST_GATE = {
+  workClass: 'gemini.relevance_gate',
+  unit: 'document',
+} as const;
 const MANIFEST_ENTITY_RATIO = {
   workClass: 'pipeline.entities_per_kilodoc',
   unit: 'ratio',
@@ -372,6 +376,11 @@ export class SpendCampaignService {
     const interactiveRate = await requireRate(MANIFEST_INTERACTIVE);
     const embeddingRate = await requireRate(MANIFEST_EMBEDDING);
     const placesRate = await requireRate(MANIFEST_PLACES);
+    // Round-six cost red team #4: this rate was measured, published, and
+    // deliberately EXCLUDED from the interactive umbrella — and then the
+    // manifest silently skipped it, violating this file's own "a line is
+    // never silently skipped" invariant (~$26 per 100k docs).
+    const gateRate = await requireRate(MANIFEST_GATE);
     // Entities-per-kilodoc: NOT currency — restaurants per 1,000 docs (see
     // spend-analytics refreshPipelineClassRates's encoding note).
     const entitiesPerKilodoc = await requireRate(MANIFEST_ENTITY_RATIO);
@@ -395,6 +404,7 @@ export class SpendCampaignService {
     });
     const lines: ManifestEstimateLine[] = [
       makeLine(MANIFEST_EXTRACTION, docCount, extractionRate),
+      makeLine(MANIFEST_GATE, docCount, gateRate),
       makeLine(MANIFEST_INTERACTIVE, docCount, interactiveRate),
       makeLine(MANIFEST_EMBEDDING, docCount, embeddingRate),
       makeLine(MANIFEST_PLACES, expectedEntities, placesRate),

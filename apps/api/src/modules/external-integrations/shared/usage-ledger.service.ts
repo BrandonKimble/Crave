@@ -267,10 +267,13 @@ export class UsageLedgerService implements OnModuleDestroy {
       if (event.service === 'gemini') {
         micros = geminiCostMicros(event);
       } else if (event.service === 'google_places') {
-        micros = placesCostMicrosPerCall(
-          event.skuTier ?? null,
-          event.operation,
-        );
+        // × requestCount (round-six cost red team #6): the POOL meter three
+        // methods up multiplies correctly; this one didn't, so a batched
+        // Places event under-drained its campaign envelope.
+        const calls = event.requestCount ?? 1;
+        micros =
+          placesCostMicrosPerCall(event.skuTier ?? null, event.operation) *
+          (Number.isFinite(calls) && calls > 0 ? calls : 1);
       } else {
         return; // unpriced vendors stay out of the envelope
       }

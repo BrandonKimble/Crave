@@ -30,11 +30,12 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 
 1. **push** — `./scripts/rig/reextract.sh push <prompt.md> --notes "..."`
    registers the candidate; note the version number.
-2. **estimate** — `estimate <communities|all-actives>` prints doc counts;
-   create the campaign with `SpendCampaignService.prepareManifestEstimate`
-   (the onboarding manifest machinery), render the manifest to the owner
-   (a small table or visual: per-line $, tolerance, envelope, hash), and
-   wait for their explicit approval; approve by hash.
+2. **estimate** — `estimate <communities> <version>` prints doc counts and
+   the campaign manifest (built on `prepareManifestEstimate`, the onboarding
+   manifest machinery). Render the manifest to the owner (a small table or
+   visual: per-line $, tolerance, envelope, hash), wait for their explicit
+   approval, then re-run with `--approve-estimate <hash>` (it approves the
+   existing awaiting_approval row, never mints a twin).
 3. **shadow** — `shadow <communities> <version> <campaignId>` arms the
    worker env (REEXTRACT\_\* with ACTIVATE=false). Staging by default
    (REEXTRACT_ENV=production for prod data). Before arming, verify
@@ -55,7 +56,9 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
      a user's saved thing that the new prompt no longer extracts. Present
      the list with counts and your recommendation; wait.
 5. **activate** — only after the review is closed:
-   `activate <communities> <version>` → dry-run, then `--execute` (pointer
+   `activate <communities> <version>` → dry-run, then
+   `--reviewed --execute` (the script REFUSES `--execute` alone — the
+   `--reviewed` flag is your attestation that step 4 closed) (pointer
    flip + full-ledger projection rebuild), then GC dry-run → execute, then
    anchor-audit must come back clean, then `prompt-activate.ts <version>`
    - redeploy workers so LIVE collection extracts under the new prompt,
@@ -70,10 +73,18 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 - ~~Activation is one-way~~ — **DELETED 2026-08-01**: cross-generation
   activation now RETAINS the superseded events (readers filter on the
   active run, so they are inert), and `rollback <communities> <version>` is
-  a pointer flip back plus a projection rebuild — proven as an exact round
-  trip. The old generation's space is reclaimed only when you explicitly
-  `discard` it; do that only once you are confident, because discard is
-  what makes rollback impossible.
+  a pointer flip back plus a projection rebuild. It is a round trip for
+  every document whose activation recorded `replayOfExtractionRunId`; the
+  script REPORTS any unrollable documents (no recorded predecessor — e.g.
+  docs first extracted under the new version) instead of guessing. The old
+  generation's space is reclaimed only when you explicitly `discard` it;
+  do that only once you are confident, because discard is what makes
+  rollback impossible. KNOWN GAP (round six #7): after a CITY-SCOPED
+  activation, `discard` of the superseded version refuses while that
+  version is still active elsewhere — correct behavior, but it means
+  reclamation for partially superseded generations waits until the version
+  is inactive EVERYWHERE. There is no per-community reclamation; don't
+  fight the refusal.
 - **`activate` refuses a non-candidate version and a shadow below 99%
   coverage.** Both refusals are correct; do not `--allow-partial` without
   the owner, and never work around the candidate check.

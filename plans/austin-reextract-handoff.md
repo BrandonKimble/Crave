@@ -70,7 +70,7 @@ REEXTRACT_DB=$(grep -o 'postgresql://.*' ~/.crave-prod-readonly.env | sed 's/PRO
 # 4. activate (dry-run first; needs write access — run via prod worker env
 #    or superuser, NOT the read-only role)
 ./scripts/rig/reextract.sh activate austinfood N            # dry run
-./scripts/rig/reextract.sh activate austinfood N --execute
+./scripts/rig/reextract.sh activate austinfood N --reviewed --execute
 #    then: gc-unsupported-entities.sql (dry → execute), anchor-audit clean,
 #    prompt-activate.ts N, redeploy prod (deploy.sh), cost-reconcile.sh
 
@@ -128,7 +128,8 @@ run's before continuing.
 Activation is reversible (owner decision 2026-08-01): the superseded
 generation's events are RETAINED, so `reextract.sh rollback <communities>
 <version>` flips every document back to its pre-activation run and rebuilds
-projections — an exact round trip. The ONE step that forecloses rollback is
+projections — a round trip for every doc with a recorded predecessor
+(the script reports any unrollable docs). The ONE step that forecloses rollback is
 `discard` of the old version; run it only after you are confident in the
 new generation. Before `--execute` you can abandon freely
 (`reextract.sh discard <candidate-version>`).

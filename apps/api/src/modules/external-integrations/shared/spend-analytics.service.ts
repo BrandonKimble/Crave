@@ -882,8 +882,22 @@ export class SpendAnalyticsService {
       const parsed = Number(raw);
       return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
     };
-    const floorMicros = Math.round(
-      boundUsd(process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD, 800) * 1_000_000,
+    // The floor NEVER outranks an owner-set cap (round-six regression #6):
+    // the floor exists to stop the DERIVATION from starving legitimate work,
+    // not to override a human's explicit ceiling. An owner who sets
+    // GEMINI_MONTHLY_SPEND_CAP_USD below the floor is making the decision
+    // the floor exists to protect — so the effective floor drops to the cap.
+    const ownerCapMicros = Math.round(
+      boundUsd(
+        process.env.GEMINI_MONTHLY_SPEND_CAP_USD,
+        Number.POSITIVE_INFINITY,
+      ) * 1_000_000,
+    );
+    const floorMicros = Math.min(
+      Math.round(
+        boundUsd(process.env.GEMINI_MONTHLY_SPEND_FLOOR_USD, 800) * 1_000_000,
+      ),
+      ownerCapMicros,
     );
     const ceilingMicros = Math.round(
       boundUsd(process.env.GEMINI_BACKSTOP_MAX_USD, 5000) * 1_000_000,

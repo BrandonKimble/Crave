@@ -470,7 +470,7 @@ export class FoodDedupeMergeService {
       // redirect FROM the live winner is dropped.
       // THE SUBSTRATE, NOT JUST THE PROJECTION (2026-07-28). Re-pointing
       // connections alone is NOT DURABLE: core_restaurant_items is a
-      // PROJECTION rebuilt from core_restaurant_entity_events, and the
+      // PROJECTION rebuilt from the entity-event ledger, and the
       // rebuild does not follow entity_redirects. So a merge that leaves the
       // event ledger pointing at the archived loser is undone by the next
       // full rebuild — it would RESURRECT every split we just collapsed.

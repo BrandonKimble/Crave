@@ -49,6 +49,28 @@ async function main(): Promise<void> {
     const docCount = Number(count);
     const name = `reextract:${communities.join('+')}:v${promptVersion}`;
 
+    // APPROVE THE EXISTING ROW (round-six cost red team #8): calling
+    // prepareManifestEstimate again on the --approve-estimate pass minted a
+    // SECOND campaign row and approved that one, stranding the first as
+    // awaiting_approval forever — prod's single stranded row is exactly
+    // this. If an awaiting row with this hash already exists, approve it.
+    if (approveHash) {
+      const existing = await prisma.spendCampaign.findFirst({
+        where: {
+          name,
+          state: 'awaiting_approval',
+          estimateHash: approveHash,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existing) {
+        await campaigns.approve(existing.campaignId, approveHash);
+        console.log(
+          `APPROVED existing campaign ${existing.campaignId}. Arm the shadow: ./scripts/rig/reextract.sh shadow ${communities.join(',')} ${promptVersion} ${existing.campaignId}`,
+        );
+        return;
+      }
+    }
     const estimate = await campaigns.prepareManifestEstimate({
       name,
       docCount,

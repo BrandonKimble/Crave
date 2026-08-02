@@ -118,14 +118,15 @@ describe('extraction scope is defined exactly once', () => {
     ];
     for (const rel of consumers) {
       const text = readFileSync(join(SRC, rel), 'utf-8');
+      // Round-six regression red team #1: `toContain('extraction-scope')`
+      // was satisfiable by an UNUSED import, and the negative check covered
+      // 3 of 5 files with one alias-brittle regex — a constructed violation
+      // passed all six tests. The real invariant: a consumer's own source
+      // NEVER names an event-ledger table (the fragment carries the table
+      // name; the consumer only imports the builder). Any alias, any shape.
       expect(text).toContain('extraction-scope.service');
-    }
-    // and no bare event-ledger EXISTS survives in those readers
-    for (const rel of consumers.slice(0, 3)) {
-      const text = readFileSync(join(SRC, rel), 'utf-8');
-      expect(text).not.toMatch(
-        /EXISTS \(\s*SELECT 1\s*FROM core_restaurant_events ev\s*WHERE/,
-      );
+      expect(text).not.toContain('core_restaurant_events');
+      expect(text).not.toContain('core_restaurant_entity_events');
     }
   });
 

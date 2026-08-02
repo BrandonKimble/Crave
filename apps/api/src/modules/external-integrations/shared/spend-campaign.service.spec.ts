@@ -431,6 +431,9 @@ describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifes
     prisma._unitCosts.set('gemini.interactive_pipeline::document', {
       microUsdPerUnit: 5,
     });
+    prisma._unitCosts.set('gemini.relevance_gate::document', {
+      microUsdPerUnit: 3,
+    });
     prisma._unitCosts.set('gemini.embedding::document', {
       microUsdPerUnit: 1,
     });
@@ -481,21 +484,22 @@ describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifes
     expect(manifest.expectedEntities).toBe(50);
     expect(manifest.lines.map((l) => [l.workClass, l.estimateMicros])).toEqual([
       ['gemini.reddit_extraction', 10_000],
+      ['gemini.relevance_gate', 3_000],
       ['gemini.interactive_pipeline', 5_000],
       ['gemini.embedding', 1_000],
       ['google_places.enrichment', 100_000],
     ]);
-    expect(manifest.totalEstimateMicros).toBe(116_000);
+    expect(manifest.totalEstimateMicros).toBe(119_000);
     // Bootstrap tolerance 0.25 → envelope = all-in total × 1.25.
-    expect(manifest.envelopeMicros).toBe(145_000);
+    expect(manifest.envelopeMicros).toBe(148_750);
     // ONE hash over the whole manifest, stored on the row so approve()
     // approves every line + total at once.
     const row = prisma._campaigns.get(manifest.campaignId);
     expect(row?.estimateHash).toBe(manifest.estimateHash);
-    expect(row?.estimateMicros).toBe(116_000);
+    expect(row?.estimateMicros).toBe(119_000);
     await expect(
       service.approve(manifest.campaignId, manifest.estimateHash),
-    ).resolves.toMatchObject({ envelopeMicros: 145_000 });
+    ).resolves.toMatchObject({ envelopeMicros: 148_750 });
   });
 
   it('a re-measured rate on any single line changes the ONE manifest hash (a stale printout cannot be approved against fresher rates)', async () => {

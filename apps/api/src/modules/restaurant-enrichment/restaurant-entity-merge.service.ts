@@ -4,6 +4,7 @@ import { Prisma, Entity } from '@prisma/client';
 import {
   activeEntityEventCountSql,
   activeCommunitiesArraySql,
+  activeSupportExistsSql,
   dominantCommunitySql,
 } from '../content-processing/reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -425,8 +426,14 @@ export class RestaurantEntityMergeService {
     >`
       SELECT crave_fold(name) AS name,
              array_agg(entity_id ORDER BY created_at) AS entity_ids
-      FROM core_entities
+      FROM core_entities e
+      -- D5 for RESTAURANTS (round-six regression #2): the food sweep was
+      -- hardened against shadow-minted vocabulary; this sibling was not.
+      -- Two zero-evidence shadow restaurants passed the community gate
+      -- (both empty), tied on entity_id, and merged SILENTLY. Same
+      -- predicate, same import, same law.
       WHERE type = 'restaurant' AND status = 'active'
+        AND ${Prisma.raw(activeSupportExistsSql('e.entity_id'))}
       GROUP BY crave_fold(name)
       HAVING count(*) >= 2
     `;
@@ -448,6 +455,7 @@ export class RestaurantEntityMergeService {
                          AND l.google_place_id IS NOT NULL) AS grounded
         FROM core_entities
         WHERE type = 'restaurant' AND status = 'active'
+          AND ${Prisma.raw(activeSupportExistsSql('e2.entity_id'))}
       )
       SELECT b.key AS name, ARRAY[a.entity_id, b.entity_id] AS entity_ids
       FROM stripped a

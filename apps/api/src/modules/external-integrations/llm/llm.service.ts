@@ -3614,7 +3614,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             msUntilVendorMonthReset(),
           );
           this.logger.error(
-            'GEMINI VENDOR SPEND CAP HIT — spend pool poisoned until the vendor month reset; raise the AI Studio cap (and GEMINI_MONTHLY_SPEND_CAP_USD) to resume',
+            'GEMINI VENDOR SPEND CAP HIT — spend pool poisoned until the vendor month reset; raise the AI Studio cap to resume (NOTE: GEMINI_MONTHLY_SPEND_CAP_USD only seeds the pool at boot — after the first nightly derivation the backstop comes from spend_unit_costs, bounded by GEMINI_MONTHLY_SPEND_FLOOR_USD/GEMINI_BACKSTOP_MAX_USD)',
           );
           const monthKey = new Date().toISOString().slice(0, 7);
           this.opsAlerts.emit({
