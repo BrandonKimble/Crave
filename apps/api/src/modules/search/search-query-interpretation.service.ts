@@ -19,7 +19,10 @@ import {
   MapBoundsDto,
 } from './dto/search-query.dto';
 import {
-  LINKER_TIER_FLOORS,
+  LINK_ELIGIBLE_EVIDENCE,
+  linkerFloorsForTier,
+} from './evidence-admission';
+import {
   LINKER_MARGIN,
   LINKER_MIN_FLOOR,
 } from './linker-calibration.generated';
@@ -54,26 +57,15 @@ interface InterpretationResult {
 // runner-up; self-normalizing; on sparseSimilarity, NEVER rrf — rrf's rank gap
 // is a fixed constant) and the singleton branch (an absent runner-up = infinite
 // margin, gated by the tier's higher singleton floor) both read the table.
-// Tiers absent from the table use this conservative fallback:
-const LINKER_FALLBACK_FLOORS = { absolute: 0.82, singleton: 0.65 };
+// Tiers absent from the table use the conservative fallback in
+// evidence-admission.ts — the ONE floors authority (step 4).
 // Ties within this sim-epsilon of the top ARE the decision: reveal ALL of them
 // (cardinality is the answer — "joes" → Joe's Pizza + Trader Joe's) instead of
 // silently argmax-picking whichever row came back first.
 const LINKER_TIE_EPSILON = 0.001;
 // Only genuine lexical evidence is link-eligible — never a weak/dense-only
 // collision (the ham/rum class); those must not nominate a link.
-const LINK_ELIGIBLE_EVIDENCE = new Set<string>([
-  'exact',
-  'prefix',
-  'name',
-  'alias',
-  'fuzzy',
-  // Honest-score tiers (P2): containment carries COVERAGE (term/name ratio, no
-  // more fake word_similarity 1.0 ties) and edit carries 1 − lev/len — both flow
-  // through the same floors/margins as genuine graded evidence.
-  'contains',
-  'edit',
-]);
+
 const HYBRID_LINK_SHORTLIST_K = 5;
 const HYBRID_LINK_CONCURRENCY = 8;
 
@@ -395,9 +387,7 @@ export class SearchQueryInterpretationService {
       const top = eligible[0];
       const topSim = top?.sparseSimilarity ?? 0;
       const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
-      const floors =
-        (top?.sparseEvidence && LINKER_TIER_FLOORS[top.sparseEvidence]) ||
-        LINKER_FALLBACK_FLOORS;
+      const floors = linkerFloorsForTier(top?.sparseEvidence ?? null);
       // Link when the winner clears its TIER's absolute floor, OR is an
       // uncontested singleton above the tier's singleton floor, OR is
       // dominant over the runner-up by the margin. Below the min floor,

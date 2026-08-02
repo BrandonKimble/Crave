@@ -37,6 +37,7 @@ import {
   ON_DEMAND_MIN_RESULTS,
   ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES,
 } from './on-demand-tuning.constants';
+import { admitsForExpansion } from './evidence-admission';
 import type {
   FoodGrounding,
   SearchConstraints,
@@ -4005,32 +4006,11 @@ export class SearchService {
         : Promise.resolve(emptyMatches),
     ]);
 
-    // Expansion widens the ACTUAL result set, so it must admit only strong
-    // lexical evidence. `weak` (levenshtein-only — the ham/rum class)
-    // collisions otherwise leak wrong entities into results on equal footing
-    // with exact matches; `fuzzy` must clear a similarity floor. (Precision
-    // gate; the co-inclusion/dense recall path is separate.)
-    // 'contains' is STRONG for expansion: the same-token menu-variant class
-    // ("al pastor taco" for "taco") measured 94% wanted. 'edit' needs a floor
-    // (≈1 edit on a 4+ letter word) — looser edits are typo junk.
-    const EXPANSION_STRONG_EVIDENCE = new Set([
-      'exact',
-      'prefix',
-      'name',
-      'alias',
-      'contains',
-    ]);
-    const EXPANSION_FUZZY_FLOOR = 0.5;
-    const EXPANSION_EDIT_FLOOR = 0.75;
-    const passesExpansionEvidence = (match: {
-      evidence: string;
-      similarity?: number;
-    }): boolean =>
-      EXPANSION_STRONG_EVIDENCE.has(match.evidence) ||
-      (match.evidence === 'fuzzy' &&
-        (match.similarity ?? 0) >= EXPANSION_FUZZY_FLOOR) ||
-      (match.evidence === 'edit' &&
-        (match.similarity ?? 0) >= EXPANSION_EDIT_FLOOR);
+    // ONE evidence engine, per-consumer floors (step 4): the admission
+    // question lives in evidence-admission.ts alongside the linker's —
+    // different floors (an expansion admit is absorbed by provenance +
+    // score ranking; a link asserts identity), one authority.
+    const passesExpansionEvidence = admitsForExpansion;
 
     const foodIds = foods
       .filter(passesExpansionEvidence)
