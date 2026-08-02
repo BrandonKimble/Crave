@@ -1242,87 +1242,50 @@ export class ProjectionRebuildService implements OnModuleInit {
 
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async repairOrphanedProjections(): Promise<{ repaired: number }> {
+    // THE RECONCILER (ideal-shape pass, 2026-08-02). This used to be a
+    // growing checklist of hand-enumerated brokenness ("events with no
+    // connection", "stale attribute arrays", "connections that outlived
+    // their evidence", …) — every red-team round added an arm, which is
+    // the signature of a missing abstraction. The actual invariant is one
+    // sentence: EVERY restaurant's projection must equal a fresh rebuild
+    // from its surviving active evidence. rebuildForRestaurants IS that
+    // statement (idempotent, byte-exact when clean, anchor-preserving —
+    // proven across rounds 8–11), so the reconciler simply rebuilds every
+    // restaurant that has any active evidence OR any projection rows.
+    // ~6.7k restaurants in ~3 minutes nightly; no enumeration of failure
+    // modes, so no future bug class ever needs a new arm.
     const orphans = await this.prismaService.$queryRaw<
       Array<{ restaurantId: string }>
     >`
-      SELECT DISTINCT ev.restaurant_id AS "restaurantId"
-      FROM core_restaurant_entity_events ev
-      -- ACTIVE-run only (final-final red team #4): a restaurant living only
-      -- in RETAINED superseded events is not an orphan — it is correctly
-      -- absent from projections. Unfiltered, it would be re-flagged and
-      -- warn-logged every night, forever.
-      JOIN collection_source_documents sd
-        ON sd.document_id = ev.source_document_id
-       AND sd.active_extraction_run_id = ev.extraction_run_id
-      JOIN core_entities e
-        ON e.entity_id = ev.restaurant_id AND e.status = 'active'
-      WHERE NOT EXISTS (
-        SELECT 1 FROM core_restaurant_items i
-        WHERE i.restaurant_id = ev.restaurant_id
-      )
-      -- HEALABLE ONLY (final red team #4, executed: 1,057 structural
-      -- no-op rebuilds re-ran every night forever — 1,053 had no food
-      -- events at all, so no rebuild can ever mint their connection).
-      AND EXISTS (
-        SELECT 1 FROM core_restaurant_entity_events fe
-        JOIN collection_source_documents fd
-          ON fd.document_id = fe.source_document_id
-         AND fd.active_extraction_run_id = fe.extraction_run_id
-        WHERE fe.restaurant_id = ev.restaurant_id
-          AND fe.entity_type = 'food'
-          AND fe.evidence_type IN ('menu_item_food', 'food_category')
-      )
-      -- REVERSE ORPHANS (round-11 fuzz D5): connections that OUTLIVED
-      -- their evidence — a restaurant whose events were superseded,
-      -- discarded, or drained keeps serving its old projection forever,
-      -- because the arms above only find events WITHOUT connections.
-      -- Archived-but-projected restaurants are the same class.
-      UNION
-      SELECT DISTINCT i.restaurant_id AS "restaurantId"
-      FROM core_restaurant_items i
-      LEFT JOIN core_entities host ON host.entity_id = i.restaurant_id
-      WHERE (
-        host.status <> 'active'
-        OR NOT EXISTS (
-          SELECT 1 FROM core_restaurant_entity_events oe
-          JOIN collection_source_documents od
-            ON od.document_id = oe.source_document_id
-           AND od.active_extraction_run_id = oe.extraction_run_id
-          WHERE oe.restaurant_id = i.restaurant_id
-        )
-      )
-        -- zeroed rows are the DELIBERATELY preserved anchored connections
-        -- (never ranked, kept for user lists) — re-nominating them nightly
-        -- is the structural-no-op churn round 9 eliminated. Only non-zero
-        -- projections that outlived their evidence get repaired.
-        AND (i.mention_count > 0 OR i.support_mention_count > 0)
-      -- STALE-ARRAY REPAIR (final red team F4): migrations archive
-      -- vocabulary in SQL, but restaurant_attributes / food_attributes
-      -- arrays only recompute on rebuild — and a restaurant WITH
-      -- connections never qualified as an orphan, so its arrays pointed at
-      -- archived entities forever unless it happened to be re-collected.
-      UNION
       SELECT e.entity_id AS "restaurantId"
       FROM core_entities e
-      WHERE e.type = 'restaurant' AND e.status = 'active'
-        AND EXISTS (
-          SELECT 1 FROM unnest(e.restaurant_attributes) attr_id
-          JOIN core_entities a ON a.entity_id = attr_id
-          WHERE a.status <> 'active'
+      WHERE e.type = 'restaurant'
+        AND (
+          EXISTS (
+            SELECT 1 FROM core_restaurant_entity_events ev
+            JOIN collection_source_documents d
+              ON d.document_id = ev.source_document_id
+             AND d.active_extraction_run_id = ev.extraction_run_id
+            WHERE ev.restaurant_id = e.entity_id
+          )
+          OR EXISTS (
+            SELECT 1 FROM core_restaurant_items i
+            WHERE i.restaurant_id = e.entity_id
+              -- zeroed rows on evidence-less hosts are the deliberately
+              -- preserved user-anchored connections; rebuilding them is a
+              -- no-op but including them costs nothing and keeps this
+              -- clause honest: ANY projection row qualifies its host.
+          )
+          OR EXISTS (
+            SELECT 1 FROM core_restaurant_entity_signals sg
+            WHERE sg.restaurant_id = e.entity_id
+          )
         )
-      UNION
-      SELECT DISTINCT i.restaurant_id AS "restaurantId"
-      FROM core_restaurant_items i
-      WHERE EXISTS (
-        SELECT 1 FROM unnest(i.food_attributes || i.categories || i.ingredients) ref_id
-        JOIN core_entities a ON a.entity_id = ref_id
-        WHERE a.status <> 'active'
-      )
     `;
     if (!orphans.length) {
       return { repaired: 0 };
     }
-    this.logger.warn('Orphaned projections found — repairing', {
+    this.logger.info('Nightly projection reconciliation', {
       operation: 'projection_orphan_repair',
       count: orphans.length,
     });

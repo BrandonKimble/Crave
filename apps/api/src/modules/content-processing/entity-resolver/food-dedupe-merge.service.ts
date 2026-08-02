@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants, isSameFoodUpToNumber } from './food-lemma';
-import { entityIdentityKey } from './entity-identity';
+import { canonicalFold, entityIdentityKey } from './entity-identity';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
@@ -60,39 +60,33 @@ export class FoodDedupeMergeService {
    *  mirror). Creates write it inline; renames and pre-column rows heal
    *  here nightly before the lanes that join on it run. */
   async refreshSortedIdentityKeys(): Promise<void> {
-    const stale = await this.prisma.$queryRaw<
-      Array<{ entityId: string; name: string; type: string }>
-    >`
-      SELECT entity_id AS "entityId", name, type::text AS type
-      FROM core_entities
-      WHERE identity_key_sorted IS NULL
-         OR (type NOT IN ('food','ingredient') AND identity_key_sorted <> identity_key)
-    `;
-    for (const row of stale) {
-      await this.prisma.$executeRaw`
-        UPDATE core_entities
-        SET identity_key_sorted = ${entityIdentityKey(row.name, row.type as never)}
-        WHERE entity_id = ${row.entityId}::uuid`;
-    }
-    // FOOD RENAME HEAL (round-11 fuzz D2): the lemma fold has no SQL
-    // mirror, so a renamed food's staleness is only detectable by
-    // recomputing in TS. 8k rows, nightly, cheap.
-    const foods = await this.prisma.$queryRaw<
+    // ONE HEAL, BOTH KEYS (ideal-shape pass): identity_key and
+    // identity_key_sorted are app-written from canonicalFold /
+    // entityIdentityKey — the fold has no SQL mirror by design (Postgres
+    // Unicode classes are platform-dependent). Recompute in TS for every
+    // row and write the ones that drifted (creates, renames, backfill
+    // gaps all heal here; ~17k rows nightly, cheap).
+    const rows = await this.prisma.$queryRaw<
       Array<{
         entityId: string;
         name: string;
         type: string;
         key: string | null;
+        sorted: string | null;
       }>
     >`
-      SELECT entity_id AS "entityId", name, type::text AS type, identity_key_sorted AS key
-      FROM core_entities WHERE type IN ('food','ingredient')
+      SELECT entity_id AS "entityId", name, type::text AS type,
+             identity_key AS key, identity_key_sorted AS sorted
+      FROM core_entities
     `;
-    for (const row of foods) {
-      const expected = entityIdentityKey(row.name, row.type as never);
-      if (row.key !== expected) {
+    for (const row of rows) {
+      const expectedKey = canonicalFold(row.name);
+      const expectedSorted = entityIdentityKey(row.name, row.type as never);
+      if (row.key !== expectedKey || row.sorted !== expectedSorted) {
         await this.prisma.$executeRaw`
-          UPDATE core_entities SET identity_key_sorted = ${expected}
+          UPDATE core_entities
+          SET identity_key = ${expectedKey},
+              identity_key_sorted = ${expectedSorted}
           WHERE entity_id = ${row.entityId}::uuid`;
       }
     }

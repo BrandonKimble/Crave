@@ -365,7 +365,7 @@ export class RestaurantEntityMergeService {
     const groups = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
-      SELECT crave_fold(name) AS name,
+      SELECT identity_key AS name,
              array_agg(entity_id ORDER BY created_at) AS entity_ids
       FROM core_entities e
       -- D5 for RESTAURANTS (round-six regression #2): the food sweep was
@@ -378,8 +378,8 @@ export class RestaurantEntityMergeService {
         -- EMPTY FOLD IS NOT AN IDENTITY (round-10 aging sim, executed:
         -- every non-Latin name folds to '' and the sweep merged a Chinese
         -- noodle shop into a Russian dumpling house on the empty group).
-        AND crave_fold(name) <> ''
-      GROUP BY crave_fold(name)
+        AND identity_key IS NOT NULL AND identity_key <> ''
+      GROUP BY identity_key
       HAVING count(*) >= 2
     `;
     // PREFIX LANE (class ③): the stub/qualifier duplicate classes —
@@ -394,13 +394,13 @@ export class RestaurantEntityMergeService {
     >`
       WITH stripped AS (
         SELECT entity_id,
-               crave_fold(name) AS key,
+               identity_key AS key,
                EXISTS (SELECT 1 FROM core_restaurant_locations l
                        WHERE l.restaurant_id = e2.entity_id
                          AND l.google_place_id IS NOT NULL) AS grounded
         FROM core_entities e2
         WHERE type = 'restaurant' AND status = 'active'
-          AND crave_fold(name) <> ''
+          AND identity_key IS NOT NULL AND identity_key <> ''
           AND ${Prisma.raw(activeSupportExistsSql('e2.entity_id'))}
       )
       SELECT b.key AS name, ARRAY[a.entity_id, b.entity_id] AS entity_ids

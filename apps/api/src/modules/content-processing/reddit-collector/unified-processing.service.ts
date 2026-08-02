@@ -20,6 +20,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { buildCauseChain, LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import {
+  canonicalFold,
   entityIdentityKey,
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
@@ -1721,7 +1722,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 SELECT entity_id, name, aliases FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
-                  AND crave_fold(name) = ${strippedKey}
+                  AND identity_key = ${strippedKey}
                 ORDER BY created_at
                 LIMIT 1
               `;
@@ -1902,7 +1903,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                   >`
                     SELECT entity_id FROM core_entities
                     WHERE type = ${entityType}::entity_type
-                      AND identity_key = crave_fold(${canonicalName})
+                      AND identity_key = ${canonicalFold(canonicalName)}
                       AND identity_key <> ''
                     ORDER BY (status <> 'archived') DESC, created_at
                     LIMIT 1
@@ -1927,7 +1928,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                 createdNew = true;
                 await tx.$executeRaw`
                   UPDATE core_entities
-                  SET identity_key_sorted = ${entityIdentityKey(canonicalName, entityType)}
+                  SET identity_key = ${canonicalFold(canonicalName)},
+                      identity_key_sorted = ${entityIdentityKey(canonicalName, entityType)}
                   WHERE entity_id = ${createdEntity.entityId}::uuid`;
 
                 if (entityType === 'restaurant') {

@@ -38,12 +38,21 @@ for (let i = 0; i < FOLD_ACCENTS_FROM.length; i += 1) {
   FOLD_ACCENT_MAP[FOLD_ACCENTS_FROM[i]] = FOLD_ACCENTS_TO[i];
 }
 
-/** THE canonical fold — mirrored byte-for-byte by the DB function
- *  crave_fold(text) (identity_key generated column, probes, sweeps).
- *  lower → accents fold (F3) → apostrophes STRIP, straight AND curly
- *  (Phil's == Phils == Phil’s) → all other punctuation becomes ONE SPACE
- *  (tex-mex == tex mex — round-6: strip-to-nothing split hyphenated
- *  cuisines) → trim. */
+/** THE canonical fold — THE ONLY IMPLEMENTATION (ideal-shape pass,
+ *  2026-08-02). It used to be mirrored byte-for-byte by a DB function
+ *  (crave_fold) feeding a GENERATED column, but Unicode character
+ *  classes are PLATFORM-DEPENDENT in Postgres ([:alnum:] folds
+ *  Devanagari differently on glibc PG17 than on mac PG18 — measured),
+ *  so a SQL mirror can never be trusted across environments. identity_key
+ *  is now APP-WRITTEN from this function (like identity_key_sorted);
+ *  the DB only stores and uniquely indexes it.
+ *  LANGUAGE-AGNOSTIC: lower → strip the Turkish-İ combining dot →
+ *  Latin accents fold (é==e) → apostrophes STRIP, straight AND curly
+ *  (Phil's == Phils == Phil’s) → every non-letter/digit run OF ANY
+ *  SCRIPT becomes ONE SPACE (tex-mex == tex mex; Пельменная and
+ *  食べ放題 keep their characters and are real, distinct identities) →
+ *  trim. Only genuinely letterless names (emoji-only, '!!!') fold to
+ *  '' and fall to the nfc: degenerate fallback below. */
 export function canonicalFold(name: string): string {
   return (
     name
@@ -56,7 +65,7 @@ export function canonicalFold(name: string): string {
       .replace(/\u0307/g, '')
       .replace(/[\u0080-\uffff]/g, (ch) => FOLD_ACCENT_MAP[ch] ?? ch)
       .replace(/['’‘ʼ]/g, '')
-      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .trim()
   );
 }
@@ -64,11 +73,9 @@ export function canonicalFold(name: string): string {
 export function entityIdentityKey(name: string, type: EntityType): string {
   const base = canonicalFold(name);
   if (!base) {
-    // EMPTY FOLD IS NOT AN IDENTITY (final-final red team HIGH-1: every
-    // non-Latin name — CJK, Cyrillic, emoji — folded to '' and the first
-    // one became the adoption sink for all the rest). Fall back to the
-    // NFC-normalized lowercased name itself: script-preserving, distinct
-    // per name, still deterministic for the lock.
+    // DEGENERATE NAMES ONLY (post-unicode-fold this is emoji-only /
+    // punctuation-only names — real scripts all survive the fold now).
+    // Distinct per name, deterministic for the lock; probes skip it.
     return `nfc:${name.normalize('NFC').toLowerCase().trim()}`;
   }
   if (type === EntityType.food || type === EntityType.ingredient) {

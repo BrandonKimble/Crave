@@ -426,3 +426,33 @@ machinery now fails toward refusal (guards throw, sweeps skip, txs roll
 back) rather than toward corruption; remaining work is PRODUCT truth
 (ranking floor, extraction prompt classes) — the next phase, not more
 red teams.
+
+## IDEAL-SHAPE PASS (2026-08-02) — the two redesigns land
+
+**(1) Language-agnostic, single-implementation identity.** The fold's
+last arm was "keep a–z0-9" — every non-Latin name folded to '' (the
+noodle-shop-into-dumpling-house class). Attempting a Unicode SQL mirror
+exposed the deeper truth: Postgres Unicode classes are PLATFORM-
+DEPENDENT ([:alnum:] folds Devanagari differently on prod glibc PG17 vs
+mac PG18 — measured), so a GENERATED column can never be trusted.
+Redesign: canonicalFold (TS, \p{L}\p{N}) is THE ONLY implementation;
+identity_key is app-written like identity_key_sorted (migration
+20260802050000 drops the generated column + crave_fold()); creation
+writes both keys in-tx; ONE nightly heal recomputes both for every row
+(also closes fuzz D2 permanently); all SQL sites consume the column.
+Mirror: 62 non-Latin names now hold real distinct identities
+(phở hoai, 新東湖 canton manor); 0 attr dupes; 0 empty keys. The
+nfc: fallback now covers only genuinely letterless names (emoji-only).
+The byte-parity treadmill is structurally gone.
+
+**(2) The reconciler.** repairOrphanedProjections' four hand-enumerated
+arms replaced by the invariant itself: every restaurant with any active
+evidence or any projection rows is rebuilt nightly —
+"projection ≡ rebuild(surviving evidence)" enforced by construction
+(rebuild is idempotent, anchor-preserving, byte-exact when clean).
+Mirror: 5,881 restaurants in 197s, second pass byte-identical. No
+future brokenness class ever needs a fifth arm.
+
+Post-deploy operational note: run scripts/backfill-identity-keys.ts
+against prod once (NULL keys violate nothing; the heal also converges
+them, but crons are currently off).
