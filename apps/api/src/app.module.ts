@@ -38,16 +38,9 @@ import { CustomThrottlerModule } from './modules/infrastructure/throttler/thrott
 import { LegalModule } from './modules/legal/legal.module';
 import { DebugModule } from './modules/debug/debug.module';
 import { isSchedulerRuntime } from './shared/utils/process-role';
+import { isDebugRoutesEnabled } from './shared/config/debug-routes.gate';
 
 const runtimeWithSchedulers = isSchedulerRuntime();
-
-function isDebugRoutesEnabled(): boolean {
-  if (process.env.NODE_ENV === 'production') return false;
-  if (process.env.APP_ENV === 'prod' || process.env.APP_ENV === 'staging') {
-    return false;
-  }
-  return process.env.ENABLE_DEBUG_ROUTES === 'true';
-}
 
 @Module({
   imports: [
