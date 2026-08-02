@@ -1,3 +1,4 @@
+import type { PlaceSketchNode } from './places-catalog.service';
 /**
  * TomtomChainProbeAdapter specs — §2 sketch mechanics against the two
  * live-verified vendor shapes (reverse = "lat,lng" strings, forward =
@@ -41,6 +42,8 @@ type HttpCall = { url: string; params: Record<string, unknown> };
 
 function buildAdapter(options: {
   reverseAddresses?: unknown[];
+  /** Force a body that violates the contract (no `addresses` array). */
+  reverseBodyMalformed?: boolean;
   forwardResults?: unknown[];
   additionalData?: unknown[];
   denyPool?: boolean;
@@ -71,7 +74,11 @@ function buildAdapter(options: {
         );
       }
       if (url.includes('/reverseGeocode/')) {
-        return of({ data: { addresses: options.reverseAddresses ?? [] } });
+        return of({
+          data: options.reverseBodyMalformed
+            ? { unexpected: true }
+            : { addresses: options.reverseAddresses ?? [] },
+        });
       }
       if (url.includes('additionalData')) {
         return of({ data: { additionalData: options.additionalData ?? [] } });
@@ -132,13 +139,17 @@ describe('TomtomChainProbeAdapter', () => {
       knownBboxIdentities: true, // no forward geocodes — isolate reverse parsing
     });
     const result = await adapter.probe(ANCHOR);
-    expect(result.chain.map((n) => n.providerLevelCode)).toEqual([
+    expect(
+      (result as { chain: PlaceSketchNode[] }).chain.map(
+        (n) => n.providerLevelCode,
+      ),
+    ).toEqual([
       'Neighbourhood',
       'Municipality',
       'CountrySubdivision',
       'Country',
     ]);
-    const uws = result.chain[0];
+    const uws = (result as { chain: PlaceSketchNode[] }).chain[0];
     expect(uws.name).toBe('Upper West Side');
     expect(uws.providerPlaceId).toBe('geo-uws');
     // Reverse-shape "lat,lng" strings parsed and min/max normalized.
@@ -149,8 +160,12 @@ describe('TomtomChainProbeAdapter', () => {
       maxLng: -73.964694,
     });
     // Country identity carries no subdivision (§1 identity tuple).
-    expect(result.chain[3].subdivisionCode).toBeNull();
-    expect(result.chain[1].subdivisionCode).toBe('NY');
+    expect(
+      (result as { chain: PlaceSketchNode[] }).chain[3].subdivisionCode,
+    ).toBeNull();
+    expect(
+      (result as { chain: PlaceSketchNode[] }).chain[1].subdivisionCode,
+    ).toBe('NY');
   });
 
   it('forward-geocodes ONLY previously-unknown nodes and adopts the forward-shape bbox', async () => {
@@ -165,7 +180,7 @@ describe('TomtomChainProbeAdapter', () => {
     );
     // 4-node chain, most-specific comes free → 3 unknown nodes probed.
     expect(forwardCalls).toHaveLength(3);
-    const municipality = result.chain.find(
+    const municipality = (result as { chain: PlaceSketchNode[] }).chain.find(
       (n) => n.providerLevelCode === 'Municipality',
     );
     // Forward-shape {topLeftPoint,btmRightPoint} parsed and normalized —
@@ -178,7 +193,7 @@ describe('TomtomChainProbeAdapter', () => {
     });
     // Wrong-entity echoes (CountrySubdivision request → Municipality result)
     // must NOT donate a bbox (§1: bboxes only ever grow — no foreign geometry).
-    const state = result.chain.find(
+    const state = (result as { chain: PlaceSketchNode[] }).chain.find(
       (n) => n.providerLevelCode === 'CountrySubdivision',
     );
     expect(state?.bbox ?? null).toBeNull();
@@ -215,18 +230,27 @@ describe('TomtomChainProbeAdapter', () => {
     );
   });
 
-  it('returns an empty chain (a first-class negative observation) when the vendor names nothing', async () => {
+  it('a well-formed 200 with NO addresses is OBSERVED-EMPTY — the one negative that may be remembered', async () => {
     const { adapter } = buildAdapter({ reverseAddresses: [] });
     const result = await adapter.probe(ANCHOR);
-    expect(result.chain).toEqual([]);
+    expect(result.kind).toBe('empty');
     // The probe speaks for a DISC of the vendor's 100 m default radius —
     // recorded as a radius, never squared into a bbox (which would claim
     // ~21% more ground than was ever asked about).
-    expect(result.probedRegion).toEqual({
+    expect((result as { probedRegion: unknown }).probedRegion).toEqual({
       kind: 'disc',
       center: ANCHOR,
       radiusMeters: 100,
     });
+  });
+
+  it('a body that violates the vendor contract is FAILED, never empty — and carries no region to remember', async () => {
+    // The observation type's whole point: a malformed body used to reduce to
+    // `{chain: []}` and be written as a 30-day "nothing lives here".
+    const { adapter } = buildAdapter({ reverseBodyMalformed: true });
+    const result = await adapter.probe(ANCHOR);
+    expect(result.kind).toBe('failed');
+    expect(result).not.toHaveProperty('probedRegion');
   });
 
   it('THROWS on a pool denial — never fabricates a "no place here" observation', async () => {

@@ -49,6 +49,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PlacesCatalogService } from '../src/modules/places/places-catalog.service';
+import { SpendCampaignService } from '../src/modules/external-integrations/shared/spend-campaign.service';
 import {
   TOMTOM_CHAIN_PROBE,
   TomtomChainProbe,
@@ -108,6 +109,18 @@ async function main(): Promise<void> {
   // the governed drain will later make for these places. Without one, a
   // country-scale grid run queues unbounded scarce spend.
   const campaignId = arg('--campaign-id') ?? null;
+  // AN UNPROVEN CLAIM AT A SPEND BOUNDARY (re-derivation, 2026-08-01): the
+  // id used to be taken on faith. A malformed one made every enqueue raise
+  // 22P02 — swallowed by enqueue's own catch — so a run minted thousands of
+  // places with ZERO promotion rows while the summary claimed the drain was
+  // metering them. A well-formed but non-dispatchable one wedges the queue
+  // forever (isDispatchable fails closed). Resolve it to a real, spendable
+  // campaign BEFORE anything can reference it.
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (campaignId && !UUID_RE.test(campaignId)) {
+    throw new Error(`--campaign-id is not a uuid: ${campaignId}`);
+  }
 
   if (!Number.isFinite(spacingKm) || spacingKm <= 0) {
     throw new Error('--spacing-km <positive number> is required');
@@ -125,6 +138,15 @@ async function main(): Promise<void> {
   try {
     const prisma = app.get(PrismaService);
     const catalog = app.get(PlacesCatalogService);
+    if (campaignId) {
+      const campaigns = app.get(SpendCampaignService);
+      if (!(await campaigns.isDispatchable(campaignId))) {
+        throw new Error(
+          `--campaign-id ${campaignId} is not dispatchable (missing, unapproved or breached) — ` +
+            'every promotion it tags would be skipped forever',
+        );
+      }
+    }
     const probe = app.get<TomtomChainProbe>(TOMTOM_CHAIN_PROBE);
 
     // ── BOOTSTRAP ────────────────────────────────────────────────────────────
@@ -142,8 +164,12 @@ async function main(): Promise<void> {
         return;
       }
       const result = await probe.probe(anchor);
-      if (result.chain.length === 0) {
-        out(`[seed] bootstrap: the vendor models nothing at that point.`);
+      if (result.kind !== 'named') {
+        out(
+          result.kind === 'empty'
+            ? `[seed] bootstrap: the vendor models nothing at that point.`
+            : `[seed] bootstrap: the vendor did not answer (${result.reason}) — retry.`,
+        );
         return;
       }
       const minted = await catalog.sketchChain(result.chain, {
@@ -374,7 +400,14 @@ async function main(): Promise<void> {
       try {
         const result = await probe.probe({ lat: cell.lat, lng: cell.lng });
         probed += 1;
-        if (result.chain.length === 0) {
+        if (result.kind === 'failed') {
+          // A FAILURE IS NOT AN OBSERVATION: the draw was paid, the cell is
+          // not "empty" — count it as faulted and keep the run alive.
+          faultedCells += 1;
+          out(
+            `[seed] cell (${cell.lat},${cell.lng}) SKIPPED: ${result.reason}`,
+          );
+        } else if (result.kind === 'empty') {
           empty += 1;
         } else {
           const places = await catalog.sketchChain(result.chain, {
@@ -385,20 +418,9 @@ async function main(): Promise<void> {
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (msg === 'tomtom_missing_country_code') {
-          // PER-CELL vendor contract violation (rungs named, country slot
-          // empty) — skip the cell and keep the run alive; the two faults
-          // below are RUN-GLOBAL and stop cleanly. Red-team bf350c35 F3:
-          // the vendor call WAS made and paid (the throw happens after
-          // reverseGeocode returns), so it counts as a probe AND keeps the
-          // QPS spacing — a contiguous malformed patch must not hammer the
-          // vendor at full speed or undercount draws in the summary.
-          probed += 1;
-          faultedCells += 1;
-          out(`[seed] cell (${cell.lat},${cell.lng}) SKIPPED: ${msg}`);
-          await sleep(SPACING_MS);
-          continue;
-        }
+        // The per-cell contract-violation branch is GONE: a vendor fault is
+        // now a typed 'failed' observation handled above, not an exception
+        // matched by message string.
         if (msg === 'tomtom_pool_denied' || msg === 'tomtom_config_missing') {
           // The governor said not-now, or config is absent. Both are
           // OPERATIONAL, not "no place here" — the adapter throws precisely so

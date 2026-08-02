@@ -557,11 +557,11 @@ export class PlacesPromotionService {
         // The vendor has answered "no polygon for this id" enough times to
         // be a FACT about its model, not a transient — retire the row
         // terminally instead of re-drawing on it every hour forever.
-        await this.recordRefusal(
-          item.placeId,
-          'vendor has no polygon for this geometry id after repeated asks',
-          now,
+        this.logger.warn(
+          'Promotion retired: vendor has no polygon for this geometry id after repeated asks',
+          { placeId: item.placeId, attempts: item.attempts + 1 },
         );
+        await this.recordRefusal(item.placeId, now);
         return 'attempted';
       }
       await this.recordAttempt(item.placeId, now);
@@ -601,14 +601,39 @@ export class PlacesPromotionService {
       });
       return 'attempted';
     }
+    // ONE READING OF ONE FACT (abstraction re-derivation, 2026-08-01): the
+    // guard used to judge `features->0` while persistPolygon stores the
+    // UNION of ALL features. A multi-part entity whose FIRST feature happens
+    // not to cover the anchor was TERMINALLY refused even though its real
+    // geometry covers it — the arc's headline disease (one fact, two
+    // implementations) surviving in a single flow. The guard now judges
+    // exactly the geometry the persist step would write.
     const [covers] = await this.prisma.$queryRaw<Array<{ ok: boolean }>>(
       Prisma.sql`
+        WITH raw_input AS (
+          SELECT ${JSON.stringify(polygon.geojson)}::jsonb AS geojson
+        ),
+        source_geometries AS (
+          SELECT ST_MakeValid(
+                   ST_SetSRID(ST_GeomFromGeoJSON((feature->'geometry')::text), 4326)
+                 ) AS geometry
+          FROM raw_input,
+            jsonb_array_elements(raw_input.geojson->'features') AS feature
+          WHERE feature ? 'geometry'
+        ),
+        merged AS (
+          SELECT ST_Multi(
+                   ST_CollectionExtract(
+                     ST_MakeValid(ST_UnaryUnion(ST_Collect(geometry))), 3
+                   )
+                 ) AS geometry
+          FROM source_geometries
+        )
         SELECT ST_Covers(
-                 ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(
-                   polygon.geojson,
-                 )}::json->'features'->0->'geometry'), 4326),
+                 merged.geometry,
                  ST_SetSRID(ST_MakePoint(${anchor.lng}::float8, ${anchor.lat}::float8), 4326)
                ) AS ok
+        FROM merged
       `,
     );
     const wrongEntity = covers?.ok === false;
