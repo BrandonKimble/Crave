@@ -6,6 +6,9 @@ import { bearsRequestUser } from './user-bearing-guard';
 /** Where Nest stores `@UseGuards` metadata (class and handler level). */
 const GUARDS_METADATA = '__guards__';
 
+/** Where Nest stores a route handler's path (@Get/@Post/... all set it). */
+const ROUTE_PATH_METADATA = 'path';
+
 /**
  * BOOT REFUSES A ROUTE THE PAYWALL WOULD 403.
  *
@@ -33,7 +36,31 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
   ) {}
 
   onApplicationBootstrap(): void {
-    const uncovered = this.uncoveredRoutes();
+    const { uncovered, controllersSeen, routesSeen } = this.audit();
+
+    // NOT VACUOUSLY GREEN.
+    //
+    // The Jest scanner this replaced asserted it had found more than ten
+    // controller FILES, precisely so a walk that silently matched nothing
+    // could not pass every other assertion. The first version of this audit
+    // dropped that property: route detection hangs on Nest's internal 'path'
+    // metadata key, and if a version bump renames it, `uncovered` is empty
+    // and boot sails through having checked nothing.
+    //
+    // Controllers with zero routes between them is not a real app. Zero
+    // CONTROLLERS is, though — `createApplicationContext` (every script in
+    // scripts/) registers none, and silence there is the right answer rather
+    // than a false alarm.
+    if (controllersSeen > 0 && routesSeen === 0) {
+      throw new Error(
+        `Paywall coverage audit inspected ${controllersSeen} controller(s) ` +
+          `and found ZERO routes. Route detection is broken (Nest's route ` +
+          `metadata key is no longer '${ROUTE_PATH_METADATA}'), so this ` +
+          `audit is checking nothing. Fix the detection — do not delete ` +
+          `this check.`,
+      );
+    }
+
     if (uncovered.length === 0) return;
     throw new Error(
       `Paywall coverage gap — ${uncovered.length} route(s) produce no ` +
@@ -47,7 +74,17 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
 
   /** Exposed for the spec, which proves this can actually go RED. */
   uncoveredRoutes(): string[] {
+    return this.audit().uncovered;
+  }
+
+  private audit(): {
+    uncovered: string[];
+    controllersSeen: number;
+    routesSeen: number;
+  } {
     const uncovered: string[] = [];
+    let controllersSeen = 0;
+    let routesSeen = 0;
 
     for (const wrapper of this.discovery.getControllers()) {
       const instance: unknown = wrapper.instance;
@@ -55,6 +92,7 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
         | (Type<unknown> & { name: string })
         | null;
       if (!instance || !metatype) continue;
+      controllersSeen += 1;
       const prototype = Object.getPrototypeOf(instance) as object;
 
       const classGuards = this.guardsOn(metatype);
@@ -66,7 +104,10 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
         const handler = (instance as Record<string, unknown>)[method];
         if (typeof handler !== 'function') continue;
         // Only actual routes — a public helper on a controller is not one.
-        if (this.reflector.get('path', handler) === undefined) continue;
+        if (this.reflector.get(ROUTE_PATH_METADATA, handler) === undefined) {
+          continue;
+        }
+        routesSeen += 1;
 
         const exempt =
           classExempt ||
@@ -81,7 +122,7 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
       }
     }
 
-    return uncovered.sort();
+    return { uncovered: uncovered.sort(), controllersSeen, routesSeen };
   }
 
   private guardsOn(target: object): unknown[] {

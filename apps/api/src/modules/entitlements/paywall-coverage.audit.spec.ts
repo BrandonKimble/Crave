@@ -1,6 +1,6 @@
 import { Controller, Get, Injectable, CanActivate } from '@nestjs/common';
 import { UseGuards } from '@nestjs/common';
-import { DiscoveryModule } from '@nestjs/core';
+import { DiscoveryModule, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { PaywallCoverageAudit } from './paywall-coverage.audit';
 import { AllowUnentitled } from './entitlement-enforcement.interceptor';
@@ -107,6 +107,31 @@ describe('paywall coverage audit', () => {
       providers: [PaywallCoverageAudit, AuthGuard, OperatorGuard],
     }).compile();
     await expect(moduleRef.init()).rejects.toThrow(/Paywall coverage gap/);
+  });
+
+  it('RED — detection that finds ZERO routes fails boot instead of passing', async () => {
+    // The failure the Jest scanner it replaced guarded against explicitly and
+    // this audit first forgot: if Nest renames its route metadata key, every
+    // handler stops looking like a route, `uncovered` is empty, and boot
+    // sails through having checked nothing. Simulated by a Reflector whose
+    // route-path lookup always misses.
+    const moduleRef = await Test.createTestingModule({
+      imports: [DiscoveryModule],
+      controllers: [AuthedController, OpsController],
+      providers: [PaywallCoverageAudit, AuthGuard, OperatorGuard],
+    })
+      .overrideProvider(Reflector)
+      .useValue({ get: () => undefined })
+      .compile();
+    await expect(moduleRef.init()).rejects.toThrow(/found ZERO routes/);
+  });
+
+  it('zero CONTROLLERS is silence, not an alarm — scripts boot a context with none', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [DiscoveryModule],
+      providers: [PaywallCoverageAudit],
+    }).compile();
+    await expect(moduleRef.init()).resolves.toBeDefined();
   });
 
   it('a fully covered app boots', async () => {
