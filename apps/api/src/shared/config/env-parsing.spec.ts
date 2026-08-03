@@ -1,6 +1,7 @@
 import { isEnvFlagEnabled } from './env-flag';
 import { normalizeAppEnv, isProdEnv, isDeployedEnv } from './app-env';
 import { readSpendCapUsd } from '../../modules/external-integrations/governance/governance.service';
+import { isSchedulerRuntime } from '../utils/process-role';
 
 // Three env-parsing defects, all found 2026-08-02, all of the same family:
 // a plausible value silently means something other than what was typed.
@@ -29,6 +30,51 @@ describe('boolean env flags', () => {
   it('only ABSENT falls back', () => {
     expect(isEnvFlagEnabled(undefined, true)).toBe(true);
     expect(isEnvFlagEnabled('false', true)).toBe(false);
+  });
+});
+
+// F401, the same family one flag over: the GLOBAL cron kill-switch — the
+// switch that exists so an environment holding dev vendor keys never spends
+// unattended — tested `=== 'false'` by hand. `CRONS_ENABLED=0`, `no` and `off`
+// therefore left every @Cron RUNNING. Each dialect must actually disable.
+describe('CRONS_ENABLED — the global cron kill-switch', () => {
+  const originalCrons = process.env.CRONS_ENABLED;
+  const originalRole = process.env.PROCESS_ROLE;
+
+  // PROCESS_ROLE is memoized on first read; CRONS_ENABLED is not, which is
+  // the point — the kill-switch must be answerable at any moment.
+  const schedulerRuntimeWith = (raw: string | undefined): boolean => {
+    process.env.PROCESS_ROLE = 'worker';
+    if (raw === undefined) delete process.env.CRONS_ENABLED;
+    else process.env.CRONS_ENABLED = raw;
+    return isSchedulerRuntime();
+  };
+
+  afterAll(() => {
+    if (originalCrons === undefined) delete process.env.CRONS_ENABLED;
+    else process.env.CRONS_ENABLED = originalCrons;
+    if (originalRole === undefined) delete process.env.PROCESS_ROLE;
+    else process.env.PROCESS_ROLE = originalRole;
+  });
+
+  it.each(['false', 'FALSE', 'False', ' false ', '0', 'no', 'off', ''])(
+    'the off-spelling %s actually disables the crons',
+    (raw) => {
+      expect(schedulerRuntimeWith(raw)).toBe(false);
+    },
+  );
+
+  it('an unrecognized value is OFF — a kill-switch fails toward OFF', () => {
+    expect(schedulerRuntimeWith('maybe')).toBe(false);
+  });
+
+  it("prod's current `false` spelling is unaffected", () => {
+    expect(schedulerRuntimeWith('false')).toBe(false);
+  });
+
+  it('ABSENT still means ON in a worker runtime — crons are the default', () => {
+    expect(schedulerRuntimeWith(undefined)).toBe(true);
+    expect(schedulerRuntimeWith('true')).toBe(true);
   });
 });
 

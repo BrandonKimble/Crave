@@ -1,4 +1,11 @@
 /**
+ * @script-class: operational
+ * @runner: rig/reextract.sh
+ *
+ * Operational tooling: a runner invokes this. Classes assigned by the
+ * F414 sweep (2026-08-02) from the actual reference census, not by guess.
+ */
+/**
  * Register a new CANDIDATE collection-prompt version from a file.
  *
  *   npx ts-node scripts/prompt-push.ts <path-to-prompt.md> [--notes "..."]

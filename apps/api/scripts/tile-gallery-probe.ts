@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { CloudinaryService } from '../src/modules/photos/cloudinary.service';
 import { PhotoReadService } from '../src/modules/photos/photo-read.service';
+import { PhotoReads } from '../src/modules/photos/photo-reads';
 import { UserListMapper } from '../src/modules/user-lists/user-list.mappers';
 import { UserListTileGalleryService } from '../src/modules/user-lists/user-list-tile-gallery.service';
 
@@ -35,10 +36,16 @@ async function main(): Promise<void> {
   const cloudinary = new CloudinaryService(config as never, logger as never);
   const photoRead = new PhotoReadService(prisma as never, cloudinary);
   const mapper = new UserListMapper(prisma as never, logger as never);
+  // Signatures moved under the block-exclusion work (2026-08-02): the tile
+  // gallery now reads through PhotoReads (viewer-scoped), so the probe must
+  // supply a viewer. Probing as the owner themselves = no blocks applied.
+  const photoReads = new PhotoReads(photoRead, {
+    blockedPeerIds: () => Promise.resolve(new Set<string>()),
+  } as never);
   const service = new UserListTileGalleryService(
     prisma as never,
     mapper,
-    photoRead,
+    photoReads,
   );
   const lists = await prisma.userList.findMany({
     where: { owner: { email: 'kimble.brandonm@gmail.com' } },
@@ -49,7 +56,7 @@ async function main(): Promise<void> {
       useOwnPhotos: true,
     },
   });
-  const tiles = await service.loadTileImages(lists);
+  const tiles = await service.loadTileImages(lists, null);
   for (const l of lists) {
     const t = tiles.get(l.listId) ?? [];
     console.log(
@@ -79,9 +86,10 @@ async function main(): Promise<void> {
         );
       }
     }
-    const globalTiles = await service.loadTileImages([
-      { ...l, useOwnPhotos: false },
-    ]);
+    const globalTiles = await service.loadTileImages(
+      [{ ...l, useOwnPhotos: false }],
+      null,
+    );
     console.log(
       `own-vs-global "${l.name}": own=${(tiles.get(l.listId) ?? []).length} global=${(globalTiles.get(l.listId) ?? []).length}`,
     );

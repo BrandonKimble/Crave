@@ -1,3 +1,13 @@
+/**
+ * @script-class: probe
+ * @finding: NOT YET BANKED — record what this probe answered, or delete it.
+ *
+ * A banked probe's value is the RECORDED RESULT, kept so the finding stays
+ * reproducible. This one has no runner and no written-down finding: the
+ * F414 sweep (2026-08-02) could establish the first fact mechanically but
+ * not the second, and inventing one would be worse than leaving it visible.
+ * Until a finding is written here, this file is a deletion candidate.
+ */
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
 process.env.COLLECTION_LLM_MODE = process.env.SLICE_MODE ?? 'batch';
@@ -7,6 +17,7 @@ import * as readline from 'readline';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from '../../src/app.module';
+import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
 import { ExtractionPipelineService } from '../../src/modules/content-processing/reddit-collector/extraction-pipeline.service';
 import { GeminiBatchService } from '../../src/modules/external-integrations/llm/gemini-batch.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
@@ -100,6 +111,13 @@ async function main(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
+  // CONTAINMENT (audit 2026-08-02, F411). AppModule registers all ~20 @Cron
+  // jobs and starts them ticking — PROCESS_ROLE defaults to 'all'. This script
+  // was the 1 of 46 that never called this, so every run of it double-drained
+  // the governed queues and double-spent the vendor pools alongside the real
+  // worker. src/shared/testing/script-containment.spec.ts now fails on any
+  // script under scripts/ that boots a context without stopping the crons.
+  stopCronsForScript(app);
   try {
     const pipeline = app.get(ExtractionPipelineService);
     const batch = app.get(GeminiBatchService);

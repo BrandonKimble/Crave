@@ -31,8 +31,7 @@
     "test/**/*",
     "scripts/**/*",
     "prisma/**/*.ts",
-    "../../packages/shared/src/**/*",
-    "onboard-subreddit.ts"
+    "../../packages/shared/src/**/*"
   ],
   "exclude": [
     "dist/**/*",

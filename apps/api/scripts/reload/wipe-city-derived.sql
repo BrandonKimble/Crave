@@ -164,4 +164,23 @@ SELECT
   (SELECT count(*) FROM core_entities)          AS entities_remaining,
   (SELECT count(*) FROM core_restaurant_items)  AS connections_remaining;
 
-COMMIT;
+-- ------------------------------------------------- rehearse, then commit
+-- DRY RUN PARITY WITH THE GC SCRIPT (audit 2026-08-02, F417). This file
+-- used to end in a bare COMMIT, so the only way to rehearse the most
+-- destructive script in the choreography was to hand-edit a COPY of it and
+-- run that — i.e. to rehearse a file that is not the file you then run.
+-- (This audit had to do exactly that to verify the script.) The audit
+-- SELECT above is computed either way, so a dry run reports the SAME row
+-- counts the real run will produce, and then throws the work away.
+--
+-- Default is COMMIT, deliberately: `-v dryrun=1` is the OPT-IN rehearsal,
+-- which keeps every existing invocation of this file meaning what it meant.
+-- (gc-unsupported-entities.sql is the mirror image — it opts IN to
+-- destruction with `-v execute=1` — because it is a routine sweep, whereas
+-- this one is the disaster tool an operator only reaches for deliberately.)
+\if :{?dryrun}
+  \echo 'DRY RUN — nothing written. Re-run WITHOUT -v dryrun=1 to wipe.'
+  ROLLBACK;
+\else
+  COMMIT;
+\endif

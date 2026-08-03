@@ -1,4 +1,11 @@
 /**
+ * @script-class: operational
+ * @runner: rig/reextract.sh
+ *
+ * Operational tooling: a runner invokes this. Classes assigned by the
+ * F414 sweep (2026-08-02) from the actual reference census, not by guess.
+ */
+/**
  * ACTIVATE a completed shadow re-extract: flip every target document's
  * active_extraction_run_id to its shadow run (no LLM re-spend — the shadow
  * outputs already exist), then rebuild projections for every affected

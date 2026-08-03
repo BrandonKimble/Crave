@@ -6,7 +6,6 @@ import { AppException } from './app-exception.base';
  */
 export class ValidationException extends AppException {
   readonly errorCode = 'VALIDATION_ERROR';
-  readonly isOperational = true;
 
   constructor(
     validationErrors: string[] | string,
@@ -30,7 +29,6 @@ export class ValidationException extends AppException {
  */
 export class DatabaseException extends AppException {
   readonly errorCode = 'DATABASE_ERROR';
-  readonly isOperational = true;
 
   constructor(
     operation: string,
@@ -61,7 +59,6 @@ export class DatabaseException extends AppException {
  */
 export class BusinessLogicException extends AppException {
   readonly errorCode = 'BUSINESS_LOGIC_ERROR';
-  readonly isOperational = true;
 
   constructor(
     message: string,
@@ -77,7 +74,6 @@ export class BusinessLogicException extends AppException {
  */
 export class AuthorizationException extends AppException {
   readonly errorCode = 'AUTHORIZATION_ERROR';
-  readonly isOperational = true;
 
   constructor(message = 'Access denied', context?: Record<string, any>) {
     super(message, HttpStatus.FORBIDDEN, context);
@@ -89,7 +85,6 @@ export class AuthorizationException extends AppException {
  */
 export class ExternalServiceException extends AppException {
   readonly errorCode = 'EXTERNAL_SERVICE_ERROR';
-  readonly isOperational = true;
 
   constructor(
     serviceName: string,
@@ -118,7 +113,6 @@ export class ExternalServiceException extends AppException {
  */
 export class RateLimitException extends AppException {
   readonly errorCode = 'RATE_LIMIT_ERROR';
-  readonly isOperational = true;
 
   constructor(resetTime?: Date, context?: Record<string, any>) {
     const message = resetTime

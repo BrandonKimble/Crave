@@ -1,3 +1,10 @@
+/**
+ * @script-class: operational
+ * @runner: apps/api/package.json
+ *
+ * Operational tooling: a runner invokes this. Classes assigned by the
+ * F414 sweep (2026-08-02) from the actual reference census, not by guess.
+ */
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app.module';

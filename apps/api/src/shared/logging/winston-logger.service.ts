@@ -1,5 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import * as winston from 'winston';
+import * as Sentry from '@sentry/nestjs';
 import { ConfigService } from '@nestjs/config';
 import {
   isHttpError,
@@ -49,6 +50,53 @@ export class WinstonLoggerService extends LoggerService {
   error(message: string, error?: unknown, metadata?: LogMetadata): void {
     const errorMetadata = this.buildErrorMetadata(error, metadata);
     this.log('error', message, errorMetadata);
+    this.captureToSentry(message, error, metadata);
+  }
+
+  /**
+   * THE crash-reporting seam: everything the codebase considers an error-level
+   * event — HTTP 5xx (GlobalExceptionFilter logs them here), cron/background
+   * catches, boot failures — flows through this one method, so Sentry capture
+   * lives here and nowhere else. No filter-ordering fragility, no per-callsite
+   * wiring. No-op unless Sentry.init ran (SENTRY_DSN set in main.ts). Never
+   * attaches email or request bodies — the context tag + structured metadata
+   * are the debugging surface.
+   *
+   * WHY IT LIVES HERE (audit 2026-08-02, F400). It used to live on a SECOND,
+   * orphaned class also called `LoggerService` (shared/logging/logger.service
+   * .ts) that nothing imported except its own spec. The class DI actually
+   * binds is this one, which had no Sentry code at all — so the API's crash
+   * reporting had never worked, while three comments and a green spec all
+   * asserted it did. A seam is not a seam because a comment says so; it is a
+   * seam because the SHIPPED object goes through it. The orphan is deleted and
+   * `logger-sentry-seam.spec.ts` now resolves its logger from a compiled
+   * SharedModule, so it binds to the WIRING and can go red on this defect.
+   */
+  private captureToSentry(
+    message: string,
+    error?: unknown,
+    metadata?: LogMetadata,
+  ): void {
+    try {
+      if (!Sentry.isInitialized()) {
+        return;
+      }
+      const extra: Record<string, unknown> = { ...(metadata ?? {}) };
+      const tags: Record<string, string> = {};
+      if (this.contextName) {
+        tags.logger_context = this.contextName;
+      }
+      if (error instanceof Error) {
+        Sentry.captureException(error, { extra: { ...extra, message }, tags });
+      } else {
+        if (error !== undefined) {
+          extra.error = error;
+        }
+        Sentry.captureMessage(message, { level: 'error', extra, tags });
+      }
+    } catch {
+      // Crash reporting must never take down the thing it reports on.
+    }
   }
 
   http(

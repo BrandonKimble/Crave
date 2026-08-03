@@ -1,4 +1,11 @@
 /**
+ * @script-class: operational
+ * @runner: rig/reextract.sh
+ *
+ * Operational tooling: a runner invokes this. Classes assigned by the
+ * F414 sweep (2026-08-02) from the actual reference census, not by guess.
+ */
+/**
  * Create + approve the spend campaign for a shadow re-extraction —
  * the same manifest/approve-by-hash law as onboarding (§24.3).
  *

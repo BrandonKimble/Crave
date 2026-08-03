@@ -25,6 +25,23 @@ describe('debug-route exposure gate', () => {
     ).toBe(false);
   });
 
+  // F402: these four spellings ALL returned true against the old
+  // literal-comparison gate — `production`, `PROD`, `stage`, `PRODUCTION` are
+  // exactly what `normalizeAppEnv` (used by the rest of the codebase) accepts,
+  // and each one exposed the error-injection routes on a deployed env.
+  it.each([
+    ['production', { APP_ENV: 'production' }],
+    ['PROD', { APP_ENV: 'PROD' }],
+    ['stage', { APP_ENV: 'stage' }],
+    ['STAGING', { APP_ENV: 'STAGING' }],
+    ['NODE_ENV=PRODUCTION', { NODE_ENV: 'PRODUCTION' }],
+    ['CRAVE_ENV=prod', { CRAVE_ENV: 'prod' }],
+  ])('is OFF for the deployed-env spelling %s', (_label, env) => {
+    expect(isDebugRoutesEnabled({ ...env, ENABLE_DEBUG_ROUTES: 'true' })).toBe(
+      false,
+    );
+  });
+
   it('is OFF in development unless explicitly opted in', () => {
     expect(isDebugRoutesEnabled({ NODE_ENV: 'development' })).toBe(false);
     expect(
@@ -33,13 +50,28 @@ describe('debug-route exposure gate', () => {
         ENABLE_DEBUG_ROUTES: 'false',
       }),
     ).toBe(false);
+    // An unrecognized value is not a silent yes.
     expect(
       isDebugRoutesEnabled({
         NODE_ENV: 'development',
-        ENABLE_DEBUG_ROUTES: '1',
+        ENABLE_DEBUG_ROUTES: 'maybe',
       }),
     ).toBe(false);
   });
+
+  // The opt-in now reads through the canonical flag reader instead of its own
+  // fifth dialect, so the spellings a human types work locally (F402).
+  it.each(['true', 'TRUE', '1', 'yes', 'on'])(
+    'accepts the local opt-in spelled %s',
+    (raw) => {
+      expect(
+        isDebugRoutesEnabled({
+          NODE_ENV: 'development',
+          ENABLE_DEBUG_ROUTES: raw,
+        }),
+      ).toBe(true);
+    },
+  );
 
   it('is ON only for an explicit local opt-in', () => {
     expect(

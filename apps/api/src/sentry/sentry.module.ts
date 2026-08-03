@@ -6,7 +6,8 @@ import { SentryInterceptor } from './sentry.interceptor';
  * Sentry Module — performance spans only.
  *
  * ERROR CAPTURE DOES NOT LIVE HERE. The one capture seam is
- * LoggerService.error (shared/logging/logger.service.ts): HTTP 500s reach it
+ * WinstonLoggerService.error (shared/logging/winston-logger.service.ts) — the
+ * class DI binds to the `LoggerService` token: HTTP 5xx reach it
  * via GlobalExceptionFilter's logError, cron/background failures via their
  * own catch-and-log. A second global @Catch() filter used to sit here — it
  * was DEAD CODE (Nest runs exactly one matching global filter, and

@@ -1,3 +1,13 @@
+/**
+ * @script-class: probe
+ * @finding: NOT YET BANKED — record what this probe answered, or delete it.
+ *
+ * A banked probe's value is the RECORDED RESULT, kept so the finding stays
+ * reproducible. This one has no runner and no written-down finding: the
+ * F414 sweep (2026-08-02) could establish the first fact mechanically but
+ * not the second, and inventing one would be worse than leaving it visible.
+ * Until a finding is written here, this file is a deletion candidate.
+ */
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';

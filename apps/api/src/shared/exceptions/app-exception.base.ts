@@ -6,7 +6,6 @@ import { HttpException, HttpStatus } from '@nestjs/common';
  */
 export abstract class AppException extends HttpException {
   abstract readonly errorCode: string;
-  abstract readonly isOperational: boolean;
 
   constructor(
     message: string,
@@ -18,10 +17,28 @@ export abstract class AppException extends HttpException {
   }
 
   /**
-   * Get sanitized error details for client response
+   * The message a production client is allowed to see.
+   *
+   * A 5xx MESSAGE IS NEVER SHOWN IN PROD (audit 2026-08-02, F422). This used
+   * to read `isProd && !this.isOperational`, gated on an abstract
+   * `isOperational` boolean each subclass declared for itself. A census found
+   * 22 declarations, ALL `= true`, and zero `false` — every author defaulted
+   * to the permissive, working-looking value — so the redaction branch was
+   * unreachable and prod callers received `Database create failed for User`
+   * and `Gemini service error during generateContent` verbatim. A TYPED
+   * exception was LESS redacted than an untyped one, whose message the very
+   * next branch of the filter carefully replaces.
+   *
+   * Whether a message is safe to show a client is a property of the MESSAGE,
+   * not of the class. The fact the filter actually needs — "is this a 5xx" —
+   * is already carried by the status, which is why `logError` was rewritten to
+   * level "by STATUS, never by exception class". This matches it. An exception
+   * that genuinely wants a client-visible 5xx message (none today) opts in
+   * explicitly with a `clientMessage`, a positive assertion rather than a
+   * forgotten negative.
    */
   getClientSafeMessage(isProd = false): string {
-    if (isProd && !this.isOperational) {
+    if (isProd && this.getStatus() >= 500) {
       return 'An internal error occurred';
     }
     return this.message;
@@ -35,7 +52,6 @@ export abstract class AppException extends HttpException {
       errorCode: this.errorCode,
       status: this.getStatus(),
       context: this.context,
-      isOperational: this.isOperational,
       stack: this.stack,
     };
   }

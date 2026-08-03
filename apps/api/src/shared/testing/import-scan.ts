@@ -23,6 +23,32 @@ import { join, relative } from 'node:path';
  * against a controller whose field was named `photoReads`, so it matched
  * nothing and asserted that nothing equals nothing.
  */
+/**
+ * Every non-spec `.ts` file under `root`, recursively.
+ *
+ * Extracted from `filesImporting`'s private walker (audit 2026-08-02) because
+ * the same whole-tree sweep is what the config-reader census (F405) and the
+ * script-containment lockdown (F411) each need. Same lesson, same shape: a
+ * scanner scoped to "the files I happened to think of" is outflanked by the
+ * next file someone adds.
+ */
+export function collectSourceFiles(root: string): string[] {
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry === 'dist') continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (entry.endsWith('.ts')) files.push(full);
+    }
+  };
+  walk(root);
+  return files.sort();
+}
+
 export function filesImporting(
   symbol: string,
   options: { root: string; allow?: readonly string[] },

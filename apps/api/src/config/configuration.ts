@@ -1,7 +1,12 @@
 import { placesOperationLimits } from '../modules/external-integrations/shared/vendor-pricing';
+// ONE resolveAppEnv, imported (audit 2026-08-02, F403). This file used to
+// carry a byte-equivalent COPY of it — including the same six-line comment
+// about staging naming itself — while already importing two of its siblings
+// from here. app-env.ts's own header says it exists because five services
+// hand-rolled exactly this; the config assembly was the sixth.
 import {
   isProdEnv,
-  normalizeAppEnv,
+  resolveAppEnv,
   type AppEnv,
 } from '../shared/config/app-env';
 /**
@@ -46,21 +51,6 @@ function getDatabaseUrl(): string {
   );
 }
 
-function resolveAppEnv(): AppEnv {
-  const raw = process.env.APP_ENV || process.env.CRAVE_ENV;
-  if (raw && raw.trim()) {
-    return normalizeAppEnv(raw);
-  }
-  // No APP_ENV: infer from NODE_ENV. This can only ever yield dev or prod —
-  // staging must name itself, because "looks like production" is exactly the
-  // inference that made staging indistinguishable from prod.
-  return process.env.NODE_ENV?.toLowerCase() === 'production' ? 'prod' : 'dev';
-}
-
-function isProductionAppEnv(appEnv: AppEnv): boolean {
-  return isProdEnv(appEnv);
-}
-
 function resolveScopedEnv(
   appEnv: AppEnv,
   values: {
@@ -69,7 +59,7 @@ function resolveScopedEnv(
     fallback?: string;
   },
 ): string | undefined {
-  const selected = isProductionAppEnv(appEnv) ? values.prod : values.dev;
+  const selected = isProdEnv(appEnv) ? values.prod : values.dev;
   return selected || values.fallback || undefined;
 }
 
@@ -82,15 +72,67 @@ function resolveSecretEnv(name: string): string | undefined {
   return value && value.trim() ? value.trim() : undefined;
 }
 
+/**
+ * A SETTING WITH A MALFORMED VALUE REFUSES; IT NEVER WIDENS OR CLOSES QUIETLY
+ * (F365).
+ *
+ * The lifecycle janitor read three settings straight off `process.env` and
+ * coerced two of them with a bare `Number(...)`. A typo'd TTL therefore
+ * yielded NaN, and NaN is NOT nullish — so `olderThanDays ?? 90` did not
+ * catch it, `Date.now() - NaN * 86400000` produced an Invalid Date, and the
+ * `lastPolledAt < cutoff` filter then matched NOTHING: the DETECT half of the
+ * decay lifecycle switched itself off permanently with no error anywhere.
+ *
+ * This is the same conclusion F106 reached for the audience parser and F107 /
+ * F108 for the gating mode: one declaration, in config, validated at boot.
+ */
+function positiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(
+      `${name} must be a positive integer (got ${JSON.stringify(raw)}). ` +
+        `A malformed lifecycle setting silently disables the janitor rather ` +
+        `than failing, so boot refuses instead.`,
+    );
+  }
+  return value;
+}
+
 export default () => {
   const appEnv = resolveAppEnv();
 
   return {
     appEnv,
     port: parseInt(process.env.PORT || '3000', 10),
-    logging: {
-      level: (process.env.LOG_LEVEL || '').toLowerCase(),
+    locationLifecycle: {
+      /**
+       * The weekly detect→act pass. OFF by default: a dev corpus has nothing
+       * worth keeping fresh, and this cron SPENDS Places money.
+       */
+      cronEnabled: process.env.LOCATION_LIFECYCLE_CRON_ENABLED === 'true',
+      /** DETECT: re-poll a location this many days after its last poll. */
+      refreshTtlDays: positiveIntEnv('LOCATION_REFRESH_TTL_DAYS', 90),
+      /** DETECT: how many stale locations one weekly pass re-polls. */
+      refreshLimit: positiveIntEnv('LOCATION_REFRESH_LIMIT', 250),
+      /**
+       * ACT: failed enrichment attempts before an ungrounded placeholder is
+       * archived. This and retryLimit decide who gets ARCHIVED and how much
+       * Places money the retry lane spends — they were the two knobs that
+       * were NOT configurable while the two that matter less were (F365).
+       */
+      noMatchAttemptThreshold: positiveIntEnv(
+        'LOCATION_NO_MATCH_ATTEMPT_THRESHOLD',
+        3,
+      ),
+      /** ACT: ungrounded placeholders re-enriched per weekly pass. */
+      retryLimit: positiveIntEnv('LOCATION_RETRY_LIMIT', 25),
     },
+    // NO `logging:` BLOCK. LOG_LEVEL is read straight off process.env by
+    // shared/logging/winston.config.ts, which is the only thing that has ever
+    // consumed it; the mirror here had zero readers (audit 2026-08-02, F405).
+    // One declaration per fact — the env var is live, this copy was not.
     database: {
       url: getDatabaseUrl(),
       connectionPool: {
@@ -133,22 +175,12 @@ export default () => {
     bull: {
       prefix: process.env.BULL_PREFIX || `crave:${appEnv}`,
     },
-    sentry: {
-      dsn: process.env.SENTRY_DSN,
-      environment:
-        process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
-      release: process.env.SENTRY_RELEASE,
-      // APP_ENV-aware defaults: full sampling in dev, 10% in prod (cost).
-      // Env override kept as an ops lever (e.g. temporarily raise prod).
-      tracesSampleRate: parseFloat(
-        process.env.SENTRY_TRACES_SAMPLE_RATE ||
-          (isProductionAppEnv(appEnv) ? '0.1' : '1.0'),
-      ),
-      profilesSampleRate: parseFloat(
-        process.env.SENTRY_PROFILES_SAMPLE_RATE ||
-          (isProductionAppEnv(appEnv) ? '0.1' : '1.0'),
-      ),
-    },
+    // THE THREE GLOBAL RATE-LIMIT WINDOWS. Read by
+    // infrastructure/throttler/throttler.module.ts's `readThrottlerWindow`,
+    // which builds the key path as a TEMPLATE LITERAL
+    // (`throttler.${window}.${field}`) and THROWS at boot if a value is
+    // missing or malformed. A literal grep for `get('throttler.` finds
+    // nothing — this block is live all the same (audit 2026-08-02, F405).
     throttler: {
       // Short window: burst protection (1 second)
       short: {
@@ -168,7 +200,6 @@ export default () => {
     },
     clerk: {
       secretKey: process.env.CLERK_SECRET_KEY,
-      publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
       jwtAudience: process.env.CLERK_JWT_AUDIENCE,
       apiUrl: process.env.CLERK_API_URL || 'https://api.clerk.com/v1',
       adminUserIds: (process.env.CLERK_ADMIN_USER_IDS || '')
@@ -415,17 +446,6 @@ export default () => {
         : undefined,
       apiVersion: process.env.TOMTOM_API_VERSION || undefined,
     },
-    jwt: {
-      secret: process.env.JWT_SECRET,
-      expiresIn: process.env.JWT_EXPIRATION || '7d',
-    },
-    // On-demand keyword-collection throughput (2026-07-11 fold-in; the old
-    // SEARCH_INTEREST_* env aliases restated these same values).
-    onDemand: {
-      maxPerBatch: 5, // entities enqueued per on-demand cycle
-      estimatedJobMinutes: 120, // used for backlog/ETA math
-      maxProcessingBacklog: 10, // stop enqueueing past this many in-flight jobs
-    },
     entityResolution: {
       cache: {
         redisKey:
@@ -443,11 +463,6 @@ export default () => {
         version: process.env.ENTITY_RESOLUTION_CACHE_VERSION || 'v1',
       },
     },
-    restaurantEnrichment: {
-      // 0.15 is the value production behavior has been using (.env override
-      // of the old 0.2 fallback — reconciled 2026-07-11 in favor of .env).
-      minScoreThreshold: 0.15,
-    },
     // Keyword-collection gating (2026-07-11 fold-in; .env restated these).
     keywordProcessing: {
       gateLookbackDays: 21, // recency window for gate decisions
@@ -458,6 +473,11 @@ export default () => {
     unifiedProcessing: {
       dryRun: process.env.UNIFIED_PROCESSING_DRY_RUN === 'true',
     },
+    // FOUR KEYS, ALL READ (audit 2026-08-02, F405). This block declared ~40
+    // keys — batchProcessing, checkpoints, storage.s3, validation, batchSize,
+    // processingTimeout — of which archive-ingestion.service.ts read exactly
+    // these four. A key nothing reads is not a lenient default; it is a lie
+    // about what the operator controls.
     pushshift: {
       baseDirectory:
         process.env.PUSHSHIFT_BASE_DIR || 'data/pushshift/archives',
@@ -465,18 +485,6 @@ export default () => {
         process.env.PUSHSHIFT_SUBREDDITS || 'austinfood,FoodNYC'
       ).split(','),
       fileTypes: ['comments', 'submissions'],
-      batchSize: parseInt(process.env.PUSHSHIFT_BATCH_SIZE || '1000', 10),
-      processingTimeout: parseInt(
-        process.env.PUSHSHIFT_PROCESSING_TIMEOUT || '300000',
-        10,
-      ), // 5 minutes
-      validation: {
-        enabled: process.env.PUSHSHIFT_VALIDATION_ENABLED !== 'false',
-        sampleLines: parseInt(
-          process.env.PUSHSHIFT_VALIDATION_SAMPLE_LINES || '10',
-          10,
-        ),
-      },
       storage: {
         local: {
           basePath: process.env.PUSHSHIFT_LOCAL_BASE_PATH || 'data/pushshift',
@@ -484,75 +492,6 @@ export default () => {
             process.env.PUSHSHIFT_LOCAL_ARCHIVE_PATH ||
             'data/pushshift/archives',
         },
-        s3: {
-          bucket: process.env.PUSHSHIFT_S3_BUCKET,
-          region: process.env.PUSHSHIFT_S3_REGION || 'us-east-1',
-          keyPrefix:
-            process.env.PUSHSHIFT_S3_KEY_PREFIX || 'pushshift-archives/',
-        },
-      },
-      // Batch Processing System Configuration
-      batchProcessing: {
-        minBatchSize: parseInt(
-          process.env.PUSHSHIFT_MIN_BATCH_SIZE || '100',
-          10,
-        ),
-        maxBatchSize: parseInt(
-          process.env.PUSHSHIFT_MAX_BATCH_SIZE || '5000',
-          10,
-        ),
-        maxMemoryUsageMB: parseInt(
-          process.env.PUSHSHIFT_MAX_MEMORY_MB || '512',
-          10,
-        ),
-        enableCheckpoints: process.env.PUSHSHIFT_ENABLE_CHECKPOINTS !== 'false',
-        enableResourceMonitoring:
-          process.env.PUSHSHIFT_ENABLE_RESOURCE_MONITORING !== 'false',
-        adaptiveBatchSizing:
-          process.env.PUSHSHIFT_ADAPTIVE_BATCH_SIZING !== 'false',
-        progressReportingInterval: parseInt(
-          process.env.PUSHSHIFT_PROGRESS_REPORTING_INTERVAL || '10000',
-          10,
-        ),
-        resourceCheckInterval: parseInt(
-          process.env.PUSHSHIFT_RESOURCE_CHECK_INTERVAL || '1000',
-          10,
-        ),
-        memoryCheckInterval: parseInt(
-          process.env.PUSHSHIFT_MEMORY_CHECK_INTERVAL || '5000',
-          10,
-        ),
-        preserveThreadStructure:
-          process.env.PUSHSHIFT_PRESERVE_THREADS !== 'false',
-        validateTimestamps:
-          process.env.PUSHSHIFT_VALIDATE_TIMESTAMPS !== 'false',
-        qualityFilters: {
-          minScore: parseInt(
-            process.env.PUSHSHIFT_QUALITY_MIN_SCORE || '-5',
-            10,
-          ),
-          excludeDeleted: process.env.PUSHSHIFT_EXCLUDE_DELETED !== 'false',
-          excludeRemoved: process.env.PUSHSHIFT_EXCLUDE_REMOVED !== 'false',
-        },
-      },
-      // Checkpoint Service Configuration
-      checkpoints: {
-        enablePersistence:
-          process.env.PUSHSHIFT_CHECKPOINT_PERSISTENCE !== 'false',
-        storageLocation:
-          process.env.PUSHSHIFT_CHECKPOINT_STORAGE || './data/checkpoints',
-        maxCheckpointsPerJob: parseInt(
-          process.env.PUSHSHIFT_MAX_CHECKPOINTS_PER_JOB || '50',
-          10,
-        ),
-        cleanupInterval: parseInt(
-          process.env.PUSHSHIFT_CHECKPOINT_CLEANUP_INTERVAL || '3600000',
-          10,
-        ), // 1 hour
-        retentionPeriod: parseInt(
-          process.env.PUSHSHIFT_CHECKPOINT_RETENTION_PERIOD || '604800000',
-          10,
-        ), // 7 days
       },
     },
   };

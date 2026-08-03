@@ -60,7 +60,19 @@ export class LoggingInterceptor implements NestInterceptor {
             subscriber.next(data);
           },
           error: (error) => {
-            this.logError(request, response, error, startTime, requestContext);
+            // NO logging here. GlobalExceptionFilter is the SOLE error logger.
+            //
+            // WHY (audit 2026-08-02, F407). This interceptor used to call
+            // logger.error() for ANY exception, and the filter then logged the
+            // same exception again — twice per failed request, and the
+            // interceptor's copy had no status check, so a 404 or a validation
+            // 400 was emitted at ERROR level. The filter is deliberate about
+            // this: "Level by STATUS, never by exception class." An interceptor
+            // fires BEFORE the status is resolved (on Fastify `response
+            // .statusCode` is still 200 here), so it cannot classify severity
+            // and must not try. Since error level is the Sentry capture seam,
+            // logging here would also mean every 404 becomes a metered Sentry
+            // event.
             subscriber.error(error);
           },
           complete: () => {
@@ -146,37 +158,6 @@ export class LoggingInterceptor implements NestInterceptor {
         },
       );
     }
-  }
-
-  /**
-   * Log HTTP errors
-   */
-  private logError(
-    request: FastifyRequest,
-    response: FastifyReply,
-    error: any,
-    startTime: number,
-    context: RequestContext,
-  ): void {
-    const duration = Date.now() - startTime;
-    const statusCode = response.statusCode || 500;
-
-    this.logger.error(
-      `Error ${request.method} ${request.url} - ${statusCode}`,
-      error,
-      {
-        correlationId: context.correlationId,
-        userId: context.userId,
-        method: request.method,
-        url: request.url,
-        statusCode,
-        duration,
-        userAgent: context.userAgent,
-        ip: context.ip,
-        query: request.query,
-        params: request.params,
-      },
-    );
   }
 
   /**

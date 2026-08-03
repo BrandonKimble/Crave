@@ -6,7 +6,6 @@ import { AppException } from '../shared/exceptions';
 
 export class DatabaseConfigurationError extends AppException {
   readonly errorCode = 'DATABASE_CONFIGURATION_ERROR';
-  readonly isOperational = true;
 
   constructor(
     message: string,
