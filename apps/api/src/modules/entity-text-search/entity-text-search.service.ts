@@ -65,8 +65,12 @@ export const EVIDENCE_TIER_LADDER: ReadonlyArray<
 > = [
   ['exact'],
   ['prefix'],
-  ['contains'],
+  // OWNER-RULED 2026-08-03 (F582): a thing NAMED X outranks a thing that
+  // merely mentions X — name/alias sits above whole-phrase containment,
+  // matching entity-search's confidence bands. This was the one pair the two
+  // tables disagreed on; the agreement spec now tolerates zero exceptions.
   ['name', 'alias'],
+  ['contains'],
   ['fuzzy', 'edit'],
   ['embedding'],
 ];

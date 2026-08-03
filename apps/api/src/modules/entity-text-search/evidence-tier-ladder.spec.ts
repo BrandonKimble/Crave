@@ -35,13 +35,11 @@ describe('the evidence tier ladder is the single order (F582)', () => {
     expect(evidenceTierStrength('weak')).toBe(0);
   });
 
-  it('EVIDENCE_CONFIDENCE agrees with the ladder order — with ONE pinned exception', () => {
-    // The known, deliberate-looking divergence: the ladder ranks whole-word
-    // containment ABOVE an FTS name/alias token match, while the confidence
-    // bands rank name/alias (0.60) above contains (0.55). Both tables are
-    // load-bearing and the magnitudes are owner-calibrated, so this is
-    // RECORDED, not silently unified (see audit/FINDINGS.md F582).
-    const KNOWN_DIVERGENCE = new Set(['contains|name', 'contains|alias']);
+  it('EVIDENCE_CONFIDENCE agrees with the ladder order — zero exceptions', () => {
+    // OWNER-RULED 2026-08-03: name/alias above containment everywhere. The
+    // former pinned divergence is resolved in the ladder itself; any new
+    // disagreement between the two tables is a defect, full stop.
+    const KNOWN_DIVERGENCE = new Set<string>();
 
     const disagreements: string[] = [];
     const flat = EVIDENCE_TIER_LADDER.flatMap((group) => group);
