@@ -248,34 +248,11 @@ export class EntityResolutionService implements OnModuleInit {
         ...metrics,
       });
 
-      // ADDED: Populate entity details for validation
-      const entityDetails = new Map<string, any>();
-      for (const result of results) {
-        if (result.entityId) {
-          // Fetch entity details for each resolved entity
-          // Direct Prisma (2026-08-02). This was the ONLY real call into a
-          // 1,461-line repository framework whose findById was findUnique
-          // wrapped in logging. See the deletion commit for the reasoning.
-          const entity = await this.prisma.entity.findUnique({
-            where: { entityId: result.entityId },
-          });
-          if (entity) {
-            entityDetails.set(result.entityId, {
-              entityId: entity.entityId,
-              name: entity.name,
-              type: entity.type,
-              aliases: entity.aliases || [],
-            });
-          }
-        }
-      }
-
       return {
         tempIdToEntityIdMap,
         resolutionResults: results,
         newEntitiesCreated,
         performanceMetrics: metrics,
-        entityDetails, // ADDED: Include entity details
       };
     } catch (error) {
       const processingTime = Date.now() - startTime;

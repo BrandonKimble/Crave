@@ -449,6 +449,67 @@ export class CollectorSourceRegistryService {
   }
 
   /**
+   * DERIVED CLEAR for the §10 C4 coverage gap (F456).
+   *
+   * The gap was a one-way latch: one missed overlap pinned the lane RED
+   * forever, because nothing could ever un-record it — the heartbeat's
+   * `coverageGapDetected` was structurally incapable of returning to green,
+   * which makes it an always-RED metric, the mirror of the always-GREEN
+   * disease. A latch with no release is not an alarm; it is a scar.
+   *
+   * The release is the SAME FACT that set it, read the other way. The gap
+   * means "posts between `windowStart` and the listing's reach are beyond
+   * recall". A later fetch that (a) confirmed overlap with its own cursor —
+   * so it opened no NEW hole — and (b) reached back to at-or-before
+   * `windowStart`, has re-covered that hole with real documents. Nothing is
+   * asserted or assumed: `reachedBackTo` is the oldest post actually
+   * fetched.
+   *
+   * A gap with no recorded `windowStart` cannot be derived-cleared (there is
+   * no fact to compare against); the operator clears those with
+   * scripts/clear-coverage-gap.ts. Returns true if a gap was cleared.
+   */
+  async clearCoverageGapIfRecovered(
+    sourceId: string,
+    lane: string,
+    reachedBackTo: Date,
+  ): Promise<boolean> {
+    const laneRow = await this.getLane(sourceId, lane);
+    const gap = laneRow?.state?.coverageGap as
+      | { windowStart?: string | null }
+      | null
+      | undefined;
+    const windowStart = gap?.windowStart;
+    if (!gap || !windowStart) {
+      // No gap, or a gap with no window to compare a reach against. The
+      // second case is deliberately NOT cleared: there is no fact here, and
+      // clearing on no fact is exactly the fabrication this release exists
+      // to avoid. scripts/clear-coverage-gap.ts is the operator escape.
+      return false;
+    }
+    const windowStartMs = Date.parse(windowStart);
+    if (Number.isNaN(windowStartMs)) {
+      return false;
+    }
+    // The reach must span the hole: this fetch went back to at-or-before the
+    // moment the gap opened.
+    if (reachedBackTo.getTime() > windowStartMs) {
+      return false;
+    }
+    // Re-assert the predicate in the WHERE so a concurrent tick that recorded
+    // a NEWER gap (a later windowStart this reach does not span) cannot have
+    // it cleared out from under it.
+    const cleared = await this.prisma.$executeRaw`
+      UPDATE source_collection_lanes
+      SET state = state - 'coverageGap',
+          updated_at = now()
+      WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+        AND state->'coverageGap'->>'windowStart' = ${windowStart}
+    `;
+    return cleared > 0;
+  }
+
+  /**
    * §12.4 heartbeat write: record a tick's OUTPUT (documents produced) and
    * fold it into the lane's EWMA baseline. Output is a fact about persisted
    * documents — never "a handler fired".

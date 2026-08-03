@@ -5,6 +5,7 @@ import { EntityStatus, EntityType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 export interface DishKnowledgeSummary {
   dishesProcessed: number;
@@ -46,7 +47,9 @@ export class DishKnowledgeSynthesisService {
 
   @Cron(CronExpression.EVERY_DAY_AT_5AM)
   async nightlyPass(): Promise<void> {
-    if (process.env.DISH_KNOWLEDGE_SYNTHESIS_ENABLED !== 'true') return;
+    // Canonical env-flag dialect (F466/F401): default OFF, and '1'/'yes'/'on'
+    // now mean what an operator typing them plainly meant.
+    if (!isEnvFlagEnabled(process.env.DISH_KNOWLEDGE_SYNTHESIS_ENABLED)) return;
     // Multi-dyno safety lives at the bootstrap chokepoint (main.ts stops all
     // crons on non-worker runtimes) — no per-service guard here.
     if (this.cronInFlight) return;

@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { SpendCampaignService } from '../../external-integrations/shared/spend-campaign.service';
 import { ReplayService } from './replay.service';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 /**
  * CITY RE-EXTRACT (the standing pattern; generalizes the 2026-07-30 Austin
@@ -66,9 +67,14 @@ export class CityReextractRunner implements OnApplicationBootstrap {
     // replays WITHOUT flipping documents' active runs — old extractions keep
     // serving the app while the candidate prompt's outputs accumulate for
     // the diff review. REEXTRACT_PROMPT_VERSION pins a registered candidate.
-    const activate =
-      (process.env.REEXTRACT_ACTIVATE ?? 'true').trim().toLowerCase() !==
-      'false';
+    // Canonical env-flag dialect (F466/F401), fallback TRUE — activation
+    // stays the default, as before. ONE deliberate semantic change: the old
+    // `!== 'false'` test treated ANY unrecognized value ('no', '0', 'flase')
+    // as ON, i.e. a typo silently FLIPPED THE LIVE CORPUS to a candidate
+    // prompt's outputs. Under the canonical reader an unrecognized value is
+    // OFF, so a typo now costs a shadow replay instead of a live flip. For a
+    // destructive default that is the only safe direction to fail.
+    const activate = isEnvFlagEnabled(process.env.REEXTRACT_ACTIVATE, true);
     const promptVersionRaw = process.env.REEXTRACT_PROMPT_VERSION?.trim();
     const promptVersion = promptVersionRaw
       ? Number.parseInt(promptVersionRaw, 10)

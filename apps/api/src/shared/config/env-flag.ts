@@ -29,3 +29,22 @@ export function isEnvFlagEnabled(
   // An unrecognized value is not a silent yes.
   return false;
 }
+
+/**
+ * The companion for OPT-DOWN flags: a switch that is ON by default and whose
+ * env var exists only to turn it off (e.g. `COLLECTION_RELEVANCE_GATE=off`).
+ *
+ * `isEnvFlagEnabled(raw, true)` is the WRONG tool for those: it reads an
+ * unrecognized value as OFF, so a typo would silently DISABLE a protection —
+ * and for an opt-down flag the unsafe direction is off, not on. This answers
+ * the narrower question — "did someone explicitly say no?" — using the same
+ * one FALSY set, so there is still exactly one dialect.
+ */
+export function isEnvFlagExplicitlyDisabled(
+  raw: string | undefined | null,
+): boolean {
+  if (raw === undefined || raw === null) return false;
+  const value = raw.trim().toLowerCase();
+  if (value === '') return false;
+  return FALSY.has(value);
+}

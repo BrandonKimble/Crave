@@ -231,6 +231,106 @@ export function dominantCommunitySql(restaurantRef: string): string {
     LIMIT 1)`;
 }
 
+/**
+ * THE ONE SUPERSEDE-AND-ACTIVATE (F472–F474).
+ *
+ * This operation — "the events of the runs this activation replaces die, and
+ * the documents' pointer flips" — had forked into THREE copies
+ * (collection-evidence, unified-processing, replay). Each was fixed AFTER its
+ * sibling: the within-generation prompt-hash scoping landed in
+ * unified-processing (c6798321), then had to be re-landed in
+ * collection-evidence, then again in replay — because a live re-ingest was
+ * deleting a RETAINED superseded generation's events and silently destroying
+ * the rollback target. A law that must be re-discovered three times is not a
+ * law; it is a coincidence. It lives here now, once.
+ *
+ * TWO SEMANTICS, one deliberate distinction:
+ *  - 'delete' (default) — WITHIN-generation churn: the same prompt re-extracts
+ *    a document because new comments arrived. The newest run strictly
+ *    supersedes; retaining would accumulate unbounded junk on every
+ *    re-collection. Only runs sharing the activating run's system_prompt_hash
+ *    are superseded — cross-generation deletion belongs EXCLUSIVELY to the
+ *    explicit discard (shadow-discard.sql).
+ *  - 'retain' — CROSS-generation switches (activate-shadow): the corpus flips
+ *    to a NEW prompt's runs after owner review. The superseded generation's
+ *    events stay (every reader filters on the active run, so they are inert)
+ *    and rollback becomes a pointer flip instead of a re-paid extraction.
+ *
+ * Returns the restaurants that LOSE evidence, with their rebuild advisory
+ * locks already taken in this transaction, so the caller rebuilds them
+ * post-commit.
+ */
+export async function supersedeAndActivate(
+  tx: Prisma.TransactionClient,
+  activateRunId: string,
+  documentIds: string[],
+  options: { scope?: 'delete' | 'retain' } = {},
+): Promise<string[]> {
+  const ids = Array.from(new Set(documentIds.filter(Boolean)));
+  if (!ids.length) {
+    return [];
+  }
+  const scope = options.scope ?? 'delete';
+
+  const flip = () =>
+    tx.sourceDocument.updateMany({
+      where: { documentId: { in: ids } },
+      data: { activeExtractionRunId: activateRunId },
+    });
+
+  if (scope === 'retain') {
+    await flip();
+    return [];
+  }
+
+  const activatingRun = await tx.extractionRun.findUniqueOrThrow({
+    where: { extractionRunId: activateRunId },
+    select: { systemPromptHash: true },
+  });
+
+  // D7: the losing set MUST union BOTH event ledgers — a restaurant whose
+  // evidence is only restaurant-level (praise with no dish entity) lives
+  // solely in core_restaurant_events, and omitting it leaves its projections
+  // serving the pre-activation graph.
+  const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
+    SELECT DISTINCT ev.restaurant_id FROM (
+      SELECT e.restaurant_id, e.extraction_run_id
+      FROM core_restaurant_entity_events e
+      WHERE e.source_document_id = ANY(${ids}::uuid[])
+        AND e.extraction_run_id <> ${activateRunId}::uuid
+      UNION
+      SELECT e.restaurant_id, e.extraction_run_id
+      FROM core_restaurant_events e
+      WHERE e.source_document_id = ANY(${ids}::uuid[])
+        AND e.extraction_run_id <> ${activateRunId}::uuid
+    ) ev
+    JOIN collection_extraction_runs r ON r.extraction_run_id = ev.extraction_run_id
+    WHERE r.system_prompt_hash = ${activatingRun.systemPromptHash}
+  `;
+  // Sorted so overlapping activations cannot deadlock on the rebuild locks.
+  const losingIds = losing.map((entry) => entry.restaurant_id).sort();
+  for (const restaurantId of losingIds) {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${restaurantId}`}))`;
+  }
+
+  await tx.restaurantEntityEvent.deleteMany({
+    where: {
+      sourceDocumentId: { in: ids },
+      extractionRunId: { not: activateRunId },
+      extractionRun: { systemPromptHash: activatingRun.systemPromptHash },
+    },
+  });
+  await tx.restaurantEvent.deleteMany({
+    where: {
+      sourceDocumentId: { in: ids },
+      extractionRunId: { not: activateRunId },
+      extractionRun: { systemPromptHash: activatingRun.systemPromptHash },
+    },
+  });
+  await flip();
+  return losingIds;
+}
+
 /** SET-BASED merge re-key (round-10 violence red team: the per-event
  *  loop paid two round-trips per event and blew the transaction budget
  *  above ~3,000 events — on prod RTT the largest restaurant was already

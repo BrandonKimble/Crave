@@ -48,6 +48,8 @@ import { AttributeOntologyQueueService } from '../../attribute-ontology/attribut
 import type { ExtractionTraceContext } from './collection-evidence.service';
 import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
+import { supersedeAndActivate } from './extraction-scope.service';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 // Generous ceiling so a worst-case 300-mention batch never aborts mid-write;
 // normal batches finish in seconds — only a hung DB hits it. Insensitive.
@@ -2572,66 +2574,18 @@ export class UnifiedProcessingService implements OnModuleInit {
    *  consolidated write tx and the zero-mention path (round-2 red team ①:
    *  "the prompt correctly found nothing" is a verdict that must supersede
    *  too). Takes the rebuild locks for restaurants losing evidence and
-   *  returns them so the caller rebuilds them post-commit. */
+   *  returns them so the caller rebuilds them post-commit.
+   *
+   *  THE implementation is `supersedeAndActivate` in extraction-scope.service
+   *  — this is the seam, not a fourth copy (F472–F474). */
   private async applyActivationSupersede(
     tx: PrismaTransaction,
     activateRunId: string,
     activateDocumentIds: string[],
   ): Promise<string[]> {
-    // WITHIN-GENERATION scope (rollback re-derivation, follow-up defect):
-    // this supersede used to delete EVERY other run's events for the
-    // re-collected documents — including a RETAINED superseded generation,
-    // silently destroying its rollback target on routine live churn. The
-    // within/cross distinction must hold here too: live churn only
-    // supersedes runs of the SAME prompt (its own generation); other
-    // generations' events are inert (readers filter on the active run) and
-    // are reclaimed only by the explicit discard of their version.
-    const activatingRun = await tx.extractionRun.findUniqueOrThrow({
-      where: { extractionRunId: activateRunId },
-      select: { systemPromptHash: true },
+    return supersedeAndActivate(tx, activateRunId, activateDocumentIds, {
+      scope: 'delete',
     });
-    const losing = await tx.$queryRaw<Array<{ restaurant_id: string }>>`
-      SELECT DISTINCT ev.restaurant_id FROM (
-        SELECT e.restaurant_id, e.extraction_run_id
-        FROM core_restaurant_entity_events e
-        WHERE e.source_document_id = ANY(${activateDocumentIds}::uuid[])
-          AND e.extraction_run_id <> ${activateRunId}::uuid
-        UNION
-        SELECT e.restaurant_id, e.extraction_run_id
-        FROM core_restaurant_events e
-        WHERE e.source_document_id = ANY(${activateDocumentIds}::uuid[])
-          AND e.extraction_run_id <> ${activateRunId}::uuid
-      ) ev
-      JOIN collection_extraction_runs r ON r.extraction_run_id = ev.extraction_run_id
-      WHERE r.system_prompt_hash = ${activatingRun.systemPromptHash}
-    `;
-    const losingIds = losing.map((entry) => entry.restaurant_id).sort();
-    for (const restaurantId of losingIds) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rebuild:restaurant:${restaurantId}`}))`;
-    }
-    await tx.restaurantEntityEvent.deleteMany({
-      where: {
-        sourceDocumentId: { in: activateDocumentIds },
-        extractionRunId: { not: activateRunId },
-        extractionRun: {
-          systemPromptHash: activatingRun.systemPromptHash,
-        },
-      },
-    });
-    await tx.restaurantEvent.deleteMany({
-      where: {
-        sourceDocumentId: { in: activateDocumentIds },
-        extractionRunId: { not: activateRunId },
-        extractionRun: {
-          systemPromptHash: activatingRun.systemPromptHash,
-        },
-      },
-    });
-    await tx.sourceDocument.updateMany({
-      where: { documentId: { in: activateDocumentIds } },
-      data: { activeExtractionRunId: activateRunId },
-    });
-    return losingIds;
   }
 
   private async recordRestaurantEvents(
@@ -3092,10 +3046,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     // Escape hatch for cheap extraction replays: skip the Google Places lookups
     // (the most expensive part of collection) so prompt iteration on extraction /
     // attribute classification can be tested without per-restaurant API cost.
+    // Canonical env-flag dialect (F466/F401): default OFF, unchanged; '1'/
+    // 'yes'/'on' now also mean "disable", instead of silently spending.
     if (
-      String(
-        this.configService.get('DISABLE_RESTAURANT_ENRICHMENT') ?? '',
-      ).toLowerCase() === 'true'
+      isEnvFlagEnabled(
+        this.configService.get<string>('DISABLE_RESTAURANT_ENRICHMENT'),
+      )
     ) {
       this.logger.info('Restaurant enrichment skipped (disabled by config)', {
         restaurantCandidates: summaries.length,

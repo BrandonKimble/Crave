@@ -38,6 +38,7 @@ import {
 } from './collection-evidence.service';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { BatchJob } from './batch-processing-queue.types';
+import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
 
 type SourceBreakdown = {
   pushshift_archive: number;
@@ -217,8 +218,14 @@ export class ExtractionPipelineService implements OnModuleInit {
     // the single explicit opt-down for debugging ("why wasn't my post
     // collected?"); the staged-rollout 'archive' mode was deleted once the
     // rollout completed.
-    this.relevanceGateEnabled =
-      process.env.COLLECTION_RELEVANCE_GATE?.trim().toLowerCase() !== 'off';
+    // Canonical env-flag dialect (F466/F401) via the OPT-DOWN reader. The
+    // gate is ON by default and this var exists only to turn it off, so the
+    // question is "did someone explicitly say no?" — a typo must never
+    // silently disable a protection that also caps spend. 'off' is still the
+    // documented spelling; 'false'/'0'/'no' now work identically.
+    this.relevanceGateEnabled = !isEnvFlagExplicitlyDisabled(
+      process.env.COLLECTION_RELEVANCE_GATE,
+    );
     this.geminiBatchService.registerIngestor(
       'collection_extraction',
       async ({ jobId, resumeContext, items }) => {

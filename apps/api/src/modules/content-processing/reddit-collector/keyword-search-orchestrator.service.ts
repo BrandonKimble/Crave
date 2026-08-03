@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 export type KeywordSearchSort =
   | 'relevance'
@@ -992,11 +993,10 @@ export class KeywordSearchOrchestratorService {
       this.configService.get<string>('KEYWORD_COLLECTION_DRY_RUN') ??
       process.env.KEYWORD_COLLECTION_DRY_RUN;
 
-    if (typeof raw !== 'string') {
-      return false;
-    }
-
-    return raw.trim().toLowerCase() === 'true';
+    // Canonical env-flag dialect (F466/F401): default OFF, unchanged. This
+    // one gates real Reddit spend — '1'/'yes'/'on' meaning "dry run" instead
+    // of silently spending was the whole point of the canonical reader.
+    return isEnvFlagEnabled(raw);
   }
 
   private dedupeTermsForKeywordSearch(terms: KeywordSearchTerm[]): {

@@ -61,15 +61,70 @@ export class ArchiveZstdDecompressor implements OnModuleInit {
     });
 
     return new Promise((resolve, reject) => {
+      // F453: a truncated .zst used to resolve SUCCESS with partial counts.
+      // The readline 'close' fired when stdout ended and resolved the promise
+      // BEFORE the process 'exit' (non-zero, from the truncation) could
+      // reject — the exit's reject then no-op'd on an already-settled promise.
+      // Resolution is now GATED on the process exiting cleanly: we settle only
+      // once BOTH readline has closed AND the process has exited 0 (or was
+      // intentionally SIGTERM-killed by our own maxLines/timeout stop).
+      let readlineClosed = false;
+      let processExitedOk = false;
+      let intentionalStop = false; // our own maxLines/timeout kill, not a fault
+      let settled = false;
+
       // Spawn zstd decompression process
       const zstdProcess = spawn('zstd', ['-dc', filePath], {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
+      const settleReject = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        reject(error);
+      };
+
+      const maybeResolve = (): void => {
+        if (settled) return;
+        if (!readlineClosed || !processExitedOk) return;
+        settled = true;
+        clearTimeout(timeout);
+        const finalMemory = process.memoryUsage().heapUsed;
+        const processingTime = Date.now() - startTime;
+
+        this.logger.info('Streaming decompression completed', {
+          filePath,
+          totalLines,
+          validLines,
+          errorLines,
+          processingTime,
+          memoryUsage: {
+            initial: Math.round(initialMemory / 1024 / 1024),
+            peak: Math.round(peakMemory / 1024 / 1024),
+            final: Math.round(finalMemory / 1024 / 1024),
+          },
+        });
+
+        resolve({
+          totalLines,
+          validLines,
+          errorLines,
+          processingTime,
+          memoryUsage: {
+            initial: initialMemory,
+            peak: peakMemory,
+            final: finalMemory,
+          },
+        });
+      };
+
       // Handle process errors
       zstdProcess.on('error', (error) => {
         this.logger.error('Zstd process error', error, { filePath });
-        reject(new Error(`Failed to start zstd process: ${error.message}`));
+        settleReject(
+          new Error(`Failed to start zstd process: ${error.message}`),
+        );
       });
 
       zstdProcess.stderr.on('data', (data) => {
@@ -94,9 +149,10 @@ export class ArchiveZstdDecompressor implements OnModuleInit {
           filePath,
           timeout: options.timeout,
         });
+        intentionalStop = true;
         zstdProcess.kill('SIGTERM');
         readline.close();
-        reject(
+        settleReject(
           new Error(`Processing timeout after ${options.timeout || 60000}ms`),
         );
       }, options.timeout || 60000);
@@ -123,6 +179,9 @@ export class ArchiveZstdDecompressor implements OnModuleInit {
             totalLines,
             maxLines: options.maxLines,
           });
+          // Our own deliberate stop — the SIGTERM below is not a fault, so the
+          // subsequent non-zero/SIGTERM exit must still resolve success.
+          intentionalStop = true;
           zstdProcess.kill('SIGTERM');
           readline.close();
           return;
@@ -181,63 +240,40 @@ export class ArchiveZstdDecompressor implements OnModuleInit {
         }
       });
 
-      // Handle readline completion
+      // Handle readline completion — no longer resolves on its own; the
+      // process must first be confirmed to have exited cleanly (F453).
       readline.on('close', () => {
-        clearTimeout(timeout);
-        const finalMemory = process.memoryUsage().heapUsed;
-        const processingTime = Date.now() - startTime;
-
-        this.logger.info('Streaming decompression completed', {
-          filePath,
-          totalLines,
-          validLines,
-          errorLines,
-          processingTime,
-          memoryUsage: {
-            initial: Math.round(initialMemory / 1024 / 1024),
-            peak: Math.round(peakMemory / 1024 / 1024),
-            final: Math.round(finalMemory / 1024 / 1024),
-          },
-        });
-
-        resolve({
-          totalLines,
-          validLines,
-          errorLines,
-          processingTime,
-          memoryUsage: {
-            initial: initialMemory,
-            peak: peakMemory,
-            final: finalMemory,
-          },
-        });
+        readlineClosed = true;
+        maybeResolve();
       });
 
       // Handle readline errors
       readline.on('error', (error) => {
-        clearTimeout(timeout);
         this.logger.error('Readline error', error, { filePath });
         zstdProcess.kill('SIGTERM');
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        reject(new Error(`Readline error: ${errorMessage}`));
+        settleReject(new Error(`Readline error: ${errorMessage}`));
       });
 
-      // Handle process exit
+      // Handle process exit — this is now AUTHORITATIVE for success. A clean
+      // exit (code 0) or our own intentional SIGTERM stop (maxLines) permits
+      // resolution; any other exit (a truncated stream makes zstd exit
+      // non-zero) rejects, so partial output can never masquerade as success.
       zstdProcess.on('exit', (code, signal) => {
-        if (code !== 0 && signal !== 'SIGTERM') {
-          this.logger.error('Zstd process exited with error', {
-            filePath,
-            code,
-            signal,
-          });
-          clearTimeout(timeout);
-          reject(
-            new Error(
-              `Zstd process exited with code ${code}, signal ${signal}`,
-            ),
-          );
+        if (code === 0 || (signal === 'SIGTERM' && intentionalStop)) {
+          processExitedOk = true;
+          maybeResolve();
+          return;
         }
+        this.logger.error('Zstd process exited with error', {
+          filePath,
+          code,
+          signal,
+        });
+        settleReject(
+          new Error(`Zstd process exited with code ${code}, signal ${signal}`),
+        );
       });
     });
   }

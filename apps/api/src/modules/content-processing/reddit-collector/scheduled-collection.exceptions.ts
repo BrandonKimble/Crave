@@ -13,7 +13,6 @@ import { AppException } from '../../../shared/exceptions/app-exception.base';
  */
 export abstract class ScheduledCollectionException extends AppException {
   abstract readonly errorCode: string;
-  readonly isOperational = true;
 
   constructor(message: string, context?: Record<string, any>, cause?: Error) {
     super(message, HttpStatus.INTERNAL_SERVER_ERROR, context, cause);

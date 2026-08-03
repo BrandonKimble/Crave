@@ -2,6 +2,7 @@ import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { ProjectionRebuildService } from './projection-rebuild.service';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 /**
  * ONE-SHOT full projection rebuild (worker boot, env-gated) — the generic
@@ -26,7 +27,10 @@ export class FullProjectionRebuildRunner implements OnApplicationBootstrap {
   }
 
   onApplicationBootstrap(): void {
-    if (process.env.RUN_FULL_PROJECTION_REBUILD !== '1') {
+    // Canonical env-flag dialect (F466/F401). Default OFF, unchanged; '1'
+    // still means on, and so now do 'true'/'yes'/'on' — an operator reaching
+    // for this one-shot trigger no longer has to guess the spelling.
+    if (!isEnvFlagEnabled(process.env.RUN_FULL_PROJECTION_REBUILD)) {
       return;
     }
     if ((process.env.PROCESS_ROLE || 'api') !== 'worker') {

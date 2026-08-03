@@ -11,6 +11,7 @@ import {
   LLMPost,
   LLMProcessingInput,
 } from '../../external-integrations/llm/llm.types';
+import { supersedeAndActivate } from './extraction-scope.service';
 
 export type SourceDocumentKey = `${'post' | 'comment'}:${string}`;
 
@@ -372,21 +373,12 @@ export class CollectionEvidenceService implements OnModuleInit {
    * double-counting). The ledger now simply IS the active truth.
    */
   /**
-   * Two supersede semantics, one deliberate distinction (rollback
-   * re-derivation, 2026-08-01):
-   *
-   * - 'delete' (default) — WITHIN-generation churn: the same prompt
-   *   re-extracts a document because new comments arrived. The newest run
-   *   strictly supersedes; retaining would accumulate unbounded junk on
-   *   every re-collection. This is the live-ingest path's semantics.
-   * - 'retain' — CROSS-generation switches (activate-shadow): the corpus
-   *   flips to a NEW prompt's runs after owner review. The superseded
-   *   generation's events stay, every reader already filters on the active
-   *   run (universal per the big-one red team), so they are inert — and
-   *   rollback becomes a pointer flip instead of a re-paid extraction.
-   *   Space is reclaimed only by the EXPLICIT discard of the old version
-   *   (shadow-discard.sql deletes its events, after which compaction's
-   *   existing no-events guard lets the run rows reap).
+   * Supersede + pointer flip. THE implementation lives in
+   * `supersedeAndActivate` (extraction-scope.service) — this is a thin
+   * transaction wrapper. The 'delete' vs 'retain' distinction and the
+   * within-generation prompt-hash scoping are documented there; they used to
+   * be re-derived here, in unified-processing, and in replay independently
+   * (F472–F474), which is how each copy got fixed after its sibling.
    */
   async activateRunForDocuments(
     extractionRunId: string,
@@ -396,48 +388,11 @@ export class CollectionEvidenceService implements OnModuleInit {
     if (!documentIds.length) {
       return;
     }
-    const supersede = options.supersede ?? 'delete';
-    const ids = Array.from(new Set(documentIds));
-    const flip = this.prismaService.sourceDocument.updateMany({
-      where: { documentId: { in: ids } },
-      data: { activeExtractionRunId: extractionRunId },
-    });
-    if (supersede === 'retain') {
-      await this.prismaService.$transaction([flip]);
-      return;
-    }
-    // WITHIN-GENERATION ONLY (final red team F6): 'delete' means "the same
-    // prompt re-extracted this document" — so it may only delete events
-    // from runs under the SAME prompt hash. Unscoped, a live re-ingest
-    // deleted a retained old generation (killing rollback) and other
-    // candidates' shadow evidence for the touched documents. This mirrors
-    // applyActivationSupersede's hash filter; cross-generation deletion
-    // belongs exclusively to the explicit discard.
-    const activating = await this.prismaService.extractionRun.findUniqueOrThrow(
-      {
-        where: { extractionRunId },
-        select: { systemPromptHash: true },
-      },
+    await this.prismaService.$transaction((tx) =>
+      supersedeAndActivate(tx, extractionRunId, documentIds, {
+        scope: options.supersede ?? 'delete',
+      }),
     );
-    await this.prismaService.$transaction([
-      this.prismaService.$executeRaw`
-        DELETE FROM core_restaurant_entity_events ev
-        USING collection_extraction_runs r
-        WHERE ev.source_document_id = ANY(${ids}::uuid[])
-          AND ev.extraction_run_id <> ${extractionRunId}::uuid
-          AND r.extraction_run_id = ev.extraction_run_id
-          AND r.system_prompt_hash = ${activating.systemPromptHash}
-      `,
-      this.prismaService.$executeRaw`
-        DELETE FROM core_restaurant_events ev
-        USING collection_extraction_runs r
-        WHERE ev.source_document_id = ANY(${ids}::uuid[])
-          AND ev.extraction_run_id <> ${extractionRunId}::uuid
-          AND r.extraction_run_id = ev.extraction_run_id
-          AND r.system_prompt_hash = ${activating.systemPromptHash}
-      `,
-      flip,
-    ]);
   }
 
   async markExtractionRunCompleted(extractionRunId: string): Promise<void> {

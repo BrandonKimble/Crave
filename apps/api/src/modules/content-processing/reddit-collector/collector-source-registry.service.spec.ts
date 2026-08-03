@@ -359,3 +359,110 @@ describe('recordLaneCost (§24.5 Leg B write path)', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * F456 — THE COVERAGE GAP CAN RETURN TO GREEN.
+ *
+ * The §10 C4 gap was a one-way latch: one missed overlap pinned the lane RED
+ * forever because nothing could un-record it. An always-RED metric is the
+ * mirror of the always-GREEN disease — neither can track reality. The release
+ * is the SAME overlap fact read the other way: a later fetch that reached
+ * back to at-or-before the gap's windowStart re-covered the hole.
+ */
+describe('clearCoverageGapIfRecovered (§10 C4 — the latch has a release)', () => {
+  const GAP_WINDOW_START = '2026-07-18T00:00:00.000Z';
+
+  function build(gap: Record<string, unknown> | null) {
+    const laneRow = {
+      source_id: 'src-1',
+      lane: 'chronological',
+      enabled: true,
+      cadence_days: 1,
+      lateness_tolerance_days: 1,
+      due_at: NOW,
+      last_ran_at: null,
+      state: gap ? { coverageGap: gap } : {},
+      last_output_docs: null,
+      output_docs_baseline: null,
+      last_cost_micros: null,
+      cost_baseline_micros: null,
+      cost_baseline_dev_micros: null,
+      cost_paused: false,
+      platform: 'reddit',
+      handle: 'austinfood',
+      anchor_place_id: null,
+      engine_id: null,
+    };
+    const prisma = {
+      $queryRaw: jest.fn().mockResolvedValue([laneRow]),
+      $executeRaw: jest.fn().mockResolvedValue(1),
+    };
+    const service = new CollectorSourceRegistryService(
+      prisma as never,
+      {
+        setContext: jest.fn().mockReturnThis(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+      } as never,
+      { emit: jest.fn() } as never,
+    );
+    return { service, prisma };
+  }
+
+  it('an OVERLAPPING fetch clears the gap — reach spans the recorded window start', async () => {
+    const { service, prisma } = build({
+      detectedAt: NOW.toISOString(),
+      windowStart: GAP_WINDOW_START,
+    });
+    // Reached back a day BEFORE the gap opened: the hole is re-covered.
+    const cleared = await service.clearCoverageGapIfRecovered(
+      'src-1',
+      'chronological',
+      new Date(Date.parse(GAP_WINDOW_START) - DAY_MS),
+    );
+    expect(cleared).toBe(true);
+    expect(prisma.$executeRaw).toHaveBeenCalled();
+  });
+
+  it('a NON-OVERLAPPING fetch does NOT clear it — the hole is still a hole', async () => {
+    const { service, prisma } = build({
+      detectedAt: NOW.toISOString(),
+      windowStart: GAP_WINDOW_START,
+    });
+    // Only reached back to a day AFTER the gap opened: the gap window is
+    // still unfetched. Nothing may be cleared on this fact.
+    const cleared = await service.clearCoverageGapIfRecovered(
+      'src-1',
+      'chronological',
+      new Date(Date.parse(GAP_WINDOW_START) + DAY_MS),
+    );
+    expect(cleared).toBe(false);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('a gap with NO windowStart is never derived-cleared (no fact to compare)', async () => {
+    const { service, prisma } = build({
+      detectedAt: NOW.toISOString(),
+      windowStart: null,
+    });
+    const cleared = await service.clearCoverageGapIfRecovered(
+      'src-1',
+      'chronological',
+      new Date('2000-01-01T00:00:00.000Z'),
+    );
+    expect(cleared).toBe(false);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('no gap recorded ⇒ nothing to clear', async () => {
+    const { service, prisma } = build(null);
+    const cleared = await service.clearCoverageGapIfRecovered(
+      'src-1',
+      'chronological',
+      new Date('2000-01-01T00:00:00.000Z'),
+    );
+    expect(cleared).toBe(false);
+    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+});

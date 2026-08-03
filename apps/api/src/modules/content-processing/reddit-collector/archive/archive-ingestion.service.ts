@@ -18,12 +18,10 @@ import {
 export { RedditComment, RedditSubmission };
 import * as path from 'path';
 import * as fs from 'fs/promises';
-import { createHash } from 'crypto';
 import type {
   LLMPost,
   LLMComment,
 } from '../../../external-integrations/llm/llm.types';
-import { ArchiveProcessingMetricsService } from './archive-processing-metrics.service';
 import { BatchJob } from '../batch-processing-queue.types';
 
 export interface PushshiftProcessingConfig {
@@ -87,7 +85,6 @@ export class ArchiveIngestionService implements OnModuleInit {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @InjectQueue('archive-batch-processing-queue')
     private readonly archiveBatchQueue: Queue<BatchJob>,
-    private readonly metricsService: ArchiveProcessingMetricsService,
   ) {}
 
   onModuleInit(): void {
@@ -328,7 +325,6 @@ export class ArchiveIngestionService implements OnModuleInit {
         correlationId,
         subreddit,
       });
-      this.recordProcessingMetrics(filesProcessed, subreddit);
       return {
         batchesEnqueued: 0,
         postsQueued: 0,
@@ -391,8 +387,6 @@ export class ArchiveIngestionService implements OnModuleInit {
       batchesEnqueued: enqueuedCount,
       postsQueued: posts.length,
     });
-
-    this.recordProcessingMetrics(filesProcessed, subreddit);
 
     return {
       batchesEnqueued: enqueuedCount,
@@ -567,6 +561,12 @@ export class ArchiveIngestionService implements OnModuleInit {
       structuralDroppedSubmissions: 0,
       droppedComments: 0,
       zeroCommentDropped: 0,
+      // F452/F471: records with no derivable id or no parseable timestamp are
+      // DROPPED and counted here — never assigned a random id or now().
+      identityDroppedSubmissions: 0,
+      timestampDroppedSubmissions: 0,
+      identityDroppedComments: 0,
+      timestampDroppedComments: 0,
     };
     const isBotAuthor = (author?: string): boolean => {
       const normalized = (author ?? '').toLowerCase();
@@ -587,6 +587,13 @@ export class ArchiveIngestionService implements OnModuleInit {
         submissionFilePath,
         (submission) => {
           const postId = this.normalizePostId(submission.id);
+          if (!postId) {
+            // F452: an id-less submission cannot be idempotently persisted;
+            // minting a random id duplicated documents/coverage/spend on
+            // re-runs. Drop it, counted.
+            stage0.identityDroppedSubmissions += 1;
+            return;
+          }
           if (
             windowCutoffSec &&
             Number(submission.created_utc ?? 0) < windowCutoffSec
@@ -604,8 +611,15 @@ export class ArchiveIngestionService implements OnModuleInit {
             droppedPostIds.add(postId);
             return;
           }
-          const existing = postsById.get(postId);
           const createdAt = this.toIsoTimestamp(submission.created_utc);
+          if (!createdAt) {
+            // F471: a missing/unparseable timestamp used to default to now(),
+            // fabricating maximal recency into the score-decay input. Drop it.
+            stage0.timestampDroppedSubmissions += 1;
+            droppedPostIds.add(postId);
+            return;
+          }
+          const existing = postsById.get(postId);
           const subredditName = submission.subreddit || subreddit;
           const content =
             submission.selftext && submission.selftext.trim().length > 0
@@ -669,6 +683,11 @@ export class ArchiveIngestionService implements OnModuleInit {
           }
 
           const postId = this.normalizePostId(comment.link_id);
+          if (!postId) {
+            // F452: no derivable parent-post id — drop, counted, never random.
+            stage0.identityDroppedComments += 1;
+            return;
+          }
           if (droppedPostIds.has(postId)) {
             stage0.droppedComments += 1;
             return;
@@ -681,6 +700,18 @@ export class ArchiveIngestionService implements OnModuleInit {
             // Out-of-window comment on a post we never accepted — don't let it
             // resurrect a placeholder thread from outside the window.
             stage0.droppedComments += 1;
+            return;
+          }
+          const commentCreatedAt = this.toIsoTimestamp(comment.created_utc);
+          if (!commentCreatedAt) {
+            // F471: no parseable timestamp — drop, never fabricate now().
+            stage0.timestampDroppedComments += 1;
+            return;
+          }
+          const commentId = this.ensureCommentId(comment);
+          if (!commentId) {
+            // F452: no derivable comment id — drop, counted, never random.
+            stage0.identityDroppedComments += 1;
             return;
           }
           let postRecord = postsById.get(postId);
@@ -699,14 +730,15 @@ export class ArchiveIngestionService implements OnModuleInit {
                 typeof comment.score === 'number'
                   ? Math.max(0, comment.score)
                   : 0,
-              created_at: this.toIsoTimestamp(comment.created_utc),
+              // Placeholder post inherits the comment's timestamp — parseable
+              // by the guard above, so never fabricated.
+              created_at: commentCreatedAt,
               comments: [],
               extract_from_post: true,
             };
             postsById.set(postId, postRecord);
           }
 
-          const commentId = this.ensureCommentId(comment);
           const commentRecord: LLMComment = {
             id: commentId,
             content: comment.body,
@@ -715,7 +747,7 @@ export class ArchiveIngestionService implements OnModuleInit {
               typeof comment.score === 'number'
                 ? Math.max(0, comment.score)
                 : 0,
-            created_at: this.toIsoTimestamp(comment.created_utc),
+            created_at: commentCreatedAt,
             parent_id: this.normalizeParentId(comment.parent_id, postId),
             url: comment.permalink
               ? `https://reddit.com${comment.permalink}`
@@ -761,31 +793,28 @@ export class ArchiveIngestionService implements OnModuleInit {
       ...stage0,
     });
 
-    return { posts, filesProcessed };
-  }
-
-  private recordProcessingMetrics(
-    files: Array<{
-      fileType: 'comments' | 'submissions';
-      result: ProcessingResult;
-      filePath: string;
-    }>,
-    subreddit: string,
-  ): void {
-    for (const file of files) {
-      const endTime = new Date();
-      const startTime = new Date(
-        endTime.getTime() - file.result.metrics.processingTime,
-      );
-      this.metricsService.recordFileMetrics(
-        file.filePath,
-        file.fileType,
-        subreddit,
-        startTime,
-        endTime,
-        file.result.metrics,
+    // F452/F471: unusable-identity / unparseable-timestamp drops are corpus
+    // loss — surface them at WARN with their reasons, not buried in an info.
+    const integrityDropped =
+      stage0.identityDroppedSubmissions +
+      stage0.timestampDroppedSubmissions +
+      stage0.identityDroppedComments +
+      stage0.timestampDroppedComments;
+    if (integrityDropped > 0) {
+      this.logger.warn(
+        'Archive records dropped for unusable identity or timestamp (never fabricated)',
+        {
+          correlationId,
+          subreddit,
+          identityDroppedSubmissions: stage0.identityDroppedSubmissions,
+          timestampDroppedSubmissions: stage0.timestampDroppedSubmissions,
+          identityDroppedComments: stage0.identityDroppedComments,
+          timestampDroppedComments: stage0.timestampDroppedComments,
+        },
       );
     }
+
+    return { posts, filesProcessed };
   }
 
   private buildArchiveFilePath(
@@ -796,22 +825,25 @@ export class ArchiveIngestionService implements OnModuleInit {
     return path.resolve(this.config.baseDirectory, subreddit, fileName);
   }
 
-  private normalizePostId(rawId?: string): string {
-    if (!rawId) {
-      const fallback = createHash('sha1')
-        .update(`post-${Date.now()}-${Math.random()}`)
-        .digest('hex');
-      return `t3_${fallback.slice(0, 10)}`;
+  /**
+   * F452: identity is DERIVE-OR-REFUSE. A submission with no usable raw id
+   * yields null and the caller drops it (counted) — the old Math.random()
+   * fallback minted a fresh id every run, so re-ingesting the same archive
+   * duplicated documents, coverage, and spend.
+   */
+  private normalizePostId(rawId?: string): string | null {
+    const trimmed = rawId?.trim();
+    if (!trimmed) {
+      return null;
     }
-
-    if (rawId.startsWith('t3_')) {
-      return rawId;
-    }
-
-    return rawId.startsWith('t3_') ? rawId : `t3_${rawId}`;
+    return trimmed.startsWith('t3_') ? trimmed : `t3_${trimmed}`;
   }
 
-  private ensureCommentId(comment: RedditComment): string {
+  /**
+   * F452: derive a stable comment id from the comment's own id (or a t1_
+   * parent), else REFUSE (null) so the caller drops it — never a random id.
+   */
+  private ensureCommentId(comment: RedditComment): string | null {
     if (comment.id?.startsWith('t1_')) {
       return comment.id;
     }
@@ -824,14 +856,7 @@ export class ArchiveIngestionService implements OnModuleInit {
       return comment.parent_id;
     }
 
-    const fallback = createHash('sha1')
-      .update(
-        `${comment.link_id}-${comment.parent_id}-${
-          comment.created_utc
-        }-${Math.random()}`,
-      )
-      .digest('hex');
-    return `t1_${fallback.slice(0, 10)}`;
+    return null;
   }
 
   private normalizeParentId(
@@ -849,14 +874,23 @@ export class ArchiveIngestionService implements OnModuleInit {
     return fallbackPostId;
   }
 
-  private toIsoTimestamp(value: number | string | undefined): string {
-    if (typeof value === 'number') {
+  /**
+   * F471: a missing or unparseable created_utc yields null — the caller drops
+   * the record (counted). It used to default to `new Date()`, fabricating
+   * maximal recency that then fed score decay as if the post were brand new.
+   */
+  private toIsoTimestamp(value: number | string | undefined): string | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
       return new Date(value * 1000).toISOString();
     }
-    if (typeof value === 'string' && !Number.isNaN(Number(value))) {
+    if (
+      typeof value === 'string' &&
+      value.trim() !== '' &&
+      !Number.isNaN(Number(value))
+    ) {
       return new Date(Number(value) * 1000).toISOString();
     }
-    return new Date().toISOString();
+    return null;
   }
 
   private chunkPosts(posts: LLMPost[], chunkSize: number): LLMPost[][] {

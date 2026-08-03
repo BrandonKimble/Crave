@@ -13,7 +13,6 @@ import { HttpStatus } from '@nestjs/common';
  */
 export abstract class UnifiedProcessingException extends AppException {
   abstract readonly errorCode: string;
-  readonly isOperational = true;
 
   constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
     super(message, HttpStatus.INTERNAL_SERVER_ERROR, metadata, cause);
@@ -25,7 +24,6 @@ export abstract class UnifiedProcessingException extends AppException {
  */
 export class LLMIntegrationException extends UnifiedProcessingException {
   readonly errorCode = 'LLM_INTEGRATION_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
     super(`LLM Integration: ${message}`, cause, {
@@ -40,7 +38,6 @@ export class LLMIntegrationException extends UnifiedProcessingException {
  */
 export class EntityProcessingException extends UnifiedProcessingException {
   readonly errorCode = 'ENTITY_PROCESSING_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
     super(`Entity Processing: ${message}`, cause, {
@@ -55,7 +52,6 @@ export class EntityProcessingException extends UnifiedProcessingException {
  */
 export class DatabaseIntegrationException extends UnifiedProcessingException {
   readonly errorCode = 'DATABASE_INTEGRATION_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
     super(`Database Integration: ${message}`, cause, {
@@ -70,7 +66,6 @@ export class DatabaseIntegrationException extends UnifiedProcessingException {
  */
 export class DataConversionException extends UnifiedProcessingException {
   readonly errorCode = 'DATA_CONVERSION_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
     super(`Data Conversion: ${message}`, cause, {
@@ -85,12 +80,28 @@ export class DataConversionException extends UnifiedProcessingException {
  */
 export class QualityScoreIntegrationException extends UnifiedProcessingException {
   readonly errorCode = 'QUALITY_SCORE_INTEGRATION_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
     super(`Quality Score Integration: ${message}`, cause, {
       ...metadata,
       component: 'quality_score_integration',
+    });
+  }
+}
+
+/**
+ * Exception for a batch delivered to a worker that does not process its
+ * collection type. A misrouted batch is a REAL failure (the work item is
+ * dropped on the floor otherwise) — it must fail the job, not return a
+ * success:false verdict Bull marks completed.
+ */
+export class BatchRoutingException extends UnifiedProcessingException {
+  readonly errorCode = 'BATCH_ROUTING_ERROR';
+
+  constructor(message: string, cause?: Error, metadata?: Record<string, any>) {
+    super(`Batch Routing: ${message}`, cause, {
+      ...metadata,
+      component: 'batch_routing',
     });
   }
 }

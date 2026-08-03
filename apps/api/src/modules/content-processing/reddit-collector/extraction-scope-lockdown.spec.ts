@@ -28,7 +28,6 @@ const SCRIPTS = join(API_ROOT, 'scripts');
 const ALLOWED = [
   'reddit-collector/extraction-scope.service.ts',
   'reddit-collector/collection-evidence.service.ts',
-  'reddit-collector/replay.service.ts',
   'reddit-collector/projection-rebuild.service.ts',
   'reddit-collector/unified-processing.service.ts',
   'reddit-collector/city-reextract.runner.ts',
@@ -137,6 +136,70 @@ describe('extraction scope is defined exactly once', () => {
     expect(text).not.toContain(
       'SELECT DISTINCT restaurant_id FROM core_restaurant_entity_events',
     );
+  });
+});
+
+describe('THE SUPERSEDE LAW is defined exactly once (F472–F474)', () => {
+  /**
+   * "Delete the events of the runs this activation replaces" had forked into
+   * THREE copies (collection-evidence, unified-processing, replay). The
+   * within-generation prompt-hash scoping was discovered and fixed in each
+   * one SEPARATELY, after its sibling — because until then, a live re-ingest
+   * silently destroyed a retained generation's rollback evidence. A law
+   * re-derived three times is a coincidence, not a law.
+   *
+   * The enforceable shape: a run-EXCLUDING delete against either event
+   * ledger is the supersede operation, and only the scope service may
+   * express it. Both dialects count — raw SQL and Prisma deleteMany.
+   *
+   * RED proof: plant either dialect in any other file and this fails.
+   */
+  const SCOPE_SERVICE =
+    'modules/content-processing/reddit-collector/extraction-scope.service.ts';
+
+  const rawSupersede =
+    /DELETE\s+FROM\s+core_restaurant(_entity)?_events[\s\S]{0,600}?extraction_run_id\s*<>/i;
+  const prismaSupersede =
+    /(restaurantEntityEvent|restaurantEvent)\s*\.\s*deleteMany\s*\([\s\S]{0,600}?extractionRunId\s*:\s*\{\s*not\s*:/;
+
+  it('no file outside the scope service expresses a run-excluding delete on the event ledgers', () => {
+    const offenders = walk(SRC)
+      .filter((file) => {
+        const text = readFileSync(file, 'utf-8');
+        return rawSupersede.test(text) || prismaSupersede.test(text);
+      })
+      .map((file) => file.slice(SRC.length + 1))
+      .filter((rel) => !rel.endsWith('extraction-scope.service.ts'));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('the scope service DOES hold it, with the within-generation prompt-hash scoping', () => {
+    const text = readFileSync(join(SRC, SCOPE_SERVICE), 'utf-8');
+    expect(text).toContain('supersedeAndActivate');
+    expect(prismaSupersede.test(text)).toBe(true);
+    // cross-generation deletion belongs exclusively to the explicit discard
+    expect(text).toContain('systemPromptHash');
+    // D7: the losing set unions BOTH ledgers
+    const body = text.slice(
+      text.indexOf('export async function supersedeAndActivate'),
+    );
+    expect(body).toContain('core_restaurant_entity_events');
+    expect(body).toContain('core_restaurant_events');
+  });
+
+  it("replay's dead activation pair is gone (it held the third copy)", () => {
+    const text = readFileSync(
+      join(
+        SRC,
+        'modules/content-processing/reddit-collector/replay.service.ts',
+      ),
+      'utf-8',
+    );
+    expect(text).not.toContain('async activateExtractionRunForDocuments');
+    expect(text).not.toContain('async activateExtractionRunForDateRange');
+    // and it no longer re-inlines the D7 union
+    expect(text).not.toContain('collectAffectedRestaurantIds');
   });
 });
 

@@ -98,26 +98,11 @@ export class ArchiveBatchProcessingWorker implements OnModuleInit {
         stack: error instanceof Error ? error.stack : undefined,
       });
 
-      return {
-        batchId,
-        parentJobId,
-        collectionType,
-        success: false,
-        error: errorMessage,
-        metrics: {
-          postsProcessed: llmPosts.length,
-          mentionsExtracted: 0,
-          entitiesCreated: 0,
-          connectionsCreated: 0,
-          processingTimeMs: processingTime,
-          llmProcessingTimeMs: 0,
-          dbProcessingTimeMs: 0,
-        },
-        completedAt: new Date(),
-        details: {
-          warnings: ['Archive batch processing failed prior to persistence'],
-        },
-      };
+      // §12.4 liar purge (F454): this catch used to RETURN {success:false} —
+      // Bull marked the job COMPLETED, no retry ran, and the failure vanished
+      // into an always-green queue. A failed batch is a REAL job failure.
+      // Workers return VERDICTS or THROW; there is no third outcome.
+      throw error;
     }
   }
 }

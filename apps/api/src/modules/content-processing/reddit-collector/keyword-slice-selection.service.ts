@@ -49,6 +49,7 @@ import * as curves from '../../analytics/demand-scoring/curves';
 import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
 import { SignalDemandReadService } from '../../signals/signal-demand-read.service';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -123,10 +124,8 @@ function clamp01(value: number): number {
 }
 
 function shouldTraceAllDemandCandidates(): boolean {
-  return (
-    process.env.DEMAND_SCORING_TRACE_ALL_CANDIDATES?.trim().toLowerCase() ===
-    'true'
-  );
+  // Canonical env-flag dialect (F466/F401): default OFF, unchanged.
+  return isEnvFlagEnabled(process.env.DEMAND_SCORING_TRACE_ALL_CANDIDATES);
 }
 
 export type KeywordSlice = 'unmet' | 'refresh' | 'demand' | 'explore';

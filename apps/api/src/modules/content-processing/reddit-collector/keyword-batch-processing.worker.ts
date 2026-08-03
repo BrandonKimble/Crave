@@ -8,6 +8,7 @@ import {
 } from './batch-processing-queue.types';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
+import { BatchRoutingException } from './unified-processing.exceptions';
 
 /** §16: K3-shaped operational bound — requeue delay for a governance-denied
  *  batch when the denial carries no retryAfter (one minute window roll). */
@@ -49,11 +50,18 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
       },
       async () => {
         if (batch.collectionType !== 'keyword') {
-          return this.buildNoopResult(
-            batch,
-            0,
-            batch.postIds?.length ?? 0,
-            'Unsupported collection type',
+          // §12.4 (F454): this used to return a success:false noop — Bull
+          // marked the misrouted batch COMPLETED and its posts were dropped
+          // silently. Workers return VERDICTS or THROW.
+          throw new BatchRoutingException(
+            `keyword worker received a '${batch.collectionType}' batch`,
+            undefined,
+            {
+              batchId: batch.batchId,
+              parentJobId: batch.parentJobId,
+              collectionType: batch.collectionType,
+              postCount: batch.postIds?.length ?? 0,
+            },
           );
         }
 
@@ -140,30 +148,5 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
         }
       },
     );
-  }
-
-  private buildNoopResult(
-    job: BatchJob,
-    duration: number,
-    postCount: number,
-    reason = 'Unsupported collection type',
-  ): BatchProcessingResult {
-    return {
-      batchId: job.batchId,
-      parentJobId: job.parentJobId,
-      collectionType: job.collectionType,
-      success: false,
-      error: reason,
-      metrics: {
-        postsProcessed: postCount,
-        mentionsExtracted: 0,
-        entitiesCreated: 0,
-        connectionsCreated: 0,
-        processingTimeMs: duration,
-        llmProcessingTimeMs: 0,
-        dbProcessingTimeMs: 0,
-      },
-      completedAt: new Date(),
-    };
   }
 }

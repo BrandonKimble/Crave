@@ -27,7 +27,6 @@ export interface ChronologicalCollectionJobData {
   options?: {
     lastProcessedTimestamp?: number;
     limit?: number;
-    retryCount?: number;
   };
 }
 
@@ -245,17 +244,22 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       // TRIGGER-DEFERRED (§22: "saturation AIMD live trigger (volume near
       // clamps)"; grant flow = manual until a fleet) — until then the
       // operator clears the gap with a manual sweep.
+      const oldestFetchedUtc =
+        sourceId && allPosts.length > 0
+          ? allPosts.reduce<number | null>((oldest, post) => {
+              const created = this.extractCreatedUtc(post);
+              return created !== null && (oldest === null || created < oldest)
+                ? created
+                : oldest;
+            }, null)
+          : null;
+
       if (
         sourceId &&
         allPosts.length > 0 &&
         postsResult.metadata.overlapConfirmed === false
       ) {
-        const oldestFetched = allPosts.reduce<number | null>((oldest, post) => {
-          const created = this.extractCreatedUtc(post);
-          return created !== null && (oldest === null || created < oldest)
-            ? created
-            : oldest;
-        }, null);
+        const oldestFetched = oldestFetchedUtc;
         this.logger.error(
           'Chronological reach miss: fetch never overlapped the cursor (§10 C4 coverage gap)',
           {
@@ -278,6 +282,37 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
                 : null,
           },
         });
+      }
+
+      // THE RELEASE (F456). The gap above was a one-way latch — one miss
+      // pinned the lane RED forever because nothing could un-record it, an
+      // always-RED metric being just as useless as an always-GREEN one. The
+      // release is the SAME overlap fact read the other way: a fetch that
+      // CONFIRMED overlap (opened no new hole) and reached back to at-or-
+      // before the recorded gap's windowStart has re-covered that hole with
+      // real documents. The predicate lives in the registry so the fact —
+      // not this worker's opinion — decides.
+      if (
+        sourceId &&
+        oldestFetchedUtc !== null &&
+        postsResult.metadata.overlapConfirmed === true
+      ) {
+        const reachedBackTo = new Date(oldestFetchedUtc * 1000);
+        const cleared = await this.sourceRegistry.clearCoverageGapIfRecovered(
+          sourceId,
+          'chronological',
+          reachedBackTo,
+        );
+        if (cleared) {
+          this.logger.info(
+            'Chronological coverage gap cleared: a later fetch re-covered the gap window (§10 C4)',
+            {
+              correlationId,
+              subreddit,
+              reachedBackTo: reachedBackTo.toISOString(),
+            },
+          );
+        }
       }
 
       // §10 SELF-HEALING ORPHAN-PARENT SWEEP: comments can arrive on posts
@@ -521,29 +556,20 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
 
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      const retryCount = options.retryCount || 0;
 
       this.logger.error('Chronological collection job failed', {
         correlationId,
         jobId,
         error: errorMessage,
-        retryCount,
+        attemptsMade: job.attemptsMade,
         subreddit,
       });
 
-      // Implement retry logic
-      if (retryCount < 3) {
-        this.logger.info('Scheduling retry for failed collection job', {
-          correlationId,
-          jobId,
-          retryCount: retryCount + 1,
-        });
-
-        job.data.options = {
-          ...options,
-          retryCount: retryCount + 1,
-        };
-      }
+      // F465: the in-memory `options.retryCount` mutation that used to live
+      // here retried NOTHING — the job object is discarded when the handler
+      // throws, and the 'Scheduling retry' log beside it was simply false.
+      // Bull's own `attempts` is the retry mechanism; `job.attemptsMade` is
+      // the honest count.
 
       // §12.4 liar purge: exhausted retries used to RETURN {success:false} —
       // Bull marked the job COMPLETED and the failure vanished (always-green).

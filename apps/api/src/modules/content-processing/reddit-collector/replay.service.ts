@@ -12,7 +12,6 @@ import {
   ExtractionPipelineService,
   StoredExtractionInputChunk,
 } from './extraction-pipeline.service';
-import { ProjectionRebuildService } from './projection-rebuild.service';
 
 type ReplaySourceDocument = {
   documentId: string;
@@ -55,7 +54,6 @@ export class ReplayService implements OnModuleInit {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly extractionPipelineService: ExtractionPipelineService,
-    private readonly projectionRebuildService: ProjectionRebuildService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -408,160 +406,14 @@ export class ReplayService implements OnModuleInit {
     };
   }
 
-  /**
-   * Cut a contiguous document subset over to an already-created extraction run.
-   * This keeps replay self-documenting:
-   * 1. select documents
-   * 2. activate run for those documents
-   * 3. rebuild affected restaurant projections
-   * 4. refresh quality scores
+  /* F472–F474: `activateExtractionRunForDateRange` /
+   * `activateExtractionRunForDocuments` lived here with a THIRD copy of the
+   * supersede-and-activate law (each copy fixed after its sibling) plus a
+   * re-inlined D7 affected-restaurants union. Both had ZERO callers — only a
+   * README line referenced them. Deleted; the law is
+   * `supersedeAndActivate` in extraction-scope.service, and affected
+   * restaurants come from `ExtractionScopeService.affectedRestaurantsForDocuments`.
    */
-  async activateExtractionRunForDateRange(params: {
-    extractionRunId: string;
-    platform: string;
-    community?: string | null;
-    start: Date;
-    end: Date;
-  }): Promise<{
-    extractionRunId: string;
-    documentCount: number;
-    restaurantCount: number;
-    connectionCount: number;
-  }> {
-    const documents = await this.prismaService.sourceDocument.findMany({
-      where: {
-        platform: params.platform,
-        community: params.community ?? undefined,
-        sourceCreatedAt: {
-          gte: params.start,
-          lte: params.end,
-        },
-      },
-      select: { documentId: true },
-      orderBy: { sourceCreatedAt: 'asc' },
-    });
-
-    return this.activateExtractionRunForDocuments({
-      extractionRunId: params.extractionRunId,
-      documentIds: documents.map((document) => document.documentId),
-    });
-  }
-
-  async activateExtractionRunForDocuments(params: {
-    extractionRunId: string;
-    documentIds: string[];
-  }): Promise<{
-    extractionRunId: string;
-    documentCount: number;
-    restaurantCount: number;
-    connectionCount: number;
-  }> {
-    const documentIds = Array.from(
-      new Set(
-        params.documentIds.filter((value): value is string => Boolean(value)),
-      ),
-    );
-
-    if (!documentIds.length) {
-      return {
-        extractionRunId: params.extractionRunId,
-        documentCount: 0,
-        restaurantCount: 0,
-        connectionCount: 0,
-      };
-    }
-
-    // A run may only take over documents it ACTUALLY EXTRACTED (red team
-    // F4): the caller's set is a date range or hand-picked list, and the
-    // supersede-delete is destructive — activating a doc the run never
-    // covered would delete the live evidence and replace it with nothing.
-    const extracted = await this.prismaService.extractionInputDocument.findMany(
-      {
-        where: {
-          documentId: { in: documentIds },
-          input: { extractionRunId: params.extractionRunId },
-        },
-        select: { documentId: true },
-      },
-    );
-    const extractedIds = Array.from(
-      new Set(extracted.map((row) => row.documentId)),
-    );
-    if (extractedIds.length < documentIds.length) {
-      this.logger.warn(
-        'Activation trimmed to documents the run actually extracted',
-        {
-          extractionRunId: params.extractionRunId,
-          requested: documentIds.length,
-          activating: extractedIds.length,
-        },
-      );
-    }
-    if (!extractedIds.length) {
-      return {
-        extractionRunId: params.extractionRunId,
-        documentCount: 0,
-        restaurantCount: 0,
-        connectionCount: 0,
-      };
-    }
-
-    const restaurantIds = await this.collectAffectedRestaurantIds(extractedIds);
-
-    // WITHIN-GENERATION supersede (final-final red team BLOCKER 2): the
-    // unscoped delete survived here after c6798321 fixed its sibling in
-    // unified-processing — an activate:true replay would destroy a RETAINED
-    // superseded generation's events, and --rollback's run-row guard could
-    // not see it. Same law, same scoping: only runs sharing this run's
-    // prompt hash are superseded; other generations stay inert until their
-    // explicit discard.
-    const activatingRun =
-      await this.prismaService.extractionRun.findUniqueOrThrow({
-        where: { extractionRunId: params.extractionRunId },
-        select: { systemPromptHash: true },
-      });
-    await this.prismaService.$transaction([
-      this.prismaService.restaurantEntityEvent.deleteMany({
-        where: {
-          sourceDocumentId: { in: extractedIds },
-          extractionRunId: { not: params.extractionRunId },
-          extractionRun: {
-            systemPromptHash: activatingRun.systemPromptHash,
-          },
-        },
-      }),
-      this.prismaService.restaurantEvent.deleteMany({
-        where: {
-          sourceDocumentId: { in: extractedIds },
-          extractionRunId: { not: params.extractionRunId },
-          extractionRun: {
-            systemPromptHash: activatingRun.systemPromptHash,
-          },
-        },
-      }),
-      this.prismaService.sourceDocument.updateMany({
-        where: { documentId: { in: extractedIds } },
-        data: { activeExtractionRunId: params.extractionRunId },
-      }),
-    ]);
-
-    const rebuildResult =
-      await this.projectionRebuildService.rebuildForRestaurants(restaurantIds);
-
-    this.logger.info('Activated extraction run for document subset', {
-      extractionRunId: params.extractionRunId,
-      documentCount: extractedIds.length,
-      restaurantCount: rebuildResult.restaurantIds.length,
-      connectionCount: rebuildResult.connectionIds.length,
-    });
-
-    return {
-      extractionRunId: params.extractionRunId,
-      documentCount: extractedIds.length,
-      restaurantCount: rebuildResult.restaurantIds.length,
-      connectionCount: rebuildResult.connectionIds.length,
-    };
-  }
 
   private async loadDateRangeSourceDocuments(params: {
     platform: string;
@@ -739,28 +591,6 @@ export class ReplayService implements OnModuleInit {
     return Array.from(documentsById.values()).sort(
       (left, right) =>
         left.sourceCreatedAt.getTime() - right.sourceCreatedAt.getTime(),
-    );
-  }
-
-  private async collectAffectedRestaurantIds(
-    documentIds: string[],
-  ): Promise<string[]> {
-    const [restaurantEvents, restaurantEntityEvents] = await Promise.all([
-      this.prismaService.restaurantEvent.findMany({
-        where: { sourceDocumentId: { in: documentIds } },
-        select: { restaurantId: true },
-      }),
-      this.prismaService.restaurantEntityEvent.findMany({
-        where: { sourceDocumentId: { in: documentIds } },
-        select: { restaurantId: true },
-      }),
-    ]);
-
-    return Array.from(
-      new Set([
-        ...restaurantEvents.map((event) => event.restaurantId),
-        ...restaurantEntityEvents.map((event) => event.restaurantId),
-      ]),
     );
   }
 

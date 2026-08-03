@@ -152,7 +152,13 @@ export function isRedditSubmission(data: unknown): data is RedditSubmission {
     typeof (data as RedditSubmission).id === 'string' &&
     typeof (data as RedditSubmission).title === 'string' &&
     typeof (data as RedditSubmission).author === 'string' &&
-    typeof (data as RedditSubmission).created_utc === 'number' &&
+    // F451: accept the same number-or-numeric-string created_utc shapes the
+    // RedditSubmission type declares (created_utc: number | string) and that
+    // isRedditComment already accepts. Rejecting numeric-string timestamps
+    // silently dropped legal archive submissions.
+    (typeof (data as RedditSubmission).created_utc === 'number' ||
+      (typeof (data as RedditSubmission).created_utc === 'string' &&
+        !isNaN(Number((data as RedditSubmission).created_utc)))) &&
     typeof (data as RedditSubmission).subreddit === 'string' &&
     typeof (data as RedditSubmission).url === 'string'
   );

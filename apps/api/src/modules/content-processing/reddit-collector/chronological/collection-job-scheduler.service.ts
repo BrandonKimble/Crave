@@ -107,7 +107,6 @@ export class CollectionJobSchedulerService implements OnModuleInit {
             typeof options?.limit === 'number' && options.limit > 0
               ? Math.floor(options.limit)
               : 1000, // Default to Reddit max when no override provided
-          retryCount: 0,
           lastProcessedTimestamp: options?.lastProcessedTimestamp,
         },
       };

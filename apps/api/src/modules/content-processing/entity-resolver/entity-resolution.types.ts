@@ -56,7 +56,6 @@ export interface BatchResolutionResult {
   resolutionResults: EntityResolutionResult[];
   newEntitiesCreated: number;
   performanceMetrics: ResolutionPerformanceMetrics;
-  entityDetails: Map<string, any>; // ADDED: Entity details for validation
 }
 
 /**

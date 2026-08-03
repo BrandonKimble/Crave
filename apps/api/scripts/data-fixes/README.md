@@ -275,8 +275,9 @@ PGPASSWORD=postgres psql -h localhost -U postgres -d crave_search -X -c "
 
 **Caveat:** a fresh replay re-runs the extraction model, so exact tag counts depend on
 the model's output for those documents; the guarantee is that the FA evidence stops
-being stranded, not a fixed 461→N mapping. If you want to activate the **existing**
-FA-bearing runs without re-extracting, use
-`ReplayService.activateExtractionRunForDocuments({ extractionRunId, documentIds })`
-per run (it activates + re-projects for that document subset) — but there are 27 such
-runs, so the single date-range replay above is the cleaner path.
+being stranded, not a fixed 461→N mapping. (An earlier version of this note pointed at
+`ReplayService.activateExtractionRunForDocuments` for activating the **existing**
+FA-bearing runs without re-extracting; that method was dead code carrying a third copy
+of the supersede law and has been deleted. The single date-range replay above was
+already the recommended path; activation now goes through `supersedeAndActivate` in
+`extraction-scope.service.ts`.)

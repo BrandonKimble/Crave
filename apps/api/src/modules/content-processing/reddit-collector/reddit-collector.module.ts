@@ -9,7 +9,6 @@ import { PrismaModule } from '../../../prisma/prisma.module';
 import { ArchiveStreamProcessorService } from './archive/archive-stream-processor.service';
 import { ArchiveZstdDecompressor } from './archive/archive-zstd-decompressor.service';
 import { ArchiveIngestionService } from './archive/archive-ingestion.service';
-import { ArchiveProcessingMetricsService } from './archive/archive-processing-metrics.service';
 import { ChronologicalCollectionWorker } from './chronological/chronological-collection.worker';
 import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
@@ -63,7 +62,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       ArchiveZstdDecompressor,
       ArchiveStreamProcessorService,
       ArchiveIngestionService,
-      ArchiveProcessingMetricsService,
       // Chronological Collection components
       ChronologicalCollectionWorker,
       ChronologicalBatchProcessingWorker,

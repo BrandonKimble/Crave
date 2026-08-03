@@ -127,6 +127,7 @@ function build(options: {
     stagePendingWindow: jest.fn().mockResolvedValue(undefined),
     recordLaneOutput: jest.fn().mockResolvedValue(undefined),
     markLaneDue: jest.fn().mockResolvedValue(undefined),
+    clearCoverageGapIfRecovered: jest.fn().mockResolvedValue(false),
   };
   const governance = { pools: { recordActualPair: jest.fn() } };
   const collectionEvidence = {
@@ -267,6 +268,31 @@ describe('ChronologicalCollectionWorker (§10 cursor law)', () => {
       expect.stringContaining('coverage gap'),
       expect.anything(),
     );
+    // The set path never attempts a clear.
+    expect(h.sourceRegistry.clearCoverageGapIfRecovered).not.toHaveBeenCalled();
+  });
+
+  it('an OVERLAPPING fetch offers its reach for the derived gap clear (F456 — the latch has a release)', async () => {
+    const OLDEST_UTC = 1_800_000_000;
+    const posts = [
+      { id: 'p1', created_utc: 1_800_000_500 },
+      { id: 'p2', created_utc: OLDEST_UTC },
+    ];
+    const h = build({ posts, overlapConfirmed: true });
+    await h.worker.processChronologicalCollection(h.job as never);
+    // The reach offered is the OLDEST post actually fetched — a fact, not an
+    // assertion that the gap is closed. The registry decides.
+    expect(h.sourceRegistry.clearCoverageGapIfRecovered).toHaveBeenCalledWith(
+      'src-1',
+      'chronological',
+      new Date(OLDEST_UTC * 1000),
+    );
+    // And an overlapping fetch never RECORDS a gap.
+    const gapWrites = h.sourceRegistry.mergeLaneState.mock.calls.filter(
+      ([, , patch]: [string, string, Record<string, unknown>]) =>
+        'coverageGap' in patch,
+    );
+    expect(gapWrites).toHaveLength(0);
   });
 });
 
