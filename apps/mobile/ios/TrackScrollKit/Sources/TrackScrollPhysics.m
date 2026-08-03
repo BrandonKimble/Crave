@@ -647,7 +647,14 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
               sibling.layer.mask = rowMask;
             }
             const CGPoint origin = [sibling convertPoint:CGPointZero toView:contentView];
-            const CGRect next = CGRectMake(-w, bandBottom - origin.y, w * 3.0, h * 6.0);
+            // PIXEL-ALIGNED EDGE (same-edge law, native half): the reveal
+            // boundary is built from unrounded floats (tau, sheetTop, the
+            // fractional 68.25), so left raw it lands MID-PIXEL and the row
+            // white fades in over a partial pixel — a hairline of frost under
+            // the header. Snap the edge to the device grid.
+            const CGFloat pxScale = UIScreen.mainScreen.scale > 0 ? UIScreen.mainScreen.scale : 3.0;
+            const CGFloat edgeY = round((bandBottom - origin.y) * pxScale) / pxScale;
+            const CGRect next = CGRectMake(-w, edgeY, w * 3.0, h * 6.0);
             if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
           }
         }

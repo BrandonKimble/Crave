@@ -754,70 +754,76 @@ export function TrackSheetPage({
       {/* Plate covers the HEADER BLOCK only — the strip band paints its
               own plate, and anything beneath its holes must be FROST (a full-
               chrome plate blocked the strip cutouts with white). */}
-      <MaskedHoleOverlay
-        holes={plateHoles}
-        backgroundColor={surfaceColor}
-        renderWhenEmpty
-        style={[styles.chromePlate, { height: OVERLAY_TAB_HEADER_HEIGHT }]}
-      />
-      {/* THE STRIP SEAM (polls gap fix): the 8pt spacer under the band is
-              sheet material, not frost — it is part of the chrome plate's
-              coverage, painted here so no gap can open between the band and
-              the first row. */}
-      {band != null ? (
-        <View
-          style={[
-            styles.stripSeam,
-            {
-              top: OVERLAY_TAB_HEADER_HEIGHT + TOGGLE_STRIP_BAND_HEIGHT,
-              backgroundColor: surfaceColor,
-            },
-          ]}
-          pointerEvents="none"
+      {/* THE SAME-EDGE LAW (the owner's gap, found by reading, 2026-08-02).
+          The plate used to be position:absolute with its OWN height while the
+          band below it was a FLOW child whose top is the sum of five
+          separately-rounded flow heights. Two independently-rounded numbers
+          had to land on the same fractional boundary (68.25pt = 204.75px @3x)
+          — and whenever their roundings disagreed, a sub-pixel sliver of
+          FROST showed between the two whites: the persistent "gap under the
+          header". Boxes that must tile may not round separately, so the plate
+          is now the header block's BACKGROUND — plate bottom and band top are
+          literally the same edge, and the seam is unrepresentable. */}
+      <View style={styles.headerBlock} collapsable={false}>
+        <MaskedHoleOverlay
+          holes={plateHoles}
+          backgroundColor={surfaceColor}
+          renderWhenEmpty
+          style={StyleSheet.absoluteFill}
         />
-      ) : null}
-      {/* CONTROLS ARE MARKED (THE SINGLE PAINTED CHROME): the chrome slot's
+
+        {/* CONTROLS ARE MARKED (THE SINGLE PAINTED CHROME): the chrome slot's
           hitTest hands every UNMARKED point to the presented leg's scroll view,
           so the header drags the sheet exactly like a row does. Marked
           subtrees keep their own touches: buttons and the strip's horizontal
           scroller. */}
-      <View
-        style={styles.grabWrapper}
-        nativeID="track-chrome-control"
-        testID="track-chrome-control"
-      >
-        <Pressable
-          onPress={onGrabHandlePress}
-          hitSlop={10}
-          accessibilityLabel="Expand sheet"
-          disabled={onGrabHandlePress == null}
-        >
-          <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
-        </Pressable>
-      </View>
-      <View style={styles.headerRow}>
-        <View style={styles.titleSlot}>{chromeTitle}</View>
         <View
-          style={styles.actionGroup}
+          style={styles.grabWrapper}
           nativeID="track-chrome-control"
           testID="track-chrome-control"
         >
-          {headerExtras}
-          {navActionProgress != null && onNavActionPress != null ? (
-            <HeaderNavAction
-              progress={navActionProgress}
-              onPress={onNavActionPress}
-              accessibilityLabel={navActionLabel}
-            />
-          ) : null}
+          <Pressable
+            onPress={onGrabHandlePress}
+            hitSlop={10}
+            accessibilityLabel="Expand sheet"
+            disabled={onGrabHandlePress == null}
+          >
+            <View style={[styles.grabHandle, grabHandleHidden && styles.grabHandleHidden]} />
+          </Pressable>
         </View>
+        <View style={styles.headerRow}>
+          <View style={styles.titleSlot}>{chromeTitle}</View>
+          <View
+            style={styles.actionGroup}
+            nativeID="track-chrome-control"
+            testID="track-chrome-control"
+          >
+            {headerExtras}
+            {navActionProgress != null && onNavActionPress != null ? (
+              <HeaderNavAction
+                progress={navActionProgress}
+                onPress={onNavActionPress}
+                accessibilityLabel={navActionLabel}
+              />
+            ) : null}
+          </View>
+        </View>
+        {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
+        <View style={styles.headerBottomPad} />
       </View>
-      {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
-      <View style={styles.headerBottomPad} />
       {band != null ? (
         <View nativeID="track-chrome-control" testID="track-chrome-control">
           {band}
         </View>
+      ) : null}
+      {/* The 8pt under the band is sheet material. As a FLOW child it shares
+          the band's bottom edge exactly (same-edge law) instead of being an
+          absolutely-positioned box rounded on its own. */}
+      {band != null ? (
+        <View
+          style={[styles.stripSeamFlow, { backgroundColor: surfaceColor }]}
+          pointerEvents="none"
+        />
       ) : null}
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
@@ -1249,7 +1255,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
-  chromePlate: { position: 'absolute', top: 0, left: 0, right: 0 },
+  headerBlock: {},
   grabWrapper: { alignItems: 'center', paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP },
   grabHandle: {
     width: OVERLAY_GRAB_HANDLE_WIDTH,
@@ -1271,12 +1277,7 @@ const styles = StyleSheet.create({
   titleSlot: { flex: 1, minWidth: 0, marginRight: 12, flexDirection: 'row', alignItems: 'center' },
   actionGroup: { flexDirection: 'row', alignItems: 'center' },
   headerBottomPad: { height: OVERLAY_HEADER_PADDING_BOTTOM },
-  stripSeam: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
-  },
+  stripSeamFlow: { height: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM },
   // Red team #2 mitigation: strips stay MOUNTED when the presented scene has
   // no band (zero-height, clipped) — flipping to a strip-less scene must not
   // destroy the resident strips' measure caches.
