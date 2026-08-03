@@ -6,6 +6,7 @@ import { SearchModule } from '../search/search.module';
 import { SignalsModule } from '../signals/signals.module';
 import { HistoryController } from './history.controller';
 import { HistoryService } from './history.service';
+import { EntityAccessModule } from '../entities/entity-access.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { HistoryService } from './history.service';
     IdentityModule,
     SearchModule,
     SignalsModule,
+    EntityAccessModule,
   ],
   controllers: [HistoryController],
   providers: [HistoryService],

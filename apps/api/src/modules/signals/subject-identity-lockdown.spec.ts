@@ -42,6 +42,11 @@ const ALLOWED = [
   'content-processing/reddit-collector/projection-rebuild.service.ts',
   'content-processing/reddit-collector/unified-processing.service.ts',
   'restaurant-enrichment/restaurant-entity-merge.service.ts',
+  // NOT a ledger reader: the home near-you shelf resolves CURATED ROW identity
+  // (curated_list_items.entity_id → survivor, then status='active') at read
+  // time — the D36/F692 archived-leak law. Same category as the projection
+  // machinery above: it never touches signals.subject_id.
+  'home/home-feed.service.ts',
   // Ledger readers outside signals/ that F202 named. They are on the list to
   // be converted next; being LISTED is the point — the omission is visible
   // here instead of invisible in their SQL.

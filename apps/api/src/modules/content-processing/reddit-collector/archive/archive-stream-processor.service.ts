@@ -193,25 +193,4 @@ export class ArchiveStreamProcessorService implements OnModuleInit {
       issues,
     };
   }
-
-  /**
-   * Get file processing information
-   */
-  async getFileInfo(filePath: string): Promise<{
-    fileSize: { bytes: number; mb: number };
-    systemZstdAvailable: boolean;
-    ready: boolean;
-  }> {
-    const stats = await fs.stat(filePath);
-    const fileSizeBytes = stats.size;
-    const fileSizeMB = fileSizeBytes / (1024 * 1024);
-    const systemValidation =
-      await this.archiveZstdDecompressor.validateSystemZstd();
-
-    return {
-      fileSize: { bytes: fileSizeBytes, mb: fileSizeMB },
-      systemZstdAvailable: systemValidation.available,
-      ready: systemValidation.available,
-    };
-  }
 }

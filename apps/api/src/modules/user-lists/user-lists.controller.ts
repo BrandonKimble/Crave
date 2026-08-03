@@ -26,6 +26,7 @@ import { BatchMembershipsDto } from './dto/batch-memberships.dto';
 import { UserListResultsDto } from './dto/user-list-results.dto';
 import { JoinUserListCollaboratorsDto } from './dto/join-user-list-collaborators.dto';
 import { ReorderUserListItemsDto } from './dto/reorder-user-list-items.dto';
+import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
 
 @Controller('lists')
 @UseGuards(ClerkAuthGuard)
@@ -54,6 +55,8 @@ export class UserListsController {
   // ONE batched saved-anywhere read for a screenful of cards (plus/saved
   // pill state). Static path — declared before the ':listId' param routes.
   @Post('memberships')
+  // POST for the id-array BODY; a membership lookup writes nothing.
+  @NoSignal('POST/GET-with-a-body: reads a list, writes nothing')
   listMembershipsBatch(
     @CurrentUser() user: User,
     @Body() dto: BatchMembershipsDto,
@@ -62,6 +65,11 @@ export class UserListsController {
   }
 
   @Post()
+  // Creating an empty shelf is not demand for any place — the act the
+  // ledger records is the SAVE onto it (favorite_added, at addItem).
+  @NoSignal(
+    'list bookkeeping: the demand act is the SAVE (favorite_added), not the shelf it is filed on',
+  )
   createList(@CurrentUser() user: User, @Body() dto: CreateUserListDto) {
     return this.userListsService.createList(user.userId, dto);
   }
@@ -73,12 +81,18 @@ export class UserListsController {
   // kind list is lazily created on first heart. Bodies are the normal
   // add-item selector (restaurantId XOR connectionId [+ locationId, note]).
   @Post('favorites/items')
+  @RecordsSignal('favorite_added')
   addFavoriteItem(@CurrentUser() user: User, @Body() dto: AddUserListItemDto) {
     return this.userListsService.addFavoriteItem(user.userId, dto);
   }
 
   // Unheart by TARGET (same selector body — the client doesn't know itemIds).
   @Delete('favorites/items')
+  // Append-only ledger (§3): an unheart never unwrites the heart. Recency
+  // decay is what makes an old save stop mattering, not a retraction row.
+  @NoSignal(
+    'append-only ledger: an unheart never unwrites the favorite_added act',
+  )
   @HttpCode(204)
   removeFavoriteItem(
     @CurrentUser() user: User,
@@ -100,6 +114,7 @@ export class UserListsController {
   // No ParseUUIDPipe: also accepts the virtual All ids
   // ('all:restaurants' / 'all:dishes'); the service validates concrete ids.
   @Post(':listId/results')
+  @NoSignal('POST/GET-with-a-body: reads a list, writes nothing')
   getListResults(
     @CurrentUser() user: User,
     @Param('listId') listId: string,
@@ -112,6 +127,7 @@ export class UserListsController {
   // cities present in the list. POST for parity with /results (carries the
   // same access dto: shareSlug / targetUserId); accepts virtual All ids.
   @Post(':listId/cities')
+  @NoSignal('POST/GET-with-a-body: reads a list, writes nothing')
   listCitiesForList(
     @CurrentUser() user: User,
     @Param('listId') listId: string,
@@ -134,6 +150,11 @@ export class UserListsController {
   }
 
   @Post(':listId/collaborators/join')
+  // A social/permission act, not a demand act: joining a shared list says
+  // nothing about wanting any particular place.
+  @NoSignal(
+    'collaboration membership: a permission act, not demand for a place',
+  )
   joinCollaborators(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -147,6 +168,9 @@ export class UserListsController {
   }
 
   @Delete(':listId/collaborators/:userId')
+  @NoSignal(
+    'collaboration membership: a permission act, not demand for a place',
+  )
   @HttpCode(204)
   removeCollaborator(
     @CurrentUser() user: User,
@@ -161,6 +185,9 @@ export class UserListsController {
   }
 
   @Patch(':listId/items/order')
+  @NoSignal(
+    'list bookkeeping: the demand act is the SAVE (favorite_added), not the shelf it is filed on',
+  )
   reorderListItems(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -174,6 +201,9 @@ export class UserListsController {
   }
 
   @Patch(':listId')
+  @NoSignal(
+    'list bookkeeping: the demand act is the SAVE (favorite_added), not the shelf it is filed on',
+  )
   updateList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -183,6 +213,9 @@ export class UserListsController {
   }
 
   @Patch(':listId/position')
+  @NoSignal(
+    'list bookkeeping: the demand act is the SAVE (favorite_added), not the shelf it is filed on',
+  )
   updateListPosition(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -196,6 +229,7 @@ export class UserListsController {
   }
 
   @Post(':listId/items')
+  @RecordsSignal('favorite_added')
   addListItem(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -205,6 +239,8 @@ export class UserListsController {
   }
 
   @Patch(':listId/items/:itemId')
+  // Editing a saved item's note/position revises an act already recorded.
+  @NoSignal('revises an item already recorded as favorite_added')
   updateListItem(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -215,6 +251,9 @@ export class UserListsController {
   }
 
   @Delete(':listId/items/:itemId')
+  @NoSignal(
+    'append-only ledger: a removal never unwrites the favorite_added act',
+  )
   @HttpCode(204)
   removeListItem(
     @CurrentUser() user: User,
@@ -225,6 +264,7 @@ export class UserListsController {
   }
 
   @Post(':listId/share')
+  @NoSignal('share-link toggle: a visibility setting, not demand for a place')
   enableShare(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
@@ -234,6 +274,7 @@ export class UserListsController {
   }
 
   @Delete(':listId/share')
+  @NoSignal('share-link toggle: a visibility setting, not demand for a place')
   @HttpCode(204)
   disableShare(
     @CurrentUser() user: User,
@@ -243,6 +284,9 @@ export class UserListsController {
   }
 
   @Delete(':listId')
+  @NoSignal(
+    'list bookkeeping: the demand act is the SAVE (favorite_added), not the shelf it is filed on',
+  )
   @HttpCode(204)
   removeList(
     @CurrentUser() user: User,

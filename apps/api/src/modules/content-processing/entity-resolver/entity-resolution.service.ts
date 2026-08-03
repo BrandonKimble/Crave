@@ -492,6 +492,25 @@ export class EntityResolutionService implements OnModuleInit {
       }
     });
 
+    // Round-13 F8: with creation disabled, a demoted restaurant must
+    // surface as an explicit unmatched result, not silently vanish.
+    if (!config.allowEntityCreation && demotedInputs.length) {
+      for (const tier of [
+        exactMatchResults,
+        aliasMatchResults,
+        fuzzyMatchResults,
+      ]) {
+        for (const result of tier) {
+          if (
+            demotedInputs.includes(result.tempId) &&
+            !entityResultMap.has(result.tempId)
+          ) {
+            entityResultMap.set(result.tempId, result);
+          }
+        }
+      }
+    }
+
     // Add new entity results (only for entities not already matched)
     newEntityResults.forEach((result) => {
       if (!entityResultMap.has(result.tempId)) {
@@ -523,12 +542,13 @@ export class EntityResolutionService implements OnModuleInit {
     const candidateIds = Array.from(
       new Set(matched.map((result) => result.entityId as string)),
     );
-    const localSet = await this.metroAdoption.restaurantsWithLocalPresence(
-      candidateIds,
-      anchor,
-    );
+    const verdicts = await this.metroAdoption.geoVerdicts(candidateIds, anchor);
+    // 'unknown' (no geocoded location anywhere) stands the gate down —
+    // round-13 F5: 22.7% of active restaurants are ungrounded and were
+    // being treated as remote-everywhere, so every nickname mention of
+    // them minted a duplicate.
     const remote = matched.filter(
-      (result) => !localSet.has(result.entityId as string),
+      (result) => verdicts.get(result.entityId as string) === 'remote',
     );
     if (!remote.length) {
       return [];
@@ -549,6 +569,24 @@ export class EntityResolutionService implements OnModuleInit {
         );
       if (isExactUnique) {
         continue; // a full exact name can travel across the country
+      }
+      // LOCAL RE-RESOLVE before demoting (round-13 F4): "resolve
+      // locally" must mean resolve — a locally-present candidate carrying
+      // this surface as name or alias is adopted instead of minting.
+      const localSibling = await this.metroAdoption.findLocalByNameOrAlias(
+        result.originalInput.normalizedName,
+        anchor,
+      );
+      if (localSibling) {
+        this.logger.info('Metro gate re-resolved to a local sibling', {
+          engineId,
+          name: result.originalInput.normalizedName,
+          remoteCandidate: result.entityId,
+          localSibling,
+        });
+        result.entityId = localSibling;
+        result.matchedName = result.originalInput.normalizedName;
+        continue;
       }
       this.logger.warn('Metro gate demoted a remote adoption', {
         engineId,

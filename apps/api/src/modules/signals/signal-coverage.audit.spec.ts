@@ -31,6 +31,14 @@ class FakeAuthGuard implements CanActivate {
 }
 
 @Injectable()
+@AuthenticationEffect('optional')
+class FakeOptionalGuard implements CanActivate {
+  canActivate(): boolean {
+    return true;
+  }
+}
+
+@Injectable()
 @AuthenticationEffect('none')
 class FakeOperatorGuard implements CanActivate {
   canActivate(): boolean {
@@ -122,9 +130,11 @@ describe('SignalCoverageAudit — what is NOT a user act', () => {
     list(): void {}
   }
 
+  // A webhook / teaser route: NO guard sets a user (optional at most), so it
+  // bears no authenticated user and is not a USER act.
   @Controller('public')
   @AllowUnentitled()
-  @UseGuards(FakeAuthGuard)
+  @UseGuards(FakeOptionalGuard)
   class PublicController {
     @Post('hook')
     hook(): void {}
@@ -157,5 +167,58 @@ describe('SignalCoverageAudit — what is NOT a user act', () => {
     expect(() => audit.onApplicationBootstrap()).toThrow(
       /found ZERO user-act routes.*do not delete this check/s,
     );
+  });
+});
+
+describe('SignalCoverageAudit — the exemption is "bears no user", not "@AllowUnentitled" (F645)', () => {
+  /**
+   * @AllowUnentitled is a PAYWALL exemption ("must they pay?"), which has
+   * nothing to do with whether the ledger is the record of what a known person
+   * did. Using it as the skip predicate let three authenticated notification
+   * mutations — plus billing-cancel, account-deletion and four profile writes —
+   * escape the declaration requirement entirely, silently, forever.
+   *
+   * MUTATION: restore the `classExempt || @AllowUnentitled` skip in
+   * signal-coverage.audit.ts and BOTH cases below go RED (the routes vanish
+   * from the audit's view: undeclaredActRoutes() empties out and the
+   * declarations list loses the route).
+   */
+  @Controller('unentitled-act')
+  @AllowUnentitled()
+  @UseGuards(FakeAuthGuard)
+  class UnentitledButAuthedController {
+    @Post('register-device')
+    registerDevice(): void {}
+  }
+
+  @Controller('unentitled-declared')
+  @UseGuards(FakeAuthGuard)
+  class HandlerExemptController {
+    @AllowUnentitled()
+    @Post('mark-read')
+    @NoSignal('own notification-feed read state; not demand for a subject')
+    markRead(): void {}
+  }
+
+  it('an AUTHENTICATED mutation still owes a declaration even when the paywall exempts it', async () => {
+    const audit = await auditOf(UnentitledButAuthedController);
+    expect(audit.undeclaredActRoutes()).toEqual([
+      'UnentitledButAuthedController.registerDevice',
+    ]);
+    expect(() => audit.onApplicationBootstrap()).toThrow(
+      /UnentitledButAuthedController\.registerDevice/,
+    );
+  });
+
+  it('and once it declares honestly, the audit records WHICH declaration it made', async () => {
+    const audit = await auditOf(HandlerExemptController);
+    expect(audit.undeclaredActRoutes()).toEqual([]);
+    expect(audit.declarations()).toEqual([
+      {
+        route: 'HandlerExemptController.markRead',
+        declaration:
+          'none:own notification-feed read state; not demand for a subject',
+      },
+    ]);
   });
 });

@@ -20,6 +20,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
+import { resolveModeration } from '../moderation/moderation-verdict';
 import { SignalsService } from '../signals/signals.service';
 import { computeIpAuditHmacs, hmacDeviceKey } from '../signals/audit-hmac';
 import { PollsGateway } from './polls.gateway';
@@ -746,11 +747,16 @@ export class PollsService {
     }
 
     if (!opts.questionPreModerated) {
-      const moderationDecision =
-        await this.moderation.moderateText(description);
-      if (!moderationDecision.allowed) {
+      // WRITE PATH — policy 'hold': a description is about to become
+      // permanent, public and attributed, so an unreachable moderator refuses
+      // with a named cause rather than publishing unmoderated text.
+      const outcome = resolveModeration(
+        await this.moderation.moderateText(description),
+        'hold',
+      );
+      if (!outcome.ok) {
         throw new BadRequestException(
-          `Description rejected by moderation: ${moderationDecision.reason}`,
+          `Description rejected by moderation: ${outcome.cause}`,
         );
       }
     }
@@ -788,10 +794,16 @@ export class PollsService {
       .find((value) => typeof value === 'string' && value.trim().length > 0)
       ?.trim();
     if (suppliedName) {
-      const nameModeration = await this.moderation.moderateText(suppliedName);
-      if (!nameModeration.allowed) {
+      // WRITE PATH — policy 'hold': resolving this name SPENDS (Places) and
+      // creates a permanent entity row, so an unanswered moderator must not
+      // let it through.
+      const nameOutcome = resolveModeration(
+        await this.moderation.moderateText(suppliedName),
+        'hold',
+      );
+      if (!nameOutcome.ok) {
         throw new BadRequestException(
-          `Name rejected by moderation: ${nameModeration.reason}`,
+          `Name rejected by moderation: ${nameOutcome.cause}`,
         );
       }
     }
@@ -850,10 +862,14 @@ export class PollsService {
       question = opts.sourceQuestion;
     }
     if (!opts.questionPreModerated) {
-      const questionModeration = await this.moderation.moderateText(question);
-      if (!questionModeration.allowed) {
+      // WRITE PATH — policy 'hold' (see createPoll).
+      const questionOutcome = resolveModeration(
+        await this.moderation.moderateText(question),
+        'hold',
+      );
+      if (!questionOutcome.ok) {
         throw new BadRequestException(
-          `Poll title rejected by moderation: ${questionModeration.reason}`,
+          `Poll title rejected by moderation: ${questionOutcome.cause}`,
         );
       }
     }
@@ -972,10 +988,14 @@ export class PollsService {
       throw new BadRequestException('Poll question is required');
     }
 
-    const moderation = await this.moderation.moderateText(question);
-    if (!moderation.allowed) {
+    // WRITE PATH — policy 'hold': the question is published as a poll title.
+    const questionOutcome = resolveModeration(
+      await this.moderation.moderateText(question),
+      'hold',
+    );
+    if (!questionOutcome.ok) {
       throw new BadRequestException(
-        `Poll question rejected by moderation: ${moderation.reason}`,
+        `Poll question rejected by moderation: ${questionOutcome.cause}`,
       );
     }
 
@@ -1254,10 +1274,15 @@ export class PollsService {
       throw new BadRequestException('Comment body is required');
     }
 
-    const moderation = await this.moderation.moderateText(body);
-    if (!moderation.allowed) {
+    // WRITE PATH — policy 'hold': the comment is about to be persisted and
+    // rendered to every reader of the poll.
+    const bodyOutcome = resolveModeration(
+      await this.moderation.moderateText(body),
+      'hold',
+    );
+    if (!bodyOutcome.ok) {
       throw new BadRequestException(
-        `Comment rejected by moderation: ${moderation.reason}`,
+        `Comment rejected by moderation: ${bodyOutcome.cause}`,
       );
     }
 
@@ -1310,10 +1335,15 @@ export class PollsService {
     if (!body.length) {
       throw new BadRequestException('Comment body is required');
     }
-    const moderation = await this.moderation.moderateText(body);
-    if (!moderation.allowed) {
+    // WRITE PATH — policy 'hold': the comment is about to be persisted and
+    // rendered to every reader of the poll.
+    const bodyOutcome = resolveModeration(
+      await this.moderation.moderateText(body),
+      'hold',
+    );
+    if (!bodyOutcome.ok) {
       throw new BadRequestException(
-        `Comment rejected by moderation: ${moderation.reason}`,
+        `Comment rejected by moderation: ${bodyOutcome.cause}`,
       );
     }
 
@@ -1781,7 +1811,21 @@ export class PollsService {
       set.add(endorsement.userId);
     }
 
-    const ranked = [...endorsers.entries()]
+    // ONE-HOP REDIRECT RESOLUTION (F541). A direct tap-to-endorse stores the
+    // restaurant's entityId (or a restaurant::dish composite) as it stood at tap
+    // time; if that restaurant is later MERGED, its endorsement keeps pointing at
+    // the now-archived id and silently splits from — or is lost against — the
+    // survivor's endorsements. (Comment spans re-scan and self-heal; a stored tap
+    // never does.) Resolve every subject key through the redirect table and MERGE
+    // the endorser sets so a merged-after-tap endorsement lands on the survivor.
+    // The writer keeps chains flat (one hop — merge-writer spec), so a single
+    // lookup is sufficient.
+    const resolvedEndorsers = await this.resolveLeaderboardSubjectRedirects(
+      endorsers,
+      useConnections,
+    );
+
+    const ranked = [...resolvedEndorsers.entries()]
       .map(([subjectId, users]) => ({
         subjectId,
         distinctEndorsers: users.size,
@@ -1810,6 +1854,68 @@ export class PollsService {
         });
       }
     });
+  }
+
+  /**
+   * Redirect-resolve leaderboard subject keys (F541), merging endorser sets that
+   * collapse onto the same survivor. For entity subjects the key IS a restaurant
+   * entityId; for connection subjects it is a `restaurantId::foodId` composite and
+   * BOTH parts resolve. One-hop (writer keeps redirect chains flat).
+   */
+  private async resolveLeaderboardSubjectRedirects(
+    endorsers: Map<string, Set<string>>,
+    useConnections: boolean,
+  ): Promise<Map<string, Set<string>>> {
+    if (endorsers.size === 0) {
+      return endorsers;
+    }
+    // Collect every entity id referenced by a subject key.
+    const entityIds = new Set<string>();
+    for (const subjectId of endorsers.keys()) {
+      if (useConnections) {
+        const parts = this.decodeConnectionSubjectId(subjectId);
+        if (parts) {
+          entityIds.add(parts.restaurantId);
+          entityIds.add(parts.foodId);
+        }
+      } else {
+        entityIds.add(subjectId);
+      }
+    }
+    const redirects = await this.prisma.entityRedirect.findMany({
+      where: { fromEntityId: { in: [...entityIds] } },
+      select: { fromEntityId: true, toEntityId: true },
+    });
+    if (redirects.length === 0) {
+      return endorsers;
+    }
+    const redirectMap = new Map(
+      redirects.map((r) => [r.fromEntityId, r.toEntityId]),
+    );
+    const resolve = (id: string): string => redirectMap.get(id) ?? id;
+
+    const resolved = new Map<string, Set<string>>();
+    for (const [subjectId, users] of endorsers.entries()) {
+      let key = subjectId;
+      if (useConnections) {
+        const parts = this.decodeConnectionSubjectId(subjectId);
+        if (parts) {
+          key = this.encodeConnectionSubjectId(
+            resolve(parts.restaurantId),
+            resolve(parts.foodId),
+          );
+        }
+      } else {
+        key = resolve(subjectId);
+      }
+      const existing = resolved.get(key);
+      if (existing) {
+        for (const u of users) existing.add(u);
+      } else {
+        resolved.set(key, new Set(users));
+      }
+    }
+    return resolved;
   }
 
   // Dish-axis leaderboard subjects are poll-local (restaurant, dish) composites,

@@ -6,7 +6,6 @@ import { AppException } from '../../../shared';
  */
 export class LLMAuthenticationError extends AppException {
   readonly errorCode = 'LLM_AUTHENTICATION_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, details?: string) {
     super(message, HttpStatus.UNAUTHORIZED, { details });
@@ -19,7 +18,6 @@ export class LLMAuthenticationError extends AppException {
  */
 export class LLMConfigurationError extends AppException {
   readonly errorCode = 'LLM_CONFIGURATION_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string) {
     super(message, HttpStatus.INTERNAL_SERVER_ERROR, {});
@@ -32,7 +30,6 @@ export class LLMConfigurationError extends AppException {
  */
 export class LLMRateLimitError extends AppException {
   readonly errorCode = 'LLM_RATE_LIMIT_ERROR';
-  readonly isOperational = true;
 
   constructor(
     resetTime?: number,
@@ -62,7 +59,6 @@ export class LLMRateLimitError extends AppException {
  */
 export class LLMRateLimitAbortError extends AppException {
   readonly errorCode = 'LLM_RATE_LIMIT_ABORT_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, resetTime?: number) {
     super(message, HttpStatus.TOO_MANY_REQUESTS, { resetTime });
@@ -75,7 +71,6 @@ export class LLMRateLimitAbortError extends AppException {
  */
 export class LLMNetworkError extends AppException {
   readonly errorCode = 'LLM_NETWORK_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, originalError: Error) {
     super(
@@ -93,7 +88,6 @@ export class LLMNetworkError extends AppException {
  */
 export class LLMApiError extends AppException {
   readonly errorCode = 'LLM_API_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, statusCode?: number, responseData?: string) {
     super(message, HttpStatus.BAD_GATEWAY, { statusCode, responseData });
@@ -106,7 +100,6 @@ export class LLMApiError extends AppException {
  */
 export class LLMResponseParsingError extends AppException {
   readonly errorCode = 'LLM_RESPONSE_PARSING_ERROR';
-  readonly isOperational = true;
 
   constructor(message: string, originalResponse?: string) {
     super(message, HttpStatus.INTERNAL_SERVER_ERROR, { originalResponse });

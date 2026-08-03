@@ -34,7 +34,7 @@ const favoritesRow = (overrides: any = {}) => ({
   listType: 'restaurant',
   visibility: 'private',
   kind: 'favorites',
-  itemCount: 0,
+  _count: { items: 0 },
   position: 5,
   shareSlug: null,
   shareEnabled: false,
@@ -144,6 +144,19 @@ function makeHarness(opts: {
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
+    // D36: the one saveable-entity law (stubbed live here).
+    {
+      resolveSaveableRestaurant: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'R', city: null }),
+      resolveSaveableFood: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'F', city: null }),
+      resolveActiveByIds: (ids: string[]) =>
+        Promise.resolve(
+          new Map(
+            ids.map((id) => [id, { entityId: id, name: 'E', city: null }]),
+          ),
+        ),
+    } as never,
   );
   return {
     service,
@@ -277,18 +290,17 @@ describe('the heart verb — add/remove through the favorites selector', () => {
     });
   });
 
-  it('removeFavoriteItemByTarget unhearts by restaurant target and decrements itemCount', async () => {
+  it('removeFavoriteItemByTarget unhearts by restaurant target — and maintains NO counter (D36/F600)', async () => {
     const { service, prisma, itemDeleteMany } = makeHarness({
-      favoritesList: favoritesRow({ itemCount: 3 }),
+      favoritesList: favoritesRow(),
     });
     await service.removeFavoriteItemByTarget(OWNER, { restaurantId: R1 });
     expect(itemDeleteMany).toHaveBeenCalledWith({
       where: { listId: FAV_LIST_ID, restaurantId: R1 },
     });
-    expect(prisma.userList.update).toHaveBeenCalledWith({
-      where: { listId: FAV_LIST_ID },
-      data: { itemCount: { decrement: 1 } },
-    });
+    // The deleted row IS the count. There is no second copy to decrement —
+    // which is what made 26 of 64 mirror lists wrong.
+    expect(prisma.userList.update).not.toHaveBeenCalled();
   });
 
   it('unhearting a connection target resolves to its restaurant; a never-hearted target is a no-op (no decrement)', async () => {

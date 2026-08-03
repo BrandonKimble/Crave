@@ -2,16 +2,18 @@ import { Module } from '@nestjs/common';
 import { DebugController } from './debug.controller';
 
 /**
- * Debug Module
+ * Debug Module — testing endpoints for verifying integrations like Sentry.
  *
- * Provides testing endpoints for verifying integrations like Sentry.
+ * PRODUCTION EXPOSURE IS ALREADY CLOSED. app.module.ts registers this module
+ * only when `isDebugRoutesEnabled()` (shared/config/debug-routes.gate.ts),
+ * a gate whose own spec proves it refuses `prod` outright.
  *
- * ⚠️ WARNING: This module should be conditionally loaded only in
- * development/staging environments, NOT in production!
- *
- * To disable in production, you can:
- * 1. Use a ConfigService check in app.module.ts
- * 2. Or check NODE_ENV before importing
+ * This header used to WARN that the module "should be conditionally loaded ...
+ * NOT in production!" and then instruct the reader how to achieve it — a TODO
+ * that had survived its own completion (audit 2026-08-02, F211). That trains
+ * readers to distrust the warnings that are still real, and invites someone to
+ * "fix" a hole that is already closed. The gate is the statement; this
+ * describes it.
  */
 @Module({
   controllers: [DebugController],

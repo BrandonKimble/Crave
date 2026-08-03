@@ -6,16 +6,6 @@
  */
 
 /**
- * Data source types for unified processing
- */
-export enum DataSourceType {
-  PUSHSHIFT_ARCHIVE = 'pushshift_archive',
-  REDDIT_API_CHRONOLOGICAL = 'reddit_api_chronological',
-  REDDIT_API_KEYWORD_SEARCH = 'reddit_api_keyword_search',
-  REDDIT_API_ON_DEMAND = 'reddit_api_on_demand',
-}
-
-/**
  * Configuration for unified processing operations
  */
 export interface UnifiedProcessingConfig {
@@ -41,7 +31,12 @@ export interface ProcessingResult {
   batchId: string;
   success: boolean;
   processingTimeMs: number;
-  sourceBreakdown: Record<DataSourceType, number>;
+  sourceBreakdown: {
+    pushshift_archive: number;
+    reddit_api_chronological: number;
+    reddit_api_keyword_search: number;
+    reddit_api_on_demand: number;
+  };
   llmResult: {
     mentionsExtracted: number;
     successfulProcessing: boolean;

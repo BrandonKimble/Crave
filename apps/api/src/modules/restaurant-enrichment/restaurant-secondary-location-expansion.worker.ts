@@ -64,7 +64,7 @@ export class RestaurantSecondaryLocationExpansionWorker
     // success OR empty result both count as "probed" (that's the point
     // of the cooldown).
     const metroHandle = job.data?.metroCommunityHandle?.trim().toLowerCase();
-    let bias: { lat: number; lng: number } | undefined;
+    let bias: { lat: number; lng: number; radiusMeters?: number } | undefined;
     if (metroHandle) {
       const rows = await this.prisma.$queryRaw<
         Array<{ lat: number; lng: number }>
@@ -73,7 +73,11 @@ export class RestaurantSecondaryLocationExpansionWorker
         FROM sources s JOIN places p ON p.place_id = s.anchor_place_id
         WHERE lower(s.handle) = ${metroHandle} LIMIT 1
       `;
-      bias = rows[0];
+      // F2 (round-13): without an explicit radius the Places client falls
+      // back to its 5km default — but the gate's metro is 80km, so a
+      // suburban branch stayed invisible and the cooldown locked the miss
+      // in. 50km is the API's bias cap.
+      bias = rows[0] ? { ...rows[0], radiusMeters: 50_000 } : undefined;
       if (!bias) {
         this.logger.warn('Metro probe has no anchor — skipping', {
           restaurantId,
@@ -82,13 +86,32 @@ export class RestaurantSecondaryLocationExpansionWorker
         return;
       }
     }
-    await runInWorkContext({ campaignId: job.data?.campaignId }, () =>
-      this.restaurantLocationEnrichment.expandSecondaryLocationsForRestaurant(
-        restaurantId,
-        placeId,
-        bias,
-      ),
-    );
+    try {
+      await runInWorkContext({ campaignId: job.data?.campaignId }, () =>
+        this.restaurantLocationEnrichment.expandSecondaryLocationsForRestaurant(
+          restaurantId,
+          placeId,
+          bias,
+        ),
+      );
+    } catch (error) {
+      // F3 (round-13): a permanently-failing probe must still lay its
+      // cooldown row, or every batch re-enqueues and re-spends forever.
+      // The rethrow keeps F354's law: the JOB still fails loudly.
+      if (metroHandle) {
+        await this.prisma.metroLocationProbe.upsert({
+          where: {
+            restaurantId_communityHandle: {
+              restaurantId,
+              communityHandle: metroHandle,
+            },
+          },
+          update: { probedAt: new Date() },
+          create: { restaurantId, communityHandle: metroHandle },
+        });
+      }
+      throw error;
+    }
     if (metroHandle) {
       await this.prisma.metroLocationProbe.upsert({
         where: {

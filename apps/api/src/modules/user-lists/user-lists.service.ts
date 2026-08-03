@@ -39,6 +39,7 @@ import {
 import { UserListTileGalleryService } from './user-list-tile-gallery.service';
 import { SignalsService } from '../signals/signals.service';
 import { UserBlockService } from '../identity/user-block.service';
+import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
 export type { UserListViewerRole, UserListSort };
 
@@ -93,6 +94,7 @@ export class UserListsService {
     private readonly tileGallery: UserListTileGalleryService,
     private readonly signals: SignalsService,
     private readonly blocks: UserBlockService,
+    private readonly saveableEntities: SaveableEntityResolver,
   ) {}
 
   async listForUser(userId: string, query: ListUserListsDto) {
@@ -104,6 +106,9 @@ export class UserListsService {
       },
       orderBy: { position: 'asc' },
       include: {
+        // D36/F600: the served count is a COUNT of the rows; `items` below is
+        // only the 5-item preview.
+        _count: { select: { items: true } },
         items: {
           orderBy: { position: 'asc' },
           take: 5,
@@ -203,6 +208,7 @@ export class UserListsService {
         visibility: UserListVisibility.public,
       },
       include: {
+        _count: { select: { items: true } },
         items: {
           orderBy: { position: 'asc' },
           take: 5,
@@ -377,6 +383,8 @@ export class UserListsService {
     const list = await this.prisma.userList.findFirst({
       where: { listId },
       include: {
+        // D36/F600: served item count = COUNT(items), derived here.
+        _count: { select: { items: true } },
         items: {
           orderBy: { position: 'asc' },
           include: {
@@ -504,6 +512,8 @@ export class UserListsService {
     const list = await this.prisma.userList.findFirst({
       where: { listId },
       include: {
+        // D36/F600: served item count = COUNT(items), derived here.
+        _count: { select: { items: true } },
         items: {
           orderBy: { position: 'asc' },
           include: {
@@ -572,6 +582,8 @@ export class UserListsService {
             },
       orderBy: { position: 'asc' },
       include: {
+        // D36/F600: served item count = COUNT(items), derived here.
+        _count: { select: { items: true } },
         items: {
           orderBy: { position: 'asc' },
           include: {
@@ -616,6 +628,8 @@ export class UserListsService {
       // private = unlisted, not locked (visibility canon 2026-07-12).
       where: { shareSlug },
       include: {
+        // D36/F600: served item count = COUNT(items), derived here.
+        _count: { select: { items: true } },
         items: {
           orderBy: { position: 'asc' },
           include: {
@@ -725,7 +739,7 @@ export class UserListsService {
   async deleteList(userId: string, listId: string) {
     const list = await this.prisma.userList.findFirst({
       where: { listId, ownerUserId: userId },
-      select: { listId: true, itemCount: true, kind: true },
+      select: { listId: true, kind: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
@@ -839,15 +853,11 @@ export class UserListsService {
       }
       restaurantId = connection.restaurantId;
     }
+    // D36/F600: no counter to decrement — the deleted rows ARE the count.
     const result = await this.prisma.userListItem.deleteMany({
       where: { listId: list.listId, restaurantId },
     });
-    if (result.count > 0) {
-      await this.prisma.userList.update({
-        where: { listId: list.listId },
-        data: { itemCount: { decrement: result.count } },
-      });
-    }
+    return { removed: result.count > 0 };
   }
 
   async addItem(
@@ -903,13 +913,17 @@ export class UserListsService {
     }
 
     if (restaurantId) {
-      const exists = await this.prisma.entity.findUnique({
-        where: { entityId: restaurantId },
-        select: { entityId: true },
-      });
-      if (!exists) {
+      // ONE saveable-entity law (D36/F602): redirect-resolve → type →
+      // status='active'. This used to be a bare existence check, so an
+      // ARCHIVED restaurant, or a FOOD id passed as restaurantId, was
+      // accepted onto a restaurant list. A merge loser now saves as its
+      // survivor instead of rotting.
+      const saveable =
+        await this.saveableEntities.resolveSaveableRestaurant(restaurantId);
+      if (!saveable) {
         throw new NotFoundException('Restaurant not found');
       }
+      restaurantId = saveable.entityId;
     }
 
     // The existence check doubles as the restaurant resolution for the
@@ -998,11 +1012,6 @@ export class UserListsService {
       throw error;
     }
 
-    await this.prisma.userList.update({
-      where: { listId },
-      data: { itemCount: { increment: 1 } },
-    });
-
     // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
     // §3 signals: a list add is the favorite_added act. Subject = the saved
     // restaurant (a connection item resolves to its restaurant). Geo = the
@@ -1074,11 +1083,6 @@ export class UserListsService {
     if (result.count === 0) {
       return;
     }
-
-    await this.prisma.userList.update({
-      where: { listId },
-      data: { itemCount: { decrement: 1 } },
-    });
   }
 
   /**

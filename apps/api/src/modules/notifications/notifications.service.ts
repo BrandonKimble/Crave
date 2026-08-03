@@ -37,8 +37,11 @@ export class NotificationsService {
    * structural DAG judgment (place-dag-read), not a vocabulary switch.
    *
    * DURABILITY (red-team 1c): the notification ROW is the durable dispatch
-   * queue — NotificationDispatcherService's minute cron sends pending rows
-   * with retry. Callers with an atomic publish (the weekly ritual) pass their
+   * queue — NotificationDispatcherService's minute cron sends pending rows,
+   * retries a transient failure up to MAX_DELIVERY_ATTEMPTS on a backoff, and
+   * reclaims a `sending` row whose lease expired (D36/F640+F641 made that
+   * sentence true; before it, `failed` was a one-way drain and `attempts` was
+   * written but never read). Callers with an atomic publish (the weekly ritual) pass their
    * transaction client as `db` so the rows commit WITH the polls: a crash
    * can then never publish polls while losing their push (nor push polls
    * that were rolled back). Targeting READS stay on the base client — only

@@ -1,0 +1,17 @@
+-- D36 / F600: DELETE the user_lists.item_count denormalization.
+--
+-- It was maintained by hand-rolled +-1 deltas outside the item write's
+-- transaction, and several delete paths (the merge rehome fold, cascades, the
+-- city-scoped wipe) never touched it at all. Measured on the local mirror
+-- 2026-08-03: 26 of 64 lists wrong, EVERY one overstated (stored 336 vs 201
+-- actual rows, +67%) -- and the lie was published on three surfaces (the home
+-- shelf, the public profile, the DM share preview).
+--
+-- The count is a DERIVATION of the rows, not a fact of its own. Readers now
+-- ask `_count: { select: { items: true } }`. Drift becomes unrepresentable:
+-- there is no second copy to desync, and no future delete path can forget a
+-- decrement.
+--
+-- (curated_lists.item_count is NOT this column: it is a BUILD FACT of an
+-- immutable rotation, written once inside the builder's transaction.)
+ALTER TABLE "user_lists" DROP COLUMN "item_count";

@@ -172,12 +172,8 @@ async function fillList(
     })),
     skipDuplicates: true,
   });
-  const count = await prisma.userListItem.count({ where: { listId } });
-  await prisma.userList.update({
-    where: { listId },
-    data: { itemCount: count },
-  });
-  return count;
+  // D36/F600: no stored item_count to maintain — the rows ARE the count.
+  return prisma.userListItem.count({ where: { listId } });
 }
 
 const wrap = <T>(pool: T[], offset: number, size: number): T[] =>

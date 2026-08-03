@@ -23,7 +23,7 @@ type ListRow = {
   description: string | null;
   listType: 'restaurant' | 'dish';
   visibility: 'private' | 'public';
-  itemCount: number;
+  _count: { items: number };
   position: number;
   shareSlug: string | null;
   shareEnabled: boolean;
@@ -46,7 +46,7 @@ function makeList(overrides?: Partial<ListRow>): ListRow {
     description: null,
     listType: 'restaurant',
     visibility: 'public',
-    itemCount: 0,
+    _count: { items: 0 },
     position: 1,
     shareSlug: SLUG,
     shareEnabled: true,
@@ -153,6 +153,19 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
+    // D36: the one saveable-entity law (stubbed live here).
+    {
+      resolveSaveableRestaurant: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'R', city: null }),
+      resolveSaveableFood: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'F', city: null }),
+      resolveActiveByIds: (ids: string[]) =>
+        Promise.resolve(
+          new Map(
+            ids.map((id) => [id, { entityId: id, name: 'E', city: null }]),
+          ),
+        ),
+    } as never,
   );
   return { service, prisma, shareEventCreate };
 }

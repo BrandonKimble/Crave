@@ -81,7 +81,6 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
-import { stopCronsUnlessWorker } from './shared/utils/stop-crons';
 import fastifyRawBody from 'fastify-raw-body';
 
 async function bootstrap() {
@@ -190,10 +189,6 @@ async function bootstrap() {
   // - Bull queues are gracefully shut down
   // - No dropped requests during Railway deployments
   app.enableShutdownHooks();
-
-  // ONE chokepoint for "which process runs scheduled work" — shared with
-  // every createApplicationContext script (see shared/utils/stop-crons.ts).
-  stopCronsUnlessWorker(app);
 
   const port = configService.get<number>('PORT') || 3000;
   // Bind dual-stack (IPv6 + IPv4-mapped) so both `127.0.0.1` and `::1` reach the

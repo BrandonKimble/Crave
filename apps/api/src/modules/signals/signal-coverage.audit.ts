@@ -1,6 +1,5 @@
 import { Injectable, OnApplicationBootstrap, type Type } from '@nestjs/common';
 import { DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
-import { ALLOW_UNENTITLED_KEY } from '../entitlements/entitlement-enforcement.interceptor';
 import { authenticationEffectOf } from '../entitlements/authentication-effect';
 import { NO_SIGNAL_KEY, RECORDS_SIGNAL_KEY } from './records-signal.decorator';
 
@@ -33,12 +32,23 @@ const MUTATING_METHODS = new Set([
  * logs, because a warning at boot is a warning nobody reads until the incident.
  *
  * A USER-ACT ROUTE is defined structurally, not by taste: a route that MUTATES
- * (POST/PUT/PATCH/DELETE) and BEARS A USER (some guard in its stack declares
- * `@AuthenticationEffect('required')`, and it is not `@AllowUnentitled`). That
- * is exactly "a thing a known person did", which is what §3 says the ledger is
- * the record of. A read is not an act by this definition; a webhook is not a
- * user's act; an operator console is not a user at all — and all three fall
- * out of the definition rather than out of an allowlist.
+ * (POST/PUT/PATCH/DELETE) and BEARS A USER — some guard in its stack declares
+ * `@AuthenticationEffect('required')`. That is exactly "a thing a known person
+ * did", which is what §3 says the ledger is the record of. A read is not an
+ * act by this definition; a webhook bears no user; an operator console is not
+ * a user at all — all three fall out of the definition rather than out of an
+ * allowlist.
+ *
+ * THE EXEMPTION IS "BEARS NO AUTHENTICATED USER", NOT "@AllowUnentitled"
+ * (D36/F645, rederived 2026-08-03). This audit used to skip any route carrying
+ * `@AllowUnentitled` — but that decorator answers a DIFFERENT question: it is
+ * a PAYWALL exemption ("must they pay?"), and whether a user must pay has
+ * nothing to do with whether the ledger is the record of what they did. The
+ * proxy let three authenticated notification mutations (register/unregister a
+ * device, mark the feed read) — plus the billing cancel, the account deletion
+ * and four profile writes — escape the declaration requirement entirely,
+ * silently, forever. The two questions are independent, so only the
+ * authentication effect is asked here.
  *
  * See records-signal.decorator.ts for what the declarations mean and for the
  * binding limits of what this proves.
@@ -118,8 +128,6 @@ export class SignalCoverageAudit implements OnApplicationBootstrap {
       const prototype = Object.getPrototypeOf(instance) as object;
 
       const classGuards = this.guardsOn(metatype);
-      const classExempt =
-        this.reflector.get<boolean>(ALLOW_UNENTITLED_KEY, metatype) === true;
       const classEffects = classGuards.map(authenticationEffectOf);
 
       for (const method of this.scanner.getAllMethodNames(prototype)) {
@@ -132,14 +140,9 @@ export class SignalCoverageAudit implements OnApplicationBootstrap {
         const verb = this.reflector.get<number>(ROUTE_METHOD_METADATA, handler);
         if (!MUTATING_METHODS.has(verb)) continue;
 
-        // Not a USER act: either explicitly public (webhooks, teaser, the
-        // operator console) or never carrying an authenticated user.
-        if (
-          classExempt ||
-          this.reflector.get<boolean>(ALLOW_UNENTITLED_KEY, handler) === true
-        ) {
-          continue;
-        }
+        // Not a USER act iff it never carries an authenticated user. (An
+        // @AllowUnentitled route guarded by a REQUIRED guard still carries
+        // one — see the header: paywall exemption is not act exemption.)
         const effects = [
           ...classEffects,
           ...this.guardsOn(handler).map(authenticationEffectOf),

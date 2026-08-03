@@ -29,6 +29,7 @@ import type {
   RestaurantProfileDto,
 } from './dto/search-query.dto';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
+import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
 
 @Controller('search')
 @UseGuards(ClerkAuthGuard)
@@ -45,6 +46,11 @@ export class SearchController {
   }
 
   @Post('plan')
+  // Pure planning: it parses a query into a plan and touches nothing. The
+  // SUBMIT is the act, and it is recorded at POST /search/run.
+  @NoSignal(
+    'pure query planning; the submit is the act, recorded by POST /search/run',
+  )
   @RateLimitTier('search')
   plan(@Body() request: SearchQueryRequestDto): SearchPlanResponseDto {
     this.logger.debug('Received search plan request');
@@ -52,6 +58,10 @@ export class SearchController {
   }
 
   @Post('run')
+  // The search submit. A selected failing search deliberately writes SEVERAL
+  // rows for ONE act (search + autocomplete_selection + on_demand_ask); the
+  // echo-kind law in signals.service.ts is what keeps that weighing 1.
+  @RecordsSignal('search', 'autocomplete_selection', 'on_demand_ask')
   @RateLimitTier('search')
   async run(
     @Body() request: SearchQueryRequestDto,
@@ -63,6 +73,8 @@ export class SearchController {
   }
 
   @Post('natural')
+  // Runs the interpretation, then the same runQuery chokepoint.
+  @RecordsSignal('search', 'autocomplete_selection', 'on_demand_ask')
   @RateLimitTier('naturalSearch')
   async runNatural(
     @Body() request: NaturalSearchRequestDto,
@@ -74,6 +86,8 @@ export class SearchController {
   }
 
   @Post('cache-attribution')
+  // A cache reveal is the SAME search act with meta.cached=true.
+  @RecordsSignal('search')
   @RateLimitTier('search')
   async recordCacheAttribution(
     @Body() request: SearchCacheAttributionDto,
@@ -91,6 +105,9 @@ export class SearchController {
   }
 
   @Post('shortcut/coverage')
+  // POST for the shape BODY; returns coverage GeoJSON and writes nothing.
+  // It answers "what do we cover", which is not a user's demand for a place.
+  @NoSignal('read-only coverage GeoJSON; not a demand act')
   @RateLimitTier('search')
   async shortcutCoverage(
     @Body() request: ShortcutCoverageRequestDto,

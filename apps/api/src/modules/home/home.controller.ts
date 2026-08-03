@@ -23,6 +23,7 @@ import {
   HomeFeedResponse,
   HomeFeedService,
 } from './home-feed.service';
+import { RecordsSignal } from '../signals/records-signal.decorator';
 
 @Controller('home')
 @UseGuards(ClerkAuthGuard)
@@ -56,8 +57,15 @@ export class HomeController {
   }
 
   /** Save-a-copy (list-detail verbs leg): copy the curated list's current items
-   *  into a new favorites list owned by the caller. */
+   *  into a new list owned by the caller. */
   @Post('lists/:listId/save')
+  // D36/F690: this declaration was PRESENT, PLAUSIBLE AND FALSE — it claimed
+  // the copy recorded 'favorite_added' "via UserListsService" while the
+  // service wrote user_list_items directly and injected no such dependency,
+  // so a save-a-copy was a save the demand ledger never heard. The copy now
+  // really does go through UserListsService.addItem, one act per copied item,
+  // which is what @RecordsSignal asserts here.
+  @RecordsSignal('favorite_added')
   @RateLimitTier('default')
   saveList(
     @CurrentUser() user: User,

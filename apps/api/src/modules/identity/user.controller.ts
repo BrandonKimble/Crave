@@ -54,12 +54,17 @@ export class UserController {
 
   @AllowUnentitled()
   @Patch('me')
+  // D36/F645: authenticated mutations on the caller's OWN profile. §3 demand
+  // is about subjects in the corpus; editing your display name, onboarding
+  // answers or username is not demand for a place.
+  @NoSignal('own-profile edit; not demand for a subject')
   async updateMe(@CurrentUser() user: User, @Body() dto: UpdateUserProfileDto) {
     return this.userService.updateProfile(user.userId, dto);
   }
 
   @AllowUnentitled()
   @Put('me/onboarding')
+  @NoSignal('own-profile edit; not demand for a subject')
   async updateOnboarding(
     @CurrentUser() user: User,
     @Body() dto: UpdateUserOnboardingDto,
@@ -78,6 +83,7 @@ export class UserController {
 
   @AllowUnentitled()
   @Post('username/claim')
+  @NoSignal('own-profile edit; not demand for a subject')
   async claimUsername(
     @CurrentUser() user: User,
     @Body() dto: UsernameClaimDto,
@@ -87,6 +93,9 @@ export class UserController {
 
   @AllowUnentitled()
   @Post('username/suggest')
+  // A pure suggestion generator that writes nothing (POST only because the
+  // candidate rides the body); there is no act to record.
+  @NoSignal('stateless suggestion generator; writes nothing')
   suggestUsername(@Body() dto: UsernameSuggestDto) {
     return {
       suggestions: this.usernameService.suggestUsernames(dto.username),

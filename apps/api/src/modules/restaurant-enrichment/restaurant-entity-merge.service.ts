@@ -390,6 +390,31 @@ export class RestaurantEntityMergeService {
     // UNGROUNDED (a stub by definition — grounded prefix pairs are the
     // chain/branch question, deliberately untouched pending P2.2), and
     // the SAME evidence hierarchy below judges the pair.
+    // DOMAIN LANE (round-13 F3): a metro-demoted mint that later GROUNDS
+    // to a branch of the same brand shares the brand's canonical domain —
+    // but the identity lane needs equal folds and the prefix lane demands
+    // an UNGROUNDED stub, so a grounded twin never paired and brand
+    // fragmentation was permanent. Same registrable non-aggregator domain
+    // = one operating business (the evidence hierarchy's own top rule),
+    // so the pair goes straight to judgment.
+    const domainPairs = await this.prisma.$queryRaw<
+      Array<{ name: string; entity_ids: string[] }>
+    >`
+      SELECT lower(a.canonical_domain) AS name,
+             ARRAY[a.entity_id, b.entity_id] AS entity_ids
+      FROM core_entities a
+      JOIN core_entities b
+        ON b.type = 'restaurant' AND b.status = 'active'
+       AND a.entity_id < b.entity_id
+       AND lower(b.canonical_domain) = lower(a.canonical_domain)
+      WHERE a.type = 'restaurant' AND a.status = 'active'
+        AND a.canonical_domain IS NOT NULL
+        AND lower(a.canonical_domain) !~ '(chowbus|doordash|ubereats|grubhub|toasttab|squareup|square\\.site|clover|linktr|facebook|instagram)'
+        AND ${Prisma.raw(activeSupportExistsSql('a.entity_id'))}
+        AND ${Prisma.raw(activeSupportExistsSql('b.entity_id'))}
+      LIMIT 50
+    `;
+
     const prefixPairs = await this.prisma.$queryRaw<
       Array<{ name: string; entity_ids: string[] }>
     >`
@@ -430,7 +455,7 @@ export class RestaurantEntityMergeService {
       canonicalId?: string;
       duplicateId?: string;
     }> = [];
-    for (const group of [...groups, ...prefixPairs]) {
+    for (const group of [...groups, ...domainPairs, ...prefixPairs]) {
       const details = await this.prisma.$queryRaw<
         Array<{
           entity_id: string;

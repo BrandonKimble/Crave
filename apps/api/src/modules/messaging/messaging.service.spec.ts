@@ -10,6 +10,7 @@ import { SharePackageResolverService } from './share-package-resolver.service';
 import { ClosenessService } from '../identity/closeness.service';
 import { UserBlockService } from '../identity/user-block.service';
 import { UserListAccessPolicy } from '../user-lists/user-list-access.policy';
+import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
 /**
  * W3 messaging contracts (plans/w3-messaging-design.md §5 M1 gate):
@@ -534,6 +535,7 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
         prisma,
         new UserBlockService(prisma),
         new UserListAccessPolicy(prisma, new UserBlockService(prisma)),
+        new SaveableEntityResolver(prisma),
       ),
       prisma,
     };
@@ -559,7 +561,7 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
       userList: {
         findUnique: jest.fn().mockResolvedValue({
           name: 'Tacos',
-          itemCount: 3,
+          _count: { items: 3 },
           visibility: 'private',
           shareEnabled: true,
           ownerUserId: THEM,
@@ -577,7 +579,7 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
       userList: {
         findUnique: jest.fn().mockResolvedValue({
           name: 'Taco crawl',
-          itemCount: 8,
+          _count: { items: 8 },
           listType: 'restaurant',
           visibility: 'public',
           shareEnabled: true,
@@ -598,11 +600,13 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
 
   it('restaurant/dish carry no author identity: never gated on blocks', async () => {
     const { resolver, prisma } = makeResolver({
+      // D36/F661: the arm now asks the ONE saveable-entity resolver (redirect
+      // hop → type → active), so the double answers where that resolver looks.
+      entityRedirect: { findUnique: jest.fn().mockResolvedValue(null) },
       entity: {
-        findUnique: jest.fn().mockResolvedValue({
+        findFirst: jest.fn().mockResolvedValue({
+          entityId: POLL,
           name: 'Taqueria',
-          type: 'restaurant',
-          status: 'active',
           city: 'Austin',
         }),
       },

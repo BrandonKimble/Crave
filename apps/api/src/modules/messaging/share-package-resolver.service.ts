@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
 import { UserListAccessPolicy } from '../user-lists/user-list-access.policy';
 import { SharePackagePreviewDto } from './dto/messaging.dto';
+import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
 /**
  * Share-package resolution (w3-messaging-design §3.3): (kind, id, viewer) →
@@ -21,6 +22,7 @@ export class SharePackageResolverService {
     private readonly prisma: PrismaService,
     private readonly blocks: UserBlockService,
     private readonly listAccess: UserListAccessPolicy,
+    private readonly saveableEntities: SaveableEntityResolver,
   ) {}
 
   /**
@@ -78,7 +80,9 @@ export class SharePackageResolverService {
           select: {
             listId: true,
             name: true,
-            itemCount: true,
+            // D36/F600: the DM preview's "N places" is a COUNT of the rows —
+            // it used to publish a stored counter that was measurably wrong.
+            _count: { select: { items: true } },
             listType: true,
             visibility: true,
             shareEnabled: true,
@@ -137,22 +141,21 @@ export class SharePackageResolverService {
         // Every refusal renders the SAME unavailable card — no capability,
         // revoked sharing, and a blocked pair are indistinguishable here.
         if (!mayRead) return unavailable;
-        return available(list.name, `${list.itemCount} places`, null, {
+        return available(list.name, `${list._count.items} places`, null, {
           listType: list.listType,
         });
       }
       case SharedEntityKind.restaurant:
       case SharedEntityKind.dish: {
-        const wantedType =
-          kind === SharedEntityKind.restaurant ? 'restaurant' : 'food';
-        const entity = await this.prisma.entity.findUnique({
-          where: { entityId: id },
-          select: { name: true, type: true, status: true, city: true },
-        });
-        if (!entity || entity.type !== wantedType) return unavailable;
-        if (entity.status !== 'active') {
-          return unavailable;
-        }
+        // ONE saveable-entity law (D36/F661). This arm's type+status test WAS
+        // the reference semantics — what it lacked was the redirect hop, so a
+        // restaurant shared in a DM before it was merged stayed permanently
+        // "unavailable" although the survivor is one hop away.
+        const entity =
+          kind === SharedEntityKind.restaurant
+            ? await this.saveableEntities.resolveSaveableRestaurant(id)
+            : await this.saveableEntities.resolveSaveableFood(id);
+        if (!entity) return unavailable;
         // Explicit non-gate: entities carry no author identity.
         if (await this.blockedByAuthorGate(viewerUserId, null)) {
           return unavailable;

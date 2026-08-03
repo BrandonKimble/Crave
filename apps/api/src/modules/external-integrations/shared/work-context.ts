@@ -29,8 +29,12 @@ export interface WorkContext {
   /** Human label for logs/diagnostics (e.g. 'reextract:austinfood:v7'). */
   label?: string;
   /** WHY the spend happens, when the caller name alone can't say — the
-   *  honest-denominator dimension (e.g. Places 'grounding.new' vs
-   *  'grounding.refresh'). Written to api_usage_ledger.attribution so rate
+   *  honest-denominator dimension. Places uses three, and they are three
+   *  because they are three different SKUs/causes, not three names for one:
+   *  'grounding.new' (first grounding of a restaurant, full mask),
+   *  'grounding.refresh' (lean-mask volatility re-poll) and
+   *  'grounding.expansion' (secondary-location expansion, full mask over an
+   *  already-grounded place). Written to api_usage_ledger.attribution so rate
    *  derivation can slice by cause instead of dividing everything by one
    *  denominator (the 51%-contaminated-Places-rate lesson). */
   attribution?: string;

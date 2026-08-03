@@ -1544,21 +1544,6 @@ export class ExtractionPipelineService implements OnModuleInit {
     return null;
   }
 
-  private getNextSourceRefIndex(sourceMap: LLMSourceMap): number {
-    const numericSuffixes = Object.keys(sourceMap)
-      .map((ref) => {
-        const match = /^SRC(\d+)$/.exec(ref);
-        return match ? Number.parseInt(match[1], 10) : null;
-      })
-      .filter((value): value is number => Number.isFinite(value));
-
-    if (numericSuffixes.length === 0) {
-      return 1;
-    }
-
-    return Math.max(...numericSuffixes) + 1;
-  }
-
   private formatSourceRef(index: number): string {
     return `${ExtractionPipelineService.SOURCE_REF_PREFIX}${String(index).padStart(3, '0')}`;
   }

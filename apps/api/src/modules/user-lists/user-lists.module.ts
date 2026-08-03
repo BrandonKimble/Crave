@@ -13,6 +13,7 @@ import { SearchModule } from '../search/search.module';
 import { PhotosModule } from '../photos/photos.module';
 import { SignalsModule } from '../signals/signals.module';
 import { UserListTileGalleryService } from './user-list-tile-gallery.service';
+import { EntityAccessModule } from '../entities/entity-access.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UserListTileGalleryService } from './user-list-tile-gallery.service';
     PhotosModule,
     SignalsModule,
     UserListAccessModule,
+    EntityAccessModule,
   ],
   controllers: [
     UserListsController,
@@ -35,5 +37,8 @@ import { UserListTileGalleryService } from './user-list-tile-gallery.service';
     UserListMapper,
     UserListTileGalleryService,
   ],
+  // HomeFeedService routes save-a-copy through addItem (D36/F690) — the copy
+  // must record 'favorite_added' per item at the ONE write path.
+  exports: [UserListsService],
 })
 export class UserListsModule {}

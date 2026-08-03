@@ -82,7 +82,7 @@ function createHarness() {
     sketchChain: jest.fn().mockResolvedValue([PLACE]),
   };
   const moderation = {
-    moderateText: jest.fn().mockResolvedValue({ allowed: true }),
+    moderateText: jest.fn().mockResolvedValue({ kind: 'allowed' }),
   };
   const pollEntitySeedService = {
     resolveRestaurant: jest.fn(),
@@ -113,8 +113,8 @@ describe('poll creation: moderation runs BEFORE the spend boundary', () => {
     moderation.moderateText.mockImplementation((text: string) =>
       Promise.resolve(
         text === 'Slur Diner'
-          ? { allowed: false, reason: 'hate' }
-          : { allowed: true },
+          ? { kind: 'blocked', reason: 'hate' }
+          : { kind: 'allowed' },
       ),
     );
 
@@ -139,8 +139,8 @@ describe('poll creation: moderation runs BEFORE the spend boundary', () => {
     moderation.moderateText.mockImplementation((text: string) =>
       Promise.resolve(
         text === 'Slur Tacos'
-          ? { allowed: false, reason: 'hate' }
-          : { allowed: true },
+          ? { kind: 'blocked', reason: 'hate' }
+          : { kind: 'allowed' },
       ),
     );
 

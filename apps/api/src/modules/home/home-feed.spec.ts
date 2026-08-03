@@ -75,7 +75,19 @@ function createHarness(options: {
   parents?: Record<string, string[]>;
   /** near_you raw rows: [listId, rank, name]. */
   nearYouRows?: Array<{ list_id: string; rank: number; name: string }>;
-  previewItems?: Array<{ listId: string; entity: { name: string } }>;
+  previewItems?: Array<{ listId: string; entityId: string; name: string }>;
+  /** Entity ids that are ARCHIVED (or otherwise unresolvable) at READ time. */
+  archived?: string[];
+  /** Merged-away id → survivor id (the one-hop redirect). */
+  redirects?: Record<string, string>;
+  /** Entities the fixtures reference but no item carries (redirect targets). */
+  extraEntities?: Array<{
+    entityId: string;
+    name: string;
+    city?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  }>;
   scores?: Array<{
     subjectId: string;
     displayScore: number;
@@ -168,9 +180,9 @@ function createHarness(options: {
     curatedListItem: {
       findMany: jest.fn(({ where }: { where: { listId: { in: string[] } } }) =>
         Promise.resolve(
-          (options.previewItems ?? []).filter((item) =>
-            where.listId.in.includes(item.listId),
-          ),
+          (options.previewItems ?? [])
+            .filter((item) => where.listId.in.includes(item.listId))
+            .map((item) => ({ listId: item.listId, entityId: item.entityId })),
         ),
       ),
     },
@@ -221,6 +233,85 @@ function createHarness(options: {
     }),
   };
 
+  // The ONE saveable-entity law, as a double the fixtures drive (D36).
+  // `archived` ids resolve to NOTHING (the read must drop the row);
+  // `redirects` map a merged-away id to its survivor (the read must render
+  // the survivor). Everything else resolves to itself.
+  const archived = new Set(options.archived ?? []);
+  const redirects = options.redirects ?? {};
+  const entities = new Map<
+    string,
+    {
+      entityId: string;
+      name: string;
+      city: string | null;
+      latitude: number | null;
+      longitude: number | null;
+    }
+  >();
+  for (const list of options.lists) {
+    for (const item of list.items ?? []) {
+      entities.set(item.entity.entityId, { ...item.entity });
+      if (item.restaurant) {
+        entities.set(item.restaurant.entityId, {
+          ...item.restaurant,
+          city: null,
+        });
+      }
+    }
+  }
+  for (const preview of options.previewItems ?? []) {
+    entities.set(preview.entityId, {
+      entityId: preview.entityId,
+      name: preview.name,
+      city: null,
+      latitude: null,
+      longitude: null,
+    });
+  }
+  for (const extra of options.extraEntities ?? []) {
+    entities.set(extra.entityId, {
+      city: null,
+      latitude: null,
+      longitude: null,
+      ...extra,
+    });
+  }
+  const resolveOne = (id: string) => {
+    const resolvedId = redirects[id] ?? id;
+    if (archived.has(resolvedId)) return null;
+    return entities.get(resolvedId) ?? null;
+  };
+  const saveable = {
+    resolveSaveableRestaurant: (id: string) => Promise.resolve(resolveOne(id)),
+    resolveSaveableFood: (id: string) => Promise.resolve(resolveOne(id)),
+    resolveActiveByIds: (ids: string[]) =>
+      Promise.resolve(
+        new Map(
+          ids.flatMap((id) => {
+            const hit = resolveOne(id);
+            return hit ? ([[id, hit]] as Array<[string, typeof hit]>) : [];
+          }),
+        ),
+      ),
+  };
+
+  // The ONE list write path (D36/F690). addItem is where 'favorite_added' is
+  // recorded, so a copy that does not call it is a save the ledger never
+  // hears — this double refuses exactly what the real addItem refuses.
+  const addItem = jest.fn(
+    (
+      _userId: string,
+      _listId: string,
+      target: { restaurantId?: string; connectionId?: string },
+    ) => {
+      if (target.restaurantId && !resolveOne(target.restaurantId)) {
+        return Promise.reject(new Error('Restaurant not found'));
+      }
+      return Promise.resolve({ itemId: 'item' });
+    },
+  );
+
   const service = new HomeFeedService(
     prisma as never,
     viewportVerdict as never,
@@ -228,9 +319,11 @@ function createHarness(options: {
     {
       catalogWatermark: jest.fn().mockResolvedValue('2026-08-01T00:00:00.000Z'),
     } as never,
+    { addItem } as never,
+    saveable as never,
     createLogger() as never,
   );
-  return { service, prisma };
+  return { service, prisma, addItem };
 }
 
 function globalList(
@@ -261,9 +354,9 @@ describe('HomeFeedService.getFeed — the city-rollup shelves read', () => {
       parents: { [NEIGHBORHOOD]: [CITY] },
       lists: [globalList(1, 'cuisine_best:attr-1')],
       previewItems: [
-        { listId: uuid(1), entity: { name: 'Alpha' } },
-        { listId: uuid(1), entity: { name: 'Beta' } },
-        { listId: uuid(1), entity: { name: 'Gamma' } },
+        { listId: uuid(1), entityId: uuid(101), name: 'Alpha' },
+        { listId: uuid(1), entityId: uuid(102), name: 'Beta' },
+        { listId: uuid(1), entityId: uuid(103), name: 'Gamma' },
       ],
     });
     const feed = await service.getFeed(VIEW, USER);
@@ -275,6 +368,39 @@ describe('HomeFeedService.getFeed — the city-rollup shelves read', () => {
         previewNames: ['Alpha', 'Beta', 'Gamma'],
       }),
     ]);
+  });
+
+  it('ARCHIVED-LEAK LAW AT READ (D36/F692): a shelf preview drops an archived name and renders a merged one as its survivor', async () => {
+    const { service } = createHarness({
+      headerPlace: { placeId: CITY, name: 'Austin' },
+      lists: [globalList(1, 'cuisine_best:attr-1')],
+      previewItems: [
+        { listId: uuid(1), entityId: uuid(101), name: 'Alpha' },
+        { listId: uuid(1), entityId: uuid(102), name: 'Beta' },
+        { listId: uuid(1), entityId: uuid(103), name: 'Gamma' },
+      ],
+      archived: [uuid(102)],
+      redirects: { [uuid(103)]: uuid(104) },
+      extraEntities: [{ entityId: uuid(104), name: 'Gamma (merged)' }],
+    });
+    const feed = await service.getFeed(VIEW, USER);
+    const shelf = feed.shelves.find((s) => s.key === 'best_of');
+    expect(shelf?.lists[0].previewNames).toEqual(['Alpha', 'Gamma (merged)']);
+  });
+
+  it('the near-you derived read carries the same law IN SQL (redirect hop + active status)', async () => {
+    const { service, prisma } = createHarness({
+      headerPlace: { placeId: NEIGHBORHOOD, name: 'The Domain' },
+      parents: { [NEIGHBORHOOD]: [CITY] },
+      lists: [globalList(1, 'cuisine_best:attr-1')],
+      nearYouRows: [],
+    });
+    await service.getFeed(VIEW, USER);
+    const nearYouSql = prisma.$queryRaw.mock.calls
+      .map(([query]) => (query as { sql: string }).sql)
+      .find((sql) => sql.includes('/*curated:near_you_items*/'));
+    expect(nearYouSql).toContain('entity_redirects');
+    expect(nearYouSql).toContain("e.status = 'active'");
   });
 
   it('made-for-you shelf orders FIRST when the requesting user has personal lists (and only theirs)', async () => {
@@ -519,6 +645,104 @@ describe('HomeFeedService.getListDetail — the ListDetail-shaped read', () => {
     ]);
   });
 
+  it('ARCHIVED-LEAK LAW AT READ (D36/F692): an item archived AFTER the build is dropped, and the served count says so', async () => {
+    const { service } = createHarness({
+      headerPlace: null,
+      archived: [uuid(10)],
+      lists: [
+        globalList(1, 'hidden_gems', {
+          title: 'Hidden gems of Austin',
+          itemCount: 2,
+          items: [
+            {
+              rank: 1,
+              entityId: uuid(10),
+              restaurantId: null,
+              entity: {
+                entityId: uuid(10),
+                name: 'Closed Down',
+                city: 'Austin',
+                latitude: 30.27,
+                longitude: -97.74,
+              },
+              restaurant: null,
+            },
+            {
+              rank: 2,
+              entityId: uuid(11),
+              restaurantId: null,
+              entity: {
+                entityId: uuid(11),
+                name: 'Still Open',
+                city: 'Austin',
+                latitude: 30.3,
+                longitude: -97.7,
+              },
+              restaurant: null,
+            },
+          ],
+        }),
+      ],
+    });
+    const detail = await service.getListDetail(uuid(1), USER);
+    expect(detail.items.map((item) => item.label)).toEqual(['Still Open']);
+    // The build-time count claimed 2; what is SERVED is 1.
+    expect(detail.itemCount).toBe(1);
+  });
+
+  it('ONE-HOP REDIRECT AT READ (D36/F692): an item merged away since the build renders as its SURVIVOR', async () => {
+    const { service } = createHarness({
+      headerPlace: null,
+      redirects: { [uuid(10)]: uuid(12) },
+      extraEntities: [
+        {
+          entityId: uuid(12),
+          name: 'Survivor Kitchen',
+          city: 'Austin',
+          latitude: 30.4,
+          longitude: -97.6,
+        },
+      ],
+      lists: [
+        globalList(1, 'hidden_gems', {
+          itemCount: 1,
+          items: [
+            {
+              rank: 1,
+              entityId: uuid(10),
+              restaurantId: null,
+              entity: {
+                entityId: uuid(10),
+                name: 'Merged Away',
+                city: 'Austin',
+                latitude: 30.27,
+                longitude: -97.74,
+              },
+              restaurant: null,
+            },
+          ],
+        }),
+      ],
+      scores: [
+        {
+          subjectId: uuid(12),
+          displayScore: 8.4,
+          percentileRank: 0.8,
+          rising: null,
+        },
+      ],
+    });
+    const detail = await service.getListDetail(uuid(1), USER);
+    expect(detail.items).toEqual([
+      expect.objectContaining({
+        entityId: uuid(12),
+        label: 'Survivor Kitchen',
+        // The score is the SURVIVOR's — a loser id keys nothing.
+        craveScore: 8.4,
+      }),
+    ]);
+  });
+
   it("another user's personal list 404s for this viewer", async () => {
     const { service } = createHarness({
       headerPlace: null,
@@ -565,8 +789,8 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
     },
   ];
 
-  it('creates a list OWNED by the caller and copies the current items (rank → position)', async () => {
-    const { service, prisma } = createHarness({
+  it('creates a list OWNED by the caller and copies each item through the ONE write path (D36/F690)', async () => {
+    const { service, prisma, addItem } = createHarness({
       headerPlace: null,
       lists: [
         globalList(1, 'hidden_gems', {
@@ -585,26 +809,29 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
         position: 5,
       },
     });
-    expect(prisma.userListItem.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          restaurantId: uuid(10),
-          position: 1,
-          listId: saved.listId,
-          addedByUserId: USER,
-        },
-        {
-          restaurantId: uuid(11),
-          position: 2,
-          listId: saved.listId,
-          addedByUserId: USER,
-        },
-      ],
-    });
-    expect(prisma.userList.update).toHaveBeenCalledWith({
-      where: { listId: saved.listId },
-      data: { itemCount: 2 },
-    });
+    // THE COUPLING (F690): the route's @RecordsSignal('favorite_added') is
+    // true only because every copied item goes through
+    // UserListsService.addItem, which is where that act is recorded. The copy
+    // this replaced wrote user_list_items directly — a save the ledger never
+    // heard, under a @NoSignal that claimed the opposite. That code fails here.
+    expect(addItem).toHaveBeenCalledTimes(2);
+    expect(addItem).toHaveBeenNthCalledWith(
+      1,
+      USER,
+      saved.listId,
+      { restaurantId: uuid(10) },
+      { idempotent: true },
+    );
+    expect(addItem).toHaveBeenNthCalledWith(
+      2,
+      USER,
+      saved.listId,
+      { restaurantId: uuid(11) },
+      { idempotent: true },
+    );
+    // No second write path, and no stored counter to keep in step (F600/F691).
+    expect(prisma.userListItem.createMany).not.toHaveBeenCalled();
+    expect(prisma.userList.update).not.toHaveBeenCalled();
     expect(saved).toEqual({
       listId: saved.listId,
       name: 'Hidden gems of Austin',
@@ -612,8 +839,25 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
     });
   });
 
+  it('an item the ONE write path refuses (archived subject) is skipped, and the count stays the honest COPIED count', async () => {
+    const { service, addItem } = createHarness({
+      headerPlace: null,
+      archived: [uuid(11)],
+      lists: [
+        globalList(1, 'hidden_gems', {
+          title: 'Hidden gems of Austin',
+          itemCount: 2,
+          items: restaurantItems,
+        }),
+      ],
+    });
+    const saved = await service.saveListToUserLists(uuid(1), USER);
+    expect(addItem).toHaveBeenCalledTimes(2);
+    expect(saved.itemCount).toBe(1);
+  });
+
   it('dish list: rows copy by the STORED connectionId; legacy rows without one are skipped and the count stays honest', async () => {
-    const { service, prisma } = createHarness({
+    const { service, addItem } = createHarness({
       headerPlace: null,
       lists: [
         globalList(1, 'dish_best:food-1', {
@@ -641,7 +885,7 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
             },
             {
               // Legacy row with no stored connectionId — inexpressible as a
-              // favorites row, skipped rather than faked.
+              // list row, skipped rather than faked.
               rank: 2,
               entityId: uuid(21),
               restaurantId: uuid(31),
@@ -660,16 +904,13 @@ describe("HomeFeedService.saveListToUserLists — save-a-copy into the caller's 
       ],
     });
     const saved = await service.saveListToUserLists(uuid(1), USER);
-    expect(prisma.userListItem.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          connectionId: uuid(40),
-          position: 1,
-          listId: saved.listId,
-          addedByUserId: USER,
-        },
-      ],
-    });
+    expect(addItem).toHaveBeenCalledTimes(1);
+    expect(addItem).toHaveBeenCalledWith(
+      USER,
+      saved.listId,
+      { connectionId: uuid(40) },
+      { idempotent: true },
+    );
     expect(saved.itemCount).toBe(1);
   });
 

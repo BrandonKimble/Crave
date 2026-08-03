@@ -13,9 +13,19 @@ import { PlacesModule } from '../places/places.module';
 import { CuratedListBuilderService } from './curated-list-builder.service';
 import { HomeController } from './home.controller';
 import { HomeFeedService } from './home-feed.service';
+import { UserListsModule } from '../user-lists/user-lists.module';
+import { EntityAccessModule } from '../entities/entity-access.module';
 
 @Module({
-  imports: [PrismaModule, SharedModule, IdentityModule, PlacesModule],
+  imports: [
+    PrismaModule,
+    SharedModule,
+    IdentityModule,
+    PlacesModule,
+    // Save-a-copy writes through the ONE list write path (D36/F690).
+    UserListsModule,
+    EntityAccessModule,
+  ],
   controllers: [HomeController],
   providers: [CuratedListBuilderService, HomeFeedService],
   exports: [CuratedListBuilderService, HomeFeedService],

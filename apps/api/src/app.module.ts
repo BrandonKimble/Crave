@@ -48,6 +48,22 @@ const runtimeWithSchedulers = isSchedulerRuntime();
       envFilePath: [join(__dirname, '..', '.env'), join(process.cwd(), '.env')],
       load: [configuration],
     }),
+    // THE CHOKEPOINT FOR "WHICH PROCESS RUNS SCHEDULED WORK". This line, and
+    // nothing else, decides it: a non-scheduler runtime never registers
+    // ScheduleModule, so no @Cron in the codebase — present or future — is
+    // ever registered, let alone ticking. Covered by construction; there are
+    // no per-service isWorkerRuntime guards to remember.
+    //
+    // A `stopCronsUnlessWorker(app)` in main.ts's bootstrap used to claim this
+    // title. Since the Railway cutover it had been an EMPTY function (deleted
+    // 2026-08-02, F412) for two reasons worth keeping: (1) a non-worker
+    // runtime has no SchedulerRegistry to query, because of THIS gate; and
+    // (2) probing `app.get(SchedulerRegistry)` on the application PROXY throws
+    // through Nest's ExceptionsZone, which tears the process down BEFORE any
+    // try/catch sees it — first observed on the first-ever PROCESS_ROLE=api
+    // boot. So do not "restore" a runtime probe here; the module gate IS the
+    // guarantee. Scripts are the separate case: they boot the full graph
+    // deliberately and must call stopCronsForScript (see stop-crons.ts).
     ...(runtimeWithSchedulers ? [ScheduleModule.forRoot()] : []),
     DiscoveryModule,
     SharedModule,

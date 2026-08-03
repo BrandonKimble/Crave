@@ -13,7 +13,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { UserListType, Prisma } from '@prisma/client';
+import { EntityType, UserListType, Prisma } from '@prisma/client';
 import {
   GeoBbox,
   PLACES_SLICE_MARGIN_FACTOR,
@@ -23,6 +23,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
+import { UserListsService } from '../user-lists/user-lists.service';
+import {
+  SaveableEntityResolver,
+  type ResolvedEntity,
+} from '../entities/saveable-entity.resolver';
 import {
   MIN_VIABLE_LIST_ITEMS,
   RECIPE_CUISINE_BEST_PREFIX,
@@ -115,6 +120,10 @@ export class HomeFeedService {
     private readonly prisma: PrismaService,
     private readonly viewportVerdict: ViewportVerdictService,
     private readonly placesCatalog: PlacesCatalogService,
+    // ONE write path for a copied item (D36/F690): addItem records the
+    // 'favorite_added' act and enforces every save invariant.
+    private readonly userLists: UserListsService,
+    private readonly saveableEntities: SaveableEntityResolver,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('HomeFeedService');
@@ -261,26 +270,16 @@ export class HomeFeedService {
       },
       include: {
         city: { select: { placeId: true, name: true } },
+        // Names/coords are NOT hydrated from the stored join anymore: the
+        // read-time resolve below is the one that decides what this row means
+        // today (D36/F692).
         items: {
           orderBy: { rank: 'asc' },
-          include: {
-            entity: {
-              select: {
-                entityId: true,
-                name: true,
-                city: true,
-                latitude: true,
-                longitude: true,
-              },
-            },
-            restaurant: {
-              select: {
-                entityId: true,
-                name: true,
-                latitude: true,
-                longitude: true,
-              },
-            },
+          select: {
+            rank: true,
+            entityId: true,
+            restaurantId: true,
+            connectionId: true,
           },
         },
       },
@@ -289,52 +288,80 @@ export class HomeFeedService {
       throw new NotFoundException('Curated list not found');
     }
 
+    // ARCHIVED-LEAK LAW AT READ (D36/F692) — the same law the shelves apply.
+    // The stored curated row is a BUILD fact; between the build and this read
+    // its subject may have been archived (dropped here) or merged away
+    // (rendered as its survivor, one hop).
+    const liveSubjects = await this.saveableEntities.resolveActiveByIds(
+      list.items.map((item) => item.entityId),
+      list.listType === 'dish' ? EntityType.food : EntityType.restaurant,
+    );
+    const liveHosts = await this.saveableEntities.resolveActiveByIds(
+      list.items.flatMap((item) =>
+        item.restaurantId ? [item.restaurantId] : [],
+      ),
+      EntityType.restaurant,
+    );
+    const servable = list.items.filter((item) => {
+      if (!liveSubjects.has(item.entityId)) return false;
+      // A dish whose HOST restaurant is gone is not servable either.
+      return !item.restaurantId || liveHosts.has(item.restaurantId);
+    });
+
     // Dish scores key on the STORED connection id (a build fact); restaurant
-    // scores on the entity id. No read-time (restaurantId, foodId) resolution
-    // exists anymore — the builder persists connectionId and the FK cascade
-    // keeps it live.
+    // scores on the RESOLVED entity id (a merge loser's score lives on the
+    // survivor). No read-time (restaurantId, foodId) resolution exists
+    // anymore — the builder persists connectionId and the FK cascade keeps it
+    // live.
     const scores =
       list.listType === 'dish'
         ? await this.loadScores(
             'connection',
-            list.items.flatMap((item) =>
+            servable.flatMap((item) =>
               item.connectionId ? [item.connectionId] : [],
             ),
           )
         : await this.loadScores(
             'restaurant',
-            list.items.map((item) => item.entityId),
+            servable.map(
+              (item) =>
+                liveSubjects.get(item.entityId)?.entityId ?? item.entityId,
+            ),
           );
 
-    const items: CuratedListDetailItem[] = list.items.map((item) => {
+    const items: CuratedListDetailItem[] = servable.map((item) => {
+      const subject = liveSubjects.get(item.entityId) as ResolvedEntity;
+      const host = item.restaurantId
+        ? (liveHosts.get(item.restaurantId) ?? null)
+        : null;
       if (list.listType === 'dish') {
         const score = item.connectionId
           ? scores.get(item.connectionId)
           : undefined;
         return {
           rank: item.rank,
-          entityId: item.entityId,
-          restaurantId: item.restaurantId,
+          entityId: subject.entityId,
+          restaurantId: host?.entityId ?? null,
           connectionId: item.connectionId,
-          label: item.entity.name,
-          subLabel: item.restaurant?.name ?? null,
-          latitude: toNumberOrNull(item.restaurant?.latitude),
-          longitude: toNumberOrNull(item.restaurant?.longitude),
+          label: subject.name,
+          subLabel: host?.name ?? null,
+          latitude: toNumberOrNull(host?.latitude),
+          longitude: toNumberOrNull(host?.longitude),
           craveScore: score?.displayScore ?? null,
           craveScoreExact: score?.percentileRank ?? null,
           rising: score?.rising ?? null,
         };
       }
-      const score = scores.get(item.entityId);
+      const score = scores.get(subject.entityId);
       return {
         rank: item.rank,
-        entityId: item.entityId,
+        entityId: subject.entityId,
         restaurantId: null,
         connectionId: null,
-        label: item.entity.name,
-        subLabel: item.entity.city,
-        latitude: toNumberOrNull(item.entity.latitude),
-        longitude: toNumberOrNull(item.entity.longitude),
+        label: subject.name,
+        subLabel: subject.city,
+        latitude: toNumberOrNull(subject.latitude),
+        longitude: toNumberOrNull(subject.longitude),
         craveScore: score?.displayScore ?? null,
         craveScoreExact: score?.percentileRank ?? null,
         rising: score?.rising ?? null,
@@ -351,7 +378,9 @@ export class HomeFeedService {
       rotationKey: list.rotationKey,
       scope: list.scope,
       city: { placeId: list.city.placeId, name: list.city.name },
-      itemCount: list.itemCount,
+      // The count of what is actually SERVED, not the build-time count — a
+      // detail that renders 8 rows must not claim 10 (F692 + no-fake-numbers).
+      itemCount: items.length,
       builtAt: list.builtAt,
       viewerRole: 'viewer',
       items,
@@ -360,12 +389,24 @@ export class HomeFeedService {
 
   /**
    * Save-a-copy (list-detail verbs leg, Job 2): copy the curated list's CURRENT
-   * items into a NEW favorites list owned by the caller. Access mirrors the
-   * detail read (global lists, or the caller's own personal list) — a foreign
-   * personal list 404s. Items that cannot be expressed as favorites rows (dish
-   * items with no resolvable connection) are skipped; itemCount is the honest
-   * copied count. Name conflict on the caller's (owner, type, name) unique
-   * retries once with a " (copy)" suffix.
+   * items into a NEW list owned by the caller. Access mirrors the detail read
+   * (global lists, or the caller's own personal list) — a foreign personal
+   * list 404s.
+   *
+   * ONE WRITE PATH (D36 / F690+F691). This used to `createMany` straight into
+   * user_list_items with its own rule set — no entity validation, no redirect
+   * resolve, no dish→restaurant side flip, no location validation, an absolute
+   * `itemCount` write — and, most importantly, NO `favorite_added` act. The
+   * route's @NoSignal even claimed the copy recorded one "via UserListsService",
+   * a service this class did not inject: a declaration that was present,
+   * plausible and false. Every copied item now goes through
+   * UserListsService.addItem, so the ledger hears each save exactly once and
+   * every invariant addItem enforces applies here by construction.
+   *
+   * Items addItem refuses (an archived/merged-away entity, a dish row with no
+   * resolvable connection) are SKIPPED — the returned itemCount is the honest
+   * copied count, never the curated list's length. Name conflict on the
+   * caller's (owner, type, name) unique retries once with a " (copy)" suffix.
    */
   async saveListToUserLists(
     listId: string,
@@ -380,22 +421,14 @@ export class HomeFeedService {
     }
     const listType =
       list.listType === 'dish' ? UserListType.dish : UserListType.restaurant;
-    const rows = list.items.flatMap(
-      (
-        item,
-      ): Array<{
-        restaurantId?: string;
-        connectionId?: string;
-        position: number;
-      }> => {
+    const targets = list.items.flatMap(
+      (item): Array<{ restaurantId?: string; connectionId?: string }> => {
         if (listType === UserListType.dish) {
           // Stored build fact; null only if a legacy row predates the
           // connection_id column — such a row cannot express a user-list item.
-          return item.connectionId
-            ? [{ connectionId: item.connectionId, position: item.rank }]
-            : [];
+          return item.connectionId ? [{ connectionId: item.connectionId }] : [];
         }
-        return [{ restaurantId: item.entityId, position: item.rank }];
+        return [{ restaurantId: item.entityId }];
       },
     );
 
@@ -431,23 +464,30 @@ export class HomeFeedService {
         throw error;
       }
     }
-    if (rows.length) {
-      await this.prisma.userListItem.createMany({
-        data: rows.map((row) => ({
-          ...row,
-          listId: created.listId,
-          addedByUserId: userId,
-        })),
-      });
-      await this.prisma.userList.update({
-        where: { listId: created.listId },
-        data: { itemCount: rows.length },
-      });
+
+    let copied = 0;
+    for (const target of targets) {
+      try {
+        await this.userLists.addItem(userId, created.listId, target, {
+          idempotent: true,
+        });
+        copied += 1;
+      } catch (error) {
+        // A curated row whose subject has since been archived (or whose
+        // connection no longer resolves) is not a failure of the copy — it is
+        // one fewer item. Loud in the log, honest in the count.
+        this.logger.warn('Save-a-copy skipped a curated item', {
+          curatedListId: listId,
+          targetListId: created.listId,
+          target,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
     return {
       listId: created.listId,
       name: created.name,
-      itemCount: rows.length,
+      itemCount: copied,
     };
   }
 
@@ -507,7 +547,18 @@ export class HomeFeedService {
     return null;
   }
 
-  /** Top-3 item names per list, one batch query. */
+  /**
+   * Top-N item names per list, one batch query + one resolve.
+   *
+   * ARCHIVED-LEAK LAW AT READ (D36/F692): the BUILDER pins status='active',
+   * so a curated row is clean when it is built and then ROTS — up to 24h for
+   * a daily recipe, a WEEK for the personal tasting, a MONTH for the dish
+   * best-ofs. Every serving surface therefore re-asks at READ time: one-hop
+   * redirect (a merged-away subject renders as its survivor) then
+   * status='active' (an archived one is dropped, never rendered as a husk).
+   * Rows are ordered [listId, rank] so per-list order is a property of the
+   * query, not of bucket arrival order (F698).
+   */
   private async previewNamesByList(
     listIds: string[],
   ): Promise<Map<string, string[]>> {
@@ -516,16 +567,21 @@ export class HomeFeedService {
     }
     const items = await this.prisma.curatedListItem.findMany({
       where: { listId: { in: listIds }, rank: { lte: PREVIEW_NAMES_COUNT } },
-      orderBy: [{ rank: 'asc' }],
-      select: { listId: true, entity: { select: { name: true } } },
+      orderBy: [{ listId: 'asc' }, { rank: 'asc' }],
+      select: { listId: true, entityId: true },
     });
+    const live = await this.saveableEntities.resolveActiveByIds(
+      items.map((item) => item.entityId),
+    );
     const previews = new Map<string, string[]>();
     for (const item of items) {
+      const entity = live.get(item.entityId);
+      if (!entity) continue;
       const bucket = previews.get(item.listId);
       if (bucket) {
-        bucket.push(item.entity.name);
+        bucket.push(entity.name);
       } else {
-        previews.set(item.listId, [item.entity.name]);
+        previews.set(item.listId, [entity.name]);
       }
     }
     return previews;
@@ -560,7 +616,13 @@ export class HomeFeedService {
       /*curated:near_you_items*/
       SELECT i.list_id, i.rank, e.name
       FROM curated_list_items i
-      JOIN core_entities e ON e.entity_id = i.entity_id
+      -- ARCHIVED-LEAK LAW AT READ (D36/F692): one-hop redirect to the
+      -- survivor, then status='active'. The builder's status filter only
+      -- describes build time; this shelf serves rows up to a month old.
+      LEFT JOIN entity_redirects r ON r.from_entity_id = i.entity_id
+      JOIN core_entities e
+        ON e.entity_id = COALESCE(r.to_entity_id, i.entity_id)
+       AND e.status = 'active'
       JOIN place_geometries hpg ON hpg.place_id = ${headerPlace.placeId}::uuid
       WHERE i.list_id = ANY(${restaurantLists.map((list) => list.listId)}::uuid[])
         AND e.latitude IS NOT NULL

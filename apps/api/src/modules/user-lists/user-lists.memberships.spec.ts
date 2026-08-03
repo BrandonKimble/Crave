@@ -33,6 +33,19 @@ function makeService(items: any[]) {
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
+    // D36: the one saveable-entity law (stubbed live here).
+    {
+      resolveSaveableRestaurant: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'R', city: null }),
+      resolveSaveableFood: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'F', city: null }),
+      resolveActiveByIds: (ids: string[]) =>
+        Promise.resolve(
+          new Map(
+            ids.map((id) => [id, { entityId: id, name: 'E', city: null }]),
+          ),
+        ),
+    } as never,
   );
   return { prisma, service };
 }

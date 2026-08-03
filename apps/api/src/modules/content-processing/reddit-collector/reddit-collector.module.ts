@@ -128,8 +128,8 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
  * Key Services:
  * - ChronologicalCollectionWorker: Handles /r/subreddit/new collection
  * - ChronologicalCollectionWorker: Bull queue processor and Reddit collection service
- * - CollectionJobSchedulerService: chronological dispatch provider (planning lives in CollectionSchedulerService)
- * - KeywordSearchSchedulerService: Manages monthly keyword search cycles
+ * - CollectionJobSchedulerService: chronological dispatch provider (cadence
+ *   is driven by the collector pacer off collection_schedules rows)
  * - UnifiedProcessingService: Main orchestrator for LLM processing integration
  */
 @Module({

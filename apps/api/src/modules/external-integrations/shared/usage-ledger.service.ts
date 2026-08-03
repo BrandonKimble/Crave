@@ -44,7 +44,8 @@ export interface UsageEvent {
    *  gemini-batch.service.ts's pollOne. */
   campaignId?: string;
   /** Spend-cause dimension (see work-context.ts) — explicit wins, ambient
-   *  fills in. e.g. Places 'grounding.new' | 'grounding.refresh'. */
+   *  fills in. Places: 'grounding.new' | 'grounding.refresh' |
+   *  'grounding.expansion' (see work-context.ts for why three). */
   attribution?: string;
 }
 

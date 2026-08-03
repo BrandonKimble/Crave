@@ -1044,6 +1044,17 @@ describe('SpendAnalyticsService.refreshPipelineClassRates (§24.2 all-in per-cla
           requestCount: 50,
           attribution: null,
         },
+        // D29a: secondary-location expansion — a FULL-mask
+        // (Enterprise+Atmosphere) read of an already-grounded place. It is
+        // neither new grounding nor a lean refresh poll, and must land in
+        // NEITHER rate; it used to be labelled 'grounding.refresh' and
+        // silently inflated the regrounding numerator with a different SKU.
+        {
+          skuTier: 'enterprise_atmosphere',
+          operation: 'placeDetails',
+          requestCount: 400,
+          attribution: 'grounding.expansion',
+        },
       ],
       laneJoinRows: [],
       docsExtracted: counts.docsExtracted ?? counts.docsCollected,

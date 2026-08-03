@@ -34,6 +34,7 @@ import { CurrentUser } from '../../shared';
 import type { AuthenticatedRequest } from '../../shared';
 import { UserDevicesService } from '../identity/user-devices.service';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
+import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
 
 @Controller('polls')
 export class PollsController {
@@ -51,6 +52,13 @@ export class PollsController {
   // share-link reads below stay anonymous deliberately: opening a shared
   // poll must not require an account.
   @Post('query')
+  // POST for the viewport BODY; it reads the feed and changes nothing. The
+  // browse act it serves IS recorded — as 'viewport_dwell', by the client's
+  // settle tick at POST /signals/viewport-dwell, which is the seam that
+  // knows attention SETTLED rather than merely scrolled past.
+  @NoSignal(
+    'viewport feed read; the browse act is recorded as viewport_dwell at its own settle seam',
+  )
   @RateLimitTier('heavyGeoRead')
   @UseGuards(ClerkAuthGuard)
   queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {
@@ -58,6 +66,7 @@ export class PollsController {
   }
 
   @Post()
+  @RecordsSignal('poll_created')
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   createPoll(@Body() dto: CreatePollDto, @CurrentUser() user: User) {
@@ -68,6 +77,12 @@ export class PollsController {
   // AUTHENTICATED: this exists only to serve the creation flow, which is
   // authenticated anyway — there was never a reason for it to be open.
   @Post('check-duplicate')
+  // A pre-flight similarity check inside the creation flow. The act is the
+  // creation, recorded by POST /polls; recording here would count an
+  // abandoned draft as demand.
+  @NoSignal(
+    'pre-flight duplicate check; the act is the creation, recorded by POST /polls',
+  )
   @RateLimitTier('heavyGeoRead')
   @UseGuards(ClerkAuthGuard)
   checkDuplicate(@Body() dto: CheckPollDuplicateDto) {
@@ -157,6 +172,7 @@ export class PollsController {
   }
 
   @Post(':pollId/comments')
+  @RecordsSignal('poll_comment')
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   postComment(
@@ -168,6 +184,12 @@ export class PollsController {
   }
 
   @Patch('comments/:commentId')
+  // Editing revises an act already in the ledger. The ledger is append-only
+  // and never rekeyed (§3), and one comment must weigh 1 however many times
+  // its text is corrected.
+  @NoSignal(
+    'revises an act already recorded; a second row would double-count one comment',
+  )
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   editComment(
@@ -179,6 +201,10 @@ export class PollsController {
   }
 
   @Delete('comments/:commentId')
+  // The ledger is APPEND-ONLY by law: a retraction never deletes the act
+  // that happened. Enforcement on confirmed abuse is the documented
+  // three-seam procedure, wholesale — not a compensating signal row.
+  @NoSignal('append-only ledger: a deletion never unwrites the act it retracts')
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   deleteComment(
@@ -191,6 +217,11 @@ export class PollsController {
   /** §9b reportContent (Apple 1.2 UGC): report a comment. Records only —
    *  human moderation reads the table; dedupe is a quiet no-op. */
   @Post('comments/:commentId/report')
+  // A moderation report is a claim ABOUT content, not demand FOR a place.
+  // It has its own table, which human moderation reads.
+  @NoSignal(
+    'moderation report: a claim about content, not a demand act; recorded in its own table',
+  )
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   reportComment(
@@ -204,6 +235,12 @@ export class PollsController {
   // A like toggle triggers a full leaderboard rebuild, so it's both a spam and a
   // DB-load vector — throttle it like the other poll writes.
   @Post('comments/:commentId/likes')
+  // Deliberately NOT a ledger kind: a comment like expresses agreement with
+  // a person, not demand for a subject, and the nine declared kinds do not
+  // include one. Adding a kind is an owner decision, not a call-site one.
+  @NoSignal(
+    'comment like is agreement with a person, not demand for a subject; no declared kind covers it',
+  )
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   toggleCommentLike(
@@ -224,6 +261,7 @@ export class PollsController {
   }
 
   @Post(':pollId/endorsements')
+  @RecordsSignal('poll_vote')
   @RateLimitTier('sensitive')
   @UseGuards(ClerkAuthGuard)
   togglePollEndorsement(

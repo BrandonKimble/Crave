@@ -1578,6 +1578,22 @@ export class UnifiedProcessingService implements OnModuleInit {
           }[] = [];
           for (const resolution of resolutionResult.resolutionResults) {
             if (!resolution.isNewEntity) {
+              // P2.2 F1 (round-13 red team): this array was declared and
+              // returned but NEVER populated — the entire locations-follow-
+              // testimony leg was dead code, and the "reused entities" log
+              // downstream had been silently empty.
+              if (resolution.entityId) {
+                reusedEntitySummaries.push({
+                  tempId: resolution.tempId,
+                  entityId: resolution.entityId,
+                  entityType:
+                    resolution.entityType ??
+                    resolution.originalInput?.entityType ??
+                    '',
+                  normalizedName: resolution.normalizedName,
+                  originalText: resolution.originalInput?.originalText,
+                });
+              }
               continue;
             }
 
@@ -1779,6 +1795,15 @@ export class UnifiedProcessingService implements OnModuleInit {
                               * pow(sin(radians(l.longitude::float - ${batchMetroAnchor.lng})/2),2)
                             )) < 80
                     )
+                    -- UNKNOWN GEO stands the gate down (round-13 F5/F6: an
+                    -- ungrounded candidate — e.g. the twin we just minted,
+                    -- pre-enrichment — is not 'remote'; refusing it minted
+                    -- one twin per spelling)
+                    OR NOT EXISTS (
+                      SELECT 1 FROM core_restaurant_locations lg
+                      WHERE lg.restaurant_id = e.entity_id
+                        AND lg.latitude IS NOT NULL
+                    )
                     OR (
                       lower(e.name) = lower(${canonicalName})
                       AND (SELECT count(*) FROM core_entities u
@@ -1856,6 +1881,11 @@ export class UnifiedProcessingService implements OnModuleInit {
                                   * pow(sin(radians(l.longitude::float - ${batchMetroAnchor.lng})/2),2)
                                 )) < 80
                         )
+                        OR NOT EXISTS (
+                          SELECT 1 FROM core_restaurant_locations lg
+                          WHERE lg.restaurant_id = ${existing.entityId}::uuid
+                            AND lg.latitude IS NOT NULL
+                        )
                         OR (
                           lower(${existing.name}) = lower(${canonicalName})
                           AND (SELECT count(*) FROM core_entities u
@@ -1907,6 +1937,15 @@ export class UnifiedProcessingService implements OnModuleInit {
 
             if (existing) {
               entityId = existing.entityId;
+              // P2.2: creation-path adoptions are testimony too — they feed
+              // the metro-probe leg exactly like resolver-tier adoptions.
+              reusedEntitySummaries.push({
+                tempId: resolution.tempId,
+                entityId: existing.entityId,
+                entityType,
+                normalizedName: resolution.normalizedName,
+                originalText: resolution.originalInput?.originalText,
+              });
 
               this.logger.warn(
                 'Resolver indicated new entity but canonical record already exists',

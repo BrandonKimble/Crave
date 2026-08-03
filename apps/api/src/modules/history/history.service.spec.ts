@@ -69,6 +69,18 @@ function createHarness() {
     restaurantStatusService as never,
     {} as never, // signals writer (unused on list paths)
     signalDemandRead as never,
+    {
+      resolveSaveableRestaurant: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'R', city: null }),
+      resolveSaveableFood: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'F', city: null }),
+      resolveActiveByIds: (ids: string[]) =>
+        Promise.resolve(
+          new Map(
+            ids.map((id) => [id, { entityId: id, name: 'E', city: null }]),
+          ),
+        ),
+    } as never,
   );
   return {
     service,

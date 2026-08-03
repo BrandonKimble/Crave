@@ -20,7 +20,7 @@ function makeList(overrides: any = {}) {
     description: null,
     listType: 'restaurant',
     visibility: 'public',
-    itemCount: 0,
+    _count: { items: 0 },
     position: 0,
     shareSlug: null,
     shareEnabled: false,
@@ -55,6 +55,19 @@ function makeService(lists: any[], cityRows: any[] = []) {
       bboxFromRestaurantLocation: () => Promise.resolve(null),
     } as never,
     blocks as never,
+    // D36: the one saveable-entity law (stubbed live here).
+    {
+      resolveSaveableRestaurant: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'R', city: null }),
+      resolveSaveableFood: (id: string) =>
+        Promise.resolve({ entityId: id, name: 'F', city: null }),
+      resolveActiveByIds: (ids: string[]) =>
+        Promise.resolve(
+          new Map(
+            ids.map((id) => [id, { entityId: id, name: 'E', city: null }]),
+          ),
+        ),
+    } as never,
   );
   return { prisma, service };
 }

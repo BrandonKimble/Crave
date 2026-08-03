@@ -372,11 +372,7 @@ async function main(): Promise<void> {
         })),
         skipDuplicates: true,
       });
-      const count = await prisma.userListItem.count({ where: { listId } });
-      await prisma.userList.update({
-        where: { listId },
-        data: { itemCount: count },
-      });
+      // D36/F600: no stored item_count to maintain — the rows ARE the count.
     }
 
     // Kind law (lists rename 2026-07-26): non-standard kinds are unique per

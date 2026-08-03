@@ -8,6 +8,7 @@ import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
 import { RecordFoodViewDto } from './dto/record-food-view.dto';
 import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
 import { ListFoodViewsDto } from './dto/list-food-views.dto';
+import { RecordsSignal } from '../signals/records-signal.decorator';
 
 @Controller('history')
 @UseGuards(ClerkAuthGuard)
@@ -15,6 +16,7 @@ export class HistoryController {
   constructor(private readonly historyService: HistoryService) {}
 
   @Post('restaurants/viewed')
+  @RecordsSignal('entity_view')
   async recordRestaurantView(
     @Body() dto: RecordRestaurantViewDto,
     @CurrentUser() user: User,
@@ -24,6 +26,7 @@ export class HistoryController {
   }
 
   @Post('foods/viewed')
+  @RecordsSignal('entity_view')
   async recordFoodView(
     @Body() dto: RecordFoodViewDto,
     @CurrentUser() user: User,

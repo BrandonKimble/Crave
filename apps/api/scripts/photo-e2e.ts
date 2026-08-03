@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import configuration from '../src/config/configuration';
 import { CloudinaryService } from '../src/modules/photos/cloudinary.service';
+import { SaveableEntityResolver } from '../src/modules/entities/saveable-entity.resolver';
 import { PhotoVisionService } from '../src/modules/photos/photo-vision.service';
 import { PhotosService } from '../src/modules/photos/photos.service';
 import type { PrismaService } from '../src/prisma/prisma.service';
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
     fakeConfig,
     cloudinary,
     vision,
+    new SaveableEntityResolver(prisma),
     fakeLogger,
   );
   const out = (message: string) => process.stdout.write(`${message}\n`);

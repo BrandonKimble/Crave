@@ -14,6 +14,7 @@ import {
   type SignedUploadTicket,
 } from './cloudinary.service';
 import { PhotoVisionService } from './photo-vision.service';
+import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
 export interface PhotoDto {
   photoId: string;
@@ -71,6 +72,7 @@ export class PhotosService {
     private readonly configService: ConfigService,
     private readonly cloudinary: CloudinaryService,
     private readonly vision: PhotoVisionService,
+    private readonly saveableEntities: SaveableEntityResolver,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PhotosService');
@@ -92,13 +94,18 @@ export class PhotosService {
     takenAt?: Date;
     visibility?: PhotoVisibility;
   }): Promise<{ photo: PhotoDto; ticket: SignedUploadTicket }> {
-    const restaurant = await this.prisma.entity.findUnique({
-      where: { entityId: params.restaurantId },
-      select: { entityId: true, type: true },
-    });
-    if (!restaurant || restaurant.type !== 'restaurant') {
+    // ONE saveable-entity law (D36/F621): redirect-resolve → type →
+    // status='active'. Type alone let a photo be anchored on an ARCHIVED
+    // restaurant — uploaded, moderated, BILLED, and invisible forever.
+    const restaurant = await this.saveableEntities.resolveSaveableRestaurant(
+      params.restaurantId,
+    );
+    if (!restaurant) {
       throw new BadRequestException('restaurantId must be a restaurant');
     }
+    // A merge loser's id resolves to the survivor: the photo anchors on the
+    // live restaurant rather than the husk.
+    const restaurantId = restaurant.entityId;
     // connectionId (a real dish link) and pendingDishName (the "Other…"
     // free-text demand signal) are mutually exclusive by construction —
     // a ticket carrying both is a client bug; reject loudly.
@@ -112,7 +119,7 @@ export class PhotosService {
         where: { connectionId: params.connectionId },
         select: { restaurantId: true },
       });
-      if (!connection || connection.restaurantId !== params.restaurantId) {
+      if (!connection || connection.restaurantId !== restaurantId) {
         throw new BadRequestException(
           'connectionId must be a dish of the given restaurant',
         );
@@ -136,7 +143,7 @@ export class PhotosService {
       data: {
         photoId,
         userId: params.userId,
-        restaurantId: params.restaurantId,
+        restaurantId,
         connectionId: params.connectionId ?? null,
         caption: params.caption?.slice(0, 512) ?? null,
         pendingDishName: params.pendingDishName?.slice(0, 256) ?? null,

@@ -34,12 +34,15 @@ const { BillingService } = require('./billing.service') as {
 
 const PRICE = 'price_premium_monthly';
 
+// The service takes a full `User` row; only these four fields are read on
+// this path, so the fixture states them and is cast rather than padded with
+// fifteen irrelevant columns.
 const USER = {
   userId: '11111111-1111-4111-8111-111111111111',
   authProviderUserId: 'user_clerk_1',
   email: 'a@example.com',
   stripeCustomerId: null as string | null,
-};
+} as unknown as import('@prisma/client').User;
 
 function makeService(
   overrides: {

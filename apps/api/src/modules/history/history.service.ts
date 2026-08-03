@@ -3,7 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
@@ -14,6 +13,7 @@ import { RestaurantStatusService } from '../search/restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
+import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
 
 @Injectable()
 export class HistoryService {
@@ -26,6 +26,7 @@ export class HistoryService {
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signals: SignalsService,
     private readonly signalDemandRead: SignalDemandReadService,
+    private readonly saveableEntities: SaveableEntityResolver,
   ) {
     this.logger = loggerService.setContext('HistoryService');
     this.viewCooldownMs = this.resolveViewCooldownMs();
@@ -35,17 +36,16 @@ export class HistoryService {
     userId: string,
     dto: RecordRestaurantViewDto,
   ): Promise<void> {
-    const restaurant = await this.prisma.entity.findUnique({
-      where: { entityId: dto.restaurantId },
-      select: { entityId: true, type: true },
-    });
+    // ONE saveable-entity law (D36/F682): redirect-resolve → type →
+    // status='active'. Type alone let an entity_view act be written against
+    // an ARCHIVED entity; a merge loser's id now records against the
+    // survivor rather than against a husk.
+    const restaurant = await this.saveableEntities.resolveSaveableRestaurant(
+      dto.restaurantId,
+    );
 
     if (!restaurant) {
       throw new NotFoundException('Restaurant not found');
-    }
-
-    if (restaurant.type !== EntityType.restaurant) {
-      throw new BadRequestException('Entity is not a restaurant');
     }
 
     // Phase C: signals is the ONE write path (the old user_entity_view_events /
@@ -106,17 +106,13 @@ export class HistoryService {
       throw new BadRequestException('Connection does not match food');
     }
 
-    const food = await this.prisma.entity.findUnique({
-      where: { entityId: connection.foodId },
-      select: { entityId: true, type: true },
-    });
+    // Same one law on the dish side (D36/F682).
+    const food = await this.saveableEntities.resolveSaveableFood(
+      connection.foodId,
+    );
 
     if (!food) {
       throw new NotFoundException('Food not found');
-    }
-
-    if (food.type !== EntityType.food) {
-      throw new BadRequestException('Entity is not a food');
     }
 
     // Phase C: signals is the ONE write path (see recordRestaurantView). The

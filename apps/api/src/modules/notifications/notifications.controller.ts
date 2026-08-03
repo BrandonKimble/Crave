@@ -7,6 +7,7 @@ import { RegisterDeviceDto } from './dto/register-device.dto';
 import { UnregisterDeviceDto } from './dto/unregister-device.dto';
 import { NotificationDeviceService } from './notification-device.service';
 import { UserNotificationFeedService } from './user-notification-feed.service';
+import { NoSignal } from '../signals/records-signal.decorator';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -22,6 +23,11 @@ export class NotificationsController {
   @AllowUnentitled()
   @UseGuards(ClerkAuthGuard)
   @Post('devices/register')
+  // D36/F645: this route escaped the ledger requirement for months because
+  // the audit exempted @AllowUnentitled (a PAYWALL exemption) rather than
+  // asking whether a known person acts here. They do — and the honest answer
+  // is that a push-token binding is device plumbing, not demand for a place.
+  @NoSignal('device/push plumbing; not demand for a subject')
   async registerDevice(
     @CurrentUser() user: User,
     @Body() dto: RegisterDeviceDto,
@@ -36,6 +42,7 @@ export class NotificationsController {
   // was hardened; unregister was left as capability-by-token, and push
   // tokens are not treated as secrets anywhere else in this codebase.
   @Post('devices/unregister')
+  @NoSignal('device/push plumbing; not demand for a subject')
   // Unentitled too: logging out must never be gated on a subscription.
   @AllowUnentitled()
   @UseGuards(ClerkAuthGuard)
@@ -77,6 +84,9 @@ export class NotificationsController {
   @AllowUnentitled()
   @UseGuards(ClerkAuthGuard)
   @Post('feed/read')
+  // Marking one's own notification feed read is a UI-state write about US,
+  // not an act on a subject.
+  @NoSignal('own notification-feed read state; not demand for a subject')
   async markFeedRead(@CurrentUser() user: User) {
     return this.feedService.markAllRead(user.userId);
   }

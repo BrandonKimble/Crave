@@ -12,6 +12,7 @@ import { PhotoReconciliationService } from './photo-reconciliation.service';
 import { PhotoReadService } from './photo-read.service';
 import { PhotoReads } from './photo-reads';
 import { PhotoEventService } from './photo-event.service';
+import { EntityAccessModule } from '../entities/entity-access.module';
 
 /**
  * UGC photos (product/images.md + plans/images-ideal-shape.md): signed
@@ -27,6 +28,7 @@ import { PhotoEventService } from './photo-event.service';
     IdentityModule,
     // LLMService: the photo is-food gate rides the Gemini gateway now.
     ExternalIntegrationsModule,
+    EntityAccessModule,
   ],
   controllers: [PhotosController, PhotosWebhookController],
   providers: [

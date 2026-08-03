@@ -98,6 +98,8 @@ export type UserListItemDetail = Prisma.UserListItemGetPayload<{
 }>;
 
 export type UserListWithDetailItems = UserList & {
+  /** D36/F600 — see UserListSummarySource. */
+  _count: { items: number };
   items: UserListItemDetail[];
 };
 
@@ -109,6 +111,11 @@ export type UserListScoreSubjectSource = {
 };
 
 export type UserListSummarySource = UserList & {
+  /** D36/F600: the count IS the rows. There is no stored item_count anymore,
+   *  so every summary read must ask for `_count: { select: { items: true } }`
+   *  — a read that forgets it is a COMPILE error, never a wrong number. The
+   *  `items` array below is a PREVIEW (take: 5), so it can never stand in. */
+  _count: { items: number };
   items: Array<{
     itemId: string;
     restaurantId?: string | null;
@@ -222,7 +229,8 @@ export class UserListMapper {
       description: list.description,
       listType: list.listType,
       visibility: list.visibility,
-      itemCount: list.itemCount,
+      // D36/F600: derived from the rows, never a stored counter.
+      itemCount: list._count.items,
       position: list.position,
       kind: list.kind,
       systemKind: list.kind === 'standard' ? null : list.kind,

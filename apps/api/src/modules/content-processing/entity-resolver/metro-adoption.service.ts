@@ -29,8 +29,9 @@ export class MetroAdoptionService {
   private readonly logger: LoggerService;
   private readonly anchorCache = new Map<
     string,
-    { lat: number; lng: number } | null
+    { value: { lat: number; lng: number } | null; cachedAt: number }
   >();
+  private static readonly ANCHOR_CACHE_TTL_MS = 5 * 60 * 1000;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -46,8 +47,12 @@ export class MetroAdoptionService {
   async anchorForEngine(
     engineId: string,
   ): Promise<{ lat: number; lng: number } | null> {
-    if (this.anchorCache.has(engineId)) {
-      return this.anchorCache.get(engineId) ?? null;
+    const cached = this.anchorCache.get(engineId);
+    if (
+      cached &&
+      Date.now() - cached.cachedAt < MetroAdoptionService.ANCHOR_CACHE_TTL_MS
+    ) {
+      return cached.value;
     }
     const rows = await this.prisma.$queryRaw<
       Array<{ lat: number; lng: number }>
@@ -59,31 +64,84 @@ export class MetroAdoptionService {
       LIMIT 1
     `;
     const anchor = rows[0] ?? null;
-    this.anchorCache.set(engineId, anchor);
+    this.anchorCache.set(engineId, { value: anchor, cachedAt: Date.now() });
     return anchor;
   }
 
-  /** Which of these restaurants have a location inside the metro. One
-   *  round-trip, haversine against the anchor. */
-  async restaurantsWithLocalPresence(
+  /** Geo verdict per restaurant: 'local' (a geocoded location inside the
+   *  metro), 'remote' (geocoded somewhere, none local), or 'unknown' (no
+   *  geocoded location anywhere — round-13 F5: 22.7% of active
+   *  restaurants are ungrounded; treating them as remote made every
+   *  nickname mention of them mint a duplicate. Unknown stands the gate
+   *  DOWN, like a missing anchor). */
+  async geoVerdicts(
     restaurantIds: string[],
     anchor: { lat: number; lng: number },
-  ): Promise<Set<string>> {
+  ): Promise<Map<string, 'local' | 'remote' | 'unknown'>> {
+    const verdicts = new Map<string, 'local' | 'remote' | 'unknown'>();
     if (!restaurantIds.length) {
-      return new Set();
+      return verdicts;
     }
-    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT DISTINCT l.restaurant_id::text AS id
+    const rows = await this.prisma.$queryRaw<
+      Array<{ id: string; local: boolean }>
+    >`
+      SELECT l.restaurant_id::text AS id,
+             bool_or(
+               2 * 6371 * asin(sqrt(
+                 pow(sin(radians(l.latitude::float - ${anchor.lat}) / 2), 2)
+                 + cos(radians(${anchor.lat})) * cos(radians(l.latitude::float))
+                 * pow(sin(radians(l.longitude::float - ${anchor.lng}) / 2), 2)
+               )) < ${MetroAdoptionService.METRO_RADIUS_KM}
+             ) AS local
       FROM core_restaurant_locations l
       WHERE l.restaurant_id = ANY(${restaurantIds}::uuid[])
         AND l.latitude IS NOT NULL
-        AND 2 * 6371 * asin(sqrt(
-              pow(sin(radians(l.latitude::float - ${anchor.lat}) / 2), 2)
-              + cos(radians(${anchor.lat})) * cos(radians(l.latitude::float))
-              * pow(sin(radians(l.longitude::float - ${anchor.lng}) / 2), 2)
-            )) < ${MetroAdoptionService.METRO_RADIUS_KM}
+      GROUP BY l.restaurant_id
     `;
-    return new Set(rows.map((row) => row.id));
+    for (const id of restaurantIds) {
+      verdicts.set(id, 'unknown');
+    }
+    for (const row of rows) {
+      verdicts.set(row.id, row.local ? 'local' : 'remote');
+    }
+    return verdicts;
+  }
+
+  /** Local re-resolve (round-13 F4): before demoting, look for a
+   *  LOCALLY-PRESENT active restaurant carrying the surface as its name
+   *  or an alias — "resolve locally" must mean resolve, not mint. */
+  async findLocalByNameOrAlias(
+    surface: string,
+    anchor: { lat: number; lng: number },
+  ): Promise<string | null> {
+    const needle = surface.toLowerCase().trim();
+    if (!needle) {
+      return null;
+    }
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT e.entity_id::text AS id
+      FROM core_entities e
+      WHERE e.type = 'restaurant' AND e.status <> 'archived'
+        AND (
+          lower(e.name) = ${needle}
+          OR EXISTS (
+            SELECT 1 FROM unnest(e.aliases) a WHERE lower(a) = ${needle}
+          )
+        )
+        AND EXISTS (
+          SELECT 1 FROM core_restaurant_locations l
+          WHERE l.restaurant_id = e.entity_id
+            AND l.latitude IS NOT NULL
+            AND 2 * 6371 * asin(sqrt(
+                  pow(sin(radians(l.latitude::float - ${anchor.lat}) / 2), 2)
+                  + cos(radians(${anchor.lat})) * cos(radians(l.latitude::float))
+                  * pow(sin(radians(l.longitude::float - ${anchor.lng}) / 2), 2)
+                )) < ${MetroAdoptionService.METRO_RADIUS_KM}
+        )
+      ORDER BY e.created_at
+      LIMIT 1
+    `;
+    return rows[0]?.id ?? null;
   }
 
   /** Names (lowered) that belong to exactly ONE active restaurant

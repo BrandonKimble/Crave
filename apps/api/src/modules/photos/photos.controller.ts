@@ -41,6 +41,7 @@ import { PhotosService } from './photos.service';
 import { PhotoEventService } from './photo-event.service';
 import { CloudinaryService } from './cloudinary.service';
 import { PhotoReads } from './photo-reads';
+import { NoSignal } from '../signals/records-signal.decorator';
 
 export class CreateUploadTicketDto {
   @IsUUID('4')
@@ -206,11 +207,22 @@ export class PhotosController {
    *  results / favorites rows / restaurant dish list all consume it lazily
    *  without touching the search executor DTOs). */
   @Post('strips')
+  // POST for the refs BODY; a gallery read. The VIEW act is recorded where
+  // the entity is opened (entity_view), not once per image fetched.
+  @NoSignal(
+    'photo strip read; the view act is recorded as entity_view at the entity surface',
+  )
   async strips(@CurrentUser() viewer: User, @Body() dto: GetPhotoStripsDto) {
     return this.photoReads.forViewer(viewer.userId).cardStrips(dto.refs);
   }
 
   @Post('events')
+  // Photo impression/engagement telemetry has its own store and its own
+  // grain (per IMAGE). The ledger's grain is a user act on a SUBJECT; folding
+  // image events in would let one screen mint many acts.
+  @NoSignal(
+    'per-image engagement telemetry; its own store, its own grain — not one act per image',
+  )
   recordEvents(@CurrentUser() user: User, @Body() dto: RecordPhotoEventsDto) {
     this.events.record(user.userId, dto.events);
     return { received: true };
@@ -219,17 +231,26 @@ export class PhotosController {
   /** Avatar change — same signed-direct-upload machinery; user.avatarUrl
    *  flips when moderation approves (old avatar stays until then). */
   @Post('avatar-ticket')
+  @NoSignal(
+    'issues an upload ticket; profile-picture management is not demand for a place',
+  )
   createAvatarTicket(@CurrentUser() user: User) {
     return { ticket: this.photos.createAvatarTicket(user.userId) };
   }
 
   /** Client calls after its direct upload; server reads Cloudinary truth. */
   @Post('avatar-confirm')
+  @NoSignal('profile-picture management; not demand for a place')
   async confirmAvatar(@CurrentUser() user: User) {
     return this.photos.confirmAvatar(user.userId);
   }
 
   @Post('upload-ticket')
+  // A CONTRIBUTION, not a demand act: uploading a photo of a place is supply.
+  // No declared kind covers it, and adding one is an owner decision.
+  @NoSignal(
+    'photo contribution is supply, not demand; no declared kind covers it',
+  )
   async createUploadTicket(
     @CurrentUser() user: User,
     @Body() dto: CreateUploadTicketDto,
@@ -254,6 +275,7 @@ export class PhotosController {
   }
 
   @Delete(':photoId')
+  @NoSignal('append-only ledger: deleting a photo never unwrites an act')
   async deletePhoto(
     @CurrentUser() user: User,
     @Param('photoId', new ParseUUIDPipe()) photoId: string,
@@ -263,6 +285,9 @@ export class PhotosController {
   }
 
   @Post(':photoId/report')
+  @NoSignal(
+    'moderation report: a claim about content, not a demand act; recorded in its own table',
+  )
   async report(
     @CurrentUser() user: User,
     @Param('photoId', new ParseUUIDPipe()) photoId: string,

@@ -73,7 +73,7 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     sanitizeOrThrow: jest.fn((value: string) => value),
   };
   const moderation = {
-    moderateText: jest.fn().mockResolvedValue({ allowed: true }),
+    moderateText: jest.fn().mockResolvedValue({ kind: 'allowed' }),
   };
   const llmService = {
     // Discussion verdict -> the discussion creation path (no entity seeding).
