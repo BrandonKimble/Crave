@@ -1694,11 +1694,12 @@ you are adding a page rather than changing the machinery.
 
 `npx tsc --noEmit` and `yarn test` from `apps/mobile` are both GREEN (verified
 before and after; this pass changed no product code). Findings for this
-territory are **F900-F967**. Coverage is honest, not complete: `navigation/`
-(166 files) and `overlays/panels/` (49) were read in full; the `overlays/` ROOT
-(110 files — the sheet host and its gesture/snap/scroll runtimes) is only
-partially read and 96 rows stay UNREVIEWED in `audit/COVERAGE.md`. See F967 for
-the pass-2 target list. The dominant classes found were: dead
+territory are **F900-F984**. All 325 files were read in pass 1; four large
+controllers (`app-route-scene-stack-runtime.ts`, `app-route-sheet-host-authority-controller.ts`,
+`app-route-scene-switch-controller.ts`, `MainLaunchCoordinator.tsx` — ~8,300 lines
+combined) were spot-read on their hot paths rather than line-by-line, and their
+`audit/COVERAGE.md` rows say so. Everything is PARTIAL, not IDEAL-VERIFIED: this
+was a mapping pass. The dominant classes found were: dead
 scaffolding from retired phases that still typechecks and still has green specs
 (F900, F906, F907, F911, F929); doc-vs-code contradictions where the comment
 describes a guard the code does not implement (F901, F909, F915, F930, F935);
@@ -1710,6 +1711,13 @@ documented blank-sheet incidents, which wants to be a metadata field), **F945**
 (`'home'` missing from three copies of the top-level scene set), and **F953/F962**
 (three live `'polls'` hardcodes surviving the docked retarget, plus the
 stranger-facing doc that still promises the retarget was a one-constant change).
+In `overlays/` specifically: **F968** (`BottomSheetWithFlashList.tsx`, a complete
+507-line second implementation of the sheet, dead), **F970** (a per-scene
+"authority" whose `subscribe` is a no-op, so three live subscribers can never be
+notified), **F977/F978** (two always-green instruments, one of them the RED
+counterpart the chrome-geometry law leans on), and **F980** (nine hand-written
+memo comparators whose failure mode is a silently missing re-render — the file
+calls it "the memo landmine" twice in its own comments).
 
 ## Territory: mobile-search (`apps/mobile/src/screens/Search`)
 

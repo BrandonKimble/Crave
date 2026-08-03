@@ -17,6 +17,13 @@ import { CloudinaryService } from '../photos/cloudinary.service';
  * retained for financial audit. PII is scrubbed; the auth identity is
  * destroyed at Clerk so the account can never be signed into again.
  *
+ * Behavioral data (D40 owner ruling, 2026-08-03): deletion is ANONYMITY, not
+ * data destruction, wherever the data is anonymous demand evidence. The
+ * signals ledger keeps its rows and `signal_actors` keeps its actor — only
+ * the mapping to the person is severed. Data that is ABOUT the person
+ * (their onboarding answers, their inferred taste profile) is deleted
+ * outright.
+ *
  * Ordering (each step idempotent, fail-loud):
  * 1. Stop web billing (Stripe cancel_at_period_end) — best-effort: a billing
  *    hiccup must not block a legally-required deletion. App Store
@@ -103,6 +110,42 @@ export class AccountDeletionService {
         where: { userId: user.userId },
       });
       await this.prisma.usernameHistory.deleteMany({
+        where: { userId: user.userId },
+      });
+      // D40 owner rulings #1 + #2 (2026-08-03) — SEVERANCE, not destruction.
+      //
+      // #1 SIGNALS: signals.service.ts has always documented the story —
+      // "the deletion story severs the pseudonymous actor mapping
+      // (signal_actors), never signal rows" — and nothing implemented it.
+      // The ledger is append-only by law, and the acts are anonymous demand
+      // evidence the corpus is built on; what must go is the LINK to the
+      // person. So the actor row survives (the signals keep pointing at it)
+      // with user_id severed. device_key is severed with it: it is the same
+      // hard-contact fingerprint the staging scrub classifies as PII, and
+      // leaving it would let the next sign-in on that device re-adopt the
+      // actor and re-attach a real person to acts we just anonymized.
+      //
+      // #2 THE TWO D40 TABLES DIE WITH THE ACCOUNT: user_onboarding_responses
+      // is the person's own answers (deletion already nulled the
+      // users.onboarding_responses projection — the record now follows), and
+      // user_taste_profile is an inferred-preference record (dietary, spice,
+      // budget). The profile is keyed by actor_id, so it is read off the
+      // actor BEFORE the mapping is severed — after severance there is no
+      // path from the user back to those rows, by design.
+      const actor = await this.prisma.signalActor.findUnique({
+        where: { userId: user.userId },
+        select: { actorId: true },
+      });
+      if (actor) {
+        await this.prisma.userTasteProfile.deleteMany({
+          where: { actorId: actor.actorId },
+        });
+        await this.prisma.signalActor.update({
+          where: { actorId: actor.actorId },
+          data: { userId: null, deviceKey: null },
+        });
+      }
+      await this.prisma.userOnboardingResponse.deleteMany({
         where: { userId: user.userId },
       });
       await this.prisma.user.update({

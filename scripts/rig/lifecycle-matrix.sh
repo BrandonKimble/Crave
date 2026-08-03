@@ -49,6 +49,21 @@ send() {
   echo ""
 }
 
+# F854 — THE HARNESS'S OWN DEATH IS REPORTED AS AN EXPECTED RED.
+#
+# `send()` returns "" after a 20s ack timeout, and `check()`'s `except: print("0")`
+# maps that empty string to the SAME "0" a genuine assertion failure produces. So a
+# crashed app, a dead Metro, or a URL the bridge never received all read as
+# "EXPECTED-RED (old-code defect)" on the rows flagged with expected_red=1 — the
+# run reports the defect it was looking for, having measured nothing at all.
+#
+# RED RECIPE (recorded, not automated — it needs the simulator): run this script
+# with the app NOT installed, or with `APP_BUNDLE` set to a nonexistent id. Every
+# send times out, and the matrix should FAIL LOUDLY ("no ack — harness unreachable")
+# rather than print a tidy list of EXPECTED-REDs. Today it prints the tidy list.
+# The fix, when this is designed: send() must return a distinguishable
+# NO_ACK sentinel and check() must treat it as a harness fault, never an assertion.
+#
 # assert <name> <ack-json> <python-expr over parsed ack as a> [expected_red]
 check() {
   local name="$1" ack="$2" expr="$3" expected_red="${4:-0}"

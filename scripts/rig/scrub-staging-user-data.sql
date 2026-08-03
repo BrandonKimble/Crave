@@ -21,6 +21,16 @@
 --     realistic). We keep them too, but NULL the creator id so not even the
 --     linkage to a real person survives. (poll_comments / endorsements /
 --     likes DO cascade from users and are correctly dropped as activity.)
+-- --   * D40 (2026-08-03) — the owner ruled that `user_onboarding_responses`
+--     (the person's own answers) and `user_taste_profile` (their inferred
+--     dietary/spice/budget preferences) must never reach staging. They are
+--     NOT listed anywhere below ON PURPOSE: discovery already reaches them
+--     (`user_id` and `actor_id` respectively match the person-column
+--     pattern), and the wider verifier net re-checks both, so a hand-written
+--     list would only be a second place to forget. Verified against the
+--     local catalog on 2026-08-03: both tables appear in the discovery set.
+--     If you add a user-data table whose person column is named something
+--     else, extend the PATTERN — not a list.
 --   * VERIFY FAIL-CLOSED: zero rows in `users`, zero rows bearing any
 --     hard-contact-PII column, zero surviving user linkage in the kept
 --     content tables. If discovery ever misses a new table, the verifier

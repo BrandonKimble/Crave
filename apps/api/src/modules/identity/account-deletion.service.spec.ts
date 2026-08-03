@@ -12,6 +12,8 @@ function makeService(overrides?: {
   clerkDelete?: jest.Mock;
   cancelSubscription?: jest.Mock;
   userUpdate?: jest.Mock;
+  /** null = no signal actor exists for this user (idempotent re-run). */
+  signalActor?: { actorId: string } | null;
 }) {
   const prisma = {
     user: {
@@ -23,6 +25,23 @@ function makeService(overrides?: {
     },
     userDevice: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
     usernameHistory: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    // D40: signals severance + the two user-data tables that die outright.
+    signalActor: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue(
+          overrides?.signalActor === undefined
+            ? { actorId: 'actor-del-1' }
+            : overrides.signalActor,
+        ),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    userTasteProfile: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 3 }),
+    },
+    userOnboardingResponse: {
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
   };
   const clerkAuth = {
     deleteClerkUser:
@@ -128,6 +147,58 @@ describe('AccountDeletionService', () => {
       String(message).includes('CRITICAL'),
     );
     expect(critical).toBeDefined();
+  });
+
+  // D40 owner rulings #1 + #2 (2026-08-03): anonymity, not destruction.
+  describe('behavioral data (D40)', () => {
+    it('SEVERS signal_actors.user_id — the actor row survives, the person is disconnected', async () => {
+      const { service, prisma } = makeService();
+      await service.deleteAccount(user);
+      expect(prisma.signalActor.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 'u-del-1' } }),
+      );
+      expect(prisma.signalActor.update).toHaveBeenCalledWith({
+        where: { actorId: 'actor-del-1' },
+        data: { userId: null, deviceKey: null },
+      });
+      // The acts stay as anonymous demand evidence: the ledger is append-only
+      // and the actor row is UPDATED, never deleted. (`prisma.signalActor`
+      // deliberately exposes no delete/deleteMany — a service that tried to
+      // destroy the actor would throw here.)
+      expect(
+        (prisma.signalActor as Record<string, unknown>).delete,
+      ).toBeUndefined();
+      expect(
+        (prisma.signalActor as Record<string, unknown>).deleteMany,
+      ).toBeUndefined();
+    });
+
+    it('DELETES both D40 user-data tables (own answers + inferred profile)', async () => {
+      const { service, prisma } = makeService();
+      await service.deleteAccount(user);
+      expect(prisma.userOnboardingResponse.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u-del-1' },
+      });
+      // keyed by actor_id — read off the actor BEFORE the mapping is severed
+      expect(prisma.userTasteProfile.deleteMany).toHaveBeenCalledWith({
+        where: { actorId: 'actor-del-1' },
+      });
+      // and the users-row projection is still nulled in the same pass
+      const update = prisma.user.update.mock.calls[0][0];
+      expect(update.data.onboardingResponses).toBeDefined();
+    });
+
+    it('is idempotent: a re-run with the mapping already severed is a no-op, not a crash', async () => {
+      const { service, prisma } = makeService({ signalActor: null });
+      await expect(service.deleteAccount(user)).resolves.toEqual({
+        deleted: true,
+      });
+      expect(prisma.signalActor.update).not.toHaveBeenCalled();
+      expect(prisma.userTasteProfile.deleteMany).not.toHaveBeenCalled();
+      // the user-keyed deletes are unconditional and safely re-runnable
+      expect(prisma.userOnboardingResponse.deleteMany).toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
   });
 
   it('handles users without a Clerk id (skips auth deletion, still scrubs)', async () => {
