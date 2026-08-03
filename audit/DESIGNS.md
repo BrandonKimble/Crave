@@ -271,3 +271,23 @@ VERDICT: approve all; the six-surface leak fix is one coherent commit, the build
 
 - F706/F707 visual-regression rail: baselines survive but the capture flow was deleted (commit 9f0d26a5a) — RESTORE the flow from 9f0d26a5a^ or RETIRE the rail (delete baselines + map-accept references). Recommendation: restore; the map is precious and the harness was the blessed regression gate. Cost: one revert-of-deletion, no runtime impact.
 - F740 blueprint §11.8 vs business-model.md Stripe-web-rail contradiction, aggravated by blueprint's own "this file wins" precedence claim — owner must restate which sentence is current (memory says: web rail IS happening, 2026-08-01 ruling).
+
+## D38 — mobile-app-core (Phase-2 review of F800–F899, 2026-08-03)
+
+**APPROVED:**
+
+- F800 delete the fabricated onboarding economics (regret rates, dollar redirects, "4x less time", tuned 0.37 calendar) — PRE-AUTHORIZED by the owner's teaser ruling ("the only numbers... typical restaurant-discard numbers; every other numeric claim should just be deleted"). The real-dish OnboardingTeaser is the correct shape and stays. Copy tightens to non-numeric claims wherever a number was invented.
+- F803 eas.json EXPO_PUBLIC_API_URL gains /api/v1 (a fact-fix; every EAS build currently points at a 404 root).
+- F804 ONE 401 seam in services/api.ts — expired session becomes an explicit signed-out state driving the auth surface; silent-anonymous becomes unrepresentable. Mutation-prove: a 401 in a spec must visibly transition state.
+- F810 server-side onboarding completion failure must not swallow into local "completed" — persist the draft, surface honest failure, retry path; the username claim and answers survive. RED-prove with a failing server call.
+- F807 delete the two dead metro aliases (banking law satisfied by the agent's dual-pass grep: no resolver.alias support wired at all).
+- F830 fix the dying jest worker AND make the suite fail loudly on worker death (always-green disease in the instrument itself).
+- F850/F851 samplers: missing native sampler must read as MISSING (never as 60fps); stop discarding worst stalls — the tail is the signal.
+- F880 one singleton-surface store factory; collapse the six drifted copies; the twice-fixed close-races-open race gets fixed once, everywhere, with the race spec attached to the factory.
+- F882 skeleton matches the shipped card (dead heart/share column removed; photo-strip geometry from the same constants as the gallery).
+- F883 Mapbox style cache-buster becomes dev-only (**DEV**-gated).
+- F823/F879/F899 instrument honesty: convert the named always-green probes to mutate-and-observe where a cheap mutation exists; otherwise record the RED recipe next to the probe.
+
+**EXCLUDED from this Phase 3 (not rejected):** the dual-button Stripe paywall (waits on the API rail agent's endpoint shape); the tracksheet files carrying another session's uncommitted edits (src/tracksheet/_, services/teaser.ts, ios/TrackScrollKit/_) — not ours to touch this pass.
+
+**ESCALATE:** none — F800's user-visible copy change rides the existing owner ruling.
