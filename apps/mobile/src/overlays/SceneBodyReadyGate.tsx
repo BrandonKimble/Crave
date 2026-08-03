@@ -18,14 +18,20 @@ import { useSceneLoadFailurePolicy, type SceneLoadFailure } from './scene-load-f
 // no-restricted-imports ban on ActivityIndicator in overlays/panels/** is the RED contract.
 //
 // Scene resolution: the scene-stack content host provides the mounting scene's key via
-// SceneBodySceneKeyContext (SceneStripLawContext-style). Bodies rendered OUTSIDE the scene
-// stack (none today) may pass an explicit `sceneKey`.
+// SceneBodySceneKeyContext (SceneStripLawContext-style). F978: the file used to also offer an
+// explicit `sceneKey` override "for bodies rendered outside the scene stack" and then document,
+// in the same breath, that there are none today — a prop with no caller, and the second half of
+// the reason the bark below could not fire. The context is the ONE resolution path; a body that
+// truly mounts outside the stack must provide the context, not a per-call-site escape hatch.
 
 export const SceneBodySceneKeyContext = React.createContext<OverlayKey | null>(null);
 
-// Dev-only: bark once per call-site-scene when the gate can't resolve a scene (no context, no
-// prop) — it then renders nothing while pending, which is exactly the blank-frame disease.
-let barkedMissingSceneKey = false;
+// Dev-only: bark when the gate can't resolve a foundation skeleton — it then renders nothing
+// while pending, which is exactly the blank-frame disease.
+// F978: this used to be a module-global `let`, so it reported ONCE PER APP LIFETIME ACROSS ALL
+// SCENES — the second distinct offender was silent, and an instrument that can only ever speak
+// once is barely an instrument. Keyed by scene now, so every distinct offender is heard.
+const barkedMissingMaterialSceneKeys = new Set<string>();
 
 export const SceneBodyReadyGate: React.FC<{
   pending: boolean;
@@ -37,25 +43,23 @@ export const SceneBodyReadyGate: React.FC<{
    * the body keeps its DECLARED skeleton (never blank, never a page-local retry).
    */
   failure?: SceneLoadFailure;
-  /** Explicit override for bodies mounted outside the scene stack; context covers the rest. */
-  sceneKey?: OverlayKey;
   children?: React.ReactNode;
-}> = ({ pending, failure, sceneKey, children }) => {
-  const contextSceneKey = React.useContext(SceneBodySceneKeyContext);
-  const resolvedSceneKey = sceneKey ?? contextSceneKey;
+}> = ({ pending, failure, children }) => {
+  const resolvedSceneKey = React.useContext(SceneBodySceneKeyContext);
   useSceneLoadFailurePolicy(resolvedSceneKey, failure);
   if (!pending && failure?.isError !== true) {
     return <>{children ?? null}</>;
   }
   const material = resolvedSceneKey != null ? resolveSceneLoadingMaterial(resolvedSceneKey) : null;
   if (material == null) {
-    if (__DEV__ && !barkedMissingSceneKey) {
-      barkedMissingSceneKey = true;
+    const barkKey = resolvedSceneKey ?? 'none';
+    if (__DEV__ && !barkedMissingMaterialSceneKeys.has(barkKey)) {
+      barkedMissingMaterialSceneKeys.add(barkKey);
       // eslint-disable-next-line no-console
       console.error(
         `[FOUNDATION] SceneBodyReadyGate could not resolve a foundation skeleton ` +
-          `(sceneKey='${resolvedSceneKey ?? 'none'}') — a pending body is rendering EMPTY. ` +
-          `Mount under the scene stack or pass sceneKey.`
+          `(sceneKey='${barkKey}') — a pending body is rendering EMPTY. Mount it under the ` +
+          `scene stack (SceneBodySceneKeyContext), or give the scene a loading material.`
       );
     }
     return null;
@@ -65,7 +69,10 @@ export const SceneBodyReadyGate: React.FC<{
       {/* L2: rowType + backing come from the ONE derivation home
           (resolveSceneLoadingMaterial) — the gate no longer re-decides the §Q redo T2
           white-on-white rule; it shares the exact derivation PageBodyShell uses. */}
-      <SceneLoadingSurface rowType={material.rowType} withFilterStripHoles={material.withStripHoles} />
+      <SceneLoadingSurface
+        rowType={material.rowType}
+        withFilterStripHoles={material.withStripHoles}
+      />
     </View>
   );
 };

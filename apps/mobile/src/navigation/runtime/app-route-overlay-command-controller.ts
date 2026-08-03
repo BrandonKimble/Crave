@@ -1,6 +1,7 @@
 import type React from 'react';
 
 import type { UserListType } from '../../services/user-lists';
+import { isTopLevelProductSceneKey } from './docked-scene-target';
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type {
   AppOverlaySaveListTarget,
@@ -69,18 +70,8 @@ const areCommandSnapshotsEqual = (
   left.searchHeaderActionResetToken === right.searchHeaderActionResetToken &&
   left.saveSheetState === right.saveSheetState;
 
-const APP_ROUTE_TOP_LEVEL_PRODUCT_SCENE_KEYS: ReadonlySet<OverlayKey> = new Set<OverlayKey>([
-  'search',
-  'polls',
-  'lists',
-  'profile',
-]);
-
-const isTopLevelProductSceneKey = (
-  sceneKey: OverlayKey | null | undefined
-): sceneKey is AppOverlayTopLevelProductRouteKey =>
-  sceneKey != null && APP_ROUTE_TOP_LEVEL_PRODUCT_SCENE_KEYS.has(sceneKey);
-
+// F945: the hand-copied set + predicate that used to live here (and had already dropped
+// 'home') now come from the ONE leaf home, derived from ALL_TOP_LEVEL_SCENE_KEYS.
 const getRouteOwnerSceneKey = (
   route: OverlayRouteEntry
 ): AppOverlayTopLevelProductRouteKey | null => {

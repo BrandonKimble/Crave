@@ -57,8 +57,10 @@ export type BottomSheetSceneStackSceneBodyRuntimeAuthority = {
 };
 
 export type BottomSheetSceneStackBodyRuntimeAuthority = {
+  // OverlayKey, not string: the implementation memoises one authority per scene key in a
+  // Map with no removal path, and this type is what BOUNDS that Map (F970).
   getSceneBodyRuntimeAuthority: (
-    sceneKey: string
+    sceneKey: OverlayKey
   ) => BottomSheetSceneStackSceneBodyRuntimeAuthority;
 };
 

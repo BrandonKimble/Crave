@@ -8,7 +8,10 @@ import {
   type OverlayKey,
 } from './app-overlay-route-types';
 import { extendActiveRootFromNavReTap } from './app-search-route-command-runtime';
-import { createAppRouteSheetSnapSessionRuntime } from './app-route-sheet-snap-session-runtime';
+import {
+  createAppRouteSheetSnapSessionRuntime,
+  HOME_SEAT_CARRIER_SCENE_KEY,
+} from './app-route-sheet-snap-session-runtime';
 import { createAppRouteSceneSwitchRuntime } from './app-route-scene-switch-controller';
 import { isEditSessionLiveOnScene, publishEditSessionLive } from './edit-session-liveness-contract';
 
@@ -153,7 +156,8 @@ describe('extendActiveRootFromNavReTap', () => {
       routeSheetSnapSessionActions: runtime.actions,
     });
     expect(promoteActiveSheet).toHaveBeenCalledWith({ snap: 'expanded' });
-    // Home's carrier scene is 'polls' — the HOME seat remembers expanded.
+    // Home's carrier scene is DOCKED_SCENE_KEY ('home' since the retarget) — the HOME seat
+    // remembers expanded. (F953: this comment used to say 'polls'.)
     expect(runtime.authority.getSnapshot().homeSeatSnap).toBe('expanded');
   });
 
@@ -172,7 +176,9 @@ describe('extendActiveRootFromNavReTap', () => {
     const runtime = createAppRouteSheetSnapSessionRuntime();
     const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
     runtime.actions.recordRouteSceneSheetSettle({
-      sceneKey: 'polls',
+      // F953: was 'polls', which seats to CONTENT — so the home-seat assertion below passed
+      // whether or not the bark fired. The HOME-seat carrier makes this test able to go RED.
+      sceneKey: HOME_SEAT_CARRIER_SCENE_KEY,
       snap: 'expanded',
       writer: 'programmatic',
     });

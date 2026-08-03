@@ -1,8 +1,10 @@
 import {
+  amendTransitionTxnJoinInputs,
   commitTransitionTxn,
   createTransitionTxn,
   getLiveTransitionTxn,
   markTransitionJoinInput,
+  offerTransitionJoinInput,
   resetTransitionTxnHolderForTest,
   sealTransitionTxnJoin,
   setTransitionTxnViolationSink,
@@ -181,5 +183,115 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     markTransitionJoinInput(second, 'paint');
     expect(first.phase).toBe('joining');
     expect(second.phase).toBe('joining'); // two clocks, no owner — the §Q-1 smell
+  });
+  // ── F901/F902: THE ARM WINDOW ────────────────────────────────────────────────
+  //
+  // The scene-stack host arms every page switch from BottomSheetSceneStackHost's
+  // presentation-frame subscription: amend({paint,chrome}) -> seal -> (warm legs only)
+  // offer('paint'). The stager mints the txn BEFORE the route apply and commits it AFTER
+  // the state flush, so that whole arm runs while the txn is still 'staged'.
+  //
+  // RED RECIPE (proven against the pre-fix engine): revert any one of the three changes in
+  // transition-transaction.ts — (a) sealTransitionTxnJoin's `if (phase === 'staged')`
+  // remembering branch, (b) commitTransitionTxn's replay of joinSealRequested, or
+  // (c) offerTransitionJoinInput accepting 'staged' — and the warm-arm test below fails
+  // with phase 'committed' (join never opened) or a still-pending 'paint'. On the old
+  // engine ALL THREE were absent: seal returned silently, the offer returned false, and the
+  // txn sat with a pending 'paint' that a warm leg never re-fires until the 600ms
+  // join-liveness watchdog force-revealed it. Every warm switch, silently, forever.
+  describe('the arm window (F901/F902)', () => {
+    const armFromHost = ({ warm }: { warm: boolean }) => {
+      const txn = stageTransitionTxn(MUTATION, {
+        content: { kind: 'holdOutgoingUntilSettle' as const },
+        joinInputs: ['paint', 'chrome'] as const,
+        movesSheet: true,
+      });
+      amendTransitionTxnJoinInputs(['paint', 'chrome']);
+      sealTransitionTxnJoin(txn);
+      if (warm) {
+        offerTransitionJoinInput('paint');
+      }
+      return txn;
+    };
+
+    it('a seal that arrives while staged is REMEMBERED and applied at commit — never dropped', () => {
+      const txn = armFromHost({ warm: false });
+      expect(txn.phase).toBe('staged'); // 'joining' is unreachable from 'staged'
+      commitTransitionTxn(txn);
+      expect(txn.phase).toBe('joining'); // the arm took effect the instant the commit landed
+      expect(violations).toHaveLength(0);
+    });
+
+    it('warm-evidence paint offered at the arm point is CONSUMED, so the join needs no watchdog', () => {
+      const txn = armFromHost({ warm: true });
+      expect([...txn.pendingJoinInputs]).toEqual(['chrome']); // paint landed while staged
+      commitTransitionTxn(txn);
+      expect(txn.phase).toBe('joining');
+      offerTransitionJoinInput('chrome');
+      expect(txn.phase).toBe('revealed'); // revealed on real evidence, not a 600ms degrade
+      expect(violations).toHaveLength(0);
+    });
+
+    it('an amendment NEVER resurrects a landed input, and barks when it arrives late', () => {
+      const txn = stageTransitionTxn(MUTATION, {
+        content: { kind: 'holdOutgoingUntilSettle' as const },
+        joinInputs: ['paint', 'chrome'] as const,
+        movesSheet: true,
+      });
+      commitTransitionTxn(txn);
+      expect(offerTransitionJoinInput('paint')).toBe(true);
+      expect([...txn.pendingJoinInputs]).toEqual(['chrome']);
+
+      // The old engine did `pendingJoinInputs = new Set(nextInputs)` unconditionally here,
+      // un-landing 'paint'. A warm leg never re-fires it -> guaranteed watchdog degrade.
+      amendTransitionTxnJoinInputs(['paint', 'chrome']);
+      expect([...txn.pendingJoinInputs]).toEqual(['chrome']);
+      expect(violations.map((violation) => violation.reason)).toEqual(['late_join_amendment']);
+      expect(violations[0]!.detail).toContain('landed [paint]');
+
+      sealTransitionTxnJoin(txn);
+      offerTransitionJoinInput('chrome');
+      expect(txn.phase).toBe('revealed');
+    });
+
+    it('a SECOND amendment of the same txn barks (the arm is legal exactly once)', () => {
+      stageTransitionTxn(MUTATION, {
+        content: { kind: 'holdOutgoingUntilSettle' as const },
+        joinInputs: ['paint', 'chrome'] as const,
+        movesSheet: true,
+      });
+      amendTransitionTxnJoinInputs(['paint', 'chrome']);
+      expect(violations).toHaveLength(0);
+      amendTransitionTxnJoinInputs(['paint', 'chrome']);
+      expect(violations.map((violation) => violation.reason)).toEqual(['late_join_amendment']);
+      expect(violations[0]!.detail).toContain('re-amend');
+    });
+
+    it('an offer the plan is still waiting on BARKS when the phase cannot consume it', () => {
+      const txn = stageTransitionTxn(MUTATION, {
+        content: { kind: 'holdOutgoingUntilSettle' as const },
+        joinInputs: ['paint', 'chrome'] as const,
+        movesSheet: true,
+      });
+      commitTransitionTxn(txn);
+      sealTransitionTxnJoin(txn);
+      offerTransitionJoinInput('paint');
+      offerTransitionJoinInput('chrome');
+      expect(txn.phase).toBe('revealed');
+      settleTransitionTxn(txn);
+
+      // 'chrome' is no longer pending, so this is normal life, not a violation:
+      expect(offerTransitionJoinInput('chrome')).toBe(false);
+      expect(violations).toHaveLength(0);
+    });
+
+    it('a degenerate plan armed from staged still reveals at commit, with no join', () => {
+      const txn = stageTransitionTxn(MUTATION, DEGENERATE_PLAN);
+      sealTransitionTxnJoin(txn);
+      expect(txn.phase).toBe('staged');
+      commitTransitionTxn(txn);
+      expect(txn.phase).toBe('revealed');
+      expect(violations).toHaveLength(0);
+    });
   });
 });

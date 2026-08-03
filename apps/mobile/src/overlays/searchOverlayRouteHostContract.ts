@@ -6,6 +6,7 @@ import type {
   DualListSelection,
 } from './bottomSheetWithFlashListContract';
 import type { OverlayKey, OverlaySheetFrameSpec } from './types';
+import { createNullableShapeEquality, createShapeEquality, sameFieldRef } from './shape-equality';
 import type { SearchInteractionSnapshot } from '../screens/Search/context/SearchInteractionContext';
 import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 
@@ -187,37 +188,69 @@ export const normalizeSearchRouteSceneStackShellSpec = (
   surfaceKind: 'scene-stack',
 });
 
-const areSearchRouteSceneSecondaryListContentPublicationsEqual = (
-  left: SearchRouteSceneSecondaryListContentPublication | null | undefined,
-  right: SearchRouteSceneSecondaryListContentPublication | null | undefined
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.data === right.data &&
-    left.renderItem === right.renderItem &&
-    left.keyExtractor === right.keyExtractor &&
-    left.estimatedItemSize === right.estimatedItemSize &&
-    left.extraData === right.extraData &&
-    left.ListHeaderComponent === right.ListHeaderComponent &&
-    left.ListFooterComponent === right.ListFooterComponent &&
-    left.ListEmptyComponent === right.ListEmptyComponent &&
-    left.ItemSeparatorComponent === right.ItemSeparatorComponent &&
-    left.onEndReached === right.onEndReached &&
-    left.listKey === right.listKey);
+const areSearchRouteSceneSecondaryListContentPublicationsEqual =
+  createNullableShapeEquality<SearchRouteSceneSecondaryListContentPublication>({
+    data: sameFieldRef,
+    renderItem: sameFieldRef,
+    keyExtractor: sameFieldRef,
+    estimatedItemSize: sameFieldRef,
+    extraData: sameFieldRef,
+    ListHeaderComponent: sameFieldRef,
+    ListFooterComponent: sameFieldRef,
+    ListEmptyComponent: sameFieldRef,
+    ItemSeparatorComponent: sameFieldRef,
+    onEndReached: sameFieldRef,
+    listKey: sameFieldRef,
+  });
 
-const areSearchRouteSceneSecondaryListTransportPublicationsEqual = (
-  left: SearchRouteSceneSecondaryListTransportPublication | null | undefined,
-  right: SearchRouteSceneSecondaryListTransportPublication | null | undefined
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.listRef === right.listRef &&
-    left.scrollIndicatorInsets === right.scrollIndicatorInsets &&
-    left.contentContainerStyle === right.contentContainerStyle &&
-    left.flashListProps === right.flashListProps &&
-    left.testID === right.testID);
+const areSearchRouteSceneSecondaryListTransportPublicationsEqual =
+  createNullableShapeEquality<SearchRouteSceneSecondaryListTransportPublication>({
+    listRef: sameFieldRef,
+    scrollIndicatorInsets: sameFieldRef,
+    contentContainerStyle: sameFieldRef,
+    flashListProps: sameFieldRef,
+    testID: sameFieldRef,
+  });
+
+// The content spec is a DISCRIMINATED UNION: one field map PER variant, dispatched by
+// surfaceKind. Different kinds are never equal (a 'list' body and a 'content' body are
+// different bodies, whatever their fields say).
+const areContentSurfaceSpecsEqual = createShapeEquality<
+  Extract<SearchRouteSceneBodyContentSpec, { surfaceKind: 'content' }>
+>({
+  surfaceKind: sameFieldRef,
+  contentComponent: sameFieldRef,
+  contentScrollMode: sameFieldRef,
+});
+
+const areMountedSurfaceSpecsEqual = createShapeEquality<
+  Extract<SearchRouteSceneBodyContentSpec, { surfaceKind: 'mounted' }>
+>({
+  surfaceKind: sameFieldRef,
+  mountedBodyKey: sameFieldRef,
+  // Preserves the hand-written arm's defaulting: an absent mode IS 'scroll'.
+  contentScrollMode: (left, right) => (left ?? 'scroll') === (right ?? 'scroll'),
+});
+
+const areListSurfaceSpecsEqual = createShapeEquality<
+  Extract<SearchRouteSceneBodyContentSpec, { surfaceKind: 'list' }>
+>({
+  surfaceKind: sameFieldRef,
+  data: sameFieldRef,
+  renderItem: sameFieldRef,
+  keyExtractor: sameFieldRef,
+  estimatedItemSize: sameFieldRef,
+  ListChromeComponent: sameFieldRef,
+  ListHeaderComponent: sameFieldRef,
+  ListFooterComponent: sameFieldRef,
+  ListEmptyComponent: sameFieldRef,
+  ItemSeparatorComponent: sameFieldRef,
+  extraData: sameFieldRef,
+  secondaryList: areSearchRouteSceneSecondaryListContentPublicationsEqual,
+  listKey: sameFieldRef,
+  onEndReached: sameFieldRef,
+  onEndReachedThreshold: sameFieldRef,
+});
 
 export const areSearchRouteSceneBodyContentSpecsEqual = (
   left: SearchRouteSceneBodyContentSpec | null | undefined,
@@ -230,66 +263,35 @@ export const areSearchRouteSceneBodyContentSpecsEqual = (
     return false;
   }
   if (left.surfaceKind === 'content' && right.surfaceKind === 'content') {
-    return (
-      left.contentComponent === right.contentComponent &&
-      left.contentScrollMode === right.contentScrollMode
-    );
+    return areContentSurfaceSpecsEqual(left, right);
   }
   if (left.surfaceKind === 'mounted' && right.surfaceKind === 'mounted') {
-    return (
-      left.mountedBodyKey === right.mountedBodyKey &&
-      (left.contentScrollMode ?? 'scroll') === (right.contentScrollMode ?? 'scroll')
-    );
+    return areMountedSurfaceSpecsEqual(left, right);
   }
   if (left.surfaceKind === 'list' && right.surfaceKind === 'list') {
-    return (
-      left.data === right.data &&
-      left.renderItem === right.renderItem &&
-      left.keyExtractor === right.keyExtractor &&
-      left.estimatedItemSize === right.estimatedItemSize &&
-      left.ListChromeComponent === right.ListChromeComponent &&
-      left.ListHeaderComponent === right.ListHeaderComponent &&
-      left.ListFooterComponent === right.ListFooterComponent &&
-      left.ListEmptyComponent === right.ListEmptyComponent &&
-      left.ItemSeparatorComponent === right.ItemSeparatorComponent &&
-      left.extraData === right.extraData &&
-      areSearchRouteSceneSecondaryListContentPublicationsEqual(
-        left.secondaryList,
-        right.secondaryList
-      ) &&
-      left.listKey === right.listKey &&
-      left.onEndReached === right.onEndReached &&
-      left.onEndReachedThreshold === right.onEndReachedThreshold
-    );
+    return areListSurfaceSpecsEqual(left, right);
   }
 
   return false;
 };
 
-export const areSearchRouteSceneBodyTransportSpecsEqual = (
-  left: SearchRouteSceneBodyTransportSpec | null | undefined,
-  right: SearchRouteSceneBodyTransportSpec | null | undefined
-): boolean =>
-  left === right ||
-  (left != null &&
-    right != null &&
-    left.contentContainerStyle === right.contentContainerStyle &&
-    left.keyboardShouldPersistTaps === right.keyboardShouldPersistTaps &&
-    left.scrollIndicatorInsets === right.scrollIndicatorInsets &&
-    left.onScrollOffsetChange === right.onScrollOffsetChange &&
-    left.onScrollBeginDrag === right.onScrollBeginDrag &&
-    left.onUserListScrollActivity === right.onUserListScrollActivity &&
-    left.onScrollEndDrag === right.onScrollEndDrag &&
-    left.onMomentumBeginJS === right.onMomentumBeginJS &&
-    left.onMomentumEndJS === right.onMomentumEndJS &&
-    left.showsVerticalScrollIndicator === right.showsVerticalScrollIndicator &&
-    left.keyboardDismissMode === right.keyboardDismissMode &&
-    left.testID === right.testID &&
-    left.activeList === right.activeList &&
-    left.flashListProps === right.flashListProps &&
-    left.contentSurfaceStyle === right.contentSurfaceStyle &&
-    left.listRef === right.listRef &&
-    areSearchRouteSceneSecondaryListTransportPublicationsEqual(
-      left.secondaryList,
-      right.secondaryList
-    ));
+export const areSearchRouteSceneBodyTransportSpecsEqual =
+  createNullableShapeEquality<SearchRouteSceneBodyTransportSpec>({
+    contentContainerStyle: sameFieldRef,
+    keyboardShouldPersistTaps: sameFieldRef,
+    scrollIndicatorInsets: sameFieldRef,
+    onScrollOffsetChange: sameFieldRef,
+    onScrollBeginDrag: sameFieldRef,
+    onUserListScrollActivity: sameFieldRef,
+    onScrollEndDrag: sameFieldRef,
+    onMomentumBeginJS: sameFieldRef,
+    onMomentumEndJS: sameFieldRef,
+    showsVerticalScrollIndicator: sameFieldRef,
+    keyboardDismissMode: sameFieldRef,
+    testID: sameFieldRef,
+    activeList: sameFieldRef,
+    flashListProps: sameFieldRef,
+    contentSurfaceStyle: sameFieldRef,
+    listRef: sameFieldRef,
+    secondaryList: areSearchRouteSceneSecondaryListTransportPublicationsEqual,
+  });

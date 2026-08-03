@@ -5,8 +5,6 @@ import {
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
-  type StyleProp,
-  type ViewStyle,
 } from 'react-native';
 
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -26,24 +24,38 @@ import {
 // THE standardized sheet header — identical on every page: a white cutout plate with a grab-handle
 // cutout (top-center) + a close-button circle cutout (right), and the title on the left. There is no
 // per-scene special case (the poll-count badge cutout was removed 2026-07-01, page-switch-master-plan.md).
+// F977: this used to declare NINE more props (grabHandleCutout, fixedHeight, paddingTop,
+// paddingHorizontal, transparent, afterRow, rowStyle, style, onLayout) that its SOLE render
+// site (PersistentSheetHeaderHost) never passed. `fixedHeight` and `grabHandleCutout` were
+// therefore permanently true, which made the measured-height state, its setter branch and
+// both no-cutout arms unreachable — configurability nobody configured, hiding four dead
+// branches. The defaults are now the STRUCTURE: the chrome row is a fixed box of
+// OVERLAY_TAB_HEADER_HEIGHT with a grab-handle cutout, always. That is what makes
+// computeSceneChromeHeight's declared sum physically true (text conforms to geometry).
 type OverlaySheetHeaderChromeProps = {
   title: React.ReactNode;
   actionButton: React.ReactNode;
   onGrabHandlePress?: () => void;
   grabHandleAccessibilityLabel?: string;
-  grabHandleCutout?: boolean;
   /** W4 (scene-foundation `grabHandle: 'hidden'`): suppresses the handle bar AND its
    *  cutout entirely (full-page-illusion scenes — settings is the first consumer). */
   grabHandleHidden?: boolean;
-  fixedHeight?: boolean;
-  paddingTop?: number;
-  paddingHorizontal?: number;
-  transparent?: boolean;
-  afterRow?: React.ReactNode;
-  rowStyle?: StyleProp<ViewStyle>;
-  style?: StyleProp<ViewStyle>;
-  onLayout?: (event: LayoutChangeEvent) => void;
 };
+
+const PADDING_TOP = 0;
+const PADDING_HORIZONTAL = OVERLAY_HORIZONTAL_PADDING;
+
+// THE ROW BARK (F977 — the independent quantity). The wrapper measurement in
+// PersistentSheetHeaderHost cannot falsify OVERLAY_TAB_HEADER_HEIGHT: `tabHeader` PINS the
+// header box to exactly that constant, so computed and measured moved together and the
+// "a chrome constant is stale" claim was green by construction. The header ROW, by
+// contrast, is NOT pinned — it lays out to its tallest child. The declared sum asserts
+// that child is OVERLAY_HEADER_CLOSE_BUTTON_SIZE tall. Grow the action button, or let a
+// title wrap to two lines, and the row outgrows the constant while the pinned box silently
+// clips it. THAT is falsifiable, and it is the exact defect the constants can suffer.
+// RED recipe: bump OVERLAY_HEADER_CLOSE_BUTTON_SIZE's contribution here (or render a
+// taller actionButton) and this barks on first present.
+const barkedRowGeometryScenes = new Set<string>();
 
 const DEFAULT_MASK_PADDING = 2;
 const DEFAULT_HOLE_PADDING = 0;
@@ -83,39 +95,42 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   actionButton,
   onGrabHandlePress,
   grabHandleAccessibilityLabel = 'Close sheet',
-  grabHandleCutout = true,
   grabHandleHidden = false,
-  fixedHeight = true,
-  paddingTop = 0,
-  paddingHorizontal = OVERLAY_HORIZONTAL_PADDING,
-  transparent = true,
-  afterRow,
-  rowStyle,
-  style,
-  onLayout,
 }) => {
   const { width: windowWidth } = useWindowDimensions();
-  const [measuredHeight, setMeasuredHeight] = React.useState<number | null>(null);
 
-  const headerHeight = fixedHeight
-    ? OVERLAY_TAB_HEADER_HEIGHT
-    : (measuredHeight ?? OVERLAY_TAB_HEADER_HEIGHT);
+  const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
+  const paddingTop = PADDING_TOP;
+  const paddingHorizontal = PADDING_HORIZONTAL;
   const maskPadding = DEFAULT_MASK_PADDING;
   const holePadding = DEFAULT_HOLE_PADDING;
   const holeYOffset = DEFAULT_HOLE_Y_OFFSET;
   const closeButtonSize = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
   const holeRadius = closeButtonSize / 2 + holePadding;
 
-  const handleHeaderLayout = React.useCallback(
-    (event: LayoutChangeEvent) => {
-      onLayout?.(event);
-      if (!fixedHeight) {
-        const nextHeight = event.nativeEvent.layout.height;
-        setMeasuredHeight((prev) => (prev === nextHeight ? prev : nextHeight));
-      }
-    },
-    [fixedHeight, onLayout]
-  );
+  const handleHeaderRowLayout = React.useCallback((event: LayoutChangeEvent) => {
+    if (!__DEV__) {
+      return;
+    }
+    const measuredRowHeight = event.nativeEvent.layout.height;
+    if (Math.abs(measuredRowHeight - OVERLAY_HEADER_CLOSE_BUTTON_SIZE) <= 0.5) {
+      return;
+    }
+    // Per DISTINCT measured height, not once per app lifetime: a second, differently
+    // broken row must not be silenced by the first.
+    const barkKey = measuredRowHeight.toFixed(2);
+    if (barkedRowGeometryScenes.has(barkKey)) {
+      return;
+    }
+    barkedRowGeometryScenes.add(barkKey);
+    // eslint-disable-next-line no-console
+    console.error(
+      `[CHROME-GEOMETRY] the sheet header ROW laid out at ${measuredRowHeight}px but the ` +
+        `declared chrome sum assumes OVERLAY_HEADER_CLOSE_BUTTON_SIZE (${OVERLAY_HEADER_CLOSE_BUTTON_SIZE}px) — ` +
+        `OVERLAY_TAB_HEADER_HEIGHT is now stale and the pinned header box is CLIPPING this row ` +
+        `(overlay-chrome-metrics.ts).`
+    );
+  }, []);
 
   const cutoutBackground = React.useMemo(() => {
     const maskHeight = headerHeight + maskPadding * 2 + HEADER_FOREGROUND_PLATE_OVERLAP_PX;
@@ -136,7 +151,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     const closeHolePath = circlePath(safeCloseCenterX, safeCloseCenterY, holeRadius);
     const cutoutPaths: string[] = [closeHolePath];
 
-    if (grabHandleCutout && !grabHandleHidden) {
+    if (!grabHandleHidden) {
       const handleX = (windowWidth - OVERLAY_GRAB_HANDLE_WIDTH) / 2;
       const handleY = paddingTop + OVERLAY_GRAB_HANDLE_PADDING_TOP + maskPadding;
       const handlePath = roundedRectPath(
@@ -177,7 +192,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     maskPadding,
     paddingHorizontal,
     paddingTop,
-    grabHandleCutout,
     grabHandleHidden,
     windowWidth,
   ]);
@@ -198,20 +212,10 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
           accessibilityLabel={grabHandleAccessibilityLabel}
           hitSlop={10}
         >
-          <View
-            style={[
-              overlaySheetStyles.grabHandle,
-              grabHandleCutout ? overlaySheetStyles.grabHandleCutout : null,
-            ]}
-          />
+          <View style={[overlaySheetStyles.grabHandle, overlaySheetStyles.grabHandleCutout]} />
         </Pressable>
       ) : (
-        <View
-          style={[
-            overlaySheetStyles.grabHandle,
-            grabHandleCutout ? overlaySheetStyles.grabHandleCutout : null,
-          ]}
-        />
+        <View style={[overlaySheetStyles.grabHandle, overlaySheetStyles.grabHandleCutout]} />
       )}
     </View>
   );
@@ -220,18 +224,17 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     <View
       style={[
         overlaySheetStyles.header,
-        fixedHeight ? overlaySheetStyles.tabHeader : null,
-        transparent ? overlaySheetStyles.headerTransparent : null,
-        style,
+        overlaySheetStyles.tabHeader,
+        overlaySheetStyles.headerTransparent,
         { paddingTop, paddingHorizontal },
       ]}
-      onLayout={handleHeaderLayout}
       collapsable={false}
     >
       {cutoutBackground}
       {handleContent}
       <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced, rowStyle]}
+        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+        onLayout={handleHeaderRowLayout}
         collapsable={false}
       >
         {/* THE TITLE SLOT BOUND (truncation law): the slot — not each panel's text —
@@ -243,7 +246,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         </View>
         {actionButton}
       </View>
-      {afterRow ?? null}
     </View>
   );
 };

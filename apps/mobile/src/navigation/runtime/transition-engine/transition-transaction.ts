@@ -88,6 +88,13 @@ export type TransitionTxn = {
   /** Handle for the join-liveness watchdog (armed only while 'joining'), so
    *  leaving 'joining' DISARMS it instead of leaving a live timer behind. */
   joinLivenessTimer?: ReturnType<typeof setTimeout> | null;
+  /** F902: a seal that arrived while still 'staged' (the host arms inside the staged
+   *  window — see stageTransitionTxnForCommittedSwitch). 'joining' is not reachable
+   *  from 'staged', so the seal is REMEMBERED here and applied the instant the commit
+   *  lands, instead of being silently dropped. */
+  joinSealRequested?: boolean;
+  /** F901: the arm-time amendment is legal exactly ONCE. */
+  joinAmended?: boolean;
 };
 
 /** The watchdog is a safety net for a stuck join; once the join is over it has
@@ -131,6 +138,14 @@ export type TransitionTxnContractViolation = {
     | 'stale_txn_mark'
     | 'unknown_join_input'
     | 'duplicate_join_input'
+    // F901: an arm-time amendment that arrived after an input had already landed, or a
+    // SECOND amendment of the same txn. The amendment still applies (preserving the
+    // landed marks) — the bark exists so the anomaly is attributable instead of silent.
+    | 'late_join_amendment'
+    // F902: a readiness offer for an input the live plan DECLARED and is still waiting
+    // on, dropped because the txn's phase could not consume it. This used to be a silent
+    // `return false` — the exact path that guaranteed a watchdog degrade.
+    | 'dropped_join_offer'
     | 'join_liveness_degrade';
   txnId: string;
   detail: string;
@@ -245,7 +260,14 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
  *  sealed — the PF dispatch (and with it the host's arm-time amendment) is deferred
  *  past the controller's tail, so the join set is not authoritative yet. */
 export const commitTransitionTxn = (txn: TransitionTxn): void => {
-  advance(txn, 'committed');
+  if (!advance(txn, 'committed')) {
+    return;
+  }
+  // F902: apply a seal that was requested during the 'staged' arm window. Without this
+  // the arm was dropped and the join only opened at the idle settle sweep.
+  if (txn.joinSealRequested === true) {
+    sealTransitionTxnJoin(txn);
+  }
 };
 
 /** THE SEAL (the arm point): the amendment window closes; the authoritative join set
@@ -253,6 +275,18 @@ export const commitTransitionTxn = (txn: TransitionTxn): void => {
  *  class as an output), else the join opens. Idempotent per txn (a second seal no-ops
  *  once past 'committed'). */
 export const sealTransitionTxnJoin = (txn: TransitionTxn): void => {
+  if (txn.phase === 'staged') {
+    // F902: the scene-stack host arms (amend + seal) while the txn is still 'staged' —
+    // that ordering is DESIGNED (stageTransitionTxnForCommittedSwitch's own comment says
+    // the amendment "lands inside the 'staged' window"). But 'joining' is not reachable
+    // from 'staged', so this used to `return` silently: the arm evaporated, the join
+    // opened only at the idle settle sweep, and the warm-evidence 'paint' offer the host
+    // makes two lines later was dropped too — a GUARANTEED 600ms watchdog degrade on
+    // every warm switch, with nothing barking. The seal is now remembered and applied at
+    // commit (commitTransitionTxn), so an arm always takes effect.
+    txn.joinSealRequested = true;
+    return;
+  }
   if (txn.phase !== 'committed') {
     return;
   }
@@ -410,10 +444,31 @@ export const amendTransitionTxnJoinInputs = (inputs: readonly TransitionJoinInpu
     });
     return false;
   }
+  // F901: the doc above promised a FULL-PENDING-SET guard the code never implemented, and
+  // then rebuilt pendingJoinInputs UNCONDITIONALLY — RESURRECTING inputs that had already
+  // landed. A 'paint' that landed in the committed window (the host's own warm-evidence
+  // offer, on a prior frame) was un-landed by the next amend, and a warm leg never re-fires
+  // paint -> the join waited forever -> 600ms watchdog degrade. Two fixes, both here:
+  //   (1) the guard is now real and LOUD — a late amendment (an input already landed) or a
+  //       SECOND amendment of the same txn barks with the offending inputs named;
+  //   (2) the amendment PRESERVES landed marks instead of resurrecting them, so a bark can
+  //       never also mean silent corruption. The host is the sole owner of the {paint,
+  //       chrome} declaration, so refusing outright would just trade one silent drop for
+  //       another: the amendment applies, correctly, and the anomaly is attributable.
+  const landedInputs = live.plan.joinInputs.filter((input) => !live.pendingJoinInputs.has(input));
+  if (landedInputs.length > 0 || live.joinAmended === true) {
+    reportViolation({
+      reason: 'late_join_amendment',
+      txnId: live.txnId,
+      detail: `${live.joinAmended === true ? 're-amend' : 'amend'} in ${live.phase} with landed [${landedInputs.join(',')}]; pending [${[...live.pendingJoinInputs].join(',')}] of declared [${live.plan.joinInputs.join(',')}]`,
+    });
+  }
   const preserved = live.plan.joinInputs.includes('mapFrame') ? (['mapFrame'] as const) : [];
   const nextInputs = [...new Set([...inputs, ...preserved])];
+  const landedSet = new Set<TransitionJoinInput>(landedInputs);
   (live.plan as { joinInputs: readonly TransitionJoinInput[] }).joinInputs = nextInputs;
-  live.pendingJoinInputs = new Set(nextInputs);
+  live.pendingJoinInputs = new Set(nextInputs.filter((input) => !landedSet.has(input)));
+  live.joinAmended = true;
   emitTrace(live, 'amended');
   listeners.forEach((listener) => listener());
   return true;
@@ -426,12 +481,22 @@ export const amendTransitionTxnJoinInputs = (inputs: readonly TransitionJoinInpu
  */
 export const offerTransitionJoinInput = (input: TransitionJoinInput): boolean => {
   const live = liveTxn;
-  if (
-    live == null ||
-    (live.phase !== 'joining' && live.phase !== 'committed') ||
-    !live.plan.joinInputs.includes(input) ||
-    !live.pendingJoinInputs.has(input)
-  ) {
+  if (live == null || !live.plan.joinInputs.includes(input) || !live.pendingJoinInputs.has(input)) {
+    // Not declared, or already landed: normal life (a paint ack during a no-join
+    // transition is not a violation).
+    return false;
+  }
+  // F902: 'staged' is a CONSUMING phase now. The host offers warm 'paint' evidence at the
+  // arm point, which happens inside the staged window — that offer used to be dropped in
+  // silence, and a warm leg never re-fires paint, so the input could never land.
+  if (live.phase !== 'joining' && live.phase !== 'committed' && live.phase !== 'staged') {
+    // The plan DECLARED this input and is still waiting on it, but the phase cannot
+    // consume it. That is evidence going in the bin — bark, never drop quietly.
+    reportViolation({
+      reason: 'dropped_join_offer',
+      txnId: live.txnId,
+      detail: `'${input}' offered in ${live.phase}; still pending [${[...live.pendingJoinInputs].join(',')}]`,
+    });
     return false;
   }
   markTransitionJoinInput(live, input);

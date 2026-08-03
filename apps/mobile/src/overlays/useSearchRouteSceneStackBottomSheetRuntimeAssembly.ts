@@ -10,6 +10,7 @@ import type {
   BottomSheetSceneStackBodyRuntimeSnapshot,
   BottomSheetSceneStackBodyScrollRuntime,
 } from './bottomSheetSceneStackHostContract';
+import type { OverlayKey } from './types';
 import { overlaySheetStyles } from './overlaySheetStyles';
 import { useBottomSheetSharedRuntime } from './useBottomSheetSharedRuntime';
 import type {
@@ -80,14 +81,32 @@ const useBottomSheetSceneStackBodyRuntimeAuthority = ({
     [bodyDefaults, bodyScrollRuntime]
   );
   const latestSnapshotRef = React.useRef(latestSnapshot);
+  // F970 rederive: this authority used to hand out `subscribe: () => () => {}` — a
+  // publication seam that could never publish. Its three consumers
+  // (BottomSheetSceneStackHost's SceneStackBodyContentLayerHost, the 'search' display
+  // target, and PersistentHeaderScrollDividerLane) all sit behind React.memo legs whose
+  // props do not carry this snapshot, so a bodyDefaults / bodyScrollRuntime change reached
+  // them only when some UNRELATED cause happened to re-render them. It now keeps a real
+  // listener set and notifies it after commit, so the authority notifies or it is not one.
+  const listenersRef = React.useRef(new Set<() => void>());
+  // Bounded by construction: the key is an OverlayKey, so this Map can hold at most one
+  // entry per registered route scene (the reason it needs no removal path).
   const sceneAuthoritiesRef = React.useRef<
     Map<
-      string,
+      OverlayKey,
       ReturnType<BottomSheetSceneStackBodyRuntimeAuthority['getSceneBodyRuntimeAuthority']>
     >
   >(new Map());
 
   latestSnapshotRef.current = latestSnapshot;
+
+  React.useEffect(() => {
+    // The snapshot identity changed; every subscriber must re-read. Copy first — a
+    // listener may unsubscribe while we are notifying.
+    for (const listener of Array.from(listenersRef.current)) {
+      listener();
+    }
+  }, [latestSnapshot]);
 
   return React.useMemo<BottomSheetSceneStackBodyRuntimeAuthority>(
     () => ({
@@ -96,8 +115,14 @@ const useBottomSheetSceneStackBodyRuntimeAuthority = ({
         if (existingAuthority != null) {
           return existingAuthority;
         }
+        const listeners = listenersRef.current;
         const authority = {
-          subscribe: () => () => {},
+          subscribe: (listener: () => void) => {
+            listeners.add(listener);
+            return () => {
+              listeners.delete(listener);
+            };
+          },
           getSnapshot: () => latestSnapshotRef.current,
         };
         sceneAuthoritiesRef.current.set(sceneKey, authority);

@@ -32,6 +32,7 @@ import {
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import type {
   BottomSheetSceneStackBodyRuntimeSnapshot,
+  BottomSheetSceneStackBodyScrollRuntime,
   BottomSheetSceneStackChromeEntry,
   BottomSheetSceneStackHostProps,
 } from './bottomSheetSceneStackHostContract';
@@ -52,6 +53,7 @@ import {
   isSceneBodyDataActivityKey,
 } from '../navigation/runtime/app-route-scene-input-registry';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
+import { createShapeEquality, sameFieldRef, type FieldComparators } from './shape-equality';
 import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-route-scene-entry-mounts';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
@@ -243,18 +245,34 @@ const areChromeSurfaceEntriesEqual = (
     left.headerComponent === right.headerComponent &&
     left.overlayComponent === right.overlayComponent);
 
+// F980: the field list is DERIVED from SceneStackBodyContentActivity — a new activity lane
+// is a compile error here, not a scene that silently stops republishing. A field this
+// selection deliberately does not compare says so out loud.
+const ignoreField = (): boolean => true;
+
+const SCENE_CONTENT_ACTIVITY_COMPARATORS = {
+  isActive: sameFieldRef,
+  shouldRenderListBody: sameFieldRef,
+  shouldAttachMountedContent: sameFieldRef,
+  // CONDITIONAL by scene (isSceneBodyDataActivityKey) — compared explicitly below, because
+  // the predicate needs a runtime sceneKey a static map cannot see.
+  shouldRunDataLane: ignoreField,
+  shouldSubscribeDataLane: sameFieldRef,
+  shouldRenderExpandedContent: sameFieldRef,
+  hasActivatedExpandedContent: sameFieldRef,
+} satisfies FieldComparators<SceneStackBodyContentActivity>;
+
+const areSceneContentActivityFieldsEqual = createShapeEquality<SceneStackBodyContentActivity>(
+  SCENE_CONTENT_ACTIVITY_COMPARATORS
+);
+
 const areSceneContentActivitySelectionsEqual = (
   left: SceneStackBodyContentActivity,
   right: SceneStackBodyContentActivity,
   shouldCompareDataLane: boolean
 ): boolean =>
-  left.isActive === right.isActive &&
-  left.shouldRenderListBody === right.shouldRenderListBody &&
-  left.shouldAttachMountedContent === right.shouldAttachMountedContent &&
-  (!shouldCompareDataLane || left.shouldRunDataLane === right.shouldRunDataLane) &&
-  left.shouldSubscribeDataLane === right.shouldSubscribeDataLane &&
-  left.shouldRenderExpandedContent === right.shouldRenderExpandedContent &&
-  left.hasActivatedExpandedContent === right.hasActivatedExpandedContent;
+  areSceneContentActivityFieldsEqual(left, right) &&
+  (!shouldCompareDataLane || left.shouldRunDataLane === right.shouldRunDataLane);
 
 const shouldCompareSceneBodyDataActivity = (
   snapshot: AppRouteSceneStackBodySurfaceSnapshot
@@ -284,13 +302,26 @@ const getMountedBodyKey = (snapshot: AppRouteSceneStackBodySurfaceSnapshot): str
   return spec?.surfaceKind === 'mounted' ? spec.mountedBodyKey : null;
 };
 
+// F980 — the snapshot-equality landmine, compile-checked. Every field of
+// AppRouteSceneStackBodySurfaceSnapshot must appear here; the comparison BELOW uses these
+// entries, so adding a render-read field without deciding how it compares is a build error
+// naming the field, instead of a scene that silently never republishes again.
+const SCENE_BODY_SURFACE_FIELD_COMPARATORS = {
+  contentEntry: areSearchRouteSceneStackBodyContentEntriesEqual,
+  transportEntry: areSearchRouteSceneStackBodyTransportEntriesEqual,
+  mountedEntryUnits: areSceneEntryMountUnitArraysEqual,
+  activeEntryId: sameFieldRef,
+  // Scene-conditional (skipped entirely for 'search', data lane gated) — see below.
+  contentActivity: ignoreField,
+} satisfies FieldComparators<AppRouteSceneStackBodySurfaceSnapshot>;
+
 const areSceneBodySurfaceSelectionsEqual = (
   left: AppRouteSceneStackBodySurfaceSnapshot,
   right: AppRouteSceneStackBodySurfaceSnapshot
 ): boolean => {
   const sceneKey = right.contentEntry?.sceneKey ?? left.contentEntry?.sceneKey ?? null;
 
-  if (!areSearchRouteSceneStackBodyContentEntriesEqual(left.contentEntry, right.contentEntry)) {
+  if (!SCENE_BODY_SURFACE_FIELD_COMPARATORS.contentEntry(left.contentEntry, right.contentEntry)) {
     markSceneBodySurfaceSelectionDiff(
       sceneKey,
       'contentEntryRef',
@@ -319,7 +350,7 @@ const areSceneBodySurfaceSelectionsEqual = (
   }
 
   if (
-    !areSearchRouteSceneStackBodyTransportEntriesEqual(left.transportEntry, right.transportEntry)
+    !SCENE_BODY_SURFACE_FIELD_COMPARATORS.transportEntry(left.transportEntry, right.transportEntry)
   ) {
     markSceneBodySurfaceSelectionDiff(
       sceneKey,
@@ -333,8 +364,11 @@ const areSceneBodySurfaceSelectionsEqual = (
   // W1 slice 1 — entry-keyed child mounts are render-read by the body host (snapshot-equality
   // landmine: render-read fields MUST be compared here or a unit change never republishes).
   if (
-    !areSceneEntryMountUnitArraysEqual(left.mountedEntryUnits, right.mountedEntryUnits) ||
-    left.activeEntryId !== right.activeEntryId
+    !SCENE_BODY_SURFACE_FIELD_COMPARATORS.mountedEntryUnits(
+      left.mountedEntryUnits,
+      right.mountedEntryUnits
+    ) ||
+    !SCENE_BODY_SURFACE_FIELD_COMPARATORS.activeEntryId(left.activeEntryId, right.activeEntryId)
   ) {
     markSceneBodySurfaceSelectionDiff(
       sceneKey,
@@ -399,6 +433,25 @@ const areSceneBodySurfaceSelectionsEqual = (
   return isEqual;
 };
 
+// F980: compile-checked against BottomSheetSceneStackBodyScrollRuntime. `contentOverscroll`
+// was already MISSING from the hand-written list this replaces — the exact forgotten-field
+// class; it shares scrollOffset's lifecycle (both SharedValues minted with the runtime), so
+// comparing it is behaviour-identical and no longer a thing to remember.
+const areSceneBodyScrollRuntimesEqual = createShapeEquality<BottomSheetSceneStackBodyScrollRuntime>(
+  {
+    ScrollComponent: sameFieldRef,
+    shouldEnableScrollShared: sameFieldRef,
+    primaryScrollViewOnScroll: sameFieldRef,
+    primaryListOnScroll: sameFieldRef,
+    secondaryListOnScroll: sameFieldRef,
+    scrollOffset: sameFieldRef,
+    contentOverscroll: sameFieldRef,
+    // Deliberately NOT compared — see the frame-drop note below; the JS boolean re-mints on
+    // every switch while nothing that renders reads it.
+    shouldEnableScroll: ignoreField,
+  }
+);
+
 const areSceneBodyRuntimeSelectionsEqual = (
   left: BottomSheetSceneStackBodyRuntimeSnapshot,
   right: BottomSheetSceneStackBodyRuntimeSnapshot
@@ -426,16 +479,7 @@ const areSceneBodyRuntimeSelectionsEqual = (
   // only delta as EQUAL so the list body no longer re-renders on a switch. (The JS `shouldEnableScroll`
   // is intentionally NOT compared; sinks that still read it get a stale-but-correct value — it is
   // `true` whenever the scene is active, and inactive legs are pointerEvents-blocked by the swap lane.)
-  const l = left.bodyScrollRuntime;
-  const r = right.bodyScrollRuntime;
-  if (
-    l.ScrollComponent === r.ScrollComponent &&
-    l.shouldEnableScrollShared === r.shouldEnableScrollShared &&
-    l.primaryScrollViewOnScroll === r.primaryScrollViewOnScroll &&
-    l.primaryListOnScroll === r.primaryListOnScroll &&
-    l.secondaryListOnScroll === r.secondaryListOnScroll &&
-    l.scrollOffset === r.scrollOffset
-  ) {
+  if (areSceneBodyScrollRuntimesEqual(left.bodyScrollRuntime, right.bodyScrollRuntime)) {
     return true;
   }
   logPerfScenarioStackAttribution({

@@ -23,6 +23,7 @@ import {
   subscribeTransitionTxn,
 } from '../navigation/runtime/transition-engine/transition-transaction';
 import { recordSceneChromeAck } from './scene-chrome-ack-runtime';
+import { OVERLAY_TAB_HEADER_HEIGHT } from './overlay-chrome-metrics';
 import {
   computeSceneChromeHeight,
   HEADER_STRIP_BOTTOM_SPACER_HEIGHT,
@@ -190,17 +191,35 @@ export const PersistentSheetHeaderHost: React.FC<{
     (event: LayoutChangeEvent) => {
       // THE PAGE L1 — THE GEOMETRY BARK (the RED instrument): chrome height is COMPUTED
       // (scene-chrome-geometry.ts); the measurement survives only to FALSIFY the
-      // computation. Any chrome edit that changes real height without updating the
-      // declared constants barks here on first present — computed geometry can show RED.
+      // computation.
+      //
+      // F977 — WHAT THIS CAN ACTUALLY FALSIFY. It used to print "a chrome constant is
+      // stale", which it could NOT detect: `overlaySheetStyles.tabHeader` pins the header
+      // box to OVERLAY_TAB_HEADER_HEIGHT, the same constant computeSceneChromeHeight sums,
+      // so that term moved on BOTH sides of the comparison and could never disagree —
+      // an instrument green by construction, guarding a law. The row-height half of that
+      // claim now lives where it is independent, on the UNPINNED header row inside
+      // OverlaySheetHeaderChrome. What remains here is genuinely independent and is the
+      // only thing this message may claim: the STRIP BAND's declared contribution
+      // (TOGGLE_STRIP_BAND_HEIGHT + the spacer, laid out freely) and any citizen this
+      // wrapper gains whose height nothing declared. So compare the strip contributions,
+      // not the totals — the pinned term is subtracted from both sides instead of
+      // pretending to be checked.
+      // RED recipe: change TOGGLE_STRIP_BAND_HEIGHT without changing the band's style (or
+      // mount an undeclared child in this wrapper) and a strip scene barks on first present.
       if (__DEV__ && sceneKey != null) {
-        const computed = computeSceneChromeHeight(sceneKey);
-        const measured = event.nativeEvent.layout.height;
-        if (Math.abs(computed - measured) > 0.5) {
+        const computedStripContribution =
+          computeSceneChromeHeight(sceneKey) - OVERLAY_TAB_HEADER_HEIGHT;
+        const measuredStripContribution =
+          event.nativeEvent.layout.height - OVERLAY_TAB_HEADER_HEIGHT;
+        if (Math.abs(computedStripContribution - measuredStripContribution) > 0.5) {
           // eslint-disable-next-line no-console
           console.error(
-            `[CHROME-GEOMETRY] scene '${sceneKey}' measured ${measured}px but ` +
-              `computeSceneChromeHeight says ${computed}px — a chrome constant is stale ` +
-              `(scene-chrome-geometry.ts inputs) or a citizen broke conformance.`
+            `[CHROME-GEOMETRY] scene '${sceneKey}' chrome BELOW the pinned header row measured ` +
+              `${measuredStripContribution}px but the declared strip contribution is ` +
+              `${computedStripContribution}px — the strip band metrics are stale ` +
+              `(toggle-strip-metrics.ts) or this wrapper gained an undeclared citizen. ` +
+              `(The header row itself is height-pinned; OverlaySheetHeaderChrome owns that check.)`
           );
         }
       }

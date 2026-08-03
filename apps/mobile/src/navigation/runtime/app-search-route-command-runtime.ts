@@ -40,8 +40,12 @@ export const primeDockedSceneForHomeLanding = (
 ): void => {
   // NAMED product intent — one of the sanctioned HOME-seat writers (two-posture write
   // contract): the results drag-to-bottom dismissal is a deliberate map-dominant moment.
+  // F953/F962: this said `sceneKey: 'polls'` — a stale hardcode from before the docked
+  // retarget. resolveSheetPostureSeat('polls') is 'content', so the "sanctioned HOME-seat
+  // writer" was writing the CONTENT seat and the named home-landing intent no longer touched
+  // the home seat at all. It reads the carrier constant now, like the doc always promised.
   routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
-    sceneKey: 'polls',
+    sceneKey: HOME_SEAT_CARRIER_SCENE_KEY,
     snap: 'collapsed',
     writer: 'named',
   });

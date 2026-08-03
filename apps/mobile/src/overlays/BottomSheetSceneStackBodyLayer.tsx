@@ -2,6 +2,7 @@ import React from 'react';
 import Animated from 'react-native-reanimated';
 
 import type {
+  SceneStackBodyContentActivity,
   SceneStackBodyContentLayerProps,
   SceneStackBodyFrameProps,
 } from './bottomSheetSceneStackBodyLayerContract';
@@ -15,72 +16,89 @@ import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-rou
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { useBottomSheetSceneStackBodyContentRuntime } from './useBottomSheetSceneStackBodyContentRuntime';
+import { createShapeEquality, sameFieldRef, type FieldComparators } from './shape-equality';
 
-const shouldSkipSceneStackBodyFrameUpdate = (
-  previousProps: SceneStackBodyFrameProps,
-  nextProps: SceneStackBodyFrameProps
-): boolean =>
-  previousProps.sceneKey === nextProps.sceneKey &&
-  previousProps.visibilityStyle === nextProps.visibilityStyle &&
-  previousProps.pointerEventsAnimatedProps === nextProps.pointerEventsAnimatedProps &&
-  previousProps.children === nextProps.children;
+// F980: every skip fn below is DERIVED from its props shape (shape-equality.ts). Forget a
+// new prop and tsc names it, instead of the leg silently never re-rendering again.
+// A field this scope deliberately does NOT compare says so, here, out loud — an
+// intentional omission and a forgotten one must not look the same.
+const ignoreField = (): boolean => true;
+
+const shouldSkipSceneStackBodyFrameUpdate = createShapeEquality<SceneStackBodyFrameProps>({
+  sceneKey: sameFieldRef,
+  visibilityStyle: sameFieldRef,
+  pointerEventsAnimatedProps: sameFieldRef,
+  children: sameFieldRef,
+});
 
 const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
   isSceneBodyDataActivityKey(sceneKey);
+
+// The activity lanes a scene RENDERS from. 'search' reads fewer of them (its body is the
+// never-null results bundle), so it gets its own map — but BOTH maps must name every field
+// of SceneStackBodyContentActivity, so a new activity lane cannot be missed by either.
+const SEARCH_SCENE_ACTIVITY_COMPARATORS = {
+  isActive: ignoreField, // the leg's own visibility lane owns this; not render-read here
+  shouldRenderListBody: sameFieldRef,
+  shouldSubscribeDataLane: sameFieldRef,
+  shouldAttachMountedContent: ignoreField, // search has no mounted body
+  shouldRunDataLane: ignoreField, // search's data lane is the bundle's, not this leg's
+  shouldRenderExpandedContent: ignoreField, // search has no expanded-content lane
+  hasActivatedExpandedContent: ignoreField,
+} satisfies FieldComparators<SceneStackBodyContentActivity>;
+
+const DEFAULT_SCENE_ACTIVITY_COMPARATORS = {
+  isActive: ignoreField, // the leg's own visibility lane owns this; not render-read here
+  shouldRenderListBody: sameFieldRef,
+  shouldAttachMountedContent: sameFieldRef,
+  // CONDITIONAL by scene (shouldPublishSceneBodyDataActivity) — compared explicitly below,
+  // because the predicate needs the runtime sceneKey a static map cannot see.
+  shouldRunDataLane: ignoreField,
+  shouldSubscribeDataLane: sameFieldRef,
+  shouldRenderExpandedContent: sameFieldRef,
+  hasActivatedExpandedContent: sameFieldRef,
+} satisfies FieldComparators<SceneStackBodyContentActivity>;
+
+const areSearchSceneActivitiesEqual = createShapeEquality<SceneStackBodyContentActivity>(
+  SEARCH_SCENE_ACTIVITY_COMPARATORS
+);
+const areDefaultSceneActivitiesEqual = createShapeEquality<SceneStackBodyContentActivity>(
+  DEFAULT_SCENE_ACTIVITY_COMPARATORS
+);
+
+// The non-activity half of the layer props — one entry per prop, compile-checked.
+const areSceneStackBodyContentLayerNonActivityPropsEqual =
+  createShapeEquality<SceneStackBodyContentLayerProps>({
+    contentEntry: sameFieldRef,
+    transportEntry: sameFieldRef,
+    // Compared by the per-scene activity maps above (the comparison depends on the scene).
+    contentActivity: ignoreField,
+    bodyDefaults: sameFieldRef,
+    bodyScrollRuntime: sameFieldRef,
+    // W1 slice 1 — entry-keyed child mounts are render-read here.
+    mountedEntryUnits: areSceneEntryMountUnitArraysEqual,
+    activeEntryId: sameFieldRef,
+  });
 
 const shouldSkipSceneStackBodyContentLayerUpdate = (
   previousProps: SceneStackBodyContentLayerProps,
   nextProps: SceneStackBodyContentLayerProps
 ): boolean => {
-  if (previousProps.contentEntry !== nextProps.contentEntry) {
-    return false;
-  }
-
-  if (previousProps.transportEntry !== nextProps.transportEntry) {
+  if (!areSceneStackBodyContentLayerNonActivityPropsEqual(previousProps, nextProps)) {
     return false;
   }
 
   const previousActivity = previousProps.contentActivity;
   const nextActivity = nextProps.contentActivity;
   if (nextProps.contentEntry.sceneKey === 'search') {
-    if (
-      previousActivity.shouldRenderListBody !== nextActivity.shouldRenderListBody ||
-      previousActivity.shouldSubscribeDataLane !== nextActivity.shouldSubscribeDataLane
-    ) {
-      return false;
-    }
-  } else {
-    const shouldCompareDataLane = shouldPublishSceneBodyDataActivity(
-      nextProps.contentEntry.sceneKey
-    );
-    if (
-      previousActivity.shouldRenderListBody !== nextActivity.shouldRenderListBody ||
-      previousActivity.shouldAttachMountedContent !== nextActivity.shouldAttachMountedContent ||
-      (shouldCompareDataLane &&
-        previousActivity.shouldRunDataLane !== nextActivity.shouldRunDataLane) ||
-      previousActivity.shouldSubscribeDataLane !== nextActivity.shouldSubscribeDataLane ||
-      previousActivity.shouldRenderExpandedContent !== nextActivity.shouldRenderExpandedContent ||
-      previousActivity.hasActivatedExpandedContent !== nextActivity.hasActivatedExpandedContent
-    ) {
-      return false;
-    }
+    return areSearchSceneActivitiesEqual(previousActivity, nextActivity);
   }
-
-  // W1 slice 1 — entry-keyed child mounts are render-read here (memo landmine: skip fns must
-  // compare every render-read prop or a unit change never re-renders the leg body).
-  if (
-    !areSceneEntryMountUnitArraysEqual(
-      previousProps.mountedEntryUnits,
-      nextProps.mountedEntryUnits
-    ) ||
-    previousProps.activeEntryId !== nextProps.activeEntryId
-  ) {
+  if (!areDefaultSceneActivitiesEqual(previousActivity, nextActivity)) {
     return false;
   }
-
   return (
-    previousProps.bodyDefaults === nextProps.bodyDefaults &&
-    previousProps.bodyScrollRuntime === nextProps.bodyScrollRuntime
+    !shouldPublishSceneBodyDataActivity(nextProps.contentEntry.sceneKey) ||
+    previousActivity.shouldRunDataLane === nextActivity.shouldRunDataLane
   );
 };
 
@@ -98,19 +116,17 @@ type SceneStackBodyContentHostProps = Pick<
   shouldAttachMountedContent: boolean;
 };
 
-const shouldSkipSceneStackBodyContentUpdate = (
-  previousProps: SceneStackBodyContentHostProps,
-  nextProps: SceneStackBodyContentHostProps
-): boolean =>
-  previousProps.contentEntry === nextProps.contentEntry &&
-  previousProps.transportEntry === nextProps.transportEntry &&
-  previousProps.bodyDefaults === nextProps.bodyDefaults &&
-  previousProps.bodyScrollRuntime === nextProps.bodyScrollRuntime &&
-  previousProps.isActive === nextProps.isActive &&
-  previousProps.shouldRenderListBody === nextProps.shouldRenderListBody &&
-  previousProps.shouldAttachMountedContent === nextProps.shouldAttachMountedContent &&
-  areSceneEntryMountUnitArraysEqual(previousProps.mountedEntryUnits, nextProps.mountedEntryUnits) &&
-  previousProps.activeEntryId === nextProps.activeEntryId;
+const shouldSkipSceneStackBodyContentUpdate = createShapeEquality<SceneStackBodyContentHostProps>({
+  contentEntry: sameFieldRef,
+  transportEntry: sameFieldRef,
+  bodyDefaults: sameFieldRef,
+  bodyScrollRuntime: sameFieldRef,
+  isActive: sameFieldRef,
+  shouldRenderListBody: sameFieldRef,
+  shouldAttachMountedContent: sameFieldRef,
+  mountedEntryUnits: areSceneEntryMountUnitArraysEqual,
+  activeEntryId: sameFieldRef,
+});
 
 const SceneStackBodyContentHost = React.memo(
   ({

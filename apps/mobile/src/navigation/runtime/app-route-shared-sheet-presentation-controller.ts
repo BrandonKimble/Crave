@@ -15,7 +15,9 @@ export type AppRouteSharedSheetPresentationSnapshot = {
 export type AppRouteSharedSheetPresentationInput = {
   isSearchOverlay: boolean;
   shouldShowDockedSceneTarget: boolean;
-  getPollsSheetSnap: () => OverlaySheetSnap;
+  /** F953: renamed from getPollsSheetSnap — this reads the HOME posture seat, whose
+   *  carrier scene is DOCKED_SCENE_KEY, not the literal polls page. */
+  getHomeSeatSheetSnap: () => OverlaySheetSnap;
   navBarTopForSnaps: number;
   initialSharedSheetPosition: SheetPosition;
   initialSharedSheetVisible: boolean;
@@ -115,9 +117,9 @@ export class AppRouteSharedSheetPresentationController
     if (!input?.shouldShowDockedSceneTarget) {
       return false;
     }
-    const pollsSheetSnap = input.getPollsSheetSnap();
+    const homeSeatSheetSnap = input.getHomeSeatSheetSnap();
     const nextLogicalSnap: Exclude<OverlaySheetSnap, 'hidden'> =
-      pollsSheetSnap !== 'hidden' ? pollsSheetSnap : 'collapsed';
+      homeSeatSheetSnap !== 'hidden' ? homeSeatSheetSnap : 'collapsed';
     this.commitSnapshot({
       panelVisible: true,
       sheetState: nextLogicalSnap,

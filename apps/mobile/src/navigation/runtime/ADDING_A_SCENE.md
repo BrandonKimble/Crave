@@ -181,10 +181,21 @@ extracted into a portable `declareToggle` core; status + work queue in
 The docked lane is the one bespoke subsystem: exactly one scene (the "docked
 scene") presents under the search root whenever the search sheet dismisses,
 restorable after dismissal — not a tab. Which scene that is lives in ONE
-registry constant, `DOCKED_SCENE_KEY` (`app-overlay-route-types.ts`, today
-`'polls'`); no lane/runtime code names the scene directly, so re-targeting the
-persistent surface (e.g. polls → home) is a one-constant change plus the new
-scene's own publication files.
+constant, `DOCKED_SCENE_KEY` — in **`docked-scene-target.ts`**, a deliberately
+import-free leaf module (hosting it in `app-overlay-route-types.ts` produced a
+boot-order TDZ that neither tsc nor jest can see). Its value today is
+**`'home'`**: the polls → home retarget already happened (2026-07-26).
+
+Re-targeting the persistent surface is _intended_ to be a one-constant change
+plus the new scene's own publication files, and after the F953/F962 fixes
+(2026-08-03) that is true again — but it was NOT true when the retarget was
+actually done. Three live sites hardcoded `'polls'` where the HOME posture seat
+was meant (the home-landing seat write, the shared sheet's initial position, and
+a presentation-controller input still _named_ `getPollsSheetSnap`), plus a test
+comment asserting the old carrier. They read `HOME_SEAT_CARRIER_SCENE_KEY` /
+`DOCKED_SCENE_KEY` now. **If you re-target again, grep for the outgoing scene's
+literal key across `navigation/runtime` before believing this paragraph** — the
+promise is a convention, not something the compiler enforces.
 
 The lane's search→docked dismiss handoff marks readiness off the docked scene's
 body surface, so it is **surface-aware** (mounted OR list). If you change the

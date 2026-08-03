@@ -23,7 +23,7 @@ import {
   resolveAppRouteSceneSheetVisibilityTarget,
 } from './app-route-scene-policy-registry';
 import { selectOverlayRouteKeysWhere } from './app-overlay-route-types';
-import { DOCKED_SCENE_KEY } from './docked-scene-target';
+import { ALL_TOP_LEVEL_SCENE_KEYS, DOCKED_SCENE_KEY } from './docked-scene-target';
 import {
   lookupDefaultSheetMotionDescriptorRow,
   lookupMandateSheetMotionDescriptorRow,
@@ -104,7 +104,12 @@ const resolveRouteSceneSwitchSnapTarget = ({
 
 const SHARED_SHEET_HOST_SCENE_KEY: OverlayKey = 'sheetHost';
 
-const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>(['search', 'polls', 'lists', 'profile']);
+// F945: this was a FOURTH hand-list of the top-level scene set and it had dropped 'home' —
+// so a setRoot/preserve switch targeting home with no explicit sheetTransitionKind fell
+// through to resolveInferredSheetTransitionKind and inferred **'bootstrap'** for a top-level
+// page. Derived from ALL_TOP_LEVEL_SCENE_KEYS now, exactly like CHILD_SHARED_SHEET_SCENES
+// below is derived from the metadata: adding a top-level page cannot half-register it.
+const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>(ALL_TOP_LEVEL_SCENE_KEYS);
 
 // Derived from the central metadata (role 'child' on the shared physical sheet)
 // — adding such a scene needs only its metadata entry, with no hand-edit here.
@@ -180,29 +185,16 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // ONE-SWITCH home dismissal, target 'search') passes an EXPLICIT
 // contentHandoff:'preserveOutgoingUntilSettle' that short-circuits before this set is
 // consulted.
-const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
-  'pollDetail',
-  'pollCreation',
-  'saveList',
-  'profile',
-  'restaurant',
-  'lists',
-  'polls',
-  'search',
-  // Stub-pass child scenes (plans/page-registry.md §1): static mounted placeholder bodies paint
-  // their own shell on frame 1 (same as saveList) → hard-swap, no held-outgoing crossfade.
-  'userProfile',
-  'listDetail',
-  'followList',
-  'notifications',
-  'settings',
-  'editProfile',
-  // W2: postPhotos paints its own shell on frame 1 (static mounted body) — hard-swap.
-  'postPhotos',
-  // W3 messaging: static mounted bodies, same hard-swap family.
-  'messagesInbox',
-  'dmSession',
-]);
+// F946 rederive: this used to be a HAND-KEPT string list, and the comment block above
+// records FOUR separate blank-sheet incidents caused by a scene being omitted from it
+// (`lists`, `polls`, `search`, `restaurant` were each added retroactively after a bug).
+// The membership now lives on the ONE metadata table as `seededForwardOpen`, a REQUIRED
+// field of AppOverlayRouteMetadata: a new scene that omits it is a COMPILE ERROR naming
+// the key, so the fifth incident of this class is unrepresentable. Today's members are
+// byte-identical to the old hand list (everything except sheetHost/home/price/scoreInfo).
+const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>(
+  selectOverlayRouteKeysWhere((metadata) => metadata.seededForwardOpen)
+);
 
 const isSharedSheetChildScene = (sceneKey: OverlayKey): boolean =>
   CHILD_SHARED_SHEET_SCENES.has(sceneKey);

@@ -26,6 +26,21 @@ export const ALL_TOP_LEVEL_SCENE_KEYS: readonly AppOverlayTopLevelProductRouteKe
 ];
 
 /**
+ * THE membership test for "is this a top-level product page". F945: this predicate and its
+ * backing Set were COPY-PASTED VERBATIM into app-route-overlay-command-controller and
+ * app-route-global-restaurant-route-controller, and both copies had already dropped 'home'
+ * — so a restaurant or saveList opened while home was root resolved its owner as 'search'
+ * by fallback rather than by fact. One set, derived from ALL_TOP_LEVEL_SCENE_KEYS above, so
+ * a new top-level page cannot be half-registered.
+ */
+const ALL_TOP_LEVEL_SCENE_KEY_SET: ReadonlySet<string> = new Set<string>(ALL_TOP_LEVEL_SCENE_KEYS);
+
+export const isTopLevelProductSceneKey = (
+  sceneKey: string | null | undefined
+): sceneKey is AppOverlayTopLevelProductRouteKey =>
+  sceneKey != null && ALL_TOP_LEVEL_SCENE_KEY_SET.has(sceneKey);
+
+/**
  * THE scene the docked lane presents — the one scene that presents under the
  * search root whenever the search sheet dismisses; restorable after dismissal;
  * not a tab. Changing this constant re-targets the persistent docked surface
