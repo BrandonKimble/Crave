@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, type UserList } from '@prisma/client';
+import { Prisma, type UserList, UserListVisibility } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
 
@@ -14,6 +14,12 @@ export type ListAccessRow = Pick<
   UserList,
   'listId' | 'ownerUserId' | 'shareSlug' | 'shareEnabled'
 >;
+
+/** A read decision also needs DISCOVERABILITY, which is a separate law from
+ *  capability: `visibility: public` puts a list on its owner's profile for
+ *  anyone to open, while the slug grants access to a list that is NOT
+ *  listed. Both are reads; only the second is a capability. */
+export type ListReadRow = ListAccessRow & Pick<UserList, 'visibility'>;
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -87,6 +93,47 @@ export class UserListAccessPolicy {
       return 'viewer';
     }
     throw new NotFoundException('Favorite list not found');
+  }
+
+  /**
+   * MAY THIS VIEWER READ THIS LIST? The whole read law, in one place.
+   *
+   * Rederived 2026-08-03: this law was split across the codebase — the policy
+   * knew the CAPABILITY half (owner / collaborator / valid slug) while the
+   * profile route separately knew the DISCOVERY half (visibility=public), and
+   * the messaging share-preview invented a third rule that granted access on
+   * `shareEnabled` alone, to anyone holding the listId. Three spellings of one
+   * question is how the disagreement happened. Readers ask this; nobody
+   * re-derives it.
+   *
+   * Returns false rather than throwing — a preview surface renders one
+   * indistinguishable "unavailable" card for every refusal, so it never leaks
+   * WHICH rule refused (missing capability vs revoked vs blocked pair).
+   */
+  async canRead(
+    list: ListReadRow,
+    viewerUserId: string | null,
+    presentedSlug?: string,
+  ): Promise<boolean> {
+    // Discoverable to everyone: a public list is already open on its owner's
+    // profile, so requiring a capability here would be stricter than the door
+    // right next to it. Blocking is still enforced below.
+    if (list.visibility === UserListVisibility.public) {
+      if (viewerUserId) {
+        try {
+          await this.assertNotBlockedPair(viewerUserId, list.ownerUserId);
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    }
+    try {
+      await this.resolveViewerRole(list, viewerUserId, presentedSlug);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Mutation grant: owner or collaborator only — never the slug. */

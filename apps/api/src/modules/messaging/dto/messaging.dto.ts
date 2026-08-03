@@ -87,6 +87,13 @@ export class SendMessageDto {
   @MaxLength(64)
   sharedEntityId?: string;
 
+  /** The share slug, when the shared thing needs a capability (a personal
+   *  list). Omitted for public content. See Message.sharedEntitySlug. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  sharedEntitySlug?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(64)
@@ -111,6 +118,12 @@ export class ShareFanOutDto {
   @IsString()
   @MaxLength(64)
   sharedEntityId!: string;
+
+  /** The share slug, when the shared thing needs a capability. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  sharedEntitySlug?: string;
 
   @IsOptional()
   @IsString()

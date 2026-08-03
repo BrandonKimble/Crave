@@ -358,6 +358,10 @@ export class MessagingService {
                 : null,
             sharedEntityId:
               dto.kind === MessageKind.entity_share ? dto.sharedEntityId : null,
+            sharedEntitySlug:
+              dto.kind === MessageKind.entity_share
+                ? (dto.sharedEntitySlug ?? null)
+                : null,
             clientDedupeId: dto.clientDedupeId ?? null,
           },
         });
@@ -694,6 +698,7 @@ export class MessagingService {
                 m.sharedEntityKind,
                 m.sharedEntityId,
                 viewerUserId,
+                m.sharedEntitySlug,
               )
             : null,
         createdAt: m.createdAt.toISOString(),

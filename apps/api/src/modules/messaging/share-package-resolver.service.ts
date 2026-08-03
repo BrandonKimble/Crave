@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { SharedEntityKind } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
+import { UserListAccessPolicy } from '../user-lists/user-list-access.policy';
 import { SharePackagePreviewDto } from './dto/messaging.dto';
 
 /**
@@ -19,6 +20,7 @@ export class SharePackageResolverService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly blocks: UserBlockService,
+    private readonly listAccess: UserListAccessPolicy,
   ) {}
 
   /**
@@ -40,6 +42,9 @@ export class SharePackageResolverService {
     kind: SharedEntityKind,
     id: string,
     viewerUserId: string,
+    /** The slug the share package carried. A personal list is reachable ONLY
+     *  by presenting it — a DM is not a weaker door than a pasted link. */
+    presentedSlug?: string | null,
   ): Promise<SharePackagePreviewDto> {
     const unavailable = { unavailable: true as const, kind, id };
     const available = (
@@ -71,13 +76,14 @@ export class SharePackageResolverService {
         const list = await this.prisma.userList.findUnique({
           where: { listId: id },
           select: {
+            listId: true,
             name: true,
             itemCount: true,
             listType: true,
             visibility: true,
             shareEnabled: true,
+            shareSlug: true,
             ownerUserId: true,
-            collaborators: { select: { userId: true } },
           },
         });
         if (!list) {
@@ -108,16 +114,29 @@ export class SharePackageResolverService {
             listSource: 'curated',
           });
         }
-        // Identity-adjacent: a list carries its OWNER's identity.
-        if (await this.blockedByAuthorGate(viewerUserId, list.ownerUserId)) {
-          return unavailable;
-        }
-        const viewerCanSee =
-          list.ownerUserId === viewerUserId ||
-          list.visibility === 'public' ||
-          list.shareEnabled ||
-          list.collaborators.some((c) => c.userId === viewerUserId);
-        if (!viewerCanSee) return unavailable;
+        // (The owner blocked-pair check lives inside canRead — one place.)
+        // ONE AUTHORITY (rederived 2026-08-03). This branch used to compute
+        // its own rule — `owner || public || shareEnabled || collaborator` —
+        // which granted a preview on `shareEnabled` ALONE, to anyone holding
+        // the listId, while `UserListAccessPolicy` says the SLUG IS THE
+        // CAPABILITY and 404s that exact case. Two authorities, live
+        // disagreement. The policy is the authority; this asks it.
+        // Revocation therefore works here for free and by construction:
+        // sharing off -> 410, rotated slug -> 404, blocked pair -> hidden.
+        const mayRead = await this.listAccess.canRead(
+          {
+            listId: list.listId,
+            ownerUserId: list.ownerUserId,
+            visibility: list.visibility,
+            shareSlug: list.shareSlug,
+            shareEnabled: list.shareEnabled,
+          },
+          viewerUserId,
+          presentedSlug ?? undefined,
+        );
+        // Every refusal renders the SAME unavailable card — no capability,
+        // revoked sharing, and a blocked pair are indistinguishable here.
+        if (!mayRead) return unavailable;
         return available(list.name, `${list.itemCount} places`, null, {
           listType: list.listType,
         });

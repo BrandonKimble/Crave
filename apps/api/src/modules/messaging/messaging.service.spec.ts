@@ -9,6 +9,7 @@ import { MessagingService } from './messaging.service';
 import { SharePackageResolverService } from './share-package-resolver.service';
 import { ClosenessService } from '../identity/closeness.service';
 import { UserBlockService } from '../identity/user-block.service';
+import { UserListAccessPolicy } from '../user-lists/user-list-access.policy';
 
 /**
  * W3 messaging contracts (plans/w3-messaging-design.md §5 M1 gate):
@@ -532,6 +533,7 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
       resolver: new SharePackageResolverService(
         prisma,
         new UserBlockService(prisma),
+        new UserListAccessPolicy(prisma, new UserBlockService(prisma)),
       ),
       prisma,
     };

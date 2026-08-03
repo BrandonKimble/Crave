@@ -1363,6 +1363,14 @@ model Message {
   ///   kind = text          ⇔ both NULL
   sharedEntityKind SharedEntityKind? @map("shared_entity_kind")
   sharedEntityId   String?           @map("shared_entity_id")
+  /// THE CAPABILITY TRAVELS WITH THE SHARE (2026-08-03). A personal list is
+  /// reachable only by presenting its share slug — that is the one rule, in
+  /// app and out (`user-list-access.policy.ts`). A DM share is not a special
+  /// case with a weaker rule; it is the same link, carried structurally
+  /// instead of pasted as text. Null for kinds that need no capability
+  /// (restaurants, dishes, and GLOBAL curated lists, which are public
+  /// editorial content).
+  sharedEntitySlug String?           @map("shared_entity_slug") @db.VarChar(64)
   /// Client-supplied idempotency key; unique per (conversation, sender) so a
   /// retried send replays the SAME row instead of duplicating.
   clientDedupeId   String?           @map("client_dedupe_id") @db.VarChar(64)

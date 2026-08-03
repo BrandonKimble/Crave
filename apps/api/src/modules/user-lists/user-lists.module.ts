@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { UserListsController } from './user-lists.controller';
 import { UserListsService } from './user-lists.service';
-import { UserListAccessPolicy } from './user-list-access.policy';
+import { UserListAccessModule } from './user-list-access.module';
 import { ListResultsAssembler } from './user-list-results.assembler';
 import { UserListMapper } from './user-list.mappers';
 import { UserListsPublicController } from './user-lists.public.controller';
@@ -22,6 +22,7 @@ import { UserListTileGalleryService } from './user-list-tile-gallery.service';
     SearchModule,
     PhotosModule,
     SignalsModule,
+    UserListAccessModule,
   ],
   controllers: [
     UserListsController,
@@ -30,7 +31,6 @@ import { UserListTileGalleryService } from './user-list-tile-gallery.service';
   ],
   providers: [
     UserListsService,
-    UserListAccessPolicy,
     ListResultsAssembler,
     UserListMapper,
     UserListTileGalleryService,
