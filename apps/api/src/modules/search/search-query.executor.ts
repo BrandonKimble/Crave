@@ -521,10 +521,11 @@ LIMIT 3
       rank: 1,
       scoreSubjectType: 'restaurant' as const,
       scoreSubjectId: row.entity_id,
-      // Autocomplete admits unscored restaurants; the lean variant keeps the
-      // mode total for them (neutral pin) instead of throwing like the ranked
-      // pipeline's toRequiredPublicScore would.
-      craveScore: this.toOptionalNumber(row.restaurant_crave_score) ?? 0,
+      // Autocomplete admits unscored restaurants; the lean variant serves
+      // null (the client's neutral pin) instead of throwing like the ranked
+      // pipeline's toRequiredPublicScore would. `?? 0` here painted unscored
+      // restaurants as the WORST tier — bucket 0 — not neutral (F757).
+      craveScore: this.toOptionalNumber(row.restaurant_crave_score),
       craveScoreExact:
         this.toOptionalNumber(row.restaurant_crave_score_exact) ?? undefined,
       rising: this.toOptionalNumber(row.restaurant_rising),
@@ -1412,7 +1413,12 @@ LIMIT 3
     const direction = isAsc ? 1 : -1;
 
     return restaurants.sort((a, b) => {
-      const scoreDiff = (a.craveScore - b.craveScore) * direction;
+      // Unscored (null) sorts BELOW every scored restaurant in both
+      // directions — unknown is not a rank, it is absence (F757).
+      if ((a.craveScore === null) !== (b.craveScore === null)) {
+        return a.craveScore === null ? 1 : -1;
+      }
+      const scoreDiff = ((a.craveScore ?? 0) - (b.craveScore ?? 0)) * direction;
       if (scoreDiff !== 0) {
         return scoreDiff;
       }

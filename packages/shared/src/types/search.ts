@@ -180,7 +180,11 @@ export interface RestaurantResult {
   rank?: number;
   scoreSubjectType: 'restaurant';
   scoreSubjectId: string;
-  craveScore: number;
+  // null = UNSCORED (autocomplete admits unscored restaurants) — the client
+  // renders neutral. Coercing to 0 painted unscored places as the WORST tier
+  // (no-fake-estimates law, F757/F703 2026-08-03); the ranked dish/connection
+  // pipelines stay non-null because they throw on unscored input.
+  craveScore: number | null;
   // Sectioned relevancy: true = exact-match tier (section 1), false = widened
   // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
   exactMatch?: boolean;

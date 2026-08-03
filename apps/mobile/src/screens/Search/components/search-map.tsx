@@ -629,7 +629,8 @@ const SearchMapViewScene = React.memo(
 export type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
-  craveScore: number;
+  /** null = unscored — renders the neutral color/badge, never bucket 0 (F757). */
+  craveScore: number | null;
   // High-precision Crave score (percentile_rank, 0..1) — the map RANKS by this so the badge == the
   // results-list position; craveScore (display, rounded to 1 decimal) is for the number/color only.
   craveScoreExact?: number | null;

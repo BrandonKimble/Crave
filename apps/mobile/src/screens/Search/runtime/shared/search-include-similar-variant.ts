@@ -11,7 +11,10 @@ import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../t
 //         into the `similar*` arrays so a later re-flip is still local.
 // Rows are tagged by the API: `exactMatch === false` marks a dense sibling.
 
-const resolveOrderingScore = (row: { craveScore: number; craveScoreExact?: number }): number =>
+const resolveOrderingScore = (row: {
+  craveScore: number | null;
+  craveScoreExact?: number;
+}): number =>
   typeof row.craveScoreExact === 'number' && Number.isFinite(row.craveScoreExact)
     ? row.craveScoreExact
     : typeof row.craveScore === 'number' && Number.isFinite(row.craveScore)
@@ -21,7 +24,7 @@ const resolveOrderingScore = (row: { craveScore: number; craveScoreExact?: numbe
 // Merge two already-ordered (Crave-Score desc) lists into one Crave-Score-desc list.
 // A classic two-pointer merge keeps the API's own ordering within each list (stable) and
 // only interleaves across lists — we deliberately do NOT blind re-sort the API arrays.
-const mergeByCraveScoreDesc = <T extends { craveScore: number; craveScoreExact?: number }>(
+const mergeByCraveScoreDesc = <T extends { craveScore: number | null; craveScoreExact?: number }>(
   primary: T[],
   secondary: T[],
   keyOf: (row: T) => string

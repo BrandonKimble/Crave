@@ -46,7 +46,7 @@ const resolveHydratedCraveScore = ({
 }: {
   currentSnapshot: RestaurantPanelSnapshot;
   hydratedProfile: HydratedRestaurantProfile;
-}): number =>
+}): number | null =>
   typeof currentSnapshot.restaurant.craveScore === 'number' &&
   currentSnapshot.restaurant.craveScore > 0
     ? currentSnapshot.restaurant.craveScore
