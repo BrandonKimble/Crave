@@ -139,10 +139,21 @@ arm (homograph guard) + per-locale surface seeding for the spine.
 M4. LANGUAGE-GATED DENSE FALLBACK: gazetteer+sparse miss on non-
 English text → enable dense retrieval (multilingual embeddings
 carry pulpo→octopus nearly free; zero English hot-path cost).
-PREREQUISITE EXPERIMENT (highest-value, run before any of M2-M4):
-measure cross-lingual cosine (aguacate↔avocado, pulpo↔octopus)
-against the live HNSW index — it sizes how much M2/M3 lexicon work
-dense recall replaces.
+PREREQUISITE EXPERIMENT — RUN 2026-08-02, PASSED DECISIVELY: 15
+foreign queries (es/fr/ja/zh/ko) embedded as RETRIEVAL_QUERY against
+the LIVE index (15,103 vectors, zero multilingual rows): 15/15 correct
+concept in top-5, 10/15 at rank #1. pulpo→octopus, poulpe→octopus,
+章魚→octopus (cos .796), ラーメン→ramen, 새우→shrimp, tacos de
+birria→birria tacos, 餃子→gyoza+dumpling. The "miss" was pan dulce→pan
+dulce: the source-faithful corpus already held the Spanish-named
+entity — proving the dish ruling empirically. Near-misses were
+Spanish-named dishes from our own corpus outranking the English
+concept (camarones → four camarones dishes, then shrimp) — the index
+is already bilingual where the food culture is. VERDICT: the dense
+fallback carries cross-lingual dish matching; per-dish alias
+pre-generation stays NEVER; the judge-banking loop handles the
+residue. Non-English dish-search quality ≈ English quality from day
+one of a market.
 M5. Dish display labels via the offline knowledge-synthesis pass.
 M6. Segmenter capability per script (Intl.Segmenter for ja/zh/th);
 fuzzy-tier floors re-derived for short CJK names.
