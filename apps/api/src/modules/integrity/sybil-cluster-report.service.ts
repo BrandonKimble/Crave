@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { utcInstantSql } from '../signals/sql-instant';
 import { LoggerService } from '../../shared';
 import { hmacDeviceKey } from '../signals/audit-hmac';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
@@ -709,16 +708,13 @@ export class SybilClusterReportService {
         AND s.meta ? 'ipSubnetHmac'
         AND s.meta ? 'pollId'
         AND sa.user_id IS NOT NULL
-        -- signals.occurred_at is the ONE column still stored WITHOUT a time
-        -- zone (it is the RANGE partition key, and Postgres refuses to alter
-        -- it), so a bound instant must be coerced the same way — see
-        -- signals/sql-instant.ts. Comparing it against now() instead made
-        -- this sweep's window depend on the session TimeZone: measured over a
-        -- 14-day window on the local corpus, UTC returned 601 rows,
-        -- America/Chicago 613, Asia/Tokyo 574. It read correctly only because
-        -- every pooled connection is pinned to UTC — and that pin is skipped
-        -- for any DATABASE_URL that already carries an options= parameter.
-        AND s.occurred_at >= ${utcInstantSql(this.sweepCutoff())}
+        -- A BOUND INSTANT, not now(). This compared against now() until
+        -- 2026-08-02, which made the sweep window depend on the session
+        -- TimeZone (measured over 14 days: UTC 601 rows, America/Chicago 613,
+        -- Asia/Tokyo 574) and read correctly only because pooled connections
+        -- are pinned to UTC. occurred_at is timestamptz now, so binding the
+        -- cutoff Date is simply correct — no coercion helper involved.
+        AND s.occurred_at >= ${this.sweepCutoff()}
     `;
   }
 }

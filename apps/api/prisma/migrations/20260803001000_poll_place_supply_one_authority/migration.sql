@@ -1,0 +1,17 @@
+-- ONE AUTHORITY FOR updated_at.
+--
+-- `poll_place_supply.updated_at` was created by a hand-written migration with
+-- `DEFAULT CURRENT_TIMESTAMP`, while the Prisma model declares `@updatedAt` —
+-- so the value has had two owners. Prisma is the only writer of this table
+-- (`pollPlaceSupply.upsert` is the sole write path) and `@updatedAt` supplies
+-- the value on both create and update, which means the database default has
+-- never once fired.
+--
+-- A dormant second authority is not free: it is the reason
+-- `prisma migrate diff` has reported permanent drift on this schema, and
+-- permanent expected drift is how a REAL drift line gets scrolled past.
+--
+-- Dropping the default makes the model true and the diff empty. A future raw
+-- INSERT that omits the column now fails loudly on NOT NULL rather than
+-- silently recording the wrong instant — the better of the two failures.
+ALTER TABLE "poll_place_supply" ALTER COLUMN "updated_at" DROP DEFAULT;

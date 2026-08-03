@@ -2228,7 +2228,7 @@ model Signal {
   geoMaxLat   Decimal? @map("geo_max_lat") @db.Decimal(10, 8)
   geoMaxLng   Decimal? @map("geo_max_lng") @db.Decimal(11, 8)
   actorId     String   @map("actor_id") @db.Uuid
-  occurredAt  DateTime @map("occurred_at")
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(3)
   /// WHEN the ledger learned of the act (occurredAt = when it happened).
   /// Drives the aggregate's watermark rebuild (red-team 1b): late/backfilled
   /// writes are picked up by recorded-at, so every signal eventually lands in

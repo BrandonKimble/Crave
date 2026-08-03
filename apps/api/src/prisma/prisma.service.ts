@@ -5,7 +5,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { isDeployedEnv, normalizeAppEnv } from '../shared/config/app-env';
+import { isDeployedEnv, resolveAppEnv } from '../shared/config/app-env';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { DatabaseConfig } from '../config/database-config.interface';
 import { DatabaseValidationService } from '../config/database-validation.service';
@@ -73,7 +73,6 @@ export class PrismaService
 
   async onModuleInit() {
     this.logger = this.loggerService.setContext('PrismaService');
-    this.assertNotProdDatabaseFromDev();
     this.logPrismaClientMetadata();
 
     if (this.validationService) {
@@ -82,6 +81,11 @@ export class PrismaService
     }
 
     await this.$connect();
+
+    // AFTER connect: the escape hatch is now a privilege PROBE, which needs a
+    // live session. Everything below this line may touch production data, so
+    // nothing below it runs until the handle has been proven safe to hold.
+    await this.assertNotProdDatabaseFromDev();
 
     await this.logTableProbe();
     await this.assertClientSchemaCoherence();
@@ -119,21 +123,34 @@ export class PrismaService
   }
 
   /**
-   * THE LAW, ENFORCED (env-split audit 2026-08-02): CLAUDE.md has said
-   * "NEVER point a local api at the prod DB" since the Railway cutover, but
-   * it was documentation only — nothing checked. A laptop process holding a
-   * Railway proxy URL writes to production with full superuser rights, and
-   * the shared prod/staging password meant no operator could tell the two
-   * apart by inspection.
+   * THE LAW, ENFORCED: a laptop may not hold a write handle on a hosted
+   * database.
    *
-   * A non-production APP_ENV may not open a Railway-hosted database. Set
-   * ALLOW_REMOTE_DB=1 for the deliberate exception (a read-only audit
-   * script), which is then an explicit act rather than an accident.
+   * CLAUDE.md has said "NEVER point a local api at the prod DB" since the
+   * Railway cutover, but it was documentation only — nothing checked. A laptop
+   * process holding a Railway proxy URL writes to production with full
+   * superuser rights, and the shared prod/staging password meant no operator
+   * could tell the two apart by inspection.
+   *
+   * THE ESCAPE HATCH IS NOW A PROOF, NOT A PROMISE (2026-08-03).
+   *
+   * This used to be waved off with `ALLOW_REMOTE_DB=1` — an env var that
+   * disabled the guard wholesale on the operator's word that the session was
+   * "a read-only audit script". That is the same shape as every mechanism
+   * this codebase has spent the week retiring: a claim nothing verifies. It
+   * also had a second life as a staging migration bridge, and a bridge that
+   * silently disables a safety guard outlives its reason by default.
+   *
+   * The legitimate case is real, so it keeps a door: an operator DOES need to
+   * query production from a laptop. But the exception is now granted by a
+   * demonstrated property rather than an assertion — the connection must
+   * actually lack write privilege. `crave_readonly` exists on production for
+   * exactly this, and a role named readonly that was granted INSERT by
+   * accident fails this check, because the check asks Postgres rather than
+   * reading the name.
    */
-  private assertNotProdDatabaseFromDev(): void {
-    const appEnv = normalizeAppEnv(
-      process.env.APP_ENV || process.env.CRAVE_ENV,
-    );
+  private async assertNotProdDatabaseFromDev(): Promise<void> {
+    const appEnv = resolveAppEnv();
     // DEPLOYED, not PROD (2026-08-02). This asked "am I production?" to decide
     // whether a hosted database was legitimate — two different questions
     // through one boolean. Staging runs on Railway against its own Railway
@@ -141,39 +158,58 @@ export class PrismaService
     // at all, which is how staging ended up indistinguishable from production
     // everywhere else. A hosted DB is legitimate for any DEPLOYED runtime.
     if (isDeployedEnv(appEnv)) {
-      // SELF-RETIRING BRIDGE (2026-08-02). ALLOW_REMOTE_DB=1 was set on
-      // staging so it would boot under BOTH the old prod-only guard and this
-      // one while APP_ENV moved from `prod` to `staging`. Reaching this line
-      // proves the new guard is live, so the override is now dead weight that
-      // silently disables the never-point-local-at-prod protection. Say so
-      // every boot until someone removes it — a reminder that appears exactly
-      // when it becomes true beats one written in a document.
-      if (process.env.ALLOW_REMOTE_DB === '1') {
-        this.logger?.warn(
-          'ALLOW_REMOTE_DB=1 is set on a DEPLOYED environment and is no ' +
-            'longer needed — this build allows a hosted database for any ' +
-            'deployed runtime. Remove the override: ' +
-            `railway variables -s <svc> --environment ${appEnv} --unset ALLOW_REMOTE_DB`,
-          { operation: 'allow_remote_db_bridge_obsolete', appEnv },
-        );
-      }
       return;
     }
-    if (process.env.ALLOW_REMOTE_DB === '1') {
-      return;
-    }
+
     const url = process.env.DATABASE_URL || '';
     const remoteHost = /@[^/]*(rlwy\.net|railway\.internal|railway\.app)/i.test(
       url,
     );
-    if (remoteHost) {
-      throw new Error(
-        'REFUSED: a non-deployed process (APP_ENV=' +
-          (appEnv || 'unset') +
-          ') is pointed at a Railway-hosted database. This is the documented ' +
-          'never-point-local-at-prod law. Use the local DB, or set ' +
-          'ALLOW_REMOTE_DB=1 to override deliberately.',
+    if (!remoteHost) {
+      return;
+    }
+
+    if (await this.connectionIsReadOnly()) {
+      this.logger?.warn(
+        'A non-deployed process is connected to a HOSTED database with a ' +
+          'read-only role. Reads only — any write will be refused by Postgres.',
+        { operation: 'remote_db_readonly_session', appEnv },
       );
+      return;
+    }
+
+    throw new Error(
+      `REFUSED: a non-deployed process (APP_ENV=${appEnv}) holds a WRITE ` +
+        `handle on a Railway-hosted database. This is the documented ` +
+        `never-point-local-at-prod law. Use the local database, or connect ` +
+        `as a role with no write privilege (crave_readonly) if you need to ` +
+        `read production — there is deliberately no env var that turns this ` +
+        `off on your word alone.`,
+    );
+  }
+
+  /**
+   * Ask POSTGRES whether this connection can write, rather than trusting a
+   * role name or an env var. Checked against a table that must exist and
+   * would be catastrophic to write from a laptop.
+   *
+   * A failure to answer is not a pass: an unreadable answer means we do not
+   * know, and not knowing must refuse.
+   */
+  private async connectionIsReadOnly(): Promise<boolean> {
+    try {
+      const rows = await this.$queryRaw<{ can_write: boolean }[]>`
+        SELECT (
+          has_table_privilege(current_user, 'signals', 'INSERT')
+          OR has_table_privilege(current_user, 'signals', 'UPDATE')
+          OR has_table_privilege(current_user, 'signals', 'DELETE')
+          OR pg_has_role(current_user, 'pg_write_all_data', 'USAGE')
+          OR (SELECT rolsuper FROM pg_roles WHERE rolname = current_user)
+        ) AS can_write
+      `;
+      return rows[0]?.can_write === false;
+    } catch {
+      return false;
     }
   }
 

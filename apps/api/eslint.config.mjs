@@ -135,7 +135,6 @@ export default tseslint.config(
       // value so an unrecognized one fails closed.
       'src/shared/config/debug-routes.gate.ts',
       'src/modules/identity/auth/clerk-auth.service.ts',
-      'src/prisma/prisma.service.ts',
     ],
     rules: {
       // FIVE SELECTORS, BECAUSE THE FIRST ONE HAD FOUR HOLES.

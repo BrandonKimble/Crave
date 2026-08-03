@@ -4,7 +4,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import { freshSignalAttributionSql } from './ground-containment';
-import { utcInstantSql } from './sql-instant';
 import {
   redirectJoinSql,
   resolvedSubjectSql,
@@ -312,7 +311,7 @@ export class SignalDemandReadService {
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'search'
         AND s.subject_text IS NOT NULL
-        AND s.occurred_at >= ${utcInstantSql(since)}
+        AND s.occurred_at >= ${since}
         AND s.subject_text LIKE ${`${this.escapeLike(prefix)}%`}
       GROUP BY s.subject_text
       ORDER BY last_used DESC, signal_count DESC
@@ -352,7 +351,7 @@ export class SignalDemandReadService {
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'search'
         AND s.subject_text = ANY(${normalizedKeys}::text[])
-        AND s.occurred_at >= ${utcInstantSql(since)}
+        AND s.occurred_at >= ${since}
       GROUP BY s.subject_text
     `;
     return new Map(
@@ -892,7 +891,7 @@ export class SignalDemandReadService {
         ${redirectJoinSql('s')}
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.kind = 'on_demand_ask'
-          AND s.occurred_at >= ${utcInstantSql(params.since)}
+          AND s.occurred_at >= ${params.since}
           AND s.subject_text IS NOT NULL
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
           -- P2 red-team F5 (2026-07-30): no separate prefilter — the law's

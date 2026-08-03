@@ -6,6 +6,7 @@ import { LoggerService } from '../../shared';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { geoEnvelopeSql } from './ground-containment';
 import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
+import { utcDayStart } from './occurred-at';
 
 /**
  * §3 signals aggregate (§22 item 6): day × actor × place × subject × kind — a
@@ -321,8 +322,11 @@ export class SignalDemandAggregateService {
               ORDER BY s.occurred_at ASC, s.signal_id ASC
             ) AS rn
           FROM signals s
-          WHERE s.occurred_at >= ${dayKey}::date
-            AND s.occurred_at < ${nextDayKey}::date
+          -- UTC day boundaries, explicitly. A bare ::date literal against a
+          -- timestamptz column resolves in the SESSION timezone — measured at
+          -- 9 / 0 / 12 rows for one day under UTC / Chicago / Tokyo.
+          WHERE s.occurred_at >= ${utcDayStart(dayKey)}
+            AND s.occurred_at < ${utcDayStart(nextDayKey)}
         ),
         day_signals AS (
           -- Red-team 1c + wave-5 F1: retry dedupe is window-wide, geo-free,
@@ -343,7 +347,7 @@ export class SignalDemandAggregateService {
                        OR p.meta->>'cacheRevealRequestId' IS NOT NULL)
                   AND COALESCE(p.meta->>'searchRequestId', p.meta->>'cacheRevealRequestId') = d.request_id
                   AND p.kind = d.kind
-                  AND p.occurred_at < ${dayKey}::date
+                  AND p.occurred_at < ${utcDayStart(dayKey)}
               )
             )
         ),

@@ -179,8 +179,21 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     // whole UTC day.
     const delDay = statements[2].values.find((v) => v === '2026-07-19');
     expect(delDay).toBe('2026-07-19');
-    expect(statements[3].values).toContain('2026-07-19');
-    expect(statements[3].values).toContain('2026-07-20');
+    // THE DAY WINDOW IS AN EXPLICIT UTC INSTANT, NOT A BARE DATE.
+    // occurred_at became timestamptz when the signals table was rebuilt off
+    // its naive partition key, and that flipped which form is dangerous: a
+    // bare `::date` literal is now resolved in the SESSION timezone. Measured
+    // on the real corpus right after the rebuild, one day-slice returned 9
+    // rows under UTC, 0 under America/Chicago and 12 under Asia/Tokyo. So the
+    // assertion is on the OFFSET, which is the part that carries the meaning.
+    const dayBounds = statements[3].values
+      .filter(
+        (v): v is { values: unknown[] } =>
+          typeof v === 'object' && v !== null && 'values' in v,
+      )
+      .flatMap((frag) => frag.values);
+    expect(dayBounds).toContain('2026-07-19 00:00:00+00');
+    expect(dayBounds).toContain('2026-07-20 00:00:00+00');
   });
 
   it('rebuild is idempotent by construction: re-running a day issues byte-identical statements', async () => {
