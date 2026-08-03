@@ -404,7 +404,12 @@ describe('containment laws, proven against PostGIS', () => {
         error: () => undefined,
         debug: () => undefined,
       } as never;
-      const agg = new SignalDemandAggregateService(prisma as never, aggLogger);
+      const aggOpsAlerts = { emit: () => undefined } as never;
+      const agg = new SignalDemandAggregateService(
+        prisma as never,
+        aggOpsAlerts,
+        aggLogger,
+      );
       await agg.rebuildDay(new Date());
       const { DemandMassReader } = await import(
         '../polls/supply/demand-mass.reader'
@@ -430,7 +435,10 @@ describe('containment laws, proven against PostGIS', () => {
         error: () => undefined,
         debug: () => undefined,
       } as never;
-      await new Agg2(prisma as never, aggLogger2).rebuildDay(new Date());
+      const aggOpsAlerts2 = { emit: () => undefined } as never;
+      await new Agg2(prisma as never, aggOpsAlerts2, aggLogger2).rebuildDay(
+        new Date(),
+      );
     }
   });
 

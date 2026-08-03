@@ -691,3 +691,138 @@ before it is created; every backfill is set-based and no-ops on an empty databas
   primary documentation of WHY the model is shaped as it is, and several (Phase C purge, the
   cuisine facet, `timestamptz` everywhere, the rebuild-floor pair) are worth reading in full
   before touching their subject area.
+
+## Territory: api-places-enrichment
+
+`apps/api/src/modules/{places,restaurant-enrichment,attribute-ontology,estimators}`
+— 44 files. Two independent systems that share a spend posture, plus two small ones.
+
+### What is here
+
+**The place catalog** (`places/`) is a containment DAG mirroring TomTom's own
+geography entities. **A place is a mirrored vendor entity** — that one sentence
+explains most of the module. Identity is the vendor's composite key
+`(providerPlaceId, providerLevelCode)`; an observation that does not name an
+entity is REFUSED at the door, not reconciled. There is exactly ONE ground
+representation: every place has a row in `place_geometries`, born as a
+rectangular sketch envelope (`provider_boundary_id IS NULL`) and upgraded IN
+PLACE to the vendor outline by the promotion drain. There are no bbox columns —
+the bbox is DERIVED from the ground at the moment of use.
+
+**Restaurant enrichment** (`restaurant-enrichment/`) grounds restaurant entities
+to Google Places: primary grounding (autocomplete/text-search → candidate
+ranking → optional Gemini chooser → place details), secondary expansion
+(attach every same-domain + same-brand-name place as an additional location),
+cuisine extraction, a weekly lifecycle janitor, entity merging, and the nightly
+convergence coordinator.
+
+**Attribute ontology** (`attribute-ontology/`) adjudicates quarantined
+(`pending`) attribute vocabulary into the active set via embeddings for recall
+plus a narrow LLM decision for precision. **Estimators** (`estimators/`) is one
+file: the Estimator primitive (self-erasing priors). Its only consumer today is
+poll supply — it is NOT dead, despite living alone with a single commit.
+
+### Entry points
+
+| Surface              | Entry                                                                                                                       |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Viewport slice read  | `GET /places/in-view` → `PlacesCatalogService.placesInView`                                                                 |
+| Header verdict       | `GET /places/viewport-verdict` → `ViewportVerdictService` (polls feed calls the same service — one law, one implementation) |
+| Cold-start camera    | `GET /places/launch-position` (public, `@AllowUnentitled`)                                                                  |
+| Naming observation   | `PlacesReconcilerService.noteViewport(view)` — fire-and-forget, returns void synchronously                                  |
+| Outline promotion    | `PlacesPromotionService.enqueue` (via `PLACE_BIRTH_LISTENER`) + hourly `drainTick`                                          |
+| Restaurant grounding | `RestaurantEnrichmentQueueService.queueEnrichment` → worker → `enrichRestaurantById`                                        |
+| Nightly convergence  | `NightlyConvergenceService.runNightly` — the ONE 3AM cron                                                                   |
+
+### Invariants, and why
+
+- **1:1:1 — every place has exactly one ground and one promotion row.** Verified
+  on the local mirror: 22,770 / 22,770 / 22,770, zero places without a ground,
+  and exactly 3 sketch-grade rows which are exactly the 3 unpromoted queue rows.
+  This is what makes "the ground judges, the bbox only indexes" safe: there is no
+  bbox-only fallback arm to get wrong.
+- **A ground only ever gains detail.** Sketch writes carry
+  `WHERE provider_boundary_id IS NULL`, so a landed outline can never be
+  clobbered; sketch widening is grow-only via SQL against the LIVE row so
+  concurrent widenings compose.
+- **One vendor entity belongs to at most one place, per level.** Enforced in
+  `promoteOneUnmetered` before the scarce draw is spent. The refused place keeps
+  its honest sketch envelope — "the vendor does not model this place separately".
+- **A failure is not an observation.** `TomtomChainProbeResult` is
+  `named | empty | failed`; only `empty` carries a region that may be remembered.
+  This type is why a whole bug class stopped recurring — read its docblock.
+- **Place-grounded restaurants are never deleted** (CLAUDE.md's $118 law).
+  Everything archives. `enrichMissingRestaurants` and the janitor both filter
+  `status = active` so tombstones never buy Places data again.
+- **The ledger is never rekeyed; merges write `entity_redirects`.** The merge
+  service rekeys events and rehomes user anchors, but user-act history resolves
+  through redirects at read.
+
+### Gotchas that will bite you
+
+- **`yarn test` does not run `places-containment.integration.spec.ts`**
+  (`testPathIgnorePatterns`). Only `yarn test:db` does, and only CI runs that —
+  behind a `Lint` step that is currently failing. That file holds the REAL
+  spatial semantics; several unit specs explicitly delegate to it. Run it by
+  hand: `DATABASE_URL=postgresql://$(whoami)@localhost:5432/crave_search npx jest
+--testPathIgnorePatterns='[]' --testRegex='places-containment.*integration'`.
+- **Several unit specs string-match generated SQL.** Two are mutation-proved
+  always-green (F370, F371) — a janitor that archives healthy rows and a
+  viewport cap of 1 both pass. Do not read a green unit suite here as proof.
+- **The PostGIS `geometry` column lives OUTSIDE the Prisma model.** Any
+  polygon-precise operation is `$queryRaw`. Prisma will not help you.
+- **Never union view arms into one geometry for an index operand.** `&&`
+  compares bounding boxes, and the bbox of two arms at ±180 is the whole world.
+  Measured: union form 693 rows/seq-scan, per-arm 1 row in 0.18ms.
+- **`enrichSecondaryLocations`' `locationBias` parameter is dead** — its one
+  caller passes two arguments, so live expansion is an UNBIASED global name
+  search. Do not reason about metro behaviour from the signature (see F353; this
+  corrects a premise of the ruled P2.2 design).
+- **The three enrichment queue services are one concept written three times**
+  and their divergences are accidents, not policy (F356). Only the primary
+  lane captures a spend campaign.
+- **The `Cron`-suffixed methods are not crons.** The round-12 coordinator took
+  the decorators off the phase services; `sweepSameNameDuplicatesCron` is
+  uncalled residue and `NightlyConvergenceService` calls the underlying method
+  directly.
+
+### Deliberate absences — do not "fix" these
+
+- **No fallback place-minting lane.** Owner ruling 2026-08-01, "TomTom or
+  nothing": a droughted poll creation refuses honestly rather than minting a
+  synthetic place sized by the creator's zoom. It had minted zero rows ever.
+- **No county-axis name-identity table**, no `resolveGeometryId`, no census
+  cheap-geocode step, no `[lodev]`-style attention memory for header answers.
+  All deleted deliberately ("THE FINAL DISSOLUTION"). If a chain node arrives
+  id-less, that is a vendor contract change to investigate — not a reason to
+  resurrect name matching.
+- **The catalog mirror is ACCRETIVE, never re-synced.** Parent edges only
+  append, scalars only gap-fill. A vendor RESTATEMENT leaves the old truth
+  standing. This is a recorded, accepted trade; the honest fix is a
+  vendor-refresh sweep built when a real restatement is first MEASURED.
+- **Per-metro chain entities were REJECTED** (P2.2). One brand entity, many
+  locations, search geo-scoped by locations. Do not reintroduce branch-level
+  entities.
+- **Cuisine extraction is once-ever per restaurant** — deliberate today, though
+  the machinery for "has the evidence changed" was built and left unwired
+  (F369).
+
+### Verdicts from the 2026-08-02 rederivation pass
+
+- `places-catalog.service.ts`, `places-reconciler.service.ts`,
+  `tomtom-chain-probe.port.ts`, `place-dag-read.ts`,
+  `viewport-verdict.service.ts`, `places.controller.ts`,
+  `nightly-convergence.service.ts` — **IDEAL-VERIFIED**. I tried to find the
+  seams and mostly could not; where a docblock states a law, the code implements
+  that law. The observation type and the one-ground unification are the two
+  ideas doing the most work.
+- `places-promotion.service.ts` / `tomtom-chain-probe.adapter.ts` — right shape,
+  but "a consumed draw" is defined three different ways across the pool, the
+  usage ledger and the campaign envelope, and the two that cost money disagree
+  with the one that spends it (F350).
+- `restaurant-location-enrichment.service.ts` — 4,706 lines, ~95 methods, and
+  the only file in the territory that has not been rederived. It is where the
+  money is and where the open findings cluster (F352, F353, F354, F363).
+- `estimators/estimator-registry.ts` — a good structural law (no self-gating
+  estimator without an exploration mechanism) sitting on top of three declared
+  fields that nothing reads (F358).

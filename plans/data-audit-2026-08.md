@@ -577,6 +577,20 @@ THE 81 CROSS-METRO-EVIDENCE ENTITIES CLASSIFY AS:
   testimony; must stay on the Austin entity.
 - 23 ungrounded-both (420 ev) — P1-repair / backfill territory.
 
+PREMISE CORRECTION (2026-08-03, rederivation F353 — read BEFORE building):
+class (b)'s stated mechanism ("expansion is location-biased") is FALSE.
+enrichSecondaryLocations' locationBias parameter is DEAD (single caller
+passes two args); expansion is a GLOBAL search — but CAP-TRUNCATED at 60
+locations/run (23 brands at/past the cap, max 121; Chipotle 61) with
+ranking-dependent truncation, and the brand-purity gate rejects siblings
+whose Google displayName is branch-qualified ("Shake Shack 1700
+Broadway…" holds ONE location for this reason). Consequence: a metro
+test against a knowingly-truncated location set will mint twins for
+REAL chains — the exact failure this design exists to avoid. The build
+must be completeness-aware: track cap-state per brand, or do per-metro
+on-demand expansion at adoption time (one biased findPlaceFromText for
+the mention's metro before refusing), or both.
+
 RED TEAM OF THE RULED SHAPE — the naive rule FAILS two of three classes:
 "only adopt candidates with a local location" fixes (a), but for (b) it
 would MINT A TWIN Dunkin' per metro (fragmenting a true brand solely

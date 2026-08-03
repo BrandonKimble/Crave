@@ -185,3 +185,29 @@ VERDICT: **APPROVE** (orchestrator implements; verify enum values from DB first)
 ## D18a — RESOLVED BY OWNER RULING + DERIVATION (2026-08-03)
 
 Owner: derive ceilings from measured usage with the monthly upper bound = one city onboarding + typical steady collection. Implemented by the orchestrator: per-op ceilings derived from api_usage_ledger (45d incl. the 07-30/31 full-city burst) — per-minute = historical peak rounded to next 50 (autocomplete 500/452, placeDetails 400/392, textSearch 250/226); per-day = burst-day + steady-p95-day rounded to next thousand (12k/12k/8k). Service default for UNREGISTERED ops = 60/min (closed-vocabulary posture: works, but slow enough to surface and force an explicit entry). Zero = CLOSED registered scope, denied before Redis and before the emergency guard; malformed refuses boot. Mutation-capable spec (rate-limit-zero-closed.spec.ts) proves both.
+
+## D27 — CI runs type-check before lint (places-enrichment, F351)
+
+The repo's only DB-backed integration spec silently rotted (2 type errors invisible: yarn test excludes it, CI died at Lint first). Agent repaired the spec (12/12 green vs real PostGIS). Reorder = zero product impact.
+VERDICT: **APPROVE** (orchestrator lands the ci.yml reorder).
+
+## D28 — P2.2 premise correction recorded before build (F353)
+
+The ruled design says class-(b) chains fail because expansion is location-biased; FALSE — the locationBias param is dead, expansion is global but CAP-TRUNCATED (60/run; 23 brands at/past cap, max 121) and brand-purity rejects branch-qualified displayNames. A metro test against knowingly-truncated location sets mints twins for real chains — the exact failure the design guards against. The P2.2 build must be completeness-aware (per-metro on-demand expansion, or cap-state tracked per brand).
+VERDICT: **APPROVE** doc correction (orchestrator lands it in plans/data-audit-2026-08.md).
+
+## D29 — money accounting truth, split (F350+F352)
+
+APPROVED half: ONE definition of "consumed draw" across pool/ledger/campaign (meters agree with reality; docstrings stop asserting debits the code doesn't make); the secondary-expansion lane's ledger label becomes honest (it pays enterprise+atmosphere SKU — label must say so). Spend BEHAVIOR byte-unchanged.
+ESCALATED half: whether secondary expansion becomes campaign-CAPTURED (that would gate/refuse expansion spend without a campaign — a policy change).
+VERDICT: **APPROVE** accounting-truth half; **ESCALATE** capture half.
+
+## D30 — mutation-capable specs for janitor + viewport cap (F370+F371)
+
+Two suites proven green under inverted behavior. Rewrite so each can show RED (the mutation experiments become the fixtures).
+VERDICT: **APPROVE**.
+
+## D31 — starved-candidate exploration honors its own contract (F358)
+
+Zero observations must mean maximal uncertainty (docstring: Infinity), not zero — executed proof showed a starved candidate ranked LAST. Fix to the documented contract.
+VERDICT: **APPROVE** (behavior change is the documented intent).

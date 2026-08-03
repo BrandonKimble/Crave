@@ -64,11 +64,14 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crave_search_test?schema=public
 
-      - name: Lint
-        run: yarn lint
-
+      # Type check FIRST (rederivation D27): CI used to die at Lint,
+      # leaving type errors — including the rotted DB-integration spec —
+      # invisible. One second of tsc buys the truth about compilability.
       - name: Type check
         run: yarn type-check
+
+      - name: Lint
+        run: yarn lint
 
       - name: Build
         run: yarn build
