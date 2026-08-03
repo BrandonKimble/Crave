@@ -551,3 +551,9 @@ The first Phase-3 attempt STOPPED correctly: the estimator registry has zero con
 1. Account deletion never severs `signal_actors.user_id` — the documented severable-deletion story is unimplemented. User-data lifetime: owner call on implementing severance now.
 2. The derived taste profile is an inferred-preference record (dietary/spice/budget) — must it join the deletion path + staging PII scrub? (Recommendation: yes, both.)
 3. The behavioral horizon (how far back "what they're into" looks) is an owner-chosen number — the design refuses to invent it. Also: do users get to view/reset their taste profile?
+
+## D40 — owner rulings on the three escalations (2026-08-03)
+
+1. **Signals severance at account deletion: IMPLEMENT** (owner: "do whatever you think is best... disconnecting the deleted user from their data is anonymity"). Deletion severs signal_actors.user_id — the acts stay as anonymous demand evidence, the person is disconnected. This completes the documented severable-deletion story.
+2. **Taste profile joins the deletion path AND the staging PII scrub** — the inferred-preference row dies with the account, and prod→staging copies never carry real users' inferred preferences.
+3. **Taste profile is INTERNAL-ONLY** — no user-facing view/reset, managed automatically for every user. Build toward the ideal from the start; Spotify's algorithm system is the named target in abstraction and approach (derived read models over the one behavioral ledger, iterated recipes on top). The behavioral horizon question dissolves under the D40 shape (all history, recency recorded as facts); any future windowing is a recipe parameter, not a stored truth.
