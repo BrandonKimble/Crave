@@ -241,3 +241,33 @@ VERDICT: approve all but the constants; Phase-3 dispatched.
 
 APPROVED: F510+F570+F571+F572+F541+F542 — the archived/redirect-leak class on the SIX peripheral read surfaces (coverage layer, favorites lane, viewed lane, resolver refetch, poll leaderboard, demand mass) all get the status predicate + one-hop redirect resolution the core paths already carry; F540 the voter-doc exclusion gets a coupling spec (writer stamps voterUserId ⟺ reader excludes it — one can't drift from the other); F512/F513/F514/F562/F574/F575/F576/F577 dead/vestigial deletions (re-verify each); F582 one tier table. F511 (the builder's dual-preview) APPROVED as the highest-value structural cleanup: the preview string must be DERIVED from the Sql (a preview that can drift from the query it describes is a second source of truth) OR a spec must assert equivalence; the two copy-pasted connection-condition arms collapse to one. ACCEPTED IDEAL: F515 (single-hop is correct given the one-hop-redirect writer invariant — but add the ASSERTION that the writer keeps chains flat, else this silently degrades), F545, F573, and the search magic-number set (each justified).
 VERDICT: approve all; the six-surface leak fix is one coherent commit, the builder cleanup another. No new escalations — search constants are all classified.
+
+## D36 — api-user-surfaces (Phase-2 review of F600–F698, 2026-08-03)
+
+**APPROVED:**
+
+- F600 DELETE `user_lists.item_count` (denorm measurably wrong on 26/64 lists, all overstated) — derive from `_count`. Rubric: makes drift unrepresentable (no second copy to desync); deletes more than it adds; bedrock = the rows ARE the count. Behavior change is the correction of a measured lie, not a product call. Migration: drop column; readers switch to `_count` in the same change.
+- F690 the false `@NoSignal` on POST /home/lists/:id/save — the route must actually record `favorite_added` per copied item (route through UserListsService or record at the write). The decorator's claim becomes true, not re-worded. Plus: boot audit gains a truth check where feasible (see F645).
+- F645 signal-audit exemption predicate — replace the `@AllowUnentitled` proxy with an explicit is-user-act predicate so the three escaped notification mutations come under the ledger requirement.
+- F640/F641/F642 push queue — rederive delivery semantics honestly: either implement retry (attempts read, failed→retryable transition, `sending` reclaim) or delete the retry vocabulary and declare at-most-once; `parseExpoResponse` must reject the array shape (mutation-prove with Expo's documented batch-error payload). No always-green parsing.
+- F692 curated-list read paths — same archived-leak law as D35: status filter + one-hop redirect at READ time on every serving path, mutation-proven.
+- F602/F621/F661/F682 — ONE `resolveSaveableRestaurant` seam (redirect-resolve + type + status), all four surfaces call it; the share resolver's semantics are the reference.
+
+**SEND BACK:** none. **ESCALATE:** none new.
+
+## D37 — docs + repo-tooling (Phase-2 review of F700–F756, 2026-08-03)
+
+**APPROVED:**
+
+- F701 ratchet `no-bypass-search-runtime.allowlist` max_count 6→0 (live count IS 0; zero blast; the gate regains teeth — mutation-prove by planting one violation).
+- F702 triage the delete-gate's 16 failures against live specs (the spec is truth where they conflict, e.g. `bookmarks`); then wire into CI or delete the gate — a gate run by nothing is the always-green disease inverted (always-red, equally unread).
+- F703/F704/F705 fix-or-delete per the same rule: a gate is either wired and green-provable-red, or gone.
+- F716 port the api-scripts containment lockdown (class headers + spec) to root `scripts/` — the proven shape, applied to the flat 57-file mix that hid F702.
+- F709/F729/F752 [lodev] eradication — correct the 4 doc homes (dated correction notes, no deletions under plans/product/business), and classify/retire the 11 parsing scripts under the new containment headers (dead-scaffolding class, banking law already satisfied: the harness provably never existed in code).
+- F742/F741/F744/F745 doc TRUTH corrections as dated appended notes (markets extermination, hard-paywall ruling, upvoteWeight 0.7, pooled-vs-sectioned) — corrections ONLY.
+- F714 reextract-skill script path + F711 maestro UUID→regex (zero-blast, previously deferred by the agent — now approved).
+
+**ESCALATED to owner:**
+
+- F706/F707 visual-regression rail: baselines survive but the capture flow was deleted (commit 9f0d26a5a) — RESTORE the flow from 9f0d26a5a^ or RETIRE the rail (delete baselines + map-accept references). Recommendation: restore; the map is precious and the harness was the blessed regression gate. Cost: one revert-of-deletion, no runtime impact.
+- F740 blueprint §11.8 vs business-model.md Stripe-web-rail contradiction, aggravated by blueprint's own "this file wins" precedence claim — owner must restate which sentence is current (memory says: web rail IS happening, 2026-08-01 ruling).
