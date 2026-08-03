@@ -1,0 +1,19 @@
+{
+  "name": "site",
+  "version": "0.0.1",
+  "description": "craveapp.ai — the public website and the web checkout entry",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "prebuild": "yarn clean",
+    "build": "tsc -p tsconfig.json && mkdir -p dist/src/pages && cp src/pages/*.html dist/src/pages/",
+    "start": "node dist/src/server.js",
+    "dev": "node --watch dist/src/server.js",
+    "test": "node --test \"dist/test/*.test.js\"",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  }
+}

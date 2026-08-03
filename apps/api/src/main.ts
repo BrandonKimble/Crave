@@ -143,9 +143,23 @@ async function bootstrap() {
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
-  // Enhanced CORS configuration
+  // CORS. In prod the answer was a flat `false` — correct while the only
+  // client was the native app, which is not a browser and never sends an
+  // Origin. The web checkout rail (apps/site, /premium) IS a browser, and a
+  // flat `false` makes its POST /billing/checkout-session unreachable: the
+  // preflight fails and the payer never reaches Stripe.
+  //
+  // The fix is an ALLOWLIST, not a loosening. WEB_ORIGIN is a comma-separated
+  // list of exact origins (e.g. https://craveapp.ai). UNSET means prod stays
+  // exactly as strict as it is today — a config-less deploy changes nothing,
+  // so this cannot quietly widen the surface. `credentials` stays false: the
+  // site authenticates with a Clerk bearer header, never a cookie.
+  const webOrigins = (process.env.WEB_ORIGIN ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
   app.enableCors({
-    origin: isProd ? false : true, // Disable CORS in prod, allow all in dev
+    origin: isProd ? (webOrigins.length > 0 ? webOrigins : false) : true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
       'Origin',
