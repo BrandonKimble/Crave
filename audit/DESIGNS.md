@@ -541,3 +541,13 @@ The first Phase-3 attempt STOPPED correctly: the estimator registry has zero con
 5. **MIN_SELECTABLE_SCORE_BY_SLICE.explore (0.2, blend-denominated) dies with the blend** — replaced by the document-units bar already in the file's law: expected docs >= 1, the smallest honest count.
 6. trend/localSpecialization/novelty die as ranking inputs; their raw inputs stay recorded diagnostics; EXPLORE_RECENT_ATTEMPT_DAYS deleted (two refs, both novelty).
    Migration note: the new table is additive — no shared-API P2022 risk, but the migrating session still rebuilds+restarts per the standing law. F467 stays open until this lands.
+
+## D40 — Phase-2 verdict (2026-08-03)
+
+**APPROVED for Phase 3 (non-escalated core):** the shared answer-KEY vocabulary + decoder (kills the hand-respelled `responses.cuisines` silent-zero); server-owned question-set version (client stops declaring its own); append-only `user_onboarding_responses` history with users-column-as-latest-projection in the same tx; `onboarding_city_place_id` (kills the name-match join); the `user_taste_profile` derived read model built from signal_demand_daily through dailyActsCteSql (counts + recency only — facts, no invented weights), rebuilt after the aggregate watermark pass; recipes declare their inputs; **and the anonymous-completer fix** (a pre-auth completer's answers must land after sign-in — the persisted outbox from F810 is the vehicle; `decideOnboardingCompletionReplay` stops skipping `not_signed_in`).
+
+**ESCALATED to owner (3, from the design's red team):**
+
+1. Account deletion never severs `signal_actors.user_id` — the documented severable-deletion story is unimplemented. User-data lifetime: owner call on implementing severance now.
+2. The derived taste profile is an inferred-preference record (dietary/spice/budget) — must it join the deletion path + staging PII scrub? (Recommendation: yes, both.)
+3. The behavioral horizon (how far back "what they're into" looks) is an owner-chosen number — the design refuses to invent it. Also: do users get to view/reset their taste profile?
