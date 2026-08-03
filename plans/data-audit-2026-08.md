@@ -551,3 +551,55 @@ English rules with a generic stemmer (snowball over-stems food names —
 "frites"→"frit" — and would need the same exception governance it
 claims to remove). Refactor lands when a second language pack is
 actually written; until then the lists stay, understood as pack #1.
+
+## P2.2 RESEARCH (2026-08-02, pre-build red team of the ruled shape — all numbers executed on prod, read-only)
+
+MACHINERY CONFIRMED AVAILABLE: sources.anchor_place_id → places centroids
+gives every community a metro anchor (foodnyc → 40.66,-73.94; austinfood
+→ 30.30,-97.75). "The mention's metro" = its document's community anchor;
+the metro test = candidate has a location within ~80km of that anchor.
+
+THE 81 CROSS-METRO-EVIDENCE ENTITIES CLASSIFY AS:
+
+- 12 TRUE CHAINS (locations in both metros, 794 ev) — correct today.
+- 46 ONE-METRO entities carrying 1,653 minority-metro events — splits
+  into THREE classes (confirmed by reading the docs):
+  (a) MISATTRIBUTION — Rudy's Bar & Grill (NYC) holds 182 r/austinfood
+  events that are Rudy's Country Store BBQ taco talk; "Joe's Bakery"
+  is itself NYC-grounded while holding 101 Austin events. The Joe's
+  class, at scale.
+  (b) CHAIN-WITH-MISSING-LOCATIONS — Dunkin'/CAVA/Raising Cane's/
+  sweetgreen homed only in ATX receiving local NYC talk; Brooklyn
+  Dumpling Shop ("I went today" in r/austinfood — it opened in
+  Austin). The brand is right; secondary expansion is LOCATION-
+  BIASED so it never attached the other metro's branches.
+  (c) LONG-DISTANCE TALK — Franklin Barbecue's NYC mentions. Legitimate
+  testimony; must stay on the Austin entity.
+- 23 ungrounded-both (420 ev) — P1-repair / backfill territory.
+
+RED TEAM OF THE RULED SHAPE — the naive rule FAILS two of three classes:
+"only adopt candidates with a local location" fixes (a), but for (b) it
+would MINT A TWIN Dunkin' per metro (fragmenting a true brand solely
+because expansion is location-biased), and for (c) it would mint a fake
+local Franklin, splitting real testimony. THE REFINED SHAPE:
+
+1. ADOPTION LADDER at resolution time, when the doc's metro has no
+   candidate location: EXACT full-name match + single global candidate →
+   adopt remotely (preserves class c); SHORTHAND/alias/fold match →
+   metro-local only (kills class a — "Rudy's" in Austin can never adopt
+   an NYC bar). The surface-form tier we already track (exact vs alias
+   vs fold probe) is the discriminator; no new signal needed.
+2. EXPANSION COMPLETES THE CHAIN on demand: when a remote-adoption
+   passes rule 1 OR a local mint matches an existing brand's domain via
+   Places (same canonicalDomain + restaurantNamesAgree), attach the
+   local branch to the existing entity instead of minting — one Places
+   findPlaceFromText with the MENTION metro's bias (class b heals to
+   one brand entity with both metros' locations, exactly the model).
+3. REPAIR: re-resolve the 46 entities' 1,653 minority-metro events
+   under rules 1-2 during the rerun (they ride the re-extraction
+   anyway); the 12 true chains and class-c talk are untouched.
+   OPEN OWNER KNOBS: the 80km metro radius; whether rule-2's Places call
+   is budgeted per-mention (est. rare: only fires on cross-metro name
+   events, ~dozens/month) or batched nightly.
+   INTERACTION WITH THE CRON FLIP: none — the 66-merge backlog is
+   dominant-community-gated and same-metro; P2.2 does not block it.
