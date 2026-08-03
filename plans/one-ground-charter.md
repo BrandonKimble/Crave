@@ -879,6 +879,12 @@ Prod readonly + local dev DB + real vendor + real drain. RESULTS:
   CRONS_ENABLED=false on the prod worker — DELIBERATE (Austin
   re-extraction handoff: re-enable only after activation; the first
   hourly tick after re-enable promotes them).
+  **CORRECTION 2026-08-03 (truth audit F1208): `CRONS_ENABLED` was removed
+  from the prod worker on 2026-08-03 ~00:35 UTC (owner authorized) —
+  verified 2026-08-03, no such var is set. So the crons are ON and the
+  Peru stragglers should have been promoted by an hourly tick; if they are
+  still sketch on prod, that is now a real finding rather than the
+  expected state. `COLLECTION_SCHEDULER_ENABLED` remains false.**
 - FALSIFIED and FIXED: the derived-bbox "live-verified 172.5→-66.9"
   claim (see the corrected P4 text — largest-gap law, RED-first).
 - NOT EXECUTABLE, stated honestly: the promoteNewborn advisory-lock

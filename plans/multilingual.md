@@ -240,3 +240,37 @@ A real industry pattern, considered explicitly. Rejected because:
 - Scoring under mixed-language corpora: per-source calibration is
   per-community ≈ per-language, so language mix should be isolated for
   free — verify during the first market's shadow run.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1234–F1236) — appended, nothing above altered
+
+This is the most numerically honest of the 2026-08 plans — the corpus counts
+reproduce EXACTLY on the mirror: 8,272 concept nouns (5,610 food + 2,088
+ingredient + 574 attribute), 574 attributes splitting 59 cuisine / 515 open
+tail, ~7k restaurants (6,848 active), 1,714 unreachable entities (1,715
+measured), 355 non-ASCII names. N1 (gazetteer matches lowercased raw tokens
+while identity holds folded keys) is CONFIRMED STILL BROKEN — `canonicalFold`
+appears in the entity-resolver files and in **zero** files under
+`modules/search/` or `modules/entity-text-search/`. N2's "two call sites"
+pinning Places to `language:'en'` is exact (`google-places.service.ts:452`
+and `:632`). Three corrections:
+
+- **F1234 — the extraction-time translation ban citation is wrong.**
+  "`llm.service.ts:1660`" does not hold that ban; the only `translate` string
+  in that file is at **`:1649`**, inside the DISH KNOWLEDGE-SYNTHESIS prompt
+  ("never invent, shorten, pluralize, or translate yourself"), not the
+  extraction prompt. Extraction prompts are versioned DB rows in `llm_prompts`
+  (migration `20260801130000`), so no source line can cite the extraction ban —
+  read the active prompt row instead.
+- **F1235 — "the ~20 remaining `[a-z0-9]` normalizers" is stale.** 8
+  occurrences across 7 non-spec files today. The work is smaller than stated.
+- **F1236 — internal inconsistency: N3 says "340 non-ASCII names", N9 says
+  "355".** 355 is correct (measured on the mirror 2026-08-03).
+
+One half-landed item the doc does not flag: N6 says `curated_lists`
+title/subtitle store English sentences — true, but `recipe_key` ALREADY
+exists on that model (`schema.prisma:2525`), so N6 is partly done.
+M4's 15/15 cross-lingual result and the M7 string counts were not re-run
+(they need live embedding calls); the index size is consistent with a
+2026-08-02 measurement plus a day of growth.

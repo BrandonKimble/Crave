@@ -23,6 +23,14 @@ verification duties.
 
 ## Current state you inherit
 
+- **CORRECTION 2026-08-03 (truth audit F1206): the flag line below is half
+  stale.** `CRONS_ENABLED` was REMOVED from the prod worker on 2026-08-03
+  ~00:35 UTC (owner authorized, 66-merge backlog reviewed — recorded in
+  `plans/data-audit-2026-08.md` "P2.2 ADDENDUM / OPERATIONAL"); verified
+  2026-08-03 that no `CRONS_ENABLED` var is set on the prod worker service,
+  so nightly convergence runs. `COLLECTION_SCHEDULER_ENABLED = false` IS
+  still set on prod and stays false until prompt activation — that half is
+  correct. Do not "turn CRONS back on"; it already is.
 - Prod: current code, healthy. `CRONS_ENABLED` / `COLLECTION_SCHEDULER_ENABLED`
   are currently false because the corpus is parked pending the prompt work —
   turn them back ON before/during the shadow; the flow does NOT require them

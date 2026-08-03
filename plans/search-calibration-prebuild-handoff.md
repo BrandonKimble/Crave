@@ -1,5 +1,40 @@
 # Handoff: pre-build the calibration tail (2026-08-01)
 
+> **CORRECTION 2026-08-03 (truth audit F1205) — THIS HANDOFF IS SPENT.
+> Two of its instructions now point at the REVERSED answer.**
+>
+> 1. **Item 2 ("Gazetteer cutover behind a flag, default OFF … Flip AFTER
+>    the rerun") and the DO-NOT line "Flip the gazetteer flag" are DONE and
+>    REVERSED.** The cutover shipped 2026-08-02 (commit `648b1731d`): the
+>    pooled gate + gazetteer Understand are CANONICAL, the relaxation
+>    ladder, both shadow harnesses and BOTH mode flags were DELETED
+>    (−1,240 lines). Verified in code: `SEARCH_POOLED_MODE` and
+>    `SEARCH_GAZETTEER_UNDERSTAND` return zero hits, and
+>    `search-query-interpretation.service.ts:129` consumes
+>    `scanForKnownEntityGroups` — so "ZERO consumers today" is also stale.
+>    See `plans/search-from-scratch-derivation.md` §4 THE CUTOVER.
+> 2. **The coordination-gate warning "supersede-on-activation is live —
+>    activating a run now PHYSICALLY deletes superseded evidence, so never
+>    activate shadow runs outside the reextract skill flow" is WRONG as
+>    stated.** The owner decided on 2026-08-01 that cross-generation
+>    activation RETAINS the superseded events (`supersede:'retain'`), which
+>    is what makes `reextract.sh rollback` real; only WITHIN-generation
+>    live-ingest supersede deletes. Verified in code:
+>    `collection-evidence.service.ts:386-393` takes
+>    `supersede?: 'delete' | 'retain'`, and `scripts/rig/reextract.sh`
+>    exposes a `rollback` verb. See `plans/reextract-choreography.md` §3.2
+>    and `plans/austin-reextract-handoff.md` "If something goes wrong".
+>    The operational advice (use the skill flow) still stands; its stated
+>    REASON does not.
+>
+> What is still live from this file: items 3–5 (linker floor-fitting
+> harness, ~44-name conflict extractor, junk detectors) and the
+> threshold re-measurement — all still owed as the calibration tail.
+> RELAX_STRICT_THRESHOLD as a symbol no longer exists (it died with the
+> ladder); the adopted value lives on as
+> `POOLED_COVERAGE_THRESHOLD = DEFAULT_PAGE_SIZE` (25) at
+> `search.service.ts:376-379`.
+
 FROM the audit/pipeline session TO the search session (owner of
 search-from-scratch-derivation.md steps 2–5). Owner-approved division:
 you build search structure + these pre-builds; the audit session runs

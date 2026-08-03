@@ -191,3 +191,27 @@ probe FIRST. Follow that. Per CLAUDE.md, its proper replacement (a structured
 mach-clock event log) gets built as PART of a real map change, never as naked
 scaffolding. The 12 `scripts/lod-*` parsers are now classified
 `@script-class: dead-scaffolding` and say so in their own headers.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1240) — appended, nothing above altered
+
+**The "UN-BUNDLE DONE ✓ / LANDED & VERIFIED" header is FALSE, and this file
+contradicts itself about it.** None of the symbols that claim names exist:
+`labelRenderSourceId` → 0 hits, `RESTAURANT_LABEL_SOURCE_ID` → 0 hits,
+`buildLabelPlacementFilter` (cited at `search-map.tsx ~209`) → 0 hits, all
+across `apps/`. The only surviving symbol is `pinBundleSourceId`
+(`apps/mobile/ios/cravesearch/SearchMapRenderController.swift`) — i.e.
+**labels are still bundled**. The later "UN-BUNDLE BLOCKER FOUND … attempted
+
+- reverted" paragraph in this same file is the accurate half; the DONE ✓
+  header is the stale half. Read the blocker paragraph, not the header.
+
+Related re-verification (2026-08-03): step-4/5 deletion targets are mixed —
+`buildStableSlotMap`, `isVisibleInBounds`, `map-render-model.ts` and
+`overlapRegionRequiresAutoZoom` are already gone (0 hits), but
+`buildMarkerRenderModel` and `renderedLodCandidates` still exist in
+`use-direct-search-map-source-controller.ts`. The `[lodev]` harness this
+file's body text treats as live does not exist (see the existing correction
+banner) — one stale comment at `SearchMapRenderController.swift:10417` is all
+that remains, and `lodDebugLoggingEnabled` is `static let … = false`.

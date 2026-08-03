@@ -351,3 +351,32 @@ the corrected prompt, scoring, and spend governor.
 3. Run the §4 audit; iterate the prompt in LARGE spans until clean.
 4. Verify user-reference counts (§2c), then wipe + reload Austin.
 5. Re-enable collection; confirm NY continuity (§5).
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1245) — appended, nothing above altered
+
+**This charter is HISTORY, not a runbook — three of the code paths it names
+in the present tense no longer exist.** Verified 2026-08-03:
+
+- `scripts/reload/wipe-austin-derived.sql` → **does not exist.** The successor
+  is `apps/api/scripts/reload/wipe-city-derived.sql` (community-scoped, and it
+  encodes the preserved-anchors / place-grounded-restaurant laws). The old
+  filename survives only as a mention inside that file.
+- `FullReloadRunner` → **0 hits.** The successor is `CityReextractRunner`
+  (`city-reextract.runner.ts`).
+- `RUN_AUSTIN_FULL_RELOAD` → **0 hits.** Re-extraction is now driven through
+  `scripts/rig/reextract.sh` and the `/reextract` skill; see
+  `plans/reextract-choreography.md` and `plans/austin-reextract-handoff.md`.
+
+`preserved-anchors.sql`, `anchor-audit.sql` and `COLLECTION_SCHEDULER_ENABLED`
+are all still real. The §7 completion figures and the "~$143 all-in" cost are
+prod/billing facts and were NOT re-verified here (use
+`./scripts/rig/cost-reconcile.sh` and the BigQuery export).
+
+Also note: the "NEXT: search calibration tail" item predates the 2026-08-02
+search cutover, which deleted the relaxation ladder and both mode flags and
+made the pooled gate + gazetteer canonical. The tail that actually remains is
+in `plans/search-from-scratch-derivation.md` §4 and
+`plans/search-calibration-prebuild-handoff.md` (which now carries its own
+correction note — two of its instructions point at the reversed answer).

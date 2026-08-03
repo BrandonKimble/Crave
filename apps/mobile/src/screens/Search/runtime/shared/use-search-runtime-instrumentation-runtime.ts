@@ -26,8 +26,20 @@ import { useSearchRuntimeSearchSurfaceRedrawTelemetryRuntime } from './use-searc
 import { useSearchRuntimeStallInstrumentationRuntime } from './use-search-runtime-stall-instrumentation-runtime';
 import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-state-telemetry-runtime';
 
+// Dormant map-event-rate instrument. The `false` flag is the blessed pattern
+// (same shape as the Swift map controller's `lodDebugLoggingEnabled`): map
+// instrumentation stays compiled and off rather than being deleted.
+//
+// D45/F1070 (2026-08-03): the flag was fine, the INTERVAL was broken. It was
+// `0`, which DEFEATS the rate limiter it feeds — `now - state.lastLog < 0` is
+// never true, so the "rate-limited" logger would have fired on EVERY camera
+// frame the first time anyone flipped the flag. The flag and the interval had
+// never been exercised together, so nobody had paid for it yet. A dormant
+// instrument must still be CORRECT when woken; 1000ms is one flush per second,
+// which is what the log line's own `windowMs`/counters were written to read as.
+// The consumer also clamps this defensively — see map-interaction-diagnostics.
 const SHOULD_LOG_MAP_EVENT_RATES = false;
-const MAP_EVENT_LOG_INTERVAL_MS = 0;
+const MAP_EVENT_LOG_INTERVAL_MS = 1000;
 const SHOULD_LOG_SEARCH_COMPUTES = false;
 const SHOULD_LOG_SEARCH_STATE_CHANGES = false;
 

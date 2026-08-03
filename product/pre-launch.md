@@ -97,6 +97,42 @@ sessions were editing those files.
       Full context: business/business-model.md (Margin lever) +
       plans/payments-ideal-shape.md (Purchase flows).
 
+## iOS submission gates (D44, 2026-08-03)
+
+- [ ] **Move the production api onto a domain we own, BEFORE the first store
+      submission.** `eas.json`'s `base.env.EXPO_PUBLIC_API_URL` is
+      `https://api-production-a56f.up.railway.app/api/v1` — a PROVIDER-ASSIGNED
+      Railway hostname. `EXPO_PUBLIC_*` inlines at bundle time, so that string is
+      baked into every shipped binary and cannot be changed post-ship: a Railway
+      service rename, project migration, or provider change bricks every
+      installed app with no server-side remedy. Deliberately NOT changed now
+      (D44/F1102) — changing the baked URL is a cutover, not a config edit. The
+      pre-ship sequence: add the CNAME (e.g. `api.craveapp.ai`) in the Railway
+      prod service → verify `/health` answers on it and reports the expected
+      commit → flip `base.env` in `eas.json` AND `PROD_URL` in
+      `scripts/rig/sim-target.sh` AND `HEALTH_URL`/`STAGING_HEALTH` in
+      `scripts/rig/deploy.sh` in the same commit → rebuild. Do the same for
+      staging while you are there.
+- [ ] **Confirm what non-`EXPO_PUBLIC_API_URL` env an EAS `staging`/`preview`
+      build actually gets.** A `staging` profile now exists (D44/F1102) and
+      `preview` extends it, so both rehearse against the staging api per the
+      deploy law. But `apps/mobile/.env` is gitignored, so on EAS servers
+      `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY`, `EXPO_PUBLIC_MAPBOX_TOKEN`,
+      `EXPO_PUBLIC_REVENUECAT_IOS_KEY` etc. come from EAS environment variables,
+      NOT from this repo. The staging api validates Clerk TEST-instance tokens
+      (same rule `scripts/rig/sim-target.sh` encodes for the local api), so if
+      EAS is holding a `pk_live` key the first staging build will authenticate
+      against nothing. Verify with `eas env:list` before trusting a staging
+      build, and pin the test key on the staging/preview profiles if it differs.
+- [ ] **F1101 (escalated, unresolved): `aps-environment = development` is
+      hardcoded in `cravesearch.entitlements` while the app really does mint
+      push tokens.** The file's own comment asserts "EAS release signing
+      supplies `production` from the provisioning profile" — that assertion has
+      never been EXECUTED against a real build, and if it is wrong,
+      TestFlight/store push is silently dead (tokens mint, deliveries vanish).
+      Prove it on a TestFlight build: send one push to a TestFlight install and
+      observe it arrive. Know the answer before the next store submission.
+
 ## Ops / cost
 
 - [ ] **Enable the location-refresh cron** (`refreshStaleLocations`) at launch — freshness only

@@ -502,3 +502,57 @@ Ledger hygiene (evidence trail only, no blueprint change):
     ($150k/600k) revenue-per-download, distinct from the 1–15¢ CPI (01/03/07);
     "agency half-life ~6mo" belongs to Choi 20250404, not Kyle (05); Clear30 are
     founders, not "ads professionals" (05).
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1220–F1223) — appended, nothing above altered
+
+Verified against the code and prod config on 2026-08-03. Four of this
+consolidation's product-state premises no longer hold.
+
+1. **THE RATING ASK DOES NOT EXIST (F1220).** Amendments and findings at
+   L88-89, L259-261, L355-357 all rest on "the as-built flow asks
+   [for a rating] _before_ city pick". **There is no rating-ask step in
+   onboarding, and no rating machinery anywhere in the app.** Verified:
+   `apps/mobile/src/constants/onboarding.ts` enumerates every step —
+   hero, useCases, attribution, location, waitlistInfo, diningFrequency,
+   budget, decideHow, calendarGraph, cuisines, alwaysCraving, contexts,
+   dietaryNeeds, spice, spotYouLove, diningGoals, notifications, teaser,
+   account, username — no rating step; and `StoreReview` /
+   `requestReview` / `rateApp` / `ratingAsk` all return **zero hits**
+   across `apps/mobile/src`. So amendment "flip the as-built
+   rating-ask→city-pick order regardless" is MOOT, and the compliance
+   finding about inheriting the Cal AI / Clear30 pre-use-ask lineage
+   describes a tactic this product never shipped. The SKStoreReviewController
+   -only rule remains good forward guidance for whenever a rating ask is
+   built.
+2. **THE TEASER SCREEN IS BUILT (F1221)** — `STEP_IDS.teaser`, type
+   `'teaser'`, CTA "Unlock every answer", in `constants/onboarding.ts`.
+   It sits at the END of the quiz (after `notifications`) and immediately
+   BEFORE the account step, not "after city pick" as P1/§2 specified.
+   Placement is an owner call; existence is no longer hypothetical.
+3. **THE WEB CHECKOUT RAIL IS SHIPPED, NOT PARKED (F1222).** L475-476
+   parks "web checkout rail (~12-pt margin swing)" as an §11 future item.
+   The owner decided on 2026-08-01 that it IS the plan, and it landed
+   2026-08-03: commits `5b69ddeea` (hosted Stripe Checkout + portal
+   restored, unified through the access-grant ledger) and `0ff1250a7`
+   (the web paywall sells BOTH plans), migration
+   `20260803130000_restore_stripe_checkout_rail`; prod carries the full
+   `STRIPE_*` var set. The compliance file's note that activating it
+   "needs the US external-link entitlement rules — a future decision" is
+   now a LIVE obligation, not a hypothetical.
+4. **ONBOARDING ANSWERS ARE NOW DURABLE DATA (F1223)** — relevant to the
+   "the onboarding already collects a preference that feeds nothing"
+   line. As of 2026-08-03 (D40, migration
+   `20260803150000_onboarding_answer_history_and_taste_profile`) answers
+   are stored verbatim and versioned in `user_onboarding_responses`, with
+   a derived `user_taste_profile`. The retention-mechanic gap the
+   completeness critic names is still real; the "feeds nothing" substrate
+   argument is weaker than when written.
+
+Still TRUE and still open as of 2026-08-03: `ENTITLEMENT_GATING` is `log`
+on prod (not `enforce`); the freemium pivot is genuinely built and
+env-gated (`BILLING_TRIAL_DAYS`, `@AllowUnentitled`); onboarding still
+presents **NYC as a live city alongside Austin** (`Onboarding.tsx:910`
+"Crave is live in Austin and NYC today"), so the P2 verdict's
+collapse-NYC-to-waitlist item has NOT been done.

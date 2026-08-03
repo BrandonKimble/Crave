@@ -57,6 +57,25 @@ final class BottomSheetHostRegistry {
   }
 }
 
+/// REACHED ONLY BY STRING REFLECTION — DO NOT DELETE, DO NOT RENAME BLIND
+/// (D44/F1113, 2026-08-03).
+///
+/// This class has ZERO references in JS and zero compile-time references
+/// anywhere in Swift. It is not dead. Its ONE caller is
+/// `dispatchBottomSheetCommand` in ProfilePresentationTransactionExecutor.swift,
+/// which finds it via `NSClassFromString("cravesearch.BottomSheetHostRegistry
+/// Bridge")` (falling back to the unmangled name) and then
+/// `NSSelectorFromString("sharedBridge")` / `NSSelectorFromString("dispatch
+/// Command:")`. Nothing checks those four strings at build time; a rename here
+/// turns the executor's lookup into a silent `return false` and programmatic
+/// sheet snaps just stop happening.
+///
+/// So: the class name, the `@objc(BottomSheetHostRegistryBridge)` attribute,
+/// the `sharedBridge` selector and the `dispatchCommand:` selector — plus the
+/// `hostKey`/`snapTo`/`token` payload keys read below — are all part of a
+/// contract with that file. Change them together, or (better, and the recorded
+/// ideal) make the executor call this directly: it is in the SAME TARGET, so
+/// reflection buys nothing and only costs the compiler's guarantee.
 @objc(BottomSheetHostRegistryBridge)
 final class BottomSheetHostRegistryBridge: NSObject {
   private static let sharedInstance = BottomSheetHostRegistryBridge()

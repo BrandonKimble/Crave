@@ -39,6 +39,13 @@ export const createMapInteractionDiagnostics = ({
   state: MapInteractionDiagnosticsState;
   getSearchInteractionState: () => SearchInteractionState;
 }): MapInteractionDiagnostics => {
+  // D45/F1070: a non-positive window silently turns the rate limiter below into
+  // "log on every event" — `now - lastLog < 0` is never true. This module is
+  // dormant behind a `false` flag, so that defect could sit here indefinitely
+  // and only bite the person who flips the flag while debugging something else.
+  // The caller now passes a real interval; this clamp means a future caller
+  // cannot reintroduce the firehose by passing 0.
+  const flushIntervalMs = Math.max(1, logIntervalMs);
   const maybeFlushRates = () => {
     if (!enabled) {
       return;
@@ -48,12 +55,12 @@ export const createMapInteractionDiagnostics = ({
       state.lastLog = now;
       return;
     }
-    if (now - state.lastLog < logIntervalMs) {
+    if (now - state.lastLog < flushIntervalMs) {
       return;
     }
     const interactionState = getSearchInteractionState();
     logger.debug('[SearchPerf] Map events', {
-      windowMs: logIntervalMs,
+      windowMs: flushIntervalMs,
       cameraChanged: state.cameraChanged,
       mapIdle: state.mapIdle,
       drag: interactionState.isResultsSheetDragging,

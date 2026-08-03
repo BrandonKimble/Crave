@@ -190,3 +190,30 @@ throwaway Clerk credentials), and confirmation the paywall shows the built
 - **Week-3 price-ceiling cohort (§2)** — price A/B via separate offerings is
   standard and compliant; no finding.
 - **Legal URLs** — correctly carried as launch-blocking (§11.6).
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1225) — appended, nothing above altered
+
+**The entire rating-ask section (L58-90) is aimed at a step that does not
+exist.** Verified 2026-08-03: `apps/mobile/src/constants/onboarding.ts`
+contains no rating step (the full list is hero, useCases, attribution,
+location, waitlistInfo, diningFrequency, budget, decideHow, calendarGraph,
+cuisines, alwaysCraving, contexts, dietaryNeeds, spice, spotYouLove,
+diningGoals, notifications, teaser, account, username), and
+`StoreReview` / `requestReview` / `rateApp` / `ratingAsk` return **zero
+hits** anywhere in `apps/mobile/src`. So "the as-built flow has the rating
+ask _before_ city pick" is FALSE, the "silently defaults to the current
+pre-use ask" risk is not live, and the "Reorder note: the as-built
+rating-ask→city-pick order must flip regardless" instruction has nothing
+to act on. The forward guidance — SKStoreReviewController only, never a
+custom rating UI, never gated, earliest defensible slot after a value
+moment — should be kept as the spec for whenever the ask IS built.
+
+Also now live rather than hypothetical: the file's §5 note that "if the
+fact-sheet web-checkout margin lever is ever activated, it needs the US
+external-link entitlement rules — a future decision". The Stripe web
+checkout rail SHIPPED 2026-08-03 (`5b69ddeea`, `0ff1250a7`, migration
+`20260803130000_restore_stripe_checkout_rail`; prod carries the full
+`STRIPE_*` set). Whether any in-app link-out to it exists is the open
+3.1.1 question — check before submission.

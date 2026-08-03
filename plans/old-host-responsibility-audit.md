@@ -82,3 +82,25 @@ nav exclusion (SearchRouteSheetFrameHost reuse), touch arbitration between
 legs, pagination activity, a11y labels, docked-lane composition, shadow/
 silhouette/frost/white-plate laws, close/create nav actions (minus the two
 dropped branches in #7/#11).
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1241) — appended, nothing above altered
+
+**"Shell residency visibility bit has NO WRITER" is FALSE as a bare
+statement, and this ledger gates deletions — so the bare form is dangerous.**
+`setVisibleResidentScene` is exported at
+`apps/mobile/src/overlays/shell-residency-manager.ts:103` and IS called at
+`apps/mobile/src/overlays/PersistentSheetHeaderHost.tsx:99`. The writer
+exists; it lives in the OLD host, so the bit is dead only once the track flip
+is on — which is the scope the following line states but the DROPPED row does
+not. A deletion pass reading the row alone will remove a live writer. Restate
+as: "no writer ONCE THE FLIP IS ON; today `PersistentSheetHeaderHost` writes
+it."
+
+Re-verified TRUE on the same pass: the POSTURE REGISTER port
+(`TrackScrollPhysics.m`), and `CraveBottomSheetHostView.swift` having no JS
+mount (its only `apps/mobile/src` occurrence is a comment at
+`TrackSheetPage.tsx:99`) — safe to delete. Not re-verified (runtime claims,
+not greppable): the zero-pixel settle and the transition-join SEAL rows, and
+`sceneScrollStateRegistry` boundary-facts.

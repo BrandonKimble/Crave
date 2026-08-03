@@ -36,9 +36,18 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- ATS (D44/F1105, 2026-08-03). NSAllowsArbitraryLoads is GONE: it let any
+	     cleartext http:// URL through in the RELEASE binary, so a cleartext
+	     regression (an api base url, an image host, a redirect) would have
+	     shipped silently instead of failing loudly. Everything dev actually
+	     needs is here and narrow: `localhost` covers the local api
+	     (scripts/rig/sim-target.sh local -> http://localhost:3000) and Metro on
+	     the simulator; NSAllowsLocalNetworking covers Metro over a LAN ip on a
+	     physical dev device. If you find yourself wanting the blanket flag back,
+	     the thing you are about to ship is cleartext over the public internet. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
@@ -49,24 +58,36 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your location</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your location</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to use the camera so you can add photos of your food</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to connect to your local network for development</string>
+	<!-- Photo library (D44/F1107). expo-image-picker 17 uses PHPickerViewController
+	     (out-of-process, no permission prompt), so this string is not required by
+	     today's code path — it is declared because the binary LINKS the photo APIs
+	     and Apple's review tooling checks for a purpose string, and because the
+	     day someone flips an option to the legacy library path a missing string is
+	     an instant launch crash. Add NSPhotoLibraryAddUsageDescription too if a
+	     save-to-camera-roll path is ever built. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow $(PRODUCT_NAME) to access your photos so you can share pictures of the food you loved</string>
+	<!-- Location (D44/F1106). WHEN-IN-USE ONLY. The Always/AlwaysAndWhenInUse
+	     strings were template residue: the app never calls
+	     requestBackgroundPermissionsAsync or startLocationUpdatesAsync, declares no
+	     UIBackgroundModes, and holds no background-location entitlement. Declaring
+	     Always without a background feature invites a review cycle spent
+	     explaining a feature that does not exist. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your location</string>
+	<string>Allow $(PRODUCT_NAME) to use your location so it can show what's good to eat near you</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>SplashScreen</string>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>armv7</string>
-	</array>
+	<!-- UIRequiredDeviceCapabilities deleted (D44/F1109): it declared `armv7` on an
+	     app whose floor is iOS 15.1. 32-bit ARM died at iOS 10, so no device that
+	     can install this build is armv7 — the key was a lie in the shipping
+	     manifest. With a 15.1 floor the key is simply unnecessary (arm64 is
+	     implied); do not re-add it. -->
 	<key>UIRequiresFullScreen</key>
 	<false/>
 	<key>UIStatusBarStyle</key>

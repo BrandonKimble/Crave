@@ -29,13 +29,20 @@
         "resourceClass": "m-medium"
       }
     },
-    "preview": {
+    "staging": {
       "extends": "base",
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "staging",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api-staging-25ca.up.railway.app/api/v1"
+      },
       "ios": {
         "resourceClass": "m-medium"
       }
+    },
+    "preview": {
+      "extends": "staging",
+      "channel": "preview"
     },
     "production": {
       "extends": "base",

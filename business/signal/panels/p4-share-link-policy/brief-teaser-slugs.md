@@ -38,3 +38,24 @@ The public share slug should render a **teaser, not a wall and not a rich full v
 - **Share-through collapses, not just conversion.** If a post-launch A/B (teaser vs. rich view) shows the teaser suppresses the _loop's own completion_ — fewer shares because senders or recipients report the reveal feels stingy or untrustworthy, not just fewer viewer-to-subscriber conversions — that's Hunter Isaacson's bait-and-switch cost materializing, and the rich view wins outright.
 - **Organic share rate falls below the UA-treadmill line specifically because of sentiment, not volume.** Ledger 07's benchmark (Blue Throne: 50%+ great, 35–50% good, <20% treadmill) is a clean bar. If share rate is low _and_ attributable to "feels like a bait-and-switch" rather than generic low usage, the integrity-brand cost outweighs the conversion protection.
 - **Slug→install conversion is negligible regardless of depth.** Ledger 07 flags this itself: if six months show conversion is small no matter how much or little is shown, the teaser/rich-view distinction stops mattering for revenue, and the fuller view wins by default as free SEO and brand surface.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1228) — appended, nothing above altered
+
+This brief's central analogy is **factually false about the product**. It
+argues the teaser slug uses "the same locked-but-visible blur mechanism
+**Crave has already decided and shipped for the in-app dish-list teaser**",
+and calls the blurred "Top 8 dishes, ranked → Crave+" pattern "shipped".
+Verified 2026-08-03: **no in-app blurred dish teaser exists.** There is no
+`Crave+` surface, no locked/blurred dish list, and no dish-tier gate
+anywhere in `apps/mobile/src` — the only `blur` usages are the sheet-host's
+map backdrop and the search header's ellipsis. The blurred-dish-hero
+pattern lives only in `business/monetization-and-gating.md` (2026-06-27),
+which the 2026-07-09 gate-everything call shelved and which this panel's own
+verdict then marked "superseded wholesale". The shipped app has exactly the
+two states the P4 verdict describes: onboarding, and entitled.
+
+This does not change any decision — the P4 verdict rejected this brief and
+chose rich-open slugs — but the "already shipped" framing must not be
+carried forward into any future argument.

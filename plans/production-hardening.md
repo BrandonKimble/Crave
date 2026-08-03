@@ -233,6 +233,30 @@ Current state:
 
 ## 7) RevenueCat-Only Subscriptions (Remove Stripe Completely)
 
+> **CORRECTION 2026-08-03 (truth audit F1200) — THIS ENTIRE SECTION IS
+> REVERSED. DO NOT EXECUTE IT.** §0.4's "remove Stripe completely (no web
+> checkout flow)" and every deletion instruction below were overturned by
+> the owner's 2026-08-01 decision (recorded in `business/business-model.md`
+> and `plans/payments-ideal-shape.md`) that the Stripe web checkout rail IS
+> the plan, and by its implementation on 2026-08-03: commits `5b69ddeea`
+> (rail restored — hosted Checkout + portal, unified through the
+> access-grant ledger) and `0ff1250a7` (web paywall sells BOTH plans),
+> migration `20260803130000_restore_stripe_checkout_rail`.
+> VERIFIED AGAINST CODE + PROD 2026-08-03: `createCheckoutSession` /
+> `createPortalSession` / `CheckoutSession` all live in
+> `apps/api/src/modules/billing/`; `User.stripeCustomerId` and
+> `SubscriptionProvider.stripe` still in `schema.prisma`; and the prod api
+> service carries a full `STRIPE_*` var set (`STRIPE_SECRET_KEY`,
+> `STRIPE_MONTHLY_PRICE_ID`, `STRIPE_ANNUAL_PRICE_ID`,
+> `STRIPE_WEBHOOK_SECRET`, checkout/portal URLs).
+> So the "Validation (must pass before launch)" line "No Stripe endpoints/
+> routes exist, and no Stripe secrets are required anywhere" is now a
+> FALSE gate — it would fail a correct system. The section is kept as the
+> record of the superseded July decision, not as instructions.
+> (Separate live observation, not a doc defect: prod's `STRIPE_SECRET_KEY`
+> is an `sk_test_` key and `REVENUECAT_API_KEY` is a `test_` key — a
+> launch-blocking config item, owner's call.)
+
 Decision: the app is a **digital** subscription product (monthly/yearly paywall), so iOS must use **Apple IAP**. We will standardize on **RevenueCat** for subscription lifecycle + entitlements and remove all Stripe codepaths, schemas, env vars, and docs.
 
 ### Discovery (do once, upfront)
@@ -366,12 +390,12 @@ Launching with a separate worker makes “it deployed” != “it’s healthy”
   4. PROOF: the post-backup marker table was GONE on the restored volume
      (`to_regclass` = f) — the snapshot genuinely rewinds data.
      INTERRUPTION SAFETY (red-team P2): the completion is a manual detach→attach.
-  If the process dies BETWEEN `detach` and `attach`, prod is left with NO
-  attached volume until you re-run attach — not data loss (both volumes still
-  exist), but prod is down mid-swap. If interrupted after detach, immediately
-  `railway volume -s postgis-db -e production attach -v <orig|restored>` before
-  anything else.
-  Rehearsal cleanup: staging swapped back to its original volume, snapshot
+     If the process dies BETWEEN `detach` and `attach`, prod is left with NO
+     attached volume until you re-run attach — not data loss (both volumes still
+     exist), but prod is down mid-swap. If interrupted after detach, immediately
+     `railway volume -s postgis-db -e production attach -v <orig|restored>` before
+     anything else.
+     Rehearsal cleanup: staging swapped back to its original volume, snapshot
      volume deleted, marker dropped. For a REAL prod restore, steps 1–3 on the
      prod instance are the whole runbook (plus the app services reconnect on
      their own — DATABASE_URL doesn't change).

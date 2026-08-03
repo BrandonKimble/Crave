@@ -228,3 +228,22 @@ keywords) for when to stop iterating ASO and reallocate effort.
 ## Red-team corrections applied (2026-07-12)
 
 - Struck the fabricated Casper/Payout "Food & Drink far less contested than Finance" quotation everywhere it appeared (consensus bullet, Crave-transfer category call, adversarial-panel Q2, numbers table) — it is absent from the cited raw and the entire corpus. Replaced with: "Category choice: no corpus evidence; Crave-side reasoning pending the keyword pull [red-team correction]." Payout's real, confirmed claim (5-creator push → $9,700/day + Finance-chart placement) survives as a coordinated-push charting example, now single-sourced (Darcy) for the less-contested-category point specifically.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1226) — appended, nothing above altered
+
+The line "**Crave's onboarding already has a rating-ask step**; the finding
+here is about placement and tone" is **FALSE against the code**. Verified
+2026-08-03: `apps/mobile/src/constants/onboarding.ts` enumerates every
+onboarding step and contains no rating step, and `StoreReview` /
+`requestReview` / `rateApp` / `ratingAsk` return zero hits across
+`apps/mobile/src`. There is no rating ask to place or re-tone — building
+one is net-new work, and the corpus guidance in this file (system
+SKStoreReviewController only, after a value moment, never gated, never a
+forced "I rated it" tap) is the spec for that build. The same false premise
+propagated into `redteam/verdict.md`, `redteam/blueprint/compliance-and-platform-risk.md`
+and `redteam/fidelity/09`; correction notes are on those files too.
+
+The Food & Drink category retraction in this file stands and is still
+unresolved — the keyword-validation pull it depends on has not been run.

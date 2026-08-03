@@ -56,6 +56,27 @@ export type SearchMapSourceFrameVisualStatePatch = Pick<
 // snapshot (which churns every viewport tick) so it is pushed to native only when
 // the candidate set actually changes. The owner reads it during frame submit and
 // forwards it to the native screen-space projector via setCandidateCatalog.
+//
+// THIS TYPE IS THE ONE WIRE CONTRACT (D45/F1072, unified 2026-08-03).
+//
+// It used to be declared THREE times — here, in `setCandidateCatalog`'s public
+// payload, and again in the native-module declaration — and two of the three
+// were stale. The narrowest (the native module's) listed only
+// markerKey/lng/lat/rank, so a reader of that declaration would have concluded
+// the label text never reaches native. It does. The values got through at
+// runtime only because the caller passes a VARIABLE rather than an object
+// literal, so TypeScript's excess-property check never fired: the code worked
+// by accident of a type-checker rule, and both narrow declarations were lies.
+//
+// The field set below is not inferred from the JS caller — it is READ FROM THE
+// SWIFT SIDE. `SearchMapRenderController.setCandidateCatalog` (ios/cravesearch/
+// SearchMapRenderController.swift) requires `markerKey`, `lng`, `lat` (finite),
+// and optionally reads `rank`, `badgeImageId`, `activeBadgeImageId`,
+// `restaurantId`, `labelText` FALLING BACK TO `restaurantName`, `labelSubtext`,
+// `isInvisibleResident`, `isGroupRepresentative` — exactly these fields and no
+// others. Anything added here that Swift does not read is dead weight on the
+// bridge; anything Swift reads that is missing here is an invisible contract.
+//
 export type SearchMapCandidateCatalogEntry = {
   markerKey: string;
   lng: number;

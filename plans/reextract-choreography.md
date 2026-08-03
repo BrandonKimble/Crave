@@ -213,6 +213,19 @@ Staging auto-deploys from main (verify trigger connected); prod manual only
 via deploy.sh — disconnect prod's GitHub trigger (dashboard, owner). No
 GitHub Actions until a second committer.
 
+> **CORRECTION 2026-08-03 (truth audit F1204): "No GitHub Actions" is FALSE
+> and has been since ~2026-08-02.** `.github/workflows/ci.yml` exists and
+> runs on every push to main — jobs: type-check, lint, build, test,
+> `test:db`, plus `search-runtime-contract-tests` and a
+> `no-bypass-search-runtime` static guard (added/hardened by `0aece2b4d`
+> "CI teeth", `9102d8887`, `c29265179`, `6dd63eae7`, `2395a51e7`).
+> AND, more importantly: **CI IS RED ON MAIN RIGHT NOW.** Checked
+> 2026-08-03 — the six most recent runs all show `failure`, including the
+> latest (`30855830203`, 2026-08-03T21:43). So no doc anywhere may treat CI
+> as a passing gate, and `deploy.sh`'s known-red refusal (CLAUDE.md THE
+> DEPLOY LAW) will currently block a prod deploy without `--force`. Getting
+> CI green is an open owner item, not a settled one.
+
 ## SHADOW VOCABULARY CONTRACT (big-one red team, 2026-08-02 — supersedes
 
 any earlier "nothing user-visible changes during shadow" phrasing)

@@ -201,3 +201,42 @@ Two honest options:
 Recommendation: **Austin first, refactor immediately after** — with steps
 1–2 (additive column + views + lockdown) started in parallel now, since
 they are risk-free and are the load-bearing half.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1230–F1233) — appended, nothing above altered
+
+Verified against the code on 2026-08-03.
+
+- **F1230 — "37 non-test call sites across 12 files" is stale and pointing
+  the wrong way.** Actual today: **54 non-spec occurrences across 14 files**
+  (`grep -rn "active_extraction_run_id\|activeExtractionRunId" apps/api/src
+apps/api/scripts | grep -v '\.spec\.'`). The count GREW after this doc was
+  written, and it grew _after_ `ExtractionScopeService` landed — so migration
+  step 2 ("move every call site onto it") is at best partial, and
+  `extraction-scope-lockdown.spec.ts` demonstrably does not cover all sites.
+  The diagnosis is more right than the doc knows; the number understates it.
+- **F1231 — migration step 1 has ALREADY LANDED; it is not "started in
+  parallel now".** `apps/api/src/modules/content-processing/reddit-collector/
+extraction-scope.service.ts` exists and exports `documentsOwnedByRun`,
+  `affectedRestaurantsForDocuments` and `shadowRunsFor`; it is wired in
+  `reddit-collector.module.ts` and consumed by `scripts/activate-shadow.ts`.
+- **F1232 — `entitiesWithActiveSupport()` does not exist.** The fourth of
+  the four "domain questions" in the §3.2 table was never built (zero hits
+  repo-wide), and the `CREATE VIEW active_entity_support` beside it is in no
+  migration. Both read as proposals in context, but the table lists the
+  function as if it were a peer of the three real ones — it is not.
+- **F1233 — "`gemini-gateway-lockdown.spec.ts` has held the Gemini boundary
+  for weeks" is wrong by an order of magnitude.** That file was first added
+  **2026-07-29** (`git log --diff-filter=A`); this doc is dated 2026-08-01.
+  Three days, not weeks. The pattern is still the right precedent to cite;
+  the tenure claim was doing rhetorical work it had not earned.
+
+Confirmed TRUE on re-check: `core_entities` carries no run/generation/version
+column; `affectedRestaurantsForDocuments()` pre-existed in `replay.service.ts`;
+the user-anchor count "41 entities" is exact on the mirror (the companion
+"181 user list items" is a stale snapshot — 201 today). The §3.3
+AsyncLocalStorage work-context is correctly framed as proposed and has not
+been built. Prod-only figures (1,850 doomed entities, 13,912 docs / 15.5%,
+the ~7% envelope metering) were NOT re-verified — they are not reproducible
+from the repo.

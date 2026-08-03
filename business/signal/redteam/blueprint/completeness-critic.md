@@ -203,3 +203,31 @@ Austin-intent spike).
   search" is real but offers no mechanism; it folds naturally into §11.8's parked SEO
   page network (LLM citability is the same terminal-page work) rather than meriting its
   own line. Watch-item at most.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1224) — appended, nothing above altered
+
+**The web-checkout gap this file identifies has been closed — the parked
+item it recommends is now shipped work.** The line "Web checkout rail
+(Apple-legal out-of-app purchase/renewal steering, ~12-pt margin swing;
+**purchase rail needs rebuilding — only webhook ingestion survived**)" was
+true when written (the client rail had been deleted in `c2861853`). It is
+false now: the owner decided 2026-08-01 that the Stripe web rail IS the
+plan, and it landed 2026-08-03 — `5b69ddeea` (hosted Checkout + portal,
+unified through the access-grant ledger) and `0ff1250a7` (both plans sold
+from the web paywall), migration `20260803130000_restore_stripe_checkout_rail`.
+Verified in code (`apps/api/src/modules/billing/`: `createCheckoutSession`,
+`createPortalSession`, `CheckoutSession`) and in prod config (full
+`STRIPE_*` var set on the api service). Note also that
+`plans/production-hardening.md` §0.4/§7 still instructs "remove Stripe
+completely" — that section is superseded and now carries its own
+correction note.
+
+Separately verified 2026-08-03: the iOS-only observation stands (no
+Android surface changed); `cravesearch.com` legal URLs remain the
+launch-blocking item they are described as; and the "onboarding collects a
+notification preference that feeds nothing" point should be re-read
+against D40 (2026-08-03), which made onboarding answers durable, versioned
+data (`user_onboarding_responses` + derived `user_taste_profile`) — the
+retention-mechanic gap is still real, but the substrate now exists.

@@ -8,6 +8,11 @@ import {
 import type { SearchRuntimeMapPresentationPhase } from '../shared/search-runtime-bus';
 import type { SearchMapSourceStoreDelta } from './search-map-source-store';
 import type { SearchMapSourceTransportFeature } from './search-map-source-store';
+// D45/F1072: the candidate-catalog entry shape is declared ONCE, next to the
+// stage-B catalog it belongs to, and verified field-by-field against the Swift
+// reader. Both the native-module declaration and the public setCandidateCatalog
+// payload below reference it instead of re-typing narrower (and stale) copies.
+import type { SearchMapCandidateCatalogEntry } from './search-map-source-frame-port';
 
 type SearchMapRenderControllerNativeModule = {
   attach: (payload: {
@@ -36,7 +41,7 @@ type SearchMapRenderControllerNativeModule = {
   }) => Promise<SearchMapRenderControllerNativeSetFrameTiming | null | void>;
   setCandidateCatalog: (payload: {
     instanceId: string;
-    entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
+    entries: ReadonlyArray<SearchMapCandidateCatalogEntry>;
   }) => Promise<{ catalogCount: number } | null | void>;
   commitEnterStart?: (payload: {
     instanceId?: string;
@@ -913,17 +918,7 @@ export const searchMapRenderController = {
   // previous catalog in place until the next results change.
   async setCandidateCatalog(payload: {
     instanceId: string;
-    entries: ReadonlyArray<{
-      markerKey: string;
-      lng: number;
-      lat: number;
-      rank: number;
-      badgeImageId?: string;
-      activeBadgeImageId?: string;
-      restaurantId?: string;
-      isInvisibleResident?: boolean;
-      isGroupRepresentative?: boolean;
-    }>;
+    entries: ReadonlyArray<SearchMapCandidateCatalogEntry>;
   }): Promise<void> {
     if (!nativeModule?.setCandidateCatalog) {
       return;

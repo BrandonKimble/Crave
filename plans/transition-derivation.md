@@ -528,3 +528,30 @@ rung (engine re-attach choreography, per-leg band mask, scroll-memory per
 leg) and gets its own derivation + red team with the slot-era facts before a
 line lands. Until then the staged mount holds the line, and the perf probe
 keeps every switch honest.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1242) — appended, nothing above altered
+
+**Navigation warning for anyone reading §XII in isolation: F3's claim
+"the old executor writes nothing — `sheetMotionTargetRegistry.registerTarget`
+has ZERO callers" is FALSE.** It has callers:
+`apps/mobile/src/navigation/runtime/app-route-scene-motion-controller.ts:95`
+(`return this.sheetMotionTargetRegistry.registerTarget(target);`) plus the
+registry itself at `app-route-scene-sheet-motion-target-registry.ts:121`.
+This document's own red-team-3 note ~30 lines below F3 already says the F3
+claim "was WRONG" and gives the true version (the old authority controller
+registers 'sheetHost' via `AppRouteSheetHostRuntimeProvider`) — but a reader
+who stops at F3 gets an answer that would authorize a wrong deletion.
+
+Re-verified TRUE 2026-08-03: `TrackShellSlotView` (§XIV) exists at
+`apps/mobile/ios/TrackScrollKit/Sources/TrackShellSlot.{h,m}`; `auditShell`
+and `refuse()` (§XII execution round) exist in `TrackScrollPhysics.m`, with
+`auditShell` consumed from `TrackSheetPage.tsx`; `stashSigma` (§XI) exists;
+`BACKDROP_DIM_MAX_OPACITY` (§IX) exists in `SearchOverlayShellHost.tsx`. The
+range-law / held-swap / switch-formula claims are behavioral and were NOT
+verifiable by grep.
+
+STRUCTURAL NOTE: this file has fifteen sections each correcting the last and
+no global banner — §V corrects §I–III, §VIII and §IX correct §VII, and the
+§XII red-team rounds correct §XII. It must be read to the end or not at all.

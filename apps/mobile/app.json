@@ -1,4 +1,25 @@
 {
+  "//": [
+    "*** DO NOT RUN `expo prebuild` (D44/F1103). ***",
+    "This is a BARE workflow: apps/mobile/ios/ is COMMITTED and AUTHORITATIVE.",
+    "The real native config is ios/cravesearch/Info.plist, cravesearch.entitlements,",
+    "PrivacyInfo.xcprivacy and the Podfile. Everything under `expo.ios` below is",
+    "FOSSIL from before the eject -- it is read by prebuild and by nothing else, so",
+    "editing it changes NOTHING about what builds.",
+    "",
+    "`expo prebuild` (and `--clean`, and anything that invokes it) REGENERATES ios/",
+    "from this file. This file describes a project with NO SearchMapRenderController",
+    "(13k lines, owner-locked), NO MapLodKit/TrackScrollKit pods, NO custom Podfile,",
+    "NO location/photo purpose strings and NO privacy manifest -- note `plugins` is",
+    "EMPTY even though expo-camera/-image-picker/-location/-notifications all ship",
+    "config plugins whose job is to inject those keys. Prebuild here is a ~15k-line",
+    "silent revert to a template, not a regeneration.",
+    "",
+    "If you genuinely need prebuild back, that is a migration: express the custom",
+    "native code as local config plugins FIRST, then delete ios/ deliberately.",
+    "The guard that notices drift is scripts/mobile-native-authority-gate.sh (CI).",
+    "This `//` key is inert -- Expo reads only the `expo` object."
+  ],
   "expo": {
     "name": "crave-search",
     "slug": "crave-search-mobile",

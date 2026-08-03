@@ -86,6 +86,17 @@ business/monetization-and-gating.md (dish-level = premium, restaurant-level
   _client_ rail (createCheckoutSession/createPortalSession + CheckoutSession
   table) was deleted in `c2861853` as "a rail that doesn't exist" — restore
   from that commit's parent when building this; the webhook side never left.
+  **CORRECTION 2026-08-03 (truth audit F1201): this restore is DONE — do not
+  do it again.** Commit `5b69ddeea` restored the rail (hosted Checkout +
+  portal, unified through the access-grant ledger) and `0ff1250a7` made the
+  web paywall sell BOTH plans with price ids unrepresentable to callers;
+  migration `20260803130000_restore_stripe_checkout_rail`. Verified in code:
+  `apps/api/src/modules/billing/{billing.service.ts,billing.controller.ts,
+dto/create-checkout-session.dto.ts}` + `billing-checkout.spec.ts`, and prod
+  carries the full `STRIPE_*` var set. Note that
+  `plans/production-hardening.md` §0.4/§7 still instructs the OPPOSITE
+  (delete Stripe) — that section is superseded; a correction note now sits
+  on it.
 - **Restore/cross-device:** access rides the ledger keyed to the Crave user,
   so login = access; store restore just reconciles Layer 1.
 
@@ -195,6 +206,14 @@ Project `proj2c08e0c4` ("crave"). Done programmatically:
 - Entitlement `premium` (entldc08408f8e, display "Crave+") — lookup key now
   MATCHES the backend code, so REVENUECAT_ENTITLEMENT_MAP=premium:premium
   (identity). Old `crave Pro` (entl60198dffff) detached + ARCHIVED.
+  **⚠️ CONTRADICTION FOUND 2026-08-03 (truth audit F1203) — OWNER WORD
+  NEEDED.** PROD does not match this paragraph: the prod api service has
+  `REVENUECAT_ENTITLEMENT_MAP = premium:entl60198dffff` — i.e. it maps to
+  the entitlement this doc says was detached and ARCHIVED, not to the
+  `premium` identity mapping. Either the doc's intended config was never
+  applied to prod, or the RC-side archive was reverted. Check RevenueCat
+  and reconcile before the gate flips to `enforce` (prod
+  `ENTITLEMENT_GATING` is still `log`, verified 2026-08-03).
 - Both Test Store products (monthly/yearly) attached to `premium`; default
   offering already had $rc_monthly/$rc_annual packages (Nov 2025 scaffold).
 - Deleted the dead ngrok sandbox webhook. Recreate at sandbox-E2E time
@@ -315,6 +334,13 @@ launch.
    unless `@AllowUnentitled()`. Exempt surface: auth, users/me (profile,
    onboarding, deletion), public users, billing + webhooks, health, legal,
    markets (onboarding support), favorites share/public links, metrics.
+   **CORRECTION 2026-08-03 (truth audit F1202): "markets" no longer exists**
+   — the market system was exterminated 2026-07-22 (see MEMORY
+   markets-extermination). The exempt surface as SHIPPED is whatever carries
+   `@AllowUnentitled` in `apps/api/src` today; read that decorator, not this
+   list. (The same stale word survives in a comment at
+   `entitlement-enforcement.interceptor.ts:23` — a code cleanup, not a doc
+   defect.)
    Rollout rides ENTITLEMENT_GATING (currently log) — log mode records every
    WOULD-block with route+user, so the exempt set gets validated against
    real dogfood traffic before enforce. FREEMIUM PIVOT = add

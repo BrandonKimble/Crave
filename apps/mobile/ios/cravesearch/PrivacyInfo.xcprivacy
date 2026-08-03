@@ -40,8 +40,174 @@
 			</array>
 		</dict>
 	</array>
+	<!-- ================================================================
+	     COLLECTED DATA (D44/F1108, filled 2026-08-03).
+
+	     This array was EMPTY — i.e. the manifest claimed the app collects
+	     nothing — while the app collected location, identity, photos, user
+	     content and Sentry diagnostics. Apple cross-checks this file against
+	     the App Privacy answers in App Store Connect; "collects nothing" from
+	     a location-first social app is the loudest possible mismatch, so this
+	     was a submission gate, not a cleanup.
+
+	     Every entry below was verified against code before it was declared:
+
+     * EmailAddress / Name / UserID — Clerk (@clerk/clerk-expo). Email via
+       src/components/EmailAuthModal.tsx (email-code sign-in); Apple/Google
+       OAuth via src/hooks/useClerkOAuth.ts; displayName/username are rendered
+       across the profile/poll surfaces, so they are stored server-side.
+     * PreciseLocation — expo-location. Foreground only
+       (requestForegroundPermissionsAsync / getCurrentPositionAsync /
+       watchPositionAsync in navigation/runtime/MainLaunchCoordinator.tsx and
+       providers/AuthProvider.tsx). NO background collection: zero
+       requestBackgroundPermissionsAsync / startLocationUpdatesAsync, no
+       UIBackgroundModes, no background-location entitlement — see F1106.
+     * PhotosorVideos — expo-image-picker uploads on the post-photos and
+       edit-profile paths (overlays/PostPhotosFunnelHost.tsx,
+       overlays/panels/EditProfilePanel.tsx) plus expo-camera capture.
+     * OtherUserContent — posts, polls, poll comments and direct messages.
+     * SearchHistory — viewed restaurants/foods are persisted server-side and
+       read back (services/search.ts -> POST/GET /history/restaurants/viewed
+       and /history/foods/viewed).
+     * PurchaseHistory — RevenueCat (react-native-purchases), configured with
+       `appUserID: clerkUserId` (services/purchases.ts:85), so it is linked.
+     * DeviceID — the Expo push token (providers/AuthProvider.tsx:226) is a
+       device-scoped identifier we store against the account.
+     * CrashData — Sentry (@sentry/react-native). The ONLY entry with
+       Linked=false, and that is a contract the code enforces, not an
+       assumption: src/observability/crash-reporting.ts sets
+       sendDefaultPii:false, calls Sentry.setUser NOWHERE, and deletes
+       event.user in beforeSend. IF THAT CHANGES, FLIP Linked TO true HERE.
+
+	     NSPrivacyTracking stays false and every Tracking flag below is false:
+	     nothing here is shared with a data broker or used for cross-app ads
+	     (tracesSampleRate 0, no ad SDK, no ATT prompt).
+
+	     REVIEW THIS FILE whenever a data-touching dependency is added.
+	     ================================================================ -->
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeEmailAddress</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeName</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeDeviceID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePreciseLocation</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePhotosorVideos</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeOtherUserContent</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeSearchHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypePurchaseHistory</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeCrashData</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyTracking</key>
 	<false/>
 </dict>

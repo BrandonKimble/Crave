@@ -73,3 +73,19 @@ Concrete leaning: **keep zero cold-audience UA at launch; adopt paid-as-instrume
 | Noise platform: ~$1–2 CPM, $0.30 avg / $0.08 viral installs                    | superwall--20260125, superwall--20251128   | national mass-slideshow network — geo-mismatch for Crave        | vendor claimed           |
 | Agency half-life ~6 months; agency capped Cal AI at $5k/day                    | superwall--20250404, thebrettway--20260302 | agency skepticism consensus anchors                             | opinion / first-party    |
 | Install→paid 4–10% band (>10% good, <4% problem)                               | superwall--20251116                        | pay-now benchmark set; derives Crave's CPI ceiling              | consultant claimed       |
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1227) — appended, nothing above altered
+
+The conditional "**if a web/Stripe funnel ships (the ~12-point margin swing
+in the fact sheet)**, paid math improves materially and web-funnel ad
+formats … enter earlier" is no longer conditional. **It shipped.** Owner
+decision 2026-08-01; implemented 2026-08-03 — commits `5b69ddeea` (hosted
+Stripe Checkout + portal restored, unified through the access-grant ledger)
+and `0ff1250a7` (the web paywall sells both plans, $7.99/mo and $39.99/yr),
+migration `20260803130000_restore_stripe_checkout_rail`; prod carries the
+full `STRIPE_*` var set. So the improved paid math and the web-funnel ad
+formats are available inputs to the §6/§8 planning now, not later. (Prod's
+Stripe key is currently an `sk_test_` key — a launch-blocking config item,
+not a design one.)

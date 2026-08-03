@@ -151,6 +151,40 @@ atomic per-batch writes. Redirects are chain-flattened and clean.
 - Step 1 DONE (e81c9c35): ledger repair ran on prod — 23,358 superseded +
   7,384 same-run duplicate events deleted, 2,086 restaurants rebuilt,
   detectors zero.
+
+  > **CORRECTION 2026-08-03 (truth audit F1210) — three items in the DONE
+  > list below overstate what shipped. Read this before trusting them.**
+  >
+  > - **"doc-scoped event uniques" is wrong wording for what landed.** The
+  >   shipped uniques still lead with `extractionRunId`:
+  >   `schema.prisma:836` `@@unique([extractionRunId, sourceDocumentId,
+restaurantId, evidenceType])` and `:865` the entity-event equivalent
+  >   (migration `20260801100000_content_identity_events`). That is
+  >   run-scoped-PLUS-document — which Law 1 of this very doc calls the
+  >   defect. The doc is honest about this further down (it calls it "the
+  >   live (run, doc, …) key"); the "doc-scoped" phrasing here is the false
+  >   one. Full content identity is still owed.
+  > - **"~190 existing violations" of (type, identity_key) is stale** —
+  >   measured on the local mirror 2026-08-03: 29 duplicate
+  >   (type, sorted-identity-key) groups among active entities, 9 on raw
+  >   `identity_key`. The DEFERRAL itself is still correct: no
+  >   `(type, identity_key)` index exists; the only shipped partial unique
+  >   is attributes-only (`uq_attribute_identity_key`).
+  > - **"EVERY terminal write is a guarded updateMany" (Law 2 / Step 3) is
+  >   not absolute** — a bare `.update()` writing `status:'failed'` survives
+  >   at `gemini-batch.service.ts:537`. The succeeded (`:613`) and ingested
+  >   (`:697`) transitions ARE guarded. The failure path is a live exception
+  >   to the stated law, not a doc-only issue.
+  >
+  > Also spot-checked and CONFIRMED TRUE against code: ExtractionCoverageClaim
+  > (`schema.prisma:772-781`), displayName idempotency (`gemini-batch.service
+.ts:292-294`), compaction's live-evidence refusal, per-restaurant sorted
+  > rebuild locks (`projection-rebuild.service.ts:143`), single-flight pool
+  > flush, `strandedOnTombstones` rename, the `::entity_type` cast fix, and
+  > "claims table: 0 rows ever". The prod-only numbers (18,110 dark events,
+  > 23,358 deletions, 2,086 rebuilds, the byte-equality counts) are not
+  > reproducible from the repo and were NOT re-verified.
+
 - Step 2 DONE (b39631a2, deployed): doc-scoped event uniques + mention
   partial unique + counter recompute (migration); supersede-on-activation
   (dark evidence can no longer exist); identity-key advisory locks +

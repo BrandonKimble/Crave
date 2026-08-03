@@ -70,9 +70,34 @@ beforeAll(async () => {
     );
   }
   await prisma.$connect();
+  // SEED OUR OWN BOUNDARY ROWS. This file used to lean on whatever corpus the
+  // local dev DB happened to hold — on a fresh CI database every count was 0,
+  // the equal-from-every-chair cases passed VACUOUSLY, and only the RED case
+  // noticed (CI red 2026-08-03, F1204's neighbour). Two instants that fall on
+  // DIFFERENT local dates of 2026-07-15 depending on the session zone make
+  // the property observable on any database, including an empty one.
+  await prisma.$executeRaw`
+    INSERT INTO signal_actors (actor_id) VALUES (${TEST_ACTOR}::uuid)
+    ON CONFLICT (actor_id) DO NOTHING
+  `;
+  await prisma.$executeRaw`
+    INSERT INTO signals (signal_id, kind, subject_type, actor_id,
+                         occurred_at, place_id)
+    VALUES
+      (gen_random_uuid(), 'search', 'none', ${TEST_ACTOR}::uuid,
+       '2026-07-15T02:30:00Z'::timestamptz, gen_random_uuid()),
+      (gen_random_uuid(), 'search', 'none', ${TEST_ACTOR}::uuid,
+       '2026-07-15T21:30:00Z'::timestamptz, gen_random_uuid())
+  `;
 });
 
 afterAll(async () => {
+  await prisma.$executeRaw`
+    DELETE FROM signals WHERE actor_id = ${TEST_ACTOR}::uuid
+  `;
+  await prisma.$executeRaw`
+    DELETE FROM signal_actors WHERE actor_id = ${TEST_ACTOR}::uuid
+  `;
   await prisma.$disconnect();
 });
 
@@ -154,7 +179,8 @@ describe('signals.occurred_at is an instant, not a wall-clock reading', () => {
           const [row] = await tx.$queryRaw<{ part: string }[]>`
             SELECT c.relname AS part FROM signals s
             JOIN pg_class c ON c.oid = s.tableoid
-            WHERE s.actor_id = ${TEST_ACTOR}::uuid LIMIT 1
+            WHERE s.actor_id = ${TEST_ACTOR}::uuid
+              AND s.occurred_at = ${boundary} LIMIT 1
           `;
           return row.part;
         }),

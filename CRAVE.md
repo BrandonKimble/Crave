@@ -1902,12 +1902,34 @@ find the code that would make it flip.**
 98 tracked files. 72 reviewed in pass 1; the 26 UNREVIEWED are binary assets
 (app-icon/splash PNGs, `debug.keystore`, `gradle-wrapper.jar`, `gradlew`).
 Findings F1100–F1118. Executed evidence: `swift test` in `ios/MapLodKit`
-(**41/41 green**), `plutil -lint` on all four plists (all OK), and a repo-wide
-JS grep for every exported native module name.
+(**41/41 green**, and RED-proven — a one-line `LodEngine` mutation turns 15 of
+them red), `plutil -lint` on the three plists (all OK),
+`scripts/mobile-native-authority-gate.sh` (18/18, RED-proven two ways), and a
+repo-wide JS grep for every exported native module name.
 
-**Shape.** One Xcode target (`cravesearch`), one shared scheme, bare workflow —
-`ios/` is committed and authoritative, `app.json`'s `expo.ios` block is fossil
-(F1103). ~16k lines of native code in three homes:
+**THE ONE LAW OF THIS TERRITORY: `apps/mobile/ios/` IS AUTHORITATIVE. NEVER RUN
+`expo prebuild`.** This is a bare workflow: `ios/` is committed, and the files
+that actually build are `ios/cravesearch/Info.plist`, `cravesearch.entitlements`,
+`PrivacyInfo.xcprivacy` and the `Podfile`. Everything under `expo.ios` in
+`app.json` is FOSSIL from before the eject — read by prebuild and by nothing
+else, so editing it changes nothing about what ships. Prebuild REGENERATES
+`ios/` from `app.json`, and `app.json` describes a project with no
+`SearchMapRenderController` (13k owner-locked lines), no MapLodKit/TrackScrollKit
+pods, no custom Podfile, no location/photo purpose strings and no privacy
+manifest — note its `plugins` array is EMPTY even though expo-camera,
+-image-picker, -location and -notifications all ship config plugins whose job is
+to inject exactly those keys. Prebuild here is a ~15k-line silent revert to a
+template, not a regeneration. Three defences exist as of 2026-08-03 (D44/F1103):
+a loud `"//"` note at the top of `app.json`, this paragraph, and
+`scripts/mobile-native-authority-gate.sh` — a CI gate (in the macOS
+`native-tests` job, because it needs `plutil`) that fails if any of the native
+files disappear, if a plist stops linting, if `expo.plugins` becomes non-empty,
+if the two purpose strings `app.json` duplicates drift from `Info.plist`, or if
+the trap note itself is deleted. Going back to prebuild is a real migration
+(express the custom native code as local config plugins FIRST), never a drive-by.
+
+**Shape.** One Xcode target (`cravesearch`), one shared scheme, bare workflow.
+~16k lines of native code in three homes:
 
 - `ios/cravesearch/` — the app's own Swift, dominated by
   `SearchMapRenderController.swift` (13,463 lines, **OWNER-LOCKED**, verified
@@ -1938,25 +1960,68 @@ The other reflection target lives inside the patched `@rnmapbox/maps` pod.
 `newArchEnabled` (gradle), and `newArchEnabled` (Podfile.properties.json) are all
 true, while 100% of our native surface is legacy-bridge `RCT_EXTERN_MODULE` /
 `RCTViewManager` / `RCTEventEmitter` running through the interop layer. Combined
-with F1100 (the only shared scheme names a test target that does not exist), the
-entire native surface minus MapLodKit's 398 lines has **no compile-time contract
-with JS and no test**.
+the entire native surface minus MapLodKit's 398 lines has **no compile-time
+contract with JS and no test**.
 
-**Config and ship-readiness is where the real defects are.** The map dependency
-triangle is internally consistent — Podfile pin, Podfile.lock, and the
-`@rnmapbox+maps+10.3.1.patch` baseline all agree (F1111, a watch on the `-rc.1`
-pin, not a defect). The plists are where it breaks down, and every item below is
-an App-Store-submission-shaped problem rather than a runtime bug:
-`aps-environment = development` hardcoded while the app really does mint push
-tokens (F1101); a privacy manifest declaring the app collects nothing when it
-collects location, identity, photos and Sentry diagnostics (F1108); blanket ATS
-(F1105); Always-location declared but never requested (F1106); no photo-library
-purpose string (F1107); `armv7` on an iOS-15.1 app (F1109); `crave-search` as the
-home-screen name (F1116). Separately, `eas.json` bakes ONE api URL — Railway's
-generated hostname — into every profile including production, and offers **no
-staging profile at all** despite the staging-then-prod deploy law (F1102). The
-OTA lane is three-way incoherent and wholly inert (F1104), and `pod install` is
-not reproducible without an undocumented Mapbox credential (F1117).
+**The test lane, as it actually stands (F1100, settled 2026-08-03).** There is
+ONE native test lane and it is `swift test --package-path apps/mobile/ios/MapLodKit`
+— 41 tests, ~10ms, no simulator, no Mapbox, no React — and it runs in CI in the
+macOS `native-tests` job. It is RED-able: mutating `LodEngine`'s budget break
+condition turns 15 of the 41 red. There is NO XCTest target and the shared
+scheme no longer pretends otherwise; its `<Testables>` used to name
+`cravesearchTests` (BlueprintIdentifier `00E356ED1AD99517003FC87E`), a target the
+project has never contained, so `xcodebuild test -scheme cravesearch` failed on a
+missing buildable before running anything. The phantom entry is deleted. Adding
+an XCTest target is deliberately NOT the next move: every remaining app-target
+Swift file is RCT bridge glue that needs a host app and a simulator, which is the
+slow, flaky lane. **The blessed pattern is MapLodKit's** — when native logic
+becomes worth testing, EXTRACT the pure half into a dependency-free SwiftPM
+module that builds for the macOS host, and `swift test` it. That is the shape
+that gave the map its only durable coverage.
+
+**Config and ship-readiness was where the real defects were; most are now
+fixed.** The map dependency triangle is internally consistent — Podfile pin,
+Podfile.lock, and the `@rnmapbox+maps+10.3.1.patch` baseline all agree (F1111, a
+watch on the `-rc.1` pin, not a defect). The plists were where it broke down, and
+every item was an App-Store-submission-shaped problem rather than a runtime bug.
+FIXED 2026-08-03 (D44): `PrivacyInfo.xcprivacy` declared `NSPrivacyCollected
+DataTypes = []` — "this app collects nothing" — and now enumerates the ten types
+the code actually collects, each verified against a call site, with `CrashData`
+the only unlinked one because `src/observability/crash-reporting.ts` enforces
+that (F1108); blanket `NSAllowsArbitraryLoads` is replaced by
+`NSAllowsLocalNetworking` plus the pre-existing narrow `localhost` exception
+(F1105); the two Always-location keys are gone and the When-In-Use string now
+names a benefit (F1106); `NSPhotoLibraryUsageDescription` is declared even though
+today's PHPicker path does not need it (F1107); `armv7` on an iOS-15.1 app is
+deleted (F1109); `eas.json` gained a `staging` profile and `preview` now extends
+it, so internal builds rehearse against the staging api per the deploy law
+(F1102). STILL OPEN: `aps-environment = development` hardcoded while the app
+really does mint push tokens — the entitlement's own comment claims EAS release
+signing supplies `production`, an assertion never executed against a real build
+(F1101, now a `product/pre-launch.md` gate); the production api URL is still
+Railway's GENERATED hostname baked into every binary, which must move to a domain
+we own before the first submission (F1102 half two, also in pre-launch.md);
+`crave-search` as the home-screen name (F1116); the OTA lane is three-way
+incoherent and wholly inert (F1104); and `pod install` is not reproducible
+without an undocumented Mapbox credential (F1117).
+
+**The search-chrome scalar surface is scaffolding on BOTH sides** (F1068/F1069,
+read from the Swift end 2026-08-03). The JS half (~1,244 lines) is a write-only
+sink whose `readyForActivation` is structurally always false. Reading
+`SearchChromeScalarSurfaceRegistry.swift` (529 lines) settles what that means:
+the native half is inert in exactly the same way and SAYS SO IN ITS OWN OUTPUT.
+`constantsToExport` returns `searchChromeScalarSurfaceActive: false`;
+`platformOwnerStatus` returns hardcoded `active:false`, `ownsScalarValues:false`,
+`composesNativeRegions:false` and a literal `missingHooks` list naming
+`platformReadableScalarTargets`, `nativeRegionCompositionLoop` and
+`pressTimeActionResolver`; `snapshotsByKey` is written by `syncSnapshot` and only
+ever REMOVED, never read; nothing outside that one file consumes any of its
+state. So the owner's choice is NOT "wire up the missing `syncNativeSnapshot`
+call" — activation means BUILDING the three hooks the native side itself lists as
+missing. Only the measured-frame observers (`registerNativeLayoutObserver` →
+KVO on bounds/center/transform) do real work today, and their output is read only
+by `measureRegisteredControls`, which the dead JS diagnostics path is the sole
+caller of. Both halves live or die together.
 
 ## Territory: mobile-assets (`apps/mobile/src/assets` — 1,274 binaries)
 
@@ -2004,3 +2069,73 @@ are saved GitHub **HTML pages** (594KB of markup, someone curled the blob URL
 instead of the raw one), referenced by nothing — the app loads no custom font at
 all (F1151). `splash.png` at 1.34MB is the only asset over 1MB and the only real
 app-size lever in the tree (F1152).
+
+## plans/ and business/signal/ — which docs are CANON and which are ARCHAEOLOGY (2026-08-03, phase-1 pass 2)
+
+Pass 1 mapped `plans/` as a census (F730) and honestly declared two clusters
+swept-not-read. Pass 2 read both end to end — the 23 `plans/` files touched
+since 2026-07-28, and all 42 files under `business/signal/{ledger,panels,redteam}`.
+Findings F1200–F1248. Corrections were APPENDED IN PLACE and dated; nothing
+under `plans/` or `business/` was deleted or rewritten.
+
+**The headline is the same as pass 1's, one level down: the archive is mostly
+honest, and the rot is concentrated — but it is concentrated in the FRESHEST
+docs, not the oldest.** February–April archaeology announces itself. A doc
+written six days ago that says "✅ LANDED" does not, and this pass found six
+of those. The failure mode is never a lie; it is a TRUE statement that a later
+commit reversed, sitting in a file nobody re-read.
+
+**CANON — build against these.** `data-audit-2026-08.md` (13 red-team rounds;
+every implementation symbol spot-checked exists, including `crave_fold()`
+genuinely dropped from the DB exactly as claimed), `one-ground-charter.md`
+(1,105 lines, dated, self-falsifying, RED-proved — the model for how to write
+one of these), `search-from-scratch-derivation.md`, `multilingual.md` (its
+corpus counts reproduce EXACTLY on the mirror), `reextract-choreography.md`
+§§1–5, `austin-reextract-handoff.md`, `payments-ideal-shape.md` as the
+entitlements architecture. All now carry correction notes where a specific
+line went stale.
+
+**ARCHAEOLOGY — read as history, do not execute.**
+`production-hardening.md` §0.4/§7 (instructs deleting the Stripe rail the
+owner just rebuilt — the single most dangerous doc in the repo right now),
+`search-calibration-prebuild-handoff.md` (spent; two instructions point at the
+reversed answer), `full-reload-charter.md` (three named code paths gone),
+`tracksheet-ideal-shape-from-scratch.md` §9 (reversed by an applied patch),
+`chrome-in-content-cutover.patch` (ALREADY APPLIED — a double-apply hazard),
+the whole `business/signal/` cluster (2026-07-12/14 research artifacts).
+
+**Four traps this pass paid for, worth generalizing:**
+
+1. **A doc's LAST section is not its newest.** `search-from-scratch-derivation.md`
+   puts round-4 SPEC AMENDMENTS _below_ the round-5 record that superseded
+   them; `transition-derivation.md` has fifteen sections each correcting the
+   last with no global banner. A linear reader lands on the stale answer.
+   When appending a round, append a pointer at the superseded text too.
+2. **A "DONE ✓" header and a "BLOCKER, reverted" paragraph in the same file
+   means the header is the lie.** (`lod-ideal-residency-refactor.md`.)
+   The reverted-attempt paragraph is written by someone who just ran the code.
+3. **A false premise propagates through a synthesis pipeline and comes out the
+   far end as a binding amendment.** ledger/09 asserted "onboarding already has
+   a rating-ask step" → the compliance lens built an Apple/FTC section on its
+   placement → the judge issued "flip the as-built rating-ask→city-pick order
+   regardless". There has never been a rating ask (`StoreReview` /
+   `requestReview` / `rateApp` = 0 hits). The same pipeline caught two
+   FABRICATED quotations by checking its own sources — it just never checked
+   the product.
+4. **Ops facts rot fastest of all.** `CRONS_ENABLED=false` was stated as
+   current in three live docs and in MEMORY; the flag was removed from prod
+   on 2026-08-03. Anything that names an env var should name the date it was
+   read, and the reader should re-read it.
+
+**One cross-cutting fact every doc should be checked against: CI IS RED ON
+MAIN.** `.github/workflows/ci.yml` exists (contradicting
+`reextract-choreography.md` §6's "no GitHub Actions") and the six most recent
+runs all failed, latest 2026-08-03T21:43. Nothing may treat CI as a passing
+gate, and `deploy.sh`'s known-red refusal currently blocks a prod deploy
+without `--force`.
+
+**Two items needing owner word, not a doc edit:** prod's
+`REVENUECAT_ENTITLEMENT_MAP` points at the entitlement `payments-ideal-shape.md`
+records as detached+ARCHIVED (F1203), and onboarding still tells users
+"Crave is live in Austin and NYC today" while both P2 panel docs make
+collapsing NYC to the waitlist a pre-launch item (F1246).

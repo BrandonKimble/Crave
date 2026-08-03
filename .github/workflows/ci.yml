@@ -183,3 +183,14 @@ jobs:
 
       - name: Swift unit tests (pure native LOD logic)
         run: swift test --package-path apps/mobile/ios/MapLodKit
+
+      # WIRED 2026-08-03 (D44/F1103). apps/mobile/ios/ is committed and
+      # AUTHORITATIVE; app.json's expo.ios block is fossil that only
+      # `expo prebuild` reads — and prebuild would regenerate ios/ from it,
+      # silently deleting ~15k lines of native code plus the entire shipped
+      # permission/privacy surface. This is the tripwire. It lives in the macOS
+      # job because it uses `plutil` (macOS-only) to lint the three plists,
+      # which nothing else in CI parses. RED-proven both ways at authoring time
+      # (a drifted app.json string; a deleted MapLodKit/Package.swift).
+      - name: 'Static guard: apps/mobile/ios is authoritative (anti-prebuild)'
+        run: bash scripts/mobile-native-authority-gate.sh

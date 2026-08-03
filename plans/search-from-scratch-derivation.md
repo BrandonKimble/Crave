@@ -487,6 +487,16 @@ caps; 30-day staging retention. The stop-list is now genuinely gone
 - §7.2 similar-chip dissolution: NOT dissolved — it is a second pooled
   execution, now CONCURRENT with the page (latency-neutral-ish);
   true single-execution provenance remains future work.
+  **CORRECTION 2026-08-03 (truth audit F1207): this amendment is itself
+  STALE — round 5 (below, commit `6c7b0b7aa`) dissolved §7.2 after this
+  was written.** Verified in code: `similarAvailable` is a window count
+  produced by the ONE execution (`search-query.executor.ts:276,812`;
+  `search.service.ts:902-905` "a MEASURED window count from the one
+  execution"), and `prepareSimilarPreview` / `attachSimilarPreview` both
+  return zero hits. There is no second pooled execution. Read the ROUND 5
+  IMPLEMENTATION block, not this line. (This is an ordering hazard in
+  the doc generally: the round-4 SPEC AMENDMENTS section sits BELOW the
+  round-5 record it was superseded by.)
 - SCALE FLAG: per-probe linker recall is a seq scan LINEAR in corpus
   size (~85–160ms at 17k entities; ~10x at 200k) — index work owed
   before multi-city scale. Gazetteer scan itself is fully indexed

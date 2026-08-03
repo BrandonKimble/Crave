@@ -256,3 +256,25 @@ index 1f311071..fbcab93d 100644
        {debugHud ? (
          <View style={styles.hud} pointerEvents="none">
            <Reanimated.Text style={styles.hudText}>{hud}</Reanimated.Text>
+
+# =============================================================================
+# CORRECTION 2026-08-03 (truth audit F1244) — THIS PATCH IS ALREADY APPLIED.
+# DO NOT APPLY IT AGAIN.
+#
+# Verified 2026-08-03 against the working tree: `chromeContentTag` is present
+# in BOTH apps/mobile/ios/TrackScrollKit/Sources/TrackScrollPhysics.m and
+# apps/mobile/src/tracksheet/TrackSheetPage.tsx:358;
+# nativePhysics.pinChrome(trackTagRef.current, chromeContentTagRef.current) at
+# :354; chromeContentTagRef at :444-449; <TrackShellSlot slotRole="chromeContent">
+# at :869; and the deleted chromeOverlay block is gone (0 hits for
+# `chromeOverlay` in TrackSheetPage). trackApplyTransform and TrackShellSlotView
+# are both real.
+#
+# Consequence recorded elsewhere: applying this patch REVERSED
+# plans/tracksheet-ideal-shape-from-scratch.md §9 ("the chrome was never inside
+# the scroll"). That section now carries its own correction note.
+#
+# A committed, already-applied .patch on disk is an invitation to a double
+# apply. Deleting it is the right cleanup — left in place here only because
+# this audit pass is correction-only and deletes nothing under plans/.
+# =============================================================================
