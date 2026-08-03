@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { RestaurantSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
+import { currentCampaignId } from '../external-integrations/shared/work-context';
 
 const QUEUE_NAME = 'restaurant-secondary-location-expansion';
 const JOB_NAME = 'expand-restaurant-secondary-locations';
@@ -35,16 +36,29 @@ export class RestaurantSecondaryLocationExpansionQueueService {
         placeId: normalizedPlaceId,
         requestedAt: new Date().toISOString(),
         source: options.source,
+        // F352-attribution (owner-ruled 2026-08-03). Ambient, never asked for
+        // by the caller: bulk flows (city onboarding, re-extraction) already
+        // run inside runInWorkContext, routine collection does not. Absent =
+        // routine = unattributed and ungated. See the job-data docstring.
+        campaignId: currentCampaignId(),
       },
       {
         jobId,
         removeOnComplete: true,
-        // DELIBERATE and different from the primary-enrichment lane's `true`
-        // (F356 named this divergence). This lane SPENDS PLACES MONEY, and
-        // flipping it changes when that spend is re-enqueued — which is the
-        // owner's call (F354, escalated), not a tidy-up. Named, not copied.
-        removeOnFail: 50,
+        // F354 RULED (2026-08-03): expansion failures now THROW, so `attempts`
+        // is reachable for the first time — and that makes the old
+        // `removeOnFail: 50` actively harmful rather than merely divergent. A
+        // retained failed job SQUATS on the jobId, so the next enqueue for
+        // this restaurant resolves to the dead job and silently no-ops: the
+        // exact failure the primary lane documents. Now identical to that
+        // lane, for its stated reason.
+        removeOnFail: true,
+        // Mirrors the primary lane exactly (not a new number). Without a
+        // backoff the three attempts fire back-to-back, which turns a vendor
+        // blip into 3× the Places spend inside a few seconds; the ruling
+        // accepted retry-at-cost, not instant retry-at-cost.
         attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
       },
     );
     return String(job.id ?? jobId);

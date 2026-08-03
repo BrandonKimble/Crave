@@ -2144,142 +2144,185 @@ export class RestaurantLocationEnrichmentService {
     return normalized.length ? normalized : null;
   }
 
+  /**
+   * F354, owner-ruled 2026-08-03 — THIS METHOD DELIBERATELY THROWS.
+   *
+   * It used to wrap its whole paginated body in one catch that logged a warn
+   * and returned void. Because it could never throw, the driving queue's
+   * `attempts: 3` was unreachable: a fault after page 1 left the brand
+   * holding a PARTIAL branch set, the job was marked done, and nothing
+   * anywhere recorded that the set was partial. The failure and the success
+   * were the same observable — and the truncated location set is precisely
+   * what the metro/chain analysis downstream reasons over.
+   *
+   * Not crashing and not telling anyone are different decisions; only the
+   * first was ever made. So the loop throws and the queue retries, which is
+   * the behaviour the queue's author already chose for the primary lane.
+   *
+   * A RETRY RESUMES RATHER THAN REPEATS — verified, not assumed:
+   *   - `expandSecondaryLocationsForRestaurant` (the ONLY caller) re-reads the
+   *     entity with `include: { locations: true }` on every attempt, so
+   *     `seenPlaceIds` below is rebuilt from the rows PERSISTED by the
+   *     previous attempt, not carried in memory;
+   *   - each branch is written by `upsert({ where: { googlePlaceId } })`, a
+   *     unique key, so re-processing a place updates rather than duplicates;
+   *   - the writes are per-place transactions, so a mid-run throw keeps every
+   *     page already committed.
+   * A retry therefore re-walks the same result pages cheaply and skips
+   * straight past what landed. Spend stays bounded by the existing per-op
+   * ceilings and the 60-result cap below — retries buy no new authority.
+   */
   private async enrichSecondaryLocations(
     entity: RestaurantEntity,
     placeDetails: GooglePlacesV1Place,
     locationBias?: { lat: number; lng: number; radiusMeters?: number },
   ): Promise<void> {
-    try {
-      const canonicalDomain =
-        this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
-        this.normalizeWebsiteDomain(entity.canonicalDomain);
-      if (!canonicalDomain) {
-        return;
-      }
+    const canonicalDomain =
+      this.normalizeWebsiteDomain(placeDetails.websiteUri) ??
+      this.normalizeWebsiteDomain(entity.canonicalDomain);
+    if (!canonicalDomain) {
+      return;
+    }
 
-      const canonicalName =
-        this.getPlaceDisplayName(placeDetails) ?? entity.name ?? null;
-      if (!canonicalName) {
-        return;
-      }
+    const canonicalName =
+      this.getPlaceDisplayName(placeDetails) ?? entity.name ?? null;
+    if (!canonicalName) {
+      return;
+    }
 
-      const includedType = this.resolveIncludedType(placeDetails.primaryType);
-      const existingLocations = entity.locations ?? [];
-      const locationsByPlaceId = new Map(
-        existingLocations
-          .filter((location) => location.googlePlaceId)
-          .map((location) => [location.googlePlaceId as string, location]),
+    const includedType = this.resolveIncludedType(placeDetails.primaryType);
+    const existingLocations = entity.locations ?? [];
+    const locationsByPlaceId = new Map(
+      existingLocations
+        .filter((location) => location.googlePlaceId)
+        .map((location) => [location.googlePlaceId as string, location]),
+    );
+    const seenPlaceIds = new Set<string>([
+      ...(placeDetails.id ? [placeDetails.id] : []),
+      ...Array.from(locationsByPlaceId.keys()),
+    ]);
+
+    let pageToken: string | undefined;
+    let totalProcessed = 0;
+    do {
+      const response = await this.googlePlacesService.findPlaceFromText(
+        canonicalName,
+        {
+          locationBias,
+          includedType: includedType ?? undefined,
+          strictTypeFiltering: Boolean(includedType),
+          pageToken,
+          fields: [
+            'id',
+            'displayName',
+            'formattedAddress',
+            'addressComponents',
+            'location',
+            'internationalPhoneNumber',
+            'nationalPhoneNumber',
+            'websiteUri',
+            'regularOpeningHours',
+            'currentOpeningHours',
+            'utcOffsetMinutes',
+            'timeZone',
+          ],
+        },
       );
-      const seenPlaceIds = new Set<string>([
-        ...(placeDetails.id ? [placeDetails.id] : []),
-        ...Array.from(locationsByPlaceId.keys()),
-      ]);
 
-      let pageToken: string | undefined;
-      let totalProcessed = 0;
-      do {
-        const response = await this.googlePlacesService.findPlaceFromText(
-          canonicalName,
-          {
-            locationBias,
-            includedType: includedType ?? undefined,
-            strictTypeFiltering: Boolean(includedType),
-            pageToken,
-            fields: [
-              'id',
-              'displayName',
-              'formattedAddress',
-              'addressComponents',
-              'location',
-              'internationalPhoneNumber',
-              'nationalPhoneNumber',
-              'websiteUri',
-              'regularOpeningHours',
-              'currentOpeningHours',
-              'utcOffsetMinutes',
-              'timeZone',
-            ],
-          },
+      let processedThisPage = 0;
+      // Branches on this page that ARE ours but are already stored. Counted
+      // separately from `processedThisPage` because the "this page gave us
+      // nothing, stop paginating" test below must mean "no branch of this
+      // brand is on this page", NOT "nothing was WRITTEN". A retry (F354)
+      // replays page 1 with every row already persisted, so a write-count
+      // test would stop the retry at page 1 and it would never reach the page
+      // that faulted — the resume would be a resume in name only. Found by
+      // the retry spec, which failed against the write-count form.
+      let alreadyStoredThisPage = 0;
+      for (const place of response.places) {
+        if (!place?.id) {
+          continue;
+        }
+        const candidateDomain = this.normalizeWebsiteDomain(place.websiteUri);
+        if (!candidateDomain || candidateDomain !== canonicalDomain) {
+          continue;
+        }
+        // Domain match alone is NOT brand identity (generic hosts like facebook.com are
+        // shared by unrelated restaurants). A secondary location must also carry the brand
+        // name — otherwise any same-domain place drifting into the name search would be
+        // absorbed as a fake "branch".
+        if (
+          !this.restaurantNamesAgree(
+            canonicalName,
+            this.getPlaceDisplayName(place),
+          )
+        ) {
+          continue;
+        }
+        if (
+          typeof place.location?.latitude !== 'number' ||
+          typeof place.location?.longitude !== 'number' ||
+          typeof place.formattedAddress !== 'string'
+        ) {
+          continue;
+        }
+
+        // The seen-check sits HERE, after qualification, so that a place we
+        // skip because it is already stored is still counted as "this page
+        // carried a branch of ours". The canonical place is excluded: it is
+        // seeded into seenPlaceIds and would otherwise make EVERY brand —
+        // including one with zero branches — look like it had a hit on page
+        // 1 and buy a second page.
+        if (seenPlaceIds.has(place.id)) {
+          if (place.id !== placeDetails.id) {
+            alreadyStoredThisPage += 1;
+          }
+          continue;
+        }
+
+        const existingLocation = locationsByPlaceId.get(place.id) ?? null;
+        const locationUpsert = this.buildLocationUpsertData(
+          entity.entityId,
+          existingLocation,
+          place,
         );
 
-        let processedThisPage = 0;
-        for (const place of response.places) {
-          if (!place?.id || seenPlaceIds.has(place.id)) {
-            continue;
-          }
-          const candidateDomain = this.normalizeWebsiteDomain(place.websiteUri);
-          if (!candidateDomain || candidateDomain !== canonicalDomain) {
-            continue;
-          }
-          // Domain match alone is NOT brand identity (generic hosts like facebook.com are
-          // shared by unrelated restaurants). A secondary location must also carry the brand
-          // name — otherwise any same-domain place drifting into the name search would be
-          // absorbed as a fake "branch".
-          if (
-            !this.restaurantNamesAgree(
-              canonicalName,
-              this.getPlaceDisplayName(place),
-            )
-          ) {
-            continue;
-          }
-          if (
-            typeof place.location?.latitude !== 'number' ||
-            typeof place.location?.longitude !== 'number' ||
-            typeof place.formattedAddress !== 'string'
-          ) {
-            continue;
-          }
-
-          const existingLocation = locationsByPlaceId.get(place.id) ?? null;
-          const locationUpsert = this.buildLocationUpsertData(
-            entity.entityId,
-            existingLocation,
-            place,
-          );
-
-          const ownedPlaceId = place.id;
-          await this.prisma.$transaction(async (tx) => {
-            await tx.restaurantLocation.upsert({
-              where: { googlePlaceId: ownedPlaceId },
-              update: {
-                ...locationUpsert.update,
-                restaurantId: entity.entityId,
-                isPrimary: existingLocation?.isPrimary ?? false,
-                updatedAt: new Date(),
-              } as Prisma.RestaurantLocationUncheckedUpdateInput,
-              create: {
-                ...locationUpsert.create,
-                restaurantId: entity.entityId,
-                isPrimary: false,
-              } as Prisma.RestaurantLocationUncheckedCreateInput,
-            });
+        const ownedPlaceId = place.id;
+        await this.prisma.$transaction(async (tx) => {
+          await tx.restaurantLocation.upsert({
+            where: { googlePlaceId: ownedPlaceId },
+            update: {
+              ...locationUpsert.update,
+              restaurantId: entity.entityId,
+              isPrimary: existingLocation?.isPrimary ?? false,
+              updatedAt: new Date(),
+            } as Prisma.RestaurantLocationUncheckedUpdateInput,
+            create: {
+              ...locationUpsert.create,
+              restaurantId: entity.entityId,
+              isPrimary: false,
+            } as Prisma.RestaurantLocationUncheckedCreateInput,
           });
-          seenPlaceIds.add(ownedPlaceId);
-          totalProcessed += 1;
-          processedThisPage += 1;
-          if (totalProcessed >= 60) {
-            break;
-          }
-        }
-
-        if (
-          !response.nextPageToken ||
-          totalProcessed >= 60 ||
-          processedThisPage === 0
-        ) {
+        });
+        seenPlaceIds.add(ownedPlaceId);
+        totalProcessed += 1;
+        processedThisPage += 1;
+        if (totalProcessed >= 60) {
           break;
         }
+      }
 
-        pageToken = response.nextPageToken;
-        await this.delay(2000);
-      } while (pageToken);
-    } catch (error) {
-      this.logger.warn('Failed to enrich secondary locations', {
-        entityId: entity.entityId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+      if (
+        !response.nextPageToken ||
+        totalProcessed >= 60 ||
+        processedThisPage + alreadyStoredThisPage === 0
+      ) {
+        break;
+      }
+
+      pageToken = response.nextPageToken;
+      await this.delay(2000);
+    } while (pageToken);
   }
 
   private resolveIncludedType(primaryType?: string | null): string | null {
