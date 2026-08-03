@@ -617,3 +617,32 @@ local Franklin, splitting real testimony. THE REFINED SHAPE:
    events, ~dozens/month) or batched nightly.
    INTERACTION WITH THE CRON FLIP: none — the 66-merge backlog is
    dominant-community-gated and same-metro; P2.2 does not block it.
+
+## P2.2 ADDENDUM — locations follow testimony (2026-08-03, measured)
+
+WHY chains miss locations (two distinct mechanisms, both measured):
+(1) GOOGLE'S 60-RESULT TEXT-SEARCH CAP — Dunkin's stored 39 locations
+are ALL California (San Jose ×5, Sacramento…): a 13k-store chain's
+un-biased expansion captures an arbitrary geographic slice; no
+pagination depth fixes this, Google will not enumerate a chain.
+(2) EXPANSION IS A ONE-SHOT — Brooklyn Dumpling Shop's expansion
+worked (8 stores, NYC/Dallas/Miami/Philly) but ran 2026-07-30; the
+Austin store opened/appeared later and nothing re-runs it. (Its ATX
+twin mint was already correctly merged by the sweep.)
+
+THE MODEL: we never need ALL locations — only locations where our
+communities talk. LOCATIONS FOLLOW TESTIMONY: when a mention arrives in
+metro M for a brand with no location in M, ONE findPlaceFromText biased
+to M's anchor attaches the local branches (bias makes mega-chains
+return local stores); ~30-day cooldown when nothing is found. Solves
+the 60-cap, late openings, and cost (O(brands-discussed-per-metro))
+in one mechanism. Three-concept model, no schema change: brand entity
+(global identity) / locations (demand-driven cache of Google presence)
+/ testimony (metro-tagged events). The adoption ladder in one sentence:
+a full exact name can travel across the country; a nickname can only
+reach places nearby.
+
+OPERATIONAL: CRONS_ENABLED kill-switch removed 2026-08-03 ~00:35 UTC
+(owner authorized; 66-merge backlog reviewed) — night-one convergence
+drains it. COLLECTION_SCHEDULER_ENABLED stays false until prompt
+activation.
