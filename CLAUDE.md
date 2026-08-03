@@ -234,6 +234,24 @@ golden home (`swift test`, no sim).
 
 ---
 
+## Memory: a BACKTICK inside a Prisma.sql template ends the template (cost 4 round trips in one day, 2026-08-03)
+
+Writing SQL in `Prisma.sql\`...\`` and putting a backtick in a COMMENT —
+
+```
+-- a bare `::date` literal resolves in the session timezone
+```
+
+— closes the template literal. tsc then reports a cascade of nonsense
+(`TS1005: ',' expected`, `Module declaration names may only use quoted
+strings`) pointing at the line AFTER the real cause, so it reads like a
+syntax error you didn't write. Same family as a nested `*/` terminating a
+doc comment early.
+
+RULE: **no backticks inside a template literal, ever** — in SQL comments
+write `::date` bare, not ``\`::date\```. If tsc reports TS1005 on a line
+inside a big SQL template, look for a backtick above it before anything else.
+
 ## Memory: ATTRIBUTE before you ideate (do not guess)
 
 When something is wrong, the order is **attribute → prove → then fix.** Do NOT
