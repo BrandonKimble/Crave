@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_INTERCEPTOR, DiscoveryModule } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../shared';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { EntitlementService } from './entitlement.service';
 import { EntitlementEnforcementInterceptor } from './entitlement-enforcement.interceptor';
+import { PaywallCoverageAudit } from './paywall-coverage.audit';
 
 /**
  * Access-grant ledger + runtime gating (plans/payments-ideal-shape.md).
@@ -16,10 +17,12 @@ import { EntitlementEnforcementInterceptor } from './entitlement-enforcement.int
  * every authenticated route requires access unless @AllowUnentitled.
  */
 @Module({
-  imports: [ConfigModule, SharedModule, PrismaModule],
+  imports: [ConfigModule, SharedModule, PrismaModule, DiscoveryModule],
   providers: [
     EntitlementService,
     { provide: APP_INTERCEPTOR, useClass: EntitlementEnforcementInterceptor },
+    // Boot refuses a route the paywall would 403 — see paywall-coverage.audit.
+    PaywallCoverageAudit,
   ],
   exports: [EntitlementService],
 })

@@ -3,8 +3,10 @@ import type { AuthenticatedRequest } from '../../../shared';
 import { ClerkAuthService, type ClerkJwtClaims } from './clerk-auth.service';
 import { UserService } from '../user.service';
 import { UserDevicesService } from '../user-devices.service';
+import { BearsRequestUser } from '../../entitlements/user-bearing-guard';
 
 @Injectable()
+@BearsRequestUser()
 export class ClerkAuthGuard implements CanActivate {
   constructor(
     private readonly clerkAuthService: ClerkAuthService,
