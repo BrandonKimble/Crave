@@ -71,7 +71,6 @@ web-build/
 .DS_Store
 
 # Local-only coordination (multi-agent)
-plans/agent-log.md
 .worktrees/
 
 # TypeScript compilation outputs
