@@ -93,3 +93,4 @@ packages/*/src/**/*.js
 # do neither.
 *.tmp.ts
 *.tmp.js
+__pycache__/
