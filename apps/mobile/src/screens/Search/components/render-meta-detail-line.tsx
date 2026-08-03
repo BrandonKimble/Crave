@@ -5,7 +5,7 @@ import type { OperatingStatus } from '@crave-search/shared';
 
 import { Text } from '../../../components';
 import styles from '../styles';
-import { formatDistanceMiles, minutesUntilCloseFromDisplay } from '../utils/format';
+import { formatDistanceMiles } from '../utils/format';
 
 export const renderMetaDetailLine = (
   status: OperatingStatus | null | undefined,
@@ -51,12 +51,13 @@ export const renderMetaDetailLine = (
   }
   const normalizedPriceLabel = priceLabel ?? null;
   const distanceLabel = formatDistanceMiles(distanceMiles);
+  // Closing time is the SERVER's answer, computed in the restaurant's own timezone
+  // (evaluateOperatingStatus). It is never re-derived here: a device clock cannot know
+  // the restaurant's timezone, so the old fallback — parsing "9:30 pm" and subtracting
+  // the local clock — silently dropped the closing-soon cue for any user in a different
+  // timezone than the restaurant. `isOpen === true` always carries `closesInMinutes`.
   const effectiveMinutesUntilClose =
-    status?.isOpen && typeof status.closesInMinutes === 'number'
-      ? status.closesInMinutes
-      : status?.isOpen
-        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-        : null;
+    status?.isOpen && typeof status.closesInMinutes === 'number' ? status.closesInMinutes : null;
   const isClosingSoon =
     status?.isOpen &&
     typeof effectiveMinutesUntilClose === 'number' &&

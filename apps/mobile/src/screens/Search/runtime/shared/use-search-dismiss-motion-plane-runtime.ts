@@ -25,6 +25,11 @@ import {
   type SearchSurfaceRuntimeSnapshot,
   useSearchSurfaceRuntimeSelector,
 } from '../surface/search-surface-runtime';
+import {
+  SEARCH_DISMISS_BOUNDARY_RECOVERY_DEADLINE_MS,
+  describeSearchDismissBoundaryRecovery,
+  resolveSearchDismissBoundaryRecoveryOutcome,
+} from './search-dismiss-boundary-recovery';
 import type { SheetPosition } from '../../../../overlays/sheetUtils';
 
 const SEARCH_DISMISS_PROOF_EARLY_PROGRESS_MIN = 0.1;
@@ -178,6 +183,9 @@ export const useSearchDismissMotionPlaneRuntime = ({
   const activeOpenTransactionIdRef = React.useRef<string | null>(null);
   const pendingOpenMotionStartedCallbackRef = React.useRef<(() => void) | null>(null);
   const dismissMotionBoundaryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismissMotionBoundaryRecoveryTimeoutRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const dismissMotionActive = useSharedValue(0);
   const openMotionActive = useSharedValue(0);
   const openMotionStartedAck = useSharedValue(0);
@@ -251,17 +259,103 @@ export const useSearchDismissMotionPlaneRuntime = ({
     [activeScenarioConfig]
   );
 
-  const markDismissBoundaryReached = React.useCallback(() => {
-    if (activeDismissTransactionIdRef.current == null) {
-      return;
-    }
+  const clearDismissMotionBoundaryTimers = React.useCallback(() => {
     if (dismissMotionBoundaryTimeoutRef.current != null) {
       clearTimeout(dismissMotionBoundaryTimeoutRef.current);
       dismissMotionBoundaryTimeoutRef.current = null;
     }
+    if (dismissMotionBoundaryRecoveryTimeoutRef.current != null) {
+      clearTimeout(dismissMotionBoundaryRecoveryTimeoutRef.current);
+      dismissMotionBoundaryRecoveryTimeoutRef.current = null;
+    }
+  }, []);
+
+  const markDismissBoundaryReached = React.useCallback(() => {
+    if (activeDismissTransactionIdRef.current == null) {
+      return;
+    }
+    clearDismissMotionBoundaryTimers();
     notifyCloseCollapsedBoundaryReached();
     notifyCloseSheetSettled();
-  }, [notifyCloseCollapsedBoundaryReached, notifyCloseSheetSettled]);
+  }, [
+    clearDismissMotionBoundaryTimers,
+    notifyCloseCollapsedBoundaryReached,
+    notifyCloseSheetSettled,
+  ]);
+
+  /**
+   * The JS-side boundary completion. Identical to the `commitDismissBoundary` worklet's
+   * effect, reachable from a timer/JS callback — the "already collapsed, nothing to
+   * animate" path and the recovery deadline both need exactly this.
+   */
+  const completeDismissBoundaryFromJs = React.useCallback(() => {
+    dismissMotionWaitingForPollPageAtBoundary.value = 0;
+    dismissMotionBoundaryReached.value = 1;
+    dismissMotionPageBundleHandoffProgress.value = 1;
+    dismissMotionCachedVisibleStartY.value = Number.NaN;
+    markDismissBoundaryReached();
+  }, [
+    dismissMotionBoundaryReached,
+    dismissMotionCachedVisibleStartY,
+    dismissMotionPageBundleHandoffProgress,
+    dismissMotionWaitingForPollPageAtBoundary,
+    markDismissBoundaryReached,
+  ]);
+
+  /**
+   * THE OUTER DEADLINE (F1041). The proof watchdog below only OBSERVES, and only when
+   * perf attribution is on; this one RECOVERS, always. A dismiss that has not committed
+   * its boundary by the deadline is force-completed and the degrade is reported.
+   */
+  const armDismissMotionBoundaryRecoveryDeadline = React.useCallback(
+    (transactionId: string) => {
+      if (dismissMotionBoundaryRecoveryTimeoutRef.current != null) {
+        clearTimeout(dismissMotionBoundaryRecoveryTimeoutRef.current);
+      }
+      dismissMotionBoundaryRecoveryTimeoutRef.current = setTimeout(() => {
+        dismissMotionBoundaryRecoveryTimeoutRef.current = null;
+        const outcome = resolveSearchDismissBoundaryRecoveryOutcome({
+          armedTransactionId: transactionId,
+          activeTransactionId: activeDismissTransactionIdRef.current,
+          dismissMotionActive: dismissMotionActive.value >= 0.5,
+          boundaryReached: dismissMotionBoundaryReached.value >= 0.5,
+          pollPageReadyForBoundary: dismissMotionPollPageReadyForBoundary.value >= 0.5,
+          waitingForPollPageAtBoundary: dismissMotionWaitingForPollPageAtBoundary.value >= 0.5,
+        });
+        if (outcome.kind !== 'force_commit') {
+          return;
+        }
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log(describeSearchDismissBoundaryRecovery(transactionId, outcome.reason));
+        }
+        if (isPerfScenarioAttributionActive(activeScenarioConfig)) {
+          logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
+            event: 'search_dismiss_motion_plane_boundary_recovery',
+            authority: 'SearchSurfaceMotionPlaneRuntime',
+            recoveryReason: outcome.reason,
+            collapsedY: dismissMotionCollapsedY.value,
+            sheetY: sheetTranslateY.value,
+            startY: dismissMotionStartY.value,
+            pollPageReadyForBoundary: dismissMotionPollPageReadyForBoundary.value >= 0.5,
+            transactionId,
+          });
+        }
+        completeDismissBoundaryFromJs();
+      }, SEARCH_DISMISS_BOUNDARY_RECOVERY_DEADLINE_MS);
+    },
+    [
+      activeScenarioConfig,
+      completeDismissBoundaryFromJs,
+      dismissMotionActive,
+      dismissMotionBoundaryReached,
+      dismissMotionCollapsedY,
+      dismissMotionPollPageReadyForBoundary,
+      dismissMotionStartY,
+      dismissMotionWaitingForPollPageAtBoundary,
+      sheetTranslateY,
+    ]
+  );
 
   const armDismissMotionBoundaryWatchdog = React.useCallback(
     (transactionId: string) => {
@@ -347,14 +441,12 @@ export const useSearchDismissMotionPlaneRuntime = ({
       }
       activeOpenTransactionIdRef.current = null;
       pendingOpenMotionStartedCallbackRef.current = null;
-      if (dismissMotionBoundaryTimeoutRef.current != null) {
-        clearTimeout(dismissMotionBoundaryTimeoutRef.current);
-        dismissMotionBoundaryTimeoutRef.current = null;
-      }
+      clearDismissMotionBoundaryTimers();
       openMotionActive.value = 0;
       openMotionStartedAck.value = 0;
       activeDismissTransactionIdRef.current = transactionId;
       armDismissMotionBoundaryWatchdog(transactionId);
+      armDismissMotionBoundaryRecoveryDeadline(transactionId);
       const rawStartY = sheetTranslateY.value;
       const targetY = collapsedSnap;
       const currentSnapY = snapPoints[currentSheetSnap] ?? rawStartY;
@@ -400,11 +492,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
         !startRequiresObservedDismissMotion &&
         Math.abs(targetY - rawStartY) < 0.5;
       if (canCompleteImmediately) {
-        dismissMotionWaitingForPollPageAtBoundary.value = 0;
-        dismissMotionBoundaryReached.value = 1;
-        dismissMotionPageBundleHandoffProgress.value = 1;
-        dismissMotionCachedVisibleStartY.value = Number.NaN;
-        markDismissBoundaryReached();
+        completeDismissBoundaryFromJs();
         return;
       }
     },
@@ -421,10 +509,12 @@ export const useSearchDismissMotionPlaneRuntime = ({
       dismissMotionStartSource,
       dismissMotionStartY,
       dismissMotionWaitingForPollPageAtBoundary,
-      markDismissBoundaryReached,
+      completeDismissBoundaryFromJs,
       openMotionActive,
       openMotionStartedAck,
+      armDismissMotionBoundaryRecoveryDeadline,
       armDismissMotionBoundaryWatchdog,
+      clearDismissMotionBoundaryTimers,
       sheetTranslateY,
       snapPoints,
     ]
@@ -434,10 +524,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
     SearchSurfaceMotionPlaneObservationTarget['observeOpen']
   >(
     ({ transactionId, onStarted }) => {
-      if (dismissMotionBoundaryTimeoutRef.current != null) {
-        clearTimeout(dismissMotionBoundaryTimeoutRef.current);
-        dismissMotionBoundaryTimeoutRef.current = null;
-      }
+      clearDismissMotionBoundaryTimers();
       activeDismissTransactionIdRef.current = null;
       pendingOpenMotionStartedCallbackRef.current = onStarted;
       activeOpenTransactionIdRef.current = transactionId;
@@ -542,10 +629,7 @@ export const useSearchDismissMotionPlaneRuntime = ({
       observeOpen: observeOpenMotion,
     });
     return () => {
-      if (dismissMotionBoundaryTimeoutRef.current != null) {
-        clearTimeout(dismissMotionBoundaryTimeoutRef.current);
-        dismissMotionBoundaryTimeoutRef.current = null;
-      }
+      clearDismissMotionBoundaryTimers();
       unregister();
     };
   }, [observeDismissMotion, observeOpenMotion]);

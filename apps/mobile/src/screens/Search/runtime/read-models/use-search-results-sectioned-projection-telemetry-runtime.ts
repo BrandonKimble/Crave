@@ -1,7 +1,6 @@
 import React from 'react';
 
 import type { SearchResponse } from '../../../../types';
-import type { MapQueryBudget } from '../map/map-query-budget';
 import type { useSearchResultsSectionedProjectionStateRuntime } from './use-search-results-sectioned-projection-state-runtime';
 
 type SearchResultsSectionedProjectionTelemetryRuntimeArgs = {
@@ -12,7 +11,6 @@ type SearchResultsSectionedProjectionTelemetryRuntimeArgs = {
   resultsIdentityKey: string | null;
   shouldHydrateResultsForRender: boolean;
   searchSurfaceRedrawCommitSpanPressureActive: boolean;
-  mapQueryBudget: MapQueryBudget;
   emitRuntimeWriteSpan: (payload: Record<string, unknown>) => void;
   projectionStateRuntime: ReturnType<typeof useSearchResultsSectionedProjectionStateRuntime>;
 };
@@ -25,7 +23,6 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
   resultsIdentityKey,
   shouldHydrateResultsForRender,
   searchSurfaceRedrawCommitSpanPressureActive,
-  mapQueryBudget,
   emitRuntimeWriteSpan,
   projectionStateRuntime,
 }: SearchResultsSectionedProjectionTelemetryRuntimeArgs) => {
@@ -46,7 +43,6 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
     const sectionedRowCount = projectionStateRuntime.activeSectionedRowCount;
     const safeResultsCount = projectionStateRuntime.activeSafeResultsCount;
 
-    mapQueryBudget.recordRuntimeAttributionDurationMs('list_read_model_build', durationMs);
     emitRuntimeWriteSpan({
       label: 'list_read_model_build',
       requestVersionKey,
@@ -62,7 +58,6 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
   }, [
     activeTab,
     emitRuntimeWriteSpan,
-    mapQueryBudget,
     projectionStateRuntime.activeSafeResultsCount,
     projectionStateRuntime.activeSectionedRowCount,
     projectionStateRuntime.buildDurationMs,

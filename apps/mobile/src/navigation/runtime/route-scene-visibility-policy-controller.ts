@@ -10,9 +10,10 @@ import {
   type RouteSceneVisibilityPolicyRuntime,
   type RouteSceneVisibilityPolicySnapshot,
 } from './app-route-scene-visibility-policy-contract';
-import type {
-  AppRouteSceneForegroundState,
-  RouteScenePolicySnapshot,
+import {
+  resolveAppRouteChromeSurfaceTarget,
+  type AppRouteSceneForegroundState,
+  type RouteScenePolicySnapshot,
 } from './app-route-scene-policy-contract';
 import { resolveSearchCloseHandoffFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 
@@ -147,10 +148,7 @@ export class RouteSceneVisibilityPolicyController implements RouteSceneVisibilit
       inputMode,
       isCloseTransitionActive,
       foregroundActivity,
-      chromeSurfaceTarget:
-        foregroundActivity === 'idle' || foregroundActivity === 'dockedScene'
-          ? 'dockedScene'
-          : 'results',
+      chromeSurfaceTarget: resolveAppRouteChromeSurfaceTarget(foregroundActivity),
       closeHandoffFreezeClassification: resolveSearchCloseHandoffFreezeClassification({
         isCloseHandoffActive: isCloseTransitionActive,
       }),

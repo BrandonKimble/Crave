@@ -45,7 +45,6 @@ import {
   resolveAppRouteSceneTransitionPlan,
   type AppRouteSceneTransitionPlan,
 } from './app-route-scene-transition-policy-runtime';
-import type { RouteSceneVisibilityPolicyRuntime } from './app-route-scene-visibility-policy-contract';
 import {
   arePresentationFramesEqual,
   EMPTY_PRESENTATION_FRAME,
@@ -541,7 +540,6 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
 
   constructor(
     private readonly sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry,
-    private readonly routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime,
     // The per-scene remembered detent (the snap-session ledger) — feeds the descriptor table's
     // 'rememberedDetent' rule via resolveTransitionPlan (true per-page memory, owner 2026-07-02).
     private readonly resolveSceneRememberedSnap: (sceneKey: OverlayKey) => BottomSheetSnap | null
@@ -1578,16 +1576,13 @@ let activeAppRouteSceneSwitchController: AppRouteSceneSwitchController | null = 
 
 export const createAppRouteSceneSwitchRuntime = ({
   sheetMotionTargetRegistry,
-  routeSceneVisibilityPolicyRuntime,
   resolveSceneRememberedSnap,
 }: {
   sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry;
-  routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   resolveSceneRememberedSnap: (sceneKey: OverlayKey) => BottomSheetSnap | null;
 }): AppRouteSceneSwitchRuntime => {
   const controller = new AppRouteSceneSwitchController(
     sheetMotionTargetRegistry,
-    routeSceneVisibilityPolicyRuntime,
     resolveSceneRememberedSnap
   );
   if (__DEV__ && activeAppRouteSceneSwitchController != null) {

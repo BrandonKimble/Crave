@@ -76,7 +76,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
-  mapQueryBudget,
   searchSurfaceRedrawCoordinatorRef,
   searchSurfaceRedrawCommitSpanPressureByOperationRef,
   isSearchRequestLoadingRef,
@@ -397,7 +396,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   const handleProfilerRender = useSearchRuntimeProfilerInstrumentationRuntime({
     getPerfNow,
     getActiveScenarioRunNumber,
-    mapQueryBudget,
     resolveProfilerStageHint,
     searchSurfaceRedrawCommitSpanPressureByOperationRef,
     searchSurfaceRedrawCoordinatorRef,

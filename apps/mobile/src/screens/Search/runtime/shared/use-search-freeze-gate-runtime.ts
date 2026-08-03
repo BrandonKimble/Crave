@@ -45,7 +45,7 @@ export const useSearchFreezeGateRuntime = ({
     resultsRequestKey,
   });
 
-  const freezeGateStateRuntime = useSearchFreezeGateStateRuntime(searchRuntimeBus);
+  const freezeGateState = useSearchFreezeGateStateRuntime(searchRuntimeBus);
 
   useSearchSurfaceRedrawStallPressureRuntime({
     searchMode,
@@ -58,15 +58,13 @@ export const useSearchFreezeGateRuntime = ({
     () =>
       createSearchFreezeGateRuntimeValue({
         isSearchSurfaceRedrawChromeFreezeActive:
-          freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
+          freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
         isSearchSurfaceRedrawPreflightFreezeActive:
-          freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
-        isSearchSurfaceRedrawActive:
-          freezeGateStateRuntime.freezeGateState.isSearchSurfaceRedrawActive,
-        isResponseFrameFreezeActive:
-          freezeGateStateRuntime.freezeGateState.isResponseFrameFreezeActive,
-        freezeClassification: freezeGateStateRuntime.freezeGateState.freezeClassification,
+          freezeGateState.isSearchSurfaceRedrawPreflightFreezeActive,
+        isSearchSurfaceRedrawActive: freezeGateState.isSearchSurfaceRedrawActive,
+        isResponseFrameFreezeActive: freezeGateState.isResponseFrameFreezeActive,
+        freezeClassification: freezeGateState.freezeClassification,
       }),
-    [freezeGateStateRuntime.freezeGateState]
+    [freezeGateState]
   );
 };

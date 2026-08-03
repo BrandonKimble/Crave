@@ -45,7 +45,6 @@ import styles from '../styles';
 import { isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
-import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import {
   getSearchMapSelectionFocus,
   subscribeSearchMapSelectionFocus,
@@ -1061,9 +1060,6 @@ const DOT_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
   iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
-const getNowMs = () =>
-  typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
-
 type MapPresentedMarkerScene = {
   shouldProjectSearchMarkerFamilies: boolean;
   presentedPinSourceStore: SearchMapSourceStore;
@@ -1415,7 +1411,6 @@ type SearchMapProps = {
   disableMarkers?: boolean;
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback | null;
-  mapQueryBudget?: MapQueryBudget | null;
   nativeViewportState: {
     bounds: MapBounds | null;
     isGestureActive: boolean;
@@ -1456,7 +1451,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   userLocationSnapshot,
   disableMarkers = false,
   onProfilerRender,
-  mapQueryBudget = null,
   nativeViewportState,
   nativeInteractionMode,
   mapMotionPressureController,
@@ -1580,23 +1574,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     };
   }, [userLocation, userLocationSnapshot]);
 
-  const recordRuntimeAttribution = React.useCallback(
-    (contributor: string, durationMs: number) => {
-      mapQueryBudget?.recordRuntimeAttributionDurationMs(contributor, durationMs);
-    },
-    [mapQueryBudget]
-  );
-  const recordTimedRuntimeAttribution = React.useCallback(
-    <TReturn,>(contributor: string, work: () => TReturn): TReturn => {
-      const startedAtMs = getNowMs();
-      try {
-        return work();
-      } finally {
-        recordRuntimeAttribution(contributor, getNowMs() - startedAtMs);
-      }
-    },
-    [getNowMs, recordRuntimeAttribution]
-  );
   const nativeViewportChangedHandlerRef = React.useRef<
     | ((payload: {
         center: [number, number];
@@ -1956,19 +1933,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [onProfilerRender]);
   const profilerCallback = React.useCallback<React.ProfilerOnRenderCallback>(
     (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
-      recordRuntimeAttribution(`map_js_profiler_${id}`, actualDuration);
       onProfilerRenderRef.current?.(id, phase, actualDuration, baseDuration, startTime, commitTime);
     },
-    [recordRuntimeAttribution]
+    []
   );
 
   const handleNativeViewportChanged = React.useCallback(
     (state: MapboxMapState) => {
-      recordTimedRuntimeAttribution('map_js_native_viewport_handler', () => {
-        onNativeViewportChanged(state);
-      });
+      onNativeViewportChanged(state);
     },
-    [onNativeViewportChanged, recordTimedRuntimeAttribution]
+    [onNativeViewportChanged]
   );
   nativeViewportChangedHandlerRef.current = (payload) => {
     const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
@@ -1986,45 +1960,41 @@ const SearchMap: React.FC<SearchMapProps> = ({
         isMoving: payload.isMoving,
       });
     }
-    recordTimedRuntimeAttribution('map_js_owner_viewport_dispatch', () => {
-      const northEast: [number, number] = [
-        payload.bounds.northEast.lng,
-        payload.bounds.northEast.lat,
-      ];
-      const southWest: [number, number] = [
-        payload.bounds.southWest.lng,
-        payload.bounds.southWest.lat,
-      ];
-      const syntheticState = {
-        properties: {
-          center: payload.center,
-          zoom: payload.zoom,
-          bounds: {
-            ne: northEast,
-            sw: southWest,
-          },
-          heading: payload.bearing,
-          pitch: payload.pitch,
+    const northEast: [number, number] = [
+      payload.bounds.northEast.lng,
+      payload.bounds.northEast.lat,
+    ];
+    const southWest: [number, number] = [
+      payload.bounds.southWest.lng,
+      payload.bounds.southWest.lat,
+    ];
+    const syntheticState = {
+      properties: {
+        center: payload.center,
+        zoom: payload.zoom,
+        bounds: {
+          ne: northEast,
+          sw: southWest,
         },
-        gestures: {
-          isGestureActive: payload.isGestureActive,
-        },
-      } as unknown as MapboxMapState;
-      if (payload.isMoving) {
-        handleNativeViewportChanged(syntheticState);
-        return;
-      }
-      handleMapIdle(syntheticState);
-    });
+        heading: payload.bearing,
+        pitch: payload.pitch,
+      },
+      gestures: {
+        isGestureActive: payload.isGestureActive,
+      },
+    } as unknown as MapboxMapState;
+    if (payload.isMoving) {
+      handleNativeViewportChanged(syntheticState);
+      return;
+    }
+    handleMapIdle(syntheticState);
   };
 
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
-      recordTimedRuntimeAttribution('map_js_map_idle_handler', () => {
-        onMapIdle(state);
-      });
+      onMapIdle(state);
     },
-    [onMapIdle, recordTimedRuntimeAttribution]
+    [onMapIdle]
   );
   // ---------------------------------------------------------------------------
   // Event-driven reveal signals: React effects that fire based on readiness
@@ -2035,10 +2005,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const handleMapLoaded = React.useCallback(() => {
     publishResolvedMapTag();
     hasReportedMapLoadedFromRenderFrameRef.current = true;
-    recordTimedRuntimeAttribution('map_js_map_loaded_handler', () => {
-      onMapLoaded();
-    });
-  }, [onMapLoaded, publishResolvedMapTag, recordTimedRuntimeAttribution]);
+    onMapLoaded();
+  }, [onMapLoaded, publishResolvedMapTag]);
 
   const handleDidFinishRenderingFrame = React.useCallback(() => {
     if (!isLocalMapStyleReadyRef.current) {

@@ -38,7 +38,6 @@ export const useSearchRootScaffoldInstrumentationRuntime = ({
 }: UseSearchRootScaffoldInstrumentationRuntimeArgs): SearchRootInstrumentationRuntime => {
   return useSearchRuntimeInstrumentationRuntime({
     getPerfNow: rootSessionPrimitivesLane.primitives.getPerfNow,
-    mapQueryBudget: rootSessionCoreLane.mapQueryBudget,
     searchMode: rootDataPlaneRuntime.runtimeFlags.searchMode,
     isSearchLoading: rootDataPlaneRuntime.runtimeFlags.isSearchLoading,
     resultsRequestKey: rootDataPlaneRuntime.resultsArrivalState.resultsRequestKey,

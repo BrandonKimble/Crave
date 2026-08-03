@@ -10,8 +10,13 @@ export type FrameBudgetGovernorSnapshot = {
   lastFrameStartedAtMs: number | null;
 };
 
-const TARGET_FRAME_MS = 16.67;
-const RESERVED_HEADROOM_MS = 4;
+/**
+ * ONE budget model, not two. There used to be a second, frame-headroom model
+ * (TARGET_FRAME_MS 16.67 − RESERVED_HEADROOM_MS 4 = 12.67ms) whose check ran AFTER the
+ * hard-budget check — so nothing reaching it could ever exceed it and it was
+ * tautologically true. The hard/soft pair below is the model that actually decides
+ * admission; the headroom constants are gone rather than left reading like a guard.
+ */
 const SOFT_BUDGET_MS = 8;
 const HARD_BUDGET_MS = 12;
 const HEAVY_LANES = new Set<RuntimeWorkLane>([
@@ -51,17 +56,13 @@ export class FrameBudgetGovernor {
     }
     const nextCostMs = sanitizeCost(estimatedCostMs);
     const projectedSpentMs = this.currentFrameSpentMs + nextCostMs;
-    const availableBudgetMs = Math.max(0, TARGET_FRAME_MS - RESERVED_HEADROOM_MS);
     const hasConsumedBudgetThisFrame = this.currentFrameSpentMs > 0;
     if (projectedSpentMs > HARD_BUDGET_MS) {
       return false;
     }
     // Soft budget is a multi-task admission guard. The first task in a frame may exceed
-    // soft budget (up to hard/available budget) so heavy lanes do not starve indefinitely.
-    if (projectedSpentMs > SOFT_BUDGET_MS && hasConsumedBudgetThisFrame) {
-      return false;
-    }
-    return projectedSpentMs <= availableBudgetMs;
+    // soft budget (up to hard budget) so heavy lanes do not starve indefinitely.
+    return !(projectedSpentMs > SOFT_BUDGET_MS && hasConsumedBudgetThisFrame);
   }
 
   public recordRun(lane: RuntimeWorkLane, durationMs: number): void {
@@ -94,10 +95,6 @@ export class FrameBudgetGovernor {
     this.currentFrameSpentMs = 0;
     this.currentFrameHeavyLane = null;
     this.lastFrameSpentMs = 0;
-  }
-
-  public isCriticalPressure(): boolean {
-    return this.lastFrameSpentMs >= HARD_BUDGET_MS;
   }
 
   public snapshot(): FrameBudgetGovernorSnapshot {

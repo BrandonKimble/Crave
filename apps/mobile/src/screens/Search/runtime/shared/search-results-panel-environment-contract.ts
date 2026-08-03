@@ -5,7 +5,6 @@ import type { FlashListRef } from '@shopify/flash-list';
 import type { SearchInteractionSnapshot } from '../../context/SearchInteractionContext';
 import type { RestaurantResult } from '../../../../types';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
-import type { MapQueryBudget } from '../map/map-query-budget';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
@@ -61,7 +60,6 @@ export type SearchResultsPanelEnvironment = {
     votes: number | null | undefined;
     polls: number | null | undefined;
   }) => void;
-  mapQueryBudget: MapQueryBudget;
   shouldLogResultsViewability: boolean;
   onRuntimeMechanismEvent?: RuntimeMechanismEmitter;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;

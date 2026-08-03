@@ -113,9 +113,6 @@ export type SearchRootRuntimeRouteSearchSceneRuntimeSignalsRuntime = {
   routeSearchSceneOnRuntimeMechanismEvent: ReturnType<
     typeof useSearchRootRuntimeOverlayFoundationAssemblyRuntime
   >['rootOverlayFoundationRuntime']['rootInstrumentationRuntime']['emitRuntimeMechanismEvent'];
-  routeSearchSceneMapQueryBudget: ReturnType<
-    typeof useSearchRootRuntimeFoundationStageRuntime
-  >['sessionAssemblyRuntime']['sessionRuntime']['sessionCoreLane']['mapQueryBudget'];
   routeSearchScenePhaseBMaterializerRef: ReturnType<
     typeof useSearchRootRuntimeFoundationStageRuntime
   >['sessionAssemblyRuntime']['sessionRuntime']['sessionCoreLane']['phaseBMaterializerRef'];

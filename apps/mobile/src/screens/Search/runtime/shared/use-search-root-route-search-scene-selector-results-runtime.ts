@@ -41,7 +41,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     searchSurfaceRedrawCommitSpanPressureActive:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationRuntimeState
         .searchSurfaceRedrawCommitSpanPressureActive,
-    mapQueryBudget: routeSearchSceneDataRuntime.routeSearchSceneMapQueryBudget,
     canLoadMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.canLoadMore,
     isLoadingMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.isLoadingMore,
     onDemandNotice: routeSearchSceneDataRuntime.routeSearchSceneOnDemandNotice,

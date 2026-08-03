@@ -5,6 +5,7 @@ import {
   areRouteScenePolicySnapshotsEqual,
   EMPTY_APP_ROUTE_SCENE_SHEET_POLICY_INPUTS,
   EMPTY_ROUTE_SCENE_POLICY_SNAPSHOT,
+  resolveAppRouteChromeSurfaceTarget,
   type AppRouteSceneForegroundPolicyInputs,
   type AppRouteSceneSheetPolicyInputs,
   type RouteScenePolicySnapshot,
@@ -167,10 +168,7 @@ export class RouteScenePolicyController {
     const shouldSuppressTabSheetsForSuggestions =
       foregroundState.isSuggestionPanelActive &&
       (sheetContentLaneKind !== 'docked_scene' ? shouldRenderRouteSheetSurface : true);
-    const chromeSurfaceTarget =
-      foregroundActivity === 'idle' || foregroundActivity === 'dockedScene'
-        ? 'dockedScene'
-        : 'results';
+    const chromeSurfaceTarget = resolveAppRouteChromeSurfaceTarget(foregroundActivity);
 
     return {
       ...this.searchSceneSheetPolicyInputs,

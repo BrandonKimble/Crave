@@ -26,7 +26,6 @@ export const getSearchMapEngineInputChanges = (
   getPerfNow: left.getPerfNow !== right.getPerfNow,
   logSearchCompute: left.logSearchCompute !== right.logSearchCompute,
   maxFullPins: left.maxFullPins !== right.maxFullPins,
-  mapQueryBudget: left.mapQueryBudget !== right.mapQueryBudget,
   profileCommandPort: left.profileCommandPort !== right.profileCommandPort,
 });
 
@@ -51,6 +50,5 @@ export const createSearchRootMapEngineInputs = ({
   // Single LOD budget: the on-screen top-N promoted pins, all rank-badged (viewport-bounded
   // shortcut migration — every result is in-view). Top 30.
   maxFullPins: 30,
-  mapQueryBudget: mapPresentationRuntime.mapQueryBudget,
   profileCommandPort: mapPresentationRuntime.profileCommandPort,
 });

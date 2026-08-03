@@ -100,7 +100,6 @@ describe('edit-session liveness re-mints the PresentationFrame', () => {
       sheetMotionTargetRegistry: {
         resolveCurrentSnapTarget: () => null,
       } as unknown as RuntimeArgs['sheetMotionTargetRegistry'],
-      routeSceneVisibilityPolicyRuntime: {} as RuntimeArgs['routeSceneVisibilityPolicyRuntime'],
       resolveSceneRememberedSnap: () => null,
     });
     try {

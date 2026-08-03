@@ -15,7 +15,6 @@ import type {
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import { commitSearchMountedResultsPreparedRowsTarget } from '../shared/search-mounted-results-data-store';
 import type { ResultsListItem } from './list-read-model-builder';
-import type { MapQueryBudget } from '../map/map-query-budget';
 import { useSearchResultsExactMatchStateRuntime } from './use-search-results-exact-match-state-runtime';
 import { useSearchResultsFlashListPolicyRuntime } from './use-search-results-flash-list-policy-runtime';
 import { useSearchResultsFlashListViewabilityRuntime } from './use-search-results-flash-list-viewability-runtime';
@@ -48,7 +47,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   getRawSearchSurfaceRedrawPhase?: () => SearchSurfaceRedrawPhase;
   getAllowHydrationFinalizeCommit?: () => boolean;
   searchSurfaceRedrawCommitSpanPressureActive: boolean;
-  mapQueryBudget: MapQueryBudget;
   canLoadMore: boolean;
   isLoadingMore: boolean;
   onDemandNotice: React.ReactNode;
@@ -124,7 +122,6 @@ export const useSearchResultsReadModelSelectors = (
     getRawSearchSurfaceRedrawPhase,
     getAllowHydrationFinalizeCommit,
     searchSurfaceRedrawCommitSpanPressureActive,
-    mapQueryBudget,
     canLoadMore,
     isLoadingMore,
     onDemandNotice,
@@ -190,7 +187,6 @@ export const useSearchResultsReadModelSelectors = (
     resultsIdentityKey,
     shouldHydrateResultsForRender,
     searchSurfaceRedrawCommitSpanPressureActive,
-    mapQueryBudget,
     emitRuntimeWriteSpan,
     projectionStateRuntime: resultsProjectionRuntime,
   });
@@ -213,7 +209,6 @@ export const useSearchResultsReadModelSelectors = (
   });
   const applyHydrationKey = useSearchResultsHydrationKeyApplyRuntime({
     setHydratedResultsKeySync,
-    mapQueryBudget,
   });
   const emitHydrationKeyCommit = useSearchResultsHydrationKeyCommitEmissionRuntime({
     emitRuntimeWriteSpan,
@@ -283,7 +278,6 @@ export const useSearchResultsReadModelSelectors = (
     activeOverlayKey,
     resultsIdentityKey,
     searchRequestId,
-    mapQueryBudget,
     emitRuntimeWriteSpan,
     releaseToken: hydrationRowsReleaseEvent,
   });

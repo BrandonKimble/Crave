@@ -54,7 +54,6 @@ export const useSearchRootMapPresentationRuntime = ({
       sessionCoreLane.mapBootstrapRuntime.handleMapLoaded,
       sessionCoreLane.mapBootstrapRuntime.isMapStyleReady,
       sessionCoreLane.cameraIntentArbiter,
-      sessionCoreLane.mapQueryBudget,
       sessionCoreLane.viewportBoundsService,
       stateFoundationLane.sessionPrimitivesLane.primitives.getPerfNow,
     ]

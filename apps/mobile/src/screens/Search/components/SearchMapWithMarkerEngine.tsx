@@ -5,7 +5,6 @@ import type { StartupLocationSnapshot } from '../../../navigation/runtime/MainLa
 import type { Coordinate, MapBounds, RestaurantResult } from '../../../types';
 import { withSearchNavSwitchRuntimeAttribution } from '../runtime/shared/search-nav-switch-runtime-attribution';
 import { useDirectSearchMapSourceController } from '../hooks/use-direct-search-map-source-controller';
-import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { SearchMapPresentationScene } from '../runtime/map/map-presentation-runtime-contract';
 import type { MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
@@ -96,7 +95,6 @@ export type SearchMapWithMarkerEngineProps = {
   getPerfNow: () => number;
   logSearchCompute: (label: string, duration: number) => void;
   maxFullPins: number;
-  mapQueryBudget: MapQueryBudget;
 
   // --- Marker interaction inputs ---
   profileCommandPort: SearchMapProfileCommandPort;
@@ -158,7 +156,6 @@ type SearchMapRenderEngineInputKey =
   | 'getPerfNow'
   | 'logSearchCompute'
   | 'maxFullPins'
-  | 'mapQueryBudget'
   | 'profileCommandPort';
 
 type SearchMapRenderHostConfigKey =
@@ -227,7 +224,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     getPerfNow,
     logSearchCompute,
     maxFullPins,
-    mapQueryBudget,
 
     // Marker interaction inputs
     profileCommandPort,
@@ -504,7 +500,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       disableMarkers={disableMarkers}
       disableBlur={disableBlur}
       onProfilerRender={onProfilerRender}
-      mapQueryBudget={mapQueryBudget}
       nativeViewportState={nativeViewportState}
       nativeInteractionMode={nativeInteractionMode}
       mapMotionPressureController={mapMotionPressureController}

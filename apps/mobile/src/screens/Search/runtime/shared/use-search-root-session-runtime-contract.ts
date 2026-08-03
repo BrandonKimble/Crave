@@ -14,7 +14,6 @@ import { useSearchHistoryRuntime } from './use-search-history-runtime';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { MapQueryBudget } from '../map/map-query-budget';
 import type { SearchMapNativeCameraExecutor } from '../map/search-map-native-camera-executor';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import type { RuntimeWorkScheduler } from '../scheduler/runtime-work-scheduler';
@@ -136,7 +135,6 @@ export type SearchRootSessionCoreLane = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   searchMapSourceFramePort: SearchMapSourceFramePort;
   mapBootstrapRuntime: SearchRootMapBootstrapRuntime;
-  mapQueryBudget: MapQueryBudget;
   viewportBoundsService: ViewportBoundsService;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   cameraIntentArbiter: CameraIntentArbiter;

@@ -19,6 +19,22 @@ export type AppRouteSceneForegroundActivity =
 
 export type AppRouteChromeSurfaceTarget = 'results' | 'dockedScene';
 
+/**
+ * THE chrome-surface-target formula — one home, every caller.
+ *
+ * It was derived twice by the byte-same expression, in the route-scene policy
+ * controller and in the visibility policy controller, off two different foreground
+ * ACTIVITY ladders. The ladders are legitimately different (one is the full policy
+ * derivation, the other tracks only the editing/close-transition edges the transition
+ * visibility snapshot owns), but "which activities show docked chrome" is ONE question
+ * and must have one answer. Add an activity to the union and the compiler brings you
+ * here, not to two places that can drift apart silently.
+ */
+export const resolveAppRouteChromeSurfaceTarget = (
+  foregroundActivity: AppRouteSceneForegroundActivity
+): AppRouteChromeSurfaceTarget =>
+  foregroundActivity === 'idle' || foregroundActivity === 'dockedScene' ? 'dockedScene' : 'results';
+
 export const EMPTY_APP_ROUTE_SCENE_FOREGROUND_STATE: AppRouteSceneForegroundState = {
   inputMode: 'idle',
   isCloseTransitionActive: false,

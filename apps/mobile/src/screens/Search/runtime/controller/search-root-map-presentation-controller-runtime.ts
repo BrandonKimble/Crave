@@ -37,7 +37,6 @@ export const createSearchRootMapPresentationRuntimeValue = ({
     shouldLogSearchComputes: instrumentationRuntime.shouldLogSearchComputes,
     getPerfNow: sessionPrimitivesLane.primitives.getPerfNow,
     logSearchCompute: instrumentationRuntime.logSearchCompute,
-    mapQueryBudget: sessionCoreLane.mapQueryBudget,
     profileCommandPort: mapProfileControlLane.mapProfileCommandPort,
     handleCameraAnimationComplete: (event: {
       nativeEvent: {

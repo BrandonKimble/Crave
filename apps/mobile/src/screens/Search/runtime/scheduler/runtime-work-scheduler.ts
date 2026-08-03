@@ -21,7 +21,6 @@ export type RuntimeWorkTask = {
   estimatedCostMs?: number;
   run: () => void;
   createdAtMs: number;
-  deferredFrameCount: number;
 };
 
 export type RuntimeWorkSchedulerDrainSnapshot = {
@@ -51,17 +50,23 @@ const DEFAULT_LANE_ESTIMATED_COST_MS: Record<RuntimeWorkLane, number> = {
   telemetry: 1,
 };
 
-const MAX_DEFERRED_FRAMES_BY_LANE: Partial<Record<RuntimeWorkLane, number>> = {
-  selection_feedback: 2,
-  phase_b_materialization: 6,
-  overlay_shell_transition: 8,
-};
-const STARVATION_OVERRIDE_DISABLED_LANES = new Set<RuntimeWorkLane>([
-  'phase_a_commit',
-  'selection_feedback',
-  'phase_b_materialization',
-  'overlay_shell_transition',
-]);
+/**
+ * THERE IS NO STARVATION OVERRIDE, AND THE CODE NO LONGER PRETENDS THERE IS.
+ *
+ * A deferral cap (`MAX_DEFERRED_FRAMES_BY_LANE`) once let a long-deferred task jump the
+ * budget — except every lane it listed was also a member of the override's own
+ * disabled-lane set (a byte-identical copy of the governor's HEAVY_LANES), and every
+ * other lane got an infinite cap. The override was therefore a compile-time constant
+ * FALSE: a guard that could not fail, claiming a fairness property the scheduler did
+ * not have.
+ *
+ * ONE OWNER for heavy-lane admission: the governor's one-heavy-lane-per-frame rule,
+ * which already bounds hogging. Fairness comes from the queue instead — a deferred task
+ * is pushed back onto the HEAD and the frame ENDS, so it is the first thing considered
+ * next frame ahead of everything at its priority. Re-introducing an override would be a
+ * real behavior change (it could admit a heavy task under exactly the pressure the
+ * governor exists to relieve) and must be measured, not assumed.
+ */
 
 const LANE_ESTIMATE_EMA_WEIGHT = 0.35;
 
@@ -98,12 +103,11 @@ export class RuntimeWorkScheduler {
     });
   }
 
-  public schedule(task: Omit<RuntimeWorkTask, 'createdAtMs' | 'deferredFrameCount'>): string {
+  public schedule(task: Omit<RuntimeWorkTask, 'createdAtMs'>): string {
     const queuedTask: RuntimeWorkTask = {
       ...task,
       estimatedCostMs: sanitizeCostMs(task.estimatedCostMs),
       createdAtMs: Date.now(),
-      deferredFrameCount: 0,
     };
     this.queue.push(queuedTask);
     this.queue.sort(createTaskComparator);
@@ -145,16 +149,8 @@ export class RuntimeWorkScheduler {
       }
 
       const laneEstimateMs = this.resolveLaneEstimate(task);
-      const maxDeferredFrames = MAX_DEFERRED_FRAMES_BY_LANE[task.lane] ?? Number.POSITIVE_INFINITY;
-      const starvationOverrideEligible = task.deferredFrameCount >= maxDeferredFrames;
-      const canStarvationOverride =
-        starvationOverrideEligible &&
-        !this.governor.isCriticalPressure() &&
-        !STARVATION_OVERRIDE_DISABLED_LANES.has(task.lane);
-      const canRunTask = this.governor.canRun(task.lane, laneEstimateMs);
 
-      if (!canRunTask && !canStarvationOverride) {
-        task.deferredFrameCount += 1;
+      if (!this.governor.canRun(task.lane, laneEstimateMs)) {
         this.governor.recordDeferral(task.lane);
         this.queue.unshift(task);
         deferred += 1;

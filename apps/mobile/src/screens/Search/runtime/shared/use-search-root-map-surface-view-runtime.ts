@@ -42,7 +42,6 @@ export const useSearchRootMapSurfaceViewRuntime = ({
       mapPresentationRuntime.logSearchCompute,
       mapPresentationRuntime.mapGestureActiveRef,
       mapPresentationRuntime.mapMotionPressureController,
-      mapPresentationRuntime.mapQueryBudget,
       mapPresentationRuntime.pickPreferredRestaurantMapLocation,
       mapPresentationRuntime.profileCommandPort,
       mapPresentationRuntime.resolveRestaurantLocationSelectionAnchor,

@@ -175,7 +175,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
   const routeSheetSnapSessionRuntime = createAppRouteSheetSnapSessionRuntime();
   const routeSceneSwitchRuntime = createAppRouteSceneSwitchRuntime({
     sheetMotionTargetRegistry: routeSceneSheetMotionTargetRegistry,
-    routeSceneVisibilityPolicyRuntime,
     resolveSceneRememberedSnap: (sceneKey) =>
       routeSheetSnapSessionRuntime.actions.getRouteSceneSwitchSceneSnap(sceneKey),
   });

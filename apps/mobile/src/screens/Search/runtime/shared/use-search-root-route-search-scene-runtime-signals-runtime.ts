@@ -18,8 +18,6 @@ export const useSearchRootRouteSearchSceneRuntimeSignalsRuntime = ({
     routeSearchSceneOnRuntimeMechanismEvent:
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootInstrumentationRuntime
         .emitRuntimeMechanismEvent,
-    routeSearchSceneMapQueryBudget:
-      sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.mapQueryBudget,
     routeSearchScenePhaseBMaterializerRef:
       sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.phaseBMaterializerRef,
     routeSearchSceneSearchInteractionRef:

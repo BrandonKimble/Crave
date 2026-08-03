@@ -2994,6 +2994,19 @@ const useSearchMapNativeRenderOwnerSync = ({
     createNativeRenderOwnerTransportState<NativeRenderOwnerFrameEnvelope>()
   );
   const isAttachedRef = React.useRef(isAttached);
+  /**
+   * The deferred empty-catalog floor subscription (ONE, latest-wins). It used to disarm
+   * ONLY from inside its own callback, so three paths left it armed forever: unmount,
+   * a repeated deferral (N stacked listeners), and a presentation that never reached the
+   * floor. Its lifetime is the owner's lifetime — held here, replaced on each new
+   * deferral, and cleared by the unmount cleanup below.
+   */
+  const deferredEmptyCatalogFloorUnsubscribeRef = React.useRef<(() => void) | null>(null);
+  const disarmDeferredEmptyCatalogFloorSubscription = React.useCallback(() => {
+    const unsubscribe = deferredEmptyCatalogFloorUnsubscribeRef.current;
+    deferredEmptyCatalogFloorUnsubscribeRef.current = null;
+    unsubscribe?.();
+  }, []);
   const ownerEpochRef = React.useRef<number | null>(ownerEpoch);
   const shouldIgnoreNativeSyncErrorsRef = React.useRef(!isAttached);
   const onSyncErrorRef = React.useRef(onSyncError);
@@ -3016,6 +3029,7 @@ const useSearchMapNativeRenderOwnerSync = ({
     return () => {
       shouldIgnoreNativeSyncErrorsRef.current = true;
       isAttachedRef.current = false;
+      disarmDeferredEmptyCatalogFloorSubscription();
       forgetSearchMapNativeFrameVisualSourceCounts(instanceId);
       latestDesiredSourceDataKeyByInstance.delete(instanceId);
       resetNativeRenderOwnerTransportState({
@@ -3025,7 +3039,7 @@ const useSearchMapNativeRenderOwnerSync = ({
       ownerEpochRef.current = null;
       mapMotionPressureController.reset();
     };
-  }, [mapMotionPressureController]);
+  }, [disarmDeferredEmptyCatalogFloorSubscription, mapMotionPressureController]);
 
   const flushLatestDesiredFrame = React.useCallback(() => {
     const transportState = transportStateRef.current;
@@ -3286,8 +3300,12 @@ const useSearchMapNativeRenderOwnerSync = ({
           !isSearchPresentationAtFloor();
         if (shouldDeferEmptyingCatalog) {
           const emptyCatalogKey = candidateCatalog.key;
-          const unsubscribeFloor = subscribeSearchPresentationFloor(() => {
-            unsubscribeFloor();
+          // Latest-wins: a superseded deferral was going to no-op anyway (the callback
+          // re-validates the key), so disarming it early is strictly better than letting
+          // it accumulate.
+          disarmDeferredEmptyCatalogFloorSubscription();
+          deferredEmptyCatalogFloorUnsubscribeRef.current = subscribeSearchPresentationFloor(() => {
+            disarmDeferredEmptyCatalogFloorSubscription();
             const latest = sourceFramePortRef.current?.getCandidateCatalog() ?? null;
             if (
               isSearchPresentationAtFloor() &&

@@ -1,22 +1,15 @@
 import React from 'react';
 
-import type { MapQueryBudget } from '../map/map-query-budget';
-
-const getNowMs = (): number =>
-  typeof performance?.now === 'function' ? performance.now() : Date.now();
-
 export const useSearchResultsHydrationRowsReleaseEmissionRuntime = ({
   activeOverlayKey,
   resultsIdentityKey,
   searchRequestId,
-  mapQueryBudget,
   emitRuntimeWriteSpan,
   releaseToken,
 }: {
   activeOverlayKey: string;
   resultsIdentityKey: string | null;
   searchRequestId: string | null;
-  mapQueryBudget: MapQueryBudget;
   emitRuntimeWriteSpan: (payload: Record<string, unknown>) => void;
   releaseToken: string | null;
 }) => {
@@ -31,24 +24,14 @@ export const useSearchResultsHydrationRowsReleaseEmissionRuntime = ({
     }
     previousReleaseTokenRef.current = releaseToken;
 
-    const durationMs = getNowMs() - getNowMs();
-    mapQueryBudget.recordRuntimeAttributionDurationMs(
-      'hydration_finalize_rows_release',
-      durationMs
-    );
+    // NOTE: this span carries NO duration. It used to report `getNowMs() - getNowMs()`,
+    // which measures nothing and could only ever read ~0 — an always-green number is
+    // worse than no number. The event is the fact worth emitting.
     emitRuntimeWriteSpan({
       label: 'hydration_finalize_rows_release',
       activeOverlayKey,
       searchRequestId,
       resultsIdentityKey,
-      durationMs,
     });
-  }, [
-    activeOverlayKey,
-    emitRuntimeWriteSpan,
-    mapQueryBudget,
-    releaseToken,
-    resultsIdentityKey,
-    searchRequestId,
-  ]);
+  }, [activeOverlayKey, emitRuntimeWriteSpan, releaseToken, resultsIdentityKey, searchRequestId]);
 };

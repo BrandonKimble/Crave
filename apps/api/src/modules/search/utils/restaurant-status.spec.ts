@@ -2,7 +2,10 @@
 // that turns messy raw Google hours (+ businessStatus + tz) into the immutable typed
 // schedule the client hours engine consumes. plans/restaurant-profile-revamp.md.
 
-import { buildStructuredWeeklyHours } from './restaurant-status';
+import {
+  buildStructuredWeeklyHours,
+  evaluateOperatingStatus,
+} from './restaurant-status';
 
 describe('buildStructuredWeeklyHours', () => {
   it('normalizes day-keyed "HH:MM-HH:MM" hours into 7 Sunday-indexed days with tz', () => {
@@ -87,5 +90,39 @@ describe('buildStructuredWeeklyHours', () => {
   it('returns null when there is neither a schedule nor a closed flag', () => {
     expect(buildStructuredWeeklyHours(null, null)).toBeNull();
     expect(buildStructuredWeeklyHours({ hours: {} }, null)).toBeNull();
+  });
+});
+
+describe('evaluateOperatingStatus — the closing-time contract the client depends on', () => {
+  // THE CONTRACT (F1018): the client NEVER re-derives closing time. It cannot — a device
+  // clock does not know the restaurant's timezone. So whenever this returns isOpen:true
+  // it MUST also return a numeric closesInMinutes; a display string alone is not enough.
+  const metadata = {
+    hours: { monday: '11:00-22:00', tuesday: '11:00-22:00' },
+    timeZone: 'America/Chicago',
+  };
+
+  it('always carries closesInMinutes alongside closesAtDisplay when open', () => {
+    // 2026-08-03 is a Monday. 21:00 in Chicago is 02:00 UTC on the 4th.
+    const status = evaluateOperatingStatus(
+      metadata,
+      new Date('2026-08-04T02:00:00Z'),
+    );
+    expect(status).not.toBeNull();
+    expect(status!.isOpen).toBe(true);
+    expect(typeof status!.closesInMinutes).toBe('number');
+    expect(status!.closesAtDisplay).toBeTruthy();
+  });
+
+  it('evaluates against the RESTAURANT timezone, not the caller clock', () => {
+    // Same instant, but 23:00 Chicago-local — closed there even though a US-Eastern
+    // caller would read midnight and an Asia caller would read midday.
+    const status = evaluateOperatingStatus(
+      metadata,
+      new Date('2026-08-04T04:00:00Z'),
+    );
+    expect(status!.isOpen).toBe(false);
+    expect(status!.closesInMinutes ?? null).toBeNull();
+    expect(status!.closesAtDisplay ?? null).toBeNull();
   });
 });

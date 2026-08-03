@@ -46,10 +46,6 @@ export type SearchRootStateCommitSnapshot = {
   isMapRevealPending: boolean;
 };
 
-export type InstrumentationMapQueryBudget = {
-  recordRuntimeAttributionDurationMs: (label: string, durationMs: number) => void;
-};
-
 export type SubmitShortcutScenarioCommandInput = {
   targetTab: 'dishes' | 'restaurants';
   label: string;
@@ -81,7 +77,6 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
-  mapQueryBudget: InstrumentationMapQueryBudget | null;
   searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinatorLike>;
   searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
