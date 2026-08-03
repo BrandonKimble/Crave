@@ -21,6 +21,7 @@ import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { UserService } from '../identity/user.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
 import { readDefaultEntitlementCode } from '../entitlements/entitlement-config';
+import { RevenueCatEntitlementMap } from './revenuecat-entitlement-map';
 import { revenueCatEventIdentity } from './webhook-event-identity';
 
 interface LogBillingEventParams {
@@ -53,19 +54,16 @@ export class BillingService {
         })
       : null;
     this.defaultEntitlement = readDefaultEntitlementCode(this.configService);
-    // 'ourCode:rcEntitlementId,ourCode2:rcId2' -> Map<rcId, ourCode>
-    const mapRaw =
-      this.configService.get<string>('revenueCat.entitlementMap') || '';
-    this.reverseEntitlementMap = new Map(
-      mapRaw
-        .split(',')
-        .map((pair) => pair.split(':').map((part) => part.trim()))
-        .filter((parts) => parts.length === 2 && parts[0] && parts[1])
-        .map(([ourCode, rcId]) => [rcId, ourCode] as const),
+    // Parsed HERE, in the constructor, so a malformed money map refuses BOOT
+    // rather than surfacing as grants written under the wrong code. There is
+    // no default map — see revenuecat-entitlement-map.ts.
+    this.entitlementMap = RevenueCatEntitlementMap.parse(
+      this.configService.get<string>('revenueCat.entitlementMap'),
+      this.defaultEntitlement,
     );
   }
 
-  private reverseEntitlementMap!: Map<string, string>;
+  private readonly entitlementMap: RevenueCatEntitlementMap;
 
   async handleStripeWebhook(
     signature: string | undefined,
@@ -270,14 +268,47 @@ export class BillingService {
       return;
     }
 
-    // REVENUECAT_ENTITLEMENT_MAP ('ourCode:rcEntitlementId,...') maps RC
-    // entitlement ids to our codes; unmapped ids fall through as-is.
+    // TRANSLATE THE VENDOR'S VOCABULARY INTO OURS, OR REFUSE.
+    //
+    // An RC entitlement id we cannot translate is an UNKNOWN, and minting a
+    // grant from an unknown is how a paying customer ends up 403'd: the grant
+    // is written under vendor vocabulary that accessVerdict() never asks
+    // about. So the event is recorded FAILED (findable, replayable) and
+    // rethrown — RevenueCat redelivers once REVENUECAT_ENTITLEMENT_MAP is
+    // fixed, and nothing was silently granted in the meantime.
+    //
+    // An event carrying NO entitlement id at all is a different fact: it is
+    // not an untranslatable vendor code, so it takes the paywall's default
+    // code exactly as before.
     const rawEntitlement =
       payload.event.entitlement_ids?.[0] ||
       payload.event.entitlement_id ||
-      this.defaultEntitlement;
-    const entitlementCode =
-      this.reverseEntitlementMap.get(rawEntitlement) ?? rawEntitlement;
+      null;
+    let entitlementCode = this.defaultEntitlement;
+    if (rawEntitlement !== null) {
+      const translation = this.entitlementMap.translate(rawEntitlement);
+      if (translation.kind === 'unknown') {
+        const reason = `unmapped_entitlement:${translation.vendorEntitlementId}`;
+        this.logger.error(
+          'RevenueCat entitlement id is not in REVENUECAT_ENTITLEMENT_MAP — refusing to mint a grant',
+          {
+            operation: 'revenuecat_unmapped_entitlement',
+            vendorEntitlementId: translation.vendorEntitlementId,
+            eventId: externalId,
+          },
+        );
+        await this.logBillingEvent({
+          source: SubscriptionProvider.revenuecat,
+          platform: SubscriptionPlatform.ios,
+          externalEventId: externalId,
+          eventType: payload.event.type || 'unknown',
+          payload,
+          failed: reason,
+        });
+        throw new ServiceUnavailableException(reason);
+      }
+      entitlementCode = translation.entitlementCode;
+    }
     const expiresAt = payload.event.expiration_at_ms
       ? new Date(payload.event.expiration_at_ms)
       : null;
@@ -564,17 +595,31 @@ export class BillingService {
       expiresAt: Date;
       transactionRef: string;
     } | null = null;
+    // Same law as the webhook path: an untranslatable RC id is an UNKNOWN, not
+    // a code. A transfer that carries live entitlements we cannot name must
+    // fail loudly (the TRANSFER handler records the event FAILED and rethrows)
+    // rather than move a grant onto the gaining account under vendor
+    // vocabulary the paywall never consults.
+    const unmapped: string[] = [];
     for (const [rcId, state] of Object.entries(entitlements)) {
       if (!state.expires_date) continue;
       const expiresAt = new Date(state.expires_date);
       if (expiresAt.getTime() <= Date.now()) continue;
+      const translation = this.entitlementMap.translate(rcId);
+      if (translation.kind === 'unknown') {
+        unmapped.push(rcId);
+        continue;
+      }
       if (!best || expiresAt > best.expiresAt) {
         best = {
-          entitlementCode: this.reverseEntitlementMap.get(rcId) ?? rcId,
+          entitlementCode: translation.entitlementCode,
           expiresAt,
           transactionRef: `transfer:${appUserId}:${state.product_identifier ?? rcId}`,
         };
       }
+    }
+    if (!best && unmapped.length > 0) {
+      throw new Error(`unmapped_entitlement:${unmapped.join(',')}`);
     }
     return best;
   }

@@ -409,7 +409,8 @@ model LlmDecisionRecord {
 
 /// ACCESS-GRANT LEDGER (plans/payments-ideal-shape.md): the single truth for
 /// "does user X have entitlement Y". Every access path is a grant row —
-/// trial_base, reward_photo, reward_referral, comp, promo, subscription —
+/// the sources are declared ONCE, in entitlement.service.ts GRANT_POLICY
+/// (trial_base, winback, gift, comp, promo, subscription) —
 /// expiresAt NULL = lifetime, revocable in one update. Redis is the
 /// materialized CACHE of this ledger, never written directly by product code.
 model AccessGrant {
@@ -419,10 +420,15 @@ model AccessGrant {
   source          String    @db.VarChar(32)
   sourceRef       String?   @map("source_ref") @db.VarChar(256)
   startsAt        DateTime  @default(now()) @map("starts_at") @db.Timestamptz(3)
-  /// Absolute grants only: period end; NULL = lifetime. Day-XOR-absolute is
-  /// CHECK-enforced (a grant never carries both).
+  /// WHICH OF THE THREE GRANT SHAPES THIS ROW IS: 'lifetime' | 'days' |
+  /// 'window'. Not derived from the nullability of the two columns below —
+  /// that encoding made a day-grant that lost its granted_days immortal
+  /// (F103). A per-kind CHECK pins each shape's columns exactly, so a row
+  /// that sets nothing is illegal rather than the most powerful state.
+  kind            String
+  /// 'window' grants only: period end.
   expiresAt       DateTime? @map("expires_at") @db.Timestamptz(3)
-  /// Day grants only: duration of coverage, derived to wall-clock at read.
+  /// 'days' grants only: duration of coverage, derived to wall-clock at read.
   grantedDays     Int?      @map("granted_days")
   revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(3)
   revokedReason   String?   @map("revoked_reason") @db.VarChar(256)

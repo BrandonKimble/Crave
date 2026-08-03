@@ -28,6 +28,7 @@ import { UserReportService } from './user-report.service';
 import { ReportUserDto } from './dto/report-user.dto';
 import { ListUserFollowsDto } from './dto/list-user-follows.dto';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
+import { NoSignal } from '../signals/records-signal.decorator';
 
 /** Paywall exemption is PER-METHOD here (class-level would silently exempt
  *  every future route — type-list disease in decorator form): self-service
@@ -136,6 +137,11 @@ export class UserController {
   }
 
   @Post(':userId/follow')
+  // The SOCIAL GRAPH is not the demand ledger. Following, blocking and
+  // reporting are acts on a PERSON; the nine declared kinds are all acts on a
+  // subject (a place, a dish, a query). Folding these in would let two
+  // accounts move demand mass by interacting with each other.
+  @NoSignal('social-graph act on a person, not demand for a subject')
   async follow(
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -147,6 +153,7 @@ export class UserController {
   }
 
   @Delete(':userId/follow')
+  @NoSignal('social-graph act on a person, not demand for a subject')
   async unfollow(
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -159,6 +166,7 @@ export class UserController {
 
   /** §8.6 blocking (Apple 1.2 UGC). Blocking also severs follow edges. */
   @Post(':userId/block')
+  @NoSignal('social-graph act on a person, not demand for a subject')
   async block(
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -180,6 +188,7 @@ export class UserController {
   }
 
   @Delete(':userId/block')
+  @NoSignal('social-graph act on a person, not demand for a subject')
   async unblock(
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -193,6 +202,9 @@ export class UserController {
   /** §9b profileActions (Apple 1.2 UGC): report a user. Records only —
    *  human moderation reads the table; dedupe is a quiet no-op. */
   @Post(':userId/report')
+  @NoSignal(
+    'moderation report: a claim about a person; recorded in its own table',
+  )
   async report(
     @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,

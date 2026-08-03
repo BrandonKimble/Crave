@@ -14,7 +14,7 @@ import type {
  * (business/signal/teaser-spec.md). Deliberately NOT the search stack — this
  * surface is public (no Clerk, no entitlement), so it exposes only a fixed,
  * trimmed, cacheable composition: top-3 scored dishes for one of the user's
- * declared go-to cravings inside their live city, plus the total count.
+ * declared go-to cravings inside their live city.
  *
  * Ranking mirrors product semantics: connections ordered by score percentile
  * (never the rounded display value), expanded one category hop like search,
@@ -22,12 +22,18 @@ import type {
  * a 2-opinion 9.9 can never headline the first thing a user ever sees.
  */
 
+/**
+ * OWNER RULING 2026-08-02 (F109/D7): the only numbers the teaser may show are
+ * the ones a real restaurant card shows — the Crave score, read from
+ * core_public_entity_scores by the same path the card uses. Every other count
+ * or numeric claim is deleted, not hidden: `mentionCount`, `totalUpvotes` and
+ * the payload's `totalCount` are gone from the wire, so no future surface can
+ * quietly start rendering them.
+ */
 export interface TeaserRow {
   dishName: string;
   restaurantName: string;
   score: number;
-  mentionCount: number;
-  totalUpvotes: number;
 }
 
 export interface TeaserRestaurantRow {
@@ -49,7 +55,6 @@ export interface TeaserPreviewPayload {
   city: string;
   top: TeaserRow;
   runners: TeaserRow[];
-  totalCount: number;
   restaurants: TeaserRestaurantSet | null;
 }
 
@@ -334,14 +339,12 @@ export class TeaserService {
     if (rows.length < MIN_RESULTS) {
       return null;
     }
-    const totalCount = await this.countConnections(cities, foodIds);
     return {
       source: 'dish',
       dishLabel: dish.label,
       city,
       top: rows[0],
       runners: rows.slice(1, 3),
-      totalCount,
       restaurants: null,
     };
   }
@@ -355,14 +358,12 @@ export class TeaserService {
       this.logger.warn(`Teaser browse fallback empty for city ${city}`);
       return null;
     }
-    const totalCount = await this.countConnections(cities, null);
     return {
       source: 'browse',
       dishLabel: null,
       city,
       top: rows[0],
       runners: rows.slice(1, 3),
-      totalCount,
       restaurants: null,
     };
   }
@@ -429,15 +430,11 @@ export class TeaserService {
         dish_name: string;
         restaurant_name: string;
         score: number;
-        mention_count: number;
-        total_upvotes: number;
       }>
     >(Prisma.sql`
       SELECT f.name AS dish_name,
              r.name AS restaurant_name,
-             s.display_score::float AS score,
-             ci.mention_count,
-             ci.total_upvotes
+             s.display_score::float AS score
       ${this.connectionFilter(cities, foodIds)}
       ORDER BY s.percentile_rank DESC
       LIMIT 3
@@ -446,20 +443,6 @@ export class TeaserService {
       dishName: row.dish_name,
       restaurantName: row.restaurant_name,
       score: Math.min(row.score, TEASER_SCORE_CEILING),
-      mentionCount: row.mention_count,
-      totalUpvotes: row.total_upvotes,
     }));
-  }
-
-  private async countConnections(
-    cities: string[],
-    foodIds: string[] | null,
-  ): Promise<number> {
-    const rows = await this.prisma.$queryRaw<
-      Array<{ count: bigint }>
-    >(Prisma.sql`
-      SELECT count(*) AS count ${this.connectionFilter(cities, foodIds)}
-    `);
-    return Number(rows[0]?.count ?? 0);
   }
 }

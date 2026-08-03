@@ -2,6 +2,10 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
+import {
+  moderationAllowed,
+  resolveModeration,
+} from '../moderation/moderation-verdict';
 import { LoggerService } from '../../shared';
 
 export type UsernameAvailabilityReason =
@@ -13,6 +17,9 @@ export type UsernameAvailabilityReason =
   | 'too_long'
   | 'blocked_word'
   | 'profanity'
+  /** The moderator did not answer — the name was NOT rejected; we could not
+   *  find out. Distinct from 'profanity' on purpose (see moderation-verdict). */
+  | 'moderation_unavailable'
   | 'cooldown';
 
 export interface UsernameAvailabilityResult {
@@ -159,15 +166,24 @@ export class UsernameService {
       };
     }
 
-    const moderationDecision =
+    // WRITE PATH — policy 'hold'. This looks like a read ("is it available?")
+    // but claimUsername() calls it as its ONLY gate, so an unreachable
+    // moderator must not report a name as claimable. The refusal is reported
+    // under its own reason, distinct from 'profanity': the name was not
+    // rejected, we could not find out.
+    const moderationOutcome = resolveModeration(
       normalized.length > 0
         ? await this.moderationService.moderateText(normalized)
-        : { allowed: true };
-    if (!moderationDecision.allowed) {
+        : moderationAllowed(),
+      'hold',
+    );
+    if (!moderationOutcome.ok) {
       return {
         normalized,
         available: false,
-        reason: 'profanity',
+        reason: moderationOutcome.cause.startsWith('moderator_unavailable')
+          ? 'moderation_unavailable'
+          : 'profanity',
         suggestions: this.suggestUsernames(normalized),
       };
     }

@@ -211,3 +211,7 @@ VERDICT: **APPROVE**.
 
 Zero observations must mean maximal uncertainty (docstring: Infinity), not zero — executed proof showed a starved candidate ranked LAST. Fix to the documented contract.
 VERDICT: **APPROVE** (behavior change is the documented intent).
+
+## D1/D3/D7/D8/D9/D18b — LANDED (owner-ruled batch, 2026-08-03)
+
+Verified by orchestrator: prod holds exactly 2 reward_photo rows (the migration's targets) and ZERO reward_referral rows — the referral line deletes nothing and merely retires vocabulary already dead in code since 2026-07-09; accepted. NEW ESCALATIONS: F129 (onboarding carousel renders fabricated economics — invented 35% regret rate, 4x claims, $N/mo waste; deleting removes designed onboarding steps: OWNER), F130 (teaser MIN_MENTIONS/MIN_RESULTS floors affect which rows users see, not displayed numbers — kept pending ruling), D1-residual (accessVerdict consults only the default code — multi-product question: OWNER).

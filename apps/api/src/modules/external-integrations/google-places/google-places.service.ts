@@ -254,6 +254,8 @@ export interface GooglePlacesV1TextSearchResponse {
 
 @Injectable()
 export class GooglePlacesService {
+  // No retry by design — failures surface to the caller; the budget never pays
+  // twice for one intent.
   private readonly logger: LoggerService;
   private readonly baseUrl = 'https://places.googleapis.com/v1';
   private readonly requestTimeout: number;

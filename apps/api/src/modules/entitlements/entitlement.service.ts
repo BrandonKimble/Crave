@@ -24,11 +24,14 @@ import {
  *   summarize). Banked-forever semantics BLESSED 2026-07-09: unconsumed
  *   days pay out whenever coverage would otherwise lapse, indefinitely.
  *
- * Monetary engagement incentives (reward_photo/reward_referral) were
- * DELETED 2026-07-09 with the hard-paywall lock-in — engagement is
- * recognized, not paid (see product/profile.md recognition mechanics).
- * winback/gift are the operational day sources. A future EARNED source
- * re-adds a row here plus the per-source anti-farming cap machinery
+ * Monetary engagement incentives were DELETED 2026-07-09 with the
+ * hard-paywall lock-in — engagement is recognized, not paid (see
+ * product/profile.md recognition mechanics). THE PHOTO REWARD IS ABOLISHED
+ * OUTRIGHT (owner ruling 2026-08-02): its surviving ledger rows are deleted
+ * by migration 20260803010000_abolish_photo_reward_grants, so the union below
+ * is now the whole truth about this table's `source` column, not just about
+ * new writes. winback/gift are the operational day sources. A future EARNED
+ * source re-adds a row here plus the per-source anti-farming cap machinery
  * (deleted with the incentives — git history: rewardDaysEverGranted).
  */
 const GRANT_POLICY = {
@@ -83,9 +86,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /** Prisma error code for unique-constraint violation. */
 const P2002 = 'P2002';
 
+/**
+ * WHICH OF THE THREE GRANT SHAPES A ROW IS. Stored explicitly in
+ * access_grants.kind with a per-kind CHECK (migration
+ * 20260803020000_access_grant_kind) — NOT inferred from which of the two
+ * nullable columns is set. Under the old inference, a 'days' row that lost its
+ * granted_days read as both-null, which is how LIFETIME is spelled: the
+ * emptiest possible row was the most powerful state (F103/D3).
+ */
+export type GrantKind = 'lifetime' | 'days' | 'window';
+
 interface LedgerGrantRow {
   grantId: string;
   source: string;
+  kind: string;
   startsAt: Date;
   expiresAt: Date | null;
   grantedDays: number | null;
@@ -95,6 +109,7 @@ interface LedgerGrantRow {
 const GRANT_ROW_SELECT = {
   grantId: true,
   source: true,
+  kind: true,
   startsAt: true,
   expiresAt: true,
   grantedDays: true,
@@ -107,7 +122,10 @@ const GRANT_ROW_SELECT = {
  *
  * Representation (red-team hardened 2026-07-08, ideal-shaped 2026-07-09):
  * - ABSOLUTE grants carry expiresAt (NULL = lifetime); DAY grants carry the
- *   grantedDays COLUMN (schema-enforced XOR with expiresAt). Coverage for
+ *   grantedDays COLUMN. WHICH SHAPE A ROW IS is stated by its `kind` column
+ *   ('lifetime' | 'days' | 'window') with a per-kind CHECK, never inferred
+ *   from column nullability — that inference made a day-grant that lost its
+ *   granted_days immortal (F103). Coverage for
  *   day grants is DERIVED at read time: a chain anchored at the latest
  *   absolute-grant "effective end" (expiry, clamped to revocation), each
  *   segment starting no earlier than the grant was earned. Deriving instead
@@ -149,14 +167,20 @@ export class EntitlementService {
     const grantId = await this.withUserLock(input.userId, code, async (tx) => {
       let expiresAt: Date | null = null;
       let grantedDays: number | null = null;
+      // The row NAMES its shape. GRANT_POLICY says what a SOURCE produces;
+      // `kind` says what THIS ROW is, and the DB CHECK holds it to it.
+      let kind: GrantKind;
       if (policy.kind === 'day') {
         const days = input.days ?? 0;
         if (days <= 0) return null;
         grantedDays = days;
+        kind = 'days';
       } else if (input.lifetime) {
         expiresAt = null;
+        kind = 'lifetime';
       } else if (input.expiresAt !== undefined) {
         expiresAt = input.expiresAt;
+        kind = expiresAt === null ? 'lifetime' : 'window';
       } else {
         // Absolute source with neither expiry nor lifetime is a caller bug.
         throw new Error(
@@ -171,6 +195,7 @@ export class EntitlementService {
             entitlementCode: code,
             source: input.source,
             sourceRef: input.sourceRef ?? null,
+            kind,
             expiresAt,
             grantedDays,
             metadata: (input.metadata ?? undefined) as
@@ -339,7 +364,14 @@ export class EntitlementService {
           const [keeper, ...duplicates] = rows;
           await tx.accessGrant.update({
             where: { grantId: keeper.grantId },
-            data: { expiresAt: params.expiresAt, revokedAt: null },
+            // A subscription grant is always a WINDOW (the guard above
+            // refuses an active sync without a period end), so the kind is
+            // restated on every write rather than assumed to have stuck.
+            data: {
+              kind: 'window',
+              expiresAt: params.expiresAt,
+              revokedAt: null,
+            },
           });
           if (duplicates.length > 0) {
             await tx.accessGrant.updateMany({
@@ -362,6 +394,7 @@ export class EntitlementService {
               entitlementCode: code,
               source: 'subscription',
               sourceRef: params.sourceRef,
+              kind: 'window',
               expiresAt: params.expiresAt,
             },
           });
@@ -462,14 +495,18 @@ export class EntitlementService {
     const visible = grants.filter(
       (grant) => grant.startsAt.getTime() <= startsBefore,
     );
-    const absolutes = visible.filter((grant) => grant.grantedDays === null);
+    // PARTITIONED BY THE ROW'S OWN DECLARED KIND, never by which column
+    // happens to be null. 'lifetime' and 'window' are the absolute shapes;
+    // 'days' is the banked-coverage shape.
+    const absolutes = visible.filter((grant) => grant.kind !== 'days');
     const dayGrants = visible.filter(
-      (grant) => grant.grantedDays !== null && grant.revokedAt === null,
+      (grant) => grant.kind === 'days' && grant.revokedAt === null,
     );
 
-    // Live lifetime grant ends the derivation: access is unbounded.
+    // Live lifetime grant ends the derivation: access is unbounded. A row is
+    // lifetime because it SAYS so — an absent expiry is no longer enough.
     const lifetime = absolutes.find(
-      (grant) => grant.revokedAt === null && grant.expiresAt === null,
+      (grant) => grant.revokedAt === null && grant.kind === 'lifetime',
     );
     if (lifetime) {
       return {
@@ -500,7 +537,10 @@ export class EntitlementService {
     // subscription anchors the chain at the refund, not the paid-out horizon.
     let anchor = 0;
     for (const grant of absolutes) {
-      const expiry = grant.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY;
+      const expiry =
+        grant.kind === 'lifetime'
+          ? Number.POSITIVE_INFINITY
+          : (grant.expiresAt?.getTime() ?? Number.POSITIVE_INFINITY);
       const effectiveEnd = grant.revokedAt
         ? Math.min(expiry, grant.revokedAt.getTime())
         : expiry;

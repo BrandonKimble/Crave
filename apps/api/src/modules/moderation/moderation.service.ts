@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../shared';
 import { LLMService } from '../external-integrations/llm/llm.service';
-
-export interface ModerationDecision {
-  allowed: boolean;
-  reason?: string;
-}
+import {
+  moderationAllowed,
+  moderationBlocked,
+  moderationIndeterminate,
+  type ModerationVerdict,
+} from './moderation-verdict';
 
 @Injectable()
 export class ModerationService {
@@ -18,10 +19,19 @@ export class ModerationService {
     this.logger = loggerService.setContext('ModerationService');
   }
 
-  async moderateText(text: string): Promise<ModerationDecision> {
+  /**
+   * Moderate one piece of user text.
+   *
+   * Returns a VERDICT, not a boolean — see moderation-verdict.ts. This method
+   * never decides what to DO about an unanswerable question; each caller names
+   * its own policy via resolveModeration().
+   */
+  async moderateText(text: string): Promise<ModerationVerdict> {
     const trimmed = text?.trim() ?? '';
     if (!trimmed) {
-      return { allowed: true, reason: 'empty' };
+      // Empty text is an ANSWER, not a guess: there is no content, so there is
+      // nothing to block.
+      return moderationAllowed();
     }
 
     try {
@@ -30,16 +40,23 @@ export class ModerationService {
         this.logger.info('Content blocked by moderation', {
           reason: result.reason,
         });
+        return moderationBlocked(result.reason ?? 'blocked');
       }
-      return { allowed: result.allowed, reason: result.reason };
+      return moderationAllowed();
     } catch (error: unknown) {
-      // Pre-launch: fail OPEN on a transient moderation outage so submissions aren't
-      // wrongly blocked. Before public launch, switch to soft-hold (queue/pending)
-      // per the polls plan §9 (do NOT auto-allow at scale).
-      this.logger.error('Moderation call failed; allowing by default', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { allowed: true, reason: 'moderation_error' };
+      const message = error instanceof Error ? error.message : String(error);
+      // LOUD. An indeterminate verdict is an incident: the moderator is not
+      // answering. It is emphatically not "this text is fine", which is what
+      // returning `{allowed: true, reason: 'moderation_error'}` used to mean,
+      // silently, for every caller at once.
+      this.logger.error(
+        'moderateText INDETERMINATE — the moderator did not answer',
+        {
+          operation: 'moderation_indeterminate',
+          error: { message },
+        },
+      );
+      return moderationIndeterminate('moderator_unavailable', message);
     }
   }
 }

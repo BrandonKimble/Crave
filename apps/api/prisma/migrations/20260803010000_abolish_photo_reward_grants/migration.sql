@@ -1,0 +1,34 @@
+-- ABOLISH THE PHOTO REWARD (owner ruling, 2026-08-02).
+--
+-- "we're doing away with this whole reward system for photos — get rid of that
+-- stuff." — the owner, ratifying D8/F111.
+--
+-- OWNER-RATIFIED DATA DELETION. These rows are live entitlement grants; this
+-- migration removes them, and the users holding them lose the coverage those
+-- rows conferred. That is the ruling, stated plainly so nobody later reads
+-- this as a tidy-up.
+--
+-- WHY DELETE RATHER THAN REVOKE: the granting code was removed on 2026-07-09
+-- and `reward_photo` has not been a member of GRANT_POLICY since. A revoked
+-- row would keep an abolished product concept alive in the ledger's `source`
+-- column, which `summarize()` returns to the client verbatim as
+-- `access.source` — a vocabulary the product no longer contains. The ruling
+-- is that the reward does not exist, so its rows do not either.
+--
+-- BANKING / REPLAY HUNT (done before writing this, per the law):
+--   * No code grants, reads, or displays a photo reward. Repo-wide grep for
+--     reward_photo / photoReward / RewardPhoto over apps/, packages/ and
+--     scripts/ found ONLY doc prose (now corrected in the same change).
+--   * Nothing keys off `source` except GRANT_POLICY (which no longer declares
+--     this member) and deriveSummary, which reads rows STRUCTURALLY
+--     (granted_days / expires_at) and reports `source` only for display.
+--     Entitlement coverage after the delete is therefore exactly the
+--     derivation over the remaining rows — proven by the DB-backed ledger
+--     spec against the local mirror.
+--   * `reward_referral`, the other retired source, has zero rows; the DELETE
+--     is written to cover it so the retired vocabulary leaves the table
+--     entirely rather than half of it.
+--
+-- No parallelism guards: this is a tiny targeted DELETE, not a table rewrite.
+
+DELETE FROM access_grants WHERE source IN ('reward_photo', 'reward_referral');

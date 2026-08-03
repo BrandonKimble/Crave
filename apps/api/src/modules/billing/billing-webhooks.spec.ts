@@ -25,7 +25,13 @@ function makeService(overrides?: {
         ? overrides.webhookSecret
         : 'rc-secret',
     ],
-    ['revenueCat.entitlementMap', overrides?.entitlementMap ?? ''],
+    // The harness default is now a REAL map. It used to be '' and every test
+    // still translated, because the old `get(raw) ?? raw` passed the vendor id
+    // through as our code — the F101 defect, visible right here in the fixture.
+    [
+      'revenueCat.entitlementMap',
+      overrides?.entitlementMap ?? 'premium:premium_monthly',
+    ],
     ['billing.defaultEntitlement', 'premium'],
   ]);
   const prisma = {
@@ -144,6 +150,9 @@ describe('RevenueCat webhook hardening', () => {
 
   it('prefers entitlement_ids[] over legacy entitlement_id and sets both period bounds', async () => {
     const { service, prisma, entitlements } = makeService({
+      // Both RC ids are DECLARED — the point of this test is the precedence of
+      // entitlement_ids[] over entitlement_id, not translation.
+      entitlementMap: 'premium:premium_monthly,premium:premium',
       user: { userId: 'u1' },
     });
     const purchasedAt = Date.now() - 1000;

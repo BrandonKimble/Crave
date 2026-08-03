@@ -83,7 +83,7 @@ describe('EntitlementService (ledger integration)', () => {
   });
 
   it('REFUND-TAIL: a reward stacked on a subscription horizon dies with the refund', async () => {
-    // Annual subscription (365d), then a 1-day photo reward "on top".
+    // Annual subscription (365d), then a 1-day gift day-grant "on top".
     await service.syncSubscriptionGrant({
       userId,
       sourceRef: 'revenuecat:txn_tail',
@@ -217,7 +217,7 @@ describe('EntitlementService (ledger integration)', () => {
       sourceRef: 'photo:paid-1',
     });
     const summary = await service.summarize(userId);
-    expect(summary.source).toBe('subscription'); // NOT reward_photo
+    expect(summary.source).toBe('subscription'); // NOT the banked day source
     expect(summary.paidUntil?.getTime()).toBe(periodEnd.getTime());
     // total coverage extends ~5 banked days past the paid window
     const bankedDays =
@@ -225,5 +225,84 @@ describe('EntitlementService (ledger integration)', () => {
     expect(bankedDays).toBeGreaterThan(4.99);
     expect(bankedDays).toBeLessThanOrEqual(5.01);
     expect(summary.expiresAt?.getTime()).toBe(summary.coverageUntil?.getTime());
+  });
+
+  /**
+   * F103 / D3 — the emptiest row is no longer the most powerful one.
+   *
+   * Before the `kind` column, a 'days' row that lost its granted_days was
+   * both-null, which is how LIFETIME is spelled, and deriveSummary returned
+   * unbounded access. The per-kind CHECK makes that row unrepresentable, and
+   * the derivation now reads the row's declared kind rather than inferring it.
+   */
+  describe('grant kind is explicit (F103/D3)', () => {
+    it('every write NAMES its shape', async () => {
+      await service.grant({ userId, source: 'winback', days: 3 });
+      await service.grant({ userId, source: 'comp', lifetime: true });
+      await service.syncSubscriptionGrant({
+        userId,
+        sourceRef: 'revenuecat:txn_kind',
+        expiresAt: new Date(Date.now() + 30 * 864e5),
+        active: true,
+      });
+      const rows = await prisma.accessGrant.findMany({
+        where: { userId },
+        select: { source: true, kind: true },
+      });
+      expect(new Map(rows.map((r) => [r.source, r.kind]))).toEqual(
+        new Map([
+          ['winback', 'days'],
+          ['comp', 'lifetime'],
+          ['subscription', 'window'],
+        ]),
+      );
+    });
+
+    it('RED — a day-grant that loses its granted_days can no longer become immortal', async () => {
+      const { grantId } = await service.grant({
+        userId,
+        source: 'winback',
+        days: 3,
+      });
+      // The exact corruption F103 described: blank the day count, leaving the
+      // both-null row the old NAND constraint permitted. The DB now refuses.
+      await expect(
+        prisma.accessGrant.update({
+          where: { grantId: grantId! },
+          data: { grantedDays: null },
+        }),
+      ).rejects.toThrow(/access_grants_kind_shape/);
+
+      // ... and the row is untouched: still a bounded day grant.
+      const summary = await service.summarize(userId);
+      expect(summary.expiresAt).not.toBeNull();
+    });
+
+    it('a lifetime row cannot quietly acquire an expiry, nor a window row a day count', async () => {
+      const lifetime = await service.grant({
+        userId,
+        source: 'comp',
+        lifetime: true,
+      });
+      await expect(
+        prisma.accessGrant.update({
+          where: { grantId: lifetime.grantId! },
+          data: { expiresAt: new Date(Date.now() + 864e5) },
+        }),
+      ).rejects.toThrow(/access_grants_kind_shape/);
+    });
+  });
+
+  /**
+   * F111 / D8 — the photo reward is abolished. Migration
+   * 20260803010000_abolish_photo_reward_grants deleted its rows; this proves
+   * the retired vocabulary is gone from the table entirely, so nothing can
+   * surface `access.source = 'reward_photo'` to a client again.
+   */
+  it('the retired reward sources hold no rows anywhere in the ledger', async () => {
+    const survivors = await prisma.accessGrant.count({
+      where: { source: { in: ['reward_photo', 'reward_referral'] } },
+    });
+    expect(survivors).toBe(0);
   });
 });

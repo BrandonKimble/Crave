@@ -156,7 +156,8 @@ export class UserService {
     await this.userListProvisioning.ensureDefaultLists(user.userId);
 
     // Reverse trial (app-owned, NOT a store trial — store trials can't be
-    // extended, and photo/invite rewards must be able to extend this):
+    // extended, and the operational day sources (winback/gift) must be able
+    // to extend this):
     // exactly one trial_base grant per user, written on first sight. No-op
     // while BILLING_TRIAL_DAYS=0.
     if (this.trialDays > 0) {
