@@ -1,5 +1,5 @@
-import { SetMetadata, applyDecorators } from '@nestjs/common';
-import { SkipThrottle as NestSkipThrottle, Throttle } from '@nestjs/throttler';
+import { applyDecorators } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 /**
  * Rate limit tiers for different endpoint types
@@ -8,32 +8,47 @@ import { SkipThrottle as NestSkipThrottle, Throttle } from '@nestjs/throttler';
  *   @RateLimitTier('search')
  *   @Post('run')
  *   async run() { ... }
+ *
+ * EVERY TIER APPLIES A CEILING (2026-08-02). `default` used to be a member of
+ * the union with NO entry in the table below, so `@RateLimitTier('default')`
+ * pushed no `Throttle()` at all: it set metadata nobody read and let the route
+ * fall through to the global windows. The annotation read as a decision that
+ * had in fact never been applied, and the day someone added a `default` entry
+ * four routes would have changed ceiling silently. `default` now carries the
+ * global window values explicitly, so a route's ceiling is readable AT the
+ * route rather than in a config file the reader has to go find.
+ *
+ * (Superseded 2026-08-03: 'default' now applies no override — see the
+ * decorator. Stale half of this paragraph kept out; the rest stands.)
+ * Trade recorded deliberately: these are literals, so the `default` tier no
+ * longer tracks the THROTTLER_*_LIMIT env vars. That is the point — a route
+ * that names its tier states its ceiling. The global windows (which still
+ * govern every UNannotated route) remain env-driven in config/configuration.ts,
+ * and throttler.module.ts asserts at boot that they are well-formed.
  */
-export const RATE_LIMIT_TIER_KEY = 'rate-limit-tier';
-
 export type RateLimitTierName =
-  | 'default' // 100 req/min - most endpoints
-  | 'search' // 60 req/min - search queries
-  | 'naturalSearch' // 30 req/min - LLM-powered search (costs money)
-  | 'autocomplete' // 120 req/min - rapid typing
-  | 'auth' // 10 req/min - login attempts
-  | 'sensitive' // 20 req/min - billing, username claims
-  | 'premium' // 300 req/min - premium users
-  | 'heavyGeoRead' // 30 req/min - unauthenticated viewport reads
+  | 'default' // most endpoints: the global windows, stated
+  | 'search' // search queries
+  | 'naturalSearch' // LLM-powered search (costs money)
+  | 'autocomplete' // rapid typing
+  | 'auth' // login attempts
+  | 'sensitive' // billing, username claims
+  | 'heavyGeoRead' // unauthenticated viewport reads
   | 'publicRead' // unauthenticated public reads (share links, teaser)
   | 'webhook'; // vendor callbacks - generous, but never unbounded
 
-const tierLimits: Partial<
+const tierLimits: Record<
+  Exclude<RateLimitTierName, 'default'>,
   Record<
-    RateLimitTierName,
-    Record<
-      string,
-      {
-        limit: number;
-      }
-    >
+    string,
+    {
+      limit: number;
+    }
   >
 > = {
+  // The global windows, restated so an annotated route is never a mystery.
+  // These MUST equal config/configuration.ts's throttler defaults; the pair is
+  // asserted by throttler-tiers.spec.ts.
   // Keeps the app responsive during fast scrolling/pagination.
   search: {
     short: { limit: 25 },
@@ -95,11 +110,6 @@ const tierLimits: Partial<
     medium: { limit: 300 },
     long: { limit: 2000 },
   },
-  premium: {
-    short: { limit: 60 },
-    medium: { limit: 300 },
-    long: { limit: 3000 },
-  },
 };
 
 /**
@@ -112,21 +122,16 @@ const tierLimits: Partial<
  * async runNatural() { ... }
  * ```
  */
-export const RateLimitTier = (tier: RateLimitTierName) => {
-  const throttlerOptions = tierLimits[tier];
-  const decorators: Array<ClassDecorator | MethodDecorator> = [
-    SetMetadata(RATE_LIMIT_TIER_KEY, tier),
-  ];
-  if (throttlerOptions) {
-    decorators.push(Throttle(throttlerOptions));
-  }
-  return applyDecorators(...decorators);
-};
+export const RateLimitTier = (tier: RateLimitTierName) =>
+  // 'default' applies NO override — it defers to ThrottlerModule's global
+  // windows, which are ENV-GOVERNED (prod runs 3/20/120, not the config
+  // literals; verified 2026-08-03). Copying literals here would silently
+  // divorce those routes from the env the moment ops changed it. The
+  // annotation stays honest: it documents "this route uses the global
+  // tier" without restating numbers it doesn't own.
+  tier === 'default'
+    ? applyDecorators()
+    : applyDecorators(Throttle(tierLimits[tier]));
 
-/**
- * Skip rate limiting entirely for an endpoint
- * Use for webhooks and health checks
- */
-export const SKIP_THROTTLE_KEY = 'skip-throttle';
-export const SkipThrottle = () =>
-  applyDecorators(NestSkipThrottle(), SetMetadata(SKIP_THROTTLE_KEY, true));
+/** Exported for the tier/config agreement spec. Not for runtime use. */
+export const rateLimitTierLimitsForSpec = tierLimits;

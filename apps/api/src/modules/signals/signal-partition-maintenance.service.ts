@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 
 /**
  * §3 signals monthly partitions — automatic partition creation.
@@ -63,6 +64,7 @@ export class SignalPartitionMaintenanceService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SignalPartitionMaintenanceService');
@@ -76,13 +78,86 @@ export class SignalPartitionMaintenanceService {
         await this.prisma.$executeRawUnsafe(partitionDdl(month));
       }
     } catch (error) {
-      // A creation failure is loud but non-fatal: the lead window means the
-      // NEXT successful pass (within two months) still lands ahead of need.
+      // NOT CRASHING AND NOT TELLING ANYONE ARE DIFFERENT DECISIONS (audit
+      // 2026-08-02, F205). Only the first was ever made here; the second was
+      // inherited from it. A dead partition cron eventually means EVERY
+      // signal is silently dropped (the §3 writer swallows the insert
+      // failure), so this is the one background failure in the ledger that
+      // is genuinely critical. It still swallows — it just rings a bell now.
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Signal partition maintenance failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
+        error: { message },
+      });
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'signal_partition_maintenance_failed',
+        title: 'Signal partition maintenance failed',
+        body: [
+          'The daily pass that keeps signals RANGE partitions ahead of the clock threw.',
+          `Error: ${message}`,
+          `Lead window is ${PARTITION_LEAD_MONTHS} months, so writes are safe until the current window runs out — but an insert into an uncovered month FAILS and the §3 writer swallows it, i.e. user acts are lost silently.`,
+        ].join('\n'),
+        dedupeKey: `signal_partition_maintenance_failed:${this.dayKey(now)}`,
       });
     }
+    await this.assertLeadPartitionExists(now);
+  }
+
+  /**
+   * THE ASSERTION A DEAD SCHEDULER CANNOT FOOL (F205).
+   *
+   * A cron that never RUNS raises no exception, so a catch block — however
+   * loud — cannot report it. This asserts the INVARIANT rather than the pass:
+   * a partition covering `now + 1 month` must exist. It fails on a DDL that
+   * errored, on a DDL that silently did nothing, and on a scheduler that
+   * simply stopped scheduling (whereupon the assertion's own absence is the
+   * only remaining hole, and that is a scheduler-liveness question, not a
+   * partition one).
+   */
+  async assertLeadPartitionExists(now: Date = new Date()): Promise<boolean> {
+    const [, nextMonth] = partitionMonths(now, 1);
+    const expected = `signals_p${nextMonth.label}`;
+    try {
+      const rows = await this.prisma.$queryRaw<Array<{ relname: string }>>`
+        SELECT c.relname
+        FROM pg_catalog.pg_inherits i
+        JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
+        WHERE i.inhparent = 'signals'::regclass
+          AND c.relname = ${expected}
+      `;
+      if (rows.length > 0) {
+        return true;
+      }
+      this.logger.error('Signal lead partition missing', { expected });
+      this.opsAlerts.emit({
+        severity: 'critical',
+        kind: 'signal_lead_partition_missing',
+        title: 'Signal ledger has no partition for next month',
+        body: [
+          `Expected partition ${expected} of \`signals\` does not exist.`,
+          'Every act recorded into an uncovered month FAILS to insert, and the §3 writer swallows that failure — the ledger stops growing with no error surfaced to any user.',
+          'Most likely cause: the partition-maintenance cron is not running at all (a dead scheduler raises no exception for a catch block to report).',
+        ].join('\n'),
+        dedupeKey: `signal_lead_partition_missing:${this.dayKey(now)}`,
+      });
+      return false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Signal lead partition check failed', {
+        error: { message },
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'signal_lead_partition_check_failed',
+        title: 'Signal lead-partition check could not run',
+        body: `The daily partition-existence assertion threw and therefore proved nothing.\nError: ${message}`,
+        dedupeKey: `signal_lead_partition_check_failed:${this.dayKey(now)}`,
+      });
+      return false;
+    }
+  }
+
+  private dayKey(now: Date): string {
+    return now.toISOString().slice(0, 10);
   }
 }

@@ -38,7 +38,26 @@ const HEAVY_DEVICE_MIN_ACCOUNTS = 3;
 const IP_TIMING_WINDOW_MS = 30 * 60 * 1000;
 // §16 class: K7 plumbing — sweep lookback. Bounds the daily scan; the dedupe
 // key makes re-seen clusters no-ops, so overlap between sweeps is free.
+//
+// IT BOUNDS THE SWEEP, NOT ONE QUERY (audit 2026-08-02, F212). This constant
+// used to bound only `fetchIpVoteRows` — the query it happened to be written
+// next to — while `fetchDeviceVoteClusters` joined ALL of poll_endorsements
+// and `fetchHeavyDevices` scanned ALL of user_devices. Both grew without limit
+// for the life of the product and both re-reported the same ancient clusters
+// forever. "The sweep looks back N days" is a property of the SWEEP, so every
+// fetcher honours it.
+//
+// BOUND ON THE ACT, NEVER ON THE REGISTRATION. The bound is `poll_endorsements.
+// created_at` (and signals.occurred_at), never `user_devices.first_seen`. A ring
+// registered two years ago that votes TODAY is exactly the case this detector
+// exists for; bounding on device registration would make that ring invisible —
+// the fix would have created the blind spot. `fetchHeavyDevices` is the one
+// fetcher whose subject is a device rather than a vote (the K1 sentence flags
+// ≥3 accounts per device "votes or not"), so it is in scope when EITHER a
+// recent endorsement OR recent device activity falls inside the window: the
+// union bounds the scan without narrowing what the sentence catches.
 const SWEEP_LOOKBACK_DAYS = 30;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // §16 class: K7 plumbing — sha256-hex prefix length for the sorted-userid
 // cluster key (dedupe_key is varchar(128); 40 hex chars ≫ collision-safe at
 // any realistic cluster count).
@@ -89,6 +108,23 @@ interface PollVoteSet {
   userId: string;
 }
 
+interface EndorsementRow {
+  pollId: string;
+  subjectType: string;
+  subjectId: string;
+  userId: string;
+}
+
+/**
+ * ONE KEYED FETCH PER SWEEP, NOT ONE PER POLL (audit 2026-08-02, F212).
+ *
+ * `filterToLiveEndorsements` and `leaderWithAndWithout` each issued a
+ * `pollEndorsement.findMany` PER POLL — twice over, across an unbounded poll
+ * set. The endorsement rows they want are the same rows, so they share one
+ * index: a batch load keyed by pollId, filled once per sweep.
+ */
+type EndorsementIndex = Map<string, EndorsementRow[]>;
+
 @Injectable()
 export class SybilClusterReportService {
   private readonly logger: LoggerService;
@@ -115,10 +151,22 @@ export class SybilClusterReportService {
         });
       }
     } catch (error) {
-      this.logger.warn('sybil sweep failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
+      // Swallow AND tell someone (audit 2026-08-02, F205). A sweep that dies
+      // quietly turns the vote-integrity detector off with no indication —
+      // an always-green instrument by absence, which is the exact disease
+      // the ratified methodology names.
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn('sybil sweep failed', { error: { message } });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'sybil_sweep_failed',
+        title: 'Sybil cluster sweep failed',
+        body: [
+          'The daily vote-integrity sweep threw; no clusters were evaluated for this run.',
+          `Error: ${message}`,
+          'Until it recovers, the detector reports nothing — which is indistinguishable from "no rings found".',
+        ].join('\n'),
+        dedupeKey: `sybil_sweep_failed:${new Date().toISOString().slice(0, 10)}`,
       });
     }
   }
@@ -135,6 +183,8 @@ export class SybilClusterReportService {
     const ipVoteRows = await this.fetchIpVoteRows();
 
     const findings: SybilClusterFinding[] = [];
+    // One endorsement index for the whole sweep — see EndorsementIndex.
+    const endorsements: EndorsementIndex = new Map();
 
     // --- (a) DEVICE clusters: ≥2 same-device accounts, same choice, same poll.
     const byDevice = new Map<string, DeviceVoteClusterRow[]>();
@@ -161,7 +211,7 @@ export class SybilClusterReportService {
         pollIds,
       );
       findings.push(
-        await this.buildVoteClusterFinding({
+        await this.buildVoteClusterFinding(endorsements, {
           clusterKey: deviceKey,
           kind: 'device',
           lockstepFact: `accounts share device ${deviceKey} (co-registration in user_devices — this alone proves shared-device CLAIMS, not where the votes were cast). ${provenance}`,
@@ -209,7 +259,10 @@ export class SybilClusterReportService {
     // append-only signal stays), so retracted/changed votes must not
     // cluster: keep only rows whose (user, poll, subject) endorsement still
     // exists.
-    const liveRows = await this.filterToLiveEndorsements(ipVoteRows);
+    const liveRows = await this.filterToLiveEndorsements(
+      ipVoteRows,
+      endorsements,
+    );
     const ipGroups = new Map<string, IpVoteRow[]>();
     for (const row of liveRows) {
       const key = `${row.ip_subnet_hmac}|${row.poll_id}|${row.endorsed_subject_id}`;
@@ -241,7 +294,7 @@ export class SybilClusterReportService {
           ? ` (${outsideCount} additional same-choice vote${outsideCount === 1 ? '' : 's'} on this subnet fall OUTSIDE the window — listed users are the in-window cluster only)`
           : '';
       findings.push(
-        await this.buildVoteClusterFinding({
+        await this.buildVoteClusterFinding(endorsements, {
           clusterKey,
           kind: 'ip_timing',
           lockstepFact: `same /24-/48 subnet (hmac ${first.ip_subnet_hmac.slice(0, 12)}…), same choice, within ${Math.round(spanMs / 60000)} min${outsideNote}`,
@@ -275,20 +328,24 @@ export class SybilClusterReportService {
   /** Severity per the K1 sentence: CRITICAL iff un-counting the cluster
    *  flips some poll's current leader; else WARN. Builds the 2-minute
    *  review artifact body. */
-  private async buildVoteClusterFinding(cluster: {
-    clusterKey: string;
-    kind: 'device' | 'ip_timing';
-    lockstepFact: string;
-    memberIds: string[];
-    votes: Array<{
-      pollId: string;
-      subjectKey: string;
-      userIds: string[];
-      votedAts: Date[];
-    }>;
-  }): Promise<SybilClusterFinding> {
+  private async buildVoteClusterFinding(
+    endorsements: EndorsementIndex,
+    cluster: {
+      clusterKey: string;
+      kind: 'device' | 'ip_timing';
+      lockstepFact: string;
+      memberIds: string[];
+      votes: Array<{
+        pollId: string;
+        subjectKey: string;
+        userIds: string[];
+        votedAts: Date[];
+      }>;
+    },
+  ): Promise<SybilClusterFinding> {
     const memberSet = new Set(cluster.memberIds);
     const pollIds = [...new Set(cluster.votes.map((v) => v.pollId))];
+    await this.loadEndorsements(pollIds, endorsements);
     // Per-poll-set dedupe: ops_alerts dedupe is a FOREVER unique column, so
     // a ring hitting a SECOND poll must mint a fresh key or it silently
     // collapses into the first (possibly acked) alert.
@@ -301,7 +358,7 @@ export class SybilClusterReportService {
     const marginLines: string[] = [];
     for (const pollId of pollIds) {
       const { leaderWith, leaderWithout, withCounts, withoutCounts } =
-        await this.leaderWithAndWithout(pollId, memberSet);
+        this.leaderWithAndWithout(pollId, memberSet, endorsements);
       const pollFlipped = leaderWith !== null && leaderWithout !== leaderWith;
       flipped = flipped || pollFlipped;
       marginLines.push(
@@ -343,19 +400,17 @@ export class SybilClusterReportService {
    *  members — distinct-endorser counts over poll_endorsements (the vote
    *  channel this ladder protects; comment-derived endorsers unaffected by
    *  un-counting votes are out of scope for the flip test). */
-  private async leaderWithAndWithout(
+  private leaderWithAndWithout(
     pollId: string,
     memberIds: Set<string>,
-  ): Promise<{
+    index: EndorsementIndex,
+  ): {
     leaderWith: string | null;
     leaderWithout: string | null;
     withCounts: string;
     withoutCounts: string;
-  }> {
-    const rows = await this.prisma.pollEndorsement.findMany({
-      where: { pollId },
-      select: { subjectType: true, subjectId: true, userId: true },
-    });
+  } {
+    const rows = index.get(pollId) ?? [];
     const votes: PollVoteSet[] = rows.map((r) => ({
       subjectKey: `${r.subjectType}:${r.subjectId}`,
       userId: r.userId,
@@ -468,15 +523,13 @@ export class SybilClusterReportService {
    *  can't cluster under their old choice. */
   private async filterToLiveEndorsements(
     rows: IpVoteRow[],
+    index: EndorsementIndex,
   ): Promise<IpVoteRow[]> {
     const pollIds = [...new Set(rows.map((r) => r.poll_id))];
+    await this.loadEndorsements(pollIds, index);
     const live = new Set<string>();
     for (const pollId of pollIds) {
-      const endorsements = await this.prisma.pollEndorsement.findMany({
-        where: { pollId },
-        select: { subjectType: true, subjectId: true, userId: true },
-      });
-      for (const e of endorsements) {
+      for (const e of index.get(pollId) ?? []) {
         live.add(`${pollId}|${e.subjectType}|${e.subjectId}|${e.userId}`);
       }
     }
@@ -541,6 +594,33 @@ export class SybilClusterReportService {
     return `Vote provenance: ${matching.size}/${captured.size} accounts with captured vote device-hmacs match the shared device${matching.size === captured.size ? ' (votes cast FROM this device)' : ' — the rest voted from OTHER devices'}.`;
   }
 
+  /** Fills the sweep's endorsement index for any poll it does not yet hold —
+   *  ONE keyed findMany for the whole missing set. */
+  private async loadEndorsements(
+    pollIds: string[],
+    index: EndorsementIndex,
+  ): Promise<void> {
+    const missing = [...new Set(pollIds)].filter((id) => !index.has(id));
+    if (!missing.length) {
+      return;
+    }
+    for (const id of missing) {
+      index.set(id, []);
+    }
+    const rows = await this.prisma.pollEndorsement.findMany({
+      where: { pollId: { in: missing } },
+      select: {
+        pollId: true,
+        subjectType: true,
+        subjectId: true,
+        userId: true,
+      },
+    });
+    for (const row of rows) {
+      index.get(row.pollId)?.push(row as EndorsementRow);
+    }
+  }
+
   private async describeMembers(userIds: string[]): Promise<string[]> {
     const users = await this.prisma.user.findMany({
       where: { userId: { in: userIds } },
@@ -557,6 +637,7 @@ export class SybilClusterReportService {
   /** DEVICE clusters: multi-account devices whose accounts endorsed the SAME
    *  subject on the SAME poll — the K1 WARN trigger. */
   private fetchDeviceVoteClusters(): Promise<DeviceVoteClusterRow[]> {
+    const since = this.sweepCutoff();
     return this.prisma.$queryRaw<DeviceVoteClusterRow[]>`
       SELECT ud.device_key,
              pe.poll_id::text AS poll_id,
@@ -571,20 +652,44 @@ export class SybilClusterReportService {
         GROUP BY device_key
         HAVING COUNT(DISTINCT user_id) >= ${SAME_DEVICE_SAME_CHOICE_MIN_ACCOUNTS}
       )
+        -- The sweep lookback, on the ACT. The multi-account-device subquery
+        -- above stays UNBOUNDED on purpose: a device registered years ago
+        -- whose accounts vote today is precisely the ring this detector
+        -- exists to catch, and bounding co-registration would hide it.
+        AND pe.created_at >= ${since}
       GROUP BY ud.device_key, pe.poll_id, pe.subject_type, pe.subject_id
       HAVING COUNT(DISTINCT pe.user_id) >= ${SAME_DEVICE_SAME_CHOICE_MIN_ACCOUNTS}
     `;
   }
 
-  /** Devices carrying ≥3 accounts, votes or not (K1 WARN regardless). */
+  /** Devices carrying ≥3 accounts, votes or not (K1 WARN regardless).
+   *  Bounded by the sweep lookback on EITHER a recent endorsement or recent
+   *  device activity — the union keeps "votes or not" true while still
+   *  bounding the scan (see SWEEP_LOOKBACK_DAYS). */
   private fetchHeavyDevices(): Promise<HeavyDeviceRow[]> {
+    const since = this.sweepCutoff();
     return this.prisma.$queryRaw<HeavyDeviceRow[]>`
-      SELECT device_key,
-             array_agg(DISTINCT user_id::text) AS user_ids
-      FROM user_devices
-      GROUP BY device_key
-      HAVING COUNT(DISTINCT user_id) >= ${HEAVY_DEVICE_MIN_ACCOUNTS}
+      SELECT ud.device_key,
+             array_agg(DISTINCT ud.user_id::text) AS user_ids
+      FROM user_devices ud
+      WHERE ud.device_key IN (
+        SELECT d.device_key
+        FROM user_devices d
+        WHERE d.last_seen >= ${since}
+           OR EXISTS (
+             SELECT 1 FROM poll_endorsements pe
+             WHERE pe.user_id = d.user_id
+               AND pe.created_at >= ${since}
+           )
+      )
+      GROUP BY ud.device_key
+      HAVING COUNT(DISTINCT ud.user_id) >= ${HEAVY_DEVICE_MIN_ACCOUNTS}
     `;
+  }
+
+  /** The one instant every fetcher bounds on. */
+  private sweepCutoff(): Date {
+    return new Date(Date.now() - SWEEP_LOOKBACK_DAYS * MS_PER_DAY);
   }
 
   /** Raw poll_vote audit rows carrying a subnet hmac — the timing/choice
@@ -613,9 +718,7 @@ export class SybilClusterReportService {
         -- America/Chicago 613, Asia/Tokyo 574. It read correctly only because
         -- every pooled connection is pinned to UTC — and that pin is skipped
         -- for any DATABASE_URL that already carries an options= parameter.
-        AND s.occurred_at >= ${utcInstantSql(
-          new Date(Date.now() - SWEEP_LOOKBACK_DAYS * 24 * 60 * 60 * 1000),
-        )}
+        AND s.occurred_at >= ${utcInstantSql(this.sweepCutoff())}
     `;
   }
 }

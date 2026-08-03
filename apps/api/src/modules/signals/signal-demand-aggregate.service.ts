@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { geoEnvelopeSql } from './ground-containment';
 import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 
@@ -93,6 +94,7 @@ export class SignalDemandAggregateService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly opsAlerts: OpsAlertsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SignalDemandAggregateService');
@@ -199,11 +201,26 @@ export class SignalDemandAggregateService {
         });
       }
     } catch (error) {
+      // Swallow AND tell someone (audit 2026-08-02, F205). A silently frozen
+      // aggregate leaves the collector's territory read deciding what to
+      // enrich — i.e. what to SPEND on — from stale demand.
+      const message = error instanceof Error ? error.message : String(error);
       this.logger.error('Failed to refresh signal demand aggregate', {
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
             : { message: String(error) },
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'signal_demand_aggregate_refresh_failed',
+        title: 'Signal demand aggregate refresh failed',
+        body: [
+          'The 15-minute watermark refresh threw; the aggregate is frozen at its last successful pass.',
+          `Error: ${message}`,
+          'Downstream: demand reads (and the collector spend decisions derived from them) are served from stale day slices until this recovers.',
+        ].join('\n'),
+        dedupeKey: `signal_demand_aggregate_refresh_failed:${new Date().toISOString().slice(0, 10)}`,
       });
     } finally {
       this.refreshInFlight = false;

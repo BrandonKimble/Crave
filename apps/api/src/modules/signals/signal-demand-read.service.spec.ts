@@ -198,7 +198,10 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       const arrays = allValues(queries[0]).filter(Array.isArray);
       expect(arrays).toContainEqual([ENTITY_ID, source]);
       expect(arrays).toContainEqual([ENTITY_ID]);
-      expect(sql).toContain('COALESCE(r.to_entity_id, a.subject_id) = ANY(');
+      // The fold-back is emitted by the ONE builder now (subject-identity.ts),
+      // so it arrives as its own Prisma fragment rather than inline text.
+      expect(sql).toContain('COALESCE(r.to_entity_id, a.subject_id)');
+      expect(sql).toContain('= ANY(');
     });
 
     // Docket #6: fresh-arm pins died with the fresh arm — one law, one
@@ -374,12 +377,10 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       expect(sql).toContain('rf.from_entity_id = a.subject_id');
       expect(sql).toContain("s.meta->>'contextRestaurantId'");
       expect(sql).toContain('direct.connection_id IS NULL');
-      expect(sql).toContain(
-        'survivor.food_id = COALESCE(rf.to_entity_id, a.subject_id)',
-      );
-      expect(sql).toContain(
-        'survivor.restaurant_id = COALESCE(rr.to_entity_id, a.ctx_restaurant_id)',
-      );
+      expect(sql).toContain('survivor.food_id = ');
+      expect(sql).toContain('COALESCE(rf.to_entity_id, a.subject_id)');
+      expect(sql).toContain('survivor.restaurant_id = ');
+      expect(sql).toContain('COALESCE(rr.to_entity_id, a.ctx_restaurant_id)');
     });
 
     it('view stats + viewed-name matches serve the autocomplete lanes from the ledger', async () => {
@@ -464,5 +465,43 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       await expect(service.recentSearches(USER_ID, 8)).resolves.toEqual([]);
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
+  });
+});
+
+/**
+ * F207 — A FAILED EXPANSION CHANGES THE ANSWER, NOT THE AVAILABILITY.
+ *
+ * Both expansions used to catch and return the UNEXPANDED input: a merged
+ * entity's history silently dropped from the demand score, or the ancestor
+ * rows the read algebra calls load-bearing silently dropped from the
+ * containment read — with a `logger.debug` as the only trace, feeding numbers
+ * the collector spends money against. They throw now; the caller chooses.
+ */
+describe('demand reads refuse to under-count (F207)', () => {
+  it('a failed redirect-source expansion throws instead of scoring a smaller number', async () => {
+    const { service, prisma } = createHarness({});
+    prisma.entityRedirect.findMany = jest.fn(() =>
+      Promise.reject(new Error('connection reset')),
+    ) as never;
+
+    await expect(
+      service.entityDemandScores({ entityIds: [ENTITY_ID], windowDays: 30 }),
+    ).rejects.toThrow('connection reset');
+  });
+
+  it('a failed ancestor expansion throws instead of dropping the coarse rows', async () => {
+    const { service, prisma } = createHarness({});
+    prisma.$queryRaw = jest.fn(() =>
+      Promise.reject(new Error('statement timeout')),
+    ) as never;
+
+    await expect(
+      service.territoryEntityDemand({
+        placeIds: ['44444444-4444-4444-4444-444444444444'],
+        windowDays: 30,
+        limit: 10,
+        entityTypes: ['restaurant'],
+      }),
+    ).rejects.toThrow('statement timeout');
   });
 });

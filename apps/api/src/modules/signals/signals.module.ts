@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { DiscoveryModule } from '@nestjs/core';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { IdentityModule } from '../identity/identity.module';
@@ -8,6 +9,7 @@ import { SignalsController } from './signals.controller';
 import { SignalDemandAggregateService } from './signal-demand-aggregate.service';
 import { SignalDemandReadService } from './signal-demand-read.service';
 import { SignalPartitionMaintenanceService } from './signal-partition-maintenance.service';
+import { SignalCoverageAudit } from './signal-coverage.audit';
 
 /**
  * The Signals Ledger (master plan §3): the append-only write path
@@ -20,13 +22,22 @@ import { SignalPartitionMaintenanceService } from './signal-partition-maintenanc
 @Module({
   // PlacesModule: the viewport-dwell settle also feeds the naming
   // reconciler (header subject-store design — settles are observations).
-  imports: [SharedModule, PrismaModule, IdentityModule, PlacesModule],
+  imports: [
+    SharedModule,
+    PrismaModule,
+    IdentityModule,
+    PlacesModule,
+    DiscoveryModule,
+  ],
   controllers: [SignalsController],
   providers: [
     SignalsService,
     SignalDemandAggregateService,
     SignalDemandReadService,
     SignalPartitionMaintenanceService,
+    // Boot refuses a user-act route that says nothing about the ledger —
+    // see signal-coverage.audit.ts (F203).
+    SignalCoverageAudit,
   ],
   exports: [
     SignalsService,

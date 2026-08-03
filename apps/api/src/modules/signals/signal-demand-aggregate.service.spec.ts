@@ -78,11 +78,13 @@ function createHarness(
       },
     ),
   };
+  const opsAlerts = { emit: jest.fn() };
   const service = new SignalDemandAggregateService(
     prisma as never,
+    opsAlerts as never,
     createLogger() as never,
   );
-  return { service, prisma, tx, statements, queries };
+  return { service, prisma, tx, statements, queries, opsAlerts };
 }
 
 function flatten(statement: CapturedStatement): string {

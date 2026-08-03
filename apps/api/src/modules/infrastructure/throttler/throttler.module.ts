@@ -12,12 +12,12 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
  * Provides distributed rate limiting using Redis as the backing store.
  * This ensures rate limits work correctly across multiple API instances.
  *
- * Rate Limit Tiers:
- * - short: 3 requests per 1 second (burst protection)
- * - medium: 20 requests per 10 seconds
- * - long: 100 requests per 60 seconds
- *
- * Endpoints can override these defaults using @Throttle() or @SkipThrottle()
+ * Three windows govern every route that carries no tier annotation: a short
+ * burst window, a medium window, and a long sustained window. Their values
+ * live in config/configuration.ts (env-driven) and are stated NOWHERE else —
+ * the numbers that used to be restated here had drifted from the live config
+ * and were deleted (audit 2026-08-02). Annotated routes carry an explicit
+ * ceiling via @RateLimitTier; see throttler.decorator.ts.
  *
  * Excluded from rate limiting: /health only. See below.
  */
@@ -99,6 +99,43 @@ const RATE_LIMIT_EXEMPT_PATHS = new Set([
   '/health/ready',
 ]);
 
+/**
+ * A CEILING OF ZERO IS A DECISION, NOT AN ABSENCE (audit 2026-08-02).
+ *
+ * This read used to be `configService.get(...) || N`, which discards a
+ * configured `0` — the only way to spell "this window is closed" — and
+ * silently reopens it to N. Same class as the spend-cap trap `readSpendCapUsd`
+ * was written to kill. `??` distinguishes absent from zero; a value that is
+ * present but not a finite non-negative integer is a MALFORMED ceiling, and a
+ * malformed ceiling must refuse to boot rather than quietly widen.
+ *
+ * The `??` fallbacks are gone as well: config/configuration.ts already parses
+ * these with defaults, so a second set of literals here was a second
+ * declaration of the same numbers. Absent here means the config layer is
+ * missing, which is itself a boot failure.
+ */
+export function readThrottlerWindow(
+  configService: ConfigService,
+  window: 'short' | 'medium' | 'long',
+): { ttl: number; limit: number } {
+  const read = (field: 'ttl' | 'limit'): number => {
+    const path = `throttler.${window}.${field}`;
+    const raw = configService.get<number>(path);
+    if (raw === undefined || raw === null) {
+      throw new Error(
+        `Throttler config missing: ${path}. Every rate-limit window must be declared in config/configuration.ts.`,
+      );
+    }
+    if (!Number.isInteger(raw) || raw < 0) {
+      throw new Error(
+        `Throttler config malformed: ${path} = ${String(raw)}. A window must be a finite non-negative integer (0 = closed).`,
+      );
+    }
+    return raw;
+  };
+  return { ttl: read('ttl'), limit: read('limit') };
+}
+
 @Module({
   imports: [
     ThrottlerModule.forRootAsync({
@@ -109,21 +146,9 @@ const RATE_LIMIT_EXEMPT_PATHS = new Set([
         redisService: RedisService,
       ) => ({
         throttlers: [
-          {
-            name: 'short',
-            ttl: configService.get<number>('throttler.short.ttl') || 1000,
-            limit: configService.get<number>('throttler.short.limit') || 5,
-          },
-          {
-            name: 'medium',
-            ttl: configService.get<number>('throttler.medium.ttl') || 10000,
-            limit: configService.get<number>('throttler.medium.limit') || 30,
-          },
-          {
-            name: 'long',
-            ttl: configService.get<number>('throttler.long.ttl') || 60000,
-            limit: configService.get<number>('throttler.long.limit') || 100,
-          },
+          { name: 'short', ...readThrottlerWindow(configService, 'short') },
+          { name: 'medium', ...readThrottlerWindow(configService, 'medium') },
+          { name: 'long', ...readThrottlerWindow(configService, 'long') },
         ],
         storage: new ThrottlerRedisStorage(redisService),
         // PER-USER WHEN THE CALLER PROVES WHO THEY ARE, IP OTHERWISE.

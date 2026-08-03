@@ -1,3 +1,4 @@
+import { OPS_DASHBOARD_HTML } from './ops-dashboard.html';
 import {
   OpsSummaryService,
   monthPositionColor,
@@ -99,13 +100,17 @@ function buildGovernance() {
   pools.register({
     name: 'gemini.monthlySpend',
     credential: 'default',
-    window: { kind: 'perMonth', limit: 50_000_000 },
+    window: {
+      kind: 'perMonth',
+      limit: 50_000_000,
+      denomination: 'billedMicros',
+    },
     reservationTtlMs: 60_000,
   });
   pools.register({
     name: 'campaign.c1',
     credential: 'default',
-    window: { kind: 'grant', amount: 1_000 },
+    window: { kind: 'grant', amount: 1_000, denomination: 'billedMicros' },
     reservationTtlMs: 60_000,
   });
   return {
@@ -187,28 +192,33 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
     expect(summary.vendors.googlePlaces).toEqual({ mtdMicros: 0 });
     expect(summary.vendors.anomalies).toEqual([]);
 
-    expect(Array.isArray(summary.places)).toBe(true);
-    expect(summary.sources).toEqual([
-      {
-        handle: 'FoodNYC',
-        lane: 'chronological',
-        state: 'ok',
-        normalizedLateness: 0.2,
-        lastRanAt: null,
-        nextDueAt: null,
-        lastOutputDocs: 40,
-        outputDocsBaseline: 38.5,
-        lastCostMicros: 120_000,
-      },
-    ]);
+    expect(summary.places.ok).toBe(true);
+    expect(summary.sources).toEqual({
+      ok: true,
+      data: [
+        {
+          handle: 'FoodNYC',
+          lane: 'chronological',
+          state: 'ok',
+          normalizedLateness: 0.2,
+          lastRanAt: null,
+          nextDueAt: null,
+          lastOutputDocs: 40,
+          outputDocsBaseline: 38.5,
+          lastCostMicros: 120_000,
+        },
+      ],
+    });
 
+    // Every runtime-failable count is a RESULT now, never a bare number: a
+    // failed read must be distinguishable from a genuinely idle pipeline.
     expect(summary.pipeline).toEqual({
-      docs24h: 3,
-      entities24h: 7,
-      extractionRuns24h: 4,
-      extractionFailed24h: 1,
-      batchJobsPending: 2,
-      batchJobsIngested24h: 5,
+      docs24h: { ok: true, data: 3 },
+      entities24h: { ok: true, data: 7 },
+      extractionRuns24h: { ok: true, data: 4 },
+      extractionFailed24h: { ok: true, data: 1 },
+      batchJobsPending: { ok: true, data: 2 },
+      batchJobsIngested24h: { ok: true, data: 5 },
       drainPending: null,
       unackedAlerts: 1,
     });
@@ -230,7 +240,7 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
     const summary = await service.summary(NOW);
     expect(summary.vendors.gemini.backstopLimitMicros).toBeNull();
     expect(summary.vendors.anomalies).toEqual([]);
-    expect(summary.sources).toEqual([]);
+    expect(summary.sources).toEqual({ ok: true, data: [] });
   });
 
   it('falls back to the persisted backstop.gemini row when governance is absent', async () => {
@@ -346,16 +356,19 @@ describe('OpsSummaryService.summary (V2 shape test)', () => {
       buildLogger(),
     );
     const summary = await service.summary(NOW);
-    expect(summary.places).toEqual([
-      {
-        community: 'FoodNYC',
-        anchorPlaceName: 'New York City',
-        docsTotal: 24_000,
-        docs24h: 120,
-        entitiesAttributed: 1_800,
-        estLlmSpendMicros: 24_000 * 150,
-      },
-    ]);
+    expect(summary.places).toEqual({
+      ok: true,
+      data: [
+        {
+          community: 'FoodNYC',
+          anchorPlaceName: 'New York City',
+          docsTotal: 24_000,
+          docs24h: 120,
+          entitiesAttributed: 1_800,
+          estLlmSpendMicros: 24_000 * 150,
+        },
+      ],
+    });
   });
 });
 
@@ -425,5 +438,90 @@ describe('expectedByTodayMicrosV2 (expectation v2: median + approved campaigns, 
     ).toBeNull();
     // A campaign alone IS an expectation even with zero daily history.
     expect(expectedByTodayMicrosV2([], 10, 42)).toBe(42);
+  });
+});
+
+/**
+ * F206 — THE DASHBOARD CAN SAY "I DON'T KNOW".
+ *
+ * A failed read used to return `[]` / `0`, which on screen is an idle
+ * pipeline — the reading most likely to be WRONG at the exact moment the
+ * operator is looking, because the DB read failing IS the incident.
+ */
+describe('OpsSummaryService honest absence (F206)', () => {
+  it('a failed Places/Sources read reports the failure, not an empty card', async () => {
+    const prisma = buildPrisma();
+    prisma.$queryRaw = jest.fn(() =>
+      Promise.reject(new Error('connection reset by peer')),
+    ) as never;
+    const registry = buildRegistry();
+    registry.collectorHeartbeats = jest.fn(() =>
+      Promise.reject(new Error('registry unavailable')),
+    ) as never;
+
+    const service = new OpsSummaryService(
+      prisma as never,
+      buildOpsAlerts() as never,
+      registry as never,
+      buildLogger(),
+      buildGovernance(),
+    );
+    const summary = await service.summary(NOW);
+
+    expect(summary.places).toEqual({
+      ok: false,
+      reason: 'connection reset by peer',
+    });
+    expect(summary.sources).toEqual({
+      ok: false,
+      reason: 'registry unavailable',
+    });
+    // The distinction that matters: this is NOT the same payload a genuinely
+    // empty deployment produces.
+    expect(summary.places).not.toEqual({ ok: true, data: [] });
+  });
+
+  it('a failed pipeline count is "—", never 0', async () => {
+    const prisma = buildPrisma();
+    prisma.sourceDocument.count = jest.fn(() =>
+      Promise.reject(new Error('statement timeout')),
+    ) as never;
+
+    const service = new OpsSummaryService(
+      prisma as never,
+      buildOpsAlerts() as never,
+      buildRegistry() as never,
+      buildLogger(),
+      buildGovernance(),
+    );
+    const summary = await service.summary(NOW);
+
+    expect(summary.pipeline.docs24h).toEqual({
+      ok: false,
+      reason: 'statement timeout',
+    });
+    // Its neighbours are unaffected — one failed cell degrades one cell.
+    expect(summary.pipeline.entities24h).toEqual({ ok: true, data: 7 });
+  });
+
+  it('the renderer prints the dash and the reason, and never treats a failure as a number', () => {
+    const page = OPS_DASHBOARD_HTML;
+    expect(page).toContain('function sectionOk(');
+    expect(page).toContain('function numSection(');
+    // Every runtime-failable pipeline cell goes through numSection, so no
+    // cell can regress to num() on a result object (which renders "NaN"/"—"
+    // by accident rather than by decision).
+    for (const field of [
+      'docs24h',
+      'entities24h',
+      'extractionRuns24h',
+      'extractionFailed24h',
+      'batchJobsPending',
+      'batchJobsIngested24h',
+    ]) {
+      expect(page).toContain('numSection(pipeline.' + field + ')');
+      expect(page).not.toContain('num(pipeline.' + field + ')');
+    }
+    expect(page).toContain('not zero');
   });
 });

@@ -10,7 +10,10 @@ import {
   type CollectorHeartbeat,
 } from '../content-processing/reddit-collector/collector-source-registry.service';
 import { pricedGeminiRow } from '../external-integrations/shared/gemini-pricing';
-import { median } from '../external-integrations/shared/spend-analytics.service';
+import {
+  median,
+  UNIT_COST_WINDOW_DAYS,
+} from '../external-integrations/shared/spend-analytics.service';
 import {
   placesCostMicrosPerCall,
   tomtomBlendedCostMicrosPerDraw,
@@ -19,11 +22,17 @@ import {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** §16 K3-shaped operational bound: the daily-spend window length — long
- *  enough to see a trend, short enough to stay a glance-able chart. Mirrors
- *  spend-analytics.service.ts's UNIT_COST_WINDOW_DAYS (same 30-day horizon,
- *  independently named here since this module has no dependency on that
- *  service's internal constant). */
-const DAILY_WINDOW_DAYS = 30;
+ *  enough to see a trend, short enough to stay a glance-able chart.
+ *
+ *  ONE HORIZON, ONE DECLARATION (audit 2026-08-02, F213). This was a second
+ *  copy of 30 whose comment justified itself with "this module has no
+ *  dependency on that service's internal constant" — which was not true: the
+ *  file already imports `median` and `pricedGeminiRow` from that very module.
+ *  The chart window and the unit-cost window drifting apart would make the
+ *  displayed "expected" line quietly incomparable to the governance numbers
+ *  derived from the other, so the horizon belongs to whichever module owns
+ *  the concept. */
+const DAILY_WINDOW_DAYS = UNIT_COST_WINDOW_DAYS;
 
 /** Trailing window for the TomTom credit burn-rate derivation (est. days
  *  left) — a derivation of measured ledger data, never an invented number. */
@@ -122,6 +131,35 @@ export function tomtomCreditRemainingMicros(
   return Math.round(creditUsd * 1_000_000) - burnSinceDeclaredMicros;
 }
 
+/**
+ * A DASHBOARD CELL IS {MEASURED VALUE, NOT MEASURED} — AND A ZERO IS A
+ * MEASUREMENT (audit 2026-08-02, F206).
+ *
+ * `warnSwallowed` was a good seam with the right rule ("degrade the card, but
+ * NEVER silently — every swallow logs"), but logging is not the payload: a
+ * failed Places read returned `[]`, a failed Sources read returned `[]`, and
+ * each failed pipeline count returned `0`. On screen an empty Sources card and
+ * `docs24h: 0` are indistinguishable from a genuinely idle pipeline — the
+ * reading most likely to be WRONG at the exact moment the operator is looking,
+ * because the DB read failing IS the incident.
+ *
+ * The honest shape was already in this file twice — `drainPending: null`
+ * rendering "—" ("an honest '—' beats a fabricated number") and the TomTom
+ * credit block's `declared: false` — applied to the fields whose absence was
+ * known at DESIGN time and not to the fields whose absence arrives at RUNTIME.
+ * This is that same rule, at runtime.
+ */
+export type SectionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; reason: string };
+
+function sectionFailed(error: unknown): { ok: false; reason: string } {
+  return {
+    ok: false,
+    reason: error instanceof Error ? error.message : String(error),
+  };
+}
+
 export interface OpsSummary {
   spend: {
     monthToDateByService: Record<string, number>;
@@ -171,34 +209,40 @@ export interface OpsSummary {
       detail: string;
     }>;
   };
-  places: Array<{
-    community: string;
-    anchorPlaceName: string | null;
-    docsTotal: number;
-    docs24h: number;
-    entitiesAttributed: number;
-    /** Measured gemini per-document unit cost × this community's docs —
-     *  null (rendered "—") when no unit-cost row exists yet. */
-    estLlmSpendMicros: number | null;
-  }>;
-  sources: Array<{
-    handle: string;
-    lane: string;
-    state: 'ok' | 'cost_paused' | 'red';
-    normalizedLateness: number;
-    lastRanAt: string | null;
-    nextDueAt: string | null;
-    lastOutputDocs: number | null;
-    outputDocsBaseline: number | null;
-    lastCostMicros: number | null;
-  }>;
+  places: SectionResult<
+    Array<{
+      community: string;
+      anchorPlaceName: string | null;
+      docsTotal: number;
+      docs24h: number;
+      entitiesAttributed: number;
+      /** Measured gemini per-document unit cost × this community's docs —
+       *  null (rendered "—") when no unit-cost row exists yet. */
+      estLlmSpendMicros: number | null;
+    }>
+  >;
+  sources: SectionResult<
+    Array<{
+      handle: string;
+      lane: string;
+      state: 'ok' | 'cost_paused' | 'red';
+      normalizedLateness: number;
+      lastRanAt: string | null;
+      nextDueAt: string | null;
+      lastOutputDocs: number | null;
+      outputDocsBaseline: number | null;
+      lastCostMicros: number | null;
+    }>
+  >;
   pipeline: {
-    docs24h: number;
-    entities24h: number;
-    extractionRuns24h: number;
-    extractionFailed24h: number;
-    batchJobsPending: number;
-    batchJobsIngested24h: number;
+    docs24h: SectionResult<number>;
+    entities24h: SectionResult<number>;
+    extractionRuns24h: SectionResult<number>;
+    extractionFailed24h: SectionResult<number>;
+    batchJobsPending: SectionResult<number>;
+    batchJobsIngested24h: SectionResult<number>;
+    /** NOT a failure: no drain-backlog instrument exists yet. Absence known
+     *  at design time keeps its design-time shape. */
     drainPending: number | null;
     unackedAlerts: number;
   };
@@ -208,6 +252,11 @@ export interface OpsSummary {
     unacknowledgedCount: number;
   };
 }
+
+/** The row shapes the two list sections carry, named so the SectionResult
+ *  wrapper does not have to be indexed through twice. */
+export type PlacesRow = (OpsSummary['places'] & { ok: true })['data'][number];
+export type SourcesRows = (OpsSummary['sources'] & { ok: true })['data'];
 
 interface SpendCore {
   monthToDateByService: Record<string, number>;
@@ -260,6 +309,19 @@ export class OpsSummaryService {
     });
   }
 
+  /** One count, one honest answer: the number, or the reason there isn't one. */
+  private async countSection(
+    section: string,
+    read: () => Promise<number>,
+  ): Promise<SectionResult<number>> {
+    try {
+      return { ok: true, data: await read() };
+    } catch (error) {
+      this.warnSwallowed(section, error);
+      return sectionFailed(error);
+    }
+  }
+
   async summary(now: Date = new Date()): Promise<OpsSummary> {
     return sanitizeBigInts(await this.assembleSummary(now));
   }
@@ -297,13 +359,20 @@ export class OpsSummaryService {
       (row) =>
         row.workClass === 'gemini.reddit_extraction' && row.unit === 'document',
     );
-    const places = placesBase.map((entry) => ({
-      ...entry,
-      estLlmSpendMicros:
-        perDocRow !== undefined
-          ? Math.round(perDocRow.microUsdPerUnit * entry.docsTotal)
-          : null,
-    }));
+    // The unit-cost decoration rides on the section RESULT: a failed Places
+    // read stays a failure all the way to the renderer (F206).
+    const places: OpsSummary['places'] = placesBase.ok
+      ? {
+          ok: true,
+          data: placesBase.data.map((entry) => ({
+            ...entry,
+            estLlmSpendMicros:
+              perDocRow !== undefined
+                ? Math.round(perDocRow.microUsdPerUnit * entry.docsTotal)
+                : null,
+          })),
+        }
+      : placesBase;
 
     return {
       spend: {
@@ -691,16 +760,15 @@ export class OpsSummaryService {
 
   private async placesSection(
     now: Date,
-  ): Promise<Array<Omit<OpsSummary['places'][number], 'estLlmSpendMicros'>>> {
+  ): Promise<SectionResult<Array<Omit<PlacesRow, 'estLlmSpendMicros'>>>> {
     const since = new Date(now.getTime() - MS_PER_DAY);
-    let sources: Array<{ handle: string; anchor_place_name: string | null }> =
-      [];
+    let sources: Array<{ handle: string; anchor_place_name: string | null }>;
     let docs: Array<{
       community: string;
       docs_total: bigint;
       docs_24h: bigint;
-    }> = [];
-    let entities: Array<{ community: string; entities: bigint }> = [];
+    }>;
+    let entities: Array<{ community: string; entities: bigint }>;
     try {
       [sources, docs, entities] = await Promise.all([
         this.prisma.$queryRaw<
@@ -731,9 +799,11 @@ export class OpsSummaryService {
         `,
       ]);
     } catch (error) {
-      // A read failure must never take the whole dashboard down — the
-      // Places card renders empty this refresh, but the failure is logged.
+      // A read failure must never take the whole dashboard down — but it must
+      // not be reported as an EMPTY Places card either. Empty is a
+      // measurement; this is the absence of one (F206).
       this.warnSwallowed('places', error);
+      return sectionFailed(error);
     }
 
     const docsByCommunity = new Map<
@@ -751,7 +821,7 @@ export class OpsSummaryService {
       entitiesByCommunity.set(row.community, Number(row.entities));
     }
 
-    return sources.map((source) => {
+    const data = sources.map((source) => {
       const key = source.handle.toLowerCase();
       const docCounts = docsByCommunity.get(key) ?? { total: 0, last24h: 0 };
       return {
@@ -762,18 +832,19 @@ export class OpsSummaryService {
         entitiesAttributed: entitiesByCommunity.get(key) ?? 0,
       };
     });
+    return { ok: true, data };
   }
 
   // -------------------------------------------------------------- sources
 
-  private async sourcesSection(now: Date): Promise<OpsSummary['sources']> {
-    let heartbeats: CollectorHeartbeat[] = [];
+  private async sourcesSection(now: Date): Promise<SectionResult<SourcesRows>> {
+    let heartbeats: CollectorHeartbeat[];
     let laneTimes: Array<{
       source_id: string;
       lane: string;
       due_at: Date;
       last_ran_at: Date | null;
-    }> = [];
+    }>;
     try {
       [heartbeats, laneTimes] = await Promise.all([
         this.registry.collectorHeartbeats(now),
@@ -791,9 +862,10 @@ export class OpsSummaryService {
         `,
       ]);
     } catch (error) {
-      // A read failure must never take the whole dashboard down — the
-      // Sources card renders empty this refresh, but the failure is logged.
+      // Same rule as Places: an empty Sources card means "no enabled lanes",
+      // which is a claim this read is in no position to make (F206).
       this.warnSwallowed('sources', error);
+      return sectionFailed(error);
     }
     const timesByKey = new Map<
       string,
@@ -803,7 +875,7 @@ export class OpsSummaryService {
       timesByKey.set(`${row.source_id} ${row.lane}`, row);
     }
 
-    return heartbeats.map((beat): OpsSummary['sources'][number] => {
+    const data = heartbeats.map((beat): SourcesRows[number] => {
       const times = timesByKey.get(`${beat.sourceId} ${beat.lane}`);
       // Broader than spend-analytics' checkLaneReds ALERT predicate on
       // purpose: the dashboard also shows transient lateness + coverage
@@ -827,6 +899,7 @@ export class OpsSummaryService {
         lastCostMicros: beat.lastCostMicros,
       };
     });
+    return { ok: true, data };
   }
 
   // ------------------------------------------------------------- pipeline
@@ -843,44 +916,42 @@ export class OpsSummaryService {
       batchJobsPending,
       batchJobsIngested24h,
     ] = await Promise.all([
-      this.prisma.sourceDocument
-        .count({ where: { collectedAt: { gte: since } } })
-        .catch((error: unknown) => {
-          this.warnSwallowed('pipeline.docs24h', error);
-          return 0;
+      // A COUNT THAT FAILED IS NOT A COUNT OF ZERO (F206). Each of these used
+      // to `return 0` on error, which renders as a genuinely idle pipeline —
+      // the single most misleading thing the card could say at the exact
+      // moment an operator is looking at it.
+      this.countSection('pipeline.docs24h', () =>
+        this.prisma.sourceDocument.count({
+          where: { collectedAt: { gte: since } },
         }),
-      this.prisma.restaurantEntityEvent
-        .count({ where: { createdAt: { gte: since } } })
-        .catch((error: unknown) => {
-          this.warnSwallowed('pipeline.entities24h', error);
-          return 0;
+      ),
+      this.countSection('pipeline.entities24h', () =>
+        this.prisma.restaurantEntityEvent.count({
+          where: { createdAt: { gte: since } },
         }),
-      this.prisma.extractionRun
-        .count({ where: { startedAt: { gte: since } } })
-        .catch((error: unknown) => {
-          this.warnSwallowed('pipeline.extractionRuns24h', error);
-          return 0;
+      ),
+      this.countSection('pipeline.extractionRuns24h', () =>
+        this.prisma.extractionRun.count({
+          where: { startedAt: { gte: since } },
         }),
-      this.prisma.extractionRun
-        .count({ where: { status: 'failed', startedAt: { gte: since } } })
-        .catch((error: unknown) => {
-          this.warnSwallowed('pipeline.extractionFailed24h', error);
-          return 0;
+      ),
+      this.countSection('pipeline.extractionFailed24h', () =>
+        this.prisma.extractionRun.count({
+          where: { status: 'failed', startedAt: { gte: since } },
         }),
-      this.prisma.llmBatchJob
-        // Terminal failures are not "pending" — without this filter the
-        // July-11-era failed relics inflate the card forever.
-        .count({ where: { ingestedAt: null, status: { not: 'failed' } } })
-        .catch((error: unknown) => {
-          this.warnSwallowed('pipeline.batchJobsPending', error);
-          return 0;
+      ),
+      // Terminal failures are not "pending" — without this filter the
+      // July-11-era failed relics inflate the card forever.
+      this.countSection('pipeline.batchJobsPending', () =>
+        this.prisma.llmBatchJob.count({
+          where: { ingestedAt: null, status: { not: 'failed' } },
         }),
-      this.prisma.llmBatchJob
-        .count({ where: { ingestedAt: { gte: since } } })
-        .catch((error: unknown) => {
-          this.warnSwallowed('pipeline.batchJobsIngested24h', error);
-          return 0;
+      ),
+      this.countSection('pipeline.batchJobsIngested24h', () =>
+        this.prisma.llmBatchJob.count({
+          where: { ingestedAt: { gte: since } },
         }),
+      ),
     ]);
     return {
       docs24h,

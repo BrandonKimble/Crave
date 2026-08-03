@@ -5,6 +5,11 @@ import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import { freshSignalAttributionSql } from './ground-containment';
 import { utcInstantSql } from './sql-instant';
+import {
+  redirectJoinSql,
+  resolvedSubjectSql,
+  subjectMatchesSql,
+} from './subject-identity';
 import { dayRecencySql } from '../polls/supply/poll-supply.constants';
 import {
   DEDUPE_KEY_SQL,
@@ -173,13 +178,13 @@ export class SignalDemandReadService {
     >`
       WITH agg AS (
         SELECT
-          COALESCE(r.to_entity_id, a.subject_id) AS entity_id,
+          ${resolvedSubjectSql('a')} AS entity_id,
           a.actor_id,
           SUM(
             a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
           )::float8 AS acts
         FROM signal_demand_daily a
-        LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
+        ${redirectJoinSql('a')}
         WHERE a.place_id IS NULL
           AND a.subject_id = ANY(${expandedIds}::uuid[])
           -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
@@ -187,7 +192,7 @@ export class SignalDemandReadService {
           AND a.day >= ${sinceDayKey}::date
           ${kindFilterAgg}
           ${actorFilterAgg}
-          AND COALESCE(r.to_entity_id, a.subject_id) = ANY(${params.entityIds}::uuid[])
+          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])
         GROUP BY 1, 2
       ),
       by_actor AS (
@@ -419,9 +424,9 @@ export class SignalDemandReadService {
             AND a.meta->>'searchRequestId' = l.request_id
         ) AS explicit_selection
       FROM latest l
-      LEFT JOIN entity_redirects r ON r.from_entity_id = l.subject_id
+      ${redirectJoinSql('l')}
       LEFT JOIN core_entities e
-        ON e.entity_id = COALESCE(r.to_entity_id, l.subject_id)
+        ON e.entity_id = ${resolvedSubjectSql('l')}
       ORDER BY l.last_searched_at DESC
     `;
     return rows.map((row) => ({
@@ -471,9 +476,9 @@ export class SignalDemandReadService {
         SUM(${EVENT_COUNT_SQL})::int AS view_count,
         (ARRAY_AGG(s.meta->>'locationId' ORDER BY s.occurred_at DESC))[1] AS location_id
       FROM signals s
-      LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
+      ${redirectJoinSql('s')}
       JOIN core_entities e
-        ON e.entity_id = COALESCE(r.to_entity_id, s.subject_id)
+        ON e.entity_id = ${resolvedSubjectSql('s')}
        AND e.type = 'restaurant'
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
@@ -552,12 +557,12 @@ export class SignalDemandReadService {
         FROM acts a
         LEFT JOIN core_restaurant_items direct
           ON direct.connection_id = a.raw_connection_id
-        LEFT JOIN entity_redirects rf ON rf.from_entity_id = a.subject_id
-        LEFT JOIN entity_redirects rr ON rr.from_entity_id = a.ctx_restaurant_id
+        ${redirectJoinSql('a', 'rf')}
+        ${redirectJoinSql('a', 'rr', 'ctx_restaurant_id')}
         LEFT JOIN core_restaurant_items survivor
           ON direct.connection_id IS NULL
-         AND survivor.food_id = COALESCE(rf.to_entity_id, a.subject_id)
-         AND survivor.restaurant_id = COALESCE(rr.to_entity_id, a.ctx_restaurant_id)
+         AND survivor.food_id = ${resolvedSubjectSql('a', 'rf')}
+         AND survivor.restaurant_id = ${resolvedSubjectSql('a', 'rr', 'ctx_restaurant_id')}
       ),
       viewed AS (
         SELECT
@@ -616,12 +621,17 @@ export class SignalDemandReadService {
     const connectionFilter = params.connectionId
       ? Prisma.sql`AND s.meta->>'connectionId' = ${params.connectionId}`
       : Prisma.empty;
+    // THE READER THAT FORGOT (F202). This filtered `s.subject_id = $1` raw,
+    // so after a merge the repeat-view dedupe valve stopped seeing the loser
+    // id's history and re-recorded a view it had already seen. Identity is
+    // resolved at read, by the one builder, like every other reader here.
     const rows = await this.prisma.$queryRaw<{ last_viewed_at: Date }[]>`
       SELECT MAX(s.occurred_at) AS last_viewed_at
       FROM signals s
+      ${redirectJoinSql('s')}
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
-        AND s.subject_id = ${params.entityId}::uuid
+        AND ${subjectMatchesSql('s', Prisma.sql`${params.entityId}::uuid`)}
         ${connectionFilter}
     `;
     return rows[0]?.last_viewed_at ?? null;
@@ -643,15 +653,15 @@ export class SignalDemandReadService {
       { restaurant_id: string; last_viewed_at: Date; view_count: number }[]
     >`
       SELECT
-        COALESCE(r.to_entity_id, s.subject_id) AS restaurant_id,
+        ${resolvedSubjectSql('s')} AS restaurant_id,
         MAX(s.occurred_at) AS last_viewed_at,
         SUM(${EVENT_COUNT_SQL})::int AS view_count
       FROM signals s
-      LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
+      ${redirectJoinSql('s')}
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
         AND s.subject_id IS NOT NULL
-        AND COALESCE(r.to_entity_id, s.subject_id) = ANY(${restaurantIds}::uuid[])
+        AND ${resolvedSubjectSql('s')} = ANY(${restaurantIds}::uuid[])
       GROUP BY 1
     `;
     return rows.map((row) => ({
@@ -690,9 +700,9 @@ export class SignalDemandReadService {
         e.aliases,
         MAX(s.occurred_at) AS last_viewed_at
       FROM signals s
-      LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
+      ${redirectJoinSql('s')}
       JOIN core_entities e
-        ON e.entity_id = COALESCE(r.to_entity_id, s.subject_id)
+        ON e.entity_id = ${resolvedSubjectSql('s')}
        AND e.type = 'restaurant'
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'entity_view'
@@ -765,12 +775,12 @@ export class SignalDemandReadService {
       WITH agg AS (${dailyActsCteSql({
         dimensions: [
           {
-            expr: Prisma.sql`COALESCE(r.to_entity_id, a.subject_id)`,
+            expr: resolvedSubjectSql('a'),
             as: 'entity_id',
           },
         ],
         from: Prisma.sql`signal_demand_daily a
-          LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id`,
+          ${redirectJoinSql('a')}`,
         where: Prisma.sql`a.place_id = ANY(${aggPlaceIds}::uuid[])`,
         extraAggregates: Prisma.sql`MAX(a.last_occurred_at) AS last_seen_at`,
         actsAlias: 'day_acts',
@@ -871,7 +881,7 @@ export class SignalDemandReadService {
           s.signal_id,
           s.subject_text AS term,
           COALESCE(s.meta->>'entityType', '') AS entity_type,
-          COALESCE(r.to_entity_id, s.subject_id) AS entity_id,
+          ${resolvedSubjectSql('s')} AS entity_id,
           COALESCE(s.meta->>'reason', '') AS reason,
           s.actor_id,
           COALESCE(s.meta->>'askSearchRequestId', s.signal_id::text) AS ask_key,
@@ -879,7 +889,7 @@ export class SignalDemandReadService {
           (s.meta->>'resultFoodCount')::int AS result_food_count,
           s.occurred_at
         FROM signals s
-        LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
+        ${redirectJoinSql('s')}
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.kind = 'on_demand_ask'
           AND s.occurred_at >= ${utcInstantSql(params.since)}
@@ -975,16 +985,16 @@ export class SignalDemandReadService {
     >`
       WITH deduped AS (
         SELECT
-          COALESCE(r.to_entity_id, a.subject_id) AS entity_id,
+          ${resolvedSubjectSql('a')} AS entity_id,
           a.actor_id,
           a.day,
           MAX(a.signal_count)::float8 AS day_acts
         FROM signal_demand_daily a
-        LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
+        ${redirectJoinSql('a')}
         WHERE a.place_id = ANY(${aggPlaceIds}::uuid[])
           AND a.subject_id = ANY(${expandedIds}::uuid[])
           AND a.day >= ${previousKey}::date
-          AND COALESCE(r.to_entity_id, a.subject_id) = ANY(${params.entityIds}::uuid[])
+          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])
         GROUP BY 1, 2, 3
       )
       SELECT
@@ -1026,19 +1036,19 @@ export class SignalDemandReadService {
     >`
       WITH by_actor AS (
         SELECT
-          COALESCE(r.to_entity_id, a.subject_id) AS entity_id,
+          ${resolvedSubjectSql('a')} AS entity_id,
           a.actor_id,
           SUM(
             a.signal_count * ${dayRecencySql(Prisma.sql`(${todayKey}::date - a.day)`)}
           )::float8 AS acts
         FROM signal_demand_daily a
-        LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
+        ${redirectJoinSql('a')}
         WHERE a.place_id IS NULL
           AND a.subject_id = ANY(${expandedIds}::uuid[])
           -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
           -- the fresh ledger arm — the law's second dialect — is deleted.
           AND a.day >= ${sinceDayKey}::date
-          AND COALESCE(r.to_entity_id, a.subject_id) = ANY(${params.entityIds}::uuid[])
+          AND ${resolvedSubjectSql('a')} = ANY(${params.entityIds}::uuid[])
         GROUP BY 1, 2
       )
       SELECT entity_id, SUM(LN(1 + acts) / LN(2))::float8 AS demand_score
@@ -1063,22 +1073,21 @@ export class SignalDemandReadService {
     if (!entityIds.length) {
       return [];
     }
-    try {
-      const sources = await this.prisma.entityRedirect.findMany({
-        where: { toEntityId: { in: entityIds } },
-        select: { fromEntityId: true },
-      });
-      return Array.from(
-        new Set([...entityIds, ...sources.map((row) => row.fromEntityId)]),
-      );
-    } catch (error) {
-      this.logger.debug('Redirect-source expansion failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return entityIds;
-    }
+    // AN UNDER-COUNTED DEMAND SCORE IS NOT A DEGRADED ANSWER, IT IS A WRONG
+    // ONE (audit 2026-08-02, F207). This used to catch and return the
+    // UNEXPANDED input, which silently drops every merged entity's history
+    // from the score — and the only trace was a `logger.debug`. The expansion
+    // is not an optimisation: the SQL's fold-back COALESCE is semantically
+    // complete only over the expanded set, so a failed expansion changes the
+    // ANSWER. It throws; the CALLER decides (skip the cycle, fail the
+    // request), because that policy belongs at the call site.
+    const sources = await this.prisma.entityRedirect.findMany({
+      where: { toEntityId: { in: entityIds } },
+      select: { fromEntityId: true },
+    });
+    return Array.from(
+      new Set([...entityIds, ...sources.map((row) => row.fromEntityId)]),
+    );
   }
 
   /**
@@ -1094,8 +1103,11 @@ export class SignalDemandReadService {
     if (!placeIds.length) {
       return [];
     }
-    try {
-      const rows = await this.prisma.$queryRaw<{ place_id: string }[]>`
+    // Same law as expandWithRedirectSources: the ancestor rows are
+    // load-bearing ("a coarse signal stored at TX reaches an Austin engine
+    // through the TX row"), so dropping them returns a smaller number with no
+    // indication it is smaller. It throws (F207).
+    const rows = await this.prisma.$queryRaw<{ place_id: string }[]>`
         WITH RECURSIVE lineage AS (
           SELECT p.place_id, p.parent_place_ids
           FROM places p
@@ -1107,19 +1119,11 @@ export class SignalDemandReadService {
         )
         SELECT place_id FROM lineage
       `;
-      const expanded = new Set(placeIds);
-      for (const row of rows) {
-        expanded.add(row.place_id);
-      }
-      return Array.from(expanded);
-    } catch (error) {
-      this.logger.debug('Place ancestor expansion failed', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return placeIds;
+    const expanded = new Set(placeIds);
+    for (const row of rows) {
+      expanded.add(row.place_id);
     }
+    return Array.from(expanded);
   }
 
   private async resolveActorId(

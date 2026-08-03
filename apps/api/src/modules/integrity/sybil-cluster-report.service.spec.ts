@@ -46,9 +46,14 @@ function buildHarness(options: {
       // Any further raw queries (device-cluster provenance lookups).
       .mockResolvedValue(options.provenanceRows ?? []),
     pollEndorsement: {
-      findMany: jest.fn(({ where }: { where: { pollId: string } }) =>
+      // ONE keyed fetch, not one per poll (F212): the service now asks for a
+      // SET of poll ids. A fake that only understood `pollId: '<one>'` would
+      // hide a regression back to the N+1, so it understands only `in`.
+      findMany: jest.fn(({ where }: { where: { pollId: { in: string[] } } }) =>
         Promise.resolve(
-          (options.endorsements ?? []).filter((e) => e.pollId === where.pollId),
+          (options.endorsements ?? []).filter((e) =>
+            where.pollId.in.includes(e.pollId),
+          ),
         ),
       ),
     },
@@ -527,5 +532,91 @@ describe('SybilClusterReportService (K1 sentence)', () => {
     } finally {
       delete process.env.SIGNAL_AUDIT_HMAC_KEY;
     }
+  });
+});
+
+/**
+ * F212 — THE SWEEP LOOKBACK BOUNDS THE SWEEP, AND IT BOUNDS THE ACT.
+ *
+ * Two of the three fetchers used to scan without any time predicate at all.
+ * The fix had one way to go wrong that would have been WORSE than the defect:
+ * bounding on `user_devices.first_seen`/`last_seen` alone would make an old
+ * device ring that votes TODAY invisible — the exact ring this detector is
+ * for. These assert the bound is on the ENDORSEMENT.
+ */
+describe('sybil sweep lookback (F212)', () => {
+  async function capturedSql(): Promise<string[]> {
+    const { service, prisma } = buildHarness({});
+    await service.runSweep();
+    return prisma.$queryRaw.mock.calls.map((call: unknown[]) =>
+      (call[0] as string[]).join(' ? '),
+    );
+  }
+
+  it('bounds the device-vote cluster scan on the ENDORSEMENT, never on device registration', async () => {
+    const { service, prisma } = buildHarness({});
+    await service.runSweep();
+    const deviceClusterSql = (
+      prisma.$queryRaw.mock.calls[0][0] as string[]
+    ).join(' ? ');
+
+    expect(deviceClusterSql).toContain('pe.created_at >=');
+    // The multi-account subquery must stay UNBOUNDED: an old ring voting
+    // today is the case the detector exists for.
+    expect(deviceClusterSql).not.toContain('ud.first_seen');
+    expect(deviceClusterSql).not.toMatch(/ud\.last_seen\s*>=/);
+  });
+
+  it('bounds the heavy-device scan without narrowing "votes or not"', async () => {
+    const { service, prisma } = buildHarness({});
+    await service.runSweep();
+    const heavySql = (prisma.$queryRaw.mock.calls[1][0] as string[]).join(
+      ' ? ',
+    );
+
+    // Bounded...
+    expect(heavySql).toContain('last_seen >=');
+    // ...but a device whose accounts endorsed recently is in scope even when
+    // the device itself was registered years ago.
+    expect(heavySql).toContain('pe.created_at >=');
+    expect(heavySql).toContain('EXISTS');
+  });
+
+  it('every fetcher carries a time bound — none scans the table forever', async () => {
+    const sqls = await capturedSql();
+    expect(sqls).toHaveLength(3);
+    for (const sql of sqls) {
+      expect(sql).toMatch(/created_at >=|last_seen >=|occurred_at >=/);
+    }
+  });
+
+  it("reads every poll's endorsements in ONE keyed fetch, not one query per poll", async () => {
+    const polls = ['poll-1', 'poll-2', 'poll-3'];
+    const { service, prisma } = buildHarness({
+      deviceVoteRows: polls.map((poll_id) => ({
+        device_key: 'device-ring',
+        poll_id,
+        subject_type: 'entity',
+        subject_id: 'sub-A',
+        user_ids: ['u1', 'u2'],
+        voted_ats: [T(0), T(1)],
+      })),
+      endorsements: polls.flatMap((pollId) =>
+        ['u1', 'u2'].map((userId) => ({
+          pollId,
+          subjectType: 'entity',
+          subjectId: 'sub-A',
+          userId,
+        })),
+      ),
+    });
+
+    await service.runSweep();
+
+    // Three polls, one findMany. The N+1 was two loops x one query per poll.
+    expect(prisma.pollEndorsement.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      prisma.pollEndorsement.findMany.mock.calls[0][0].where.pollId.in.sort(),
+    ).toEqual(polls);
   });
 });

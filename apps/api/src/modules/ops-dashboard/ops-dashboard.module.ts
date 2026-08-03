@@ -5,6 +5,8 @@ import { RedditCollectorModule } from '../content-processing/reddit-collector/re
 import { OpsDashboardController } from './ops-dashboard.controller';
 import { OpsSummaryService } from './ops-summary.service';
 import { OpsTokenGuard } from './ops-token.guard';
+import { OpsAccessGuard } from './ops-access.guard';
+import { OpsBootstrapController } from './ops-bootstrap.controller';
 import { isApiRuntime } from '../../shared/utils/process-role';
 
 /**
@@ -17,7 +19,15 @@ import { isApiRuntime } from '../../shared/utils/process-role';
  */
 @Module({
   imports: [PrismaModule, SharedModule, RedditCollectorModule],
-  controllers: isApiRuntime() ? [OpsDashboardController] : [],
-  providers: isApiRuntime() ? [OpsSummaryService, OpsTokenGuard] : [],
+  controllers: isApiRuntime()
+    ? // OpsBootstrapController is a SEPARATE controller precisely so the
+      // guarded controller's decorators stay untouched: a method-level
+      // @UseGuards() cannot remove a class-level one in Nest, and /ops/enter
+      // must not sit behind the guard it exists to satisfy.
+      [OpsBootstrapController, OpsDashboardController]
+    : [],
+  providers: isApiRuntime()
+    ? [OpsSummaryService, OpsTokenGuard, OpsAccessGuard]
+    : [],
 })
 export class OpsDashboardModule {}

@@ -48,6 +48,7 @@ import { DemandScoringTraceService } from '../../analytics/demand-scoring-trace.
 import * as curves from '../../analytics/demand-scoring/curves';
 import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
 import { SignalDemandReadService } from '../../signals/signal-demand-read.service';
+import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -215,6 +216,7 @@ export class KeywordSliceSelectionService {
     private readonly prisma: PrismaService,
     private readonly signalDemand: SignalDemandReadService,
     private readonly scoringTrace: DemandScoringTraceService,
+    private readonly opsAlerts: OpsAlertsService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('KeywordSliceSelectionService');
@@ -242,12 +244,48 @@ export class KeywordSliceSelectionService {
     };
     const gateRejects: KeywordGateRejectTrace[] = [];
 
-    const territoryDemand = await this.signalDemand.territoryEntityDemand({
-      placeIds: source.territoryPlaceIds,
-      windowDays,
-      limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
-      entityTypes: COLLECTIBLE_ENTITY_TYPES,
-    });
+    // SKIP THIS CYCLE, LOUDLY (audit 2026-08-02, F207).
+    //
+    // The demand read's expansions (redirect sources, place ancestors) used to
+    // swallow a DB error and return the unexpanded input — a SMALLER demand
+    // score with nothing to say it was smaller, feeding straight into what
+    // this selection decides to enrich, i.e. real money. They throw now, and
+    // this is the call site that owns the policy: an unavailable demand read
+    // is not "no demand". We do NOT select on a partial answer; the throw
+    // propagates to the pacer, which logs and leaves the lane DUE so the next
+    // tick retries — no cadence advance, no under-counted cycle. The alert is
+    // here because the pacer's log alone is not owner-visible.
+    let territoryDemand: Awaited<
+      ReturnType<SignalDemandReadService['territoryEntityDemand']>
+    >;
+    try {
+      territoryDemand = await this.signalDemand.territoryEntityDemand({
+        placeIds: source.territoryPlaceIds,
+        windowDays,
+        limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
+        entityTypes: COLLECTIBLE_ENTITY_TYPES,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error('Territory demand read failed; skipping this cycle', {
+        handle: source.handle,
+        sourceId: source.sourceId,
+        error: { message },
+      });
+      this.opsAlerts.emit({
+        severity: 'warn',
+        kind: 'collector_demand_read_unavailable',
+        title: `Collector skipped a cycle: demand read unavailable (r/${source.handle})`,
+        body: [
+          `The territory demand read for r/${source.handle} could not be computed, so no keyword slice was selected this cycle.`,
+          `Error: ${message}`,
+          'This is the loud version of what used to be silent: the read previously degraded to an UNDER-COUNTED score and the collector spent against it.',
+          'The lane stays due; the next tick retries.',
+        ].join('\n'),
+        dedupeKey: `collector_demand_read_unavailable:${source.sourceId}:${new Date().toISOString().slice(0, 10)}`,
+      });
+      throw error;
+    }
 
     const candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
       unmet: await this.loadUnmetCandidates(

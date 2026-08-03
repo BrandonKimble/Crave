@@ -13,6 +13,7 @@ import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
 import { RecordViewportDwellDto } from './dto/record-viewport-dwell.dto';
 import { SignalsService } from './signals.service';
+import { RecordsSignal } from './records-signal.decorator';
 
 /**
  * The signals observation seam for acts the server cannot see through any
@@ -35,6 +36,7 @@ export class SignalsController {
   ) {}
 
   @Post('viewport-dwell')
+  @RecordsSignal('viewport_dwell')
   @RateLimitTier('default')
   @HttpCode(HttpStatus.ACCEPTED)
   recordViewportDwell(

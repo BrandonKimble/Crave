@@ -58,6 +58,29 @@ describe('OpsTokenGuard', () => {
     ).toThrow(UnauthorizedException);
   });
 
+  // THE COMPARISON ITSELF (added 2026-08-02, mutation-proven). Every other
+  // case in this file supplies the token via `query`, which a header-only
+  // guard ignores — so they all exercise the SAME branch: "no x-ops-token
+  // header". With no wrong-HEADER case, the suite passed 5/5 against a mutant
+  // whose constantTimeEquals returned `true` unconditionally: any header value
+  // at all would have opened the owner's incident console. These two assert
+  // that the value is actually compared.
+  it('401s a WRONG x-ops-token header (not merely a missing one)', () => {
+    process.env.OPS_DASH_TOKEN = 'secret-token';
+    const guard = new OpsTokenGuard();
+    expect(() =>
+      guard.canActivate(buildContext({}, { 'x-ops-token': 'wrong-token' })),
+    ).toThrow(UnauthorizedException);
+  });
+
+  it('401s an x-ops-token header that is a PREFIX of the secret', () => {
+    process.env.OPS_DASH_TOKEN = 'secret-token';
+    const guard = new OpsTokenGuard();
+    expect(() =>
+      guard.canActivate(buildContext({}, { 'x-ops-token': 'secret' })),
+    ).toThrow(UnauthorizedException);
+  });
+
   it('REFUSES a matching ?token= query param (URL tokens leak into logs)', () => {
     process.env.OPS_DASH_TOKEN = 'secret-token';
     const guard = new OpsTokenGuard();

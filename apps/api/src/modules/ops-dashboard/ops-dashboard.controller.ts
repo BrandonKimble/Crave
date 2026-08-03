@@ -1,16 +1,22 @@
 import { Controller, Get, Param, Post, Res, UseGuards } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
-import { OpsTokenGuard } from './ops-token.guard';
+import { OpsAccessGuard } from './ops-access.guard';
 import { OpsSummaryService } from './ops-summary.service';
 import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.service';
 import { OPS_DASHBOARD_HTML } from './ops-dashboard.html';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 /**
- * §18.4/§24.3 OWNER OPS DASHBOARD. Every route guarded by OpsTokenGuard
+ * §18.4/§24.3 OWNER OPS DASHBOARD. Every route guarded by OpsAccessGuard
  * (absent OPS_DASH_TOKEN → 404s, so the surface is OFF, not merely
- * unauth'd; wrong/missing token → 401). This controller runs under the API
- * role only — see ops-dashboard.module.ts's isApiRuntime() gate.
+ * unauth'd; wrong/missing credential → 401). This controller runs under the
+ * API role only — see ops-dashboard.module.ts's isApiRuntime() gate.
+ *
+ * The credential is the x-ops-token HEADER for a header-capable client
+ * (unchanged — OpsAccessGuard delegates straight to OpsTokenGuard), or the
+ * ops session COOKIE for a browser, minted by GET /ops/enter. A browser
+ * cannot attach a custom header to a top-level navigation, which is why the
+ * page route was unreachable by the owner until 2026-08-02 (F200).
  */
 // EXEMPT FROM THE PAYWALL (red team 2026-08-02). OpsTokenGuard authenticates
 // an OPERATOR, not a user, so it sets no request.user — and since the wall now
@@ -20,7 +26,7 @@ import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interce
 // it still works.
 @AllowUnentitled()
 @Controller('ops')
-@UseGuards(OpsTokenGuard)
+@UseGuards(OpsAccessGuard)
 export class OpsDashboardController {
   constructor(
     private readonly summaryService: OpsSummaryService,

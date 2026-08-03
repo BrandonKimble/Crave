@@ -1,10 +1,16 @@
 /** §18.4/§24.3 the ops dashboard page (V2) — one self-contained HTML file
  *  (inline CSS+JS, zero external requests; the controller's per-route CSP
- *  allows exactly this inline script). Stores the ?token= in localStorage on
- *  first visit and appends it (x-ops-token header) to every subsequent
- *  fetch, so a bookmarked ?token= link is a one-time bootstrap. `opsBase`
- *  is derived from location.pathname so the page follows the app's global
- *  prefix (/api/v1) wherever it is mounted. */
+ *  allows exactly this inline script).
+ *
+ *  THE DOCUMENT HOLDS NO CREDENTIAL (audit 2026-08-02, F200). It used to
+ *  stash the `?token=` in localStorage and append an x-ops-token header to
+ *  every fetch, with a token-prompt gate as the fallback — all of it dead
+ *  code, because the header-only guard meant a browser could never load this
+ *  page in the first place. The browser now holds an HttpOnly + Secure +
+ *  SameSite=Strict session cookie minted by GET /ops/enter, so it rides on
+ *  the navigation AND on these same-origin fetches without the page ever
+ *  seeing the secret. `opsBase` is derived from location.pathname so the page
+ *  follows the app's global prefix (/api/v1) wherever it is mounted. */
 export const OPS_DASHBOARD_HTML = `<!doctype html>
 <html lang="en">
 <head>
@@ -109,17 +115,9 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   .place-handle { color: var(--muted); font-size: 11px; margin-bottom: 10px; font-family: var(--mono); }
   .place-later { color: var(--muted); font-size: 11px; margin-top: 10px; border-top: 1px dashed var(--panel-border); padding-top: 8px; }
   .refresh-note { color: var(--muted); font-size: 11px; margin-top: 24px; }
-  #tokenGate { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
-  #tokenGate input { background: var(--panel); border: 1px solid var(--panel-border); color: var(--text); padding: 8px 12px; border-radius: 6px; width: 280px; }
-  #tokenGate button { background: var(--accent); border: none; color: #0b0d12; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
-<div id="tokenGate" style="display:none">
-  <div class="muted">Enter ops dashboard token</div>
-  <input id="tokenInput" type="password" placeholder="token" />
-  <button id="tokenSubmit">Continue</button>
-</div>
 <div id="app">
   <h1>Crave Ops</h1>
   <div class="subtitle">Auto-refreshes every 60s — <span id="lastUpdated">loading…</span></div>
@@ -138,30 +136,6 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
 (function () {
   'use strict';
 
-  function getToken() {
-    var params = new URLSearchParams(window.location.search);
-    var fromUrl = params.get('token');
-    if (fromUrl) {
-      localStorage.setItem('opsDashToken', fromUrl);
-      return fromUrl;
-    }
-    return localStorage.getItem('opsDashToken');
-  }
-
-  var token = getToken();
-  if (!token) {
-    document.getElementById('tokenGate').style.display = 'flex';
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('tokenSubmit').addEventListener('click', function () {
-      var v = document.getElementById('tokenInput').value.trim();
-      if (v) {
-        localStorage.setItem('opsDashToken', v);
-        window.location.reload();
-      }
-    });
-    return;
-  }
-
   function usd(micros) {
     if (micros === null || micros === undefined) return '—';
     var dollars = micros / 1000000;
@@ -171,6 +145,34 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   function num(n) {
     if (n === null || n === undefined) return '—';
     return Number(n).toLocaleString('en-US');
+  }
+
+  // A SECTION RESULT IS {measured, not measured} — never a silent zero
+  // (F206). The payload wraps runtime-failable sections as
+  // {ok:true,data} | {ok:false,reason}; these render the honest "—" plus a
+  // visible failed marker, the same rule drainPending already followed.
+  function sectionOk(section) {
+    return section && section.ok === true;
+  }
+
+  function sectionData(section, fallback) {
+    return sectionOk(section) ? section.data : fallback;
+  }
+
+  function sectionFailedHtml(what, section) {
+    return '<div class="muted">' + esc(what) +
+      ' could not be read this refresh — <strong>—</strong>, not zero.<br>' +
+      '<span style="color:var(--red)">Read failed:</span> ' +
+      esc(String((section && section.reason) || 'unknown')) + '</div>';
+  }
+
+  // A count cell: the number, or an honest dash the operator cannot mistake
+  // for an idle pipeline.
+  function numSection(section) {
+    if (sectionOk(section)) return num(section.data);
+    return '<span style="color:var(--red)" title="' +
+      esc(String((section && section.reason) || 'read failed')) +
+      '">— (read failed)</span>';
   }
 
   function relTime(iso) {
@@ -312,12 +314,17 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   }
 
   function renderPlaces(places) {
-    if (!places || !places.length) {
+    if (!sectionOk(places)) {
+      document.getElementById('placesCard').innerHTML = sectionFailedHtml('Places', places);
+      return;
+    }
+    var rows = places.data;
+    if (!rows.length) {
       document.getElementById('placesCard').innerHTML = '<span class="muted">No collector sources yet.</span>';
       return;
     }
     document.getElementById('placesCard').innerHTML = '<div class="place-grid">' +
-      places.map(function (pl) {
+      rows.map(function (pl) {
         var title = pl.anchorPlaceName ? esc(pl.anchorPlaceName) : 'r/' + esc(pl.community);
         return '<div class="place-card">' +
           '<div class="place-name">' + title + '</div>' +
@@ -345,11 +352,15 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
   }
 
   function renderSources(sources) {
-    if (!sources || !sources.length) {
+    if (!sectionOk(sources)) {
+      document.getElementById('sourcesCard').innerHTML = sectionFailedHtml('Sources', sources);
+      return;
+    }
+    if (!sources.data.length) {
       document.getElementById('sourcesCard').innerHTML = '<span class="muted">No enabled lanes.</span>';
       return;
     }
-    var rows = sources.map(function (s) {
+    var rows = sources.data.map(function (s) {
       return '<tr>' +
         '<td><span class="dot ' + sourceDotClass(s) + '"></span>r/' + esc(s.handle) + '</td>' +
         '<td>' + esc(s.lane) + '</td>' +
@@ -376,12 +387,12 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
         '<span class="stat-value"' + (hot ? ' style="color:var(--red)"' : '') + '>' + value + '</span></div>';
     }
     document.getElementById('pipelineCard').innerHTML =
-      row('Docs collected (24h)', num(pipeline.docs24h)) +
-      row('Entity events (24h)', num(pipeline.entities24h)) +
-      row('Extraction runs (24h)', num(pipeline.extractionRuns24h)) +
-      row('Extraction runs failed (24h)', num(pipeline.extractionFailed24h), pipeline.extractionFailed24h > 0) +
-      row('LLM batch jobs waiting', num(pipeline.batchJobsPending)) +
-      row('LLM batch jobs ingested (24h)', num(pipeline.batchJobsIngested24h)) +
+      row('Docs collected (24h)', numSection(pipeline.docs24h)) +
+      row('Entity events (24h)', numSection(pipeline.entities24h)) +
+      row('Extraction runs (24h)', numSection(pipeline.extractionRuns24h)) +
+      row('Extraction runs failed (24h)', numSection(pipeline.extractionFailed24h), sectionData(pipeline.extractionFailed24h, 0) > 0) +
+      row('LLM batch jobs waiting', numSection(pipeline.batchJobsPending)) +
+      row('LLM batch jobs ingested (24h)', numSection(pipeline.batchJobsIngested24h)) +
       row('Drain backlog', pipeline.drainPending === null ? '—' : num(pipeline.drainPending)) +
       row('Unacked alerts', num(pipeline.unackedAlerts), pipeline.unackedAlerts > 0);
   }
@@ -449,7 +460,11 @@ export const OPS_DASHBOARD_HTML = `<!doctype html>
 
   function fetchJson(url, opts) {
     opts = opts || {};
-    opts.headers = Object.assign({}, opts.headers, { 'x-ops-token': token });
+    // The credential is the HttpOnly ops session cookie, which this script
+    // cannot read and does not need to: same-origin fetches carry it
+    // automatically. 'same-origin' is the default, stated because it is
+    // load-bearing here.
+    opts.credentials = 'same-origin';
     return fetch(url, opts).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.json();
