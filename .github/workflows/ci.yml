@@ -112,9 +112,12 @@ jobs:
           node-version: '22'
 
       # The s4/s5/s6/natural cutover guards were ALSO stale (they assert on
-      # runtime files the completed cutovers deleted/renamed) — removed
-      # 2026-08-02 along with their scripts' CI steps. The root-ownership
-      # gate still validates against the live tree.
+      # runtime files the completed cutovers deleted/renamed) — their CI steps
+      # were removed 2026-08-02. CORRECTION 2026-08-03 (D37/F705): only the
+      # STEPS went that day; the four SCRIPTS survived in scripts/, each still
+      # exiting 1, cited only by plans/ archaeology. Their cutovers are complete
+      # and CI had disowned them, so the scripts were retired 2026-08-03. The
+      # root-ownership gate still validates against the live tree.
       - name: 'Contract-check: root ownership gate (enforced slice S7)'
         # S6 is NOT in enforcedSliceIds, so gating on it short-circuits to
         # pass:true regardless of code — an always-green lie (red-team P1).
@@ -135,6 +138,29 @@ jobs:
 
       - name: 'Static guard: enforce no-bypass-search-runtime'
         run: scripts/no-bypass-search-runtime.sh
+
+      # WIRED 2026-08-03 (D37/F702). This gate was declared in package.json and
+      # run by NOTHING — 16 of its checks had rotted red where nobody could see.
+      # Those 16 were positive design-shape assertions pinned to exact source
+      # strings/paths that legitimately moved; they were removed (see the
+      # script's header). What remains is the durable negative class — deleted
+      # symbols and paths must not return — and it is now enforced here.
+      - name: 'Static guard: app-route runtime delete gate'
+        run: scripts/app-route-runtime-delete-gate.sh
+
+      # WIRED 2026-08-03 (D37/F704). Also previously run by nothing, and red on
+      # false positives (it banned the WORD "firstPaint", which caught the live
+      # onBodyFirstPaint paint-ack producer). Narrowed to the killed symbols and
+      # repointed to the durable batch-size constant; green and RED-provable.
+      - name: 'Static guard: search results prepared-rows delete gate'
+        run: scripts/search-results-prepared-rows-delete-gate.sh
+
+      # WIRED 2026-08-03 (D37/F716). The api-side script-containment lockdown
+      # ported to root scripts/. Every script declares what it IS and what runs
+      # it, or CI fails — because "a flat bag of 57 undifferentiated files" is
+      # exactly what let F702's red gate and F709's dead cluster hide.
+      - name: 'Static guard: scripts/ containment lockdown'
+        run: scripts/scripts-containment-gate.sh
 
   native-tests:
     # Pure native LOD logic (MapLodKit): screen-space visibility decision, tested

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: maestro/perf/README.md, for the market-demand flows.
 const path = require('path');
 const { randomUUID } = require('crypto');
 const dotenv = require('dotenv');

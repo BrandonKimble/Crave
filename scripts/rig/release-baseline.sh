@@ -1,4 +1,7 @@
 #!/bin/bash
+# @script-class: harness
+# @run-by: run by hand against a booted sim (search-lifecycle Leg 5). Not
+#     wired to any runner by design — needs a Release build + os_log.
 # Release-lane transition baseline (H3 / L-1 — search-lifecycle Leg 5).
 # Runs the SAME sampler protocol as the dev reference against the Release build and
 # captures [JSPERF]-sunk sampler lines from os_log (console is stripped in Release).

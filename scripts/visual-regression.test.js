@@ -1,3 +1,6 @@
+// @script-class: operational
+// @run-by: the test for visual-regression.js. Same F706/F707 escalation
+//     applies.
 'use strict';
 /**
  * Proves the visual-regression diff engine actually detects (and ignores) what it

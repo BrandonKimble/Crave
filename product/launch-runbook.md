@@ -135,3 +135,30 @@ FROM api_usage_ledger GROUP BY 1,2,3;` for spend.
 - Web client + CORS origin allowlist (CORS off is fine for native-only).
 - Health checks for external APIs/queue liveness (Sentry covers operationally).
 - Post-launch: monthly ledger + BigQuery billing review.
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F742) — the market commands in this runbook DO NOT EXIST
+
+**This is the launch runbook — the doc most likely to be followed literally,
+under pressure, by someone who will not stop to verify.** Its Phase-2 "ONE
+command" step and its seeding step both name scripts that were removed with the
+markets extermination on 2026-07-22.
+
+Correction only; nothing above is deleted.
+
+| This runbook says                                                 | Truth as of 2026-08-03                                                                                                                                     |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/onboard-market.ts`                                       | DOES NOT EXIST. Live equivalent: `apps/api/scripts/onboard-subreddit.ts`                                                                                   |
+| `scripts/seed-market.ts`                                          | DOES NOT EXIST. Live equivalents: `apps/api/scripts/seed-region.ts`, and `apps/api/scripts/seed-archive.ts` for the archive path                           |
+| verify step reads a `markets` table ("~13,726 km², 6 boundaries") | There is NO markets model in `apps/api/prisma/schema.prisma`. Removed by migration `apps/api/prisma/migrations/20260722120000_markets_extermination_leg4/` |
+
+**The geo substrate is now `Place` / `PlaceGeometry` / `ProbedRegion`.** There is
+no market dimension anywhere in the live schema. `core_markets`, `MarketType`,
+and `market_bootstrap_events` have zero hits in `schema.prisma`; only
+extermination tombstones remain in code.
+
+Same defect class is corrected at `business/signal/crave-fact-sheet.md`, which
+repeats the "one command onboards a market" claim, and at
+`plans/tomtom-market-cutover-plan.md` (audit F720), whose "Status — Implemented
+in the current workspace" describes this same exterminated machinery.

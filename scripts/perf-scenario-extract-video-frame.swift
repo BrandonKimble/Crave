@@ -1,4 +1,6 @@
 #!/usr/bin/env swift
+// @script-class: operational
+// @run-by: scripts/perf-scenario-extract-video-proofs.js.
 import AVFoundation
 import Foundation
 import ImageIO

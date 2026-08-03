@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# @script-class: gate
+# @run-by: .github/workflows/ci.yml (job no-bypass-search-runtime). Reads
+#     no-bypass-search-runtime.allowlist.
 set -euo pipefail
 
 # TOOL PRECONDITION (red-team P0, 2026-08-02): every check below ran

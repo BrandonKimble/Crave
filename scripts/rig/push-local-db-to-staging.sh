@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: CLAUDE.md.
 # Push the LOCAL dev database to STAGING — "staging tests what I test".
 #
 # The owner's pit-stop flow (2026-08-02): local is where prompt/data work

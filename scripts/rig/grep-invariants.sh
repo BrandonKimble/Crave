@@ -1,4 +1,8 @@
 #!/bin/bash
+# @script-class: harness
+# @run-by: run by hand (search-lifecycle Leg 5 gate). Zero runner references
+#     as of the 2026-08-03 census; it is phase-scoped, not a standing
+#     gate.
 # Grep invariants (Leg 5 gate — search-lifecycle design §8 + the Q-2 dissolution).
 # Each check asserts a KILLED DISEASE CLASS stays dead (code lines, comments exempt),
 # a SINGLE-OWNER fact stays single-owner, or a GUARD stays present. RED by

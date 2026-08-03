@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: run by hand when the score palette changes; paired with
+//     generate-dot-sprites.js. Both read
+//     apps/mobile/src/constants/score-bucket-palette.json.
 /**
  * Generates pre-composited, per-score-bucket pin sprites for the single-symbol
  * pin model (replaces the multi-layer slot stack). Each sprite bakes the exact

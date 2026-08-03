@@ -161,3 +161,20 @@ help doc; TikTok DMA announcement; Strike Social guide.)
 Score constants (ρ=0.5, acclaim/praise weights, upvote premium, opinion
 floors) are explicitly "re-derive against production density" — final tuning
 happens after the full Austin load, before launch judgment on feel.
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F742) — "one command onboards a market" is no longer true
+
+Correction note only; nothing above is deleted.
+
+This file states that "one command onboards a market (TomTom county polygons +
+PostGIS)". **Markets were fully exterminated 2026-07-22** (migration
+`apps/api/prisma/migrations/20260722120000_markets_extermination_leg4/`). There
+is no markets model in `apps/api/prisma/schema.prisma`, and the commands that
+claim to seed one — `scripts/onboard-market.ts`, `scripts/seed-market.ts` — do
+not exist.
+
+Live equivalents: `apps/api/scripts/onboard-subreddit.ts` and
+`apps/api/scripts/seed-region.ts`. Geo now lives on `Place` / `PlaceGeometry` /
+`ProbedRegion`. The same correction is appended to `product/launch-runbook.md`.

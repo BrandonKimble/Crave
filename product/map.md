@@ -57,3 +57,38 @@ Two directions are Crave+ gating candidates because they surface dish-level or t
 - Map#1 vs list#1 parity: coverage pins (city-wide top) can include restaurants the main results list doesn't, so the top map pin may not match the top list row. Do we exclude coverage from badged pins, or accept the divergence?
 - Whether the dish-level map mode is on the roadmap, or the map stays intentionally restaurant-only.
 - Whether trending/rising spots get on-map indicators, and how that overlay is gated as a Crave+ surface.
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F709/F729/F752) — the `[lodev]` harness DOES NOT EXIST
+
+**Every acceptance criterion in this document that reads a `[lodev]` event is
+unrunnable, and has been for a long time.** This is a correction note, not a
+rewrite: the text above is preserved as the historical record of what was
+intended.
+
+PROOF: a repo-wide grep for `lodev` over `apps/` returns **exactly one hit, and
+it is a comment** — `apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417`.
+There is no emitter. No `lodHarnessEnabled`, no `step`/`mut`/`frame`/`render`/`lod`
+events, no `renderP`/`roleGap`/`roleP`/`snapPromoted`/`flashReversalCount` fields.
+`log stream --predicate '[lodev]'` returns nothing. The only live map telemetry
+is narrative `[LODDBG]` NSLog behind `static let lodDebugLoggingEnabled = false`
+(same file, :10357) — inert.
+
+CLAUDE.md already adjudicated this ("The `[lodev]` JSONL telemetry harness this
+file used to document DOES NOT EXIST in the code... Treat it as dead
+scaffolding"). CLAUDE.md is correct; the Swift comment at :10417 is the stale one.
+
+This was **the single most-replicated false claim in the repo** — four
+independent doc homes plus a code comment all described this harness as real:
+`plans/lod-v5-architecture.md`, `plans/lod-ideal-residency-refactor.md`,
+`plans/toggle-fade-swap-lane.md`, and `product/map.md`. That replication count is
+itself the ranking signal: the more places repeat a dead claim, the more
+expensive it is to leave standing.
+
+WHAT TO DO INSTEAD: `plans/lod-greenfield-redesign-synthesis.md:258` is the only
+doc that recorded the emitter as deleted, and it says to re-add a minimal step
+probe FIRST. Follow that. Per CLAUDE.md, its proper replacement (a structured
+mach-clock event log) gets built as PART of a real map change, never as naked
+scaffolding. The 12 `scripts/lod-*` parsers are now classified
+`@script-class: dead-scaffolding` and say so in their own headers.

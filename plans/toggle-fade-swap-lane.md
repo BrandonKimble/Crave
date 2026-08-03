@@ -31,6 +31,7 @@ fires → cover stuck" IS the toggle stuck-cover, seen from the reveal side. The
 exact lane the fade_swap was going to bypass.
 
 ⇒ DO NOT build fade_swap in parallel (live collision + likely redundant). SEQUENCE:
+
 1. Let their reveal-placement fix land; re-test toggles with the harness ([lodev] roleP>0, cover
    settles). If toggles now settle deterministically, M0/M1 (the stuck-cover fix) is DONE from the
    reveal side — no fade_swap lane needed.
@@ -125,7 +126,7 @@ The two-tier (Tier-1 surgical / Tier-2 trough) framing below is REPLACED. After 
 fade, NOT a surgical per-marker re-decide. On press: fade all three families out together instantly
 (no gate); under cover (opacity 0) apply new data + let the engine re-decide + settle labels; on
 settle: fade all three in together. Owner-confirmed (2026-06-29): the surgical/selective approach is
-the engine's NATIVE *panning* behavior and should stay there; a deliberate toggle wants the clean
+the engine's NATIVE _panning_ behavior and should stay there; a deliberate toggle wants the clean
 unified fade that stays in lockstep with the sheet cover/card reveal. Instant fade-out (decoupled
 from data) gives responsiveness; rapid-tap = stay faded out until settle (trivial, like the cover).
 
@@ -138,6 +139,7 @@ animators self-cancel) → one scalar (presentationOpacity 1→0), one clock, no
 **THE TOGGLE SYNC CONTRACT (non-negotiable):** pin + dot + label all derive from the SAME toggle
 scalar, on the SAME clock, written the SAME tick, engine FROZEN, placement OUT of the fade path,
 both directions. Specifics:
+
 1. One clock (the presentation/toggle animator) owns all three — its tick writes GL dot+label
    feature-state AND the overlay pin tile.opacity in the same callback (have
    `stepPresentationOpacityAnimation` also call `refreshOverlayFrame`); the overlay's own link does
@@ -179,6 +181,7 @@ labels can go pure-paint + invisible obstacle proxy (the residency owner's dismi
 rework).
 
 What this means for fade_swap (GOOD — relaxes the dependency):
+
 - **swap-at-opacity-0 hides the dot re-placement.** Mapbox runs placement regardless of
   opacity (placement=layout, opacity=paint). So when fade_swap swaps data + reprojects AT
   opacity 0, Mapbox culls the new dot set while invisible; we fade in the already-culled set.
@@ -205,6 +208,7 @@ JS sends a fade-out signal on press, the data frame does M1's apply+fade-in. M1 
 committable.
 
 NATIVE (`SearchMapRenderController.swift`):
+
 1. `setRenderFrame` switch (~line 1551, beside `case "hidden_preload","bootstrap","live_update"`):
    add `case "fade_swap":` →
    ```
@@ -225,18 +229,18 @@ NATIVE (`SearchMapRenderController.swift`):
    `if animator.reason == "fade_swap_in" { self.emit(["type":"presentation_fade_swap_settled","instanceId":instanceId,"requestKey": state.lastFadeSwapRequestKey as Any]) }`
    (or carry the requestKey via the animator; simplest: emit with the active frame's batch id).
 
-JS:
-3. `search-map-render-controller.ts`: add `'fade_swap'` to `SearchMapVisualFrameTransactionKind`
-   (~440); add a `presentation_fade_swap_settled` event to the status-event union (~169-197).
-4. `use-search-map-native-render-owner.ts`:
-   - `deriveSearchMapVisualFrameTransactionKind` (~720): when the re-search is an IN-PLACE toggle
-     (mutationKind 'toggle'/'filter_*' AND currently `.visible`/showing results, NOT initial) →
-     return `'fade_swap'` instead of `'enter'`. Thread the mutationKind/in-place flag into this
-     fn (it currently only takes presentationPhase/presentationState/isInitialNativeFrame).
-   - Handle the new `presentation_fade_swap_settled` event (~2490 block) → call
-     `getSearchSurfaceRuntime().markRedrawNativeMarkerFrameReady(...)` → **reuses the existing
-     cover gate** (cardsReady && nativeMarkerFrameReady && sheetReady) unchanged. This is the key
-     trick: no new cover plumbing; just fire the existing readiness from the deterministic event.
+JS: 3. `search-map-render-controller.ts`: add `'fade_swap'` to `SearchMapVisualFrameTransactionKind`
+(~440); add a `presentation_fade_swap_settled` event to the status-event union (~169-197). 4. `use-search-map-native-render-owner.ts`:
+
+- `deriveSearchMapVisualFrameTransactionKind` (~720): when the re-search is an IN-PLACE toggle
+  (mutationKind 'toggle'/'filter\_\*' AND currently `.visible`/showing results, NOT initial) →
+  return `'fade_swap'` instead of `'enter'`. Thread the mutationKind/in-place flag into this
+  fn (it currently only takes presentationPhase/presentationState/isInitialNativeFrame).
+- Handle the new `presentation_fade_swap_settled` event (~2490 block) → call
+  `getSearchSurfaceRuntime().markRedrawNativeMarkerFrameReady(...)` → **reuses the existing
+  cover gate** (cardsReady && nativeMarkerFrameReady && sheetReady) unchanged. This is the key
+  trick: no new cover plumbing; just fire the existing readiness from the deterministic event.
+
 5. The presentation-state JSON for a fade_swap frame must carry NO enter/dismiss requestKey (so
    `applyPresentationPayload` does bookkeeping only and stays `.visible`). Verify the toggle's
    redraw-transaction → presentation-phase path emits `presentationPhase: 'live'` (→ today derives
@@ -252,3 +256,38 @@ harness-verify before trusting. `live_update` (the existing in-place kind) is th
 - Toggle into a sparse/empty filtered set → cover ALWAYS lifts (no infinite spinner).
 - Rapid-tap a toggle → coalesces, settles once.
 - Verify binary mtime > source mtime before measuring; watch for `error:` lines.
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F709/F729/F752) — the `[lodev]` harness DOES NOT EXIST
+
+**Every acceptance criterion in this document that reads a `[lodev]` event is
+unrunnable, and has been for a long time.** This is a correction note, not a
+rewrite: the text above is preserved as the historical record of what was
+intended.
+
+PROOF: a repo-wide grep for `lodev` over `apps/` returns **exactly one hit, and
+it is a comment** — `apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417`.
+There is no emitter. No `lodHarnessEnabled`, no `step`/`mut`/`frame`/`render`/`lod`
+events, no `renderP`/`roleGap`/`roleP`/`snapPromoted`/`flashReversalCount` fields.
+`log stream --predicate '[lodev]'` returns nothing. The only live map telemetry
+is narrative `[LODDBG]` NSLog behind `static let lodDebugLoggingEnabled = false`
+(same file, :10357) — inert.
+
+CLAUDE.md already adjudicated this ("The `[lodev]` JSONL telemetry harness this
+file used to document DOES NOT EXIST in the code... Treat it as dead
+scaffolding"). CLAUDE.md is correct; the Swift comment at :10417 is the stale one.
+
+This was **the single most-replicated false claim in the repo** — four
+independent doc homes plus a code comment all described this harness as real:
+`plans/lod-v5-architecture.md`, `plans/lod-ideal-residency-refactor.md`,
+`plans/toggle-fade-swap-lane.md`, and `product/map.md`. That replication count is
+itself the ranking signal: the more places repeat a dead claim, the more
+expensive it is to leave standing.
+
+WHAT TO DO INSTEAD: `plans/lod-greenfield-redesign-synthesis.md:258` is the only
+doc that recorded the emitter as deleted, and it says to re-add a minimal step
+probe FIRST. Follow that. Per CLAUDE.md, its proper replacement (a structured
+mach-clock event log) gets built as PART of a real map change, never as naked
+scaffolding. The 12 `scripts/lod-*` parsers are now classified
+`@script-class: dead-scaffolding` and say so in their own headers.

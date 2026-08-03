@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: CLAUDE.md.
 # Refresh the STAGING database from PRODUCTION — corpus in, user data OUT.
 #
 # THE STAGING PHILOSOPHY (round-six derivation, 2026-08-02): staging is NOT a

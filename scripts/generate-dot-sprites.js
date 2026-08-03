@@ -1,3 +1,8 @@
+// @script-class: operational
+// @run-by: run by hand when the score palette changes; paired with
+//     generate-pin-bucket-sprites.js. Both read
+//     apps/mobile/src/constants/score-bucket-palette.json so pins and
+//     dots stay in lockstep.
 /*
  * Generate pixel-perfect circle DOT sprites — one PNG per score bucket (+ highlighted).
  *

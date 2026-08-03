@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: package.json; also called by visual-regression.js.
 
 const fs = require('fs');
 const path = require('path');

@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
+# @script-class: gate
+# @run-by: .github/workflows/ci.yml (job no-bypass-search-runtime)
+#
+# WHAT THIS GATE IS FOR: the search results surface deleted its old partial
+# first-paint/row-layout admission path in favour of PREPARED ROWS — page one is
+# prepared, then admitted whole. This gate holds that deletion and asserts the
+# prepared-rows seam still exists.
+#
+# REPAIRED + WIRED 2026-08-03 (audit D37 / F704). It had zero real references
+# and had been failing on FALSE POSITIVES; see the two dated notes inline. The
+# lesson both encode: a delete gate bans SYMBOLS, never WORDS, and pins the
+# durable constant, never a local variable name.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -34,8 +46,16 @@ ACTIVE_PATHS=(
   "apps/mobile/src/perf"
 )
 
-scan_active "firstPaint|FirstPaint|first-paint|first_paint|firstVisibleRows|FirstVisibleRows|first_visible_rows|listFirstPaintReady|resultsFirstPaintKey|lane_c_list_first_paint|list_first_paint_not_ready" \
-  "old first-paint / first-visible row vocabulary still exists in active search code" \
+# NARROWED 2026-08-03 (audit D37 / F704). This scan used to ban the WORDS
+# firstPaint / first-paint / firstVisibleRows outright. That made it a
+# false-positive machine: it fired on `onBodyFirstPaint` / `handleBodyFirstPaint`
+# (BottomSheetSceneStackPageFrame.tsx + BottomSheetSceneStackHost.tsx), which is
+# a LIVE and legitimate paint-ack producer, and on two "first-paint default"
+# prose comments. The killed thing was the LIST first-paint ADMISSION path, not
+# the vocabulary — and its exact symbols are already enumerated in the scan
+# below. Ban symbols, never words.
+scan_active "listFirstPaintReady|resultsFirstPaintKey|lane_c_list_first_paint|list_first_paint_not_ready|firstVisibleRows|FirstVisibleRows|first_visible_rows" \
+  "old list first-paint / first-visible row admission symbols still exist in active search code" \
   "${ACTIVE_PATHS[@]}"
 
 scan_active "SearchResultsBodyFirstPaintAdmission|firstPaintRenderMode|FIRST_PAINT_ROWS|resolveSearchResultsBodyAdmissionRowCount|scheduleSearchMountedResultsFirstPaintRowsReady|canMarkSearchMountedResultsFirstVisibleRowsReadyFromRowLayout|markSearchMountedResultsFirstVisibleRowsReady|allowFullBodyAdmission" \
@@ -74,7 +94,12 @@ require_active "markSearchMountedResultsPreparedRowsCommitted" \
   "apps/mobile/src/overlays/SearchMountedSceneBody.tsx" \
   "apps/mobile/src/screens/Search/runtime/shared/search-mounted-results-data-store.ts"
 
-require_active "initialDrawBatchSize:\\s*preparedRowsInitialDrawBatchSize" \
+# REPOINTED 2026-08-03 (audit D37 / F704). Was pinned to the identifier
+# `preparedRowsInitialDrawBatchSize`, which was split into
+# primary/secondaryInitialDrawBatchSize. The INVARIANT is intact — both are
+# Math.min(MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE, max(default, rows.length))
+# — so assert the durable constant, not the local variable name.
+require_active "MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE" \
   "mounted results FlashList must draw the prepared page-one row batch, not the old small initial batch" \
   "apps/mobile/src/overlays/SearchMountedSceneBody.tsx"
 

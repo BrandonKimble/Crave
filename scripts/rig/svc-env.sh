@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: the service-access skill (every reference file) and
+#     .claude/settings.json.
 # Source this, don't run it:  source scripts/rig/svc-env.sh
 #
 # Loads every service credential from the repo's .env files into the current

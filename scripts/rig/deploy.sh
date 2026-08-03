@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: CLAUDE.md (THE DEPLOY LAW), .claude/settings.json, the
+#     service-access skill.
 # One-command deploy. THE FLOW IS staging -> production, in that order.
 #
 #   ./scripts/rig/deploy.sh --env staging      # 1. always here first

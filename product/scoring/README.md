@@ -66,3 +66,35 @@ Also parked there: the **evidence floor & rising-confidence thresholds** (how fe
 to trust/show", and when a `rising` delta is real vs thin-data noise). The current take is calibrated
 to thin seed data and **must be re-derived against the production opinion-count distribution** once the
 archive collection lands real volume — see [composite-tuning.md](composite-tuning.md#evidence-floor--rising-confidence--️-revisit-with-production-data).
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F744/F745) — two claims above are wrong against the shipped code
+
+Correction note only; nothing above is deleted.
+
+**1. Upvotes do NOT count 1:1 with mentions.** This file says "Upvotes,
+mentions, and likes all count 1:1 … endorsement value is `log1p(mentions +
+upvotes)`". The code weights upvotes at **0.7**:
+
+- `apps/api/src/modules/content-processing/public-crave-score/public-crave-score.service.ts:92` — `upvoteWeight: 0.7`
+- applied at `:234` as `mentions + upvoteWeight · upvotes`, inside ONE pooled
+  mass, then a SINGLE `log1p` over the sum across sources (`:232-240`).
+
+This file's own sibling, `product/scoring/composite-tuning.md:19-31`, already
+documents 0.7 correctly — so the two scoring docs disagreed with each other.
+`composite-tuning.md` is right.
+
+**2. "Strict + relaxed are pooled, not staged" is correct — and it is the
+DEFAULT, which is worth stating explicitly** because
+`product/search-and-dishes.md:35` describes a SECTIONED page 1 ("Exact matches"
+then "Broader matches") as if that were the shipped shape. It is not the
+default. Both live behind a flag:
+
+- **pooled = DEFAULT**, with its own guard test (`apps/api/src/modules/search/search-pooled-gate.spec.ts`)
+- **sectioned = opt-in**, via `SEARCH_RANKING_MODE=sectioned`
+  (`search.service.ts:3078-3085`, `resolveSectionedRanking()`). The code comment
+  there records the owner's standing decision: "Default OFF (pure Crave Score)".
+
+So this file describes the default and `search-and-dishes.md` describes the
+opt-in mode. Corrected there as well.

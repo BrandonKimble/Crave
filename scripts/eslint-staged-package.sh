@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: package.json / lefthook staged-lint path.
 set -euo pipefail
 
 fix_mode=0

@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// @script-class: dead-scaffolding
+// @run-by: NOTHING. Zero references outside the audit. Oldest file in the
+//     tree (last touched 2025-12-28); a spent one-off. Deletion
+//     candidate.
 const fs = require('fs');
 const path = require('path');
 

@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: package.json (visual:regression:map). NOTE 2026-08-03: the capture
+//     flow this rail replays was deleted in 9f0d26a5a — see
+//     visual-baselines/README.md and audit F706/F707, ESCALATED to
+//     owner. Class recorded, rail untouched.
 /**
  * Visual regression for the map (and any captured screenshots).
  *

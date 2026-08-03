@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: gate
+# @run-by: package.json.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

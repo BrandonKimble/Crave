@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: .claude/skills/reextract/SKILL.md.
 # RE-EXTRACTION COORDINATOR (agent-operated; see .claude/skills/reextract).
 # Prompt iteration never pauses collection: live lanes extract under the
 # ACTIVE prompt version while a CANDIDATE runs shadow replays. Sequence:

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: package.json; also called by perf-scenario-contract-gate.js.
 
 const fs = require('fs');
 const path = require('path');

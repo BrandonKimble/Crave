@@ -39,12 +39,17 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
       — which is exactly the two long-standing mobile tsc errors in
       `search-map.tsx` and `use-search-runtime-camera-intent-runtime.ts`.
 
-      The patch is 1,007 lines of real source buried in 12,497 lines of
-      accidentally-captured Android BUILD ARTIFACTS (`android/build/**`).
-      Stripping those is mechanical, but retargeting at 10.3.1 is not:
-      `RNMBXCameraViewManager.m` no longer exists upstream and two other files
-      moved, so the customisation has to be re-applied to the new structure
-      and verified with a native build. That belongs to whoever owns the map.
+      **RESOLVED 2026-08-02: the patch is re-ported to 10.3.1 and back in
+      `patches/` (977 lines, zero build artifacts).** The customisation was
+      re-applied to the new file structure (`RNMBXCameraViewManager.m` hunk
+      dropped — 10.3.1 is Fabric-only; its `hostKey`/`onCameraAnimationComplete`
+      props now flow through `RNMBXCameraComponentView.updateProps`, a gap the
+      10.2.9 patch had latently). Verified end-to-end: pristine-tarball
+      re-apply via `npx patch-package`, mobile tsc clean (the two
+      long-standing errors are gone), full Xcode build green, and in-sim
+      profile presentation camera + `onCameraAnimationComplete`
+      (`animationCompletionId` echo) observed live. `patches-parked/` is
+      deleted.
       A second CI job (`search-runtime-contract-tests`) fails separately with
       exit 127 — a missing `node` in that step.
 

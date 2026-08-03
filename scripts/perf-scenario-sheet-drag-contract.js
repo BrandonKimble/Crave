@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: package.json.
 'use strict';
 
 /**

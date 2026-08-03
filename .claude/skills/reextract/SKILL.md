@@ -104,7 +104,7 @@ items. Design doc: plans/reextract-choreography.md. Entry point:
 - **Every verb targets `REEXTRACT_DB`** — including push/estimate/activate,
   which boot AppModule. Unset, they hit the LOCAL dev database and the prod
   worker will never find the candidate or campaign.
-- **After disarming, run `scripts/enrich-restaurants.ts`.** The shadow sets
+- **After disarming, run `apps/api/scripts/enrich-restaurants.ts`.** The shadow sets
   `DISABLE_RESTAURANT_ENRICHMENT` service-wide, so restaurants minted by
   LIVE collection during the window never got Places grounding, and the
   backfill has no cron.

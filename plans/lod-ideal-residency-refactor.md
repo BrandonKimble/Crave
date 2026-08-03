@@ -40,6 +40,7 @@ small churn (4 feats × 1-2 markers per granular change) is isolated and never r
   resident = the viewport set (cheap); pan-far re-searches.
 
 ## Sequenced steps (verify each with the harness: render-truth missing~0, mut bundle add/rm→0 in
+
 ## motion, dtMs smooth, flashReversalCount/lod_snap_contract=0, and the wiggle gone on frames)
 
 1. **Full PIN residency (native).** Separate resident-membership from promoted-opacity (currently
@@ -54,10 +55,10 @@ small churn (4 feats × 1-2 markers per granular change) is isolated and never r
 3. **Un-bundle labels** into their own source so label add/remove on promote/demote never mutates
    the pin source. Pin layers read the pin source; label layers read the label source.
 4. **Delete the JS decider (Phase 3):** buildMarkerRenderModel + buildStableSlotMap + isVisibleInBounds
-   + padded-AABB fallback + map-render-model.ts(+spec). Native is the sole decider; JS publishes
-   resident catalog only. Native must own the INITIAL/reveal promotion (no JS seed).
+   - padded-AABB fallback + map-render-model.ts(+spec). Native is the sole decider; JS publishes
+     resident catalog only. Native must own the INITIAL/reveal promotion (no JS seed).
 5. **Delete two-group badge cruft:** overlapRegionRequiresAutoZoom/overlapRadiusBounds (dead),
-   in/out perf counters, SCALE_PROBE_*, stale comments; simplify region/badge back toward the clean
+   in/out perf counters, SCALE*PROBE*\*, stale comments; simplify region/badge back toward the clean
    inline form (consider rank-driven badge: top-N gets a rank badge regardless of geography).
 
 Order rationale: 1 fixes wiggle+jank but needs 3 (un-bundle) for the wiggle to fully clear; do 1+3
@@ -100,6 +101,7 @@ land step 1 alone.
 ## Precise impl notes for step 1+3 (worked out; execute fresh, harness-verified, no broken middle)
 
 NATIVE (SearchMapRenderController.swift):
+
 - DesiredPinSnapshotState: add `promotedMarkerKeys: Set<String>`. pinIdsInOrder becomes the RESIDENT
   set in a STABLE order (never reordered on LOD): residentDotMarkerKeysInOrder (rank-ordered, stable
   per data change) filtered to rows with pinFeature, plus any pinnedMarkerKeysInOrder-with-pinFeature
@@ -115,7 +117,9 @@ NATIVE (SearchMapRenderController.swift):
   (NOT previousPresent?1:0). New-transition guard = abs(currentOpacity-targetOpacity)>=0.001 (opacity
   change), NOT previousPresent!=nextPresent (membership change). The flash-suppression / commit-
   invariant logic is opacity-based → keep it; just feed it promoted-driven targetOpacity.
+
 ## UN-BUNDLE BLOCKER FOUND (2026-06-19, attempted + reverted): needs a DEDICATED wrapped-label render
+
 ## source — labelSourceId can't be it.
 
 Attempted the un-bundle; reverted clean. The wall: the label LAYER filter requires
@@ -152,3 +156,38 @@ reveal label-gate opens, label tap works) — getting it wrong silently breaks l
 VERIFY each: [lodev] mut pin add/rm=0 while moving; extracted frames show no pin wiggle during zoom;
 flashReversalCount==0 + lod_snap_contract silent; render-truth missing~0; dtMs smooth. Revert via git
 if any flash detector trips.
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F709/F729/F752) — the `[lodev]` harness DOES NOT EXIST
+
+**Every acceptance criterion in this document that reads a `[lodev]` event is
+unrunnable, and has been for a long time.** This is a correction note, not a
+rewrite: the text above is preserved as the historical record of what was
+intended.
+
+PROOF: a repo-wide grep for `lodev` over `apps/` returns **exactly one hit, and
+it is a comment** — `apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417`.
+There is no emitter. No `lodHarnessEnabled`, no `step`/`mut`/`frame`/`render`/`lod`
+events, no `renderP`/`roleGap`/`roleP`/`snapPromoted`/`flashReversalCount` fields.
+`log stream --predicate '[lodev]'` returns nothing. The only live map telemetry
+is narrative `[LODDBG]` NSLog behind `static let lodDebugLoggingEnabled = false`
+(same file, :10357) — inert.
+
+CLAUDE.md already adjudicated this ("The `[lodev]` JSONL telemetry harness this
+file used to document DOES NOT EXIST in the code... Treat it as dead
+scaffolding"). CLAUDE.md is correct; the Swift comment at :10417 is the stale one.
+
+This was **the single most-replicated false claim in the repo** — four
+independent doc homes plus a code comment all described this harness as real:
+`plans/lod-v5-architecture.md`, `plans/lod-ideal-residency-refactor.md`,
+`plans/toggle-fade-swap-lane.md`, and `product/map.md`. That replication count is
+itself the ranking signal: the more places repeat a dead claim, the more
+expensive it is to leave standing.
+
+WHAT TO DO INSTEAD: `plans/lod-greenfield-redesign-synthesis.md:258` is the only
+doc that recorded the emitter as deleted, and it says to re-add a minimal step
+probe FIRST. Follow that. Per CLAUDE.md, its proper replacement (a structured
+mach-clock event log) gets built as PART of a real map change, never as naked
+scaffolding. The 12 `scripts/lod-*` parsers are now classified
+`@script-class: dead-scaffolding` and say so in their own headers.

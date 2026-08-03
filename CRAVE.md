@@ -1521,3 +1521,74 @@ healthy (`set_map_camera`, `animate_map_camera`, `submit_shortcut_restaurants`,
 `poll-feed-sort.yaml` taps testIDs that no longer exist (the sort control became
 an option-selector sheet — F710), and `poll-card-open.yaml` pins a hardcoded
 poll UUID that dies on any DB refresh (F711).
+
+## Territory: mobile-app-core (the app shell, the api seam, money, onboarding, and the shared kit)
+
+235 files: `apps/mobile` minus the four big rooms audited elsewhere (`src/screens/Search`, `src/navigation`,
+`src/overlays`, `ios/`). What's left is everything the four rooms stand on — the entry point, the ONE http client,
+auth and entitlements, the stores, the shared component kit, the perf instruments, and onboarding.
+
+**The boot order is load-bearing and stated.** `AppEntry.js` → `App.js` → `App.tsx`, whose FIRST import is
+`src/polyfills/react-native-codegen` (before gesture-handler, before React) — the comment says it patches react-native
+and everything downstream assumes it ran. `App.tsx` then does five things that are easy to miss because they happen at
+module scope, outside the component: it builds the QueryClient with **THE UNIFORM FAILURE CHOKEPOINT** (a
+`MutationCache.onError` that announces every mutation failure through the one standard modal, suppressed by
+`meta.suppressFailureModal` or by an entitlement-lapse tag, and which is also the crash-reporting seam), wires the
+announcer's offline read lazily so the modal store stays dependency-free, calls `enableScreens()` and
+`WebBrowser.maybeCompleteAuthSession()`, installs the notification handler, and calls `initializeCrashReporting()`
+before any module can throw. The component body then mounts ~15 app-root hosts in a specific nesting: `AuthProvider`
+wraps the route coordinators; `PurchasesProvider`, `EntitlementLapseHost`, the photo funnel and the camera live INSIDE
+the scene runtime provider; the modal/selector/score-info/collaborator/list-edit hosts live OUTSIDE it, beside
+`ShareModalHost`. Four dev-only hosts are `__DEV__`-gated; `ResidentShellPrototype` is NOT (F864).
+
+**THE ONE HTTP CLIENT** is `src/services/api.ts` — one axios instance, and every service imports it. Its request
+interceptor attaches the Clerk bearer (through a resolver `AuthProvider` registers, so the client never imports Clerk)
+plus a best-effort `x-device-key`. Its response interceptor is where the app's error POLICY lives: clear the global
+service issue on success; on `403 + errorCode ENTITLEMENT_REQUIRED` announce the app-wide paywall lapse and TAG the
+error so no generic modal stacks on top; on `>= 500` report a service issue scoped `search` (for `LLM_UNAVAILABLE`) or
+`global`; log. A module-scope subscription runs a `/health` probe every 5s while an issue is live, so the banner clears
+when health returns rather than when some later action happens to succeed. **There is no 401 branch** (F804), and the
+base URL is derived through a long dev-convenience ladder (env → Metro host → localhost) whose production input is
+wrong in `eas.json` (F803).
+
+**Money is three seams and one law.** `services/purchases.ts` is the RevenueCat wrapper (identity SERIALIZED through
+one promise queue; a purchase REFUSED unless RC is configured as the current Clerk user; a `test_` key in a release
+build disables purchases loudly) — F819 argues it is ideal. `hooks/useAccess.ts` is the ONE hook every gate reads, and
+its law is that **access truth is the server ledger, never RevenueCat CustomerInfo** — RC cannot see comps, rewards or
+trials. `store/entitlementLapseStore.ts` + `screens/EntitlementLapseHost.tsx` are the lapse takeover: the api client
+announces, the host mounts `PaywallScreen` full-screen, and it clears ONLY when server truth flips active. What is NOT
+built: the "hard paywall at onboarding end" that `PaywallScreen`'s own header describes — onboarding has no paywall
+step and no gate (F816).
+
+**Onboarding** is `screens/Onboarding.tsx` (3.3k lines) driven by the step table in `constants/onboarding.ts`, with
+`store/onboardingStore.ts` persisting a versioned draft through AsyncStorage and reconciling against the server's
+`UserOnboardingProfile`. Two branches: live-city (Austin, New York) gets the full flow ending in the teaser + account;
+waitlist gets a trimmed one. The payoff beat, `screens/onboarding/OnboardingTeaser.tsx`, is the RIGHT shape — real
+ranked dishes with real scores from `/teaser/preview`, degrading to a qualitative fallback. The graph beats before it
+are the wrong shape: they compute and display per-user DOLLAR savings from invented rates (F800), and a server-side
+completion failure is swallowed into a local "completed" that loses every answer (F810).
+
+**The shared kit** is `src/components` (85 files), and its organizing idea is the **app-root singleton surface**: a
+module-scope store plus a host mounted in `App.tsx`, so any code anywhere can call `showAppModal` / `showShareModal` /
+`showOptionSelector` / `showScoreInfo` / `showCollaboratorModal` / `showListEdit` without a provider or a prop drill.
+Six of them exist and each was written from scratch (F880) — that duplication is the single biggest structural item in
+this territory, and it has already produced three copies of one fixed race. Two eslint rules in `apps/mobile/.eslintrc.js`
+are the house's door locks: `Alert.alert`/`Alert.prompt` and the native `<Modal>` are banned outright (every modal goes
+through `OverlayModalSheet`), and `ActivityIndicator` is banned inside `src/overlays/panels/**` and `Button.tsx` (THE
+SKELETON LAW — pending content renders its declared skeleton, button loading is the `SquircleSpinner`). A third
+override enforces DECISION-LAYER PURITY: four named modules may not import react, react-native, expo or mapbox, because
+they are unit-tested in plain Node. **What the lint chain does NOT have is `eslint-plugin-react-hooks`** (F808).
+
+**The instruments** live in `src/perf` and are KEEP by owner ruling: `perf-scenario-command-registry.ts` +
+`PerfScenarioCoordinator.tsx` are the command-bus seed (fire-and-forget verbs driven by `crave://perf-scenario-command`
+deep links), and `perf/lifecycle-harness/` is its acked successor — `lifecycle-harness-registry.ts` acks EVERY
+invocation and makes `verb_not_registered` itself an ack, which is exactly the bidirectional bus CLAUDE.md's
+methodology asks for. The samplers beneath them are the weak half: a missing native UI-frame sampler is
+indistinguishable from a perfect run, and the worst stalls are the ones the clamps discard (F850, F851).
+
+**Reading order for a stranger.** `App.tsx` (what mounts, in what order) → `services/api.ts` (the one client and the
+error policy) → `store/systemStatusStore.ts` + `providers/NetworkStatusListener.tsx` (the ONE online truth, which
+mirrors into react-query's `onlineManager` and whose `subscribeToReconnect` is the shared offline→online edge) →
+`hooks/useAccess.ts` + `services/purchases.ts` (money) → `components/app-modal-store.ts` + `AppModalHost.tsx` (the
+singleton-surface pattern the other five copy) → `.eslintrc.js` (the laws that are enforced, which tells you which ones
+were broken before).

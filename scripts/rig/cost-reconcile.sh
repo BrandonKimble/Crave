@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: CLAUDE.md, .claude/settings.json, the service-access + reextract
+#     skills.
 # LEDGER-vs-INVOICE RECONCILIATION (routine check, born 2026-07-30).
 #
 # THE BILLING TRUTH LIVES IN BIGQUERY: project crave-467301, dataset

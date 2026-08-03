@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: CLAUDE.md and the service-access skill.
 # Point the simulator at prod or local and make it ACTUALLY take effect.
 #
 #   ./scripts/rig/sim-target.sh prod    # sim -> Railway api (default dev mode)

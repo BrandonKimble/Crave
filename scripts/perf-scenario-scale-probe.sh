@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# @script-class: dead-scaffolding
+# @run-by: NOTHING (audit F708). Its default FLOW is
+#     maestro/perf/flows/search-map-scale-probe.yaml and its usage line
+#     offers search-map-scale-probe-collision.yaml — BOTH deleted in
+#     9f0d26a5a. It guards with [[ ! -f ]] so it fails honestly, but its
+#     default argument is unreachable. Deletion candidate, with the map
+#     saga.
 set -euo pipefail
 
 # FEATURE-COUNT DEGRADATION HARNESS RUNNER (#21)

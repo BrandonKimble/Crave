@@ -1,4 +1,7 @@
 #!/bin/bash
+# @script-class: operational
+# @run-by: CLAUDE.md (VERIFIED dev-client reload) and the service-access
+#     skill.
 # Verified dev-client reload (root-cause fix for the stale-first-launch trap).
 #
 # WHY: the dev client persists its last bundle revision and requests a DELTA on the next

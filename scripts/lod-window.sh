@@ -1,4 +1,21 @@
 #!/usr/bin/env bash
+# @script-class: dead-scaffolding
+# @run-by: NOTHING (audit F709/F729/F752). This is the [lodev] cluster. These
+#     scripts drive and parse a `[lodev]` JSONL event stream that NO CODE
+#     EMITS: a repo-wide grep for "lodev" over apps/ returns exactly ONE
+#     hit, and it is a stale COMMENT
+#     (apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417).
+#     Live map telemetry is narrative [LODDBG] NSLog behind
+#     `lodDebugLoggingEnabled = false`. CLAUDE.md already adjudicated
+#     this: "The [lodev] JSONL telemetry harness ... DOES NOT EXIST in
+#     the code ... Treat it as dead scaffolding." The verdict is now
+#     carried to the scripts themselves. NOT DELETED, deliberately:
+#     CLAUDE.md forbids stripping map instrumentation outside a real map
+#     change, and the DRIVE half of this cluster still uses live perf
+#     verbs (animate_map_camera / set_map_camera, registered in
+#     apps/mobile/src/perf). It is the OBSERVE/ANALYZE half that has no
+#     producer. Retire the cluster as PART of the next real map change,
+#     not as a naked delete.
 # Summarize the LAST N seconds of [lodev] for a manual-session cue ("I saw X just now"). Reads the
 # os_log buffer directly (reliable) and prints the three issue-signals + viewport so we can pinpoint:
 #   - JANK: camentry dt stalls (>50ms) — choppiness / "gets weird"

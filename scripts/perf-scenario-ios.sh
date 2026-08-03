@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: package.json (perf:scenario:ios); CLAUDE.md and
+#     maestro/perf/README.md document it.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

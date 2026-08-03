@@ -196,3 +196,39 @@ in-place rerun choreography over stale results, fresh enter when nothing is pres
 - Whether NL/semantic search is metered as soft-degrade (a few free per day) or fully Crave+-only.
 - Whether the Friends _lens_ (filter-to-only-friends) is worth building at all, given the ambient FriendCluster may already cover the need — and if so, free or a Crave+ lever.
 - **Optional "relevancy sort" as a dense-co-inclusion backstop.** Dense entity-to-entity co-inclusion broadens the candidate set with related dishes (a "ramen" search also surfaces its noodle family: miso ramen, lo mein, kimchi noodles). Today's principle is _score-ranked, never a relevance sort_ (see Core search architecture) — relevance lives in candidate generation, not a separate ordering. If co-inclusion succeeds _too_ well and the most-relevant results get buried under pure score-ranking, we may need an optional relevance ordering — ideally a **grouped** one: cluster co-included dishes by dense-score band (the winner's own family first, then the next-closest family…) and sort by crave-score _within_ each band, so the best-and-most-relevant surfaces at the very top and relevance decays down the list while quality still wins locally. Behind the scenes it stays "smart" (still favors higher-ranked places within a band). Build only if we actually observe the burying — not a launch dependency, and the stated ideal is to get the co-inclusion _pick_ good enough that no relevance sort is ever needed.
+
+---
+
+## CORRECTION 2026-08-03 (repo rederivation, audit F744/F745) — the scoring formula and the page-1 shape are both stated wrong
+
+Correction note only; nothing above is deleted.
+
+**1. `E_dish = w_m·log1p(mentions) + w_u·log1p(upvotes)` with "defaults 0.7/0.3"
+is the OLD v2 split.** The shipped code does not take two separate logs and does
+not use a 0.7/0.3 pair. It computes ONE pooled mass and takes a SINGLE `log1p`
+over it:
+
+```
+pooledOne(c) = influence(platform) · (mentions + upvoteWeight · upvotes) / g(sourceId)
+endorse      = log1p( Σ pooledOne(c) over contributions )
+```
+
+(`apps/api/src/modules/content-processing/public-crave-score/public-crave-score.service.ts:231-240`.)
+There is ONE weight, `upvoteWeight: 0.7` (`:92`) — the relative premium of an
+upvote against a mention, not half of a 0.7/0.3 pair.
+`product/scoring/composite-tuning.md:27-28` calls the 0.7/0.3 split "the old v2
+split (which over-discounted upvotes)".
+
+**2. "Sectioned page 1 — 'Exact matches' … then 'Broader matches'" is the
+OPT-IN mode, not the default.** Both shapes live behind a flag:
+
+- **pooled = DEFAULT** (strict + relaxed pooled into one pure-score list),
+  guarded by `apps/api/src/modules/search/search-pooled-gate.spec.ts`
+- **sectioned = opt-in**, only when `SEARCH_RANKING_MODE=sectioned`
+  (`search.service.ts:3078-3085`). Its own comment records the owner's standing
+  decision: "Default OFF (pure Crave Score)", with the sectioned shape kept as
+  ONE candidate for a future relevancy treatment.
+
+`product/scoring/README.md:44-45` describes the default correctly ("Strict +
+relaxed are pooled, not staged"). The two docs contradicted each other; the
+pooled description is the shipped one.

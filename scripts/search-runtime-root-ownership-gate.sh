@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# @script-class: gate
+# @run-by: .github/workflows/ci.yml (job search-runtime-contract-tests,
+#     enforced slice S7).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

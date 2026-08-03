@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @script-class: gate
+// @run-by: package.json. Aggregates the perf-scenario contract checkers.
 
 // Core Crave map LOD acceptance-contract GATE.
 //

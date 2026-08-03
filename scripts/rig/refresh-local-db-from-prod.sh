@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: CLAUDE.md and the service-access skill.
 # Refresh the LOCAL dev database from the PRODUCTION (Railway) database.
 #
 # Direction is ONE-WAY: prod -> local. Nothing here writes to prod (the prod

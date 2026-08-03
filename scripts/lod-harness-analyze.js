@@ -1,4 +1,21 @@
 #!/usr/bin/env node
+// @script-class: dead-scaffolding
+// @run-by: NOTHING (audit F709/F729/F752). This is the [lodev] cluster. These
+//     scripts drive and parse a `[lodev]` JSONL event stream that NO
+//     CODE EMITS: a repo-wide grep for "lodev" over apps/ returns
+//     exactly ONE hit, and it is a stale COMMENT
+//     (apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417).
+//     Live map telemetry is narrative [LODDBG] NSLog behind
+//     `lodDebugLoggingEnabled = false`. CLAUDE.md already adjudicated
+//     this: "The [lodev] JSONL telemetry harness ... DOES NOT EXIST in
+//     the code ... Treat it as dead scaffolding." The verdict is now
+//     carried to the scripts themselves. NOT DELETED, deliberately:
+//     CLAUDE.md forbids stripping map instrumentation outside a real map
+//     change, and the DRIVE half of this cluster still uses live perf
+//     verbs (animate_map_camera / set_map_camera, registered in
+//     apps/mobile/src/perf). It is the OBSERVE/ANALYZE half that has no
+//     producer. Retire the cluster as PART of the next real map change,
+//     not as a naked delete.
 /* LOD harness analyzer. Parses the [lodev] JSONL event stream and flags anti-patterns.
  * See plans/lod-observability-harness.md. Usage: node lod-harness-analyze.js <jsonl> [video] */
 const fs = require('fs');
@@ -44,36 +61,61 @@ const flags = [];
 for (const f of frames) {
   const expected = Math.min(f.visible, 40);
   if (f.promoted > expected + 0.001) {
-    flags.push({ issue: 'count_sanity', t: f.t, detail: `promoted ${f.promoted} > min(visible ${f.visible},40)` });
+    flags.push({
+      issue: 'count_sanity',
+      t: f.t,
+      detail: `promoted ${f.promoted} > min(visible ${f.visible},40)`,
+    });
   }
   // Under-promotion: in view but not enough promoted. The headline zoom bug = visible>0 but
   // promoted=0 (dots on screen, nothing promoted). Also catch promoted << expected generally.
   if (f.visible > 0 && f.promoted < expected - 0.001) {
-    flags.push({ issue: 'under_promotion', t: f.t, detail: `visible ${f.visible} but only ${f.promoted} promoted (expected ${expected}) zoom=${f.zoom} moving=${f.moving}` });
+    flags.push({
+      issue: 'under_promotion',
+      t: f.t,
+      detail: `visible ${f.visible} but only ${f.promoted} promoted (expected ${expected}) zoom=${f.zoom} moving=${f.moving}`,
+    });
   }
 }
 // --- ZOOM-DISAPPEAR: during a zoom-in (zoom rising), did the visible set collapse toward 0 /
 // promoted go to 0 even though markers were on screen just before? (the "dots vanish" bug) ---
 for (let i = 1; i < frames.length; i++) {
-  const a = frames[i - 1], b = frames[i];
+  const a = frames[i - 1],
+    b = frames[i];
   if (b.zoom > a.zoom + 0.05 && a.visible >= 10 && b.visible <= 2) {
-    flags.push({ issue: 'zoom_collapse', t: b.t, detail: `zoom ${a.zoom}->${b.zoom}: visible collapsed ${a.visible}->${b.visible} (markers vanished on zoom-in)` });
+    flags.push({
+      issue: 'zoom_collapse',
+      t: b.t,
+      detail: `zoom ${a.zoom}->${b.zoom}: visible collapsed ${a.visible}->${b.visible} (markers vanished on zoom-in)`,
+    });
   }
   if (b.zoom > a.zoom + 0.05 && a.promoted >= 5 && b.promoted === 0) {
-    flags.push({ issue: 'zoom_depromote', t: b.t, detail: `zoom ${a.zoom}->${b.zoom}: promoted ${a.promoted}->0 (nothing promoted after zoom-in)` });
+    flags.push({
+      issue: 'zoom_depromote',
+      t: b.t,
+      detail: `zoom ${a.zoom}->${b.zoom}: promoted ${a.promoted}->0 (nothing promoted after zoom-in)`,
+    });
   }
 }
 
 // --- group_enter: many markers entered the viewport in one frame ---
 const groupEnters = frames.filter((f) => (f.enter || 0) >= GROUP_THRESHOLD);
 for (const f of groupEnters.slice(0, 8)) {
-  flags.push({ issue: 'group_enter', t: f.t, detail: `${f.enter} entered at once (moving=${f.moving})` });
+  flags.push({
+    issue: 'group_enter',
+    t: f.t,
+    detail: `${f.enter} entered at once (moving=${f.moving})`,
+  });
 }
 
 // --- group_flip: many role flips in one lod event (should be per-pin, ~1-2) ---
 const groupFlips = lods.filter((l) => (l.affected || 0) >= GROUP_THRESHOLD);
 for (const l of groupFlips.slice(0, 8)) {
-  flags.push({ issue: 'group_flip', t: l.t, detail: `${l.affected} flips at once (promote ${l.promote}/demote ${l.demote}, moving=${l.moving})` });
+  flags.push({
+    issue: 'group_flip',
+    t: l.t,
+    detail: `${l.affected} flips at once (promote ${l.promote}/demote ${l.demote}, moving=${l.moving})`,
+  });
 }
 
 // --- THE SNAP DETECTOR: are role flips happening DURING motion (per-pin) or clustering
@@ -109,7 +151,11 @@ if (movingFrames > 5 && movingLods.length === 0 && idleLods.length > 0) {
   });
 }
 if (allowNewMovingFalse > 0) {
-  flags.push({ issue: 'deferred_in_motion', t: movingLods.find((l) => l.allowNew === false)?.t, detail: `${allowNewMovingFalse} role-flips during motion had allowNew=false (transitions suppressed → snap).` });
+  flags.push({
+    issue: 'deferred_in_motion',
+    t: movingLods.find((l) => l.allowNew === false)?.t,
+    detail: `${allowNewMovingFalse} role-flips during motion had allowNew=false (transitions suppressed → snap).`,
+  });
 }
 
 // --- STEP (render) analysis: is opacity ANIMATING during motion, or only after? ---
@@ -122,7 +168,9 @@ const movingStepsAnimating = movingSteps.filter((s) => (s.midFade || 0) > 0).len
 const idleStepsAnimating = idleSteps.filter((s) => (s.midFade || 0) > 0).length;
 if (steps.length > 0) {
   console.log(`\n--- step (render) ---`);
-  console.log(`steps total ${steps.length}: moving ${movingSteps.length} (animating ${movingStepsAnimating}, midFadeSum ${movingMidFade}) | idle ${idleSteps.length} (animating ${idleStepsAnimating}, midFadeSum ${idleMidFade})`);
+  console.log(
+    `steps total ${steps.length}: moving ${movingSteps.length} (animating ${movingStepsAnimating}, midFadeSum ${movingMidFade}) | idle ${idleSteps.length} (animating ${idleStepsAnimating}, midFadeSum ${idleMidFade})`
+  );
   // SNAP at render: crossfade intensity (mid-fade pins per frame) concentrated at SETTLE vs
   // during motion. If the idle rate >> moving rate, the per-pin fades are being deferred and
   // burst at gesture-end = the snap the eye sees.
@@ -130,16 +178,26 @@ if (steps.length > 0) {
   const idleRate = idleSteps.length ? idleMidFade / idleSteps.length : 0;
   const movingAnimFrac = movingSteps.length ? movingStepsAnimating / movingSteps.length : 0;
   console.log(`midFade/frame: moving ${movingRate.toFixed(2)} | idle ${idleRate.toFixed(2)}`);
-  console.log(`moving frames animating: ${(movingAnimFrac * 100).toFixed(0)}% | idle role-flips: ${idleLods.length}`);
+  console.log(
+    `moving frames animating: ${(movingAnimFrac * 100).toFixed(0)}% | idle role-flips: ${idleLods.length}`
+  );
   // The real snap test: are per-pin crossfades happening DURING the gesture? If <30% of moving
   // frames have any mid-fade pin (fades not animating while moving) AND the idle burst is large,
   // the fades are deferred to settle (the snap). In-flight fades *completing* during the brief
   // idle tail (with idle role-flips == 0) is NORMAL, not a snap.
   if (movingSteps.length > 10 && movingAnimFrac < 0.3 && idleRate > 3) {
-    flags.push({ issue: 'render_snap', t: idleSteps[0]?.t, detail: `only ${(movingAnimFrac * 100).toFixed(0)}% of moving frames had a crossfade, then ${idleRate.toFixed(0)} mid-fade pins/frame at settle — fades deferred to gesture-end (the snap).` });
+    flags.push({
+      issue: 'render_snap',
+      t: idleSteps[0]?.t,
+      detail: `only ${(movingAnimFrac * 100).toFixed(0)}% of moving frames had a crossfade, then ${idleRate.toFixed(0)} mid-fade pins/frame at settle — fades deferred to gesture-end (the snap).`,
+    });
   }
   if (idleLods.length > 2) {
-    flags.push({ issue: 'flips_at_settle', t: idleLods[0]?.t, detail: `${idleLods.length} role-flips fired only AFTER motion stopped — promotion decision is deferred to settle.` });
+    flags.push({
+      issue: 'flips_at_settle',
+      t: idleLods[0]?.t,
+      detail: `${idleLods.length} role-flips fired only AFTER motion stopped — promotion decision is deferred to settle.`,
+    });
   }
 
   // --- CROSSFADE DESYNC (demotion bug): a pin demoting-in-place whose dot is NOT fading in
@@ -149,11 +207,21 @@ if (steps.length > 0) {
   // also: dots barely crossfade vs pins (dot fades are sequential, not synchronized)
   const pinMidSum = steps.reduce((s, e) => s + (e.pinMidFade || 0), 0);
   const dotMidSum = steps.reduce((s, e) => s + (e.dotMidFade || 0), 0);
-  console.log(`crossfade: pinMidFade total ${pinMidSum} | dotMidFade total ${dotMidSum} | xfadeGap steps ${gapSteps.length} (sum ${gapTotal})`);
+  console.log(
+    `crossfade: pinMidFade total ${pinMidSum} | dotMidFade total ${dotMidSum} | xfadeGap steps ${gapSteps.length} (sum ${gapTotal})`
+  );
   if (gapSteps.length > 2) {
-    flags.push({ issue: 'crossfade_desync', t: gapSteps[0]?.t, detail: `${gapSteps.length} frames had a demoting pin with NO synchronized dot fade-in (xfadeGap sum ${gapTotal}) — dot appears late after the pin is gone.` });
+    flags.push({
+      issue: 'crossfade_desync',
+      t: gapSteps[0]?.t,
+      detail: `${gapSteps.length} frames had a demoting pin with NO synchronized dot fade-in (xfadeGap sum ${gapTotal}) — dot appears late after the pin is gone.`,
+    });
   } else if (pinMidSum > 20 && dotMidSum < pinMidSum * 0.25) {
-    flags.push({ issue: 'crossfade_desync', t: steps[0]?.t, detail: `pins crossfade (${pinMidSum}) but dots barely do (${dotMidSum}) — demotion dot fade-in not synchronized with the pin fade-out.` });
+    flags.push({
+      issue: 'crossfade_desync',
+      t: steps[0]?.t,
+      detail: `pins crossfade (${pinMidSum}) but dots barely do (${dotMidSum}) — demotion dot fade-in not synchronized with the pin fade-out.`,
+    });
   }
 
   // --- RENDERED vs ROLE truth: of the markers the role table PROMOTED (roleP), how many are
@@ -166,9 +234,15 @@ if (steps.length > 0) {
     const maxGap = roleSteps.reduce((m, s) => Math.max(m, s.roleGap || 0), 0);
     const avgRender = (roleSteps.reduce((a, s) => a + s.renderP, 0) / roleSteps.length).toFixed(1);
     const avgRole = (roleSteps.reduce((a, s) => a + s.roleP, 0) / roleSteps.length).toFixed(1);
-    console.log(`rendered-vs-role: avg role(promoted)=${avgRole} rendered(actually pins)=${avgRender} | maxGap=${maxGap} | ${gapFrames.length}/${roleSteps.length} frames with gap>=3`);
+    console.log(
+      `rendered-vs-role: avg role(promoted)=${avgRole} rendered(actually pins)=${avgRender} | maxGap=${maxGap} | ${gapFrames.length}/${roleSteps.length} frames with gap>=3`
+    );
     if (gapFrames.length / roleSteps.length > 0.3) {
-      flags.push({ issue: 'role_render_gap', t: gapFrames[0]?.t, detail: `${gapFrames.length}/${roleSteps.length} frames had >=3 promoted markers NOT actually shown as pins (maxGap ${maxGap}) — the top-N are decided but not SHOWING (crossfade lag / stuck dots).` });
+      flags.push({
+        issue: 'role_render_gap',
+        t: gapFrames[0]?.t,
+        detail: `${gapFrames.length}/${roleSteps.length} frames had >=3 promoted markers NOT actually shown as pins (maxGap ${maxGap}) — the top-N are decided but not SHOWING (crossfade lag / stuck dots).`,
+      });
     }
   }
 
@@ -181,15 +255,23 @@ if (steps.length > 0) {
     const avg = (sel) => renders.reduce((a, r) => a + (sel(r) || 0), 0) / renders.length;
     const settleR = renders.filter((r) => !r.moving);
     const pool = settleR.length >= 3 ? settleR : renders;
-    const aShould = avg((r) => r.shouldPromote), aRendered = avg((r) => r.renderedPins);
-    const aMissing = avg((r) => r.missing), aExtra = avg((r) => r.extra);
+    const aShould = avg((r) => r.shouldPromote),
+      aRendered = avg((r) => r.renderedPins);
+    const aMissing = avg((r) => r.missing),
+      aExtra = avg((r) => r.extra);
     const settleMissing = pool.reduce((a, r) => a + (r.missing || 0), 0) / pool.length;
-    console.log(`render ground-truth: ${renders.length} queries (${settleR.length} on settle) | avg shouldPromote=${aShould.toFixed(1)} renderedPins=${aRendered.toFixed(1)} missing=${aMissing.toFixed(1)} extra=${aExtra.toFixed(1)} | settle missing avg=${settleMissing.toFixed(1)}`);
+    console.log(
+      `render ground-truth: ${renders.length} queries (${settleR.length} on settle) | avg shouldPromote=${aShould.toFixed(1)} renderedPins=${aRendered.toFixed(1)} missing=${aMissing.toFixed(1)} extra=${aExtra.toFixed(1)} | settle missing avg=${settleMissing.toFixed(1)}`
+    );
     // On settle, every should-promote that fits should be rendered. Sustained missing on settle =
     // collision-cull of wanted pins OR the feature isn't in the bundle (the LOD-not-rendering bug).
     const badSettle = pool.filter((r) => (r.missing || 0) >= 3);
     if (pool.length >= 3 && badSettle.length / pool.length > 0.4) {
-      flags.push({ issue: 'render_missing_pins', t: badSettle[0]?.t, detail: `${badSettle.length}/${pool.length} settled frames had >=3 should-be-promoted markers NOT rendered as pins (avg missing ${settleMissing.toFixed(1)}) — top-N decided but not on screen (collision-cull or missing bundle feature).` });
+      flags.push({
+        issue: 'render_missing_pins',
+        t: badSettle[0]?.t,
+        detail: `${badSettle.length}/${pool.length} settled frames had >=3 should-be-promoted markers NOT rendered as pins (avg missing ${settleMissing.toFixed(1)}) — top-N decided but not on screen (collision-cull or missing bundle feature).`,
+      });
     }
   }
 
@@ -201,29 +283,45 @@ if (steps.length > 0) {
     const avgDt = dtVals.reduce((a, b) => a + b, 0) / dtVals.length;
     const janky = dtVals.filter((d) => d > 24).length;
     const fps = avgDt > 0 ? (1000 / avgDt).toFixed(0) : 'n/a';
-    console.log(`perf: ${dtVals.length} animating frames, avg ${avgDt.toFixed(1)}ms (~${fps}fps), ${janky} frames >24ms`);
+    console.log(
+      `perf: ${dtVals.length} animating frames, avg ${avgDt.toFixed(1)}ms (~${fps}fps), ${janky} frames >24ms`
+    );
     // Localize the jank: stepper compute (workMs) vs per-camera-frame reconcile (cwork.ms).
     const stepWork = animSteps.map((s) => s.workMs).filter((w) => w != null);
-    const cworks = events.filter((e) => e.ev === 'cwork').map((e) => e.ms).filter((m) => m != null);
+    const cworks = events
+      .filter((e) => e.ev === 'cwork')
+      .map((e) => e.ms)
+      .filter((m) => m != null);
     const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
-    const stepAvg = avg(stepWork), cworkAvg = avg(cworks), cworkMax = cworks.length ? Math.max(...cworks) : 0;
+    const stepAvg = avg(stepWork),
+      cworkAvg = avg(cworks),
+      cworkMax = cworks.length ? Math.max(...cworks) : 0;
     const cworkHeavy = cworks.filter((m) => m > 16).length;
     const cworkEvents = events.filter((e) => e.ev === 'cwork');
     const projAvg = avg(cworkEvents.map((e) => e.projectMs).filter((m) => m != null));
     const driveAvg = avg(cworkEvents.map((e) => e.driveMs).filter((m) => m != null));
     if (stepWork.length || cworks.length) {
-      console.log(`perf split: stepper compute avg ${stepAvg.toFixed(1)}ms | camera-frame reconcile (cwork) avg ${cworkAvg.toFixed(1)}ms max ${cworkMax.toFixed(1)}ms, ${cworkHeavy}/${cworks.length} frames >16ms`);
+      console.log(
+        `perf split: stepper compute avg ${stepAvg.toFixed(1)}ms | camera-frame reconcile (cwork) avg ${cworkAvg.toFixed(1)}ms max ${cworkMax.toFixed(1)}ms, ${cworkHeavy}/${cworks.length} frames >16ms`
+      );
       if (projAvg || driveAvg) {
-        console.log(`  cwork breakdown: projection(+emit) avg ${projAvg.toFixed(1)}ms | driveNativeLod reconcile avg ${driveAvg.toFixed(1)}ms`);
+        console.log(
+          `  cwork breakdown: projection(+emit) avg ${projAvg.toFixed(1)}ms | driveNativeLod reconcile avg ${driveAvg.toFixed(1)}ms`
+        );
       }
     }
     if (janky / dtVals.length > 0.25 || avgDt > 24) {
-      const cause = cworkAvg > stepAvg * 1.5 && cworkAvg > 8
-        ? `cause: per-camera-frame reconcile (cwork avg ${cworkAvg.toFixed(1)}ms vs stepper compute ${stepAvg.toFixed(1)}ms) is STARVING the stepper on the main thread.`
-        : stepAvg > 12
-        ? `cause: the stepper apply itself is heavy (workMs avg ${stepAvg.toFixed(1)}ms).`
-        : `cause: unclear — stepper ${stepAvg.toFixed(1)}ms, cwork ${cworkAvg.toFixed(1)}ms; likely external main-thread contention (bridge/mapbox).`;
-      flags.push({ issue: 'jank', t: animSteps.find((s) => (s.dtMs || 0) > 24)?.t, detail: `render choppy during animation: avg ${avgDt.toFixed(1)}ms/frame (~${fps}fps), ${janky}/${dtVals.length} frames >24ms. ${cause}` });
+      const cause =
+        cworkAvg > stepAvg * 1.5 && cworkAvg > 8
+          ? `cause: per-camera-frame reconcile (cwork avg ${cworkAvg.toFixed(1)}ms vs stepper compute ${stepAvg.toFixed(1)}ms) is STARVING the stepper on the main thread.`
+          : stepAvg > 12
+            ? `cause: the stepper apply itself is heavy (workMs avg ${stepAvg.toFixed(1)}ms).`
+            : `cause: unclear — stepper ${stepAvg.toFixed(1)}ms, cwork ${cworkAvg.toFixed(1)}ms; likely external main-thread contention (bridge/mapbox).`;
+      flags.push({
+        issue: 'jank',
+        t: animSteps.find((s) => (s.dtMs || 0) > 24)?.t,
+        detail: `render choppy during animation: avg ${avgDt.toFixed(1)}ms/frame (~${fps}fps), ${janky}/${dtVals.length} frames >24ms. ${cause}`,
+      });
     }
   }
 }
@@ -236,11 +334,21 @@ if (muts.length) {
   const movingMuts = nativeMuts.filter((m) => m.moving);
   const withWork = nativeMuts.filter((m) => (m.total || 0) > 0);
   const sum = (sel) => nativeMuts.reduce((a, m) => a + sel(m), 0);
-  const triple = (k) => [sum((m) => (m[k] || [0, 0, 0])[0]), sum((m) => (m[k] || [0, 0, 0])[1]), sum((m) => (m[k] || [0, 0, 0])[2])];
-  const [bA, bU, bR] = triple('bundle'), [piA, piU, piR] = triple('pinInteraction');
-  const [dA2, , dR2] = triple('dot'), [lcA, , lcR] = triple('labelCollision');
-  console.log(`\nsource mutations (native_lod): ${nativeMuts.length} reconciles, ${withWork.length} did source work, ${movingMuts.length} WHILE MOVING`);
-  console.log(`  pinBundle add=${bA} upd=${bU} rm=${bR} | pinInteraction add=${piA} upd=${piU} rm=${piR} | labelCollision add=${lcA} rm=${lcR} | dot add=${dA2} rm=${dR2}`);
+  const triple = (k) => [
+    sum((m) => (m[k] || [0, 0, 0])[0]),
+    sum((m) => (m[k] || [0, 0, 0])[1]),
+    sum((m) => (m[k] || [0, 0, 0])[2]),
+  ];
+  const [bA, bU, bR] = triple('bundle'),
+    [piA, piU, piR] = triple('pinInteraction');
+  const [dA2, , dR2] = triple('dot'),
+    [lcA, , lcR] = triple('labelCollision');
+  console.log(
+    `\nsource mutations (native_lod): ${nativeMuts.length} reconciles, ${withWork.length} did source work, ${movingMuts.length} WHILE MOVING`
+  );
+  console.log(
+    `  pinBundle add=${bA} upd=${bU} rm=${bR} | pinInteraction add=${piA} upd=${piU} rm=${piR} | labelCollision add=${lcA} rm=${lcR} | dot add=${dA2} rm=${dR2}`
+  );
   const movingWithWork = movingMuts.filter((m) => (m.total || 0) > 0);
   if (movingWithWork.length > 0) {
     const totalWork = movingWithWork.reduce((a, m) => a + m.total, 0);
@@ -285,7 +393,10 @@ if (flags.length === 0) {
 // and e (epoch ms). The video started at videoStartMs (epoch). So for ANY event at mach-time t:
 //   epoch(t) ≈ t + median(e - t over frames);  videoOffsetSec = (epoch(t) - videoStartMs)/1000.
 if (videoPath && fs.existsSync(videoPath)) {
-  const teDiffs = frames.filter((f) => f.e != null).map((f) => f.e - f.t).sort((a, b) => a - b);
+  const teDiffs = frames
+    .filter((f) => f.e != null)
+    .map((f) => f.e - f.t)
+    .sort((a, b) => a - b);
   const teOffset = teDiffs.length ? teDiffs[Math.floor(teDiffs.length / 2)] : null;
   console.log(`\nvideo: ${videoPath}`);
   if (teOffset != null && videoStartMs != null) {
@@ -301,6 +412,8 @@ if (videoPath && fs.existsSync(videoPath)) {
       console.log(`  swift /tmp/vframe.swift ${videoPath} /tmp/lodframe ${offs.join(' ')}`);
     }
   } else {
-    console.log(`  (no videoStartMs/epoch sync — pass it as argv[4] and ensure frame events carry "e")`);
+    console.log(
+      `  (no videoStartMs/epoch sync — pass it as argv[4] and ensure frame events carry "e")`
+    );
   }
 }

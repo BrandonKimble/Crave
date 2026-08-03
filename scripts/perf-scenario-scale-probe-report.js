@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// @script-class: dead-scaffolding
+// @run-by: scripts/perf-scenario-scale-probe.sh only, which is itself
+//     dead-scaffolding (audit F708). Deletion candidate.
 // FEATURE-COUNT DEGRADATION REPORT (#21)
 //
 // Reads a scale-probe run log and charts frame performance vs synthetic
@@ -17,9 +20,7 @@
 const fs = require('fs');
 
 const usage = () => {
-  console.log(
-    'Usage: scripts/perf-scenario-scale-probe-report.js <log_path> [output_json_path]'
-  );
+  console.log('Usage: scripts/perf-scenario-scale-probe-report.js <log_path> [output_json_path]');
 };
 
 if (process.argv.includes('-h') || process.argv.includes('--help')) {

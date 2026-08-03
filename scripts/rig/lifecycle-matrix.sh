@@ -1,4 +1,10 @@
 #!/bin/bash
+# @script-class: harness
+# @run-by: run by hand against a booted sim (Phase-3 Leg 1d). CAUTION
+#     2026-08-03 (audit F717): its expected_red table was authored to be
+#     flipped to 0 as legs 3-4 landed. If those legs landed and the table
+#     was not flipped, this is an always-green surface — verify before
+#     trusting a pass.
 # Lifecycle-harness matrix v0 (Phase-3 Leg 1d — plans/search-lifecycle-phase3-charter.md).
 # Drives mouth × dismiss flows through the lifecycle-harness command bus and asserts on
 # acked composite state. Run against a booted sim with Metro logging to /tmp/crave-metro.log.

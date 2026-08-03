@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// @script-class: operational
+// @run-by: package.json; also called by perf-scenario-ios.sh and
+//     perf-scenario-contract-gate.js.
 const fs = require('fs');
 const path = require('path');
 
@@ -214,12 +217,12 @@ const summarizeHermesSamplingProfile = (events) => {
     status: stopped
       ? 'captured'
       : failed
-      ? failed.event
-      : unavailable
-      ? unavailable.status ?? 'unavailable'
-      : profileEvents.length > 0
-      ? 'unknown'
-      : 'not_requested',
+        ? failed.event
+        : unavailable
+          ? (unavailable.status ?? 'unavailable')
+          : profileEvents.length > 0
+            ? 'unknown'
+            : 'not_requested',
     availableKeys: unavailable?.availableKeys ?? failed?.availableKeys ?? null,
     events: profileEvents.slice(-WORST_LIMIT),
   };
@@ -237,7 +240,7 @@ const profilerEvents = (events) =>
     )
     .map((event) => {
       if (event.payload.event === 'quiet_measured_loop_attribution_aggregate') {
-        const sample = Array.isArray(event.payload.samples) ? event.payload.samples[0] ?? {} : {};
+        const sample = Array.isArray(event.payload.samples) ? (event.payload.samples[0] ?? {}) : {};
         return {
           line: event.line,
           event: 'scenario_profiler_span',
@@ -285,7 +288,7 @@ const workSpanEvents = (events) =>
     )
     .map((event) => {
       if (event.payload.event === 'quiet_measured_loop_attribution_aggregate') {
-        const sample = Array.isArray(event.payload.samples) ? event.payload.samples[0] ?? {} : {};
+        const sample = Array.isArray(event.payload.samples) ? (event.payload.samples[0] ?? {}) : {};
         return {
           line: event.line,
           event: 'scenario_work_span',
@@ -316,7 +319,7 @@ const renderEvents = (events) =>
     )
     .map((event) => {
       if (event.payload.event === 'quiet_measured_loop_attribution_aggregate') {
-        const sample = Array.isArray(event.payload.samples) ? event.payload.samples[0] ?? {} : {};
+        const sample = Array.isArray(event.payload.samples) ? (event.payload.samples[0] ?? {}) : {};
         return {
           line: event.line,
           event: 'scenario_render',
@@ -824,10 +827,10 @@ const resolveActiveScenarioRun = ({ events, scenarios, logPath, outputPath }) =>
         matchingConfigs.length > 0
           ? 'filename_run_id_match'
           : matchingNameConfigs.length > 0
-          ? 'latest_matching_scenario_name'
-          : activeConfig
-          ? 'latest_scenario_config'
-          : 'no_scenario_config',
+            ? 'latest_matching_scenario_name'
+            : activeConfig
+              ? 'latest_scenario_config'
+              : 'no_scenario_config',
     },
     window: {
       startLine,
@@ -1181,8 +1184,8 @@ const nativeRenderFrameBridgeSliceTiming = (slice) => {
     promiseDeliveryWallClockGapMs == null
       ? 'missing_wall_clock_trace'
       : Math.abs(promiseDeliveryWallClockGapMs - promiseSettleGapMs) <= 12
-      ? 'rn_hermes_promise_delivery_gap_best_effort'
-      : 'wall_clock_trace_mismatch';
+        ? 'rn_hermes_promise_delivery_gap_best_effort'
+        : 'wall_clock_trace_mismatch';
   return {
     hotOwnerDurationMs: round(sourceToNativeAckDurationMs),
     sourceTransportBuildDurationMs: round(sourceTransportBuildDurationMs),
