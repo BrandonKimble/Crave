@@ -1067,3 +1067,168 @@ created_utc, truncation-reports-success), always-green/always-red
 instruments, three copies of the supersede law (one dead), Latin-only
 similarity defeating the multilingual fold, eight env-flag dialects,
 and an undeclared-constants ledger escalated for K-classification.
+
+## Territory: api-search + api-polls (the read side, and the demand engine)
+
+**What it is.** Two modules covering the entire READ path (a free-text
+query becomes two ranked lists) and the polls subsystem (the weekly
+demand ritual that mints synthetic evidence). ~108 files, ~33k LOC.
+The four fat files carry the weight: `search.service.ts` (3.5k, the
+orchestrating brain), `search-query.executor.ts` (2.7k, DB + open-now
+two-phase + result mapping), `search-query.builder.ts` (2.4k, the SQL
+factory), `polls.service.ts` (2.5k, poll CRUD + leaderboard).
+
+### The read pipeline: query → interpret → build → execute → rank
+
+**1. Interpret (`search-query-interpretation.service.ts`).** CUTOVER
+2026-08-02: the per-search LLM is GONE. The gazetteer IS the Understand.
+`interpret()` calls `interpretViaGazetteer` unconditionally. It scans
+the raw query against the closed set of known entity names/aliases
+(`EntityTextSearchService.scanForKnownEntityGroups`, one indexed UNION
+of a `lower(name)` btree arm + a GIN alias arm, both `status='active'`,
+restaurant arm territory-scoped to the viewport's covering engine).
+Tokens no grounded span covers are RESIDUE; each residue run is probed
+JOINED with its strictly-abutting grounded neighbours FIRST (the
+residue-join rule: "brekfast tacos" reaches the compound "breakfast
+taco"), then bare, through `linkUnified` — ONE retrieval over all types
+→ one candidate pool → one decision (exact-anywhere-beats-non-exact-
+everywhere; calibrated per-tier floors for fuzzy; tie-plurality reveals
+ALL indistinguishable ids). Placement is a pure function: dietary flag
+wins, else a fixed cross-type order. Unknown residue ≤2 tokens records
+an `on_demand_ask` signal directly; 3+ tokens stage for the async LLM
+splitter (`unsegmented-residue.service.ts` cron). NO WORD LIST (owner
+ruling): junk grounding is a data-quality defect owned by extraction
+hygiene, not a stop-list — hence 5 pinned generic-query specs are
+skipped pending graph cleanup.
+
+**2. Build constraints + directives (`search.service.ts` →
+`search-constraints.ts` → `search-constraints.compiler.ts`).** Grounded
+ids become a `SearchConstraints` with STRUCTURED food grounding
+(anchors ∪ family ∪ similar, each a derived view). Food widening is
+seeded pre-probe: category members (one-hop `derived_food_category_edges`),
+head-final name variants ("carbonara udon" IS carbonara → tier 0), dense
+siblings (`derived_entity_sibling_edges`, ceiling-normalized cosine,
+mutual-rank reciprocity), twin ingredients ("burrata" the food also
+returns pizza containing it). All producers (`search-sibling-expansion`,
+`search-entity-expansion`) fail open to [] and re-check `status='active'`
+at read (staleness guard). The compiler flattens to a `QueryPlan`.
+
+**3. The pooled gate (the ranking model).** CUTOVER 2026-08-02: the old
+relaxation ladder is DELETED (`RelaxationStage='strict'` only; −1,240
+lines). Soft (non-dietary) attribute constraints LEAVE the WHERE
+membership and become per-row PROVENANCE: a row matching EVERY soft id
+is tier 0 ("all words"), partial is tier 1, the dense similar-ring is
+tier 2 (in the scan for window-counting, off the served page). ONE
+gated query per projection holds the whole pool; a WINDOW count (not a
+correlated CTE — that inlines and re-runs per row, measured 20.9s)
+decides whether tier-1 rows are admitted: only when tier-0 can't fill
+one page (`threshold = DEFAULT_PAGE_SIZE = 25`, owner-chosen "scarce =
+< one page"). Dietary ids stay hard walls. `match_tier` rides to the
+client as the section divider. Under open-now the RESTAURANT axis
+decides the gate on the OPEN full set and the dish query inherits the
+verdict (`gateFull` parameterized) — one gate decision per request.
+
+**4. Execute (`search-query.executor.ts`).** Two parallel queries
+(restaurant axis + dish axis), each skippable. Open-now is TWO-PHASE:
+a lean candidate query (id + hours, no page limit, capped 50k) resolves
+openness in JS over the WHOLE ranked set, then the rich query hydrates
+the open page by id-position (`array_position`) — the fix for "22 open
+pins but 1 card". `executeSeeLocations` is a lean single-restaurant
+variant. Rows map to DTOs; scores come from `core_public_entity_scores`
+(percentile_rank is the high-precision sort key so the map badge == list
+position).
+
+**5. Coverage semantics.** TWO distinct concepts in metadata:
+`resultCoverageStatus` (full/partial/unresolved — did results satisfy
+intent) and `engineCoverageShare` (`engine-coverage.service.ts`: raw
+area share of the viewport covered by engine territories, NO thresholds,
+consumers judge). Engine territory = derived union of member-place
+grounds + DAG descendants, measured by ST_Union/ST_Intersection in one
+round trip. The `/shortcut-coverage` endpoint (`search-coverage.service.ts`)
+paints the in-view dots layer.
+
+### The polls pipeline: supply → ballot → membership → graduation → score
+
+**Supply** (`poll-weekly-ritual.service.ts`, hourly cron). Skips
+instantly unless an earth timezone is inside its local Sun-09:00 window.
+For each due place: read place + per-subject demand mass
+(`demand-mass.reader.ts`, aggregate-backed off `signal_demand_daily`,
+lineage = self+descendants+ancestors, echo kinds weigh 0, redirects
+resolved at read), replay durable cohort outcomes into a fresh
+`EstimatorRegistry`, run `decideSupply` (creditRate = demandMass ·
+answerYield ÷ viability; 14d-half-life credit; median dither ±1). Publish
+the cohort as `PollTopic`(archived birth-certificate) + `Poll`(active,
+`closeWindowDays=7`) + tick + supply-state + notifications, ALL in one
+transaction (tick row first = idempotency key). Auto-close is a
+DERIVATION-AT-READ, not a timer: `isActivePollDueToClose` computes
+`launchedAt + window` each cron pass.
+
+**Ballot** (`supply/poll-ballot-mention.service.ts`). At close, each
+distinct voter's standing `PollEndorsement` is minted, under the place's
+`poll_surface:<placeId>` Source, as: ONE parent ballot document (the
+A(τ)=1 carrier, no mention rows) + ONE per-voter synthetic document
+(`…:<sha256(userId)[0:12]>`, `rawPayload.voterUserId` set) each with
+exactly one evidence row. Per-voter docs exist to satisfy the
+content-identity unique + one-(doc,kind) rebuild guard.
+
+**Membership + score.** The ONLY score membership is PLACE-KEYED:
+docs live under `poll_surface:<placeId>`, A(τ) matches `community ==
+handle`. Voter-doc mass is EXCLUDED from the room's A(τ) in exactly ONE
+place (`public-crave-score.service.ts:604`,
+`NOT (raw_payload ? 'voterUserId')`) — one poll = one doc, not turnout+1.
+Feed membership (`poll-feed-membership.ts`) is a SEPARATE purely-geometric
+concern. **Graduation** (`poll-graduation.service.ts`) runs the approved
+thread + creator description through the standard extraction pipeline
+(real entity creation + Places enrichment); ballot/thread mentions then
+move Crave Score exactly like Reddit mentions.
+
+### Invariants, and why
+
+- **Archived is never served — as a PREDICATE.** The builder adds
+  `r.status <> 'archived'` (not an accident of score-table membership);
+  the red-team note is explicit that 242 archived-but-scored restaurants
+  were hidden only by the location gate.
+- **Redirect-resolution-at-read** for merged-away ids (F202 class): one
+  hop, then never serve an archived husk. Enforced on the profile/status
+  paths; NOT enforced on the poll leaderboard or coverage/autocomplete
+  injection surfaces (see findings).
+- **Fail open** everywhere on the widening/coverage reads: a widening or
+  coverage failure degrades results, never fails the search.
+- **The claim-identity rollup** (builder `CLAIM_IDENTITY_WHERE_SQL`): a
+  direct mention is shadowed only when the SAME document named something
+  more specific at the same restaurant — reads the mention LEDGER,
+  membership from `derived_food_category_edges` (the ONE authority).
+
+### Gotchas
+
+- The builder mirrors EVERY SQL clause into a hand-maintained `preview`
+  string with NO equivalence test — dual maintenance at 2.4k-line scale.
+- `buildConnectionConditions` and `buildConnectionMatchConditions` are
+  near-identical copies (food/attr/ingredient/twin/votes arms restated).
+- Vestigial ladder vocabulary persists: `RELAX_STRICT_THRESHOLD`,
+  `strictProbe`, `relaxation` metadata, `stage/stagePresence` — the
+  ladder is gone but its names remain, and the pooled threshold reuses
+  the constant.
+- The gazetteer + all recall lanes are uniformly `status='active'`-safe;
+  the leaks are only at INJECTION surfaces (favorites/viewed/resolver
+  refetch) that bypass the core.
+
+### What deliberately does NOT exist
+
+- No per-search LLM (gazetteer-only Understand). No relaxation ladder.
+  No market filter (the viewport IS the geographic query). No excluded-
+  ingredient lane (negation not interpreted; allergen toggles rejected).
+  No word/stop list.
+
+### Rederivation verdicts (pass 1)
+
+Read pipeline and polls are IDEAL-VERIFIED in shape (pooled gate,
+gazetteer Understand, per-voter-doc + single-point A(τ) exclusion,
+derivation-at-read auto-close, fail-open widening). Search + polls +
+entity-text + autocomplete jest all GREEN (94+26+133 pass; 5 search
+specs intentionally skipped pending graph cleanup). Findings F500–F599
+below. The two real defects worth action: F510 (coverage lacks the
+archived predicate the builder deliberately added) and F541 (poll
+leaderboard skips redirect resolution — merge silently loses
+endorsements); highest-value cleanup is the builder's dual-preview +
+copy-pasted connection conditions.

@@ -264,3 +264,24 @@ F476 | entity-resolution :1751 | trigramSimilarity strips [^a-z0-9] — defeats 
 F477 | multiple | dead surfaces verified (banking hunts done): entityDetails consumers, getNextSourceRefIndex, contextual-attribute family, perf metric getters, DataSourceType, prepareAliasesForMerge, getFileInfo, getConfiguredSorts/getQueueDepth | delete | PROPOSED
 F478 | 3 files | doc rot naming exterminated scheduler machinery | fix prose | PROPOSED
 SCALE NOTES: writeScores unbounded per-subject $transaction array (the merge-loop shape); loadActive*Events filters active-run in JS; archive loads whole corpus into a Map before enqueueing; 17k sequential heal UPDATEs.
+
+## api-search + api-polls (F500–F595, pass 1)
+
+F510 | search-coverage.service.ts buildShortcutCoverageGeoJson | map coverage layer has no status<>'archived' predicate — archived-but-scored restaurants leak (round-9 class; builder:1133 has it with a red-team note); restaurant-status.service:39 same + no redirect | add predicate + redirect | PROPOSED
+F511 | search-query.builder.ts | hand-written preview string parallels every Prisma.Sql clause across 2.4k lines, no equivalence test — silent drift; buildConnectionConditions/buildConnectionMatchConditions near-identical copies | derive preview from the SQL or spec-couple; dedupe the two arms | PROPOSED
+F512 | search-query-interpretation.service.ts:715 | dead buildLocationBias + calculateBoundsHeightMiles (caller uses search.service copy); linkViaHybridRecall test-only | delete | PROPOSED
+F513 | search constraints/orchestration | ladder-deletion vestiges: RELAX_STRICT_THRESHOLD, strictProbe, relaxation.applied, stage/stagePresence always 'strict' | rename/remove misleading vocab | PROPOSED
+F514 | search-orchestration.service.ts:252-253 | dead ternary totalResults>0?'full':'full' | fix | PROPOSED
+F515 | search redirect resolution | single-hop toEntityId ?? id — a merge CHAIN degrades to not-found (acceptable; assumes writer keeps redirects one-hop) | note/verify | IDEAL-VERIFIED-conditional
+F540 | polls voter-doc A(τ) exclusion | single-point but implicit cross-module contract (writer must stamp voterUserId; no coupling test) | spec-couple writer+reader | PROPOSED
+F541 | polls rebuildPollLeaderboard | does NOT redirect-resolve — a restaurant merged after a direct-tap endorsement silently loses it (comment-span self-heals, tap never does; F202 class) | redirect-resolve | PROPOSED
+F542 | polls subjectDemandMass | final join filters type not status='active' — archived subject seedable | add filter | PROPOSED
+F545 | polls auto-close | CONFIRMED derivation-at-read, not a timer | - | IDEAL-VERIFIED
+F562 | poll-lifecycle.service.ts:37 | autoCloseDays<=0 guard can never fire (dead branch) | delete | PROPOSED
+F570 | autocomplete fetchInjectedUserMatches | favorites lane reads user list items with NO status filter + no redirect — archived/merged favorites leak with stale id+name (round-9) | filter + redirect | PROPOSED
+F571/F572 | autocomplete viewed-lane + resolver name-refetch | lack status filters | add | PROPOSED
+F573 | autocomplete/gazetteer recall core | uniformly archived-safe — leaks only at injection surfaces | - | IDEAL-VERIFIED
+F574/F575 | autocomplete | dead denseMode:'fallback', LexiconCandidate | delete | PROPOSED
+F576/F577 | autocomplete | vestigial ATTRIBUTE_LANE_RUNTIME_READY=true, scopePlaceKey='global' | remove | PROPOSED
+F582 | autocomplete tier ladder | restated in 3 tables (coupling risk); edit-budget rule genuinely SHARED (good) | one table | PROPOSED
+SEARCH MAGIC NUMBERS: all justified (K1 sentences, sweep-provenance floors, LINKER_MARGIN honestly flagged not-swept, pooled threshold=25 owner). No unexplained constant on the search side.
