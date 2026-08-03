@@ -1,3 +1,4 @@
+import type { BilledMicros, LedgerMicros } from './spend-currency';
 import { Injectable, Optional, OnApplicationBootstrap } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
@@ -64,9 +65,9 @@ export class ReconciliationMultiplierService implements OnApplicationBootstrap {
    * is that the first few events of a process are metered at the old, LOWER
    * figure — under-grossing briefly, never over-grossing.
    */
-  gross(service: string, ledgerMicros: number): number {
+  gross(service: string, ledger: LedgerMicros): BilledMicros {
     const multiplier = this.multiplierFor(service);
-    return multiplier === 1 ? ledgerMicros : ledgerMicros * multiplier;
+    return (multiplier === 1 ? ledger : ledger * multiplier) as BilledMicros;
   }
 
   /**

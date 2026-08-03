@@ -1,3 +1,4 @@
+import { ledgerMicros } from './spend-currency';
 import {
   SpendCampaignService,
   NoPublishedRateError,
@@ -271,13 +272,17 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     await service.approve(estimate.campaignId, estimate.estimateHash);
 
     // Spend under the envelope: stays 'running', no breach.
-    await service.recordSpend(estimate.campaignId, 1000);
+    await service.recordSpend(
+      estimate.campaignId,
+      'gemini',
+      ledgerMicros(1000),
+    );
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('running');
 
     // Push past the envelope boundary (1000 + 300 = 1300 > 1250) — this is
     // the mutated-fixture RED proof: the SAME unit-cost rate the estimate
     // used, but actual draws exceed the projected envelope.
-    await service.recordSpend(estimate.campaignId, 300);
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(300));
     const row = prisma._campaigns.get(estimate.campaignId);
     expect(row?.state).toBe('breached');
     expect(row?.breachNote).toEqual(expect.stringContaining('envelope breach'));
@@ -293,7 +298,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
 
     // Breached campaigns refuse further spend (typed, not silent).
     await expect(
-      service.recordSpend(estimate.campaignId, 1),
+      service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(1)),
     ).rejects.toBeInstanceOf(CampaignBreachedError);
   });
 
@@ -316,7 +321,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
       unitCount: 100, // estimate 1000 micro-USD.
     });
     await service.approve(estimate.campaignId, estimate.estimateHash);
-    await service.recordSpend(estimate.campaignId, 900); // under envelope.
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(900)); // under envelope.
 
     expect(
       governance.pools.measureDrift('gemini.reddit_extraction'),
@@ -354,7 +359,11 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     expect(await service.isDispatchable(estimate.campaignId)).toBe(true);
 
     // Push it into 'breached'.
-    await service.recordSpend(estimate.campaignId, 1300);
+    await service.recordSpend(
+      estimate.campaignId,
+      'gemini',
+      ledgerMicros(1300),
+    );
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
     expect(await service.isDispatchable(estimate.campaignId)).toBe(false);
 
@@ -399,7 +408,7 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     // typed-refuses before ever reaching the guarded updateMany — proving
     // the guard is defense-in-depth, and the row stays 'breached'.
     await expect(
-      service.recordSpend(estimate.campaignId, 1),
+      service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(1)),
     ).rejects.toBeInstanceOf(CampaignBreachedError);
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
   });
@@ -424,9 +433,9 @@ describe('SpendCampaignService (§24.5 Leg C)', () => {
     });
     await service.approve(estimate.campaignId, estimate.estimateHash);
 
-    await service.recordSpend(estimate.campaignId, 100);
-    await service.recordSpend(estimate.campaignId, 200);
-    await service.recordSpend(estimate.campaignId, 300);
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(100));
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(200));
+    await service.recordSpend(estimate.campaignId, 'gemini', ledgerMicros(300));
 
     expect(prisma._campaigns.get(estimate.campaignId)?.spentMicros).toBe(
       BigInt(600),
@@ -555,7 +564,11 @@ describe('SpendCampaignService.prepareManifestEstimate (§24.3 v2 all-in manifes
       unitCount: 100,
     });
     await service.approve(estimate.campaignId, estimate.estimateHash);
-    await service.recordSpend(estimate.campaignId, 5000); // breach (envelope 1250)
+    await service.recordSpend(
+      estimate.campaignId,
+      'gemini',
+      ledgerMicros(5000),
+    ); // breach (envelope 1250)
     expect(prisma._campaigns.get(estimate.campaignId)?.state).toBe('breached');
 
     // Fresh process: NEW registry with NO campaign pool registered (boot

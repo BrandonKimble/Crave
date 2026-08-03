@@ -1,3 +1,4 @@
+import { placesOperationLimits } from '../modules/external-integrations/shared/vendor-pricing';
 import {
   isProdEnv,
   normalizeAppEnv,
@@ -359,7 +360,9 @@ export default () => {
       // `autocomplete` in the ledger, and text search had NO key at all while
       // its scope was `findPlaceFromText`. Setting a textSearch limit was a
       // silent no-op on the most expensive Places call.
-      operationLimits: {
+      // Record<PlacesOperation, …> — a stray key and a MISSING key are both
+      // compile errors, which is what the three-vocabularies bug needed.
+      operationLimits: placesOperationLimits({
         autocomplete: {
           requestsPerMinute: 600, // same conservative per-method floor as above
           requestsPerDay: 150_000,
@@ -376,7 +379,7 @@ export default () => {
           requestsPerMinute: 600,
           requestsPerDay: 100_000,
         },
-      },
+      }),
       defaultRadius: 5_000, // meters — default search radius
       retryOptions: {
         maxRetries: 3,

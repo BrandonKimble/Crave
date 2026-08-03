@@ -9,6 +9,7 @@ import {
 } from './centralized-rate-limiter.service';
 import { GovernanceService } from '../../governance/governance.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
+import { isProdEnv, resolveAppEnv } from '../../../../shared/config/app-env';
 import {
   LLMModelInput,
   LLMOutputStructure,
@@ -79,10 +80,8 @@ export class SmartLLMProcessor implements OnModuleInit {
     private readonly centralizedRateLimiter: CentralizedRateLimiter,
     private readonly governance: GovernanceService,
   ) {
-    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
-    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-    const isProd =
-      appEnv.toLowerCase() === 'prod' || nodeEnv.toLowerCase() === 'production';
+    // ONE resolver (red team 2026-08-02) — five services hand-rolled this.
+    const isProd = isProdEnv(resolveAppEnv());
 
     if (isProd) {
       this.maxConsecutiveRateLimitErrors = null;

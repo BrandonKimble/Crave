@@ -1,3 +1,4 @@
+import { billedMicrosFromStore } from '../shared/spend-currency';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { PoolRegistry, type PoolDenial } from './pool-registry';
@@ -354,7 +355,10 @@ export class GovernanceService implements OnModuleInit {
         });
         const spentMicros = Number(row.spentMicros);
         if (spentMicros > 0) {
-          await this.pools.meter(poolName, spentMicros);
+          await this.pools.meterSpend(
+            poolName,
+            billedMicrosFromStore(spentMicros),
+          );
         }
         this.logger.info('Campaign grant re-registered at boot', {
           campaignId: row.campaignId,

@@ -1,3 +1,4 @@
+import { ledgerMicros } from '../external-integrations/shared/spend-currency';
 /**
  * §2 Tier-2 polygon promotion queue (plans/geo-demand-foundation-rebuild.md
  * §2 "Tier-2 polygon promotion (scarce pool) — earned moments").
@@ -416,7 +417,7 @@ export class PlacesPromotionService {
       return;
     }
     await this.spendCampaigns
-      .recordSpend(campaignId, spendMicros)
+      .recordSpend(campaignId, 'tomtom', ledgerMicros(spendMicros))
       .catch((error: unknown) => {
         this.logger.warn('Campaign spend recording failed (outcome stands)', {
           placeId: item.placeId,

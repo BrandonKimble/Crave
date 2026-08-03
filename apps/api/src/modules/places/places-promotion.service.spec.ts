@@ -415,7 +415,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(prisma.place.update).not.toHaveBeenCalled();
       // …but the campaign was still charged for the consumed draws.
       expect(spendCampaigns.recordSpend).toHaveBeenCalledTimes(1);
-      const [campaignId, micros] = spendCampaigns.recordSpend.mock.calls[0];
+      const [campaignId, , micros] = spendCampaigns.recordSpend.mock.calls[0];
       expect(campaignId).toBe('camp-1');
       expect(micros).toBeGreaterThan(0);
     });
@@ -516,7 +516,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       await service.drainQueue(new Date('2026-07-20T00:00:00Z'));
       expect(prisma.place.update).not.toHaveBeenCalled();
       expect(spendCampaigns.recordSpend).toHaveBeenCalledTimes(1);
-      expect(spendCampaigns.recordSpend.mock.calls[0][1]).toBeGreaterThan(0);
+      expect(spendCampaigns.recordSpend.mock.calls[0][2]).toBeGreaterThan(0);
     });
 
     it('a non-dispatchable campaign skips the item without any draw or spend', async () => {

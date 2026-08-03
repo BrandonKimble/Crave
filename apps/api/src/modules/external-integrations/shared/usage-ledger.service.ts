@@ -1,3 +1,10 @@
+import {
+  billedMicrosFromStore,
+  ledgerMicros,
+  type MeteredService,
+  type BilledMicros,
+  type LedgerMicros,
+} from './spend-currency';
 import { Injectable, OnModuleDestroy, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CorrelationUtils, LoggerService } from '../../../shared';
@@ -9,7 +16,7 @@ import { ReconciliationMultiplierService } from './reconciliation-multiplier.ser
 import { SpendCampaignService } from './spend-campaign.service';
 
 export interface UsageEvent {
-  service: 'gemini' | 'google_places' | 'tomtom';
+  service: MeteredService;
   operation: string;
   skuTier?: string;
   model?: string;
@@ -214,13 +221,30 @@ export class UsageLedgerService implements OnModuleDestroy {
       // catastrophe backstop, so it must count the dollars Google actually
       // charges — otherwise the ceiling is looser than it reads by exactly
       // our metering error.
-      void this.governance.pools.meter(
+      void this.governance.pools.meterSpend(
         'googlePlaces.monthlySpend',
-        this.reconciliation?.gross('google_places', total) ?? total,
+        this.billed('google_places', ledgerMicros(total)),
       );
     } catch {
       // Metering must never break the usage record itself.
     }
+  }
+
+  /**
+   * THE exchange, and the only one in this file.
+   *
+   * `reconciliation` is optional (scripts construct the ledger without it), so
+   * the conversion needs a fallback. Three call sites each spelled that
+   * fallback as `?? micros`, which quietly hands a LEDGER figure to a ceiling
+   * — the exact defect, reintroduced by the workaround for its own fix. Here
+   * it is written once: no multiplier means the ratio is 1, and 1x of a ledger
+   * figure IS the best available billed figure.
+   */
+  private billed(service: string, ledger: LedgerMicros): BilledMicros {
+    return (
+      this.reconciliation?.gross(service, ledger) ??
+      billedMicrosFromStore(ledger)
+    );
   }
 
   private meterGeminiSpend(event: UsageEvent): void {
@@ -256,9 +280,9 @@ export class UsageLedgerService implements OnModuleDestroy {
       // BILLED, not ledger — see meterPlacesSpend. Gemini is the one with the
       // measured ~1.7x under-metering, so this is where the "3x backstop" was
       // really ~5.1x.
-      void this.governance.pools.meter(
+      void this.governance.pools.meterSpend(
         'gemini.monthlySpend',
-        this.reconciliation?.gross('gemini', micros) ?? micros,
+        this.billed('gemini', ledgerMicros(micros)),
       );
     } catch {
       // Metering must never break the usage record itself.
@@ -306,14 +330,8 @@ export class UsageLedgerService implements OnModuleDestroy {
       if (micros <= 0) {
         return;
       }
-      // The envelope is MINTED in billed dollars (prepareManifestEstimate
-      // grosses every line for owner approval), so it must be DRAINED in
-      // billed dollars. Minting in one currency and draining in another is
-      // the whole defect.
-      const billedMicros =
-        this.reconciliation?.gross(event.service, micros) ?? micros;
       this.spendCampaigns
-        .recordSpend(campaignId, billedMicros)
+        .recordSpend(campaignId, event.service, ledgerMicros(micros))
         .catch((error: unknown) => {
           this.logger.warn('Campaign spend attribution failed', {
             campaignId,

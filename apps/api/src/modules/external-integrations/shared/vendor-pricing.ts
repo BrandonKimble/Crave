@@ -115,3 +115,19 @@ export function placesCostMicrosPerCall(
   }
   return SKU_MAX_MICRO_USD[skuTier] ?? UNKNOWN_PLACES_SKU_RATE_MICRO_USD;
 }
+
+/**
+ * Identity function whose only job is to make `googlePlaces.operationLimits`
+ * exhaustive over PlacesOperation at COMPILE time: a stray key and a missing
+ * key are both errors. A limit you cannot set is indistinguishable from a
+ * limit you forgot to set — that is exactly how textSearch ran uncapped on
+ * the most expensive Places call.
+ */
+export function placesOperationLimits<
+  T extends Record<
+    PlacesOperation,
+    { requestsPerMinute: number; requestsPerDay: number }
+  >,
+>(limits: T & Record<Exclude<keyof T, PlacesOperation>, never>): T {
+  return limits;
+}

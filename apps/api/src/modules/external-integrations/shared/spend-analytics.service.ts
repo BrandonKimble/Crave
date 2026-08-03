@@ -1,3 +1,9 @@
+import {
+  billedMicrosFromStore,
+  ledgerMicros,
+  scaleBilled,
+  type LedgerMicros,
+} from './spend-currency';
 import { Injectable, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
@@ -690,7 +696,7 @@ export class SpendAnalyticsService {
     for (const row of rows) {
       total += pricedGeminiRow(row);
     }
-    return total;
+    return ledgerMicros(total);
   }
 
   /**
@@ -809,7 +815,7 @@ export class SpendAnalyticsService {
   private async totalGeminiSpendMicros(
     start: Date,
     end: Date,
-  ): Promise<number> {
+  ): Promise<LedgerMicros> {
     const rows = await this.prisma.apiUsageEvent.findMany({
       where: { service: 'gemini', createdAt: { gte: start, lt: end } },
       select: {
@@ -824,7 +830,7 @@ export class SpendAnalyticsService {
     for (const row of rows) {
       total += pricedGeminiRow(row);
     }
-    return total;
+    return ledgerMicros(total);
   }
 
   /**
@@ -858,7 +864,7 @@ export class SpendAnalyticsService {
     windowEnd: Date,
     now: Date,
   ): Promise<void> {
-    const dailyTotals: number[] = [];
+    const dailyTotals: LedgerMicros[] = [];
     for (let i = 0; i < UNIT_COST_WINDOW_DAYS; i++) {
       const start = new Date(windowStart.getTime() + i * MS_PER_DAY);
       const end = new Date(start.getTime() + MS_PER_DAY);
@@ -891,9 +897,8 @@ export class SpendAnalyticsService {
     const capCount = Math.max(1, Math.ceil(positiveDays.length * 0.1));
     const capIndex = Math.max(0, positiveDays.length - 1 - capCount);
     const p90 = positiveDays.length ? positiveDays[capIndex] : 0;
-    const trailingSpendMicros = dailyTotals.reduce(
-      (sum, total) => sum + Math.min(total, p90),
-      0,
+    const trailingSpendMicros = ledgerMicros(
+      dailyTotals.reduce((sum, total) => sum + Math.min(total, p90), 0),
     );
     // BILLED DOLLARS (red team 2026-08-02). trailingSpendMicros is summed from
     // pricedGeminiRow — LEDGER dollars. The pool this limit governs is now
@@ -901,10 +906,12 @@ export class SpendAnalyticsService {
     // would set a limit in one currency against a counter in another and make
     // the effective backstop tighter than intended. Both sides use the same
     // published ratio; absent reconciliation it is 1 and nothing changes.
-    const geminiMultiplier = this.reconciliation?.multiplierFor('gemini') ?? 1;
-    const derivedLimitMicros = Math.round(
-      trailingSpendMicros * geminiMultiplier * BACKSTOP_MULTIPLE,
-    );
+    // The types carry this now: trailingSpendMicros is LedgerMicros, and the
+    // only way to reach the BilledMicros the pool counts is through gross().
+    const trailingBilled =
+      this.reconciliation?.gross('gemini', trailingSpendMicros) ??
+      billedMicrosFromStore(trailingSpendMicros);
+    const derivedLimitMicros = scaleBilled(trailingBilled, BACKSTOP_MULTIPLE);
     if (derivedLimitMicros <= 0) {
       // No measured spend yet in the trailing window — nothing to derive;
       // the env-seeded boot value stands (§24.4 item 4).

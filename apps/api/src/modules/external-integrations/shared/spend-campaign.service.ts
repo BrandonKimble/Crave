@@ -1,3 +1,9 @@
+import type { MeteredService } from './spend-currency';
+import {
+  billedMicrosFromStore,
+  type BilledMicros,
+  type LedgerMicros,
+} from './spend-currency';
 import { Injectable, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -645,10 +651,26 @@ export class SpendCampaignService {
    * pool meter (governance.pools) stays the LIVE breach detector, unchanged
    * — this guard only protects the DB row's bookkeeping from clobbering.
    */
-  async recordSpend(campaignId: string, micros: number): Promise<void> {
-    if (!Number.isFinite(micros) || micros <= 0) {
+  async recordSpend(
+    campaignId: string,
+    /** Which vendor's ratio applies — the exchange happens HERE, not at the
+     *  call site. Three callers each grossing by hand is three chances to
+     *  forget, and the third one (TomTom draws, places-promotion) had in fact
+     *  never been grossed at all. */
+    service: MeteredService,
+    ledger: LedgerMicros,
+  ): Promise<void> {
+    if (!Number.isFinite(ledger) || ledger <= 0) {
       return;
     }
+    // THE envelope is MINTED in billed dollars (prepareManifestEstimate
+    // grosses every line for owner approval), so it must be DRAINED in billed
+    // dollars. Minting in one currency and draining in another is the whole
+    // defect: at the measured ~1.7x Gemini under-metering, an $82 envelope
+    // spent ~$139 billed before it registered as breached.
+    const micros: BilledMicros =
+      this.reconciliation?.gross(service, ledger) ??
+      billedMicrosFromStore(ledger);
     const row = await this.prisma.spendCampaign.findUnique({
       where: { campaignId },
     });
@@ -681,7 +703,10 @@ export class SpendCampaignService {
 
     const governance = this.requireGovernance();
     const poolName = campaignPoolName(campaignId);
-    await governance.pools.meter(poolName, roundedMicros);
+    await governance.pools.meterSpend(
+      poolName,
+      billedMicrosFromStore(roundedMicros),
+    );
     // BREACH VERDICT FROM THE INCREMENT'S OWN RESULT (step 5, H7 + red
     // team F6): increment first (guarded, atomic), decide from the value
     // the increment RETURNS. Deciding from a pre-read row was the same
@@ -835,7 +860,10 @@ export class SpendCampaignService {
       });
       const spentMicros = Number(row.spentMicros);
       if (spentMicros > 0) {
-        await governance.pools.meter(poolName, spentMicros);
+        await governance.pools.meterSpend(
+          poolName,
+          billedMicrosFromStore(spentMicros),
+        );
       }
       status = governance.pools.poolStatus(poolName);
     }

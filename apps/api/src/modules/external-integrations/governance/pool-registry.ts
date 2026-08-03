@@ -1,3 +1,4 @@
+import type { BilledMicros } from '../shared/spend-currency';
 /**
  * The Resource Governor's pool registry (master plan §14/§27 v2): every scarce
  * resource — vendor windows (reddit requests/min, gemini tokens/min, TomTom
@@ -609,6 +610,20 @@ export class PoolRegistry {
    * no reservation makes sense, the act already happened. meter() consumes
    * directly; admission control comes from the SAME window (a gate checks
    * poolStatus before dispatching new work). Fire-and-forget durable flush.
+   */
+  meterSpend(
+    poolName: string,
+    billed: BilledMicros,
+    at: Date = new Date(),
+  ): Promise<void> {
+    return this.meter(poolName, billed, at);
+  }
+
+  /**
+   * Quantity pools only (requests, tokens, items). A pool denominated in
+   * DOLLARS must go through `meterSpend`, whose parameter type accepts only
+   * billed micros — the ceiling has to count what the vendor charges, not
+   * what our meter guessed.
    */
   meter(
     poolName: string,
