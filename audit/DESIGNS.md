@@ -300,3 +300,244 @@ VERDICT: approve all; the six-surface leak fix is one coherent commit, the build
 - **F800 onboarding economics screen → RULED: OWNER EXCEPTION, KEEP AS-IS.** The only animated screen; kept deliberately for conversion. Exception is temporary and must be re-confirmed at any redesign. (D38 agent redirected mid-flight.)
 - **Stripe web rail, phase 2 → RULED: wire the LANDING PAGE (hosted on Railway) end-to-end** — Clerk auth + checkout entry against POST /billing/checkout-session, so web payments work exactly like in-app. Ideal-shape mandate, not a patch.
 - **Onboarding data foundation → RULED: answers are DURABLE personalization data.** Commissioned: a design pass for the initial-taste-profile substrate — onboarding answers stored as the seed profile; ongoing taste signals (searches, taps, saves) already flow through the signals ledger, which is the presumptive substrate for "what they're into"; the design must show how curated-for-you lists derive from both. Foundation now, UI later.
+
+## D40 — personalization / taste-profile substrate (Phase-1 design, commissioned by D39, 2026-08-03)
+
+**Scope: foundation only — how the data moves and is stored so "curated-for-you"
+is later a config change, not an architecture. No UI/UX. No production code in
+this pass.**
+
+### 0. What is actually there today (verified, not assumed)
+
+- **Onboarding answers already persist.** `users.onboarding_responses jsonb`,
+  written by `UserService.updateOnboarding` (raw UPDATE) from
+  `UpdateUserOnboardingDto.answers` (`@IsOptional @IsObject` — a free-form
+  `Record<string, string|string[]|number>`, unvalidated beyond "is an object").
+  Siblings: `onboarding_status`, `onboarding_completed_at`,
+  `onboarding_version` (CLIENT-supplied int), `onboarding_selected_city`,
+  `onboarding_preview_city`. Nulled on account deletion.
+- **The answer KEYS are mobile step ids** (`STEP_IDS` in
+  `apps/mobile/src/constants/onboarding.ts`: `cuisines`, `always-craving`,
+  `contexts`, `dietary-needs`, `spice`, `budget`, `dining-frequency`,
+  `dining-goals`, `decide-how`, `attribution`, `location`, `username`, …).
+  `packages/shared/src/constants/onboarding-vocabulary.ts` shares the **option
+  ids** across the wire — deliberately, after a rename silently broke the
+  teaser — but it does **not** share the KEYS. The API re-spells one by hand:
+  `extractCuisineOptionIds()` in `curated-list-builder.service.ts:849` reads
+  `responses.cuisines`. That is the same drift class the vocabulary file was
+  written to end, one level up.
+- **Personalization already exists, in one recipe.**
+  `CuratedListBuilderService.buildPersonalWeekly` (`your_weekly_tasting`)
+  reads `onboarding_responses->'cuisines'` + `onboarding_selected_city`,
+  bridges option ids to restaurant attributes via
+  `ONBOARDING_CUISINE_ATTRIBUTE_NAMES`, and computes "untried" with bespoke
+  ledger SQL (`engagedSubjectIds`, `kind IN ('favorite_added','entity_view')`)
+  plus the user's list items. Output: `curated_lists` rows with
+  `scope='personal'`, `ownerUserId`, weekly `rotationKey`; `HomeFeedService`
+  already serves personal lists FIRST (`OR: [{scope:'global'},{ownerUserId}]`).
+  **The serving surface is done. The substrate is what is missing.**
+- **The behavioral record is the signals ledger** — `signals` (append-only,
+  partitioned, immutable; kinds: `search`, `autocomplete_selection`,
+  `entity_view`, `favorite_added`, `poll_vote`, `poll_comment`, `poll_created`,
+  `viewport_dwell`, `on_demand_ask`), actor-keyed through `signal_actors`
+  (userId or deviceKey), rolled up into `signal_demand_daily`
+  (day × actor × place × subject × kind) by the watermarked rebuild, with
+  `act-identity.ts` owning the ONE act-grain/echo-dedupe dialect and
+  `@RecordsSignal` / `@NoSignal` refusing boot on an undeclared user-act route.
+- **F810 is landed on the client side** (payload persisted + replayed, no
+  completing-on-a-lie). This design says where the payload lands _durably_; it
+  does not touch that lane.
+
+### 1. Where onboarding answers live
+
+**Ruling shape: the answers stay on the user, but stop being an untyped blob,
+and gain a history.**
+
+1. **A shared ANSWER-KEY vocabulary + decoder** (`packages/shared`), beside the
+   existing option ids: `ONBOARDING_QUESTION_IDS` (the keys), a per-version
+   `OnboardingAnswers` type, and `parseOnboardingAnswers(version, raw)`
+   returning a typed, per-question result. Mobile derives `STEP_IDS` from it;
+   the API reads answers **only** through the decoder. A renamed question is
+   then a compile error on both sides instead of a silently empty list.
+   Unknown keys are preserved verbatim on write (the user's testimony is never
+   edited) and simply not typed; unknown option ids are dropped **at read**.
+2. **Versioning is server-owned.** Today the client sends
+   `onboardingVersion` and the server believes it. Store both:
+   `answered_with_version` (what the client rendered) and
+   `question_set_version` (the server's own `ONBOARDING_QUESTION_SET_VERSION`
+   at write time). A mismatch becomes a visible fact instead of an assumption.
+   Question-set changes are additive-with-a-new-version; old answers keep
+   their version and the decoder keeps a branch per version. Deleting a
+   question never rewrites stored answers.
+3. **`user_onboarding_responses` — append-only history.**
+   `(responseId, userId, answeredWithVersion, questionSetVersion, answers jsonb,
+source 'completion'|'replay'|'edit', recordedAt)`, index `(userId,
+recordedAt desc)`. `users.onboarding_responses` remains the **read-hot
+   projection of the latest row**, written in the SAME transaction — one write
+   path, the projection is never independently mutable. Why history: a later
+   "edit your tastes" surface, a question-set migration, and any "why did this
+   list appear" question all need the answers as they stood; a wholesale
+   overwrite makes those unanswerable.
+4. **City becomes a key, not a string.** Add `onboarding_city_place_id uuid`
+   next to the display name. The builder's
+   `cityByName.get(selectedCity.toLowerCase())` is a silent-zero join: a
+   renamed/re-cased city produces no personal lists and no error.
+5. **Rejected: putting answers in the signals ledger.** A declared preference is
+   _state_, not an act; the ledger is act-grained, geo/subject-shaped,
+   immutable and pseudonymous-actor-keyed. Forcing preferences in would either
+   inflate demand mass (every act weighs 1) or require a kind excluded from
+   every mass reader — a second dialect of the exact law `act-identity.ts`
+   exists to state once. The completion route stays `@NoSignal('a declared
+preference is state, not a place-shaped act')`.
+
+### 2. The behavioral half: the ledger IS sufficient — no new pipeline
+
+The owner's three inputs map exactly onto kinds that already flow, under
+`@RecordsSignal` enforcement:
+
+| owner's words                 | ledger fact                                                      |
+| ----------------------------- | ---------------------------------------------------------------- |
+| "what they searched recently" | `search` / `autocomplete_selection` + `occurred_at`              |
+| "what they search most"       | `search` counts per subject (entity or normalized term)          |
+| "what they tap on most"       | `entity_view` (written at `history.service.ts:68/135`)           |
+| implicit intent               | `favorite_added`, `poll_vote`, `on_demand_ask`, `viewport_dwell` |
+
+So: **no analytics pipeline, no clickstream table, no third-party SDK, no new
+write path.** Two honest caveats, both stated as verification-owed rather than
+asserted:
+
+- **Curated-list item taps / list opens** must be confirmed to reach
+  `entity_view` (they route through detail, which records history — verify
+  before relying on it). If a surface is missing, the fix is the ledger's own
+  law: the SAME kind with a `meta.surface='curated_list'` **qualifier judged at
+  read**, never a new kind, never a parallel table.
+- **There is no negative signal** (skip / dismiss / "not for me") and this
+  design deliberately does not invent one. A preference model with no dislikes
+  is honest; a fabricated implicit-negative is not.
+
+### 3. Derivation: `user_taste_profile`, a derived read model
+
+- **Source: `signal_demand_daily`, via the shared `dailyActsCteSql` builder** —
+  never raw `signals`, and never a fourth SQL dialect. This is the entire
+  lesson of `act-identity.ts`: echo exclusion, act grain and `kind`-in-the-grain
+  are the law, and a builder cannot be half-adopted.
+- **Grain:** `(actorId, subjectKind, subjectId|subjectText, kind, windowDays)
+→ actCount, lastActAt`, plus a derived roll-up to the vocabularies the
+  recipes speak (restaurant attribute / cuisine / food entity), so a recipe can
+  join it without re-deriving anything.
+- **Facts, not invented weights (no-fake-estimates law).** v1 stores COUNTS and
+  RECENCY — measured facts. It does NOT store a blended "affinity score" built
+  from hand-picked per-kind coefficients; that is exactly the shape D39 just
+  deleted in F467. A consumer that needs an order declares its own rule in one
+  place (e.g. recency-bucketed frequency), documents it, and any coefficient is
+  either an explicit owner choice or measured yield.
+- **Cadence:** rebuilt immediately after the demand-aggregate refresh, for
+  actors touched since the watermark; full rebuild-from-empty must be cheap and
+  supported (it is — the aggregate is the source). Never on the request path;
+  the read is one indexed select. Rebuildable-from-scratch is the contract that
+  makes it safe to change the derivation later.
+- **Identity:** keyed by `actorId`, resolved to a user through
+  `signal_actors.userId`. Anonymous device actors get a profile pre-auth and it
+  follows the actor when the actor gains a userId — the ledger is never rekeyed.
+- **Explicitly NOT** a second write path: nothing outside the builder writes it,
+  and a wrong profile is fixed by rebuilding, never by patching.
+
+### 4. Composition: curated-for-you
+
+One composer, two declared inputs — no magic blend:
+
+- **Seed (onboarding) is the cold-start prior**, used unconditionally until the
+  behavioral profile crosses a declared evidence floor (N acts in the window).
+- **Behavior ADDs, never silently overwrites.** It can introduce cuisines and
+  dishes the answers never named (that is the "new and fresh" requirement) but
+  it cannot delete a declared preference; a dietary need is a constraint, not a
+  weight.
+- **Each recipe declares its input** (`seed` | `behavior` | `both`) in
+  `curated-lists.constants.ts`, so the list can be described honestly and a
+  drift shows up as "this recipe built 0 lists for input X".
+- **First consumer:** `your_weekly_tasting` — preferred cuisines become
+  onboarding cuisines ∪ top behavioral cuisines, and `engagedSubjectIds`' bespoke
+  SQL is replaced by a profile read (same facts, one dialect). After that, new
+  recipes (`back_to_<cuisine>`, `more_like_<dish>`, `you_searched_this_a_lot`)
+  are config over the profile — which is the whole point of this pass.
+- **Serving is unchanged:** `curated_lists` personal rows + rotation key;
+  `HomeFeedService` already puts them first.
+
+### 5. What does NOT get built
+
+No event/analytics pipeline; no clickstream or "user_activity" table; no
+embeddings/ML ranker; no per-request personalization scoring; no implicit
+negative capture; no preferences written into the signals ledger; no second
+write path for the profile; no hand-tuned weights; no snapshotting of
+names/scores into curated rows (the derived-read law already forbids it).
+
+### 6. Migration path (each step independently shippable, nothing user-visible until 5)
+
+1. Shared answer-key vocabulary + decoder + server-owned question-set version;
+   DTO validates through the decoder. No data change (legacy rows decode as v1).
+2. `user_onboarding_responses` history table; backfill one row per user from the
+   current column (`source='backfill'`); completion writes both in one tx.
+3. `onboarding_city_place_id`; one-time backfill by name match, **unmatched
+   logged loudly and counted** (never silently skipped).
+4. `user_taste_profile` + builder + specs, built DARK (nothing reads it).
+5. `your_weekly_tasting` switches to the profile; `engagedSubjectIds` deleted.
+
+### 7. Red team
+
+- **Answer-key drift (live today).** `responses.cuisines` is a hand-respelled
+  mobile step id. Rename → zero personal lists, no error, no test. Step 1 fixes
+  it and the decoder must be the ONLY reader.
+- **City name join (live today).** Same silent-zero class.
+- **Client-declared version (live today).** The server stores whatever int
+  arrives. Step 1 records the server's own version alongside.
+- **Ambiguous write.** The current update REPLACES the whole document. A future
+  edit screen sending a partial payload would erase unrelated answers. Law: the
+  completion write is replace-whole-validated-document; any partial update gets
+  its own explicitly-merging endpoint. Never a PATCH shaped like a PUT.
+- **Anonymous completion loses the answers (live today).** `Onboarding.tsx`
+  calls `completeOnboardingLocally` without queueing when `!isSignedIn`, and
+  `decideOnboardingCompletionReplay` skips `not_signed_in` — so a waitlist /
+  pre-auth completer's answers never land, even after they later sign in.
+  Recommendation for the F810 lane (NOT implemented here): queue the payload
+  regardless of auth state and let replay land it post-sign-in.
+- **Always-green risk.** The personal builder "skips honestly" everywhere
+  (no city match, no cuisines, too few candidates) and a drift simply yields
+  `built=0` with nothing screaming. Requirement: the builder emits a COUNTED
+  skip-reason breakdown, and the spec must be able to show RED (mutate the
+  vocabulary → the count moves).
+- **Recipe/vocabulary bridge.** `ONBOARDING_CUISINE_ATTRIBUTE_NAMES` maps option
+  ids to mined attribute NAMES by string. A re-mined attribute vocabulary
+  silently empties it — same class; the map needs a spec asserting every option
+  id resolves to ≥1 live attribute in a live city, or fails loudly.
+- **Privacy / data lifetime — OWNER ESCALATION (three items):**
+  1. **The documented deletion story is not implemented.** The ledger is
+     permanent by law and the severable part is the `signal_actors` mapping —
+     but `AccountDeletionService` deletes notification/user devices, nulls
+     `onboarding_responses`, and does **not** null or sever
+     `signal_actors.user_id`. The pseudonymous link to every act survives
+     account deletion. This is the substrate this design builds on, so it must
+     be ruled on before step 4.
+  2. **The derived profile is an inferred-preference record** (dietary needs,
+     spice tolerance, budget band are arguably sensitive). It must be deleted or
+     rebuilt-empty on account deletion, and `scripts/rig/scrub-staging-user-data.sql`
+     must learn about BOTH new tables — deletion, scrub and this design have to
+     agree on what "user data" means, as they were just made to agree once.
+  3. **Horizon.** An unbounded behavioral window means a two-year-old search
+     still shapes today's list. Owner ruling needed on the profile's window
+     (a concrete number, owner-chosen — this design will not invent one) and on
+     whether a user can view/reset their taste profile.
+- **Cost:** none new. All reads are over existing Postgres tables; no LLM, no
+  Places, no third-party calls. (Stated per the cost-truth law: both lines are
+  zero here.)
+
+## D41 — UCB explore selection, second pass (Phase-2 ruling on the gate stop, 2026-08-03)
+
+The first Phase-3 attempt STOPPED correctly: the estimator registry has zero consumers, no durable side (in-memory state dies on every deploy against a weeks-scale half-life), and per-term grain never reaches n>=2 (one attempt per cycle, 2-of-25 explore floor, hundreds of candidates) — permanent Infinity ties, a ranker that ranks nothing. RULINGS:
+
+1. **Durable seam: a first-class `estimator_state` table** — (estimatorName, subjectKey) PK, the registry's 4 floats + 2 timestamps as columns. The registry gains load-on-first-read / persist-on-observe. This IS the registry-wide pattern for every future estimator (the header's promised "durable side", finally real). NOT columns on attempt-history: that couples the pattern to one consumer's snapshot row.
+2. **Grain: the class (engineName, entityType)** — accrues ~2 observations/cycle, measured dispersion in days, answers "does exploring this vocabulary class in this engine return documents". No per-term shrinkage now (EstimatorHierarchy is declared-unimplemented; building it for a first consumer is descending past usefulness — revisit when a second hierarchical consumer exists).
+3. **Within-class candidate order: coverage rotation** — lastAttemptAt ASC, never-attempted first. This is a scan policy (explore = coverage of untried vocabulary), not a score claim; it reintroduces no weights.
+4. **Outcome: resultCount** (documents returned per search) — the one honest per-term number at the chokepoint; per-term downstream yield is unattributable by construction (cross-term batch unioning) and shall not be fabricated.
+5. **MIN_SELECTABLE_SCORE_BY_SLICE.explore (0.2, blend-denominated) dies with the blend** — replaced by the document-units bar already in the file's law: expected docs >= 1, the smallest honest count.
+6. trend/localSpecialization/novelty die as ranking inputs; their raw inputs stay recorded diagnostics; EXPLORE_RECENT_ATTEMPT_DAYS deleted (two refs, both novelty).
+   Migration note: the new table is additive — no shared-API P2022 risk, but the migrating session still rebuilds+restarts per the standing law. F467 stays open until this lands.
