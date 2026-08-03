@@ -154,6 +154,64 @@ M8. Locale-arg localeCompare + locale-aware formatting; MT-on-read
 for quotes (original shown — the one vendor-MT surface); language
 pack #2 (morphology+stopwords).
 
+## SCOPE OF LABEL/ALIAS GENERATION (owner question, 2026-08-02: "will
+
+## the LLM create per-language rows for EVERY entity?" — NO)
+
+Per-language rows are generated for CONCEPTS, not for the entity graph:
+
+- SPINE (~60 filterable concepts + 59 cuisines): seeded per language up
+  front. LLM-drafted, human-skimmed — an afternoon per language.
+- TAIL attributes: label drafted AT MINT TIME for active locales only —
+  the same pipeline that mints "co-fermented" drafts its Spanish label
+  in the same breath. Seeding covers the past, mint-time covers the
+  future; no third bucket exists to fall behind.
+- RESTAURANTS (~7k): NEVER. Proper nouns.
+- DISHES (~5.6k): NEVER pre-generated. Dish names are source-faithful;
+  cross-language MATCHING rides the multilingual embeddings + the
+  judge-gated alias banking below; cross-language DISPLAY (if a market
+  wants it) is lazy/on-demand via the knowledge-synthesis pass for the
+  dishes that actually surface, never a bulk 5,610×N translation run.
+
+THE SELF-TEACHING LOOP (query-side, replaces any per-query LLM):
+
+1. Seeded/tagged alias rows answer common words instantly and free.
+2. Mint-time generation keeps new concepts covered as they are born.
+3. The language-gated dense (embedding) fallback catches whatever has
+   no row yet — slang, regional words, one-offs.
+4. A successful dense catch is BANKED AS A CANDIDATE pairing
+   (query→concept); it becomes a real tagged alias only after
+   recurrence or the LLM-judge gate (the dedupe judge) approves —
+   trust through repetition or judgment, never one keystroke.
+5. Understanding therefore COMPOUNDS: the vector net handles less over
+   time, rows handle more, and no per-query LLM ever returns.
+
+## CONSIDERED AND REJECTED: the translation gateway
+
+## ("translate every query/request to English at the edge, keep the
+
+## whole backend English-only")
+
+A real industry pattern, considered explicitly. Rejected because:
+
+1. It IS the per-query LLM/MT re-introduced — rent, latency, and a new
+   failure point on every search, forever; nothing is ever learned.
+2. MT is WORST exactly on our input shape: 1-3 word culture-bound food
+   queries with no sentence context. "pan" (Spanish) has no tag inside
+   a translator — the homograph problem moves somewhere we cannot fix
+   it, instead of somewhere we can (tagged rows + known user locale).
+3. Food terms often must NOT translate: MT that renders "birria" as
+   "stew" destroys precision on precisely the queries that matter most.
+   Our dense fallback "translates by MEANING" without forcing a literal
+   English string — same capability, no destruction.
+4. It only replaces the cheapest half. Display (labels, UI, quotes)
+   still needs the label/locale machinery anyway, and collection over
+   non-English corpora can't ride it at all (translating source docs
+   before extraction destroys source-faithful dish names and quotes).
+5. Strictly dominated: the chosen design already contains the
+   gateway's one good idea (meaning-level bridging via embeddings) but
+   as owned, compounding data instead of perpetual per-query rent.
+
 ## NEVER
 
 - Translating dish/restaurant names at write time.
