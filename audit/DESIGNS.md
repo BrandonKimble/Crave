@@ -557,3 +557,18 @@ The first Phase-3 attempt STOPPED correctly: the estimator registry has zero con
 1. **Signals severance at account deletion: IMPLEMENT** (owner: "do whatever you think is best... disconnecting the deleted user from their data is anonymity"). Deletion severs signal_actors.user_id — the acts stay as anonymous demand evidence, the person is disconnected. This completes the documented severable-deletion story.
 2. **Taste profile joins the deletion path AND the staging PII scrub** — the inferred-preference row dies with the account, and prod→staging copies never carry real users' inferred preferences.
 3. **Taste profile is INTERNAL-ONLY** — no user-facing view/reset, managed automatically for every user. Build toward the ideal from the start; Spotify's algorithm system is the named target in abstraction and approach (derived read models over the one behavioral ledger, iterated recipes on top). The behavioral horizon question dissolves under the D40 shape (all history, recency recorded as facts); any future windowing is a recipe parameter, not a stored truth.
+
+## D42 — mobile-nav-overlays (Phase-2 review of F900–F984, 2026-08-03)
+
+**APPROVED:**
+
+- F943+F944 delete routeSceneVisibilityPolicyRuntime (~300 lines constructed/threaded/disposed, zero method calls — re-verify grep before deleting) and with it the duplicated chromeSurfaceTarget formula.
+- F968 delete BottomSheetWithFlashList.tsx (507-line dead second sheet with its own copy of the seven layer styles — the physics fork; re-verify every import resolves to the type module).
+- F946 SEEDED_FORWARD_OPEN_SCENES becomes exhaustive-by-construction via the app-overlay-route-types.ts:354 pattern — omission is a compile error naming the key. Four documented incidents on one hand-list is the caller-must-remember disease in its purest form.
+- F970 the null-subscribe authority: implement real subscription OR delete the selector shape so nothing wears the authority costume without the contract. Phase-3 decides from the three call sites' actual needs; stop-if-wrong applies.
+- F901/F902 transition-engine arm window: implement the documented full-pending-set guard; amend must not resurrect landed inputs; seal from 'staged' must either arm correctly or bark loudly — a silent drop guaranteeing a 600ms watchdog degrade is the always-green disease in the reveal path.
+- F977/F978 chrome-geometry bark: measure an INDEPENDENT quantity or delete the bark; resolve the fixedHeight nine-props-no-callers vestige.
+- F980 generate the nine hand-written scene comparators from the satisfies pattern already proven in app-overlay-route-params-equality.ts — forgetting a field becomes unrepresentable.
+- F945/F953/F962 finish the home retarget: 'home' joins the three top-level scene-set copies (ideally collapsed to ONE set), the three hardcoded 'polls' seats read DOCKED_SCENE_KEY, and ADDING_A_SCENE.md is corrected AFTER the code (doc-first would record the defect as intent).
+
+**Defended as ideal (recorded, not touched):** scene-stack dispose, useArmedOutsideDismiss, overlay-chrome-metrics, sheetBodyScrollDefaults, bottomSheetSurfaceStyleUtils, page-body-contract, params-equality spec. The territory's near-total absence of swallowed errors is noted as the standard other territories get held to.
