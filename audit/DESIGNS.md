@@ -591,3 +591,22 @@ The Phase-3 agent correctly REFUSED the F943 deletion: the mapper's "zero method
 - F943-narrow: the switch-controller's unused field/threading dies.
 
 **DEFERRED to pass 2 by design (the agent's own red-team, which I endorse):** the F1012 ceremonial-family collapse — load-bearing for the body-spec-effects law and hook order; goes cluster-by-cluster with the F1013 hook-order guard built FIRST, never as a sweep. Pass-2 reading debt: runtime/profile (73 files, zero read), 40/53 controllers, 186 UNREVIEWED rows.
+
+## D44 — mobile-native (Phase-2 review of F1100–F1118, 2026-08-03)
+
+**APPROVED:**
+
+- F1100 restore a real iOS test lane: fix the scheme to reference an existing test target or create the minimal unit-test target; MapLodKit's swift test joins CI (it's 41 green tests in 17ms with no simulator — free signal, currently run by nothing).
+- F1102 eas.json gains a staging profile (preview rehearses against STAGING per the deploy law, not prod); the baked prod host moves to a custom api domain before ship (api.craveapp.ai) — the Railway subdomain is unchangeable post-ship.
+- F1108 fill PrivacyInfo.xcprivacy truthfully (location, photos, identifiers, crash data — enumerate from the actual SDK surface). Submission gate; zero runtime risk.
+- F1107 add the photo-library usage string for the non-PHPicker path if one exists; verify first.
+- F1105/F1106/F1109 config hygiene: scope ATS exceptions, drop Always-location if unused (verify against requests), drop armv7 (iOS 15.1 floor makes it dead).
+- F1103 record ios/-is-authoritative in CRAVE.md + a guard: a comment/lockdown note in app.json that prebuild would DELETE the native surface (make the trap loud; the F803-class config drift gets a one-line agreement check where cheap).
+- F1113 the reflection-reached bridge gets a comment at BOTH ends naming the NSClassFromString coupling (fragility made visible, not "fixed").
+
+**ESCALATED to owner:**
+
+- F1110 Android: delete-to-history (recommendation — an unbuildable 11k-line mirror of the owner-locked map controller is pure drift risk; restore from history when Android is actually funded) vs fund a build lane now.
+- F1101 aps-environment: development while push runs — TestFlight/store push may be silently dead. Needs an instrumented check on a real TestFlight build (EAS credentials may mask it); owner should know before the next store submission.
+
+**Defended ideal:** MapLodKit (F1115, four transferable properties named); the map controller untouched per lock.
