@@ -943,15 +943,56 @@ export const PerfScenarioCoordinator: React.FC = () => {
     }
 
     const stopCallbacks: Array<() => void> = [];
+
+    // F850: the UI sampler attaches FIRST, so `scenario_sampling_started`
+    // reports the START RETURN — what is actually being measured — instead of
+    // the URL parameter that merely asked for it. `uiFrameSamplerAttached:false`
+    // is the RED this instrument previously could not show: it used to log
+    // nothing at all when the native module was missing, which read as a
+    // flawless run. The JS samplers cannot fail to attach (pure JS), so for them
+    // "requested" and "attached" are the same fact.
+    const uiFrameSamplerAttachment = activeConfig.uiFrameSampler.enabled
+      ? startUiFrameSampler({
+          windowMs: activeConfig.uiFrameSampler.windowMs,
+          stallFrameMs: activeConfig.uiFrameSampler.stallFrameMs,
+          logOnlyBelowFps: activeConfig.uiFrameSampler.logOnlyBelowFps,
+          onWindow: (summary) => {
+            emitOrBufferJsSamplerEvent(activeConfig, 'UiFrameSampler', summary);
+          },
+          onStall: (event) => {
+            emitOrBufferJsSamplerEvent(activeConfig, 'UiFrameSampler', event);
+          },
+        })
+      : null;
+    if (uiFrameSamplerAttachment) {
+      stopCallbacks.push(uiFrameSamplerAttachment.stop);
+    }
+
     logScenarioEvent(
       withScenarioMetadata(activeConfig, {
         event: 'scenario_sampling_started',
         durationMs: activeConfig.durationMs,
-        jsFrameSamplerEnabled: activeConfig.jsFrameSampler.enabled,
-        jsTaskLatencySamplerEnabled: activeConfig.jsTaskLatencySampler.enabled,
-        uiFrameSamplerEnabled: activeConfig.uiFrameSampler.enabled,
+        jsFrameSamplerRequested: activeConfig.jsFrameSampler.enabled,
+        jsTaskLatencySamplerRequested: activeConfig.jsTaskLatencySampler.enabled,
+        uiFrameSamplerRequested: activeConfig.uiFrameSampler.enabled,
+        uiFrameSamplerAttached: uiFrameSamplerAttachment?.attached ?? false,
+        uiFrameSamplerAttachFailure: uiFrameSamplerAttachment?.reason ?? null,
+        uiFrameSamplerAttachDetail: uiFrameSamplerAttachment?.detail ?? null,
       })
     );
+    // …and again on the sampler's OWN channel, so a report reading only
+    // [SearchPerf][UiFrameSampler] lines still learns that the window stream it
+    // is about to see (or not see) came from a live sampler.
+    if (uiFrameSamplerAttachment) {
+      emitOrBufferJsSamplerEvent(activeConfig, 'UiFrameSampler', {
+        event: 'attach',
+        attached: uiFrameSamplerAttachment.attached,
+        reason: uiFrameSamplerAttachment.reason,
+        detail: uiFrameSamplerAttachment.detail,
+        platform: uiFrameSamplerAttachment.platform,
+        nowMs: 0,
+      });
+    }
 
     if (activeConfig.jsFrameSampler.enabled) {
       stopCallbacks.push(
@@ -981,22 +1022,6 @@ export const PerfScenarioCoordinator: React.FC = () => {
           },
           onStall: (event) => {
             emitOrBufferJsSamplerEvent(activeConfig, 'JsTaskLatencySampler', event);
-          },
-        })
-      );
-    }
-
-    if (activeConfig.uiFrameSampler.enabled) {
-      stopCallbacks.push(
-        startUiFrameSampler({
-          windowMs: activeConfig.uiFrameSampler.windowMs,
-          stallFrameMs: activeConfig.uiFrameSampler.stallFrameMs,
-          logOnlyBelowFps: activeConfig.uiFrameSampler.logOnlyBelowFps,
-          onWindow: (summary) => {
-            emitOrBufferJsSamplerEvent(activeConfig, 'UiFrameSampler', summary);
-          },
-          onStall: (event) => {
-            emitOrBufferJsSamplerEvent(activeConfig, 'UiFrameSampler', event);
           },
         })
       );

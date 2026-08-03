@@ -41,7 +41,6 @@ import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
 import { usersService, type UsernameAvailability } from '../services/users';
 import { normalizePersistedCity } from '../navigation/runtime/city-viewports';
-import { useSystemStatusStore } from '../store/systemStatusStore';
 import {
   findAdjacentVisibleStepIndex,
   getVisibleStepPosition,
@@ -242,7 +241,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
   const toggleStoredMultiValue = useOnboardingStore((state) => state.toggleMultiValue);
   const addStoredCustomMultiValue = useOnboardingStore((state) => state.addCustomMultiValue);
   const completeOnboardingLocally = useOnboardingStore((state) => state.completeOnboardingLocally);
-  const clearServiceIssue = useSystemStatusStore((state) => state.clearServiceIssue);
+  // F810: the unconfirmed-completion outbox (see the catch in completeAndEnterApp).
+  const recordPendingServerCompletion = useOnboardingStore(
+    (state) => state.recordPendingServerCompletion
+  );
   const stepIndex = React.useMemo(() => {
     const resolvedIndex = onboardingSteps.findIndex((step) => step.id === currentStepId);
     return resolvedIndex >= 0 ? resolvedIndex : 0;
@@ -450,16 +452,31 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       return true;
     } catch (error) {
       if (isSignedIn) {
-        logger.warn('Onboarding completion API failed; falling back to local completion', {
+        // F810 — THE ONE THING ONBOARDING EXISTS TO COLLECT DOES NOT GET LOST.
+        //
+        // This used to log a warn, CLEAR the service-issue banner (hiding the
+        // very evidence the user needed) and mark the flow complete LOCALLY.
+        // The persisted status became 'completed', so onboarding never ran
+        // again and the payload — every answer plus the username claim — was
+        // gone: the user believed they finished and the server had nothing.
+        //
+        // Three changes, all in the same direction: the payload is PERSISTED
+        // for replay, the failure is SURFACED instead of suppressed, and the
+        // flow is NOT marked complete on a lie. The CTA stays live, so pressing
+        // it again retries; the pending payload is also re-sent on the next
+        // authenticated launch (see useOnboardingCompletionReplay).
+        logger.warn('Onboarding completion API failed; payload queued for replay', {
           message: error instanceof Error ? error.message : 'unknown error',
         });
-        clearServiceIssue('global');
-        completeOnboardingLocally({
+        recordPendingServerCompletion({
+          status: 'completed',
+          onboardingVersion: ONBOARDING_VERSION,
           selectedCity,
           previewCity,
-          onboardingVersion: ONBOARDING_VERSION,
+          answers,
+          username,
+          failedAtMs: Date.now(),
         });
-        return true;
       }
       setCompletionError(
         error instanceof Error
@@ -470,7 +487,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     } finally {
       setCompletionSubmitting(false);
     }
-  }, [answers, clearServiceIssue, completeOnboardingLocally, isSignedIn, locationValue]);
+  }, [
+    answers,
+    completeOnboardingLocally,
+    isSignedIn,
+    locationValue,
+    recordPendingServerCompletion,
+  ]);
 
   React.useEffect(() => {
     if (

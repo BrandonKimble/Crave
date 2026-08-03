@@ -3,7 +3,8 @@ import React from 'react';
 import SearchRankAndScoreSheets from '../screens/Search/components/SearchRankAndScoreSheets';
 import { SCORE_INFO_MAX_HEIGHT } from '../screens/Search/constants/search';
 import { formatCompactCount } from '../screens/Search/utils/format';
-import { closeScoreInfo, getScoreInfoPayload, subscribeScoreInfo } from './score-info-store';
+import { scoreInfoStore } from './score-info-store';
+import { useSingletonSurfaceHost } from './singleton-surface-store';
 
 const noop = (): void => undefined;
 
@@ -16,20 +17,19 @@ const noop = (): void => undefined;
  * so the content doesn't blank mid-slide-out.
  */
 export const ScoreInfoHost: React.FC = () => {
-  const payload = React.useSyncExternalStore(subscribeScoreInfo, getScoreInfoPayload, () => null);
-  const lastPayloadRef = React.useRef(payload);
-  if (payload != null) {
-    lastPayloadRef.current = payload;
-  }
-  const renderedPayload = payload ?? lastPayloadRef.current;
+  const {
+    visible,
+    rendered: renderedPayload,
+    requestClose,
+  } = useSingletonSurfaceHost(scoreInfoStore);
   if (renderedPayload == null) {
     return null;
   }
   return (
     <SearchRankAndScoreSheets
-      isScoreInfoVisible={payload != null}
+      isScoreInfoVisible={visible}
       scoreInfo={renderedPayload}
-      closeScoreInfo={closeScoreInfo}
+      closeScoreInfo={requestClose}
       clearScoreInfo={noop}
       scoreInfoMaxHeight={SCORE_INFO_MAX_HEIGHT}
       formatCompactCount={formatCompactCount}

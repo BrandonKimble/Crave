@@ -16,6 +16,16 @@ type JsTaskLatencySamplerStallEvent = {
   event: 'task_stall';
   nowMs: number;
   lagMs: number;
+  /**
+   * F851 — TRUE when the lag exceeded MAX_TRACKED_LAG_MS. Same law as the frame
+   * sampler's `clamped`: an over-ceiling lag is either a suspension or the worst
+   * JS block of the run, the sampler cannot tell, so it REPORTS rather than
+   * drops. Before this, a 6-second block incremented no stall counter at all —
+   * the instrument was quietest at the exact moment it should have screamed.
+   * The sample stays out of avg/p95/max (it would swamp them); only the silence
+   * is gone.
+   */
+  clamped?: boolean;
 };
 
 type JsTaskLatencySamplerOptions = {
@@ -148,6 +158,16 @@ const startJsTaskLatencySampler = (options: JsTaskLatencySamplerOptions): (() =>
         });
       }
     } else {
+      if (Number.isFinite(lagMs) && lagMs > MAX_TRACKED_LAG_MS) {
+        stallCount += 1;
+        stallLongestMs = Math.max(stallLongestMs, lagMs);
+        options.onStall?.({
+          event: 'task_stall',
+          nowMs: round1(nowMs),
+          lagMs: round1(lagMs),
+          clamped: true,
+        });
+      }
       flushWindow(nowMs);
     }
 

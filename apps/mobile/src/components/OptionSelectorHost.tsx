@@ -1,10 +1,7 @@
 import React from 'react';
 import { OptionSelectorSheet } from './OptionSelectorSheet';
-import {
-  closeOptionSelector,
-  getOptionSelectorConfig,
-  subscribeOptionSelector,
-} from './option-selector-store';
+import { optionSelectorStore } from './option-selector-store';
+import { useSingletonSurfaceHost } from './singleton-surface-store';
 
 /**
  * Root host for the imperative dropdown-toggle selector (see option-selector-store.ts).
@@ -12,27 +9,22 @@ import {
  * animation so the options don't blank mid-slide-out.
  */
 export const OptionSelectorHost: React.FC = () => {
-  const config = React.useSyncExternalStore(
-    subscribeOptionSelector,
-    getOptionSelectorConfig,
-    () => null
-  );
-  const lastConfigRef = React.useRef(config);
-  if (config != null) {
-    lastConfigRef.current = config;
-  }
-  const renderedConfig = config ?? lastConfigRef.current;
+  const {
+    visible,
+    rendered: renderedConfig,
+    requestClose,
+  } = useSingletonSurfaceHost(optionSelectorStore);
   if (renderedConfig == null) {
     return null;
   }
   return (
     <OptionSelectorSheet
-      visible={config != null}
+      visible={visible}
       title={renderedConfig.title}
       options={renderedConfig.options}
       value={renderedConfig.value}
       onSelect={(value) => renderedConfig.onSelect(value)}
-      onRequestClose={() => closeOptionSelector()}
+      onRequestClose={requestClose}
       accentColor={renderedConfig.accentColor}
       testID={renderedConfig.testID}
     />

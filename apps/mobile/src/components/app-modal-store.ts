@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { createSingletonSurfaceStore } from './singleton-surface-store';
+
 /**
  * Shareable in-app modal — a styled replacement for native `Alert.alert`.
  *
@@ -57,34 +59,18 @@ export type AppModalConfig = {
   onDismissed?: () => void;
 };
 
-let currentConfig: AppModalConfig | null = null;
-const listeners = new Set<() => void>();
+const store = createSingletonSurfaceStore<AppModalConfig>();
 
-const emit = (): void => {
-  listeners.forEach((listener) => listener());
-};
-
-export const showAppModal = (config: AppModalConfig): void => {
-  currentConfig = config;
-  emit();
-};
+export const showAppModal = (config: AppModalConfig): void => store.show(config);
 
 /**
  * Dismisses the modal. Pass the config being dismissed so a dismissal that raced a
  * newer `showAppModal` (e.g. the sheet's frame-deferred close after a swipe while an
- * async flow opened the next alert) can't kill the modal it never showed. Omitting the
- * argument dismisses unconditionally.
+ * async flow opened the next alert) can't kill the modal it never showed — the
+ * identity-scoped close now lives in the shared factory. Omitting the argument
+ * dismisses unconditionally.
  */
-export const dismissAppModal = (config?: AppModalConfig): void => {
-  if (currentConfig == null) {
-    return;
-  }
-  if (config !== undefined && config !== currentConfig) {
-    return;
-  }
-  currentConfig = null;
-  emit();
-};
+export const dismissAppModal = (config?: AppModalConfig): void => store.close(config);
 
 /**
  * THE UNIFORM FAILURE ANNOUNCEMENT (owner spec, 2026-07-08, revised same day): every
@@ -122,14 +108,6 @@ export const announceFailureIfOnline = (options?: {
   });
 };
 
-const subscribe = (listener: () => void): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+export const appModalStore = store;
 
-const getSnapshot = (): AppModalConfig | null => currentConfig;
-
-export const useAppModalConfig = (): AppModalConfig | null =>
-  React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+export const useAppModalConfig = (): AppModalConfig | null => store.useValue();

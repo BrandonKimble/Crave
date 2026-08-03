@@ -8,6 +8,8 @@
 // The search results scene keeps its own scene-scoped instance (its openScoreInfo
 // rides the scene read-model); non-search surfaces use this store.
 
+import { createSingletonSurfaceStore } from './singleton-surface-store';
+
 export type ScoreInfoStorePayload = {
   type: 'dish' | 'restaurant';
   title: string;
@@ -17,33 +19,16 @@ export type ScoreInfoStorePayload = {
   polls: number | null | undefined;
 };
 
-type Listener = () => void;
+const store = createSingletonSurfaceStore<ScoreInfoStorePayload>();
 
-let currentPayload: ScoreInfoStorePayload | null = null;
-const listeners = new Set<Listener>();
+export const scoreInfoStore = store;
 
-const emit = (): void => {
-  listeners.forEach((listener) => listener());
-};
+export const showScoreInfo = (payload: ScoreInfoStorePayload): void => store.show(payload);
 
-export const showScoreInfo = (payload: ScoreInfoStorePayload): void => {
-  currentPayload = payload;
-  emit();
-};
+/** F880: gains the identity-scoped close for free — pass the payload being
+ *  closed and a deferred dismissal can no longer kill a NEWER score sheet. */
+export const closeScoreInfo = (payload?: ScoreInfoStorePayload): void => store.close(payload);
 
-export const closeScoreInfo = (): void => {
-  if (currentPayload == null) {
-    return;
-  }
-  currentPayload = null;
-  emit();
-};
+export const getScoreInfoPayload = (): ScoreInfoStorePayload | null => store.getSnapshot();
 
-export const getScoreInfoPayload = (): ScoreInfoStorePayload | null => currentPayload;
-
-export const subscribeScoreInfo = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+export const subscribeScoreInfo = (listener: () => void): (() => void) => store.subscribe(listener);

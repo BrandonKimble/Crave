@@ -8,7 +8,8 @@
     "ios": "expo run:ios",
     "dev": "yarn start",
     "build": "node -e \"console.log('Skipping web build (native-only app).')\"",
-    "test": "jest",
+    "test": "node scripts/jest-honest.js",
+    "test:raw": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint . --fix"
   },

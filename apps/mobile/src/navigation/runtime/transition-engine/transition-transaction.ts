@@ -85,6 +85,23 @@ export type TransitionTxn = {
   pendingJoinInputs: ReadonlySet<TransitionJoinInput>;
   /** Trace marks (performance.now ms) — the composite event log (ledger D5/L-1). */
   readonly marks: Partial<Record<`${TransitionTxnPhase}At` | 'stagedAt', number>>;
+  /** Handle for the join-liveness watchdog (armed only while 'joining'), so
+   *  leaving 'joining' DISARMS it instead of leaving a live timer behind. */
+  joinLivenessTimer?: ReturnType<typeof setTimeout> | null;
+};
+
+/** The watchdog is a safety net for a stuck join; once the join is over it has
+ *  nothing to watch. Leaving it armed kept a timer (and the whole txn) alive for
+ *  its full window after every single transition — invisible in the app, and the
+ *  reason the jest run force-killed a worker (F830). */
+const armedJoinLivenessWatchdogs = new Set<TransitionTxn>();
+
+const disarmJoinLivenessWatchdog = (txn: TransitionTxn): void => {
+  armedJoinLivenessWatchdogs.delete(txn);
+  if (txn.joinLivenessTimer != null) {
+    clearTimeout(txn.joinLivenessTimer);
+    txn.joinLivenessTimer = null;
+  }
 };
 
 const TERMINAL_PHASES: ReadonlySet<TransitionTxnPhase> = new Set(['settled', 'superseded']);
@@ -194,6 +211,9 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
     });
     return false;
   }
+  if (nextPhase !== 'joining') {
+    disarmJoinLivenessWatchdog(txn);
+  }
   txn.phase = nextPhase;
   (txn.marks as Record<string, number>)[`${nextPhase}At`] = now();
   emitTrace(txn, nextPhase);
@@ -262,7 +282,10 @@ const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {
     return;
   }
   const windowMs = txn.plan.joinLivenessMs ?? JOIN_LIVENESS_MS;
-  setTimeout(() => {
+  armedJoinLivenessWatchdogs.add(txn);
+  txn.joinLivenessTimer = setTimeout(() => {
+    armedJoinLivenessWatchdogs.delete(txn);
+    txn.joinLivenessTimer = null;
     if (txn.phase !== 'joining') {
       return;
     }
@@ -317,6 +340,7 @@ export const settleTransitionTxn = (txn: TransitionTxn): void => {
 
 const supersedeTransitionTxn = (txn: TransitionTxn): void => {
   if (!TERMINAL_PHASES.has(txn.phase)) {
+    disarmJoinLivenessWatchdog(txn);
     txn.phase = 'superseded';
     (txn.marks as Record<string, number>).supersededAt = now();
     emitTrace(txn, 'superseded');
@@ -430,8 +454,17 @@ export const subscribeTransitionTxn = (listener: Listener): (() => void) => {
   };
 };
 
-/** Test-only: reset the holder between specs. */
+/** Test-only: reset the holder between specs.
+ *
+ *  Also DISARMS every armed join-liveness watchdog. A txn left mid-'joining' at
+ *  the end of a spec used to fire its 600ms degrade AFTER teardown, logging into
+ *  a torn-down console — the leak class that let the run print green while a
+ *  worker was force-killed (F830). Dropping the holder is not enough: a txn the
+ *  spec created directly was never in the holder to begin with. */
 export const resetTransitionTxnHolderForTest = (): void => {
+  for (const txn of [...armedJoinLivenessWatchdogs]) {
+    disarmJoinLivenessWatchdog(txn);
+  }
   liveTxn = null;
   listeners.clear();
 };

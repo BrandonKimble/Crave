@@ -21,23 +21,17 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-config.resolver.alias = {
-  ...(config.resolver.alias || {}),
-  'react-native$': path.resolve(projectRoot, 'src/shims/reactNativeProxy.js'),
-  'react-native/Libraries/Utilities/codegenNativeComponent': path.resolve(
-    projectRoot,
-    'src/shims/codegenNativeComponentShim.js'
-  ),
-  '@rnmapbox/maps': path.resolve(
-    workspaceRoot,
-    'node_modules/@rnmapbox/maps/lib/module/index.native.js'
-  ),
-  '@rnmapbox/maps$': path.resolve(
-    workspaceRoot,
-    'node_modules/@rnmapbox/maps/lib/module/index.native.js'
-  ),
-  'react-native-svg': path.resolve(workspaceRoot, 'node_modules/react-native-svg'),
-  'react-native-svg$': path.resolve(workspaceRoot, 'node_modules/react-native-svg'),
-};
+// NOTE (F807, verified 2026-08-03): there used to be a `config.resolver.alias`
+// block here proxying react-native + codegenNativeComponent through shims and
+// deduping @rnmapbox/maps + react-native-svg. It was INERT and partly fictional:
+//   - Metro has no `resolver.alias` option at all — the key is absent from
+//     metro-config/src/types.js.flow, from metro-resolver, and from
+//     @expo/metro-config's build output (all three grepped).
+//   - Two of its targets (src/shims/reactNativeProxy.js,
+//     src/shims/codegenNativeComponentShim.js) DO NOT EXIST, so had the option
+//     been real the bundle would not have built.
+// A reader reasonably believed react-native was being proxied. It was not.
+// If a hoisting/dedupe problem ever appears, express it with the options Metro
+// DOES support: `resolver.resolveRequest` or `resolver.extraNodeModules`.
 
 module.exports = config;

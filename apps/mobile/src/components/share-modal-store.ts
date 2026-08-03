@@ -1,10 +1,9 @@
-import React from 'react';
-
 import {
   serializeDesireLinkToPath,
   type ParsedDesireLink,
 } from '../navigation/runtime/desire-url-codec';
 import type { SharedEntityKind } from '../services/messaging';
+import { createSingletonSurfaceStore } from './singleton-surface-store';
 
 /**
  * THE universal share modal (plans/page-registry.md §9b; W3). One surface,
@@ -120,37 +119,14 @@ export const shareConfigCanResolveLink = (config: ShareModalConfig): boolean => 
   return true;
 };
 
-let currentConfig: ShareModalConfig | null = null;
-const listeners = new Set<() => void>();
+const store = createSingletonSurfaceStore<ShareModalConfig>();
 
-const emit = (): void => {
-  listeners.forEach((listener) => listener());
-};
+export const shareModalStore = store;
 
-export const showShareModal = (config: ShareModalConfig): void => {
-  currentConfig = config;
-  emit();
-};
+export const showShareModal = (config: ShareModalConfig): void => store.show(config);
 
-export const dismissShareModal = (config?: ShareModalConfig): void => {
-  if (currentConfig == null) {
-    return;
-  }
-  if (config !== undefined && config !== currentConfig) {
-    return;
-  }
-  currentConfig = null;
-  emit();
-};
+/** Identity-scoped by the shared factory: a deferred dismissal cannot kill a
+ *  share modal that a newer `showShareModal` opened in the meantime. */
+export const dismissShareModal = (config?: ShareModalConfig): void => store.close(config);
 
-const subscribe = (listener: () => void): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
-const getSnapshot = (): ShareModalConfig | null => currentConfig;
-
-export const useShareModalConfig = (): ShareModalConfig | null =>
-  React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+export const useShareModalConfig = (): ShareModalConfig | null => store.useValue();

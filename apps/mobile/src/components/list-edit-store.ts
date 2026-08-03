@@ -7,6 +7,7 @@
 // showListEdit(); the root ListEditHost renders the sheet viewport-anchored.
 
 import type { UserListType, UserListVisibility } from '../services/user-lists';
+import { createSingletonSurfaceStore } from './singleton-surface-store';
 
 export type ListEditPayload =
   | {
@@ -23,33 +24,15 @@ export type ListEditPayload =
       visibility: UserListVisibility;
     };
 
-type Listener = () => void;
+const store = createSingletonSurfaceStore<ListEditPayload>();
 
-let currentPayload: ListEditPayload | null = null;
-const listeners = new Set<Listener>();
+export const listEditStore = store;
 
-const emit = (): void => {
-  listeners.forEach((listener) => listener());
-};
+export const showListEdit = (payload: ListEditPayload): void => store.show(payload);
 
-export const showListEdit = (payload: ListEditPayload): void => {
-  currentPayload = payload;
-  emit();
-};
+/** F880: identity-scoped close from the shared factory. */
+export const closeListEdit = (payload?: ListEditPayload): void => store.close(payload);
 
-export const closeListEdit = (): void => {
-  if (currentPayload == null) {
-    return;
-  }
-  currentPayload = null;
-  emit();
-};
+export const getListEditPayload = (): ListEditPayload | null => store.getSnapshot();
 
-export const getListEditPayload = (): ListEditPayload | null => currentPayload;
-
-export const subscribeListEdit = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+export const subscribeListEdit = (listener: () => void): (() => void) => store.subscribe(listener);

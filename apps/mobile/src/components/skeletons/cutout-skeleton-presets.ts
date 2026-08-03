@@ -7,9 +7,13 @@ import {
   CARD_VERTICAL_PADDING,
   CARD_VERTICAL_PADDING_BALANCE,
   RANK_BADGE_WIDTH,
-  RESULT_ACTIONS_LEFT_GAP,
   RESULT_DETAILS_INDENT,
 } from '../../screens/Search/constants/search';
+import { PHOTO_STRIP_TILE_GAP, PHOTO_STRIP_TILE_RADIUS } from '../photos/photo-strip-metrics';
+import {
+  RESULT_CARD_GALLERY_HEIGHT,
+  RESULT_CARD_GALLERY_TILE_ASPECT,
+} from '../cards/ResultCard/result-card-slot-styles';
 import type { MaskedHole } from '../MaskedHoleOverlay';
 
 /**
@@ -125,18 +129,32 @@ const COMMENT_ROW_STRIDE =
   COMMENT_ROW_PADDING_TOP;
 
 // ─── restaurant / dish (mirror RestaurantSkeleton / DishSkeleton result cards) ──────────────
-// [rank 32×30] [title]              [♥ / share column]
+// [rank 32×30] [title]
 //              [score line]
 //              [body line(s)]
+// [Save][Share][Call][Dishes]   ← the pill row (CardActionPillRow)
+//
+// F882 — THIS DIAGRAM USED TO SHOW A CARD THAT NO LONGER EXISTS. It punched two
+// 20×20 action holes into a right-hand "[♥ / share column]" while the shipped
+// card has NO heart (owner-ratified 2026-07-26: the heart icon is dead on cards)
+// and its actions live BELOW the body as a pill row. So the skeleton drew chrome
+// the card lacks and omitted the row it has — the exact swap-jump this file's
+// own header says it prevents.
 const RESULT_PADDING_TOP = CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE; // 10
 const RESULT_PADDING_BOTTOM = CARD_VERTICAL_PADDING + CARD_VERTICAL_PADDING_BALANCE; // 14
 const RANK_HEIGHT = 30;
 const TITLE_HEIGHT = 16;
 const SCORE_HEIGHT = 13;
 const BODY_LINE_HEIGHT = 12;
-const RESULT_ACTION_SIZE = 20;
-const RESULT_ACTIONS_COLUMN = 32;
-const RESULT_ACTIONS_GAP = 4;
+// The pill row under the card body (CardActionPillRow): pills are
+// paddingVertical 8 around a caption line, gap 8 between them, marginTop 10 on
+// the row. The skeleton draws the first pills and lets the rest bleed off the
+// right edge, exactly like the scrollable strip does.
+const PILL_ROW_MARGIN_TOP = 10;
+const PILL_HEIGHT = 32;
+const PILL_GAP = 8;
+const PILL_RADIUS = 16;
+const PILL_WIDTHS = [78, 82, 74, 84];
 
 /** One result-card row. `bodyLineFractions` lists the non-score body lines as width fractions. */
 const buildResultCardHoles = (
@@ -146,8 +164,10 @@ const buildResultCardHoles = (
 ): MaskedHole[] => {
   const holes: MaskedHole[] = [];
   const titleY = originY + RESULT_PADDING_TOP;
-  // The title column excludes the right-hand actions column + the header gap between them.
-  const titleAvailable = Math.max(0, rowWidth - RESULT_ACTIONS_COLUMN - RESULT_ACTIONS_LEFT_GAP);
+  // F882: the title spans the FULL row — there is no right-hand actions column
+  // on the shipped card any more, so reserving 32pt for one left a permanent
+  // dead gutter the real title crossed on swap.
+  const titleAvailable = rowWidth;
   const bodyX = originX + RESULT_DETAILS_INDENT;
   const bodyWidth = Math.max(0, titleAvailable - RESULT_DETAILS_INDENT);
 
@@ -190,23 +210,22 @@ const buildResultCardHoles = (
     }
   });
 
-  // Right-hand actions column (heart + share), centered in the 32-wide column.
-  const actionX =
-    originX + rowWidth - RESULT_ACTIONS_COLUMN + (RESULT_ACTIONS_COLUMN - RESULT_ACTION_SIZE) / 2;
-  holes.push({
-    x: actionX,
-    y: titleY,
-    width: RESULT_ACTION_SIZE,
-    height: RESULT_ACTION_SIZE,
-    borderRadius: 10,
-  });
-  holes.push({
-    x: actionX,
-    y: titleY + RESULT_ACTION_SIZE + RESULT_ACTIONS_GAP,
-    width: RESULT_ACTION_SIZE,
-    height: RESULT_ACTION_SIZE,
-    borderRadius: 10,
-  });
+  // The pill row, below the body — the shipped card's actual action affordance.
+  let pillX = originX;
+  const pillY = bodyY + BODY_LINE_HEIGHT + PILL_ROW_MARGIN_TOP;
+  for (const pillWidth of PILL_WIDTHS) {
+    if (pillX >= originX + rowWidth) {
+      break;
+    }
+    holes.push({
+      x: pillX,
+      y: pillY,
+      width: Math.min(pillWidth, originX + rowWidth - pillX),
+      height: PILL_HEIGHT,
+      borderRadius: PILL_RADIUS,
+    });
+    pillX += pillWidth + PILL_GAP;
+  }
 
   return holes;
 };
@@ -223,6 +242,9 @@ const resultRowStride = (bodyLineCount: number): number =>
   CARD_LINE_GAP +
   SCORE_HEIGHT +
   bodyLineCount * (BODY_LINE_HEIGHT + CARD_LINE_GAP) +
+  // …plus the pill row the card actually has (F882).
+  PILL_ROW_MARGIN_TOP +
+  PILL_HEIGHT +
   RESULT_PADDING_BOTTOM;
 const RESTAURANT_ROW_STRIDE = resultRowStride(RESTAURANT_BODY_FRACTIONS.length);
 const DISH_ROW_STRIDE = resultRowStride(DISH_BODY_FRACTIONS.length);
@@ -274,11 +296,15 @@ const TILE_ROW_STRIDE =
   TILE_MIN_HEIGHT + TILE_FOOTER_MARGIN_TOP + TILE_FOOTER_HEIGHT + 2 * TILE_GRID_GAP;
 
 // ─── photoStrip (mirrors PhotoStrip — a row of ~3-4 landscape photo tiles) ──────────────────
+// F882: the tile geometry is IMPORTED from the gallery it mirrors, never
+// restated. The local copies had drifted to 72 high at 4:3 (96×72 tiles) while
+// the shipped gallery renders 96 high at 1.1 (~106×96) — a visible resize on
+// every skeleton→content swap, and the second failure mode this file exists to
+// prevent. The file already imports live search constants; this extends that
+// discipline to the card's own.
 const PHOTO_STRIP_PADDING_TOP = 10;
-const PHOTO_STRIP_TILE_HEIGHT = 72;
-const PHOTO_STRIP_TILE_ASPECT = 4 / 3;
-const PHOTO_STRIP_TILE_GAP = 6;
-const PHOTO_STRIP_TILE_RADIUS = 10;
+const PHOTO_STRIP_TILE_HEIGHT = RESULT_CARD_GALLERY_HEIGHT;
+const PHOTO_STRIP_TILE_ASPECT = RESULT_CARD_GALLERY_TILE_ASPECT;
 const PHOTO_STRIP_PADDING_BOTTOM = 10;
 
 const buildPhotoStripHoles = ({ originX, originY, rowWidth }: RowOptions): MaskedHole[] => {

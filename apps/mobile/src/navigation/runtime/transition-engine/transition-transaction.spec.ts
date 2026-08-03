@@ -41,6 +41,10 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   });
 
   afterEach(() => {
+    // Disarm anything this test left mid-'joining' BEFORE teardown (F830) —
+    // a watchdog firing afterwards logs into a dead console and, in a worker,
+    // used to be swallowed entirely while the run reported green.
+    resetTransitionTxnHolderForTest();
     setTransitionTxnViolationSink(null);
   });
 

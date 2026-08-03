@@ -3,6 +3,8 @@ import { Linking } from 'react-native';
 import { useAuth, useSessionList } from '@clerk/clerk-expo';
 import { ONBOARDING_VERSION, type UserOnboardingProfile } from '@crave-search/shared';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useSessionLapseStore } from '../../store/sessionLapseStore';
+import { decideOnboardingCompletionReplay } from '../../screens/onboarding/onboarding-completion-replay';
 import { usersService } from '../../services/users';
 import { useQueryClient } from '@tanstack/react-query';
 import { accessQueryKey, useAccess } from '../../hooks/useAccess';
@@ -189,12 +191,93 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     sessionListIsLoaded,
   ]);
 
+  // F804: the server has told us this session is dead (401). Clerk may still
+  // report `isSignedIn` — its token cache does not know the server rejected it —
+  // so the SERVER'S verdict wins and the user is routed to sign-in. Without this
+  // the app kept every screen mounted and every request anonymous.
+  const isSessionLapsed = useSessionLapseStore((state) => state.lapsed);
+  const clearSessionLapse = useSessionLapseStore((state) => state.clearLapse);
+
   const authStatus: AuthStatus = React.useMemo(() => {
     if (!isLoaded || !sessionListIsLoaded || isRecoveringSession) {
       return 'loading';
     }
+    if (isSessionLapsed) {
+      return 'signed_out';
+    }
     return isSignedIn ? 'signed_in' : 'signed_out';
-  }, [isLoaded, isRecoveringSession, isSignedIn, sessionListIsLoaded]);
+  }, [isLoaded, isRecoveringSession, isSessionLapsed, isSignedIn, sessionListIsLoaded]);
+
+  // On lapse: drop every cached server answer (they were fetched for a user we
+  // can no longer prove) so the sign-in that follows starts clean.
+  React.useEffect(() => {
+    if (isSessionLapsed) {
+      queryClient.clear();
+    }
+  }, [isSessionLapsed, queryClient]);
+
+  // The lapse is cleared by a real session change — Clerk signing out (the user
+  // is now honestly anonymous) or a fresh sign-in landing on a NEW user id.
+  const lapsedUserIdRef = React.useRef<string | null | undefined>(undefined);
+  React.useEffect(() => {
+    if (!isSessionLapsed) {
+      lapsedUserIdRef.current = undefined;
+      return;
+    }
+    if (lapsedUserIdRef.current === undefined) {
+      lapsedUserIdRef.current = clerkUserId ?? null;
+      return;
+    }
+    if (!isSignedIn || (clerkUserId ?? null) !== lapsedUserIdRef.current) {
+      clearSessionLapse();
+    }
+  }, [clearSessionLapse, clerkUserId, isSessionLapsed, isSignedIn]);
+
+  // ── F810: replay the unconfirmed onboarding completion ────────────────────
+  // A completion the server never acknowledged is persisted verbatim. On the
+  // next authenticated launch we send it again; only a CONFIRMED server write
+  // clears it. Before this, that payload — every answer plus the username claim
+  // — was destroyed by the very catch block that was supposed to protect the
+  // user from a network blip.
+  const pendingServerCompletion = useOnboardingStore((state) => state.pendingServerCompletion);
+  const clearPendingServerCompletion = useOnboardingStore(
+    (state) => state.clearPendingServerCompletion
+  );
+  const completionReplayInFlightRef = React.useRef(false);
+  React.useEffect(() => {
+    const decision = decideOnboardingCompletionReplay({
+      pending: pendingServerCompletion,
+      isSignedIn: authStatus === 'signed_in',
+      inFlight: completionReplayInFlightRef.current,
+    });
+    if (decision.kind !== 'replay') {
+      return;
+    }
+    const { failedAtMs, ...payload } = decision.payload;
+    completionReplayInFlightRef.current = true;
+    void usersService
+      .completeOnboarding(payload)
+      .then((profile) => {
+        // CONFIRMED — and only now is the outbox emptied.
+        clearPendingServerCompletion();
+        hydrateCompletionFromServer(profile.onboarding);
+        logger.info('Replayed a queued onboarding completion', { failedAtMs });
+      })
+      .catch((error) => {
+        // Still unlanded. The payload STAYS: it is the only copy of the answers.
+        logger.warn('Onboarding completion replay failed; payload retained', {
+          message: error instanceof Error ? error.message : 'unknown error',
+        });
+      })
+      .finally(() => {
+        completionReplayInFlightRef.current = false;
+      });
+  }, [
+    authStatus,
+    clearPendingServerCompletion,
+    hydrateCompletionFromServer,
+    pendingServerCompletion,
+  ]);
 
   React.useEffect(() => {
     if (authStatus !== 'signed_in') {

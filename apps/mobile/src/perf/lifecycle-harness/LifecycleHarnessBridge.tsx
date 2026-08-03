@@ -42,6 +42,19 @@ export const LifecycleHarnessBridge: React.FC = () => {
             routeSceneRuntime.routeSheetSnapSessionActions?.getRouteSceneSwitchSceneSnap?.(scene) ??
             null;
         } catch {
+          // F868 — THIS CONVERTS AN EXCEPTION INTO A PLAUSIBLE VALUE. The matrix
+          // asserts on these snaps, and `null` is also a legitimate answer
+          // ("that scene has no snap"), so a throwing snap reader is
+          // indistinguishable from a closed sheet: the probe reports a healthy
+          // state for a broken one.
+          //
+          // RED RECIPE (needs the sim + `scripts/rig/lifecycle-matrix.sh`, so it
+          // is recorded rather than automated): make
+          // `getRouteSceneSwitchSceneSnap` throw for one scene — e.g. add
+          // `if (scene === 'listDetail') throw new Error('probe RED');` at the
+          // top of the runtime's implementation — then run the matrix. Today
+          // every listDetail snap assertion still passes (null reads as closed).
+          // The fix, when this is designed, is a third value: 'unreadable'.
           sheetSnaps[scene] = null;
         }
       }

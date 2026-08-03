@@ -6,7 +6,9 @@ import { withPerfScenarioMetadata } from '../perf/perf-scenario-attribution';
 import { logger } from '../utils';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
+import { useSessionLapseStore } from '../store/sessionLapseStore';
 import { getOrCreateDeviceKey } from './device-key';
+import { resolveApiFailureAction } from './api-failure-policy';
 
 const DEFAULT_API_URL = 'http://localhost:3000/api/v1';
 const DEFAULT_API_TIMEOUT_MS = typeof __DEV__ !== 'undefined' && __DEV__ ? 120_000 : 15_000;
@@ -330,20 +332,37 @@ api.interceptors.response.use(
         ? responseRecord.message
         : undefined;
 
+    // What this failure MEANS is decided in one pure place
+    // (api-failure-policy.ts), so the set of outcomes is closed and provable.
+    const failureAction = resolveApiFailureAction({ status, errorCode });
+
+    // THE SESSION-LAPSE SEAM (F804): the server says 401 — the token is
+    // expired, revoked, for a deleted user, or was never resolved because the
+    // Clerk token resolver threw (getAuthToken swallows that into null). ONE
+    // chokepoint, mirroring the entitlement branch below: announce the lapse so
+    // the route coordinator can show sign-in, and tag the error so callers stay
+    // quiet (one story — the sign-in screen — not a generic failure modal on top
+    // of it). Before this branch existed the app silently degraded to anonymous
+    // and kept making unauthenticated requests forever.
+    if (failureAction.kind === 'session_lapse') {
+      useSessionLapseStore.getState().announceLapse();
+      (error as { isSessionLapse?: boolean }).isSessionLapse = true;
+      return Promise.reject(error);
+    }
+
     // App-wide paywall: subscription lapsed mid-session. ONE chokepoint —
     // announce the lapse (the App-root host mounts the paywall takeover) and
     // tag the error so callers/mutation handlers stay quiet (one story, not
     // a generic failure modal on top of the paywall).
-    if (status === 403 && errorCode === 'ENTITLEMENT_REQUIRED') {
+    if (failureAction.kind === 'entitlement_lapse') {
       useEntitlementLapseStore.getState().announceLapse();
       (error as { isEntitlementLapse?: boolean }).isEntitlementLapse = true;
       return Promise.reject(error);
     }
 
     if (
+      failureAction.kind === 'service_issue' &&
       !requestFlags.suppressSystemStatus &&
-      typeof status === 'number' &&
-      status >= 500 &&
       !systemStatus.isOffline
     ) {
       const scope = errorCode === 'LLM_UNAVAILABLE' ? 'search' : 'global';

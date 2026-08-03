@@ -82,6 +82,10 @@ apps/*/src/**/*.js
 apps/*/test/**/*.js
 apps/*/scripts/**/*.js
 packages/*/src/**/*.js
+# …but the mobile test runner is HAND-WRITTEN source, not build output. It is the
+# entry point for `yarn test` (it fails the run when a jest worker dies — see the
+# file's header), so it must be tracked or the honest gate exists on one machine.
+!apps/mobile/scripts/jest-honest.js
 
 # Scratch harnesses. `railway up` uploads the working TREE, so an untracked
 # throwaway would otherwise ship to a real environment — and it blocks the

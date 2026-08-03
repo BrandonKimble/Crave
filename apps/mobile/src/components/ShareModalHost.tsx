@@ -24,9 +24,10 @@ import {
   dismissShareModal,
   SHARE_BASE_URL,
   shareConfigCanResolveLink,
-  useShareModalConfig,
+  shareModalStore,
   type ShareModalConfig,
 } from './share-modal-store';
+import { useSingletonSurfaceHost } from './singleton-surface-store';
 
 /**
  * THE universal share modal (W3, page-registry §9b). One OverlayModalSheet
@@ -364,20 +365,11 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
 };
 
 export const ShareModalHost: React.FC = () => {
-  const config = useShareModalConfig();
-  const visible = config != null;
-  // Keep the last config through the exit animation (same pattern as AppModalHost).
-  const lastConfigRef = React.useRef(config);
-  if (config != null) {
-    lastConfigRef.current = config;
-  }
-  const renderedConfig = config ?? lastConfigRef.current;
-
-  const handleRequestClose = React.useCallback((): void => {
-    if (config != null) {
-      dismissShareModal(config);
-    }
-  }, [config]);
+  const {
+    visible,
+    rendered: renderedConfig,
+    requestClose: handleRequestClose,
+  } = useSingletonSurfaceHost(shareModalStore);
 
   return (
     <OverlayModalSheet

@@ -1,12 +1,14 @@
 import React from 'react';
+
+import { useSingletonSurfaceHost } from './singleton-surface-store';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
 import OverlayModalSheet from '../overlays/OverlayModalSheet';
 import {
+  appModalStore,
   dismissAppModal,
-  useAppModalConfig,
   type AppModalAction,
   type AppModalConfig,
 } from './app-modal-store';
@@ -24,15 +26,16 @@ const DESTRUCTIVE = '#ef4444';
  * points or grab handle, grab-to-rubber-band, dismiss by swipe down or backdrop tap.
  */
 export const AppModalHost: React.FC = () => {
-  const config = useAppModalConfig();
-  const visible = config != null;
-  // Keep the last non-null config through the exit animation so the content doesn't
-  // blank out while the sheet slides away.
-  const lastConfigRef = React.useRef(config);
-  if (config != null) {
-    lastConfigRef.current = config;
-  }
-  const renderedConfig = config ?? lastConfigRef.current;
+  // The shared singleton-surface host hook (F880) owns all three parts: the live
+  // value, the last-payload-through-the-exit-animation, and the identity-scoped
+  // close. This host is where the identity-scoped close was FIRST invented; it now
+  // comes from the factory so no surface can be built without it.
+  const {
+    value: config,
+    visible,
+    rendered: renderedConfig,
+    requestClose: handleRequestClose,
+  } = useSingletonSurfaceHost(appModalStore);
 
   const actions: AppModalAction[] =
     renderedConfig?.actions && renderedConfig.actions.length > 0
@@ -63,16 +66,6 @@ export const AppModalHost: React.FC = () => {
     dismissAppModal(config);
     action.onPress?.(typed);
   };
-
-  // Identity-scoped dismiss: the sheet defers onRequestClose a frame, so a swipe/backdrop
-  // close must only dismiss the config it was showing — never a newer one that landed in
-  // the gap. Closing over `config` (not a ref) pins the identity to the render the
-  // gesture fired against.
-  const handleRequestClose = React.useCallback((): void => {
-    if (config != null) {
-      dismissAppModal(config);
-    }
-  }, [config]);
 
   // The onDismissed contract: fires EXACTLY ONCE per config, on whichever path closes
   // it. Three closes exist: (a) normal — dismissed, exit animation completes; (b)

@@ -116,6 +116,24 @@ export const ensureSavedMembership = (kind: SavedTargetKind, id: string): void =
   }
 };
 
+/**
+ * TEST SEAM (F830): cancel the in-flight flush timer and forget everything the
+ * queue has asked for. Any spec that renders a card — or merely imports a module
+ * that touches this store — leaves a 50ms timer armed; it fires AFTER teardown,
+ * against a torn-down module registry, and used to crash the jest worker while
+ * the run still printed green. Specs call this in `afterEach`.
+ */
+export const resetSavedMembershipQueue = (): void => {
+  if (flushTimer != null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  requested.restaurant.clear();
+  requested.connection.clear();
+  pending.restaurant.clear();
+  pending.connection.clear();
+};
+
 /** Re-ask the server about one target (after a removal, where "still saved
  *  in some other list?" cannot be known locally). */
 export const refreshSavedMembership = (kind: SavedTargetKind, id: string): void => {

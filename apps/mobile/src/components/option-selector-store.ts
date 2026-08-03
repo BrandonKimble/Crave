@@ -1,5 +1,5 @@
-import React from 'react';
 import type { OptionSelectorSheetOption } from './OptionSelectorSheet';
+import { createSingletonSurfaceStore } from './singleton-surface-store';
 
 /**
  * Imperative dropdown-toggle selector (plans/toggle-strip-primitive.md): the root-hosted
@@ -20,48 +20,37 @@ export type OptionSelectorConfig<T extends string = string> = {
   testID?: string;
 };
 
-let currentConfig: OptionSelectorConfig | null = null;
-const listeners = new Set<() => void>();
+/**
+ * The one selector whose identity is NOT the payload object: a chip holds its
+ * stable `key`, not the config it built, so the shared factory is instantiated
+ * with `identityOf = config.key`. Same race fix, same code — only the identity
+ * rule differs, which is exactly the thing a factory parameter is for.
+ */
+const store = createSingletonSurfaceStore<OptionSelectorConfig, string>({
+  identityOf: (config) => config.key,
+});
 
-const emit = (): void => {
-  listeners.forEach((listener) => listener());
-};
+export const optionSelectorStore = store;
 
 export const showOptionSelector = <T extends string>(config: OptionSelectorConfig<T>): void => {
-  currentConfig = config as unknown as OptionSelectorConfig;
-  emit();
+  store.show(config as unknown as OptionSelectorConfig);
 };
 
-export const closeOptionSelector = (key?: string): void => {
-  if (currentConfig == null || (key != null && currentConfig.key !== key)) {
-    return;
-  }
-  currentConfig = null;
-  emit();
-};
+export const closeOptionSelector = (key?: string): void => store.close(key);
 
 /** Toggle affordance: pressing the chip while its selector is open closes it. */
 export const toggleOptionSelector = <T extends string>(config: OptionSelectorConfig<T>): void => {
-  if (currentConfig?.key === config.key) {
-    closeOptionSelector();
+  if (store.getSnapshot()?.key === config.key) {
+    closeOptionSelector(config.key);
     return;
   }
   showOptionSelector(config);
 };
 
-export const getOptionSelectorConfig = (): OptionSelectorConfig | null => currentConfig;
+export const getOptionSelectorConfig = (): OptionSelectorConfig | null => store.getSnapshot();
 
-export const subscribeOptionSelector = (listener: () => void): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+export const subscribeOptionSelector = (listener: () => void): (() => void) =>
+  store.subscribe(listener);
 
 /** The open selector's key (null when closed) — a chip's `expanded` = key match. */
-export const useOptionSelectorOpenKey = (): string | null =>
-  React.useSyncExternalStore(
-    subscribeOptionSelector,
-    () => currentConfig?.key ?? null,
-    () => null
-  );
+export const useOptionSelectorOpenKey = (): string | null => store.useIdentity();

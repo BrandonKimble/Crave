@@ -8,6 +8,7 @@
 // lands at content-bottom, offscreen (leg-12 sim RED on ListDetail).
 
 import type { UserListCollaborators, UserListViewerRole } from '../services/user-lists';
+import { createSingletonSurfaceStore } from './singleton-surface-store';
 
 export type CollaboratorModalPayload = {
   roster: UserListCollaborators;
@@ -26,33 +27,19 @@ export type CollaboratorModalPayload = {
   onRequestClose: () => void;
 };
 
-type Listener = () => void;
+const store = createSingletonSurfaceStore<CollaboratorModalPayload>();
 
-let currentPayload: CollaboratorModalPayload | null = null;
-const listeners = new Set<Listener>();
+export const collaboratorModalStore = store;
 
-const emit = (): void => {
-  listeners.forEach((listener) => listener());
-};
+export const showCollaboratorModal = (payload: CollaboratorModalPayload): void =>
+  store.show(payload);
 
-export const showCollaboratorModal = (payload: CollaboratorModalPayload): void => {
-  currentPayload = payload;
-  emit();
-};
+/** F880: identity-scoped close from the shared factory. */
+export const closeCollaboratorModal = (payload?: CollaboratorModalPayload): void =>
+  store.close(payload);
 
-export const closeCollaboratorModal = (): void => {
-  if (currentPayload == null) {
-    return;
-  }
-  currentPayload = null;
-  emit();
-};
+export const getCollaboratorModalPayload = (): CollaboratorModalPayload | null =>
+  store.getSnapshot();
 
-export const getCollaboratorModalPayload = (): CollaboratorModalPayload | null => currentPayload;
-
-export const subscribeCollaboratorModal = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
+export const subscribeCollaboratorModal = (listener: () => void): (() => void) =>
+  store.subscribe(listener);

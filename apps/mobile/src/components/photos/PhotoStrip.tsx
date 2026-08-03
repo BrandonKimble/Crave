@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Plus } from 'lucide-react-native';
 
+import { PHOTO_STRIP_TILE_GAP, PHOTO_STRIP_TILE_RADIUS } from './photo-strip-metrics';
 import { colors as themeColors } from '../../constants/theme';
 
 // The ONE card photo strip (product/images.md, owner 2026-07-10: cards carry
@@ -48,8 +49,8 @@ export interface PhotoStripProps {
 }
 
 const DEFAULT_ASPECT = 4 / 3;
-const TILE_GAP = 6;
-const TILE_RADIUS = 10;
+const TILE_GAP = PHOTO_STRIP_TILE_GAP;
+const TILE_RADIUS = PHOTO_STRIP_TILE_RADIUS;
 // First-class placeholder tokens (a quiet neutral pane, not chrome). These are the
 // strip's OWN colors — the old derivation string-mutated the skeleton config's
 // self-frost tint, a token that died with the true-cutout law.

@@ -4,12 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { Text } from './ui/Text';
 import { announceFailureIfOnline } from './app-modal-store';
-import {
-  closeListEdit,
-  getListEditPayload,
-  subscribeListEdit,
-  type ListEditPayload,
-} from './list-edit-store';
+import { closeListEdit, listEditStore, type ListEditPayload } from './list-edit-store';
+import { useSingletonSurfaceHost } from './singleton-surface-store';
 import { colors as themeColors } from '../constants/theme';
 import { userListKeys } from '../hooks/use-user-lists';
 import { userListsService, type UserListVisibility } from '../services/user-lists';
@@ -78,7 +74,7 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
       await queryClient.invalidateQueries({ queryKey: ['listDetail', payload.listId] });
     }
     setIsSaving(false);
-    closeListEdit();
+    closeListEdit(payload);
   }, [form, isSaving, payload, queryClient]);
 
   return (
@@ -136,7 +132,7 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
       </View>
       <View style={styles.actions}>
         <Pressable
-          onPress={closeListEdit}
+          onPress={() => closeListEdit(payload)}
           style={styles.cancelButton}
           accessibilityRole="button"
           testID="list-edit-cancel"
@@ -166,19 +162,16 @@ const ListEditForm: React.FC<{ payload: ListEditPayload }> = ({ payload }) => {
 };
 
 export const ListEditHost: React.FC = () => {
-  const payload = React.useSyncExternalStore(subscribeListEdit, getListEditPayload, () => null);
-  // Keep the last payload through the exit animation so content doesn't blank
-  // mid-slide-out (the ScoreInfoHost pattern).
-  const lastPayloadRef = React.useRef(payload);
-  if (payload != null) {
-    lastPayloadRef.current = payload;
-  }
-  const renderedPayload = payload ?? lastPayloadRef.current;
+  const {
+    visible,
+    rendered: renderedPayload,
+    requestClose,
+  } = useSingletonSurfaceHost(listEditStore);
   if (renderedPayload == null) {
     return null;
   }
   return (
-    <OverlayModalSheet visible={payload != null} onRequestClose={closeListEdit}>
+    <OverlayModalSheet visible={visible} onRequestClose={requestClose}>
       {/* Remount the form per open so prefills never leak across sessions. */}
       <ListEditForm
         key={

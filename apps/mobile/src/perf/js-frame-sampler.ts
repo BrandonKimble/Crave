@@ -20,6 +20,22 @@ type JsFrameSamplerStallEvent = {
   nowMs: number;
   frameMs: number;
   fps: number | null;
+  /**
+   * F851 — TRUE when the gap exceeded MAX_TRACKED_FRAME_MS.
+   *
+   * A gap that large is EITHER the app being suspended (backgrounded, debugger
+   * paused, sim lid closed) OR the single worst JS block the sampler exists to
+   * catch. The sampler cannot tell those apart, so it must not decide: it used
+   * to DROP the gap silently, which meant a 6-second freeze produced FEWER
+   * stall events than a 200ms one — the most severe defect was the one the
+   * instrument was blind to. Now the gap is REPORTED with `clamped:true`, and
+   * the consumer (which knows about backgrounding) decides.
+   *
+   * It is deliberately excluded from the window's frame statistics — a 6000ms
+   * sample would swamp avg/p95 and make every other number unreadable — so the
+   * window still flushes at the boundary; only the silence is gone.
+   */
+  clamped?: boolean;
 };
 
 type JsFrameSamplerOptions = {
@@ -134,6 +150,21 @@ const startJsFrameSampler = (options: JsFrameSamplerOptions): (() => void) => {
       droppedFrameEstimate: round1(droppedFrameEstimate),
       droppedFrameRatio: round1(droppedFrameRatio),
     };
+    // F852 — RED-ONLY LOGGING, AND WHAT THAT COSTS. A window is emitted only when
+    // it is BAD, which is right for a log you grep during a run. The price is that
+    // "no output" now covers several worlds: a perfect run, a sampler that never
+    // started, a scenario that never fired, and a JS thread so blocked that rAF
+    // never ran at all. F850 closed the "never started" case for the UI sampler by
+    // reporting the attach verdict unconditionally; the JS samplers cannot fail to
+    // attach, so their silence still needs the scenario_sampling_started line to be
+    // read alongside it.
+    //
+    // RED RECIPE (needs a device — no cheap in-process mutation exists for the
+    // rAF loop's real timing): run any perf scenario with
+    // `logOnlyBelowFps` raised above the device's refresh rate (e.g. 200) — every
+    // window then qualifies as bad and the channel must produce a steady stream of
+    // [SearchPerf][JsFrameSampler] window lines. If it stays silent at 200, the
+    // sampler is not running and the silence at 55 meant nothing.
     const shouldLogWindow =
       stallCount > 0 || avgFps < logOnlyBelowFps || floorFps < logOnlyBelowFps;
     if (shouldLogWindow) {
@@ -156,6 +187,24 @@ const startJsFrameSampler = (options: JsFrameSamplerOptions): (() => void) => {
     const frameMs = nowMs - lastFrameAtMs;
     lastFrameAtMs = nowMs;
     if (frameMs <= 0 || !Number.isFinite(frameMs) || frameMs > MAX_TRACKED_FRAME_MS) {
+      // F851: an over-ceiling gap is REPORTED before the window is cut, tagged
+      // `clamped` so a consumer can attribute it to suspension if it knows
+      // better. A nonsensical delta (<=0, NaN) is genuinely not a measurement
+      // and stays unreported.
+      if (Number.isFinite(frameMs) && frameMs > MAX_TRACKED_FRAME_MS) {
+        stallCount += 1;
+        stallLongestMs = Math.max(stallLongestMs, frameMs);
+        options.onStall?.({
+          event: 'stall',
+          nowMs: round1(nowMs),
+          frameMs: round1(frameMs),
+          fps: (() => {
+            const fps = toOptionalFps(frameMs);
+            return fps == null ? null : round1(fps);
+          })(),
+          clamped: true,
+        });
+      }
       flushWindow(nowMs);
       rafHandle = requestAnimationFrame(onFrame);
       return;

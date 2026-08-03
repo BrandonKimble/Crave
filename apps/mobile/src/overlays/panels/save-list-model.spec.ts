@@ -8,14 +8,27 @@ import { buildSaveListRows, dispatchSaveForRow, FAVORITES_ROW_ID } from './save-
 import { isEntityFavorited, runHeartToggle } from '../../hooks/use-favorite-heart';
 import { userListsService, type UserListSummary } from '../../services/user-lists';
 import { sortListsForDisplay } from './lists-display-order';
+import { resetSavedMembershipQueue } from '../../store/saved-membership-store';
 
+// F830: the mock must cover EVERY method this spec's import graph can reach,
+// not only the ones it calls directly. `use-favorite-heart` pulls in the saved-
+// membership store, whose 50ms batch flush calls `batchMemberships`; omitting it
+// crashed the jest worker after teardown while the run still printed green.
 jest.mock('../../services/user-lists', () => ({
   userListsService: {
     addItem: jest.fn().mockResolvedValue({}),
     addFavoriteItem: jest.fn().mockResolvedValue({}),
     removeFavoriteItem: jest.fn().mockResolvedValue(undefined),
+    batchMemberships: jest
+      .fn()
+      .mockResolvedValue({ savedRestaurantIds: [], savedConnectionIds: [] }),
   },
 }));
+
+// …and the timer itself is disarmed, so nothing at all runs after teardown.
+afterEach(() => {
+  resetSavedMembershipQueue();
+});
 
 const summary = (overrides: Partial<UserListSummary>): UserListSummary => ({
   listId: 'list-1',

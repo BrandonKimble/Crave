@@ -14,6 +14,33 @@ export type { OnboardingAnswers, OnboardingAnswerValue, OnboardingStatus, UserOn
 
 export const DEFAULT_ONBOARDING_STEP_ID = 'hero';
 
+/**
+ * THE UNCONFIRMED COMPLETION (F810).
+ *
+ * The exact payload the server rejected (or never received), kept VERBATIM and
+ * PERSISTED. Onboarding exists to collect this — every answer plus the username
+ * claim — and when `completeOnboarding` threw, the old code logged a warn,
+ * CLEARED the service-issue banner (actively hiding the evidence), and marked
+ * the flow complete locally. The persisted status became 'completed', so the
+ * flow never ran again and the payload was gone forever: the user believed they
+ * finished, the server had nothing, and the product's cold-start signal was
+ * silently lost. There was no outbox and no reconciliation on launch.
+ *
+ * Now the payload survives the failure and is replayed on the next authenticated
+ * launch. A completed-locally user whose answers never landed is no longer a
+ * representable state.
+ */
+export type PendingOnboardingCompletion = {
+  status: 'completed';
+  onboardingVersion: number;
+  selectedCity: string | null;
+  previewCity: string | null;
+  answers: OnboardingAnswers;
+  username: string | null;
+  /** When we first failed to land it — for logs, not for expiry. It never expires. */
+  failedAtMs: number;
+};
+
 export type OnboardingDraft = {
   version: number;
   currentStepId: string;
@@ -33,6 +60,11 @@ interface OnboardingState {
   selectedCity: string | null;
   previewCity: string | null;
   draft: OnboardingDraft;
+  /** F810: a completion the SERVER has not confirmed. Persisted; replayed on the
+   *  next authenticated launch; cleared only by a confirmed server write. */
+  pendingServerCompletion: PendingOnboardingCompletion | null;
+  recordPendingServerCompletion: (payload: PendingOnboardingCompletion) => void;
+  clearPendingServerCompletion: () => void;
   hydrateCompletionFromServer: (profile: UserOnboardingProfile) => void;
   setCurrentStepId: (stepId: string) => void;
   setAnswer: (stepId: string, value: OnboardingAnswerValue) => void;
@@ -141,6 +173,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       selectedCity: null,
       previewCity: null,
       draft: createDefaultDraft(),
+      pendingServerCompletion: null,
       hydrateCompletionFromServer: (profile) =>
         set((state) => {
           if (profile.status !== 'completed' && state.status === 'completed') {
@@ -155,8 +188,8 @@ export const useOnboardingStore = create<OnboardingState>()(
               profile.status === 'completed'
                 ? createDefaultDraft()
                 : state.draft.version === ONBOARDING_VERSION
-                ? state.draft
-                : createDefaultDraft(),
+                  ? state.draft
+                  : createDefaultDraft(),
           };
         }),
       setCurrentStepId: (stepId) =>
@@ -228,6 +261,8 @@ export const useOnboardingStore = create<OnboardingState>()(
         set(() => ({
           draft: createDefaultDraft(),
         })),
+      recordPendingServerCompletion: (payload) => set(() => ({ pendingServerCompletion: payload })),
+      clearPendingServerCompletion: () => set(() => ({ pendingServerCompletion: null })),
       completeOnboardingLocally: (params) =>
         set(() => ({
           status: 'completed',
@@ -246,6 +281,7 @@ export const useOnboardingStore = create<OnboardingState>()(
           selectedCity: null,
           previewCity: null,
           draft: createDefaultDraft(),
+          pendingServerCompletion: null,
         })),
       __forceOnboarding: () => {
         logger.info('Onboarding reset triggered (temporary helper)');
@@ -255,6 +291,7 @@ export const useOnboardingStore = create<OnboardingState>()(
           selectedCity: null,
           previewCity: null,
           draft: createDefaultDraft(),
+          pendingServerCompletion: null,
         });
       },
     }),
@@ -282,6 +319,7 @@ export const useOnboardingStore = create<OnboardingState>()(
           selectedCity: sanitizeCity(state?.selectedCity),
           previewCity: sanitizeCity(state?.previewCity),
           draft,
+          pendingServerCompletion: state?.pendingServerCompletion ?? null,
         };
       },
       partialize: (state) => ({
@@ -290,6 +328,9 @@ export const useOnboardingStore = create<OnboardingState>()(
         selectedCity: state.selectedCity,
         previewCity: state.previewCity,
         draft: state.draft,
+        // F810: the unconfirmed payload must survive a cold start — that is the
+        // whole point of the outbox.
+        pendingServerCompletion: state.pendingServerCompletion,
       }),
     }
   )

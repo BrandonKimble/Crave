@@ -1,4 +1,4 @@
-src/polyfills/react-native-codegen.js
+src/polyfills/react-native-codegen.ts
 .eslintrc.js
 babel.config.js
 metro.config.js

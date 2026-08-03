@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
+import { PRIVACY_URL, TERMS_URL } from '../constants/legalLinks';
 import { useAuthController } from '../hooks/use-auth-controller';
 
 const CTA_COLOR = themeColors.accentDark ?? '#7c3aed';
@@ -25,11 +26,11 @@ const SignInScreen: React.FC = () => {
   }, [setAuthError, setEmailModalVisible]);
 
   const openTerms = React.useCallback(() => {
-    void Linking.openURL('https://example.com/terms');
+    void Linking.openURL(TERMS_URL);
   }, []);
 
   const openPrivacy = React.useCallback(() => {
-    void Linking.openURL('https://example.com/privacy');
+    void Linking.openURL(PRIVACY_URL);
   }, []);
 
   return (

@@ -8,10 +8,10 @@ import { Text } from './ui/Text';
 import { MonogramAvatar } from './MonogramAvatar';
 import {
   closeCollaboratorModal,
-  getCollaboratorModalPayload,
-  subscribeCollaboratorModal,
+  collaboratorModalStore,
   type CollaboratorModalPayload,
 } from './collaborator-modal-store';
+import { useSingletonSurfaceHost } from './singleton-surface-store';
 
 // ─── Shared person atoms (the collaborator chip on ListDetail uses these too) ────────────────
 export const personDisplayName = (person: UserListPerson): string =>
@@ -231,20 +231,11 @@ const CollaboratorModalSheet = ({
  * mid-slide-out (the ScoreInfoHost pattern).
  */
 export const CollaboratorModalHost: React.FC = () => {
-  const payload = React.useSyncExternalStore(
-    subscribeCollaboratorModal,
-    getCollaboratorModalPayload,
-    () => null
-  );
-  const lastPayloadRef = React.useRef(payload);
-  if (payload != null) {
-    lastPayloadRef.current = payload;
-  }
-  const renderedPayload = payload ?? lastPayloadRef.current;
+  const { visible, rendered: renderedPayload } = useSingletonSurfaceHost(collaboratorModalStore);
   if (renderedPayload == null) {
     return null;
   }
-  return <CollaboratorModalSheet visible={payload != null} payload={renderedPayload} />;
+  return <CollaboratorModalSheet visible={visible} payload={renderedPayload} />;
 };
 
 // Re-export so the owning surface's dismissal effect and the host share one closer.
