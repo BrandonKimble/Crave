@@ -10,6 +10,7 @@ import { SignalDemandAggregateService } from './signal-demand-aggregate.service'
 import { SignalDemandReadService } from './signal-demand-read.service';
 import { SignalPartitionMaintenanceService } from './signal-partition-maintenance.service';
 import { SignalCoverageAudit } from './signal-coverage.audit';
+import { UserTasteProfileBuilder } from './user-taste-profile.builder';
 
 /**
  * The Signals Ledger (master plan §3): the append-only write path
@@ -35,6 +36,9 @@ import { SignalCoverageAudit } from './signal-coverage.audit';
     SignalDemandAggregateService,
     SignalDemandReadService,
     SignalPartitionMaintenanceService,
+    // D40: the derived taste profile, rebuilt by the aggregate's own
+    // watermark pass. One write path, nothing else touches the table.
+    UserTasteProfileBuilder,
     // Boot refuses a user-act route that says nothing about the ledger —
     // see signal-coverage.audit.ts (F203).
     SignalCoverageAudit,
@@ -43,6 +47,7 @@ import { SignalCoverageAudit } from './signal-coverage.audit';
     SignalsService,
     SignalDemandAggregateService,
     SignalDemandReadService,
+    UserTasteProfileBuilder,
   ],
 })
 export class SignalsModule {}

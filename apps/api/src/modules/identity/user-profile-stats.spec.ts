@@ -76,6 +76,9 @@ const makeService = (opts: {
     {} as never,
     {} as never,
     {} as never,
+    // D40: the live-city reader — the onboarding write resolves the selected
+    // city to a place KEY through it. Unused by the stats reads under test.
+    { liveCities: jest.fn(), resolvePlaceIdByName: jest.fn() } as never,
   );
   return { service, prisma };
 };

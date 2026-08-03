@@ -7,6 +7,7 @@ import { OpsAlertsService } from '../external-integrations/shared/ops-alerts.ser
 import { geoEnvelopeSql } from './ground-containment';
 import { DEDUPE_KEY_SQL, EVENT_COUNT_SQL } from './act-identity';
 import { utcDayStart } from './occurred-at';
+import { UserTasteProfileBuilder } from './user-taste-profile.builder';
 
 /**
  * §3 signals aggregate (§22 item 6): day × actor × place × subject × kind — a
@@ -96,6 +97,7 @@ export class SignalDemandAggregateService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly opsAlerts: OpsAlertsService,
+    private readonly tasteProfile: UserTasteProfileBuilder,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SignalDemandAggregateService');
@@ -201,6 +203,14 @@ export class SignalDemandAggregateService {
           days: dayRows.map((row) => row.day),
         });
       }
+      // D40 §3 — the derived taste profile rides THIS pass, immediately after
+      // the aggregate it is derived from, for the actors this pass touched.
+      // One write path: nothing else ever writes user_taste_profile, so the
+      // profile cannot drift from the aggregate behind it. A throw here is
+      // caught below with the rest of the pass — a stale profile is a stale
+      // read model, not a reason to lose the watermark advance (which already
+      // committed).
+      await this.tasteProfile.rebuildForDays(dayRows.map((row) => row.day));
     } catch (error) {
       // Swallow AND tell someone (audit 2026-08-02, F205). A silently frozen
       // aggregate leaves the collector's territory read deciding what to

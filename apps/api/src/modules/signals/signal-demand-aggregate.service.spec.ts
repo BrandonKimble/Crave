@@ -79,12 +79,32 @@ function createHarness(
     ),
   };
   const opsAlerts = { emit: jest.fn() };
+  // D40: the derived taste profile rides THIS pass. The fake records which
+  // days it was handed, so "the profile rebuild is wired to the watermark"
+  // is an assertion instead of a hope.
+  const tasteProfile = {
+    rebuildForDays: jest.fn(() =>
+      Promise.resolve({
+        actors: 0,
+        rows: 0,
+      }),
+    ),
+  };
   const service = new SignalDemandAggregateService(
     prisma as never,
     opsAlerts as never,
+    tasteProfile as never,
     createLogger() as never,
   );
-  return { service, prisma, tx, statements, queries, opsAlerts };
+  return {
+    service,
+    prisma,
+    tx,
+    statements,
+    queries,
+    opsAlerts,
+    tasteProfile,
+  };
 }
 
 function flatten(statement: CapturedStatement): string {
@@ -322,6 +342,41 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     const upsert = flatten(statements[statements.length - 1]);
     expect(upsert).toContain('signal_demand_rebuild_state');
     expect(upsert).toContain('GREATEST'); // monotone watermark
+  });
+
+  /**
+   * D40 §3 — THE DERIVED TASTE PROFILE RIDES THIS PASS.
+   *
+   * "Rebuilt after the aggregate watermark pass" has to be a wiring fact, not
+   * a comment: the profile is derived from exactly the rows this pass just
+   * rebuilt, and nothing else writes it.
+   *
+   * RED recipe: delete the `tasteProfile.rebuildForDays(...)` call from
+   * `refreshFromWatermark`, or hand it a different day set, and this fails.
+   */
+  it('hands the taste-profile builder EXACTLY the days it rebuilt', async () => {
+    const { service, tasteProfile } = createHarness({
+      watermark: new Date('2026-07-19T10:00:00Z'),
+      rebuildDays: ['2026-06-05', '2026-07-19'],
+    });
+    await service.refreshFromWatermark();
+    expect(tasteProfile.rebuildForDays).toHaveBeenCalledTimes(1);
+    expect(tasteProfile.rebuildForDays).toHaveBeenCalledWith([
+      '2026-06-05',
+      '2026-07-19',
+    ]);
+  });
+
+  it('a pass that rebuilt NO day still calls the profile builder with an empty set — which rebuilds nothing', async () => {
+    // Deliberate: a pass with no new signals has nothing to say about
+    // anybody's tastes. Rebuilding the world on an empty pass would hide
+    // that, so the empty set is passed through and the builder no-ops.
+    const { service, tasteProfile } = createHarness({
+      watermark: null,
+      rebuildDays: [],
+    });
+    await service.refreshFromWatermark();
+    expect(tasteProfile.rebuildForDays).toHaveBeenCalledWith([]);
   });
 
   it('a NULL watermark (first pass) scans the whole ledger; no new rows means no day rebuilds but the watermark still advances', async () => {

@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
+  ONBOARDING_QUESTION_SET_VERSION,
   ONBOARDING_VERSION,
   type UserOnboardingProfile,
 } from '@crave-search/shared';
@@ -22,6 +23,7 @@ import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
 import { UserListProvisioningService } from '../user-lists/user-list-provisioning.service';
+import { LiveCitiesReader } from '../places/live-cities.reader';
 import {
   readDefaultEntitlementCode,
   readGatingMode,
@@ -56,6 +58,7 @@ export class UserService {
     private readonly clerkAuth: ClerkAuthService,
     private readonly entitlements: EntitlementService,
     private readonly userListProvisioning: UserListProvisioningService,
+    private readonly liveCities: LiveCitiesReader,
   ) {
     this.defaultEntitlement = readDefaultEntitlementCode(this.configService);
     this.trialDays = this.configService.get<number>('billing.trialDays') || 0;
@@ -232,28 +235,101 @@ export class UserService {
     };
   }
 
+  /**
+   * THE COMPLETION WRITE (D40 §1).
+   *
+   * Three things changed here and they all point the same way — the answers
+   * stop being a blob the server accepts on faith:
+   *
+   *  1. **The history is the record; the column is a projection.** Every
+   *     completion appends a `user_onboarding_responses` row AND refreshes
+   *     `users.onboarding_responses` in the SAME transaction. One write path,
+   *     so the projection can never disagree with the row behind it.
+   *  2. **The server owns the version.** `dto.onboardingVersion` is stored as
+   *     what the CLIENT rendered; the server also stamps its own
+   *     `ONBOARDING_QUESTION_SET_VERSION`. A mismatch is now a fact on the
+   *     row rather than an assumption nobody can check.
+   *  3. **The city becomes a KEY.** Resolved once, here, through the one
+   *     live-city definition — and a miss is LOGGED, because "this user's
+   *     city is not a live city" is exactly the state that used to produce
+   *     zero personal lists in silence.
+   *
+   * REPLACE-WHOLE-DOCUMENT, stated so it cannot be forgotten: this endpoint
+   * takes the complete answer document. A future partial "edit one answer"
+   * surface gets its OWN explicitly-merging endpoint — never a PATCH wearing
+   * a PUT's clothes, which would erase every answer it did not mention.
+   */
   async updateOnboarding(
     userId: string,
     dto: UpdateUserOnboardingDto,
   ): Promise<UserProfileDto> {
     const selectedCity = this.normalizeNullable(dto.selectedCity);
     const previewCity = this.normalizeNullable(dto.previewCity);
-    const responses =
-      dto.answers == null
-        ? null
-        : JSON.stringify(dto.answers as Prisma.InputJsonValue);
+    const answers = dto.answers ?? null;
+    // AN EMPTY DOCUMENT IS NOT AN ANSWER — it is the absence of one, and it
+    // must never overwrite a real one. The completed-elsewhere mirror in the
+    // mobile route coordinator sends `answers: {}` on purpose: it says "this
+    // device already finished", and it has nothing to say about WHAT was
+    // answered. Under a blind replace-whole-document rule that call erased
+    // every answer the user gave. Clearing answers is not a product action
+    // any surface offers, so it is not a request this endpoint can express.
+    const hasAnswers = answers != null && Object.keys(answers).length > 0;
+    const responses = hasAnswers
+      ? JSON.stringify(answers as Prisma.InputJsonValue)
+      : null;
+    const source = dto.source ?? 'completion';
 
-    await this.prisma.$executeRaw`
-      UPDATE "users"
-      SET
-        "onboarding_status" = 'completed'::"onboarding_status",
-        "onboarding_completed_at" = NOW(),
-        "onboarding_version" = ${dto.onboardingVersion},
-        "onboarding_selected_city" = ${selectedCity},
-        "onboarding_preview_city" = ${previewCity},
-        "onboarding_responses" = ${responses}::jsonb
-      WHERE "user_id" = ${userId}::uuid
-    `;
+    const cityPlaceId =
+      await this.liveCities.resolvePlaceIdByName(selectedCity);
+    if (selectedCity && !cityPlaceId) {
+      // Not an error — waitlist cities are a real product state — but never
+      // silent: without a place id this user builds no personal lists, and
+      // that consequence should be readable in the log instead of inferred
+      // from an empty shelf weeks later.
+      this.logger.info('Onboarding city is not a live city; no city key set', {
+        userId,
+        selectedCity,
+      });
+    }
+
+    // Only a document with content refreshes the projection; an empty one
+    // leaves the stored answers exactly as they were.
+    const responsesAssignment = hasAnswers
+      ? Prisma.sql`, "onboarding_responses" = ${responses}::jsonb,
+          "onboarding_question_set_version" = ${ONBOARDING_QUESTION_SET_VERSION}`
+      : Prisma.empty;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (hasAnswers) {
+        // The document is stored VERBATIM, unknown keys and all. Deciding
+        // what it means is the decoder's job, at read.
+        await tx.$executeRaw`
+          INSERT INTO "user_onboarding_responses" (
+            "user_id", "answered_with_version", "question_set_version",
+            "answers", "source"
+          )
+          VALUES (
+            ${userId}::uuid,
+            ${dto.onboardingVersion},
+            ${ONBOARDING_QUESTION_SET_VERSION},
+            ${responses}::jsonb,
+            ${source}
+          )
+        `;
+      }
+      await tx.$executeRaw(Prisma.sql`
+        UPDATE "users"
+        SET
+          "onboarding_status" = 'completed'::"onboarding_status",
+          "onboarding_completed_at" = NOW(),
+          "onboarding_version" = ${dto.onboardingVersion},
+          "onboarding_selected_city" = ${selectedCity},
+          "onboarding_city_place_id" = ${cityPlaceId}::uuid,
+          "onboarding_preview_city" = ${previewCity}
+          ${responsesAssignment}
+        WHERE "user_id" = ${userId}::uuid
+      `);
+    });
 
     return this.getProfile(userId);
   }

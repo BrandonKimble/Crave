@@ -36,12 +36,37 @@ export const MAX_LIST_ITEMS = 25;
  */
 export const HIDDEN_GEMS_EVIDENCE_FLOOR = 3;
 
+/**
+ * D40 §4 — A RECIPE DECLARES ITS INPUTS.
+ *
+ * 'seed' = the onboarding answers (the cold-start prior). 'behavior' = the
+ * derived taste profile (measured acts). 'both' = seed unconditionally, with
+ * behavior ADDING to it — never silently overwriting, because behavior cannot
+ * delete a declared preference and a dietary need is a constraint, not a
+ * weight.
+ *
+ * Why declare it at all: a personal recipe that builds zero lists is
+ * indistinguishable from a personal recipe with no users, unless you know
+ * which input it was reading. With the declaration, "this recipe built 0
+ * lists for input X" is a sentence the build log can actually say.
+ */
+export type RecipeInput = 'seed' | 'behavior' | 'both';
+
 /** Recipe keys (stable identities; parametric recipes suffix ':<uuid>'). */
 export const RECIPE_TRENDING = 'trending';
 export const RECIPE_HIDDEN_GEMS = 'hidden_gems';
 export const RECIPE_CUISINE_BEST_PREFIX = 'cuisine_best:';
 export const RECIPE_DISH_BEST_PREFIX = 'dish_best:';
 export const RECIPE_WEEKLY_TASTING = 'your_weekly_tasting';
+
+/**
+ * The declared input of every PERSONAL recipe. Global recipes have no
+ * personalization input and are absent by design — an entry here is a claim
+ * that the recipe reads a user's data.
+ */
+export const PERSONAL_RECIPE_INPUTS: Readonly<Record<string, RecipeInput>> = {
+  [RECIPE_WEEKLY_TASTING]: 'both',
+};
 
 /**
  * Context/job lists from extracted restaurant attributes (charter recipes).

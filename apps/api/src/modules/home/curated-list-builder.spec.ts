@@ -89,10 +89,14 @@ function createHarness(options: {
   }>;
   users?: Array<{
     userId: string;
-    onboardingSelectedCity: string | null;
+    onboardingCityPlaceId: string | null;
+    onboardingQuestionSetVersion?: number | null;
     onboardingResponses: unknown;
   }>;
   engagedSignalSubjects?: string[];
+  /** D40: attribute ids the derived taste profile says this actor has acted
+   *  on — the BEHAVIOR half of the union the recipe declares. */
+  behavioralAttributeIds?: string[];
   engagedFavoriteItems?: Array<{
     connectionId: string | null;
     restaurantId: string | null;
@@ -214,11 +218,19 @@ function createHarness(options: {
         );
       }
       if (sql.includes('/*curated:user_engagement*/')) {
-        const subjectIds = values[1] as string[];
+        // Reads the DERIVED taste profile now, not raw signals.
+        const subjectIds = values[2] as string[];
         return Promise.resolve(
           (options.engagedSignalSubjects ?? [])
             .filter((id) => subjectIds.includes(id))
             .map((subject_id) => ({ subject_id })),
+        );
+      }
+      if (sql.includes('/*curated:taste_profile_attributes*/')) {
+        return Promise.resolve(
+          (options.behavioralAttributeIds ?? []).map((subject_id) => ({
+            subject_id,
+          })),
         );
       }
       throw new Error(`unexpected raw query: ${sql.slice(0, 80)}`);
@@ -259,9 +271,29 @@ function createHarness(options: {
 
   const service = new CuratedListBuilderService(
     prisma as never,
+    {
+      liveCities: jest.fn(() =>
+        Promise.resolve([{ placeId: CITY, name: 'Austin' }]),
+      ),
+      resolvePlaceIdByName: jest.fn(() => Promise.resolve(CITY)),
+    } as never,
     createLogger() as never,
   );
   return { service, prisma, store, txAtomicity };
+}
+
+/** Five viable dishes at one restaurant — the minimum a list can be built
+ *  from (MIN_VIABLE_LIST_ITEMS). */
+function dishesAt(restaurantId: string): DishFixture[] {
+  return Array.from({ length: MIN_VIABLE_LIST_ITEMS }, (_unused, i) => ({
+    connection_id: uuid(700 + i),
+    food_id: uuid(800 + i),
+    food_name: `Dish ${i}`,
+    restaurant_id: restaurantId,
+    mention_count: 5,
+    display_score: 8,
+    percentile_rank: 0.9 - i * 0.01,
+  }));
 }
 
 function restaurant(
@@ -471,7 +503,7 @@ describe('CuratedListBuilderService — recipe laws', () => {
       users: [
         {
           userId: USER,
-          onboardingSelectedCity: 'Austin',
+          onboardingCityPlaceId: CITY,
           onboardingResponses: { cuisines: ['mexican'] },
         },
       ],
@@ -507,13 +539,15 @@ describe('CuratedListBuilderService — recipe laws', () => {
   });
 
   it('a user whose selected city is not a LIVE city is honestly skipped (no fake city inference)', async () => {
+    // D40: "not a live city" is now the ABSENCE OF A KEY, resolved once at
+    // write time — not a lower(name) join that could also miss for a rename.
     const { service, store } = createHarness({
       restaurants: [restaurant(1, { restaurant_attributes: [MEX_ATTR] })],
       attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
       users: [
         {
           userId: USER,
-          onboardingSelectedCity: 'Nowhereville',
+          onboardingCityPlaceId: null,
           onboardingResponses: { cuisines: ['mexican'] },
         },
       ],
@@ -522,5 +556,65 @@ describe('CuratedListBuilderService — recipe laws', () => {
     expect(
       store.filter((row) => row.recipeKey === RECIPE_WEEKLY_TASTING),
     ).toHaveLength(0);
+  });
+
+  /**
+   * D40 — THE ANSWER-KEY DRIFT THAT USED TO BE INVISIBLE.
+   *
+   * RED recipe: put the option ids back under a hand-spelled key (rename
+   * `cuisines` to anything else in the fixture below) and this case fails
+   * while the old code, reading `responses.cuisines` directly, would have
+   * silently built nothing and reported success.
+   */
+  it('an answer document whose option ids are NOT in the shared vocabulary builds nothing — and the drop is not silent', async () => {
+    const { service, store } = createHarness({
+      restaurants: [restaurant(1, { restaurant_attributes: [MEX_ATTR] })],
+      dishes: dishesAt(uuid(1)),
+      attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
+      users: [
+        {
+          userId: USER,
+          onboardingCityPlaceId: CITY,
+          // 'mexicano' is not a CUISINE_OPTION_ID. The decoder drops it AT
+          // READ and counts the drop; the stored document is untouched.
+          onboardingResponses: { cuisines: ['mexicano'] },
+        },
+      ],
+    });
+    await service.buildAll(NOW);
+    expect(
+      store.filter((row) => row.recipeKey === RECIPE_WEEKLY_TASTING),
+    ).toHaveLength(0);
+  });
+
+  /**
+   * D40 — BEHAVIOR ADDS, IT NEVER OVERWRITES.
+   *
+   * The user declared NO cuisine this city can match, but their derived
+   * taste profile says they act on Mexican restaurants. The list builds off
+   * the behavioral half alone — the "new and fresh" requirement, and the
+   * proof that the union is a real union.
+   *
+   * RED recipe: drop `behavioralAttributeIds` from the fixture (or make
+   * `behavioralAttributeIds` return []) and the list disappears.
+   */
+  it('the BEHAVIORAL half alone can build a list the onboarding answers never named', async () => {
+    const { service, store } = createHarness({
+      restaurants: [restaurant(1, { restaurant_attributes: [MEX_ATTR] })],
+      dishes: dishesAt(uuid(1)),
+      attributeEntities: [{ entityId: MEX_ATTR, name: 'Mexican', aliases: [] }],
+      behavioralAttributeIds: [MEX_ATTR],
+      users: [
+        {
+          userId: USER,
+          onboardingCityPlaceId: CITY,
+          onboardingResponses: {},
+        },
+      ],
+    });
+    await service.buildAll(NOW);
+    expect(
+      store.filter((row) => row.recipeKey === RECIPE_WEEKLY_TASTING),
+    ).toHaveLength(1);
   });
 });

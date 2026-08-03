@@ -23,9 +23,12 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
+import { parseOnboardingAnswers } from '@crave-search/shared';
 import { activeRestaurantEventCountSql } from '../content-processing/reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { LiveCitiesReader, type LiveCity } from '../places/live-cities.reader';
+import { TASTE_WINDOW_ALL_DAYS } from '../signals/user-taste-profile.builder';
 import {
   CONTEXT_RECIPES,
   HIDDEN_GEMS_EVIDENCE_FLOOR,
@@ -37,6 +40,7 @@ import {
   MAX_LIST_ITEMS,
   MIN_VIABLE_LIST_ITEMS,
   ONBOARDING_CUISINE_ATTRIBUTE_NAMES,
+  PERSONAL_RECIPE_INPUTS,
   RECIPE_CUISINE_BEST_PREFIX,
   RECIPE_DISH_BEST_PREFIX,
   RECIPE_HIDDEN_GEMS,
@@ -47,11 +51,6 @@ import {
   monthlyRotationKey,
   weeklyRotationKey,
 } from './curated-lists.constants';
-
-export interface LiveCity {
-  placeId: string;
-  name: string;
-}
 
 interface CityRestaurantRow {
   entity_id: string;
@@ -98,6 +97,7 @@ export class CuratedListBuilderService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly liveCitiesReader: LiveCitiesReader,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('CuratedListBuilderService');
@@ -147,23 +147,13 @@ export class CuratedListBuilderService {
   }
 
   /**
-   * Live cities = distinct sources.anchor_place_id of COLLECTION sources
-   * (poll_surface excluded: those are per-place poll mouths, minted at any
-   * granularity, not corpus coverage).
+   * Live cities — the definition now lives in LiveCitiesReader, because the
+   * onboarding write path needs the SAME one to turn the user's chosen city
+   * into a key (D40 §1.4). Two queries that happen to look alike is how the
+   * name-match join became a silent zero.
    */
-  async liveCities(): Promise<LiveCity[]> {
-    const rows = await this.prisma.$queryRaw<
-      Array<{ place_id: string; name: string }>
-    >(Prisma.sql`
-      /*curated:live_cities*/
-      SELECT DISTINCT s.anchor_place_id AS place_id, p.name
-      FROM sources s
-      JOIN places p ON p.place_id = s.anchor_place_id
-      WHERE s.anchor_place_id IS NOT NULL
-        AND s.platform <> 'poll_surface'
-      ORDER BY p.name ASC
-    `);
-    return rows.map((row) => ({ placeId: row.place_id, name: row.name }));
+  liveCities(): Promise<LiveCity[]> {
+    return this.liveCitiesReader.liveCities();
   }
 
   /** One city pass: fetch candidates once, run every global recipe in TS. */
@@ -456,34 +446,56 @@ export class CuratedListBuilderService {
   // ---------- personal weekly rotator ----------
 
   /**
-   * 'your_weekly_tasting' — per user with onboarding data: untried dishes
-   * from their preferred cuisines, weekly rotation. Preferred cuisines come
-   * from users.onboarding_responses->'cuisines' (the onboarding multi-choice
-   * option ids), bridged to attribute entities via
-   * ONBOARDING_CUISINE_ATTRIBUTE_NAMES. City = the live city whose name
-   * matches onboarding_selected_city (users without a live-city match are
-   * honestly skipped — no fake city inference).
+   * 'your_weekly_tasting' — declared input 'both' (D40 §4): untried dishes
+   * from the cuisines this user LIKES, weekly rotation.
    *
-   * 'Untried' proxy (weakest honest one available, documented): the user has
-   * NO user-list item on the connection/restaurant AND no signals-ledger
-   * act (favorite_added / entity_view) on the food, restaurant, or
-   * connection subject via their signal actor. There is no consumption
-   * ledger; view/save absence is the closest measured stand-in.
+   * "Cuisines they like" is the union of two declared sources, and the union
+   * is the point:
+   *   - SEED: the onboarding answers, read through the SHARED DECODER — the
+   *     only thing allowed to read a stored answer document. The hand-spelled
+   *     `responses.cuisines` this replaced was a silent zero waiting for a
+   *     rename.
+   *   - BEHAVIOR: the derived taste profile's attribute roll-up — the mined
+   *     restaurant attributes this actor has actually acted on. It ADDS
+   *     cuisines the answers never named (the "new and fresh" requirement)
+   *     and can never delete a declared one.
+   *
+   * City comes from `onboarding_city_place_id`, a KEY resolved once at write
+   * time. The `lower(name)` join it replaces produced no lists and no error
+   * for a renamed or re-cased city.
+   *
+   * 'Untried' proxy (the weakest honest one available, documented): no
+   * user-list item on the connection/restaurant, and no recorded act on the
+   * food/restaurant/connection subject. The act half now comes from the taste
+   * profile instead of this file's own `signals` query — same facts, one
+   * dialect, and the profile knows about echo exclusion and act grain, which
+   * the bespoke query did not.
+   *
+   * ALWAYS-GREEN DEFENCE: every `continue` below increments a NAMED skip
+   * counter and the whole breakdown is logged. "Built 0 lists" used to be
+   * indistinguishable from "there are no users"; now the reason is a number.
    */
   async buildPersonalWeekly(cities: LiveCity[], now: Date): Promise<number> {
     const weekKey = weeklyRotationKey(now);
-    const cityByName = new Map(
-      cities.map((city) => [city.name.toLowerCase(), city]),
-    );
+    const cityByPlaceId = new Map(cities.map((city) => [city.placeId, city]));
+    const skips = {
+      noLiveCity: 0,
+      alreadyBuiltThisWeek: 0,
+      noPreferredCuisines: 0,
+      noMatchingAttributes: 0,
+      tooFewCandidates: 0,
+      tooFewUntried: 0,
+      droppedOptionIds: 0,
+    };
     const users = await this.prisma.user.findMany({
       where: {
         onboardingStatus: 'completed',
         deletedAt: null,
-        onboardingSelectedCity: { not: null },
       },
       select: {
         userId: true,
-        onboardingSelectedCity: true,
+        onboardingCityPlaceId: true,
+        onboardingQuestionSetVersion: true,
         onboardingResponses: true,
       },
     });
@@ -502,16 +514,29 @@ export class CuratedListBuilderService {
     const restaurantCacheByCity = new Map<string, CityRestaurantRow[]>();
     let built = 0;
     for (const user of users) {
-      const city = cityByName.get(
-        (user.onboardingSelectedCity ?? '').toLowerCase(),
-      );
-      if (!city || alreadyBuilt.has(`${city.placeId}:${user.userId}`)) {
+      const city = user.onboardingCityPlaceId
+        ? cityByPlaceId.get(user.onboardingCityPlaceId)
+        : undefined;
+      if (!city) {
+        skips.noLiveCity += 1;
         continue;
       }
-      const cuisineOptionIds = extractCuisineOptionIds(
+      if (alreadyBuilt.has(`${city.placeId}:${user.userId}`)) {
+        skips.alreadyBuiltThisWeek += 1;
+        continue;
+      }
+      // THE DECODER IS THE ONLY READER of a stored answer document.
+      const decoded = parseOnboardingAnswers(
+        user.onboardingQuestionSetVersion,
         user.onboardingResponses,
       );
-      if (!cuisineOptionIds.length) {
+      skips.droppedOptionIds += decoded.droppedOptionIds.length;
+      const cuisineOptionIds = decoded.answers.cuisines;
+      const behavioralAttributeIds = await this.behavioralAttributeIds(
+        user.userId,
+      );
+      if (!cuisineOptionIds.length && !behavioralAttributeIds.size) {
+        skips.noPreferredCuisines += 1;
         continue;
       }
       let restaurants = restaurantCacheByCity.get(city.placeId);
@@ -532,7 +557,9 @@ export class CuratedListBuilderService {
           ),
         ),
       );
-      const preferredAttrIds = new Set<string>();
+      // SEED ∪ BEHAVIOR. Behavior adds attribute ids the seed's name bridge
+      // never resolved; it removes nothing.
+      const preferredAttrIds = new Set<string>(behavioralAttributeIds);
       for (const [attrId, attribute] of attributeNames) {
         const names = [attribute.name, ...attribute.aliases].map((value) =>
           value.toLowerCase(),
@@ -540,6 +567,14 @@ export class CuratedListBuilderService {
         if (names.some((value) => preferredNames.has(value))) {
           preferredAttrIds.add(attrId);
         }
+      }
+      if (!preferredAttrIds.size) {
+        // The recipe/vocabulary bridge missed entirely: the user named
+        // cuisines and none of them resolved to a live mined attribute. That
+        // is the ONBOARDING_CUISINE_ATTRIBUTE_NAMES drift class, and it is
+        // now a counted fact rather than an empty shelf.
+        skips.noMatchingAttributes += 1;
+        continue;
       }
       const preferredRestaurantIds = new Set(
         restaurants
@@ -554,6 +589,7 @@ export class CuratedListBuilderService {
         preferredRestaurantIds.has(row.restaurant_id),
       );
       if (candidates.length < MIN_VIABLE_LIST_ITEMS) {
+        skips.tooFewCandidates += 1;
         continue;
       }
       const engaged = await this.engagedSubjectIds(
@@ -571,6 +607,7 @@ export class CuratedListBuilderService {
           !engaged.has(row.connection_id),
       );
       if (untried.length < MIN_VIABLE_LIST_ITEMS) {
+        skips.tooFewUntried += 1;
         continue;
       }
       const sorted = [...untried]
@@ -597,7 +634,48 @@ export class CuratedListBuilderService {
       );
       built += 1;
     }
+    // The metric that can show RED. Mutate the cuisine vocabulary bridge and
+    // `noMatchingAttributes` moves; break the city key and `noLiveCity`
+    // moves. A build that quietly produces nothing now has to say why.
+    this.logger.info('Personal weekly build', {
+      recipeKey: RECIPE_WEEKLY_TASTING,
+      input: PERSONAL_RECIPE_INPUTS[RECIPE_WEEKLY_TASTING],
+      candidates: users.length,
+      built,
+      skips,
+    });
     return built;
+  }
+
+  /**
+   * The BEHAVIOR half, read from the derived taste profile (D40 §3): the
+   * mined restaurant attributes this user's actor has acted on, over ALL
+   * history.
+   *
+   * ALL history is deliberate, not an oversight. A behavioral horizon — "acts
+   * older than N days stop counting" — is an owner ruling that has not been
+   * made, and inventing one here would be exactly the fabricated number the
+   * no-fake-estimates law forbids. The profile records `last_act_at` as a
+   * fact and stores the ratified windows beside it, so the day that ruling
+   * arrives it is a window argument, not a rewrite.
+   *
+   * One indexed select. Never a request-path computation, never a second
+   * write path.
+   */
+  private async behavioralAttributeIds(userId: string): Promise<Set<string>> {
+    const rows = await this.prisma.$queryRaw<Array<{ subject_id: string }>>(
+      Prisma.sql`
+        /*curated:taste_profile_attributes*/
+        SELECT DISTINCT p.subject_id
+        FROM user_taste_profile p
+        JOIN signal_actors a ON a.actor_id = p.actor_id
+        WHERE a.user_id = ${userId}::uuid
+          AND p.window_days = ${TASTE_WINDOW_ALL_DAYS}
+          AND p.subject_kind = 'attribute'
+          AND p.subject_id IS NOT NULL
+      `,
+    );
+    return new Set(rows.map((row) => row.subject_id));
   }
 
   // ---------- shared data reads ----------
@@ -723,9 +801,23 @@ export class CuratedListBuilderService {
   }
 
   /**
-   * Subjects the user already engaged with, via the signals ledger (their
-   * pseudonymous actor) — the 'untried' exclusion set. Favorite-list saves
-   * are read from user_list_items directly (connection + restaurant).
+   * Subjects the user already engaged with — the 'untried' exclusion set.
+   *
+   * D40: the act half is read from the DERIVED TASTE PROFILE, not from a
+   * hand-written `signals` query. The query this replaced —
+   *
+   *     SELECT DISTINCT s.subject_id FROM signals s
+   *      JOIN signal_actors a ON a.actor_id = s.actor_id
+   *      WHERE a.user_id = ... AND s.kind IN ('favorite_added','entity_view')
+   *
+   * — was a fourth dialect of the act-grain law: no echo exclusion, its own
+   * kind list, straight off the raw ledger. Same facts, one dialect now, and
+   * a change to what "an act" means reaches this recipe automatically.
+   *
+   * ALL-history window, for the same reason as `behavioralAttributeIds`: a
+   * dish you viewed two years ago is still not new to you, and no cutoff has
+   * been ruled on. Favorite-list saves are read from user_list_items directly
+   * (connection + restaurant) — a save is state, not an act.
    */
   private async engagedSubjectIds(
     userId: string,
@@ -738,12 +830,13 @@ export class CuratedListBuilderService {
     const [signalRows, favoriteItems] = await Promise.all([
       this.prisma.$queryRaw<Array<{ subject_id: string }>>(Prisma.sql`
         /*curated:user_engagement*/
-        SELECT DISTINCT s.subject_id
-        FROM signals s
-        JOIN signal_actors a ON a.actor_id = s.actor_id
+        SELECT DISTINCT p.subject_id
+        FROM user_taste_profile p
+        JOIN signal_actors a ON a.actor_id = p.actor_id
         WHERE a.user_id = ${userId}::uuid
-          AND s.kind IN ('favorite_added', 'entity_view')
-          AND s.subject_id = ANY(${unique}::uuid[])
+          AND p.window_days = ${TASTE_WINDOW_ALL_DAYS}
+          AND p.subject_kind = 'entity'
+          AND p.subject_id = ANY(${unique}::uuid[])
       `),
       this.prisma.userListItem.findMany({
         where: {
@@ -844,15 +937,4 @@ function medianOf(values: number[]): number | null {
 
 function titleCase(value: string): string {
   return value.replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function extractCuisineOptionIds(responses: unknown): string[] {
-  if (!responses || typeof responses !== 'object') {
-    return [];
-  }
-  const cuisines = (responses as Record<string, unknown>).cuisines;
-  if (!Array.isArray(cuisines)) {
-    return [];
-  }
-  return cuisines.filter((value): value is string => typeof value === 'string');
 }

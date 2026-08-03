@@ -405,9 +405,13 @@ describe('containment laws, proven against PostGIS', () => {
         debug: () => undefined,
       } as never;
       const aggOpsAlerts = { emit: () => undefined } as never;
+      const { UserTasteProfileBuilder } = await import(
+        '../signals/user-taste-profile.builder'
+      );
       const agg = new SignalDemandAggregateService(
         prisma as never,
         aggOpsAlerts,
+        new UserTasteProfileBuilder(prisma as never, aggLogger),
         aggLogger,
       );
       await agg.rebuildDay(new Date());
@@ -436,9 +440,15 @@ describe('containment laws, proven against PostGIS', () => {
         debug: () => undefined,
       } as never;
       const aggOpsAlerts2 = { emit: () => undefined } as never;
-      await new Agg2(prisma as never, aggOpsAlerts2, aggLogger2).rebuildDay(
-        new Date(),
+      const { UserTasteProfileBuilder: Taste2 } = await import(
+        '../signals/user-taste-profile.builder'
       );
+      await new Agg2(
+        prisma as never,
+        aggOpsAlerts2,
+        new Taste2(prisma as never, aggLogger2),
+        aggLogger2,
+      ).rebuildDay(new Date());
     }
   });
 

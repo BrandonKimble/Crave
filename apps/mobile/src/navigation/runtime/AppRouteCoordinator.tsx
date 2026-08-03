@@ -256,7 +256,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     const { failedAtMs, ...payload } = decision.payload;
     completionReplayInFlightRef.current = true;
     void usersService
-      .completeOnboarding(payload)
+      .completeOnboarding({ ...payload, source: 'replay' })
       .then((profile) => {
         // CONFIRMED — and only now is the outbox emptied.
         clearPendingServerCompletion();
@@ -325,7 +325,14 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       authStatus !== 'signed_in' ||
       onboardingStatus !== 'completed' ||
       onboardingSyncInFlightRef.current ||
-      serverOnboardingProfile?.status === 'completed'
+      serverOnboardingProfile?.status === 'completed' ||
+      // D40: NEVER race the outbox. This mirror sends `answers: {}` — it
+      // exists only to tell the server "this device already finished", and it
+      // has nothing to say about WHAT was answered. An anonymous completer's
+      // answers now ride the pending payload above, so while one is queued
+      // this effect must stay silent: firing it would overwrite the answers
+      // with an empty document, which is the loss it was meant to prevent.
+      pendingServerCompletion != null
     ) {
       return;
     }
@@ -356,6 +363,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     onboardingPreviewCity,
     onboardingSelectedCity,
     onboardingStatus,
+    pendingServerCompletion,
     serverOnboardingProfile?.status,
   ]);
 

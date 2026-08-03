@@ -1,9 +1,18 @@
 import type { ImageSourcePropType } from 'react-native';
 import {
+  ATTRIBUTION_OPTION_IDS,
+  BUDGET_OPTION_IDS,
   CONTEXT_OPTION_IDS,
   CRAVING_OPTION_IDS,
   CUISINE_OPTION_IDS,
+  DECIDE_HOW_OPTION_IDS,
+  DIETARY_NEED_OPTION_IDS,
+  DINING_FREQUENCY_OPTION_IDS,
+  DINING_GOAL_OPTION_IDS,
   LIVE_CITY_VALUES,
+  NOTIFICATION_CADENCE_OPTION_IDS,
+  ONBOARDING_QUESTION_IDS,
+  SPICE_OPTION_IDS,
   labelledOptions,
 } from '@crave-search/shared';
 
@@ -158,33 +167,38 @@ export type OnboardingStep =
   | NotificationStep
   | TeaserStep;
 
+/**
+ * Build a labelled option list where each option also carries a `detail`
+ * line. Same law as `labelledOptions`: a renamed or added shared id without a
+ * label here is a compile error.
+ */
+const detailedOptions = <Id extends string>(
+  ids: readonly Id[],
+  entries: Record<Id, { label: string; detail: string }>
+): Array<{ id: Id; label: string; detail: string }> => ids.map((id) => ({ id, ...entries[id] }));
+
 // Single source of truth for step ids. Consumers (recap, waitlist chips,
 // notification personalization, visibility rules) must reference these
 // constants — a hand-typed stale id string can then no longer compile once the
 // step is removed or renamed (the class of bug behind the dead
 // 'outing-types'/'ambiance' recap rows).
+//
+// D40: the ANSWER-BEARING ids are no longer declared here. They cross the
+// network as the keys of `users.onboarding_responses`, so they live in
+// `@crave-search/shared` (ONBOARDING_QUESTION_IDS) beside the option ids, and
+// the API reads them only through `parseOnboardingAnswers`. Renaming one is
+// now a compile error on BOTH sides instead of a silently empty personal
+// list. What stays local is exactly what never leaves the device: the
+// presentation-only steps, which carry no answer.
 export const STEP_IDS = {
+  ...ONBOARDING_QUESTION_IDS,
   hero: 'hero',
   useCases: 'use-cases',
-  attribution: 'attribution',
-  diningFrequency: 'dining-frequency',
-  budget: 'budget',
-  decideHow: 'decide-how',
   calendarGraph: 'calendar-graph',
-  cuisines: 'cuisines',
-  alwaysCraving: 'always-craving',
-  contexts: 'contexts',
-  dietaryNeeds: 'dietary-needs',
-  spice: 'spice',
-  spotYouLove: 'spot-you-love',
-  diningGoals: 'dining-goals',
-  notifications: 'notifications',
   teaser: 'teaser',
-  location: 'location',
   waitlistInfo: 'waitlist-info',
   accountLive: 'account-live',
   accountWaitlist: 'account-waitlist',
-  username: 'username',
 } as const;
 
 export type OnboardingStepId = (typeof STEP_IDS)[keyof typeof STEP_IDS];
@@ -228,18 +242,18 @@ export const onboardingSteps: OnboardingStep[] = [
     id: STEP_IDS.attribution,
     type: 'single-choice',
     question: 'How did you hear about us?',
-    options: [
-      { id: 'app-store', label: 'App Store' },
-      { id: 'tiktok', label: 'TikTok' },
-      { id: 'youtube', label: 'YouTube' },
-      { id: 'instagram', label: 'Instagram' },
-      { id: 'x-twitter', label: 'X (Twitter)' },
-      { id: 'facebook', label: 'Facebook' },
-      { id: 'reddit', label: 'Reddit' },
-      { id: 'google', label: 'Google' },
-      { id: 'friend-family', label: 'Friend or family' },
-      { id: 'other', label: 'Other' },
-    ],
+    options: labelledOptions(ATTRIBUTION_OPTION_IDS, {
+      'app-store': 'App Store',
+      tiktok: 'TikTok',
+      youtube: 'YouTube',
+      instagram: 'Instagram',
+      'x-twitter': 'X (Twitter)',
+      facebook: 'Facebook',
+      reddit: 'Reddit',
+      google: 'Google',
+      'friend-family': 'Friend or family',
+      other: 'Other',
+    }),
     required: false,
   },
   {
@@ -270,12 +284,12 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'single-choice',
     question: 'How often do you eat out?',
     helper: 'Helps us personalize your recommendations',
-    options: [
-      { id: 'rarely', label: '1-2 times/week', detail: 'Mostly cook at home' },
-      { id: 'weekly', label: '3-4 times/week', detail: 'Regular lunches + dinner' },
-      { id: 'often', label: '5-6 times/week', detail: 'Always on the go' },
-      { id: 'daily', label: 'Every day', detail: 'Professional food scout' },
-    ],
+    options: detailedOptions(DINING_FREQUENCY_OPTION_IDS, {
+      rarely: { label: '1-2 times/week', detail: 'Mostly cook at home' },
+      weekly: { label: '3-4 times/week', detail: 'Regular lunches + dinner' },
+      often: { label: '5-6 times/week', detail: 'Always on the go' },
+      daily: { label: 'Every day', detail: 'Professional food scout' },
+    }),
     required: true,
   },
   {
@@ -283,12 +297,12 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'single-choice',
     question: "What's your usual spend per person?",
     helper: 'Helps us personalize your recommendations',
-    options: [
-      { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
-      { id: '20-40', label: '$$', detail: '$20–$40 • Solid everyday spots' },
-      { id: '40-70', label: '$$$', detail: '$40–$70 • Nice dinners & dates' },
-      { id: '70-plus', label: '$$$$', detail: '$70+ • Special experiences' },
-    ],
+    options: detailedOptions(BUDGET_OPTION_IDS, {
+      'under-20': { label: '$', detail: 'Under $20 • Quick bites & value' },
+      '20-40': { label: '$$', detail: '$20–$40 • Solid everyday spots' },
+      '40-70': { label: '$$$', detail: '$40–$70 • Nice dinners & dates' },
+      '70-plus': { label: '$$$$', detail: '$70+ • Special experiences' },
+    }),
     required: true,
   },
 
@@ -298,14 +312,14 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'multi-choice',
     question: 'How do you pick a spot today?',
     helper: 'Pick everything you actually use',
-    options: [
-      { id: 'google-maps', label: '🗺️ Google Maps ratings' },
-      { id: 'review-sites', label: '⭐ Yelp & review sites' },
-      { id: 'tiktok-ig', label: '📱 TikTok / Instagram' },
-      { id: 'ask-friends', label: '💬 Ask friends & group chats' },
-      { id: 'reddit-threads', label: '🧵 Reddit threads' },
-      { id: 'wander', label: '🚶 Wander in and hope' },
-    ],
+    options: labelledOptions(DECIDE_HOW_OPTION_IDS, {
+      'google-maps': '🗺️ Google Maps ratings',
+      'review-sites': '⭐ Yelp & review sites',
+      'tiktok-ig': '📱 TikTok / Instagram',
+      'ask-friends': '💬 Ask friends & group chats',
+      'reddit-threads': '🧵 Reddit threads',
+      wander: '🚶 Wander in and hope',
+    }),
     required: true,
     minSelect: 1,
     ctaLabel: 'Continue',
@@ -390,16 +404,16 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'multi-choice',
     question: 'Any dietary needs?',
     helper: "We'll keep these front and center in your results. Skip if none.",
-    options: [
-      { id: 'vegetarian', label: '🥦 Vegetarian' },
-      { id: 'vegan', label: '🌱 Vegan' },
-      { id: 'pescatarian', label: '🐟 Pescatarian' },
-      { id: 'gluten-free', label: '🌾 Gluten-free' },
-      { id: 'dairy-free', label: '🥛 Dairy-free' },
-      { id: 'halal', label: '☪️ Halal' },
-      { id: 'kosher', label: '✡️ Kosher' },
-      { id: 'nut-allergy', label: '🥜 Nut allergy' },
-    ],
+    options: labelledOptions(DIETARY_NEED_OPTION_IDS, {
+      vegetarian: '🥦 Vegetarian',
+      vegan: '🌱 Vegan',
+      pescatarian: '🐟 Pescatarian',
+      'gluten-free': '🌾 Gluten-free',
+      'dairy-free': '🥛 Dairy-free',
+      halal: '☪️ Halal',
+      kosher: '✡️ Kosher',
+      'nut-allergy': '🥜 Nut allergy',
+    }),
     required: false,
     ctaLabel: 'Continue',
   },
@@ -407,12 +421,12 @@ export const onboardingSteps: OnboardingStep[] = [
     id: STEP_IDS.spice,
     type: 'single-choice',
     question: 'How do you feel about heat?',
-    options: [
-      { id: 'mild', label: '🧊 Keep it mild' },
-      { id: 'medium', label: '🌶️ Some kick is good' },
-      { id: 'hot', label: '🌶️🌶️ The spicier the better' },
-      { id: 'extreme', label: '🔥 Bring the pain' },
-    ],
+    options: labelledOptions(SPICE_OPTION_IDS, {
+      mild: '🧊 Keep it mild',
+      medium: '🌶️ Some kick is good',
+      hot: '🌶️🌶️ The spicier the better',
+      extreme: '🔥 Bring the pain',
+    }),
     required: true,
   },
   {
@@ -432,13 +446,13 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'multi-choice',
     question: 'What matters most when you eat out?',
     helper: 'Helps us personalize your recommendations. Pick 2-3.',
-    options: [
-      { id: 'trending', label: '🔥 Trending & buzzy' },
-      { id: 'reliable', label: '⭐ Reliable classics' },
-      { id: 'wow-factor', label: '✨ Show-stopping' },
-      { id: 'healthy', label: '🥗 Healthy options' },
-      { id: 'hidden-gems', label: '💎 Hidden gems — surprise me' },
-    ],
+    options: labelledOptions(DINING_GOAL_OPTION_IDS, {
+      trending: '🔥 Trending & buzzy',
+      reliable: '⭐ Reliable classics',
+      'wow-factor': '✨ Show-stopping',
+      healthy: '🥗 Healthy options',
+      'hidden-gems': '💎 Hidden gems — surprise me',
+    }),
     required: true,
     minSelect: 2,
   },
@@ -453,12 +467,15 @@ export const onboardingSteps: OnboardingStep[] = [
       'Weekly digest: what actually changed in your city this week',
       'Tuesday polls: vote on "Best tacos" in 30 seconds',
     ],
-    options: [
-      { id: '2-3-week', label: '2-3 times per week', recommended: true },
-      { id: 'weekly', label: 'Weekly digest only' },
-      { id: 'poll-only', label: 'Just the Tuesday poll' },
-      { id: 'manual', label: "I'll check the app myself" },
-    ],
+    options: labelledOptions(NOTIFICATION_CADENCE_OPTION_IDS, {
+      '2-3-week': '2-3 times per week',
+      weekly: 'Weekly digest only',
+      'poll-only': 'Just the Tuesday poll',
+      manual: "I'll check the app myself",
+    }).map((option) => ({
+      ...option,
+      recommended: option.id === '2-3-week',
+    })),
     ctaLabel: 'Enable notifications',
   },
 

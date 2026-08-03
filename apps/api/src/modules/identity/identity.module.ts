@@ -7,6 +7,7 @@ import { HttpModule } from '@nestjs/axios';
 import { SharedModule } from '../../shared';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { ModerationModule } from '../moderation/moderation.module';
+import { LiveCitiesModule } from '../places/live-cities.module';
 import { ClerkAuthService } from './auth/clerk-auth.service';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard';
 import { AdminGuard } from './auth/admin.guard';
@@ -36,6 +37,9 @@ import { UserListProvisioningService } from '../user-lists/user-list-provisionin
     HttpModule,
     ModerationModule,
     EntitlementsModule,
+    // D40: the onboarding write resolves the selected city to a place KEY
+    // through the one live-city definition (never a second name-match).
+    LiveCitiesModule,
     forwardRef(() => NotificationsModule),
   ],
   controllers: [UserController, PublicUserController, AuthController],

@@ -1,6 +1,7 @@
 // Application constants
 
 export * from './onboarding-vocabulary';
+export * from './onboarding-questions';
 
 // Entity types from PRD Section 4.1
 export const ENTITY_TYPES = {

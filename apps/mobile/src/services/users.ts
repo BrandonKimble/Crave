@@ -110,6 +110,10 @@ export const usersService = {
     previewCity?: string | null;
     answers?: OnboardingAnswers;
     username?: string | null;
+    /** D40: which lane landed this write — the append-only history records it
+     *  verbatim, so "answered at the end of the flow" and "landed later from
+     *  the outbox" stay distinguishable forever. */
+    source?: 'completion' | 'replay';
   }): Promise<UserProfile> {
     const requestConfig: UserServiceRequestConfig = {
       suppressSystemStatus: true,

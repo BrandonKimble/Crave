@@ -149,3 +149,80 @@ describe('decideOnboardingCompletionReplay', () => {
     ).toBe('replay');
   });
 });
+
+/**
+ * D40 — THE ANONYMOUS COMPLETER.
+ *
+ * A waitlist / pre-auth user answers every question and then, because they
+ * are not signed in, the screen took a completely different branch: it marked
+ * the flow complete LOCALLY and queued nothing. `completeOnboardingLocally`
+ * resets the draft, so the answers were gone from the device too — and the
+ * "already finished on this device" mirror that fires after they later sign
+ * in sends `answers: {}`. The one thing onboarding exists to collect was
+ * destroyed by the success path, not the failure path.
+ *
+ * "Not signed in yet" is the same SHAPE as "the server said no": a payload we
+ * cannot land today. So it takes the same lane — the F810 outbox — and the
+ * existing replay rules land it on the first authenticated launch, unchanged.
+ *
+ * RED recipe: delete the `recordPendingServerCompletion(...)` call from the
+ * anonymous branch of `completeAndEnterApp` in screens/Onboarding.tsx and
+ * both cases below fail.
+ */
+const completeAnonymously = (): boolean => {
+  // The anonymous branch of completeAndEnterApp, reduced to its decision.
+  const answers = useOnboardingStore.getState().draft.answers;
+  useOnboardingStore.getState().recordPendingServerCompletion({
+    status: 'completed',
+    onboardingVersion: 6,
+    selectedCity: 'Austin',
+    previewCity: null,
+    answers,
+    username: null,
+    failedAtMs: Date.now(),
+  });
+  useOnboardingStore.getState().completeOnboardingLocally({ selectedCity: 'Austin' });
+  return true;
+};
+
+describe('D40 — an anonymous completer does not lose their answers', () => {
+  beforeEach(() => {
+    useOnboardingStore.getState().resetOnboarding();
+    useOnboardingStore.getState().setAnswer('cuisines', ['tacos']);
+  });
+
+  it('queues the payload even though nobody is signed in — and the local flow still completes', () => {
+    expect(completeAnonymously()).toBe(true);
+    // Completing locally is correct here: the user really did finish. What
+    // was wrong was finishing WITHOUT keeping what they said.
+    expect(useOnboardingStore.getState().status).toBe('completed');
+    const pending = useOnboardingStore.getState().pendingServerCompletion;
+    expect(pending).not.toBeNull();
+    expect(pending?.answers).toEqual({ cuisines: ['tacos'] });
+  });
+
+  it('the queued answers survive the draft reset that completing locally performs', () => {
+    completeAnonymously();
+    // completeOnboardingLocally wipes the draft — which is exactly why the
+    // payload has to be captured BEFORE it runs.
+    expect(useOnboardingStore.getState().draft.answers).toEqual({});
+    expect(useOnboardingStore.getState().pendingServerCompletion?.answers).toEqual({
+      cuisines: ['tacos'],
+    });
+  });
+
+  it('the replay decision skips while anonymous and lands the SAME payload once signed in', () => {
+    completeAnonymously();
+    const pending = useOnboardingStore.getState().pendingServerCompletion;
+
+    // Before sign-in: held, never dropped.
+    expect(
+      decideOnboardingCompletionReplay({ pending, isSignedIn: false, inFlight: false })
+    ).toEqual({ kind: 'skip', reason: 'not_signed_in' });
+
+    // After sign-in: the same answers, unedited.
+    expect(
+      decideOnboardingCompletionReplay({ pending, isSignedIn: true, inFlight: false })
+    ).toEqual({ kind: 'replay', payload: pending });
+  });
+});

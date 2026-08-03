@@ -1592,3 +1592,216 @@ mirrors into react-query's `onlineManager` and whose `subscribeToReconnect` is t
 `hooks/useAccess.ts` + `services/purchases.ts` (money) → `components/app-modal-store.ts` + `AppModalHost.tsx` (the
 singleton-surface pattern the other five copy) → `.eslintrc.js` (the laws that are enforced, which tells you which ones
 were broken before).
+
+## Territory: mobile-nav-overlays (`apps/mobile/src/navigation` + `apps/mobile/src/overlays`)
+
+325 files, ~69k lines. This is the **scene-stack machinery**: how the app decides
+what page you are on, what the bottom sheet shows, and how one page becomes the
+next without a blank frame. There is no React Navigation stack here for the main
+app — the whole thing is bespoke, snapshot-driven, and the single most
+concept-dense surface in the repo. Read this before touching anything in it.
+
+### The five layers, outermost in
+
+1. **The route coordinator** (`navigation/runtime/AppRouteCoordinator.tsx`, 497
+   lines). Decides ONE thing: which of `onboarding | sign_in | paywall | main`
+   the app is on, plus the launch intent (deep link) queue. Everything below
+   assumes `main`. `MainLaunchCoordinator.tsx` (1,097 lines) then owns the splash
+   -> first-paint gate with two 10s force-reveal escape hatches.
+2. **The route stack** (`app-overlay-route-*`). A pure algebra over an array of
+   `OverlayRouteEntry` — push / closeActive / popToEntry / popToRoot / setRoot.
+   Spec-covered (`app-overlay-route-stack-algebra.spec.ts`). Scenes are named by
+   `OverlayKey` string literals; **route roles and scene keys are referenced by
+   bare string in many places, so never conclude a key is dead from a symbol grep
+   alone.**
+3. **The scene-stack runtime** (`app-route-scene-stack-runtime.ts`, 3,407 lines —
+   the biggest file in the territory). A controller class that owns which scenes
+   are MOUNTED, which is ACTIVE, which is INTERACTIVE, and publishes ~6
+   independent snapshot streams through `useSyncExternalStore` authorities. Its
+   `dispose()` is the cleanest teardown in the repo (F918).
+4. **The transition engine** (`navigation/runtime/transition-engine/`, 6 files).
+   See below — this is where the interesting design lives.
+5. **The hosts and panels** (`overlays/`). `BottomSheetSceneStackHost.tsx` (1,856
+   lines) is the sheet; `overlays/panels/*` are the actual pages (Lists, Polls,
+   Profile, Restaurant, Messaging, ...).
+
+### The transition engine, in one paragraph
+
+A page switch is a reified object: `TransitionTxn` (`transition-transaction.ts`).
+It moves through explicit phases `staged -> committed -> joining -> revealed ->
+settled` (or `superseded`), and the **reveal** — the moment the incoming page
+becomes visible — fires when a declared set of readiness inputs have all landed.
+The inputs are `paint` (the incoming body's first layout), `chrome` (the header
+committed), `mapFrame`, `boundary`, `camera`, `sheet`. Ambient sources _offer_
+inputs; the live transaction consumes only the ones its plan declared. A
+transition with an EMPTY join set reveals immediately (the "degenerate" class —
+seeded scenes, zero-plane dismissals). This is a genuinely good design and the
+comments explain the six smells it was built to kill. Two things to know:
+
+- **Nothing visible is animated by the engine.** The `settleRamp` spring drives
+  zero pixels; its only job is to time the `onSettle` callback. Every reveal is a
+  hard swap gated on `paintAck`. Tuning the spring changes WHEN settle fires, not
+  how anything looks.
+- **There is a 600ms watchdog per joining transition** that force-reveals and
+  barks `[TXN-DEGRADE]` naming the missing inputs. A fire means a readiness
+  source is broken — it is a bug to attribute, never a mechanism to rely on.
+  (The 600 is unattributed — F905.)
+
+### How to observe it
+
+Every edge logs one line of JSON in dev: grep `/tmp/crave-metro.log` for
+`[TXN-TRACE]` (phase edges), `[TXN-DEGRADE]` (watchdog fires), `[L4STAMP]`
+(joinWaitMs per transition — how long the reveal waited), `[pageswitch]` (the
+host's per-commit leg roles), `[SHELL-RESIDENCY]` (visibility writes),
+`[PREMOUNT]` (a body subtree built after the visibility flip instead of before).
+
+### The shell-residency strangler (in flight)
+
+`overlays/shell-residency-registry.ts` + `shell-residency-manager.ts`. The law:
+a managed scene's shell mounts ONCE at app idle and stays resident; a switch
+retargets a single VISIBILITY bit, never mounts. 13 of the sheet scenes are
+migrated; polls / restaurant are still bespoke. `isResidencyManagedScene` is the
+strangler boolean the legacy hosts consult — it gets deleted with the last
+unmigrated scene. Note the type currently claims a wider set than the array
+actually holds (F908).
+
+### Three laws that will cost you a day if you forget them
+
+- **Effects do NOT fire in scene body-spec hooks.** Hooks that build
+  `sceneBodyContent` / `sceneBodyTransport` (`use*SceneParts`, `use*PanelSpec`)
+  render to produce a spec; their effects never commit. Any `useEffect` there is
+  dead code — do it at render time, or move it to the feed runtime / controller.
+  (`RestaurantPanel.tsx:162` currently violates this — F922.)
+- **FlashList `maintainVisibleContentPosition` must be DISABLED on any
+  re-sortable feed** (it defaults ON and anchors the old top row, scrolling your
+  header off-screen). Keep it ON for append/chat lists.
+- **A transition's join set is declared once, at arm time, by the scene-stack
+  host** — the one place that knows cold-vs-warm. Amending it later is a
+  contract violation (and the amendment window is currently under-guarded —
+  F901/F902).
+
+### Where to start reading
+
+`transition-transaction.ts` (470 lines, pure, no React) is the best single entry
+point — it explains the whole model. Then
+`transition-engine/transition-txn-stager.ts` (how a switch plan becomes a txn
+plan), then `BottomSheetSceneStackHost.tsx:1374-1660` (the host's arm / offer /
+reveal wiring). `overlays/PERFORMANCE_PATTERNS.md` and
+`navigation/runtime/ADDING_A_SCENE.md` are in-repo guides worth reading first if
+you are adding a page rather than changing the machinery.
+
+### Health as of pass 1 (2026-08-03)
+
+`npx tsc --noEmit` and `yarn test` from `apps/mobile` are both GREEN (verified
+before and after; this pass changed no product code). Findings for this
+territory are **F900-F967**. Coverage is honest, not complete: `navigation/`
+(166 files) and `overlays/panels/` (49) were read in full; the `overlays/` ROOT
+(110 files — the sheet host and its gesture/snap/scroll runtimes) is only
+partially read and 96 rows stay UNREVIEWED in `audit/COVERAGE.md`. See F967 for
+the pass-2 target list. The dominant classes found were: dead
+scaffolding from retired phases that still typechecks and still has green specs
+(F900, F906, F907, F911, F929); doc-vs-code contradictions where the comment
+describes a guard the code does not implement (F901, F909, F915, F930, F935);
+and hand-copied runtimes or hand-kept scene-key lists that have already drifted
+(F921, F926, F934, F945, F946). The four highest-value items: **F943** (a ~300-line
+visibility-policy subsystem that is constructed, threaded and disposed but never
+called), **F946** (`SEEDED_FORWARD_OPEN_SCENES`, a hand-kept set with four
+documented blank-sheet incidents, which wants to be a metadata field), **F945**
+(`'home'` missing from three copies of the top-level scene set), and **F953/F962**
+(three live `'polls'` hardcodes surviving the docked retarget, plus the
+stranger-facing doc that still promises the retarget was a one-constant change).
+
+## Territory: mobile-search (`apps/mobile/src/screens/Search`)
+
+822 files, ~87.5k lines — **the biggest room in the app**, and by file count the
+most finely divided surface in the repo. It is the search screen: the query bar
+and its suggestion overlay, the results sheet and its lists, the filter/price/
+score chrome, and the entire JS side of the map. The native map itself
+(`apps/mobile/ios`, `MapLodKit`, `SearchMapRenderController.swift`) is
+**owner-locked and finished** — this territory is everything that talks _to_ it.
+
+### Shape, by the numbers (measured, not asserted)
+
+| area                                            |          files |  lines |
+| ----------------------------------------------- | -------------: | -----: |
+| `runtime/shared`                                |            544 | 42,600 |
+| `runtime/*` (non-shared)                        |            211 | 24,127 |
+| `components/`                                   | 24 (+ subdirs) | 10,920 |
+| `hooks/`                                        |             17 |  6,398 |
+| `utils/` `context/` `constants/` + 7 root files |            ~26 | ~2,600 |
+
+`runtime/shared` is **flat** — 544 files in one directory, median **55 lines**
+(p25 30, p75 91, max 1,475). 187 are under 40 lines; 67 export no runtime value
+at all. **324 of 534 non-spec files (61%) have exactly one consumer in the whole
+repo; 42 have none** (F1010). This is the territory's defining fact and the thing
+to understand before editing anything here.
+
+### The spine, outermost in
+
+1. **`index.tsx`** (87 lines) — composition root. Four context providers, then one
+   child. Everything below reads from context, not props.
+2. **`SearchRuntimeBus`** (`runtime/shared/search-runtime-bus.ts`) — a hand-rolled
+   key-scoped store. `publish(patch)` diffs by `Object.is`, notifies only
+   listeners whose declared `observedKeys` intersect the changed set, and supports
+   `batch()`. **The desired-search TUPLE lives here** and has exactly one writer
+   (`search-desired-state-writer.ts`). This is the single most-read file in the
+   territory.
+3. **The world resolver** (`runtime/resolver/search-world-resolver.ts`) — desired
+   tuple in, presented world out, through one ladder: **cache → derivation →
+   network**. Superseded resolutions complete _into cache_ and never present;
+   presentation is decided by CURRENT desire. A "provisional" derived world (the
+   client-filtered open-now variant) presents instantly and is then trued up from
+   the network as a **version update**, not a second reveal. Genuinely good.
+4. **The surface runtime** (`runtime/surface/search-surface-runtime.ts`, 1,483
+   lines) — a **module singleton** (not per-mount; do not go hunting a lifecycle
+   leak there, F1017). Owns the redraw/reveal choreography and stages transition
+   transactions against the nav transition engine.
+5. **The results-presentation machine** (`runtime/shared/results-presentation-*`)
+   — a pure attempt/transport state machine (`(state) → {nextState, appliedLog,
+blockedLog}`) plus an authority that publishes the transport. A **second**
+   authority (`ResultsPresentationSurfaceAuthority`, a module singleton) owns the
+   _data-identity_ keys. `SearchSurfaceResultsTransactionCoordinator` joins the two
+   halves and is what decides the reveal.
+6. **The map seam** — `hooks/use-direct-search-map-source-controller.ts` builds
+   sources; `components/hooks/use-search-map-native-render-owner.ts` (4,008 lines)
+   is the JS↔native frame transport; `components/search-map.tsx` (2,287) is now a
+   thin GL shell (pins and labels are native ViewAnnotations, not GL layers).
+
+### Things that will bite you
+
+- **The camera is deliberately UNCONTROLLED** for center/zoom/bearing/pitch (only
+  `padding` stays controlled). Every programmatic move goes through
+  `CameraIntentArbiter.commit()` carrying an `animationCompletionId`.
+  `search-map.tsx:521-540` is the authoritative record of why. Two comparators
+  (`arePropsEqual`) compare `mapBearing`/`mapPitch` that are never applied.
+- **The JS→native frame wire is a revision-proved delta protocol.** Each source
+  ships `baseSourceRevision`/`nextSourceRevision`; a patch must prove every
+  non-upserted id is already resident, and an unprovable chain falls back to a
+  **full replace, loudly**. This is the strongest engineering in the territory.
+- **Presentation opacity is entirely native** (display-link tick). JS ships only
+  _target_ opacities and role frames. Do not look for a JS fade.
+- **Hook call ORDER is the wiring** (F1013). `use-search-root-runtime-stage-runtime.ts`
+  sequences 14 stages; `-control-stage-runtime.ts` sequences 12;
+  `clearRestoreAuthorityRuntime` **must be last** because it consumes the other
+  four authorities. Hoisting a hook call to "group things together" yields
+  `undefined` reads four levels deep that TypeScript cannot catch.
+- **The `*-args` / `*-ports` / `*-patch` / `*-lane` families are ceremonial.**
+  ~35 files whose body forwards arguments to one child hook. Real seams here own
+  a _lifetime_ (the `*-authority-runtime` family, the map ref-latch bridges, the
+  stage boundaries) — those are excellent. See F1012 before proposing a collapse:
+  the decomposition is load-bearing for the body-spec-effects law and for hook
+  order, and at least one ceremonial family actively _concealed_ a live defect.
+- **Two instruments, opposite quality.** `search-nav-switch-runtime-attribution.ts`
+  is the model — env-gated, zero-cost when off, bounded ring, can show RED
+  (F1016). `runtime/map/map-query-budget.ts` is the anti-model — written on the
+  hydration hot path, **`snapshot()` has zero callers repo-wide** (F1002).
+- **Exterminated systems are clean.** No live `markets`, no deleted search
+  `ladder`, no `[lodev]`. Every `ladder` hit is the _live, correctly shared_
+  `services/retry/network-retry-ladder.ts`; the `market` hits are prose (two of
+  them, in `search-map.tsx`, are stale enough to mislead — F1036e).
+- **The best file in the territory** is
+  `runtime/viewport/viewport-subject-store-controller-core.ts` (F1014): every
+  constant is a fact, a derivation, or a labelled owner choice; every guard
+  carries the dated failure it was written against; three timers armed, three
+  disarmed on both the dispose _and_ the background edge. Judge new code here
+  against that file.

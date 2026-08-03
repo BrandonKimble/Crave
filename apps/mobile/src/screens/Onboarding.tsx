@@ -444,6 +444,29 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         return true;
       }
 
+      // D40 — THE ANONYMOUS COMPLETER'S ANSWERS ARE NOT THROWN AWAY.
+      //
+      // A waitlist / pre-auth completer answers every question and then this
+      // branch marked the flow complete LOCALLY and dropped the payload on the
+      // floor: `completeOnboardingLocally` resets the draft, so the answers
+      // were gone from the device too. Signing in later landed nothing — the
+      // mirror effect in AppRouteCoordinator sent `answers: {}`.
+      //
+      // The F810 outbox already solves exactly this problem for a DIFFERENT
+      // reason to be unable to land the payload (the server said no). "Not
+      // signed in yet" is the same shape — a payload we cannot land TODAY —
+      // so it takes the same lane: queue it, and the replay lands it on the
+      // first authenticated launch. failedAtMs is when we first could not land
+      // it, which is now.
+      recordPendingServerCompletion({
+        status: 'completed',
+        onboardingVersion: ONBOARDING_VERSION,
+        selectedCity,
+        previewCity,
+        answers,
+        username,
+        failedAtMs: Date.now(),
+      });
       completeOnboardingLocally({
         selectedCity,
         previewCity,
