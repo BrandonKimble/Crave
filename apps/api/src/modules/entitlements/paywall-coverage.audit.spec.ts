@@ -4,10 +4,10 @@ import { DiscoveryModule, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { PaywallCoverageAudit } from './paywall-coverage.audit';
 import { AllowUnentitled } from './entitlement-enforcement.interceptor';
-import { BearsRequestUser } from './user-bearing-guard';
+import { AuthenticationEffect } from './authentication-effect';
 
 @Injectable()
-@BearsRequestUser()
+@AuthenticationEffect('required')
 class AuthGuard implements CanActivate {
   canActivate(): boolean {
     return true;
@@ -19,6 +19,35 @@ class AuthGuard implements CanActivate {
 class OperatorGuard implements CanActivate {
   canActivate(): boolean {
     return true;
+  }
+}
+
+/**
+ * Attaches a user ONLY when a token is present — anonymous callers pass
+ * through. The boolean marker this replaced called this "bears request user".
+ */
+@Injectable()
+@AuthenticationEffect('optional')
+class OptionalAuthGuard implements CanActivate {
+  canActivate(): boolean {
+    return true;
+  }
+}
+
+@Controller('optional-only')
+@UseGuards(OptionalAuthGuard)
+class OptionalOnlyController {
+  @Get() list(): string {
+    return 'ok';
+  }
+}
+
+@Controller('optional-public')
+@UseGuards(OptionalAuthGuard)
+@AllowUnentitled()
+class OptionalPublicController {
+  @Get() list(): string {
+    return 'ok';
   }
 }
 
@@ -66,7 +95,12 @@ async function auditOf(
   const moduleRef = await Test.createTestingModule({
     imports: [DiscoveryModule],
     controllers,
-    providers: [PaywallCoverageAudit, AuthGuard, OperatorGuard],
+    providers: [
+      PaywallCoverageAudit,
+      AuthGuard,
+      OperatorGuard,
+      OptionalAuthGuard,
+    ],
   }).compile();
   // NOT init()'d: the audit runs ON BOOTSTRAP and throws, so initializing
   // here would blow up before the assertion. That it throws from inside
@@ -104,7 +138,12 @@ describe('paywall coverage audit', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [DiscoveryModule],
       controllers: [OpsController],
-      providers: [PaywallCoverageAudit, AuthGuard, OperatorGuard],
+      providers: [
+        PaywallCoverageAudit,
+        AuthGuard,
+        OperatorGuard,
+        OptionalAuthGuard,
+      ],
     }).compile();
     await expect(moduleRef.init()).rejects.toThrow(/Paywall coverage gap/);
   });
@@ -118,7 +157,12 @@ describe('paywall coverage audit', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [DiscoveryModule],
       controllers: [AuthedController, OpsController],
-      providers: [PaywallCoverageAudit, AuthGuard, OperatorGuard],
+      providers: [
+        PaywallCoverageAudit,
+        AuthGuard,
+        OperatorGuard,
+        OptionalAuthGuard,
+      ],
     })
       .overrideProvider(Reflector)
       .useValue({ get: () => undefined })
@@ -134,11 +178,57 @@ describe('paywall coverage audit', () => {
     await expect(moduleRef.init()).resolves.toBeDefined();
   });
 
+  it('RED — an optional-only route admits anonymous callers and is reported', async () => {
+    // THE GAP THE BOOLEAN MARKER HID. OptionalClerkAuthGuard sets
+    // request.user only when a token is present, but bore the same
+    // unconditional @BearsRequestUser marker as the required guard, so this
+    // route passed boot and would 403 every anonymous caller under enforce.
+    const audit = await auditOf([OptionalOnlyController]);
+    expect(audit.uncoveredRoutes()).toEqual(['OptionalOnlyController.list']);
+  });
+
+  it('an optional-only route FAILS BOOT, naming the route and the fix', async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [DiscoveryModule],
+      controllers: [OptionalOnlyController],
+      providers: [
+        PaywallCoverageAudit,
+        AuthGuard,
+        OperatorGuard,
+        OptionalAuthGuard,
+      ],
+    }).compile();
+    await expect(moduleRef.init()).rejects.toThrow(
+      /OptionalOnlyController\.list[\s\S]*add @AllowUnentitled/,
+    );
+  });
+
+  it('an optional guard PLUS @AllowUnentitled is covered, and boots', async () => {
+    const audit = await auditOf([OptionalPublicController]);
+    expect(audit.uncoveredRoutes()).toEqual([]);
+    const moduleRef = await Test.createTestingModule({
+      imports: [DiscoveryModule],
+      controllers: [OptionalPublicController],
+      providers: [
+        PaywallCoverageAudit,
+        AuthGuard,
+        OperatorGuard,
+        OptionalAuthGuard,
+      ],
+    }).compile();
+    await expect(moduleRef.init()).resolves.toBeDefined();
+  });
+
   it('a fully covered app boots', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [DiscoveryModule],
       controllers: [AuthedController, PublicController],
-      providers: [PaywallCoverageAudit, AuthGuard, OperatorGuard],
+      providers: [
+        PaywallCoverageAudit,
+        AuthGuard,
+        OperatorGuard,
+        OptionalAuthGuard,
+      ],
     }).compile();
     await expect(moduleRef.init()).resolves.toBeDefined();
   });

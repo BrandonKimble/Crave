@@ -20,6 +20,8 @@ import { LoggerService } from '../../shared';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { UserService } from '../identity/user.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
+import { readDefaultEntitlementCode } from '../entitlements/entitlement-config';
+import { revenueCatEventIdentity } from './webhook-event-identity';
 
 interface LogBillingEventParams {
   source: SubscriptionProvider;
@@ -50,8 +52,7 @@ export class BillingService {
           apiVersion: '2024-06-20',
         })
       : null;
-    this.defaultEntitlement =
-      this.configService.get<string>('billing.defaultEntitlement') || 'premium';
+    this.defaultEntitlement = readDefaultEntitlementCode(this.configService);
     // 'ourCode:rcEntitlementId,ourCode2:rcId2' -> Map<rcId, ourCode>
     const mapRaw =
       this.configService.get<string>('revenueCat.entitlementMap') || '';
@@ -181,11 +182,11 @@ export class BillingService {
       return;
     }
 
-    const externalId =
-      payload.event.id ||
-      payload.event.original_transaction_id ||
-      payload.event.transaction_id ||
-      `${Date.now()}`;
+    // Vendor event id, or a stable content hash where the payload carries
+    // none — never a timestamp. See webhook-event-identity.ts.
+    const externalId = revenueCatEventIdentity(
+      payload.event as unknown as Record<string, unknown>,
+    );
 
     // Exactly-once: a replayed delivery of an already-processed event is an
     // ack, not a reapply (protects against duplicate grants and stale

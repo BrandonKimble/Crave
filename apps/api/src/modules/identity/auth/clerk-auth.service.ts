@@ -30,108 +30,79 @@ export interface ClerkJwtClaims {
   [key: string]: unknown;
 }
 
+/**
+ * CLERK_JWT_AUDIENCE is a comma-separated list. One spelling.
+ *
+ * This replaced a 77-line recursive parser that accepted arrays, JSON arrays,
+ * single- and double-quoted strings, numbers, bigints, booleans and objects.
+ * Breadth like that is not robustness — it is a decision about the env var's
+ * format deferred forever, and its bulk hid the branch that mattered (an
+ * UNSET value silently disabling the check).
+ */
+export function parseAudienceList(value?: string): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/** RFC 7519: `aud` is a string or an array of strings. Nothing else is a
+ *  valid audience claim, so nothing else is accepted. */
+export function normalizeAudienceClaim(claim?: unknown): string[] {
+  const raw = Array.isArray(claim) ? claim : [claim];
+  return raw
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 @Injectable()
 export class ClerkAuthService {
   private readonly logger = new Logger(ClerkAuthService.name);
   private readonly secretKey?: string;
-  private readonly audience: string[] | undefined;
+  private readonly audience: string[];
   private clerkClient?: ReturnType<typeof createClerkClient>;
 
   constructor(private readonly configService: ConfigService) {
     this.secretKey =
       this.configService.get<string>('clerk.secretKey') || undefined;
-    const rawAudience = this.configService.get<string>('clerk.jwtAudience');
-    this.audience = this.parseAudience(rawAudience);
+    this.audience = parseAudienceList(
+      this.configService.get<string>('clerk.jwtAudience'),
+    );
 
-    if (rawAudience) {
+    if (this.audience.length > 0) {
       this.logger.log(
-        `Configured Clerk JWT audience raw value: ${rawAudience} -> parsed: ${
-          this.audience ? JSON.stringify(this.audience) : '[]'
-        }`,
+        `Clerk JWT audience: ${JSON.stringify(this.audience)} (validated on every token)`,
       );
-    } else {
-      this.logger.warn(
-        'No Clerk JWT audience configured; skipping audience validation',
-      );
-    }
-  }
-
-  private parseAudience(value?: string): string[] | undefined {
-    if (value === undefined || value === null) {
-      return undefined;
+      return;
     }
 
-    const audiences: string[] = [];
-
-    const consume = (input: unknown): void => {
-      if (input === undefined || input === null) {
-        return;
-      }
-
-      if (Array.isArray(input)) {
-        input.forEach(consume);
-        return;
-      }
-
-      let stringValue = '';
-      if (typeof input === 'string') {
-        stringValue = input;
-      } else if (
-        typeof input === 'number' ||
-        typeof input === 'boolean' ||
-        typeof input === 'bigint'
-      ) {
-        stringValue = String(input);
-      } else if (typeof input === 'object') {
-        try {
-          stringValue = JSON.stringify(input);
-        } catch {
-          stringValue = '';
-        }
-      }
-      stringValue = stringValue.trim();
-      if (!stringValue) {
-        return;
-      }
-
-      const hasWrappingQuotes =
-        (stringValue.startsWith('"') && stringValue.endsWith('"')) ||
-        (stringValue.startsWith("'") && stringValue.endsWith("'"));
-      if (hasWrappingQuotes) {
-        consume(stringValue.slice(1, -1));
-        return;
-      }
-
-      if (stringValue.startsWith('[') && stringValue.endsWith(']')) {
-        try {
-          consume(JSON.parse(stringValue));
-          return;
-        } catch {
-          // fall through and treat as plain string if JSON.parse fails
-          stringValue = stringValue.replace(/^\[+|\]+$/g, '').trim();
-        }
-      }
-
-      if (!stringValue) {
-        return;
-      }
-
-      // If the value still contains comma separated entries, split again.
-      if (stringValue.includes(',')) {
-        stringValue
-          .split(',')
-          .map((segment) => segment.trim())
-          .filter((segment) => segment.length > 0)
-          .forEach(consume);
-        return;
-      }
-
-      audiences.push(stringValue);
-    };
-
-    consume(value);
-
-    return audiences.length > 0 ? audiences : undefined;
+    // ABSENCE OF CONFIGURATION MUST NEVER GRANT ACCESS — the law this same
+    // file states for the dev perf token, and used to violate right here.
+    //
+    // The old shape logged a warning and SKIPPED audience validation
+    // entirely. A deployed box that never got CLERK_JWT_AUDIENCE therefore
+    // accepted tokens minted for any audience, and the only trace was one
+    // startup line nobody reads. An unconfigured check is an UNKNOWN, not a
+    // pass.
+    //
+    // In a deployed environment the fact is known at boot, so we refuse at
+    // boot — the loud version of the same truth. Locally we still boot (a
+    // script that never verifies a token should not need auth config), but
+    // verifyToken() refuses every token, so nothing can quietly authenticate.
+    const appEnv = this.configService.get<string>('appEnv');
+    if (appEnv && appEnv !== 'dev') {
+      throw new Error(
+        `CLERK_JWT_AUDIENCE is not configured (APP_ENV=${appEnv}). ` +
+          `Without it, audience validation cannot run and a token minted ` +
+          `for any other audience would be accepted. Set it — do not ` +
+          `delete this check.`,
+      );
+    }
+    this.logger.warn(
+      'CLERK_JWT_AUDIENCE is not configured; every token will be REFUSED ' +
+        '(absence of configuration must never grant access).',
+    );
   }
 
   extractBearerToken(header?: string): string | undefined {
@@ -156,24 +127,28 @@ export class ClerkAuthService {
     if (!this.secretKey) {
       throw new UnauthorizedException('Clerk secret key is not configured');
     }
+    if (this.audience.length === 0) {
+      // Refuse, never skip. See the constructor.
+      throw new UnauthorizedException(
+        'Clerk JWT audience is not configured — cannot validate this token',
+      );
+    }
 
     try {
       const verified = (await verifyToken(token, {
         secretKey: this.secretKey,
       })) as ClerkJwtClaims;
 
-      if (this.audience && this.audience.length > 0) {
-        const tokenAudiences = this.normalizeAudienceClaim(verified.aud);
-        const hasMatch = tokenAudiences.some((claim) =>
-          this.audience?.includes(claim),
+      const tokenAudiences = normalizeAudienceClaim(verified.aud);
+      const hasMatch = tokenAudiences.some((claim) =>
+        this.audience.includes(claim),
+      );
+      if (!hasMatch) {
+        throw new UnauthorizedException(
+          `Invalid Clerk token: audience ${JSON.stringify(
+            tokenAudiences,
+          )} is not in ${JSON.stringify(this.audience)}`,
         );
-        if (!hasMatch) {
-          throw new UnauthorizedException(
-            `Invalid Clerk token: audience ${JSON.stringify(
-              tokenAudiences,
-            )} is not in ${JSON.stringify(this.audience)}`,
-          );
-        }
       }
 
       return verified;
@@ -246,40 +221,6 @@ export class ClerkAuthService {
       this.clerkClient = createClerkClient({ secretKey: this.secretKey });
     }
     return this.clerkClient;
-  }
-
-  private normalizeAudienceClaim(claim?: unknown): string[] {
-    if (!claim) {
-      return [];
-    }
-    if (Array.isArray(claim)) {
-      return claim
-        .map((value) =>
-          typeof value === 'string' ? value.trim() : String(value),
-        )
-        .filter((value) => value.length > 0);
-    }
-    if (typeof claim === 'string') {
-      return claim
-        .split(',')
-        .map((value) => value.trim().replace(/^['"]|['"]$/g, ''))
-        .filter((value) => value.length > 0);
-    }
-    if (
-      typeof claim === 'number' ||
-      typeof claim === 'boolean' ||
-      typeof claim === 'bigint'
-    ) {
-      return [String(claim)];
-    }
-    if (typeof claim === 'object') {
-      try {
-        return [JSON.stringify(claim)];
-      } catch {
-        return [];
-      }
-    }
-    return [];
   }
 
   /**

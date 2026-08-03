@@ -65,7 +65,12 @@ const makeService = (opts: {
   };
   const service = new UserService(
     prisma as never,
-    { get: jest.fn() } as never,
+    // Config owns the entitlement default; the service refuses to guess it.
+    {
+      get: jest.fn((key: string) =>
+        key === 'billing.defaultEntitlement' ? 'premium' : undefined,
+      ),
+    } as never,
     { warn: jest.fn(), error: jest.fn(), log: jest.fn() } as never,
     { ensure: jest.fn() } as never,
     {} as never,

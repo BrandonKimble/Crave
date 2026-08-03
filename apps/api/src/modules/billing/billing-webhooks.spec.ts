@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { BillingService } from './billing.service';
 import type { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
+import { revenueCatEventIdentity } from './webhook-event-identity';
 
 /**
  * Webhook-hardening contract tests (mocked providers — these pin the
@@ -307,6 +308,118 @@ describe('RevenueCat webhook hardening', () => {
     const call = (entitlements.syncSubscriptionGrant as jest.Mock).mock
       .calls[0][0];
     expect(call.active).toBe(false);
+  });
+
+  it('an id-less event REPLAYED is applied exactly once (content-hash identity)', async () => {
+    // THE DEFECT: externalId used to end `|| `${Date.now()}``, so an event
+    // carrying no vendor id got a FRESH key on every delivery, the replay
+    // lookup could never match, and RC's retries re-applied it.
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    // Stateful event log: what the real unique index does.
+    const seen = new Map<string, { status: string }>();
+    (prisma.billingEventLog.findUnique as jest.Mock).mockImplementation(
+      ({ where }: any) =>
+        Promise.resolve(
+          seen.get(where.source_externalEventId.externalEventId) ?? null,
+        ),
+    );
+    (prisma.billingEventLog.upsert as jest.Mock).mockImplementation(
+      ({ create }: any) => {
+        seen.set(create.externalEventId, { status: create.status });
+        return Promise.resolve({});
+      },
+    );
+
+    const idless = rcEvent({
+      id: undefined,
+      transaction_id: undefined,
+      original_transaction_id: undefined,
+      expiration_at_ms: 1900000000000,
+    });
+    await service.handleRevenueCatWebhook(idless, 'Bearer rc-secret');
+    // The redelivery arrives LATER — the one fact the old synthetic key made
+    // load-bearing. Identity must not depend on it.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 5_000;
+    try {
+      await service.handleRevenueCatWebhook(idless, 'Bearer rc-secret');
+    } finally {
+      Date.now = realNow;
+    }
+
+    expect(seen.size).toBe(1);
+    expect([...seen.keys()][0]).toMatch(/^content:[0-9a-f]{64}$/);
+    expect(
+      (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
+    ).toHaveLength(1);
+  });
+
+  it('MUTATION — the deleted Date.now() branch would have applied the dup twice', () => {
+    // The shadow of the old code. Two deliveries of the SAME id-less payload,
+    // milliseconds apart, produce two different keys — so the exactly-once
+    // lookup provably cannot match and the grant lands twice.
+    const idless = rcEvent({
+      id: undefined,
+      transaction_id: undefined,
+      original_transaction_id: undefined,
+    }) as unknown as { event: Record<string, string | undefined> };
+    const oldKey = (e: { event: Record<string, string | undefined> }): string =>
+      e.event.id ||
+      e.event.original_transaction_id ||
+      e.event.transaction_id ||
+      `${Date.now()}`;
+    const a = oldKey(idless);
+    // Advance the clock by a single millisecond — that is all a redelivery
+    // needs to look brand new.
+    const realNow = Date.now;
+    Date.now = () => realNow() + 1;
+    const b = oldKey(idless);
+    Date.now = realNow;
+    expect(a).not.toBe(b); // <- the duplicate would land
+
+    // The rederived identity is stable across the same clock move.
+    Date.now = () => realNow() + 1;
+    const stable = revenueCatEventIdentity(idless.event);
+    Date.now = realNow;
+    expect(stable).toBe(revenueCatEventIdentity(idless.event));
+  });
+});
+
+describe('revenueCatEventIdentity', () => {
+  it('prefers the vendor event id', () => {
+    expect(revenueCatEventIdentity({ id: 'evt-9', transaction_id: 't' })).toBe(
+      'evt-9',
+    );
+  });
+
+  it('falls back to transaction ids before hashing', () => {
+    expect(revenueCatEventIdentity({ original_transaction_id: 'otxn-3' })).toBe(
+      'otxn-3',
+    );
+    expect(revenueCatEventIdentity({ transaction_id: 'txn-3' })).toBe('txn-3');
+  });
+
+  it('key order in the payload does not change the hash', () => {
+    const a = revenueCatEventIdentity({
+      type: 'RENEWAL',
+      app_user_id: 'u1',
+      product_id: 'p1',
+    });
+    const b = revenueCatEventIdentity({
+      product_id: 'p1',
+      app_user_id: 'u1',
+      type: 'RENEWAL',
+    });
+    expect(a).toBe(b);
+    expect(a).toMatch(/^content:/);
+  });
+
+  it('genuinely different events do not collide', () => {
+    expect(
+      revenueCatEventIdentity({ type: 'RENEWAL', app_user_id: 'u1' }),
+    ).not.toBe(revenueCatEventIdentity({ type: 'RENEWAL', app_user_id: 'u2' }));
   });
 });
 

@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import type {
+  ContextOptionId,
+  CravingOptionId,
+  CuisineOptionId,
+  LiveCityValue,
+} from '@crave-search/shared';
 
 /**
  * The onboarding teaser: the pre-auth, pre-paywall "first answer" payload
@@ -47,42 +53,40 @@ export interface TeaserPreviewPayload {
   restaurants: TeaserRestaurantSet | null;
 }
 
-/** Onboarding always-craving option id → resolvable food terms (lowercase).
- *  brunch / salad-bowls / sweets are meal-period/category concepts, not dish
- *  entities — excluded here; the fallback chain absorbs them. */
-const DISH_ID_TERMS: Record<string, string[]> = {
-  pizza: ['pizza'],
-  tacos: ['taco', 'tacos'],
-  burgers: ['burger', 'burgers'],
-  sushi: ['sushi'],
-  ramen: ['ramen'],
-  wings: ['wings', 'chicken wings'],
-  'fried-chicken': ['fried chicken'],
-  pasta: ['pasta'],
-  dumplings: ['dumpling', 'dumplings'],
-  bbq: ['bbq', 'barbecue', 'brisket'],
-  steak: ['steak'],
-};
-
-const DISH_ID_LABELS: Record<string, string> = {
-  pizza: 'pizza',
-  tacos: 'tacos',
-  burgers: 'burgers',
-  sushi: 'sushi',
-  ramen: 'ramen',
-  wings: 'wings',
-  'fried-chicken': 'fried chicken',
-  pasta: 'pasta',
-  dumplings: 'dumplings',
-  bbq: 'BBQ',
-  steak: 'steak',
+/**
+ * ONE RECORD PER DISH. This used to be two parallel records keyed by the same
+ * eleven ids (`DISH_ID_TERMS` + `DISH_ID_LABELS`) — the repo's own type-list
+ * disease: adding a dish meant editing two literals and nothing caught a miss.
+ *
+ * Keyed by the SHARED craving vocabulary (packages/shared), which the mobile
+ * onboarding quiz builds its options from — so a renamed option id is a
+ * compile error here instead of a teaser that silently degrades to browse.
+ *
+ * Partial on purpose: brunch / salad-bowls / sweets are meal-period and
+ * category concepts, not dish entities. They have no terms, and the fallback
+ * chain absorbs them.
+ */
+export const DISHES_BY_CRAVING_ID: Partial<
+  Record<CravingOptionId, { terms: string[]; label: string }>
+> = {
+  pizza: { terms: ['pizza'], label: 'pizza' },
+  tacos: { terms: ['taco', 'tacos'], label: 'tacos' },
+  burgers: { terms: ['burger', 'burgers'], label: 'burgers' },
+  sushi: { terms: ['sushi'], label: 'sushi' },
+  ramen: { terms: ['ramen'], label: 'ramen' },
+  wings: { terms: ['wings', 'chicken wings'], label: 'wings' },
+  'fried-chicken': { terms: ['fried chicken'], label: 'fried chicken' },
+  pasta: { terms: ['pasta'], label: 'pasta' },
+  dumplings: { terms: ['dumpling', 'dumplings'], label: 'dumplings' },
+  bbq: { terms: ['bbq', 'barbecue', 'brisket'], label: 'BBQ' },
+  steak: { terms: ['steak'], label: 'steak' },
 };
 
 /** contexts quiz id → mined restaurant-attribute names, in SELECTIVITY order
  *  (most differentiating first — 'good for groups' covers ~a quarter of a city,
  *  so it comes last; business/solo have no attribute and are omitted). */
-const CONTEXT_ATTR_NAMES: Array<{
-  contextId: string;
+export const CONTEXT_ATTR_NAMES: Array<{
+  contextId: ContextOptionId;
   attrName: string;
   frame: string;
 }> = [
@@ -100,8 +104,11 @@ const CONTEXT_ATTR_NAMES: Array<{
   },
 ];
 
-/** cuisines quiz id → restaurant-attribute name + display label. */
-const CUISINE_ATTRS: Record<string, { attrName: string; label: string }> = {
+/** cuisines quiz id → restaurant-attribute name + display label. Partial:
+ *  'coffee' has no restaurant attribute to shortlist on. */
+export const CUISINE_ATTRS: Partial<
+  Record<CuisineOptionId, { attrName: string; label: string }>
+> = {
   mexican: { attrName: 'mexican', label: 'Mexican' },
   bbq: { attrName: 'barbecue', label: 'BBQ' },
   japanese: { attrName: 'japanese', label: 'Japanese' },
@@ -112,7 +119,7 @@ const CUISINE_ATTRS: Record<string, { attrName: string; label: string }> = {
 };
 
 /** Live-city onboarding value → location city names in core_restaurant_locations. */
-const CITY_LOCATION_NAMES: Record<string, string[]> = {
+export const CITY_LOCATION_NAMES: Record<LiveCityValue, string[]> = {
   Austin: ['Austin'],
   'New York': [
     'Manhattan',
@@ -129,6 +136,12 @@ const CITY_LOCATION_NAMES: Record<string, string[]> = {
 const MIN_MENTIONS = 3;
 /** A dish query must produce at least this many rows to headline. */
 const MIN_RESULTS = 3;
+/**
+ * The teaser's display ceiling for a score, declared ONCE. It was written as a
+ * bare `9.9` at two call sites in this file, which is two places for a
+ * presentation rule to drift from itself.
+ */
+export const TEASER_SCORE_CEILING = 9.9;
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 @Injectable()
@@ -149,13 +162,18 @@ export class TeaserService {
     contextIds: string[] = [],
     cuisineIds: string[] = [],
   ): Promise<TeaserPreviewPayload | null> {
-    const cities = CITY_LOCATION_NAMES[city];
+    const cities = CITY_LOCATION_NAMES[city as LiveCityValue] as
+      | string[]
+      | undefined;
     if (!cities) {
       return null;
     }
 
     let base: TeaserPreviewPayload | null = null;
-    const orderedDishIds = dishIds.filter((id) => DISH_ID_TERMS[id]);
+    const orderedDishIds = dishIds.filter(
+      (id): id is CravingOptionId =>
+        DISHES_BY_CRAVING_ID[id as CravingOptionId] !== undefined,
+    );
     for (const dishId of orderedDishIds) {
       const cacheKey = `${city}:${dishId}`;
       base = await this.cached(cacheKey, () =>
@@ -196,7 +214,9 @@ export class TeaserService {
     const context = CONTEXT_ATTR_NAMES.find((entry) =>
       contextIds.includes(entry.contextId),
     );
-    const cuisine = cuisineIds.map((id) => CUISINE_ATTRS[id]).find(Boolean);
+    const cuisine = cuisineIds
+      .map((id) => CUISINE_ATTRS[id as CuisineOptionId])
+      .find(Boolean);
     const key = `${city}:rs:${context?.contextId ?? '-'}:${cuisine?.attrName ?? '-'}`;
 
     const setPayload = await this.cachedRestaurantSet(key, async () => {
@@ -279,7 +299,7 @@ export class TeaserService {
     `);
     return rows.map((row) => ({
       restaurantName: row.restaurant_name,
-      score: Math.min(row.score, 9.9),
+      score: Math.min(row.score, TEASER_SCORE_CEILING),
     }));
   }
 
@@ -299,10 +319,13 @@ export class TeaserService {
   private async dishPreview(
     city: string,
     cities: string[],
-    dishId: string,
+    dishId: CravingOptionId,
   ): Promise<TeaserPreviewPayload | null> {
-    const terms = DISH_ID_TERMS[dishId];
-    const foodIds = await this.resolveFoodIds(terms);
+    const dish = DISHES_BY_CRAVING_ID[dishId];
+    if (!dish) {
+      return null;
+    }
+    const foodIds = await this.resolveFoodIds(dish.terms);
     if (foodIds.length === 0) {
       return null;
     }
@@ -314,7 +337,7 @@ export class TeaserService {
     const totalCount = await this.countConnections(cities, foodIds);
     return {
       source: 'dish',
-      dishLabel: DISH_ID_LABELS[dishId] ?? dishId,
+      dishLabel: dish.label,
       city,
       top: rows[0],
       runners: rows.slice(1, 3),
@@ -422,7 +445,7 @@ export class TeaserService {
     return rows.map((row) => ({
       dishName: row.dish_name,
       restaurantName: row.restaurant_name,
-      score: Math.min(row.score, 9.9),
+      score: Math.min(row.score, TEASER_SCORE_CEILING),
       mentionCount: row.mention_count,
       totalUpvotes: row.total_upvotes,
     }));

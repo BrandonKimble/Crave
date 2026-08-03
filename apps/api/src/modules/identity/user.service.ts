@@ -22,6 +22,10 @@ import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
 import { UserListProvisioningService } from '../user-lists/user-list-provisioning.service';
+import {
+  readDefaultEntitlementCode,
+  readGatingMode,
+} from '../entitlements/entitlement-config';
 
 type OnboardingProfileRow = {
   onboardingStatus: UserOnboardingProfile['status'] | null;
@@ -53,8 +57,7 @@ export class UserService {
     private readonly entitlements: EntitlementService,
     private readonly userListProvisioning: UserListProvisioningService,
   ) {
-    this.defaultEntitlement =
-      this.configService.get<string>('billing.defaultEntitlement') || 'premium';
+    this.defaultEntitlement = readDefaultEntitlementCode(this.configService);
     this.trialDays = this.configService.get<number>('billing.trialDays') || 0;
   }
 
@@ -201,12 +204,11 @@ export class UserService {
       await this.userStats.ensure(userId);
     }
     const summary = await this.entitlements.summarize(userId);
-    const gatingMode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
     return {
       // enforced tells the client whether the app-wide wall is LIVE — the
       // paywall routing axis keys off this, so the rollout stays a single
       // server-side switch.
-      access: { ...summary, enforced: gatingMode === 'enforce' },
+      access: { ...summary, enforced: readGatingMode() === 'enforce' },
       userId: user.userId,
       email: user.email,
       username: user.username,
@@ -493,12 +495,6 @@ export class UserService {
     return candidates.find(
       (value) => this.isResolvedClaim(value) && value.startsWith('http'),
     );
-  }
-
-  private addDays(date: Date, days: number): Date {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
   }
 
   private normalizeNullable(value?: string | null): string | null {

@@ -1,4 +1,11 @@
 import type { ImageSourcePropType } from 'react-native';
+import {
+  CONTEXT_OPTION_IDS,
+  CRAVING_OPTION_IDS,
+  CUISINE_OPTION_IDS,
+  LIVE_CITY_VALUES,
+  labelledOptions,
+} from '@crave-search/shared';
 
 // TODO: Replace with actual app screenshot showing search results
 import placeholderImage from '../assets/splash.png';
@@ -68,6 +75,12 @@ interface ComparisonStep extends BaseStep {
   };
   body?: string;
 }
+
+const CITY_OPTION_IDS = { Austin: 'austin', 'New York': 'new-york' } as const;
+const CITY_LABELS = {
+  Austin: '🤠 Austin',
+  'New York': '🗽 New York',
+} as const;
 
 type ChecklistStatus = 'pending' | 'complete';
 
@@ -234,10 +247,13 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'location',
     question: 'Where are you eating?',
     helper: "Pick a live city or request yours—we'll tailor everything around it.",
-    allowedCities: [
-      { id: 'austin', label: '🤠 Austin', value: 'Austin' },
-      { id: 'new-york', label: '🗽 New York', value: 'New York' },
-    ],
+    // `value` is what lands on the profile and what the API's teaser matches
+    // on, so the live-city list is shared too.
+    allowedCities: LIVE_CITY_VALUES.map((value) => ({
+      id: CITY_OPTION_IDS[value],
+      label: CITY_LABELS[value],
+      value,
+    })),
     placeholder: 'Enter your city',
     required: true,
     ctaLabel: 'Continue',
@@ -308,16 +324,19 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'multi-choice',
     question: 'What are you craving lately?',
     helper: 'Helps us personalize your recommendations. Pick at least 3.',
-    options: [
-      { id: 'mexican', label: '🌮 Mexican' },
-      { id: 'bbq', label: '🍖 BBQ' },
-      { id: 'japanese', label: '🍣 Japanese' },
-      { id: 'italian', label: '🍝 Italian' },
-      { id: 'mediterranean', label: '🥙 Mediterranean' },
-      { id: 'coffee', label: '☕ Coffee & bakeries' },
-      { id: 'american', label: '🍔 American' },
-      { id: 'asian', label: '🍜 Asian fusion' },
-    ],
+    // Ids come from the SHARED vocabulary — the API's teaser reads them off
+    // the profile. Renaming one here without renaming it there used to
+    // silently degrade the teaser; now it will not compile.
+    options: labelledOptions(CUISINE_OPTION_IDS, {
+      mexican: '🌮 Mexican',
+      bbq: '🍖 BBQ',
+      japanese: '🍣 Japanese',
+      italian: '🍝 Italian',
+      mediterranean: '🥙 Mediterranean',
+      coffee: '☕ Coffee & bakeries',
+      american: '🍔 American',
+      asian: '🍜 Asian fusion',
+    }),
     required: true,
     minSelect: 3,
     ctaLabel: 'Looks delicious',
@@ -327,22 +346,22 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'multi-choice',
     question: 'What are you always in the mood for?',
     helper: 'Your go-to orders—the dishes you never turn down. Pick a few.',
-    options: [
-      { id: 'pizza', label: '🍕 Pizza' },
-      { id: 'tacos', label: '🌮 Tacos' },
-      { id: 'burgers', label: '🍔 A great burger' },
-      { id: 'sushi', label: '🍣 Sushi' },
-      { id: 'ramen', label: '🍜 Ramen & noodles' },
-      { id: 'wings', label: '🍗 Wings' },
-      { id: 'fried-chicken', label: '🍗 Fried chicken' },
-      { id: 'pasta', label: '🍝 Pasta' },
-      { id: 'dumplings', label: '🥟 Dumplings' },
-      { id: 'bbq', label: '🍖 BBQ & brisket' },
-      { id: 'steak', label: '🥩 A good steak' },
-      { id: 'brunch', label: '🍳 Brunch' },
-      { id: 'salad-bowls', label: '🥗 Fresh salads & bowls' },
-      { id: 'sweets', label: '🍰 Dessert & sweets' },
-    ],
+    options: labelledOptions(CRAVING_OPTION_IDS, {
+      pizza: '🍕 Pizza',
+      tacos: '🌮 Tacos',
+      burgers: '🍔 A great burger',
+      sushi: '🍣 Sushi',
+      ramen: '🍜 Ramen & noodles',
+      wings: '🍗 Wings',
+      'fried-chicken': '🍗 Fried chicken',
+      pasta: '🍝 Pasta',
+      dumplings: '🥟 Dumplings',
+      bbq: '🍖 BBQ & brisket',
+      steak: '🥩 A good steak',
+      brunch: '🍳 Brunch',
+      'salad-bowls': '🥗 Fresh salads & bowls',
+      sweets: '🍰 Dessert & sweets',
+    }),
     required: true,
     minSelect: 2,
     allowCustomInput: true,
@@ -354,14 +373,14 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'multi-choice',
     question: 'Which of these are you regularly picking spots for?',
     helper: 'So Crave fits the ways you actually eat out.',
-    options: [
-      { id: 'date-nights', label: '💕 Date nights' },
-      { id: 'family', label: '👨‍👩‍👧 Family meals' },
-      { id: 'business', label: '👔 Business meals & clients' },
-      { id: 'group-hangs', label: '🎉 Group hangs' },
-      { id: 'solo-everyday', label: '🍱 Solo & everyday eats' },
-      { id: 'special-occasions', label: '🥂 Special occasions' },
-    ],
+    options: labelledOptions(CONTEXT_OPTION_IDS, {
+      'date-nights': '💕 Date nights',
+      family: '👨‍👩‍👧 Family meals',
+      business: '👔 Business meals & clients',
+      'group-hangs': '🎉 Group hangs',
+      'solo-everyday': '🍱 Solo & everyday eats',
+      'special-occasions': '🥂 Special occasions',
+    }),
     required: true,
     minSelect: 1,
     ctaLabel: 'Continue',

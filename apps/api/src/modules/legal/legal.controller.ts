@@ -2,6 +2,20 @@ import { Controller, Get, Header } from '@nestjs/common';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 /**
+ * The revision date BOTH documents display, declared once.
+ *
+ * It was typed by hand into two separate 250-line HTML blobs, so amending one
+ * document and forgetting the other produced two pages claiming different
+ * effective dates — and both documents' own text promises the reader that the
+ * "Last Updated" date is how a change is announced. A date nobody is forced to
+ * update is a date that lies by default.
+ *
+ * The TEXT of these documents is owner-authored content and is not an agent's
+ * to edit; this constant only stops the date from being written twice.
+ */
+const LEGAL_LAST_UPDATED = 'January 6, 2026';
+
+/**
  * Legal/Compliance Controller
  *
  * Provides endpoints for legal documents required by app stores:
@@ -54,7 +68,7 @@ export class LegalController {
 </head>
 <body>
     <h1>Crave Privacy Policy</h1>
-    <p class="last-updated">Last Updated: January 6, 2026</p>
+    <p class="last-updated">Last Updated: ${LEGAL_LAST_UPDATED}</p>
 
     <div class="section">
         <h2>1. Introduction</h2>
@@ -336,7 +350,7 @@ export class LegalController {
 </head>
 <body>
     <h1>Crave Terms of Service</h1>
-    <p class="last-updated">Last Updated: January 6, 2026</p>
+    <p class="last-updated">Last Updated: ${LEGAL_LAST_UPDATED}</p>
 
     <div class="important">
         <strong>Important:</strong> Please read these Terms of Service carefully before using Crave. 

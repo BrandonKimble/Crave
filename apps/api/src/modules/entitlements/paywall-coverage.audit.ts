@@ -1,7 +1,7 @@
 import { Injectable, OnApplicationBootstrap, type Type } from '@nestjs/common';
 import { DiscoveryService, MetadataScanner, Reflector } from '@nestjs/core';
 import { ALLOW_UNENTITLED_KEY } from './entitlement-enforcement.interceptor';
-import { bearsRequestUser } from './user-bearing-guard';
+import { authenticationEffectOf } from './authentication-effect';
 
 /** Where Nest stores `@UseGuards` metadata (class and handler level). */
 const GUARDS_METADATA = '__guards__';
@@ -12,12 +12,18 @@ const ROUTE_PATH_METADATA = 'path';
 /**
  * BOOT REFUSES A ROUTE THE PAYWALL WOULD 403.
  *
- * Every registered route is one of two things: it produces a `request.user`
- * (some guard in its stack is marked `@BearsRequestUser`), or it declares
- * itself public (`@AllowUnentitled`). A route that is neither passes the
- * paywall today only because ENTITLEMENT_GATING is not `enforce` — the flip
- * turns it into a 403, and `log` mode cannot warn you, because log mode is
- * the mode where it still works.
+ * Every registered route is one of two things: it ALWAYS produces a
+ * `request.user` (some guard in its stack declares
+ * `@AuthenticationEffect('required')`), or it declares itself public
+ * (`@AllowUnentitled`). A route that is neither passes the paywall today only
+ * because ENTITLEMENT_GATING is not `enforce` — the flip turns it into a 403,
+ * and `log` mode cannot warn you, because log mode is the mode where it still
+ * works.
+ *
+ * A guard whose effect is 'optional' is NOT coverage: it attaches a user only
+ * when a credential was presented, so the route is reachable anonymously and
+ * must say so with `@AllowUnentitled()`. See authentication-effect.ts for the
+ * boolean marker this replaced and the gap it hid.
  *
  * This replaced a Jest spec that walked the tree for `*.controller.ts` and
  * grepped for guard names. See user-bearing-guard.ts for why reading the DI
@@ -63,26 +69,36 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
 
     if (uncovered.length === 0) return;
     throw new Error(
-      `Paywall coverage gap — ${uncovered.length} route(s) produce no ` +
-        `request.user and are not @AllowUnentitled, so flipping ` +
-        `ENTITLEMENT_GATING=enforce would 403 them:\n` +
-        uncovered.map((route) => `  - ${route}`).join('\n') +
-        `\nFix: add @AllowUnentitled() if the route is public, or a guard ` +
-        `marked @BearsRequestUser() if it is not.`,
+      `Paywall coverage gap — ${uncovered.length} route(s) may reach the ` +
+        `paywall with no request.user and are not @AllowUnentitled, so ` +
+        `flipping ENTITLEMENT_GATING=enforce would 403 them:\n` +
+        uncovered
+          .map(
+            ({ route, effect }) =>
+              `  - ${route} — ${
+                effect === 'optional'
+                  ? `its only auth guard is @AuthenticationEffect('optional'), ` +
+                    `which admits anonymous callers. Fix: add @AllowUnentitled().`
+                  : `no guard declares @AuthenticationEffect('required'). ` +
+                    `Fix: add @AllowUnentitled() if the route is public, or a ` +
+                    `guard declaring 'required' if it is not.`
+              }`,
+          )
+          .join('\n'),
     );
   }
 
   /** Exposed for the spec, which proves this can actually go RED. */
   uncoveredRoutes(): string[] {
-    return this.audit().uncovered;
+    return this.audit().uncovered.map(({ route }) => route);
   }
 
   private audit(): {
-    uncovered: string[];
+    uncovered: Array<{ route: string; effect: 'optional' | 'none' }>;
     controllersSeen: number;
     routesSeen: number;
   } {
-    const uncovered: string[] = [];
+    const uncovered: Array<{ route: string; effect: 'optional' | 'none' }> = [];
     let controllersSeen = 0;
     let routesSeen = 0;
 
@@ -98,7 +114,7 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
       const classGuards = this.guardsOn(metatype);
       const classExempt =
         this.reflector.get<boolean>(ALLOW_UNENTITLED_KEY, metatype) === true;
-      const classBearsUser = classGuards.some(bearsRequestUser);
+      const classEffects = classGuards.map(authenticationEffectOf);
 
       for (const method of this.scanner.getAllMethodNames(prototype)) {
         const handler = (instance as Record<string, unknown>)[method];
@@ -114,15 +130,23 @@ export class PaywallCoverageAudit implements OnApplicationBootstrap {
           this.reflector.get<boolean>(ALLOW_UNENTITLED_KEY, handler) === true;
         if (exempt) continue;
 
-        const bearsUser =
-          classBearsUser || this.guardsOn(handler).some(bearsRequestUser);
-        if (!bearsUser) {
-          uncovered.push(`${metatype.name}.${method}`);
-        }
+        const effects = [
+          ...classEffects,
+          ...this.guardsOn(handler).map(authenticationEffectOf),
+        ];
+        if (effects.includes('required')) continue;
+        uncovered.push({
+          route: `${metatype.name}.${method}`,
+          effect: effects.includes('optional') ? 'optional' : 'none',
+        });
       }
     }
 
-    return { uncovered: uncovered.sort(), controllersSeen, routesSeen };
+    return {
+      uncovered: uncovered.sort((a, b) => a.route.localeCompare(b.route)),
+      controllersSeen,
+      routesSeen,
+    };
   }
 
   private guardsOn(target: object): unknown[] {

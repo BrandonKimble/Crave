@@ -11,6 +11,7 @@ import { Observable } from 'rxjs';
 import { LoggerService } from '../../shared';
 import { EntitlementService } from './entitlement.service';
 import { resolveVerdict } from './access-verdict';
+import { readGatingMode } from './entitlement-config';
 
 export const ALLOW_UNENTITLED_KEY = 'allow_unentitled';
 
@@ -54,16 +55,11 @@ export class EntitlementEnforcementInterceptor implements NestInterceptor {
     this.logger = loggerService.setContext('EntitlementEnforcement');
   }
 
-  private mode(): 'off' | 'log' | 'enforce' {
-    const mode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
-    return mode === 'enforce' || mode === 'log' ? mode : 'off';
-  }
-
   async intercept(
     context: ExecutionContext,
     next: CallHandler,
   ): Promise<Observable<unknown>> {
-    const mode = this.mode();
+    const mode = readGatingMode();
     if (mode === 'off' || context.getType() !== 'http') {
       return next.handle();
     }

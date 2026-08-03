@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { readDefaultEntitlementCode } from './entitlement-config';
 import {
   denied,
   granted,
@@ -133,8 +134,7 @@ export class EntitlementService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntitlementService');
-    this.defaultCode =
-      this.configService.get<string>('billing.defaultEntitlement') || 'premium';
+    this.defaultCode = readDefaultEntitlementCode(this.configService);
     try {
       this.redis = redisService?.getOrThrow() ?? null;
     } catch {
@@ -203,17 +203,6 @@ export class EntitlementService {
       });
     }
     return { grantId };
-  }
-
-  /** Lookup a grant by its idempotency ref (reward double-pay guard). */
-  async findGrantByRef(
-    userId: string,
-    sourceRef: string,
-  ): Promise<{ grantId: string } | null> {
-    return this.prisma.accessGrant.findFirst({
-      where: { userId, sourceRef },
-      select: { grantId: true },
-    });
   }
 
   /** Account deletion: revoke every live grant across all entitlement codes
