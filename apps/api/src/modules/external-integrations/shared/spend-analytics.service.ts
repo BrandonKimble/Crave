@@ -1,5 +1,5 @@
 import {
-  billedMicrosFromStore,
+  unreconciledBilled,
   ledgerMicros,
   scaleBilled,
   type LedgerMicros,
@@ -910,7 +910,7 @@ export class SpendAnalyticsService {
     // only way to reach the BilledMicros the pool counts is through gross().
     const trailingBilled =
       this.reconciliation?.gross('gemini', trailingSpendMicros) ??
-      billedMicrosFromStore(trailingSpendMicros);
+      unreconciledBilled(trailingSpendMicros);
     const derivedLimitMicros = scaleBilled(trailingBilled, BACKSTOP_MULTIPLE);
     if (derivedLimitMicros <= 0) {
       // No measured spend yet in the trailing window — nothing to derive;

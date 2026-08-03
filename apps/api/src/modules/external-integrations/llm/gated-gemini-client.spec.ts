@@ -16,6 +16,9 @@ describe('GatedGeminiClient', () => {
       (c) => c.createCache({ model: 'm', config: { ttl: '60s' } }),
     ],
     ['createBatch', (c) => c.createBatch({})],
+    // A TTL extension buys more token-hours — the registry meters it as a
+    // cachedContentStorage event against the same pool.
+    ['updateCacheTtl', (c) => c.updateCacheTtl('c', '60s')],
   ];
 
   function raw(client: GatedGeminiClient): {
@@ -81,7 +84,6 @@ describe('GatedGeminiClient', () => {
     await client.cancelBatch('b');
     await client.getBatch('b');
     await client.listBatches(100);
-    await client.updateCacheTtl('c', '60s');
     await client.deleteCache('c');
 
     expect(gate).not.toHaveBeenCalled();

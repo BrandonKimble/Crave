@@ -199,8 +199,12 @@ export class DemandMassReader {
         -- a root's lineage tiles counts a signal stored at both a member and
         -- an ancestor ONCE (§3 set semantics at aggregate grain).
         ${dailyActsCteSql({
-          dimensions: Prisma.sql`l.root, a.subject_type, a.subject_id, a.subject_text`,
-          dimensionGrain: Prisma.sql`l.root, a.subject_type, a.subject_id, a.subject_text`,
+          dimensions: [
+            { expr: Prisma.sql`l.root` },
+            { expr: Prisma.sql`a.subject_type` },
+            { expr: Prisma.sql`a.subject_id` },
+            { expr: Prisma.sql`a.subject_text` },
+          ],
           from: Prisma.sql`lineage l
             JOIN signal_demand_daily a ON a.place_id = l.tile`,
           actsAlias: 'acts',
@@ -274,8 +278,10 @@ export class DemandMassReader {
         -- Tile MAX first, at RAW subject grain (two raw ids folding into one
         -- survivor are distinct acts and must SUM, not MAX).
         ${dailyActsCteSql({
-          dimensions: Prisma.sql`l.root, a.subject_id`,
-          dimensionGrain: Prisma.sql`l.root, a.subject_id`,
+          dimensions: [
+            { expr: Prisma.sql`l.root` },
+            { expr: Prisma.sql`a.subject_id` },
+          ],
           from: Prisma.sql`lineage l
             JOIN signal_demand_daily a ON a.place_id = l.tile`,
           actsAlias: 'acts',

@@ -763,8 +763,12 @@ export class SignalDemandReadService {
       -- same day, and this is the one the collector's territory read uses to
       -- decide what gets enriched.
       WITH agg AS (${dailyActsCteSql({
-        dimensions: Prisma.sql`COALESCE(r.to_entity_id, a.subject_id) AS entity_id`,
-        dimensionGrain: Prisma.sql`COALESCE(r.to_entity_id, a.subject_id)`,
+        dimensions: [
+          {
+            expr: Prisma.sql`COALESCE(r.to_entity_id, a.subject_id)`,
+            as: 'entity_id',
+          },
+        ],
         from: Prisma.sql`signal_demand_daily a
           LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id`,
         where: Prisma.sql`a.place_id = ANY(${aggPlaceIds}::uuid[])`,

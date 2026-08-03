@@ -1,6 +1,8 @@
 import type { MeteredService } from './spend-currency';
 import {
   billedMicrosFromStore,
+  scaleBilled,
+  unreconciledBilled,
   type BilledMicros,
   type LedgerMicros,
 } from './spend-currency';
@@ -592,7 +594,11 @@ export class SpendCampaignService {
     this.requireGovernance().pools.register({
       name: campaignPoolName(campaignId),
       credential: 'campaign',
-      window: { kind: 'grant', amount: envelopeMicros },
+      window: {
+        kind: 'grant',
+        amount: envelopeMicros,
+        denomination: 'billedMicros',
+      },
       // §16 K3-shaped operational bound (mirrors the other governed pools'
       // reservationTtlMs): campaign spend is metered post-hoc (meter(), not
       // reserve/reconcile — see recordSpend), so no reservation is ever
@@ -669,8 +675,7 @@ export class SpendCampaignService {
     // defect: at the measured ~1.7x Gemini under-metering, an $82 envelope
     // spent ~$139 billed before it registered as breached.
     const micros: BilledMicros =
-      this.reconciliation?.gross(service, ledger) ??
-      billedMicrosFromStore(ledger);
+      this.reconciliation?.gross(service, ledger) ?? unreconciledBilled(ledger);
     const row = await this.prisma.spendCampaign.findUnique({
       where: { campaignId },
     });
@@ -686,7 +691,9 @@ export class SpendCampaignService {
         `cannot record spend in state '${row.state}'`,
       );
     }
-    const roundedMicros = Math.round(micros);
+    // scaleBilled(x, 1) IS Math.round(x), and it keeps the brand: this is
+    // the same billed figure, rounded to whole micros for the integer column.
+    const roundedMicros = scaleBilled(micros, 1);
 
     // Pilot campaign (no estimate/envelope): atomic accumulate only. This
     // service never sees the pilot's unit count here, only a micro-USD
@@ -703,10 +710,7 @@ export class SpendCampaignService {
 
     const governance = this.requireGovernance();
     const poolName = campaignPoolName(campaignId);
-    await governance.pools.meterSpend(
-      poolName,
-      billedMicrosFromStore(roundedMicros),
-    );
+    await governance.pools.meterSpend(poolName, roundedMicros);
     // BREACH VERDICT FROM THE INCREMENT'S OWN RESULT (step 5, H7 + red
     // team F6): increment first (guarded, atomic), decide from the value
     // the increment RETURNS. Deciding from a pre-read row was the same
@@ -855,7 +859,11 @@ export class SpendCampaignService {
       governance.pools.register({
         name: poolName,
         credential: 'campaign',
-        window: { kind: 'grant', amount: oldEnvelopeMicros },
+        window: {
+          kind: 'grant',
+          amount: oldEnvelopeMicros,
+          denomination: 'billedMicros',
+        },
         reservationTtlMs: 60_000,
       });
       const spentMicros = Number(row.spentMicros);

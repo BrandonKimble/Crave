@@ -21,11 +21,13 @@ import { GoogleGenAI, type GenerateContentResponse } from '@google/genai';
  * reach past.
  *
  * PAID vs FREE is the load-bearing distinction, so it is stated once, here.
- * Paid: generation, embeddings, context-cache mints (billed in token-hours),
- * and batch submission. Free: reads and lifecycle — get, list, cancel, update
- * a TTL, delete. Adding a method to the paid group means adding `await
- * this.gate()`; adding one to the free group means deciding, deliberately,
- * that Google does not bill it.
+ * Paid: generation, embeddings, context-cache mints AND TTL extensions (both
+ * billed in token-hours), and batch submission. Free: reads and terminal
+ * lifecycle — get, list, cancel, delete.
+ *
+ * Placing a method in the free group is a claim about Google's billing, and
+ * the only honest way to make it is to find the code that meters the call.
+ * `updateCacheTtl` was in the free group until someone did exactly that.
  */
 export class GatedGeminiClient {
   private readonly raw: GoogleGenAI;
@@ -66,6 +68,26 @@ export class GatedGeminiClient {
     return this.raw.caches.create(params as never);
   }
 
+  /**
+   * EXTENDING A CACHE IS BUYING MORE TOKEN-HOURS.
+   *
+   * This sat under FREE until a red team read the registry that calls it:
+   * gemini-context-cache.registry.ts meters every successful extension as a
+   * `cachedContentStorage` event with `durationHours`, draining the same
+   * gemini.monthlySpend pool a generation call does. Classifying it free was
+   * the embeddings defect verbatim — the commit that closed "generation stops
+   * while embeddings keep spending" opened "generation stops while cache
+   * extensions keep spending" in the same file.
+   *
+   * The lesson is about the PAID/FREE split itself: it is a claim about
+   * Google's billing, and the only honest way to place a method is to find
+   * the code that meters it.
+   */
+  async updateCacheTtl(name: string, ttl: string): Promise<void> {
+    await this.gate();
+    await this.raw.caches.update({ name, config: { ttl } });
+  }
+
   async createBatch(params: unknown): Promise<{ name?: string }> {
     await this.gate();
     return this.raw.batches.create(params as never) as Promise<{
@@ -85,10 +107,6 @@ export class GatedGeminiClient {
 
   listBatches(pageSize: number): Promise<unknown> {
     return this.raw.batches.list({ config: { pageSize } }) as Promise<unknown>;
-  }
-
-  async updateCacheTtl(name: string, ttl: string): Promise<void> {
-    await this.raw.caches.update({ name, config: { ttl } });
   }
 
   async deleteCache(name: string): Promise<void> {

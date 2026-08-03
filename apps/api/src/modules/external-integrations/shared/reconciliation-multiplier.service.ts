@@ -99,7 +99,13 @@ export class ReconciliationMultiplierService implements OnApplicationBootstrap {
   }
 
   /** Warm the cache before the first metered event of a process. */
-  async prime(services: string[] = ['gemini', 'google_places']): Promise<void> {
+  async prime(
+    // TomTom included (red team 2026-08-02): campaign drains gross 'tomtom'
+    // now, and a service missing from this list is not merely unpublished —
+    // its cold cache never warms, so it would stay at 1.0 even after
+    // cost-reconcile publishes a ratio for it.
+    services: string[] = ['gemini', 'google_places', 'tomtom'],
+  ): Promise<void> {
     await Promise.all(services.map((service) => this.refresh(service)));
   }
 

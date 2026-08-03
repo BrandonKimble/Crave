@@ -1,5 +1,5 @@
 import {
-  billedMicrosFromStore,
+  unreconciledBilled,
   ledgerMicros,
   type MeteredService,
   type BilledMicros,
@@ -222,7 +222,7 @@ export class UsageLedgerService implements OnModuleDestroy {
       // charges — otherwise the ceiling is looser than it reads by exactly
       // our metering error.
       void this.governance.pools.meterSpend(
-        'googlePlaces.monthlySpend',
+        this.governance.pools.spendPool('googlePlaces.monthlySpend'),
         this.billed('google_places', ledgerMicros(total)),
       );
     } catch {
@@ -242,8 +242,7 @@ export class UsageLedgerService implements OnModuleDestroy {
    */
   private billed(service: string, ledger: LedgerMicros): BilledMicros {
     return (
-      this.reconciliation?.gross(service, ledger) ??
-      billedMicrosFromStore(ledger)
+      this.reconciliation?.gross(service, ledger) ?? unreconciledBilled(ledger)
     );
   }
 
@@ -281,7 +280,7 @@ export class UsageLedgerService implements OnModuleDestroy {
       // measured ~1.7x under-metering, so this is where the "3x backstop" was
       // really ~5.1x.
       void this.governance.pools.meterSpend(
-        'gemini.monthlySpend',
+        this.governance.pools.spendPool('gemini.monthlySpend'),
         this.billed('gemini', ledgerMicros(micros)),
       );
     } catch {

@@ -6,7 +6,16 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['eslint.config.mjs', 'test/**/*.d.ts'],
+    ignores: [
+      'eslint.config.mjs',
+      'test/**/*.d.ts',
+      // Deliberately outside tsconfig's `include` (throwaway red-team
+      // harnesses, run ad hoc with ts-node). Linting them yields only
+      // "not found by the project service" parse errors. ESLint's view of
+      // the tree has to match the compiler's, or extending the lint glob to
+      // scripts/ turns CI red on files nothing type-checks either.
+      'scripts/search-harness/**',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -51,11 +60,12 @@ export default tseslint.config(
   {
     files: ['src/**/*.ts', 'scripts/**/*.ts'],
     ignores: [
-      // THE owner of the raw Gemini client: it exposes only gated operations,
-      // so an ungated paid call is unrepresentable rather than audited.
+      // THE owner of the raw Gemini client.
       'src/modules/external-integrations/llm/gated-gemini-client.ts',
-      // Consumes the SDK's response/enum types only; holds no client.
+      // Consumes the SDK's response/enum types only, and is the one place
+      // allowed to CONSTRUCT the gated client (see the second pattern below).
       'src/modules/external-integrations/llm/llm.service.ts',
+      'src/modules/external-integrations/llm/gated-gemini-client.spec.ts',
       // THE photo seam, and the module that provides it. The module does not
       // export the raw service, so DI already blocks injection — the rule
       // closes the remaining import-and-construct door.
@@ -78,19 +88,33 @@ export default tseslint.config(
       '@typescript-eslint/no-restricted-imports': [
         'error',
         {
-          paths: [
+          // EVERYTHING IS A `patterns` ENTRY, DELIBERATELY. A `paths` entry
+          // matches the specifier EXACTLY, which a red team walked straight
+          // past: `@google/genai/node` is a real published subpath export, so
+          // `import { GoogleGenAI } from '@google/genai/node'` satisfied a
+          // `paths: [{ name: '@google/genai' }]` rule completely — and in
+          // scripts/, where no-unsafe-assignment is off, it raised nothing at
+          // all. The same mistake had already been made once here with
+          // '*/photo-read.service'. Twice is a pattern: use `patterns`.
+          patterns: [
             {
-              name: '@google/genai',
+              group: ['@google/genai', '@google/genai/**'],
               allowTypeImports: true,
               message:
                 'The Gemini SDK has one owner: GatedGeminiClient. A second client is a second spend gate to forget — consume the gateway ops from LlmService instead.',
             },
-          ],
-          // `patterns` for a relative path; a `paths` entry matches the
-          // specifier EXACTLY, so '*/photo-read.service' there matched
-          // nothing at all — also caught by planting an import, not by
-          // reading the config.
-          patterns: [
+            {
+              // CONSTRUCTING the gated client is as dangerous as importing the
+              // SDK. Its gate is a constructor ARGUMENT, so `new
+              // GatedGeminiClient(key, async () => {})` is an ungated paid
+              // client in one line — which is why the original claim that an
+              // ungated call was "unrepresentable" was too strong. It is
+              // unrepresentable from anywhere that cannot name this module.
+              group: ['**/gated-gemini-client'],
+              allowTypeImports: true,
+              message:
+                'GatedGeminiClient takes its gate as a constructor argument, so constructing it elsewhere means constructing it with a no-op gate. LlmService owns the one instance — consume its ops.',
+            },
             {
               group: ['**/photo-read.service'],
               allowTypeImports: true,
@@ -114,6 +138,21 @@ export default tseslint.config(
       'src/prisma/prisma.service.ts',
     ],
     rules: {
+      // FIVE SELECTORS, BECAUSE THE FIRST ONE HAD FOUR HOLES.
+      //
+      // The original was a single MemberExpression selector keyed on
+      // `property.name`. A red team walked past it four ways, all silent:
+      // `process['env']['APP_ENV']` (a computed member has property.VALUE,
+      // not property.name), `const { APP_ENV } = process.env`, and
+      // `const env = process.env; env.APP_ENV` (one level of aliasing).
+      //
+      // Aliasing through an intermediate variable is not statically
+      // decidable in general, so the last selector bans taking a reference to
+      // `process.env` as a whole in these files. That is blunter than the
+      // invariant strictly needs, and it is the right trade here: the reason
+      // this rule exists is that two spellings of APP_ENV became two Redis
+      // key prefixes and silently doubled the rate-limit ceiling on the two
+      // vendors that cost the most.
       'no-restricted-syntax': [
         'error',
         {
@@ -121,6 +160,34 @@ export default tseslint.config(
             "MemberExpression[object.object.name='process'][object.property.name='env'][property.name=/^(APP_ENV|CRAVE_ENV)$/]",
           message:
             "APP_ENV's value becomes a Redis key prefix, so a second spelling means two disjoint rate-limit windows on the vendors that cost the most. Call resolveAppEnv()/normalizeAppEnv() from shared/config/app-env.",
+        },
+        {
+          // process['env']['APP_ENV'] and process.env['APP_ENV']
+          selector:
+            'MemberExpression[computed=true][property.value=/^(APP_ENV|CRAVE_ENV)$/]',
+          message:
+            'Bracket access is the same read as dot access. Call resolveAppEnv()/normalizeAppEnv() from shared/config/app-env.',
+        },
+        {
+          // const { APP_ENV } = process.env
+          selector:
+            "VariableDeclarator[init.object.name='process'][init.property.name='env'] > ObjectPattern > Property[key.name=/^(APP_ENV|CRAVE_ENV)$/]",
+          message:
+            'Destructuring APP_ENV out of process.env is the same read. Call resolveAppEnv()/normalizeAppEnv() from shared/config/app-env.',
+        },
+        {
+          // const env = process.env  (defeats every selector above)
+          selector:
+            "VariableDeclarator[init.object.name='process'][init.property.name='env'][id.type='Identifier']",
+          message:
+            'Aliasing process.env hides which variables are read from it. Call resolveAppEnv()/normalizeAppEnv() from shared/config/app-env, or read the specific variable inline.',
+        },
+        {
+          // A dynamic import is an import; no-restricted-imports cannot see it.
+          selector:
+            'ImportExpression > Literal[value=/^@google\\u002Fgenai/], ImportExpression > Literal[value=/(gated-gemini-client|photo-read\\u002Eservice)$/]',
+          message:
+            'A dynamic import is an import. These modules have one owner each — see the no-restricted-imports messages.',
         },
       ],
     },

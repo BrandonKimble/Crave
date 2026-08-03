@@ -57,11 +57,34 @@ export const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventC
  * `a` is the signal_demand_daily alias at every call site, by the same
  * convention as `s` above.
  */
+/**
+ * ONE grouped expression: how it is SELECTed and how it is GROUPed BY are the
+ * same string, because they have to be.
+ *
+ * The first version took `dimensions` and `dimensionGrain` as two independent
+ * Prisma.Sql fields that the caller had to keep in agreement. A red team found
+ * that two of the four ways to disagree fail LOUDLY (Postgres 42803, "column
+ * must appear in the GROUP BY") but the third is silent: a grain FINER than
+ * the select list simply splits the CTE into more groups, each contributing
+ * its own MAX, and every downstream SUM inflates — measured at +1.5% demand
+ * mass on the real corpus with nothing to indicate anything was wrong.
+ *
+ * That was not a hypothetical. `placeDemandMass` passes `a.subject_type` and
+ * `a.subject_text` in both slots even though neither is read downstream, so
+ * the obvious tidy-up — delete them from the select list — was exactly the
+ * silent case. A builder whose parameters can disagree is a fragment pair
+ * wearing a function's clothes.
+ */
+export interface ActsDimension {
+  /** The expression. Used verbatim in SELECT and in GROUP BY. */
+  expr: Prisma.Sql;
+  /** Output name, when downstream needs one. */
+  as?: string;
+}
+
 export interface DailyActsCte {
-  /** Grouped expressions this reader needs downstream, with their aliases. */
-  dimensions: Prisma.Sql;
-  /** The grain those dimensions group by (aliases are not groupable). */
-  dimensionGrain: Prisma.Sql;
+  /** Grouped expressions this reader needs downstream. */
+  dimensions: readonly ActsDimension[];
   /** FROM + any JOINs. Must expose `a` as signal_demand_daily. */
   from: Prisma.Sql;
   /** Extra predicates ANDed after the law's. */
@@ -72,20 +95,20 @@ export interface DailyActsCte {
   actsAlias: string;
   echoKinds: readonly string[];
   sinceDayKey: string;
-  /**
-   * 'entity' requires a resolvable entity subject — the filter the signals
-   * reader was missing. 'any' is for tile-level mass, which counts acts
-   * against a territory regardless of what they named.
-   *
-   * HONESTLY: measured against a subject-less fixture row, removing this
-   * clause changes NO reader's output — every entity-scoped consumer joins
-   * core_entities or groups by subject_id, so a NULL subject is dropped
-   * downstream anyway. It stays because pruning at the scan is cheaper than
-   * carrying rows to a join that discards them, not because it is the thing
-   * standing between us and a wrong number. The kind grain and the echo
-   * exclusion ARE that thing — mutating either moves all three readers.
-   */
   subjectScope: 'entity' | 'any';
+}
+
+/**
+ * Quote an identifier we emit as raw SQL. These are all hardcoded literals
+ * today and none is caller-controlled, but `Prisma.raw` is the one place in
+ * this file where a string becomes SQL, so it should not be the one place
+ * that trusts its input.
+ */
+function quoteIdent(name: string): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    throw new Error(`Unsafe SQL identifier: ${JSON.stringify(name)}`);
+  }
+  return `"${name}"`;
 }
 
 export function dailyActsCteSql(cte: DailyActsCte): Prisma.Sql {
@@ -93,14 +116,28 @@ export function dailyActsCteSql(cte: DailyActsCte): Prisma.Sql {
     cte.subjectScope === 'entity'
       ? Prisma.sql`AND a.subject_type = 'entity' AND a.subject_id IS NOT NULL`
       : Prisma.empty;
+  const selectList = Prisma.join(
+    cte.dimensions.map((d) =>
+      d.as === undefined
+        ? d.expr
+        : Prisma.sql`${d.expr} AS ${Prisma.raw(quoteIdent(d.as))}`,
+    ),
+    ', ',
+  );
+  // The SAME expressions, without their aliases — a grain that can differ
+  // from the select list is the defect this shape exists to prevent.
+  const grain = Prisma.join(
+    cte.dimensions.map((d) => d.expr),
+    ', ',
+  );
   return Prisma.sql`
     SELECT
-      ${cte.dimensions},
+      ${selectList},
       a.actor_id,
       a.day,
       -- MAX, not SUM: the daily aggregate already carries the de-duplicated
       -- act count for this (actor, day, kind).
-      MAX(a.signal_count) AS ${Prisma.raw(`"${cte.actsAlias}"`)}
+      MAX(a.signal_count) AS ${Prisma.raw(quoteIdent(cte.actsAlias))}
       ${cte.extraAggregates ? Prisma.sql`, ${cte.extraAggregates}` : Prisma.empty}
     FROM ${cte.from}
     WHERE a.day >= ${cte.sinceDayKey}::date
@@ -113,6 +150,6 @@ export function dailyActsCteSql(cte: DailyActsCte): Prisma.Sql {
     -- a.kind IS LOAD-BEARING: two different kinds by one actor on one day
     -- are two acts and must SUM downstream, so collapsing them into a single
     -- MAX here silently under-counts demand.
-    GROUP BY ${cte.dimensionGrain}, a.actor_id, a.day, a.kind
+    GROUP BY ${grain}, a.actor_id, a.day, a.kind
   `;
 }
