@@ -576,3 +576,18 @@ The first Phase-3 attempt STOPPED correctly: the estimator registry has zero con
 ## D42-supplement — F943/F944 re-ruling after the Phase-3 stop (2026-08-03)
 
 The Phase-3 agent correctly REFUSED the F943 deletion: the mapper's "zero method calls" grep was scoped to the switch controller; repo-wide the visibility-policy runtime has seven live callers in screens/Search runtime/shared. RE-RULING: (a) F943 narrows to deleting the switch-controller's own unused field/threading (:544, :1581-1590) — approved as a small cleanup; (b) F944's duplicated chromeSurfaceTarget formula is LIVE in both copies — the fix is ONE formula with two callers, not a deletion; approved for the next mobile pass, bundled with the mobile-search Phase 3 (same files' neighborhood).
+
+## D43 — mobile-search (Phase-2 review of F1000–F1054, 2026-08-03)
+
+**APPROVED:**
+
+- F1040 freeze gate: the useMemo keyed on the session-lifetime bus samples once forever while a sibling publishes edges every commit — a live defect; subscribe properly (useSyncExternalStore or the bus's own subscription), spec RED against the stale sample.
+- F1041 dismiss wedge: the 420ms watchdog logs-and-cannot-recover and its user-session path is gated off entirely — implement real recovery (an outer deadline that completes the dismissal) with the wedge reproduced in a spec.
+- F1000/F1001 scheduler guards that cannot fail: make starvation override real or delete it (a constant-false override is a lie about fairness); the unreachable budget check dies.
+- F1002 map-query-budget snapshot(): written-only — re-grep repo-wide including perf verbs (banking law), then delete the write path if truly unread.
+- F1018 closing time: stop re-deriving from a display string against the device clock — the server computes it in the restaurant's timezone; serve and consume that truth. (Cross-timezone user = wrong "closes soon" today.)
+- F1020 the one genuine subscription leak: disarm outside its own callback.
+- F944 (re-ruled from D42): ONE chromeSurfaceTarget formula, two callers.
+- F943-narrow: the switch-controller's unused field/threading dies.
+
+**DEFERRED to pass 2 by design (the agent's own red-team, which I endorse):** the F1012 ceremonial-family collapse — load-bearing for the body-spec-effects law and hook order; goes cluster-by-cluster with the F1013 hook-order guard built FIRST, never as a sweep. Pass-2 reading debt: runtime/profile (73 files, zero read), 40/53 controllers, 186 UNREVIEWED rows.
