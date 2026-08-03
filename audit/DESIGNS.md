@@ -62,3 +62,48 @@ Same defect access-verdict fixed (boolean forced fail-open). The PATTERN is rati
 ## D10 — delete dead addDays/findGrantByRef (F112) + legal date from one constant (F113)
 
 F112: repo-wide reference hunt done by agent; **APPROVE** deletion. F113: displayed legal date derives from the single version constant already present — text untouched: **APPROVE** (content unchanged ⇒ no owner boundary).
+
+## D11 — honest LLM metrics: delete the dead surface, count the real events (ext-int, F115+F116)
+
+PROPOSAL: getMetrics/reset + invented priors (15 rpm/worker, 16 workers, stale 960 comment) have ZERO callers (hunt done); the live logPerformanceMetrics emits hard-coded 'Always ZERO!/100%!' greens while the same class catches real rate limits at :389.
+RUBRIC: deleting a lying instrument + wiring counters the catch block already observes; ~110 lines deleted, nothing added but two increments; metrics are not money semantics; methodology law (every metric must be able to show RED) mandates it.
+VERDICT: **APPROVE** (delete dead surface incl. priors; real counters into the surviving log line; re-verify zero-caller claim before deletion).
+
+## D12 — vendor-cap poison gets a fixture spec + structural rot alert (ext-int, F118)
+
+PROPOSAL: keep the string match (no structured vendor signal exists — verified); extract isVendorMonthlyCapError() with fixture-backed spec; alert when a 429 carries the monthly-quota metric shape while no poison is set.
+RUBRIC: constraint — NO invented threshold constants (no "N consecutive"): the trigger must be structural (quota-metric-shaped 429 with poison unset ⇒ alert on first occurrence). Observability only; spend semantics untouched.
+VERDICT: **APPROVE** with that constraint.
+
+## D13 — pool denomination brand (ext-int, F119)
+
+PROPOSAL: PoolWindow gains denomination; meter()/meterSpend() split by typed handle; wrong-currency metering becomes uncompilable.
+RUBRIC: unrepresentable — yes, finishing the move spend-currency made one level up (its own header says the call-site-scan level already failed); values and behavior byte-identical; ~6 call sites, no data migration.
+VERDICT: **APPROVE** (shape-only; any behavior delta = STOP and return).
+
+## D14 — one spend gate, parameterised (ext-int, F120)
+
+PROPOSAL: assertGeminiSpendOpen/assertPlacesSpendOpen are the same 40 lines twice; the file's own header records two-gates-for-one-budget as the defect class. One private assertSpendOpen(pool,{alertKind,noun}).
+RUBRIC: deletes ~45 lines, zero behavior change (prove: existing gate specs pass unchanged); next dollar pool inherits the hardened gate by construction.
+VERDICT: **APPROVE**.
+
+## D15 — UNKNOWN_MODEL_RATES derived as table-max (ext-int, F121)
+
+PROPOSAL: the fallback's stated invariant ('must over-meter') becomes structural: per-field max over GEMINI_RATES.
+RUBRIC: derivation replacing a literal that happens to equal it today — exactly the numbers law's DERIVATION category; today's value identical (prove by spec asserting fallback ≥ every table row).
+VERDICT: **APPROVE**.
+
+## D16 — query timeout joins the caller profile (ext-int, F122)
+
+PROPOSAL: 5 copy-pasted timeout ternaries → GeminiCallerProfile.timeoutMs, resolved centrally.
+RUBRIC: closes a caller-must-remember seam into the table built for exactly this; values identical; ~30 lines deleted.
+VERDICT: **APPROVE**.
+
+## D17 — dead DI + zero-importer barrels deleted (ext-int, F123+F127)
+
+RUBRIC: both hunts done (re-verify each with one repo-wide grep at implement time); the reddit barrel's one drift is on the error type whose whole point is distinguishability — a hand-listed barrel WILL drift again; deep imports are the live shape.
+VERDICT: **APPROVE**.
+
+## D18 — ESCALATIONS (ext-int): F114 zero-means-closed (recommend the 3-valued limit type: {ceiling, 0=closed, absent=inherit}, malformed refuses boot — but it changes what a configured 0 DOES, so spend behavior = owner); F117 dead Places retryOptions (wire it or delete it — either changes vendor-call behavior). F126 is an OPERATIONAL note, not code: the derived Gemini backstop is ~48h stale because CRONS_ENABLED=false killed the nightly spend-analytics refresh — the staleness alert will fire when crons return; resolves itself on the cron flip.
+
+VERDICT: **ESCALATE F114, F117; note F126 to owner.**
