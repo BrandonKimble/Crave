@@ -826,3 +826,169 @@ poll supply — it is NOT dead, despite living alone with a single commit.
 - `estimators/estimator-registry.ts` — a good structural law (no self-gating
   estimator without an exploration mechanism) sitting on top of three declared
   fields that nothing reads (F358).
+
+---
+
+## Territory: api-core + api-scripts (the boot, the config, the shared seams, and 100 scripts)
+
+Pass 1, 2026-08-02. `apps/api/src/{shared,config,prisma,sentry}`, `main.ts`,
+`app.module.ts`, `test/`, `data/`, the tsconfigs/Dockerfile/package.json, and
+all of `apps/api/scripts/`. Findings F400–F423.
+
+### The boot story, in order
+
+`node dist/main.js` (behind `prisma migrate deploy` in the Dockerfile CMD):
+
+1. **`main.ts` top-of-file, before any Nest import.** `dotenv` loads `.env`
+   from cwd then from `__dirname/..`, then `Sentry.init()` runs — it MUST
+   precede the module graph, which is why its config cannot come from
+   `ConfigService`. `beforeSend` strips auth/cookie/x-api-key headers and
+   top-level password/token/secret from bodies.
+2. **`AppModule` static evaluation.** Two decisions are made at MODULE level,
+   before any provider exists, and both are gates rather than runtime checks:
+   `isSchedulerRuntime()` decides whether `ScheduleModule.forRoot()` is
+   imported at all (this, not `stopCronsUnlessWorker`, is the real cron
+   chokepoint — F412), and `isDebugRoutesEnabled()` decides whether
+   `DebugModule` exists. `ConfigModule.forRoot({isGlobal, load:[configuration]})`
+   then assembles the whole config object once.
+3. **`bootstrap()`.** Fastify with `trustProxy: 1` (exactly one hop — Railway's
+   LB); `fastify-raw-body` opted in for the two webhook routes whose providers
+   sign raw bytes; helmet/CORS/validation-pipe/Swagger all keyed off
+   `isProd = NODE_ENV === 'production'` (F404); global prefix `api/v1` with
+   health/legal excluded; `enableShutdownHooks()`; listen on `::` (dual-stack,
+   so the iOS simulator's `::1` resolution works).
+4. **Module init.** `PrismaService.onModuleInit` is the loud gate:
+   `assertNotProdDatabaseFromDev()` (a non-deployed `APP_ENV` may not open a
+   Railway host), then `DatabaseValidationService`, then `$connect`, then
+   `assertClientSchemaCoherence()` — three `findFirst` calls with no `select`
+   so a stale generated client fails THE BOOT instead of 500-ing every authed
+   request at the auth guard (the 2026-07-09 incident).
+5. **Per-request.** `LoggingInterceptor` (global, from `SharedModule`) opens an
+   AsyncLocalStorage `RequestContext` and logs; `SentryInterceptor` (global,
+   from `SentryModule`) opens a performance span; on failure
+   `GlobalExceptionFilter` (global `APP_FILTER`) formats an `ErrorResponseDto`
+   and logs by STATUS.
+
+**The three boot audits are three different seams, not three copies.**
+Paywall-coverage and signal-coverage are route-graph scans that run at boot and
+refuse to start on an uncovered route; the Clerk audience check is a
+constructor-time config refusal. They share the fail-at-boot posture and
+nothing else — no consolidation is called for.
+
+### The config law, audited
+
+`configuration.ts` (559 lines) is the single assembly. Provenance is unusually
+well kept: nearly every number carries the measurement, incident, or owner
+ruling that produced it (the Places per-operation ceilings are derived from
+`api_usage_ledger` percentiles; the LLM model default IS the A/B decision; the
+`revenueCat.entitlementMap` has NO default on purpose). Three structural
+problems, none of them about a wrong number:
+
+- **A third of it is unread.** A census of all 69 `config.get('<key>')` call
+  sites in `apps/api/src` shows `logging`, `sentry`, `throttler`, `jwt`,
+  `onDemand`, `restaurantEnrichment` and `clerk.publishableKey` have **zero**
+  readers, and `pushshift` has two out of ~40 keys. `JWT_SECRET` is still set
+  in `.env` and read by nothing (F405).
+- **The falsy-zero class is ABSENT here, and that is not luck.** Every default
+  is applied to the raw env STRING (`process.env.X || '0'`) before `parseInt`,
+  so a deliberate `0` survives — a string `'0'` is truthy. The class lives
+  where a NUMBER is defaulted, which is `governance.service.ts`'s
+  `readSpendCapUsd` (already fixed and spec'd). Do not "modernise"
+  `configuration.ts` to `??`; the current shape is correct.
+- **NODE_ENV vs APP_ENV is the real fault line** (F404). `app-env.ts` exists
+  because staging must be deployed-but-not-prod, and its header is the best
+  explanation of anything in this territory. Boot then keys the
+  security-bearing decisions off raw `NODE_ENV` anyway, `configuration.ts`
+  carries a verbatim second copy of `resolveAppEnv` (F403), `job-control.ts` a
+  third (F420), and the debug-routes gate compares `APP_ENV` to string
+  literals so `production`/`PROD`/`stage` sail past it (F402).
+
+### The seams, and their health
+
+| seam             | home                                                                     | verdict                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| env flag reading | `shared/config/env-flag.ts`                                              | ideal, **under-adopted** — `CRONS_ENABLED` (F401) and `ENABLE_DEBUG_ROUTES` (F402) still hand-roll it     |
+| app environment  | `shared/config/app-env.ts`                                               | ideal, **under-adopted** — three hand-rolled copies of `resolveAppEnv` remain                             |
+| logging          | `shared/logging/logger.interface.ts` (abstract) → `WinstonLoggerService` | **BROKEN** — see below                                                                                    |
+| crash reporting  | _nominally_ `LoggerService.error`                                        | **SEVERED (F400)**                                                                                        |
+| exception → HTTP | `GlobalExceptionFilter`                                                  | sound shape; leaks typed 500 messages in prod (F422) and misclassifies network errors as DB errors (F423) |
+| cron containment | `app.module.ts` module gate (deployed) + `stopCronsForScript` (scripts)  | structural for the app, **by-convention for scripts** — one file already escaped (F411)                   |
+| guard scanners   | `shared/testing/{code-only,import-scan}.ts`                              | ideal; the best-derived code here, and under-applied (F421)                                               |
+| branded ids      | `shared/types/ids.ts`                                                    | ideal — honest about what branding CANNOT do (same-type transposition)                                    |
+
+**The one thing to know: the API sends no logged error to Sentry (F400).**
+There are two classes named `LoggerService`. The abstract one in
+`logger.interface.ts` is what DI binds and what everything injects. The
+concrete one in `logger.service.ts` holds `captureToSentry` and is imported by
+nothing but its own spec. Three comments assert the seam works. It does not,
+and never has. Proven by executing the shipped class with Sentry mocked: zero
+captures. Fix F407 (the interceptor double-logs every exception at error level,
+regardless of status) in the same change, or repairing the seam turns every
+404 into a metered Sentry event.
+
+### The scripts inventory (100 files)
+
+`tsc --noEmit -p tsconfig.json` is green across `src` + `test` + `scripts`, and
+spot-executed zero-reference scripts still produce real output. **Nothing here
+is rotted.** What is missing is a lifecycle (F414):
+
+- **26 executably wired** — 5 via `apps/api/package.json`; 11 via
+  `scripts/rig/reextract.sh` + `cost-reconcile.sh`; 1 via
+  `.claude/skills/reextract/SKILL.md`; 2 via `eslint.config.mjs` allow-lists;
+  the rest imported or read at runtime by another script.
+- **~52 mentioned only in a `plans/`/`product/` doc or a source comment** —
+  banked as provenance, not runnable by any runner.
+- **22 with zero references anywhere** outside `audit/COVERAGE.md`, including
+  four `rt-*.ts` committed the same day.
+- **No `.github/workflows/` file references any script in this directory.**
+
+The `tsconfig.json` exclusion of `scripts/search-harness/rt-*.ts`
+("red-team/exploratory harnesses: throwaway by convention") shows the
+convention was already felt — it was just never made operational. The proposal
+is a mandatory class header (operational / banked probe / scratch) plus a
+lockdown spec, NOT a deletion sweep: several zero-reference scripts are
+working, valuable diagnostics whose only sin is that nobody wrote down what
+they are for.
+
+**`scripts/reload/*.sql` is the exception and the model (F417).** All six files
+were EXECUTED against the local mirror and are schema-coherent today. Every
+destructive statement carries the incident that produced it; the preservation
+laws (RESTAURANT LAW, USER-ANCHOR LAW, REFERENCED-MEANS-ALIVE,
+TOMBSTONES-ARE-MEMORY) live once in `preserved-anchors.sql` and are `\ir`-included
+by the three consumers rather than restated; `shadow-discard.sql` opens with a
+`DO` block that REFUSES to discard an activated generation. This is what the
+rest of `scripts/` should aspire to.
+
+### Gotchas that will bite you
+
+- **`stopCronsUnlessWorker` is an empty function.** Probing
+  `app.get(SchedulerRegistry)` on the application PROXY throws through Nest's
+  ExceptionsZone and kills the process before any `try/catch` sees it, so the
+  cron gate had to move to module import. `main.ts`'s "ONE chokepoint" comment
+  is stale (F412). `stopCronsForScript` is real and still required.
+- **Jest's `rootDir` is `src`.** A spec under `scripts/` or `test/` is never
+  discovered. `test:e2e` points at a `jest-e2e.json` that does not exist, and
+  the three `test/*.ts` files are empty placeholders (F410).
+- **`apps/api/.eslintrc.json` is dead** — it extends a root file that does not
+  exist; the live config is `eslint.config.mjs` (F409). Likewise
+  `apps/api/.dockerignore` (build context is the repo ROOT, so the root one
+  wins) and `.jestignore` (not a Jest feature) — F419.
+- **`apps/api/pnpm-lock.yaml`** is a 340KB stale second dependency truth in a
+  yarn workspace (F418).
+- **`job-control.ts` lives at the package root**, outside `scripts/` and
+  outside the lint project, and derives the BullMQ key prefix itself — a drift
+  there means its `clear` command wipes the wrong environment's queues (F420).
+- The `logger.error` metadata redaction is exact-key-match, so `apiKey` and
+  `accessToken` pass through, and `LoggingInterceptor` logs whole request
+  bodies under 10KB (F416). `CorrelationUtils` puts an UNVERIFIED JWT `sub`
+  into every log line's `userId` (F408).
+
+### Deliberate absences — do not "fix" these
+
+- **No `sentry` config namespace reader.** `Sentry.init` must precede Nest;
+  the fix is to extract one importable resolver, not to make Nest own it (F406).
+- **No `revenueCat.entitlementMap` default.** Unconfigured is unconfigured.
+- **No JWT auth.** Clerk owns it; the `jwt` config block and `JWT_SECRET` are
+  residue (F405).
+- **`configuration.ts` defaults the env STRING, not the parsed number.** That
+  is what keeps a deliberate `0` alive.

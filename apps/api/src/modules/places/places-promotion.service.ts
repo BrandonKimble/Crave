@@ -380,11 +380,19 @@ export class PlacesPromotionService {
   }
 
   /**
-   * §24 Task 3 metering wrapper: EVERY exit of the vendor flow with
-   * consumed draws (promoted, consumed-draw miss, wrong-entity reject,
-   * no-rings, transport error) meters those draws against the item's
-   * campaign envelope — a real vendor draw must never escape the campaign
-   * budget just because the item didn't promote.
+   * §24 Task 3 metering wrapper: every exit of the vendor flow with ANSWERED
+   * draws (promoted, answered miss, wrong-entity reject, no-rings) meters
+   * those draws against the item's campaign envelope — a real vendor draw
+   * must never escape the campaign budget just because the item didn't
+   * promote.
+   *
+   * NOT the transport-error exit (D29a). That path is an ADMITTED draw the
+   * vendor never answered: the pool debits it, `draws.scarce` does not, and
+   * nothing here meters it. This docstring used to list "transport error"
+   * among the metered exits and the catch below used to claim the debit had
+   * been made — both were false of the code beside them. Whether expansion
+   * spend SHOULD be campaign-captured on the error path is F350/F354, with
+   * the owner; until then the accounting says what it does.
    */
   private async promoteOne(
     item: PlaceGeometryPromotion,
@@ -537,8 +545,11 @@ export class PlacesPromotionService {
     try {
       polygon = await this.probe.fetchPolygon(geometryId);
     } catch (error) {
-      // Transport/vendor error: the draw was conservatively debited and the
-      // fault is systemic — record the attempt and end the pass.
+      // Transport/vendor error: the POOL debited this draw conservatively
+      // (governance.drawWithOutcome's catch); the ledger and this item's
+      // campaign envelope did NOT — an admitted draw the vendor never
+      // answered is invisible to cost-reconcile (D29a). The fault is
+      // systemic, so record the attempt and end the pass.
       await this.recordAttempt(item.placeId, now);
       this.logger.warn('Promotion polygon fetch errored (pass ends)', {
         placeId: item.placeId,
@@ -790,20 +801,21 @@ export class PlacesPromotionService {
     return true;
   }
 
-  /** Promotion completes: stamp the queue row AND places.promoted_at. */
+  /**
+   * Promotion completes: stamp the queue row. One statement — Docket #4
+   * dropped places.promoted_at (zero readers; the drain reads the QUEUE row's
+   * promoted_at), which left this wrapped in a single-element $transaction
+   * that guaranteed nothing.
+   */
   private async stampPromoted(
     placeId: string,
     geometryId: string | null,
     now: Date,
   ): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.placeGeometryPromotion.update({
-        where: { placeId },
-        data: { promotedAt: now, providerBoundaryId: geometryId },
-      }),
-      // Docket #4: places.promoted_at is DROPPED — it had zero readers (the
-      // drain reads the QUEUE row's promoted_at, stamped above).
-    ]);
+    await this.prisma.placeGeometryPromotion.update({
+      where: { placeId },
+      data: { promotedAt: now, providerBoundaryId: geometryId },
+    });
   }
 
   /**
@@ -856,7 +868,13 @@ export class PlacesPromotionService {
     `);
   }
 
-  /** A consumed-draw miss: attempts++ (no cap), retried next tick. */
+  /**
+   * A transport error, a deferral or a per-item throw: attempts++ (no cap),
+   * retried next tick. NOT a vendor miss — that is `recordMiss`, which is the
+   * only evidence allowed to retire a row (this docstring used to say
+   * "consumed-draw miss" and contradicted recordMiss's, which matches the
+   * code).
+   */
   private async recordAttempt(placeId: string, now: Date): Promise<void> {
     await this.prisma.placeGeometryPromotion.update({
       where: { placeId },

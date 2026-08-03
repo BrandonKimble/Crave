@@ -21,7 +21,7 @@ import {
   GooglePlacesV1Place,
   GooglePlacesV1PlaceDetailsResponse,
   REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS,
-} from '../external-integrations/google-places';
+} from '../external-integrations/google-places/google-places.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
@@ -33,9 +33,11 @@ import { RestaurantEntityMergeService } from './restaurant-entity-merge.service'
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-secondary-location-expansion-queue.service';
 import {
+  GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
   RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME,
+  type RestaurantAttributeVocabEntry,
 } from './google-place-type-attributes';
 
 const PREFERRED_PLACE_TYPES = new Set([
@@ -117,187 +119,11 @@ const DEFAULT_ENRICHMENT_TX_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS = 30 * 1000;
 type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
 
-type GoogleRestaurantAttributeDefinition = {
-  canonicalName: string;
-  aliases: string[];
-  isEnabled: (place: GooglePlacesV1Place) => boolean;
-};
-
-const GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS: GoogleRestaurantAttributeDefinition[] =
-  [
-    {
-      canonicalName: 'allows dogs',
-      aliases: [
-        'dog friendly',
-        'dog-friendly',
-        'dogs allowed',
-        'dogs welcome',
-        'dogs ok',
-        'pet friendly',
-        'pet-friendly',
-        'pets allowed',
-        'pets welcome',
-        'pets ok',
-      ],
-      isEnabled: (place) => place.allowsDogs === true,
-    },
-    {
-      canonicalName: 'delivery',
-      aliases: ['delivers', 'delivery available'],
-      isEnabled: (place) => place.delivery === true,
-    },
-    {
-      canonicalName: 'takeout',
-      aliases: ['take out', 'pickup', 'pick up'],
-      isEnabled: (place) => place.takeout === true,
-    },
-    {
-      canonicalName: 'dine in',
-      aliases: ['dine-in', 'dinein', 'dining in', 'dine inside'],
-      isEnabled: (place) => place.dineIn === true,
-    },
-    {
-      canonicalName: 'curbside pickup',
-      aliases: ['curbside', 'curbside-pickup', 'curbside pick up'],
-      isEnabled: (place) => place.curbsidePickup === true,
-    },
-    {
-      canonicalName: 'good for children',
-      aliases: [
-        'child friendly',
-        'child-friendly',
-        'kid friendly',
-        'kid-friendly',
-        'kids welcome',
-        'kids',
-        'family-friendly',
-        'family friendly',
-        'good for kids',
-      ],
-      isEnabled: (place) => place.goodForChildren === true,
-    },
-    {
-      canonicalName: 'good for groups',
-      aliases: [
-        'good for large groups',
-        'large groups',
-        'groups welcome',
-        'large party',
-        'large parties',
-        'group friendly',
-        'group-friendly',
-        'good for groups of people',
-      ],
-      isEnabled: (place) => place.goodForGroups === true,
-    },
-    {
-      canonicalName: 'good for watching sports',
-      aliases: [
-        'watch sports',
-        'watch the game',
-        'sports on tv',
-        'games on tv',
-        'sports tv',
-        'sports viewing',
-        'sports bar',
-      ],
-      isEnabled: (place) => place.goodForWatchingSports === true,
-    },
-    {
-      canonicalName: 'live music',
-      aliases: [
-        'music',
-        'live entertainment',
-        'live performances',
-        'live-music',
-        'music venue',
-      ],
-      isEnabled: (place) => place.liveMusic === true,
-    },
-    {
-      canonicalName: 'outdoor seating',
-      aliases: [
-        'patio',
-        'patio seating',
-        'outside seating',
-        'al fresco',
-        'alfresco',
-        'outdoor dining',
-        'outdoor-seating',
-      ],
-      isEnabled: (place) => place.outdoorSeating === true,
-    },
-    {
-      canonicalName: 'serves beer',
-      aliases: ['beer'],
-      isEnabled: (place) => place.servesBeer === true,
-    },
-    {
-      canonicalName: 'serves breakfast',
-      aliases: ['breakfast'],
-      isEnabled: (place) => place.servesBreakfast === true,
-    },
-    {
-      canonicalName: 'serves brunch',
-      aliases: ['brunch'],
-      isEnabled: (place) => place.servesBrunch === true,
-    },
-    {
-      canonicalName: 'serves cocktails',
-      aliases: ['cocktails', 'mixed drinks', 'cocktail', 'cocktail bar'],
-      isEnabled: (place) => place.servesCocktails === true,
-    },
-    {
-      canonicalName: 'serves coffee',
-      aliases: [
-        'coffee',
-        'coffee bar',
-        'espresso',
-        'espresso bar',
-        'cafe',
-        'café',
-      ],
-      isEnabled: (place) => place.servesCoffee === true,
-    },
-    {
-      canonicalName: 'serves dinner',
-      aliases: ['dinner'],
-      isEnabled: (place) => place.servesDinner === true,
-    },
-    {
-      canonicalName: 'serves dessert',
-      aliases: [
-        'dessert',
-        'desserts',
-        'dessert menu',
-        'sweet treats',
-        'sweets',
-        'sweet',
-      ],
-      isEnabled: (place) => place.servesDessert === true,
-    },
-    {
-      canonicalName: 'serves lunch',
-      aliases: ['lunch'],
-      isEnabled: (place) => place.servesLunch === true,
-    },
-    {
-      canonicalName: 'serves vegetarian food',
-      aliases: ['vegetarian', 'vegetarian friendly', 'vegetarian options'],
-      isEnabled: (place) => place.servesVegetarianFood === true,
-    },
-    {
-      canonicalName: 'serves wine',
-      aliases: ['wine'],
-      isEnabled: (place) => place.servesWine === true,
-    },
-  ];
-
 const GOOGLE_RESTAURANT_ATTRIBUTE_CANONICAL_NAMES = Array.from(
   new Set(
     [
-      ...GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS.map((definition) =>
-        definition.canonicalName.trim().toLowerCase(),
+      ...GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB.map((entry) =>
+        entry.canonicalName.trim().toLowerCase(),
       ),
       ...GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
     ].filter((name) => name.length > 0),
@@ -711,10 +537,19 @@ export class RestaurantLocationEnrichmentService {
     }
 
     // Secondary-location expansion re-reads an ALREADY-grounded place
-    // (red-team cost P1) — refresh spend, never new-grounding. Attribute it
-    // so it lands in the regrounding rate, not the new-restaurant numerator.
+    // (red-team cost P1) — refresh spend, never new-grounding.
+    //
+    // BUT IT IS NOT A REFRESH POLL (D29a). `includeRaw: true` is the FULL
+    // field mask, which bills the Enterprise+Atmosphere SKU;
+    // refreshStaleLocations was deliberately built on the lean
+    // REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS precisely so refresh polls bill
+    // BELOW that SKU. Labelling this 'grounding.refresh' put two different
+    // SKUs in one bucket and produced a per-refresh unit cost that is true of
+    // neither. The label now says which lane it is; the CALL is byte-
+    // unchanged (whether this lane should use the lean mask, and whether it
+    // should be campaign-captured, is F352/F354 — with the owner).
     const details = await runInWorkContext(
-      { ...(currentWorkContext() ?? {}), attribution: 'grounding.refresh' },
+      { ...(currentWorkContext() ?? {}), attribution: 'grounding.expansion' },
       () =>
         this.googlePlacesService.getPlaceDetails(normalizedPlaceId, {
           includeRaw: true,
@@ -2506,11 +2341,17 @@ export class RestaurantLocationEnrichmentService {
     }
   }
 
+  /**
+   * F363: the 20 Google boolean attributes and their aliases are declared
+   * ONCE, in google-place-type-attributes.ts, where the predicate is a field
+   * of the vocabulary entry. This service used to carry a second copy that
+   * had already drifted on 7 of the 20.
+   */
   private extractGoogleRestaurantAttributeDefinitions(
     place: GooglePlacesV1Place,
-  ): GoogleRestaurantAttributeDefinition[] {
-    return GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS.filter((definition) =>
-      definition.isEnabled(place),
+  ): RestaurantAttributeVocabEntry[] {
+    return GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB.filter((entry) =>
+      entry.isEnabled!(place),
     );
   }
 
@@ -2579,7 +2420,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private async resolveRestaurantAttributeIdsForDefinitions(
-    definitions: GoogleRestaurantAttributeDefinition[],
+    definitions: RestaurantAttributeVocabEntry[],
   ): Promise<string[]> {
     if (definitions.length === 0) {
       return [];

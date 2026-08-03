@@ -18,6 +18,24 @@ import { EntityAnchorRehomeService } from '../content-processing/entity-resolver
 
 type RestaurantEntity = Entity;
 
+/**
+ * PREFIX-LANE PER-RUN CHURN CEILING.
+ *
+ * MEASURED on the local mirror 2026-08-03 (17,357 entities, 6,848 restaurants
+ * with locations): the prefix lane's predicate admits SEVEN pairs corpus-wide.
+ * So this is not a bound on normal operation — normal operation is two orders
+ * of magnitude below it. It is the ceiling on ONE NIGHT'S churn if a change to
+ * identity_key, to the ambiguity guard, or to the grounded predicate ever
+ * widens the lane by an order of magnitude: the sweep is idempotent and runs
+ * nightly, so a capped pass converges over nights while an uncapped one merges
+ * a corpus-wide regression in a single unattended run.
+ *
+ * The exact-identity lane above is deliberately UNCAPPED: its predicate is an
+ * exact key match, which cannot widen by construction. F364 found this number
+ * bare, in a file where every other threshold records its evidence.
+ */
+const PREFIX_LANE_PER_RUN_CEILING = 200;
+
 @Injectable()
 export class RestaurantEntityMergeService {
   private readonly logger: LoggerService;
@@ -180,17 +198,30 @@ export class RestaurantEntityMergeService {
         continue;
       }
 
+      // A MOVED ROW IS NEVER BORN PRIMARY (F355). This read
+      // `location.isPrimary || canonicalLocations.length === 0` against a
+      // snapshot taken BEFORE the loop — so when the canonical started with
+      // zero locations, EVERY moved row was flagged primary, and the
+      // "ensure a primary exists" step below then picked one for the FK and
+      // left the rest flagged. MEASURED consequence on the local mirror
+      // 2026-08-03: 398 restaurants carry more than one `is_primary = true`
+      // row, while the FK and the boolean never DISAGREE about which row is
+      // primary (0 rows where the FK points at a non-primary) — i.e. the
+      // boolean was never a second answer, only the same answer plus 398
+      // false extras. "The primary location" is a single-valued property of
+      // the RESTAURANT and it already has a single-valued home
+      // (core_entities.primary_location_id), so election happens ONCE, below.
       await tx.restaurantLocation.update({
         where: { locationId: location.locationId },
         data: {
           restaurantId: canonicalId,
-          isPrimary: location.isPrimary || canonicalLocations.length === 0,
+          isPrimary: false,
           updatedAt: new Date(),
         },
       });
     }
 
-    // Ensure canonical has a primary location
+    // ELECT EXACTLY ONE PRIMARY — the FK's row, and no other.
     let primary = await tx.restaurantLocation.findFirst({
       where: { restaurantId: canonicalId, isPrimary: true },
     });
@@ -207,6 +238,23 @@ export class RestaurantEntityMergeService {
         });
         primary = firstLocation;
       }
+    }
+
+    if (primary) {
+      // …and demote every other row of this restaurant. Without this the
+      // merge could only ever ADD primaries: a duplicate that arrived with
+      // its own flagged row, or an earlier merge's leftovers, stayed flagged
+      // forever. This is the single-valuedness the FK has by construction,
+      // asserted on the boolean that lacks it — the column has only a
+      // non-unique index, so nothing else can.
+      await tx.restaurantLocation.updateMany({
+        where: {
+          restaurantId: canonicalId,
+          isPrimary: true,
+          locationId: { not: primary.locationId },
+        },
+        data: { isPrimary: false },
+      });
     }
 
     if (primary) {
@@ -285,16 +333,6 @@ export class RestaurantEntityMergeService {
     );
   }
 
-  private minNumber(
-    a: number | null | undefined,
-    b: number | null | undefined,
-  ): number | undefined {
-    if (typeof a === 'number' && typeof b === 'number') {
-      return Math.min(a, b);
-    }
-    return a ?? b ?? undefined;
-  }
-
   /**
    * SAME-NAME DUPLICATE SWEEP (2026-07-26 root cause: a check-then-act race
    * in entity creation — now advisory-locked — plus a places path that never
@@ -306,10 +344,6 @@ export class RestaurantEntityMergeService {
    * else the more-evidenced side. Idempotent; cheap at zero dupes. Manual
    * lever: scripts/merge-duplicate-restaurants.ts (report / --apply).
    */
-  async sweepSameNameDuplicatesCron(): Promise<void> {
-    await this.sweepSameNameDuplicates({ apply: true });
-  }
-
   async sweepSameNameDuplicates(
     options: { apply: boolean } = { apply: true },
   ): Promise<{
@@ -385,7 +419,7 @@ export class RestaurantEntityMergeService {
         SELECT count(DISTINCT b2.key) FROM stripped b2
         WHERE b2.key <> a.key AND b2.key LIKE a.key || ' %'
       ) = 1
-      LIMIT 200
+      LIMIT ${PREFIX_LANE_PER_RUN_CEILING}
     `;
 
     let merged = 0;

@@ -79,7 +79,12 @@ export type EstimatorObservation = {
 
 export type EstimatorReading = {
   estimate: number;
-  /** Std-error-flavored uncertainty; Infinity when no data and no prior. */
+  /**
+   * Std-error-flavored uncertainty over the MEASURED dispersion. Infinity
+   * whenever that dispersion is unmeasured — a staged-off reader, or fewer
+   * than two effective observations — so a starved subject is the most
+   * uncertain one in the registry, never the most confident.
+   */
   uncertainty: number;
   nEffective: number;
   /** 1 = pure prior, 0 = fully measured — the self-erasure gauge. */
@@ -201,14 +206,43 @@ export class EstimatorRegistry {
         : 0;
     const estimate =
       (observedMean * nEffective + config.prior.value * priorStrength) / total;
-    const variance =
-      state && state.weightTotal > 0
-        ? Math.max(
-            state.sumOfSquares / state.weightTotal -
-              observedMean * observedMean,
-            0,
-          )
-        : 0;
+    // Dispersion is MEASURED, never assumed. A spread needs at least two
+    // effective observations to exist at all; below that the registry has no
+    // measurement of how wide this subject's belief is, and its contract for
+    // an unmeasured belief is the WIDEST interval, not the narrowest — see
+    // EstimatorReading.uncertainty ("Infinity when no data") and the staged-off
+    // branch above, which already returns Infinity for the same reason.
+    //
+    // Computing sqrt(observedVariance / total) for a starved subject returned
+    // 0 — maximum confidence from no data — which inverted the one mechanism
+    // this registry FORCES self-gating estimators to declare:
+    // 'optimisticSelection' promises "a starved candidate can always
+    // re-demonstrate", but a zero-uncertainty candidate's upper-confidence
+    // bound is exactly its prior, i.e. below every subject that has real
+    // variance, so the starved candidate ranked LAST.
+    //
+    // nEffective (not a raw observation count) is the sample size every other
+    // term here uses, so a subject whose evidence has DECAYED back below one
+    // effective observation also returns to "unmeasured" — which is the same
+    // invitation to re-probe that 'timeWidening' spells out.
+    const MIN_EFFECTIVE_N_FOR_MEASURED_DISPERSION = 2;
+    if (
+      !state ||
+      nEffective < MIN_EFFECTIVE_N_FOR_MEASURED_DISPERSION ||
+      state.weightTotal <= 0
+    ) {
+      return {
+        estimate,
+        uncertainty: Number.POSITIVE_INFINITY,
+        nEffective,
+        priorWeight: priorStrength / total,
+        readerDeferred: false,
+      };
+    }
+    const variance = Math.max(
+      state.sumOfSquares / state.weightTotal - observedMean * observedMean,
+      0,
+    );
     let uncertainty = Math.sqrt(variance / Math.max(total, 1));
     if (config.exploration === 'timeWidening' && state?.lastObservedAt) {
       // Closed-loop law: uncertainty grows with silence so stale estimates

@@ -3,6 +3,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { LoggerService } from '../../shared';
 import { AttributeOntologyService } from './attribute-ontology.service';
+import { runInWorkContext } from '../external-integrations/shared/work-context';
 import {
   ATTRIBUTE_ONTOLOGY_QUEUE,
   ADJUDICATE_JOB,
@@ -40,21 +41,32 @@ export class AttributeOntologyWorker implements OnModuleInit {
       return;
     }
 
-    const plan = await this.ontologyService.buildPlan(type, 'pending');
-    if (
-      plan.promotions.length === 0 &&
-      plan.merges.length === 0 &&
-      plan.rejections.length === 0
-    ) {
-      return;
-    }
+    // F357: re-establish the enqueuing work's campaign, which the BullMQ
+    // boundary drops. The run's LLM spend then debits that campaign's
+    // envelope — an ALREADY-GOVERNED bound on a loop that otherwise sizes
+    // itself from however many pending rows collection happened to mint.
+    // Outside a campaign this is a no-op and the run is ungoverned in size,
+    // exactly as before.
+    await runInWorkContext({ campaignId: job.data?.campaignId }, async () => {
+      const plan = await this.ontologyService.buildPlan(type, 'pending');
+      if (
+        plan.promotions.length === 0 &&
+        plan.merges.length === 0 &&
+        plan.rejections.length === 0
+      ) {
+        return;
+      }
 
-    const result = await this.ontologyService.applyPlan(plan, { apply: true });
-    this.logger.info('Pending attributes adjudicated', {
-      jobId: job.id,
-      type,
-      candidates: plan.candidateCount,
-      ...result,
+      const result = await this.ontologyService.applyPlan(plan, {
+        apply: true,
+      });
+      this.logger.info('Pending attributes adjudicated', {
+        jobId: job.id,
+        type,
+        campaignId: job.data?.campaignId ?? null,
+        candidates: plan.candidateCount,
+        ...result,
+      });
     });
   }
 }

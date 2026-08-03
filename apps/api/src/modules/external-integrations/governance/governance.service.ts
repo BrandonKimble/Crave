@@ -695,6 +695,29 @@ export class GovernanceService implements OnModuleInit {
    * instead of a bare null — the §12.5 per-request chokepoint needs them to
    * retry THROUGH the governor (each retry is a NEW draw) and to surface a
    * typed not-now when attempts exhaust.
+   *
+   * ── THE TWO DRAW WORDS (D29a, 2026-08-03). ────────────────────────────
+   * "A consumed draw" was being used for two different facts by three
+   * different meters, and they disagree on exactly one path. The words are
+   * fixed here, in the only place that knows both:
+   *
+   *   ADMITTED draw — a reservation this method admitted and reconciled.
+   *     Counted by the POOL, and counted on a THROW too: the request likely
+   *     reached the vendor, and over-counting a connect-refused is the
+   *     conservative direction a rate/money pool deliberately chose.
+   *
+   *   ANSWERED draw — the vendor returned a response. Counted by the
+   *     api_usage_ledger (adapter recordDraw) and by campaign envelopes,
+   *     both of which hang off a non-null response at the call site.
+   *
+   * Every admitted draw that ANSWERS is both. A transport error is admitted
+   * and not answered: the pool debits, the ledger and the campaign envelope
+   * do not — so cost-reconcile cannot see that draw at all. That gap is
+   * REAL and is deliberately left standing here: closing it changes what is
+   * charged to which envelope, which is a money-policy question (F350/F354,
+   * escalated). What is NOT allowed is a comment claiming a debit its own
+   * code does not make; every meter below states which of the two words it
+   * counts.
    */
   async drawWithOutcome<T>(
     poolName: string,
@@ -719,8 +742,10 @@ export class GovernanceService implements OnModuleInit {
       await this.pools.reconcile(reservation.reservationId, 1);
       return { admitted: true, value: result };
     } catch (error) {
-      // The call failed — no vendor budget was necessarily consumed, but we
-      // conservatively debit 1 (the request likely reached the vendor).
+      // ADMITTED, not answered. The pool debits 1 conservatively (the request
+      // likely reached the vendor). The ledger and the campaign envelope,
+      // which count ANSWERED draws, will not see this one — see the two-words
+      // note above; do not describe this as a debit they made.
       await this.pools.reconcile(reservation.reservationId, 1);
       throw error;
     }

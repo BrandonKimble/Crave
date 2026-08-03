@@ -103,6 +103,18 @@ const REVERSE_GEOCODE_RADIUS_METERS = PROBE_SPEAKS_FOR_METERS;
  */
 const TOMTOM_429_DEFAULT_RETRY_MS = 1_000;
 
+/**
+ * §2.5 twin disambiguation: how many FORWARD-GEOCODE candidates to draw, so
+ * the caller's anchor-containment check has twins to pick between. Vendor
+ * duplicate sets observed so far are 2-4 records deep; 5 is headroom, still
+ * one cheap draw.
+ *
+ * It was called GEOMETRY_ID_CANDIDATE_LIMIT — named for `resolveGeometryId`,
+ * a function this file's own comment records as DELETED — and declared 170
+ * lines below its only use.
+ */
+const FORWARD_GEOCODE_CANDIDATE_LIMIT = 5;
+
 type TomtomAddress = {
   countryCode?: string;
   country?: string;
@@ -348,9 +360,11 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   /** TOMTOM IS ON THE LEDGER (round-six cost #3): these draws drain real
    *  prepaid credit and debit campaign envelopes, but wrote no
    *  api_usage_ledger row — so cost-reconcile and the campaign post-mortem
-   *  could never see them. One row per CONSUMED draw (a pool denial never
-   *  reached the vendor and records nothing). Fire-and-forget like every
-   *  ledger write. */
+   *  could never see them. One row per ANSWERED draw — the caller invokes
+   *  this only after a non-null response (D29a: an ADMITTED draw that throws
+   *  in transport debits the POOL and writes no ledger row; the governor's
+   *  drawWithOutcome docstring holds both definitions). Fire-and-forget like
+   *  every ledger write. */
   private recordDraw(operation: string): void {
     this.usageLedger.record({
       service: 'tomtom',
@@ -525,7 +539,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
                 key: this.apiKey as string,
                 entityTypeSet: node.providerLevelCode,
                 countrySet: node.countryCode,
-                limit: GEOMETRY_ID_CANDIDATE_LIMIT,
+                limit: FORWARD_GEOCODE_CANDIDATE_LIMIT,
               },
               timeout: this.timeoutMs,
             }),
@@ -691,13 +705,6 @@ function parseReverseBoundingBox(
     maxLng: Math.max(ne.lng, sw.lng),
   };
 }
-
-/**
- * §2.5 twin disambiguation: how many geocode candidates to draw for the
- * anchor-containment pick. Vendor duplicate sets observed so far are 2-4
- * records deep; 5 is headroom, still one cheap draw.
- */
-const GEOMETRY_ID_CANDIDATE_LIMIT = 5;
 
 /** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects. */
 function parseForwardBoundingBox(

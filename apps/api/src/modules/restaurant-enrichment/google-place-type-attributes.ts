@@ -1,3 +1,5 @@
+import { GooglePlacesV1Place } from '../external-integrations/google-places/google-places.service';
+
 export const GOOGLE_PLACE_CUISINE_TYPE_MAP: Record<string, string> = {
   afghani_restaurant: 'afghani',
   african_restaurant: 'african',
@@ -87,10 +89,27 @@ export const GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES = Array.from(
  * RestaurantLocationEnrichmentService.ensureRestaurantAttributeEntity — no
  * seed step, no maintenance. Organic attributes ("affordable", "1950s", …)
  * are created by collection from real data and never appear here.
+ *
+ * F363: it claimed to be the single source of truth while a SECOND copy of
+ * the 20 Google boolean attributes, with its own alias arrays, lived in
+ * restaurant-location-enrichment.service.ts — and 7 of the 20 had already
+ * drifted apart (the service copy had lost the bare single-word aliases
+ * `dogs`, `pets`, `children`, `groups`, `sports`, `outdoor`, `outside`,
+ * `vegetarian restaurant`), so which alias set an attribute entity ended up
+ * with depended on which code path minted it. The two are ONE table now: the
+ * predicate is a field of an entry, not a reason for a second table, and the
+ * merge took the UNION of both alias lists.
  */
 export interface RestaurantAttributeVocabEntry {
   canonicalName: string;
   aliases: string[];
+  /**
+   * Present ONLY on the attributes Google reports as booleans on a place:
+   * "does this place details response assert this attribute?". Absent means
+   * the attribute is minted from place TYPES or from collection, never from
+   * a boolean field.
+   */
+  isEnabled?: (place: GooglePlacesV1Place) => boolean;
 }
 
 export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
@@ -110,22 +129,27 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'dogs',
       'pets',
     ],
+    isEnabled: (place) => place.allowsDogs === true,
   },
   {
     canonicalName: 'delivery',
     aliases: ['delivers', 'delivery available'],
+    isEnabled: (place) => place.delivery === true,
   },
   {
     canonicalName: 'takeout',
     aliases: ['take out', 'pickup', 'pick up'],
+    isEnabled: (place) => place.takeout === true,
   },
   {
     canonicalName: 'dine in',
     aliases: ['dine-in', 'dinein', 'dining in', 'dine inside'],
+    isEnabled: (place) => place.dineIn === true,
   },
   {
     canonicalName: 'curbside pickup',
     aliases: ['curbside', 'curbside-pickup', 'curbside pick up'],
+    isEnabled: (place) => place.curbsidePickup === true,
   },
   {
     canonicalName: 'good for children',
@@ -141,6 +165,7 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'family friendly',
       'good for kids',
     ],
+    isEnabled: (place) => place.goodForChildren === true,
   },
   {
     canonicalName: 'good for groups',
@@ -155,6 +180,7 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'group-friendly',
       'good for groups of people',
     ],
+    isEnabled: (place) => place.goodForGroups === true,
   },
   {
     canonicalName: 'good for watching sports',
@@ -168,6 +194,7 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'sports viewing',
       'sports bar',
     ],
+    isEnabled: (place) => place.goodForWatchingSports === true,
   },
   {
     canonicalName: 'live music',
@@ -178,6 +205,7 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'live-music',
       'music venue',
     ],
+    isEnabled: (place) => place.liveMusic === true,
   },
   {
     canonicalName: 'outdoor seating',
@@ -192,30 +220,43 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'outdoor',
       'outside',
     ],
+    isEnabled: (place) => place.outdoorSeating === true,
   },
   {
     canonicalName: 'serves beer',
     aliases: ['beer'],
+    isEnabled: (place) => place.servesBeer === true,
   },
   {
     canonicalName: 'serves breakfast',
     aliases: ['breakfast'],
+    isEnabled: (place) => place.servesBreakfast === true,
   },
   {
     canonicalName: 'serves brunch',
     aliases: ['brunch'],
+    isEnabled: (place) => place.servesBrunch === true,
   },
   {
     canonicalName: 'serves cocktails',
     aliases: ['cocktails', 'mixed drinks', 'cocktail', 'cocktail bar'],
+    isEnabled: (place) => place.servesCocktails === true,
   },
   {
     canonicalName: 'serves coffee',
+    // NOT 'cafe'/'café' (F363 merge). The deleted second table aliased both
+    // to this attribute, but 'cafe' is a CANONICAL attribute of its own here
+    // (minted from Google's `cafe` place type) — an alias may never outrank a
+    // canonical name, and "this restaurant serves coffee" is not "this
+    // restaurant is a cafe". The accented spelling joins the canonical it
+    // actually spells, below.
     aliases: ['coffee', 'coffee bar', 'espresso', 'espresso bar'],
+    isEnabled: (place) => place.servesCoffee === true,
   },
   {
     canonicalName: 'serves dinner',
     aliases: ['dinner'],
+    isEnabled: (place) => place.servesDinner === true,
   },
   {
     canonicalName: 'serves dessert',
@@ -227,10 +268,12 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'sweets',
       'sweet',
     ],
+    isEnabled: (place) => place.servesDessert === true,
   },
   {
     canonicalName: 'serves lunch',
     aliases: ['lunch'],
+    isEnabled: (place) => place.servesLunch === true,
   },
   {
     canonicalName: 'serves vegetarian food',
@@ -240,10 +283,12 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
       'vegetarian options',
       'vegetarian restaurant',
     ],
+    isEnabled: (place) => place.servesVegetarianFood === true,
   },
   {
     canonicalName: 'serves wine',
     aliases: ['wine'],
+    isEnabled: (place) => place.servesWine === true,
   },
 
   {
@@ -331,7 +376,7 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
   },
   {
     canonicalName: 'cafe',
-    aliases: ['cafe', 'cafe restaurant'],
+    aliases: ['cafe', 'café', 'cafe restaurant'],
   },
   {
     canonicalName: 'cafeteria',
@@ -584,6 +629,14 @@ export const RESTAURANT_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] = [
     aliases: ['wine bar', 'wine-bar', 'wine lounge'],
   },
 ];
+
+/**
+ * The Google boolean-field attributes, DERIVED from the one vocabulary rather
+ * than listed a second time — the same derivation style that kept
+ * ALIASES_BY_NAME and CANONICAL_NAMES from ever drifting.
+ */
+export const GOOGLE_BOOLEAN_ATTRIBUTE_VOCAB: RestaurantAttributeVocabEntry[] =
+  RESTAURANT_ATTRIBUTE_VOCAB.filter((entry) => entry.isEnabled !== undefined);
 
 export const RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME: Map<string, string[]> =
   new Map(

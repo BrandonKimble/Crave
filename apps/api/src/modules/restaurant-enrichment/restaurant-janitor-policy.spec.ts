@@ -16,8 +16,20 @@ import { join } from 'node:path';
 //
 // A policy contract expressed as a JSON path in a raw SQL string in a
 // different file cannot notice when its writer starts meaning something else.
-// These tests pin the contract at both ends: the janitor reads the typed
-// column, and every terminal-failure path increments it.
+//
+// SCOPE (F370/D30). This file used to guard BOTH ends by scanning source text,
+// and the READER half was proven always-green: inverting the archive
+// comparison to `< threshold` — which archives every healthy placeholder and
+// spares every failed one — left it 4/4 passing. The reader half now lives in
+// restaurant-janitor-policy.integration.spec.ts, where the policy is EXECUTED
+// against a real Postgres and the assertions are about which ids come back.
+//
+// What remains here is the WRITER half, and it is deliberately still a text
+// scan: its subject is not a behaviour with an output to observe but the SHAPE
+// of a Prisma update payload — `{ increment: 1 }` versus a bare assignment —
+// which is the exact difference between a counter and the candidate-count blob
+// it replaced. Read it as a lint, not as a proof: it can catch the old bug
+// coming back by name, and it cannot tell you the janitor works.
 
 const MODULE_DIR = __dirname;
 
@@ -36,30 +48,12 @@ function codeOnly(source: string): string {
     .join('\n');
 }
 
-const janitor = codeOnly(
-  readFileSync(join(MODULE_DIR, 'restaurant-janitor.service.ts'), 'utf8'),
-);
 const enrichment = codeOnly(
   readFileSync(
     join(MODULE_DIR, 'restaurant-location-enrichment.service.ts'),
     'utf8',
   ),
 );
-
-describe('janitor lifecycle policy', () => {
-  it('gates on the typed attempt counter, never on the candidate-count blob', () => {
-    expect(janitor).toContain('enrichment_failure_count');
-    // The JSON path is the defect itself — it must not come back.
-    expect(janitor).not.toContain("'lastEnrichmentAttempt' ->> 'count'");
-    expect(janitor).not.toContain("lastEnrichmentAttempt'->>'count'");
-  });
-
-  it('both archive and retry arms read the same counter', () => {
-    const uses = janitor.match(/enrichment_failure_count/g) ?? [];
-    // One in the archive query, one in the retry query.
-    expect(uses.length).toBeGreaterThanOrEqual(2);
-  });
-});
 
 describe('the counter is actually written', () => {
   it('every terminal-failure path INCREMENTS it (a replaced value is how the old bug worked)', () => {

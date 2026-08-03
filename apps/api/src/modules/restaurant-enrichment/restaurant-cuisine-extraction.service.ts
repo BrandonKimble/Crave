@@ -1,7 +1,6 @@
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
-import { createHash } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
@@ -15,7 +14,6 @@ type CuisineExtractionMetadata = {
   source: CuisineExtractionSource;
   cuisines: string[];
   attributeIds: string[];
-  summaryHash?: string | null;
   matchedTypes?: string[];
 };
 
@@ -82,6 +80,26 @@ export class RestaurantCuisineExtractionService {
       existingExtraction.attributeIds,
     );
 
+    // ONCE EVER PER RESTAURANT, DELIBERATELY (F369). The gate is `extractedAt`
+    // alone: a restaurant whose Google editorial summary later changes is not
+    // re-extracted.
+    //
+    // This service used to ALSO hash that summary into the extraction
+    // metadata (`summaryHash`) — the machinery for "has the evidence
+    // changed?" — and a repo-wide grep found exactly three occurrences: the
+    // type, the computation, and the write. NOTHING ever compared it. A
+    // stored derived value with no reader is not a feature in waiting, it is
+    // a claim about a future nobody committed to, so it is deleted rather
+    // than left looking implemented. (Rows written before 2026-08-03 still
+    // carry the key in their free-form metadata blob; nothing reads it there
+    // either.)
+    //
+    // The alternative — gate on `extractedAt && summaryHash === current` —
+    // costs one LLM call per changed restaurant per refresh cycle, on a
+    // corpus refreshStaleLocations re-polls every 90 days, and the churn rate
+    // of Google's editorial summaries is UNMEASURED. Measuring it needs a
+    // Places re-poll, i.e. spend; so once-ever stands as the stated policy
+    // until someone chooses otherwise with a number in hand.
     if (extractedAt) {
       if (priorAttributeIds.length > 0) {
         const mergedAttributes = this.unionStringArrays(
@@ -118,7 +136,6 @@ export class RestaurantCuisineExtractionService {
     const googlePlaces = this.toRecord(metadata.googlePlaces);
     const placeTypes = this.extractPlaceTypes(googlePlaces);
     const summaryText = this.extractEditorialSummary(googlePlaces);
-    const summaryHash = summaryText ? this.hashValue(summaryText) : null;
 
     const typeMapping = this.mapTypesToCuisines(placeTypes);
     let rawCuisines = typeMapping.cuisines;
@@ -152,7 +169,6 @@ export class RestaurantCuisineExtractionService {
       source,
       cuisines: filteredCuisines,
       attributeIds: cuisineAttributeIds,
-      summaryHash,
       matchedTypes: typeMapping.matchedTypes,
     };
 
@@ -464,9 +480,6 @@ export class RestaurantCuisineExtractionService {
     return trimmed.length ? trimmed : null;
   }
 
-  private hashValue(value: string): string {
-    return createHash('sha256').update(value).digest('hex');
-  }
   /** Phase 4b: cuisine-LLM attribute claims -> evidence substrate. */
   private async recordCuisineEvidence(
     restaurantId: string,

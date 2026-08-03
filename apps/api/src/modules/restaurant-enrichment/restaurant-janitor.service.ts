@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,6 +11,35 @@ export interface JanitorSummary {
   retriedPlaceholders: number;
   archivedClosed: number;
   reEnrichedMoved: number;
+  /**
+   * The retry arm's OWN predicate, uncapped — how many ungrounded
+   * placeholders this lane still owes, before `retryLimit` truncates it
+   * (F366). Without it, "we are sampling, not converging" is derivable only
+   * by querying by hand: MEASURED on the local mirror 2026-08-03, 1,552
+   * active restaurants have location rows and no google_place_id (1,554 of
+   * them under the archive threshold, i.e. this lane's), against a lane that
+   * retries 25 per WEEKLY pass — ~62 weeks for one sweep of a backlog that
+   * grows with collection. A convergent sweep and a rate limit are different
+   * things, and a rate limit applied to a fixed backlog is a decision never
+   * to finish. Raising the cap is NEW PLACES SPEND and therefore the owner's
+   * P2.6 backfill-campaign decision, not a janitor edit — so the lane reports
+   * the gap instead of closing it.
+   */
+  ungroundedBacklog: number;
+  /**
+   * The entity ids each arm SELECTED, before any action was taken on them.
+   * This is what makes the policy testable: the counts say how many, and only
+   * the ids say WHICH — and "which" is the whole question when the thing being
+   * decided is whether an entity is destroyed. (F370: the previous guard was a
+   * regex scan of this file's source text and stayed green when the archive
+   * comparison was inverted.)
+   */
+  selected: {
+    unmatched: string[];
+    retryable: string[];
+    closed: string[];
+    moved: string[];
+  };
 }
 
 /**
@@ -36,9 +66,38 @@ export class RestaurantJanitorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly enrichmentService: RestaurantLocationEnrichmentService,
+    private readonly config: ConfigService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantJanitorService');
+  }
+
+  /**
+   * F365: these four settings have ONE declaration, in config/configuration.ts,
+   * validated at boot. They used to be read off `process.env` inside the cron
+   * body and coerced with a bare `Number(...)`, so a typo'd TTL became NaN —
+   * which `olderThanDays ?? 90` does not catch (NaN is not nullish) — and
+   * silently disabled the DETECT half of the lifecycle forever, with no error.
+   */
+  private lifecycleSettings(): {
+    cronEnabled: boolean;
+    refreshTtlDays: number;
+    refreshLimit: number;
+    noMatchAttemptThreshold: number;
+    retryLimit: number;
+  } {
+    return {
+      cronEnabled:
+        this.config.get<boolean>('locationLifecycle.cronEnabled') ?? false,
+      refreshTtlDays: this.config.get<number>(
+        'locationLifecycle.refreshTtlDays',
+      )!,
+      refreshLimit: this.config.get<number>('locationLifecycle.refreshLimit')!,
+      noMatchAttemptThreshold: this.config.get<number>(
+        'locationLifecycle.noMatchAttemptThreshold',
+      )!,
+      retryLimit: this.config.get<number>('locationLifecycle.retryLimit')!,
+    };
   }
 
   private lifecycleCronInFlight = false;
@@ -54,13 +113,14 @@ export class RestaurantJanitorService {
    */
   @Cron(CronExpression.EVERY_WEEK)
   async weeklyLifecyclePass(): Promise<void> {
-    if (process.env.LOCATION_LIFECYCLE_CRON_ENABLED !== 'true') return;
+    const settings = this.lifecycleSettings();
+    if (!settings.cronEnabled) return;
     if (this.lifecycleCronInFlight) return;
     this.lifecycleCronInFlight = true;
     try {
       const refresh = await this.enrichmentService.refreshStaleLocations({
-        olderThanDays: Number(process.env.LOCATION_REFRESH_TTL_DAYS ?? 90),
-        limit: Number(process.env.LOCATION_REFRESH_LIMIT ?? 250),
+        olderThanDays: settings.refreshTtlDays,
+        limit: settings.refreshLimit,
       });
       const janitor = await this.run();
       this.logger.info('Weekly location lifecycle pass complete', {
@@ -86,14 +146,18 @@ export class RestaurantJanitorService {
       dryRun?: boolean;
     } = {},
   ): Promise<JanitorSummary> {
-    const threshold = options.noMatchAttemptThreshold ?? 3;
-    const retryLimit = options.retryLimit ?? 25;
+    const settings = this.lifecycleSettings();
+    const threshold =
+      options.noMatchAttemptThreshold ?? settings.noMatchAttemptThreshold;
+    const retryLimit = options.retryLimit ?? settings.retryLimit;
     const dryRun = options.dryRun ?? false;
     const summary: JanitorSummary = {
       archivedUnmatched: 0,
       retriedPlaceholders: 0,
       archivedClosed: 0,
       reEnrichedMoved: 0,
+      ungroundedBacklog: 0,
+      selected: { unmatched: [], retryable: [], closed: [], moved: [] },
     };
 
     // 1. Terminal no-match placeholders → archive.
@@ -126,6 +190,7 @@ export class RestaurantJanitorService {
       });
     }
     summary.archivedUnmatched = unmatched.length;
+    summary.selected.unmatched = unmatched.map((row) => row.entity_id);
 
     // 2. Placeholders under the threshold → retry enrichment (capped).
     const retryable = await this.prisma.$queryRaw<{ entity_id: string }[]>`
@@ -143,6 +208,39 @@ export class RestaurantJanitorService {
         )
       LIMIT ${retryLimit}
     `;
+    summary.selected.retryable = retryable.map((row) => row.entity_id);
+    // THE LANE'S OWN HONESTY (F366). The same predicate, uncapped, counted —
+    // so the log line says whether this pass converges or merely samples.
+    // This is a COUNT, never a Places call: the retry cap itself is untouched
+    // here because raising it is new Places spend, which is the owner's P2.6
+    // backfill-campaign decision, not a janitor edit.
+    const [backlog] = await this.prisma.$queryRaw<{ depth: bigint }[]>`
+      SELECT count(*) AS depth FROM core_entities
+      WHERE type = 'restaurant' AND status = 'active'
+        AND enrichment_failure_count < ${threshold}
+        AND NOT EXISTS (
+          SELECT 1 FROM core_restaurant_locations l
+          WHERE l.restaurant_id = core_entities.entity_id
+            AND l.google_place_id IS NOT NULL
+        )
+        AND EXISTS (
+          SELECT 1 FROM core_restaurant_locations l
+          WHERE l.restaurant_id = core_entities.entity_id
+        )
+    `;
+    summary.ungroundedBacklog = Number(backlog?.depth ?? 0);
+    if (retryLimit > 0 && summary.ungroundedBacklog > retryLimit) {
+      this.logger.warn(
+        'Placeholder retry lane is SAMPLING, not converging — the backlog exceeds one pass',
+        {
+          ungroundedBacklog: summary.ungroundedBacklog,
+          retryLimit,
+          passesToSweepBacklog: Math.ceil(
+            summary.ungroundedBacklog / retryLimit,
+          ),
+        },
+      );
+    }
     if (!dryRun) {
       for (const row of retryable) {
         const result = await this.enrichmentService.enrichRestaurantById(
@@ -178,6 +276,7 @@ export class RestaurantJanitorService {
       });
     }
     summary.archivedClosed = closed.length;
+    summary.selected.closed = closed.map((row) => row.entity_id);
 
     // 3b. Moved → re-enrich through the redirect target (force: the identity
     // changed; enrichRestaurantById follows movedPlaceId internally).
@@ -192,6 +291,7 @@ export class RestaurantJanitorService {
       orderBy: { updatedAt: 'asc' },
       take: retryLimit,
     });
+    summary.selected.moved = moved.map((row) => row.restaurantId);
     if (!dryRun) {
       for (const row of moved) {
         const result = await this.enrichmentService.enrichRestaurantById(

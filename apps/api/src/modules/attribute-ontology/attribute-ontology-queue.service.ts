@@ -3,6 +3,7 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { LoggerService } from '../../shared';
 import { AttributeEntityType } from './attribute-ontology.service';
+import { currentCampaignId } from '../external-integrations/shared/work-context';
 
 export const ATTRIBUTE_ONTOLOGY_QUEUE = 'attribute-ontology-adjudication';
 export const ADJUDICATE_JOB = 'adjudicate-pending-attributes';
@@ -12,6 +13,25 @@ const DEBOUNCE_MS = 60_000;
 
 export interface AttributeAdjudicationJobData {
   type: AttributeEntityType;
+  /**
+   * Campaign funding the work that ENQUEUED this adjudication (F357).
+   *
+   * `buildPlan` issues one LLM call per candidate, one per new canonical and
+   * one per rename, plus an embedding pass — and `candidateCount` is simply
+   * however many `pending` rows collection happened to mint, with no batch
+   * cap and no early exit. A re-extraction that mints tens of thousands of
+   * pending attributes therefore turns one 60s debounce tick into a run whose
+   * SIZE nobody declared, competing for the same Gemini pool as collection.
+   *
+   * A per-run candidate cap would be a number nobody has measured, so the
+   * bound is an EXISTING governed one instead: the reload/re-extract campaigns
+   * already carry spend envelopes, and adjudication triggered while one is
+   * running now rides it exactly as the enrichment lane does. AsyncLocalStorage
+   * does not cross the BullMQ boundary (round-six cost #4: the envelope was
+   * sized for spend it never debited), so the ambient campaign is captured
+   * here and re-established in the worker.
+   */
+  campaignId?: string;
 }
 
 /**
@@ -54,7 +74,7 @@ export class AttributeOntologyQueueService {
       const bucket = Math.floor(Date.now() / DEBOUNCE_MS);
       await this.queue.add(
         ADJUDICATE_JOB,
-        { type },
+        { type, campaignId: currentCampaignId() },
         {
           jobId: `${ADJUDICATE_JOB}:${type}:${bucket}`,
           delay: DEBOUNCE_MS,

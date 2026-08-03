@@ -56,7 +56,7 @@ const MIN_SAMPLE_UNITS = 100;
  * What changes this: the vendor's batch SLA, if it moves materially past
  * a day (K4-linked, not a tuned knob).
  */
-const UNIT_COST_WINDOW_DAYS = 30;
+export const UNIT_COST_WINDOW_DAYS = 30;
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -624,6 +624,16 @@ export class SpendAnalyticsService {
         (row.requestCount ?? 0);
       if (row.attribution === 'grounding.new') {
         newGroundingSpend += rowMicros;
+      } else if (row.attribution === 'grounding.expansion') {
+        // DELIBERATELY IN NEITHER RATE (D29a). Secondary-location expansion
+        // re-reads an already-grounded place at the FULL field mask
+        // (Enterprise+Atmosphere), so it is neither new-grounding nor a lean
+        // refresh poll; folding it into either produces a per-unit figure
+        // that is true of neither lane. It has no published rate of its own
+        // until the lane has a stable unit to divide by — the same stance
+        // this method already takes on NULL-attribution rows, and BigQuery
+        // remains the truth for TOTAL spend either way.
+        continue;
       } else if (row.attribution === 'grounding.refresh') {
         refreshSpend += rowMicros;
         if (row.operation === 'placeDetails') {

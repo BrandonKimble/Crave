@@ -95,6 +95,39 @@ const DEFAULT_BATCH_SIZE = 24;
 const DEFAULT_CONCURRENCY = 12;
 
 /** Tokens too generic to be a useful shared-token recall signal. */
+/**
+ * LEXICAL-RECALL FLOOR — MEASURED, 2026-08-03, against the live vocabulary
+ * (411 active restaurant_attribute entities on the local mirror, 84,255
+ * distinct pairs). F368 found this as a bare `>= 0.4` in a method that cites a
+ * measured figure for its OTHER arm.
+ *
+ * Jaccard-over-character-trigrams admits, at each floor:
+ *   0.3 → 205 pairs (0.24%) — the tail is noise ('juice shop'/'spice house')
+ *   0.4 →  56 pairs (0.07%) — every one a real near-duplicate the LLM must
+ *          adjudicate: cocktails/serves cocktails, breakfast/serves breakfast,
+ *          korean/korean bbq, delivery/free delivery, parking/valet parking
+ *   0.5 →  19 pairs — LOSES cocktails/serves cocktails, breakfast/serves
+ *          breakfast and mexican/mexican owned, i.e. exactly the collisions
+ *          adjudication exists to catch
+ * This arm is RECALL ONLY — the LLM adjudicates whatever it shortlists — so
+ * the honest floor is the lowest one whose admissions are all real, which is
+ * where 0.4 sits. Re-measure it against the vocabulary, never tune it.
+ */
+const TRIGRAM_NEAR_DUPLICATE_FLOOR = 0.4;
+
+/**
+ * SIGNIFICANT-TOKEN LENGTH — MEASURED on the same corpus. Shared-token recall
+ * admits 716 pairs at a 3-character floor. Dropping the floor to 1 or 2 adds
+ * exactly 18 pairs, and EVERY one of them is joined by an English function
+ * word rather than a shared concept: 'no frills'/'no cash', 'no
+ * tipping'/'no reservations', 'wine on tap'/'on a boat', 'dine in'/'hole in
+ * the wall'. Raising it to 4 drops 305 real pairs. Every token shorter than 3
+ * in the live vocabulary is a function word or a fragment ('a', 'in', 'no',
+ * 'on', 'up', 's', 'fu', 'na') — which is the derivation: 3 is the shortest
+ * length at which no function word survives.
+ */
+const SIGNIFICANT_TOKEN_MIN_LENGTH = 3;
+
 const SHORTLIST_STOPWORDS = new Set([
   'the',
   'a',
@@ -154,6 +187,19 @@ export class AttributeOntologyService {
    * are processed in batches against a frozen canonical snapshot so a batch runs
    * concurrently; a confirmed `new` canonical is visible to subsequent batches.
    *
+   * RUN SIZE IS NOT CAPPED HERE, DELIBERATELY (F357). The loop issues one
+   * `placeAttribute` call per candidate, one per new canonical, one
+   * `chooseAttributeName` per canonical that absorbed synonyms, plus an
+   * embedding pass over every candidate AND (in 'pending' scope) every active
+   * canonical — and `candidateCount` is however many `pending` rows collection
+   * happened to mint. A per-run candidate cap would be a number nobody has
+   * measured, and this repo does not seed priors; so the bound is an EXISTING
+   * governed one instead: the adjudication job now carries the enqueuing
+   * work's campaignId and the worker re-establishes it, so a run triggered
+   * during a reload/re-extract campaign debits that campaign's envelope and
+   * stops when it breaches. Outside a campaign the run is bounded only by the
+   * monthly Gemini spend gate the individual calls already ride.
+   *
    * @param type   which attribute vocabulary to canonicalize
    * @param scope  'pending' (steady state) or 'all' (one-time bootstrap)
    */
@@ -198,16 +244,38 @@ export class AttributeOntologyService {
         ...seedRows.map((r) => r.name),
       ]),
     );
+    // EmbeddingService.embed returns ONE VECTOR PER INPUT OR THROWS
+    // ("Embedding count mismatch: requested N, got M"), and every name here is
+    // inserted positionally from that same array — so this map cannot miss a
+    // name that is in it. Three `?? []` fallbacks used to sit downstream
+    // pretending otherwise (F368); what they actually accomplished was to turn
+    // an impossible empty vector into `cos: 0` for every canonical, i.e. to
+    // silently degrade the semantic-recall arm into "the first k canonicals in
+    // arbitrary order" while the logs reported success. A fallback that
+    // quietly weakens the algorithm is worse than a crash, because the plan it
+    // produces still looks like a plan. The contract is relied on, not
+    // re-checked.
     const vectorList = await this.embeddingService.embed(namesToEmbed);
     const vectorByName = new Map<string, number[]>();
     namesToEmbed.forEach((name, i) => vectorByName.set(name, vectorList[i]));
+    const vectorFor = (name: string): number[] => {
+      const vector = vectorByName.get(name);
+      if (!vector) {
+        // Not defensiveness — a broken contract, said out loud.
+        throw new Error(
+          `Attribute adjudication has no embedding for '${name}'; ` +
+            `EmbeddingService.embed returns one vector per input or throws.`,
+        );
+      }
+      return vector;
+    };
 
     // The growing set of canonical anchors. In 'all' scope it starts empty and
     // canonicals emerge; in 'pending' scope it starts as the live ontology.
     const canonicals: Canonical[] = seedRows.map((r) => ({
       entityId: r.entityId,
       name: r.name,
-      vector: vectorByName.get(r.name) ?? [],
+      vector: vectorFor(r.name),
       isSeed: true,
     }));
 
@@ -218,7 +286,7 @@ export class AttributeOntologyService {
       // Freeze the candidate pool for the batch so its placements are independent.
       const snapshot = canonicals.slice();
       const decisions = await this.mapLimit(batch, concurrency, (row) =>
-        this.place(row, type, vectorByName, snapshot, shortlistK),
+        this.place(row, type, vectorFor, snapshot, shortlistK),
       );
 
       for (const { row, result, shortlist } of decisions) {
@@ -252,7 +320,7 @@ export class AttributeOntologyService {
           canonicals.push({
             entityId: row.entityId,
             name: row.name,
-            vector: vectorByName.get(row.name) ?? [],
+            vector: vectorFor(row.name),
             isSeed: false,
           });
         }
@@ -325,7 +393,7 @@ export class AttributeOntologyService {
   private async place(
     row: AttributeRow,
     type: AttributeEntityType,
-    vectorByName: Map<string, number[]>,
+    vectorFor: (name: string) => number[],
     snapshot: Canonical[],
     shortlistK: number,
   ): Promise<{
@@ -335,7 +403,7 @@ export class AttributeOntologyService {
   }> {
     const shortlist = this.buildShortlist(
       row.name,
-      vectorByName.get(row.name) ?? [],
+      vectorFor(row.name),
       snapshot,
       shortlistK,
     );
@@ -434,12 +502,11 @@ export class AttributeOntologyService {
     k: number,
   ): Canonical[] {
     if (canonicals.length === 0) return [];
+    // No empty-vector branch: every vector here came from `vectorFor`, which
+    // throws rather than hand back a missing embedding (F368).
     const scored = canonicals.map((c) => ({
       c,
-      cos:
-        vector.length && c.vector.length
-          ? EmbeddingService.cosine(vector, c.vector)
-          : 0,
+      cos: EmbeddingService.cosine(vector, c.vector),
     }));
 
     // Embedding top-K (semantic recall).
@@ -454,7 +521,7 @@ export class AttributeOntologyService {
       if (picked.has(c.entityId)) continue;
       if (
         this.sharesToken(name, c.name) ||
-        this.trigramSim(name, c.name) >= 0.4
+        this.trigramSim(name, c.name) >= TRIGRAM_NEAR_DUPLICATE_FLOOR
       ) {
         picked.set(c.entityId, c);
       }
@@ -462,10 +529,15 @@ export class AttributeOntologyService {
     return Array.from(picked.values());
   }
 
-  /** True if the two names share a significant (length ≥ 3) non-stopword token. */
+  /**
+   * True if the two names share a SIGNIFICANT non-stopword token — significant
+   * meaning at least SIGNIFICANT_TOKEN_MIN_LENGTH characters.
+   */
   private sharesToken(a: string, b: string): boolean {
     const tokens = new Set(this.tokenize(a));
-    return this.tokenize(b).some((t) => t.length >= 3 && tokens.has(t));
+    return this.tokenize(b).some(
+      (t) => t.length >= SIGNIFICANT_TOKEN_MIN_LENGTH && tokens.has(t),
+    );
   }
 
   private tokenize(name: string): string[] {

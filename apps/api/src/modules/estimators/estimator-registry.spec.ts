@@ -131,4 +131,97 @@ describe('EstimatorRegistry (master plan §21.1)', () => {
     );
     expect(stale.uncertainty).toBeGreaterThan(fresh.uncertainty);
   });
+
+  /**
+   * F358/D31. `register()` REFUSES a self-gating estimator that declares no
+   * exploration mechanism — so the mechanism it forces you to declare has to
+   * actually work. 'optimisticSelection' promises "a starved candidate can
+   * always re-demonstrate", which is only true if a never-observed subject
+   * carries the WIDEST interval, i.e. wins an upper-confidence comparison.
+   *
+   * These cases show RED on the pre-D31 registry, which computed uncertainty
+   * from observed variance alone: a zero-observation subject had variance 0,
+   * hence uncertainty 0, hence a UCB of exactly its prior — BELOW any measured
+   * subject's. The starved candidate was ranked LAST, the precise inverse of
+   * the mechanism's stated job.
+   */
+  describe('starved candidates carry maximal uncertainty (F358/D31)', () => {
+    const ucb = (r: { estimate: number; uncertainty: number }) =>
+      r.estimate + r.uncertainty;
+
+    const seeded = () => {
+      const registry = new EstimatorRegistry();
+      registry.register(
+        base({
+          name: 'test.optimistic',
+          prior: { value: 0.2, strength: 10 },
+          consumerGatesObservations: true,
+          exploration: 'optimisticSelection',
+        }),
+      );
+      return registry;
+    };
+    const at = new Date('2026-07-16T00:00:00Z');
+
+    it('a never-observed subject reads Infinity, not zero', () => {
+      const starved = seeded().read('test.optimistic', 'never-seen', at);
+      expect(starved.nEffective).toBe(0);
+      expect(starved.uncertainty).toBe(Number.POSITIVE_INFINITY);
+      // The ESTIMATE is still the prior — this widens the interval, it does
+      // not invent a different central value.
+      expect(starved.estimate).toBeCloseTo(0.2, 10);
+      expect(starved.priorWeight).toBe(1);
+    });
+
+    it('the starved candidate is selected FIRST against a measured rival', () => {
+      const registry = seeded();
+      for (const value of [0.3, 0.1, 0.4, 0.2, 0.35, 0.15]) {
+        registry.observe('test.optimistic', {
+          subjectKey: 'measured',
+          value,
+          observedAt: at,
+        });
+      }
+      const measured = registry.read('test.optimistic', 'measured', at);
+      const starved = registry.read('test.optimistic', 'never-seen', at);
+      expect(Number.isFinite(measured.uncertainty)).toBe(true);
+      expect(measured.uncertainty).toBeGreaterThan(0);
+      expect(ucb(starved)).toBeGreaterThan(ucb(measured));
+      // …and that is what an optimistic selector picks.
+      const winner = [
+        { key: 'measured', reading: measured },
+        { key: 'never-seen', reading: starved },
+      ].sort((a, b) => ucb(b.reading) - ucb(a.reading))[0];
+      expect(winner.key).toBe('never-seen');
+    });
+
+    it('a single observation is still unmeasured dispersion', () => {
+      const registry = seeded();
+      registry.observe('test.optimistic', {
+        subjectKey: 'one-shot',
+        value: 0.9,
+        observedAt: at,
+      });
+      // One point has no spread; claiming zero uncertainty from it is the same
+      // lie one step later.
+      expect(registry.read('test.optimistic', 'one-shot', at).uncertainty).toBe(
+        Number.POSITIVE_INFINITY,
+      );
+    });
+
+    it('uncertainty becomes finite only once dispersion is measurable', () => {
+      const registry = seeded();
+      for (const value of [0.9, 0.1]) {
+        registry.observe('test.optimistic', {
+          subjectKey: 'two-shot',
+          value,
+          observedAt: at,
+        });
+      }
+      const reading = registry.read('test.optimistic', 'two-shot', at);
+      expect(reading.nEffective).toBe(2);
+      expect(Number.isFinite(reading.uncertainty)).toBe(true);
+      expect(reading.uncertainty).toBeGreaterThan(0);
+    });
+  });
 });
