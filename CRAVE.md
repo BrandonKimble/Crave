@@ -1957,3 +1957,50 @@ generated hostname — into every profile including production, and offers **no
 staging profile at all** despite the staging-then-prod deploy law (F1102). The
 OTA lane is three-way incoherent and wholly inert (F1104), and `pod install` is
 not reproducible without an undocumented Mapbox credential (F1117).
+
+## Territory: mobile-assets (`apps/mobile/src/assets` — 1,274 binaries)
+
+**1,222 of the 1,274 asset files are machine-generated, and they regenerate
+byte-identical.** Two paired scripts own almost the whole tree:
+`scripts/generate-pin-bucket-sprites.js` (1,211 map-pin PNGs + `pins/manifest.json`
+
+- `src/generated/pin-badge-images.ts`) and `scripts/generate-dot-sprites.js`
+  (11 dot PNGs + `src/generated/dot-images.ts`). Both read ONE colour file,
+  `apps/mobile/src/constants/score-bucket-palette.json`, which is why pins, dots and
+  rank pills cannot drift apart; both carry `@script-class: operational` headers
+  naming the other. Neither runs in CI — they are run by hand when the palette
+  changes.
+
+The pin family is a cartesian product, and knowing its shape saves reading 1,200
+filenames: ten score buckets (`b0`..`b9`, one decile each) x {a plain pin, ranks
+1-99, a shared `99+` overflow, and the one-decimal scores inside that bucket's own
+decile}, plus a 100-sprite active-colour rank set (`pin-rank-active-N`) for the
+selected pin. The rank number is BAKED INTO the icon deliberately — so
+`symbol-z-order: viewport-y` orders pin+number as one unit and text cannot bleed
+across stacked pins. The hand-drawn source art is only four files:
+`pin.png`, `pin-fill.png` (composited into every sprite AND registered live as
+Mapbox style images), `pin-shadow.png`, and `splash.png` — plus their `@2x`/`@3x`
+Metro density variants. `screens/Search/components/search-map.tsx` is the SINGLE
+consumer of both generated registries.
+
+**The reference-census method, for the next asset pass.** An asset territory is an
+orphan check, not a read-every-byte pass, and the honest instrument is
+_regenerate-and-diff_: copy the generators to a scratch output dir, run them
+against the committed palette, then `comm` the two file lists in both directions
+and content-diff the intersection. Only-in-generated proves the committed tree is
+stale; only-in-repo proves residue; a content differ proves the generator no longer
+produces what is committed. All three came back clean here except one bucket of
+residue — 41 `pin-score-*` sprites from a superseded 8-bucket/6.0-10.0 scheme, in
+no manifest and no generated module, so Metro never bundled them (F1150). For the
+handful of non-generated assets, the census is a basename grep across
+`src` + `ios` + `app.json`/`eas.json` + maestro flows, with the banking law applied
+to template-literal requires and native bundle references before any orphan claim.
+
+**Two live traps.** The generators do NOT clear their output directory before
+writing, which is exactly how F1150's residue survived a scheme change — the
+durable fix is one `rmSync` before `mkdirSync`, not a one-time delete.
+And `assets/fonts/` contains no font: both `IBMPlexSans-SemiBold.ttf` and `OFL.txt`
+are saved GitHub **HTML pages** (594KB of markup, someone curled the blob URL
+instead of the raw one), referenced by nothing — the app loads no custom font at
+all (F1151). `splash.png` at 1.34MB is the only asset over 1MB and the only real
+app-size lever in the tree (F1152).

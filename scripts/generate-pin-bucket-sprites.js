@@ -163,6 +163,9 @@ const RANK_OVERFLOW_TEXT = '99+';
 const RANK_OVERFLOW_SUFFIX = 'overflow';
 
 async function main() {
+  // Clear OUT first: stale sprites from a superseded scheme otherwise
+  // survive forever as bundle-invisible orphans (F1150 — 41 of them did).
+  fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
   const SCALE = 3;
   const manifest = {

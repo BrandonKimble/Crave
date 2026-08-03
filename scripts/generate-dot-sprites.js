@@ -83,6 +83,8 @@ function writeGeneratedModule(ids) {
 }
 
 async function main() {
+  // Clear OUT_DIR first — stale sprites otherwise survive as orphans (F1150).
+  fs.rmSync(OUT_DIR, { recursive: true, force: true });
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const written = [];
   const ids = [];
