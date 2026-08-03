@@ -621,9 +621,9 @@ The Phase-3 agent correctly REFUSED the F943 deletion: the mapper's "zero method
 - F1056/F1057 forceMiddleSnap: land the pair together (thread it through or delete it end-to-end; asymmetric sibling resolved the same way).
 - F1058 unreachable L3-residue guards deleted; F1060 dead diagnostic barrels deleted (~120 lines, zero importers verified); F1063 FNV-1a of a compile-time constant becomes the constant.
 - F1065 profile cache becomes the bounded LRU shape that exists one directory over (unbounded + never-invalidated is a slow leak wearing a cache's name).
-- F1062/F1068/F1069 instrument honesty per the standard recipe (make RED possible or delete).
+- F1062 instrument honesty per the standard recipe (make RED possible or delete).
 - The 21 still-dark rows — reconciler (supersede logic!) first — get READ as the first act of this Phase 3; findings before fixes there.
 
-**DEFERRED:** F1070/F1071c native scalar-surface stack (structurally-false readyForActivation, 1,244 lines) — map-law adjacent; goes with the D44 native Phase-3 where the Swift side is read properly, never as a naked strip. F1072 triple-declared native wire shape — same lane (Swift bridge must be read first).
+**DEFERRED (numbers corrected 2026-08-03 after the Phase-3 stop caught my transposition):** F1068/F1069 native scalar-surface stack (structurally-false readyForActivation, 1,244 lines) AND F1070/F1071c (map-instrumentation-adjacent notification tightening, needs a sim runtime check — the extra notifications may paper over a missing re-selection path) — all four go with the D44 native Phase-3 where the Swift side is read properly, never as a naked strip. F1072 triple-declared native wire shape — same lane.
 
 **ESCALATED to owner:** F1055 — opening a profile hides the save sheet and captures its state for a restore that never happens (write-only ledger, zero readers). Product call: should the sheet come back when the profile closes, or is dismiss-forever the intent (then the capture machinery deletes)?

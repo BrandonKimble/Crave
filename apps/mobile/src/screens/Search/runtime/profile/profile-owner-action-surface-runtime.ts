@@ -1,6 +1,9 @@
 import React from 'react';
 
-import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
+import type {
+  CreateProfileActionRuntimeArgs,
+  ProfileRefreshSelectionOwnedPorts,
+} from './profile-action-runtime-port-contract';
 import type { ProfileRuntimeActions } from './profile-owner-runtime-contract';
 import { useProfileOwnerPresentationActionsRuntime } from './profile-owner-presentation-actions-runtime';
 import { useProfileOwnerRuntimeActionsRuntime } from './profile-owner-runtime-actions-runtime';
@@ -11,7 +14,7 @@ type UseProfileOwnerActionSurfaceRuntimeArgs = {
   selectionState: CreateProfileActionRuntimeArgs['selectionState'];
   runtimeState: CreateProfileActionRuntimeArgs['runtimeState'];
   actionExecutionPorts: CreateProfileActionRuntimeArgs['actionExecutionPorts'];
-  refreshSelectionExecutionPorts: CreateProfileActionRuntimeArgs['refreshSelectionExecutionPorts'];
+  refreshSelectionExecutionPorts: ProfileRefreshSelectionOwnedPorts;
   hydrateRestaurantProfileById: ProfileRuntimeStateOwner['hydrationRuntime']['hydrateRestaurantProfileById'];
   getRestaurantProfileRequestSeq: ProfileRuntimeStateOwner['hydrationRuntime']['getRestaurantProfileRequestSeq'];
   setRestaurantProfileRequestSeq: ProfileRuntimeStateOwner['hydrationRuntime']['setRestaurantProfileRequestSeq'];

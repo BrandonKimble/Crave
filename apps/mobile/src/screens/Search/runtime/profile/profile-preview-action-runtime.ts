@@ -1,5 +1,5 @@
 import type {
-  CreateProfileActionRuntimeArgs,
+  CreateProfilePresentationActionRuntimeArgs,
   ProfileActionRuntime,
 } from './profile-action-runtime-port-contract';
 import { createProfilePreviewActionModel } from './profile-action-models';
@@ -19,14 +19,12 @@ export const createProfilePreviewActionRuntime = ({
     getProfileTransitionSnapshotCapture,
   },
   actionExecutionPorts,
-}: CreateProfileActionRuntimeArgs): ProfilePreviewActionRuntime => ({
+}: CreateProfilePresentationActionRuntimeArgs): ProfilePreviewActionRuntime => ({
   openRestaurantProfilePreview: (restaurantId, restaurantName, options) => {
-    const forceMiddleSnap = options?.forceMiddleSnap === true;
     executeProfilePreviewAction({
       restaurantId,
       restaurantName,
       pressedCoordinate: options?.pressedCoordinate ?? null,
-      forceMiddleSnap,
       previewModel: createProfilePreviewActionModel({
         transitionStatus: getProfileTransitionStatus(),
         currentZoom: getCurrentLastCameraState()?.zoom ?? getCurrentMapZoom(),

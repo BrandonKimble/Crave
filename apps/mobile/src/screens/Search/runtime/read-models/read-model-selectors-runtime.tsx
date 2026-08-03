@@ -17,7 +17,6 @@ import { commitSearchMountedResultsPreparedRowsTarget } from '../shared/search-m
 import type { ResultsListItem } from './list-read-model-builder';
 import { useSearchResultsExactMatchStateRuntime } from './use-search-results-exact-match-state-runtime';
 import { useSearchResultsFlashListPolicyRuntime } from './use-search-results-flash-list-policy-runtime';
-import { useSearchResultsFlashListViewabilityRuntime } from './use-search-results-flash-list-viewability-runtime';
 import { useSearchResultsHydrationCommitPolicyRuntime } from './use-search-results-hydration-commit-policy-runtime';
 import { useSearchResultsHydrationKeyApplyRuntime } from './use-search-results-hydration-key-apply-runtime';
 import { useSearchResultsHydrationKeyCommitEmissionRuntime } from './use-search-results-hydration-key-commit-emission-runtime';
@@ -53,7 +52,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   activeTabColor: string;
   submittedQuery: string;
   handleCloseResults: () => void;
-  shouldLogResultsViewability: boolean;
   searchInteractionRef: React.MutableRefObject<{
     isResultsListScrolling: boolean;
     isResultsSheetDragging?: boolean;
@@ -128,7 +126,6 @@ export const useSearchResultsReadModelSelectors = (
     activeTabColor,
     submittedQuery,
     handleCloseResults,
-    shouldLogResultsViewability,
     searchInteractionRef,
     renderDishCard,
     renderRestaurantCard,
@@ -311,18 +308,17 @@ export const useSearchResultsReadModelSelectors = (
     restaurants,
   });
   const flashListPolicyRuntime = useSearchResultsFlashListPolicyRuntime();
-  const flashListViewabilityRuntime = useSearchResultsFlashListViewabilityRuntime({
-    shouldLogResultsViewability,
-    activeSafeResultsCount: resultsProjectionRuntime.activeSafeResultsData.length,
-    searchInteractionRef,
-  });
-  const flashListRuntimeProps = React.useMemo(
-    () => ({
-      ...flashListPolicyRuntime,
-      ...(flashListViewabilityRuntime ?? {}),
-    }),
-    [flashListPolicyRuntime, flashListViewabilityRuntime]
-  );
+  // F1062: a `useSearchResultsFlashListViewabilityRuntime` used to merge a
+  // `{onViewableItemsChanged, viewabilityConfig}` pair in here. Its callback filtered the
+  // viewable set, ran a 250ms rate limiter, stamped the limiter's timestamp — and RETURNED.
+  // There was no log statement in the file; it was a throttle around an emission that had
+  // been deleted, so it could never show anything, RED or green. The red-team worry (that
+  // its `viewabilityConfig` was load-bearing for FlashList behavior independent of logging)
+  // is settled: the whole hook returned null unless `shouldLogResultsViewability`, and that
+  // flag was a hardcoded `false` — the config was NEVER installed on any list. Deleted with
+  // its flag plumbing rather than given an emitter: nothing asked for this observation, and
+  // git holds the shape if a real blank-cell instrument is ever wanted.
+  const flashListRuntimeProps = flashListPolicyRuntime;
 
   return {
     safeResultsCountByTab: resultsProjectionRuntime.safeResultsCountByTab,

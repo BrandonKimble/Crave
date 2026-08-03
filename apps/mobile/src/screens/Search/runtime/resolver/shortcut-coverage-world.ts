@@ -16,30 +16,17 @@ import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { SearchDesiredTuple } from '../shared/search-desired-state-contract';
 import type { SearchMountedResultsCoverageEntry } from '../shared/search-mounted-results-data-store';
 
-const FNV1A_OFFSET_BASIS = 0x811c9dc5;
-const hashStringFNV1a = (value: string, seed: number = FNV1A_OFFSET_BASIS): number => {
-  let hash = seed;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash >>> 0;
-};
-
-const normalizeJsonValue = (value: unknown): unknown => {
-  if (Array.isArray(value)) {
-    return value.map(normalizeJsonValue);
-  }
-  if (value != null && typeof value === 'object') {
-    return Object.keys(value as Record<string, unknown>)
-      .sort()
-      .reduce<Record<string, unknown>>((acc, key) => {
-        acc[key] = normalizeJsonValue((value as Record<string, unknown>)[key]);
-        return acc;
-      }, {});
-  }
-  return value;
-};
+// F1063: this segment WAS `buildEntitiesKey({})` — an FNV-1a hash of a normalized,
+// JSON-serialized LITERAL EMPTY OBJECT, recomputed on every coverage request via 30 lines
+// of hashing machinery (FNV1A_OFFSET_BASIS, hashStringFNV1a, normalizeJsonValue,
+// buildEntitiesKey), all now deleted. Its parameter type advertised
+// `StructuredSearchRequest['entities']`, so the code read as if entity-scoped coverage keys
+// existed; they never did — the only two call sites both passed `{}`. Coverage is
+// VIEWPORT + FILTER scoped, full stop (the entity scoping belonged to the pre-gazetteer map
+// controller lane this file was migrated from). The segment is kept, as the constant it
+// always was, so coverage keys stay byte-identical across this change; when entity-scoped
+// coverage genuinely arrives it replaces this line, and git holds the old hasher.
+const SHORTCUT_COVERAGE_ENTITIES_KEY = '2:nf0rvp';
 
 const SHORTCUT_COVERAGE_BOUNDS_BUCKET_DEGREES = 0.01;
 
@@ -61,12 +48,6 @@ const buildBoundsKey = (bounds: MapBounds): string =>
     bucketCoordinate(bounds.southWest.lng),
   ].join(',');
 
-const buildEntitiesKey = (entities: StructuredSearchRequest['entities'] | undefined): string => {
-  const normalized = normalizeJsonValue(entities ?? {});
-  const serialized = JSON.stringify(normalized);
-  return `${serialized.length}:${hashStringFNV1a(serialized).toString(36)}`;
-};
-
 const buildFiltersKey = (tuple: SearchDesiredTuple): string => {
   const filters = tuple.filterVariant;
   const parts: string[] = [];
@@ -87,7 +68,7 @@ export const buildShortcutCoverageWorldRequestKey = (args: {
   tab: 'restaurants' | 'dishes';
 }): string => {
   const bounds = args.tuple.committedBounds?.bounds ?? null;
-  return `entities:${buildEntitiesKey({})}|tab:${args.tab}|bounds:${
+  return `entities:${SHORTCUT_COVERAGE_ENTITIES_KEY}|tab:${args.tab}|bounds:${
     bounds == null ? 'unavailable' : buildBoundsKey(bounds)
   }|filters:${buildFiltersKey(args.tuple)}`;
 };

@@ -23,27 +23,6 @@ export const createSearchSurfaceRedrawIdleSnapshot = (
   updatedAtMs: nowMs(),
 });
 
-export const createSearchSurfaceRedrawOperationSnapshot = ({
-  snapshot,
-  operationId,
-  seq,
-  page,
-}: {
-  snapshot: SearchSurfaceRedrawSnapshot;
-  operationId: string;
-  seq: number;
-  page: number;
-}): SearchSurfaceRedrawSnapshot => ({
-  sessionId: snapshot.sessionId,
-  operationId,
-  seq,
-  page,
-  phase: 'idle',
-  markerEnterSettledAtMs: null,
-  metadata: {},
-  updatedAtMs: nowMs(),
-});
-
 export const createSearchSurfaceRedrawPublicSnapshot = (
   snapshot: SearchSurfaceRedrawSnapshot
 ): SearchSurfaceRedrawSnapshot => ({

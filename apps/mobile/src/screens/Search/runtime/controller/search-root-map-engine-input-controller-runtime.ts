@@ -4,31 +4,6 @@ import type { SearchMapRenderEngineInputs } from '../../components/SearchMapWith
 import { getScoreBucketColor } from '../../utils/quality';
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
 
-export const getSearchMapEngineInputChanges = (
-  left: SearchMapRenderEngineInputs,
-  right: SearchMapRenderEngineInputs
-): Record<string, boolean> => ({
-  highlightedRestaurantId: left.highlightedRestaurantId !== right.highlightedRestaurantId,
-  viewportBoundsService: left.viewportBoundsService !== right.viewportBoundsService,
-  resolveRestaurantMapLocations:
-    left.resolveRestaurantMapLocations !== right.resolveRestaurantMapLocations,
-  resolveRestaurantLocationSelectionAnchor:
-    left.resolveRestaurantLocationSelectionAnchor !==
-    right.resolveRestaurantLocationSelectionAnchor,
-  pickPreferredRestaurantMapLocation:
-    left.pickPreferredRestaurantMapLocation !== right.pickPreferredRestaurantMapLocation,
-  getCraveScoreColorFromScore:
-    left.getCraveScoreColorFromScore !== right.getCraveScoreColorFromScore,
-  mapGestureActiveRef: left.mapGestureActiveRef !== right.mapGestureActiveRef,
-  mapMotionPressureController:
-    left.mapMotionPressureController !== right.mapMotionPressureController,
-  shouldLogSearchComputes: left.shouldLogSearchComputes !== right.shouldLogSearchComputes,
-  getPerfNow: left.getPerfNow !== right.getPerfNow,
-  logSearchCompute: left.logSearchCompute !== right.logSearchCompute,
-  maxFullPins: left.maxFullPins !== right.maxFullPins,
-  profileCommandPort: left.profileCommandPort !== right.profileCommandPort,
-});
-
 export const createSearchRootMapEngineInputs = ({
   mapPresentationRuntime,
 }: {

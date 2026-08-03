@@ -4,7 +4,10 @@ import {
   createProfileCloseActionModel,
   createProfileRefreshSelectionActionModel,
 } from './profile-action-models';
-import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
+import type {
+  CreateProfileActionRuntimeArgs,
+  ProfileRefreshSelectionOwnedPorts,
+} from './profile-action-runtime-port-contract';
 import type { ProfileRuntimeActions } from './profile-owner-runtime-contract';
 import {
   executeProfileCloseAction,
@@ -14,7 +17,7 @@ import {
 type UseProfileOwnerRuntimeActionsRuntimeArgs = {
   runtimeState: CreateProfileActionRuntimeArgs['runtimeState'];
   actionExecutionPorts: CreateProfileActionRuntimeArgs['actionExecutionPorts'];
-  refreshSelectionExecutionPorts: CreateProfileActionRuntimeArgs['refreshSelectionExecutionPorts'];
+  refreshSelectionExecutionPorts: ProfileRefreshSelectionOwnedPorts;
   focusRestaurantProfileCamera: ProfileRuntimeActions['focusRestaurantProfileCamera'];
 };
 

@@ -40,6 +40,15 @@ const withPreferredDisplayLocation = ({
   }),
 });
 
+/** PRESENCE, not magnitude (F758): post-F758 `craveScore` is `number | null` and NULL is
+ *  the ONE spelling of "unscored". A real 0 is a legitimate score — the worst-ranked
+ *  scored restaurant — and must survive every hand-off. The two hand-offs in this file
+ *  used to disagree (`> 0` here, `Number.isFinite` in the seed builder), so a genuine 0
+ *  was preserved on the seed and then thrown away on hydrate. ONE predicate, both sites:
+ *  present = a finite number (NaN is corruption, not a score, and is treated as absent). */
+const hasPresentCraveScore = (craveScore: number | null | undefined): craveScore is number =>
+  typeof craveScore === 'number' && Number.isFinite(craveScore);
+
 const resolveHydratedCraveScore = ({
   currentSnapshot,
   hydratedProfile,
@@ -47,8 +56,7 @@ const resolveHydratedCraveScore = ({
   currentSnapshot: RestaurantPanelSnapshot;
   hydratedProfile: HydratedRestaurantProfile;
 }): number | null =>
-  typeof currentSnapshot.restaurant.craveScore === 'number' &&
-  currentSnapshot.restaurant.craveScore > 0
+  hasPresentCraveScore(currentSnapshot.restaurant.craveScore)
     ? currentSnapshot.restaurant.craveScore
     : hydratedProfile.restaurant.craveScore;
 
@@ -75,10 +83,9 @@ export const createSeededRestaurantPanelSnapshot = ({
     ? withPreferredDisplayLocation({
         restaurant: {
           ...cachedProfile.restaurant,
-          craveScore:
-            typeof restaurant.craveScore === 'number' && Number.isFinite(restaurant.craveScore)
-              ? restaurant.craveScore
-              : cachedProfile.restaurant.craveScore,
+          craveScore: hasPresentCraveScore(restaurant.craveScore)
+            ? restaurant.craveScore
+            : cachedProfile.restaurant.craveScore,
         },
         preferredLocationId,
       })

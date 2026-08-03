@@ -60,7 +60,6 @@ export type SearchResultsPanelEnvironment = {
     votes: number | null | undefined;
     polls: number | null | undefined;
   }) => void;
-  shouldLogResultsViewability: boolean;
   onRuntimeMechanismEvent?: RuntimeMechanismEmitter;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
 };

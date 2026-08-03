@@ -12,9 +12,6 @@ export const useSearchRootRouteSearchSceneRuntimeSignalsRuntime = ({
   'sessionAssemblyRuntime' | 'stateAssemblyRuntime' | 'overlayFoundationAssemblyRuntime'
 >): SearchRootRuntimeRouteSearchSceneRuntimeSignalsRuntime => {
   return {
-    routeSearchSceneShouldLogResultsViewability:
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootInstrumentationRuntime
-        .shouldLogResultsViewability,
     routeSearchSceneOnRuntimeMechanismEvent:
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootInstrumentationRuntime
         .emitRuntimeMechanismEvent,

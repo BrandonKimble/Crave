@@ -1,5 +1,5 @@
 import type {
-  CreateProfileActionRuntimeArgs,
+  CreateProfilePresentationActionRuntimeArgs,
   ProfileActionRuntime,
 } from './profile-action-runtime-port-contract';
 import type { ProfileRestaurantActionModelRuntime } from './profile-restaurant-action-model-runtime';
@@ -11,7 +11,7 @@ export type ProfileOpenActionRuntime = Pick<
 >;
 
 export const createProfileOpenActionRuntime = (
-  { actionExecutionPorts }: CreateProfileActionRuntimeArgs,
+  { actionExecutionPorts }: CreateProfilePresentationActionRuntimeArgs,
   { createOpenActionModel }: Pick<ProfileRestaurantActionModelRuntime, 'createOpenActionModel'>
 ): ProfileOpenActionRuntime => {
   const openRestaurantProfile: ProfileActionRuntime['openRestaurantProfile'] = (
@@ -20,12 +20,10 @@ export const createProfileOpenActionRuntime = (
   ) => {
     const pressedCoordinate = options?.pressedCoordinate ?? null;
     const source = options?.source ?? 'results_sheet';
-    const forceMiddleSnap = options?.forceMiddleSnap === true;
     executeProfileOpenAction({
       restaurant,
       source,
       pressedCoordinate,
-      forceMiddleSnap,
       actionModel: createOpenActionModel(restaurant),
       ports: actionExecutionPorts,
     });

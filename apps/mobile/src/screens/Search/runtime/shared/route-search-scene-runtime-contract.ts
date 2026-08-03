@@ -107,9 +107,6 @@ export type SearchRootRuntimeRouteSearchSceneHeaderPolicyRuntime = {
 };
 
 export type SearchRootRuntimeRouteSearchSceneRuntimeSignalsRuntime = {
-  routeSearchSceneShouldLogResultsViewability: ReturnType<
-    typeof useSearchRootRuntimeOverlayFoundationAssemblyRuntime
-  >['rootOverlayFoundationRuntime']['rootInstrumentationRuntime']['shouldLogResultsViewability'];
   routeSearchSceneOnRuntimeMechanismEvent: ReturnType<
     typeof useSearchRootRuntimeOverlayFoundationAssemblyRuntime
   >['rootOverlayFoundationRuntime']['rootInstrumentationRuntime']['emitRuntimeMechanismEvent'];

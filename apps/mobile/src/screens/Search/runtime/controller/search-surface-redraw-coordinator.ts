@@ -32,20 +32,6 @@ export class SearchSurfaceRedrawCoordinator {
   private readonly ownerRuntime: SearchSurfaceRedrawOwnerRuntime =
     createSearchSurfaceRedrawOwnerRuntime();
 
-  public beginOperation(
-    operationId: string,
-    seq: number,
-    page: number
-  ): SearchSurfaceRedrawSnapshot {
-    const previousSnapshot = this.getSnapshot();
-    const nextSnapshot = this.ownerRuntime.beginOperation(operationId, seq, page);
-    if (nextSnapshot === previousSnapshot) {
-      return previousSnapshot;
-    }
-    this.notify();
-    return nextSnapshot;
-  }
-
   public advancePhase(
     phase: SearchSurfaceRedrawPhase,
     metadata?: SearchSurfaceRedrawAdvanceMetadata

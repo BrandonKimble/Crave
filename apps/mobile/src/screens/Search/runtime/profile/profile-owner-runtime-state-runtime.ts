@@ -56,8 +56,9 @@ export const useProfileOwnerRuntimeStateRuntime = ({
       getProfileMultiLocationZoomBaseline,
       getRestaurantFocusSession,
       getPendingSelection: searchContext.getPendingRestaurantSelection,
+      // F1058: the `=== 'opening' ||` disjunct is deleted — 'opening' has had no writer
+      // since the L3 machine deletion (see profile-runtime-action-execution.ts).
       getActiveOpenRestaurantId: () =>
-        profileShellState.transitionStatus === 'opening' ||
         profileShellState.transitionStatus === 'open'
           ? (profileShellState.restaurantPanelSnapshot?.restaurant.restaurantId ?? null)
           : null,

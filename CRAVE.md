@@ -1813,3 +1813,147 @@ blockedLog}`) plus an authority that publishes the transport. A **second**
   carries the dated failure it was written against; three timers armed, three
   disarmed on both the dispose _and_ the background edge. Judge new code here
   against that file.
+
+### The `runtime/profile` subtree (73 files, 5,327 lines) — pass 2
+
+The restaurant-profile presentation lives entirely here, and its shape is a
+direct fossil record of the **L3 machine deletion**. Read it with that in mind:
+half of what looks like machinery is the _residue_ of a prepared-presentation
+transaction machine that was dissolved, and the comments say so (`profile-direct-
+presentation-runtime.ts:10-24` is the best single orientation paragraph in the
+subtree).
+
+**The spine, in call order.** `useProfileOwner` (`profile-owner-runtime.ts`) is
+the only entry point. It builds, in this order: a runtime-state owner (one
+`React.useRef<ProfileControllerState>` holding `runtime.{transition,close}` and
+`mutable.{cache, requestSeq, focusSession, …}`); execution models (native camera,
+app/foreground, and the machine-less `directPresentationRuntime` that IS the
+presentation surface now — camera commit + a standard child push); a presentation
+view model; then three _port_ bundles that get merged into `actionExecutionPorts`;
+then the action surface. Actions are pure functions over an "action model" —
+`resolve*Plan` computes, `execute*` calls ports. That split is genuinely good and
+is why the plan files are readable.
+
+**Four things that will mislead you.**
+
+1. **`ProfileTransitionStatus` is a four-state enum with two reachable states.**
+   Only `'open'` (`profile-direct-presentation-runtime.ts:60`) and `'idle'`
+   (via `resetProfileTransitionState`) are ever written. Any code branching on
+   `'opening'`/`'closing'` is dead — two live examples in F1058, and RT-2 already
+   caught a third. Presence facts come from the **route stack** and the
+   **presentation frame**, not from this enum (`profile-view-state-runtime.ts:30-32`).
+2. **Closing is POP-OWNED.** Nothing "closes" the profile; the restaurant entry
+   leaving the route stack IS the close. `use-restaurant-entry-pop-teardown-writer-
+runtime.ts` is the single writer, and it runs the teardown in **two halves** —
+   commit (camera restore, hydration cancel, highlight clear) and settle (null the
+   panel snapshot, only once the presentation frame's outgoing clears). The settle
+   half must never run at commit or the descending sheet blanks mid-slide.
+3. **Several ports are deliberate no-ops that only work because a downstream
+   spread overwrites them** (F1064). `profile-owner-auto-open-ports-runtime.ts`
+   and `profile-owner-refresh-selection-ports-runtime.ts` both ship
+   `(x) => { void x; }` stubs. Delete a spread and the profile silently stops
+   focusing — no type error, no crash, just a dead button.
+4. **`forceMiddleSnap` does nothing on the open path** (F1056) and its one
+   surviving use on the preview path is itself inert (F1057). A live caller
+   computes it and passes it in good faith.
+
+**The state record is the thing to read first.** `profile-runtime-state-record.ts`
+is 72 lines and defines every mutable the subtree owns. Roughly 30 of the 73 files
+are `useCallback`+`useMemo` wrappers over a `*OnRecord` / `*FromRecord` free
+function on that record — once you have the record, most of the subtree is
+mechanical.
+
+**The one unbounded thing:** `mutable.restaurantProfileCache` (F1065) — a
+`Map<restaurantId, HydratedRestaurantProfile>` with no cap, no TTL and no
+eviction. Its sibling `restaurantProfileRequestById` _is_ cleaned in a `.finally`,
+and `runtime/resolver/search-world-value-constructor.ts:21-53` caps its cache at
+12 with LRU retention. The bounded shape exists one directory over.
+
+### `runtime/controller` — an eleven-hop snapshot relay, and the bug class it breeds
+
+Eleven `SearchOverlayLocalRestaurantSheet*StateController` classes form a strictly
+linear fan-in: each holds one-to-three upstream snapshots, `Pick<>`s 1-3 fields,
+memo-compares, republishes. `shouldRenderSearchOverlay` is copied unchanged
+through **five** of them. Every hop is a hand-written comparator — and
+**three separate bugs in this territory are the same comparator mistake**:
+`this.snapshot === nextSnapshot` against a producer that always allocates a fresh
+object (F1052f, F1061, and F1071c on the map side). When you touch a controller
+here, the first question is: _does the thing I am comparing get allocated fresh?_
+The correct shape is a field-wise `areXSnapshotsEqual`, and most siblings have one.
+
+Also in this directory: **two entirely dead barrel files** (`search-root-map-
+surface-controller-runtime.ts`, `search-root-map-host-publication-runtime.ts`) with
+zero importers, re-exporting three dead per-field diff diagnostics (F1060).
+
+### Instruments that cannot show RED (or can only show RED)
+
+The territory's recurring disease, now catalogued in one place. Pass 2 found four
+more: the search-chrome scalar surface whose `readyForActivation` is structurally
+always `false` (F1068); `map-interaction-diagnostics.ts`, every entry point gated
+on a module constant hardcoded `false`, with a `0`ms rate window that would break
+it if woken (F1070); the FlashList viewability runtime that rate-limits a log that
+no longer exists (F1062); and `SearchSurfaceRedrawCoordinator.beginOperation`'s
+unreachable no-notify guard (F1061). Pass 1 found the inverse — an instrument
+stuck permanently RED (F1051). **Before trusting any metric in this territory,
+find the code that would make it flip.**
+
+## Territory: mobile-native (`apps/mobile/ios` + `apps/mobile/android`)
+
+98 tracked files. 72 reviewed in pass 1; the 26 UNREVIEWED are binary assets
+(app-icon/splash PNGs, `debug.keystore`, `gradle-wrapper.jar`, `gradlew`).
+Findings F1100–F1118. Executed evidence: `swift test` in `ios/MapLodKit`
+(**41/41 green**), `plutil -lint` on all four plists (all OK), and a repo-wide
+JS grep for every exported native module name.
+
+**Shape.** One Xcode target (`cravesearch`), one shared scheme, bare workflow —
+`ios/` is committed and authoritative, `app.json`'s `expo.ios` block is fossil
+(F1103). ~16k lines of native code in three homes:
+
+- `ios/cravesearch/` — the app's own Swift, dominated by
+  `SearchMapRenderController.swift` (13,463 lines, **OWNER-LOCKED**, verified
+  structurally only). Eight smaller modules cover the bottom-sheet host, the
+  search-chrome hit-target and scalar registries, the route-nav mask/silhouette,
+  the frame sampler, and the presentation-command executor.
+- `ios/MapLodKit/` — the pure LOD kernel (398 lines + 634 lines of tests).
+  **The standard the rest of the territory should meet** (F1115): impure half
+  injected, podspec consumes the same source the tests cover, headers explain
+  the physics and the invariant.
+- `ios/TrackScrollKit/` — the ONE TRACK scroll hatch (Obj-C, 3 bridge modules,
+  no tests). **Three files carry another session's uncommitted edits**; reviewed
+  at HEAD, not judged (F1118).
+- `android/` — a ~11,150-line Java parity port, **frozen 2026-06-17, no build
+  profile, no Mapbox download token, never compiled by anything** (F1110). The
+  single largest open question in this territory.
+
+**How JS reaches native.** Every Swift module is bridged from ONE file,
+`UIFrameSamplerBridge.m`, which is named after one of the nine modules it
+declares (F1112). Two cross-module command hatches go through
+`NSClassFromString`/`NSSelectorFromString` string reflection — that is why
+`BottomSheetHostRegistryBridge` has zero JS references and is nonetheless very
+much alive; it is reached only by reflection from
+`ProfilePresentationTransactionExecutor` (F1113, banked before any dead claim).
+The other reflection target lives inside the patched `@rnmapbox/maps` pod.
+
+**The New Architecture is on and nothing here uses it** (F1114). `RCTNewArchEnabled`,
+`newArchEnabled` (gradle), and `newArchEnabled` (Podfile.properties.json) are all
+true, while 100% of our native surface is legacy-bridge `RCT_EXTERN_MODULE` /
+`RCTViewManager` / `RCTEventEmitter` running through the interop layer. Combined
+with F1100 (the only shared scheme names a test target that does not exist), the
+entire native surface minus MapLodKit's 398 lines has **no compile-time contract
+with JS and no test**.
+
+**Config and ship-readiness is where the real defects are.** The map dependency
+triangle is internally consistent — Podfile pin, Podfile.lock, and the
+`@rnmapbox+maps+10.3.1.patch` baseline all agree (F1111, a watch on the `-rc.1`
+pin, not a defect). The plists are where it breaks down, and every item below is
+an App-Store-submission-shaped problem rather than a runtime bug:
+`aps-environment = development` hardcoded while the app really does mint push
+tokens (F1101); a privacy manifest declaring the app collects nothing when it
+collects location, identity, photos and Sentry diagnostics (F1108); blanket ATS
+(F1105); Always-location declared but never requested (F1106); no photo-library
+purpose string (F1107); `armv7` on an iOS-15.1 app (F1109); `crave-search` as the
+home-screen name (F1116). Separately, `eas.json` bakes ONE api URL — Railway's
+generated hostname — into every profile including production, and offers **no
+staging profile at all** despite the staging-then-prod deploy law (F1102). The
+OTA lane is three-way incoherent and wholly inert (F1104), and `pod install` is
+not reproducible without an undocumented Mapbox credential (F1117).

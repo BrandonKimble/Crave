@@ -15,7 +15,6 @@ export const executeProfilePreviewPresentationPlan = ({
 }: {
   plan: ProfilePreviewPresentationPlan;
   restaurantId: string;
-  forceMiddleSnap: boolean;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
   ports: ProfileActionExecutionPorts;
 }): void => {
@@ -36,7 +35,6 @@ export const executeProfilePreviewAction = ({
   restaurantId,
   restaurantName,
   pressedCoordinate,
-  forceMiddleSnap,
   previewModel,
   transitionSnapshotCapture,
   ports,
@@ -44,7 +42,6 @@ export const executeProfilePreviewAction = ({
   restaurantId: string;
   restaurantName: string;
   pressedCoordinate: Coordinate | null;
-  forceMiddleSnap: boolean;
   previewModel: ProfilePreviewActionModel;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
   ports: ProfileActionExecutionPorts;
@@ -53,7 +50,6 @@ export const executeProfilePreviewAction = ({
     restaurantId,
     restaurantName,
     pressedCoordinate,
-    forceMiddleSnap,
     previewModel,
   });
   if (!plan) {
@@ -62,7 +58,6 @@ export const executeProfilePreviewAction = ({
   executeProfilePreviewPresentationPlan({
     plan,
     restaurantId,
-    forceMiddleSnap,
     transitionSnapshotCapture,
     ports,
   });

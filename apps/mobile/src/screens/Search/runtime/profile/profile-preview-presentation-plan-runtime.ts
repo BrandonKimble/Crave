@@ -18,13 +18,11 @@ export const resolveProfilePreviewPresentationPlan = ({
   restaurantId,
   restaurantName,
   pressedCoordinate,
-  forceMiddleSnap,
   previewModel,
 }: {
   restaurantId: string;
   restaurantName: string;
   pressedCoordinate: Coordinate | null;
-  forceMiddleSnap: boolean;
   previewModel: ProfilePreviewActionModel;
 }): ProfilePreviewPresentationPlan | null => {
   const trimmedName = restaurantName.trim();
@@ -46,7 +44,14 @@ export const resolveProfilePreviewPresentationPlan = ({
       totalDishCount: 0,
       topFood: [],
     },
-    dismissBehavior: forceMiddleSnap ? 'restore' : 'clear',
+    // F1057: 'restore', unconditionally. This used to read
+    // `forceMiddleSnap ? 'restore' : 'clear'` — a sheet-snap boolean choosing a dismiss
+    // behavior. The 'clear' arm was unreachable anyway: the sole consumer
+    // (profile-owner-action-surface-runtime.ts:97) requires dismissBehavior === 'clear' AND
+    // getProfileShouldClearSearchOnDismiss(), and this plan hardcodes the latter false.
+    // Dismiss behavior is a property of the OPEN SOURCE — the open plan already derives it
+    // that way (profile-open-presentation-plan-runtime.ts:10-11).
+    dismissBehavior: 'restore',
     shouldClearSearchOnDismiss: false,
     targetCamera: previewCameraResolution.targetCamera,
     updatedLastCameraState: previewCameraResolution.updatedLastCameraState,

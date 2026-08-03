@@ -1,5 +1,5 @@
 import type {
-  CreateProfileActionRuntimeArgs,
+  CreateProfilePresentationActionRuntimeArgs,
   ProfileActionRuntime,
 } from './profile-action-runtime-port-contract';
 import type { ProfileRestaurantActionModelRuntime } from './profile-restaurant-action-model-runtime';
@@ -8,7 +8,7 @@ import { executeProfileFocusCameraAction } from './profile-focus-action-executio
 export type ProfileFocusActionRuntime = Pick<ProfileActionRuntime, 'focusRestaurantProfileCamera'>;
 
 export const createProfileFocusActionRuntime = (
-  { actionExecutionPorts }: CreateProfileActionRuntimeArgs,
+  { actionExecutionPorts }: CreateProfilePresentationActionRuntimeArgs,
   { createFocusActionModel }: Pick<ProfileRestaurantActionModelRuntime, 'createFocusActionModel'>
 ): ProfileFocusActionRuntime => ({
   focusRestaurantProfileCamera: (restaurant, source, options) => {

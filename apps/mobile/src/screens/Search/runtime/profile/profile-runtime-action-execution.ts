@@ -23,10 +23,16 @@ export const executeProfileCloseAction = ({
   if (options?.clearSearchOnDismiss !== undefined) {
     ports.setShouldClearSearchOnDismiss(options.clearSearchOnDismiss);
   }
-  if (transitionStatus === 'closing') {
-    ports.closePreparedProfilePresentation(currentRestaurantId);
-    return;
-  }
+  // F1058: a `transitionStatus === 'closing'` early-out USED to sit here, skipping
+  // prepareForProfileClose(). It was unreachable: 'opening' and 'closing' have had no
+  // writer since the L3 machine deletion — the ONLY non-idle write repo-wide is
+  // profile-direct-presentation-runtime.ts:60 `setProfileTransitionStatus('open')`, and the
+  // only other writer is resetProfileTransitionState (→ 'idle'). So the hydration-commit
+  // preparation ALWAYS ran; the code merely claimed otherwise. (Same rot the RT-2 note at
+  // profile-owner-presentation-view-runtime.ts:31-35 already caught once for
+  // isTransitionAnimating.) The `ProfileTransitionStatus` union still declares all four
+  // states — narrowing it to 'idle' | 'open' is a typed sweep across every switch on it,
+  // recorded as owed rather than smuggled in here.
   if (!hasPanelSnapshot && transitionStatus === 'idle') {
     return;
   }

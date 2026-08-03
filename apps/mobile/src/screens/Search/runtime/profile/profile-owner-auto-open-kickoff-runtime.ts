@@ -1,14 +1,17 @@
 import React from 'react';
 
 import { createProfileAutoOpenActionModel } from './profile-auto-open-action-runtime';
-import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
+import type {
+  CreateProfileActionRuntimeArgs,
+  ProfileAutoOpenOwnedPorts,
+} from './profile-action-runtime-port-contract';
 import type { ProfileRuntimeActions } from './profile-owner-runtime-contract';
 import { executeProfileAutoOpenAction } from './profile-runtime-action-execution';
 
 type UseProfileOwnerAutoOpenKickoffRuntimeArgs = {
   queryState: CreateProfileActionRuntimeArgs['queryState'];
   runtimeState: CreateProfileActionRuntimeArgs['runtimeState'];
-  autoOpenActionExecutionPorts: CreateProfileActionRuntimeArgs['autoOpenActionExecutionPorts'];
+  autoOpenActionExecutionPorts: ProfileAutoOpenOwnedPorts;
   profileActions: Pick<
     ProfileRuntimeActions,
     'refreshOpenRestaurantProfileSelection' | 'openRestaurantProfile'

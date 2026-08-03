@@ -106,7 +106,6 @@ export type UseSearchRuntimeInstrumentationRuntimeResult = {
   shouldLogSearchComputes: boolean;
   logSearchCompute: (label: string, duration: number) => void;
   shouldLogSearchStateChanges: boolean;
-  shouldLogResultsViewability: boolean;
   shouldLogMapEventRates: boolean;
   mapEventLogIntervalMs: number;
 };

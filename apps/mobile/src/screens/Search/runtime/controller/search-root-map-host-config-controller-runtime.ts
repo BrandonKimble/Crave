@@ -3,25 +3,6 @@ import type { SearchMapPresentationLifecyclePort } from '../shared/search-map-pr
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
 import type { SearchRootMapSurfaceState } from './search-root-map-surface-state-controller-runtime';
 
-export const getSearchMapHostConfigChanges = (
-  left: SearchMapRenderHostConfig,
-  right: SearchMapRenderHostConfig
-): Record<string, boolean> => ({
-  mapRef: left.mapRef !== right.mapRef,
-  cameraRef: left.cameraRef !== right.cameraRef,
-  styleURL: left.styleURL !== right.styleURL,
-  onPress: left.onPress !== right.onPress,
-  onTouchStart: left.onTouchStart !== right.onTouchStart,
-  onTouchEnd: left.onTouchEnd !== right.onTouchEnd,
-  onNativeViewportChanged: left.onNativeViewportChanged !== right.onNativeViewportChanged,
-  onMapIdle: left.onMapIdle !== right.onMapIdle,
-  onMapLoaded: left.onMapLoaded !== right.onMapLoaded,
-  onMapFullyRendered: left.onMapFullyRendered !== right.onMapFullyRendered,
-  onCameraAnimationComplete: left.onCameraAnimationComplete !== right.onCameraAnimationComplete,
-  presentationLifecyclePort: left.presentationLifecyclePort !== right.presentationLifecyclePort,
-  searchMapProfilerRender: left.onProfilerRender !== right.onProfilerRender,
-});
-
 export const createSearchRootMapHostConfig = ({
   mapSurfaceState,
   styleURL,

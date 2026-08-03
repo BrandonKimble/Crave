@@ -2,7 +2,10 @@ import React from 'react';
 
 import { createProfileFocusActionRuntime } from './profile-focus-action-runtime';
 import { createProfileOpenActionRuntime } from './profile-open-action-runtime';
-import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
+import type {
+  CreateProfileActionRuntimeArgs,
+  CreateProfilePresentationActionRuntimeArgs,
+} from './profile-action-runtime-port-contract';
 import type { ProfileRuntimeActions } from './profile-owner-runtime-contract';
 import { createProfilePreviewActionRuntime } from './profile-preview-action-runtime';
 import { createProfileRestaurantActionModelRuntime } from './profile-restaurant-action-model-runtime';
@@ -28,24 +31,15 @@ export const useProfileOwnerPresentationActionsRuntime = ({
   runtimeState,
   actionExecutionPorts,
 }: UseProfileOwnerPresentationActionsRuntimeArgs): ProfileOwnerPresentationActionsRuntime => {
-  const actionRuntimeArgs = React.useMemo<CreateProfileActionRuntimeArgs>(
+  // F1064: the three factories below read `actionExecutionPorts` + `runtimeState` only, and
+  // their args type now says so — the six no-op ports this memo used to fabricate purely to
+  // satisfy a god-shaped contract are GONE, not merely unused.
+  const actionRuntimeArgs = React.useMemo<CreateProfilePresentationActionRuntimeArgs>(
     () => ({
       queryState,
       selectionState,
       runtimeState,
       actionExecutionPorts,
-      refreshSelectionExecutionPorts: {
-        setMapHighlightedRestaurantId: actionExecutionPorts.setMapHighlightedRestaurantId,
-        seedRestaurantProfile: actionExecutionPorts.seedRestaurantProfile,
-        focusRestaurantProfileCamera: () => {},
-        hydrateRestaurantProfileById: actionExecutionPorts.hydrateRestaurantProfileById,
-      },
-      autoOpenActionExecutionPorts: {
-        clearPendingSelection: () => {},
-        refreshOpenRestaurantProfileSelection: () => {},
-        openRestaurantProfile: () => {},
-        setLastAutoOpenKey: () => {},
-      },
     }),
     [actionExecutionPorts, queryState, runtimeState, selectionState]
   );

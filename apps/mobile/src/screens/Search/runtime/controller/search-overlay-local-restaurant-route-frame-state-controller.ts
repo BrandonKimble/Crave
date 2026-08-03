@@ -1,5 +1,6 @@
 import type { RouteHostOverlayGeometryBinding } from '../../../../navigation/runtime/route-host-overlay-geometry-state-controller';
 import type { RouteHostVisualRuntime } from '../../../../navigation/runtime/route-host-visual-runtime-state-controller';
+import { createNullableShapeEquality, sameFieldRef } from '../../../../overlays/shape-equality';
 
 type Listener = () => void;
 
@@ -26,6 +27,27 @@ const resolveLocalRestaurantRouteFrameSnapshot = ({
         overlayGeometryRuntime: routeHostOverlayGeometry,
         visualRuntime: routeHostVisualRuntime,
       };
+
+/** F1052f: `resolveLocalRestaurantRouteFrameSnapshot` ALLOCATES on every recompute, so the
+ *  old `this.snapshot === nextSnapshot` dedupe could only ever be true when BOTH sides were
+ *  null — any notification from either upstream authority re-emitted to every listener even
+ *  with byte-identical inputs. The three siblings in this directory (geometry-frame,
+ *  motion-frame, sheet) all compare FIELD-WISE; this one was the odd file out.
+ *
+ *  DERIVED, not hand-written (the fourth hand-written sibling is the disease): the
+ *  `FieldComparators<T>` map must name EVERY field of the snapshot, so adding a field to
+ *  `SearchOverlayLocalRestaurantRouteFrameSnapshot` without adding its comparator is a
+ *  COMPILE ERROR naming the field — never a silently un-compared field.
+ *  RED recipe: add a field to the snapshot type; tsc fails with "Property '<field>' is
+ *  missing in type ... but required in type 'FieldComparators<...>'". */
+const areLocalRestaurantRouteFrameSnapshotsEqual = createNullableShapeEquality<
+  NonNullable<SearchOverlayLocalRestaurantRouteFrameSnapshot>
+>({
+  // Both fields are runtime BINDINGS re-minted by their owning authority on real change —
+  // identity IS the "did this change" question for them (shape-equality's stated default).
+  overlayGeometryRuntime: sameFieldRef,
+  visualRuntime: sameFieldRef,
+});
 
 export class SearchOverlayLocalRestaurantRouteFrameStateController {
   private routeHostOverlayGeometry: RouteHostOverlayGeometryBinding;
@@ -112,7 +134,7 @@ export class SearchOverlayLocalRestaurantRouteFrameStateController {
       routeHostVisualRuntime: this.routeHostVisualRuntime,
     });
 
-    if (this.snapshot === nextSnapshot) {
+    if (areLocalRestaurantRouteFrameSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;
     }
 

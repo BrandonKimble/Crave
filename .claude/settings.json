@@ -2,13 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(source scripts/rig/svc-env.sh)",
-
       "Bash(railway status:*)",
       "Bash(railway logs:*)",
       "Bash(railway variables:*)",
       "Bash(railway list:*)",
       "Bash(railway whoami:*)",
-
       "Bash(gcloud config list:*)",
       "Bash(gcloud services list:*)",
       "Bash(gcloud projects list:*)",
@@ -16,7 +14,6 @@
       "Bash(bq ls:*)",
       "Bash(bq show:*)",
       "Bash(./scripts/rig/cost-reconcile.sh:*)",
-
       "Bash(stripe products list:*)",
       "Bash(stripe prices list:*)",
       "Bash(stripe customers list:*)",
@@ -24,35 +21,35 @@
       "Bash(stripe subscriptions list:*)",
       "Bash(stripe events list:*)",
       "Bash(stripe version:*)",
-
       "Bash(sentry-cli info:*)",
       "Bash(sentry-cli issues list:*)",
       "Bash(sentry-cli releases list:*)",
       "Bash(sentry-cli projects list:*)",
-
       "Bash(cld ping:*)",
       "Bash(cld usage:*)",
       "Bash(cld search:*)",
       "Bash(cld admin resources:*)",
       "Bash(cld admin usage:*)",
-
       "Bash(resend domains list:*)",
       "Bash(resend emails list:*)",
       "Bash(resend api-keys list:*)",
-
       "Bash(npx eas-cli whoami:*)",
       "Bash(npx eas-cli build:list:*)",
       "Bash(npx clerk --help:*)",
-
       "Bash(gh pr list:*)",
       "Bash(gh pr view:*)",
       "Bash(gh issue list:*)",
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
       "Bash(gh auth status:*)",
-
       "Bash(redis-cli ping:*)",
-      "Bash(redis-cli info:*)"
+      "Bash(redis-cli info:*)",
+      "Bash(railway up:*)",
+      "Bash(railway redeploy:*)",
+      "Bash(./scripts/rig/deploy.sh:*)",
+      "Bash(curl -s https://api-production-a56f.up.railway.app/*)",
+      "Bash(curl -s https://craveapp.ai/*)",
+      "Bash(curl -s https://site-production-974a.up.railway.app/*)"
     ],
     "ask": [
       "Bash(resend emails send:*)",

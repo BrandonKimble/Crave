@@ -48,8 +48,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     submittedQuery:
       routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime.submittedQueryForReadModel,
     handleCloseResults: routeSearchSceneDataRuntime.routeSearchSceneHandleCloseResults,
-    shouldLogResultsViewability:
-      routeSearchSceneDataRuntime.routeSearchSceneShouldLogResultsViewability,
     searchInteractionRef: routeSearchSceneDataRuntime.routeSearchSceneSearchInteractionRef,
     onRuntimeMechanismEvent: routeSearchSceneDataRuntime.routeSearchSceneOnRuntimeMechanismEvent,
     resultsIdentityKey:

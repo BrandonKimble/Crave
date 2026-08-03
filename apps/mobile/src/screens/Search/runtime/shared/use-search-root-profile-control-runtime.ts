@@ -58,14 +58,9 @@ export const useSearchRootProfileControlRuntime = ({
     recentActivityAuthorityRuntime,
     clearRestoreAuthorityRuntime,
   });
-  const getCurrentResultsSheetSnap = React.useCallback(
-    () => rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner.sheetState,
-    [rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner]
-  );
   const profileMapCommandRuntime = useSearchRootProfileMapCommandRuntime({
     profileOwner: profileOwnerRuntime.profileOwner,
     pendingMarkerOpenAnimationFrameRef: profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
-    getCurrentResultsSheetSnap,
   });
 
   const suggestionInteractionControlLane = useSearchRootSuggestionInteractionControlLane(

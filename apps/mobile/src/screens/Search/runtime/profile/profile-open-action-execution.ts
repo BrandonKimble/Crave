@@ -34,7 +34,6 @@ export const executeProfileOpenPresentationPlan = ({
   plan: ProfileOpenPresentationPlan;
   restaurant: RestaurantResult;
   source: SearchProfileSource;
-  forceMiddleSnap: boolean;
   queryLabel: string;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
   ports: ProfileActionExecutionPorts;
@@ -69,14 +68,12 @@ export const executeProfileOpenAction = ({
   restaurant,
   source,
   pressedCoordinate,
-  forceMiddleSnap,
   actionModel,
   ports,
 }: {
   restaurant: RestaurantResult;
   source: SearchProfileSource;
   pressedCoordinate: Coordinate | null;
-  forceMiddleSnap: boolean;
   actionModel: ProfileOpenActionModel;
   ports: ProfileActionExecutionPorts;
 }): void => {
@@ -131,7 +128,6 @@ export const executeProfileOpenAction = ({
     plan,
     restaurant,
     source,
-    forceMiddleSnap,
     queryLabel: actionModel.queryLabel,
     transitionSnapshotCapture: actionModel.transitionSnapshotCapture,
     ports,

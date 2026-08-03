@@ -30,7 +30,6 @@ const SHOULD_LOG_MAP_EVENT_RATES = false;
 const MAP_EVENT_LOG_INTERVAL_MS = 0;
 const SHOULD_LOG_SEARCH_COMPUTES = false;
 const SHOULD_LOG_SEARCH_STATE_CHANGES = false;
-const SHOULD_LOG_RESULTS_VIEWABILITY = false;
 
 const clampLatitude = (value: number): number => Math.max(-89.9, Math.min(89.9, value));
 
@@ -448,7 +447,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     shouldLogSearchComputes: SHOULD_LOG_SEARCH_COMPUTES,
     logSearchCompute,
     shouldLogSearchStateChanges: SHOULD_LOG_SEARCH_STATE_CHANGES,
-    shouldLogResultsViewability: SHOULD_LOG_RESULTS_VIEWABILITY,
     shouldLogMapEventRates: SHOULD_LOG_MAP_EVENT_RATES,
     mapEventLogIntervalMs: MAP_EVENT_LOG_INTERVAL_MS,
   };

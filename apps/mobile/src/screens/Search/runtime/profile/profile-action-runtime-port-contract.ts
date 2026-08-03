@@ -73,6 +73,33 @@ export type ProfileAutoOpenActionExecutionPorts = {
   setLastAutoOpenKey: (key: string | null) => void;
 };
 
+/** F1064 — THE LATE-BOUND HALVES, MADE UNSTUBBABLE.
+ *
+ *  `focusRestaurantProfileCamera` (refresh-selection) and
+ *  `refreshOpenRestaurantProfileSelection` / `openRestaurantProfile` (auto-open) are
+ *  PROFILE ACTIONS, and the actions do not exist yet when their port bags are built —
+ *  the genuine construction-order cycle documented in profile-seeded-camera-focus-handler.ts.
+ *  The port builders used to fill them with `(a, b) => { void a; void b; }` no-ops that
+ *  WORKED ONLY because a downstream spread overrode them. Delete that spread by accident
+ *  and the profile silently stops focusing/opening: no type error, no crash, a dead button.
+ *
+ *  So the builders no longer DECLARE those fields. They return the halves they actually
+ *  own; the consumer supplies the actions in the same spread that always did the real work
+ *  — and now the spread is load-bearing at the TYPE level.
+ *  RED recipe: delete `focusRestaurantProfileCamera,` from the spread at
+ *  profile-owner-runtime-actions-runtime.ts:41-43 (or the two action lines at
+ *  profile-owner-auto-open-kickoff-runtime.ts:35-38) and tsc fails naming the missing
+ *  property — where it used to compile into a dead button. */
+export type ProfileRefreshSelectionOwnedPorts = Omit<
+  ProfileRefreshSelectionExecutionPorts,
+  'focusRestaurantProfileCamera'
+>;
+
+export type ProfileAutoOpenOwnedPorts = Omit<
+  ProfileAutoOpenActionExecutionPorts,
+  'refreshOpenRestaurantProfileSelection' | 'openRestaurantProfile'
+>;
+
 export type CreateProfileActionRuntimeArgs = {
   queryState: {
     currentQueryLabel: string;
@@ -115,6 +142,17 @@ export type CreateProfileActionRuntimeArgs = {
   refreshSelectionExecutionPorts: ProfileRefreshSelectionExecutionPorts;
   autoOpenActionExecutionPorts: ProfileAutoOpenActionExecutionPorts;
 };
+
+/** F1064 — the PRESENTATION factories (preview/open/focus) read `actionExecutionPorts` and
+ *  `runtimeState` ONLY. Demanding the other two port bags from them forced their one caller
+ *  to fabricate six no-op ports purely to satisfy the type. Each factory now takes exactly
+ *  what it uses, so there is nothing left to fabricate.
+ *  RED recipe: pass a `refreshSelectionExecutionPorts:` key to
+ *  createProfilePreviewActionRuntime and tsc rejects the excess property. */
+export type CreateProfilePresentationActionRuntimeArgs = Omit<
+  CreateProfileActionRuntimeArgs,
+  'refreshSelectionExecutionPorts' | 'autoOpenActionExecutionPorts'
+>;
 
 export type ProfileRestaurantActionModelRuntimeArgs = Pick<
   CreateProfileActionRuntimeArgs,

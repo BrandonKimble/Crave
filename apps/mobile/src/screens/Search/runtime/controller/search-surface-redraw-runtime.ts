@@ -1,7 +1,6 @@
 export {
   createSearchSurfaceRedrawSessionId,
   createSearchSurfaceRedrawIdleSnapshot,
-  createSearchSurfaceRedrawOperationSnapshot,
   createSearchSurfaceRedrawPublicSnapshot,
 } from './search-surface-redraw-snapshot-runtime';
 export {

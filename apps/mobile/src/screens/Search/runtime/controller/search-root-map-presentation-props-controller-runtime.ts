@@ -4,24 +4,6 @@ import type { SearchRootMapPresentationEnvironment } from '../shared/search-root
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
 import type { SearchRootMapSurfaceState } from './search-root-map-surface-state-controller-runtime';
 
-export const getSearchMapPresentationPropChanges = (
-  left: SearchMapRenderPresentationProps,
-  right: SearchMapRenderPresentationProps
-): Record<string, boolean> => ({
-  cameraPadding: left.cameraPadding !== right.cameraPadding,
-  mapCenter: left.mapCenter !== right.mapCenter,
-  mapZoom: left.mapZoom !== right.mapZoom,
-  mapBearing: left.mapBearing !== right.mapBearing,
-  mapPitch: left.mapPitch !== right.mapPitch,
-  mapCameraAnimation: left.mapCameraAnimation !== right.mapCameraAnimation,
-  isFollowingUser: left.isFollowingUser !== right.isFollowingUser,
-  isMapStyleReady: left.isMapStyleReady !== right.isMapStyleReady,
-  userLocation: left.userLocation !== right.userLocation,
-  userLocationSnapshot: left.userLocationSnapshot !== right.userLocationSnapshot,
-  disableMarkers: left.disableMarkers !== right.disableMarkers,
-  disableBlur: left.disableBlur !== right.disableBlur,
-});
-
 export const createSearchRootMapPresentationProps = ({
   mapSurfaceState,
   mapPresentationRuntime,
