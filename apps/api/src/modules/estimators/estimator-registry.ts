@@ -93,7 +93,7 @@ export type EstimatorReading = {
   readerDeferred: boolean;
 };
 
-type SubjectState = {
+export type SubjectState = {
   weightedSum: number;
   weightTotal: number;
   weightSquares: number;
@@ -101,6 +101,28 @@ type SubjectState = {
   lastObservedAt: Date | null;
   lastDecayedAt: Date | null;
 };
+
+/**
+ * THE durable side (D41), finally real: this class's per-subject running
+ * moments, persisted one row per (estimator, subject). A registry with no
+ * store is a pure in-memory engine — legal, and what the unit tests use —
+ * but a PRODUCTION consumer without one holds beliefs that die at the next
+ * deploy while its half-life runs in weeks, i.e. an estimator that can never
+ * leave cold start. The moments are stated AS OF `lastDecayedAt`, so a
+ * reload replays to the identical reading; there is no observation log to
+ * keep because four decayed sums plus two clocks ARE the belief.
+ */
+export interface EstimatorStateStore {
+  load(
+    estimatorName: string,
+    subjectKeys: string[],
+  ): Promise<Array<{ subjectKey: string } & SubjectState>>;
+  save(
+    estimatorName: string,
+    subjectKey: string,
+    state: SubjectState,
+  ): Promise<void>;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -115,6 +137,11 @@ export class EstimatorRegistrationError extends Error {}
 export class EstimatorRegistry {
   private readonly configs = new Map<string, EstimatorConfig>();
   private readonly states = new Map<string, Map<string, SubjectState>>();
+  /** Subjects already fetched from the store this process — load-on-FIRST-
+   *  read, so a hot loop re-reads memory, never postgres. */
+  private readonly hydrated = new Map<string, Set<string>>();
+
+  constructor(private readonly store?: EstimatorStateStore) {}
 
   register(config: EstimatorConfig): void {
     if (this.configs.has(config.name)) {
@@ -145,6 +172,60 @@ export class EstimatorRegistry {
     }
     this.configs.set(config.name, config);
     this.states.set(config.name, new Map());
+    this.hydrated.set(config.name, new Set());
+  }
+
+  /**
+   * LOAD-ON-FIRST-READ (D41): pull the durable moments for these subjects
+   * into memory. A subject already hydrated (or already carrying in-memory
+   * observations) is not re-fetched, so calling this before every read is
+   * the intended usage, not an optimization hazard. Without a store this is
+   * a no-op and the registry stays a pure in-memory engine.
+   */
+  async hydrate(name: string, subjectKeys: string[]): Promise<void> {
+    this.requireConfig(name);
+    if (!this.store) {
+      return;
+    }
+    const hydrated = this.hydrated.get(name)!;
+    const missing = Array.from(
+      new Set(subjectKeys.filter((key) => key && !hydrated.has(key))),
+    );
+    if (!missing.length) {
+      return;
+    }
+    const rows = await this.store.load(name, missing);
+    const subjects = this.states.get(name)!;
+    for (const row of rows) {
+      const { subjectKey, ...state } = row;
+      // A subject observed in-process since the last hydrate holds strictly
+      // fresher moments than the row we just read; never clobber it.
+      if (!subjects.has(subjectKey)) {
+        subjects.set(subjectKey, state);
+      }
+    }
+    for (const key of missing) {
+      hydrated.add(key);
+    }
+  }
+
+  /**
+   * PERSIST-ON-OBSERVE (D41): fold the observation in, then write the
+   * subject's moments back. The durable write is part of recording an
+   * observation — "observations ALWAYS record" is only true if they survive
+   * the process.
+   */
+  async observeDurable(
+    name: string,
+    observation: EstimatorObservation,
+  ): Promise<void> {
+    await this.hydrate(name, [observation.subjectKey]);
+    this.observe(name, observation);
+    if (!this.store) {
+      return;
+    }
+    const state = this.states.get(name)!.get(observation.subjectKey)!;
+    await this.store.save(name, observation.subjectKey, state);
   }
 
   getConfig(name: string): EstimatorConfig | undefined {

@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
+import { KeywordExploreYieldEstimatorService } from './keyword-explore-yield.estimator';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
 // DERIVED 2026-08-03 (F470): Reddit grants an OAuth client 100 queries/min
@@ -62,6 +63,7 @@ export class KeywordSearchOrchestratorService {
     @Inject(LoggerService) private readonly logger: LoggerService,
     private readonly configService: ConfigService,
     private readonly keywordAttemptHistory: KeywordAttemptHistoryService,
+    private readonly exploreYield: KeywordExploreYieldEstimatorService,
     @InjectQueue('keyword-batch-processing-queue')
     private readonly keywordQueue: Queue<BatchJob>,
     @InjectQueue('keyword-search-execution')
@@ -496,6 +498,22 @@ export class KeywordSearchOrchestratorService {
             resultCount: posts + comments,
             corpusDocs: cycleCorpusDocs,
           });
+
+          // D41: THE point at which the pipeline learns an explore attempt's
+          // yield — record it against the term's vocabulary class. Harvests
+          // only: an error or a denial is a fact about the vendor, not a
+          // measurement of what this class returns (§12.3's line, same as
+          // the harvest snapshot's).
+          const isHarvest =
+            attemptOutcome === 'success' || attemptOutcome === 'no_results';
+          if (isHarvest && entry.input.slice === 'explore') {
+            await this.exploreYield.observeHarvest({
+              engineName,
+              entityType: entry.input.entityType ?? 'unknown',
+              resultCount: posts + comments,
+              observedAt: new Date(),
+            });
+          }
         }
 
         this.logger.info('keyword_cycle_summary', {

@@ -18,6 +18,16 @@
  * reads the on-demand ask-event gap record keyed by the engine's legacy
  * market-key name (markets exterminated 2026-07-22; name is history).
  *
+ * EXPLORE ranking (D41, 2026-08-03): the explore family's score is the
+ * MEASURED upper-confidence bound on its vocabulary class's yield —
+ * documents returned per search, per (engine, entityType), through the
+ * estimator registry over its new durable state table. The hand-weighted
+ * blend that stood here (0.45 novelty + 0.35 localSpecialization + 0.2
+ * trend) ranked spend on three proxies for a quantity the attempt ledger
+ * had been measuring all along. Ties — every class at cold start — break by
+ * COVERAGE ROTATION (never-attempted first, then oldest), a scan policy
+ * rather than a score.
+ *
  * Expected-new-content model (§11) — DERIVED, no timers (no-fake-estimates
  * law, 2026-07-24): a harvested term is eligible again when
  * (corpusNow − corpusAtHarvest) × (lastResultCount ÷ corpusAtHarvest) ≥ 1 —
@@ -50,6 +60,7 @@ import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
 import { SignalDemandReadService } from '../../signals/signal-demand-read.service';
 import { OpsAlertsService } from '../../external-integrations/shared/ops-alerts.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
+import { KeywordExploreYieldEstimatorService } from './keyword-explore-yield.estimator';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -72,11 +83,17 @@ export const EXPLORE_FLOOR_FRACTION = 0.08;
 // (0.2 × the 90d staleness saturation); unmet/demand 1 = one whole unit
 // of demand-score mass. Scheduled to DISSOLVE into rank-under-budget
 // when the v2 scheduler lands — bars die when ranking makes them moot.
+// EXPLORE's bar is 0 here BY DERIVATION, not by omission (D41 §5). The old
+// 0.2 was denominated in the deleted blend's [0,1] units and could not
+// outlive it. Explore now scores in DOCUMENTS (a measured-yield upper
+// bound), and the document-units bar already exists upstream in this file's
+// own law — the expected-new-docs clamp, "≥ 1 whole document", the smallest
+// honest count. Restating it here would be a second, redundant opinion.
 const MIN_SELECTABLE_SCORE_BY_SLICE: Record<KeywordSlice, number> = {
   unmet: 1,
   refresh: 0.2,
   demand: 1,
-  explore: 0.2,
+  explore: 0,
 };
 
 /** Dedupe priority: floor families first, then the competitive families. */
@@ -99,8 +116,6 @@ const NO_RESULTS_RECOVERY_DAYS = 45;
 
 const REFRESH_STALENESS_SATURATION_DAYS = 90;
 
-const EXPLORE_RECENT_ATTEMPT_DAYS = 30;
-
 /** Explore admission floor: distinct territory actors (K2 prior). */
 const EXPLORE_DISTINCT_ACTOR_FLOOR = 2;
 
@@ -121,6 +136,23 @@ function clamp01(value: number): number {
     return 1;
   }
   return value;
+}
+
+/**
+ * Coverage rotation key (D41 §3): never-attempted sorts first (−Infinity),
+ * then oldest attempt first. Read from the attempt ledger's lastAttemptAt,
+ * which the explore branch records into origin.
+ */
+function coverageRotationKey(candidate: KeywordTermCandidate): number {
+  const raw =
+    candidate.origin && typeof candidate.origin === 'object'
+      ? candidate.origin.lastAttemptAt
+      : null;
+  if (typeof raw !== 'string') {
+    return Number.NEGATIVE_INFINITY;
+  }
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
 }
 
 function shouldTraceAllDemandCandidates(): boolean {
@@ -214,6 +246,7 @@ export class KeywordSliceSelectionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly signalDemand: SignalDemandReadService,
+    private readonly exploreYield: KeywordExploreYieldEstimatorService,
     private readonly scoringTrace: DemandScoringTraceService,
     private readonly opsAlerts: OpsAlertsService,
     @Inject(LoggerService) loggerService: LoggerService,
@@ -324,8 +357,8 @@ export class KeywordSliceSelectionService {
       candidatesBySlice[slice] = this.dedupeWithinSlice(
         candidatesBySlice[slice],
       );
-      candidatesBySlice[slice] = candidatesBySlice[slice].sort(
-        (a, b) => b.score - a.score,
+      candidatesBySlice[slice] = candidatesBySlice[slice].sort((a, b) =>
+        this.compareCandidates(a, b),
       );
       stats.candidatesBySlice[slice] = candidatesBySlice[slice].length;
     }
@@ -353,6 +386,19 @@ export class KeywordSliceSelectionService {
         ),
       ),
     });
+
+    // D41 load-on-first-read: one durable fetch for the explore classes this
+    // selection can rank, before any candidate is scored.
+    await this.exploreYield.primeClasses(
+      source.engineName,
+      Array.from(
+        new Set(
+          candidatesBySlice.explore.map(
+            (candidate) => candidate.entityType ?? 'unknown',
+          ),
+        ),
+      ),
+    );
 
     for (const slice of SLICE_PRIORITY) {
       const filtered: KeywordTermCandidate[] = [];
@@ -384,10 +430,13 @@ export class KeywordSliceSelectionService {
           candidate,
           history,
           now,
+          source.engineName,
         );
         filtered.push(adjusted);
       }
-      candidatesBySlice[slice] = filtered.sort((a, b) => b.score - a.score);
+      candidatesBySlice[slice] = filtered.sort((a, b) =>
+        this.compareCandidates(a, b),
+      );
     }
 
     const dedupedBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
@@ -745,7 +794,10 @@ export class KeywordSliceSelectionService {
       decisionState: params.decisionState,
       decisionReason: params.decisionReason,
       factorBreakdown: {
-        score: params.candidate.score,
+        // Infinity is a legal explore score; JSON has no word for it.
+        score: Number.isFinite(params.candidate.score)
+          ? params.candidate.score
+          : null,
         origin: this.toJsonValue(origin),
         ...(params.traceScope ? { traceScope: params.traceScope } : {}),
       } satisfies Prisma.InputJsonObject,
@@ -757,6 +809,14 @@ export class KeywordSliceSelectionService {
   }
 
   private isSelectableCandidate(candidate: KeywordTermCandidate): boolean {
+    // An unmeasured upper bound is MAXIMAL, not missing: Infinity is the
+    // registry's contract for "no measured dispersion", and the whole point
+    // of optimistic selection is that such a candidate outranks every
+    // measured one. Folding it to 0 (the old finite-or-zero rule) would have
+    // made the starved candidate the first thing a bar rejected.
+    if (candidate.score === Number.POSITIVE_INFINITY) {
+      return true;
+    }
     const score = Number.isFinite(candidate.score) ? candidate.score : 0;
     return score >= MIN_SELECTABLE_SCORE_BY_SLICE[candidate.slice];
   }
@@ -832,6 +892,7 @@ export class KeywordSliceSelectionService {
         }
       | undefined,
     now: Date,
+    engineName?: string,
   ): KeywordTermCandidate {
     if (candidate.slice === 'unmet') {
       if (
@@ -871,48 +932,44 @@ export class KeywordSliceSelectionService {
         candidate.origin && typeof candidate.origin === 'object'
           ? candidate.origin
           : {};
-      const currentActs =
-        typeof origin.currentActs === 'number' ? origin.currentActs : 0;
-      const previousActs =
-        typeof origin.previousActs === 'number' ? origin.previousActs : 0;
-      const localDemand =
-        typeof origin.localDemand === 'number' ? origin.localDemand : 0;
-      const globalDemand =
-        typeof origin.globalDemand === 'number' ? origin.globalDemand : 0;
 
-      const trend = clamp01(
-        (currentActs - previousActs) / Math.max(1, previousActs),
-      );
-
-      const otherDemand = Math.max(0, globalDemand - localDemand);
-      const localSpecialization = clamp01(
-        (localDemand + 1) / (otherDemand + 1) / 3,
-      );
-
-      const novelty = (() => {
-        if (
-          history?.lastAttemptAt instanceof Date &&
-          !Number.isNaN(history.lastAttemptAt.getTime())
-        ) {
-          const daysSinceAttempt =
-            (now.getTime() - history.lastAttemptAt.getTime()) / MS_PER_DAY;
-          const safeDays =
-            Number.isFinite(daysSinceAttempt) && daysSinceAttempt > 0
-              ? daysSinceAttempt
-              : 0;
-          return clamp01(safeDays / EXPLORE_RECENT_ATTEMPT_DAYS);
-        }
-        return 1;
-      })();
+      // D41: the score IS the class's measured-yield upper-confidence bound,
+      // in DOCUMENTS PER SEARCH. Infinity = a class with no measured
+      // dispersion, which therefore wins optimistically — the starved
+      // candidate re-demonstrating, exactly what 'optimisticSelection'
+      // promises and what the cold-start law asks for (act, then measure).
+      //
+      // The three proxies that used to be blended here — novelty, trend,
+      // localSpecialization — are GONE as ranking inputs. Their raw inputs
+      // (currentActs/previousActs/localDemand/globalDemand) stay in origin
+      // as recorded diagnostics; nothing reads them to decide anything.
+      const reading = engineName
+        ? this.exploreYield.classReading(
+            engineName,
+            candidate.entityType ?? 'unknown',
+            now,
+          )
+        : null;
+      const upperBound = reading
+        ? reading.estimate + reading.uncertainty
+        : Number.POSITIVE_INFINITY;
 
       return {
         ...candidate,
-        score: 0.45 * novelty + 0.35 * localSpecialization + 0.2 * trend,
+        score: upperBound,
         origin: {
           ...origin,
-          novelty,
-          trend,
-          localSpecialization,
+          exploreYield: reading
+            ? {
+                estimate: reading.estimate,
+                uncertainty: Number.isFinite(reading.uncertainty)
+                  ? reading.uncertainty
+                  : null,
+                nEffective: reading.nEffective,
+                priorWeight: reading.priorWeight,
+                upperBound: Number.isFinite(upperBound) ? upperBound : null,
+              }
+            : null,
           lastOutcome: history?.lastOutcome ?? null,
           lastAttemptAt: history?.lastAttemptAt?.toISOString() ?? null,
         },
@@ -920,6 +977,30 @@ export class KeywordSliceSelectionService {
     }
 
     return candidate;
+  }
+
+  /**
+   * Ordering. Score DESC, written subtraction-free because an explore score
+   * is legitimately Infinity and `Infinity - Infinity` is NaN — a comparator
+   * that returns NaN silently leaves the array in whatever order it started.
+   *
+   * Within a tie, EXPLORE falls back to COVERAGE ROTATION (D41 §3):
+   * never-attempted first, then least-recently-attempted. This is a scan
+   * policy — explore is coverage of untried vocabulary — and deliberately
+   * not a score: it reintroduces no weight and makes no claim about which
+   * term is better, only which has waited longest for its turn.
+   */
+  private compareCandidates(
+    a: KeywordTermCandidate,
+    b: KeywordTermCandidate,
+  ): number {
+    if (a.score !== b.score) {
+      return a.score > b.score ? -1 : 1;
+    }
+    if (a.slice === 'explore' && b.slice === 'explore') {
+      return coverageRotationKey(a) - coverageRotationKey(b);
+    }
+    return 0;
   }
 
   /**
@@ -976,8 +1057,11 @@ export class KeywordSliceSelectionService {
 
   /**
    * EXPLORE family — territory entities with a minimal distinct-actor
-   * footprint scored by novelty + local specialization + trend, all read
-   * from the signals substrate.
+   * footprint. CANDIDACY is decided here (the distinct-actor floor, an
+   * eligibility gate); RANKING is not: the score is stamped later from the
+   * measured class-yield upper bound (D41). The demand/trend numbers this
+   * loads are recorded into origin as DIAGNOSTICS — no consumer ranks on
+   * them any more.
    */
   private async loadExploreCandidates(params: {
     source: KeywordSelectionSource;

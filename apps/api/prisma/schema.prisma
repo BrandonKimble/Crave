@@ -332,40 +332,40 @@ model GeminiContextCache {
 /// Places). Written at the service chokepoints so every run's cost is
 /// queryable later: slice by runKey/purpose/skuTier, multiply by rates.
 model ApiUsageEvent {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  service      String   @db.VarChar(32) // 'gemini' | 'google_places'
-  operation    String   @db.VarChar(64) // e.g. 'generateContent', 'placeDetails', 'textSearch'
-  skuTier      String?  @map("sku_tier") @db.VarChar(32) // Places: 'essentials'|'pro'|'enterprise'|'enterprise_atmosphere'
-  model        String?  @db.VarChar(128) // Gemini model id
-  mode         String?  @db.VarChar(16) // Gemini: 'interactive' | 'batch'
-  inputTokens  Int?     @map("input_tokens")
-  outputTokens Int?     @map("output_tokens")
-  cachedTokens Int?     @map("cached_tokens")
-  requestCount Int      @default(1) @map("request_count")
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  service       String   @db.VarChar(32) // 'gemini' | 'google_places'
+  operation     String   @db.VarChar(64) // e.g. 'generateContent', 'placeDetails', 'textSearch'
+  skuTier       String?  @map("sku_tier") @db.VarChar(32) // Places: 'essentials'|'pro'|'enterprise'|'enterprise_atmosphere'
+  model         String?  @db.VarChar(128) // Gemini model id
+  mode          String?  @db.VarChar(16) // Gemini: 'interactive' | 'batch'
+  inputTokens   Int?     @map("input_tokens")
+  outputTokens  Int?     @map("output_tokens")
+  cachedTokens  Int?     @map("cached_tokens")
+  requestCount  Int      @default(1) @map("request_count")
   /// Cache STORAGE rows only: hours the cached content is held. Storage
   /// bills per token-hour, so it needs a dimension the token columns do not
   /// carry — kept separate rather than overloading cached_tokens.
-  durationHours Float?  @map("duration_hours")
+  durationHours Float?   @map("duration_hours")
   /// How the paid call ended: ok | truncated (MAX_TOKENS, response likely
   /// discarded by the parser) | aborted (timeout after send; token counts
   /// unknown) | failed (provider-failed batch). NULL = non-generation rows.
-  outcome       String? @db.VarChar(16)
-  caller       String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
-  runKey       String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
+  outcome       String?  @db.VarChar(16)
+  caller        String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
+  runKey        String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
   /// Owner-approved spend campaign this row's cost belongs to (ambient
   /// work-context or explicit). NULL = organic/uncampaigned spend. Makes
   /// "what did campaign X actually cost, per service" a one-query fact.
-  campaignId   String?  @map("campaign_id") @db.Uuid
+  campaignId    String?  @map("campaign_id") @db.Uuid
   /// WHY the spend happened, when the caller alone can't say — e.g. Places
   /// 'grounding.new' (first grounding of a restaurant) vs 'grounding.refresh'
   /// (re-grounding an already-grounded location). The honest-denominator
   /// column: rate derivation slices on it so a re-grounding event can never
   /// contaminate the per-new-restaurant rate again.
-  attribution  String?  @db.VarChar(64)
+  attribution   String?  @db.VarChar(64)
   /// Idempotency key for at-most-once records (e.g. one row per batch job).
   /// Callers that can legitimately record multiple rows leave it null.
-  dedupeKey    String?  @unique @map("dedupe_key") @db.VarChar(256)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  dedupeKey     String?  @unique @map("dedupe_key") @db.VarChar(256)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([service, createdAt], map: "idx_api_usage_service_created")
   @@index([runKey], map: "idx_api_usage_run_key")
@@ -972,13 +972,13 @@ model Poll {
   @@index([state], map: "idx_polls_state")
   @@index([placeId], map: "idx_polls_place_id")
   @@index([createdByUserId], map: "idx_polls_created_by_user")
-  @@map("polls")
   /// Hot-path indexes (raw SQL, migration 20260802040000): the feed's
   /// place+recency sort, launched_at window, and the safety-net sweep's
   /// (state, updated_at) selection.
   @@index([placeId, createdAt(sort: Desc)], map: "idx_polls_place_created_at")
   @@index([launchedAt(sort: Desc)], map: "idx_polls_launched_at")
   @@index([state, updatedAt(sort: Desc)], map: "idx_polls_state_updated_at")
+  @@map("polls")
 }
 
 /// The discussion-thread spine (Phase 2 schema; CRUD + sort land in Phase 4).
@@ -1195,7 +1195,17 @@ model User {
   onboardingVersion        Int                       @default(1) @map("onboarding_version")
   onboardingSelectedCity   String?                   @map("onboarding_selected_city") @db.VarChar(255)
   onboardingPreviewCity    String?                   @map("onboarding_preview_city") @db.VarChar(255)
+  /// D40: the server's OWN question-set version at write time, beside the
+  /// client-declared `onboardingVersion` (what the client RENDERED). Storing
+  /// both makes a mismatch a visible fact instead of an assumption.
+  onboardingQuestionSetVersion Int?                  @map("onboarding_question_set_version")
+  /// D40: the LATEST-ROW PROJECTION of user_onboarding_responses, written in
+  /// the SAME transaction as the history row. Never independently mutable.
   onboardingResponses      Json?                     @map("onboarding_responses")
+  /// D40: the city as a KEY. `onboardingSelectedCity` is a display string and
+  /// the personal-list builder used to join it by lower(name) — a silent-zero
+  /// join (a renamed or re-cased city produced no lists and no error).
+  onboardingCityPlaceId    String?                   @map("onboarding_city_place_id") @db.Uuid
   createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   stripeCustomerId         String?                   @map("stripe_customer_id") @db.VarChar(255)
   authProvider             AuthProvider              @default(clerk) @map("auth_provider")
@@ -1687,13 +1697,13 @@ model PhotoReport {
 /// Batched impression|tap events for photos (usage-ledger pattern) — feeds
 /// the hero-selection v2 tap-rate and profile sorting. Fire-and-forget.
 model PhotoEvent {
-  eventId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
-  photoId    String   @map("photo_id") @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
+  eventId    String         @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  photoId    String         @map("photo_id") @db.Uuid
+  userId     String?        @map("user_id") @db.Uuid
   eventType  PhotoEventType @map("event_type")
   /// Coalesced count for batched impressions.
-  eventCount Int      @default(1) @map("event_count")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  eventCount Int            @default(1) @map("event_count")
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([photoId, eventType], map: "idx_photo_events_photo_type")
   @@index([createdAt(sort: Desc)], map: "idx_photo_events_created")
@@ -2197,20 +2207,20 @@ model ProbedRegion {
   maxLat       Decimal? @map("max_lat") @db.Decimal(10, 8)
   maxLng       Decimal? @map("max_lng") @db.Decimal(11, 8)
   observedAt   DateTime @default(now()) @map("observed_at") @db.Timestamptz(6)
-
-  @@index([observedAt])
-  @@map("probed_regions")
   /// DISEASE B (2026-08-01): the memory's IDENTITY — the same quantized
   /// cell the reconciler's single-flight already uses. One live row per
   /// (cell, kind) via the partial unique uq_probed_regions_cell_kind
   /// (migration 20260801150000), so growth is bounded by GEOGRAPHY, not
   /// traffic. Legacy rows carry null and expire under the TTL.
-  cellKey            String?  @map("cell_key") @db.VarChar(64)
+  cellKey      String?  @map("cell_key") @db.VarChar(64)
 
   // Raw-SQL PARTIAL indexes (migration 20260801140000) for the view-scoped
   // read: idx_probed_regions_box_extent ON (min_lat,max_lat,min_lng,max_lng)
   // WHERE kind='box'; idx_probed_regions_disc_center ON
   // (center_lat,center_lng) WHERE kind='disc'.
+
+  @@index([observedAt])
+  @@map("probed_regions")
 }
 
 model PlaceGeometryPromotion {
@@ -2222,7 +2232,7 @@ model PlaceGeometryPromotion {
   /// reads THIS, incremented only when the vendor says it has no polygon
   /// for the id. `attempts` below stays the fault counter (transport
   /// errors, deferrals) and retires nothing.
-  missAttempts       Int      @default(0) @map("miss_attempts")
+  missAttempts       Int       @default(0) @map("miss_attempts")
   attempts           Int       @default(0)
   lastAttemptAt      DateTime? @map("last_attempt_at") @db.Timestamptz(3)
   /// Docket #2: TERMINAL refusal — the vendor provably does not model this
@@ -2340,25 +2350,101 @@ model SignalDemandDaily {
 // The id=1 CHECK constraint (raw SQL, migration 20260719235000) pins it to
 // one row.
 model SignalDemandRebuildState {
-  id        Int       @id @default(1)
-  watermark DateTime? @db.Timestamptz(6)
-  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
-
-  @@map("signal_demand_rebuild_state")
+  id              Int       @id @default(1)
+  watermark       DateTime? @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   /// INVALIDATION, not a cursor move (migration 20260801160000): the
   /// oldest instant that must be rebuilt because the ground under it
   /// changed. The refresh CONSUMES and clears it in the same transaction
   /// that advances the watermark — a request can no longer be erased by a
   /// concurrent pass's GREATEST.
-  rebuildFloor DateTime? @map("rebuild_floor") @db.Timestamptz()
+  rebuildFloor    DateTime? @map("rebuild_floor") @db.Timestamptz()
   /// Bumped by every invalidation. The refresh retires the floor only if
   /// this is unchanged — comparing a SEQUENCE, not a timestamp, because a
   /// ms-truncated round-trip could never match a us-precision value and
   /// LEAST can leave the value identical for a DIFFERENT request.
-  rebuildFloorSeq BigInt @default(0) @map("rebuild_floor_seq")
+  rebuildFloorSeq BigInt    @default(0) @map("rebuild_floor_seq")
+
+  @@map("signal_demand_rebuild_state")
 }
 
 // Pseudonymous actor mapping — the severable deletion story (§3).
+/// D40 §1.3 — THE ANSWERS, APPEND-ONLY.
+///
+/// `users.onboarding_responses` is a read-hot PROJECTION of the latest row
+/// here, written in the same transaction. Why a history at all: a later "edit
+/// your tastes" surface, a question-set migration, and every "why did this
+/// list appear" question need the answers AS THEY STOOD. A wholesale
+/// overwrite makes all three unanswerable, and the write that does it looks
+/// completely innocent.
+///
+/// The document is stored VERBATIM — unknown keys included. It is the user's
+/// testimony; the decoder (packages/shared parseOnboardingAnswers) is the only
+/// thing allowed to have an opinion about it, and it has that opinion at READ.
+model UserOnboardingResponse {
+  responseId String @id @default(dbgenerated("gen_random_uuid()")) @map("response_id") @db.Uuid
+  userId     String @map("user_id") @db.Uuid
+  /// What the CLIENT said it rendered.
+  answeredWithVersion Int @map("answered_with_version")
+  /// What the SERVER understood at write time (ONBOARDING_QUESTION_SET_VERSION).
+  questionSetVersion  Int @map("question_set_version")
+  answers    Json
+  /// 'completion' = landed at the end of the flow; 'replay' = landed later
+  /// from the device outbox (F810/D40 — including the anonymous completer who
+  /// only signed in afterwards); 'edit' = a future edit surface; 'backfill' =
+  /// minted by the migration from the pre-history column.
+  source     String   @db.VarChar(16)
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  @@index([userId, recordedAt(sort: Desc)])
+  @@map("user_onboarding_responses")
+}
+
+/// D40 §3 — THE DERIVED TASTE PROFILE. Facts only.
+///
+/// Source: `signal_demand_daily` through the shared `dailyActsCteSql` builder
+/// — never raw `signals`, never a fourth SQL dialect (act-identity.ts states
+/// the echo/grain law once, and a builder cannot be half-adopted).
+///
+/// v1 stores COUNTS and RECENCY. It does NOT store a blended "affinity score"
+/// from hand-picked per-kind coefficients — that is the exact shape D39 just
+/// deleted in F467. A consumer that needs an ORDER declares its own rule, in
+/// one place, and documents it.
+///
+/// HORIZON: `windowDays = 0` is ALL HISTORY. There is no invented cutoff
+/// anywhere in this model; the recency windows that exist are the ones the
+/// codebase already ratified (RECENCY_FLAT_DAYS, COOLDOWN_GAUSSIAN_DAYS), and
+/// `lastActAt` is recorded as the fact it is. Whether an old act should stop
+/// counting is an owner ruling this table does not pre-empt.
+///
+/// NOT a second write path: nothing outside the builder writes it, and a wrong
+/// profile is fixed by REBUILDING, never by patching. Keyed by actorId (not
+/// userId) because the ledger is: an anonymous device actor has a profile
+/// pre-auth and keeps it when the actor gains a userId.
+model UserTasteProfile {
+  rowId   String @id @default(dbgenerated("gen_random_uuid()")) @map("row_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  /// 0 = all history. Otherwise a ratified window (see the builder).
+  windowDays Int @map("window_days")
+  /// 'entity' | 'term' — the ledger's own subject shape — or 'attribute', the
+  /// derived roll-up to the vocabulary the curated recipes speak. The roll-up
+  /// is a ROW here rather than a second table so there is one builder, one
+  /// rebuild unit, and one place a recipe reads.
+  subjectKind String  @map("subject_kind") @db.VarChar(16)
+  subjectId   String? @map("subject_id") @db.Uuid
+  subjectText String? @map("subject_text") @db.VarChar(255)
+  /// The signal kind, IN THE GRAIN — two kinds by one actor are two acts
+  /// (the §4 law act-identity.ts exists to state once).
+  kind      String   @db.VarChar(32)
+  actCount  Int      @map("act_count")
+  lastActAt DateTime @map("last_act_at") @db.Timestamptz(3)
+  rebuiltAt DateTime @default(now()) @map("rebuilt_at") @db.Timestamptz(3)
+
+  @@index([actorId, windowDays])
+  @@index([subjectId, windowDays])
+  @@map("user_taste_profile")
+}
+
 model SignalActor {
   actorId    String    @id @default(dbgenerated("gen_random_uuid()")) @map("actor_id") @db.Uuid
   userId     String?   @unique @map("user_id") @db.Uuid
@@ -2591,4 +2677,37 @@ model MetroLocationProbe {
 
   @@id([restaurantId, communityHandle])
   @@map("metro_location_probes")
+}
+
+/// D41 (2026-08-03) — THE durable side of the estimator registry
+/// (src/modules/estimators/estimator-registry.ts), whose header promised one
+/// and had none: every adaptive quantity's per-subject running MOMENTS, one
+/// row per (estimator, subject). Not a per-observation log — the registry's
+/// state IS four decayed sums plus two clocks, so O(1) per subject is the
+/// whole belief, replayable to the same reading.
+///
+/// This is the registry-WIDE pattern, deliberately not columns on any one
+/// consumer's row: the first consumer (collection.exploreYield, keyed
+/// engineName::entityType) would otherwise couple the seam to the keyword
+/// attempt-history snapshot.
+///
+/// Without this table an in-memory registry reset on every deploy while its
+/// half-life ran in weeks — an estimator that can never leave cold start.
+model EstimatorState {
+  estimatorName  String    @map("estimator_name") @db.VarChar(128)
+  subjectKey     String    @map("subject_key") @db.VarChar(255)
+  /// The four decayed moments: sum(w*x), sum(w), sum(w^2), sum(w*x^2).
+  weightedSum    Float     @map("weighted_sum")
+  weightTotal    Float     @map("weight_total")
+  weightSquares  Float     @map("weight_squares")
+  sumOfSquares   Float     @map("sum_of_squares")
+  /// When the last real observation landed (drives timeWidening).
+  lastObservedAt DateTime? @map("last_observed_at") @db.Timestamptz(6)
+  /// How far the decay has already been applied — the moments above are
+  /// stated AS OF this instant, so a reload never double-decays.
+  lastDecayedAt  DateTime? @map("last_decayed_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([estimatorName, subjectKey])
+  @@map("estimator_state")
 }

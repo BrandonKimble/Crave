@@ -27,6 +27,7 @@ describe('collector skips a cycle loudly when the demand read is unavailable', (
       {} as never,
       signalDemand as never,
       {} as never,
+      {} as never,
       opsAlerts as never,
       logger as never,
     );
@@ -67,10 +68,13 @@ describe('collector skips a cycle loudly when the demand read is unavailable', (
         kind: 'collector_demand_read_unavailable',
         dedupeKey: expect.stringContaining(
           'collector_demand_read_unavailable:src-1:',
-        ),
+        ) as unknown,
       }),
     );
-    const body = (opsAlerts.emit.mock.calls[0][0] as { body: string }).body;
+    const [firstCall] = opsAlerts.emit.mock.calls as unknown as [
+      [{ body: string }],
+    ];
+    const body = firstCall[0].body;
     expect(body).toContain('no keyword slice was selected this cycle');
     expect(body).toContain('statement timeout');
   });

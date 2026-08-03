@@ -13,6 +13,8 @@ import { ChronologicalCollectionWorker } from './chronological/chronological-col
 import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
+import { KeywordExploreYieldEstimatorService } from './keyword-explore-yield.estimator';
+import { PrismaEstimatorStateStore } from '../../estimators/estimator-state.store';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { CityReextractRunner } from './city-reextract.runner';
 import { FullProjectionRebuildRunner } from './full-projection-rebuild.runner';
@@ -84,6 +86,8 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       // Keyword Entity Search components
       KeywordSliceSelectionService,
       KeywordAttemptHistoryService,
+      KeywordExploreYieldEstimatorService,
+      PrismaEstimatorStateStore,
       KeywordSearchOrchestratorService,
       CityReextractRunner,
       FullProjectionRebuildRunner,
