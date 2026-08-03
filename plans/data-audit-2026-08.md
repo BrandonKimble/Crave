@@ -646,3 +646,26 @@ OPERATIONAL: CRONS_ENABLED kill-switch removed 2026-08-03 ~00:35 UTC
 (owner authorized; 66-merge backlog reviewed) — night-one convergence
 drains it. COLLECTION_SCHEDULER_ENABLED stays false until prompt
 activation.
+
+## P2.2 IMPLEMENTED (2026-08-03) — metro-aware resolution + locations follow testimony
+
+Landed per the refined design, all five behaviors proven by execution on
+the mirror: (P1) exact-unique remote adoption holds (Franklin from NYC);
+(P2) alias-tier remote demotes ("Rudy's" from ATX can no longer reach
+the NYC bar — mints locally with the existing metro-biased grounding,
+and the domain-merge lane converges true branches); (P3) local
+candidates adopt at any tier; (P4) exact-but-AMBIGUOUS remote demotes
+("Super Burrito" — one of the 8 held merges — correctly refused); (P5)
+adopted brands without local presence enqueue ONE metro-biased
+expansion probe, cooldown-gated (30d), zero spend at enqueue.
+
+Pieces: MetroAdoptionService (anchors, presence, uniqueness — one
+implementation of the ladder's questions); the gate in
+EntityResolutionService after all tiers (restaurant cache was already
+engine-scoped, so verdicts cache per-metro); the same ladder on the
+creation-path stripped probe and tombstone-redirect hop in
+unified-processing (batch-level anchor, one lookup); metro probe rides
+the existing secondary-expansion queue (job variant + bias param +
+metro_location_probes cooldown table); mint-time metro-biased grounding
+already existed. Repair of the 46 misattributed entities' 1,653 events
+rides the rerun as planned.

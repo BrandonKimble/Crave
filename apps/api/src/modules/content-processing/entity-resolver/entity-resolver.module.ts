@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EntityResolutionService } from './entity-resolution.service';
 import { FoodDedupeMergeService } from './food-dedupe-merge.service';
+import { MetroAdoptionService } from './metro-adoption.service';
 import { EntityAnchorRehomeService } from './entity-anchor-rehome.service';
 import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
@@ -21,12 +22,14 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
   providers: [
     EntityResolutionService,
     FoodDedupeMergeService,
+    MetroAdoptionService,
     DishKnowledgeSynthesisService,
     AliasManagementService,
     EntityAnchorRehomeService,
   ],
   exports: [
     EntityResolutionService,
+    MetroAdoptionService,
     AliasManagementService,
     EntityAnchorRehomeService,
     FoodDedupeMergeService,

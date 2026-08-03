@@ -70,6 +70,7 @@ import { CollectorSourceRegistryService } from './collector-source-registry.serv
 import { AttributeOntologyQueueService } from '../../attribute-ontology/attribute-ontology-queue.service';
 import type { ExtractionTraceContext } from './collection-evidence.service';
 import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
+import { RestaurantSecondaryLocationExpansionQueueService } from '../../restaurant-enrichment/restaurant-secondary-location-expansion-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { supersedeAndActivate } from './extraction-scope.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
@@ -217,6 +218,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly entityResolutionService: EntityResolutionService,
     private readonly projectionRebuildService: ProjectionRebuildService,
     private readonly restaurantEnrichmentQueue: RestaurantEnrichmentQueueService,
+    private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     private readonly collectorSourceRegistry: CollectorSourceRegistryService,
@@ -556,6 +558,10 @@ export class UnifiedProcessingService implements OnModuleInit {
         singleBatchEntitySummaries,
         sourceMetadata,
       );
+      await this.scheduleMetroProbes(
+        batchResult.databaseOperations?.reusedEntitySummaries || [],
+        sourceMetadata,
+      );
 
       return {
         entitiesCreated: batchResult.databaseOperations?.entitiesCreated || 0,
@@ -722,7 +728,6 @@ export class UnifiedProcessingService implements OnModuleInit {
       uniqueCreatedEntitySummaries,
       sourceMetadata,
     );
-
     const reusedEntitySummaryMap = new Map<
       string,
       (typeof reusedEntitySummaries)[number]
@@ -736,6 +741,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     const uniqueReusedEntitySummaries = Array.from(
       reusedEntitySummaryMap.values(),
     );
+    await this.scheduleMetroProbes(uniqueReusedEntitySummaries, sourceMetadata);
 
     return {
       batchId: parentBatchId,
@@ -1425,6 +1431,11 @@ export class UnifiedProcessingService implements OnModuleInit {
     affectedRestaurantIds: string[];
   }> {
     const startTime = Date.now();
+    // P2.2: one anchor lookup per batch — the creation-path restaurant
+    // probes are metro-gated against it (null = gate stands down).
+    const batchMetroAnchor = await this.metroAnchorForSubreddit(
+      sourceMetadata?.subreddit,
+    );
 
     try {
       this.logger.debug('Starting consolidated processing phase', {
@@ -1737,15 +1748,55 @@ export class UnifiedProcessingService implements OnModuleInit {
               // (their key is lemma-collapsed + token-sorted, which no SQL
               // expression mirrors).
               const strippedKey = entityIdentityKey(canonicalName, entityType);
+              // P2.2: for RESTAURANTS with a metro anchor, a fold-level
+              // probe hit is nickname-tier — it may only adopt candidates
+              // with LOCAL presence, unless the candidate's full name
+              // exactly equals ours and is globally unique (the remote-
+              // exact arm). Other types stay global (their identity has
+              // no geography).
               const strippedMatches = !strippedKey
                 ? [] // no foldable identity — nothing to probe
-                : await tx.$queryRaw<
-                    Array<{
-                      entity_id: string;
-                      name: string;
-                      aliases: string[];
-                    }>
-                  >`
+                : entityType === 'restaurant' && batchMetroAnchor
+                  ? await tx.$queryRaw<
+                      Array<{
+                        entity_id: string;
+                        name: string;
+                        aliases: string[];
+                      }>
+                    >`
+                SELECT e.entity_id, e.name, e.aliases FROM core_entities e
+                WHERE e.type = ${entityType}::entity_type
+                  AND e.status <> 'archived'
+                  AND e.identity_key = ${strippedKey}
+                  AND (
+                    EXISTS (
+                      SELECT 1 FROM core_restaurant_locations l
+                      WHERE l.restaurant_id = e.entity_id
+                        AND l.latitude IS NOT NULL
+                        AND 2*6371*asin(sqrt(
+                              pow(sin(radians(l.latitude::float - ${batchMetroAnchor.lat})/2),2)
+                              + cos(radians(${batchMetroAnchor.lat}))*cos(radians(l.latitude::float))
+                              * pow(sin(radians(l.longitude::float - ${batchMetroAnchor.lng})/2),2)
+                            )) < 80
+                    )
+                    OR (
+                      lower(e.name) = lower(${canonicalName})
+                      AND (SELECT count(*) FROM core_entities u
+                           WHERE u.type = 'restaurant'
+                             AND u.status <> 'archived'
+                             AND lower(u.name) = lower(${canonicalName})) = 1
+                    )
+                  )
+                ORDER BY created_at
+                LIMIT 1
+              `
+                  : await tx.$queryRaw<
+                      Array<{
+                        entity_id: string;
+                        name: string;
+                        aliases: string[];
+                      }>
+                    >`
                 SELECT entity_id, name, aliases FROM core_entities
                 WHERE type = ${entityType}::entity_type
                   AND status <> 'archived'
@@ -1783,6 +1834,48 @@ export class UnifiedProcessingService implements OnModuleInit {
                     },
                     select: { entityId: true, aliases: true, name: true },
                   });
+                  // P2.2: a tombstone hop is nickname-tier evidence — a
+                  // RESTAURANT redirect target outside the mention's metro
+                  // may not adopt unless its full name matches ours and is
+                  // globally unique. (The archived name matched, not the
+                  // target's — that's exactly the Rudy's-class trap.)
+                  if (
+                    existing &&
+                    entityType === 'restaurant' &&
+                    batchMetroAnchor
+                  ) {
+                    const ok = await tx.$queryRaw<Array<{ ok: boolean }>>`
+                      SELECT (
+                        EXISTS (
+                          SELECT 1 FROM core_restaurant_locations l
+                          WHERE l.restaurant_id = ${existing.entityId}::uuid
+                            AND l.latitude IS NOT NULL
+                            AND 2*6371*asin(sqrt(
+                                  pow(sin(radians(l.latitude::float - ${batchMetroAnchor.lat})/2),2)
+                                  + cos(radians(${batchMetroAnchor.lat}))*cos(radians(l.latitude::float))
+                                  * pow(sin(radians(l.longitude::float - ${batchMetroAnchor.lng})/2),2)
+                                )) < 80
+                        )
+                        OR (
+                          lower(${existing.name}) = lower(${canonicalName})
+                          AND (SELECT count(*) FROM core_entities u
+                               WHERE u.type = 'restaurant'
+                                 AND u.status <> 'archived'
+                                 AND lower(u.name) = lower(${canonicalName})) = 1
+                        )
+                      ) AS ok`;
+                    if (!ok[0]?.ok) {
+                      this.logger.warn(
+                        'Metro gate refused tombstone-redirect adoption',
+                        {
+                          batchId,
+                          name: canonicalName,
+                          target: existing.entityId,
+                        },
+                      );
+                      existing = null;
+                    }
+                  }
                 } else {
                   // REJECTED tombstone (final red team F5): archived with NO
                   // redirect is a junk verdict, not an absence. Falling
@@ -3069,6 +3162,79 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     return null;
+  }
+
+  /** P2.2 locations-follow-testimony: testimony arrived for ADOPTED
+   *  restaurants — any without a location in this batch's metro get a
+   *  cooldown-gated, metro-biased expansion probe (executed evidence:
+   *  Dunkin' homed only in California receiving genuinely local NYC
+   *  talk, because unbiased expansion of a 13k-store chain is
+   *  geographically arbitrary). Zero vendor spend here; the worker
+   *  spends under pool governance. */
+  private async scheduleMetroProbes(
+    reused: { entityId: string; entityType: string }[],
+    sourceMetadata?: SourceMetadata,
+  ): Promise<void> {
+    const handle = sourceMetadata?.subreddit?.trim().toLowerCase();
+    if (!handle) {
+      return;
+    }
+    const restaurantIds = Array.from(
+      new Set(
+        reused
+          .filter((summary) => summary.entityType === 'restaurant')
+          .map((summary) => summary.entityId),
+      ),
+    );
+    if (!restaurantIds.length) {
+      return;
+    }
+    const anchor = await this.metroAnchorForSubreddit(handle);
+    if (!anchor) {
+      return;
+    }
+    const local = await this.prismaService.$queryRaw<Array<{ id: string }>>`
+      SELECT DISTINCT l.restaurant_id::text AS id
+      FROM core_restaurant_locations l
+      WHERE l.restaurant_id = ANY(${restaurantIds}::uuid[])
+        AND l.latitude IS NOT NULL
+        AND 2*6371*asin(sqrt(
+              pow(sin(radians(l.latitude::float - ${anchor.lat})/2),2)
+              + cos(radians(${anchor.lat}))*cos(radians(l.latitude::float))
+              * pow(sin(radians(l.longitude::float - ${anchor.lng})/2),2)
+            )) < 80
+    `;
+    const localSet = new Set(local.map((row) => row.id));
+    for (const restaurantId of restaurantIds) {
+      if (!localSet.has(restaurantId)) {
+        await this.secondaryLocationExpansionQueue.queueMetroProbe(
+          restaurantId,
+          handle,
+        );
+      }
+    }
+  }
+
+  /** P2.2: the mention-batch's metro anchor (community source → anchor
+   *  place centroid). Null = no geo anchor; the creation-path metro gate
+   *  then stands down. */
+  private async metroAnchorForSubreddit(
+    subreddit?: string | null,
+  ): Promise<{ lat: number; lng: number } | null> {
+    const handle = subreddit?.trim().toLowerCase();
+    if (!handle) {
+      return null;
+    }
+    const rows = await this.prismaService.$queryRaw<
+      Array<{ lat: number; lng: number }>
+    >`
+      SELECT p.centroid_lat::float AS lat, p.centroid_lng::float AS lng
+      FROM sources s
+      JOIN places p ON p.place_id = s.anchor_place_id
+      WHERE lower(s.handle) = ${handle}
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
   }
 
   private async scheduleRestaurantEnrichment(

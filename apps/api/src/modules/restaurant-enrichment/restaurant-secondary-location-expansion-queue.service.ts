@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { PrismaService } from '../../prisma/prisma.service';
 import { RestaurantSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
 import { currentCampaignId } from '../external-integrations/shared/work-context';
 
@@ -9,10 +10,77 @@ const JOB_NAME = 'expand-restaurant-secondary-locations';
 
 @Injectable()
 export class RestaurantSecondaryLocationExpansionQueueService {
+  /** P2.2: metro-probe cooldown — a brand with no local store is
+   *  re-checked at most once per this window. */
+  static readonly METRO_PROBE_COOLDOWN_DAYS = 30;
+
   constructor(
     @InjectQueue(QUEUE_NAME)
     private readonly queue: Queue<RestaurantSecondaryLocationExpansionJobData>,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /** P2.2 locations-follow-testimony: testimony arrived in a metro where
+   *  this adopted brand has no location — probe Places with the metro's
+   *  bias, once per cooldown. Enqueue is free; the worker spends. */
+  async queueMetroProbe(
+    restaurantId: string,
+    communityHandle: string,
+  ): Promise<string | null> {
+    const id = restaurantId?.trim();
+    const handle = communityHandle?.trim().toLowerCase();
+    if (!id || !handle) {
+      return null;
+    }
+    const fresh = await this.prisma.metroLocationProbe.findUnique({
+      where: {
+        restaurantId_communityHandle: {
+          restaurantId: id,
+          communityHandle: handle,
+        },
+      },
+      select: { probedAt: true },
+    });
+    if (
+      fresh &&
+      Date.now() - fresh.probedAt.getTime() <
+        RestaurantSecondaryLocationExpansionQueueService.METRO_PROBE_COOLDOWN_DAYS *
+          24 *
+          3600 *
+          1000
+    ) {
+      return null;
+    }
+    // the probe expands from the entity's primary grounded place — an
+    // entirely ungrounded entity has nothing to expand from (backfill owns it)
+    const primary = await this.prisma.restaurantLocation.findFirst({
+      where: { restaurantId: id, googlePlaceId: { not: null } },
+      orderBy: { isPrimary: 'desc' },
+      select: { googlePlaceId: true },
+    });
+    if (!primary?.googlePlaceId) {
+      return null;
+    }
+    const job = await this.queue.add(
+      JOB_NAME,
+      {
+        restaurantId: id,
+        placeId: primary.googlePlaceId,
+        requestedAt: new Date().toISOString(),
+        source: 'metro-probe',
+        campaignId: currentCampaignId(),
+        metroCommunityHandle: handle,
+      },
+      {
+        jobId: `${QUEUE_NAME}:metro:${id}:${handle}`,
+        removeOnComplete: true,
+        removeOnFail: true,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      },
+    );
+    return String(job.id ?? '');
+  }
 
   async queueExpansion(
     restaurantId: string,

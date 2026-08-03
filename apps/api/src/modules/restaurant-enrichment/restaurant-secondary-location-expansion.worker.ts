@@ -5,6 +5,7 @@ import { LoggerService } from '../../shared';
 import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
 import { RestaurantSecondaryLocationExpansionJobData } from './restaurant-secondary-location-expansion.types';
 import { runInWorkContext } from '../external-integrations/shared/work-context';
+import { PrismaService } from '../../prisma/prisma.service';
 
 const QUEUE_NAME = 'restaurant-secondary-location-expansion';
 const JOB_NAME = 'expand-restaurant-secondary-locations';
@@ -17,6 +18,7 @@ export class RestaurantSecondaryLocationExpansionWorker
 
   constructor(
     private readonly restaurantLocationEnrichment: RestaurantLocationEnrichmentService,
+    private readonly prisma: PrismaService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -57,11 +59,47 @@ export class RestaurantSecondaryLocationExpansionWorker
     // NOTE: this deliberately does NOT catch. F354 (owner-ruled 2026-08-03):
     // a mid-run fault must leave the JOB failed so the queue's attempts:3
     // means what it says.
+    // P2.2 metro probe: resolve the community's anchor and bias the
+    // expansion's text search to it, then record the cooldown row —
+    // success OR empty result both count as "probed" (that's the point
+    // of the cooldown).
+    const metroHandle = job.data?.metroCommunityHandle?.trim().toLowerCase();
+    let bias: { lat: number; lng: number } | undefined;
+    if (metroHandle) {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ lat: number; lng: number }>
+      >`
+        SELECT p.centroid_lat::float AS lat, p.centroid_lng::float AS lng
+        FROM sources s JOIN places p ON p.place_id = s.anchor_place_id
+        WHERE lower(s.handle) = ${metroHandle} LIMIT 1
+      `;
+      bias = rows[0];
+      if (!bias) {
+        this.logger.warn('Metro probe has no anchor — skipping', {
+          restaurantId,
+          metroHandle,
+        });
+        return;
+      }
+    }
     await runInWorkContext({ campaignId: job.data?.campaignId }, () =>
       this.restaurantLocationEnrichment.expandSecondaryLocationsForRestaurant(
         restaurantId,
         placeId,
+        bias,
       ),
     );
+    if (metroHandle) {
+      await this.prisma.metroLocationProbe.upsert({
+        where: {
+          restaurantId_communityHandle: {
+            restaurantId,
+            communityHandle: metroHandle,
+          },
+        },
+        update: { probedAt: new Date() },
+        create: { restaurantId, communityHandle: metroHandle },
+      });
+    }
   }
 }

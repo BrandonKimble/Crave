@@ -1,3 +1,4 @@
+import { MetroAdoptionService } from './metro-adoption.service';
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
@@ -101,6 +102,7 @@ export class EntityResolutionService implements OnModuleInit {
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly metroAdoption: MetroAdoptionService,
   ) {}
 
   onModuleInit(): void {
@@ -429,11 +431,32 @@ export class EntityResolutionService implements OnModuleInit {
       unmatched: unmatchedAfterFuzzy.length,
     });
 
+    // P2.2 METRO ADOPTION GATE (restaurants only): a candidate with no
+    // location in the mention's metro may be adopted ONLY via an exact
+    // full-name match to the single global candidate. Nickname/alias/
+    // fuzzy matches demote to unmatched and resolve locally (mint with
+    // metro-biased grounding; the nightly domain-merge converges true
+    // branches). Executed evidence: "Rudy's" in r/austinfood reached an
+    // NYC bar through fold matching — 182 misattributed events.
+    const demotedInputs =
+      entityType === 'restaurant' && engineId
+        ? await this.applyMetroAdoptionGate(
+            [...exactMatchResults, ...aliasMatchResults, ...fuzzyMatchResults],
+            engineId,
+          )
+        : [];
+    const unmatchedForCreation = demotedInputs.length
+      ? [
+          ...unmatchedAfterFuzzy,
+          ...entities.filter((entity) => demotedInputs.includes(entity.tempId)),
+        ]
+      : unmatchedAfterFuzzy;
+
     // Mark unmatched entities for transaction-based creation (PRD approach)
     const primaryNewEntityMap = globalNewEntityMap;
     const newEntityResults = config.allowEntityCreation
       ? await this.markEntitiesForCreation(
-          unmatchedAfterFuzzy,
+          unmatchedForCreation,
           entityType,
           {
             exactMatches: exactMatchResults,
@@ -483,6 +506,64 @@ export class EntityResolutionService implements OnModuleInit {
    * Tier 1: Exact match resolution using optimized bulk query
    * Single query: WHERE name IN (...) AND type = $entityType
    */
+  /** Returns tempIds DEMOTED to unmatched. Mutates demoted results
+   *  (entityId → null) in place so the tier merge naturally skips them. */
+  private async applyMetroAdoptionGate(
+    results: EntityResolutionResult[],
+    engineId: string,
+  ): Promise<string[]> {
+    const matched = results.filter((result) => result.entityId);
+    if (!matched.length) {
+      return [];
+    }
+    const anchor = await this.metroAdoption.anchorForEngine(engineId);
+    if (!anchor) {
+      return []; // no metro anchor — the gate stands down
+    }
+    const candidateIds = Array.from(
+      new Set(matched.map((result) => result.entityId as string)),
+    );
+    const localSet = await this.metroAdoption.restaurantsWithLocalPresence(
+      candidateIds,
+      anchor,
+    );
+    const remote = matched.filter(
+      (result) => !localSet.has(result.entityId as string),
+    );
+    if (!remote.length) {
+      return [];
+    }
+    // exact-tier remote matches may stand IF the name is globally unique
+    const exactRemote = remote.filter(
+      (result) => result.resolutionTier === 'exact',
+    );
+    const uniqueNames = await this.metroAdoption.globallyUniqueExactNames(
+      exactRemote.map((result) => result.originalInput.normalizedName),
+    );
+    const demoted: string[] = [];
+    for (const result of remote) {
+      const isExactUnique =
+        result.resolutionTier === 'exact' &&
+        uniqueNames.has(
+          result.originalInput.normalizedName.toLowerCase().trim(),
+        );
+      if (isExactUnique) {
+        continue; // a full exact name can travel across the country
+      }
+      this.logger.warn('Metro gate demoted a remote adoption', {
+        engineId,
+        name: result.originalInput.normalizedName,
+        candidate: result.entityId,
+        tier: result.resolutionTier,
+      });
+      result.entityId = null;
+      result.confidence = 0;
+      result.resolutionTier = 'unmatched';
+      demoted.push(result.tempId);
+    }
+    return demoted;
+  }
+
   private async performExactMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,

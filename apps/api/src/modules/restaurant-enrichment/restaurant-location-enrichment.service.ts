@@ -520,6 +520,7 @@ export class RestaurantLocationEnrichmentService {
   async expandSecondaryLocationsForRestaurant(
     restaurantId: string,
     placeId: string,
+    locationBias?: { lat: number; lng: number; radiusMeters?: number },
   ): Promise<void> {
     const normalizedRestaurantId = restaurantId?.trim();
     const normalizedPlaceId = placeId?.trim();
@@ -576,7 +577,11 @@ export class RestaurantLocationEnrichmentService {
       return;
     }
 
-    await this.enrichSecondaryLocations(entity, resolvedDetails.details.place);
+    await this.enrichSecondaryLocations(
+      entity,
+      resolvedDetails.details.place,
+      locationBias,
+    );
   }
 
   async resolvePlaceForInput(params: {

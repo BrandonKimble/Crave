@@ -22,4 +22,11 @@ export type RestaurantSecondaryLocationExpansionJobData = {
    * expansion for want of a campaign.
    */
   campaignId?: string;
+  /** P2.2 locations-follow-testimony: when set, this job is a METRO
+   *  PROBE — the expansion's Places text search is biased to this
+   *  community's anchor so a brand's LOCAL branches attach (the unbiased
+   *  60-result cap makes mega-chain expansion geographically arbitrary;
+   *  measured: Dunkin's 39 stored locations were all California). The
+   *  worker records metro_location_probes for the cooldown. */
+  metroCommunityHandle?: string;
 };

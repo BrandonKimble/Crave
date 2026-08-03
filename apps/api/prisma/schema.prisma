@@ -1205,6 +1205,7 @@ model User {
   revenueCatAppUserId      String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
   subscriptions            Subscription[]
+  checkoutSessions         CheckoutSession[]
   accessGrants             AccessGrant[]
   photos                   Photo[]
   photoReports             PhotoReport[]
@@ -1411,7 +1412,6 @@ model UserList {
   description   String?                @db.VarChar(500)
   listType      UserListType           @map("list_type")
   visibility    UserListVisibility     @default(private) @map("visibility")
-  itemCount     Int                    @default(0) @map("item_count")
   position      Int                    @default(0) @map("position")
   shareSlug     String?                @unique(map: "user_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
   shareEnabled  Boolean                @default(false) @map("share_enabled")
@@ -1570,6 +1570,37 @@ model BillingEventLog {
   @@index([status], map: "idx_billing_event_status")
   @@index([receivedAt(sort: Desc)], map: "idx_billing_event_received_at")
   @@map("billing_event_logs")
+}
+
+/// WEB CHECKOUT ATTEMPTS (restored 2026-08-03, owner ruling — see
+/// business/business-model.md). NOT an entitlement record: the access-grant
+/// ledger is the only truth for "does this user have premium". This table is
+/// the ATTEMPT log — which user we handed which hosted Stripe Checkout URL,
+/// and whether Stripe ever told us it completed. It answers "the customer
+/// says they paid on the web and has no access" without asking Stripe, and it
+/// is the join from a Stripe session id back to our user.
+model CheckoutSession {
+  checkoutSessionId String                @id @default(dbgenerated("gen_random_uuid()")) @map("checkout_session_id") @db.Uuid
+  userId            String                @map("user_id") @db.Uuid
+  provider          SubscriptionProvider  @map("provider")
+  externalSessionId String?               @map("external_session_id") @db.VarChar(255)
+  status            CheckoutSessionStatus @default(pending)
+  url               String?               @db.VarChar(2048)
+  cancelUrl         String?               @map("cancel_url") @db.VarChar(2048)
+  successUrl        String?               @map("success_url") @db.VarChar(2048)
+  expiresAt         DateTime?             @map("expires_at") @db.Timestamptz(3)
+  completedAt       DateTime?             @map("completed_at") @db.Timestamptz(3)
+  cancelledAt       DateTime?             @map("cancelled_at") @db.Timestamptz(3)
+  metadata          Json?                 @default("{}")
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user              User                  @relation(fields: [userId], references: [userId])
+
+  @@index([userId], map: "idx_checkout_sessions_user_id")
+  @@index([provider], map: "idx_checkout_sessions_provider")
+  @@index([status], map: "idx_checkout_sessions_status")
+  @@index([externalSessionId], map: "idx_checkout_sessions_external_id")
+  @@map("billing_checkout_sessions")
 }
 
 /// UGC PHOTO LEDGER (product/images.md): every photo belongs to a restaurant
@@ -2031,6 +2062,16 @@ enum BillingEventStatus {
   failed
 
   @@map("billing_event_status")
+}
+
+enum CheckoutSessionStatus {
+  pending
+  open
+  completed
+  expired
+  cancelled
+
+  @@map("checkout_session_status")
 }
 
 enum AuthProvider {
@@ -2538,4 +2579,16 @@ model PollCreationAttempt {
 
   @@index([userId, placeId, attemptedAt(sort: Desc)])
   @@map("poll_creation_attempts")
+}
+
+/// P2.2 locations-follow-testimony: last metro-biased Places probe per
+/// (restaurant, community) — the cooldown that keeps demand-driven branch
+/// expansion from re-querying Google for brands with no local store.
+model MetroLocationProbe {
+  restaurantId    String   @map("restaurant_id") @db.Uuid
+  communityHandle String   @map("community_handle")
+  probedAt        DateTime @default(now()) @map("probed_at") @db.Timestamptz(6)
+
+  @@id([restaurantId, communityHandle])
+  @@map("metro_location_probes")
 }
