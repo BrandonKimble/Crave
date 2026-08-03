@@ -162,6 +162,14 @@ jobs:
       - name: 'Static guard: scripts/ containment lockdown'
         run: scripts/scripts-containment-gate.sh
 
+      # WIRED 2026-08-03 (D37/F703 + F758). Run by nothing since its creation;
+      # the day it was repaired it caught a live no-fake-estimates violation
+      # (`?? 0` painting unscored restaurants as the worst map tier). The
+      # non-null contract check it once carried is superseded: number|null IS
+      # the law for restaurant results; optionality remains banned.
+      - name: 'Static guard: crave-score cutover delete gate'
+        run: scripts/crave-score-cutover-delete-gate.sh
+
   native-tests:
     # Pure native LOD logic (MapLodKit): screen-space visibility decision, tested
     # via `swift test` — deterministic, fast, no simulator / Mapbox / React.

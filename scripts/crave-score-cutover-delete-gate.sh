@@ -115,12 +115,19 @@ scan_active "craveScore:\\s*[^,\n]+\\?\\?\\s*(0|60)" \
   "apps/api/src/modules/user-lists" \
   "apps/mobile/src"
 
-scan_active "craveScore:\\s*number \\| null" \
-  "real public result and coverage contracts must require numeric craveScore; use preview-specific types for profile shells" \
+# SUPERSEDED 2026-08-03 (F758): `craveScore: number | null` is now the LAW for
+# restaurant results and map features — null means UNSCORED and renders the
+# neutral color; the old non-null contract is what forced the `?? 0` coercion
+# that painted unscored restaurants as the worst tier. The dish/connection
+# ranked contracts stay non-null (they throw on unscored input); what stays
+# banned is OPTIONALITY — an absent key hides the question null answers.
+scan_active "craveScore\\?:" \
+  "craveScore must be present (number, or number|null for restaurants) — optionality hides the unscored case instead of answering it (F758)" \
   "packages/shared/src/types/search.ts" \
   "apps/mobile/src/screens/Search/components/search-map.tsx"
 
-scan_active "craveScore[^\\n]*(\\?\\?|:)\\s*(0|60)|Number\\([^\\n]*craveScore[^\\n]*\\)" \
+# ([^.0-9]|$) bounds the literal so fixture decimals (0.99) don't match as "0".
+scan_active "craveScore[^\\n]*(\\?\\?|:)\\s*(0|60)([^.0-9]|$)|Number\\([^\\n]*craveScore[^\\n]*\\)" \
   "active readers must reject missing Crave Scores instead of coercing them to fake numbers" \
   "apps/api/src/modules/search" \
   "apps/api/src/modules/user-lists" \

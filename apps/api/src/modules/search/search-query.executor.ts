@@ -1414,11 +1414,15 @@ LIMIT 3
 
     return restaurants.sort((a, b) => {
       // Unscored (null) sorts BELOW every scored restaurant in both
-      // directions — unknown is not a rank, it is absence (F757).
+      // directions — unknown is not a rank, it is absence (F758). Two nulls
+      // tie on score and fall through to the secondary keys.
       if ((a.craveScore === null) !== (b.craveScore === null)) {
         return a.craveScore === null ? 1 : -1;
       }
-      const scoreDiff = ((a.craveScore ?? 0) - (b.craveScore ?? 0)) * direction;
+      const scoreDiff =
+        a.craveScore !== null && b.craveScore !== null
+          ? (a.craveScore - b.craveScore) * direction
+          : 0;
       if (scoreDiff !== 0) {
         return scoreDiff;
       }
