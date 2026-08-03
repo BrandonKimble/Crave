@@ -107,3 +107,33 @@ VERDICT: **APPROVE**.
 ## D18 — ESCALATIONS (ext-int): F114 zero-means-closed (recommend the 3-valued limit type: {ceiling, 0=closed, absent=inherit}, malformed refuses boot — but it changes what a configured 0 DOES, so spend behavior = owner); F117 dead Places retryOptions (wire it or delete it — either changes vendor-call behavior). F126 is an OPERATIONAL note, not code: the derived Gemini backstop is ~48h stale because CRONS_ENABLED=false killed the nightly spend-analytics refresh — the staleness alert will fire when crons return; resolves itself on the cron flip.
 
 VERDICT: **ESCALATE F114, F117; note F126 to owner.**
+
+## D19 — /ops page gets a cookie bootstrap (signals-ops, F200)
+
+The owner console is unreachable by a browser (header-only guard, unreachable localStorage bootstrap — proven by executed Nest probe). Shape: HttpOnly+Secure+SameSite=Strict cookie set by a redirect that strips the secret from the URL; JSON routes and guard logic byte-unchanged; the query-string secret stays dead.
+VERDICT: **APPROVE** (owner-only tooling; constraints in parentheses are binding).
+
+## D20 — signals scope fragments + boot-declared act recording (F202+F203)
+
+(a) The 14 hand-copied redirect-COALESCE sites become one fragment home with a mutation-capable lockdown spec (the events precedent, applied to the ledger's read side). (b) Act recording becomes boot-audited: user-act routes declare @RecordsSignal(kind) or @NoSignal(reason); undeclared ⇒ boot refuses (the paywall-coverage audit shape, agent's option b). Red-team note binding: declarations are a floor — reviewed like code.
+VERDICT: **APPROVE** both.
+
+## D21 — the ledger's clock and its silent crons (F204+F205)
+
+utcInstantSql at the one skewed comparison + a single-column police spec; cron catches keep swallowing AND emit ops alerts (critical for partition maintenance); PLUS the un-foolable shape: a daily partition-existence assertion (covers a scheduler that died, not just a DDL that failed).
+VERDICT: **APPROVE**.
+
+## D22 — the dashboard says "—", demand reads refuse to under-count (F206+F207)
+
+Sections return {ok,data}|{ok:false,reason}; renderer prints the honest dash (the in-file precedent, applied at runtime absence). Demand-read expansion fallbacks DELETED: a failed expansion throws; the collector call site chooses skip-this-cycle loudly (under-counted spend inputs were silently wrong).
+VERDICT: **APPROVE**.
+
+## D23 — throttler truth (F208+F209+F210+F211)
+
+'default' tier gets an explicit entry equal to today's global values (ceilings readable at the route); dead metadata keys + SkipThrottle wrapper + unreachable premium tier deleted (hunts done, re-verify); stale numeric comments deleted, WHY prose kept; `|| 5` → `??` + boot validation (0 = closed), config stays the single declaration.
+VERDICT: **APPROVE**.
+
+## D24 — sybil sweep bounded on the act; one window constant (F212+F213)
+
+All three fetchers honour the lookback, bounded on ENDORSEMENT recency (not registration — the agent's own red-team subtlety is binding: an old ring voting today must stay visible); per-poll N+1 collapses to one keyed fetch. UNIT_COST_WINDOW_DAYS exported and imported.
+VERDICT: **APPROVE**. F214's four ideal verdicts accepted as recorded.
