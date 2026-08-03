@@ -669,3 +669,36 @@ the existing secondary-expansion queue (job variant + bias param +
 metro_location_probes cooldown table); mint-time metro-biased grounding
 already existed. Repair of the 46 misattributed entities' 1,653 events
 rides the rerun as planned.
+
+## P2.2 RED TEAM (round 13, 2026-08-03) — two Opus agents; all findings fixed and proven
+
+The ladder itself held everything thrown at it (boundary 79/81km, archived
+twins don't spoil uniqueness, food-named twins don't, case folding, cache
+is engine-scoped and never caches a demotion, poll-surface/no-anchor
+stands down, the worker's cooldown mechanics all correct). The wounds
+were in the WIRING and the edges:
+
+- F1 SEVERE (both agents): reusedEntitySummaries was declared, returned,
+  and NEVER populated — pre-existing dead code that made the entire
+  metro-probe leg inert and the reuse debug log silently empty since it
+  was written. FIXED at both adoption sources (resolver tiers + creation-
+  path adopt); proven through the FULL real pipeline (processLLMOutput →
+  exact-tier adoption → probe enqueued for austinfood).
+- F3 HIGH: a demoted mint that GROUNDS to a branch of the brand could
+  never merge back (identity lane needs equal folds; prefix lane demands
+  an ungrounded stub) — permanent fragmentation. FIXED: same-canonical-
+  domain merge lane (non-aggregator), proven pairing a grounded twin.
+- F4: "resolve locally" actually minted — demotion now RE-RESOLVES to a
+  locally-present candidate carrying the surface as name or alias before
+  falling to creation (proven: swapped to the local sibling).
+- F5: 22.7% of active restaurants are ungrounded and were treated as
+  remote-everywhere (every nickname mention minted a twin). Unknown geo
+  now stands the gate down, like a missing anchor — in the resolver gate
+  AND both creation-path probes (also collapses F6's one-twin-per-
+  spelling loop: the ungrounded twin is now findable).
+- F2: probe bias radius was the 5km default vs the 80km metro → 50km
+  (API cap). F3-worker: a permanently-failing probe now lays its
+  cooldown row before rethrowing. F7: anchor cache gets a 5-min TTL
+  (negative results no longer cached forever). F8: with creation
+  disabled, demoted restaurants surface as explicit unmatched results
+  instead of vanishing.
