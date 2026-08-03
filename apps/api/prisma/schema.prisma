@@ -1645,7 +1645,7 @@ model PhotoEvent {
   eventId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
   photoId    String   @map("photo_id") @db.Uuid
   userId     String?  @map("user_id") @db.Uuid
-  eventType  String   @map("event_type") @db.VarChar(16)
+  eventType  PhotoEventType @map("event_type")
   /// Coalesced count for batched impressions.
   eventCount Int      @default(1) @map("event_count")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)

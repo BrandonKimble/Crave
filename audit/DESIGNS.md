@@ -137,3 +137,47 @@ VERDICT: **APPROVE**.
 
 All three fetchers honour the lookback, bounded on ENDORSEMENT recency (not registration — the agent's own red-team subtlety is binding: an old ring voting today must stay visible); per-poll N+1 collapses to one keyed fetch. UNIT_COST_WINDOW_DAYS exported and imported.
 VERDICT: **APPROVE**. F214's four ideal verdicts accepted as recorded.
+
+## D25 — the three enum types Phase C never dropped (F301)
+
+A NEW forward migration (`drop_orphaned_demand_enums`) issuing the three drops with the
+SNAKE_CASE identifiers that actually exist:
+`DROP TYPE IF EXISTS "search_event_kind"; DROP TYPE IF EXISTS "demand_source_kind"; DROP TYPE IF EXISTS "demand_signal_kind";`
+Safe by construction: an enum TYPE holds no rows, all three are referenced by zero columns
+(pg_attribute count = 0 on a clean replay), by zero code, and by zero schema.prisma models —
+and `prisma migrate diff` already lists them as drift to be removed. `demand_subject_kind`
+is NOT included: it has 2 live columns. The dropping migration must NOT be a "fix" applied to
+20260720030000_phase_c_purge — that file is applied history and is never edited.
+THE DURABLE LESSON (worth more than the fix): `DROP TYPE IF EXISTS` with the wrong identifier
+is a SILENT SUCCESS. Any hand-written drop of a Postgres object should be spelled with the
+name Postgres knows, not the name Prisma's model layer knows — the two differ for every enum
+in this repo (PascalCase model vs snake_case type).
+VERDICT: **PROPOSED — owner ratification requested** (trivially safe, but it is a forward
+migration against prod and this territory ships no schema changes unilaterally).
+
+## D26 — photo_events.event_type: make schema.prisma tell the truth (F302)
+
+The database has `PhotoEventType` (enum: impression | tap); schema.prisma says
+`String @db.VarChar(16)`. The DB is RIGHT — the enum was a deliberate hardening in
+20260710120000_photos_hardening ("typed photo events"). The fix is entirely in schema.prisma,
+with NO migration and NO data change: declare the enum model and type the field to it, and add
+the missing `photo` relation field so the real `photo_events_photo_id_fkey` (ON DELETE CASCADE,
+from 20260710140000) becomes visible to Prisma. Two things this buys: the closed domain becomes
+a TypeScript union instead of `string`, and `prisma migrate dev` stops proposing a DESTRUCTIVE
+drop-and-recreate of the column on the events ledger.
+This is the general remedy for drift class (3) in F304 — align the MODEL to the DB whenever
+Prisma CAN express what the DB has. It is explicitly NOT the remedy for classes (1) and (2),
+where Prisma cannot express the object and the migration corpus is the rightful owner.
+VERDICT: **PROPOSED**.
+
+## D25 — forward migration drops three orphaned enum types (api-migrations, F301)
+
+The Phase C purge dropped PascalCase names that never existed; IF EXISTS made the misses silent. Proven: 0 column refs, 0 code refs, migrate diff flags them, non-data-bearing.
+RUBRIC: no data lifetime, no money, deletion of provably-orphaned type objects; migration is additive-forward (applied history untouched).
+VERDICT: **APPROVE** (orchestrator implements — two-line migration).
+
+## D26 — schema.prisma matches the DB's photo_events enum (F302)
+
+DB has enum PhotoEventType; schema says VarChar(16) — works by coercion but migrate dev would DESTRUCTIVELY recreate the column. Schema-only alignment, no data change, no generated migration.
+RUBRIC: prevents a destructive future; byte-level DB truth is the source; photos module is a concurrent session's area — schema field mapping only, no behavior.
+VERDICT: **APPROVE** (orchestrator implements; verify enum values from DB first).
