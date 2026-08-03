@@ -208,11 +208,20 @@ export default () => {
         .filter((value) => value.length > 0),
     },
     stripe: {
-      // Checkout/portal session config (price id, success/cancel/return
-      // URLs) was deleted with the client rail (c2861853) — re-add it when
-      // the web checkout rail is rebuilt (see business-model.md, decided).
       secretKey: process.env.STRIPE_SECRET_KEY,
       webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+      // THE WEB CHECKOUT RAIL (restored 2026-08-03, owner-ruled — see
+      // business/business-model.md "Margin lever"). No defaults on ANY of
+      // these: a guessed price id sells the wrong thing, and a guessed
+      // redirect URL sends a paying customer somewhere that isn't ours.
+      // Unconfigured is unconfigured — the endpoints refuse (503) instead.
+      //
+      // ONE price id, because premium is the only product, forever
+      // (D1-residual). A client that asks for a different one is refused.
+      premiumPriceId: process.env.STRIPE_PREMIUM_PRICE_ID,
+      checkoutSuccessUrl: process.env.STRIPE_CHECKOUT_SUCCESS_URL,
+      checkoutCancelUrl: process.env.STRIPE_CHECKOUT_CANCEL_URL,
+      portalReturnUrl: process.env.STRIPE_PORTAL_RETURN_URL,
     },
     cloudinary: {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME,

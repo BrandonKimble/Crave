@@ -9,6 +9,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import Stripe from 'stripe';
 import {
   BillingEventStatus,
+  CheckoutSessionStatus,
   Prisma,
   SubscriptionPlatform,
   SubscriptionProvider,
@@ -17,6 +18,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { UserService } from '../identity/user.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
@@ -64,6 +66,214 @@ export class BillingService {
   }
 
   private readonly entitlementMap: RevenueCatEntitlementMap;
+
+  /**
+   * THE WEB CHECKOUT RAIL (restored 2026-08-03 by owner ruling; see
+   * business/business-model.md "Margin lever" and the header on
+   * create-checkout-session.dto.ts for what was re-derived rather than
+   * restored).
+   *
+   * Hands back the HOSTED Stripe Checkout URL. That URL is the whole
+   * product of this endpoint: the app's primary paywall button and the
+   * external landing page both just open it.
+   *
+   * SINGLE-PRODUCT LAW. Premium is the only product, forever (D1-residual,
+   * owner 2026-08-03 — same ruling that makes RevenueCatEntitlementMap
+   * refuse boot on a second code). `accessVerdict()` asks only about the
+   * default entitlement code, so selling anything else produces a charge
+   * that grants nothing. A request naming a different price is a 400 that
+   * names both ids, not a silent substitution.
+   *
+   * NO GRANT HAPPENS HERE. Creating a session is an intent to pay. Access
+   * arrives only through the webhook -> access-grant ledger path, so a
+   * customer who abandons Checkout never had anything to revoke.
+   */
+  async createCheckoutSession(
+    user: User,
+    dto: CreateCheckoutSessionDto,
+  ): Promise<{
+    url: string;
+    sessionId: string;
+    expiresAt: Date | null;
+  }> {
+    const stripe = this.ensureStripe();
+    const config = this.requireCheckoutConfig();
+
+    if (dto.priceId && dto.priceId !== config.premiumPriceId) {
+      throw new BadRequestException(
+        `priceId ${JSON.stringify(dto.priceId)} is not sold here. Premium is ` +
+          `the only product (owner ruling 2026-08-03): the only purchasable ` +
+          `price is ${JSON.stringify(config.premiumPriceId)}, and a charge ` +
+          `under any other price would grant nothing, because access checks ` +
+          `ask only about ${JSON.stringify(this.defaultEntitlement)}.`,
+      );
+    }
+
+    const customerId = await this.ensureStripeCustomer(user, stripe);
+    // The identifier every downstream webhook resolves the user by. Same
+    // precedence as lookupUserByAuthIdentifier expects.
+    const authIdentifier = user.authProviderUserId ?? user.userId;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'subscription',
+      customer: customerId,
+      client_reference_id: authIdentifier,
+      success_url: config.successUrl,
+      cancel_url: config.cancelUrl,
+      metadata: {
+        user_id: authIdentifier,
+        entitlement_code: this.defaultEntitlement,
+      },
+      // STAMPED ON THE SUBSCRIPTION, NOT JUST THE SESSION. Stripe does NOT
+      // copy Checkout Session metadata onto the subscription it creates, and
+      // applyStripeSubscription resolves the user from subscription
+      // metadata — without this, every web subscription event would log
+      // "Stripe subscription event without matching user" and no grant would
+      // ever be written.
+      subscription_data: {
+        metadata: {
+          user_id: authIdentifier,
+          entitlement_code: this.defaultEntitlement,
+        },
+      },
+      line_items: [{ price: config.premiumPriceId, quantity: 1 }],
+    });
+
+    if (!session.url) {
+      // The URL IS the deliverable. Returning a null one would hand the app
+      // a button that opens nothing.
+      throw new ServiceUnavailableException(
+        'Stripe did not return a Checkout URL',
+      );
+    }
+
+    const expiresAt = session.expires_at
+      ? new Date(session.expires_at * 1000)
+      : null;
+    const checkoutMetadata = this.toJsonInput(session);
+
+    await this.prisma.checkoutSession.create({
+      data: {
+        userId: user.userId,
+        provider: SubscriptionProvider.stripe,
+        externalSessionId: session.id,
+        status: CheckoutSessionStatus.pending,
+        url: session.url,
+        successUrl: config.successUrl,
+        cancelUrl: config.cancelUrl,
+        expiresAt,
+        ...(checkoutMetadata !== undefined
+          ? { metadata: checkoutMetadata }
+          : {}),
+      },
+    });
+
+    return { url: session.url, sessionId: session.id, expiresAt };
+  }
+
+  /**
+   * The Stripe-hosted billing portal (change card, cancel, invoices) for a
+   * WEB subscriber. App Store subscribers manage in iOS Settings — Stripe
+   * has no record of them, which is exactly what the 400 below says.
+   *
+   * The return URL comes from config, never from the caller: see the DTO
+   * header for the open-redirect this closes. The portal endpoint therefore
+   * takes no body at all.
+   */
+  async createPortalSession(user: User): Promise<{ url: string }> {
+    const stripe = this.ensureStripe();
+    const returnUrl = this.configService.get<string>('stripe.portalReturnUrl');
+    if (!returnUrl) {
+      throw new ServiceUnavailableException(
+        'STRIPE_PORTAL_RETURN_URL is not configured',
+      );
+    }
+    if (!user.stripeCustomerId) {
+      throw new BadRequestException(
+        'No Stripe customer for this account. Web billing starts at ' +
+          'checkout; App Store subscriptions are managed in iOS Settings.',
+      );
+    }
+
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: returnUrl,
+    });
+
+    if (!portalSession.url) {
+      throw new ServiceUnavailableException(
+        'Stripe did not return a portal URL',
+      );
+    }
+
+    return { url: portalSession.url };
+  }
+
+  /**
+   * Every checkout config fact, or a refusal naming what is missing.
+   *
+   * NO DEFAULTS, deliberately (no-fake-estimates law): a guessed price id
+   * sells the wrong thing and a guessed redirect strands a paying customer
+   * on a page we do not own. Unconfigured is unconfigured.
+   */
+  private requireCheckoutConfig(): {
+    premiumPriceId: string;
+    successUrl: string;
+    cancelUrl: string;
+  } {
+    const premiumPriceId = this.configService.get<string>(
+      'stripe.premiumPriceId',
+    );
+    const successUrl = this.configService.get<string>(
+      'stripe.checkoutSuccessUrl',
+    );
+    const cancelUrl = this.configService.get<string>(
+      'stripe.checkoutCancelUrl',
+    );
+    const missing = [
+      premiumPriceId ? null : 'STRIPE_PREMIUM_PRICE_ID',
+      successUrl ? null : 'STRIPE_CHECKOUT_SUCCESS_URL',
+      cancelUrl ? null : 'STRIPE_CHECKOUT_CANCEL_URL',
+    ].filter((name): name is string => name !== null);
+    if (missing.length > 0) {
+      throw new ServiceUnavailableException(
+        `Stripe web checkout is not configured: ${missing.join(', ')}`,
+      );
+    }
+    return {
+      premiumPriceId: premiumPriceId as string,
+      successUrl: successUrl as string,
+      cancelUrl: cancelUrl as string,
+    };
+  }
+
+  /**
+   * The user's Stripe customer id, created on first checkout.
+   *
+   * Lived in UserService before 2026-07-09; it comes back HERE because it is
+   * billing's business and nothing else ever needed it — moving it back into
+   * identity would only re-spread the vendor across two modules.
+   */
+  private async ensureStripeCustomer(
+    user: User,
+    stripe: Stripe,
+  ): Promise<string> {
+    if (user.stripeCustomerId) {
+      return user.stripeCustomerId;
+    }
+
+    const customer = await stripe.customers.create({
+      email: user.email,
+      metadata: { user_id: user.authProviderUserId ?? user.userId },
+    });
+
+    await this.prisma.user.update({
+      where: { userId: user.userId },
+      data: { stripeCustomerId: customer.id },
+    });
+
+    return customer.id;
+  }
 
   async handleStripeWebhook(
     signature: string | undefined,
@@ -121,6 +331,9 @@ export class BillingService {
         case 'customer.subscription.updated':
         case 'customer.subscription.deleted':
           await this.applyStripeSubscription(event.data.object);
+          break;
+        case 'checkout.session.completed':
+          await this.completeCheckoutSession(event.data.object);
           break;
         case 'charge.refunded':
           await this.handleStripeRefund(event.data.object);
@@ -776,8 +989,74 @@ export class BillingService {
     });
   }
 
+  /**
+   * `checkout.session.completed` — the customer paid on the web.
+   *
+   * TWO jobs, in this order:
+   *
+   *  1. Settle the ATTEMPT row (this table's only purpose).
+   *  2. GRANT, through the same access-grant ledger call the subscription
+   *     events use. Stripe also sends `customer.subscription.created`, and
+   *     ordering between the two is not guaranteed — so whichever lands
+   *     first must be sufficient on its own. It is: both funnel into
+   *     `syncSubscriptionGrant`, which is idempotent per
+   *     `stripe:<subscriptionId>`, so the second arrival settles the same
+   *     row instead of minting a second grant.
+   *
+   * IDEMPOTENT ON REPLAY at two independent levels: the billing event log
+   * short-circuits a replayed event id before we are ever called, and the
+   * ledger's (userId, source, sourceRef) uniqueness is the backstop if it
+   * somehow is.
+   */
+  private async completeCheckoutSession(
+    session: Stripe.Checkout.Session,
+  ): Promise<void> {
+    const sessionMetadata = this.toJsonInput(session);
+
+    await this.prisma.checkoutSession.updateMany({
+      // Replays must not re-stamp completedAt or clobber metadata.
+      where: {
+        externalSessionId: session.id,
+        status: { not: CheckoutSessionStatus.completed },
+      },
+      data: {
+        status: CheckoutSessionStatus.completed,
+        completedAt: new Date(),
+        ...(sessionMetadata !== undefined ? { metadata: sessionMetadata } : {}),
+      },
+    });
+
+    const subscriptionId =
+      typeof session.subscription === 'string'
+        ? session.subscription
+        : (session.subscription?.id ?? null);
+    if (!subscriptionId) {
+      // A completed session with no subscription is not our product (premium
+      // is a subscription, and mode is hard-coded to 'subscription'). Record
+      // it and grant nothing rather than guessing what was bought.
+      this.logger.warn('Checkout session completed without a subscription', {
+        sessionId: session.id,
+      });
+      return;
+    }
+
+    const stripe = this.ensureStripe();
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    // The session's own metadata is the fallback identity: we stamp
+    // subscription_data.metadata at creation, but a session created outside
+    // this rail (a payment link, a dashboard test) may carry it only here.
+    await this.applyStripeSubscription(
+      subscription,
+      this.getMetadataValue(session.metadata, 'user_id') ??
+        (typeof session.client_reference_id === 'string'
+          ? session.client_reference_id
+          : undefined),
+    );
+  }
+
   private async applyStripeSubscription(
     subscription: Stripe.Subscription,
+    fallbackAuthId?: string,
   ): Promise<void> {
     const metadataUserId = this.getMetadataValue(
       subscription.metadata,
@@ -787,7 +1066,7 @@ export class BillingService {
       subscription.metadata,
       'auth_user_id',
     );
-    const authId = metadataUserId || metadataAuthId;
+    const authId = metadataUserId || metadataAuthId || fallbackAuthId;
     const user = await this.lookupUserByAuthIdentifier(authId);
     if (!user) {
       this.logger.warn('Stripe subscription event without matching user', {
@@ -803,6 +1082,20 @@ export class BillingService {
         'entitlement_code',
       ) ||
       this.defaultEntitlement;
+    // SINGLE-PRODUCT LAW, the Stripe-side door (D1-residual, owner
+    // 2026-08-03). RevenueCatEntitlementMap refuses a second code at BOOT;
+    // this is the same refusal for a code arriving in VENDOR DATA — a stray
+    // `entitlement_code` on a Stripe price would otherwise mint a paid grant
+    // under a code accessVerdict() never asks about. Throwing marks the event
+    // failed and replayable, which is the findable end of the failure.
+    if (!this.entitlementMap.isKnownCode(entitlementCode)) {
+      throw new Error(
+        `Stripe subscription ${subscription.id} names entitlement code ` +
+          `${JSON.stringify(entitlementCode)}, which no access check ` +
+          `consults. Premium is the only product; fix the price/subscription ` +
+          `metadata in Stripe and redeliver.`,
+      );
+    }
     const status = this.mapStripeStatus(subscription.status);
     const currentPeriodEnd = subscription.current_period_end
       ? new Date(subscription.current_period_end * 1000)
