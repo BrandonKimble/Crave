@@ -572,3 +572,7 @@ The first Phase-3 attempt STOPPED correctly: the estimator registry has zero con
 - F945/F953/F962 finish the home retarget: 'home' joins the three top-level scene-set copies (ideally collapsed to ONE set), the three hardcoded 'polls' seats read DOCKED_SCENE_KEY, and ADDING_A_SCENE.md is corrected AFTER the code (doc-first would record the defect as intent).
 
 **Defended as ideal (recorded, not touched):** scene-stack dispose, useArmedOutsideDismiss, overlay-chrome-metrics, sheetBodyScrollDefaults, bottomSheetSurfaceStyleUtils, page-body-contract, params-equality spec. The territory's near-total absence of swallowed errors is noted as the standard other territories get held to.
+
+## D42-supplement — F943/F944 re-ruling after the Phase-3 stop (2026-08-03)
+
+The Phase-3 agent correctly REFUSED the F943 deletion: the mapper's "zero method calls" grep was scoped to the switch controller; repo-wide the visibility-policy runtime has seven live callers in screens/Search runtime/shared. RE-RULING: (a) F943 narrows to deleting the switch-controller's own unused field/threading (:544, :1581-1590) — approved as a small cleanup; (b) F944's duplicated chromeSurfaceTarget formula is LIVE in both copies — the fix is ONE formula with two callers, not a deletion; approved for the next mobile pass, bundled with the mobile-search Phase 3 (same files' neighborhood).
