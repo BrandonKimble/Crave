@@ -18,13 +18,24 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
+import {
+  CreateCheckoutSessionDto,
+  type CheckoutPlan,
+} from './dto/create-checkout-session.dto';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { UserService } from '../identity/user.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
 import { readDefaultEntitlementCode } from '../entitlements/entitlement-config';
 import { RevenueCatEntitlementMap } from './revenuecat-entitlement-map';
 import { revenueCatEventIdentity } from './webhook-event-identity';
+
+/**
+ * The annual-only free trial, in days (owner ruling 2026-08-03: "~1 week").
+ * Stated ONCE, here, because the web paywall copy and the Stripe session must
+ * describe the same offer — a page that promises a week while the session
+ * grants three days is a lie the customer discovers at the charge.
+ */
+export const ANNUAL_TRIAL_PERIOD_DAYS = 7;
 
 interface LogBillingEventParams {
   source: SubscriptionProvider;
@@ -77,12 +88,22 @@ export class BillingService {
    * product of this endpoint: the app's primary paywall button and the
    * external landing page both just open it.
    *
-   * SINGLE-PRODUCT LAW. Premium is the only product, forever (D1-residual,
-   * owner 2026-08-03 — same ruling that makes RevenueCatEntitlementMap
-   * refuse boot on a second code). `accessVerdict()` asks only about the
-   * default entitlement code, so selling anything else produces a charge
-   * that grants nothing. A request naming a different price is a 400 that
-   * names both ids, not a silent substitution.
+   * SINGLE-PRODUCT LAW, UNTOUCHED. Premium is the only PRODUCT, forever
+   * (D1-residual, owner 2026-08-03 — same ruling that makes
+   * RevenueCatEntitlementMap refuse boot on a second code).
+   * `accessVerdict()` asks only about the default entitlement code, so
+   * selling anything else produces a charge that grants nothing. What the
+   * owner ruled on 2026-08-03 is that the ONE product has TWO prices —
+   * $7.99/mo and $39.99/yr — the same pair the in-app paywall shows. The
+   * caller names a plan WORD, never a price id, so a price outside the
+   * configured pair is unrepresentable; an unknown word is a 400 from the
+   * DTO before this method is ever entered.
+   *
+   * THE TRIAL IS ANNUAL-ONLY, and it lives here rather than on the Stripe
+   * price so the structure is visible in the code that sells it: annual gets
+   * `subscription_data.trial_period_days`, monthly gets none. Both paywalls
+   * (web and in-app) state the same thing, so the offer a user reads is the
+   * offer this method builds.
    *
    * NO GRANT HAPPENS HERE. Creating a session is an intent to pay. Access
    * arrives only through the webhook -> access-grant ledger path, so a
@@ -98,16 +119,7 @@ export class BillingService {
   }> {
     const stripe = this.ensureStripe();
     const config = this.requireCheckoutConfig();
-
-    if (dto.priceId && dto.priceId !== config.premiumPriceId) {
-      throw new BadRequestException(
-        `priceId ${JSON.stringify(dto.priceId)} is not sold here. Premium is ` +
-          `the only product (owner ruling 2026-08-03): the only purchasable ` +
-          `price is ${JSON.stringify(config.premiumPriceId)}, and a charge ` +
-          `under any other price would grant nothing, because access checks ` +
-          `ask only about ${JSON.stringify(this.defaultEntitlement)}.`,
-      );
-    }
+    const priceId = config.prices[dto.plan];
 
     const customerId = await this.ensureStripeCustomer(user, stripe);
     // The identifier every downstream webhook resolves the user by. Same
@@ -135,8 +147,15 @@ export class BillingService {
           user_id: authIdentifier,
           entitlement_code: this.defaultEntitlement,
         },
+        // ANNUAL-ONLY, and spread rather than set-to-undefined: Stripe reads
+        // an explicit `trial_period_days: undefined` the same as absent, but
+        // a future refactor that stringifies these args would not. Monthly
+        // carries no trial in either paywall, so it must carry none here.
+        ...(dto.plan === 'annual'
+          ? { trial_period_days: ANNUAL_TRIAL_PERIOD_DAYS }
+          : {}),
       },
-      line_items: [{ price: config.premiumPriceId, quantity: 1 }],
+      line_items: [{ price: priceId, quantity: 1 }],
     });
 
     if (!session.url) {
@@ -217,13 +236,17 @@ export class BillingService {
    * on a page we do not own. Unconfigured is unconfigured.
    */
   private requireCheckoutConfig(): {
-    premiumPriceId: string;
+    prices: Record<CheckoutPlan, string>;
     successUrl: string;
     cancelUrl: string;
   } {
-    const premiumPriceId = this.configService.get<string>(
-      'stripe.premiumPriceId',
-    );
+    // BOTH prices are required, not just the one this request happens to
+    // want. The paywall renders two buttons; a rail that can serve only one
+    // of them is a half-outage that looks green until a user picks the other
+    // plan, and a partially-configured rail must fail on the FIRST request,
+    // not the unlucky one.
+    const monthly = this.configService.get<string>('stripe.prices.monthly');
+    const annual = this.configService.get<string>('stripe.prices.annual');
     const successUrl = this.configService.get<string>(
       'stripe.checkoutSuccessUrl',
     );
@@ -231,7 +254,8 @@ export class BillingService {
       'stripe.checkoutCancelUrl',
     );
     const missing = [
-      premiumPriceId ? null : 'STRIPE_PREMIUM_PRICE_ID',
+      monthly ? null : 'STRIPE_MONTHLY_PRICE_ID',
+      annual ? null : 'STRIPE_ANNUAL_PRICE_ID',
       successUrl ? null : 'STRIPE_CHECKOUT_SUCCESS_URL',
       cancelUrl ? null : 'STRIPE_CHECKOUT_CANCEL_URL',
     ].filter((name): name is string => name !== null);
@@ -241,7 +265,7 @@ export class BillingService {
       );
     }
     return {
-      premiumPriceId: premiumPriceId as string,
+      prices: { monthly: monthly as string, annual: annual as string },
       successUrl: successUrl as string,
       cancelUrl: cancelUrl as string,
     };

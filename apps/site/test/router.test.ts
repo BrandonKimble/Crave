@@ -58,13 +58,36 @@ test('/premium wires sign-in and the checkout POST', () => {
   assert.match(res.body, /window\.location\.href = data\.url/);
 });
 
-test('/premium never names a price or a redirect URL', () => {
-  // Single-product law + the open-redirect the DTO deliberately stopped
-  // accepting. If either ever appears in this page, it is a regression.
+test('/premium shows BOTH offers with honest copy', () => {
+  // Owner ruling 2026-08-03: the web paywall shows the SAME structure as the
+  // in-app one (Strava pattern — same offers, different payment location).
+  // A web page that showed one plan would quietly steer every web buyer onto
+  // whichever price we happened to hard-code.
   const body = handle('/premium', CONFIGURED).body;
-  assert.doesNotMatch(body, /priceId/);
+  assert.match(body, /\$7\.99/, 'monthly price missing');
+  assert.match(body, /per month/);
+  assert.match(body, /\$39\.99/, 'annual price missing');
+  assert.match(body, /per year/);
+  // The trial is ANNUAL-ONLY and must say what happens after it. "1 week
+  // free" alone is the half-truth that produces chargebacks.
+  assert.match(body, /1 week free, then \$39\.99\/year/);
+  // ...and it must not be promised on monthly.
+  assert.doesNotMatch(body, /free.*per month|per month.*free/i);
+});
+
+test('/premium posts a PLAN WORD for each offer — never a price id', () => {
+  // The closed vocabulary IS the single-product law's new enforcement: the
+  // page cannot name a Stripe price, so a price outside the configured pair
+  // is unrepresentable rather than merely refused. Plus the open-redirect the
+  // DTO deliberately stopped accepting.
+  const body = handle('/premium', CONFIGURED).body;
+  assert.doesNotMatch(body, /priceId|price_/);
   assert.doesNotMatch(body, /successUrl|cancelUrl/);
-  assert.match(body, /body: '\{\}'/);
+  assert.match(body, /data-plan="monthly"/);
+  assert.match(body, /data-plan="annual"/);
+  // One POST body shape, built from the button's own plan word.
+  assert.match(body, /JSON\.stringify\(\{ plan: plan \}\)/);
+  assert.match(body, /startCheckout\(b\.dataset\.plan\)/);
 });
 
 test('/premium is 503 (not a broken 200) when unconfigured', () => {

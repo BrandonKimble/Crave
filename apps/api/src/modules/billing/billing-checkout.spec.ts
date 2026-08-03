@@ -3,6 +3,9 @@ import {
   BadRequestException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 
 /**
  * THE WEB CHECKOUT RAIL (restored 2026-08-03, owner ruling — see
@@ -27,12 +30,13 @@ jest.mock('stripe', () => ({
 
 // require() after jest.mock so the stripe mock is in place before the
 // service module loads (import hoisting would defeat the mock).
+type BillingModule = typeof import('./billing.service');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { BillingService } = require('./billing.service') as {
-  BillingService: typeof import('./billing.service').BillingService;
-};
+const billingModule: BillingModule = require('./billing.service');
+const { BillingService, ANNUAL_TRIAL_PERIOD_DAYS } = billingModule;
 
-const PRICE = 'price_premium_monthly';
+const MONTHLY = 'price_premium_monthly';
+const ANNUAL = 'price_premium_annual';
 
 // The service takes a full `User` row; only these four fields are read on
 // this path, so the fixture states them and is cast rather than padded with
@@ -55,7 +59,8 @@ function makeService(
     Object.entries({
       'stripe.secretKey': 'sk_test_x',
       'stripe.webhookSecret': 'whsec_x',
-      'stripe.premiumPriceId': PRICE,
+      'stripe.prices.monthly': MONTHLY,
+      'stripe.prices.annual': ANNUAL,
       'stripe.checkoutSuccessUrl': 'https://crave.app/billing/success',
       'stripe.checkoutCancelUrl': 'https://crave.app/billing/cancel',
       'stripe.portalReturnUrl': 'https://crave.app/account',
@@ -127,14 +132,16 @@ describe('createCheckoutSession', () => {
   it('returns the hosted Stripe Checkout URL and logs the attempt', async () => {
     const { service, prisma } = makeService();
 
-    const result = await service.createCheckoutSession(USER, {});
+    const result = await service.createCheckoutSession(USER, {
+      plan: 'monthly',
+    });
 
     expect(result.url).toBe('https://checkout.stripe.com/c/pay/cs_test_1');
     expect(result.sessionId).toBe('cs_test_1');
 
     const args = stripeMock.checkout.sessions.create.mock.calls[0][0];
     expect(args.mode).toBe('subscription');
-    expect(args.line_items).toEqual([{ price: PRICE, quantity: 1 }]);
+    expect(args.line_items).toEqual([{ price: MONTHLY, quantity: 1 }]);
     // Redirects come from CONFIG, never the caller (open redirect).
     expect(args.success_url).toBe('https://crave.app/billing/success');
     expect(args.cancel_url).toBe('https://crave.app/billing/cancel');
@@ -151,7 +158,7 @@ describe('createCheckoutSession', () => {
 
   it('creates the Stripe customer once and remembers it', async () => {
     const { service, prisma } = makeService();
-    await service.createCheckoutSession(USER, {});
+    await service.createCheckoutSession(USER, { plan: 'monthly' });
     expect(stripeMock.customers.create).toHaveBeenCalledTimes(1);
     expect(prisma.user.update.mock.calls[0][0].data.stripeCustomerId).toBe(
       'cus_1',
@@ -163,36 +170,96 @@ describe('createCheckoutSession', () => {
       url: 'https://checkout.stripe.com/c/pay/cs_2',
     });
     const { service: s2 } = makeService();
-    await s2.createCheckoutSession({ ...USER, stripeCustomerId: 'cus_1' }, {});
+    await s2.createCheckoutSession(
+      { ...USER, stripeCustomerId: 'cus_1' },
+      { plan: 'monthly' },
+    );
     expect(stripeMock.customers.create).not.toHaveBeenCalled();
   });
 
-  it('REFUSES a second product — premium is the only thing sold', async () => {
-    const { service, prisma } = makeService();
+  // THE TWO OFFERS. The owner ruled (2026-08-03) that both paywalls — web and
+  // in-app — show the same structure: $7.99/mo with no trial, $39.99/yr with
+  // a ~1-week trial. These two tests are that structure, stated as facts.
+  it('monthly buys the monthly price with NO trial', async () => {
+    const { service } = makeService();
+    await service.createCheckoutSession(USER, { plan: 'monthly' });
 
-    await expect(
-      service.createCheckoutSession(USER, { priceId: 'price_pro_annual' }),
-    ).rejects.toThrow(BadRequestException);
-
-    // Refusal is total: nothing was charged and nothing was recorded.
-    expect(stripeMock.checkout.sessions.create).not.toHaveBeenCalled();
-    expect(prisma.checkoutSession.create).not.toHaveBeenCalled();
+    const args = stripeMock.checkout.sessions.create.mock.calls[0][0];
+    expect(args.line_items).toEqual([{ price: MONTHLY, quantity: 1 }]);
+    // RED IF the trial ever leaks onto monthly: a free week on the $7.99
+    // plan is revenue given away that neither paywall promised.
+    expect(args.subscription_data.trial_period_days).toBeUndefined();
+    expect('trial_period_days' in args.subscription_data).toBe(false);
   });
 
-  it('accepts the configured price stated explicitly', async () => {
+  it('annual buys the annual price WITH the 7-day trial', async () => {
     const { service } = makeService();
-    await expect(
-      service.createCheckoutSession(USER, { priceId: PRICE }),
-    ).resolves.toMatchObject({ sessionId: 'cs_test_1' });
+    await service.createCheckoutSession(USER, { plan: 'annual' });
+
+    const args = stripeMock.checkout.sessions.create.mock.calls[0][0];
+    expect(args.line_items).toEqual([{ price: ANNUAL, quantity: 1 }]);
+    // RED IF DROPPED: the page promises a free week; a session without the
+    // trial charges $39.99 today, to someone who was told otherwise.
+    expect(args.subscription_data.trial_period_days).toBe(
+      ANNUAL_TRIAL_PERIOD_DAYS,
+    );
+    // The trial changes the PRICE, never the product: the grant metadata is
+    // identical on both plans, so both resolve to the same entitlement.
+    expect(args.subscription_data.metadata.entitlement_code).toBe('premium');
   });
 
   it('refuses (503) rather than guessing an unconfigured price or redirect', async () => {
     const { service } = makeService({
-      config: { 'stripe.premiumPriceId': undefined },
+      config: { 'stripe.prices.monthly': undefined },
     });
-    await expect(service.createCheckoutSession(USER, {})).rejects.toThrow(
-      /STRIPE_PREMIUM_PRICE_ID/,
-    );
+    await expect(
+      service.createCheckoutSession(USER, { plan: 'annual' }),
+    ).rejects.toThrow(/STRIPE_MONTHLY_PRICE_ID/);
+  });
+
+  it('refuses (503) when the ANNUAL price is unconfigured, even for a monthly buy', async () => {
+    // A half-configured rail must fail on the FIRST request, not on the
+    // unlucky user who picks the other button.
+    const { service } = makeService({
+      config: { 'stripe.prices.annual': undefined },
+    });
+    await expect(
+      service.createCheckoutSession(USER, { plan: 'monthly' }),
+    ).rejects.toThrow(/STRIPE_ANNUAL_PRICE_ID/);
+  });
+});
+
+/**
+ * THE CLOSED PLAN VOCABULARY (single-product law, 2026-08-03 shape).
+ *
+ * The old rail enforced "premium is the only product" by comparing a
+ * client-supplied price id against the configured one. The vocabulary does it
+ * structurally: the caller cannot NAME a Stripe price, so a price outside the
+ * configured pair is unrepresentable rather than merely refused. These tests
+ * run the real class-validator pipeline, because that is what turns an
+ * unknown word into the 400.
+ */
+describe('CreateCheckoutSessionDto — the plan vocabulary is closed', () => {
+  async function validatePlan(body: unknown) {
+    return validate(plainToInstance(CreateCheckoutSessionDto, body));
+  }
+
+  it.each(['monthly', 'annual'])('accepts %s', async (plan) => {
+    expect(await validatePlan({ plan })).toHaveLength(0);
+  });
+
+  it.each([
+    ['an unknown word', { plan: 'lifetime' }],
+    ['a raw Stripe price id', { plan: 'price_premium_monthly' }],
+    ['nothing at all', {}],
+    ['a non-string', { plan: 7 }],
+  ])('refuses %s (400)', async (_label, body) => {
+    const errors = await validatePlan(body);
+    expect(errors).toHaveLength(1);
+    // The refusal NAMES the legal values — a 400 that does not say what is
+    // allowed makes the caller guess, and guessing is how the wrong plan
+    // gets charged.
+    expect(JSON.stringify(errors[0].constraints)).toMatch(/monthly, annual/);
   });
 });
 
@@ -250,7 +317,7 @@ describe('checkout.session.completed -> the access-grant ledger', () => {
     cancel_at_period_end: false,
     canceled_at: null,
     metadata: { user_id: 'user_clerk_1', entitlement_code: 'premium' },
-    items: { data: [{ price: { id: PRICE, product: 'prod_1' } }] },
+    items: { data: [{ price: { id: MONTHLY, product: 'prod_1' } }] },
   };
 
   beforeEach(() => {

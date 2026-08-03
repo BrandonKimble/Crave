@@ -216,9 +216,18 @@ export default () => {
       // redirect URL sends a paying customer somewhere that isn't ours.
       // Unconfigured is unconfigured — the endpoints refuse (503) instead.
       //
-      // ONE price id, because premium is the only product, forever
-      // (D1-residual). A client that asks for a different one is refused.
-      premiumPriceId: process.env.STRIPE_PREMIUM_PRICE_ID,
+      // TWO price ids, because the paywall shows two offers of the ONE
+      // product (owner ruling 2026-08-03): $7.99/mo and $39.99/yr, the
+      // annual one carrying the ~1-week free trial. Premium is still the
+      // only PRODUCT, forever (D1-residual) — this is a closed vocabulary of
+      // two prices OF it, not a second thing sold. The caller names a plan
+      // word ('monthly' | 'annual'); only these two env vars can turn that
+      // word into a Stripe price, so a price outside the pair is
+      // unrepresentable rather than merely refused.
+      prices: {
+        monthly: process.env.STRIPE_MONTHLY_PRICE_ID,
+        annual: process.env.STRIPE_ANNUAL_PRICE_ID,
+      },
       checkoutSuccessUrl: process.env.STRIPE_CHECKOUT_SUCCESS_URL,
       checkoutCancelUrl: process.env.STRIPE_CHECKOUT_CANCEL_URL,
       portalReturnUrl: process.env.STRIPE_PORTAL_RETURN_URL,

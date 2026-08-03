@@ -25,9 +25,15 @@ export class BillingController {
   constructor(private readonly billingService: BillingService) {}
 
   /**
-   * -> `{ url, sessionId, expiresAt }`. `url` is the hosted Stripe Checkout
-   * page; the client's only job is to open it. Scoped to the caller — the
-   * session is built for `@CurrentUser()`, never a body-supplied user.
+   * `{ plan: 'monthly' | 'annual' }` -> `{ url, sessionId, expiresAt }`.
+   * `url` is the hosted Stripe Checkout page; the client's only job is to
+   * open it. Scoped to the caller — the session is built for
+   * `@CurrentUser()`, never a body-supplied user.
+   *
+   * `plan` is the ONLY input, and it is a closed two-word vocabulary, not a
+   * price id: the api owns which Stripe price each word means and which one
+   * carries the annual-only free trial. Unknown or absent plan -> 400 from
+   * the DTO. Both offers are the same PRODUCT (Premium); see the DTO header.
    */
   @Post('checkout-session')
   // Same reasoning as cancel: this is account/billing state, not demand for

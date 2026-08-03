@@ -33,16 +33,27 @@ again.
    publishable key itself** (`src/clerk-frontend-api.ts`) — no fourth env var, and no
    way for a hand-typed host to disagree with the key.
 2. Not signed in → `Clerk.mountSignIn()`. Same Clerk instance as the mobile app.
-3. Signed in → "Continue to secure checkout" mints a **JWT-template token**
-   (`getToken({ template: … })`) and `POST`s it as a bearer to
-   `${API_ORIGIN}/api/v1/billing/checkout-session` with an **empty JSON body**.
-4. The api returns `{ url }` — the hosted Stripe Checkout page — and the browser
+3. Signed in → **both offers** appear: **$7.99/mo** and **$39.99/yr with a 1-week
+   free trial** — the same structure as the in-app paywall (Strava pattern: same
+   offers, different payment location). Owner ruling 2026-08-03.
+4. A plan button mints a **JWT-template token** (`getToken({ template: … })`) and
+   `POST`s it as a bearer to `${API_ORIGIN}/api/v1/billing/checkout-session` with
+   the body **`{"plan":"monthly"}`** or **`{"plan":"annual"}`** — nothing else.
+5. The api returns `{ url }` — the hosted Stripe Checkout page — and the browser
    follows it.
 
 **What the site deliberately does not do**, and must never start doing:
 
-- **It never names a price.** Premium is the only product; the api refuses any
-  `priceId` but the configured one. Sending none means there is nothing to get wrong.
+- **It never names a Stripe price.** The body is a **plan word** from a closed
+  two-word vocabulary; the api owns which price id each word means and which one
+  carries the trial. The single-product law is untouched — one PRODUCT (Premium),
+  two prices of it — and the enforcement got _stronger_: a price outside the
+  configured pair is now **unrepresentable**, because there is no field here that
+  could carry one. An unknown plan is a 400.
+- **The dollar amounts and "1 week free" are copy, not configuration.** They must
+  match the Stripe prices behind `STRIPE_MONTHLY_PRICE_ID` / `STRIPE_ANNUAL_PRICE_ID`
+  and the api's `ANNUAL_TRIAL_PERIOD_DAYS`. Only the api can charge, so a mismatch
+  is a **lie on this page**, not a wrong charge — which is worse, not better.
 - **It never chooses the redirect URLs.** The DTO stopped accepting client
   `successUrl`/`cancelUrl` — that is an open redirect wearing a feature's clothes.
   `/premium/success` and `/premium/cancelled` exist to **be** the configured URLs,
@@ -97,7 +108,11 @@ success (see `CLAUDE.md`).
 
 ### Cutover (owner/orchestrator executes — this app does not deploy anything)
 
-1. On the api service: set `WEB_ORIGIN=https://craveapp.ai`; confirm
+1. On the api service: set `WEB_ORIGIN=https://craveapp.ai`; set **both**
+   `STRIPE_MONTHLY_PRICE_ID` and `STRIPE_ANNUAL_PRICE_ID` (both are required —
+   the rail 503s naming either if missing, on the FIRST request rather than the
+   unlucky user who picks the other button, and the amounts behind them must be
+   $7.99/mo and $39.99/yr to match this page's copy); confirm
    `STRIPE_CHECKOUT_SUCCESS_URL=https://craveapp.ai/premium/success` and
    `STRIPE_CHECKOUT_CANCEL_URL=https://craveapp.ai/premium/cancelled`; redeploy api.
 2. Create/point the Railway **`site`** service at this repo with

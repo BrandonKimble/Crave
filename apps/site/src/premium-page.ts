@@ -11,11 +11,26 @@ import { clerkBrowserScriptUrl } from './clerk-frontend-api';
  * ~97% net instead of ~85%, Apple-commission-free because the purchase never
  * happens inside the app (April 2025 Epic v. Apple contempt ruling).
  *
+ * BOTH OFFERS, SAME STRUCTURE AS THE APP (owner ruling 2026-08-03). The web
+ * paywall is not a reduced version of the in-app one — Strava's pattern is
+ * the SAME offers in a different payment location, so this page shows both:
+ * $7.99/mo, and $39.99/yr with the annual-only ~1-week free trial. Showing
+ * fewer offers here would quietly steer web buyers onto the plan we happened
+ * to hard-code.
+ *
  * WHAT THIS PAGE DOES NOT DO, and must never start doing:
- *  - It does not know the price. `POST /billing/checkout-session` takes an
- *    optional priceId and REFUSES anything but the configured premium price
- *    (single-product law). We send no priceId at all, so there is nothing
- *    here to get wrong.
+ *  - It does not name a Stripe price. Each button posts a PLAN WORD
+ *    (`{"plan":"monthly"}` / `{"plan":"annual"}`) from a closed two-word
+ *    vocabulary; the api owns which price id each word means and which one
+ *    carries the trial. The single-product law is untouched — one product,
+ *    two prices of it — and a price outside the configured pair is now
+ *    unrepresentable rather than merely refused, because there is no field
+ *    here that could carry one.
+ *  - The dollar amounts below are COPY, not configuration. They must match
+ *    the Stripe prices behind STRIPE_MONTHLY_PRICE_ID / STRIPE_ANNUAL_PRICE_ID;
+ *    the api is the only thing that can charge, so a mismatch is a lie on
+ *    this page, not a wrong charge. Same for "1 week free": it must equal the
+ *    api's ANNUAL_TRIAL_PERIOD_DAYS.
  *  - It does not choose the success/cancel URLs. Those come from the api's
  *    STRIPE_CHECKOUT_SUCCESS_URL / STRIPE_CHECKOUT_CANCEL_URL. The DTO
  *    deliberately stopped accepting them from the client — a client-supplied
@@ -51,6 +66,19 @@ const SHELL_STYLE = `
  button.cta { padding:14px 28px; border-radius:14px; border:0; font-size:16px; font-weight:600;
  color:#fff; background:linear-gradient(135deg,#ff6b4a,#ff3d68); cursor:pointer; }
  button.cta[disabled] { opacity:.55; cursor:default; }
+ /* The two offers. Same visual language as the CTA above — the annual card
+ carries the accent border because it is the one with the trial, not because
+ it is the one we want you to pick. */
+ .plans { display:flex; gap:16px; flex-wrap:wrap; justify-content:center; width:100%; max-width:560px; }
+ .plan { flex:1 1 220px; display:flex; flex-direction:column; gap:6px; align-items:center;
+ padding:24px 20px; border-radius:18px; border:1px solid #2a2b30; background:#16171b; }
+ .plan.featured { border-color:#ff6b4a; }
+ .plan .name { font-size:14px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:#a3a3a0; }
+ .plan .price { font-size:30px; font-weight:800; letter-spacing:-0.02em; }
+ .plan .period { font-size:14px; color:#a3a3a0; }
+ .plan .note { font-size:13px; color:#a3a3a0; min-height:18px; margin-bottom:6px; }
+ .plan.featured .note { color:#ff8a72; font-weight:600; }
+ .plan button.cta { width:100%; padding:12px 18px; }
  .status { margin-top:18px; font-size:14px; color:#a3a3a0; min-height:20px; max-width:480px; }
  .status.error { color:#ff8a72; }
  #clerk-signin { margin-top:8px; }
@@ -61,6 +89,8 @@ const SHELL_STYLE = `
  body { background:#fafaf9; color:#1c1917; }
  p.sub, .status { color:#78716c; }
  footer a { color:#a8a29e; } footer a:hover { color:#1c1917; }
+ .plan { background:#fff; border-color:#e7e5e4; }
+ .plan .name, .plan .period, .plan .note { color:#78716c; }
  }
 `;
 
@@ -120,7 +150,8 @@ export function renderPremium(config: SiteConfig): string {
 ${boot}
 
 const statusEl = () => document.getElementById('status');
-const ctaEl = () => document.getElementById('cta');
+const plansEl = () => document.getElementById('plans');
+const ctaEls = () => Array.prototype.slice.call(document.querySelectorAll('button.cta'));
 const signInEl = () => document.getElementById('clerk-signin');
 
 function setStatus(text, isError) {
@@ -130,9 +161,14 @@ function setStatus(text, isError) {
   el.className = isError ? 'status error' : 'status';
 }
 
-async function startCheckout() {
-  const cta = ctaEl();
-  if (cta) cta.disabled = true;
+// BOTH buttons disable while either is in flight: two Checkout sessions from
+// one impatient double-click is two payment pages for one decision.
+function setPlansDisabled(disabled) {
+  ctaEls().forEach(function (b) { b.disabled = disabled; });
+}
+
+async function startCheckout(plan) {
+  setPlansDisabled(true);
   setStatus('Starting secure checkout…', false);
   try {
     // The api verifies aud against CLERK_JWT_AUDIENCE and refuses anything
@@ -145,9 +181,10 @@ async function startCheckout() {
         'Authorization': 'Bearer ' + token,
         'Content-Type': 'application/json',
       },
-      // Empty body on purpose: Premium is the only product and the api owns
-      // the price, so there is no price identifier for this page to get wrong.
-      body: '{}',
+      // The plan WORD, and nothing else. The api maps it to a Stripe price
+      // and decides the trial, so there is no price identifier and no
+      // redirect URL for this page to get wrong.
+      body: JSON.stringify({ plan: plan }),
     });
     if (!res.ok) {
       throw new Error('Checkout is unavailable right now (' + res.status + ').');
@@ -159,7 +196,7 @@ async function startCheckout() {
     // The hosted Stripe Checkout page. This is the whole product of the call.
     window.location.href = data.url;
   } catch (err) {
-    if (cta) cta.disabled = false;
+    setPlansDisabled(false);
     setStatus(
       (err && err.message ? err.message : 'Something went wrong.') +
         ' Nothing was charged.',
@@ -197,11 +234,13 @@ async function boot() {
     return;
   }
   if (window.Clerk.user) {
-    const cta = ctaEl();
-    if (cta) {
-      cta.hidden = false;
-      cta.addEventListener('click', startCheckout);
-    }
+    // The offers stay VISIBLE to a signed-out visitor (they are the reason to
+    // sign in); only the buttons wait for a session.
+    const plans = plansEl();
+    if (plans) plans.hidden = false;
+    ctaEls().forEach(function (b) {
+      b.addEventListener('click', function () { startCheckout(b.dataset.plan); });
+    });
     setStatus('Signed in as ' + (window.Clerk.user.primaryEmailAddress?.emailAddress || 'your account') + '.', false);
     return;
   }
@@ -224,7 +263,22 @@ boot();
  <p class="sub">Unlock the full dish-level ranking. Checkout is handled by
  Stripe — we never see your card details.</p>
  <div id="clerk-signin"></div>
- <button id="cta" class="cta" type="button" hidden>Continue to secure checkout</button>
+ <div id="plans" class="plans" hidden>
+ <div class="plan">
+ <div class="name">Monthly</div>
+ <div class="price">$7.99</div>
+ <div class="period">per month</div>
+ <div class="note">Cancel anytime</div>
+ <button class="cta" type="button" data-plan="monthly">Choose monthly</button>
+ </div>
+ <div class="plan featured">
+ <div class="name">Annual</div>
+ <div class="price">$39.99</div>
+ <div class="period">per year</div>
+ <div class="note">1 week free, then $39.99/year</div>
+ <button class="cta" type="button" data-plan="annual">Start free trial</button>
+ </div>
+ </div>
  <div id="status" class="status"></div>
  <script>${script}</script>`,
     head
