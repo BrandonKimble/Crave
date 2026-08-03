@@ -291,3 +291,12 @@ VERDICT: approve all; the six-surface leak fix is one coherent commit, the build
 **EXCLUDED from this Phase 3 (not rejected):** the dual-button Stripe paywall (waits on the API rail agent's endpoint shape); the tracksheet files carrying another session's uncommitted edits (src/tracksheet/_, services/teaser.ts, ios/TrackScrollKit/_) — not ours to touch this pass.
 
 **ESCALATE:** none — F800's user-visible copy change rides the existing owner ruling.
+
+## D39 — owner rulings batch (2026-08-03)
+
+- **F467 explore weights → RULED: replace with measured-yield UCB** through the estimator registry — with an explicit pre-implementation gate: the implementer must first verify the registry IS the right abstraction for term selection (one estimator per term? per (term, territory)? outcome = new-evidence yield per search) and return to Phase 2 if a better shape emerges. The hand-weighted blend and its three proxy inputs are deleted on landing.
+- **F582 evidence-tier order → RULED: exact name/alias ABOVE whole-phrase containment.** The extraction ladder changes to match search confidence; the pinned-exception spec tightens to full-order agreement with zero exceptions.
+- **F706/F707 visual-regression rail → RULED: RETIRE COMPLETELY.** The map is locked in; the debugging era that justified the rail is over. Baseline PNGs, the capture-side script(s), and every reference are deleted; COVERAGE rows → DELETED.
+- **F800 onboarding economics screen → RULED: OWNER EXCEPTION, KEEP AS-IS.** The only animated screen; kept deliberately for conversion. Exception is temporary and must be re-confirmed at any redesign. (D38 agent redirected mid-flight.)
+- **Stripe web rail, phase 2 → RULED: wire the LANDING PAGE (hosted on Railway) end-to-end** — Clerk auth + checkout entry against POST /billing/checkout-session, so web payments work exactly like in-app. Ideal-shape mandate, not a patch.
+- **Onboarding data foundation → RULED: answers are DURABLE personalization data.** Commissioned: a design pass for the initial-taste-profile substrate — onboarding answers stored as the seed profile; ongoing taste signals (searches, taps, saves) already flow through the signals ledger, which is the presumptive substrate for "what they're into"; the design must show how curated-for-you lists derive from both. Foundation now, UI later.
