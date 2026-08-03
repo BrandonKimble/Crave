@@ -9,7 +9,7 @@ import { dayRecencySql } from '../polls/supply/poll-supply.constants';
 import {
   DEDUPE_KEY_SQL,
   EVENT_COUNT_SQL,
-  dayActsFilterSql,
+  dailyActsCteSql,
 } from './act-identity';
 import { ECHO_SIGNAL_KINDS } from './signals.service';
 
@@ -756,28 +756,24 @@ export class SignalDemandReadService {
         last_seen_at: Date | null;
       }[]
     >`
-      WITH agg AS (
-        SELECT
-          COALESCE(r.to_entity_id, a.subject_id) AS entity_id,
-          a.actor_id,
-          a.day,
-          MAX(a.signal_count)::float8 AS day_acts,
-          MAX(a.last_occurred_at) AS last_seen_at
-        FROM signal_demand_daily a
-        LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id
-        WHERE a.place_id = ANY(${aggPlaceIds}::uuid[])
-          -- Docket #6: the aggregate INCLUDES today (15-min cadence = freshness);
-          -- the fresh ledger arm — the law's second dialect — is deleted.
-          --
-          -- THE SAME §4 rule the demand-mass reader uses (red team
-          -- 2026-08-02). This arm previously omitted the echo exclusion and
-          -- the entity-subject filter, and left the kind out of the grain --
-          -- collapsing every kind of a day into one MAX. Same entity, same
-          -- day, a different score from the other reader, and this is the one
-          -- the collector's territory read uses to decide what gets enriched.
-          AND ${dayActsFilterSql(ECHO_SIGNAL_KINDS, sinceDayKey)}
-        GROUP BY 1, 2, 3, a.kind
-      ),
+      -- THE §4 daily-acts statement (act-identity.ts). This arm once omitted
+      -- the echo exclusion and the entity-subject filter and left kind out of
+      -- the grain, collapsing every kind of a day into one MAX — a different
+      -- score than the demand-mass reader produced for the same entity on the
+      -- same day, and this is the one the collector's territory read uses to
+      -- decide what gets enriched.
+      WITH agg AS (${dailyActsCteSql({
+        dimensions: Prisma.sql`COALESCE(r.to_entity_id, a.subject_id) AS entity_id`,
+        dimensionGrain: Prisma.sql`COALESCE(r.to_entity_id, a.subject_id)`,
+        from: Prisma.sql`signal_demand_daily a
+          LEFT JOIN entity_redirects r ON r.from_entity_id = a.subject_id`,
+        where: Prisma.sql`a.place_id = ANY(${aggPlaceIds}::uuid[])`,
+        extraAggregates: Prisma.sql`MAX(a.last_occurred_at) AS last_seen_at`,
+        actsAlias: 'day_acts',
+        echoKinds: ECHO_SIGNAL_KINDS,
+        sinceDayKey,
+        subjectScope: 'entity',
+      })}),
       -- The agg CTE is now per-KIND, so a day's acts SUM across kinds before the
       -- recency weight is applied — two kinds on one day are two acts.
       by_day AS (

@@ -53,6 +53,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
+import { dailyActsCteSql } from '../../signals/act-identity';
 import {
   COOLDOWN_GAUSSIAN_DAYS,
   DEMAND_HALF_LIFE_DAYS,
@@ -197,27 +198,18 @@ export class DemandMassReader {
         -- act-grain law at kind granularity — ECHO_SIGNAL_KINDS); MAX across
         -- a root's lineage tiles counts a signal stored at both a member and
         -- an ancestor ONCE (§3 set semantics at aggregate grain).
-        SELECT
-          l.root,
-          a.actor_id,
-          a.day,
-          a.kind,
-          a.subject_type,
-          a.subject_id,
-          a.subject_text,
-          MAX(a.signal_count) AS acts
-        FROM lineage l
-        JOIN signal_demand_daily a ON a.place_id = l.tile
-        -- Docket #6 (owner-ratified 2026-07-30): ONE law, ONE implementation.
-        -- The aggregate INCLUDES today — the 15-minute rebuild cadence is the
-        -- freshness, and the fresh ledger arm (the attribution law's second
-        -- dialect, where the midnight divergence lived) is DELETED. Today's
-        -- rows land at day-grain with recency age 0 = flat 1.0, identical to
-        -- what the act-grain arm computed inside the 7-day flat window.
-        WHERE a.day >= ${horizonKey}::date
-          AND a.kind <> ALL(${ECHO_KINDS}::text[])
-        GROUP BY l.root, a.actor_id, a.day, a.kind,
-                 a.subject_type, a.subject_id, a.subject_text
+        ${dailyActsCteSql({
+          dimensions: Prisma.sql`l.root, a.subject_type, a.subject_id, a.subject_text`,
+          dimensionGrain: Prisma.sql`l.root, a.subject_type, a.subject_id, a.subject_text`,
+          from: Prisma.sql`lineage l
+            JOIN signal_demand_daily a ON a.place_id = l.tile`,
+          actsAlias: 'acts',
+          echoKinds: ECHO_KINDS,
+          sinceDayKey: horizonKey,
+          // Tile-level mass counts acts against a TERRITORY regardless of what
+          // they named, so this arm alone does not require an entity subject.
+          subjectScope: 'any',
+        })}
       ),
       by_actor AS (
         SELECT
@@ -281,21 +273,16 @@ export class DemandMassReader {
       day_acts AS (
         -- Tile MAX first, at RAW subject grain (two raw ids folding into one
         -- survivor are distinct acts and must SUM, not MAX).
-        SELECT
-          l.root,
-          a.actor_id,
-          a.day,
-          a.kind,
-          a.subject_id,
-          MAX(a.signal_count) AS acts
-        FROM lineage l
-        JOIN signal_demand_daily a ON a.place_id = l.tile
-        WHERE a.day >= ${horizonKey}::date
-          -- Docket #6: no upper bound — the aggregate includes today.
-          AND a.subject_type = 'entity'
-          AND a.subject_id IS NOT NULL
-          AND a.kind <> ALL(${ECHO_KINDS}::text[])
-        GROUP BY l.root, a.actor_id, a.day, a.kind, a.subject_id
+        ${dailyActsCteSql({
+          dimensions: Prisma.sql`l.root, a.subject_id`,
+          dimensionGrain: Prisma.sql`l.root, a.subject_id`,
+          from: Prisma.sql`lineage l
+            JOIN signal_demand_daily a ON a.place_id = l.tile`,
+          actsAlias: 'acts',
+          echoKinds: ECHO_KINDS,
+          sinceDayKey: horizonKey,
+          subjectScope: 'entity',
+        })}
       ),
       resolved AS (
         SELECT

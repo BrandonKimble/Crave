@@ -1,14 +1,11 @@
 import 'reflect-metadata';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { PhotoReads } from './photo-reads';
-import { filesImporting } from '../../shared/testing/import-scan';
-
-const SRC = join(__dirname, '..', '..');
-const tileGallery = readFileSync(
-  join(SRC, 'modules/user-lists/user-list-tile-gallery.service.ts'),
-  'utf8',
-);
+import {
+  PhotosController,
+  RestaurantGalleryQueryDto,
+} from './photos.controller';
 
 // BLOCKING IS A PROPERTY OF THE QUERY, NOT OF THE RESULT.
 //
@@ -148,65 +145,72 @@ describe('the exclusion is pushed into the query', () => {
   });
 });
 
-describe('the seam is the only door', () => {
-  // IMPORT-BASED, WHOLE-TREE (red team 2026-08-02). The previous version of
-  // this block did two things wrong at once. It grepped `this.reads.` against
-  // the controller — whose field is named `photoReads`, so the pattern matched
-  // NOTHING and the test asserted that nothing equals nothing. And it read two
-  // hard-coded files, so a third consumer was invisible in exactly the way the
-  // tile gallery had been.
-  //
-  // Containment is a property of the whole tree, so the guard has to be too.
-  it('nothing outside the photos seam imports PhotoReadService', () => {
-    const offenders = filesImporting('PhotoReadService', {
-      root: SRC,
-      allow: [
-        // The seam itself, and the module that provides it.
-        'modules/photos/photo-reads.ts',
-        'modules/photos/photos.module.ts',
-        // The service's own file.
-        'modules/photos/photo-read.service.ts',
-      ],
-    });
-    expect(offenders).toEqual([]);
-  });
-
-  it('the scanner can see a real import (it is not vacuously green)', () => {
-    // If the walker silently matched nothing, the assertion above would pass
-    // forever. Prove it finds a symbol we know is imported widely.
-    const seen = filesImporting('PrismaService', { root: SRC });
-    expect(seen.length).toBeGreaterThan(10);
-  });
-
-  it('the list-tile gallery reads through the seam', () => {
-    expect(tileGallery).toContain('forViewer(');
-  });
-});
-
-// The ROUTE must expose what the service supports. The gallery service has
-// taken limit/offset since it was written, but the controller never read them
-// — so the endpoint could only ever return the default page while reporting a
-// larger honest total, with no way for a client to reach the rest.
 describe('gallery paging reaches the route', () => {
-  const controller = readFileSync(
-    join(__dirname, 'photos.controller.ts'),
-    'utf8',
-  );
+  // WAS TWO SOURCE SCANS. One walked the tree for files importing
+  // `PhotoReadService` — an import boundary, which ESLint now enforces on
+  // VALUE imports (a type cannot be injected or called, so `import type` is
+  // still allowed). The other grepped this controller for the strings
+  // `limit: query.limit` and `@Max(`, which is the shape of the check, not
+  // its effect. These call the route.
+  //
+  // The defect they were written for: the gallery service has taken
+  // limit/offset since it was written, but the controller never read them, so
+  // the endpoint could only ever return the default page while reporting a
+  // larger honest total — with no way for a client to reach the rest.
 
-  it('the gallery route accepts and forwards limit/offset', () => {
-    const at = controller.indexOf('async restaurantGallery(');
-    expect(at).toBeGreaterThan(-1);
-    const body = controller.slice(at, at + 420);
-    expect(body).toContain('@Query()');
-    expect(body).toContain('limit: query.limit');
-    expect(body).toContain('offset: query.offset');
+  function controllerWith(reads: unknown) {
+    return new PhotosController(
+      {} as never,
+      {} as never,
+      { isBlockedPair: jest.fn().mockResolvedValue(false) } as never,
+      reads as never,
+    );
+  }
+
+  it('forwards limit and offset from the query to the seam', async () => {
+    const restaurantGallery = jest.fn().mockResolvedValue({ totalCount: 0 });
+    const forViewer = jest.fn().mockReturnValue({ restaurantGallery });
+    const controller = controllerWith({ forViewer });
+
+    await controller.restaurantGallery(
+      { userId: VIEWER } as never,
+      'r1',
+      Object.assign(new RestaurantGalleryQueryDto(), {
+        limit: 30,
+        offset: 60,
+      }),
+    );
+
+    expect(forViewer).toHaveBeenCalledWith(VIEWER);
+    expect(restaurantGallery).toHaveBeenCalledWith('r1', {
+      limit: 30,
+      offset: 60,
+    });
   });
 
-  it('the paging DTO is bounded — an unbounded limit is a DoS lever', () => {
-    expect(controller).toContain('class RestaurantGalleryQueryDto');
-    const at = controller.indexOf('class RestaurantGalleryQueryDto');
-    const dto = controller.slice(at, at + 400);
-    expect(dto).toMatch(/@Max\(\d+\)/);
-    expect(dto).toMatch(/@Min\(1\)/);
+  it('an unbounded limit is REJECTED by validation — it is a DoS lever', async () => {
+    const dto = plainToInstance(RestaurantGalleryQueryDto, {
+      limit: 100_000,
+      offset: 0,
+    });
+    const errors = await validate(dto);
+    expect(errors.map((e) => e.property)).toEqual(['limit']);
+  });
+
+  it.each([
+    ['limit', { limit: 0 }],
+    ['offset', { offset: -1 }],
+  ])('rejects a nonsensical %s', async (property, payload) => {
+    const errors = await validate(
+      plainToInstance(RestaurantGalleryQueryDto, payload),
+    );
+    expect(errors.map((e) => e.property)).toEqual([property]);
+  });
+
+  it('omitting paging entirely is valid — both are optional', async () => {
+    const errors = await validate(
+      plainToInstance(RestaurantGalleryQueryDto, {}),
+    );
+    expect(errors).toEqual([]);
   });
 });

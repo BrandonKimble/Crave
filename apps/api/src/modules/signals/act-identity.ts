@@ -27,10 +27,10 @@ export const ACT_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.met
 export const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
 
 /**
- * THE §4 daily-acts rule, stated once.
+ * THE §4 daily-acts CTE, stated once — filter, grain, and roll-up together.
  *
- * WHY (red team 2026-08-02). Two readers implemented this law differently over
- * the SAME table:
+ * WHY THIS IS A STATEMENT AND NOT THREE FRAGMENTS (2026-08-02). Two readers
+ * implemented this law differently over the SAME table:
  *
  *   demand-mass.reader.ts   excluded echo kinds, required an entity subject,
  *                           and grouped by KIND (MAX per kind, then SUM) —
@@ -40,28 +40,79 @@ export const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventC
  *                           collapsing every kind of that day to a single MAX.
  *
  * Same entity, same day, different scores — and the looser one is what the
- * collector's territory read used to decide what gets enriched. The RECENCY
- * half of this law was already hoisted into `dayRecencySql` for exactly this
- * reason; the act-identity half was left behind.
+ * collector's territory read used to decide what gets enriched.
+ *
+ * The first fix published a `dayActsFilterSql` helper and a
+ * `DAY_ACTS_GRAIN_SQL` constant, and a test asserted the readers mentioned
+ * them. One reader adopted the filter; the mass reader adopted neither, and
+ * the grain constant was never referenced by anything at all — a test can
+ * assert a shared fragment EXISTS but not that the SQL is built from it. So
+ * there were still three dialects with a shared vocabulary on top.
+ *
+ * A builder cannot be half-adopted. What varies between the three call sites
+ * (their dimensions, their join, their extra predicates) is parameters; what
+ * is the law — the horizon, the echo exclusion, the subject scope, and `kind`
+ * being IN the grain — is not reachable from outside.
  *
  * `a` is the signal_demand_daily alias at every call site, by the same
  * convention as `s` above.
  */
-export function dayActsFilterSql(
-  echoKinds: readonly string[],
-  sinceDayKey: string,
-): Prisma.Sql {
-  return Prisma.sql`
-    a.day >= ${sinceDayKey}::date
-    AND a.subject_type = 'entity'
-    AND a.subject_id IS NOT NULL
-    AND a.kind <> ALL(${[...echoKinds]}::text[])
-  `;
+export interface DailyActsCte {
+  /** Grouped expressions this reader needs downstream, with their aliases. */
+  dimensions: Prisma.Sql;
+  /** The grain those dimensions group by (aliases are not groupable). */
+  dimensionGrain: Prisma.Sql;
+  /** FROM + any JOINs. Must expose `a` as signal_demand_daily. */
+  from: Prisma.Sql;
+  /** Extra predicates ANDed after the law's. */
+  where?: Prisma.Sql;
+  /** Aggregates beyond the act count (e.g. MAX(a.last_occurred_at)). */
+  extraAggregates?: Prisma.Sql;
+  /** Column name for the per-(actor, day, kind) act count. */
+  actsAlias: string;
+  echoKinds: readonly string[];
+  sinceDayKey: string;
+  /**
+   * 'entity' requires a resolvable entity subject — the filter the signals
+   * reader was missing. 'any' is for tile-level mass, which counts acts
+   * against a territory regardless of what they named.
+   *
+   * HONESTLY: measured against a subject-less fixture row, removing this
+   * clause changes NO reader's output — every entity-scoped consumer joins
+   * core_entities or groups by subject_id, so a NULL subject is dropped
+   * downstream anyway. It stays because pruning at the scan is cheaper than
+   * carrying rows to a join that discards them, not because it is the thing
+   * standing between us and a wrong number. The kind grain and the echo
+   * exclusion ARE that thing — mutating either moves all three readers.
+   */
+  subjectScope: 'entity' | 'any';
 }
 
-/**
- * The grain a daily-acts aggregate MUST group by. `kind` is load-bearing: two
- * different kinds by one actor on one day are two acts and must SUM, so
- * collapsing them into a single MAX silently under-counts demand.
- */
-export const DAY_ACTS_GRAIN_SQL = Prisma.sql`a.actor_id, a.day, a.kind, a.subject_id`;
+export function dailyActsCteSql(cte: DailyActsCte): Prisma.Sql {
+  const subjectFilter =
+    cte.subjectScope === 'entity'
+      ? Prisma.sql`AND a.subject_type = 'entity' AND a.subject_id IS NOT NULL`
+      : Prisma.empty;
+  return Prisma.sql`
+    SELECT
+      ${cte.dimensions},
+      a.actor_id,
+      a.day,
+      -- MAX, not SUM: the daily aggregate already carries the de-duplicated
+      -- act count for this (actor, day, kind).
+      MAX(a.signal_count) AS ${Prisma.raw(`"${cte.actsAlias}"`)}
+      ${cte.extraAggregates ? Prisma.sql`, ${cte.extraAggregates}` : Prisma.empty}
+    FROM ${cte.from}
+    WHERE a.day >= ${cte.sinceDayKey}::date
+      -- Docket #6: no upper bound — the aggregate INCLUDES today (the
+      -- 15-minute rebuild cadence IS the freshness), and the fresh-ledger arm
+      -- where the midnight divergence lived is deleted.
+      AND a.kind <> ALL(${[...cte.echoKinds]}::text[])
+      ${subjectFilter}
+      ${cte.where ? Prisma.sql`AND (${cte.where})` : Prisma.empty}
+    -- a.kind IS LOAD-BEARING: two different kinds by one actor on one day
+    -- are two acts and must SUM downstream, so collapsing them into a single
+    -- MAX here silently under-counts demand.
+    GROUP BY ${cte.dimensionGrain}, a.actor_id, a.day, a.kind
+  `;
+}

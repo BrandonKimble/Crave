@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { CraveScoreSubjectType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PhotoStripItemDto } from '../photos/photo-read.service';
+import type { PhotoStripItemDto } from '../photos/photo-read.service';
 import { UserListMapper, hasCustomOrder } from './user-list.mappers';
 import { PhotoReads } from '../photos/photo-reads';
 

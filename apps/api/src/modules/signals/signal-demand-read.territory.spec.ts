@@ -43,7 +43,13 @@ function createHarness(rows: unknown[] = []) {
   const prisma = {
     $queryRaw: jest.fn(
       (strings: TemplateStringsArray, ...values: unknown[]) => {
-        const text = strings.join('¤');
+        // The statement's text INCLUDING composed fragments. The §4
+        // daily-acts CTE is now built by dailyActsCteSql and rides in as a
+        // template VALUE, so the outer `strings` alone no longer contains
+        // `signal_demand_daily` — a spec that reads only the outer template
+        // is asserting on the shape of the composition, not the SQL.
+        const outer = strings.join('¤');
+        const text = flattenFragments({ text: outer, values });
         queries.push({ text, values });
         // The containment-read place expansion (recursive lineage walk) runs
         // BEFORE the demand query; give it an empty lineage.
