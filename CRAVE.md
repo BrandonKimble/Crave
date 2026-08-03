@@ -992,3 +992,78 @@ rest of `scripts/` should aspire to.
   residue (F405).
 - **`configuration.ts` defaults the env STRING, not the parsed number.** That
   is what keeps a deliberate `0` alive.
+
+## Territory: apps/api/src/modules/content-processing — the heart (pass 1)
+
+**The pipeline, end to end.** `CollectorPacerService` (10-min cron,
+worker-only, `COLLECTION_SCHEDULER_ENABLED`) selects due (source, lane)
+rows ordered by normalized lateness = (now − dueAt) ÷ latenessTolerance
+— the owner's "days late is fine, months is not" AS the scheduler. No
+cycle budget: capacity comes from the governor. Each dispatch reserves
+the adapter's declared estimate on the reddit pool; real accounting
+happens at the client chokepoint. A pool denial is a typed not-now —
+the lane stays due, never errors, never brands a cooldown.
+
+Two lanes. **chronological** (/new, the unbiased sampling lane feeding
+docsPerDay) revisits on a derived interval: clamp(0.5 × 1000 ÷ measured
+posts/day, 2h, 14d) — 1000 is a vendor fact, 0.5 guarantees one missed
+tick can't overflow the window, the 14d clamp IS the measurement's own
+lookback. **keyword** (pull, biased, never feeds docsPerDay) selects
+≤25 terms/dispatch from four families — unmet / refresh / demand /
+explore — floors only on unmet (0.2) and explore (0.08). **archive** is
+a one-shot pushshift sweep, never a standing lane. Heavy sorts ride a
+60-day watermark.
+
+**Collection → evidence.** Fetch → self-healing orphan-parent sweep →
+STAGE the window on the lane row without moving the cursor → register
+expected fan-out → enqueue. Batch gate (freshness + comment-delta) →
+persist FIRST (a rejected doc is still paid-for evidence) → relevance
+gate → pre-LLM coverage gate → atomic claim → Gemini (batch mode ~50%
+price) → the same completeChunkPlan as interactive.
+
+**Evidence → identity → projection.** Resolution (exact → alias →
+recall+judge → create under advisory lock) → stale ids revalidated
+through redirects at write → two append-only ledgers → SAME-TX
+supersede-delete of same-generation events + pointer flip. Projection
+rebuild from ACTIVE evidence only, per-restaurant locked, full-replace.
+Rescore is a singleton debounced coordinator; collection only marks
+dirty.
+
+**Invariants + why.** (1) The cursor moves only when evidence exists —
+crash = free re-fetch. (2) Activation is atomic with the write — old
+evidence can't die before its replacement exists. (3) Supersede is
+within-generation; cross-generation deletion belongs to explicit
+discard — rollback is a pointer flip. (4) Identity is global and never
+versioned — that sharing is why a user's saved restaurant survives a
+re-extraction. (5) Place-grounded restaurants are never deleted; user
+anchors survive as starved (zeroed, unrankable). (6) Numbers are facts,
+owner choices, or derivations — the collector was purged of timers
+once; eligibility derives from measured harvest share.
+
+**Entry points.** Pacer tick → job scheduler / keyword orchestrator →
+Bull → batch workers → ExtractionPipelineService.processPosts. Replay:
+scripts/replay-extraction-run.ts. Re-extract: REEXTRACT\_\* env →
+CityReextractRunner (refuses without an approved campaign; pinned
+prompt version REQUIRES shadow mode).
+
+**Deliberate absences.** No cycle budget (the governor is capacity). No
+cooldown timers (derived eligibility). No generation column on derived
+tables (identity is shared on purpose). No poll_surface pull lanes
+(push-complete).
+
+**Gotchas.** CollectionEvidenceService is a CORE provider with @Crons —
+inert only because ScheduleModule loads on worker runtime alone
+(verified). collector-source-registry's evaluateCostBreach hand-mirrors
+SQL — change both or you've found the bug the duplication exists to
+catch. Replay requires source_map; pre-SRC### inputs unsupported.
+activateDocumentsBeforeProcessing trims to chunks that produced output.
+
+**Rederivation verdicts (pass 1).** Campaign-hardened core
+IDEAL-VERIFIED with argument (scope service lockdown proven RED under
+mutation; fold + fixpoint lemma; evidence lifecycle; loss-horizon
+asymmetry; derived keyword eligibility; scheduler-runtime gating).
+Fresh findings F450–F478: archive-seam integrity (random ids, string
+created_utc, truncation-reports-success), always-green/always-red
+instruments, three copies of the supersede law (one dead), Latin-only
+similarity defeating the multilingual fold, eight env-flag dialects,
+and an undeclared-constants ledger escalated for K-classification.
