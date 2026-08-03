@@ -610,3 +610,20 @@ The Phase-3 agent correctly REFUSED the F943 deletion: the mapper's "zero method
 - F1101 aps-environment: development while push runs — TestFlight/store push may be silently dead. Needs an instrumented check on a real TestFlight build (EAS credentials may mask it); owner should know before the next store submission.
 
 **Defended ideal:** MapLodKit (F1115, four transferable properties named); the map controller untouched per lock.
+
+## D45 — mobile-search pass-2 (Phase-2 review of F1055–F1073, 2026-08-03)
+
+**APPROVED:**
+
+- F1059 the `craveScore > 0` presence test is WRONG post-F758 (null is the unscored value; >0 also rejects a legitimate 0) — null-aware check, spec RED. Two disagreeing presence tests two lines apart become one.
+- The identity-compare-against-fresh-allocator CLASS (F1052f, F1061, F1071c): fix all three with derived field-wise comparators — extend D42's shape-equality generator rather than hand-writing a fourth sibling.
+- F1064 the fabricated no-op ports: make the port contract impossible to satisfy with a stub (required real handlers at construction) or delete the port indirection at those three sites — a dead button with no type error is the caller-must-remember disease.
+- F1056/F1057 forceMiddleSnap: land the pair together (thread it through or delete it end-to-end; asymmetric sibling resolved the same way).
+- F1058 unreachable L3-residue guards deleted; F1060 dead diagnostic barrels deleted (~120 lines, zero importers verified); F1063 FNV-1a of a compile-time constant becomes the constant.
+- F1065 profile cache becomes the bounded LRU shape that exists one directory over (unbounded + never-invalidated is a slow leak wearing a cache's name).
+- F1062/F1068/F1069 instrument honesty per the standard recipe (make RED possible or delete).
+- The 21 still-dark rows — reconciler (supersede logic!) first — get READ as the first act of this Phase 3; findings before fixes there.
+
+**DEFERRED:** F1070/F1071c native scalar-surface stack (structurally-false readyForActivation, 1,244 lines) — map-law adjacent; goes with the D44 native Phase-3 where the Swift side is read properly, never as a naked strip. F1072 triple-declared native wire shape — same lane (Swift bridge must be read first).
+
+**ESCALATED to owner:** F1055 — opening a profile hides the save sheet and captures its state for a restore that never happens (write-only ledger, zero readers). Product call: should the sheet come back when the profile closes, or is dismiss-forever the intent (then the capture machinery deletes)?
