@@ -1,10 +1,6 @@
 import type { EntityType } from '@prisma/client';
 import type { MapBoundsDto } from './dto/search-query.dto';
 
-/** CUTOVER 2026-08-02: the relaxation ladder is deleted — 'strict' is the
- *  only stage; the pooled richness gate replaced staged drops. */
-export type RelaxationStage = 'strict';
-
 export interface ConstraintInputPresence {
   restaurants: number;
   food: number;
@@ -45,10 +41,11 @@ export interface FoodGrounding {
 }
 
 export interface SearchConstraints {
-  stage: RelaxationStage;
   format: 'dual_list';
+  // CUTOVER 2026-08-02: the relaxation ladder is deleted — there is one pooled
+  // execution, so the former per-stage `stage`/`stagePresence` (a duplicate of
+  // inputPresence) are gone; the pooled richness gate replaced staged drops.
   inputPresence: ConstraintInputPresence;
-  stagePresence: ConstraintInputPresence;
   hadFoodGroup: boolean;
   hadRestaurantGroup: boolean;
   hadFoodAttributeGroup: boolean;

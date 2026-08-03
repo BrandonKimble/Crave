@@ -1,5 +1,3 @@
-import { EntityType } from '@prisma/client';
-
 /**
  * SYMSPELL-STYLE DELETE DICTIONARY (round-5 ideal abstraction).
  *
@@ -80,14 +78,4 @@ export function lexiconWords(name: string): string[] {
         .filter((w) => w.length >= 3 && w.length <= 64),
     ),
   );
-}
-
-export interface LexiconCandidate {
-  entityId: string;
-  entityType: EntityType;
-  word: string;
-  /** DL distance term→word (≤ the term's budget by construction). */
-  distance: number;
-  /** 1 − dl/len — the same honest score shape the edit tier always had. */
-  editScore: number;
 }

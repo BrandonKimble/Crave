@@ -32,7 +32,6 @@ import { EngineCoverageService } from './engine-coverage.service';
 import { SignalsService } from '../signals/signals.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
-const METERS_PER_MILE = 1609.34;
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
   analysis: LLMSearchQueryAnalysis;
@@ -712,43 +711,6 @@ export class SearchQueryInterpretationService {
     return widthMiles >= ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES;
   }
 
-  private buildLocationBias(request: NaturalSearchRequestDto):
-    | {
-        lat: number;
-        lng: number;
-        radiusMeters?: number;
-      }
-    | undefined {
-    const bounds = request.bounds;
-    const center = this.resolveBoundsCenter(bounds);
-    if (center) {
-      const widthMiles = this.calculateBoundsWidthMiles(bounds);
-      const heightMiles = this.calculateBoundsHeightMiles(bounds);
-      const maxMiles = Math.max(widthMiles ?? 0, heightMiles ?? 0);
-      const radiusMeters =
-        Number.isFinite(maxMiles) && maxMiles > 0
-          ? (maxMiles / 2) * METERS_PER_MILE
-          : undefined;
-      return {
-        lat: center.lat,
-        lng: center.lng,
-        radiusMeters,
-      };
-    }
-
-    if (
-      typeof request.userLocation?.lat === 'number' &&
-      typeof request.userLocation?.lng === 'number'
-    ) {
-      return {
-        lat: request.userLocation.lat,
-        lng: request.userLocation.lng,
-      };
-    }
-
-    return undefined;
-  }
-
   private resolveBoundsCenter(
     bounds?: MapBoundsDto,
   ): { lat: number; lng: number } | null {
@@ -785,23 +747,6 @@ export class SearchQueryInterpretationService {
       southWest.lng,
       center.lat,
       northEast.lng,
-    );
-  }
-
-  private calculateBoundsHeightMiles(bounds?: MapBoundsDto): number | null {
-    if (!bounds) {
-      return null;
-    }
-    const center = this.resolveBoundsCenter(bounds);
-    if (!center) {
-      return null;
-    }
-    const { northEast, southWest } = bounds;
-    return this.haversineDistanceMiles(
-      southWest.lat,
-      center.lng,
-      northEast.lat,
-      center.lng,
     );
   }
 

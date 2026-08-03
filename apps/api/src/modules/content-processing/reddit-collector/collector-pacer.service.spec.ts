@@ -262,6 +262,31 @@ describe('CollectorPacerService', () => {
     );
   });
 
+  it('F457: an engineless keyword lane is RED, not a dispatch — it never advances', async () => {
+    const h = build({
+      lanes: [
+        makeLane({
+          lane: 'keyword',
+          engineId: undefined,
+          cadenceDays: 7,
+          latenessToleranceDays: 7,
+        }),
+      ],
+    });
+    const result = await h.service.tick(NOW);
+    // Not counted as dispatched — the wiring gap stays visible.
+    expect(result.dispatched).toBe(0);
+    // And crucially the lane is NOT advanced: it stays due and re-alarms.
+    expect(h.registry.advanceLane).not.toHaveBeenCalled();
+    expect(
+      h.keywordOrchestrator.enqueueKeywordSearchJob,
+    ).not.toHaveBeenCalled();
+    expect(h.logger.error).toHaveBeenCalledWith(
+      'Keyword lane on an engineless source (operator wiring gap)',
+      expect.objectContaining({ handle: expect.any(String) as unknown }),
+    );
+  });
+
   it('a lane on an unknown platform never silently routes or advances', async () => {
     const h = build({
       lanes: [makeLane({ platform: 'poll_surface', handle: 'poll:x' })],

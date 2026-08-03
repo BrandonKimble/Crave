@@ -249,8 +249,11 @@ export class SearchOrchestrationService {
       if (hasQueryTargets && totalResults === 0) {
         response.metadata.resultCoverageStatus = 'unresolved';
       } else {
-        response.metadata.resultCoverageStatus =
-          totalResults > 0 ? 'full' : 'full';
+        // No query targets (or targets with results): the pooled lane resolved
+        // everything it was asked for, so coverage is 'full' regardless of the
+        // hit count — an empty result set here is an honest "nothing matched",
+        // not a coverage gap.
+        response.metadata.resultCoverageStatus = 'full';
       }
     }
 

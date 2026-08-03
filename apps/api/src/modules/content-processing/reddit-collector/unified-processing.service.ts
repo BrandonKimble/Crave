@@ -41,7 +41,30 @@ import {
   EntityResolutionInput,
   BatchResolutionResult,
 } from '../entity-resolver/entity-resolution.types';
-import { UnifiedProcessingExceptionFactory } from './unified-processing.exceptions';
+import {
+  UnifiedProcessingExceptionFactory,
+  UnifiedProcessingException,
+  DataConversionException,
+} from './unified-processing.exceptions';
+
+/**
+ * F464: Prisma error codes for deterministic constraint/validation failures —
+ * unique (P2002), FK (P2003), value range (P2000), invalid value (P2005/6),
+ * null constraint (P2011), missing arg (P2012), required relation (P2014).
+ * Retrying any of these with the same input cannot change the outcome.
+ */
+const DETERMINISTIC_PRISMA_CODES = new Set([
+  'P2000',
+  'P2002',
+  'P2003',
+  'P2004',
+  'P2005',
+  'P2006',
+  'P2011',
+  'P2012',
+  'P2013',
+  'P2014',
+]);
 import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { AttributeOntologyQueueService } from '../../attribute-ontology/attribute-ontology-queue.service';
@@ -2257,18 +2280,31 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Check if error is non-retryable (e.g., validation errors)
    */
   private isNonRetryableError(error: Error): boolean {
-    const nonRetryablePatterns = [
-      'validation',
-      'invalid',
-      'malformed',
-      'constraint violation',
-      'duplicate key',
-    ];
+    // F464: identify deterministic failures by TYPE, not by substring-matching
+    // a message the exception wrapper reformats ("Data Conversion: ...") out of
+    // reach — that made EVERY deterministic failure look retryable and burn
+    // three attempts before the inevitable throw.
 
-    const errorMessage = error.message.toLowerCase();
-    return nonRetryablePatterns.some((pattern) =>
-      errorMessage.includes(pattern),
-    );
+    // Malformed/invalid input by construction — never valid on retry.
+    if (error instanceof DataConversionException) {
+      return true;
+    }
+
+    // Unwrap the typed exception's preserved cause so a WRAPPED Prisma error
+    // is still recognised (the whole defect: wrapping hid the real error).
+    const cause = (error as { cause?: unknown }).cause;
+    const root =
+      error instanceof UnifiedProcessingException && cause instanceof Error
+        ? cause
+        : error;
+
+    if (root instanceof Prisma.PrismaClientValidationError) {
+      return true; // malformed query/args
+    }
+    if (root instanceof Prisma.PrismaClientKnownRequestError) {
+      return DETERMINISTIC_PRISMA_CODES.has(root.code);
+    }
+    return false;
   }
 
   /**
@@ -3156,10 +3192,17 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Bias radius from the anchor PLACE's bbox (center→corner distance, padded
-   * and clamped exactly like the old market-bbox derivation). A bbox-less
-   * place falls back to the 15km floor — the location's own coordinates plus
-   * a city-scale radius, never a market read.
+   * Bias radius from the anchor PLACE's bbox: center→corner distance, padded
+   * and clamped. Constants DERIVED 2026-08-03 (F469 — the old "like the
+   * market-bbox" inheritance is dead):
+   *  - floor / bbox-less fallback 20km = the largest onboarded-metro p95
+   *    restaurant distance from the metro centroid, measured on the mirror
+   *    (San Antonio 20.2km, Austin 18.4km; NY boroughs ≤9.3km). A smaller
+   *    floor under-covers the sprawling Texas metros at p95.
+   *  - pad 5km ≈ the measured p99−p95 spillover beyond that radius (3–4km
+   *    across metros, rounded up) — restaurants just past the admin bbox.
+   *  - cap 50km = the Places API's hard radius limit (vendor fact; the same
+   *    clamp lives in google-places.service.ts).
    */
   private resolvePlaceBiasRadiusMeters(place: {
     centroidLat: number | null;
@@ -3185,7 +3228,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       bboxMinLat === null ||
       bboxMinLng === null
     ) {
-      return 15000;
+      return 20000;
     }
 
     const northEastDistance = this.calculateDistanceMeters(
@@ -3198,7 +3241,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
 
     return Math.max(
-      15000,
+      20000,
       Math.min(Math.max(northEastDistance, southWestDistance) + 5000, 50000),
     );
   }

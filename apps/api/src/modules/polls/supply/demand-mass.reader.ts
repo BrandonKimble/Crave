@@ -357,6 +357,12 @@ export class DemandMassReader {
       JOIN core_entities e
         ON e.entity_id = ps.subject_id
        AND e.type IN ('food', 'restaurant')
+       -- ARCHIVED SUBJECTS ARE NOT RANKABLE (F542): the subject id is already
+       -- redirect-resolved above, so a surviving row that is nonetheless
+       -- archived (retired, or merged into an archived survivor) must not seed
+       -- a poll — only LIVE food/restaurant entities are poll subjects. Proven
+       -- RED by deleting this line (demand-mass-archived-subject.integration.spec.ts).
+       AND e.status <> 'archived'
       ORDER BY ps.mass DESC
     `;
     return rows.map((row) => ({

@@ -157,7 +157,7 @@ export interface BatchProcessingResult {
       }>;
     }>;
     /** Summary of keyword gating decisions for observability */
-    keywordGateSummary?: {
+    refetchGateSummary?: {
       totalCandidates: number;
       processedPosts: number;
       skippedDueToFreshness: number;

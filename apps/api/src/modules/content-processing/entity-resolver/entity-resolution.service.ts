@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { foodNameVariants } from './food-lemma';
+import { canonicalFold } from './entity-identity';
 
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -20,7 +21,6 @@ import {
   BatchResolutionResult,
   EntityResolutionConfig,
   ResolutionPerformanceMetrics,
-  ContextualAttributeInput,
 } from './entity-resolution.types';
 
 interface EntityResolutionCachePayload {
@@ -1279,30 +1279,6 @@ export class EntityResolutionService implements OnModuleInit {
    * Resolve context-dependent attributes with scope awareness
    * Implements PRD Section 4.2.2 - Context-Dependent Attributes
    */
-  async resolveContextualAttributes(
-    attributes: ContextualAttributeInput[],
-    config?: Partial<EntityResolutionConfig>,
-  ): Promise<BatchResolutionResult> {
-    this.logger.info('Resolving contextual attributes', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'resolve_contextual_attributes',
-      count: attributes.length,
-    });
-
-    // Convert to standard resolution inputs with proper entity types
-    const resolutionInputs = attributes.map((attr) => ({
-      tempId: attr.tempId,
-      normalizedName: attr.attributeName,
-      originalText: attr.originalText,
-      entityType: (attr.scope === 'food'
-        ? 'food_attribute'
-        : 'restaurant_attribute') as EntityType,
-      aliases: attr.aliases || [],
-    }));
-
-    return this.resolveBatch(resolutionInputs, config);
-  }
-
   /**
    * Helper method to group entities by type for batch processing
    */
@@ -1723,10 +1699,12 @@ export class EntityResolutionService implements OnModuleInit {
    */
   private trigramSimilarity(a: string, b: string): number {
     const grams = (s: string): Set<string> => {
-      const padded = `  ${s
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim()}  `;
+      // F476: fold through canonicalFold (script-agnostic `\p{L}\p{N}`)
+      // instead of stripping `[^a-z0-9]`. Stripping erased every non-ASCII
+      // character, so a Cyrillic/CJK name (Пельменная, 食べ放題) produced an
+      // EMPTY gram set and graded 0 against its identical twin — defeating the
+      // multilingual identity the fold one layer down deliberately preserves.
+      const padded = `  ${canonicalFold(s)}  `;
       const set = new Set<string>();
       for (let i = 0; i < padded.length - 2; i++) {
         set.add(padded.slice(i, i + 3));

@@ -123,7 +123,15 @@ export class FoodDedupeMergeService {
   async run(
     options: { similarityFloor?: number; dryRun?: boolean } = {},
   ): Promise<DedupeMergeSummary> {
-    const floor = options.similarityFloor ?? 0.72;
+    // DERIVED 2026-08-03 (F470): the floor is a judge-shortlist RECALL bound,
+    // not a merge decision (auto-merge still requires identical token
+    // multisets; everything else goes to the batched judge). Measured on the
+    // mirror: accepted merges exist down to similarity 0.61, and the old 0.72
+    // floor truncated the accept distribution mid-cliff (its largest bucket
+    // sat AT 0.72-0.74). At 0.65 the full candidate backlog is 140 pairs —
+    // one judge batch, inside LIMIT 200 — while 0.60 triples candidates (397)
+    // for a measured accept tail of ~2 pairs. 0.65 is the knee.
+    const floor = options.similarityFloor ?? 0.65;
     const dryRun = options.dryRun ?? false;
     const summary: DedupeMergeSummary = {
       candidatePairs: 0,
@@ -301,6 +309,10 @@ export class FoodDedupeMergeService {
         AND position(a.name IN b.name) = 0
         AND position(b.name IN a.name) = 0
       ORDER BY similarity(a.name, b.name) DESC
+      -- Per-run work bound, similarity-ranked so truncation drops the WORST
+      -- candidates. 200 > the measured full backlog at the 0.65 floor (140
+      -- pairs, 2026-08-03), so a single run drains the whole queue; it only
+      -- truncates under abnormal growth, and the next run resumes.
       LIMIT 200
     `;
     const pairs = allPairs.filter(

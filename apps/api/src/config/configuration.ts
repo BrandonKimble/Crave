@@ -463,11 +463,26 @@ export default () => {
         version: process.env.ENTITY_RESOLUTION_CACHE_VERSION || 'v1',
       },
     },
-    // Keyword-collection gating (2026-07-11 fold-in; .env restated these).
-    keywordProcessing: {
-      gateLookbackDays: 21, // recency window for gate decisions
-      commentSampleLimit: 5, // comments sampled per candidate thread
-      minNewComments: 3, // skip threads with fewer new comments
+    // Re-fetch gate for already-processed threads (2026-07-11 fold-in; renamed
+    // from `keywordProcessing` 2026-08-03 — the old name lied: pipelineScope
+    // gates chronological and archive lanes too). Values DERIVED 2026-08-03
+    // from the mirror corpus (F468/F470):
+    //  - gateLookbackDays = risingHalfLifeDays (21, K1-ratified): a thread
+    //    unrefreshed for one fast half-life has lost half its rising-lane
+    //    weight — that is the staleness bound. Measured residual comment
+    //    arrival past day 7 is ~0.15 comments/post (98.9% of 42,460 comments
+    //    arrive within 21d of the post), so the cooldown skips almost nothing.
+    //  - minNewComments = ceil(1 / measured mentions-per-comment) =
+    //    ceil(1/0.436) = 3: the smallest delta whose expected extraction yield
+    //    is at least one whole mention — below it a re-fetch buys less than
+    //    one evidence row on average.
+    //  - commentSampleLimit = minNewComments + 2 already-seen margin (the
+    //    reader warns and fetches when limit < min, so the ordering is
+    //    enforced, not remembered).
+    refetchGate: {
+      gateLookbackDays: 21,
+      commentSampleLimit: 5,
+      minNewComments: 3,
       pipelineScope: ['chronological', 'archive', 'keyword'],
     },
     unifiedProcessing: {

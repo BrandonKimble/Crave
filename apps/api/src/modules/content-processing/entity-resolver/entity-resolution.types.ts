@@ -88,18 +88,6 @@ export interface EntityResolutionConfig {
 }
 
 /**
- * Context-dependent attribute resolution input
- * Implements PRD Section 4.2.2 - Entity Type Definitions
- */
-export interface ContextualAttributeInput {
-  tempId: string;
-  attributeName: string;
-  originalText: string;
-  scope: 'food' | 'restaurant';
-  aliases?: string[];
-}
-
-/**
  * Helper function to convert LLM entity reference to resolution input
  */
 const slugifyForTempId = (value: string): string =>
@@ -139,23 +127,5 @@ export function llmEntityRefToResolutionInput(
       (alias): alias is string =>
         alias !== null && alias !== undefined && alias.trim().length > 0,
     ),
-  };
-}
-
-/**
- * Helper function to convert contextual attribute to resolution input
- */
-export function contextualAttributeToResolutionInput(
-  attributeInput: ContextualAttributeInput,
-): EntityResolutionInput {
-  const entityType: EntityType =
-    attributeInput.scope === 'food' ? 'food_attribute' : 'restaurant_attribute';
-
-  return {
-    tempId: attributeInput.tempId,
-    normalizedName: attributeInput.attributeName,
-    originalText: attributeInput.originalText,
-    entityType,
-    aliases: attributeInput.aliases || [],
   };
 }

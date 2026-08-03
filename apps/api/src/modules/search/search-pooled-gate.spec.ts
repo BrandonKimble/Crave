@@ -17,15 +17,8 @@ const SOFT_REST_ATTR = '55555555-5555-5555-5555-555555555555';
  */
 function constraints(): SearchConstraints {
   return {
-    stage: 'strict',
     format: 'dual_list',
     inputPresence: {
-      restaurants: 0,
-      food: 1,
-      foodAttributes: 1,
-      restaurantAttributes: 1,
-    },
-    stagePresence: {
       restaurants: 0,
       food: 1,
       foodAttributes: 1,

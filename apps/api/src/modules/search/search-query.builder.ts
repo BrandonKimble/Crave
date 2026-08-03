@@ -1282,9 +1282,27 @@ LIMIT ${pagination.take};`.trim();
     };
   }
 
-  private buildConnectionConditions(filters: ParsedFilters): {
-    sql: Prisma.Sql;
-    preview: string;
+  /**
+   * SHARED connection-clause core (F511 dedup). The ranked lane
+   * (buildConnectionConditions) and the match/admission lane
+   * (buildConnectionMatchConditions) were byte-identical copies apart from two
+   * knobs, so a fix to one silently skipped the other. They are now ONE body,
+   * differing only by:
+   *   - includeConnectionIdFilter: the ranked lane admits an exact inbound
+   *     connection-id set (favorites dish lists); the match lane does not.
+   *   - includeVoteRollupCoverage: the ranked lane also gates the LEFT-JOINed
+   *     rollup (COALESCE(rvt.total_upvotes,0) — load-bearing, red team R3); the
+   *     match lane only asserts the per-connection floor.
+   */
+  private buildConnectionConditionParts(
+    filters: ParsedFilters,
+    opts: {
+      includeConnectionIdFilter: boolean;
+      includeVoteRollupCoverage: boolean;
+    },
+  ): {
+    conditions: Prisma.Sql[];
+    conditionPreview: string[];
     minimumVotesApplied: boolean;
   } {
     const conditions: Prisma.Sql[] = [];
@@ -1293,7 +1311,7 @@ LIMIT ${pagination.take};`.trim();
 
     // First-class inbound connection filter (favorites dish lists hydrate exact
     // connection IDs). Mirrors the excludeConnectionIds column + ANY style.
-    if (filters.connectionIds.length) {
+    if (opts.includeConnectionIdFilter && filters.connectionIds.length) {
       conditions.push(
         this.buildInClause('c.connection_id', filters.connectionIds),
       );
@@ -1380,19 +1398,34 @@ LIMIT ${pagination.take};`.trim();
     if (filters.minimumVotes !== null) {
       conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
       conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
-      // COALESCE is load-bearing with the LEFT JOIN: a restaurant whose
-      // direct mentions are all shadowed (or all support-kind) has NO rollup
-      // row, and an INNER JOIN here silently dropped its dishes even with
-      // minimumVotes unset (red team R3).
-      conditions.push(
-        Prisma.sql`COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
-      );
-      conditionPreview.push(
-        `COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
-      );
+      if (opts.includeVoteRollupCoverage) {
+        // COALESCE is load-bearing with the LEFT JOIN: a restaurant whose
+        // direct mentions are all shadowed (or all support-kind) has NO rollup
+        // row, and an INNER JOIN here silently dropped its dishes even with
+        // minimumVotes unset (red team R3).
+        conditions.push(
+          Prisma.sql`COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
+        );
+        conditionPreview.push(
+          `COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`,
+        );
+      }
       minimumVotesApplied = true;
     }
 
+    return { conditions, conditionPreview, minimumVotesApplied };
+  }
+
+  private buildConnectionConditions(filters: ParsedFilters): {
+    sql: Prisma.Sql;
+    preview: string;
+    minimumVotesApplied: boolean;
+  } {
+    const { conditions, conditionPreview, minimumVotesApplied } =
+      this.buildConnectionConditionParts(filters, {
+        includeConnectionIdFilter: true,
+        includeVoteRollupCoverage: true,
+      });
     return {
       sql: this.combineSqlClauses(conditions),
       preview: this.combinePreviewClauses(conditionPreview),
@@ -1403,89 +1436,10 @@ LIMIT ${pagination.take};`.trim();
   private buildConnectionMatchConditions(
     filters: ParsedFilters,
   ): MatchClauseWithPreview {
-    const conditions: Prisma.Sql[] = [];
-    const conditionPreview: string[] = [];
-
-    const shouldOrPrimaryFoodAttributeEvidence =
-      filters.foodAttributePrimary &&
-      filters.foodAttributeIds.length > 0 &&
-      filters.foodTextExpansionIds.length > 0 &&
-      filters.foodIds.length === 0;
-    if (shouldOrPrimaryFoodAttributeEvidence) {
-      const attributeClause = this.buildArrayOverlapClause(
-        'c.food_attributes',
-        filters.foodAttributeIds,
-      );
-      const foodIdClause = this.buildInClause(
-        'c.food_id',
-        filters.foodTextExpansionIds,
-      );
-      conditions.push(Prisma.sql`((${attributeClause}) OR (${foodIdClause}))`);
-      conditionPreview.push(
-        `((c.food_attributes && ${this.formatUuidArray(
-          filters.foodAttributeIds,
-        )}) OR (c.food_id = ANY(${this.formatUuidArray(
-          filters.foodTextExpansionIds,
-        )})))`,
-      );
-    } else {
-      if (filters.foodIds.length) {
-        // Category membership is resolved at PLAN time from the canonical
-        // per-food edge table (derived_food_category_edges) and arrives here as
-        // extra food ids — the per-connection `c.categories &&` arm is gone
-        // (per-mention arrays made membership a coin flip per connection).
-        // Name-containment variants also arrive as extra food ids (the
-        // 2026-07-25 failsafe). Twin-ingredient union: when the query food's
-        // name is also an ingredient ("burrata"), dishes CONTAINING it
-        // qualify too — OR of the same two containment tiers the ingredient
-        // clause uses.
-        const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
-        if (filters.twinIngredientIds.length) {
-          const containment = this.buildEffectiveIngredientsClause(
-            filters.twinIngredientIds,
-          );
-          conditions.push(
-            Prisma.sql`((${foodIdClause}) OR ${containment.sql})`,
-          );
-          conditionPreview.push(
-            `((c.food_id = ANY(${this.formatUuidArray(filters.foodIds)})) OR ${containment.preview})`,
-          );
-        } else {
-          conditions.push(Prisma.sql`(${foodIdClause})`);
-          conditionPreview.push(
-            `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
-          );
-        }
-      }
-
-      if (filters.foodAttributeIds.length) {
-        conditions.push(
-          this.buildArrayOverlapClause(
-            'c.food_attributes',
-            filters.foodAttributeIds,
-          ),
-        );
-        conditionPreview.push(
-          `c.food_attributes && ${this.formatUuidArray(
-            filters.foodAttributeIds,
-          )}`,
-        );
-      }
-    }
-
-    if (filters.ingredientIds.length) {
-      const clause = this.buildEffectiveIngredientsClause(
-        filters.ingredientIds,
-      );
-      conditions.push(clause.sql);
-      conditionPreview.push(clause.preview);
-    }
-
-    if (filters.minimumVotes !== null) {
-      conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
-      conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
-    }
-
+    const { conditions, conditionPreview } = this.buildConnectionConditionParts(
+      filters,
+      { includeConnectionIdFilter: false, includeVoteRollupCoverage: false },
+    );
     return {
       sql: this.combineSqlClauses(conditions),
       preview: this.combinePreviewClauses(conditionPreview),

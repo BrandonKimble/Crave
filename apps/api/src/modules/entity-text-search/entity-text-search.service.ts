@@ -49,6 +49,44 @@ export interface TextSearchMatch {
 }
 
 /**
+ * THE tier ladder, stated ONCE (F582). The order of evidence tiers — exact
+ * beats prefix beats whole-word containment beats FTS name/alias beats
+ * fuzzy/edit beats pure embedding — used to live restated in three tables (this
+ * union's doc order, autocomplete's EVIDENCE_TIER_STRENGTH ordinal, and
+ * entity-search's EVIDENCE_CONFIDENCE magnitudes). The ORDER now has one home:
+ * a list of tie-groups, strongest first. Consumers that need an ordinal derive
+ * it here (evidenceTierStrength); consumers that need a calibrated magnitude
+ * (EVIDENCE_CONFIDENCE) keep their owner-set values but must AGREE with this
+ * order. `weak` is deliberately absent — it is dropped from type-ahead, so it
+ * has no rank. Each inner array is a deliberate TIE (name≈alias, fuzzy≈edit).
+ */
+export const EVIDENCE_TIER_LADDER: ReadonlyArray<
+  ReadonlyArray<TextMatchEvidence>
+> = [
+  ['exact'],
+  ['prefix'],
+  ['contains'],
+  ['name', 'alias'],
+  ['fuzzy', 'edit'],
+  ['embedding'],
+];
+
+/**
+ * Ordinal strength of an evidence tier, DERIVED from EVIDENCE_TIER_LADDER (the
+ * single source of tier order). Strongest group scores highest; tied members
+ * share a strength; a tier off the ladder (e.g. 'weak') scores 0. ORDER ONLY —
+ * the integers are ladder positions, never magnitudes, so they cannot act as
+ * weights (see autocomplete §16).
+ */
+export function evidenceTierStrength(evidence: string): number {
+  const top = EVIDENCE_TIER_LADDER.length + 1;
+  const groupIndex = EVIDENCE_TIER_LADDER.findIndex((group) =>
+    (group as ReadonlyArray<string>).includes(evidence),
+  );
+  return groupIndex === -1 ? 0 : top - groupIndex;
+}
+
+/**
  * A candidate from the shared recall core, carrying both lanes' raw signals as
  * features for a consumer-specific Stage-2 reranker. `rrf` is the fusion score
  * used only to order the recall shortlist — NOT a relevance score.
@@ -197,15 +235,12 @@ export class EntityTextSearchService {
       poolSize?: number;
       /**
        * 'always' (default) — run the dense lane every time (batch heads: resolution,
-       * gazetteer). 'fallback' — run dense only when the lexical lane under-recalls
-       * (< `denseFallbackBelow` hits), so latency-critical autocomplete pays the
-       * per-query embedding cost ONLY for the semantic-gap queries that need it.
-       * 'none' — skip the dense lane entirely. The query-time linker's decider reads
-       * only sparseSimilarity, so dense candidates are never selectable there and the
-       * dense call is pure dead cost until a decider can consume dense evidence.
+       * gazetteer). 'none' — skip the dense lane entirely. The query-time linker's
+       * decider reads only sparseSimilarity, so dense candidates are never selectable
+       * there and the dense call is pure dead cost until a decider can consume dense
+       * evidence.
        */
-      denseMode?: 'always' | 'fallback' | 'none';
-      denseFallbackBelow?: number;
+      denseMode?: 'always' | 'none';
     } = {},
   ): Promise<RecallCandidate[]> {
     if (
@@ -232,22 +267,6 @@ export class EntityTextSearchService {
         sparseOpts,
       );
       dense = [];
-    } else if (denseMode === 'fallback') {
-      sparse = await this.searchEntities(
-        normalizedTerm,
-        entityTypes,
-        pool,
-        sparseOpts,
-      );
-      const enough = sparse.length >= (options.denseFallbackBelow ?? limit);
-      dense = enough
-        ? []
-        : await this.searchByEmbedding(
-            normalizedTerm,
-            entityTypes,
-            pool,
-            denseOpts,
-          );
     } else {
       [sparse, dense] = await Promise.all([
         this.searchEntities(normalizedTerm, entityTypes, pool, sparseOpts),

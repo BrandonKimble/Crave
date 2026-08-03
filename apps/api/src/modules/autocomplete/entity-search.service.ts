@@ -32,6 +32,11 @@ const EVIDENCE_CONFIDENCE: Partial<Record<TextMatchEvidence, number>> = {
   embedding: 0.35, // pure semantic (post-commit only); surfaces below any lexical hit
 };
 
+/** Exported for the F582 ladder-agreement spec ONLY (evidence-tier-ladder.spec):
+ *  the ORDER of these owner-calibrated magnitudes must track the single tier
+ *  ladder, and an assertion cannot read a module-private constant. */
+export const EVIDENCE_CONFIDENCE_FOR_TEST = EVIDENCE_CONFIDENCE;
+
 @Injectable()
 export class EntitySearchService {
   constructor(private readonly textSearch: EntityTextSearchService) {}

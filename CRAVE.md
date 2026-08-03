@@ -1232,3 +1232,292 @@ archived predicate the builder deliberately added) and F541 (poll
 leaderboard skips redirect resolution — merge silently loses
 endorsements); highest-value cleanup is the builder's dual-preview +
 copy-pasted connection conditions.
+
+## Territory: api-user-surfaces (user-lists, photos, notifications, messaging, history, home)
+
+74 files under `apps/api/src/modules/{user-lists,photos,notifications,messaging,history,home}`. These are the six
+surfaces a real person touches: what they SAVE, what they SHOOT, what they're TOLD, who they TALK to, what they've
+SEEN, and what the app OFFERS them. Everything else in the repo produces facts; this territory is where a user's own
+data lives — which is why the laws here are about capability, anchors, and honesty rather than extraction quality.
+
+**Where the user's data actually is.** Five tables carry it: `user_lists` + `user_list_items` (saves), `photos`
+(uploads), `conversations`/`messages` (DMs), `notification_devices` + `user_notifications` (pushes and the in-app
+feed), and — for view history — nothing at all: history is a READ over the signals ledger. `curated_list_items` is
+app-authored, not user-authored, but a user can copy one into their own list.
+
+**THE ANCHOR LAW, and why it holds.** `user_list_items` and `photos` point at entities that the extraction pipeline
+may merge or archive underneath them. Two mechanisms keep them alive: the schema pins both Entity FKs to
+`onDelete: Restrict` (a wipe cannot cascade a user's save away), and `EntityAnchorRehomeService.rehomeEntityAnchors`
+hard-rekeys them inside the merge transaction — including a conflict-aware fold for `user_list_items` that KEEPS the
+user's note and the earlier position rather than deleting the loser. Verified against the mirror on 2026-08-03: zero
+list items or photos point at an archived or redirected entity. This is not luck; do not weaken either half.
+
+**The capability law (user-lists).** `UserListAccessPolicy` is the single authority and lives in its OWN module
+(`UserListAccessModule`) precisely because it has consumers outside the feature — the messaging share preview — and
+exporting it from `UserListsModule` would drag Search, Photos and Signals into every consumer's graph. Read access is
+owner OR collaborator OR presented-shareSlug-matches; the slug IS the capability, so rotation is revocation for free.
+Mutation is owner-or-collaborator, never the slug. **Visibility is never consulted for access**: it controls DISCOVERY
+(profile presence) only — private means unlisted, not locked. A blocked pair gets the same `410 {state:'private'}` a
+revoked link gets, so the block never leaks. Everything else is a fail-closed 404. There is exactly one undeletable
+list per user: `kind='favorites'`, lazily created on the first heart, enforced by a partial unique index.
+
+**The photo law.** Uploads are signed direct-to-Cloudinary (bytes never touch our server); the incoming transform
+strips ALL metadata, so GPS never reaches storage and `takenAt` must come from the client's picker. The lifecycle is
+pending → (safety webhook) → (async is-food Gemini gate, fail-open) → live | removed, and every transition is a
+CONDITIONAL update so the database arbitrates races between webhook, reconciliation cron and owner-delete. Reads go
+through **`PhotoReads`**, a seam named after the invariant rather than the storage: you cannot obtain a photo read
+without naming a viewer, and blocked authors are excluded INSIDE the query (pushing the exclusion into the WHERE of
+both the page and the count — applied after LIMIT it would be a truncation, not an exclusion). `PhotoReadService` is
+deliberately not exported from the module so that seam is the only door.
+
+**The ledger law, as it lands here.** Every authenticated mutating route declares `@RecordsSignal(kind)` or
+`@NoSignal(reason)` and boot refuses otherwise. In this territory the only demand act is `favorite_added` (the save)
+and `entity_view` (the history record); everything else — creating a shelf, sharing a link, joining a list, sending a
+DM, uploading a photo, reporting content — is honestly declared as NOT demand, with the reason written down. Two
+caveats a stranger must know: the audit checks that a declaration is PRESENT, not that it is TRUE (F690 found a false
+one on `POST /home/lists/:id/save`), and it exempts `@AllowUnentitled` routes, which is a paywall predicate standing
+in for an is-this-a-user-act predicate (F645) — so the notifications routes escape it entirely.
+
+**What is derived, and what is stored (the drift line).** Messaging is the model: `frozen`, `isRequest` and
+`unreadCount` are all derived at read time with no column to drift, and history's repeat-view valve is a LEDGER READ
+rather than a counter. The counterexample is `user_lists.item_count`, a hand-maintained ±1 denorm that was wrong on
+26 of 64 lists in the mirror (stored 336 vs 201 actual) and publishes that number to the home shelf, the public
+profile and the DM share preview. When you touch this territory, prefer the derivation.
+
+**Two things that read as durable and are not.** The notification `notifications` row is documented as "the durable
+dispatch queue with retry" — there is no retry: `failed` is terminal, nothing moves it back, and `attempts` is
+written but never read (F640). And `sending` is an orphan state with no reclaim, so a deploy mid-send strands a row
+forever (F641). The table is empty today, so nobody has noticed.
+
+**Home is a materializer, not a query.** `CuratedListBuilderService` runs at 6am per live city (live city = a place
+with non-poll collection sources anchored to it, never a hardcoded list), ranks everything off the SAME public score
+table search reads, and supersedes atomically — delete every other rotation of (city, recipe, owner) and insert, in
+one transaction. Its constants file is the repo's model for §16 discipline. The BUILDER filters `status='active'`
+correctly; the READS do not (F692), so a list is clean at build and rots for up to a month.
+
+Findings: F600–F698 in `audit/FINDINGS.md`. Flagship items: F600 (item_count drift, measured), F690 (a false
+@NoSignal), F640/F641/F642 (the push queue's three lies), F692 (archived-leak on the home surface), F645 (the signal
+audit's wrong exemption predicate), F602 (four surfaces, four answers to "is this a saveable restaurant").
+
+---
+
+## Territory: docs (`plans/` `product/` `business/`) — the doc-home map
+
+**These three trees are the owner's living thought. Nothing here is ever
+deleted.** The audit discipline for them is a TRUTH AUDIT, not a cleanup: when
+a doc asserts something the code no longer does, you append a dated correction
+note IN PLACE. An unbuilt idea is not a defect — that is what the backlog is
+for. Only a present-tense claim of FACT can be wrong.
+
+### What each home holds
+
+| Home               | Purpose                                                                                      | Entry point                                                            | Governing rule                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `plans/` (209)     | Concrete EXECUTION plans for work in flight — technical, sequenced, mostly finished          | none single; read by cluster                                           | plans go stale honestly, via "⚠️ Superseded by X" banners                               |
+| `product/` (15)    | Rolling canonical feature VISION, one file per app area + `scoring/` + two operational files | `product/README.md`                                                    | "edit and delete in place, no changelog scaffolding" — **not actually held**, see F753  |
+| `business/` (~130) | The business model + a large evidence corpus                                                 | `business/README.md` → `business/signal/blueprint.md` **v1.1 = CANON** | "where any other file disagrees, the blueprint wins" — **one live exception**, see F740 |
+
+`PRD.md` / `BRD.md` at the repo root are the stale v3 spec. Already known,
+already superseded — not a finding.
+
+### Which subtrees are stale-BY-DESIGN (never "fix" these)
+
+The single most important thing to know before touching `business/signal/`:
+most of it is **record**, not claim.
+
+- **`testimony/` (64) + `spine/` (11) — RECORD-BY-DESIGN.** Fixed-schema
+  extractions of dated third-party transcripts, with `source:` / `date:` /
+  `evidence_quality:` / `incentive_flags:` front matter, claims attributed to
+  named outside speakers. They make no assertions about Crave's code.
+  Auditing them for factual staleness is a category error.
+- **`ledger/` (11) + `claims-ledger.md` — STALE-BY-DESIGN.** Phase-2
+  cross-examination that explicitly routes contested calls "→ panel Pn". A
+  ledger entry reading "unresolved" is correct as an artifact of its phase.
+- **`panels/` (15) — STALE-BY-DESIGN.** Two adversarial _briefs_ per panel
+  (deliberate advocacy, usually for the position that lost) plus the
+  `verdict.md`, which is the actual output. Read verdicts, not briefs.
+- **`redteam/` (16) — RECORD.** Its 33 amendments were folded into blueprint v1.1.
+- Live non-record docs in `signal/`: `blueprint.md`, `crave-fact-sheet.md`,
+  `onboarding-doctrine.md`, `teaser-spec.md`, `owner-questions.md`.
+
+In `plans/`, the whole Feb–Apr 2026 search-decomp / shortcut-submit cluster is
+deep archaeology describing a since-rewritten mobile tree. Of 350 unique
+`apps/**` paths cited anywhere in `plans/`, 174 no longer exist — and nearly
+all of that is this cluster, correctly. **A dead path in an archaeology doc is
+not a finding; a dead path in a doc claiming present-tense delivery is.**
+
+### The plans/ clusters
+
+Current canon (touched 2026-08-01/02): data/collection
+(`full-reload-charter`, `reextract-choreography`, `one-ground-charter`,
+`data-audit-2026-08`, `async-integrity-ideal-shape`), search
+(`search-from-scratch-derivation` — **the** post-cutover canon), ops/business
+(`production-hardening`, `payments-ideal-shape`), and the 2026-07-27/31
+mobile-shell "derivation" generation (`transition-derivation`,
+`page-world-derivation`, `native-shell-derivation`).
+
+Exemplary hygiene, follow their example: the **crave-score chain** and the
+**sheet/transition chain** each carry explicit "⚠️ Superseded by X" banners
+naming their successor.
+
+The one bad cluster: **markets / TomTom / coverage**
+(`tomtom-market-cutover-plan`, `polls-coverage-resolution-cutover-plan`,
+`restaurant-identity-domain-rollup-plan`). Markets were exterminated
+2026-07-22; these docs assert present-tense DELIVERY of that machinery with no
+banner at all, and one points readers at another as the current authority.
+F720–F723.
+
+### The failure class this territory keeps producing
+
+A claim is most dangerous when it is **replicated**. The `[lodev]` LOD
+telemetry harness does not exist — one stale comment at
+`SearchMapRenderController.swift:10417` is its only trace in code — yet FOUR
+independent doc homes still describe it as a live acceptance harness
+(`plans/lod-v5-architecture.md:58` literally calls it "the acceptance test",
+plus `lod-ideal-residency-refactor.md`, `toggle-fade-swap-lane.md`,
+`product/map.md:27`), and 11 shell scripts still parse its event stream.
+**Rank correction work by how many places repeat a dead claim, not by how
+wrong any one of them is.**
+
+---
+
+## Territory: repo-tooling (`scripts/` `maestro/` `.github/` `.claude/` `packages/` `visual-baselines/`)
+
+### CI's real statement: "does it compile, lint, build, test — and did anyone bypass the search runtime?"
+
+`.github/workflows/ci.yml` is **one coherent statement**, and it has been
+rederived recently and honestly. Four jobs:
+
+1. **build** — the spine. Postgres is `timescale/timescaledb-ha:pg17`, the same
+   image family as prod, so every run is also a migration rehearsal on a
+   prod-shaped DB. Order is deliberate: **type-check FIRST** (CI used to die at
+   Lint, hiding type errors), then lint → build → test → **`yarn test:db`**.
+   That last step exists because the DB-backed integration specs are excluded
+   from `yarn test` and the real Postgres above was previously serving only the
+   migration rehearsal — a red-team P1 catch.
+2. **search-runtime-contract-tests** — one check, `root-ownership-gate.sh S7`.
+   The comment explains why S7 and not S6, and it is TRUE: S6 is not in
+   `enforcedSliceIds`, so gating on it returns `enforced:false, checks:[],
+pass:true` and exit 0 — an always-green lie. S7 can actually fail.
+3. **no-bypass-search-runtime** — installs ripgrep first, because the guard
+   hard-refuses to run without it (a green that means nothing is worse than red).
+4. **native-tests** — `swift test` on MapLodKit, macOS runner, pure LOD logic.
+
+Every target CI references exists. There is no exit-127 step. Both static
+guards were **mutation-tested** this pass — planted violations, both went RED
+with exit 1, file byte-restored — so CI's teeth are real, not decorative.
+
+Its one dishonesty is quiet: `no-bypass-search-runtime.allowlist` declares
+`max_count=6` for the two root camera-write checks while the live count is
+**0**. Six violations can be reintroduced with CI green (F701).
+
+### The rig's operational contract — the healthiest corner of the repo
+
+`scripts/rig/` (13 files) is the standing operational tooling, and every file
+carries a header encoding a lesson someone paid for. Treat these headers as
+load-bearing documentation:
+
+| Script                                                           | The law it encodes                                                                                                                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deploy.sh`                                                      | **staging → production, always.** Prod refuses unless staging's `/health` reports the exact commit being shipped. `--force` is the loud hotfix escape.                     |
+| `svc-env.sh`                                                     | **`source` it, never run it.** Credentials enter a command exactly one way — from `.env`. No `<tool> login`, because a stateful login duplicates a secret and then drifts. |
+| `reload-dev-client.sh`                                           | The dev client requests a DELTA bundle; computed mid-write it boots mixed revisions. Rebuild until two hashes match, then cold-relaunch. Freshness as a verified fact.     |
+| `refresh-local-db-from-prod.sh` / `refresh-staging-from-prod.sh` | **One-way, prod → down.** The prod URL is only ever handed to `pg_dump`. Staging keeps prod's schema + corpus SHAPE and never its user data.                               |
+| `push-local-db-to-staging.sh`                                    | The default pit-stop: "staging tests what I test."                                                                                                                         |
+| `cost-reconcile.sh`                                              | The bill lives in BigQuery, not the ledger. Run after every one-off spend event.                                                                                           |
+| `reextract.sh`                                                   | Prompt iteration never pauses collection: live lanes run the ACTIVE version while a CANDIDATE shadow-replays.                                                              |
+| `sim-target.sh`                                                  | `EXPO_PUBLIC_*` inlines when METRO STARTS — so switching targets must restart Metro, or the switch is a hope.                                                              |
+
+Two are phase-scoped rather than standing, and are unreferenced by anything:
+`grep-invariants.sh` ("Leg 5 gate") and `lifecycle-matrix.sh` ("Phase-3 Leg
+1d"), the latter carrying an `expected_red` table meant to be flipped "as legs
+3-4 fix them" (F717).
+
+### Root `scripts/` has NO containment lockdown — and it shows
+
+Unlike the api-side scripts corpus (class headers + a spec), root `scripts/`
+(57 files) is a flat bag mixing four unrelated classes with nothing in the
+filename or header to tell them apart:
+
+1. **LIVE RIG** — `scripts/rig/**`.
+2. **LIVE BUILD/LINT** — `deps-check.sh`, `eslint-staged-package.sh`,
+   `ios-refresh.sh`, `generate-{dot,pin-bucket}-sprites.js`,
+   `visual-regression.js`; wired through `package.json` + `lefthook.yml`.
+3. **DEAD MAP-SAGA SCAFFOLDING** — the 11 `lod-*` files (they drive and parse a
+   `[lodev]` stream nothing emits) and the perf-scale-probe pair (their flows
+   were deleted).
+4. **STALE / ORPHANED GATES** — `app-route-runtime-delete-gate.sh` (declared in
+   `package.json`, run by NOTHING, currently **RED with 16 failures**),
+   `crave-score-cutover-delete-gate.sh` (greps `modules/favorites/**`, renamed
+   to `user-lists` — errors on every path), `search-results-prepared-rows-delete-gate.sh`
+   (fires on healthy live vocabulary), and the four
+   `search-runtime-s4/s5/s6/natural` contracts whose CI steps were removed
+   2026-08-02 but whose scripts were not.
+
+That undifferentiated flatness is precisely how a red gate and a dead cluster
+stayed invisible. **Porting the api-side lockdown here is the standing
+proposal (F716).**
+
+### The 2026-07-06 map-saga deletion, and its blast radius
+
+Commit `9f0d26a5a` deleted 22 map-saga maestro flows as "verified-dead
+artifacts". The deletion was right — the map shipped — but three consumers were
+never updated, and each now points at a file that does not exist:
+
+- `visual-baselines/README.md` names `search-map-validate.yaml` as the source
+  of all four baseline PNGs. **The PNGs are the bank and there is no longer a
+  replay path** — an intentional visual change can never be re-approved,
+  because `--update` has nothing to capture (F706).
+- `maestro/perf/map-accept.sh` — which CLAUDE.md still recommends as "the best
+  existing outer-shell-drives-and-asserts example" — had BOTH its legs deleted
+  (F707). It fails honestly (exit 2), but it cannot succeed.
+- `maestro/perf/README.md:107` and `scripts/perf-scenario-scale-probe.sh:19`
+  default to deleted flows (F708).
+
+**The lesson to carry: when you delete a fixture, grep for its consumers.** The
+same commit's message says "map-accept.sh kept", which is true of the runner
+and false of everything it runs.
+
+### `packages/shared` — the cross-app contract
+
+Coherent and genuinely shared, not a shim. A clean three-way barrel
+(`types` / `constants` / `geo`), and the asymmetry in what each app pulls is
+exactly what you would want:
+
+- **mobile-heavy DTOs**: `MapBounds` (55 mobile / 0 api), `Coordinate` (44/1),
+  `RestaurantResult` (42/4), `SearchResponse` (30/5), `FoodResult` (26/4)
+- **api-heavy domain vocabulary**: `EntityType` (55 api / 0 mobile),
+  `Entity` (33/2), `Connection` (16/1), `GeoBbox` (15/6)
+- **true middle**: onboarding vocabulary, `QueryPlan`, `resolveHeaderPlace`,
+  the geo `ground`/`slice` helpers
+
+One defect: eleven exports are v3-PRD scaffolding with zero consumers in either
+app AND zero internal use (`ENTITY_TYPES`, `API_ENDPOINTS`, `ApiResponse`,
+`PaginatedResponse`, `DualPurposeEntity`, `LocationData`, `LocationQuery`,
+`EntityFilter`, `EntityInMenuContext`, `EntityInCategoryContext`,
+`SearchFixtureMap`) — the file header still says "implemented according to PRD
+Section 4.1", and PRD.md is the stale v3 spec (F712). Do not confuse these with
+the geo helpers (`normalizeLng`, `bboxLngArcs`, `pointDistance*`,
+`probedRegion*`), which look unused from the apps but are live INTERNAL helpers
+— merely over-exported.
+
+### `.claude/skills` — live operational tooling, verify its paths
+
+`service-access` (SKILL.md + 11 service references) is accurate: every script
+path it names exists. `reextract` is live and its rig scripts exist, but line
+107 tells an agent to run `scripts/enrich-restaurants.ts` when the file is at
+`apps/api/scripts/enrich-restaurants.ts` — ENOENT at the one step that repairs
+missing Places grounding (F714).
+
+### `maestro/` — 59 flows, and the honest state of them
+
+The perf flows are documented as "mostly historical throwaway", and that holds:
+`market-demand/` (10 flows) is current search work, the rest is map/polls/sheet
+archaeology kept as record. They are cheap to keep and they name the testIDs
+that once mattered. A full census of every `id:` selector and every
+`crave://perf-scenario-command` verb across all 59 flows found the command bus
+healthy (`set_map_camera`, `animate_map_camera`, `submit_shortcut_restaurants`,
+`submit_close_then_submit_shortcut` all registered) and only two real rots:
+`poll-feed-sort.yaml` taps testIDs that no longer exist (the sort control became
+an option-selector sheet — F710), and `poll-card-open.yaml` pins a hardcoded
+poll UUID that dies on any DB refresh (F711).

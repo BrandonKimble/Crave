@@ -23,6 +23,7 @@ import type {
   LLMComment,
 } from '../../../external-integrations/llm/llm.types';
 import { BatchJob } from '../batch-processing-queue.types';
+import { resolveTestLimit } from '../test-limit';
 
 export interface PushshiftProcessingConfig {
   baseDirectory: string;
@@ -296,11 +297,7 @@ export class ArchiveIngestionService implements OnModuleInit {
       options,
     );
 
-    const envMaxPosts =
-      process.env.TEST_ARCHIVE_MAX_POSTS &&
-      !Number.isNaN(Number(process.env.TEST_ARCHIVE_MAX_POSTS))
-        ? Math.max(0, Number.parseInt(process.env.TEST_ARCHIVE_MAX_POSTS, 10))
-        : null;
+    const envMaxPosts = resolveTestLimit('TEST_ARCHIVE_MAX_POSTS');
     const effectiveMaxPosts =
       typeof options.maxPosts === 'number'
         ? options.maxPosts
@@ -549,6 +546,13 @@ export class ArchiveIngestionService implements OnModuleInit {
     const postsById = new Map<string, LLMPost>();
     // Stage-0 pre-filter (plans/archive-prefilter-pipeline.md): ingest window +
     // structural drops happen HERE, before anything is queued or billed.
+    // The 3-year default is DERIVED (2026-08-03, F470), not a guess: mention
+    // weight decays with the K1-ratified endorsementHalfLifeDays=365, so a
+    // mention aged N years carries 0.5^N of a fresh one — at 3 years, 12.5%.
+    // Measured against the mirror corpus: content inside the 3-year window
+    // carries 99.96% of total decayed ranking mass while per-doc extraction
+    // COST is age-flat (yield is 0.6-0.8 mentions/doc at every age), so each
+    // additional year of window buys <0.05% of ranking mass at full price.
     const windowYears =
       options.windowYears ?? Number(process.env.PUSHSHIFT_WINDOW_YEARS ?? 3);
     const windowCutoffSec =

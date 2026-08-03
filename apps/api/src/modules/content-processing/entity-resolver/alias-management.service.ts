@@ -237,52 +237,6 @@ export class AliasManagementService implements OnModuleInit {
   }
 
   /**
-   * Prepare aliases for entity merge operations
-   * Implements PRD Section 9.2.1 - Alias management integrates seamlessly with entity resolution system
-   */
-  prepareAliasesForMerge(
-    mergeInput: EntityMergeInput,
-    config: Partial<AliasManagementConfig> = {},
-  ): EntityMergeResult {
-    this.logger.info('Preparing aliases for entity merge', {
-      sourceEntityId: mergeInput.sourceEntityId,
-      targetEntityId: mergeInput.targetEntityId,
-      entityType: mergeInput.entityType,
-    });
-
-    // Step 1: Merge aliases with deduplication
-    const mergeResult = this.mergeAliases(
-      mergeInput.sourceAliases,
-      mergeInput.targetAliases,
-      [],
-      config,
-    );
-
-    // Step 2: Validate scope constraints
-    const scopeValidation = this.validateScopeConstraints(
-      mergeInput.entityType,
-      mergeResult.mergedAliases,
-      config,
-    );
-
-    const finalResult: EntityMergeResult = {
-      mergedAliases: scopeValidation.validAliases,
-      duplicatesRemoved: mergeResult.duplicatesRemoved,
-      crossScopeViolations: scopeValidation.violations,
-    };
-
-    this.logger.info('Alias merge preparation completed', {
-      sourceEntityId: mergeInput.sourceEntityId,
-      targetEntityId: mergeInput.targetEntityId,
-      finalAliasCount: finalResult.mergedAliases.length,
-      duplicatesRemoved: finalResult.duplicatesRemoved,
-      violationsFound: finalResult.crossScopeViolations.length,
-    });
-
-    return finalResult;
-  }
-
-  /**
    * Add new original text as alias to existing aliases array
    * Implements automatic alias creation for entity resolution
    */

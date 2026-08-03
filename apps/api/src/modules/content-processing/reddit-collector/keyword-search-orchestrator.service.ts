@@ -18,6 +18,12 @@ import { stripGenericTokens } from '../../../shared/utils/generic-token-handling
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 
+// DERIVED 2026-08-03 (F470): Reddit grants an OAuth client 100 queries/min
+// (vendor fact, averaged over 10 min). 1200ms spacing = 50 QPM — HALF the
+// allowance — because the chronological lane and comment-tree fetches share
+// this client; each side gets an equal half rather than racing to 429s.
+const KEYWORD_SEARCH_BATCH_DELAY_MS = 60_000 / (100 / 2);
+
 export type KeywordSearchSort =
   | 'relevance'
   | 'new'
@@ -65,8 +71,9 @@ export class KeywordSearchOrchestratorService {
     this.keywordSearchSorts = this.resolveKeywordSearchSorts();
   }
 
-  // Planning lives in CollectionSchedulerService (collection_schedules rows
-  // drive cadence) — this orchestrator only executes/enqueues keyword work.
+  // Cadence is driven by the collector pacer off collection_schedules rows —
+  // this orchestrator only executes/enqueues keyword work. (F478: the old
+  // CollectionSchedulerService that used to plan here was exterminated.)
 
   /**
    * Execute keyword entity search for specific subreddit
@@ -265,7 +272,7 @@ export class KeywordSearchOrchestratorService {
                 sort,
                 timeFilter: resolvedTimeFilter,
                 limit: this.keywordSearchLimit,
-                batchDelay: 1200,
+                batchDelay: KEYWORD_SEARCH_BATCH_DELAY_MS,
               },
             );
 
@@ -318,7 +325,7 @@ export class KeywordSearchOrchestratorService {
                   sort,
                   timeFilter: resolvedFallbackTimeFilter,
                   limit: this.keywordSearchLimit,
-                  batchDelay: 1200,
+                  batchDelay: KEYWORD_SEARCH_BATCH_DELAY_MS,
                 },
               );
 
@@ -1176,21 +1183,6 @@ export class KeywordSearchOrchestratorService {
     // "precision theater on a 1-post probe"). Full-page recall is the
     // honest instrument the harvest snapshot measures.
     return 100;
-  }
-
-  getConfiguredSorts(): KeywordSearchSort[] {
-    if (this.keywordSearchSorts.length > 0) {
-      return [...this.keywordSearchSorts];
-    }
-    return ['relevance'];
-  }
-
-  async getQueueDepth(): Promise<KeywordQueueDepth> {
-    const [execution, processing] = await Promise.all([
-      this.keywordSearchQueue.getJobCounts(),
-      this.keywordQueue.getJobCounts(),
-    ]);
-    return { execution, processing };
   }
 }
 

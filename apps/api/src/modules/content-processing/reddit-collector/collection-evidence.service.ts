@@ -485,7 +485,11 @@ export class CollectionEvidenceService implements OnModuleInit {
 
   /** Sweep companion: claims whose run died terminally without releasing,
    *  whose run row is gone, or that stayed ownerless past two hours (crash
-   *  between claim and run creation) are reaped so retries can proceed. */
+   *  between claim and run creation) are reaped so retries can proceed.
+   *  The 2h ownerless bound is DERIVED (2026-08-03, F470): the legitimate
+   *  claim→run-creation gap is seconds; 2h = two cycles of this hourly
+   *  reconciler, guaranteeing a full cycle has elapsed since the claim
+   *  regardless of phase alignment before we call the owner dead. */
   private async reapOrphanedCoverageClaims(): Promise<void> {
     await this.prismaService.$executeRaw`
       DELETE FROM collection_extraction_coverage_claims c
@@ -510,6 +514,10 @@ export class CollectionEvidenceService implements OnModuleInit {
    */
   @Cron(CronExpression.EVERY_HOUR)
   async reconcileStaleRuns(): Promise<void> {
+    // DERIVED 2026-08-03 (F470): the horizon must exceed the longest
+    // LEGITIMATE run — a batch-deferred extraction floats until Gemini's
+    // 24h batch-completion ceiling (vendor fact). 30h = 24h + 25% slack, so
+    // a run is only declared dead once the vendor's own deadline has passed.
     const parsedHorizon = Number(process.env.COLLECTION_RUN_STALE_HOURS ?? 30);
     const horizonHours =
       Number.isFinite(parsedHorizon) && parsedHorizon > 0 ? parsedHorizon : 30;

@@ -99,7 +99,7 @@ export function compileQueryPlanFromConstraints(
     });
   }
 
-  if (constraints.stagePresence.foodAttributes > 0) {
+  if (constraints.inputPresence.foodAttributes > 0) {
     const attributeIds = constraints.ids.foodAttributeIds;
     const shouldInclude =
       attributeIds.length > 0 &&
@@ -139,7 +139,7 @@ export function compileQueryPlanFromConstraints(
           restaurantOrder: 'crave_score DESC',
         },
     diagnostics: {
-      missingEntities: getMissingScopes(constraints.stagePresence),
+      missingEntities: getMissingScopes(constraints.inputPresence),
       notes: buildDiagnosticNotes(constraints),
     },
   };
@@ -148,7 +148,7 @@ export function compileQueryPlanFromConstraints(
 }
 
 function getMissingScopes(
-  presence: SearchConstraints['stagePresence'],
+  presence: SearchConstraints['inputPresence'],
 ): EntityScope[] {
   const missing: EntityScope[] = [];
   if (!presence.restaurants) {
@@ -170,8 +170,8 @@ function buildDiagnosticNotes(constraints: SearchConstraints): string[] {
   const notes: string[] = [];
 
   if (
-    constraints.stagePresence.food === 0 &&
-    constraints.stagePresence.foodAttributes === 0
+    constraints.inputPresence.food === 0 &&
+    constraints.inputPresence.foodAttributes === 0
   ) {
     notes.push(
       'No food entities provided; restaurant results will rank by public Crave Score.',

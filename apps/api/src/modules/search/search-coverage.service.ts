@@ -74,6 +74,14 @@ export class SearchCoverageService {
 
     const conditions: Prisma.Sql[] = [
       Prisma.sql`e.type = 'restaurant'`,
+      // ARCHIVED IS NEVER PAINTED — as a PREDICATE, not an accident of score-table
+      // membership. The ranked builder (search-query.builder buildConnectionConditions,
+      // red-team MEDIUM-1) already carries `status <> 'archived'`; the coverage/dots
+      // layer reads the same core_entities and must carry it too, else an
+      // archived-but-scored restaurant leaks onto the map as a dot the ranked list
+      // will never show. Proven RED by deleting this line
+      // (search-coverage-archived-leak.integration.spec.ts).
+      Prisma.sql`e.status <> 'archived'`,
       // Eligibility = the Crave Score v3 inclusion floor: catalogued dishes OR by-name praise
       // (mirrors the relaxed gate in search-query.builder). Restaurant-mode dots
       // (includeTopDish=false) are colored by the v3 restaurant score, so a dishless-but-praised

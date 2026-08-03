@@ -14,7 +14,8 @@ import { RedditApiError } from '../../../external-integrations/reddit/reddit.exc
 import { filterAndTransformToLLM } from '../../../external-integrations/reddit/reddit-data-filter';
 import { LLMPost } from '../../../external-integrations/llm/llm.types';
 import { Prisma } from '@prisma/client';
-import { isProdEnv, resolveAppEnv } from '../../../../shared/config/app-env';
+import { resolveTestLimit } from '../test-limit';
+import { MAX_CHRONOLOGICAL_INTERVAL_DAYS } from '../collector-pacer.service';
 
 export interface ChronologicalCollectionJobData {
   subreddit: string; // Changed from subreddits array to single subreddit
@@ -165,10 +166,18 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         }
       }
       if (typeof effectiveLastProcessed !== 'number') {
-        const defaultFallbackMs = Date.now() - 24 * 60 * 60 * 1000; // 24h default
+        // DERIVED 2026-08-03 (F470, corrected from the old 24h guess): on
+        // cursor loss, rescan one full pacer scheduling period — the derived
+        // interval's UPPER clamp (14d), not a day: a quiet source is
+        // legitimately visited that rarely, and a 24h fallback would have
+        // silently dropped up to 13 days of its posts. Overlap is harmless —
+        // processedSource dedupe absorbs anything rescanned; the only cost is
+        // re-fetch, never re-extraction.
+        const defaultFallbackMs =
+          Date.now() - MAX_CHRONOLOGICAL_INTERVAL_DAYS * 24 * 60 * 60 * 1000;
         effectiveLastProcessed = Math.floor(defaultFallbackMs / 1000);
         await job.log(
-          `No lane cursor; using 24h fallback: ${new Date(
+          `No lane cursor; using ${MAX_CHRONOLOGICAL_INTERVAL_DAYS}d fallback: ${new Date(
             defaultFallbackMs,
           ).toISOString()}`,
         );
@@ -207,11 +216,9 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         typeof options.limit === 'number' && options.limit > 0
           ? Math.floor(options.limit)
           : null;
-      const envLimit =
-        process.env.TEST_CHRONO_MAX_POSTS &&
-        !Number.isNaN(Number(process.env.TEST_CHRONO_MAX_POSTS))
-          ? Math.max(0, Number.parseInt(process.env.TEST_CHRONO_MAX_POSTS, 10))
-          : null;
+      // F455: prod-refusing lever — a stray TEST_CHRONO_MAX_POSTS in prod
+      // used to silently truncate the collection into PERMANENT loss.
+      const envLimit = resolveTestLimit('TEST_CHRONO_MAX_POSTS');
       const manualLimitProvided =
         job.data.triggeredBy === 'manual' && jobLimit !== null;
       const effectiveLimit = manualLimitProvided
@@ -342,6 +349,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
           advanceCursor: true,
           outputDocs: 0,
           declaredRequests: job.data.declaredRequests,
+          listingRequests: postsResult.performance?.apiCallsUsed ?? 0,
           healedParentFetches: healedParents.length,
         });
         return {
@@ -479,6 +487,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         advanceCursor: false,
         outputDocs: posts.length,
         declaredRequests: job.data.declaredRequests,
+        listingRequests: postsResult.performance?.apiCallsUsed ?? 0,
         healedParentFetches: healedParents.length,
       });
       this.logger.info('Staged pending window after queuing batches', {
@@ -579,17 +588,23 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
   }
 
   /** §10/§12.4/§14.2 durable source facts after a fetch: output heartbeat
-   *  and the declared-vs-actual reddit-draw mirror (~1 listing request per
-   *  100 posts, minimum 1). The cursor advances here ONLY on the legit-zero
-   *  path (advanceCursor) — a non-empty window's cursor is staged and
-   *  commits at extraction-run creation (§10). Best-effort: fact recording
-   *  must never fail the collection it describes. */
+   *  and the declared-vs-actual reddit-draw mirror. The actual side is the
+   *  REAL listing-request count the fetch made (`apiCallsUsed` from the
+   *  chokepoint), NOT a model of it (F462): recording `ceil(outputDocs/100)`
+   *  as the actual just re-derived the declared estimate's own arithmetic, so
+   *  the drift pair could only ever confirm itself. The cursor advances here
+   *  ONLY on the legit-zero path (advanceCursor) — a non-empty window's cursor
+   *  is staged and commits at extraction-run creation (§10). Best-effort: fact
+   *  recording must never fail the collection it describes. */
   private async recordSourceFacts(params: {
     sourceId: string | undefined;
     collectionStartTime: number;
     advanceCursor: boolean;
     outputDocs: number;
     declaredRequests?: number;
+    /** The REAL number of listing requests the fetch made (chokepoint count),
+     *  the honest actual for the §14.2 drift pair. */
+    listingRequests: number;
     /** Orphan-parent heals this tick — each was a real governed by-id fetch
      *  the declared estimate could not have known about; folded into the
      *  actual side of the §14.7 drift pair so healing ticks don't read as
@@ -617,9 +632,10 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         params.outputDocs,
       );
       if (typeof params.declaredRequests === 'number') {
+        // F462: the REAL chokepoint count, plus the real by-id heal fetches —
+        // never a model of the output.
         const actualRequests =
-          Math.max(1, Math.ceil(params.outputDocs / 100)) +
-          (params.healedParentFetches ?? 0);
+          params.listingRequests + (params.healedParentFetches ?? 0);
         this.governance.pools.recordActualPair(
           REDDIT_POOL_NAME,
           'collector.chronological',
@@ -857,22 +873,9 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
   }
 
   private resolveTestFetchLimit(): number {
-    const raw = process.env.TEST_REDDIT_FETCH_LIMIT;
-    if (typeof raw !== 'string' || !raw.trim()) {
-      return 1000;
-    }
-
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return 1000;
-    }
-
-    // ONE resolver (red team 2026-08-02).
-    if (isProdEnv(resolveAppEnv())) {
-      return 1000;
-    }
-
-    return Math.min(1000, parsed);
+    // F455: ONE resolver, prod-refusing (a test cap in prod would truncate a
+    // fetch). The default fetch reach is 1000; the lever can only lower it.
+    return resolveTestLimit('TEST_REDDIT_FETCH_LIMIT', 1000) || 1000;
   }
 
   /**

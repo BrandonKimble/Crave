@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { EntityType, Prisma } from '@prisma/client';
+import { EntityStatus, EntityType, Prisma } from '@prisma/client';
 import type { Redis } from 'ioredis';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -26,6 +26,10 @@ import {
   type RestaurantViewStatsRow,
   type ViewedRestaurantNameMatch,
 } from '../signals/signal-demand-read.service';
+import {
+  EVIDENCE_TIER_LADDER,
+  evidenceTierStrength,
+} from '../entity-text-search/entity-text-search.service';
 import type { SignalKind } from '../signals/signals.service';
 
 /** Row shape of the favorites read (user_list_items under the user's own
@@ -65,7 +69,6 @@ const GLOBAL_QUERY_RESERVED_SLOTS = 1;
 // matcher for, NOT how many we show) — structural plumbing, latency-bounded.
 const ATTRIBUTE_RECALL_FLOOR = 6;
 const ATTRIBUTE_SUPPORT_WINDOW_DAYS = 90; // K1 attention-window sentence
-const ATTRIBUTE_LANE_RUNTIME_READY = true;
 // Poll lane (§8.1): polls compete through the cross-lane fusion — zero
 // reserved slots. Gated to longer queries so they don't flood food searches.
 const POLL_LANE_MIN_QUERY_LENGTH = 3; // K1 intent gate (ratified): trigram matching is meaningless under 3 chars
@@ -85,20 +88,17 @@ type CacheResult = 'hit' | 'miss' | 'skipped';
 // matcher's evidence-tier ladder (exact→prefix→contains→name/alias→fuzzy/
 // edit→embedding). §16 class: derivation, ORDER ONLY — the integers are rank
 // positions on the ladder, never magnitudes, so they cannot act as weights.
-// Rows whose evidence is structural-by-construction (query suggestions,
-// injected favorites/viewed, user/poll prefix hits are all literal prefix
-// matches of the typed text) borrow the ladder position their match shape
-// earns, not a hand score.
-const EVIDENCE_TIER_STRENGTH: Record<string, number> = {
-  exact: 7,
-  prefix: 6,
-  contains: 5,
-  name: 4,
-  alias: 4,
-  fuzzy: 3,
-  edit: 3,
-  embedding: 2,
-};
+// F582: the ladder ORDER is no longer re-typed here — it is DERIVED from the
+// single canonical ladder (EVIDENCE_TIER_LADDER, entity-text-search). Rows
+// whose evidence is structural-by-construction (query suggestions, injected
+// favorites/viewed, user/poll prefix hits are all literal prefix matches of the
+// typed text) borrow the ladder position their match shape earns, not a hand
+// score.
+const EVIDENCE_TIER_STRENGTH: Record<string, number> = Object.fromEntries(
+  EVIDENCE_TIER_LADDER.flatMap((group) =>
+    group.map((tier) => [tier, evidenceTierStrength(tier)]),
+  ),
+);
 
 /**
  * One row inside a lane's internal ranking. The lane's ORDER is the ranking
@@ -200,9 +200,10 @@ export class AutocompleteService {
     // actors; your own single past query is enough for a personal one.
     this.querySuggestionMinGlobalCount = 3;
     this.querySuggestionMinUserCount = 1;
-    this.attributeLaneEnabled =
-      ATTRIBUTE_LANE_RUNTIME_READY &&
-      this.resolveEnvBoolean('AUTOCOMPLETE_ENABLE_ATTRIBUTE_LANE', true);
+    this.attributeLaneEnabled = this.resolveEnvBoolean(
+      'AUTOCOMPLETE_ENABLE_ATTRIBUTE_LANE',
+      true,
+    );
     this.pollLaneEnabled = this.resolveEnvBoolean(
       'AUTOCOMPLETE_ENABLE_POLL_LANE',
       true,
@@ -240,9 +241,6 @@ export class AutocompleteService {
       user?.userId ?? null,
       cacheEntityTypes,
       normalizedQuery,
-      // Market-election cache scoping DIED with leg 2 of the markets
-      // extermination — recall is global, so the cache scope is too.
-      'global',
       this.attributeLaneEnabled,
     );
     const cacheLookup = await this.getFromCache(cacheKey);
@@ -519,7 +517,71 @@ export class AutocompleteService {
       badges: { viewed: true },
     }));
 
-    return { favorites, viewed };
+    // ARCHIVED/MERGED PERSONAL FACTS NEVER LEAK (F570/F571). The favorites lane
+    // reads user_list_items and the viewed lane reads the signals ledger; both
+    // carry the id (and, for favorites, the NAME) that was current when the user
+    // saved/viewed. If that entity has since been merged away or archived, the
+    // stale row must resolve to the survivor — serving the survivor's id+name —
+    // or drop entirely when the survivor is archived/gone. Redirect chains are
+    // kept flat by the merge writer (one hop — see merge writer spec), so a
+    // single lookup suffices.
+    const resolvedFavorites = await this.resolveInjectedSubjects(favorites);
+    const resolvedViewed = await this.resolveInjectedSubjects(viewed);
+
+    return { favorites: resolvedFavorites, viewed: resolvedViewed };
+  }
+
+  /**
+   * Redirect-resolve + archived-drop a set of injected personal matches
+   * (favorites / viewed). One-hop redirect (writer keeps chains flat); the
+   * survivor's id AND name replace the stale ones so a merged entity is served
+   * under its live identity, and an archived (or vanished) survivor is dropped.
+   */
+  private async resolveInjectedSubjects(
+    matches: AutocompleteMatchDto[],
+  ): Promise<AutocompleteMatchDto[]> {
+    if (matches.length === 0) {
+      return [];
+    }
+    const requestedIds = Array.from(new Set(matches.map((m) => m.entityId)));
+    const redirects = await this.prisma.entityRedirect.findMany({
+      where: { fromEntityId: { in: requestedIds } },
+      select: { fromEntityId: true, toEntityId: true },
+    });
+    const redirectMap = new Map(
+      redirects.map((r) => [r.fromEntityId, r.toEntityId]),
+    );
+    const survivorIds = Array.from(
+      new Set(requestedIds.map((id) => redirectMap.get(id) ?? id)),
+    );
+    const survivors = await this.prisma.entity.findMany({
+      where: {
+        entityId: { in: survivorIds },
+        status: { not: EntityStatus.archived },
+      },
+      select: { entityId: true, name: true },
+    });
+    const survivorById = new Map(survivors.map((e) => [e.entityId, e]));
+
+    const resolved: AutocompleteMatchDto[] = [];
+    const seen = new Set<string>();
+    for (const match of matches) {
+      const survivorId = redirectMap.get(match.entityId) ?? match.entityId;
+      const survivor = survivorById.get(survivorId);
+      if (!survivor) {
+        continue; // archived or gone — never leak the stale row
+      }
+      if (seen.has(survivorId)) {
+        continue; // a merge can collapse two saved rows onto one survivor
+      }
+      seen.add(survivorId);
+      resolved.push({
+        ...match,
+        entityId: survivor.entityId,
+        name: survivor.name,
+      });
+    }
+    return resolved;
   }
 
   private async rankCandidates(params: {
@@ -1416,7 +1478,14 @@ export class AutocompleteService {
         ? new Map(
             (
               await this.prisma.entity.findMany({
-                where: { entityId: { in: resolvedIds } },
+                // ARCHIVED NEVER SURFACES (F572): a resolver hit that has since
+                // been archived must not be re-served — dropping it from this
+                // name refetch leaves canonicalName undefined, and the loop
+                // below already skips a match with no name.
+                where: {
+                  entityId: { in: resolvedIds },
+                  status: { not: EntityStatus.archived },
+                },
                 select: { entityId: true, name: true },
               })
             ).map((entity) => [entity.entityId, entity.name]),
@@ -1495,14 +1564,17 @@ export class AutocompleteService {
     userId: string | null,
     entityTypes: EntityType[],
     normalizedQuery: string,
-    scopePlaceKey: string,
     attributeLaneEnabled: boolean,
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
     const queryToken = encodeURIComponent(normalizedQuery);
+    // Recall is GLOBAL (identity has no place scope since the markets
+    // extermination, leg 2) — the cache scope is a fixed 'global' segment,
+    // kept as a literal in the key so a future place-scoped cache is an
+    // additive change, not a silent format break.
     return `${this.cacheRedisKeyPrefix}:${
       userId ?? 'anon'
-    }:${scopeKey}:${scopePlaceKey}:attrs-${
+    }:${scopeKey}:global:attrs-${
       attributeLaneEnabled ? 'on' : 'off'
     }:${queryToken}`;
   }

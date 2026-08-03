@@ -34,10 +34,6 @@ export class PollLifecycleService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_2AM)
   async closeExpiredPolls(): Promise<void> {
-    if (this.autoCloseDays <= 0) {
-      return;
-    }
-
     // Coarse pre-filter: nothing can close before the smallest possible window, so
     // skip active polls younger than that. Each remaining active poll's EXACT due-ness
     // is then decided per-poll below (honoring its stored §5 window, else the global).

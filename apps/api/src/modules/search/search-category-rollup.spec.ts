@@ -7,15 +7,8 @@ const FOOD_ID = '33333333-3333-3333-3333-333333333333';
 
 function constraints(): SearchConstraints {
   return {
-    stage: 'strict',
     format: 'dual_list',
     inputPresence: {
-      restaurants: 0,
-      food: 1,
-      foodAttributes: 0,
-      restaurantAttributes: 0,
-    },
-    stagePresence: {
       restaurants: 0,
       food: 1,
       foodAttributes: 0,

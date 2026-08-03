@@ -1,6 +1,6 @@
 /**
  * THE collection pacer (§10/§14.3, at priors) — replaces the market-keyed
- * CollectionSchedulerService.
+ * scheduler that predated it (since exterminated).
  *
  * Pull model: each tick selects due (source, lane) rows ordered by
  * NORMALIZED LATENESS = (now − dueAt) ÷ latenessTolerance — the owner's
@@ -74,6 +74,11 @@ const MIN_CHRONOLOGICAL_INTERVAL_DAYS = 2 / 24;
  * What changes it: owner re-ratifying the horizon, never cadence tuning.
  */
 const ARRIVAL_LOOKBACK_DAYS = 14;
+
+/** The lane's maximum legitimate visit gap = the derived interval's upper
+ *  clamp. Exported for the cursor-loss fallback: a rescan window smaller
+ *  than this can silently drop posts from a quiet source. */
+export const MAX_CHRONOLOGICAL_INTERVAL_DAYS = ARRIVAL_LOOKBACK_DAYS;
 
 @Injectable()
 export class CollectorPacerService implements OnModuleInit {
@@ -190,6 +195,16 @@ export class CollectorPacerService implements OnModuleInit {
           // later lanes may still fit, so keep scanning.
           continue;
         }
+        if (outcome === 'unwired') {
+          // F457: an engineless keyword lane can collect NOTHING — a permanent
+          // operator wiring gap, NOT a dispatch. It used to be counted as
+          // dispatched and the lane ADVANCED, turning the gap permanently
+          // green. It must stay RED: never count it dispatched, and do NOT
+          // advance — the lane stays due and re-logs the error every tick
+          // until someone wires the engine.
+          count('denied');
+          continue;
+        }
         count('dispatched');
         await this.registry.advanceLane(
           lane.sourceId,
@@ -217,7 +232,7 @@ export class CollectorPacerService implements OnModuleInit {
   private async dispatchLane(
     lane: CollectorLane,
     now: Date,
-  ): Promise<'dispatched' | 'denied' | 'empty'> {
+  ): Promise<'dispatched' | 'denied' | 'empty' | 'unwired'> {
     // Tick key = the row's due time: duplicate dispatches of the SAME tick
     // (crash between enqueue and row-advance, second instance) collapse at
     // Bull's jobId dedupe instead of double-collecting.
@@ -254,7 +269,8 @@ export class CollectorPacerService implements OnModuleInit {
         'Keyword lane on an engineless source (operator wiring gap)',
         { handle: lane.handle, sourceId: lane.sourceId },
       );
-      return 'empty';
+      // F457: RED, not a dispatch — the caller must leave this lane due.
+      return 'unwired';
     }
     const [engine, territoryPlaceIds] = await Promise.all([
       this.registry.getEngine(lane.engineId),

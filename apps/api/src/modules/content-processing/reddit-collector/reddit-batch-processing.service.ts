@@ -18,7 +18,7 @@ import { RedditGovernanceDenialError } from '../../external-integrations/reddit/
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
   private logger!: LoggerService;
-  private keywordGateConfig!: {
+  private refetchGateConfig!: {
     lookbackMs: number;
     commentSampleLimit: number;
     minNewComments: number;
@@ -38,12 +38,12 @@ export class RedditBatchProcessingService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RedditBatchProcessingService');
-    this.keywordGateConfig = this.buildKeywordGateConfig();
-    this.logger.debug('Loaded keyword gate configuration', {
-      lookbackMs: this.keywordGateConfig.lookbackMs,
-      commentSampleLimit: this.keywordGateConfig.commentSampleLimit,
-      minNewComments: this.keywordGateConfig.minNewComments,
-      pipelineScope: this.keywordGateConfig.pipelineScope,
+    this.refetchGateConfig = this.buildRefetchGateConfig();
+    this.logger.debug('Loaded refetch gate configuration', {
+      lookbackMs: this.refetchGateConfig.lookbackMs,
+      commentSampleLimit: this.refetchGateConfig.commentSampleLimit,
+      minNewComments: this.refetchGateConfig.minNewComments,
+      pipelineScope: this.refetchGateConfig.pipelineScope,
     });
   }
 
@@ -133,7 +133,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
                 ? `Skipped batch: ${skippedDueToFreshness} fresh posts, ${skippedDueToDeltaThreshold} without enough new comments`
                 : 'Skipped batch: no eligible posts after gating',
             ],
-            keywordGateSummary: {
+            refetchGateSummary: {
               totalCandidates,
               processedPosts: 0,
               skippedDueToFreshness,
@@ -235,7 +235,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
           createdEntities: pipelineResult.dbResult.createdEntitySummaries || [],
           reusedEntities: pipelineResult.dbResult.reusedEntitySummaries || [],
           ...(llmPostSample ? { llmPostSample } : {}),
-          keywordGateSummary: {
+          refetchGateSummary: {
             totalCandidates,
             processedPosts: llmPosts.length,
             skippedDueToFreshness,
@@ -355,8 +355,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
     skippedDueToDeltaThreshold: number;
     totalCandidates: number;
   }> {
-    if (!this.keywordGateConfig) {
-      this.keywordGateConfig = this.buildKeywordGateConfig();
+    if (!this.refetchGateConfig) {
+      this.refetchGateConfig = this.buildRefetchGateConfig();
     }
 
     if (job.llmPosts?.length) {
@@ -483,7 +483,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
       };
     }
 
-    const { pipelineScope, lookbackMs } = this.keywordGateConfig;
+    const { pipelineScope, lookbackMs } = this.refetchGateConfig;
     if (!pipelineScope.length) {
       return {
         fetchPostIds: [...postIds],
@@ -567,7 +567,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     correlationId: string,
   ): Promise<boolean> {
     const { commentSampleLimit, minNewComments, pipelineScope } =
-      this.keywordGateConfig;
+      this.refetchGateConfig;
 
     if (
       commentSampleLimit <= 0 ||
@@ -657,25 +657,23 @@ export class RedditBatchProcessingService implements OnModuleInit {
     return postId.startsWith('t3_') ? postId : `t3_${postId}`;
   }
 
-  private buildKeywordGateConfig(): {
+  private buildRefetchGateConfig(): {
     lookbackMs: number;
     commentSampleLimit: number;
     minNewComments: number;
     pipelineScope: string[];
   } {
-    const keywordProcessing =
-      (this.configService.get('keywordProcessing') as {
+    const refetchGate =
+      (this.configService.get('refetchGate') as {
         gateLookbackDays?: number;
         commentSampleLimit?: number;
         minNewComments?: number;
         pipelineScope?: string[];
       }) || {};
 
-    const lookbackDaysRaw = Number(keywordProcessing.gateLookbackDays ?? 21);
-    const commentSampleLimitRaw = Number(
-      keywordProcessing.commentSampleLimit ?? 5,
-    );
-    const minNewCommentsRaw = Number(keywordProcessing.minNewComments ?? 3);
+    const lookbackDaysRaw = Number(refetchGate.gateLookbackDays ?? 21);
+    const commentSampleLimitRaw = Number(refetchGate.commentSampleLimit ?? 5);
+    const minNewCommentsRaw = Number(refetchGate.minNewComments ?? 3);
 
     const lookbackDays = Number.isFinite(lookbackDaysRaw)
       ? lookbackDaysRaw
@@ -686,8 +684,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
     const minNewComments = Number.isFinite(minNewCommentsRaw)
       ? minNewCommentsRaw
       : 3;
-    const pipelineScope = Array.isArray(keywordProcessing.pipelineScope)
-      ? keywordProcessing.pipelineScope
+    const pipelineScope = Array.isArray(refetchGate.pipelineScope)
+      ? refetchGate.pipelineScope
           .map((value) => value.trim().toLowerCase())
           .filter((value) => value.length > 0)
       : ['chronological', 'archive', 'keyword'];

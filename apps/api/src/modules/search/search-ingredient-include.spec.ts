@@ -21,15 +21,8 @@ function buildConstraints(
   overrides: Partial<SearchConstraints['ids']>,
 ): SearchConstraints {
   return {
-    stage: 'strict',
     format: 'dual_list',
     inputPresence: {
-      restaurants: 0,
-      food: 1,
-      foodAttributes: 0,
-      restaurantAttributes: 0,
-    },
-    stagePresence: {
       restaurants: 0,
       food: 1,
       foodAttributes: 0,
