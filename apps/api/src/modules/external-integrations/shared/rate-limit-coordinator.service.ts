@@ -299,6 +299,18 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       request.service,
       request.operation,
     );
+    // CLOSED SCOPE (F114): a registered ceiling of 0 means the owner said
+    // "stop" — deny before Redis, before the emergency guard, before
+    // anything that could reinterpret 0 as "unlimited" or "unset".
+    if (config && config.requestsPerMinute === 0) {
+      return {
+        allowed: false,
+        currentUsage: 0,
+        limit: 0,
+        resetTime: new Date(Date.now() + 60_000),
+        retryAfter: 60,
+      };
+    }
     if (!config) {
       // ABSENT CONFIG DENIES (red team 2026-08-02). This returned
       // `allowed: true` — an unregistered service was UNLIMITED. Harmless
@@ -634,7 +646,24 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         typeof value?.requestsPerMinute === 'number'
           ? value.requestsPerMinute
           : googleRequestsPerMinute;
-      if (!Number.isFinite(perMinute) || perMinute <= 0) {
+      // A limit is one of {positive ceiling, 0 = CLOSED, absent = inherit}
+      // (F114, owner-ratified 2026-08-03): zero must register a closed
+      // scope, not silently fall back to the service default on the most
+      // expensive call. Malformed refuses boot — a money guard that can't
+      // parse must not quietly widen.
+      if (!Number.isFinite(perMinute) || perMinute < 0) {
+        throw new Error(
+          `google_places operation '${operation}' has a malformed requestsPerMinute (${String(
+            value?.requestsPerMinute,
+          )}) — a money ceiling must be a non-negative finite number`,
+        );
+      }
+      if (perMinute === 0) {
+        this.registerRateLimitConfig(
+          ExternalApiService.GOOGLE_PLACES,
+          { requestsPerMinute: 0, requestsPerDay: 0, requestsPerHour: 0 },
+          operation,
+        );
         return;
       }
 

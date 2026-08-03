@@ -204,8 +204,12 @@ export default () => {
     revenueCat: {
       apiKey: process.env.REVENUECAT_API_KEY,
       webhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET,
-      entitlementMap:
-        process.env.REVENUECAT_ENTITLEMENT_MAP || 'premium:premium_monthly',
+      // NO DEFAULT. 'premium:premium_monthly' used to sit here — a guessed
+      // pair nobody chose, which made an unmapped RC id silently mint a grant
+      // under vendor vocabulary. Unconfigured is unconfigured: nothing
+      // translates, every RC event fails loudly, RevenueCat redelivers.
+      // See billing/revenuecat-entitlement-map.ts (F101/D1).
+      entitlementMap: process.env.REVENUECAT_ENTITLEMENT_MAP,
     },
     billing: {
       defaultEntitlement: process.env.BILLING_DEFAULT_ENTITLEMENT || 'premium',
@@ -346,8 +350,12 @@ export default () => {
       // reading the project's actual per-method quota at
       // console.cloud.google.com/google/maps-apis/quotas. Env override kept
       // because the real quota is a per-project (per-env) fact.
+      // Service-wide default applies only to operations NOT listed below.
+      // 60/min: an unregistered operation gets one call per second — enough
+      // to work, slow enough to surface in the ledger and force an explicit
+      // entry (closed-vocabulary posture; the per-op ceilings are the law).
       requestsPerMinute: parseInt(
-        process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '600',
+        process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '60',
         10,
       ),
       // Daily cap is a cost guard, not a Google quota.
@@ -363,30 +371,32 @@ export default () => {
       // silent no-op on the most expensive Places call.
       // Record<PlacesOperation, …> — a stray key and a MISSING key are both
       // compile errors, which is what the three-vocabularies bug needed.
+      // DERIVED CEILINGS (owner-ratified basis, 2026-08-03: "the upper
+      // limit of what we might do in a month when live" = one city
+      // onboarding + typical steady collection of every city). Measured
+      // from api_usage_ledger, 45d window incl. the 07-30/31 full-city
+      // onboarding burst — per-minute = the historical peak minute
+      // rounded up to the next 50; per-day = onboarding-day max + steady
+      // p95 day, rounded up to the next thousand. Numbers are
+      // DERIVATIONS of those measurements, not tunables — re-derive from
+      // the ledger before changing.
       operationLimits: placesOperationLimits({
         autocomplete: {
-          requestsPerMinute: 600, // same conservative per-method floor as above
-          requestsPerDay: 150_000,
+          requestsPerMinute: 500, // measured peak 452/min
+          requestsPerDay: 12_000, // 7,361 burst + 3,680 steady p95
         },
         placeDetails: {
-          requestsPerMinute: 600,
-          requestsPerDay: 100_000,
+          requestsPerMinute: 400, // measured peak 392/min
+          requestsPerDay: 12_000, // 7,565 burst + 4,091 steady p95
         },
-        // Text search is the expensive operation ($0.032/call at the pro SKU
-        // vs placeDetails' $0.017). It had no key, so it silently ran on the
-        // service default; it now has the same conservative floor as its
-        // siblings and is actually settable.
+        // Text search is the expensive operation ($0.032/call at the pro
+        // SKU vs placeDetails' $0.017).
         textSearch: {
-          requestsPerMinute: 600,
-          requestsPerDay: 100_000,
+          requestsPerMinute: 250, // measured peak 226/min
+          requestsPerDay: 8_000, // 5,123 burst + 2,573 steady p95
         },
       }),
       defaultRadius: 5_000, // meters — default search radius
-      retryOptions: {
-        maxRetries: 3,
-        retryDelay: 1_000, // base backoff (ms)
-        retryBackoffFactor: 2.0,
-      },
     },
     tomtom: {
       apiKey: resolveSecretEnv('TOMTOM_API_KEY'),

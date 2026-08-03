@@ -181,3 +181,7 @@ VERDICT: **APPROVE** (orchestrator implements — two-line migration).
 DB has enum PhotoEventType; schema says VarChar(16) — works by coercion but migrate dev would DESTRUCTIVELY recreate the column. Schema-only alignment, no data change, no generated migration.
 RUBRIC: prevents a destructive future; byte-level DB truth is the source; photos module is a concurrent session's area — schema field mapping only, no behavior.
 VERDICT: **APPROVE** (orchestrator implements; verify enum values from DB first).
+
+## D18a — RESOLVED BY OWNER RULING + DERIVATION (2026-08-03)
+
+Owner: derive ceilings from measured usage with the monthly upper bound = one city onboarding + typical steady collection. Implemented by the orchestrator: per-op ceilings derived from api_usage_ledger (45d incl. the 07-30/31 full-city burst) — per-minute = historical peak rounded to next 50 (autocomplete 500/452, placeDetails 400/392, textSearch 250/226); per-day = burst-day + steady-p95-day rounded to next thousand (12k/12k/8k). Service default for UNREGISTERED ops = 60/min (closed-vocabulary posture: works, but slow enough to surface and force an explicit entry). Zero = CLOSED registered scope, denied before Redis and before the emergency guard; malformed refuses boot. Mutation-capable spec (rate-limit-zero-closed.spec.ts) proves both.
