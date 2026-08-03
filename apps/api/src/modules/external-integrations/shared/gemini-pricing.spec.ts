@@ -1,5 +1,10 @@
 /** K4 price-table math: the gemini.monthlySpend meter's unit economics. */
-import { geminiCostMicros, msUntilVendorMonthReset } from './gemini-pricing';
+import {
+  GEMINI_RATES,
+  UNKNOWN_MODEL_RATES,
+  geminiCostMicros,
+  msUntilVendorMonthReset,
+} from './gemini-pricing';
 
 describe('geminiCostMicros (K4 vendor rates, fetched 2026-07-24)', () => {
   it('prices uncached + cached input and output at model rates', () => {
@@ -101,5 +106,38 @@ describe('cache storage pricing', () => {
         durationHours: 1,
       }),
     ).toBe(1_000_000);
+  });
+});
+
+describe('UNKNOWN_MODEL_RATES (F121 — the fallback must DOMINATE the table)', () => {
+  // The fallback's whole job: spend from a model this table hasn't met
+  // OVER-meters rather than vanishing. Because it is DERIVED as the
+  // per-field max of GEMINI_RATES, this can only fail if the derivation
+  // breaks — adding a pricier model cannot silently demote the fallback.
+  const fields = ['input', 'cachedInput', 'output', 'cacheStorage'] as const;
+
+  it('is >= every field of every known model', () => {
+    expect(Object.keys(GEMINI_RATES).length).toBeGreaterThan(0);
+    for (const [model, rates] of Object.entries(GEMINI_RATES)) {
+      for (const field of fields) {
+        // The pair is spelled into the assertion so a failure names the
+        // model and field that outgrew the fallback.
+        expect([
+          model,
+          field,
+          UNKNOWN_MODEL_RATES[field] >= rates[field],
+        ]).toEqual([model, field, true]);
+      }
+    }
+  });
+
+  it('meters an unknown model at no less than any known model', () => {
+    const usage = { inputTokens: 1_000_000, outputTokens: 1_000_000 };
+    const unknown = geminiCostMicros({ ...usage, model: 'gemini-99-nonesuch' });
+    for (const model of Object.keys(GEMINI_RATES)) {
+      expect(unknown).toBeGreaterThanOrEqual(
+        geminiCostMicros({ ...usage, model }),
+      );
+    }
   });
 });

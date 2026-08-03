@@ -7,7 +7,6 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   queryModel?: string | null;
-  queryTimeout?: number;
   queryLogOutputs?: boolean;
   baseUrl?: string;
   timeout?: number;

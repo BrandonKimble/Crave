@@ -35,64 +35,15 @@ export interface ReservationResult {
   reservationMember: string;
 }
 
-export type CentralizedRateLimiterMetricsSnapshot = {
-  rpm: {
-    current: number;
-    max: number;
-    safe: number;
-    utilizationPercent: number;
-    actualUtilizationPercent: number;
-    availableCapacity: number;
-    safetyMargin: number;
-    burstCapacity: number;
-  };
-  tpm: {
-    current: number;
-    max: number;
-    safe: number;
-    utilizationPercent: number;
-    projectedTPM: number;
-    avgTokensPerRequest: number;
-    bottleneckType: 'rpm' | 'tpm' | 'none';
-    reserved: number;
-    windowTokens: number;
-  };
-  active: {
-    current: number;
-    maxConcurrent: number;
-    recommendedWorkers: number;
-  };
-  reservations: {
-    total: number;
-    confirmed: number;
-    confirmationRate: number;
-    avgAccuracyMs: number;
-  };
-  optimization: {
-    currentBottleneck: 'rpm' | 'tpm' | 'none';
-    utilizationRoom: number;
-    canIncreaseWorkers: boolean;
-    shouldReduceWorkers: boolean;
-  };
-  health: {
-    status: 'healthy' | 'busy';
-    canAcceptMore: boolean;
-  };
-  timestamp: number;
-};
-
-export type CentralizedRateLimiterMetricsUnavailable = {
-  error: 'metrics_unavailable';
-};
-
-export type CentralizedRateLimiterMetricsResponse =
-  | CentralizedRateLimiterMetricsSnapshot
-  | CentralizedRateLimiterMetricsUnavailable;
-
 /**
  * Centralized Redis-based Rate Limiter with Reservation System (Bulletproof Edition)
  *
- * Guarantees ZERO rate limit violations for 16 workers through:
+ * The admission authority is worker-count agnostic — it governs the RPM/TPM
+ * window itself, so it holds for whatever concurrency the owner sets
+ * (llm-concurrent-processing.service.ts). The former "16 workers" claim here
+ * was a stale copy of a number that service sets to 20 (F116/D11).
+ *
+ * Reduces rate limit violations through:
  * 1. Request reservation system - workers reserve future time slots
  * 2. Adaptive burst control - dynamically adjusts based on current load
  * 3. Exponential backoff with guaranteed slots
@@ -593,13 +544,23 @@ export class CentralizedRateLimiter {
   /**
    * Get real-time RPM utilization analysis
    */
+  /**
+   * RPM window snapshot: exactly the three fields its one caller
+   * (SmartLLMProcessor.getMetrics) reads.
+   *
+   * F116/D11 — this used to also return safetyMargin, burstCapacity and
+   * recommendedWorkers. Nobody read them, and all three were fiction: the
+   * burst figure's own comment claimed "960 RPM theoretical (16 * 60)"
+   * while the expression yielded 1,860; the worker recommendation divided
+   * by a hardcoded 16 (the actual concurrency owner uses 20) and, when the
+   * window was empty, ASSUMED "15 req/min per worker" — a seeded prior with
+   * no measurement behind it, which the no-fake-estimates law forbids. A
+   * metrics surface reports measured quantities or it reports nothing.
+   */
   async getRPMAnalysis(): Promise<{
     currentRPM: number;
     utilizationPercent: number;
     availableCapacity: number;
-    safetyMargin: number;
-    burstCapacity: number;
-    recommendedWorkers: number;
   }> {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
@@ -611,24 +572,8 @@ export class CentralizedRateLimiter {
     );
     const utilizationPercent = Math.round((currentRPM / this.maxRPM) * 100);
     const availableCapacity = this.maxRPM - currentRPM;
-    const safetyMargin = this.maxRPM - this.safeRPM; // 50 RPM buffer
-    const burstCapacity = this.safeRequestsPerSecond * 60; // 960 RPM theoretical (16 * 60)
 
-    // Calculate optimal workers based on current load
-    const avgRequestsPerWorker = currentRPM > 0 ? currentRPM / 16 : 15; // assume 15 req/min per worker
-    const recommendedWorkers = Math.min(
-      16,
-      Math.floor(this.safeRPM / avgRequestsPerWorker),
-    );
-
-    return {
-      currentRPM,
-      utilizationPercent,
-      availableCapacity,
-      safetyMargin,
-      burstCapacity,
-      recommendedWorkers,
-    };
+    return { currentRPM, utilizationPercent, availableCapacity };
   }
 
   /**
@@ -703,128 +648,6 @@ export class CentralizedRateLimiter {
       avgTokensPerRequest,
       bottleneckType,
     };
-  }
-
-  /**
-   * Get comprehensive metrics
-   */
-  async getMetrics(): Promise<CentralizedRateLimiterMetricsResponse> {
-    try {
-      const now = Date.now();
-      const oneMinuteAgo = now - 60000;
-
-      const [reservations, active, metrics, rpmAnalysis, tpmAnalysis] =
-        await Promise.all([
-          this.redis.zcount(this.reservationsKey, oneMinuteAgo, '+inf'),
-          this.redis.zcard(this.activeRequestsKey),
-          this.redis.hgetall(this.metricsKey),
-          this.getRPMAnalysis(),
-          this.getTPMAnalysis(),
-        ]);
-
-      const totalReservations = parseInt(metrics.total_reservations || '0', 10);
-      const confirmedRequests = parseInt(metrics.confirmed_requests || '0', 10);
-      const totalAccuracyMs = parseInt(metrics.total_accuracy_ms || '0', 10);
-
-      const avgAccuracy =
-        confirmedRequests > 0
-          ? Math.round(totalAccuracyMs / confirmedRequests)
-          : 0;
-
-      return {
-        rpm: {
-          current: reservations,
-          max: this.maxRPM,
-          safe: this.safeRPM,
-          utilizationPercent: Math.round((reservations / this.safeRPM) * 100),
-          actualUtilizationPercent: Math.round(
-            (reservations / this.maxRPM) * 100,
-          ),
-          availableCapacity: rpmAnalysis.availableCapacity,
-          safetyMargin: rpmAnalysis.safetyMargin,
-          burstCapacity: rpmAnalysis.burstCapacity,
-        },
-        tpm: {
-          current: tpmAnalysis.currentTPM,
-          max: this.maxTPM,
-          safe: this.safeTPM,
-          utilizationPercent: tpmAnalysis.utilizationPercent,
-          projectedTPM: tpmAnalysis.projectedTPM,
-          avgTokensPerRequest: tpmAnalysis.avgTokensPerRequest,
-          bottleneckType: tpmAnalysis.bottleneckType,
-          reserved: tpmAnalysis.reservedTPM,
-          windowTokens: tpmAnalysis.windowTokens,
-        },
-        active: {
-          current: active,
-          maxConcurrent: 16,
-          recommendedWorkers: rpmAnalysis.recommendedWorkers,
-        },
-        reservations: {
-          total: totalReservations,
-          confirmed: confirmedRequests,
-          confirmationRate:
-            totalReservations > 0
-              ? Math.round((confirmedRequests / totalReservations) * 100)
-              : 0,
-          avgAccuracyMs: avgAccuracy,
-        },
-        optimization: {
-          currentBottleneck: tpmAnalysis.bottleneckType,
-          utilizationRoom: Math.max(
-            0,
-            80 -
-              Math.max(
-                rpmAnalysis.utilizationPercent,
-                tpmAnalysis.utilizationPercent,
-              ),
-          ),
-          canIncreaseWorkers: rpmAnalysis.recommendedWorkers > 16,
-          shouldReduceWorkers: rpmAnalysis.recommendedWorkers < 16,
-        },
-        health: {
-          status: reservations < this.safeRPM * 0.9 ? 'healthy' : 'busy',
-          canAcceptMore: reservations < this.safeRPM,
-        },
-        timestamp: now,
-      };
-    } catch (error) {
-      this.logger.error('Error getting metrics', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-
-      return { error: 'metrics_unavailable' };
-    }
-  }
-
-  /**
-   * Reset all rate limiting data (for testing)
-   */
-  async reset(): Promise<void> {
-    try {
-      await this.redis.del(
-        this.reservationsKey,
-        this.activeRequestsKey,
-        this.tpmKey,
-        this.tpmReservationsKey,
-        this.metricsKey,
-        this.workerQueueKey,
-      );
-
-      this.logger.info('Bulletproof rate limiting data reset', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-      });
-    } catch (error) {
-      this.logger.error('Error resetting rate limiting data', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-    }
   }
 
   /**

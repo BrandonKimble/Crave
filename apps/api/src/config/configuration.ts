@@ -250,8 +250,9 @@ export default () => {
       queryModel: process.env.LLM_QUERY_MODEL || 'gemini-3-flash-preview',
       // ---- Timeouts (2026-07-11 fold-in; formerly env, .env had them all 0
       // = no timeout, a prod hang risk on the interactive query path) ----
-      // Interactive natural-search interpretation: user-facing, must fail fast.
-      queryTimeout: 30_000,
+      // The interactive query-path ceiling moved to GEMINI_CALLER_PROFILES
+      // (F122/D16): it is per-caller configuration, and this key's only four
+      // readers were the four query-class call sites.
       queryLogOutputs: process.env.LLM_QUERY_LOG_OUTPUTS === 'true',
       baseUrl:
         process.env.LLM_BASE_URL ||

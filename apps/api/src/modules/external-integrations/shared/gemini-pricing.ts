@@ -29,7 +29,7 @@ interface ModelRates {
   cacheStorage: number;
 }
 
-const GEMINI_RATES: Record<string, ModelRates> = {
+export const GEMINI_RATES: Record<string, ModelRates> = {
   'gemini-3-flash-preview': {
     input: 0.5,
     cachedInput: 0.05,
@@ -68,14 +68,21 @@ const GEMINI_RATES: Record<string, ModelRates> = {
   },
 };
 
-/** Unknown-model fallback: the priciest flash-class rate we know — spend
- *  from a model this table hasn't met must OVER-meter, never vanish. */
-const UNKNOWN_MODEL_RATES: ModelRates = {
-  input: 1.5,
-  cachedInput: 0.15,
-  output: 9.0,
-  cacheStorage: 1.0,
-};
+/** Unknown-model fallback: spend from a model this table hasn't met must
+ *  OVER-meter, never vanish. That invariant is "the per-field max of the
+ *  table", so it is DERIVED from the table rather than written as a literal
+ *  a future editor must remember to bump when a pricier model lands. */
+export const UNKNOWN_MODEL_RATES: ModelRates = (() => {
+  const entries = Object.values(GEMINI_RATES);
+  const maxOf = (field: keyof ModelRates): number =>
+    entries.reduce((max, rates) => Math.max(max, rates[field]), 0);
+  return {
+    input: maxOf('input'),
+    cachedInput: maxOf('cachedInput'),
+    output: maxOf('output'),
+    cacheStorage: maxOf('cacheStorage'),
+  };
+})();
 
 const BATCH_DISCOUNT = 0.5;
 

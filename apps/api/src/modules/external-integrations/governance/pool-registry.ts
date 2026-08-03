@@ -34,21 +34,51 @@ import type { BilledMicros } from '../shared/spend-currency';
  * 'storeFailure' reason. This is the one and only failure semantic: hard.
  */
 
+/**
+ * WHAT A POOL'S CEILING COUNTS (F119 / D13).
+ *
+ * 'quantity'    — requests, tokens, items: things you can COUNT.
+ * 'billedMicros'— micro-USD the VENDOR charges, as branded by
+ *                 spend-currency.ts. A dollar ceiling metered in ledger
+ *                 dollars is looser than it reads by exactly our metering
+ *                 error (measured ~1.7x on Gemini).
+ *
+ * spend-currency.ts made the amount's currency unrepresentable-if-wrong one
+ * level up; its own header records that guarding this with a call-site scan
+ * "is the wrong level". This is the missing half: the POOL declares its
+ * currency, so `meter()` (quantity) and `meterSpend()` (billed micros)
+ * accept only pools denominated in what they carry, and metering a ceiling
+ * in the wrong currency does not COMPILE.
+ */
+export type Denomination = 'quantity' | 'billedMicros';
+
 export type PoolWindow =
-  | { kind: 'perMinute'; limit: number }
-  | { kind: 'perDay'; limit: number }
-  | { kind: 'perMonth'; limit: number }
+  | { kind: 'perMinute'; limit: number; denomination: Denomination }
+  | { kind: 'perDay'; limit: number; denomination: Denomination }
+  | { kind: 'perMonth'; limit: number; denomination: Denomination }
   /** Money grants: a bounded pool INSTANCE minted by an owner approval
    *  (§14.6) — refills only by a new grant, never by the clock. */
-  | { kind: 'grant'; amount: number };
+  | { kind: 'grant'; amount: number; denomination: Denomination };
 
-export type PoolConfig = {
+/**
+ * A registered pool, carrying its denomination in the TYPE. The phantom `D`
+ * is what makes the metering split real: there is no way to obtain a
+ * PoolHandle<'quantity'> for a dollar pool — `register` returns the handle
+ * the config declared, and `spendPool`/`quantityPool` re-derive it from the
+ * registration and THROW on a mismatch. No cast, no caller-must-remember.
+ */
+export type PoolHandle<D extends Denomination = Denomination> = {
+  readonly name: string;
+  readonly denomination: D;
+};
+
+export type PoolConfig<D extends Denomination = Denomination> = {
   /** '<vendor>.<resource>' e.g. 'tomtom.scarcePolygons'; internal pools use
    *  'internal.<resource>'. */
   name: string;
   /** (vendor, credential) keying (§14.1): multi-app sharding composes. */
   credential: string;
-  window: PoolWindow;
+  window: PoolWindow & { denomination: D };
   /** Reservation TTL — a leaked (never-reconciled) reservation expires. */
   reservationTtlMs: number;
 };
@@ -155,7 +185,7 @@ export class PoolRegistry {
     ) => void,
   ) {}
 
-  register(config: PoolConfig): void {
+  register<D extends Denomination>(config: PoolConfig<D>): PoolHandle<D> {
     if (this.pools.has(config.name)) {
       throw new PoolRegistrationError(
         `Pool '${config.name}' already registered`,
@@ -165,6 +195,32 @@ export class PoolRegistry {
     if (config.window.kind === 'grant') {
       this.grantBase.set(config.name, config.window.amount);
     }
+    return { name: config.name, denomination: config.window.denomination };
+  }
+
+  /**
+   * Typed handle for an ALREADY-registered pool, for the metering sites that
+   * do not own the registration (usage-ledger meters pools governance.service
+   * registered at boot). Not a cast: the denomination is read back off the
+   * registration, and asking for the wrong currency throws here rather than
+   * silently draining a dollar ceiling in the wrong units.
+   */
+  spendPool(name: string): PoolHandle<'billedMicros'> {
+    return this.handle(name, 'billedMicros');
+  }
+
+  quantityPool(name: string): PoolHandle<'quantity'> {
+    return this.handle(name, 'quantity');
+  }
+
+  private handle<D extends Denomination>(name: string, want: D): PoolHandle<D> {
+    const pool = this.requirePool(name);
+    if (pool.window.denomination !== want) {
+      throw new PoolRegistrationError(
+        `Pool '${name}' is denominated in ${pool.window.denomination}, not ${want}`,
+      );
+    }
+    return { name, denomination: want };
   }
 
   /**
@@ -330,7 +386,7 @@ export class PoolRegistry {
         });
         if (pool.window.kind === 'grant') {
           pool.window = {
-            kind: 'grant',
+            ...pool.window,
             amount:
               (this.grantBase.get(pool.name) ?? 0) + (loaded?.granted ?? 0),
           };
@@ -442,7 +498,7 @@ export class PoolRegistry {
     if (this.isDurable(pool) && this.store !== undefined) {
       await this.store.add(poolName, 'grant', { granted: amount });
     }
-    pool.window = { kind: 'grant', amount: pool.window.amount + amount };
+    pool.window = { ...pool.window, amount: pool.window.amount + amount };
   }
 
   reserve(
@@ -612,23 +668,31 @@ export class PoolRegistry {
    * poolStatus before dispatching new work). Fire-and-forget durable flush.
    */
   meterSpend(
-    poolName: string,
+    pool: PoolHandle<'billedMicros'>,
     billed: BilledMicros,
     at: Date = new Date(),
   ): Promise<void> {
-    return this.meter(poolName, billed, at);
+    return this.consumeMetered(pool.name, billed, at);
   }
 
   /**
-   * Quantity pools only (requests, tokens, items). A pool denominated in
-   * DOLLARS must go through `meterSpend`, whose parameter type accepts only
-   * billed micros — the ceiling has to count what the vendor charges, not
-   * what our meter guessed.
+   * Quantity pools only (requests, tokens, items). A dollar pool cannot be
+   * passed here — its handle is PoolHandle<'billedMicros'> and this signature
+   * accepts only 'quantity', so the F119 mistake
+   * (`meter('gemini.monthlySpend', someLedgerNumber)`) no longer compiles.
    */
   meter(
-    poolName: string,
+    pool: PoolHandle<'quantity'>,
     amount: number,
     at: Date = new Date(),
+  ): Promise<void> {
+    return this.consumeMetered(pool.name, amount, at);
+  }
+
+  private consumeMetered(
+    poolName: string,
+    amount: number,
+    at: Date,
   ): Promise<void> {
     const pool = this.requirePool(poolName);
     if (!Number.isFinite(amount) || amount <= 0) {

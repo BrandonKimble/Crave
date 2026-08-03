@@ -40,6 +40,14 @@ export class SmartLLMProcessor implements OnModuleInit {
   private processedRequests: number = 0;
   private totalWaitTime: number = 0;
   private zeroWaitRequests: number = 0;
+  /** F115/D11 — REAL counters, not decoration. The class already OBSERVES
+   *  both events (the LLMRateLimitError catch below, and the terminal
+   *  rethrow); it just discarded the counts while logging a hard-coded
+   *  "rateLimitViolations: 0 // Always ZERO!" to prod every 50 requests.
+   *  CLAUDE.md's ratified methodology: every metric must be able to show
+   *  RED, and an always-green metric is lying. */
+  private rateLimitHits: number = 0;
+  private failedRequests: number = 0;
 
   // Aggregated per-request rate limit diagnostics
   private agg = {
@@ -109,7 +117,6 @@ export class SmartLLMProcessor implements OnModuleInit {
         correlationId: CorrelationUtils.getCorrelationId(),
         mode: 'reservation_based',
         guaranteedCompliance: true,
-        workers: 16,
         headroom: '95%',
         maxConsecutiveRateLimitErrors: this.maxConsecutiveRateLimitErrors,
       },
@@ -388,6 +395,7 @@ export class SmartLLMProcessor implements OnModuleInit {
 
         if (error instanceof LLMRateLimitError) {
           consecutiveRateLimitErrors++;
+          this.rateLimitHits++;
           const resetTimeSecondsRaw: unknown = error.context?.resetTime;
           const resetTimeSeconds =
             typeof resetTimeSecondsRaw === 'number' &&
@@ -411,6 +419,7 @@ export class SmartLLMProcessor implements OnModuleInit {
                 resetTimeSeconds,
               },
             );
+            this.failedRequests++;
             throw new LLMRateLimitAbortError(
               `Aborting after ${consecutiveRateLimitErrors} consecutive LLM rate limits`,
               resetTimeSeconds,
@@ -433,6 +442,7 @@ export class SmartLLMProcessor implements OnModuleInit {
           continue; // reserve a new slot and retry
         }
 
+        this.failedRequests++;
         this.logger.error('Unexpected error in processor', {
           correlationId: CorrelationUtils.getCorrelationId(),
           workerId: effectiveWorkerId,
@@ -565,12 +575,16 @@ export class SmartLLMProcessor implements OnModuleInit {
       rpm: rpmSnapshot,
       tpm: tpmSnapshot,
       performance: {
-        totalRequests: this.processedRequests,
-        successfulRequests: this.processedRequests, // All requests succeed with reservations
+        // processedRequests counts only the requests that RETURNED a result,
+        // so totalRequests is successes + terminal failures and
+        // successfulRequests is the success count itself. The old shape set
+        // both to processedRequests and rateLimitHits to a literal 0, which
+        // made a 429 storm indistinguishable from a quiet hour.
+        totalRequests: this.processedRequests + this.failedRequests,
+        successfulRequests: this.processedRequests,
         averageWaitTime: avgWaitTime,
-        rateLimitHits: 0, // ZERO by design!
+        rateLimitHits: this.rateLimitHits,
         zeroWaitPercent,
-        reservationAccuracy: 0,
       },
     };
   }
@@ -740,8 +754,15 @@ export class SmartLLMProcessor implements OnModuleInit {
       correlationId: CorrelationUtils.getCorrelationId(),
       metrics,
       highlights: {
-        rateLimitViolations: 0, // Always ZERO!
-        successRate: 100, // Always 100%!
+        rateLimitViolations: metrics.performance.rateLimitHits,
+        successRate:
+          metrics.performance.totalRequests > 0
+            ? Math.round(
+                (metrics.performance.successfulRequests /
+                  metrics.performance.totalRequests) *
+                  100,
+              )
+            : 100,
         averageWaitMs: metrics.performance.averageWaitTime,
         instantRequests: `${metrics.performance.zeroWaitPercent}%`,
         utilizationRate: `${metrics.rpm.utilizationPercent}%`,

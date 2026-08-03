@@ -48,7 +48,7 @@ class FakeConsumptionStore implements PoolConsumptionStore {
 const minutePool = (over: Partial<PoolConfig> = {}): PoolConfig => ({
   name: 'reddit.requests',
   credential: 'app-1',
-  window: { kind: 'perMinute', limit: 100 },
+  window: { kind: 'perMinute', limit: 100, denomination: 'quantity' },
   reservationTtlMs: 60_000,
   ...over,
 });
@@ -62,7 +62,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     registry.register(
       minutePool({
         name: 'tomtom.scarcePolygons',
-        window: { kind: 'perMonth', limit: 2500 },
+        window: { kind: 'perMonth', limit: 2500, denomination: 'quantity' },
       }),
     );
     await registry.ensureWindow('tomtom.scarcePolygons', t0);
@@ -114,7 +114,9 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     it('TIGHTENS to the vendor remaining when it is below ours', async () => {
       const registry = new PoolRegistry();
       registry.register(
-        minutePool({ window: { kind: 'perMinute', limit: 100 } }),
+        minutePool({
+          window: { kind: 'perMinute', limit: 100, denomination: 'quantity' },
+        }),
       );
       // Vendor says 30 remain; we believe 100 → consume the 70 gap.
       await registry.alignToVendor('reddit.requests', 30, 60_000, t0);
@@ -132,7 +134,9 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     it('NEVER loosens: vendor headroom above ours is ignored (owner budget stands)', async () => {
       const registry = new PoolRegistry();
       registry.register(
-        minutePool({ window: { kind: 'perMinute', limit: 10 } }),
+        minutePool({
+          window: { kind: 'perMinute', limit: 10, denomination: 'quantity' },
+        }),
       );
       const res = registry.reserve('reddit.requests', 8, 'chronological', t0);
       if (res.admitted) await registry.reconcile(res.reservationId, 8, t0);
@@ -149,7 +153,9 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     it('vendor ZERO remaining poisons until the vendor reset', async () => {
       const registry = new PoolRegistry();
       registry.register(
-        minutePool({ window: { kind: 'perMinute', limit: 100 } }),
+        minutePool({
+          window: { kind: 'perMinute', limit: 100, denomination: 'quantity' },
+        }),
       );
       await registry.alignToVendor('reddit.requests', 0, 45_000, t0);
       const denied = registry.reserve('reddit.requests', 1, 'keyword', t0);
@@ -163,7 +169,11 @@ describe('PoolRegistry (master plan §14 v2)', () => {
 
   it('denials are typed not-now with a retry hint, never throws', () => {
     const registry = new PoolRegistry();
-    registry.register(minutePool({ window: { kind: 'perMinute', limit: 5 } }));
+    registry.register(
+      minutePool({
+        window: { kind: 'perMinute', limit: 5, denomination: 'quantity' },
+      }),
+    );
     const res = registry.reserve('reddit.requests', 10, 'chronological', t0);
     expect(res.admitted).toBe(false);
     if (!res.admitted) {
@@ -252,7 +262,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     registry.register(
       minutePool({
         name: 'money.llm-archive-austin',
-        window: { kind: 'grant', amount: 200 },
+        window: { kind: 'grant', amount: 200, denomination: 'billedMicros' },
       }),
     );
     const res = registry.reserve(
@@ -289,7 +299,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     registry.register(
       minutePool({
         name: 'tomtom.scarcePolygons',
-        window: { kind: 'perMonth', limit: 2500 },
+        window: { kind: 'perMonth', limit: 2500, denomination: 'quantity' },
       }),
     );
     const res = registry.reserve('tomtom.scarcePolygons', 2500, 'us-seed', t0);
@@ -310,7 +320,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     const monthPool = (): PoolConfig =>
       minutePool({
         name: 'tomtom.scarcePolygons',
-        window: { kind: 'perMonth', limit: 2500 },
+        window: { kind: 'perMonth', limit: 2500, denomination: 'quantity' },
       });
 
     it('RESTART SURVIVAL: a new registry instance loads the month-to-date consumption a prior instance wrote', async () => {
@@ -465,7 +475,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       first.register(
         minutePool({
           name: 'money.llm-archive-austin',
-          window: { kind: 'grant', amount: 200 },
+          window: { kind: 'grant', amount: 200, denomination: 'billedMicros' },
         }),
       );
       await first.ensureWindow('money.llm-archive-austin', t0);
@@ -478,7 +488,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       second.register(
         minutePool({
           name: 'money.llm-archive-austin',
-          window: { kind: 'grant', amount: 200 },
+          window: { kind: 'grant', amount: 200, denomination: 'billedMicros' },
         }),
       );
       await second.ensureWindow('money.llm-archive-austin', t0);
@@ -499,7 +509,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       registry.register({
         name: 'gemini.monthlySpend',
         credential: 'default',
-        window: { kind: 'perMonth', limit: 100 },
+        window: { kind: 'perMonth', limit: 100, denomination: 'billedMicros' },
         reservationTtlMs: 60_000,
       });
       const res = registry.reserve('gemini.monthlySpend', 90, 'llm', t0);
@@ -515,7 +525,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       registry.register({
         name: 'gemini.monthlySpend',
         credential: 'default',
-        window: { kind: 'perMonth', limit: 1000 },
+        window: { kind: 'perMonth', limit: 1000, denomination: 'billedMicros' },
         reservationTtlMs: 60_000,
       });
       const res = registry.reserve('gemini.monthlySpend', 900, 'llm', t0);
@@ -547,7 +557,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       registry.register({
         name: 'money.llm-archive',
         credential: 'default',
-        window: { kind: 'grant', amount: 100 },
+        window: { kind: 'grant', amount: 100, denomination: 'billedMicros' },
         reservationTtlMs: 60_000,
       });
       expect(() => registry.resetLimit('money.llm-archive', 500)).toThrow(
@@ -560,7 +570,7 @@ describe('PoolRegistry (master plan §14 v2)', () => {
       registry.register({
         name: 'gemini.monthlySpend',
         credential: 'default',
-        window: { kind: 'perMonth', limit: 1000 },
+        window: { kind: 'perMonth', limit: 1000, denomination: 'billedMicros' },
         reservationTtlMs: 60_000,
       });
       expect(() => registry.resetLimit('gemini.monthlySpend', 0)).toThrow(
@@ -570,5 +580,65 @@ describe('PoolRegistry (master plan §14 v2)', () => {
         PoolRegistrationError,
       );
     });
+  });
+});
+
+describe('F119 / D13 — a pool DECLARES its currency and metering is typed by it', () => {
+  const spendPoolConfig: PoolConfig<'billedMicros'> = {
+    name: 'gemini.monthlySpend',
+    credential: 'default',
+    window: {
+      kind: 'perMonth',
+      limit: 300_000_000,
+      denomination: 'billedMicros',
+    },
+    reservationTtlMs: 60_000,
+  };
+  const quantityPoolConfig: PoolConfig<'quantity'> = {
+    name: 'reddit.requests',
+    credential: 'default',
+    window: { kind: 'perMinute', limit: 100, denomination: 'quantity' },
+    reservationTtlMs: 60_000,
+  };
+
+  it('THE PROOF: metering a DOLLAR pool through meter() does not compile', () => {
+    const registry = new PoolRegistry();
+    const spend = registry.register(spendPoolConfig);
+    // The F119 defect verbatim — `pools.meter('gemini.monthlySpend', n)`
+    // used to compile and drain a dollar ceiling in the wrong currency.
+    // If this line ever compiles again, ts-jest fails the suite on the
+    // UNUSED @ts-expect-error, so the guard cannot rot silently.
+    // @ts-expect-error a billedMicros pool is not a quantity pool
+    void registry.meter(spend, 5);
+  });
+
+  it('and the mirror: a QUANTITY pool cannot be metered as spend', () => {
+    const registry = new PoolRegistry();
+    const requests = registry.register(quantityPoolConfig);
+    // @ts-expect-error a quantity pool is not a billedMicros pool
+    void registry.meterSpend(requests, 5);
+  });
+
+  it('the handle re-derived from a registration refuses the wrong currency at runtime too', () => {
+    const registry = new PoolRegistry();
+    registry.register(spendPoolConfig);
+    registry.register(quantityPoolConfig);
+    expect(() => registry.quantityPool('gemini.monthlySpend')).toThrow(
+      PoolRegistrationError,
+    );
+    expect(() => registry.spendPool('reddit.requests')).toThrow(
+      PoolRegistrationError,
+    );
+    expect(registry.spendPool('gemini.monthlySpend')).toEqual({
+      name: 'gemini.monthlySpend',
+      denomination: 'billedMicros',
+    });
+  });
+
+  it('behavior is byte-identical: metering still consumes the window', async () => {
+    const registry = new PoolRegistry();
+    const requests = registry.register(quantityPoolConfig);
+    await registry.meter(requests, 30);
+    expect(registry.poolStatus('reddit.requests').used).toBe(30);
   });
 });

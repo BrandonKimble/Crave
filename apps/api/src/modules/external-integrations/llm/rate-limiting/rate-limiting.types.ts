@@ -50,13 +50,16 @@ export interface RateLimitMetrics {
     recommendedDelayMs?: number;
   };
 
-  /** Performance stats */
+  /** Performance stats. F115/D11: every field here is a COUNT of something
+   *  that happened. `reservationAccuracy` was removed — it was returned as a
+   *  literal 0 and never computed from anything. */
   performance: {
+    /** Successes + terminal failures. */
     totalRequests: number;
     successfulRequests: number;
     averageWaitTime: number;
+    /** LLMRateLimitError occurrences observed by the processor's catch. */
     rateLimitHits: number;
     zeroWaitPercent?: number;
-    reservationAccuracy?: number;
   };
 }

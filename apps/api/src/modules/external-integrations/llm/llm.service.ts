@@ -57,7 +57,11 @@ import {
   LLMRestaurantPlaceChooserDecision,
   LLMRestaurantPlaceChooserInput,
 } from './llm.types';
-import { LLMOutputDto } from './dto';
+import { LLMOutputDto } from './dto/llm-output.dto';
+import {
+  isVendorMonthlyCapError,
+  vendorCapDetectorLooksRotted,
+} from './vendor-cap-detector';
 import {
   LLMAuthenticationError,
   LLMConfigurationError,
@@ -278,8 +282,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // Honest fallbacks mirror configuration.ts (2026-07-11 fold-in); the
       // old `|| 0` fallbacks silently disabled every timeout — a prod hang
       // risk on the interactive query path.
-      queryTimeout:
-        this.configService.get<number>('llm.queryTimeout') ?? 30_000,
       queryLogOutputs:
         this.configService.get<boolean>('llm.queryLogOutputs') === true,
       baseUrl:
@@ -973,12 +975,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       cacheName: queryCacheName,
       systemInstruction: this.queryPrompt,
       model: this.queryModel,
-      timeoutMs:
-        typeof this.llmConfig.queryTimeout === 'number' &&
-        Number.isFinite(this.llmConfig.queryTimeout) &&
-        this.llmConfig.queryTimeout > 0
-          ? this.llmConfig.queryTimeout
-          : undefined,
       maxRetries: 0,
       thinkingContext: 'query',
     });
@@ -1257,12 +1253,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       generationConfig,
       systemInstruction: this.cuisinePrompt,
       model,
-      timeoutMs:
-        typeof this.llmConfig.queryTimeout === 'number' &&
-        Number.isFinite(this.llmConfig.queryTimeout) &&
-        this.llmConfig.queryTimeout > 0
-          ? this.llmConfig.queryTimeout
-          : undefined,
       maxRetries: 0,
       thinkingContext: 'query',
     });
@@ -1322,12 +1312,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       generationConfig,
       systemInstruction: this.moderationPrompt,
       model,
-      timeoutMs:
-        typeof this.llmConfig.queryTimeout === 'number' &&
-        Number.isFinite(this.llmConfig.queryTimeout) &&
-        this.llmConfig.queryTimeout > 0
-          ? this.llmConfig.queryTimeout
-          : undefined,
       maxRetries: 0,
       thinkingContext: 'query',
     });
@@ -2136,12 +2120,6 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const response = await this.callLLMApi(prompt, {
       usageCaller: 'places.choose_candidate',
       generationConfig,
-      timeoutMs:
-        typeof this.llmConfig.queryTimeout === 'number' &&
-        Number.isFinite(this.llmConfig.queryTimeout) &&
-        this.llmConfig.queryTimeout > 0
-          ? this.llmConfig.queryTimeout
-          : undefined,
       maxRetries: 0,
       thinkingContext: 'query',
     });
@@ -3335,6 +3313,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
             return Math.floor(raw);
           }
+          // F122 / D16: the per-caller abort ceiling comes from the profile
+          // table, not from a ternary each query-class call site had to
+          // copy. An explicit options.timeoutMs still wins.
+          const profileTimeout = profile?.timeoutMs;
+          if (
+            typeof profileTimeout === 'number' &&
+            Number.isFinite(profileTimeout) &&
+            profileTimeout > 0
+          ) {
+            return Math.floor(profileTimeout);
+          }
           const configTimeout = requestConfig.httpOptions?.timeout;
           if (
             typeof configTimeout === 'number' &&
@@ -3612,7 +3601,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         // Vendor MONTHLY CAP 429: not transient — poison the spend pool
         // until the vendor's own reset (first of month PST + grace) so the
         // budget gate stops all further dispatch instead of retry-storming.
-        if (errorMessage.includes('monthly spending cap')) {
+        if (isVendorMonthlyCapError(errorMessage)) {
           this.governance.pools.poisonWindow(
             'gemini.monthlySpend',
             msUntilVendorMonthReset(),
@@ -3628,6 +3617,34 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             body: 'AI Studio monthly cap hit — raise the cap in the console; work queued until then.',
             dedupeKey: `gemini_vendor_cap:${monthKey}`,
           });
+        } else {
+          // D12 — A DETECTOR FOR THE DETECTOR'S OWN ROT. The branch above is
+          // a substring of Google's prose because that is the only signal
+          // they give. If they reword it, it silently stops firing and the
+          // processor retry-storms a hard cap forever. The contradiction
+          // that reveals it: this 429's STRUCTURED payload describes a
+          // month-scoped quota while the prose matcher declined to poison.
+          // No "N consecutive" constant — a contradiction is wrong the first
+          // time, so this alerts on first occurrence.
+          const capClassification = classifyRateLimit(error);
+          if (
+            capClassification &&
+            vendorCapDetectorLooksRotted({
+              errorMessage,
+              quotaMetric: capClassification.quotaMetric,
+              providerStatus: capClassification.providerStatus,
+              providerMessage: capClassification.providerMessage,
+            })
+          ) {
+            const monthKey = new Date().toISOString().slice(0, 7);
+            this.opsAlerts.emit({
+              severity: 'critical',
+              kind: 'gemini_vendor_cap_detector_rot',
+              title: 'Vendor monthly-cap detector may have rotted',
+              body: `A 429 carried a month-scoped quota shape (${capClassification.quotaMetric ?? capClassification.providerStatus ?? 'unknown metric'}) but the '${'monthly spending cap'}' prose match did NOT fire, so the spend pool was not poisoned. Google has probably reworded the message: check the raw error and update isVendorMonthlyCapError, or the processor will retry-storm a hard vendor cap.`,
+              dedupeKey: `gemini_vendor_cap_detector_rot:${monthKey}`,
+            });
+          }
         }
         this.logger.error(
           'Detailed @google/genai API error',

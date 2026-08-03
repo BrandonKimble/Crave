@@ -710,7 +710,10 @@ export class SpendCampaignService {
 
     const governance = this.requireGovernance();
     const poolName = campaignPoolName(campaignId);
-    await governance.pools.meterSpend(poolName, roundedMicros);
+    await governance.pools.meterSpend(
+      governance.pools.spendPool(poolName),
+      roundedMicros,
+    );
     // BREACH VERDICT FROM THE INCREMENT'S OWN RESULT (step 5, H7 + red
     // team F6): increment first (guarded, atomic), decide from the value
     // the increment RETURNS. Deciding from a pre-read row was the same
@@ -869,7 +872,7 @@ export class SpendCampaignService {
       const spentMicros = Number(row.spentMicros);
       if (spentMicros > 0) {
         await governance.pools.meterSpend(
-          poolName,
+          governance.pools.spendPool(poolName),
           billedMicrosFromStore(spentMicros),
         );
       }

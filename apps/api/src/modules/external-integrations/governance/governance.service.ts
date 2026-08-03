@@ -14,6 +14,102 @@ function campaignPoolName(campaignId: string): string {
   return `campaign.${campaignId}`;
 }
 
+/**
+ * F120 / D14 — ONE DOLLAR GATE, PARAMETERISED BY WHICH BUDGET.
+ *
+ * The Gemini and Places gates were the same 40-line body twice. This file's
+ * own header records why that is the defect and not merely duplication: when
+ * the interactive Gemini gate was hardened, its copy silently kept the old
+ * fail-OPEN semantics. Two gates for one budget class is the bug; the third
+ * dollar pool would have copied it a third time. Everything that genuinely
+ * differs between the two is DATA below, so a hardening lands on all of them.
+ *
+ * A module function rather than a private method on purpose: the gate is pure
+ * orchestration over `pools.admit` + `opsAlerts.emit`, and the existing gate
+ * specs invoke the public method through the prototype with a minimal `this`.
+ */
+interface SpendGateCopy {
+  poolName: string;
+  /** ops-alert `kind` — distinct per vendor so alerts route separately. */
+  alertKind: string;
+  /** Leads every alert title: '<titleNoun> spend budget …'. */
+  titleNoun: string;
+  /** Leads every thrown message: '<budgetNoun> spend budget …'. */
+  budgetNoun: string;
+  unconfirmedBody: string;
+  exhaustedMessage: string;
+}
+
+interface SpendGateHost {
+  pools: Pick<PoolRegistry, 'admit'>;
+  opsAlerts: Pick<OpsAlertsService, 'emit'>;
+}
+
+async function assertSpendOpen(
+  host: SpendGateHost,
+  copy: SpendGateCopy,
+): Promise<void> {
+  const monthKey = new Date().toISOString().slice(0, 7);
+  const verdict = await host.pools.admit(copy.poolName);
+  if (verdict.admitted) {
+    return;
+  }
+  if (verdict.reason === 'unconfirmed') {
+    host.opsAlerts.emit({
+      severity: 'critical',
+      kind: copy.alertKind,
+      title: `${copy.titleNoun} spend budget cannot be confirmed`,
+      body: copy.unconfirmedBody,
+      dedupeKey: `${copy.alertKind}_unconfirmed:${monthKey}`,
+    });
+    throw new Error(
+      `${copy.budgetNoun} spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance`,
+    );
+  }
+  if (verdict.reason === 'poisoned') {
+    const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
+    const message = `${copy.budgetNoun} spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`;
+    host.opsAlerts.emit({
+      severity: 'critical',
+      kind: copy.alertKind,
+      title: `${copy.titleNoun} spend budget poisoned (vendor cap)`,
+      body: `${message}.`,
+      dedupeKey: `${copy.alertKind}_poisoned:${monthKey}`,
+    });
+    throw new Error(message);
+  }
+  host.opsAlerts.emit({
+    severity: 'critical',
+    kind: copy.alertKind,
+    title: `${copy.titleNoun} spend budget backstop fired`,
+    body: `${copy.exhaustedMessage}.`,
+    dedupeKey: `${copy.alertKind}:${monthKey}`,
+  });
+  throw new Error(copy.exhaustedMessage);
+}
+
+const GEMINI_SPEND_GATE: SpendGateCopy = {
+  poolName: 'gemini.monthlySpend',
+  alertKind: 'gemini_backstop',
+  titleNoun: 'Gemini',
+  budgetNoun: 'LLM',
+  unconfirmedBody:
+    'The durable spend window failed to load, so month-to-date spend is unknown. Refusing LLM spend rather than admitting against a window that reads zero.',
+  exhaustedMessage:
+    'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
+};
+
+const PLACES_SPEND_GATE: SpendGateCopy = {
+  poolName: 'googlePlaces.monthlySpend',
+  alertKind: 'places_backstop',
+  titleNoun: 'Places',
+  budgetNoun: 'Places',
+  unconfirmedBody:
+    'The durable spend window failed to load, so month-to-date Places spend is unknown. Refusing vendor spend rather than admitting against a window that reads zero.',
+  exhaustedMessage:
+    'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised',
+};
+
 /** §24.4 item 4 / §24.6 K1: the work_class the nightly backstop derivation
  *  writes to spend_unit_costs (SpendAnalyticsService.refreshBackstop). Read
  *  here at boot only — see the gemini.monthlySpend registration comment. */
@@ -141,19 +237,31 @@ export class GovernanceService implements OnModuleInit {
     this.pools.register({
       name: 'tomtom.reverseGeocode',
       credential: 'default',
-      window: { kind: 'perMinute', limit: TOMTOM_PER_MINUTE },
+      window: {
+        kind: 'perMinute',
+        limit: TOMTOM_PER_MINUTE,
+        denomination: 'quantity',
+      },
       reservationTtlMs: 60_000,
     });
     this.pools.register({
       name: 'tomtom.geocode',
       credential: 'default',
-      window: { kind: 'perMinute', limit: TOMTOM_PER_MINUTE },
+      window: {
+        kind: 'perMinute',
+        limit: TOMTOM_PER_MINUTE,
+        denomination: 'quantity',
+      },
       reservationTtlMs: 60_000,
     });
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
-      window: { kind: 'perMinute', limit: TOMTOM_PER_MINUTE },
+      window: {
+        kind: 'perMinute',
+        limit: TOMTOM_PER_MINUTE,
+        denomination: 'quantity',
+      },
       reservationTtlMs: 120_000,
     });
     // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM
@@ -173,6 +281,7 @@ export class GovernanceService implements OnModuleInit {
         kind: 'perMinute',
         limit:
           Number.isFinite(envMaxTpm) && envMaxTpm > 0 ? envMaxTpm : 4_000_000,
+        denomination: 'quantity',
       },
       reservationTtlMs: 60_000,
     });
@@ -216,6 +325,7 @@ export class GovernanceService implements OnModuleInit {
       window: {
         kind: 'perMonth',
         limit: Math.round(capUsd * 1_000_000),
+        denomination: 'billedMicros',
       },
       reservationTtlMs: 60_000,
     });
@@ -245,6 +355,7 @@ export class GovernanceService implements OnModuleInit {
       window: {
         kind: 'perMonth',
         limit: Math.round(placesCapUsd * 1_000_000),
+        denomination: 'billedMicros',
       },
       reservationTtlMs: 60_000,
     });
@@ -261,7 +372,11 @@ export class GovernanceService implements OnModuleInit {
       name: 'reddit.requests',
       credential: 'default',
       // §16 K4 (vendor fact): Reddit 100/min.
-      window: { kind: 'perMinute', limit: 100 },
+      window: {
+        kind: 'perMinute',
+        limit: 100,
+        denomination: 'quantity',
+      },
       reservationTtlMs: 120_000,
     });
   }
@@ -350,13 +465,17 @@ export class GovernanceService implements OnModuleInit {
         this.pools.register({
           name: poolName,
           credential: 'campaign',
-          window: { kind: 'grant', amount: envelopeMicros },
+          window: {
+            kind: 'grant',
+            amount: envelopeMicros,
+            denomination: 'billedMicros',
+          },
           reservationTtlMs: 60_000,
         });
         const spentMicros = Number(row.spentMicros);
         if (spentMicros > 0) {
           await this.pools.meterSpend(
-            poolName,
+            this.pools.spendPool(poolName),
             billedMicrosFromStore(spentMicros),
           );
         }
@@ -537,45 +656,9 @@ export class GovernanceService implements OnModuleInit {
       this.lastBackstopHealthCheckMs = Date.now();
       void this.applyDerivedGeminiBackstop();
     }
-    const monthKey = new Date().toISOString().slice(0, 7);
-    const verdict = await this.pools.admit('gemini.monthlySpend');
-    if (verdict.admitted) {
-      return;
-    }
-    if (verdict.reason === 'unconfirmed') {
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'gemini_backstop',
-        title: 'Gemini spend budget cannot be confirmed',
-        body: 'The durable spend window failed to load, so month-to-date spend is unknown. Refusing LLM spend rather than admitting against a window that reads zero.',
-        dedupeKey: `gemini_backstop_unconfirmed:${monthKey}`,
-      });
-      throw new Error(
-        'LLM spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance',
-      );
-    }
-    if (verdict.reason === 'poisoned') {
-      const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'gemini_backstop',
-        title: 'Gemini spend budget poisoned (vendor cap)',
-        body: `LLM spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued.`,
-        dedupeKey: `gemini_backstop_poisoned:${monthKey}`,
-      });
-      throw new Error(
-        `LLM spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`,
-      );
-    }
-    this.opsAlerts.emit({
-      severity: 'critical',
-      kind: 'gemini_backstop',
-      title: 'Gemini spend budget backstop fired',
-      body: 'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived.',
-      dedupeKey: `gemini_backstop:${monthKey}`,
-    });
-    throw new Error(
-      'LLM spend budget exhausted (gemini.monthlySpend Tier-3 backstop) — typed not-now; work stays queued until the month window rolls or the backstop is re-derived',
+    await assertSpendOpen(
+      { pools: this.pools, opsAlerts: this.opsAlerts },
+      GEMINI_SPEND_GATE,
     );
   }
 
@@ -592,45 +675,9 @@ export class GovernanceService implements OnModuleInit {
    * refuses rather than admitting against an unknown balance.
    */
   async assertPlacesSpendOpen(): Promise<void> {
-    const monthKey = new Date().toISOString().slice(0, 7);
-    const verdict = await this.pools.admit('googlePlaces.monthlySpend');
-    if (verdict.admitted) {
-      return;
-    }
-    if (verdict.reason === 'unconfirmed') {
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'places_backstop',
-        title: 'Places spend budget cannot be confirmed',
-        body: 'The durable spend window failed to load, so month-to-date Places spend is unknown. Refusing vendor spend rather than admitting against a window that reads zero.',
-        dedupeKey: `places_backstop_unconfirmed:${monthKey}`,
-      });
-      throw new Error(
-        'Places spend budget unconfirmed (durable window failed to load) — refusing to spend against an unknown balance',
-      );
-    }
-    if (verdict.reason === 'poisoned') {
-      const hours = Math.ceil((verdict.retryAfterMs ?? 0) / 3_600_000);
-      this.opsAlerts.emit({
-        severity: 'critical',
-        kind: 'places_backstop',
-        title: 'Places spend budget poisoned (vendor cap)',
-        body: `Places spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued.`,
-        dedupeKey: `places_backstop_poisoned:${monthKey}`,
-      });
-      throw new Error(
-        `Places spend budget poisoned (vendor cap) — reopens in ${hours}h; work stays queued`,
-      );
-    }
-    this.opsAlerts.emit({
-      severity: 'critical',
-      kind: 'places_backstop',
-      title: 'Places spend budget backstop fired',
-      body: 'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised.',
-      dedupeKey: `places_backstop:${monthKey}`,
-    });
-    throw new Error(
-      'Places spend budget exhausted (googlePlaces.monthlySpend) — typed not-now; enrichment stays queued until the month window rolls or the cap is raised',
+    await assertSpendOpen(
+      { pools: this.pools, opsAlerts: this.opsAlerts },
+      PLACES_SPEND_GATE,
     );
   }
 

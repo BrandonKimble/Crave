@@ -1,5 +1,4 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
@@ -30,7 +29,6 @@ export class EmbeddingService implements OnModuleInit {
   private readonly queryCacheTtlSeconds = 60 * 60 * 24 * 30;
 
   constructor(
-    @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redisService: RedisService,
     private readonly usageLedger: UsageLedgerService,

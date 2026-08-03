@@ -41,7 +41,25 @@ export interface GeminiCallerProfile {
    *  today: inventing levels would be fake estimates. The seam exists so a
    *  MEASURED level is a one-line change when evidence arrives. */
   thinkingLevel?: string;
+  /** Per-call abort ceiling (F122 / D16). Omitted = the session default
+   *  (llm.timeout), the long hang-guard content extraction needs.
+   *
+   *  This used to be a ternary copy-pasted verbatim at four call sites —
+   *  'query-class calls abort fast because a user is waiting' is a
+   *  cross-cutting truth every new query-class caller had to REMEMBER,
+   *  which is the exact seam this table exists to close (model, output
+   *  ceiling and thinking context already moved here; the timeout was left
+   *  behind). The former `llm.queryTimeout` config key had these four
+   *  readers and nothing else, so its value moved here rather than being
+   *  duplicated. */
+  timeoutMs?: number;
 }
+
+/** Interactive query-path abort ceiling: user-facing calls must fail FAST.
+ *  30s is the value the four query-class sites already used (formerly
+ *  configuration.ts `llm.queryTimeout`, a literal with no env override —
+ *  moved, not changed). */
+const INTERACTIVE_QUERY_TIMEOUT_MS = 30_000;
 
 const FLASH = 'gemini-3-flash-preview';
 const FLASH_LITE = 'gemini-3.1-flash-lite-preview';
@@ -50,7 +68,11 @@ const MODEL_MAX_OUTPUT = 65536;
 export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
   // ---- collection / extraction ----
   'content.extract': { context: 'content', maxOutputTokens: MODEL_MAX_OUTPUT },
-  'query.interpret': { context: 'query', maxOutputTokens: MODEL_MAX_OUTPUT },
+  'query.interpret': {
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+    timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
+  },
   // ---- entity resolution ----
   'entity-resolution.match': {
     model: FLASH,
@@ -67,11 +89,13 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     model: FLASH_LITE,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
+    timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
   },
   'moderation.classify': {
     model: FLASH_LITE,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
+    timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
   },
   'poll.infer_subject': {
     model: FLASH_LITE,
@@ -92,6 +116,7 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     model: FLASH_LITE,
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
+    timeoutMs: INTERACTIVE_QUERY_TIMEOUT_MS,
   },
   // ---- generative judges on the default model ----
   'attribute.place': {
