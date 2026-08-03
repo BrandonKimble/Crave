@@ -765,11 +765,18 @@ export function TrackSheetPage({
           is now the header block's BACKGROUND — plate bottom and band top are
           literally the same edge, and the seam is unrepresentable. */}
       <View style={styles.headerBlock} collapsable={false}>
+        {/* THE UNDER-LAP (the wiggling joint, 2026-08-02). The plate and the
+            band material are both SVG surfaces whose antialiased fractional
+            edges meet at this joint — together they transmit a partial-alpha
+            pixel. Over frost that reads white (invisible); over SCROLLING ROWS
+            it tints per frame — the gap that wiggles. The plate extends 1pt
+            UNDER the band (the band paints over it), so whatever the joint
+            transmits shows plate-white, never the content moving beneath. */}
         <MaskedHoleOverlay
           holes={plateHoles}
           backgroundColor={surfaceColor}
           renderWhenEmpty
-          style={StyleSheet.absoluteFill}
+          style={styles.plateUnderlap}
         />
 
         {/* CONTROLS ARE MARKED (THE SINGLE PAINTED CHROME): the chrome slot's
@@ -1256,6 +1263,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
   headerBlock: {},
+  plateUnderlap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: -1 },
   grabWrapper: { alignItems: 'center', paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP },
   grabHandle: {
     width: OVERLAY_GRAB_HANDLE_WIDTH,

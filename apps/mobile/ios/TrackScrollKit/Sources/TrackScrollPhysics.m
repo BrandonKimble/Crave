@@ -148,6 +148,23 @@
 /// PRESENTED leg's didScroll (the same hand that owns τ and σ), read by
 /// refuse() at every switch, seeded into a fresh leg before its first frame.
 /// The sheet provably cannot move on a switch — again, and now for N legs.
+/// THE PIXEL-GRID LAW (ported from the old system, 2026-08-02). The old one
+/// writer rounded its translate to the pixel grid — its comment: it "keeps the
+/// chrome from shimmering sub-pixel against the body". Our native writers
+/// applied RAW FLOATS (transforms bypass UIKit pixel snapping), so any two
+/// edges — one snapped, one not — stepped past each other per frame: the
+/// owner's gap that WIGGLES when the sheet moves. Every native position
+/// writer snaps here, so all edges land on the same grid and move in the
+/// same steps.
+static CGFloat TrackPixelSnap(CGFloat value)
+{
+  static CGFloat scale = 0;
+  if (scale <= 0) {
+    scale = UIScreen.mainScreen.scale > 0 ? UIScreen.mainScreen.scale : 3.0;
+  }
+  return round(value * scale) / scale;
+}
+
 static CGFloat gTrackPostureRegister = 0;
 static __weak UIScrollView *gTrackPostureOwner = nil;
 /// Geometry mirror for THE SWITCH TRANSACTION: a fresh leg has no proxy yet,
@@ -559,7 +576,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       self.postureOvershootActive = NO;
     }
     const CGFloat tug = (self.postureOvershootActive && tau > tugBoundary) ? (tau - tugBoundary) : 0.0;
-    const CGFloat sheetTop = self.shellExpandedTop + MAX(0.0, tugBoundary - tau) - tug;
+    const CGFloat sheetTop = TrackPixelSnap(self.shellExpandedTop + MAX(0.0, tugBoundary - tau) - tug);
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
     TrackShellRegistry *registry = [TrackShellRegistry shared];
@@ -652,8 +669,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
             // fractional 68.25), so left raw it lands MID-PIXEL and the row
             // white fades in over a partial pixel — a hairline of frost under
             // the header. Snap the edge to the device grid.
-            const CGFloat pxScale = UIScreen.mainScreen.scale > 0 ? UIScreen.mainScreen.scale : 3.0;
-            const CGFloat edgeY = round((bandBottom - origin.y) * pxScale) / pxScale;
+            const CGFloat edgeY = TrackPixelSnap(bandBottom - origin.y);
             const CGRect next = CGRectMake(-w, edgeY, w * 3.0, h * 6.0);
             if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
           }
@@ -692,7 +708,7 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     const CGFloat boundary = self.shellTrackH + self.stashSigma;
     const CGFloat tugNow =
         (self.postureOvershootActive && tauNow > boundary) ? (tauNow - boundary) : 0.0;
-    const CGFloat hold = self.stashSigma + MAX(0.0, tauNow - boundary) - tugNow;
+    const CGFloat hold = TrackPixelSnap(self.stashSigma + MAX(0.0, tauNow - boundary) - tugNow);
     const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
     if ([chrome isKindOfClass:[TrackShellSlotView class]]) {
       [(TrackShellSlotView *)chrome trackApplyTransform:next];
@@ -1127,7 +1143,7 @@ static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
     [proxy scrollViewDidScroll:scrollView];
   } else {
     const CGFloat expandedTop = gTrackShellExpandedTop;
-    const CGFloat sheetTop = expandedTop + MAX(0.0, trackH - target);
+    const CGFloat sheetTop = TrackPixelSnap(expandedTop + MAX(0.0, trackH - target));
     gTrackCarveSheetTop = sheetTop;
     TrackShellRegistry *registry = [TrackShellRegistry shared];
     const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
