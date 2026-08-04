@@ -2,6 +2,10 @@ import React from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import { AUTOCOMPLETE_CACHE_TTL_MS } from '../../constants/search';
+import {
+  normalizeAutocompleteQuery,
+  writeAutocompleteSuggestions,
+} from './search-autocomplete-request-runtime';
 import { filterAutocompletePlaceholderMatches } from './search-autocomplete-placeholder-filter';
 
 type CachedAutocompleteEntry = {
@@ -29,17 +33,6 @@ type SearchAutocompleteCacheRuntime = {
 };
 
 const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 64;
-
-const normalizeAutocompleteQuery = (value: string): string => value.trim().toLowerCase();
-
-const writeAutocompleteSuggestions = (
-  setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>,
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>,
-  matches: AutocompleteMatch[]
-) => {
-  setSuggestions(matches);
-  setShowSuggestions(matches.length > 0);
-};
 
 export const useSearchAutocompleteCacheRuntime = ({
   cancelAutocomplete,
