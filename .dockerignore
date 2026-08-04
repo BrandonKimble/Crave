@@ -10,6 +10,10 @@
 **/coverage/
 **/.nyc_output/
 **/*.test.ts
+# apps/site runs its suite INSIDE the image (a broken page cannot deploy) —
+# its tests must survive the context. Negations must follow the excludes.
+!apps/site/test/
+!apps/site/test/**
 **/*.spec.ts
 **/test/
 
