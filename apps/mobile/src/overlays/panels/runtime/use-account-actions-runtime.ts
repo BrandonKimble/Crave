@@ -87,7 +87,14 @@ export const useAccountActionsRuntime = () => {
     showAppModal({
       title: 'Delete account?',
       message:
-        'This permanently deletes your account, profile, and personal data. It cannot be undone.\n\nApp Store subscriptions are NOT cancelled by deleting your account — manage those in iOS Settings → Apple ID → Subscriptions.',
+        // THE COPY IS PART OF THE MECHANISM. This used to say "cannot be
+        // undone" while the privacy policy promised a 30-day recoverable
+        // window — two user-facing documents telling opposite stories about
+        // the same act. The window is real now (deletion revokes sessions and
+        // marks the account; nothing is destroyed until the deadline), and
+        // account-deletion-promise.spec.ts asserts this string, the policy and
+        // GRACE_PERIOD_DAYS all agree.
+        'Your account will be closed and you will be signed out everywhere.\n\nYou have 30 days to change your mind — signing back in during that time restores your account. After 30 days it is permanent: your username is retired and your personal data is erased.\n\nPosts, comments and photos you contributed stay in the community without your name.\n\nApp Store subscriptions are NOT cancelled by deleting your account — manage those in iOS Settings → Apple ID → Subscriptions.',
       actions: [
         { label: 'Cancel', style: 'cancel' },
         {
@@ -97,7 +104,8 @@ export const useAccountActionsRuntime = () => {
           onPress: () => {
             showAppModal({
               title: 'Type DELETE to confirm',
-              message: 'This is permanent.',
+              message:
+                'Your account closes now. You have 30 days to restore it by signing back in.',
               prompt: {
                 placeholder: 'DELETE',
                 autoCapitalize: 'characters',

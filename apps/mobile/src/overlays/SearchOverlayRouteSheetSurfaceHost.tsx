@@ -82,12 +82,6 @@ const markRouteSheetHostRuntimePropDiffs = (
   );
   markRouteSheetHostRuntimePropDiff(
     owner,
-    'routeSheetSurfaceFrameAuthority',
-    left.routeSheetSurfaceFrameAuthority,
-    right.routeSheetSurfaceFrameAuthority
-  );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
     'routeSheetRuntimeConfigAuthority',
     left.routeSheetRuntimeConfigAuthority,
     right.routeSheetRuntimeConfigAuthority

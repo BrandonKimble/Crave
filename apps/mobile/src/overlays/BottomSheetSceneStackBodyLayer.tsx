@@ -17,6 +17,7 @@ import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneSta
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { useBottomSheetSceneStackBodyContentRuntime } from './useBottomSheetSceneStackBodyContentRuntime';
 import { createShapeEquality, sameFieldRef, type FieldComparators } from './shape-equality';
+import { logPageSwitchDebug } from '../navigation/runtime/pageswitch-debug-flag';
 
 // F980: every skip fn below is DERIVED from its props shape (shape-equality.ts). Forget a
 // new prop and tsc names it, instead of the leg silently never re-rendering again.
@@ -205,20 +206,15 @@ export const SceneStackBodyContentLayer = React.memo(
     // [pageswitch] CONSUMER-side activity probe (P4 blank-body attribution): what the leg's body
     // layer actually received this commit — correlate with the producer-side `activity` lines.
     React.useEffect(() => {
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log(
-          `[pageswitch] bodyActivity ${JSON.stringify({
-            scene: contentEntry.sceneKey,
-            kind: bodySurfaceKind,
-            attach: shouldAttachMountedContent,
-            expand: contentActivity.shouldRenderExpandedContent,
-            activated: contentActivity.hasActivatedExpandedContent,
-            runData: contentActivity.shouldRunDataLane,
-            active: contentActivity.isActive,
-          })}`
-        );
-      }
+      logPageSwitchDebug('bodyActivity', {
+        scene: contentEntry.sceneKey,
+        kind: bodySurfaceKind,
+        attach: shouldAttachMountedContent,
+        expand: contentActivity.shouldRenderExpandedContent,
+        activated: contentActivity.hasActivatedExpandedContent,
+        runData: contentActivity.shouldRunDataLane,
+        active: contentActivity.isActive,
+      });
     }, [
       contentEntry.sceneKey,
       bodySurfaceKind,

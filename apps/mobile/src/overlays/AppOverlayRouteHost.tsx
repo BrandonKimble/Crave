@@ -76,11 +76,6 @@ const markRouteSheetHostRuntimeDiffs = (
     right.routeSheetSurfaceBodyAuthority
   );
   markAppOverlayRouteHostPropDiff(
-    'routeSheetHostRuntime.routeSheetSurfaceFrameAuthority',
-    left.routeSheetSurfaceFrameAuthority,
-    right.routeSheetSurfaceFrameAuthority
-  );
-  markAppOverlayRouteHostPropDiff(
     'routeSheetHostRuntime.routeSheetRuntimeConfigAuthority',
     left.routeSheetRuntimeConfigAuthority,
     right.routeSheetRuntimeConfigAuthority

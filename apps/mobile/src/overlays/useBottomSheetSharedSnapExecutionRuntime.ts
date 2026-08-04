@@ -34,6 +34,7 @@ import {
 import { clampValue, SHEET_SPRING_CONFIG } from './sheetUtils';
 import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
+import { logPageSwitchDebug } from '../navigation/runtime/pageswitch-debug-flag';
 
 type RuntimeSnapValues = {
   expanded: number;
@@ -568,19 +569,14 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     if (Math.abs(sheetY.value - target) < 0.5) {
       return;
     }
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[pageswitch] reseat ${JSON.stringify({
-          t: Math.round(performance.now()),
-          snapKey: currentSnapKeyRef.current,
-          target,
-          expanded: resolveSnapValue('expanded'),
-          middle: resolveSnapValue('middle'),
-          collapsed: resolveSnapValue('collapsed'),
-        })}`
-      );
-    }
+    logPageSwitchDebug('reseat', {
+      t: Math.round(performance.now()),
+      snapKey: currentSnapKeyRef.current,
+      target,
+      expanded: resolveSnapValue('expanded'),
+      middle: resolveSnapValue('middle'),
+      collapsed: resolveSnapValue('collapsed'),
+    });
     startSpringOnJS(target, 0, false);
   }, [
     currentSnapKeyRef,

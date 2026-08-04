@@ -76,6 +76,11 @@ import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/s
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useSceneHeaderScrollOffset } from './sceneScrollStateRegistry';
+import {
+  isSlowLegCommitDebugEnabled,
+  logPageSwitchDebug,
+  logSlowLegCommitDebug,
+} from '../navigation/runtime/pageswitch-debug-flag';
 
 const PERSISTENT_ROUTE_SCENE_STACK_KEYS: readonly OverlayKey[] = APP_ROUTE_SCENE_INPUT_KEYS;
 
@@ -215,22 +220,24 @@ const computeLegRole = (
 // signatures: a painting leg (role!=='idle') with bodyNull=true → blank frost (S2); the painting
 // leg's key !== the pressed tab → wrong page (S1). __DEV__-only; kept post-P2 as the regression
 // tripwire — retirement is governed by the post-soak cleanup ledger (master plan §9.5).
-// [COMMITDBG] TEMPORARY (L4 return-from-child attribution) — per-leg Profiler sink:
-// logs any leg whose subtree render exceeds 8ms in a commit. Dev-only by construction
-// (console.log is stripped in release anyway); strip with the Profiler wrappers.
+// F1451 — the [COMMITDBG] per-leg commit probe: emit + off switch live in
+// pageswitch-debug-flag.ts (default OFF). The wrapper is mounted ONLY when the flag is
+// on, so a flag-off build carries no Profiler tree at all.
 const logSlowLegCommit: React.ProfilerOnRenderCallback = (id, phase, actualDuration) => {
-  if (__DEV__ && actualDuration > 8) {
-    // eslint-disable-next-line no-console
-    console.log(`[COMMITDBG] ${id} phase=${phase} actualMs=${actualDuration.toFixed(1)}`);
-  }
+  logSlowLegCommitDebug(String(id), phase, actualDuration);
 };
 
-const logPageSwitch = (tag: string, data: Record<string, unknown>): void => {
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log(`[pageswitch] ${tag} ${JSON.stringify(data)}`);
-  }
-};
+const withSlowLegCommitProbe = (legKey: string, node: React.ReactNode): React.ReactNode =>
+  isSlowLegCommitDebugEnabled() ? (
+    <React.Profiler id={`leg-${legKey}`} onRender={logSlowLegCommit}>
+      {node}
+    </React.Profiler>
+  ) : (
+    node
+  );
+
+// F1351 — the emit + the off switch live in pageswitch-debug-flag.ts (default OFF).
+const logPageSwitch = logPageSwitchDebug;
 
 const areChromeSurfaceEntriesEqual = (
   left: BottomSheetSceneStackChromeEntry | null,
@@ -1724,32 +1731,32 @@ const ActiveSceneStackSurfaceHost = React.memo(
               ) : null}
               {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) =>
                 sceneKey === 'search' ? (
-                  <React.Profiler key="scene-search" id="leg-search" onRender={logSlowLegCommit}>
-                    <SearchSceneStackBodyDisplayTarget
-                      sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                      bodyRuntimeAuthority={bodyRuntimeAuthority}
-                      legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
-                    />
-                  </React.Profiler>
+                  <React.Fragment key="scene-search">
+                    {withSlowLegCommitProbe(
+                      sceneKey,
+                      <SearchSceneStackBodyDisplayTarget
+                        sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                        bodyRuntimeAuthority={bodyRuntimeAuthority}
+                        legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
+                      />
+                    )}
+                  </React.Fragment>
                 ) : (
-                  // [COMMITDBG] TEMPORARY (L4 return-from-child attribution): per-leg render
-                  // cost of the reveal commit — strip after the diet lands.
-                  <React.Profiler
-                    key={`scene-${sceneKey}`}
-                    id={`leg-${sceneKey}`}
-                    onRender={logSlowLegCommit}
-                  >
-                    <SceneStackBodyLayerHost
-                      sceneKey={sceneKey}
-                      sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                      bodyRuntimeAuthority={bodyRuntimeAuthority}
-                      // THE PAGE L1: each leg's body-lane inset is ITS OWN scene's COMPUTED
-                      // chrome height — pure, exact, same committed frame as the chrome box.
-                      // No measurement, no guess, no retained fallback.
-                      chromeHeight={computeSceneChromeHeight(sceneKey)}
-                      legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
-                    />
-                  </React.Profiler>
+                  <React.Fragment key={`scene-${sceneKey}`}>
+                    {withSlowLegCommitProbe(
+                      sceneKey,
+                      <SceneStackBodyLayerHost
+                        sceneKey={sceneKey}
+                        sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                        bodyRuntimeAuthority={bodyRuntimeAuthority}
+                        // THE PAGE L1: each leg's body-lane inset is ITS OWN scene's COMPUTED
+                        // chrome height — pure, exact, same committed frame as the chrome box.
+                        // No measurement, no guess, no retained fallback.
+                        chromeHeight={computeSceneChromeHeight(sceneKey)}
+                        legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
+                      />
+                    )}
+                  </React.Fragment>
                 )
               )}
               {/* THE PERSISTENT HEADER (P3, req 2b) — one OverlaySheetHeaderChrome hoisted above

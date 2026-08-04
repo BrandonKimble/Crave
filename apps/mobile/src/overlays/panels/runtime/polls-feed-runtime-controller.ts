@@ -34,6 +34,7 @@ import {
   nextRetryDelayMs,
 } from '../../../services/retry/network-retry-ladder';
 import { logger } from '../../../utils';
+import { logPageSwitchDebug } from '../../../navigation/runtime/pageswitch-debug-flag';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 
@@ -45,10 +46,7 @@ type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 // [pageswitch] P1-addendum bootstrap probe — same JSONL family as the coordinator's bootstrap
 // lifecycle probe so the startup-polls fetch/retry story is greppable in /tmp/crave-metro.log.
 const logBootstrap = (data: Record<string, unknown>): void => {
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log(`[pageswitch] bootstrap ${JSON.stringify(data)}`);
-  }
+  logPageSwitchDebug('bootstrap', data);
 };
 
 /**

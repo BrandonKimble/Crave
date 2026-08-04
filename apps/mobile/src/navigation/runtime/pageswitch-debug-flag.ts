@@ -36,3 +36,33 @@ export const logPageSwitchDebug = (tag: string, data: Record<string, unknown>): 
   // eslint-disable-next-line no-console
   console.log(`[pageswitch] ${tag} ${JSON.stringify(data)}`);
 };
+
+/**
+ * The `[COMMITDBG]` per-leg commit-cost probe (F1451) — same family, same treatment.
+ *
+ * The L4 return-from-child attribution probe in BottomSheetSceneStackHost wrapped both
+ * scene legs in a `React.Profiler` and logged any commit over the threshold. Its own
+ * comment said TEMPORARY, but it was gated on `__DEV__` alone — i.e. always on in every
+ * dev build, exactly the condition F1351 named — and, unlike the sibling
+ * `useSearchOverlayProfilerRender` sinks in the same file (which mount their Profiler
+ * only when a sink exists), the wrappers themselves were unconditional.
+ *
+ * Now: a NAMED flag, DEFAULT OFF, and the host mounts the Profilers only when it is on,
+ * so the flag-off build pays nothing at all — not even the Profiler tree.
+ */
+
+/** Flip to `true` to re-enable the `[COMMITDBG]` per-leg commit probe in a dev build. */
+export const SLOW_LEG_COMMIT_DEBUG_ENABLED = false;
+
+export const isSlowLegCommitDebugEnabled = (): boolean => __DEV__ && SLOW_LEG_COMMIT_DEBUG_ENABLED;
+
+/** A leg render slower than this (ms) in one commit is worth a line. */
+export const SLOW_LEG_COMMIT_THRESHOLD_MS = 8;
+
+export const logSlowLegCommitDebug = (id: string, phase: string, actualMs: number): void => {
+  if (!isSlowLegCommitDebugEnabled() || actualMs <= SLOW_LEG_COMMIT_THRESHOLD_MS) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[COMMITDBG] ${id} phase=${phase} actualMs=${actualMs.toFixed(1)}`);
+};

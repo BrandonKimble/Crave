@@ -888,3 +888,9 @@ indistinguishable from a `0` that someone did mean, and it fails silently in the
 "why is Places dead?" direction. So the third piece is loudness — every closed
 scope emits a warn at boot naming itself and saying what it does. 0 is legal,
 never silent.
+
+## D54 — overlays depth verdicts (Phase-2, 2026-08-03; findings F1450–F1499)
+
+**APPROVED (next mobile batch, when the concurrent tracksheet refactor settles):** F1474 then F1473 in that order (write the missing edit-mode-session spec FIRST — it must go RED on the space-containing-id reorder loss — then fix the rejected join(' ') expression the core module already fixed); F1463 (the verbs model takes `kind` so favorites-undeletable is enforced at ONE home, not per-panel); F1453 (isActive leaves ignoreField — it IS render-read three ways and feeds scroll-restore; comparator includes it, spec pins the P3 gate; note the deeper lesson: ignoreField is an unaudited opt-out — a follow-up makes each ignoreField carry a WHY that a spec can check); F1465 (ONE chin-geometry home for the five sites/four numbers); F1475 (the F1371 shape: `if (sheetYValue)` on a non-optional SharedValue makes ~90 lines unreachable — banking re-grep then delete the dead JS spring lane or fix the gate if the lane is wanted; static-provable, no rig needed for the gate itself).
+**Landed in-pass (accepted):** F1450 orphan contracts deleted; F1451 [COMMITDBG] behind the flag with the Profiler tree mounted only when on.
+**Carried unnumbered to next pass:** the polls route-narrowing predicate triplication; the save-list-model spec filename hiding lists-display-order coverage (F1472 recorded).
