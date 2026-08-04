@@ -416,3 +416,37 @@ presented 'search' leg resolves through homeParts (docked-feed lane): confirm in
 in every phase. Everything else walked clean: contract conformance, falsifier honesty
 on the other suites, no prod per-frame work added (60fps hard requirement holds).
 Verdict: burn-in ready.
+
+## DEEP RED TEAM (2026-08-04, round 2) — synthesis, ratified direction
+
+Three independent passes (abstraction critique: plans/redteam-abstractions.md; native
+engine; host-wiring harness). Landed same-round: the three native law violations
+(b5bf2420d — refuse kills a live spring; the excursion is an event-driven machine with
+generation-stamped edges the JS fence validates; snapTo yields to the finger and the
+retry loop aborts for good on refusal) and the render lane (1d345c5ef — 18 falsifiers
+over the real host/page/physics chain, 17-mutation RED ledger; F3 closed as a class).
+
+RATIFIED POST-BURN-IN LADDER (principled primitives, not patches — each subsumes a
+finding class):
+
+1. THE MOTION AUTHORITY: one queryable store over the proven motion facts (willMove,
+   drag begin, settle, edge, deadline) with episode ids on every engine emission;
+   fence, interrupt reads, liveness probe, and reveal seeds all read it. Subsumes F2
+   (redraw born settled mid-flight) and the F5 event-ordering ledger. The fence's pure
+   module is already its type signature.
+2. THE DOMAIN AUTHORITY: one pure legalRange(contentH, viewport, dragKind,
+   excursionState, sigma, boundary) with insets as its only output, invoked from every
+   input change; the two clamp filters remain as the single backstop predicate. The
+   five tau-guards become instances. Subsumes native F4 (ceiling drift under mid-drag
+   content growth) and F7 (keyboard/reachability inset ownership).
+3. ONE SCENE-DECLARATION SCHEMA: fold the host's hand-kept sets, body-kind map, and
+   descriptor fragments into the foundation spec (worldJoin's required-literal column
+   is the proof of shape). 4. Host extractions (motion controller, txn bridge, leg
+   resolver) — mechanical, after 1-3. 5. Native settle event + native hidden depth —
+   bundled with the next real physics change only.
+   BURN-IN WATCH (native, bounded): posture-register owner-death/boot-steal, pinChrome
+   seal no-op, audit slot-TY fiction, carve seed comment/code mismatch, MAX-filter bounce
+   false positive, return-to-same-detent settle suppression. PROTECTED LIST (correct,
+   do not churn): chrome twins, freezeUntilSnap ack routing, scroll-memory-survives-
+   eviction, entry-stamp opt-in, F874 timing constants, frozen-world store, clamp
+   filter, delivered-values liveness probe.
