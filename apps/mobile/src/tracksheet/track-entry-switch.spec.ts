@@ -142,3 +142,45 @@ describe('TrackRestoreCoordinator (G-RESTORE c)', () => {
     expect(coordinator.consumeOnAttach(b)).toBe(40);
   });
 });
+
+// ─── F1 (red-team): the hidden-domain switch must NOT immediately re-fuse ────
+// At swap time tau = -depth; an immediate applyRestore would clamp through the
+// posture register to >= 0 and teleport the sheet back on-screen in one frame
+// (OA5 RED). The restore stays armed; only the resurrect glide moves the sheet.
+describe('hidden-domain switch (F1)', () => {
+  const memoryWith = (value: number | null) => ({ read: () => value });
+
+  const runPlan = (tau: number) => {
+    const calls: string[] = [];
+    const plan = planEntrySwitch({
+      outgoingEntryKey: 'search#root',
+      incomingEntryKey: 'home#root',
+      tau,
+      trackH: 600,
+      sigma: 0,
+      memory: memoryWith(120),
+    });
+    executeEntrySwitch(plan, {
+      saveOutgoing: () => calls.push('save'),
+      applyChromeSelection: () => calls.push('chrome'),
+      armRestore: () => calls.push('arm'),
+      applyRestore: () => calls.push('apply'),
+    });
+    return { plan, calls };
+  };
+
+  it('a switch committing at tau < 0 arms but never immediately applies', () => {
+    const { plan, calls } = runPlan(-320);
+    expect(plan.immediateRestore).toBe(false);
+    expect(calls).toContain('arm');
+    expect(calls).not.toContain('apply');
+    // and the hidden domain still never writes memory
+    expect(calls).not.toContain('save');
+  });
+
+  it('an on-screen switch still applies immediately (guard is not over-broad)', () => {
+    const { plan, calls } = runPlan(240);
+    expect(plan.immediateRestore).toBe(true);
+    expect(calls).toEqual(['save', 'chrome', 'arm', 'apply']);
+  });
+});

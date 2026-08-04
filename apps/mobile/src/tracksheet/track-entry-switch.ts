@@ -27,6 +27,15 @@ export type EntrySwitchPlan = {
   restoreOffset: number;
   /** True when restoreOffset came from memory (including a remembered 0). */
   hadMemory: boolean;
+  /**
+   * False when the switch commits in the HIDDEN domain (tau < 0, the deferred
+   * swap at the screen edge): an immediate refuse there would jump tau from
+   * -depth to >= 0 in one frame (the posture register clamps at 0) - the exact
+   * "sheet instantly appears" OA5 forbids. The restore stays ARMED (attach-
+   * gated / superseded like any other); the return to screen is the resurrect
+   * glide's job, never a teleport. (Red-team F1.)
+   */
+  immediateRestore: boolean;
 };
 
 export const planEntrySwitch = (args: {
@@ -54,6 +63,7 @@ export const planEntrySwitch = (args: {
     incomingEntryKey,
     restoreOffset: remembered ?? 0,
     hadMemory: remembered != null,
+    immediateRestore: tau >= 0,
   };
 };
 
@@ -75,7 +85,9 @@ export const executeEntrySwitch = (plan: EntrySwitchPlan, effects: EntrySwitchEf
   }
   effects.applyChromeSelection();
   effects.armRestore(plan.incomingEntryKey, plan.restoreOffset);
-  effects.applyRestore(plan.restoreOffset);
+  if (plan.immediateRestore) {
+    effects.applyRestore(plan.restoreOffset);
+  }
 };
 
 export class TrackRestoreCoordinator {
