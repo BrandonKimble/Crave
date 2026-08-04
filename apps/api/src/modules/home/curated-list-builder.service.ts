@@ -750,6 +750,10 @@ export class CuratedListBuilderService {
         -- mobile adapter rendered them as Crave Score 0 — a fabricated
         -- number under the no-fake-estimates law.
         AND c.mention_count > 0
+        -- Rollup rows (is_category_item) duplicate their more specific
+        -- children at the same restaurant; a curated pick is a dish, never
+        -- the rollup above it.
+        AND NOT c.is_category_item
     `);
   }
 

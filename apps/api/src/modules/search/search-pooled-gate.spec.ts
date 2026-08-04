@@ -233,4 +233,15 @@ describe('step-3 pooled richness gate (SQL shape)', () => {
     const sql = dishSqlText({});
     expect(sql).not.toContain('pooled');
   });
+
+  // Rollup rows (is_category_item) exist only as parents of more specific
+  // dishes at the same restaurant; serving one duplicates its children.
+  // 41.8% of scored connections were rollups being served as dishes when
+  // this predicate was missing (data-audit 2026-08, finding A).
+  it('dish axis excludes rollup rows in every gate mode', () => {
+    expect(dishSqlText({})).toContain('NOT c.is_category_item');
+    expect(dishSqlText({ sectionedRanking: true, exactFoodIds: [] })).toContain(
+      'NOT c.is_category_item',
+    );
+  });
 });

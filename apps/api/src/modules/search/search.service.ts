@@ -1068,6 +1068,12 @@ export class SearchService {
       JOIN core_entities f
         ON f.entity_id = c.food_id
       WHERE c.restaurant_id = ${restaurantId}::uuid
+        -- Rollup rows (is_category_item) exist ONLY as parents of more
+        -- specific dishes at this restaurant (projection-rebuild mints them
+        -- from child connections) — serving them as dish rows duplicates
+        -- their children. They stay scored for rollup semantics; they are
+        -- never a dish row.
+        AND NOT c.is_category_item
       ORDER BY
         pcs.display_score DESC,
         c.mention_count DESC,
@@ -1253,6 +1259,9 @@ export class SearchService {
       this.prisma.connection.aggregate({
         where: {
           restaurantId: restaurant.entityId,
+          // Match listRestaurantDishes: rollup rows are not dishes, so the
+          // profile's dish count must not count them either.
+          isCategoryItem: false,
         },
         _sum: {
           mentionCount: true,

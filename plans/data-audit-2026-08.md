@@ -167,6 +167,17 @@ owner — three of the six changed after checking prompt+code):**
    resolved to Places — highest-ROI single fix; ~$0.028/venue AFTER the
    archive+merge passes (~$25). Approve as part of the rerun campaign?
 
+> **Correction 2026-08-03 (truth audit):** the `$0.028/venue` unit cost in
+> item 6 (and the `~$25` total it produces, echoed in P2.6 above) is FALSE.
+> `$0.028` summed `placeDetails` only, dropping `findPlaceFromText` +
+> autocomplete — the same "summed the wrong column" error that hid the $118
+> Places line in the first all-in reload figure. Re-measured 2026-08-02
+> against the BigQuery billing export (`crave-467301.billing_export`) on the
+> 07-30/31 re-grounding — 7,115 newly grounded locations, $323.10 billed —
+> the real rate is **~$0.045 per newly GROUNDED LOCATION**. So ~850 venues
+> is **~$38**, not ~$25. Any owner approval should be sought at the
+> corrected number.
+
 ## P3 — PROMPT RULES (the re-extraction prompt review checklist)
 
 Extraction:
@@ -708,3 +719,27 @@ were in the WIRING and the edges:
   (negative results no longer cached forever). F8: with creation
   disabled, demoted restaurants surface as explicit unmatched results
   instead of vanishing.
+
+## FINDING A IMPLEMENTED (2026-08-03): per-lane is_category_item read fix
+
+The phase's measurement prong found `is_category_item` computed/projected/
+selected/mapped and read by NOTHING — 41.8% of scored connections (7,218)
+were rollup rows served as dishes (`taco` @ LOS TACOS No.1 at 9.99).
+History check confirmed no contradiction with the July taxonomy work:
+predicts-the-food (346c97dc6) decides which category ENTITIES exist; the
+class-⑤ flag (490388fab) was minted for one-claim-once scoring; the READ
+layer was simply a decision never made. Key structural fact: a rollup row
+exists ONLY as a parent of more specific dishes at the same restaurant
+(projection-rebuild:546) — a direct "great tacos" mention mints a normal
+connection — so excluding rollups from served dish rows can never orphan
+a restaurant.
+
+Fix (code-only, no rerun): `NOT is_category_item` in the four dish-serving
+lanes — listRestaurantDishes + profile dish count (search.service), search
+dish axis incl. gate window counts (search-query.builder filtered_connections),
+teaser top-3 (connectionFilter), curated city dishes (cityDishes). Left
+alone deliberately: user-lists (renders what a user saved), signal-demand-read
+(history of what was actually viewed), autocomplete/coverage (not dish rows).
+Guard: search-pooled-gate.spec asserts the predicate in both gate modes.
+Proven on the mirror: LOS TACOS 35 rows → 7 rollups excluded, top list all
+real dishes. 135 search/teaser/home tests green.

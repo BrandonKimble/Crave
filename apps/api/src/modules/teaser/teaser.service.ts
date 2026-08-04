@@ -413,6 +413,8 @@ export class TeaserService {
       JOIN core_entities f ON f.entity_id = ci.food_id AND f.status = 'active'
       JOIN core_entities r ON r.entity_id = ci.restaurant_id AND r.status = 'active'
       WHERE ci.mention_count >= ${MIN_MENTIONS}
+        -- Rollup rows are parents of real dishes, never dishes themselves.
+        AND NOT ci.is_category_item
         ${foodClause}
         AND EXISTS (
           SELECT 1 FROM core_restaurant_locations l

@@ -880,7 +880,11 @@ filtered_connections AS (
   JOIN public_connection_scores pcs
     ON pcs.subject_id = c.connection_id
   JOIN core_entities f ON f.entity_id = c.food_id
-  WHERE ${combinedConnectionWhereSql}
+  -- Rollup rows (is_category_item) never enter the dish axis: each exists
+  -- only as a parent of more specific dishes at the same restaurant, so a
+  -- served rollup ("taco @ X" at the child-max score) duplicates its
+  -- children on the page and in the gate's window counts.
+  WHERE NOT c.is_category_item AND ${combinedConnectionWhereSql}
 )`;
 
     const filteredConnectionsCtePreview = `
@@ -900,7 +904,7 @@ filtered_connections AS (
   JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
   JOIN public_connection_scores pcs ON pcs.subject_id = c.connection_id
   JOIN core_entities f ON f.entity_id = c.food_id
-  WHERE ${combinedConnectionWherePreview}
+  WHERE NOT c.is_category_item AND ${combinedConnectionWherePreview}
 )`.trim();
 
     const order = this.resolveDishOrderSql(plan.ranking.foodOrder);
