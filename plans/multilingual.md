@@ -164,6 +164,18 @@ SymSpell delete-dictionary) and FOUR writers (dedupe fold, ontology
 merge/rename, extraction banking, dish-knowledge LLM) — tagging is a
 migration touching all of them, and an untagged shadow array is on the
 NEVER list. Existing rows back-tag wholesale as lang='und'.
+LABELS DOUBLE AS MATCH SURFACES (owner question 2026-08-03: "does the
+tail work for a day-one Spanish user?"): the nightly label sweep's
+entity_labels rows are tagged and judged — the gazetteer's match arm
+READS them as exact surfaces alongside aliases. One generated table
+serves display AND matching for all 515 tail attributes ("acepta
+mascotas" → pet friendly) with no per-entity alias explosion. Reading
+a second tagged store is not the forbidden fusion — the ban is on
+WRITING labels into the untagged bag. Query-coverage anatomy, for the
+record: constraint words = the seeded spine (Zipf-heavy, tiny set);
+dish words = source-faithful names + dense (both proven); tail
+attributes = label rows via this arm; leftovers = dense + the
+self-teaching loop, all gated at launch.
 M4. DENSE ADMISSION TIER (round-3 correction: NOT a flag flip). The
 lane exists but dense candidates are structurally unselectable — the
 linker's decider reads only sparseSimilarity and LINK_ELIGIBLE_EVIDENCE
