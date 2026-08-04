@@ -336,3 +336,32 @@ still-published rows into B for a commit until the writer republishes — R6 sho
 entry-STAMP the publication so the host can reject a mismatched entryId. Kill-list
 executed: hardcoded restaurant skeleton, all-true activity object, the A7 capacity
 bark (premise deleted), R1's leftover unused vars (host + OneTrackPrototype).
+
+## R4 RE-DERIVATION CHECKPOINT (G-HIDDEN — the hidden family)
+
+A1 is ANSWERED: the second primitive is (a) τ-DOMAIN EXTENSION, and the re-derivation
+sharpened WHY — every derivation in the system (sheetTop = expandedTop + (H+σ−τ),
+frost/tail/pin/masks, native shell writer) is ALREADY linear below collapsed; only
+UIScrollView's domain floor (offset ≥ −contentInset.top) blocked the excursion.
+Extending the domain (contentInset.top = depth for the excursion's lifetime, collapsed
+at rest back on-screen) keeps ONE variable, ONE writer, the SAME critically damped
+spring (OA5's glide is structural — the plan type has no teleport variant), THE FINGER
+OWNS TAU intact (a touch mid-excursion kills the spring and drags the same track), and
+σ cancels by algebra (snapTo target −depth+σ still lands sheetTop exactly at the
+screen edge). A container translate would have been a second position writer over the
+track — rejected. The legitimacy filter learned the MIN edge (mirrored clamp
+signature, native). A2 landed as declared: the screen-edge fact is native
+(trackHiddenEdgeCleared, τ ≤ target+0.5); the paint decision is pure
+(resolveHiddenPresentation) and the txn 'boundary' input is offered at that edge — the
+freeze plan's join has a live producer on the track path, and the hide's settleToken
+completes there too (no detent settle exists for a hidden rest). ONE contract
+sharpening: THE HIDDEN DOMAIN NEVER WRITES MEMORY — a switch committing at τ<0 has no
+live scroll term, so the outgoing entry's offset is snapshotted at hide START
+(saveScrollForPresentedEntry) and planEntrySwitch suppresses hidden-domain saves; hide
+composes with R1/R2 by construction (latch + memory untouched, falsified in
+track-entry-hidden.spec.ts). The ack-bridge freezeUntilSnap branch is NOT deleted: it
+is now the hidden family's ROUTING (amending a freeze txn to {paint, chrome} would
+clobber the boundary join it protects); it dies only with the freezeUntilSnap plan
+kind itself (R8, old-system delete). Open: a finger catching the sheet mid-excursion
+and dragging it back on-screen leaves the freeze txn joining until superseded — same
+watchdog behavior as the old system; revisit if burn-in shows it.

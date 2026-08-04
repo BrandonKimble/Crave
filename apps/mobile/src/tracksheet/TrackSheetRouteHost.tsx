@@ -1,5 +1,13 @@
 import React from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import {
+  Dimensions,
+  Linking,
+  NativeEventEmitter,
+  NativeModules,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
 import {
   runOnJS,
@@ -67,6 +75,7 @@ import {
   type TrackEntryBodyResolution,
 } from './track-entry-readiness';
 import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
+import { planHiddenExcursion, resolveHiddenPresentation } from './track-entry-hidden';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
@@ -255,6 +264,14 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
       // pending and every reveal rode the 600ms liveness degrade. Arm FIRST,
       // then offer both inputs explicitly: the per-leg chrome twin is mounted
       // evidence at this commit, exactly like the old host's warm-paint offer.
+      // NOT A BYPASS ANY MORE — THE HIDDEN FAMILY'S ROUTING (G-HIDDEN, R4):
+      // a freeze-dismiss txn declares joinInputs ['boundary'] (stager) and is
+      // sealed at commit; its reveal input is offered by the deferred-swap
+      // gate at the screen-edge crossing (trackHiddenEdgeCleared). Amending
+      // it to {paint, chrome} here would clobber that join and flip content
+      // mid-slide. The branch is therefore the hidden family's routing rule,
+      // not a guard around a missing feature; it dies only with the
+      // freezeUntilSnap plan kind itself (R8, old-system delete).
       if (
         (liveTxn.phase === 'staged' || liveTxn.phase === 'committed') &&
         liveTxn.plan.content.kind !== 'freezeUntilSnap'
@@ -275,26 +292,76 @@ const TrackSheetRouteSurface: React.FC<{ scene: OverlayKey }> = ({ scene: sceneO
   // second half of the track's `sceneKey#entryId` identity.
   const sceneEntryId =
     frame.presentedSceneKey != null ? frame.presentedEntryId : frame.activeEntryId;
+
+  // ── THE DEFERRED SWAP AT THE SCREEN EDGE (G-HIDDEN / A2, R4) ───────────────
+  // A freeze-mode dismiss (terminalDismiss + preserveOutgoingUntilSettle) is a
+  // user-visible, multi-frame slide: the outgoing entry AND its chrome must
+  // ride it fully opaque, and the content swap fires only when the sheet
+  // CLEARS THE SCREEN EDGE — never at τ=0 (the collapsed band is still
+  // visible there) and never mid-flight. The edge fact is native
+  // (trackHiddenEdgeCleared, emitted the frame τ reaches the excursion
+  // target); the paint decision is pure (resolveHiddenPresentation). The
+  // txn's 'boundary' join input — declared by the stager for freeze plans —
+  // is offered HERE, so the reveal joins exactly at the edge.
+  const paintedRef = React.useRef<{ scene: OverlayKey; entryId: string | null }>({
+    scene,
+    entryId: sceneEntryId ?? null,
+  });
+  const clearedTxnRef = React.useRef<unknown>(null);
+  const [, bumpEdgeSeq] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => {
+    const physicsModule = NativeModules.TrackScrollPhysics;
+    if (physicsModule == null) {
+      return undefined;
+    }
+    const emitter = new NativeEventEmitter(physicsModule);
+    const sub = emitter.addListener('trackHiddenEdgeCleared', () => {
+      // Record WHICH transaction's edge cleared (a later hide must hold again
+      // even if this state lingers), offer the boundary, then re-render to
+      // commit the swap in the next paint.
+      clearedTxnRef.current = getLiveTransitionTxn();
+      offerTransitionJoinInput('boundary');
+      bumpEdgeSeq();
+    });
+    return () => sub.remove();
+  }, []);
+  const liveTxnForHide = getLiveTransitionTxn();
+  const hideInFlight =
+    liveTxnForHide != null &&
+    liveTxnForHide.plan.content.kind === 'freezeUntilSnap' &&
+    (liveTxnForHide.phase === 'staged' || liveTxnForHide.phase === 'committed');
+  const presentation = resolveHiddenPresentation({
+    frameScene: scene,
+    frameEntryId: sceneEntryId ?? null,
+    paintedScene: paintedRef.current.scene,
+    paintedEntryId: paintedRef.current.entryId,
+    hideInFlight,
+    edgeCleared: clearedTxnRef.current === liveTxnForHide,
+  });
+  const paintedScene = presentation.scene as OverlayKey;
+  const paintedEntryId = presentation.entryId;
+  paintedRef.current = { scene: paintedScene, entryId: paintedEntryId };
+
   const activeEntry = React.useMemo(() => {
-    if (sceneEntryId == null) {
+    if (paintedEntryId == null) {
       return null;
     }
     const routeState = sceneRuntime.routeSceneSwitchRuntime.getRouteState();
     return (
-      routeState.overlayRouteStack.find((entry) => entry.entryId === sceneEntryId) ??
-      (routeState.activeOverlayRoute.entryId === sceneEntryId
+      routeState.overlayRouteStack.find((entry) => entry.entryId === paintedEntryId) ??
+      (routeState.activeOverlayRoute.entryId === paintedEntryId
         ? routeState.activeOverlayRoute
         : null)
     );
-  }, [sceneEntryId, sceneRuntime]);
+  }, [paintedEntryId, sceneRuntime]);
 
   // RUNG 3 — REAL BODIES through ONE PERSISTENT PAGE: the track surface never
   // remounts (production shape; remount churn hit a Fabric unmount assert) —
   // scene switches swap chrome + body content inside UnifiedTrackScenePage.
   return (
     <UnifiedTrackScenePage
-      scene={scene}
-      entryId={sceneEntryId}
+      scene={paintedScene}
+      entryId={paintedEntryId}
       snapPoints={snapPoints}
       entry={activeEntry}
     />
@@ -396,8 +463,8 @@ const useTrackScenePageChrome = (
   // THE PRODUCTION POSTURE (rung 4): the seat comes from the snap session —
   // posture seats + per-scene remembered detents, gesture-written only
   // (inventory §5.10). τ mapping: expanded→H, middle→collapsed−middle,
-  // collapsed→0. 'hidden' has no track posture yet (dismiss choreography is a
-  // later slice) — it seats collapsed.
+  // collapsed→0, hidden→−depth (the τ-domain excursion below collapsed;
+  // G-HIDDEN R4, track-entry-hidden.ts).
   // THE SEAT SOCKET (residents rung 4): the PARALLEL SEAT IS DELETED. The
   // track host registers as the 'sheetHost' motion target and consumes the
   // descriptor table's commands — the locked-in switch logic (stays-put,
@@ -421,12 +488,30 @@ const useTrackScenePageChrome = (
   const executeMotionCommand = React.useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden', settleToken: number | null) => {
       const commands = commandsRef.current;
+      // THE HIDDEN EXCURSION (G-HIDDEN, R4): 'hidden' is a REACHABLE seat — a
+      // GLIDE below collapsed on the same native spring (the second motion
+      // primitive: τ-domain extension; see track-entry-hidden.ts for the
+      // derivation). Before the excursion moves τ, snapshot the presented
+      // entry's scroll — the deferred swap commits at τ=−depth, where the
+      // live term is gone (planEntrySwitch suppresses hidden-domain saves).
+      const hiddenPlan =
+        snap === 'hidden'
+          ? planHiddenExcursion({
+              collapsedTop: snapPoints.collapsed,
+              screenHeight: Dimensions.get('window').height,
+            })
+          : null;
+      if (hiddenPlan != null) {
+        commands?.saveScrollForPresentedEntry();
+      }
       const postureTau =
         snap === 'expanded'
           ? trackH
           : snap === 'middle'
             ? snapPoints.collapsed - snapPoints.middle
-            : 0; // collapsed AND hidden seat collapsed (dismiss choreography later)
+            : hiddenPlan != null
+              ? hiddenPlan.targetPostureTau
+              : 0;
       pendingSettleTokenRef.current = settleToken;
       // THE ZERO-PIXEL SETTLE (joinWait red team): a same-posture switch
       // short-circuits inside native snapTo (<0.5pt) and produces NO settle
@@ -471,6 +556,19 @@ const useTrackScenePageChrome = (
       sceneRuntime.routeSceneMotionRuntime.completeFromSheetSettle?.(token);
     }
   }, [sceneRuntime]);
+  // THE HIDDEN SETTLE (G-HIDDEN): a hide's rest is not a detent, so the
+  // gesture/detent settle observer never fires for it — the native edge fact
+  // (the sheet cleared the screen) IS its settle. Without this, every hide's
+  // settleToken rode the 700ms fallback.
+  React.useEffect(() => {
+    const physicsModule = NativeModules.TrackScrollPhysics;
+    if (physicsModule == null) {
+      return undefined;
+    }
+    const emitter = new NativeEventEmitter(physicsModule);
+    const sub = emitter.addListener('trackHiddenEdgeCleared', () => completePendingSettle());
+    return () => sub.remove();
+  }, [completePendingSettle]);
   useAnimatedReaction(
     () => motionCommandValue.value,
     (command, previous) => {
@@ -842,8 +940,14 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
   presentedEntryKeyLiveRef.current = presentedEntryKey;
   if (!isResidentScene) {
     // Refresh the stored entry value each render (params can update in place —
-    // the algebra preserves entryId across param writes).
-    retainedChildrenRef.current.set(presentedEntryKey, { scene, entry: entry ?? null });
+    // the algebra preserves entryId across param writes). G-HIDDEN: during a
+    // deferred swap the HELD entry may already be popped off the route stack —
+    // its lookup returns null; keep the retained value rather than clobbering
+    // the params its body still renders from.
+    retainedChildrenRef.current.set(presentedEntryKey, {
+      scene,
+      entry: entry ?? retainedChildrenRef.current.get(presentedEntryKey)?.entry ?? null,
+    });
     for (const evictedKey of childRetentionRef.current.touch(presentedEntryKey)) {
       retainedChildrenRef.current.delete(evictedKey);
       legTitleCacheRef.current.delete(evictedKey);

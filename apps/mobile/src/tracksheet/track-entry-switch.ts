@@ -38,8 +38,14 @@ export const planEntrySwitch = (args: {
   memory: ScrollMemoryReader;
 }): EntrySwitchPlan => {
   const { outgoingEntryKey, incomingEntryKey, tau, trackH, sigma, memory } = args;
+  // THE HIDDEN DOMAIN NEVER WRITES MEMORY (G-HIDDEN, R4): a switch committing
+  // while τ is below collapsed (the deferred swap lands after the sheet clears
+  // the screen edge, τ = −depth) has NO live list scroll to save — computing
+  // the term there would overwrite the outgoing entry's real remembered offset
+  // with ~0. The true offset was snapshotted at hide START
+  // (saveScrollForPresentedEntry, before the excursion moved τ).
   const save =
-    outgoingEntryKey != null
+    outgoingEntryKey != null && tau >= 0
       ? { entryKey: outgoingEntryKey, offset: computeOutgoingScroll(tau, trackH, sigma) }
       : null;
   const remembered = memory.read(incomingEntryKey);

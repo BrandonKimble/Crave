@@ -46,7 +46,7 @@ import {
 } from './useTrackSheetPhysics';
 import { TrackSheetDockedStrip } from './TrackSheetStrip';
 import type { TrackEntryKey } from './track-entry-identity';
-import { TrackEntryScrollMemory } from './track-entry-scroll-memory';
+import { computeOutgoingScroll, TrackEntryScrollMemory } from './track-entry-scroll-memory';
 import { executeEntrySwitch, planEntrySwitch, TrackRestoreCoordinator } from './track-entry-switch';
 
 // ─── TrackSheetPage — THE sheet-page standard ──────────────────────────────────
@@ -162,6 +162,12 @@ export type TrackSheetCommands = {
   /** Posture peeks (JS mirrors; used at rest for descriptor resolution). */
   readTau: () => number;
   readSigma: () => number;
+  /** G-HIDDEN (R4): snapshot the presented entry's list scroll into entry
+   * memory BEFORE a hidden excursion moves τ below collapsed. The deferred
+   * swap commits at τ=−depth, where the live scroll term is gone — the plan
+   * layer suppresses saves there (planEntrySwitch, tau<0), so this snapshot
+   * is the ONE write that preserves the entry's offset across a hide. */
+  saveScrollForPresentedEntry: () => void;
 };
 
 export type TrackSheetPageProps = {
@@ -585,6 +591,14 @@ export function TrackSheetPage({
     commandsRef.current = {
       readTau: () => tau.value,
       readSigma: () => physics.sigma.value,
+      saveScrollForPresentedEntry: () => {
+        // The EXACT term the switch formula saves, read at hide START where
+        // the JS mirrors are settled (hides launch from rest).
+        entryScrollMemoryRef.current.save(
+          presentedEntryKeyRef.current,
+          computeOutgoingScroll(tau.value, trackH, physics.sigma.value)
+        );
+      },
       // RETRYING SNAP (anti-trap, 2026-07-26): a scrollToOffset issued before the
       // recycler lays out is a silent no-op — the sheet sat at τ=0 while the OLD
       // sheet rendered the same page above it, and every visual check read the
@@ -619,7 +633,7 @@ export function TrackSheetPage({
       }
       commandsRef.current = null;
     };
-  }, [commandsRef, physics, tau]);
+  }, [commandsRef, physics, tau, trackH]);
 
   // THE CHROME IS CONTENT, AND IT EXISTS TWICE (two-surfaces fix, 2026-08-01).
   //

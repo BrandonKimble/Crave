@@ -12,8 +12,6 @@
  * There is exactly ONE cell here, read by both the renderer and the wire, so
  * the header can never disagree with the words on screen.
  */
-import { getLocales } from 'expo-localization';
-
 import {
   DEFAULT_LOCALE,
   type SupportedLocale,
@@ -31,12 +29,15 @@ import {
  */
 const readDevicePreferences = (): string[] => {
   try {
+    // Required lazily: a top-level import throws "Cannot find native module" and kills
+    // boot outright when the installed binary predates expo-localization (stale sim
+    // build, jest/node host). Inside the try, that case degrades to English instead.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getLocales } = require('expo-localization') as typeof import('expo-localization');
     return getLocales()
       .map((locale) => locale.languageTag)
       .filter((tag): tag is string => typeof tag === 'string' && tag.length > 0);
   } catch {
-    // expo-localization is a native module. Absent only in a jest/node host,
-    // where English is the right answer.
     return [];
   }
 };
