@@ -6,12 +6,23 @@ appId: com.brandonkimble.cravesearch
 - tapOn: 'Polls in New York'
 - waitForAnimationToEnd: { timeout: 2500 }
 - takeScreenshot: /tmp/crave-sort-default
-- tapOn: { id: 'poll-feed-sort-top' }
+# Sort lives behind the 'Sort' chip (testID poll-feed-sort-toggle) which opens an
+# OptionSelectorSheet (testID poll-feed-sort-sheet); each option row is
+# `${sheetTestID}-option-${value}` per OptionSelectorSheet.tsx. Element-id taps only —
+# coordinate taps get eaten on gesture-handoff sheets (CLAUDE.md law).
+- tapOn: { id: 'poll-feed-sort-toggle' }
+- extendedWaitUntil: { visible: { id: 'poll-feed-sort-sheet' }, timeout: 5000 }
+- tapOn: { id: 'poll-feed-sort-sheet-option-top' }
 - waitForAnimationToEnd: { timeout: 3000 }
 - takeScreenshot: /tmp/crave-sort-top
-- tapOn: { id: 'poll-feed-sort-trending' }
+- tapOn: { id: 'poll-feed-sort-toggle' }
+- extendedWaitUntil: { visible: { id: 'poll-feed-sort-sheet' }, timeout: 5000 }
+- tapOn: { id: 'poll-feed-sort-sheet-option-trending' }
 - waitForAnimationToEnd: { timeout: 3000 }
 - takeScreenshot: /tmp/crave-sort-trending
-- tapOn: { id: 'poll-feed-sort-trending' }
+# 'New' is the default sort — selecting it returns the feed to the default state.
+- tapOn: { id: 'poll-feed-sort-toggle' }
+- extendedWaitUntil: { visible: { id: 'poll-feed-sort-sheet' }, timeout: 5000 }
+- tapOn: { id: 'poll-feed-sort-sheet-option-new' }
 - waitForAnimationToEnd: { timeout: 3000 }
 - takeScreenshot: /tmp/crave-sort-cleared
