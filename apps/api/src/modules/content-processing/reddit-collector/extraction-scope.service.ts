@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { foldAliasesFromMerge } from '../entity-resolver/entity-alias.service';
 
 /**
  * THE ONE HOME for "which facts belong to the current extraction?"
@@ -434,15 +435,11 @@ export async function finalizeMergeCompletion(
   if (canonicalId === duplicateId) {
     throw new Error(`self-merge refused: ${canonicalId}`);
   }
-  await tx.$executeRaw`
-    UPDATE core_entities y
-    SET aliases = (
-      SELECT array_agg(DISTINCT a)
-      FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
-    )
-    FROM core_entities x
-    WHERE y.entity_id = ${canonicalId}::uuid
-      AND x.entity_id = ${duplicateId}::uuid`;
+  // A1: the loser's name + alias ROWS fold onto the winner through THE
+  // projection writer — provenance ('merge_fold') and each carried row's
+  // locale survive, where the old array_agg destroyed both. The legacy
+  // aliases[] array is re-derived from the rows by the same call.
+  await foldAliasesFromMerge(tx, canonicalId, duplicateId);
   await tx.$executeRaw`
     UPDATE core_entities SET status = 'archived'
     WHERE entity_id = ${duplicateId}::uuid`;

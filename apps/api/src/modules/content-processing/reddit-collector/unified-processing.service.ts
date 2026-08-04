@@ -26,6 +26,7 @@ import {
   identityInsertData,
   identityProbeNames,
 } from '../entity-resolver/entity-identity';
+import { addAliases } from '../entity-resolver/entity-alias.service';
 import { derivedBboxSelectSql } from '../../places/places-catalog.service';
 import {
   ProcessingResult,
@@ -1964,28 +1965,26 @@ export class UnifiedProcessingService implements OnModuleInit {
                 resolution.validatedAliases &&
                 resolution.validatedAliases.length > 0
               ) {
-                const mergedAliases = Array.from(
-                  new Set([
-                    ...(existing.aliases || []),
-                    ...resolution.validatedAliases,
-                  ]),
+                // A1: extraction banking goes through THE projection
+                // writer. Same semantics as the Set-union it replaces
+                // (existing forms keep their positions, new ones append)
+                // but each banked surface now carries provenance. The
+                // writer marks the dense vector stale and touches
+                // last_updated only when the projection actually changed
+                // — the same condition the hand-rolled length check
+                // approximated. Locale is deliberately UNSET: the
+                // extraction prompt does not yet emit a language on
+                // surfaces (plan A6), and a fabricated tag is worse than
+                // 'und'.
+                await addAliases(
+                  tx,
+                  entityId,
+                  resolution.validatedAliases.map((alias) => ({
+                    form: alias,
+                    source: 'extraction' as const,
+                  })),
+                  { touchLastUpdated: true },
                 );
-
-                const aliasesChanged =
-                  mergedAliases.length !== (existing.aliases || []).length;
-
-                if (aliasesChanged) {
-                  await tx.entity.update({
-                    where: { entityId },
-                    data: {
-                      aliases: mergedAliases,
-                      lastUpdated: new Date(),
-                      // Aliases feed the entity doc → the dense vector is now stale;
-                      // the reconciler re-embeds it out-of-band.
-                      nameEmbeddingStale: true,
-                    },
-                  });
-                }
               }
 
               this.logger.debug(
@@ -2108,6 +2107,26 @@ export class UnifiedProcessingService implements OnModuleInit {
               if (createdEntity) {
                 entityId = createdEntity.entityId;
                 createdNew = true;
+
+                // A1: the create still writes the array inline (it must be
+                // ATOMIC with the row — the unique index fires on THAT
+                // insert, inside the savepoint). The rows follow
+                // immediately so provenance exists from the entity's first
+                // instant; the projection it re-derives is byte-identical
+                // to the array just written, so this is a no-op UPDATE.
+                // markEmbeddingStale:false — a brand-new row has no
+                // embedding to invalidate.
+                if (entityData.aliases) {
+                  await addAliases(
+                    tx,
+                    createdEntity.entityId,
+                    (entityData.aliases as string[]).map((alias) => ({
+                      form: alias,
+                      source: 'extraction' as const,
+                    })),
+                    { markEmbeddingStale: false },
+                  );
+                }
 
                 if (entityType === 'restaurant') {
                   const location = await tx.restaurantLocation.create({

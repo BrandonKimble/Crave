@@ -1,4 +1,5 @@
 import { identityInsertData } from './entity-identity';
+import { addAliases } from './entity-alias.service';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, EntityType } from '@prisma/client';
@@ -145,14 +146,26 @@ export class DishKnowledgeSynthesisService {
           data: {
             canonicalIngredients: Array.from(new Set(ingredientIds)),
             knowledgeSynthesizedAt: new Date(),
-            ...(newAliases.length
-              ? {
-                  aliases: [...dish.aliases, ...newAliases],
-                  nameEmbeddingStale: true,
-                }
-              : {}),
           },
         });
+        // A1: established shorthand goes through THE projection writer.
+        // The append order ([...existing, ...new]) is exactly what the
+        // seq-ordered projection reproduces, so the array is unchanged.
+        // Locale UNSET ('und'): this prompt bans translation and works on
+        // an English corpus, so a language tag here would be fabricated —
+        // and these are SURFACES, never labels (the plan's NEVER list).
+        if (newAliases.length) {
+          await this.prisma.$transaction((tx) =>
+            addAliases(
+              tx,
+              dish.entityId,
+              newAliases.map((alias) => ({
+                form: alias,
+                source: 'knowledge_synthesis' as const,
+              })),
+            ),
+          );
+        }
         summary.dishesProcessed += 1;
         summary.ingredientsLinked += ingredientIds.length;
         summary.aliasesAdded += newAliases.length;

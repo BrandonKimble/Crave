@@ -94,6 +94,8 @@ model Entity {
   primaryLocation                     RestaurantLocation?           @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
   curatedListItems                    CuratedListItem[]             @relation("CuratedListItemEntity")
   curatedListItemRestaurants          CuratedListItem[]             @relation("CuratedListItemRestaurant")
+  entityAliases                       EntityAlias[]                 @relation("EntityAliasEntity")
+  entityLabels                        EntityLabel[]                 @relation("EntityLabelEntity")
 
   @@index([type], map: "idx_entities_type")
   @@index([type, status], map: "idx_entities_type_status")
@@ -114,6 +116,73 @@ model Entity {
   @@index([lastUpdated(sort: Desc)], map: "idx_entities_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_entities_created_at")
   @@map("core_entities")
+}
+
+/// SURFACE forms — what corpora and users SAY (multilingual plan A1).
+/// Rows are the TRUTH; `Entity.aliases` is a DERIVED PROJECTION of the
+/// active forms, written by exactly one app function (addAliases in
+/// entity-alias.service.ts). Never a display surface — display is
+/// EntityLabel. Recall only.
+model EntityAlias {
+  aliasId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("alias_id") @db.Uuid
+  entityId   String   @map("entity_id") @db.Uuid
+  /// PROJECTION ORDER (bigserial). The legacy array is rebuilt as the
+  /// active forms in seq order, reproducing today's append semantics.
+  /// Nothing reads aliases[] positionally, so seq is the only authority.
+  seq        BigInt   @unique @default(autoincrement())
+  form       String   @db.VarChar(255)
+  /// APP-WRITTEN canonicalFold(form) — the folded mirror N1 needed. There
+  /// is no SQL fold: Postgres Unicode classes are platform-dependent.
+  /// Write it ONLY via addAliases().
+  formFolded String   @map("form_folded") @db.VarChar(255)
+  /// Canonical BCP 47 (R5-5: full tags — es-MX, zh-Hans), or 'und' for
+  /// untagged legacy rows.
+  locale     String   @default("und")
+  /// legacy | merge_fold | ontology_rename | extraction |
+  /// knowledge_synthesis | places | cuisine | query_banking | seed
+  source     String
+  confidence Float    @default(1)
+  /// candidate | active | deprecated. R5-6(b): the self-teaching loop
+  /// needs a DEMOTION path so a judge-rejected pairing is remembered as
+  /// wrong instead of re-proposed by query spam forever. Only 'active'
+  /// rows enter the aliases[] projection.
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  entity     Entity   @relation("EntityAliasEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  @@unique([entityId, locale, form], map: "uq_entity_alias_entity_locale_form")
+  @@index([formFolded], map: "idx_entity_alias_form_folded")
+  @@index([locale, formFolded], map: "idx_entity_alias_locale_form_folded")
+  @@index([entityId], map: "idx_entity_alias_entity_id")
+  @@map("entity_alias")
+}
+
+/// DISPLAY forms — what a user SEES, per locale (multilingual plan M2).
+/// No writer yet by design; the M2 nightly unlabeled-concept sweep fills
+/// it. RULING: labels and aliases must NEVER fuse — writing labels into
+/// the alias bag is on the NEVER list.
+model EntityLabel {
+  entityId    String   @map("entity_id") @db.Uuid
+  /// Canonical BCP 47 (R5-5). RFC 4647 lookup fallback es-MX → es-419 → es.
+  locale      String
+  form        String   @db.VarChar(255)
+  /// R5-6(a) the Wikidata disambiguator: labels collide across concepts
+  /// ("pan"). Drafted by the sweep in the same call; sharpens judge-merge.
+  description String?  @db.VarChar(500)
+  isDefault   Boolean  @default(false) @map("is_default")
+  rank        Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  entity      Entity   @relation("EntityLabelEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  // Raw-SQL PARTIAL unique (migration 20260804000000):
+  // uq_entity_labels_one_default ON (entity_id, locale) WHERE is_default —
+  // exactly one default label per locale. Not expressible in Prisma; do
+  // not re-add as a plain @@unique (that would be a SECOND, non-partial
+  // index and permanent migrate-diff drift).
+  @@id([entityId, locale, form], map: "pk_entity_labels")
+  @@index([locale], map: "idx_entity_labels_locale")
+  @@map("entity_labels")
 }
 
 model RestaurantLocation {
@@ -2299,6 +2368,12 @@ model Signal {
   /// writes are picked up by recorded-at, so every signal eventually lands in
   /// its occurred-at day slice.
   recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
+  /// A10 (multilingual): subjectType='term' keys demand on RAW UNTAGGED
+  /// text — "pulpo" and "octopus" are two demand terms forever, on the
+  /// surface that DRIVES SPEND. Canonical BCP 47 detected FROM THE QUERY
+  /// STRING (script + language detection), request locale as a prior only.
+  /// NULL until detection ships (M4b); the append-only key is untouched.
+  detectedLocale String? @map("detected_locale")
   meta        Json?
 
   @@index([occurredAt])

@@ -1,4 +1,5 @@
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
+import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -411,6 +412,25 @@ export class PollEntitySeedService {
           primaryLocation: { connect: { locationId: location.locationId } },
         },
       });
+      // A1: the create wrote aliases[] inline (atomic with the row, so the
+      // name-unique index fires on THAT insert); the rows follow inside the
+      // same transaction, tagged with Google's own displayName language
+      // when it gave us one. Byte-identical projection — a no-op UPDATE.
+      const createdAliases = (entityData.aliases as string[] | undefined) ?? [];
+      if (createdAliases.length) {
+        const placeLocale =
+          match.place?.displayName?.languageCode?.trim() || undefined;
+        await addAliases(
+          tx,
+          entity.entityId,
+          createdAliases.map((form) => ({
+            form,
+            source: 'places' as const,
+            ...(placeLocale ? { locale: placeLocale } : {}),
+          })),
+          { markEmbeddingStale: false },
+        );
+      }
       return { entityId: entity.entityId, name: entity.name, adopted: false };
     });
 

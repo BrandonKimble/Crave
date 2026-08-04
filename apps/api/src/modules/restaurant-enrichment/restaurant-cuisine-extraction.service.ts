@@ -1,4 +1,5 @@
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
+import { addAliases } from '../content-processing/entity-resolver/entity-alias.service';
 import { Inject, Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -319,34 +320,50 @@ export class RestaurantCuisineExtractionService {
       const scopedAliases = this.normalizeAliasList(scopeCheck.validAliases);
 
       if (matched) {
-        const existingAliases = Array.isArray(matched.aliases)
-          ? matched.aliases
-          : [];
-        const mergedAliases = this.normalizeAliasList([
-          ...existingAliases,
-          ...scopedAliases,
-        ]);
-
-        if (!this.setsEqual(new Set(existingAliases), new Set(mergedAliases))) {
-          await this.prisma.entity.update({
-            where: { entityId: matched.entityId },
-            data: { aliases: mergedAliases },
-          });
-        }
+        // A1: through THE projection writer. normalizeAliasList's
+        // trim+collapse is what addAliases applies to every form, and its
+        // append order is what the seq-ordered projection reproduces —
+        // the resulting array is unchanged, but each cuisine surface now
+        // carries source 'cuisine'.
+        await this.prisma.$transaction((tx) =>
+          addAliases(
+            tx,
+            matched.entityId,
+            scopedAliases.map((alias) => ({
+              form: alias,
+              source: 'cuisine' as const,
+            })),
+          ),
+        );
 
         ids.push(matched.entityId);
         continue;
       }
 
+      const createAliases = scopedAliases.length ? scopedAliases : [cuisine];
       const created = await this.prisma.entity.create({
         data: {
           name: cuisine,
           type: EntityType.restaurant_attribute,
-          aliases: scopedAliases.length ? scopedAliases : [cuisine],
+          // Inline on the create so the array is ATOMIC with the row (the
+          // unique index fires on this insert); the rows follow, so
+          // provenance exists from the first instant.
+          aliases: createAliases,
           ...identityInsertData(cuisine, EntityType.restaurant_attribute),
         },
         select: { entityId: true },
       });
+      await this.prisma.$transaction((tx) =>
+        addAliases(
+          tx,
+          created.entityId,
+          createAliases.map((alias) => ({
+            form: alias,
+            source: 'cuisine' as const,
+          })),
+          { markEmbeddingStale: false },
+        ),
+      );
 
       ids.push(created.entityId);
     }

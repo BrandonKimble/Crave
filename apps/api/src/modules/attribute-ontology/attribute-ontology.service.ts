@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
+import {
+  addAliases,
+  foldAliasesFromMerge,
+} from '../content-processing/entity-resolver/entity-alias.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
@@ -664,15 +668,13 @@ export class AttributeOntologyService {
 
           for (const merge of plan.merges) {
             // Fold the merged entity's name + aliases onto the canonical.
-            await tx.$executeRawUnsafe(
-              `UPDATE core_entities y
-               SET aliases = (
-                 SELECT array_agg(DISTINCT a)
-                 FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
-               ),
-               name_embedding_stale = true
-               FROM core_entities x
-               WHERE y.entity_id = $1::uuid AND x.entity_id = $2::uuid`,
+            // A1: through THE projection writer — one implementation for
+            // every merge fold (this was a verbatim copy of the one in
+            // finalizeMergeCompletion), provenance 'merge_fold' recorded,
+            // carried rows keep their own locale. The writer marks the
+            // dense doc stale when the projection actually changes.
+            await foldAliasesFromMerge(
+              tx,
               merge.canonicalEntityId,
               merge.mergedEntityId,
             );
@@ -737,19 +739,28 @@ export class AttributeOntologyService {
             counts.renames += await tx.$executeRawUnsafe(
               `UPDATE core_entities
                SET name = $2,
-                   aliases = (
-                     SELECT array_agg(DISTINCT a)
-                     FROM unnest(array_remove(aliases || ARRAY[$3]::varchar[], $2)) a
-                   ),
-                   identity_key = $4,
-                   identity_key_sorted = $5,
+                   identity_key = $3,
+                   identity_key_sorted = $4,
                    name_embedding_stale = true
                WHERE entity_id = $1::uuid`,
               rename.entityId,
               rename.to,
-              rename.from,
               identity.identityKey,
               identity.identityKeySorted,
+            );
+            // A1 + N10: the demoted OLD DISPLAY NAME becomes a tagged,
+            // sourced alias ROW instead of being laundered anonymously
+            // into the untagged bag — 'ontology_rename' IS the label
+            // history the plan asked for. The new name is DEPRECATED as a
+            // surface (it is the display string now, not an alias),
+            // replacing the old array_remove: demotion is remembered, so
+            // a later writer re-proposing it does not silently resurrect
+            // the name into its own recall bag.
+            await addAliases(
+              tx,
+              rename.entityId,
+              [{ form: rename.from, source: 'ontology_rename' }],
+              { deprecateForms: [rename.to] },
             );
           }
 

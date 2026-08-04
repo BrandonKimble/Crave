@@ -1,5 +1,9 @@
 import { countEnrichmentFailure } from './enrichment-failure-counter';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
+import {
+  addAliases,
+  type AliasInput,
+} from '../content-processing/entity-resolver/entity-alias.service';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -819,6 +823,12 @@ export class RestaurantLocationEnrichmentService {
     let latestMatchMetadata: MatchMetadata | null = null;
     let combinedUpdateData: Prisma.EntityUpdateInput | null = null;
     let combinedUpdatedFields: string[] = [];
+    // A1: the Places alias forms, banked through the projection writer
+    // after the entity row commits (see below).
+    let pendingPlacesAliases: {
+      entityId: string;
+      forms: AliasInput[];
+    } | null = null;
     let targetNameForUpdate: string | null = null;
     let enrichmentScore: number | undefined;
     let googleRestaurantAttributeIds: string[] = [];
@@ -1015,11 +1025,20 @@ export class RestaurantLocationEnrichmentService {
         details.metadata.fieldMask,
         resolvedMatchMetadata,
       );
-      const { updateData: aliasUpdate, updatedFields: aliasFields } =
-        this.computeNameAndAliasUpdate(
-          entity,
-          this.getPlaceDisplayName(resolvedPlaceDetails),
-        );
+      const {
+        updateData: aliasUpdate,
+        updatedFields: aliasFields,
+        aliasForms: pendingAliasForms,
+      } = this.computeNameAndAliasUpdate(
+        entity,
+        this.getPlaceDisplayName(resolvedPlaceDetails),
+        [],
+        this.getPlaceDisplayLocale(resolvedPlaceDetails),
+      );
+      pendingPlacesAliases = {
+        entityId: entity.entityId,
+        forms: pendingAliasForms,
+      };
       combinedUpdateData = this.mergeEntityUpdates(updateData, aliasUpdate);
       combinedUpdatedFields = this.mergeUpdatedFieldLists(
         updatedFields,
@@ -1151,6 +1170,17 @@ export class RestaurantLocationEnrichmentService {
           });
         }
         throw error;
+      }
+
+      // A1: the alias half of the entity update lands here, through THE
+      // projection writer, once the row itself is committed (the name and
+      // identity keys had to move inside that transaction; the array is a
+      // derived index input and follows).
+      if (pendingPlacesAliases) {
+        await this.bankPlacesAliases(
+          pendingPlacesAliases.entityId,
+          pendingPlacesAliases.forms,
+        );
       }
 
       this.logger.info('Restaurant enriched with Google Places', {
@@ -1290,13 +1320,28 @@ export class RestaurantLocationEnrichmentService {
     return null;
   }
 
+  /**
+   * A1: this no longer writes `updateData.aliases`. It returns the alias
+   * FORMS it would have written; the caller banks them through the
+   * projection writer (`bankPlacesAliases`) after the entity write lands,
+   * and the writer re-derives the array. The name/identity half is
+   * unchanged — that IS an entity-column update.
+   *
+   * A4 free gift: `canonicalLocale` is Google's
+   * `displayName.languageCode`, which we used to discard. The localized
+   * display name lands as a TAGGED ALIAS ROW and NEVER overwrites `name`
+   * beyond what this function already did — the language tag costs
+   * nothing and is the only trustworthy tag we get for free.
+   */
   private computeNameAndAliasUpdate(
     entity: RestaurantEntity,
     canonicalName?: string | null,
     extraAliases: string[] = [],
+    canonicalLocale?: string | null,
   ): {
     updateData: Prisma.EntityUpdateInput;
     updatedFields: string[];
+    aliasForms: AliasInput[];
   } {
     const updateData: Prisma.EntityUpdateInput = {};
     const updatedFields: string[] = [];
@@ -1354,11 +1399,47 @@ export class RestaurantLocationEnrichmentService {
     }
 
     if (!this.aliasListsEqual(entity.aliases ?? [], mergedAliases)) {
-      updateData.aliases = mergedAliases;
       updatedFields.push('aliases');
     }
 
-    return { updateData, updatedFields };
+    // Only Google's own display name carries Google's language tag; every
+    // other form here is a pre-existing untagged surface or a merged
+    // duplicate's name, and inventing a tag for those would poison both
+    // languages' retrieval with no rollback.
+    const locale = canonicalLocale?.trim() || undefined;
+    const aliasForms: AliasInput[] = mergedAliases.map((form) => ({
+      form,
+      source: 'places' as const,
+      ...(locale && canonicalTrimmed && form === canonicalTrimmed
+        ? { locale }
+        : {}),
+    }));
+
+    return { updateData, updatedFields, aliasForms };
+  }
+
+  /** THE ONLY alias write in this service — every Places-derived surface
+   *  goes through the projection writer, which re-derives `aliases[]`. */
+  private async bankPlacesAliases(
+    entityId: string,
+    aliasForms: AliasInput[],
+  ): Promise<void> {
+    if (!aliasForms.length) {
+      return;
+    }
+    await this.prisma.$transaction((tx) =>
+      addAliases(tx, entityId, aliasForms),
+    );
+  }
+
+  /** A4: Google returns displayName.languageCode and we discarded it. */
+  private getPlaceDisplayLocale(
+    place: GooglePlacesV1Place | null | undefined,
+  ): string | null {
+    const code = place?.displayName?.languageCode;
+    return typeof code === 'string' && code.trim().length > 0
+      ? code.trim()
+      : null;
   }
 
   private normalizeName(value?: string | null): string | null {
@@ -1567,6 +1648,7 @@ export class RestaurantLocationEnrichmentService {
       canonical,
       this.getPlaceDisplayName(placeDetails),
       this.collectAliasCandidates(entity),
+      this.getPlaceDisplayLocale(placeDetails),
     );
 
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
@@ -1620,6 +1702,12 @@ export class RestaurantLocationEnrichmentService {
     // market-key bookkeeping around this is dead; §13 presence is geometric).
     await this.rescoreCoordinator.markDirty('location-enrichment');
 
+    // A1: alias forms bank through THE projection writer, after the
+    // merge has committed the canonical row.
+    await this.bankPlacesAliases(
+      updatedCanonical.entityId,
+      canonicalAliasUpdate.aliasForms,
+    );
     this.logger.info('Merged restaurant into canonical entity', {
       duplicateId: entity.entityId,
       canonicalId: updatedCanonical.entityId,
@@ -1732,6 +1820,7 @@ export class RestaurantLocationEnrichmentService {
       canonical,
       this.getPlaceDisplayName(placeDetails),
       this.collectAliasCandidates(entity),
+      this.getPlaceDisplayLocale(placeDetails),
     );
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
@@ -1780,6 +1869,12 @@ export class RestaurantLocationEnrichmentService {
 
     await this.rescoreCoordinator.markDirty('location-enrichment');
 
+    // A1: alias forms bank through THE projection writer, after the
+    // merge has committed the canonical row.
+    await this.bankPlacesAliases(
+      updatedCanonical.entityId,
+      canonicalAliasUpdate.aliasForms,
+    );
     this.logger.info('Merged restaurant into existing canonical by name', {
       duplicateId: entity.entityId,
       canonicalId: updatedCanonical.entityId,
@@ -1927,6 +2022,7 @@ export class RestaurantLocationEnrichmentService {
       canonical,
       this.getPlaceDisplayName(params.placeDetails),
       this.collectAliasCandidates(params.entity),
+      this.getPlaceDisplayLocale(params.placeDetails),
     );
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
@@ -1962,6 +2058,12 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Merged canonical entity not found after domain merge');
     }
 
+    // A1: alias forms bank through THE projection writer, after the
+    // merge has committed the canonical row.
+    await this.bankPlacesAliases(
+      refreshedCanonical.entityId,
+      canonicalAliasUpdate.aliasForms,
+    );
     this.logger.info('Merged restaurant into canonical entity by domain', {
       duplicateId: params.entity.entityId,
       canonicalId: refreshedCanonical.entityId,
@@ -2510,15 +2612,33 @@ export class RestaurantLocationEnrichmentService {
     canonicalName: string,
     idsByName: Map<string, string>,
   ): Promise<string> {
+    const seedAliases =
+      RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [];
     const created = await this.prisma.entity.create({
       data: {
         name: canonicalName,
         type: EntityType.restaurant_attribute,
-        aliases: RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [],
+        // Inline on the create so the array is ATOMIC with the row (the
+        // attribute identity unique index fires on this insert); the rows
+        // follow, so provenance exists from the first instant. These are
+        // the code-declared Google attribute surfaces, not Places text —
+        // 'seed', and English by declaration, but left 'und' because the
+        // vocabulary file carries no language tag to read.
+        aliases: seedAliases,
         ...identityInsertData(canonicalName, EntityType.restaurant_attribute),
       },
       select: { entityId: true },
     });
+    if (seedAliases.length) {
+      await this.prisma.$transaction((tx) =>
+        addAliases(
+          tx,
+          created.entityId,
+          seedAliases.map((form) => ({ form, source: 'seed' as const })),
+          { markEmbeddingStale: false },
+        ),
+      );
+    }
     idsByName.set(canonicalName, created.entityId);
     this.logger.info('Created restaurant_attribute entity on demand', {
       canonicalName,
