@@ -1,6 +1,7 @@
 import {
   canonicalizeLocaleTag,
   localeLookupChain,
+  normalizeLocaleTag,
   lookupSupported,
   negotiateLocale,
   parseAcceptLanguage,
@@ -92,5 +93,23 @@ describe('localeLookupChain — the RFC-4647 match set both SQL and TS share', (
       'es',
       'und',
     ]);
+  });
+});
+
+describe('normalizeLocaleTag — validate + canonicalize at the write ingress', () => {
+  it('canonicalizes casing', () => {
+    expect(normalizeLocaleTag('ES')).toBe('es');
+    expect(normalizeLocaleTag('pt-br')).toBe('pt-BR');
+    expect(normalizeLocaleTag('zh-hant')).toBe('zh-Hant');
+  });
+  it('rejects malformed tags to und (never free text)', () => {
+    for (const bad of ['es_MX', 'xxxxxxxxxxxxxxxxxxxx', '', 'e', '*', '  ']) {
+      expect(normalizeLocaleTag(bad)).toBe('und');
+    }
+  });
+  it('keeps und and well-formed-but-unregistered tags', () => {
+    expect(normalizeLocaleTag('und')).toBe('und');
+    expect(normalizeLocaleTag(null)).toBe('und');
+    expect(normalizeLocaleTag('es-419')).toBe('es-419');
   });
 });

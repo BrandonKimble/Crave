@@ -1,5 +1,10 @@
 import { EntityType } from '@prisma/client';
-import { canonicalFold, entityIdentityKey } from './entity-identity';
+import {
+  canonicalFold,
+  entityIdentityKey,
+  isDisplayable,
+  normalizeSurface,
+} from './entity-identity';
 
 /**
  * The canonical fold's job is to give two names that denote the same thing the
@@ -102,5 +107,32 @@ describe('entityIdentityKey — order/plural invariance still holds on the new f
 
   it('restaurant word order is preserved (branding), so it does NOT sort', () => {
     expect(canonicalFold("Phil's")).toBe(canonicalFold('Phils'));
+  });
+});
+
+describe('normalizeSurface — one display-preserving normal form for stored surfaces', () => {
+  it('collapses NFD and NFC spellings of one surface to identical bytes', () => {
+    expect(normalizeSurface('jalapeño'.normalize('NFD'))).toBe(
+      normalizeSurface('jalapeño'.normalize('NFC')),
+    );
+  });
+  it('deletes invisible format-controls but KEEPS case and accents', () => {
+    expect(normalizeSurface('Ta\u200bco Crème')).toBe('Taco Crème');
+  });
+  it('trims and collapses whitespace', () => {
+    expect(normalizeSurface('  taco   al   pastor ')).toBe('taco al pastor');
+  });
+});
+
+describe('isDisplayable — the write-ingress "is this a real surface" authority', () => {
+  it('accepts any script with a letter or digit', () => {
+    for (const s of ['taco', 'ラーメン', 'पनीर', 'مطعم', '7up']) {
+      expect(isDisplayable(s)).toBe(true);
+    }
+  });
+  it('rejects blank / invisible surfaces JS trim and SQL btrim both miss', () => {
+    for (const s of ['', '   ', '\u00a0', '\u2007', '\u200b', '!!!', '—']) {
+      expect(isDisplayable(s)).toBe(false);
+    }
   });
 });

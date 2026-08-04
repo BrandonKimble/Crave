@@ -148,6 +148,32 @@ export function lookupSupported(
 }
 
 /**
+ * NORMALIZE A STORED LOCALE TAG at the write ingress — the ONE validator every
+ * locale-bearing column (entity_alias.locale, entity_labels.locale) passes
+ * through. `Intl.Locale` is the principled BCP-47 parser: it canonicalizes
+ * casing (`ES`→`es`, `pt-br`→`pt-BR`) and THROWS on a malformed shape (`es_MX`,
+ * a 100-char blob, `''`), so a typo can never land as free text that the match
+ * filter then silently drops — a write that costs money and returns nothing.
+ * A well-formed but unregistered tag (`xx-klingon`) is KEPT, not invented away:
+ * it is honest input that simply matches only itself.
+ *
+ * `'und'` (RFC 5646 "undetermined") is the universal-alias sentinel and passes
+ * through. Anything unparseable becomes `'und'` — the conservative floor, the
+ * same choice `AliasInput` documents ("a FABRICATED tag is worse than none").
+ */
+export function normalizeLocaleTag(raw: string | null | undefined): string {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed || trimmed.toLowerCase() === 'und') {
+    return 'und';
+  }
+  try {
+    return new Intl.Locale(trimmed).toString();
+  } catch {
+    return 'und';
+  }
+}
+
+/**
  * THE LOCALE MATCH CHAIN — RFC 4647 Lookup expressed as the ORDERED list of
  * tags a request should match a stored row against, most-specific first,
  * always ending in the universal `'und'`. It is the same truncation +

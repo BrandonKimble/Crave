@@ -1,7 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SUPPORTED_LOCALES, DEFAULT_LOCALE } from '../../shared/locale';
+import {
+  SUPPORTED_LOCALES,
+  DEFAULT_LOCALE,
+  normalizeLocaleTag,
+} from '../../shared/locale';
+import {
+  isDisplayable,
+  normalizeSurface,
+} from '../content-processing/entity-resolver/entity-identity';
 import {
   AUTO_APPROVE_SCORE,
   NoopLabelGenerator,
@@ -163,7 +171,14 @@ export class LabelSweepService {
   ): Promise<number> {
     let written = 0;
     for (const label of labels) {
-      if (!label.form.trim()) {
+      // Same ingress primitives as the alias writer: NFC + format-control
+      // strip so a surface has ONE normal form, a validated BCP-47 tag so a
+      // typo can't land as free text the match filter drops, and the
+      // Unicode-aware displayable guard so a zero-width/NBSP-only label (which
+      // JS .trim() and SQL btrim both miss) never renders an invisible name.
+      const form = normalizeSurface(label.form);
+      const locale = normalizeLocaleTag(label.locale);
+      if (!isDisplayable(form)) {
         continue;
       }
       // `uq_entity_labels_one_default` is a PARTIAL unique on
@@ -174,7 +189,7 @@ export class LabelSweepService {
       const existingDefault = await this.prisma.entityLabel.findFirst({
         where: {
           entityId: label.entityId,
-          locale: label.locale,
+          locale,
           isDefault: true,
         },
         select: { form: true },
@@ -187,14 +202,14 @@ export class LabelSweepService {
         where: {
           entityId_locale_form: {
             entityId: label.entityId,
-            locale: label.locale,
-            form: label.form,
+            locale,
+            form,
           },
         },
         create: {
           entityId: label.entityId,
-          locale: label.locale,
-          form: label.form,
+          locale,
+          form,
           description: label.description,
           isDefault,
           rank: 0,

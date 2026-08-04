@@ -126,6 +126,38 @@ export function canonicalFold(name: string): string {
   );
 }
 
+/** THE DISPLAY-PRESERVING NORMAL FORM of a stored surface (alias form, label
+ *  form) — the ONE shape text takes before it is written, so byte-identity is
+ *  a property the unique indexes over `form` can actually enforce. NFC
+ *  composition collapses the NFD and NFC spellings of one surface (iOS
+ *  pasteboards and the macOS filesystem deliver NFD) that would otherwise mint
+ *  two rows; format-control characters (ZWSP/ZWJ/BOM …) are DELETED as
+ *  invisible non-identity; whitespace is trimmed and collapsed. Unlike
+ *  canonicalFold this KEEPS case and accents — it is the display form, not the
+ *  recall key. Aliases and labels share this exact function so a surface has
+ *  one normal form regardless of which table it lands in. */
+export function normalizeSurface(text: string): string {
+  return (text ?? '')
+    .normalize('NFC')
+    .replace(/\p{Cf}/gu, '')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+/** Does this text carry any identity-bearing content — at least one letter or
+ *  digit of ANY script — or is it blank/invisible (all whitespace, punctuation,
+ *  combining marks, zero-width/format controls)? The write-ingress authority
+ *  for "is this a real surface": a label or alias that fails this renders an
+ *  invisible name. It is APP-SIDE on purpose — V8's `\p{L}`/`\p{N}` are
+ *  Unicode-version-stable and platform-independent, whereas a Postgres
+ *  `[[:alnum:]]` CHECK folds non-Latin scripts differently across libc builds
+ *  (the same lesson that made identity_key app-written). NFC first so a
+ *  decomposed letter is seen as a letter. Equivalent to `canonicalFold(t) !==
+ *  ''` but cheaper — no fold needed to answer a yes/no. */
+export function isDisplayable(text: string): boolean {
+  return /[\p{L}\p{N}]/u.test((text ?? '').normalize('NFC'));
+}
+
 /** The stored identity for a name, or NULL when the name has no
  *  foldable identity (emoji-only / punctuation-only). NULL is the native
  *  "no identity" of the partial unique index and of every probe — the
