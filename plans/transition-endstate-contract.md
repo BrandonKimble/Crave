@@ -218,3 +218,35 @@ transition (flips with the presented entry, same commit).
 for press-triggered warm switches; seats-as-data (including instant mode,
 promoteAtLeast, rememberedDetent, preserveLiveY catch-all); entry identity
 as THE abstraction change; pollCreation-as-form is not a counterexample.
+
+## OWNER AMENDMENTS (2026-08-03, ratified in conversation)
+
+**OA1 — THE WORLD JOIN is a FAMILY, and listDetail is in it.** The owner:
+"the same sort of search flow happens when the list details gets pulled up —
+choreography between the map items having to be ready and the cards having
+to be ready, and then they get revealed at the exact same time; both still
+use the skeleton sheet as a loading state." The world-join family =
+{search/results, listDetail} (extensible by data): reveal joins {map items
+ready, cards ready}, skeleton sheet is the loading state throughout, and
+the join is the ONE choreography beyond the uniform switch that a scene may
+declare. listDetail's Part-2 row gains `worldJoin: true` alongside its
+absolute-middle seat. Falsifier: a world-join scene revealing cards before
+map items (or vice versa) is a RED violation.
+
+**OA2 — SKELETON VARIANTS ARE DATA (confirms G-SKEL).** One skeleton sheet
+includes the toggle strip, one does not — per-scene shape from the
+foundation spec (rowType + strip-in-skeleton pills), never a second
+material. Already G-SKEL's scope; recorded here as owner-ratified.
+
+**OA3 — THE PER-RUNG HYGIENE LAW.** Every rung ends with two obligations in
+its final commit: (1) its own kill-list — dead branches, unused fallbacks,
+superseded attempts created OR revealed by the rung — deleted, not deferred
+to R8 (R8 remains for the old-SYSTEM delete only); (2) a re-derivation
+checkpoint — one paragraph in this file stating whether the rung's
+implementation changed the believed ideal shape, and amending Parts 1-2 if
+so. "We question everything as we go, rederiving the ideal end state and
+abstractions while implementing" — owner directive, now regime rule 5.
+
+**OA4 — pollCreation's instant mode: owner to reaffirm or retire** (added
+to Part 5 ratifications; the field ships either way, the default is the
+question).
