@@ -109,6 +109,33 @@ export class AccountDeletionService {
       await this.prisma.userDevice.deleteMany({
         where: { userId: user.userId },
       });
+      // USERNAME: BURN THE HANDLE, DROP THE PERSON LINK (owner ruling
+      // 2026-08-03; corrects a defect introduced 2026-08-02).
+      //
+      // `username_history` is not a log — it IS the anti-reuse mechanism
+      // (username.service.ts checks it and reports 'taken'). Deleting these
+      // rows to remove PII therefore UN-BURNED the handle: a deleted user's
+      // name became claimable by anyone, which is exactly the impersonation
+      // the burn ruling exists to prevent. But the rows are also a
+      // person<->handle mapping, so keeping them is not an option either.
+      //
+      // `reserved_usernames` is keyed by the handle ALONE, with no person
+      // column — it burns a name while retaining nothing about who held it.
+      // So: reserve every handle this person ever used, THEN drop the
+      // mapping. The name stays permanently unavailable; the link is gone.
+      const heldNames = await this.prisma.usernameHistory.findMany({
+        where: { userId: user.userId },
+        select: { username: true },
+      });
+      const toBurn = new Set(heldNames.map((row) => row.username));
+      if (user.username) toBurn.add(user.username);
+      for (const username of toBurn) {
+        await this.prisma.reservedUsername.upsert({
+          where: { username },
+          update: {},
+          create: { username, reason: 'account_deleted' },
+        });
+      }
       await this.prisma.usernameHistory.deleteMany({
         where: { userId: user.userId },
       });

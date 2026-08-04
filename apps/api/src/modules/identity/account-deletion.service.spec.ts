@@ -24,7 +24,11 @@ function makeService(overrides?: {
       deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     userDevice: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    usernameHistory: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    usernameHistory: {
+      findMany: jest.fn().mockResolvedValue([{ username: 'oldhandle' }]),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    reservedUsername: { upsert: jest.fn().mockResolvedValue({}) },
     // D40: signals severance + the two user-data tables that die outright.
     signalActor: {
       findUnique: jest
@@ -209,5 +213,23 @@ describe('AccountDeletionService', () => {
     } as never);
     expect(clerkAuth.deleteClerkUser).not.toHaveBeenCalled();
     expect(prisma.user.update).toHaveBeenCalled();
+  });
+  it('BURNS every handle the person ever held, then drops the person link (RED-proof for the 2026-08-02 defect: deleting username_history alone made the handle reclaimable)', async () => {
+    const { service, prisma } = makeService();
+    await service.deleteAccount(user);
+    // Every held handle is reserved — reserved_usernames has NO person
+    // column, so the name is burned while nothing about who held it remains.
+    const burned = (prisma.reservedUsername.upsert as jest.Mock).mock.calls.map(
+      (c: any[]) => c[0].create.username,
+    );
+    expect(burned).toEqual(expect.arrayContaining(['oldhandle']));
+    expect(
+      (prisma.reservedUsername.upsert as jest.Mock).mock.calls[0][0].create
+        .reason,
+    ).toBe('account_deleted');
+    // ...and only THEN is the person<->handle mapping removed.
+    expect(prisma.usernameHistory.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 'u-del-1' },
+    });
   });
 });
