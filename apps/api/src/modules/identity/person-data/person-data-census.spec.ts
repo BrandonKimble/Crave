@@ -39,6 +39,8 @@ const BUSINESS_TABLES = new Set([
 interface SchemaColumn {
   table: string;
   column: string;
+  /** `String?` in the schema — i.e. the column can actually be set NULL. */
+  optional: boolean;
 }
 
 /** Parse `@@map`ped table names and `@map`ped column names out of the schema. */
@@ -61,7 +63,8 @@ function readSchemaColumns(): SchemaColumn[] {
       const column =
         colMap?.[1] ??
         field[1].replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
-      out.push({ table, column });
+      const optional = /^\w+\s+\w+\?/.test(trimmed);
+      out.push({ table, column, optional });
     }
   }
   return out;
@@ -111,5 +114,22 @@ describe('person-data census — every person-shaped column is classified', () =
       (key) => !real.has(key),
     );
     expect(stale).toEqual([]);
+  });
+
+  it('every `sever` rule targets a NULLABLE column — a declaration that cannot be executed is a lie', () => {
+    // RED-proof for a real defect (2026-08-03): seven `sever` rules targeted
+    // NOT NULL columns (photos.user_id, poll_comments.user_id,
+    // messages.sender_user_id, ...). The declaration read correctly and could
+    // not run. Those are now `anonymized_by_shell`, which names the mechanism
+    // that actually provides their anonymity.
+    const byKey = new Map(
+      readSchemaColumns().map((c) => [`${c.table}.${c.column}`, c.optional]),
+    );
+    const notNullable = PERSON_DATA_RULES.filter(
+      (r) => r.disposition === 'sever',
+    )
+      .map((r) => `${r.table}.${r.column}`)
+      .filter((key) => byKey.get(key) === false);
+    expect(notNullable).toEqual([]);
   });
 });

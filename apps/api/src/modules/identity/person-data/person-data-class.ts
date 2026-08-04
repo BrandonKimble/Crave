@@ -39,6 +39,18 @@ export type PersonDataDisposition =
   | 'null_column'
   /** Keep as-is. Requires a stated legal basis and a horizon. */
   | 'retain'
+  /**
+   * The column keeps pointing at the departing person's OWN `users` row, which
+   * survives ANONYMIZED (no name, no email, no auth identity — it exists only
+   * to anchor retained financial records and severed authorship). Anonymity
+   * comes from the shell, not from nulling the pointer.
+   *
+   * This is the Reddit/Discord shape and it is why NO Ghost User sentinel is
+   * needed: the anonymized shell already IS the ghost, without a fake account
+   * that has to be kept unfollowable, unmessageable and unsearchable.
+   * `assertShellIsAnonymous` in the eraser proves the invariant this relies on.
+   */
+  | 'anonymized_by_shell'
   /** Deliberately NOT a person's data (a restaurant's phone is the business's). */
   | 'not_person';
 
@@ -48,6 +60,13 @@ export interface PersonDataRule {
   disposition: PersonDataDisposition;
   /** Optional SQL predicate narrowing the rule to some rows of the table. */
   rowPredicate?: string;
+  /**
+   * How to reach the person from THIS table when the person key is not a
+   * direct column — e.g. `signals` reaches a person only through
+   * `signal_actors`. `$1` is bound to the user id. Declared, because a join
+   * this important should be written down once, not re-derived per caller.
+   */
+  personScopeSql?: string;
   /** Why. Required for `retain` and `not_person` — the two that keep data. */
   basis?: string;
   /** Retention horizon in days, for `retain`. */
@@ -98,9 +117,9 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
   // RULING (owner, 2026-08-03): photos KEPT anonymized (pending the ToS
   // content licence); polls/comments/endorsements likewise. Reddit's pattern:
   // "posts stay, but people can't see who they came from."
-  { table: 'photos', column: 'user_id', disposition: 'sever' },
-  { table: 'poll_comments', column: 'user_id', disposition: 'sever' },
-  { table: 'poll_endorsements', column: 'user_id', disposition: 'sever' },
+  { table: 'photos', column: 'user_id', disposition: 'anonymized_by_shell' },
+  { table: 'poll_comments', column: 'user_id', disposition: 'anonymized_by_shell' },
+  { table: 'poll_endorsements', column: 'user_id', disposition: 'anonymized_by_shell' },
   { table: 'polls', column: 'created_by_user_id', disposition: 'sever' },
   { table: 'poll_topics', column: 'created_by_user_id', disposition: 'sever' },
 
@@ -112,7 +131,7 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
 
   // Messages: ONE row, two parties. Deleting it would destroy the recipient's
   // copy of their own conversation — which the ruling explicitly preserves.
-  { table: 'messages', column: 'sender_user_id', disposition: 'sever',
+  { table: 'messages', column: 'sender_user_id', disposition: 'anonymized_by_shell',
     basis: "The recipient keeps their conversation record; only authorship is dropped." },
 
   // ─── Anonymous demand evidence: sever the person, keep the act ───────────
@@ -132,12 +151,12 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     basis: 'The departing person is the blocker; with them gone the block protects nobody.' },
   { table: 'user_blocks', column: 'blocked_user_id', disposition: 'retain',
     basis: 'A block placed BY someone else protects THEM; it must outlive the blocked account.' },
-  { table: 'user_reports', column: 'reporter_user_id', disposition: 'sever',
+  { table: 'user_reports', column: 'reporter_user_id', disposition: 'anonymized_by_shell',
     basis: 'The report survives for moderation; the reporter is de-identified.' },
   { table: 'user_reports', column: 'reported_user_id', disposition: 'retain',
     basis: 'A safety record ABOUT the departing person — the exact case a name-based rule cannot distinguish from the column above.' },
-  { table: 'poll_comment_reports', column: 'reporter_user_id', disposition: 'sever' },
-  { table: 'photo_reports', column: 'user_id', disposition: 'sever' },
+  { table: 'poll_comment_reports', column: 'reporter_user_id', disposition: 'anonymized_by_shell' },
+  { table: 'photo_reports', column: 'user_id', disposition: 'anonymized_by_shell' },
 
   // ─── Money: legally required to survive ──────────────────────────────────
   { table: 'billing_subscriptions', column: 'user_id', disposition: 'retain',
@@ -153,8 +172,10 @@ export const PERSON_DATA_RULES: readonly PersonDataRule[] = [
     disposition: 'delete_row',
     basis: 'Raw typed search text. Dies with the row (same rule as its user_id).' },
   { table: 'signals', column: 'subject_text', disposition: 'null_column',
+    personScopeSql: "actor_id IN (SELECT actor_id FROM signal_actors WHERE user_id = $1::uuid)",
     basis: 'Raw typed query. The act survives as anonymous demand; the words do not.' },
   { table: 'signal_demand_daily', column: 'subject_text', disposition: 'null_column',
+    personScopeSql: "actor_id IN (SELECT actor_id FROM signal_actors WHERE user_id = $1::uuid)",
     basis: 'Same words, rolled up. Counts survive, text does not.' },
   { table: 'user_taste_profile', column: 'subject_text', disposition: 'delete_row',
     basis: 'Dies with the profile row (same rule as its actor_id).' },
