@@ -1,3 +1,4 @@
+import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
 import { Prisma } from '@prisma/client';
@@ -304,10 +305,12 @@ export class SearchQueryExecutor {
     private readonly queryBuilder: SearchQueryBuilder,
   ) {
     this.logger = loggerService.setContext('SearchQueryExecutor');
-    this.diagnosticLogging =
-      (process.env.SEARCH_VERBOSE_DIAGNOSTICS || '').toLowerCase() === 'true';
-    this.includePhaseTimings =
-      (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
+    this.diagnosticLogging = isEnvFlagEnabled(
+      process.env.SEARCH_VERBOSE_DIAGNOSTICS,
+    );
+    this.includePhaseTimings = isEnvFlagEnabled(
+      process.env.SEARCH_INCLUDE_PHASE_TIMINGS,
+    );
   }
 
   /**

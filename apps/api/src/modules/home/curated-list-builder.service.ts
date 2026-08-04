@@ -1,3 +1,4 @@
+import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
 /**
  * CURATED LIST BUILDER (plans/home-surface-charter.md) — the worker-side
  * materializer for the home surface's app-curated lists.
@@ -105,7 +106,7 @@ export class CuratedListBuilderService {
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
   async scheduledBuild(): Promise<void> {
-    if (process.env.CURATED_LISTS_BUILD_ENABLED === 'false') {
+    if (isEnvFlagExplicitlyDisabled(process.env.CURATED_LISTS_BUILD_ENABLED)) {
       return;
     }
     if (this.buildInFlight) {

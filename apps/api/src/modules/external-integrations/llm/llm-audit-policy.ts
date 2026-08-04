@@ -1,3 +1,7 @@
+import {
+  isEnvFlagEnabled,
+  isEnvFlagExplicitlyDisabled,
+} from '../../../shared/config/env-flag';
 /**
  * Audit-reason policy for LLM output schemas.
  *
@@ -24,9 +28,9 @@ let cached: boolean | null = null;
 
 export function auditReasonsEnabled(): boolean {
   if (cached !== null) return cached;
-  const explicit = process.env.LLM_AUDIT_REASONS?.trim().toLowerCase();
-  if (explicit === 'true') cached = true;
-  else if (explicit === 'false') cached = false;
+  const explicit = process.env.LLM_AUDIT_REASONS;
+  if (isEnvFlagEnabled(explicit)) cached = true;
+  else if (isEnvFlagExplicitlyDisabled(explicit)) cached = false;
   // ONE resolver (red team 2026-08-02). This read APP_ENV only, so a
   // process relying on the NODE_ENV fallback was treated as non-prod.
   else cached = !isProdEnv(resolveAppEnv());

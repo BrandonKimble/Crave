@@ -1,3 +1,4 @@
+import { isEnvFlagExplicitlyDisabled } from '../../../shared/config/env-flag';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -371,7 +372,7 @@ export class GeminiBatchService implements OnModuleDestroy {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async poll(): Promise<void> {
-    if (process.env.LLM_BATCH_POLL_ENABLED === 'false') return;
+    if (isEnvFlagExplicitlyDisabled(process.env.LLM_BATCH_POLL_ENABLED)) return;
     if (this.shuttingDown) return;
     if (this.pollInFlight) return;
     this.pollInFlight = true;

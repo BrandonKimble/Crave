@@ -1,3 +1,4 @@
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClerkClient, verifyToken } from '@clerk/clerk-sdk-node';
@@ -239,7 +240,7 @@ export class ClerkAuthService {
     if (token !== DEV_PERF_SCENARIO_AUTH_TOKEN) {
       return false;
     }
-    if (process.env.ENABLE_DEV_PERF_SCENARIO_AUTH !== 'true') {
+    if (!isEnvFlagEnabled(process.env.ENABLE_DEV_PERF_SCENARIO_AUTH)) {
       return false;
     }
     return (

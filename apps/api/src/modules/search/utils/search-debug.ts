@@ -1,3 +1,4 @@
+import { isEnvFlagEnabled } from '../../../shared/config/env-flag';
 import type {
   QueryEntityDto,
   QueryEntityGroupDto,
@@ -12,11 +13,12 @@ export function resolveSearchDebugMode(): SearchDebugMode {
     .trim()
     .toLowerCase();
 
-  const verbose =
-    verboseRaw === '1' || verboseRaw === 'true' || enabledRaw === 'verbose';
+  // SEARCH_DEBUG_LOG is a MODE selector ('summary' | 'verbose') that also
+  // accepts a plain boolean, so the flag vocabulary and the mode names are
+  // both honoured — through the ONE flag helper, not a fourth dialect.
+  const verbose = isEnvFlagEnabled(verboseRaw) || enabledRaw === 'verbose';
   const enabled =
-    enabledRaw === '1' ||
-    enabledRaw === 'true' ||
+    isEnvFlagEnabled(enabledRaw) ||
     enabledRaw === 'summary' ||
     enabledRaw === 'verbose';
 

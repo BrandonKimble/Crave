@@ -1,3 +1,7 @@
+import {
+  isEnvFlagEnabled,
+  isEnvFlagExplicitlyDisabled,
+} from '../config/env-flag';
 import * as winston from 'winston';
 import * as DailyRotateFile from 'winston-daily-rotate-file';
 import { WinstonModuleOptions } from 'nest-winston';
@@ -85,7 +89,7 @@ export function createWinstonConfig(
   const forceJson =
     (process.env.LOG_FORMAT || '').toLowerCase() === 'json' ? true : false;
   const useJsonFormat = forceJson || !isDevelopment;
-  const enableFileLogs = process.env.LOG_FILES === 'true';
+  const enableFileLogs = isEnvFlagEnabled(process.env.LOG_FILES);
   const allowedLevels = [
     'error',
     'warn',
@@ -107,8 +111,8 @@ export function createWinstonConfig(
   // Console transport (always enabled in development, optional in production)
   const enableConsoleLogs =
     isDevelopment ||
-    process.env.LOG_CONSOLE === 'true' ||
-    (!isDevelopment && process.env.LOG_CONSOLE !== 'false');
+    isEnvFlagEnabled(process.env.LOG_CONSOLE) ||
+    (!isDevelopment && !isEnvFlagExplicitlyDisabled(process.env.LOG_CONSOLE));
   if (enableConsoleLogs) {
     transports.push(
       new winston.transports.Console({

@@ -1,3 +1,4 @@
+import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
@@ -112,7 +113,11 @@ export class SignalDemandAggregateService {
    */
   @Cron('*/15 * * * *')
   async refreshFromWatermark(): Promise<void> {
-    if (process.env.SIGNAL_DEMAND_AGGREGATE_REFRESH_ENABLED === 'false') {
+    if (
+      isEnvFlagExplicitlyDisabled(
+        process.env.SIGNAL_DEMAND_AGGREGATE_REFRESH_ENABLED,
+      )
+    ) {
       return;
     }
     if (this.refreshInFlight) {

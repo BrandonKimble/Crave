@@ -1,3 +1,7 @@
+import {
+  isEnvFlagEnabled,
+  isEnvFlagExplicitlyDisabled,
+} from '../../shared/config/env-flag';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
 import {
@@ -2988,27 +2992,22 @@ export class SearchService {
     if (!this.isDevEnvironment) {
       return false;
     }
-    const raw = process.env.SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW || '';
-    if (raw) {
-      return raw.toLowerCase() === 'true';
-    }
-    return true;
+    // Opt-DOWN: on in dev unless explicitly turned off.
+    return !isEnvFlagExplicitlyDisabled(
+      process.env.SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW,
+    );
   }
 
   private resolveIncludePhaseTimings(): boolean {
-    const raw = process.env.SEARCH_INCLUDE_PHASE_TIMINGS;
-    if (typeof raw === 'string' && raw.length > 0) {
-      return raw.toLowerCase() === 'true';
-    }
-    return false;
+    return isEnvFlagEnabled(process.env.SEARCH_INCLUDE_PHASE_TIMINGS);
   }
 
   private resolveExplainEnabled(): boolean {
-    const raw = process.env.SEARCH_EXPLAIN_ENABLED;
-    if (typeof raw === 'string' && raw.length > 0) {
-      return raw.toLowerCase() === 'true';
-    }
-    return this.isDevEnvironment;
+    // Defaults to the dev answer; an explicit value in either direction wins.
+    return isEnvFlagEnabled(
+      process.env.SEARCH_EXPLAIN_ENABLED,
+      this.isDevEnvironment,
+    );
   }
 
   private resolveOnDemandMinResults(): number {

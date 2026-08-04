@@ -135,6 +135,8 @@ export default tseslint.config(
       // value so an unrecognized one fails closed.
       'src/shared/config/debug-routes.gate.ts',
       'src/modules/identity/auth/clerk-auth.service.ts',
+      // Owns the one boolean vocabulary, so it is where the literals live.
+      'src/shared/config/env-flag.ts',
     ],
     rules: {
       // FIVE SELECTORS, BECAUSE THE FIRST ONE HAD FOUR HOLES.
@@ -152,8 +154,33 @@ export default tseslint.config(
       // this rule exists is that two spellings of APP_ENV became two Redis
       // key prefixes and silently doubled the rate-limit ceiling on the two
       // vendors that cost the most.
+      // ONE no-restricted-syntax BLOCK FOR THE WHOLE TREE — AGAIN.
+      // A separate block for the boolean-flag selector below silently REPLACED
+      // these APP_ENV selectors for all of src/, because flat config does not
+      // merge rule OPTIONS. That is the second time this exact trap has bitten
+      // in this file, and the second time a RED re-run caught it rather than a
+      // reading. Every no-restricted-syntax selector belongs here.
       'no-restricted-syntax': [
         'error',
+        {
+          // ONE BOOLEAN DIALECT, AND NO ALLOWLIST.
+          //
+          // COLLECTION_SCHEDULER_ENABLED once had two readers with two answers
+          // — one lowercased, one tested `=== 'true'` — so `=TRUE` started the
+          // collection pacer while Reddit skipped credential validation.
+          //
+          // Two Jest scanners regex'd for this, and one carried a FIFTEEN-FILE
+          // allowlist of "known remaining" offenders. A documented debt list is
+          // still a debt list: each of those files kept a dialect a plausible
+          // value ('yes', 'TRUE', '1') read the wrong way. All 31 sites are
+          // converted, so this needs no exceptions — the only kind of boundary
+          // that stays true. shared/config/env-flag.ts owns the literals and is
+          // exempted at the block level.
+          selector:
+            'BinaryExpression[operator=/^[!=]==$/] > Literal[value=/^(true|false|TRUE|FALSE)$/]',
+          message:
+            "Comparing against the STRING 'true'/'false' is a hand-rolled flag dialect — the failure mode is a plausible value (yes, TRUE, on) reading the wrong way, silently. Use isEnvFlagEnabled / isEnvFlagExplicitlyDisabled from shared/config/env-flag.",
+        },
         {
           selector:
             "MemberExpression[object.object.name='process'][object.property.name='env'][property.name=/^(APP_ENV|CRAVE_ENV)$/]",

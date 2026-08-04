@@ -1,3 +1,4 @@
+import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { Injectable, Inject } from '@nestjs/common';
 import { performance } from 'perf_hooks';
 import { EntityType } from '@prisma/client';
@@ -91,8 +92,9 @@ export class SearchQueryInterpretationService {
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
-    this.includePhaseTimings =
-      (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
+    this.includePhaseTimings = isEnvFlagEnabled(
+      process.env.SEARCH_INCLUDE_PHASE_TIMINGS,
+    );
   }
 
   async interpret(

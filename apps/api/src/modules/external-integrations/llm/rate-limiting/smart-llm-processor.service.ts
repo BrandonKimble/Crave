@@ -1,3 +1,4 @@
+import { isEnvFlagEnabled } from '../../../../shared/config/env-flag';
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { LLMService } from '../llm.service';
@@ -720,9 +721,9 @@ export class SmartLLMProcessor implements OnModuleInit {
       ) {
         this.cachedInstructionTokens = cachedInstructionTokens;
       }
-      const includeCached =
-        process.env.LLM_TPM_INCLUDE_CACHED === 'true' ||
-        process.env.LLM_TPM_INCLUDE_CACHED === '1';
+      const includeCached = isEnvFlagEnabled(
+        process.env.LLM_TPM_INCLUDE_CACHED,
+      );
       const cached = includeCached
         ? (usageMetadata.cachedContentTokenCount ?? 0)
         : 0;

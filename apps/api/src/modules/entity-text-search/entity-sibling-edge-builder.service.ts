@@ -1,3 +1,4 @@
+import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
@@ -144,7 +145,11 @@ export class EntitySiblingEdgeBuilderService {
 
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async scheduledRebuild(): Promise<void> {
-    if (process.env.ENTITY_SIBLING_EDGES_REBUILD_ENABLED === 'false') {
+    if (
+      isEnvFlagExplicitlyDisabled(
+        process.env.ENTITY_SIBLING_EDGES_REBUILD_ENABLED,
+      )
+    ) {
       return;
     }
     if (this.rebuildInFlight) {

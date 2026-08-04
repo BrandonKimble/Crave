@@ -1,3 +1,4 @@
+import { isEnvFlagEnabled } from '../../shared/config/env-flag';
 import { Inject, Injectable } from '@nestjs/common';
 import { SearchService } from './search.service';
 import {
@@ -28,8 +29,9 @@ export class SearchOrchestrationService {
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchOrchestrationService');
-    this.includePhaseTimings =
-      (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
+    this.includePhaseTimings = isEnvFlagEnabled(
+      process.env.SEARCH_INCLUDE_PHASE_TIMINGS,
+    );
     this.debugMode = resolveSearchDebugMode();
   }
 

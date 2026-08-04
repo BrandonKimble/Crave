@@ -1,3 +1,4 @@
+import { isEnvFlagExplicitlyDisabled } from '../../shared/config/env-flag';
 import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityType } from '@prisma/client';
@@ -132,7 +133,11 @@ export class EntityEmbeddingReconcilerService
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async scheduledReconcile(): Promise<void> {
-    if (process.env.ENTITY_EMBEDDING_RECONCILE_ENABLED === 'false') {
+    if (
+      isEnvFlagExplicitlyDisabled(
+        process.env.ENTITY_EMBEDDING_RECONCILE_ENABLED,
+      )
+    ) {
       return;
     }
     if (this.reconcileInFlight) {

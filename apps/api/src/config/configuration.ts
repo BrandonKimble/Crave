@@ -1,3 +1,7 @@
+import {
+  isEnvFlagEnabled,
+  isEnvFlagExplicitlyDisabled,
+} from '../shared/config/env-flag';
 import { placesOperationLimits } from '../modules/external-integrations/shared/vendor-pricing';
 // ONE resolveAppEnv, imported (audit 2026-08-02, F403). This file used to
 // carry a byte-equivalent COPY of it — including the same six-line comment
@@ -111,7 +115,9 @@ export default () => {
        * The weekly detect→act pass. OFF by default: a dev corpus has nothing
        * worth keeping fresh, and this cron SPENDS Places money.
        */
-      cronEnabled: process.env.LOCATION_LIFECYCLE_CRON_ENABLED === 'true',
+      cronEnabled: isEnvFlagEnabled(
+        process.env.LOCATION_LIFECYCLE_CRON_ENABLED,
+      ),
       /** DETECT: re-poll a location this many days after its last poll. */
       refreshTtlDays: positiveIntEnv('LOCATION_REFRESH_TTL_DAYS', 90),
       /** DETECT: how many stale locations one weekly pass re-polls. */
@@ -306,7 +312,7 @@ export default () => {
       // The interactive query-path ceiling moved to GEMINI_CALLER_PROFILES
       // (F122/D16): it is per-caller configuration, and this key's only four
       // readers were the four query-class call sites.
-      queryLogOutputs: process.env.LLM_QUERY_LOG_OUTPUTS === 'true',
+      queryLogOutputs: isEnvFlagEnabled(process.env.LLM_QUERY_LOG_OUTPUTS),
       baseUrl:
         process.env.LLM_BASE_URL ||
         'https://generativelanguage.googleapis.com/v1beta',
@@ -332,7 +338,9 @@ export default () => {
         // MINIMAL for the latency-sensitive query path.
         level: 'LOW',
         queryLevel: 'MINIMAL',
-        includeThoughts: process.env.LLM_THINKING_INCLUDE_THOUGHTS === 'true',
+        includeThoughts: isEnvFlagEnabled(
+          process.env.LLM_THINKING_INCLUDE_THOUGHTS,
+        ),
         // Runtime per-caller overrides (JSON: {"caller.tag":"MEDIUM"}).
         // Wins over the profile table; red team F4 found the channel was
         // documented but unparseable — a promised override nobody could set.
@@ -347,9 +355,13 @@ export default () => {
         })(),
       },
       thoughtDebug: {
-        enabled: process.env.LLM_DEBUG_THOUGHTS_ONCE === 'true',
-        query: process.env.LLM_DEBUG_THOUGHTS_QUERY !== 'false',
-        content: process.env.LLM_DEBUG_THOUGHTS_CONTENT !== 'false',
+        enabled: isEnvFlagEnabled(process.env.LLM_DEBUG_THOUGHTS_ONCE),
+        query: !isEnvFlagExplicitlyDisabled(
+          process.env.LLM_DEBUG_THOUGHTS_QUERY,
+        ),
+        content: !isEnvFlagExplicitlyDisabled(
+          process.env.LLM_DEBUG_THOUGHTS_CONTENT,
+        ),
         maxChars: parseInt(process.env.LLM_DEBUG_THOUGHTS_MAX_CHARS || '0', 10),
         maxQueryEntries: parseInt(
           process.env.LLM_DEBUG_THOUGHTS_MAX_QUERIES || '0',
@@ -359,7 +371,9 @@ export default () => {
           process.env.LLM_DEBUG_THOUGHTS_MAX_CONTENT_CHUNKS || '0',
           10,
         ),
-        writeToFile: process.env.LLM_DEBUG_THOUGHTS_WRITE_FILE === 'true',
+        writeToFile: isEnvFlagEnabled(
+          process.env.LLM_DEBUG_THOUGHTS_WRITE_FILE,
+        ),
         filePath: process.env.LLM_DEBUG_THOUGHTS_FILE_PATH || undefined,
         filePathQuery:
           process.env.LLM_DEBUG_THOUGHTS_FILE_PATH_QUERY || undefined,
@@ -383,8 +397,9 @@ export default () => {
           process.env.LLM_QUERY_RESULT_CACHE_VERSION || 'v1',
         queryResultLocalTtlSeconds: 120,
         queryResultLocalMaxEntries: 200,
-        queryResultIncludeMetadata:
-          process.env.LLM_QUERY_RESULT_CACHE_INCLUDE_METADATA === 'true',
+        queryResultIncludeMetadata: isEnvFlagEnabled(
+          process.env.LLM_QUERY_RESULT_CACHE_INCLUDE_METADATA,
+        ),
       },
     },
     googlePlaces: {
@@ -504,7 +519,7 @@ export default () => {
       pipelineScope: ['chronological', 'archive', 'keyword'],
     },
     unifiedProcessing: {
-      dryRun: process.env.UNIFIED_PROCESSING_DRY_RUN === 'true',
+      dryRun: isEnvFlagEnabled(process.env.UNIFIED_PROCESSING_DRY_RUN),
     },
     // FOUR KEYS, ALL READ (audit 2026-08-02, F405). This block declared ~40
     // keys — batchProcessing, checkpoints, storage.s3, validation, batchSize,
