@@ -815,3 +815,45 @@ CANDIDATES = [...LANGUAGE_PACKS.keys()]`; `baseLanguage` via `Intl.Locale`.
   separate the serialization key from the adoption key (order-sensitive tiebreak
   before adopt) + a monitored count of coarse groups whose members differ under
   the strict key.
+
+### Backlog burndown + list census (2026-08-04, second red-team pass)
+
+Answering the owner's question "are we maintaining non-exhaustive lists?": a
+whole-codebase census found the i18n text lists are almost all
+CLOSED-and-defensible (each carries a defending comment — NON_DECOMPOSABLE is
+finite, SCRIPT_RANGES uses `\p{Script}` escapes, negation cues fail-closed by
+design, food-lemma/stopwords are DB-validated). The real open smells were
+write-ingress ABSENT primitives and two Google-Places hand-lists.
+
+**FIXED this pass (commits f22f47675, 3bc4fa6c1):**
+
+- **One surface-write ingress primitive.** `normalizeSurface` (NFC + strip
+  format-controls) + `isDisplayable` (\p{L}|\p{N}, app-side/platform-stable) +
+  `normalizeLocaleTag` (Intl.Locale validate/canonicalize) now guard BOTH the
+  alias and label writers. Kills: NFD/NFC duplicate rows, invisible
+  (zero-width/NBSP) names that passed JS `.trim()` AND SQL `btrim()`, and
+  free-text locale tags (`xx-KLINGON`, `es_MX`, 100-char) that landed as
+  writes the match filter silently drops.
+- **deprecateForms** now matches on the app-written `form_folded`, not
+  `lower(form) = ANY(js-lowercased)` — the JS-vs-Postgres lowercase mismatch
+  that silently no-op'd the ontology-rename demotion on Turkish-İ forms.
+- **Places SKU billing drift** is now guarded: `takeout` (a live under-metered
+  Atmosphere field) tiered, an explicit ESSENTIALS floor, a runtime
+  `unclassifiedPlacesFields` warning, and a coverage spec that fails RED if a
+  request mask gains an untiered field.
+- **PREFERRED_PLACE_TYPES** (a 64-entry third hand-copy of the Google-type
+  namespace) replaced with `Object.keys(map) ∪ {'restaurant'}` — proven equal,
+  drift now impossible.
+
+**Still open (recorded, each with its primitive):** fold-version reconciler
+(derived-key ownership; drift currently 0 so not urgent); analyzer's two script
+tables → one table with a `pinnedLang` column + `DETECTOR_CANDIDATES` derived
+from `LANGUAGE_PACKS` + `baseLanguage` via `Intl.Locale`; dense-floor
+calibration (needs a labeled corpus → needs the market); negation decided
+JOINTLY with the name arm; coarse identity_key adopt-guard.
+
+**Owner call (surfaced, not shipped):** `GOOGLE_PLACE_CUISINE_TYPE_MAP` is an
+open list of world cuisines whose N+1 (ethiopian/peruvian/…) falls to the LLM
+lane. Its values are mechanical (`x_restaurant → x`) but the cuisine-vs-format
+classification is editorial — inverting the default (unknown `_restaurant` ⇒
+cuisine) would change cuisine-extraction behavior, so it's your call.
