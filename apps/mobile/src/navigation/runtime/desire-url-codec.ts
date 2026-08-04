@@ -2,7 +2,7 @@
 // pair making Desire ⇄ URL total. Search desires (query/shortcut/entity), scenes
 // (poll, restaurant, user profile), and the already-emitted /l/<shareSlug> share links all
 // speak ONE path vocabulary, valid under both the custom scheme (crave://…) and the share
-// host (https://crave-search.app/…):
+// host (https://craveapp.ai/…):
 //
 //   /r/<restaurantId>                       restaurant world        (legacy: /restaurant/<id>)
 //   /e/<entityType>/<entityId>?label=…      entity desire (skip-LLM)

@@ -42,7 +42,7 @@ export type ShareModalConfig = {
   listType?: 'restaurant' | 'dish';
 };
 
-export const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
+export const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://craveapp.ai';
 
 /**
  * Public-link path for a shareable kind, via the desire-url-codec serializer
