@@ -709,3 +709,109 @@ WAVE 1 SHIPPED (foundation + mobile scaffolding):
   is FOREIGN (another session's configuration-readers keys), named not
   touched. Commits: 7511f0479 (wave 2), 9053822c3 (spine aliases),
   8199074c7 (wave 3), 68d0fdc6d (F8 migration).
+
+### Red-team round (2026-08-04) — 5 agents + self, all against the live DB
+
+**The feature did not work in production.** The deepest finding: `interpret()`
+passed only `analysis` to the gazetteer, but the SQL locale filter read the
+SEPARATE `options.requestLocale` — so `requestBaseLang` was always `''`, the
+tagged-alias and labels arms never fired, and `interpret('asiatica','es')`
+grounded NOTHING. The launch gate DID pass `requestLocale`, so it had been
+scoring a call path production never makes (the "77.5%" was measured on a path
+prod's users don't hit, propped up by a fig-leaf gate branch). This is the
+canonical "instrument the composite, and make sure it can show RED" lesson,
+re-learned one level up: the gate's own call diverged from prod's.
+
+**Fixes shipped (commit 88f04d3cf), each rederived to a primitive, not patched:**
+
+1. **One locale authority.** `analysis.requestLocale` is now the single source
+   both the gate and `interpret()` feed; the divergent `options.requestLocale`
+   locale-carrier is gone.
+2. **The fold is a Unicode primitive.** `canonicalFold` was a ~100-char
+   hand-maintained accent map whose stated justification (a byte-mirror of a DB
+   `crave_fold`) no longer existed — the SQL mirror was abandoned in the
+   ideal-shape pass. It silently minted twins on DECOMPOSED (NFD) input
+   (iOS/macOS deliver NFD), on every accent absent from the list (pinyin ǎ/ǐ,
+   Czech ď, fullwidth), and on zero-width/format-control injection
+   (`ta<ZWSP>co`). Replaced with `NFKD → strip the combining-diacritic BLOCKS
+(not \p{M}, so CJK voicing パ≠ハ and Thai/Devanagari/Arabic vowel signs
+survive) → NFC → closed non-decomposable table → delete format-controls`.
+   **0 identity_key / 0 form_folded drift on the live corpus** — a pure
+   improvement, no re-key. The attack battery is frozen as
+   `canonical-fold.spec.ts`, a standing guard.
+3. **One locale-match primitive.** The grounding SQL used
+   `split_part(locale,'-',1)` (symmetric first-subtag equality) while display
+   used RFC-4647 Lookup — they disagree the moment a region/script subtag means
+   something (`pt-BR` grounds a `pt-PT` row but renders English; `zh-Hant`
+   grounds `zh-Hans`). New `localeLookupChain()` emits the ordered Lookup set
+   both paths share; SQL matches `LOWER(locale)=ANY(chain)`. Also DROPPED the
+   legacy `aliases` GIN arm — the untyped, UNLOCALED shadow that re-grounded
+   seeded es forms for English (F2 reopened one arm over); `entity_alias` is a
+   proven complete superset (0 of ~19.3k array forms absent, local AND prod).
+4. **The gate made honest.** `compositionalHit` accepted a restaurant-name
+   substring ("Camarones El Güero" passed "camarones") and "repollo" (cabbage)
+   for "pollo" (chicken), and read a `foldedName` field that was never
+   populated. Now: food/ingredient type only + whole-token folded match +
+   the fields are on the interfaces (tsc checks them). Empty strata print
+   `N/A`, never a vacuous GREEN (`pct(n,0)` returned 100).
+5. **Dense floors no longer read `process.env` per call in shipped code** — a
+   stray `DENSE_SWEEP_*` Railway var silently moved prod admission. Resolved
+   once at load, gated behind `!isDeployedEnv`, and it announces itself.
+
+**Honest gate on the real prod path:** single_noun 75.0%, compound 50%,
+attribute 70%, homograph 85%, negation + code_switched 100%; overall 77.3%;
+negation non-inversion 100% GREEN (HARD), homograph@conf≥0.95=0 GREEN.
+
+### PRINCIPLED BACKLOG (found-and-proven, not yet fixed — each with its primitive)
+
+Ranked by leverage. These are real, executed findings from the round; recorded
+so the class, not the instance, gets fixed.
+
+- **Derived keys are unversioned/unreconciled (HIGH).** Changing the fold forks
+  the corpus silently; a hostile/drifted `form_folded` is unowned (the DB can't
+  check an app-side fold). PRIMITIVE: a reconciler script that recomputes
+  `canonicalFold` over `core_entities` + `entity_alias`, rewrites drift, and
+  reports mismatches (runnable in CI/cron; the mutation proof is a planted
+  hostile row). A `fold_version` stamp makes a fold change a data migration.
+  (Not urgent now: current drift is 0.)
+- **Locale is unvalidated free text (HIGH).** `xx-KLINGON`, `ES`, `es_MX`, a
+  100-char tag are all accepted and become permanently invisible to the filter
+  (a write that costs money and returns nothing). PRIMITIVE: canonicalize +
+  validate at the single write ingress (`Intl.Locale` / `canonicalizeLocaleTag`,
+  reject-or-`und`) + a DB CHECK on tag shape.
+- **`deprecateForms` matches JS `toLowerCase` vs SQL `lower()` (HIGH).** They
+  disagree on Turkish İ, so demotion silently no-ops on such forms. PRIMITIVE:
+  every predicate over a surface uses the stored `form_folded`; SQL never
+  applies `lower()`/`btrim()` to identity-bearing text.
+- **`entity_labels` non-blank CHECK is ASCII-only `btrim` (MED/HIGH).** NBSP /
+  U+2007 / U+200B labels are admitted and render an invisible entity name.
+  PRIMITIVE: one `isDisplayable` predicate over `\p{L}|\p{N}` at label WRITE +
+  a DB CHECK using `regexp_like(form,'[\p{L}\p{N}]')`.
+- **NFC/NFD duplicate alias rows (MED).** The unique index is over raw `form`;
+  an NFD and NFC spelling of one surface both survive. PRIMITIVE: `normalizeForm`
+  applies `.normalize('NFC')` at intake so byte-identity is enforceable.
+- **Analyzer: two script tables + a duplicated detector allowlist (MED).**
+  `SCRIPT_RANGES` (10) and `scriptPinned` (5) disagree, so Arabic/Cyrillic/
+  Devanagari reach dense with NO locale prefix to the embedder; `DETECTOR_
+CANDIDATES` is a second literal that can drift from `LANGUAGE_PACKS`.
+  PRIMITIVE: one script table `{script, test, pinnedLang?}`; `DETECTOR_
+CANDIDATES = [...LANGUAGE_PACKS.keys()]`; `baseLanguage` via `Intl.Locale`.
+- **Dense floors are uncalibrated placeholders (MED).** The known-bad
+  тако→tako scores 0.821 > the 0.72 floor and IS admitted at defaults. Cannot
+  be honestly calibrated without a labeled dense corpus (needs the market).
+  PRIMITIVE: a `dense-calibration.generated.ts` from a gold-corpus sweep with a
+  provenance header, exactly as the linker already has — the socket
+  (`DENSE_SWEEP_*`, now dev-gated) exists; the sweep does not.
+- **Negation cues shred proper nouns / fail open on a typo / drop on truncation
+  (MED).** "no name burgers" excludes "name burgers"; a misspelled "sin" grounds
+  the negated term; the 48-token cap silently drops a trailing negation.
+  PRIMITIVE: decide negation JOINTLY with the name arm (suppress a cue that
+  participates in a grounded name span), edit-tolerant cue matching, and a
+  `truncated:true` fact on the interpretation so a dropped constraint is never
+  silent.
+- **Coarse identity_key false merges (MED, by design, under-instrumented).**
+  "soup dumplings"/"dumpling soup", "orange bitters"/"bitter orange" share a
+  probe set; foods/restaurants have NO unique index on identity_key. PRIMITIVE:
+  separate the serialization key from the adoption key (order-sensitive tiebreak
+  before adopt) + a monitored count of coarse groups whose members differ under
+  the strict key.
