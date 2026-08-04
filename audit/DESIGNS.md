@@ -647,3 +647,18 @@ Census verdict accepted (F1150–F1153): 1,222 generated files byte-identical to
 - F1260 hoist the linker decision to ONE imported predicate; the five stale replicas die.
 
 **Landed in pass (accepted):** F1258 query-samples repoint.
+
+## D48 — mobile review-debt ruling (Phase-2, 2026-08-03; prep tables above/below from the four triage batches)
+
+**TRIVIAL-APPROVE, wholesale (28):** F814 F815 F836 F837 F841 F859 F860 · F900 F911 F929 F930 · F866 F867 F877 F878 F896 F893 · F935 F938 F950 F956 F963 F965 F969(b re-verify the 3 hits first) F972 F974 F982, plus F952 confirmed INCIDENTALLY-FIXED. Dead code with banked re-greps, prose corrections, unfailable-guard deletions.
+
+**RE-BUCKETED from OWNER to APPROVED-as-defect-repair (the triagers conflated "user-visible" with "product choice"; these RESTORE documented intent):** F811 F831 F834 F838 · F914 F916 F917 F923 F924 F925 F926 F932 · F888 (all three: report-catch surfaces, tel: surfaces, reduce-motion fails TOWARD the accessible default) · F979 (silent Release failures route to captureHandledError) · F885 (discriminated prop so disabling blur cannot delete children) · F921 (k-fold duplicate polls query + socket rooms per page is WASTE, not a semantics change — fix it).
+
+**APPROVED (needs-judgment set) under the established laws:** F805 F806 F812 F813 F817 F832 F833 F835 F839 F840 F842 F843 F853 F856 F857 F858 · F903 F904 F906 F907 F908 F909(delete the spread, keep the paragraph corrected) F910 F912 F913 F915(delete the disjunct — the law sentence is the ratified one) F931 F933 F934 F939 F942 F947 F948 F949+F964(merge) F951 F954 F955 F959 F960 F961(delete + fold into ADDING_A_SCENE.md) F971 F973(delete; the dim returns via git if ever wanted) F975 F976(document all; unify curves ONLY with a sim look) F981 · F861 F863(+F807 pairing) F864 F869 F871 F872 F873 F874 F875 F876 F884 F886 F887 F890 F892 F895 F898.
+
+- F808 react-hooks plugin: approved STAGED — install with rules-of-hooks=error / exhaustive-deps=warn; a follow-up burns down warnings per directory.
+- F894 token collapse + F891 ResultCardFrame: approved WITH a visual gate — land behind identical-pixel intent, verify in the sim before commit (highest-traffic surfaces).
+- F958 (13 controllers → per-authority, ~1,400 lines): approved as a STAGED design under F1013's discipline — guard first, one controller cluster per pass, byte-identical composite outputs proven each step. NOT a sweep.
+- Attribution-gated (ATTRIBUTE before fix, per the law): F922 (which reset mechanism is live), F1300 (which authority arm is intended), F927 (measure the 160ms/stageLimit before touching).
+
+**GENUINELY OWNER (the short list that survives):** F801 (fabricated 25/12 defaults feed the SAME owner-excepted onboarding screen — recommend: extend the F800 exception explicitly); F881 (brand-accent scatter: recommend one token, same hex — zero visual change, but branding is yours); F905/F920 (unattributed transition timings: approved to INSTRUMENT now; value changes only after measurement); F928's standings truncation (`slice(0, rows.length || 4)` hides server standings — is that intended?); F983 REJECTED-as-proposed (inverting the MVCP transport default contradicts the expensively-learned CLAUDE.md law; per-list opt-outs remain the shape).
