@@ -2005,6 +2005,61 @@ Also in this directory: **two entirely dead barrel files** (`search-root-map-
 surface-controller-runtime.ts`, `search-root-map-host-publication-runtime.ts`) with
 zero importers, re-exporting three dead per-field diff diagnostics (F1060).
 
+#### What the line-by-line read found (pass 3, F1601–F1621)
+
+Pass 2 saw the relay at cluster level and named the comparator bug. Reading every
+hop line by line turns that into a rule you can apply without re-deriving it:
+
+**A hop's dedupe is real only if the hop THROWS BITS AWAY.** Every `recompute()` in
+this directory is reachable only from a setter that already proved its input's
+identity changed. So if the hop merely rewraps or renames that input, its
+comparator is testing the very identities the setter just proved unequal — it
+returns false every time, forever. That is not a hypothetical: **five** of them are
+like that (`route-geometry-frame`, `route-motion-frame`, `route-sheet`,
+`sheet-session-host` — F1604 — and `sheet-route-host-visual`'s deep arm, F1605),
+plus `sheet-render-visual`, whose entire snapshot is a field-for-field copy of
+`sheet-presence`'s (F1603). The hops that DO earn their guard are the ones that
+project to fewer bits: `sheet-render-visibility` (object → bool) and the three
+`*-selection` controllers (N fields → 2 or 3). Before adding or trusting a
+comparator here, ask **"can this test disagree with the setter above it?"** — if
+not, you have written decoration and bought an allocation per event.
+
+**The relay's cost, counted (D55 makes performance first-class).** One re-mint of
+`routeHostVisualRuntime` — a single field of a single binding — walks
+motion-frame → route-visual → route-host-visual → sheet-visual → sheet-host as
+**6 object allocations, 5 comparator runs, 5 listener fan-outs, and exactly 1
+object that React ever reads** (F1608). The relay is not slow for deduping too
+little; it is slow because it dedupes at every hop and most of the dedupes cannot
+fire, so it pays the comparison *and* the allocation. That count is the
+before/after metric for F958's collapse (staging map: DESIGNS D45/F958).
+
+**Two controllers in here are DEAD, and one of them was "fixed" while dead.**
+`route-frame-state-controller.ts` (157 lines) and
+`sheet-visual-host-state-controller.ts` (104 lines) have zero constructors; only
+their types escape. F1052f's derived shape-equality comparator — the exemplar D45
+told everyone to copy — lives in the first one, in code no runtime path reaches,
+while the live neighbour re-inlines the same derivation twice by hand (F1601).
+The second is subtler and worth remembering: someone already routed *around* the
+VisualHost hop (the hook of that name builds the **SheetVisual** controller and
+returns its authority under the VisualHost name), and TypeScript never objected
+because the two snapshot types are the same three fields (F1602). **In this
+directory, structural identity means a hop can be deleted in practice and left
+standing in the type system.** Grep for constructors, not for imports.
+
+**The identity repacker, and the bug it hides.** Fifteen files here are
+`(x: T): T => ({ …every field of T, spelled out })` — parameter type identical to
+return type, i.e. a shallow copy (F1610). Every call site wraps one in
+`useMemo(() => createXValue({a,b,c}), [a,b,c])`, so each value's field list is
+written **four times**: the contract type, the destructure, the return literal,
+and the dep array. Three of the four are compiler-checked. The fourth is not — and
+it is already wrong: `presentationProps` reads six `mapSurfaceState` fields and
+lists four, dropping `mapBearing` and `mapPitch`, so **a bearing- or pitch-only
+camera intent never reaches the map** (F1611). Nothing catches it: there is no
+eslint react-hooks config in the repo at all (F808's `exhaustive-deps` was
+approved-as-staged in D48 and never installed), and the repacker is precisely what
+puts the field reads in a different file from the dep array. The abstraction that
+looks like harmless ceremony is the one that made a real defect invisible.
+
 ### Instruments that cannot show RED (or can only show RED)
 
 The territory's recurring disease, now catalogued in one place. Pass 2 found four

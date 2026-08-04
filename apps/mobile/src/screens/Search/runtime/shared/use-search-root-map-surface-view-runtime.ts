@@ -86,8 +86,13 @@ export const useSearchRootMapSurfaceViewRuntime = ({
       mapPresentationRuntime.cameraPadding,
       mapPresentationRuntime.isMapStyleReady,
       mapSurfaceStateRuntime.mapSurfaceState.isFollowingUser,
+      // F1611: the factory reads SIX fields; bearing/pitch were missing here,
+      // so a bearing- or pitch-only change produced stale props. The repacker
+      // split (reads in one file, deps in another) is what hid it — F1610.
+      mapSurfaceStateRuntime.mapSurfaceState.mapBearing,
       mapSurfaceStateRuntime.mapSurfaceState.mapCameraAnimation,
       mapSurfaceStateRuntime.mapSurfaceState.mapCenter,
+      mapSurfaceStateRuntime.mapSurfaceState.mapPitch,
       mapSurfaceStateRuntime.mapSurfaceState.mapZoom,
     ]
   );

@@ -919,3 +919,69 @@ never silent.
 **Executed inline by the orchestrator:** the configuration-readers census learned `requireCeiling(...)` is a reader — the D51 refactor had turned it RED on googlePlaces.\* (the census caught exactly what it exists to catch, one accessor generation late).
 
 **D56 IMPLEMENTED (Phase-3, 2026-08-04).** Landed exactly as approved. `camera?: CameraSnapshot | null` on OriginSnapshot; captured in the `registerRouteEntryOriginCapturer` callback ONLY (push commit, before motion), sourced through a new module port (`route-entry-origin-camera-delegate.ts` ← `use-route-entry-origin-camera-port-runtime.ts`) whose pure resolver prefers `CameraIntentArbiter.getInFlightCameraTarget()` over `ViewportBoundsService.getCamera()` while a programmatic move is in flight; restored in the origin restorer beside the detent/scroll lanes, committed through the arbiter. DELETED: `use-search-session-origin-camera-runtime.ts` (whole), `ProfileTransitionState.savedCamera` + `ProfileTransitionSnapshotCapture.savedCamera` + the first-write-wins arm + `resolveProfileCameraSnapshot` + `prepareRestaurantProfileForTerminalSearchDismiss` (so `lastCameraStateRef` no longer feeds ANY origin; it survives only on forward focus-planning), and the dismiss-time lane's camera (`buildCurrentOriginSnapshot` pins `camera: null`). The per-publish bus subscription is not edge-triggered but GONE (F1511 exceeded). `[CAMORIGIN-capture|restore|pop]` shipped behind `CAMORIGIN_DEBUG_ENABLED`, default ON in `__DEV__`. PROOF: `apps/mobile/src/navigation/runtime/route-entry-origin-camera.spec.ts` — 14 specs against the real controller/delegates/algebra/arbiter, with four mutation proofs (revert the capture arm → 7 RED; attach a `cameraIntent` to the home emission → 2 RED + the golden assertion throws; let the dismiss lane read the port → 1 RED; make `camera` a richness axis → 1 RED). Baseline held: tsc 2 known-foreign rnmapbox errors (F1514), full suite green. STILL OPEN: F1509 (uncollapsed live-identity resolver — the sheet's axis) and P4's comment-anchor half, both unchanged by this rung.
+
+## D45/F958 staging map — `runtime/controller`, per controller (phase-1 pass-3 evidence, 2026-08-04)
+
+D48 approved F958 (13 controllers → per-authority, ~1,400 lines) as a **STAGED** design under
+F1013's discipline: guard first, one cluster per pass, byte-identical composite outputs proven
+each step. This is the implementation map that staging was waiting on — every PARTIAL row in
+the directory read line-by-line at HEAD 24ec50977, with the target authority and the hazards
+that must be carried or killed. Findings F1601–F1621. **Nothing was landed** (the tree was
+under heavy concurrent churn); this table is the input to the work, not a record of it.
+
+### The two collapse clusters
+
+**Cluster A — the overlay relay** (15 files). A strictly linear fan-in ending at
+`SheetHostSnapshot`. The measured cost of one field change through it: **6 allocations,
+5 comparator runs, 5 fan-outs, 1 object read by React** (F1608).
+
+| controller | collapses into | hazards to carry / kill |
+| --- | --- | --- |
+| route-geometry-frame | **RouteFrame authority** | F1604 dedupe cannot fire (null-wrapper); alloc per event |
+| route-motion-frame | **RouteFrame authority** | F1604 same |
+| route-sheet | **RouteFrame authority** | F1604 same |
+| route-frame (**DEAD**) | — **DELETE** | F1601 zero constructors; keep ONLY the snapshot type. Its derived comparator (the F1052f fix) is in unreachable code — do NOT preserve it, re-derive it at the surviving authority |
+| route-visual | **RouteFrame authority** | F1601 re-inlines the dead controller's derivation TWICE (:76-82, :152-158) — must become ONE resolver; F1608 allocates a throwaway intermediate per recompute |
+| sheet-route-host-visual | **SheetVisual authority** | F1605 deep-compare arm unreachable; pure wrap that sheet-visual immediately unwraps |
+| sheet-render-visibility | **SheetPresence authority** | none — honest object→bool projection, guard CAN show RED. Positive control: keep this comparator's shape |
+| sheet-presence | **SheetPresence authority** | F1603 (its output IS render-visual's), F1609 unnamed inline comparator |
+| sheet-render-visual | — **DELETE** | F1603 identity projection of presence; guard provably cannot fire |
+| sheet-visual | **SheetVisual authority** | F1602 its authority is what actually feeds the VisualHost slot; F1605/F1608 |
+| sheet-visual-host (**DEAD**) | — **DELETE** | F1602 zero constructors; the exported Authority type names a producer that does not exist. Fix the consumer's import (sheet-host-controller.ts:6) in the same step |
+| sheet-panel-selection | **ControlSelection authority** | none — honest subset projection |
+| sheet-policy-selection | **ControlSelection authority** | none — honest subset projection |
+| sheet-interaction-selection | **ControlSelection authority** | none — honest subset projection |
+| sheet-control-selection | **ControlSelection authority** | F1607 the interaction subscription drives a recompute that provably cannot publish — keep the freshness write, drop the publish machinery on that path |
+| sheet-session-host | **SheetHost authority** | F1604 unfirable dedupe, F1609 unnamed comparator |
+| sheet-host | **SheetHost authority** (terminal) | F1606 fourth hand-written comparator (D45 said DERIVE it); its one deep arm re-runs a compare its producer already ran |
+
+Target: **four authorities** (RouteFrame, SheetVisual/Presence, ControlSelection, SheetHost)
+in place of fifteen hops, three files deleted outright before any collapse begins — F1601,
+F1602 and F1603 are pure subtractions with no behavioural surface, so they are the correct
+**stage 0** and their own proof.
+
+**Cluster B — the root repackers** (18 export sites across 15 files). Not a relay: a family of
+`(x: T): T => ({…every field…})` functions, each wrapped by its call site in a `useMemo` whose
+dep array is a fourth hand-written copy of the same field list (F1610).
+
+| controllers | collapses into | hazards |
+| --- | --- | --- |
+| search-root-{primitives, state-foundation, foreground-input, control-authority, results-control, profile-control, profile-owner, data-plane ×3}, search-{freeze-gate, autocomplete, foreground-submit, foreground-transient}, search-suggestion-layout-visual, results-presentation-{owner :14-50, presentation-actions, close-transition} | **the call site's `useMemo` object literal** — delete the indirection | F1610. **Do not sweep blind**: the field list currently lives in 4 places, and the 4th (the dep array) is already WRONG once — F1611 |
+| search-root-results-sheet-motion + -interaction | one `Pick<ResultsSheetInteractionModel, …>` | F1619 hand-copied subset type, six handlers repacked twice in a row |
+| search-suggestion-layout-state | type the param as its contract | F1620 one-directional coupling: removals go stale silently |
+| results-presentation-interaction, results-presentation-owner :52-119 | **KEEP** | genuine `Pick<>` narrowing — not members of this class |
+
+### Ordering, and the one thing that must not wait
+
+1. **Stage 0 (pure subtraction, no behaviour):** delete route-frame, sheet-visual-host,
+   sheet-render-visual (F1601–F1603). Byte-identical by construction — two have no callers at all.
+2. **F1611 does NOT belong in this staging.** It is the pass's one real user-visible defect —
+   a bearing/pitch-only camera intent never reaches the map — and it sits in the path D56 just
+   rewired. ATTRIBUTE first (confirm in the sim that a bearing/pitch-only intent exists on a
+   live path), then fix it on its own.
+3. Cluster A stage 1–4, one authority per pass, F1608's allocation count as the before/after.
+4. Cluster B last: it is the widest and the least risky, and doing it BEFORE F1611 would
+   renumber the very dep arrays the attribution needs to read.
+5. Independent of both: F1613+F1614 (derive the phase union from its order array) land as one
+   edit; F1615/F1616 (profiler-hot-path allocation, the widened coordinator port) need a sim
+   measurement first, per D55.6.
