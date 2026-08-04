@@ -50,9 +50,13 @@ export const coerceUnknownErrorMessage = (
     }
   }
 
-  if (error instanceof Error && hasText(error.message)) {
-    return error.message;
-  }
+  // F1553: an `if (error instanceof Error && hasText(error.message)) return error.message;`
+  // used to sit here — the branch a reader would assume is the PRIMARY one for a real Error,
+  // and it could not execute on any path in any configuration. Every Error satisfies
+  // `typeof x === 'object'`, so control only reaches this point by falling out of the block
+  // above, which happens exactly when `hasText(record.message)` was already FALSE for the same
+  // value. The `instanceof Error` case is handled at :28 (message) and, when
+  // allowObjectToString is on, by the toString arm.
 
   if (allowGenericStringCoercion) {
     try {
@@ -155,8 +159,8 @@ export const summarizeOAuthError = (error: unknown) => {
         typeof record.clerkTraceId === 'string'
           ? record.clerkTraceId
           : typeof record.traceId === 'string'
-          ? record.traceId
-          : undefined,
+            ? record.traceId
+            : undefined,
       firstError: firstError
         ? {
             code: typeof firstError.code === 'string' ? firstError.code : undefined,

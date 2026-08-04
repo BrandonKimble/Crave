@@ -7,13 +7,34 @@ import type {
   SearchOverlayLocalRestaurantRouteMotionFrameAuthority,
   SearchOverlayLocalRestaurantRouteMotionFrameSnapshot,
 } from './search-overlay-local-restaurant-route-motion-frame-state-controller';
-import type { SearchOverlayLocalRestaurantRouteFrameSnapshot } from './search-overlay-local-restaurant-route-frame-state-controller';
 import type {
   SearchOverlayLocalRestaurantRouteSheetAuthority,
   SearchOverlayLocalRestaurantRouteSheetSnapshot,
 } from './search-overlay-local-restaurant-route-sheet-state-controller';
 
 type Listener = () => void;
+
+/** F1601: the geometry+motion → frame composition used to be hand-inlined TWICE in this file
+ *  (constructor and `recompute`), with a third dead copy in a zero-constructor controller file.
+ *  ONE resolver now; the two call sites are byte-identical to the expressions they replaced. */
+type SearchOverlayLocalRestaurantRouteFrameSnapshot = {
+  overlayGeometryRuntime: NonNullable<SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot>['overlayGeometryRuntime'];
+  visualRuntime: NonNullable<SearchOverlayLocalRestaurantRouteMotionFrameSnapshot>['visualRuntime'];
+} | null;
+
+const resolveLocalRestaurantRouteFrameSnapshot = ({
+  routeGeometryFrameSnapshot,
+  routeMotionFrameSnapshot,
+}: {
+  routeGeometryFrameSnapshot: SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot;
+  routeMotionFrameSnapshot: SearchOverlayLocalRestaurantRouteMotionFrameSnapshot;
+}): SearchOverlayLocalRestaurantRouteFrameSnapshot =>
+  routeGeometryFrameSnapshot == null || routeMotionFrameSnapshot == null
+    ? null
+    : {
+        overlayGeometryRuntime: routeGeometryFrameSnapshot.overlayGeometryRuntime,
+        visualRuntime: routeMotionFrameSnapshot.visualRuntime,
+      };
 
 const resolveLocalRestaurantRouteVisualSnapshot = ({
   routeFrameSnapshot,
@@ -73,13 +94,10 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
     this.routeGeometryFrameSnapshot = localRestaurantRouteGeometryFrameAuthority.getSnapshot();
     this.routeMotionFrameSnapshot = localRestaurantRouteMotionFrameAuthority.getSnapshot();
     this.routeSheetSnapshot = localRestaurantRouteSheetAuthority.getSnapshot();
-    const routeFrameSnapshot =
-      this.routeGeometryFrameSnapshot == null || this.routeMotionFrameSnapshot == null
-        ? null
-        : {
-            overlayGeometryRuntime: this.routeGeometryFrameSnapshot.overlayGeometryRuntime,
-            visualRuntime: this.routeMotionFrameSnapshot.visualRuntime,
-          };
+    const routeFrameSnapshot = resolveLocalRestaurantRouteFrameSnapshot({
+      routeGeometryFrameSnapshot: this.routeGeometryFrameSnapshot,
+      routeMotionFrameSnapshot: this.routeMotionFrameSnapshot,
+    });
     this.snapshot = resolveLocalRestaurantRouteVisualSnapshot({
       routeFrameSnapshot,
       routeSheetSnapshot: this.routeSheetSnapshot,
@@ -149,13 +167,10 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
   }
 
   private recompute(): void {
-    const routeFrameSnapshot =
-      this.routeGeometryFrameSnapshot == null || this.routeMotionFrameSnapshot == null
-        ? null
-        : {
-            overlayGeometryRuntime: this.routeGeometryFrameSnapshot.overlayGeometryRuntime,
-            visualRuntime: this.routeMotionFrameSnapshot.visualRuntime,
-          };
+    const routeFrameSnapshot = resolveLocalRestaurantRouteFrameSnapshot({
+      routeGeometryFrameSnapshot: this.routeGeometryFrameSnapshot,
+      routeMotionFrameSnapshot: this.routeMotionFrameSnapshot,
+    });
     const nextSnapshot = resolveLocalRestaurantRouteVisualSnapshot({
       routeFrameSnapshot,
       routeSheetSnapshot: this.routeSheetSnapshot,

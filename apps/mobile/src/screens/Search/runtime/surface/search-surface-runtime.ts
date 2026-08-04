@@ -10,6 +10,8 @@ import {
   type TransitionJoinInput,
 } from '../../../../navigation/runtime/transition-engine/transition-transaction';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
+import { auditWorldJoinAtReveal } from './world-join-contract';
+import { sceneParticipatesInWorldJoin } from '../../../../navigation/runtime/scene-foundation-spec';
 
 import {
   isPerfScenarioAttributionActive,
@@ -730,6 +732,7 @@ export class SearchSurfaceRuntime {
     // - world revise (new data): the T4 joint — cards land as the pins begin their
     //   fade, so reveal joins {paint, mapFrame} (measured 100-315ms).
     const isToggle = this.snapshot.redrawTransaction?.reason === 'toggle';
+    this.assertWorldJoinTargetDeclared('search');
     const txn = stageTransitionTxn(
       { kind: 'revise', targetSceneKey: 'search', sourceSceneKey: 'search', entryId: null },
       {
@@ -777,6 +780,21 @@ export class SearchSurfaceRuntime {
     });
   }
 
+  // worldJoin IS DECLARED DATA now (OA1/R7): the episode is armed only for a scene
+  // that declares membership (scene-foundation-spec worldJoin / the 'search'
+  // by-construction member). Both stagers target 'search', so this can only fire if
+  // the arm point is ever generalized past the declaration — the exact drift the
+  // explicit flag exists to catch.
+  private assertWorldJoinTargetDeclared(targetSceneKey: OverlayKey): void {
+    if (__DEV__ && !sceneParticipatesInWorldJoin(targetSceneKey)) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[WORLD-JOIN] RED: staging a world episode for scene '${targetSceneKey}' which does ` +
+          `not declare worldJoin (scene-foundation-spec) — declare membership, never arm implicitly`
+      );
+    }
+  }
+
   // S2 INVERSION (design §4): the episode's 'revealed' edge DRIVES the redraw commit —
   // canAdmitResultsBody is txn-derived underneath its unchanged selector.
   private completeRedrawAtEpisodeReveal(): void {
@@ -787,6 +805,22 @@ export class SearchSurfaceRuntime {
       liveTxn.phase !== 'revealed'
     ) {
       return;
+    }
+    if (__DEV__) {
+      // OA1 RED (R7, world-join-contract.ts): the ONE admission edge — a world
+      // revise revealing while either residency fact is absent is a split reveal
+      // (cards-before-map or map-before-cards). The join makes this unreachable
+      // through the gate; a plan mutation, a false offer, or a liveness-degrade
+      // forced reveal reaches it — and must scream, never pass silently.
+      const violation = auditWorldJoinAtReveal({
+        isWorldRevise: this.snapshot.redrawTransaction?.reason !== 'toggle',
+        rowsResident: this.q2RowsResident,
+        mapFrameClean: this.q2MapFrameClean,
+      });
+      if (violation != null) {
+        // eslint-disable-next-line no-console
+        console.error(`[WORLD-JOIN] RED ${liveTxn.txnId}: ${violation.detail}`);
+      }
     }
     this.commitRevealedRedrawRespectingFence();
   }
@@ -836,6 +870,7 @@ export class SearchSurfaceRuntime {
       return;
     }
     this.q2DeferredReviseArmId = null;
+    this.assertWorldJoinTargetDeclared('search');
     const txn = stageTransitionTxn(
       { kind: 'revise', targetSceneKey: 'search', sourceSceneKey: 'search', entryId: null },
       {

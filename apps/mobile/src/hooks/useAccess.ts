@@ -1,3 +1,4 @@
+import { useCallback, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/clerk-expo';
 import { usersService, type AccessSummary } from '../services/users';
@@ -30,16 +31,20 @@ export interface AccessState {
  * access truth comes from the server ledger via the profile payload — never
  * from RevenueCat CustomerInfo (RC can't see comps/rewards/trials).
  */
+// F1554: the access read was written out TWICE — once for the observed query and once inside
+// `refresh` — so the shape of "what access truth is" lived in two places in one file.
+const fetchAccessSummary = async (): Promise<AccessSummary | null> => {
+  const profile = await usersService.getMe();
+  return profile.access ?? null;
+};
+
 export function useAccess(): AccessState {
   const queryClient = useQueryClient();
   const { userId } = useAuth();
   const queryKey = accessQueryKey(userId);
   const query = useQuery({
     queryKey,
-    queryFn: async (): Promise<AccessSummary | null> => {
-      const profile = await usersService.getMe();
-      return profile.access ?? null;
-    },
+    queryFn: fetchAccessSummary,
     enabled: !!userId,
     staleTime: 60_000,
   });
@@ -55,23 +60,28 @@ export function useAccess(): AccessState {
       ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
       : undefined;
 
-  return {
-    active,
-    expiresAt: active ? expiresAt : null,
-    source: active ? (access?.source ?? null) : null,
-    daysRemaining,
-    enforced: access?.enforced ?? false,
-    isLoading: query.isLoading,
-    refresh: async () => {
-      const fresh = await queryClient.fetchQuery({
-        queryKey,
-        queryFn: async (): Promise<AccessSummary | null> => {
-          const profile = await usersService.getMe();
-          return profile.access ?? null;
-        },
-        staleTime: 0,
-      });
-      return fresh;
-    },
-  };
+  // F1554: this used to return a FRESH object literal with a FRESH `refresh` closure on every
+  // render. All three consumers hold the result as a value and one puts it in a dependency
+  // array (PaywallScreen's `pollForAccess` → `buy` → `restore` were re-minted every render
+  // because of it). A hook whose identity churns every render is a dependency array that never
+  // settles; memoize the return and the closure, and the churn stops at the source.
+  const refresh = useCallback(
+    () => queryClient.fetchQuery({ queryKey, queryFn: fetchAccessSummary, staleTime: 0 }),
+    // `queryKey` is a fresh tuple per render; its CONTENT (the userId) is the identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queryClient, userId]
+  );
+
+  return useMemo(
+    () => ({
+      active,
+      expiresAt: active ? expiresAt : null,
+      source: active ? (access?.source ?? null) : null,
+      daysRemaining,
+      enforced: access?.enforced ?? false,
+      isLoading: query.isLoading,
+      refresh,
+    }),
+    [access?.enforced, access?.source, active, daysRemaining, expiresAt, query.isLoading, refresh]
+  );
 }

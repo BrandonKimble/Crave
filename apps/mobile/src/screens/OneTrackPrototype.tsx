@@ -121,22 +121,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
-  stripRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 11,
-  },
-  chip: {
-    height: 32,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  chipActive: { backgroundColor: '#f43f5e' },
-  chipText: { fontSize: 14, fontWeight: '600', color: '#0f172a' },
-  chipTextActive: { color: '#ffffff' },
+  // F1560: the hand-rolled strip's five style entries (stripRow / chip / chipActive /
+  // chipText / chipTextActive) went with the strip when this prototype became the kit's first
+  // consumer — a prototype's value is that it shows the kit's REAL API surface, and dead props
+  // around it teach the wrong API. (`STRIP_LABELS`, the unrendered TrackSheetStripCutout import
+  // and the `stripBackdrop` memo the audit also named here are already gone.)
   rowSurface: { paddingHorizontal: 16 },
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: 22 },
   rowBadge: {

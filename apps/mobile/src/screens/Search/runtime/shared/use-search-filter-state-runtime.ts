@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { normalizePriceLevels, useSearchStore } from '../../../../store/searchStore';
+import { normalizePriceLevels } from '../../../../store/searchStore';
 import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
@@ -80,8 +80,10 @@ export const useSearchFilterStateRuntime = (searchRuntimeBus: SearchRuntimeBus) 
       },
       'dismiss'
     );
-    // Bounds are not runtime-bus state (not duplicated); they stay zustand-owned.
-    useSearchStore.getState().resetBoundsFilter();
+    // F1550: this used to call `useSearchStore.getState().resetBoundsFilter()` under the
+    // comment "bounds stay zustand-owned". They were not owned by anything — the bounds triple
+    // (bounds / boundsLabel / boundsPresetId) had no reader anywhere in the app, so the reset
+    // was a write-only write. Fields and verb are gone; the bus reset above IS the filter reset.
   }, [searchRuntimeBus]);
 
   return React.useMemo(

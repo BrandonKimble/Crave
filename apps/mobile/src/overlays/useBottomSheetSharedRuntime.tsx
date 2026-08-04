@@ -182,7 +182,6 @@ export const useBottomSheetSharedRuntime = ({
   listScrollEnabled = true,
   snapPoints,
   initialSnapPoint = 'middle',
-  preservePositionOnSnapPointsChange = false,
   scrollHeaderComponent,
   onHidden,
   onSnapStart,
@@ -305,7 +304,6 @@ export const useBottomSheetSharedRuntime = ({
   // F972, second site — same short-circuit, same fix.
   const fallbackIsInMomentum = useSharedValue(false);
   const isInMomentum = momentumFlag ?? fallbackIsInMomentum;
-  const wasVisible = React.useRef(visible);
   const hasNotifiedHidden = useSharedValue(false);
   const resolvedActiveList = secondaryDataCount > 0 ? activeList : 'primary';
   const isDragging = useSharedValue(false);
@@ -369,21 +367,21 @@ export const useBottomSheetSharedRuntime = ({
     setTouchBlockingEnabled: publicationRuntime.setTouchBlockingEnabled,
   });
 
+  // F1475: `visible` / `wasVisible` / `initialSnapValue` / `hiddenOrCollapsed` /
+  // `preservePositionOnSnapPointsChange` / `sheetYValue` / `currentSnapKeyRef` no longer
+  // travel here — they fed only the pre-native JS spring lane the execution runtime deleted.
+  // `preservePositionOnSnapPointsChange` is consequently read by NOTHING now, though it is
+  // still declared on bottomSheetSharedRuntimeContract / bottomSheetWithFlashListContract and
+  // set by the scene descriptors: unplumbing that prop chain is its own rederivation.
   const { resolveDestination, startSpring } = useBottomSheetSharedSnapExecutionRuntime({
-    visible,
     motionCommandValue,
-    preservePositionOnSnapPointsChange,
     preventSwipeDismiss,
-    initialSnapValue,
-    hiddenOrCollapsed,
     expandedSnap,
     middleSnap,
     collapsedSnap,
     hiddenSnap,
-    sheetYValue,
     sheetY,
     headerHeight: publicationRuntime.headerHeight,
-    currentSnapKeyRef,
     isDragging,
     isSettling,
     settlingToHidden,
@@ -391,7 +389,6 @@ export const useBottomSheetSharedRuntime = ({
     hasNotifiedHidden,
     springTargetY,
     springId,
-    wasVisible,
     notifyHidden: snapPublicationRuntime.notifyHidden,
     dispatchSnapChange: snapPublicationRuntime.dispatchSnapChange,
     notifySnapStart: snapPublicationRuntime.notifySnapStart,

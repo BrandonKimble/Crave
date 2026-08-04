@@ -2,7 +2,6 @@ import React from 'react';
 import Animated from 'react-native-reanimated';
 
 import type {
-  SceneStackBodyContentActivity,
   SceneStackBodyContentLayerProps,
   SceneStackBodyFrameProps,
 } from './bottomSheetSceneStackBodyLayerContract';
@@ -11,19 +10,23 @@ import {
   BottomSheetSceneStackBodyRenderActivityContext,
   BottomSheetSceneStackBodyIsActiveContext,
 } from './BottomSheetSceneStackBodyActivityContext';
-import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-route-scene-entry-mounts';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { useBottomSheetSceneStackBodyContentRuntime } from './useBottomSheetSceneStackBodyContentRuntime';
-import { createShapeEquality, sameFieldRef, type FieldComparators } from './shape-equality';
+import { createShapeEquality, sameFieldRef } from './shape-equality';
+import {
+  shouldPublishSceneBodyDataActivity,
+  shouldSkipSceneStackBodyContentLayerUpdate,
+} from './bottomSheetSceneStackBodyLayerSkip';
 import { logPageSwitchDebug } from '../navigation/runtime/pageswitch-debug-flag';
 
 // F980: every skip fn below is DERIVED from its props shape (shape-equality.ts). Forget a
 // new prop and tsc names it, instead of the leg silently never re-rendering again.
 // A field this scope deliberately does NOT compare says so, here, out loud — an
 // intentional omission and a forgotten one must not look the same.
-const ignoreField = (): boolean => true;
+// (The CONTENT layer's skip fn and its per-scene activity comparators live in
+// ./bottomSheetSceneStackBodyLayerSkip — pure, and specced there. F1453.)
 
 const shouldSkipSceneStackBodyFrameUpdate = createShapeEquality<SceneStackBodyFrameProps>({
   sceneKey: sameFieldRef,
@@ -31,77 +34,6 @@ const shouldSkipSceneStackBodyFrameUpdate = createShapeEquality<SceneStackBodyFr
   pointerEventsAnimatedProps: sameFieldRef,
   children: sameFieldRef,
 });
-
-const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
-  isSceneBodyDataActivityKey(sceneKey);
-
-// The activity lanes a scene RENDERS from. 'search' reads fewer of them (its body is the
-// never-null results bundle), so it gets its own map — but BOTH maps must name every field
-// of SceneStackBodyContentActivity, so a new activity lane cannot be missed by either.
-const SEARCH_SCENE_ACTIVITY_COMPARATORS = {
-  isActive: ignoreField, // the leg's own visibility lane owns this; not render-read here
-  shouldRenderListBody: sameFieldRef,
-  shouldSubscribeDataLane: sameFieldRef,
-  shouldAttachMountedContent: ignoreField, // search has no mounted body
-  shouldRunDataLane: ignoreField, // search's data lane is the bundle's, not this leg's
-  shouldRenderExpandedContent: ignoreField, // search has no expanded-content lane
-  hasActivatedExpandedContent: ignoreField,
-} satisfies FieldComparators<SceneStackBodyContentActivity>;
-
-const DEFAULT_SCENE_ACTIVITY_COMPARATORS = {
-  isActive: ignoreField, // the leg's own visibility lane owns this; not render-read here
-  shouldRenderListBody: sameFieldRef,
-  shouldAttachMountedContent: sameFieldRef,
-  // CONDITIONAL by scene (shouldPublishSceneBodyDataActivity) — compared explicitly below,
-  // because the predicate needs the runtime sceneKey a static map cannot see.
-  shouldRunDataLane: ignoreField,
-  shouldSubscribeDataLane: sameFieldRef,
-  shouldRenderExpandedContent: sameFieldRef,
-  hasActivatedExpandedContent: sameFieldRef,
-} satisfies FieldComparators<SceneStackBodyContentActivity>;
-
-const areSearchSceneActivitiesEqual = createShapeEquality<SceneStackBodyContentActivity>(
-  SEARCH_SCENE_ACTIVITY_COMPARATORS
-);
-const areDefaultSceneActivitiesEqual = createShapeEquality<SceneStackBodyContentActivity>(
-  DEFAULT_SCENE_ACTIVITY_COMPARATORS
-);
-
-// The non-activity half of the layer props — one entry per prop, compile-checked.
-const areSceneStackBodyContentLayerNonActivityPropsEqual =
-  createShapeEquality<SceneStackBodyContentLayerProps>({
-    contentEntry: sameFieldRef,
-    transportEntry: sameFieldRef,
-    // Compared by the per-scene activity maps above (the comparison depends on the scene).
-    contentActivity: ignoreField,
-    bodyDefaults: sameFieldRef,
-    bodyScrollRuntime: sameFieldRef,
-    // W1 slice 1 — entry-keyed child mounts are render-read here.
-    mountedEntryUnits: areSceneEntryMountUnitArraysEqual,
-    activeEntryId: sameFieldRef,
-  });
-
-const shouldSkipSceneStackBodyContentLayerUpdate = (
-  previousProps: SceneStackBodyContentLayerProps,
-  nextProps: SceneStackBodyContentLayerProps
-): boolean => {
-  if (!areSceneStackBodyContentLayerNonActivityPropsEqual(previousProps, nextProps)) {
-    return false;
-  }
-
-  const previousActivity = previousProps.contentActivity;
-  const nextActivity = nextProps.contentActivity;
-  if (nextProps.contentEntry.sceneKey === 'search') {
-    return areSearchSceneActivitiesEqual(previousActivity, nextActivity);
-  }
-  if (!areDefaultSceneActivitiesEqual(previousActivity, nextActivity)) {
-    return false;
-  }
-  return (
-    !shouldPublishSceneBodyDataActivity(nextProps.contentEntry.sceneKey) ||
-    previousActivity.shouldRunDataLane === nextActivity.shouldRunDataLane
-  );
-};
 
 type SceneStackBodyContentHostProps = Pick<
   SceneStackBodyContentLayerProps,

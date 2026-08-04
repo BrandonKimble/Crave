@@ -19,7 +19,7 @@ import palette from '../constants/score-bucket-palette.json';
 // ---------------------------------------------------------------------------
 export type ScoreBucket = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9; // 0 = [0,1) low … 9 = [9,10] best
 
-export const SCORE_BUCKET_DISPLAY_MIN = 0;
+// F1558: `SCORE_BUCKET_DISPLAY_MIN` was exported to nobody (its twin _MAX has consumers).
 export const SCORE_BUCKET_DISPLAY_MAX = 10;
 
 // Decile aligned to the integer rating: tier = clamp(floor(score), 0, 9).
@@ -62,7 +62,8 @@ export const SCORE_BUCKET_COLORS: Record<ScoreBucket, string> = {
 // Neutral gray for an unknown/missing score — distinct from the red bottom tier so "no data"
 // never reads as "worst place in the city". (In practice unscored entities are filtered out of
 // results, so this is a defensive default.)
-export const NEUTRAL_SCORE_COLOR = '#B0AEA8';
+// F1558: internal — exported to nobody; `getScoreBucketColor` below is the public door.
+const NEUTRAL_SCORE_COLOR = '#B0AEA8';
 
 // Convenience: the bucket color for a score, as a CSS string (for rank pills/dots).
 // A null/NaN score returns the neutral gray rather than falling to bucket 0 (red).

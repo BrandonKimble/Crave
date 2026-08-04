@@ -8,7 +8,12 @@ import { deriveListDetailVerbs } from './list-detail-verbs';
 describe('deriveListDetailVerbs — the source-agnostic capability table', () => {
   it('curated: share + save-a-copy only (read-only projection)', () => {
     expect(
-      deriveListDetailVerbs({ source: 'curated', viewerRole: 'viewer', isVirtualAll: false })
+      deriveListDetailVerbs({
+        source: 'curated',
+        viewerRole: 'viewer',
+        isVirtualAll: false,
+        kind: undefined,
+      })
     ).toEqual({
       canShare: true,
       canSaveCopy: true,
@@ -24,7 +29,12 @@ describe('deriveListDetailVerbs — the source-agnostic capability table', () =>
 
   it('own list (owner): every curation verb, no save-a-copy', () => {
     expect(
-      deriveListDetailVerbs({ source: 'favorites', viewerRole: 'owner', isVirtualAll: false })
+      deriveListDetailVerbs({
+        source: 'favorites',
+        viewerRole: 'owner',
+        isVirtualAll: false,
+        kind: 'standard',
+      })
     ).toEqual({
       canShare: true,
       canSaveCopy: false,
@@ -43,6 +53,7 @@ describe('deriveListDetailVerbs — the source-agnostic capability table', () =>
       source: 'favorites',
       viewerRole: 'collaborator',
       isVirtualAll: false,
+      kind: 'standard',
     });
     expect(verbs.canReorder).toBe(true);
     expect(verbs.canAddPhoto).toBe(true);
@@ -58,6 +69,7 @@ describe('deriveListDetailVerbs — the source-agnostic capability table', () =>
       source: 'favorites',
       viewerRole: 'viewer',
       isVirtualAll: false,
+      kind: 'standard',
     });
     expect(verbs.canShare).toBe(true);
     expect(verbs.canReorder).toBe(false);
@@ -71,11 +83,44 @@ describe('deriveListDetailVerbs — the source-agnostic capability table', () =>
       source: 'favorites',
       viewerRole: 'owner',
       isVirtualAll: true,
+      kind: undefined,
     });
     expect(verbs.canShare).toBe(false);
     expect(verbs.canEditMeta).toBe(false);
     expect(verbs.canDelete).toBe(false);
     expect(verbs.canReorder).toBe(false);
     expect(verbs.canAddPhoto).toBe(true);
+  });
+
+  // F1463: the favorites list is one-per-user and server-guarded UNDELETABLE. ListsPanel
+  // suppressed Delete locally with exactly that comment; the model knew nothing of it, so
+  // ListDetailPanel rendered Delete for the SAME list from `canDelete` and ate a server
+  // refusal. The rule lives in the model now, so both surfaces agree by construction.
+  // RED recipe: drop `&& kind !== 'favorites'` from `canDelete` — this case fails with true.
+  it('owner of the FAVORITES list: every other curation verb, but NEVER delete', () => {
+    const verbs = deriveListDetailVerbs({
+      source: 'favorites',
+      viewerRole: 'owner',
+      isVirtualAll: false,
+      kind: 'favorites',
+    });
+    expect(verbs.canDelete).toBe(false);
+    expect(verbs.canEditMeta).toBe(true);
+    expect(verbs.canPin).toBe(true);
+    expect(verbs.canReorder).toBe(true);
+    expect(verbs.canShare).toBe(true);
+  });
+
+  it('the other signup-default kinds ARE deletable — only favorites is guarded', () => {
+    (['standard', 'been', 'want_to_go', 'tried', 'want_to_try'] as const).forEach((kind) => {
+      expect(
+        deriveListDetailVerbs({
+          source: 'favorites',
+          viewerRole: 'owner',
+          isVirtualAll: false,
+          kind,
+        }).canDelete
+      ).toBe(true);
+    });
   });
 });

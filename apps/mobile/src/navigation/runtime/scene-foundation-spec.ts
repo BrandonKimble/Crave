@@ -61,6 +61,20 @@ export type SceneFoundationSpec = {
    * ADDING_A_SCENE.md §5. The search/results sheet is excluded (owns its canonical composition).
    */
   bodySurface: 'white';
+  /**
+   * THE WORLD-JOIN FAMILY (OA1, transition-endstate-contract; R7): whether this
+   * scene's reveal rides the search surface's ONE world episode — a TransitionTxn
+   * `revise` joining {paint (cards), mapFrame (map items), sheet}, so cards and map
+   * items reveal at the exact same instant. Required literal: membership used to be
+   * the IMPLICIT invariant "there is exactly one world surface" (ListDetailPanel's
+   * bespoke `worldBacked` subscription), which breaks silently under entry stacking
+   * (G-ENTRY). Consumed by `sceneParticipatesInWorldJoin` — the hold-gate and the
+   * mismatch bark derive from THIS declaration, so deleting a row's flag is a dev
+   * RED ([WORLD-JOIN]), never a silent gate bypass. 'search' is excluded from this
+   * table by design and is the family's home surface by construction (see
+   * sceneParticipatesInWorldJoin).
+   */
+  worldJoin: boolean;
 };
 
 export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> = {
@@ -74,6 +88,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   polls: {
     skeleton: { rowType: 'restaurant' },
@@ -86,6 +101,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   lists: {
     skeleton: { rowType: 'tile' },
@@ -98,6 +114,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   profile: {
     skeleton: { rowType: 'restaurant' },
@@ -107,6 +124,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   restaurant: {
     skeleton: { rowType: 'dish' },
@@ -116,6 +134,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   saveList: {
     skeleton: { rowType: 'tile' },
@@ -125,6 +144,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   pollDetail: {
     skeleton: { rowType: 'comment' },
@@ -134,6 +154,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   pollCreation: {
     skeleton: { rowType: 'comment' },
@@ -143,6 +164,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   // Stub-pass scenes (plans/page-registry.md §1) — foundation decisions stated ahead
   // of the real bodies; their design passes revise values, never optionality.
@@ -154,6 +176,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   listDetail: {
     skeleton: { rowType: 'restaurant' },
@@ -166,6 +189,9 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    // OA1: listDetail is IN the world-join family — the list world presents into
+    // this child and its rows hold on the same admission gate as results.
+    worldJoin: true,
   },
   followList: {
     skeleton: { rowType: 'tile' },
@@ -175,6 +201,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   notifications: {
     skeleton: { rowType: 'comment' },
@@ -184,6 +211,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   settings: {
     skeleton: { rowType: 'tile' },
@@ -196,6 +224,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'hidden',
     snapLock: 'expanded',
     bodySurface: 'white',
+    worldJoin: false,
   },
   editProfile: {
     skeleton: { rowType: 'tile' },
@@ -205,6 +234,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   // W2 (page-registry §7.4): the post page — photo tiles; no filter strip.
   postPhotos: {
@@ -215,6 +245,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
   messagesInbox: {
@@ -225,6 +256,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
   dmSession: {
     skeleton: { rowType: 'comment' },
@@ -234,6 +266,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     grabHandle: 'visible',
     snapLock: 'none',
     bodySurface: 'white',
+    worldJoin: false,
   },
 };
 
@@ -253,6 +286,16 @@ export const getSceneFoundationSpec = (sceneKey: OverlayKey): SceneFoundationSpe
  * skeleton — and 'none' has nothing to represent. Nobody re-decides this at a call
  * site.
  */
+/**
+ * OA1 membership derivation (R7): does this scene's reveal ride the world-join
+ * episode? 'search' is the family's home surface — it is excluded from the table
+ * (owns its composition) but IS the scene every world episode targets
+ * (`targetSceneKey: 'search'` in the search-surface stagers), so it is a member by
+ * construction, not by row. Every other scene answers from its declared row.
+ */
+export const sceneParticipatesInWorldJoin = (sceneKey: OverlayKey): boolean =>
+  sceneKey === 'search' || getSceneFoundationSpec(sceneKey)?.worldJoin === true;
+
 export const resolveSceneLoadingMaterial = (
   sceneKey: OverlayKey
 ): { rowType: SceneLoadingRowType; withStripHoles: boolean } | null => {

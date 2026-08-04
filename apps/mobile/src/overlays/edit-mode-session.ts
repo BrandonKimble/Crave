@@ -5,7 +5,18 @@ import { useSharedValue, withTiming, type SharedValue } from 'react-native-reani
 import { showAppModal } from '../components/app-modal-store';
 import { publishEditSessionLive } from '../navigation/runtime/edit-session-liveness-contract';
 import { registerHeaderCloseAction } from '../navigation/runtime/header-nav-action-registry';
-import { isSessionDirty, type EditModeSessionState } from './edit-mode-session-core';
+import {
+  canRedoEditModeSession,
+  canUndoEditModeSession,
+  commitEditModeSessionHistoryEntry,
+  createEditModeSession,
+  hasEditModeSessionEverEdited,
+  isSessionDirty,
+  redoEditModeSession,
+  reorderEditModeSession,
+  undoEditModeSession,
+  type EditModeSessionState,
+} from './edit-mode-session-core';
 import { acquireOverlaySheetEditLock } from './overlaySheetEditLockRuntime';
 import type { OverlayKey } from './types';
 
@@ -70,13 +81,6 @@ type UseEditModeSessionArgs = {
   discardMessage?: string;
 };
 
-const applyMove = (order: readonly string[], from: number, to: number): string[] => {
-  const next = [...order];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  return next;
-};
-
 export const useEditModeSession = ({
   sceneKey,
   entryId,
@@ -91,8 +95,7 @@ export const useEditModeSession = ({
   onEnterRef.current = onEnter;
 
   const enter = React.useCallback((baselineOrder: readonly string[]) => {
-    const baseline = [...baselineOrder];
-    setSession({ order: baseline, history: [baseline], historyIndex: 0 });
+    setSession(createEditModeSession(baselineOrder));
     onEnterRef.current?.();
   }, []);
 
@@ -156,30 +159,11 @@ export const useEditModeSession = ({
   }, [discardMessage, discardTitle, exit, isEditing, sceneKey]);
 
   const handleReorder = React.useCallback((fromIndex: number, toIndex: number) => {
-    setSession((live) => {
-      if (live == null || fromIndex === toIndex) {
-        return live;
-      }
-      return { ...live, order: applyMove(live.order, fromIndex, toIndex) };
-    });
+    setSession((live) => reorderEditModeSession(live, fromIndex, toIndex));
   }, []);
 
   const commitHistoryEntry = React.useCallback(() => {
-    setSession((live) => {
-      if (live == null) {
-        return live;
-      }
-      const settled = live.history[live.historyIndex];
-      if (settled != null && settled.join(' ') === live.order.join(' ')) {
-        return live;
-      }
-      const truncated = live.history.slice(0, live.historyIndex + 1);
-      return {
-        ...live,
-        history: [...truncated, live.order],
-        historyIndex: truncated.length,
-      };
-    });
+    setSession((live) => commitEditModeSessionHistoryEntry(live));
   }, []);
 
   const handleDragStateChange = React.useCallback(
@@ -201,23 +185,11 @@ export const useEditModeSession = ({
   );
 
   const undo = React.useCallback(() => {
-    setSession((live) => {
-      if (live == null || live.historyIndex === 0) {
-        return live;
-      }
-      const nextIndex = live.historyIndex - 1;
-      return { ...live, historyIndex: nextIndex, order: live.history[nextIndex] };
-    });
+    setSession((live) => undoEditModeSession(live));
   }, []);
 
   const redo = React.useCallback(() => {
-    setSession((live) => {
-      if (live == null || live.historyIndex >= live.history.length - 1) {
-        return live;
-      }
-      const nextIndex = live.historyIndex + 1;
-      return { ...live, historyIndex: nextIndex, order: live.history[nextIndex] };
-    });
+    setSession((live) => redoEditModeSession(live));
   }, []);
 
   return {
@@ -227,9 +199,9 @@ export const useEditModeSession = ({
     exit,
     undo,
     redo,
-    canUndo: session != null && session.historyIndex > 0,
-    canRedo: session != null && session.historyIndex < session.history.length - 1,
-    hasEverEdited: session != null && session.history.length > 1,
+    canUndo: canUndoEditModeSession(session),
+    canRedo: canRedoEditModeSession(session),
+    hasEverEdited: hasEditModeSessionEverEdited(session),
     isDirty: isSessionDirty(session),
     handleReorder,
     handleAccessibleReorder,

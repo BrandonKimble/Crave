@@ -18,6 +18,12 @@ import {
   OVERLAY_TAB_HEADER_HEIGHT,
   overlaySheetStyles,
 } from '../overlaySheetStyles';
+import {
+  OVERLAY_CHIN_PADDING_BOTTOM,
+  OVERLAY_CHIN_PADDING_TOP,
+  OVERLAY_PUBLISH_CHIN_RESERVED_HEIGHT,
+  resolveChinContentBottomPadding,
+} from '../overlay-sheet-chin-geometry';
 import { resolveExpandedTop } from '../sheetUtils';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -182,10 +188,12 @@ export const usePollCreationPanelSpec = ({
   }, [bounds, closeWindowDays, description, onClose, onCreated, pushRoute, question]);
 
   const expanded = resolveExpandedTop(searchBarTop, insets.top);
-  // The list body frame fills the full sheet height but the sheet is translated DOWN by `expanded`,
-  // so its bottom overhangs the visible screen by `expanded`. Reserve that overhang + the home
-  // inset + the pinned Publish chin's height so the last field (Description) clears the chin.
-  const contentBottomPadding = expanded + insets.bottom + 88;
+  // F1465: the chin rule has ONE home (overlay-sheet-chin-geometry.ts).
+  const contentBottomPadding = resolveChinContentBottomPadding({
+    expandedTop: expanded,
+    insetBottom: insets.bottom,
+    chinReservedHeight: OVERLAY_PUBLISH_CHIN_RESERVED_HEIGHT,
+  });
   const hidden = SCREEN_HEIGHT + 80;
   const snapPoints = useMemo(
     () =>
@@ -535,8 +543,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: OVERLAY_CHIN_PADDING_TOP,
+    paddingBottom: OVERLAY_CHIN_PADDING_BOTTOM,
     backgroundColor: '#ffffff',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: BORDER,

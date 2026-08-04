@@ -1,11 +1,26 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
-const HISTORY_LIMIT = 8;
-const SEARCH_STORE_VERSION = 8;
+// v9 (F1550): this store is EXACTLY what it says in the R1c contract below and nothing else —
+// a persistence mirror of the runtime's filter/tab state. What was deleted, each proven by a
+// repo-wide grep returning only its own definition:
+//   • the imperative surface — setQuery, clearQuery, setPage, resetPage, recordSearch,
+//     removeHistoryEntry, clearHistory, setBounds: ZERO external callers. `applySearchRuntime-
+//     StateMirror` is the only verb anyone calls.
+//   • the fields query / page / history, and the bounds triple (bounds / boundsLabel /
+//     boundsPresetId). `resetBoundsFilter` was the one surviving imperative verb and it reset
+//     three fields NOBODY READS — a write-only write, so the reset went with the fields.
+//   • the persisted payload for all of the above: `partialize` serialized query, page and
+//     history to AsyncStorage on every mirrored change, forever, for no reader.
+//   • `SearchHistoryEntry` / `HISTORY_LIMIT`, a second recent-search concept whose real,
+//     server-backed home is `store/searchHistoryStore.ts` two files away.
+// UNCHANGED on purpose: the tab fields (activeTab / preferredActiveTab /
+// hasActiveTabPreference) are mirrored into the store but are NOT persisted, and `migrate`
+// resets them — so the tab preference does not survive a cold start today. Whether it SHOULD
+// is an owner question, and a silent change here would answer it without asking.
+const SEARCH_STORE_VERSION = 9;
 export type SearchActiveTab = 'restaurants' | 'dishes';
 
 export const normalizePriceLevels = (levels: unknown): number[] => {
@@ -24,20 +39,6 @@ export const normalizePriceLevels = (levels: unknown): number[] => {
   return uniqueSorted;
 };
 
-interface SearchHistoryEntry {
-  query: string;
-  lastRunAt: number;
-}
-
-export interface SearchFilters {
-  openNow: boolean;
-  bounds: MapBounds | null;
-  boundsLabel?: string | null;
-  boundsPresetId?: string | null;
-  priceLevels: number[];
-  risingActive: boolean;
-}
-
 // R1c single-writer contract (plans/search-flow-plan.md §D6): the filter/tab fields below
 // (openNow, priceLevels, risingActive, activeTab, preferredActiveTab,
 // hasActiveTabPreference) are RUNTIME-OWNED by the SearchRuntimeBus. This store is a pure
@@ -53,56 +54,23 @@ export type SearchRuntimeMirroredState = {
   hasActiveTabPreference: boolean;
 };
 
-interface SearchState extends SearchFilters {
-  query: string;
-  page: number;
-  activeTab: SearchActiveTab;
-  preferredActiveTab: SearchActiveTab;
-  hasActiveTabPreference: boolean;
-  history: SearchHistoryEntry[];
-  setQuery: (query: string) => void;
-  clearQuery: () => void;
-  setPage: (page: number) => void;
-  resetPage: () => void;
-  resetBoundsFilter: () => void;
-  setBounds: (
-    bounds: MapBounds | null,
-    options?: { label?: string | null; presetId?: string | null }
-  ) => void;
-  recordSearch: (query: string) => void;
-  removeHistoryEntry: (query: string) => void;
-  clearHistory: () => void;
+type SearchState = SearchRuntimeMirroredState & {
   applySearchRuntimeStateMirror: (patch: Partial<SearchRuntimeMirroredState>) => void;
-}
+};
 
 const defaultState = {
-  query: '',
-  page: 1,
-  activeTab: 'dishes' as SearchActiveTab,
-  preferredActiveTab: 'dishes' as SearchActiveTab,
+  activeTab: 'dishes',
+  preferredActiveTab: 'dishes',
   hasActiveTabPreference: false,
   openNow: false,
-  bounds: null,
-  boundsLabel: null,
-  boundsPresetId: null,
   priceLevels: [],
   risingActive: false,
-  history: [] as SearchHistoryEntry[],
-} as const satisfies Pick<
-  SearchState,
-  | 'query'
-  | 'page'
-  | 'activeTab'
-  | 'preferredActiveTab'
-  | 'hasActiveTabPreference'
-  | 'openNow'
-  | 'bounds'
-  | 'boundsLabel'
-  | 'boundsPresetId'
-  | 'priceLevels'
-  | 'risingActive'
-  | 'history'
->;
+} as const satisfies SearchRuntimeMirroredState;
+
+// The persisted subset — the three FILTER fields, and only those. Derived from one list so
+// `partialize` and the migration's key-strip can never drift apart.
+const PERSISTED_KEYS = ['openNow', 'priceLevels', 'risingActive'] as const;
+type PersistedKey = (typeof PERSISTED_KEYS)[number];
 
 export const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
   if (tab === 'restaurants' || tab === 'dishes') {
@@ -113,36 +81,9 @@ export const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
 
 export const useSearchStore = create<SearchState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...defaultState,
-      setQuery: (query) =>
-        set(() => ({
-          query,
-        })),
-      clearQuery: () =>
-        set(() => ({
-          query: '',
-        })),
-      setPage: (page) =>
-        set(() => ({
-          page: Math.max(1, page),
-        })),
-      resetPage: () =>
-        set(() => ({
-          page: 1,
-        })),
-      resetBoundsFilter: () =>
-        set(() => ({
-          bounds: defaultState.bounds,
-          boundsLabel: defaultState.boundsLabel,
-          boundsPresetId: defaultState.boundsPresetId,
-        })),
-      setBounds: (bounds, options) =>
-        set(() => ({
-          bounds,
-          boundsLabel: options?.label ?? null,
-          boundsPresetId: options?.presetId ?? null,
-        })),
+      priceLevels: [...defaultState.priceLevels],
       applySearchRuntimeStateMirror: (patch) =>
         set(() => {
           const next: Partial<SearchRuntimeMirroredState> = { ...patch };
@@ -157,37 +98,6 @@ export const useSearchStore = create<SearchState>()(
           }
           return next;
         }),
-      recordSearch: (query) => {
-        const trimmed = query.trim();
-        if (!trimmed) {
-          return;
-        }
-        const { history } = get();
-        const withoutExisting = history.filter(
-          (entry) => entry.query.toLowerCase() !== trimmed.toLowerCase()
-        );
-        const next: SearchHistoryEntry[] = [
-          {
-            query: trimmed,
-            lastRunAt: Date.now(),
-          },
-          ...withoutExisting,
-        ].slice(0, HISTORY_LIMIT);
-        set({
-          history: next,
-        });
-      },
-      removeHistoryEntry: (query) => {
-        set((state) => ({
-          history: state.history.filter(
-            (entry) => entry.query.toLowerCase() !== query.toLowerCase()
-          ),
-        }));
-      },
-      clearHistory: () =>
-        set(() => ({
-          history: [],
-        })),
     }),
     {
       name: 'search-store',
@@ -197,16 +107,21 @@ export const useSearchStore = create<SearchState>()(
           return persistedState as SearchState;
         }
 
-        const state = persistedState as Partial<SearchState> & { votes100Plus?: boolean };
-        // v8: the '100+ votes' filter was removed end-to-end; strip the stale persisted key.
-        delete state.votes100Plus;
+        // v8 stripped the removed '100+ votes' key; v9 keeps ONLY the three persisted filter
+        // fields, dropping the query / page / history / bounds payload that no reader ever
+        // read. Anything not in PERSISTED_KEYS is discarded rather than carried forward.
+        const state = persistedState as Record<string, unknown>;
+        const carried: Partial<Record<PersistedKey, unknown>> = {};
+        PERSISTED_KEYS.forEach((key) => {
+          if (state[key] !== undefined) {
+            carried[key] = state[key];
+          }
+        });
         return {
-          ...state,
-          activeTab: defaultState.activeTab,
-          preferredActiveTab: defaultState.preferredActiveTab,
-          hasActiveTabPreference: false,
-          priceLevels: normalizePriceLevels(state.priceLevels),
-        };
+          ...defaultState,
+          ...carried,
+          priceLevels: normalizePriceLevels(carried.priceLevels),
+        } as SearchState;
       },
       storage: createJSONStorage(() => {
         if (
@@ -254,15 +169,9 @@ export const useSearchStore = create<SearchState>()(
         };
       }),
       partialize: (state) => ({
-        query: state.query,
-        page: state.page,
         openNow: state.openNow,
-        bounds: state.bounds,
-        boundsLabel: state.boundsLabel,
-        boundsPresetId: state.boundsPresetId,
         priceLevels: state.priceLevels,
         risingActive: state.risingActive,
-        history: state.history,
       }),
     }
   )

@@ -3,7 +3,7 @@ import type { SearchOverlayLocalRestaurantSheetHostAuthority } from '../shared/s
 import { areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual } from '../shared/route-local-restaurant-overlay-control-selection-snapshot-contract';
 import type { SearchOverlayLocalRestaurantSheetControlSelectionAuthority } from './search-overlay-local-restaurant-sheet-control-selection-state-controller';
 import type { SearchOverlayLocalRestaurantSheetSessionHostAuthority } from './search-overlay-local-restaurant-sheet-session-host-state-controller';
-import type { SearchOverlayLocalRestaurantSheetVisualHostAuthority } from './search-overlay-local-restaurant-sheet-visual-host-state-controller';
+import type { SearchOverlayLocalRestaurantSheetVisualAuthority } from './search-overlay-local-restaurant-sheet-visual-state-controller';
 
 type Listener = () => void;
 
@@ -17,7 +17,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
   >;
 
   private visualHostSnapshot: ReturnType<
-    SearchOverlayLocalRestaurantSheetVisualHostAuthority['getSnapshot']
+    SearchOverlayLocalRestaurantSheetVisualAuthority['getSnapshot']
   >;
 
   private snapshot: SearchOverlayLocalRestaurantSheetHostSnapshot;
@@ -35,7 +35,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
   }: {
     localRestaurantSheetSessionHostAuthority: SearchOverlayLocalRestaurantSheetSessionHostAuthority;
     localRestaurantSheetControlSelectionAuthority: SearchOverlayLocalRestaurantSheetControlSelectionAuthority;
-    localRestaurantSheetVisualHostAuthority: SearchOverlayLocalRestaurantSheetVisualHostAuthority;
+    localRestaurantSheetVisualHostAuthority: SearchOverlayLocalRestaurantSheetVisualAuthority;
   }) {
     this.sessionHostSnapshot = localRestaurantSheetSessionHostAuthority.getSnapshot();
     this.controlSelectionSnapshot = localRestaurantSheetControlSelectionAuthority.getSnapshot();
@@ -123,9 +123,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
   }
 
   private setVisualHostSnapshot(
-    visualHostSnapshot: ReturnType<
-      SearchOverlayLocalRestaurantSheetVisualHostAuthority['getSnapshot']
-    >
+    visualHostSnapshot: ReturnType<SearchOverlayLocalRestaurantSheetVisualAuthority['getSnapshot']>
   ): void {
     if (this.visualHostSnapshot === visualHostSnapshot) {
       return;

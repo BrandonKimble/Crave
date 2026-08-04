@@ -52,62 +52,12 @@ export const radius = {
   lg: 16,
 };
 
-type ShadowConfig = {
-  color?: string;
-  height?: number;
-  opacity?: number;
-  radius?: number;
-  elevation?: number;
-};
-
-const DEFAULT_SHADOW_COLOR = 'rgba(15, 23, 42, 1)';
-
-const buildShadowStyle = ({
-  color = DEFAULT_SHADOW_COLOR,
-  height = 4,
-  opacity = 0.12,
-  radius = 10,
-  elevation = 4,
-}: ShadowConfig = {}): ViewStyle => ({
-  shadowColor: color,
-  shadowOffset: { width: 0, height },
-  shadowOpacity: opacity,
-  shadowRadius: radius,
-  elevation,
-});
-
-const surfaceShadowBottom = buildShadowStyle({
-  height: 1.5,
-  radius: 3,
-  opacity: 0.17,
-  elevation: 4,
-});
-
-const surfaceShadowTop = buildShadowStyle({
-  height: -0.5,
-  radius: 2,
-  opacity: 0.06,
-  elevation: 2,
-});
-
-export const createShadow = (config?: ShadowConfig): ViewStyle => buildShadowStyle(config);
-
-export const shadows = {
-  surfaceBottomHeavy: surfaceShadowBottom,
-  surfaceTopLight: surfaceShadowTop,
-  searchSurface: surfaceShadowBottom,
-  resultsPanelEdge: surfaceShadowTop,
-  floatingCard: surfaceShadowBottom,
-  floatingUpSoft: surfaceShadowTop,
-  floatingUp: surfaceShadowTop,
-  floatingControl: buildShadowStyle({ height: 4, radius: 10, opacity: 0.14, elevation: 5 }),
-};
-
-export const theme = {
-  colors,
-  spacing,
-  radius,
-  shadows,
-} as const;
-
-export type Theme = typeof theme;
+// F1557/F1558: the SHADOW half of this file is gone (2026-08-04). `theme.shadows` exported
+// eight named tokens that were really TWO objects under eight aliases — `surfaceShadowBottom`
+// under three names, `surfaceShadowTop` under four — so `resultsPanelEdge` carried no
+// distinction from `floatingUp` and editing one would silently have edited the others. A
+// repo-wide grep found ZERO consumers for any of them, for the `createShadow` builder beside
+// them, or for the `theme` / `Theme` aggregate that wrapped them (the `searchSurface` hits the
+// audit read as live belong to other symbols: `Search/styles.ts`'s own `searchSurface` style
+// and a native-overlay lane name). The LIVE shadow vocabulary is `constants/shadows.ts` — one
+// home now, and it is the one that does not have "theme" in its name.

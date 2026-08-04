@@ -1,4 +1,5 @@
 import { logger } from '../utils';
+import { logToggleDebug } from './toggle-debug-flag';
 
 /**
  * THE TOGGLE INTERACTION ENGINE — the pure core of the revise-protocol
@@ -150,7 +151,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     resetVisualFloorGate();
     const intentId = activeIntentId;
     const kind = activeKind;
-    logger.info('[TOGGLE] finalize', { intentId, kind, awaitedVisualSync });
+    logToggleDebug('finalize', { intentId, kind, awaitedVisualSync });
     activeKind = null;
     activeIntentId = null;
     activeRunner = null;
@@ -217,7 +218,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     }
     clearVisualFloorFallbackTimeout();
     activeRunner = null;
-    logger.info('[TOGGLE] settle:commit', { intentId, kind });
+    logToggleDebug('settle:commit', { intentId, kind });
     publishState({ kind, pendingPresentationIntentId: null });
     onLifecycle?.({ type: 'settled', intentId, kind });
 
@@ -300,7 +301,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     awaitingVisualSync = false;
     resetVisualFloorGate();
     awaitVisualFloorActive = options.awaitVisualFloor === true;
-    logger.info('[TOGGLE] begin', { seq, intentId, kind });
+    logToggleDebug('begin', { seq, intentId, kind });
     onLifecycle?.({ type: 'started', intentId, kind });
     publishState({ kind, pendingPresentationIntentId: intentId });
 

@@ -28,6 +28,7 @@ import {
   OVERLAY_HORIZONTAL_PADDING,
   OVERLAY_TAB_HEADER_HEIGHT,
 } from '../overlaySheetStyles';
+import { resolveChinlessContentBottomPadding } from '../overlay-sheet-chin-geometry';
 import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
 import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
@@ -122,7 +123,7 @@ export const useRestaurantPanelSpec = ({
   containerStyle,
 }: UseRestaurantPanelSpecOptions): OverlayContentSpec<FoodResult> | null => {
   const insets = useSafeAreaInsets();
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
+  const contentBottomPadding = resolveChinlessContentBottomPadding(insets.bottom);
   const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;

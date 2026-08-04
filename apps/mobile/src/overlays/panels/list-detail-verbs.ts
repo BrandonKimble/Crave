@@ -1,4 +1,4 @@
-import type { UserListViewerRole } from '../../services/user-lists';
+import type { UserListKind, UserListViewerRole } from '../../services/user-lists';
 
 /**
  * THE list-verbs model (list-detail choreography leg, Job 2): one source-agnostic
@@ -14,6 +14,12 @@ import type { UserListViewerRole } from '../../services/user-lists';
  *                  share (public /cl link) and save-a-copy only.
  * - virtual All lists ('all:restaurants'/'all:dishes') have no stored row: no menu
  *   verbs at all (share/edit/delete are row-backed), but add-photo stays role-based.
+ *
+ * F1463: `kind` is an INPUT because the one-per-user favorites list is UNDELETABLE
+ * (server-guarded). ListsPanel knew that and suppressed Delete locally; the model did not,
+ * so ListDetailPanel rendered Delete from `canDelete` for the very same list and ate a
+ * server refusal. The rule lives HERE now, once — and because `kind` is required, a surface
+ * cannot ask for verbs without stating which list it is asking about.
  */
 export type ListDetailVerbSource = 'favorites' | 'curated';
 
@@ -40,10 +46,13 @@ export const deriveListDetailVerbs = ({
   source,
   viewerRole,
   isVirtualAll,
+  kind,
 }: {
   source: ListDetailVerbSource;
   viewerRole: UserListViewerRole | undefined;
   isVirtualAll: boolean;
+  /** The stored row's kind — `undefined` for curated / virtual All (no row to have a kind). */
+  kind: UserListKind | undefined;
 }): ListDetailVerbs => {
   if (source === 'curated') {
     return {
@@ -66,7 +75,9 @@ export const deriveListDetailVerbs = ({
     canShare: isConcrete,
     canSaveCopy: false,
     canEditMeta: isConcrete && isOwner,
-    canDelete: isConcrete && isOwner,
+    // F1463: favorites is one-per-user and server-guarded undeletable — the menu never
+    // offers what the API refuses, on EVERY surface that renders from this model.
+    canDelete: isConcrete && isOwner && kind !== 'favorites',
     canToggleProfileVisibility: isConcrete && isOwner,
     canTogglePhotoSource: isConcrete && isOwner,
     canPin: isConcrete && isOwner,

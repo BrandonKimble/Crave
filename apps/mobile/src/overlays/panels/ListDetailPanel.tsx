@@ -50,6 +50,7 @@ import {
   type PersistentHeaderExtrasProps,
 } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { sceneParticipatesInWorldJoin } from '../../navigation/runtime/scene-foundation-spec';
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
 import type { OverlayRouteEntry } from '../../navigation/runtime/app-overlay-route-types';
 import { areOverlayRoutesEqual } from '../../navigation/runtime/app-overlay-route-stack-algebra';
@@ -967,6 +968,8 @@ const LIST_DETAIL_PAGE_BODY: PageContentBodySpec<ListDetailPageData> = {
 export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
   const queryClient = useQueryClient();
   const { pushRoute, closeActiveRoute } = useAppOverlayRouteController();
+  // R7/D4: the world-hold gate keys to the ACTIVE route entry (see worldRevealAdmitted).
+  const routeSceneRuntime = useAppRouteSceneRuntime();
   const params: ListDetailParams | null =
     entry?.key === 'listDetail' ? ((entry.params ?? {}) as ListDetailParams) : null;
   const listIdParam = typeof params?.listId === 'string' ? params.listId : null;
@@ -1105,12 +1108,44 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // The ONE admission truth is the search surface's own reveal collector: a live
   // redraw transaction admits its results body when {cards, nativeMarkerFrame, sheet}
   // readiness joins (canAdmitResultsBody — the exact same gate the results cards and
-  // the native enter-start ride). The panel holds its rows while THE live world redraw
-  // is unjoined; there is exactly one world surface, so no identity key is needed.
+  // the native enter-start ride).
+  //
+  // R7 (OA1 worldJoin-as-data + D4): participation DERIVES from the scene descriptor
+  // (scene-foundation-spec `worldJoin: true`), never from this panel's private
+  // knowledge — deleting the declaration barks RED below instead of silently
+  // bypassing the gate. And the hold is keyed to THE ENTRY the world presents into:
+  // the reconciler presents into the ACTIVE route entry (the launch chokepoint
+  // stamps its desire there), so a buried sibling listDetail entry (G-ENTRY
+  // stacking: list A → list B) must never hold on a redraw that belongs to the
+  // presented entry's world. "One world surface" still holds for the surface; the
+  // entry key replaces the old "no identity key is needed" shortcut.
+  const worldJoinDeclared = sceneParticipatesInWorldJoin('listDetail');
+  React.useEffect(() => {
+    if (__DEV__ && worldBacked && !worldJoinDeclared) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[WORLD-JOIN] RED: listDetail entry ${entry?.entryId ?? 'unknown'} is world-backed but ` +
+          `the scene descriptor does not declare worldJoin — the hold gate is bypassed (OA1)`
+      );
+    }
+  }, [worldBacked, worldJoinDeclared, entry?.entryId]);
+  const entryIdForWorldHold = entry?.entryId ?? null;
   const worldRevealAdmitted = React.useSyncExternalStore(
     React.useCallback((listener: () => void) => getSearchSurfaceRuntime().subscribe(listener), []),
     () => {
-      if (!worldBacked) {
+      if (!worldBacked || !worldJoinDeclared) {
+        return true;
+      }
+      // D4: the live redraw presents into the ACTIVE entry — a different entry's
+      // redraw never holds this panel's rows.
+      const activeEntryId =
+        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute?.entryId ??
+        null;
+      if (
+        entryIdForWorldHold != null &&
+        activeEntryId != null &&
+        entryIdForWorldHold !== activeEntryId
+      ) {
         return true;
       }
       const policy = selectSearchSurfaceVisualPolicy(getSearchSurfaceRuntime().getSnapshot());
@@ -1489,6 +1524,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     source: isCurated ? 'curated' : 'favorites',
     viewerRole,
     isVirtualAll,
+    // F1463: the stored row's kind — the model, not this panel, decides that the
+    // one-per-user favorites list is undeletable. Virtual All has no row, hence no kind.
+    kind: isVirtualAll ? undefined : metaQuery.data?.list.kind,
   });
   const canEdit = verbs.canReorder;
   const canAddPhoto = verbs.canAddPhoto;

@@ -3,7 +3,6 @@ import React from 'react';
 import {
   cancelAnimation,
   runOnJS,
-  runOnUI,
   useAnimatedReaction,
   withSpring,
   useSharedValue,
@@ -20,7 +19,6 @@ import type {
 } from './bottomSheetSharedSnapRuntimeContract';
 import type {
   BottomSheetMotionCommand,
-  BottomSheetSnap,
   BottomSheetSnapChangeSource,
 } from './bottomSheetMotionTypes';
 import {
@@ -34,7 +32,6 @@ import {
 import { clampValue, SHEET_SPRING_CONFIG } from './sheetUtils';
 import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
-import { logPageSwitchDebug } from '../navigation/runtime/pageswitch-debug-flag';
 
 type RuntimeSnapValues = {
   expanded: number;
@@ -45,20 +42,14 @@ type RuntimeSnapValues = {
 };
 
 type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
-  visible: boolean;
   motionCommandValue?: SharedValue<BottomSheetMotionCommand | null>;
-  preservePositionOnSnapPointsChange: boolean;
   preventSwipeDismiss: boolean;
-  initialSnapValue: number;
-  hiddenOrCollapsed: number;
   expandedSnap: number;
   middleSnap: number;
   collapsedSnap: number;
   hiddenSnap?: number;
-  sheetYValue?: SharedValue<number>;
   sheetY: SharedValue<number>;
   headerHeight: SharedValue<number>;
-  currentSnapKeyRef: React.MutableRefObject<BottomSheetSnap>;
   isDragging: SharedValue<boolean>;
   isSettling: SharedValue<boolean>;
   settlingToHidden: SharedValue<boolean>;
@@ -66,7 +57,6 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   hasNotifiedHidden: SharedValue<boolean>;
   springTargetY: SharedValue<number>;
   springId: SharedValue<number>;
-  wasVisible: React.MutableRefObject<boolean>;
   notifyHidden: BottomSheetSharedNotifyHidden;
   dispatchSnapChange: BottomSheetSharedDispatchSnapChange;
   notifySnapStart: BottomSheetSharedNotifySnapStart;
@@ -75,20 +65,14 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
 };
 
 export const useBottomSheetSharedSnapExecutionRuntime = ({
-  visible,
   motionCommandValue,
-  preservePositionOnSnapPointsChange,
   preventSwipeDismiss,
-  initialSnapValue,
-  hiddenOrCollapsed,
   expandedSnap,
   middleSnap,
   collapsedSnap,
   hiddenSnap,
-  sheetYValue,
   sheetY,
   headerHeight,
-  currentSnapKeyRef,
   isDragging,
   isSettling,
   settlingToHidden,
@@ -96,7 +80,6 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   hasNotifiedHidden,
   springTargetY,
   springId,
-  wasVisible,
   notifyHidden,
   dispatchSnapChange,
   notifySnapStart,
@@ -319,38 +302,6 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     ]
   );
 
-  const startSpringOnJS = React.useCallback(
-    (
-      target: number,
-      velocity = 0,
-      shouldNotifyHidden = false,
-      source: BottomSheetSnapChangeSource = 'programmatic',
-      settleToken?: number | null
-    ) => {
-      runOnUI(startSpring)(target, velocity, shouldNotifyHidden, source, settleToken ?? null);
-    },
-    [startSpring]
-  );
-
-  const resolveSnapValue = React.useCallback(
-    (snapKey: BottomSheetSnap) => {
-      const runtimeSnapValues = resolveRuntimeSnapValues();
-      switch (snapKey) {
-        case 'expanded':
-          return runtimeSnapValues.expanded;
-        case 'middle':
-          return runtimeSnapValues.middle;
-        case 'collapsed':
-          return runtimeSnapValues.collapsed;
-        case 'hidden':
-          return runtimeSnapValues.hidden ?? runtimeSnapValues.collapsed;
-        default:
-          return undefined;
-      }
-    },
-    [resolveRuntimeSnapValues]
-  );
-
   useAnimatedReaction(
     () => motionCommandValue?.value ?? null,
     (nextCommand, previousCommand) => {
@@ -500,92 +451,18 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     ]
   );
 
-  useAnimatedReaction(
-    () => runtimeConfigValues?.visible.value ?? null,
-    (nextVisible, previousVisible) => {
-      if (
-        runtimeConfigValues == null ||
-        nextVisible == null ||
-        previousVisible == null ||
-        nextVisible === previousVisible ||
-        sheetYValue
-      ) {
-        return;
-      }
-      const target = nextVisible
-        ? runtimeConfigValues.initialSnapValue.value
-        : runtimeConfigValues.hiddenOrCollapsed.value;
-      const shouldNotifyHidden = previousVisible && !nextVisible;
-      const runtimeHiddenSnap = runtimeConfigValues.hasHiddenSnap.value
-        ? runtimeConfigValues.hiddenSnap.value
-        : undefined;
-      if (runtimeHiddenSnap !== undefined && target !== runtimeHiddenSnap) {
-        hasNotifiedHidden.value = false;
-      }
-      startSpring(target, 0, shouldNotifyHidden);
-    },
-    [hasNotifiedHidden, runtimeConfigValues, sheetYValue, startSpring]
-  );
-
-  React.useEffect(() => {
-    if (sheetYValue) {
-      return;
-    }
-    if (wasVisible.current === visible) {
-      return;
-    }
-    const target = visible ? initialSnapValue : hiddenOrCollapsed;
-    const shouldNotifyHidden = wasVisible.current && !visible;
-    if (hiddenSnap !== undefined && target !== hiddenSnap) {
-      hasNotifiedHidden.value = false;
-    }
-    wasVisible.current = visible;
-    startSpringOnJS(target, 0, shouldNotifyHidden);
-  }, [
-    hasNotifiedHidden,
-    hiddenOrCollapsed,
-    hiddenSnap,
-    initialSnapValue,
-    sheetYValue,
-    startSpringOnJS,
-    visible,
-    wasVisible,
-  ]);
-
-  React.useEffect(() => {
-    if (sheetYValue) {
-      return;
-    }
-    if (preservePositionOnSnapPointsChange) {
-      return;
-    }
-    if (currentSnapKeyRef.current === 'hidden') {
-      return;
-    }
-    const target = resolveSnapValue(currentSnapKeyRef.current);
-    if (target === undefined) {
-      return;
-    }
-    if (Math.abs(sheetY.value - target) < 0.5) {
-      return;
-    }
-    logPageSwitchDebug('reseat', {
-      t: Math.round(performance.now()),
-      snapKey: currentSnapKeyRef.current,
-      target,
-      expanded: resolveSnapValue('expanded'),
-      middle: resolveSnapValue('middle'),
-      collapsed: resolveSnapValue('collapsed'),
-    });
-    startSpringOnJS(target, 0, false);
-  }, [
-    currentSnapKeyRef,
-    preservePositionOnSnapPointsChange,
-    resolveSnapValue,
-    sheetY,
-    sheetYValue,
-    startSpringOnJS,
-  ]);
+  // F1475: the pre-native JS SPRING LANE lived here — a `visible`→spring reaction, a
+  // visible-flip effect and a snap-points RESEAT effect, plus `startSpringOnJS` and
+  // `resolveSnapValue` that fed only them. All three were gated `if (sheetYValue) { return; }`
+  // on a NON-OPTIONAL SharedValue object (search-route-sheet-motion-state-snapshot-contract:13
+  // → presentationState.sheetY), i.e. on a constant `true`: the entire lane had been
+  // unreachable since the sheet went native-driven, and the `logPageSwitchDebug('reseat', …)`
+  // probe inside it was dead TWICE OVER — unreachable code behind an off flag — so a reseat
+  // regression could never produce a line from it. This is the previous IMPLEMENTATION, not
+  // scaffolding for anything pending (the F1371 clip-lane shape, one family over), so it is
+  // deleted rather than banked. The args that fed only it (`visible`, `wasVisible`,
+  // `initialSnapValue`, `hiddenOrCollapsed`, `preservePositionOnSnapPointsChange`,
+  // `sheetYValue`) went with it.
 
   return {
     resolveDestination,

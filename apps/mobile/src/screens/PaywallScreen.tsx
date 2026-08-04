@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
@@ -68,23 +68,39 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
   const [error, setError] = useState<string | null>(null);
   const available = isPurchasesAvailable();
 
+  // F1554: ONE liveness fact for the screen. The offering effect got its `mounted` flag right
+  // while the activation poll — a 12-second loop of network reads — had none, which made the
+  // omission a local inconsistency rather than a house style. Both read this now.
+  const isMountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      isMountedRef.current = false;
+    },
+    []
+  );
+
   useEffect(() => {
-    let mounted = true;
     void getCurrentOffering().then((current) => {
-      if (mounted) {
+      if (isMountedRef.current) {
         setOffering(current);
         setLoading(false);
       }
     });
-    return () => {
-      mounted = false;
-    };
   }, [available]);
 
-  /** Poll server truth until access flips (early exit) or attempts run out. */
+  /**
+   * Poll server truth until access flips (early exit) or attempts run out.
+   *
+   * F1554: this ran up to 8 × (`refresh` + 1500ms) — twelve seconds of `/users/me` reads —
+   * with NO unmount guard, so navigating away mid-activation left the loop issuing requests
+   * and its callers setting state on an unmounted tree. It now stops at the first tick after
+   * unmount and reports `false`, and every caller checks liveness before touching state.
+   */
   const pollForAccess = useCallback(async (): Promise<boolean> => {
     for (let attempt = 0; attempt < ACTIVATION_POLL_ATTEMPTS; attempt += 1) {
+      if (!isMountedRef.current) return false;
       const summary = await access.refresh();
+      if (!isMountedRef.current) return false;
       if (summary?.active) return true;
       await new Promise((resolve) => setTimeout(resolve, ACTIVATION_POLL_INTERVAL_MS));
     }
@@ -101,6 +117,7 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
       setError(null);
       try {
         const result = await purchasePackage(pkg, userId);
+        if (!isMountedRef.current) return;
         if (result) {
           // The store purchase succeeded. From here the buy buttons stay
           // DISARMED — a slow webhook must never invite a second purchase.
@@ -114,6 +131,7 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
           setBusy(null);
         }
       } catch (purchaseError) {
+        if (!isMountedRef.current) return;
         setBusy(null);
         setError(
           purchaseError instanceof Error && purchaseError.message.includes('identity')
@@ -130,10 +148,12 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
     setError(null);
     try {
       const restored = await restorePurchases();
+      if (!isMountedRef.current) return;
       if (restored) {
         setActivating(true);
         setBusy(null);
         const activated = await pollForAccess();
+        if (!isMountedRef.current) return;
         if (!activated) {
           setActivating(false);
           setError('No previous purchases found for this account.');
@@ -142,6 +162,7 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
         setBusy(null);
       }
     } catch {
+      if (!isMountedRef.current) return;
       setBusy(null);
       setError('Restore failed — try again.');
     }

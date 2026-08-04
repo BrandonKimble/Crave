@@ -19,6 +19,7 @@ import {
 } from '../../services/messaging';
 import { usersService } from '../../services/users';
 import { resolveExpandedTop } from '../sheetUtils';
+import { resolveComposerBodyBasePaddingBottom } from '../overlay-sheet-chin-geometry';
 import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
@@ -434,7 +435,10 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
   // and the thread shrinks above it instead of being covered.
   const expandedTop = resolveExpandedTop(getSearchStartupGeometrySeed().searchBarTop, insets.top);
   const keyboard = useAnimatedKeyboard();
-  const bodyBasePaddingBottom = expandedTop + Math.max(insets.bottom, 12);
+  const bodyBasePaddingBottom = resolveComposerBodyBasePaddingBottom({
+    expandedTop,
+    insetBottom: insets.bottom,
+  });
   const bodyAnimatedStyle = useAnimatedStyle(() => ({
     paddingBottom: bodyBasePaddingBottom + Math.max(0, keyboard.height.value - insets.bottom),
   }));

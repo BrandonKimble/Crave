@@ -207,9 +207,9 @@ docked scene's body surface kind, re-check
 ## 7. Performance: what actually governs it here
 
 This section replaces `overlays/PERFORMANCE_PATTERNS.md`, deleted 2026-08-03
-(F961). That guide's headline recommendation — `useKeyedCallback` /
-`useCallbackFactory` for list-item callback stability — had **zero consumers
-anywhere in the app**, and its worked "hook extraction" example was written
+(F961). That guide's headline recommendation — a `useKeyedCallback` /
+`useCallbackFactory` pair for list-item callback stability — had **zero consumers
+anywhere in the app** (the hooks themselves were deleted 2026-08-04, F1551), and its worked "hook extraction" example was written
 against a `useSaveSheetState` hook that does not exist in the codebase. It also
 predated the scene-stack architecture it sat beside, so it said nothing about
 the four mechanisms that actually decide whether a scene feels fast today. A

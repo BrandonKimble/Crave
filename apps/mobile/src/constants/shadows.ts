@@ -8,7 +8,7 @@ type ShadowToken = Pick<
 export const SEARCH_BAR_SHADOW: ShadowToken = {
   shadowColor: '#000',
   shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.20,
+  shadowOpacity: 0.2,
   shadowRadius: 2,
   elevation: 2,
 };
@@ -21,7 +21,10 @@ export const SEARCH_SHORTCUT_SHADOW: ShadowToken = {
   elevation: 2,
 };
 
-export const SEARCH_THIS_AREA_SHADOW: ShadowToken = SEARCH_SHORTCUT_SHADOW;
+// F1557: `SEARCH_THIS_AREA_SHADOW` was a bare alias of SEARCH_SHORTCUT_SHADOW — an alias is a
+// rename, not a token: it promised the two surfaces could diverge while guaranteeing they
+// could not, and editing one would have silently edited the other. The one consumer
+// (Search/styles.ts:200, the "search this area" pill) spreads the shortcut shadow directly.
 
 export const OVERLAY_SHEET_SHADOW_SHELL: ShadowToken = {
   shadowColor: '#000',

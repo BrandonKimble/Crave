@@ -12,10 +12,13 @@ import {
   getSearchSurfaceRedrawNowMs,
 } from './search-surface-redraw-snapshot-runtime';
 
-const phaseIndexByName = SEARCH_SURFACE_REDRAW_PHASE_ORDER.reduce(
-  (map, phase, index) => map.set(phase, index),
-  new Map<SearchSurfaceRedrawPhase, number>()
-);
+/** F1614: the old `Map.get(phase) ?? 0` fallback could never fire, and the day it could
+ *  (a phase outside the ORDER) it would silently map the unknown phase onto `'idle'`'s slot and
+ *  corrupt the very ordering rule it serves. With the union DERIVED from the ORDER (F1613) the
+ *  lookup is TOTAL by construction: every `SearchSurfaceRedrawPhase` is an element of the array,
+ *  so `indexOf` cannot return -1 and there is no fallback to get wrong. */
+const resolvePhaseIndex = (phase: SearchSurfaceRedrawPhase): number =>
+  SEARCH_SURFACE_REDRAW_PHASE_ORDER.indexOf(phase);
 
 export const resolveSearchSurfaceRedrawAdvanceSnapshot = ({
   snapshot,
@@ -41,8 +44,8 @@ export const resolveSearchSurfaceRedrawAdvanceSnapshot = ({
   }
 
   const previousPhase = snapshot.phase;
-  const previousIndex = phaseIndexByName.get(previousPhase) ?? 0;
-  const nextIndex = phaseIndexByName.get(phase) ?? 0;
+  const previousIndex = resolvePhaseIndex(previousPhase);
+  const nextIndex = resolvePhaseIndex(phase);
 
   if (phase !== previousPhase && (nextIndex < previousIndex || nextIndex > previousIndex + 1)) {
     return { accepted: false, snapshot };

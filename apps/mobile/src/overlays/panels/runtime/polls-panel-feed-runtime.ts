@@ -8,6 +8,7 @@ import type {
   UsePollsPanelSpecOptions,
 } from './polls-panel-runtime-contract';
 import { usePollsFeedControlsStore } from './polls-feed-controls-store';
+import { resolveChinlessContentBottomPadding } from '../../overlay-sheet-chin-geometry';
 import { usePollsFeedRuntimeController } from './polls-feed-runtime-controller';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
 import { useViewportSubjectVerdict } from '../../../store/viewport-subject-store';
@@ -67,7 +68,7 @@ export const usePollsPanelFeedRuntime = ({
   const feedType = usePollsFeedControlsStore((state) => state.feedType);
   const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
 
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
+  const contentBottomPadding = resolveChinlessContentBottomPadding(insets.bottom);
   const initialSnap: PollsPanelInitialSnapPoint =
     initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
   const resolvedSnap = currentSnap ?? initialSnap;

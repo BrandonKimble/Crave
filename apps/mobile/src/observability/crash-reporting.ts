@@ -59,3 +59,35 @@ export function captureHandledError(error: unknown, context?: Record<string, unk
   }
   Sentry.captureException(error, context ? { extra: context } : undefined);
 }
+
+/**
+ * The LOG BREADCRUMB seam (F1552) — `utils/logger`'s production half.
+ *
+ * The house logger used to reach production by calling `console.info/warn/error`
+ * unconditionally, over the RN bridge. Console emission is now `__DEV__`-only and the
+ * production record lives here instead: an info/warn/error line becomes a levelled Sentry
+ * breadcrumb, so it is attached to whatever event follows it rather than shouted into a
+ * release build's console. No-op when crash reporting is disabled (no DSN), like everything
+ * else in this file. `debug` deliberately does NOT come here — it is the high-frequency
+ * level, and the breadcrumb ring is 60 entries deep.
+ */
+export function recordLogBreadcrumb(
+  level: 'info' | 'warn' | 'error',
+  message: string,
+  metadata?: unknown
+): void {
+  if (!isCrashReportingEnabled) {
+    return;
+  }
+  Sentry.addBreadcrumb({
+    category: 'log',
+    level: level === 'warn' ? 'warning' : level,
+    message,
+    data:
+      metadata != null && typeof metadata === 'object'
+        ? (metadata as Record<string, unknown>)
+        : metadata !== undefined
+          ? { value: metadata }
+          : undefined,
+  });
+}

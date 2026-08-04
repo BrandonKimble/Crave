@@ -53,6 +53,7 @@ import {
   type UserListType,
 } from '../../services/user-lists';
 import { useUserLists, userListKeys } from '../../hooks/use-user-lists';
+import { deriveListDetailVerbs } from './list-detail-verbs';
 import { sortListsForDisplay } from './lists-display-order';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-action-registry';
@@ -788,18 +789,26 @@ const ListsContent = React.memo(({ items }: { items: readonly UserListSummary[] 
             icon: <Share2 size={19} color={TILE_TEXT} />,
             onPress: () => void handleShare(list),
           },
-          // Favorites-as-kind: the one-per-user favorites list is UNDELETABLE
-          // (server-guarded) — the menu doesn't offer what the API refuses.
-          ...(list.kind === 'favorites'
-            ? []
-            : [
+          // F1463: the "favorites is UNDELETABLE (server-guarded) — the menu doesn't offer
+          // what the API refuses" rule used to live HERE as a local `kind === 'favorites'`
+          // check, while the verbs model this panel's sibling renders from knew nothing of
+          // it — so ListDetailPanel offered Delete on the very same list. One home now: the
+          // model. These are the viewer's OWN concrete lists, hence owner + not virtual.
+          ...(deriveListDetailVerbs({
+            source: 'favorites',
+            viewerRole: 'owner',
+            isVirtualAll: false,
+            kind: list.kind,
+          }).canDelete
+            ? [
                 {
                   label: 'Delete',
                   style: 'destructive' as const,
                   icon: <Trash2 size={19} color="#ef4444" />,
                   onPress: () => void handleDelete(list),
                 },
-              ]),
+              ]
+            : []),
           {
             label: isPublic ? 'Remove from profile' : 'Add to profile',
             icon: isPublic ? (

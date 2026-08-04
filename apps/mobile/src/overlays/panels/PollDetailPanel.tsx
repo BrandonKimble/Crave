@@ -35,6 +35,12 @@ import {
   OVERLAY_TAB_HEADER_HEIGHT,
   overlaySheetStyles,
 } from '../overlaySheetStyles';
+import {
+  OVERLAY_CHIN_PADDING_BOTTOM,
+  OVERLAY_CHIN_PADDING_TOP,
+  OVERLAY_COMPOSE_CHIN_RESERVED_HEIGHT,
+  resolveChinContentBottomPadding,
+} from '../overlay-sheet-chin-geometry';
 import { resolveExpandedTop } from '../sheetUtils';
 import {
   registerPersistentHeaderDescriptor,
@@ -157,8 +163,14 @@ const CommentBody = React.memo(({ comment, mentionUser }: CommentBodyProps) => {
   );
   return (
     <Text variant="body" style={styles.commentBody}>
+      {/* No `@` for a ghost: "@Deleted user" reads as a handle that could be
+          tapped or typed, and there is no handle — the name was retired. */}
       {mentionUser ? (
-        <Text style={styles.mentionPrefix}>{`@${resolveUserName(mentionUser)} `}</Text>
+        <Text style={styles.mentionPrefix}>
+          {mentionUser.isDeleted
+            ? `${resolveUserName(mentionUser)} `
+            : `@${resolveUserName(mentionUser)} `}
+        </Text>
       ) : null}
       {segments.map((segment, index) => {
         if (!segment.entity) return segment.text;
@@ -1270,10 +1282,12 @@ export const usePollDetailPanelSpec = ({
     </View>
   );
 
-  // Reserve room for the pinned compose chin so the last comment clears it. The list
-  // content ends at the body-frame bottom (which overhangs the screen by `expanded`), so
-  // the padding must cover that overhang + the home-indicator inset + the chin's height.
-  const contentBottomPadding = expandedSnapTop + insets.bottom + 64;
+  // F1465: the chin rule has ONE home (overlay-sheet-chin-geometry.ts).
+  const contentBottomPadding = resolveChinContentBottomPadding({
+    expandedTop: expandedSnapTop,
+    insetBottom: insets.bottom,
+    chinReservedHeight: OVERLAY_COMPOSE_CHIN_RESERVED_HEIGHT,
+  });
   const expanded = expandedSnapTop;
   const hidden = SCREEN_HEIGHT + 80;
   const snapPoints = React.useMemo(
@@ -1523,8 +1537,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: OVERLAY_CHIN_PADDING_TOP,
+    paddingBottom: OVERLAY_CHIN_PADDING_BOTTOM,
     backgroundColor: '#ffffff',
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: BORDER,

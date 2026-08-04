@@ -1700,8 +1700,8 @@ SearchRuntimeBus instead, which is what its own header tells you.
 (F1552). Read any `logger.info('[TOGGLE] …')` in a gesture path as a shipped console call, not
 as dev instrumentation.
 
-**`src/hooks` is nine files and two of them are dead** (`useDebouncedLayoutMeasurement.ts`,
-`useCallbackFactory.ts` — 438 lines, zero consumers, F1551). The live ones worth knowing are
+**`src/hooks` is seven files** — `useDebouncedLayoutMeasurement.ts` and `useCallbackFactory.ts`
+(438 lines, zero consumers) were deleted 2026-08-04 (F1551). The live ones worth knowing are
 `useAccess` (money, above), `use-favorite-heart` (the heart verb, which never rides the generic
 add-item route) and `use-transition-driver` (the shared 0↔1 progress driver, one consumer).
 
@@ -1806,9 +1806,10 @@ plan), then `BottomSheetSceneStackHost.tsx:1374-1660` (the host's arm / offer /
 reveal wiring). `navigation/runtime/ADDING_A_SCENE.md` is the in-repo guide worth reading first
 if you are adding a page rather than changing the machinery. (It absorbed the
 performance section of the deleted `overlays/PERFORMANCE_PATTERNS.md` — F961:
-that guide's headline recommendation, `useKeyedCallback`/`useCallbackFactory`,
-had ZERO consumers anywhere in the app, and its worked example was written
-against a `useSaveSheetState` hook that does not exist.)
+that guide's headline recommendation, a `useKeyedCallback`/`useCallbackFactory`
+pair, had ZERO consumers anywhere in the app — the hooks were deleted in turn
+(F1551) — and its worked example was written against a `useSaveSheetState` hook
+that does not exist.)
 
 ### Health as of pass 1 (2026-08-03)
 
@@ -2030,7 +2031,7 @@ motion-frame → route-visual → route-host-visual → sheet-visual → sheet-h
 **6 object allocations, 5 comparator runs, 5 listener fan-outs, and exactly 1
 object that React ever reads** (F1608). The relay is not slow for deduping too
 little; it is slow because it dedupes at every hop and most of the dedupes cannot
-fire, so it pays the comparison *and* the allocation. That count is the
+fire, so it pays the comparison _and_ the allocation. That count is the
 before/after metric for F958's collapse (staging map: DESIGNS D45/F958).
 
 **Two controllers in here are DEAD, and one of them was "fixed" while dead.**
@@ -2039,7 +2040,7 @@ before/after metric for F958's collapse (staging map: DESIGNS D45/F958).
 their types escape. F1052f's derived shape-equality comparator — the exemplar D45
 told everyone to copy — lives in the first one, in code no runtime path reaches,
 while the live neighbour re-inlines the same derivation twice by hand (F1601).
-The second is subtler and worth remembering: someone already routed *around* the
+The second is subtler and worth remembering: someone already routed _around_ the
 VisualHost hop (the hook of that name builds the **SheetVisual** controller and
 returns its authority under the VisualHost name), and TypeScript never objected
 because the two snapshot types are the same three fields (F1602). **In this

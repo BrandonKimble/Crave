@@ -1,7 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { STRIP_BAND_BOTTOM_SPACER_HEIGHT } from '../../toggles/toggle-strip-metrics';
 
-import { SEARCH_SHORTCUT_SHADOW, SEARCH_THIS_AREA_SHADOW } from './shadows';
+import { SEARCH_SHORTCUT_SHADOW } from './shadows';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import {
@@ -197,7 +197,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 8,
     justifyContent: 'center',
-    ...SEARCH_THIS_AREA_SHADOW,
+    ...SEARCH_SHORTCUT_SHADOW,
   },
   searchThisAreaText: {
     color: SEARCH_THIS_AREA_COLOR,
