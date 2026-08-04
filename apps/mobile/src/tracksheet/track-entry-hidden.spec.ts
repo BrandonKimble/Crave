@@ -12,7 +12,6 @@
 //       0) must come back with hadMemory=true.
 
 import {
-  hasClearedScreenEdge,
   planHiddenExcursion,
   resolveHiddenPresentation,
   computeHiddenDepth,
@@ -40,15 +39,12 @@ describe('hidden excursion plan (OA5: every hide glides)', () => {
     expect(computeHiddenDepth(900, 852)).toBe(0);
   });
 
-  it('the edge fact fires only AT/BEYOND the excursion target', () => {
-    expect(hasClearedScreenEdge(-151.8, -152)).toBe(true);
-    expect(hasClearedScreenEdge(-152, -152)).toBe(true);
-    // Mid-flight (sheet band still visible) is NOT cleared.
-    expect(hasClearedScreenEdge(-80, -152)).toBe(false);
-    expect(hasClearedScreenEdge(0, -152)).toBe(false);
-    // A non-hidden target never clears (guards a τ=0 misuse).
-    expect(hasClearedScreenEdge(0, 0)).toBe(false);
-  });
+  // The edge fact itself is NATIVE-owned (trackHiddenEdgeCleared, emitted by
+  // TrackScrollKit when τ reaches the excursion target). Its former JS mirror
+  // (`hasClearedScreenEdge`) was dead code — deleted (F3 kill-list). The
+  // host-side consumption of the real event — hold until the edge, offer the
+  // boundary, repaint — is falsified in the render lane against the real
+  // listener wiring: track-host-switch.render-spec.tsx ("deferred swap").
 });
 
 describe('deferred swap at the screen edge (A2)', () => {

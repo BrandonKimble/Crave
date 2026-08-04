@@ -76,6 +76,27 @@ module.exports = {
       },
     },
     {
+      // The tracksheet RENDER lane (transition contract F3): component tests +
+      // thin native-boundary mocks, excluded from the app tsconfig (same law
+      // as *.spec.ts) and typed by the lane's own project. Jest env + the
+      // spec-file relaxations; the mocks declare marker host elements, so the
+      // typed JSX intrinsic check is off here.
+      files: ['src/tracksheet/__render__/**/*.ts', 'src/tracksheet/__render__/**/*.tsx'],
+      env: {
+        jest: true,
+      },
+      parserOptions: {
+        project: './tsconfig.tracksheet-render.json',
+      },
+      rules: {
+        '@typescript-eslint/no-unsafe-call': 'off',
+        '@typescript-eslint/no-unsafe-member-access': 'off',
+        '@typescript-eslint/no-unsafe-assignment': 'off',
+        '@typescript-eslint/no-unsafe-return': 'off',
+        '@typescript-eslint/no-unsafe-argument': 'off',
+      },
+    },
+    {
       // Decision-layer purity (architecture fitness function).
       // These modules are unit-tested in plain Node (Jest, no React Native
       // runtime) with property-based tests that run in milliseconds. They MUST

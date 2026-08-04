@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["jest", "node"],
+    "jsx": "react-jsx",
+    "composite": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules"],
+  "//": "exclude deliberately re-opens src/tracksheet/__render__ (the main tsconfig shuts it out of the app build; ts-jest transpiles this lane's files against these options)"
+}

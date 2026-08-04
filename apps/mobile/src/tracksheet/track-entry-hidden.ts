@@ -59,10 +59,12 @@ export const planHiddenExcursion = (args: {
   targetPostureTau: -computeHiddenDepth(args.collapsedTop, args.screenHeight),
 });
 
-/** Native edge fact, mirrored for the pure tests: the sheet has cleared the
- * screen edge once τ is within half a point of the excursion target. */
-export const hasClearedScreenEdge = (tau: number, targetTau: number): boolean =>
-  targetTau < -0.5 && tau <= targetTau + 0.5;
+// THE EDGE FACT IS NATIVE-OWNED (F3 kill-list, 2026-08-04): a JS mirror of the
+// τ-vs-target comparison (`hasClearedScreenEdge`) lived here, exported and
+// consumed by NOTHING on the live path — the real fact is TrackScrollKit's
+// trackHiddenEdgeCleared emission. The mirror is deleted; its coverage moved to
+// the render lane's host-level test (the deferred swap consumes the native
+// event through the real listener wiring — track-host-switch.render-spec.tsx).
 
 export type HiddenPresentation = {
   scene: string;

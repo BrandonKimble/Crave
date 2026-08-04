@@ -10,6 +10,7 @@
     "build": "node -e \"console.log('Skipping web build (native-only app).')\"",
     "test": "node scripts/jest-honest.js",
     "test:raw": "jest",
+    "test:tracksheet-render": "jest --config jest.tracksheet-render.config.js",
     "test:watch": "jest --watch",
     "lint": "eslint . --fix"
   },
@@ -87,6 +88,7 @@
     "minimatch": "^10.1.1",
     "nativewind": "^4.2.1",
     "react-dom": "19.1.0",
+    "react-test-renderer": "19.1.0",
     "tailwindcss": "^3.4.0",
     "ts-jest": "29.4.5",
     "typescript": "^5.1.3"
