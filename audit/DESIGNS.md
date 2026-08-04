@@ -670,3 +670,18 @@ Census verdict accepted (F1150–F1153): 1,222 generated files byte-identical to
 **OWNER/SIM:** F1338 (human-oracle visual surface — goes to the next sim session's list).
 **LEDGERED:** F1349's structural census (~120 pure-re-export files, nine-level chains) attaches to the F1012 per-cluster continuation — it is the map for those clusters, not a new mandate.
 **DEFENDED IDEAL:** F1332 [FITALL] joins F1307 as a reference case; F1345/F1346/F1347 recorded.
+
+## D50-rulings record — owner batch (2026-08-03, verbatim intents)
+
+- **F1055 save-sheet:** it is a FINISH-OR-CANCEL flow (Spotify save-to-playlist analogy) — "you should not be able to open a restaurant from that sheet." Implementation lane running: remove any profile-open path from the sheet; delete the write-only capture/restore machinery.
+- **F928 standings:** show ALL rows; UI presentation for long lists comes later.
+- **F1246 + F801 (onboarding NYC claim + feeder defaults):** DEFERRED WHOLESALE — "all of that onboarding stuff will be handled later." Rows → OWNER-DECISION (deferred to the onboarding redesign); the F800 keep-exception stands.
+- **F881 brand accent:** fix — one token, same hex, everywhere.
+- **F1110 Android:** DO NOT delete. Goal is full parity; owner's lean is a from-scratch rewrite ("probably tons of bloat from trying to figure out all the map stuff"); judgment delegated on rewrite-vs-repair; plan lane running (plans/android-parity.md, D52).
+- **F1101 TestFlight push:** delegated — "you could figure that out"; investigation lane running.
+- **F740 blueprint §11.8:** no longer parked; correct it; ideal-shape pass on the section later.
+- **F113 legal docs:** FULL AUTHORITY granted to update privacy/terms per current practice (severance model, Stripe web rail); lane running.
+- **F114 spend-config:** shape delegated — derive the ideal (fail-closed money law); lane running.
+- **F303/F304/F305/F350/F372:** do the recorded recommendations; lane running.
+- **F1120(a) XCTest app-host target:** SKIPPED per recommendation (MapLodKit lane suffices until native code needs a host).
+- **F1203 RevenueCat:** EXECUTED inline — the map `premium:entl60198dffff` would have refused EVERY purchase (webhooks carry lookup keys); now `premium:premium` on all four env pairs + local .env, the empty 'crave Pro' entitlement archived (state: inactive), prod api+worker redeployed to pick up the env.
