@@ -102,3 +102,58 @@ audit survive — this is the industry pattern (Reddit, Discord, Strava) and is
 legally sound. The defect was never the pattern; it was that the personal data
 in OTHER tables did not actually die, and that three lists disagreed about
 which tables those were.
+
+---
+
+# ADDENDUM — the signals derivation (from scratch, 2026-08-03)
+
+## What the data actually shows (measured, local DB)
+
+- **26 of 30 distinct search subjects were searched by exactly ONE person.**
+  Only 4 had two distinct actors. So today's `signals` is not aggregate demand
+  evidence — it is a per-person search history. At k=1 it fails "singling out"
+  by definition; no amount of dropping the actor id fixes a row that is unique
+  on its own.
+- Most rows carry NO subject at all: 465 `viewport_dwell` + 77 `entity_view`
+  rows are location traces (a bbox + a time + a persistent actor).
+- **`signal_demand_daily` — the table named like an aggregate — still carries
+  `actor_id` AND `subject_text`.** It is a per-actor daily rollup that retains
+  raw typed text indefinitely. Nothing in the pipeline ever aggregates ACROSS
+  people, which is the only operation that would make this data anonymous.
+
+## The two needs are separable (verified against consumers)
+
+1. **Global demand** — ranking, and pointing collection at wanted dishes/cities.
+   Needs *how many distinct people* wanted X near Y in a period. It never needs
+   to know WHICH person. (`places-promotion` does not join actors at all.)
+2. **Personal demand** — the taste profile and "your" surfaces. Needs the
+   person by definition (`curated-list-builder.behavioralAttributeIds` joins
+   `user_taste_profile` → `signal_actors` → `users`). This is the person's own
+   data and must die with the account.
+
+Today both are served from one identifiable store, which is why the privacy
+question has no clean answer: the same rows are simultaneously "the corpus's
+demand evidence" and "this person's search history."
+
+## The ideal shape
+
+Split by LIFECYCLE, because the two needs have different ones:
+
+- `demand_aggregate` — (subject_key, area_cell, day) → `distinct_actor_count`.
+  No actor id. No free text beyond a normalized subject key. A subject enters
+  ONLY once ≥ k distinct actors have used it (the k-floor is applied at
+  PROMOTION, not at read, so an identifying row never lands here). Genuinely
+  anonymous → retained indefinitely → this is what ranking reads.
+- `personal_activity` — the person's own acts, raw text, precise context.
+  Short TTL (operational: dedupe, abuse detection), deleted on account
+  deletion. Ranking NEVER reads it.
+
+Consequences that fall out for free: deletion no longer has to reason about
+"is this row anonymous enough" (personal_activity just dies); ranking cannot
+regress into reading identifiable rows (it has no access path); and the
+k-anonymity property is enforced at write time by construction rather than
+remembered at each read.
+
+**The current design cannot be patched into this.** Dropping `actor_id` from
+`signals` would leave 26/30 subjects still unique on their text+bbox+time.
+The fix is the write path, not the columns.
