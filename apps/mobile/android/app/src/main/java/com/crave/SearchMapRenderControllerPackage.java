@@ -20,7 +20,6 @@ public class SearchMapRenderControllerPackage implements ReactPackage {
     modules.add(new SearchMapRenderControllerModule(reactContext));
     modules.add(new ProfilePresentationTransactionExecutorModule(reactContext));
     modules.add(new SearchChromeNativeHitTargetRegistryModule(reactContext));
-    modules.add(new SearchChromeScalarSurfaceRegistryModule(reactContext));
     return modules;
   }
 

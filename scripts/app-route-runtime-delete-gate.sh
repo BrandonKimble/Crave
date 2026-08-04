@@ -62,7 +62,24 @@ if [[ -e "$TARGET_PATH/screens/Search/runtime/map/map-diff-applier.ts" ]]; then
   exit 1
 fi
 
+# F1700/D59 (2026-08-04): the scalar-surface stack (JS runtime + iOS
+# SearchChromeScalarSurfaceRegistry.swift + Android SearchChromeScalarSurfaceRegistryModule.java
+# + the RCT_EXTERN_MODULE block) was DELETED as a fork of the shipped
+# SearchChromeNativeHitTargetId stack. Neither half may return, on any platform.
+SCALAR_SURFACE_NATIVE_FORBIDDEN_PATHS=(
+  "$REPO_ROOT/apps/mobile/ios/cravesearch/SearchChromeScalarSurfaceRegistry.swift"
+  "$REPO_ROOT/apps/mobile/android/app/src/main/java/com/crave/SearchChromeScalarSurfaceRegistryModule.java"
+)
+for scalar_surface_native_path in "${SCALAR_SURFACE_NATIVE_FORBIDDEN_PATHS[@]}"; do
+  if [[ -e "$scalar_surface_native_path" ]]; then
+    echo "[app-route-runtime-delete-gate] FAIL search_chrome_scalar_surface_native_path: the scalar-surface native registry was deleted (F1700); the shipped native chrome seam is SearchChromeNativeHitTargetSurface." >&2
+    echo "${scalar_surface_native_path#$REPO_ROOT/}" >&2
+    exit 1
+  fi
+done
+
 declare -a CONTENT_CHECKS=(
+  "search_chrome_scalar_surface_symbols::SearchChromeScalarSurface|createSearchChromeScalarSurfaceRuntime|setSearchChromeScalarPrimitiveTarget|syncScalarSnapshot|registerPlatformScalarSlot::Scalar-surface stack was deleted (F1700/D59); the live native chrome seam is SearchChromeNativeHitTargetId — do not rebuild the fork."
   "polls_scene_authority_subscribe::routePollsSceneRuntime\\.sceneAuthority\\.subscribe::Polls scene authority must remain snapshot/target-owned, not subscribed from mounted chrome/body."
   "chrome_mode_authority_subscribe::routeOverlayChromeModeAuthority\\.(subscribe|subscribeSelector)::Chrome mode authority is snapshot/shared-value target only."
   "chrome_mode_listener_surface::chromeModeListeners::Chrome mode listener set was deleted as a subscription backdoor."
@@ -259,6 +276,7 @@ declare -a CONTENT_CHECKS=(
 )
 
 declare -a PATH_CHECKS=(
+  "search_chrome_scalar_surface_runtime_paths::(^|/)screens/Search/runtime/native/(search-chrome-scalar-surface|use-search-chrome-scalar-surface)[a-z-]*\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted scalar-surface JS runtime files must not return (F1700/D59)."
   "polls_panel_sheet_control_runtime_path::(^|/)overlays/panels/runtime/polls-panel-sheet-control-runtime\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted polls panel sheet-control runtime file must not return."
   "app_route_scene_chrome_snaps_runtime_path::(^|/)navigation/runtime/use-app-route-scene-chrome-snaps-runtime\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted chrome-snaps runtime hook file must not return."
   "app_route_scene_sheet_session_authority_path::(^|/)navigation/runtime/app-route-scene-sheet-session-authority\\.(ts|tsx|js|jsx|d\\.ts)$::Deleted scene sheet-session authority file must not return."
