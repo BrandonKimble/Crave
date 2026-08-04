@@ -283,3 +283,13 @@ state throughout):
 parent-managed subagents; parent reviews code between rungs and re-derives continuously;
 owner-gated decisions are surfaced as FYIs but never pause development; 60fps during
 every transition is a HARD requirement; red team + test at the end.
+
+**OA6.1 — SKELETON vs FROZEN WORLD (parent ruling, FYI to owner).** Research surfaced a
+tension: OA1 "skeleton sheet as the loading state throughout" vs the ratified O-1
+frozen-old-world-under-cover behavior for in-session revises. Resolution: these compose.
+The skeleton is the loading state ONLY when no prior world exists (cold entry into a
+search flow); an in-session revise keeps the frozen old world visible until the new
+world's join completes — content is never replaced by a skeleton when content exists.
+Falsifiers: cold entry shows skeleton (correct variant per OA2); revise never shows a
+skeleton frame. Owner may override; development does not pause on this per OA7.
+See plans/search-flow-rederivation.md for the full R7 gap list.
