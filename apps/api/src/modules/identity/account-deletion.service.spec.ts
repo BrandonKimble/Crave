@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { BadRequestException } from '@nestjs/common';
+import { PERSON_DATA_RULES } from './person-data/person-data-class';
 import { AccountDeletionService } from './account-deletion.service';
 
 /**
@@ -71,16 +72,29 @@ function makeService(overrides?: {
     error: jest.fn(),
     debug: jest.fn(),
   };
+  // The eraser is proven for real against a live database by
+  // person-data-erasure.integration.spec.ts. Here it only needs to be callable
+  // and assertable — a mock cannot prove erasure, and pretending otherwise is
+  // what let the old transcript-style specs stay green while data leaked.
+  const eraser = {
+    erase: jest
+      .fn()
+      .mockResolvedValue({ userId: 'u-del-1', applied: {}, skipped: [] }),
+    assertShellIsAnonymous: jest.fn().mockResolvedValue(undefined),
+  };
   const service = new AccountDeletionService(
     prisma as never,
     clerkAuth as never,
     entitlements as never,
     billing as never,
     cloudinaryService as never,
+    eraser as never,
+    { get: jest.fn().mockReturnValue('test-signing-secret') } as never,
     logger as never,
   );
   return {
     service,
+    eraser,
     prisma,
     clerkAuth,
     entitlements,
@@ -92,6 +106,7 @@ function makeService(overrides?: {
 
 const user = {
   userId: 'u-del-1',
+  email: 'Person@Example.com',
   authProviderUserId: 'clerk-del-1',
 } as never;
 
@@ -154,54 +169,49 @@ describe('AccountDeletionService', () => {
   });
 
   // D40 owner rulings #1 + #2 (2026-08-03): anonymity, not destruction.
-  describe('behavioral data (D40)', () => {
-    it('SEVERS signal_actors.user_id — the actor row survives, the person is disconnected', async () => {
-      const { service, prisma } = makeService();
-      await service.deleteAccount(user);
-      expect(prisma.signalActor.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { userId: 'u-del-1' } }),
+  //
+  // These used to assert `prisma.signalActor.update` etc. — a transcript of an
+  // implementation that has since moved into the eraser. Transcript specs are
+  // exactly what let this file stay green while private lists and raw search
+  // text leaked, so they are not re-pointed at the new mock. The rulings are
+  // now DATA (PERSON_DATA_RULES), so the contract test is against the data,
+  // and the behaviour is proven for real by
+  // person-data-erasure.integration.spec.ts against a live database.
+  describe('behavioral data (D40) — the rulings are declared, not narrated', () => {
+    const ruleFor = (table: string, column: string) =>
+      PERSON_DATA_RULES.find((r) => r.table === table && r.column === column);
+
+    it('SEVERS signal_actors.user_id — the actor survives as anonymous demand evidence', () => {
+      expect(ruleFor('signal_actors', 'user_id')?.disposition).toBe('sever');
+      // The device fingerprint goes with it, or the next sign-in on that
+      // device re-adopts the actor.
+      expect(ruleFor('signal_actors', 'device_key')?.disposition).toBe(
+        'null_column',
       );
-      expect(prisma.signalActor.update).toHaveBeenCalledWith({
-        where: { actorId: 'actor-del-1' },
-        data: { userId: null, deviceKey: null },
-      });
-      // The acts stay as anonymous demand evidence: the ledger is append-only
-      // and the actor row is UPDATED, never deleted. (`prisma.signalActor`
-      // deliberately exposes no delete/deleteMany — a service that tried to
-      // destroy the actor would throw here.)
-      expect(
-        (prisma.signalActor as Record<string, unknown>).delete,
-      ).toBeUndefined();
-      expect(
-        (prisma.signalActor as Record<string, unknown>).deleteMany,
-      ).toBeUndefined();
+      // The ledger itself is never row-deleted.
+      expect(ruleFor('signals', 'actor_id')?.disposition).toBe('retain');
     });
 
-    it('DELETES both D40 user-data tables (own answers + inferred profile)', async () => {
-      const { service, prisma } = makeService();
+    it('DELETES the data that is ABOUT the person (own answers, inferred profile)', () => {
+      expect(ruleFor('user_onboarding_responses', 'user_id')?.disposition).toBe(
+        'delete_row',
+      );
+      expect(ruleFor('user_taste_profile', 'actor_id')?.disposition).toBe(
+        'delete_row',
+      );
+    });
+
+    it('keeps the RECIPIENT\'s copy of a DM — one row, two parties', () => {
+      expect(ruleFor('messages', 'sender_user_id')?.disposition).toBe(
+        'anonymized_by_shell',
+      );
+    });
+
+    it('runs erasure exactly once per deletion', async () => {
+      const { service, eraser } = makeService();
       await service.deleteAccount(user);
-      expect(prisma.userOnboardingResponse.deleteMany).toHaveBeenCalledWith({
-        where: { userId: 'u-del-1' },
-      });
-      // keyed by actor_id — read off the actor BEFORE the mapping is severed
-      expect(prisma.userTasteProfile.deleteMany).toHaveBeenCalledWith({
-        where: { actorId: 'actor-del-1' },
-      });
-      // and the users-row projection is still nulled in the same pass
-      const update = prisma.user.update.mock.calls[0][0];
-      expect(update.data.onboardingResponses).toBeDefined();
-    });
-
-    it('is idempotent: a re-run with the mapping already severed is a no-op, not a crash', async () => {
-      const { service, prisma } = makeService({ signalActor: null });
-      await expect(service.deleteAccount(user)).resolves.toEqual({
-        deleted: true,
-      });
-      expect(prisma.signalActor.update).not.toHaveBeenCalled();
-      expect(prisma.userTasteProfile.deleteMany).not.toHaveBeenCalled();
-      // the user-keyed deletes are unconditional and safely re-runnable
-      expect(prisma.userOnboardingResponse.deleteMany).toHaveBeenCalled();
-      expect(prisma.user.update).toHaveBeenCalled();
+      expect(eraser.erase).toHaveBeenCalledTimes(1);
+      expect(eraser.erase).toHaveBeenCalledWith('u-del-1');
     });
   });
 
@@ -215,7 +225,7 @@ describe('AccountDeletionService', () => {
     expect(prisma.user.update).toHaveBeenCalled();
   });
   it('BURNS every handle the person ever held, then drops the person link (RED-proof for the 2026-08-02 defect: deleting username_history alone made the handle reclaimable)', async () => {
-    const { service, prisma } = makeService();
+    const { service, prisma, eraser } = makeService();
     await service.deleteAccount(user);
     // Every held handle is reserved — reserved_usernames has NO person
     // column, so the name is burned while nothing about who held it remains.
@@ -227,12 +237,17 @@ describe('AccountDeletionService', () => {
       'account_deleted',
     );
     // ...and only THEN is the person<->handle mapping removed.
-    // `as jest.Mock` (2026-08-03): the inline mock object's inferred argument
-    // type collapsed to `never` here once the rt-* harnesses rejoined the
-    // compilation (F1255). The cast states the type this assertion always
-    // meant; the assertion itself is unchanged.
-    expect(prisma.usernameHistory.deleteMany).toHaveBeenCalledWith({
-      where: { userId: 'u-del-1' },
-    });
+    // Dropping the person<->handle mapping is now the ERASER's job
+    // (username_history carries a `delete_row` rule), so what this asserts is
+    // the ORDER that matters: handles are reserved BEFORE erasure runs. That
+    // the rule actually removes the rows is proven against a live database by
+    // person-data-erasure.integration.spec.ts, not by a mock.
+    expect(eraser.erase).toHaveBeenCalledWith('u-del-1');
+    const reserveOrder = (
+      prisma.reservedUsername.upsert as jest.Mock
+    ).mock.invocationCallOrder[0];
+    const eraseOrder = (eraser.erase as jest.Mock).mock
+      .invocationCallOrder[0];
+    expect(reserveOrder).toBeLessThan(eraseOrder);
   });
 });

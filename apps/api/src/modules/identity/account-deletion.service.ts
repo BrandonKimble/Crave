@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { createHmac } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
 import { Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -7,6 +9,7 @@ import { ClerkAuthService } from './auth/clerk-auth.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
 import { BillingService } from '../billing/billing.service';
 import { CloudinaryService } from '../photos/cloudinary.service';
+import { PersonDataEraserService } from './person-data/person-data-eraser.service';
 
 /**
  * In-app account deletion (Apple 5.1.1(v) — required for App Store review).
@@ -36,9 +39,46 @@ import { CloudinaryService } from '../photos/cloudinary.service';
  *    Clerk delete are logged CRITICAL with the userId for manual replay
  *    (the account is already un-signable-into, so no access risk).
  */
+/**
+ * Owner ruling 2026-08-03. Apple explicitly permits a disclosed grace period;
+ * the market has converged on one (Discord 15d, Untappd 7d, Letterboxd 30-90d)
+ * because immediate hard deletion offers no recovery from a mis-tap or a
+ * compromised account, and hands abusers a free ban reset. 30 days is the
+ * owner's choice, and it must match what the delete screen tells the user.
+ */
+const GRACE_PERIOD_DAYS = 30;
+
 @Injectable()
 export class AccountDeletionService {
   private readonly logger: LoggerService;
+
+  /**
+   * The salt for the ban-evasion hash.
+   *
+   * Resolved HERE rather than in the constructor: a missing secret must fail
+   * the DELETION, not the application boot. Throwing from a constructor makes
+   * one feature's misconfiguration a total outage — and it did: the first
+   * version threw on `JWT_SECRET`, which does not exist in ANY environment
+   * (it was removed as dead when auth moved to Clerk), so the DI graph refused
+   * to start. Caught by booting the graph, not by reading the code.
+   *
+   * SIGNAL_AUDIT_HMAC_KEY is this codebase's existing HMAC key (it already
+   * keys the vote-integrity hashes) and is present in every environment.
+   */
+  private evasionSalt(): string {
+    const salt =
+      this.configService.get<string>('signals.auditHmacKey') ??
+      process.env.SIGNAL_AUDIT_HMAC_KEY ??
+      '';
+    if (!salt) {
+      // An unsalted digest of an email address is reversible by dictionary,
+      // so producing one would be worse than refusing.
+      throw new Error(
+        'Account deletion cannot run: SIGNAL_AUDIT_HMAC_KEY is unset, and an unsalted hash of an email address is trivially reversible.',
+      );
+    }
+    return salt;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -46,9 +86,12 @@ export class AccountDeletionService {
     private readonly entitlements: EntitlementService,
     private readonly billing: BillingService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly personDataEraser: PersonDataEraserService,
+    private readonly configService: ConfigService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('AccountDeletionService');
+
   }
 
   async deleteAccount(user: User): Promise<{ deleted: true }> {
@@ -103,26 +146,13 @@ export class AccountDeletionService {
       // linkage. These are exactly the columns the staging PII scrub
       // (scripts/rig/scrub-staging-user-data.sql) defines as hard-contact
       // PII; deletion and the scrub now agree on what "user data" means.
-      await this.prisma.notificationDevice.deleteMany({
-        where: { userId: user.userId },
-      });
-      await this.prisma.userDevice.deleteMany({
-        where: { userId: user.userId },
-      });
-      // USERNAME: BURN THE HANDLE, DROP THE PERSON LINK (owner ruling
-      // 2026-08-03; corrects a defect introduced 2026-08-02).
-      //
-      // `username_history` is not a log — it IS the anti-reuse mechanism
-      // (username.service.ts checks it and reports 'taken'). Deleting these
-      // rows to remove PII therefore UN-BURNED the handle: a deleted user's
-      // name became claimable by anyone, which is exactly the impersonation
-      // the burn ruling exists to prevent. But the rows are also a
-      // person<->handle mapping, so keeping them is not an option either.
-      //
-      // `reserved_usernames` is keyed by the handle ALONE, with no person
-      // column — it burns a name while retaining nothing about who held it.
-      // So: reserve every handle this person ever used, THEN drop the
-      // mapping. The name stays permanently unavailable; the link is gone.
+      // USERNAME: BURN THE HANDLE, DROP THE PERSON LINK. This must run
+      // BEFORE the eraser, because the eraser deletes username_history (the
+      // person<->handle mapping) and the handles have to be reserved first.
+      // `username_history` is not a log — it IS the anti-reuse mechanism, so
+      // deleting it alone would make a departed user's name claimable by
+      // anyone. `reserved_usernames` is keyed by the handle with no person
+      // column: it burns the name while retaining nothing about who held it.
       const heldNames = await this.prisma.usernameHistory.findMany({
         where: { userId: user.userId },
         select: { username: true },
@@ -136,50 +166,56 @@ export class AccountDeletionService {
           create: { username, reason: 'account_deleted' },
         });
       }
-      await this.prisma.usernameHistory.deleteMany({
-        where: { userId: user.userId },
-      });
-      // D40 owner rulings #1 + #2 (2026-08-03) — SEVERANCE, not destruction.
+
+      // EVERYTHING INSIDE THE DATABASE IS DERIVED, NOT LISTED.
       //
-      // #1 SIGNALS: signals.service.ts has always documented the story —
-      // "the deletion story severs the pseudonymous actor mapping
-      // (signal_actors), never signal rows" — and nothing implemented it.
-      // The ledger is append-only by law, and the acts are anonymous demand
-      // evidence the corpus is built on; what must go is the LINK to the
-      // person. So the actor row survives (the signals keep pointing at it)
-      // with user_id severed. device_key is severed with it: it is the same
-      // hard-contact fingerprint the staging scrub classifies as PII, and
-      // leaving it would let the next sign-in on that device re-adopt the
-      // actor and re-attach a real person to acts we just anonymized.
+      // This replaced a hand-written sequence of deleteMany/update calls whose
+      // defining property was that A NEW TABLE CHANGED NOTHING — no test
+      // failed, no build broke, the table was simply never deleted. That is
+      // why private saved lists, raw typed search text (residue_text) and
+      // device fingerprints all survived deletion while this method looked
+      // complete and its specs were green.
       //
-      // #2 THE TWO D40 TABLES DIE WITH THE ACCOUNT: user_onboarding_responses
-      // is the person's own answers (deletion already nulled the
-      // users.onboarding_responses projection — the record now follows), and
-      // user_taste_profile is an inferred-preference record (dietary, spice,
-      // budget). The profile is keyed by actor_id, so it is read off the
-      // actor BEFORE the mapping is severed — after severance there is no
-      // path from the user back to those rows, by design.
-      const actor = await this.prisma.signalActor.findUnique({
-        where: { userId: user.userId },
-        select: { actorId: true },
+      // The eraser walks PERSON_DATA_RULES, so a classified column is handled
+      // by construction, and person-data-census.spec.ts fails the build for
+      // any person-shaped column nobody classified. The rulings that used to
+      // live in comments here now live in the declaration, next to the column
+      // they govern: signals keep their acts and lose the person link; the
+      // taste profile dies; the recipient keeps their copy of a DM.
+      const erasure = await this.personDataEraser.erase(user.userId);
+      this.logger.info('Person data erased', {
+        userId: user.userId,
+        tablesAffected: Object.keys(erasure.applied).length,
       });
-      if (actor) {
-        await this.prisma.userTasteProfile.deleteMany({
-          where: { actorId: actor.actorId },
-        });
-        await this.prisma.signalActor.update({
-          where: { actorId: actor.actorId },
-          data: { userId: null, deviceKey: null },
-        });
-      }
-      await this.prisma.userOnboardingResponse.deleteMany({
-        where: { userId: user.userId },
-      });
+
       await this.prisma.user.update({
         where: { userId: user.userId },
         data: {
           deletedAt: new Date(),
-          email: `deleted:${user.userId}@anonymized.invalid`,
+          // The grace deadline. deletedAt is LOGICAL erasure (already
+          // irreversible: sessions revoked, tokens deleted, authorship
+          // severed); this is the only thing the purge cron reads.
+          purgeDueAt: new Date(Date.now() + GRACE_PERIOD_DAYS * 86_400_000),
+          // BAN-EVASION HASH, NOT A REVERSIBLE POINTER (ruling 2026-08-03).
+          //
+          // This used to write `deleted:${userId}@anonymized.invalid`, which
+          // failed the ruling in BOTH directions at once: it retained a
+          // permanent, linkable person-key in a column the staging scrub
+          // classifies as hard PII, AND it retained no evasion signal at all
+          // (the original address was simply discarded).
+          //
+          // A salted one-way hash of the original address is the opposite on
+          // both counts: it cannot be reversed to an identity, and it still
+          // matches if the same person returns — so a banned account cannot
+          // be reset by deleting and re-registering. The salt is the app
+          // secret; without it the digest is useless even to us.
+          // A null email is legitimate on some auth paths, and a deletion must
+          // never crash on one. Fall back to the surrogate id: still salted,
+          // still one-way, still unique — it simply carries no evasion signal
+          // because there was no address to match on.
+          email: `deleted:${createHmac('sha256', this.evasionSalt())
+            .update((user.email ?? user.userId).trim().toLowerCase())
+            .digest('hex')}@anonymized.invalid`,
           username: null,
           displayName: null,
           avatarUrl: null,

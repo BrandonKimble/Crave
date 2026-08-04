@@ -1211,6 +1211,12 @@ model User {
   authProvider             AuthProvider              @default(clerk) @map("auth_provider")
   authProviderUserId       String?                   @unique @map("auth_provider_user_id") @db.VarChar(255)
   deletedAt                DateTime?                 @map("deleted_at") @db.Timestamptz(3)
+  /// The 30-day grace deadline. `deletedAt` is LOGICAL erasure (the account is
+  /// gone to every reader the moment it is set); this is the ONLY thing the
+  /// hard-purge cron reads. Separate columns because "hidden" and "physically
+  /// gone" are different facts, and conflating them is how a restore window
+  /// silently becomes a retention violation.
+  purgeDueAt               DateTime?                 @map("purge_due_at") @db.Timestamptz(3)
   lastSignInAt             DateTime?                 @map("last_sign_in_at") @db.Timestamptz(3)
   revenueCatAppUserId      String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)

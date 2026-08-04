@@ -6,6 +6,8 @@ import { BillingModule } from '../billing/billing.module';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { PhotosModule } from '../photos/photos.module';
 import { AccountDeletionService } from './account-deletion.service';
+import { PersonDataEraserService } from './person-data/person-data-eraser.service';
+import { DeletionPurgeService } from './person-data/deletion-purge.service';
 import { AccountDeletionController } from './account-deletion.controller';
 
 /**
@@ -23,6 +25,12 @@ import { AccountDeletionController } from './account-deletion.controller';
     PhotosModule,
   ],
   controllers: [AccountDeletionController],
-  providers: [AccountDeletionService],
+  providers: [
+    AccountDeletionService,
+    // Erasure derived from PERSON_DATA_RULES, and the cron that converts a
+    // 30-day "hidden" into "gone".
+    PersonDataEraserService,
+    DeletionPurgeService,
+  ],
 })
 export class AccountDeletionModule {}
