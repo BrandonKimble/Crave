@@ -126,6 +126,24 @@
 /// when tau actually returns — so finger, spring, sheet and rows are one body
 /// for the whole excursion.
 @property (nonatomic, assign) BOOL postureOvershootActive;
+/// ── THE HIDDEN EXCURSION (G-HIDDEN, R4 / amendment A1) ──────────────────────
+/// The SECOND motion primitive: τ-DOMAIN EXTENSION below collapsed. Every
+/// derivation (sheetTop, frost, tail, pin, masks) is already linear for τ < 0
+/// — sheetTop = expandedTop + (H+σ−τ) keeps growing past the screen edge — so
+/// the sheet leaves the screen on the SAME spring, same variable, same writer.
+/// The only blocker was UIScrollView's domain floor (offset ≥ −contentInset
+/// .top): while an excursion is engaged, contentInset.top = |target| extends
+/// the domain; it collapses back to 0 when τ returns to ≥ 0 at rest. The
+/// finger still owns τ throughout (a touch mid-excursion kills the spring and
+/// drags the same track).
+@property (nonatomic, assign) BOOL hiddenEngaged;
+/// τ-space excursion target (negative). Meaningful only while hiddenEngaged.
+@property (nonatomic, assign) CGFloat hiddenTargetTau;
+/// One-shot per excursion: the screen-edge fact (τ reached the target).
+@property (nonatomic, assign) BOOL hiddenEdgeFired;
+/// Fires the frame the sheet clears the screen edge — the deferred content
+/// swap (A2) and the hide's settle both key on it.
+@property (nonatomic, copy) void (^onHiddenEdgeCleared)(void);
 /// Host scroll view (weak): lets slot registration ping a synchronous shell
 /// re-apply so a freshly recreated slot is positioned in the SAME UIKit
 /// transaction it appears in (the flash becomes unwritable).
@@ -324,7 +342,11 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       scrollView.contentInset = capInsets;
     }
   }
-  if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0) {
+  // G-HIDDEN: the top inset IS the hidden domain while an excursion is
+  // engaged — resetting it here would clamp τ up to 0 mid-excursion the
+  // moment a finger lands (the exact jerk class the legitimacy filter
+  // exists to kill). The domain collapses in didScroll, at rest, at τ ≥ 0.
+  if (self.ballisticEdge >= 0 && scrollView.contentInset.top != 0 && !self.hiddenEngaged) {
     UIEdgeInsets inset = scrollView.contentInset;
     inset.top = 0;
     scrollView.contentInset = inset;
@@ -516,7 +538,51 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     [self engineWrite:scrollView offsetY:self.lastLegitimateTau];
     return;
   }
+  // THE MIN EDGE (G-HIDDEN / A1): the legitimacy filter learns the FLOOR. A
+  // clamp at the hidden domain's minimum has the max-edge signature, mirrored:
+  // τ lands exactly AT −contentInset.top, it is a RISE of real size (> 8pt),
+  // no finger is down and we are not inside an engine write. No legitimate
+  // writer produces that; revert it before paint and bark.
+  const CGFloat minOffsetNow = -scrollView.contentInset.top;
+  const BOOL minClampShaped = self.hiddenEngaged && fabs(tauIn - minOffsetNow) < 0.5 &&
+      (tauIn - self.lastLegitimateTau) > 8.0 && self.engineWriteDepth == 0 &&
+      !scrollView.isTracking && !scrollView.isDragging;
+  if (minClampShaped) {
+    const CGFloat neededTop = ceil(-self.lastLegitimateTau);
+    if (scrollView.contentInset.top < neededTop) {
+      UIEdgeInsets insets = scrollView.contentInset;
+      insets.top = neededTop;
+      scrollView.contentInset = insets;
+    }
+    NSLog(@"[TRACKFILTER] reverted MIN-edge CLAMP tau %.1f -> %.1f (insetTop=%.1f)",
+          tauIn, self.lastLegitimateTau, scrollView.contentInset.top);
+    [self engineWrite:scrollView offsetY:self.lastLegitimateTau];
+    return;
+  }
   self.lastLegitimateTau = tauIn;
+  // THE SCREEN-EDGE FACT + DOMAIN COLLAPSE (G-HIDDEN). The edge fires ONCE
+  // per excursion, the frame τ reaches the target (sheetTop == screen bottom
+  // by algebra) — the deferred content swap and the hide's settle key on it.
+  // The domain collapses only at REST back on-screen: τ ≥ 0 with no finger,
+  // no momentum and no live spring — never mid-excursion.
+  if (self.hiddenEngaged) {
+    if (!self.hiddenEdgeFired && tauIn <= self.hiddenTargetTau + 0.5) {
+      self.hiddenEdgeFired = YES;
+      if (self.onHiddenEdgeCleared) {
+        self.onHiddenEdgeCleared();
+      }
+    }
+    if (tauIn >= -0.5 && !scrollView.isTracking && !scrollView.isDragging &&
+        !scrollView.isDecelerating && self.springLink == nil) {
+      self.hiddenEngaged = NO;
+      self.hiddenEdgeFired = NO;
+      if (scrollView.contentInset.top != 0) {
+        UIEdgeInsets insets = scrollView.contentInset;
+        insets.top = 0;
+        scrollView.contentInset = insets;
+      }
+    }
+  }
   // THE DISSOLVE: τ back at (or past) the effective boundary means the sheet
   // is fully expanded and the content offset IS the old scroll — σ has done
   // its job and evaporates. sheetTop is unchanged by algebra; nothing moves.
@@ -816,7 +882,8 @@ RCT_EXPORT_MODULE();
 
 - (NSArray<NSString *> *)supportedEvents
 {
-  return @[ @"trackTopArrival", @"trackSigmaChanged", @"trackShellWarning" ];
+  return @[ @"trackTopArrival", @"trackSigmaChanged", @"trackShellWarning",
+            @"trackHiddenEdgeCleared" ];
 }
 
 - (dispatch_queue_t)methodQueue
@@ -882,6 +949,10 @@ RCT_EXPORT_METHOD(attach:(nonnull NSNumber *)reactTag
     proxy.onSigmaChanged = ^(CGFloat sigma) {
       [sigmaWeakSelf sendEventWithName:@"trackSigmaChanged" body:@{ @"sigma": @(sigma) }];
     };
+    __weak typeof(self) hiddenWeakSelf = self;
+    proxy.onHiddenEdgeCleared = ^{
+      [hiddenWeakSelf sendEventWithName:@"trackHiddenEdgeCleared" body:@{}];
+    };
     // OWNERSHIP TRANSFERS ONLY ON A SWITCH — with ONE exception: BOOT.
     // Attach must not STEAL the register (it runs before the switch
     // transaction, while the incoming leg still holds its PARKED offset; one
@@ -920,6 +991,23 @@ RCT_EXPORT_METHOD(snapTo:(nonnull NSNumber *)reactTag
     const CGFloat target = offset.doubleValue + sigma;
     if (fabs(scrollView.contentOffset.y - target) < 0.5) {
       return;
+    }
+    // G-HIDDEN (R4): a negative target is the HIDDEN EXCURSION — extend the τ
+    // domain (contentInset.top = |target|) BEFORE the spring so UIKit cannot
+    // clamp the glide at 0, and arm the one-shot screen-edge fact. Growing
+    // the top inset never moves content; the domain collapses in didScroll
+    // once τ rests back at ≥ 0. The glide itself is the SAME critically
+    // damped spring as every detent settle (OA5: every sheet glides).
+    if (proxy != nil && target < -0.5) {
+      const CGFloat neededTop = ceil(-target);
+      if (scrollView.contentInset.top < neededTop) {
+        UIEdgeInsets insets = scrollView.contentInset;
+        insets.top = neededTop;
+        scrollView.contentInset = insets;
+      }
+      proxy.hiddenEngaged = YES;
+      proxy.hiddenEdgeFired = NO;
+      proxy.hiddenTargetTau = target;
     }
     if (proxy == nil) {
       [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target)
