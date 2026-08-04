@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { FoodDedupeMergeService } from '../content-processing/entity-resolver/food-dedupe-merge.service';
+import { RescoreCoordinatorService } from '../content-processing/public-crave-score/rescore-coordinator.service';
 import { ProjectionRebuildService } from '../content-processing/reddit-collector/projection-rebuild.service';
 import { LoggerService } from '../../shared';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
@@ -25,6 +26,7 @@ export class NightlyConvergenceService {
     private readonly restaurantMerge: RestaurantEntityMergeService,
     private readonly foodDedupe: FoodDedupeMergeService,
     private readonly projectionRebuild: ProjectionRebuildService,
+    private readonly rescoreCoordinator: RescoreCoordinatorService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('NightlyConvergenceService');
@@ -46,6 +48,13 @@ export class NightlyConvergenceService {
       [
         'projection-reconcile',
         () => this.projectionRebuild.repairOrphanedProjections(),
+      ],
+      // Night-one finding (2026-08-04): merges prune LOSER scores in-tx
+      // but nothing re-scored the WINNERS — the hourly rescore no-ops
+      // unless dirty. Convergence changed the corpus; say so.
+      [
+        'mark-rescore-dirty',
+        () => this.rescoreCoordinator.markDirty('nightly-convergence'),
       ],
     ];
     for (const [name, run] of phases) {
