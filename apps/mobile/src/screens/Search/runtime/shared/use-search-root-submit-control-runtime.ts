@@ -1,4 +1,5 @@
 import React from 'react';
+import { emitFitAllTrace } from '../../../../navigation/runtime/pageswitch-debug-flag';
 import { Dimensions } from 'react-native';
 
 import useSearchSubmitOwnerValue from '../../hooks/use-search-submit-owner';
@@ -90,12 +91,9 @@ export const useSearchRootSubmitControlRuntime = ({
           members,
           safeRegion,
         });
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[FITALL] commit=${committed} members=${members.length} region=${JSON.stringify(safeRegion)}`
-          );
-        }
+        emitFitAllTrace(
+          `[FITALL] commit=${committed} members=${members.length} region=${JSON.stringify(safeRegion)}`
+        );
         if (!committed && __DEV__) {
           // eslint-disable-next-line no-console
           console.error(

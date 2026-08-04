@@ -96,3 +96,22 @@ export const logSlowLegCommitDebug = (id: string, phase: string, actualMs: numbe
   // eslint-disable-next-line no-console
   console.log(`[COMMITDBG] ${id} phase=${phase} actualMs=${actualMs.toFixed(1)}`);
 };
+
+/**
+ * [FITALL] routine per-commit trace (S11/D58-X9 reconciliation): the fit-all
+ * COMMIT log is high-frequency diagnostics and lives behind this flag; the
+ * companion console.error (arbiter refused the fit decree) stays UNGATED in
+ * __DEV__ — a violation bark must be loud, and it is what makes the
+ * instrument RED-capable (F1332).
+ */
+export const FITALL_COMMIT_DEBUG_ENABLED = false;
+export const isFitAllCommitDebugEnabled = (): boolean => __DEV__ && FITALL_COMMIT_DEBUG_ENABLED;
+
+/** The ONE emit site for routine [FITALL] traces — submit-runtime files must
+ *  not carry console literals (S11); the flag module owns the console call. */
+export const emitFitAllTrace = (message: string): void => {
+  if (isFitAllCommitDebugEnabled()) {
+    // eslint-disable-next-line no-console
+    console.log(message);
+  }
+};

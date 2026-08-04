@@ -1,4 +1,5 @@
 import React from 'react';
+import { emitFitAllTrace } from '../../../navigation/runtime/pageswitch-debug-flag';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import {
   selectSearchMode,
@@ -334,7 +335,8 @@ const useSearchSubmitOwner = ({
         const rows =
           tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.restaurants ?? []);
         // eslint-disable-next-line no-console
-        console.log(
+        // Routine trace behind the flag (S11); the violation bark stays loud.
+        emitFitAllTrace(
           `[FITALL] listWorldPresented rows=${rows.length} finiteMembers=${members.length} ` +
             `sampleKeys=${rows[0] ? Object.keys(rows[0]).slice(0, 14).join(',') : 'none'}`
         );
