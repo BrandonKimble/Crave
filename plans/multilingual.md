@@ -503,7 +503,16 @@ an EXPRESSION INDEX, not a generated column; derived_entity_word*
 deletes HAS NO WRITER in the repo (the SymSpell fuzzy lane may be
 dead — investigate before pricing M3 against it).
 
-### OWNER DECISIONS (the short list that remains)
+### OWNER DECISIONS — ALL FOUR RATIFIED 2026-08-03
+
+D1-D4 below are RULED as recommended: D1 templated poll titles become
+recipes, user-authored titles stay literal + source-language tag; D2
+anglicized-name repair rides the pending Places backfill campaign as
+one approved spend; D3 one shared gold-labeled query corpus
+(~150/language, stratified) serves both M4 calibration and the launch
+gate, LLM-graded with native spot-checks; D4 locale = Accept-Language
+per request + optional user profile override, never the push-device
+row. Original decision text kept below for the record.
 
 D1. N6 poll_topics: ratify recipe-vs-literal split for titles
 (user-authored stays literal + lang tag; templated becomes
