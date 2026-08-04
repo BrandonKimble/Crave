@@ -223,6 +223,16 @@ With 92709da7 landed, **L1 is functionally complete modulo its L4-riding pieces*
 
 ## L5 verification close-out (2026-07-10 ~6:45AM)
 
+> **Correction 2026-08-03 (truth audit): items (a) and (b) below are FALSE against code
+> today — the market system was exterminated 2026-07-22.** `findOutermostCoveringMarket` no
+> longer exists (the only surviving `core_markets` mention in the API is a tombstone comment,
+> apps/api/src/modules/user-lists/user-list-results.assembler.ts:118), and
+> `buildLocationAggregatesCte` (search-query.builder.ts:1892) is no longer bounded by
+> `ST_Covers(core_markets.geometry, …)` — it is a GLOBAL aggregate capped at the nearest ~30
+> locations to the search center. Item (c) (the profile lane returning all locations) still
+> holds. The multi-location group shape survives the extermination because it only ever
+> needed "wider than the viewport"; the roll-up half of L5 is void, not shipped.
+
 §3.5's three finish items are all verified/DONE:
 (a) the location aggregate is MARKET-WIDE in every search lane — one shared CTE
 (`buildLocationAggregatesCte`, single call site search-query.builder.ts:216) bounded by

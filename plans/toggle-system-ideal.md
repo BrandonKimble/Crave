@@ -218,3 +218,16 @@ segment styles + layout-cache pill fields in SearchFilters, the five inline chip
 Pressables, the coordinator's inlined state machine. No legacy path survives either
 gate; the two gates exist because they have different oracles (tests vs the eye), not
 as resting states.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** Layer 1's upgrade list is partly superseded.
+> `FrostedFilterStrip` (stable slot keys, hitSlop) no longer exists — it was deleted in
+> strip leg 3 and replaced by `apps/mobile/src/toggles/ToggleStrip.tsx`, which owns
+> stable child-key-based hole slots by construction. `SegmentedToggle`'s generic
+> warm-restore API named here (`initialSegmentLayouts` / `onSegmentLayoutsChange`) was
+> DELETED in strip leg 2: segment layout now self-registers into the engine's cache seat via
+> `toggle-strip-warm-restore-context.ts` (the ledger records "two lanes for one datum is the
+> disease leg 1 named"). Layer 0 (the pure engine) and Layer 3 (the consequence taxonomy)
+> are still accurate; the taxonomy's 'content' class is now implemented as
+> `toggles/use-content-toggle.ts` + `toggles/toggle-strip-consequence.ts`.

@@ -208,3 +208,29 @@ Goal: avoid duplicate entities across overlapping subreddits while aggregating v
   - Reuse existing `coverage_key` if the new subreddit’s center falls within an existing coverage rectangle (smallest-area match, nearest-center tie-break).
   - Otherwise roll up to a locality-based key derived from Google Place Details (format: `locality_region_country`, e.g., `new_york_ny_us`).
   - Fallback to the subreddit name if locality data is missing.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the whole "Coverage Key Consolidation"
+> section — and every `[x]` in it — describes machinery that **no longer exists**.
+> `collection_subreddits` is gone from `apps/api/prisma/schema.prisma`; its
+> successor is `model CollectionCommunity` → `@@map("collection_communities")`
+> (schema.prisma:1810-1822), which carries only `communityName / locationName /
+lastProcessed / isActive` — **no `coverage_key`, no viewport/bounds columns**.
+> `location_key` / `coverageKey` appear nowhere in the schema. The market and
+> coverage-key resolution machinery died in the markets-extermination legs
+> (2026-07-22); `SearchSubredditResolverService` and the volume-tracking job are
+> gone with it — see the header comment now standing in
+> `apps/api/scripts/onboard-subreddit.ts:12-25`, which still exists but writes a
+> `collection_communities` row and provisions collection lanes, NOT a coverage_key
+> or a Google-viewport rectangle. So: `[x] Define and store city coverage
+rectangles`, `[x] Store a canonical location_name … on collection_subreddits`
+> (the column survives, the table does not), `[x] Location restriction uses
+coverage_key (union viewports)`, and `[x] Onboarding script persists
+coverage_key` are all false as written. The location-schema half DID land and
+> survives: `model RestaurantLocation` (schema.prisma:197-238) carries
+> `phoneNumber / websiteUrl / hours / utcOffsetMinutes / timeZone` and no
+> price-level fields, exactly as specified. `is_primary` was NOT removed — it is
+> still `isPrimary` at schema.prisma:213 with an index on
+> `(restaurantId, isPrimary)`. Treat the location/enrichment half as landed
+> archaeology and the coverage-key half as exterminated.

@@ -1,5 +1,33 @@
 # Prepared Snapshot Presentation Architecture Audit
 
+> **SUPERSEDED — archaeology only.** Two later events overtook this audit:
+> (1) `f26102bc9` (2026-04-30) "Split frontend runtime UI closeout" replaced the
+> `SearchRoute*/RestaurantRouteLayerHost/OverlaySheetShell` overlay topology with the
+> `apps/mobile/src/navigation/runtime/app-route-*` authorities and the
+> `apps/mobile/src/overlays/BottomSheetSceneStack*` host — see
+> `plans/app-route-runtime-closeout-handoff.md`; (2) `45fa716c6` (2026-07-10) "feat(profile):
+> L3 slice 4 — the prepared-presentation MACHINE IS DELETED (22 files)" deleted the prepared
+> presentation-transaction machine this document's whole cutover strategy is built around.
+> The current transition contract is `plans/transition-endstate-contract.md` (2026-08-03).
+
+> **Correction 2026-08-03 (truth audit):** all repo paths here are rooted at
+> `/Users/brandonkimble/crave-search/`, a root that no longer exists. The repo is
+> `/Users/brandonkimble/Crave/Crave`.
+
+> **Correction 2026-08-03 (truth audit):** §0.1 "Current Repo Reality Check (2026-04-10)" is
+> false against code as of today. Spot-checked, every one of these named live files is gone
+> from `apps/mobile`: `use-search-root-runtime.ts`, `use-search-root-scaffold-runtime.ts`,
+> `prepared-presentation-transaction.ts`, `use-prepared-results-presentation-coordinator.ts`,
+> `use-prepared-presentation-transaction-publisher.ts`, `RestaurantRouteLayerHost.tsx`,
+> `useResolvedRestaurantRouteHostModel.ts`, `OverlaySheetShell.tsx`,
+> `RestaurantPanelSnapshotNativeView.tsx`, `SearchScreenPresentationSurface.tsx`,
+> `useSearchRouteOverlayRuntime.ts`. Across the whole document, 94 of the 211 modules asserted
+> in the present tense ("`X.ts` now owns…") do not exist. Only
+> `search-root-environment-contract.ts` and `ios/cravesearch/UIFrameSamplerBridge.m` from that
+> section survive. The live results-presentation lane is now the
+> `runtime/shared/results-presentation-runtime-machine*.ts` family plus the
+> `*-authority.ts` controllers.
+
 Last updated: 2026-04-10
 Status: active audit + cutover plan
 Owner: Codex

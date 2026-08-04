@@ -1,5 +1,12 @@
 # Canonical-Swap — the ground-up ideal (investigation → design → one-shot implementation)
 
+> **SUPERSEDED 2026-08-03 (truth audit).** This investigation synthesis was superseded by
+> `plans/search-map-ideal-effort/06-CANONICAL-SWAP-REFACTOR.md` (the plan of record it calls
+> for), whose channel-lockstep fix landed as `cb97686f`. Note also that the collision
+> lifecycle described in §"Collision lifecycle" is no longer the shape in code: labels are
+> ViewAnnotations (`enableSymbolLayerCollision`) and the GL label render layer / one-of-four
+> selector are deleted — see `07-va-migration-cleanup-manifest.md`. Kept as archaeology.
+
 Owner mandate (2026-07-02): STOP patching. Investigate the whole area, figure out the ideal shape, answer all
 questions grounded, then implement the ENTIRE thing in one continuous push — no stop-start, no guards/patches,
 delete non-ideal paths, reach the most ideal long-term architecture no matter the effort.

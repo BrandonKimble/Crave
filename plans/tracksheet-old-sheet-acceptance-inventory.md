@@ -4,6 +4,7 @@ Audit of everything the old sheet reads/writes/renders/coordinates — THE
 acceptance checklist for TrackSheet rungs 4-5. Paths relative to apps/mobile/src.
 
 ## 1. Header chrome exact composition
+
 - Metrics (overlays/overlay-chrome-metrics.ts): OVERLAY_HORIZONTAL_PADDING 20;
   OVERLAY_CORNER_RADIUS 22; close button 32 (CONTROL_HEIGHT); grab handle
   40x3.25 r2, paddingTop 8; header paddingBottom 10; row marginTop 7; row
@@ -20,7 +21,7 @@ acceptance checklist for TrackSheet rungs 4-5. Paths relative to apps/mobile/src
   spaced marginBottom 8); titleSlot flex1 minWidth 0 marginRight 12; action
   group [Extras?][HeaderNavAction].
 - HeaderNavAction: LucideX 20/2.5, two layers in 20x20 stack — red #e11d48
-  opacity 1-p, black #000 opacity p; rotate 45*(1+p) deg (45°=plus, 90°=X);
+  opacity 1-p, black #000 opacity p; rotate 45\*(1+p) deg (45°=plus, 90°=X);
   wrapper 32x32 r16; hitSlop 8; press on onPressOut. transitionProgress:
   navActionProgress SV, withTiming(target,{220ms, Easing.out(cubic)}), source
   frame.headerNavAction (chrome clock, committed on press-up). Press: close →
@@ -43,10 +44,11 @@ acceptance checklist for TrackSheet rungs 4-5. Paths relative to apps/mobile/src
   divider. NOTE for track: scrollOffset ≡ max(0, τ−H).
 
 ## 2. Snap-point exactness
+
 - calculateSnapPoints (sheetUtils.ts:65-88): expanded = searchBarTop>0 ?
   searchBarTop : insetTop (≥0); middle = min(max(exp+96, 0.4h), hidden−120);
   hidden = h+80; collapsed = max(navOff−hdr, middle+24), navOff = navBarOffset
-  >0 ? : h, hdr = headerHeight>0 ? : 96.
+  > 0 ? : h, hdr = headerHeight>0 ? : 96.
 - THE shared sheet inputs (use-app-route-shared-sheet-values-runtime.ts):
   screenHeight, searchBarTop, insetsTop, navBarTopForSnaps,
   OVERLAY_TAB_HEADER_HEIGHT (THE CONSTANT 68.25 — NEVER the strip-inflated
@@ -63,6 +65,7 @@ acceptance checklist for TrackSheet rungs 4-5. Paths relative to apps/mobile/src
   real snapPoints normally).
 
 ## 3. Search bar + shortcuts behind the scrim
+
 - Z: chrome 10 < scrim 80 < sheet 90 < nav 120. Chrome bumps to 110/200 while
   suggestions visible; hidden = {opacity 0, zIndex -1}.
 - Transition (use-app-route-scene-chrome-transition-runtime.ts):
@@ -83,6 +86,7 @@ acceptance checklist for TrackSheet rungs 4-5. Paths relative to apps/mobile/src
   {#000, offset {0,3}, opacity 0.1, radius 7, elev 2}.
 
 ## 4. Frost/cutout layer stack (bottom→top)
+
 map → sheet container (z90, transparent) → SearchRouteSheetFrameHost native
 nav-exclusion mask + hard clip → shadowShell → sceneStackSurface (r22 top,
 overflow hidden) → [0] ONE FrostedGlassBackground (constant opacity 1, never
@@ -90,6 +94,7 @@ animated) → [1] scene white plate → [2] body lane (top inset =
 computeSceneChromeHeight) with SceneBodyFoundationSurface (white plate +
 FrostCutout holes) + SceneBodyReadyGate skeletons → [50] overlay lane →
 [60] PersistentSheetHeaderHost (cutout plate) → [61] divider host.
+
 - FoundationSurface: gate bodySurface==='white'; holes content-coordinates
   via measureLayout vs lane root, rounded ints; rAF-collapsed remeasure sweep
   (lane onLayout, cutout commits/onLayout, container onContentSizeChange).
@@ -101,11 +106,12 @@ FrostCutout holes) + SceneBodyReadyGate skeletons → [50] overlay lane →
   minHeight 320; pollDetail passes insetX 0.
 
 ## 5. Coordination inventory
+
 - NAV EXCLUSION (SearchRouteSheetFrameHost): native mask props —
   maskEnabled rules (persistent modes always; else navBarHeight−max(0,navTY)
-  >0.25); navBodyBoundaryVisibleY = navBarTop; hiddenY = navBarTop +
-  max(0,bottomNavHiddenTranslateY); HARD CLIP: sheet subtree height clamped
-  to max(0,navBarTop) in persistent modes.
+  > 0.25); navBodyBoundaryVisibleY = navBarTop; hiddenY = navBarTop +
+  > max(0,bottomNavHiddenTranslateY); HARD CLIP: sheet subtree height clamped
+  > to max(0,navBarTop) in persistent modes.
 - Keyboard: transports declare persistTaps/dismissMode; no-overscroll is
   structural (moot on the track — the track OWNS overscroll).
 - Map camera: per-transition only (motion/camera target registries); no
@@ -133,6 +139,7 @@ FrostCutout holes) + SceneBodyReadyGate skeletons → [50] overlay lane →
 - Haptics/sounds: none.
 
 ## 6. pollDetail specifics
+
 - Publication: usePollDetailPanelSpec returns parts consumed via bundle
   authority → SearchMountedSceneBody (root results lane), AND the scene input
   lane writer publishes for the scene-stack host. Body: surfaceKind 'list',
@@ -145,17 +152,18 @@ FrostCutout holes) + SceneBodyReadyGate skeletons → [50] overlay lane →
   viewPosition 0.3, highlight 1.6s.
 - Chin: ListChromeComponent, bottom = expandedSnapTop + insets.bottom, lift =
   −max(0, keyboard.height − insets.bottom) via useAnimatedKeyboard; reply-pin
-  + keyboardDidHide unpin; contentBottomPadding = expandedSnapTop +
-  insets.bottom + 64.
+  - keyboardDidHide unpin; contentBottomPadding = expandedSnapTop +
+    insets.bottom + 64.
 - Transports: listRef, MVCP disabled, contentContainer padH 20 + bottom pad,
   persistTaps 'handled', dismissMode 'on-drag'.
 - Socket io /polls websocket; poll:update must not disturb anchor restore.
 
 ## Highest-risk exactness items (verbatim from audit)
+
 1. 68.25 stays un-rounded; snap headerHeight arg = THE CONSTANT.
 2. syncSnapPoints mutates in place — subscribers hold the reference.
 3. Divider [0,3,14]→[0,0.35,1], #f1f5f9, 1px, top=headerHeight−1, z61.
-4. Nav-action rotate 45*(1+p), 220ms out-cubic, driven by frame.headerNavAction.
+4. Nav-action rotate 45\*(1+p), 220ms out-cubic, driven by frame.headerNavAction.
 5. Chrome response zone 220px from expanded (clamped by middle), scale
    0.985→1, origin center-bottom.
 6. Scrim 0.12 max; strip+corners track sheetTopY; never under the sheet.
@@ -165,17 +173,18 @@ FrostCutout holes) + SceneBodyReadyGate skeletons → [50] overlay lane →
 10. Seat memory gesture-written only; home seat carried by docked scene.
 
 ## THE NAV-FOLLOW CONTRACT (recovered 2026-07-28 — owner: "the mask doesn't
+
 ## follow the nav like it used to")
 
 The old frame host did NOT clip the sheet at a fixed nav top. Its exclusion
 boundary TRACKS the nav's live motion (SearchRouteSheetFrameHost.tsx:62-85):
 
-  maskEnabled   = isPersistentNavBodyExclusionMode(mode)
-                  || max(0, navBarHeight − max(0, navTranslateY)) > 0.25
-  boundaryTY    = isPersistentNavBodyExclusionMode(mode) ? 0
-                                                         : max(0, navTranslateY)
-  visibleY      = navBarTop
-  hiddenY       = navBarTop + max(0, bottomNavHiddenTranslateY)
+maskEnabled = isPersistentNavBodyExclusionMode(mode)
+|| max(0, navBarHeight − max(0, navTranslateY)) > 0.25
+boundaryTY = isPersistentNavBodyExclusionMode(mode) ? 0
+: max(0, navTranslateY)
+visibleY = navBarTop
+hiddenY = navBarTop + max(0, bottomNavHiddenTranslateY)
 
 MEANING: as the nav slides OUT (navTranslateY grows toward
 bottomNavHiddenTranslateY), the sheet's bottom boundary slides down WITH it,
@@ -191,7 +200,7 @@ nobody and the map shows through. That is exactly the owner's report.
 
 THE FIX (ideal shape, not a patch): the clip height must be a DERIVATION of
 the same nav motion value the nav itself rides —
-    clipHeight = navBarTop + (persistent ? 0 : max(0, navTranslateY))
+clipHeight = navBarTop + (persistent ? 0 : max(0, navTranslateY))
 driven on the UI thread from the shared navTranslateY (published via
 routeHostVisualRuntime → route-sheet-chrome-motion-state-controller), so the
 sheet's bottom edge and the nav are ONE motion, by construction. This is the
@@ -201,6 +210,7 @@ NEXT: also port the native silhouette-curve mask (the nav cutout shape) once
 the boundary follows — the curve is the remaining visual half.
 
 ## DIVIDER FADE (stuck visible) — hypothesis to attribute next
+
 Curve is correct ([0,3,14]→[0,0.35,1] on max(0, τ−H)). Stuck-visible means
 τ−H ≥ 14 at rest, i.e. the resting offset sits INSIDE the list region. With
 the chrome now living in content, verify the rest offset for an expanded seat
@@ -215,18 +225,18 @@ the track host must reproduce the same wiring:
 
 SearchRouteSheetFrameHost.tsx → SearchRouteSheetNativeMaskHost (memo) takes a
 `sheetMaskRuntime` of SharedValues + statics:
-  { exclusionModeValue, navTranslateY, navBarHeight, navBarTop,
-    bottomNavHiddenTranslateY }
+{ exclusionModeValue, navTranslateY, navBarHeight, navBarTop,
+bottomNavHiddenTranslateY }
 and derives, ON THE UI THREAD:
-  nativeMaskAnimatedProps = useAnimatedProps(() => {
-    const modeValue = exclusionModeValue.value;
-    const boundaryTranslateY = resolveNativeSheetMaskBoundaryTranslateY({
-      modeValue, navTranslateY: navTranslateY.value });      // persistent→0
-    const maskEnabled = shouldEnableSheetMaskForNavSilhouette({
-      modeValue, navBarHeight, navTranslateY: boundaryTranslateY });
-    return { maskEnabled, navBodyBoundaryTranslateY: boundaryTranslateY };
-  })
-  hardClipAnimatedStyle = useAnimatedStyle(...)   // the FOLLOWING clip height
+nativeMaskAnimatedProps = useAnimatedProps(() => {
+const modeValue = exclusionModeValue.value;
+const boundaryTranslateY = resolveNativeSheetMaskBoundaryTranslateY({
+modeValue, navTranslateY: navTranslateY.value }); // persistent→0
+const maskEnabled = shouldEnableSheetMaskForNavSilhouette({
+modeValue, navBarHeight, navTranslateY: boundaryTranslateY });
+return { maskEnabled, navBodyBoundaryTranslateY: boundaryTranslateY };
+})
+hardClipAnimatedStyle = useAnimatedStyle(...) // the FOLLOWING clip height
 plus static props: navBodyBoundaryVisibleY = navBarTop,
 navBodyBoundaryHiddenY = navBarTop + max(0, bottomNavHiddenTranslateY),
 maskOriginY = 0, style = {width: viewportWidth, height: viewportHeight}.
@@ -246,3 +256,22 @@ syncRouteHostVisualRuntime) and subscribe with useSyncExternalStore, exactly as
 the old surface host does. DO NOT substitute a JS-thread copy — the values must
 be the SAME SharedValues the nav itself rides, or the boundary will lag the nav
 by a frame (the wiggle class of bug).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the "MY BUG / THE FIX" item in the
+> NAV-FOLLOW CONTRACT section is **resolved** — TrackSheetRouteHost no longer
+> carries a static `navBarTopForSnaps` clip. `NavExcludedTrackSurface`
+> (`apps/mobile/src/tracksheet/TrackSheetRouteHost.tsx:168-200`) now wraps the
+> track surface in the production `SearchRouteSheetFrameHost`, passing
+> `sceneRuntime.routeHostVisualRuntimeAuthority`, and its comment records the
+> resolution verbatim: the frame host "IS the nav-exclusion abstraction … drives
+> ONE native mask view with an ANIMATED pair (maskEnabled +
+> navBodyBoundaryTranslateY) plus a following hard clip … The old static clip is
+> gone with this." That also closes the "NEXT: port the native silhouette-curve
+> mask" line — the curve and the follow are the same mechanism and both arrived
+> together, exactly as the EXACT RECIPE section predicted, and "THE ONE UNKNOWN
+> LEFT: where the track host reads those SharedValues" is answered
+> (`routeHostVisualRuntimeAuthority` off `useAppRouteSceneRuntime()`). The
+> DIVIDER-FADE hypothesis below it was NOT verified by this audit and remains
+> open. The §1-§6 inventory numbers were spot-checked only, not re-derived.

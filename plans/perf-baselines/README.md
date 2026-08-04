@@ -38,3 +38,26 @@ Local CI sampler lock (applied by `scripts/perf-shortcut-local-ci.sh`):
 - `EXPO_PUBLIC_PERF_UI_FRAME_LOG_ONLY_BELOW_FPS=240`
 
 This ensures parser-required JS/UI window metrics are consistently emitted for baseline/candidate comparisons.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** this gate is **inoperative as
+> documented**. (1) The update flow's step 1 —
+> `bash ./scripts/perf-shortcut-local-ci.sh record-baseline` — cannot run:
+> `scripts/perf-shortcut-local-ci.sh` does not exist in the repo (the only
+> remaining references to that filename are in plan docs). The sampler-lock and
+> Node-22-auto-switch paragraphs describe that missing script. (2) The locked
+> baselines have drifted past meaning: `runtime-owner-loc-baseline.json` pins
+> `apps/mobile/src/screens/Search/index.tsx` at `baselineLoc 10634` with
+> `maxDelta 0` — the file is **87 lines** today, and
+> `use-search-submit-owner.ts` is 533 vs its pinned 1847. (3) Roughly nine of the
+> paths named in `runtime-root-ownership-gates.json` no longer exist, among them
+> `screens/Search/hooks/use-search-runtime-composition.ts`,
+> `screens/Search/runtime/map/map-diff-applier.ts`,
+> `screens/Search/runtime/map/map-presentation-controller.ts`,
+> `screens/Search/runtime/profile/profile-runtime-controller.ts`,
+> `overlays/panels/runtime/polls-runtime-controller.ts` and
+> `navigation/runtime/use-navigation-bootstrap-runtime.ts`. Nothing here can go
+> RED on a real regression; per the CLAUDE.md map-saga law an always-green (or
+> un-runnable) gate is lying. Either re-derive the runner + baselines against
+> today's tree or retire the directory — do not cite these numbers as a gate.

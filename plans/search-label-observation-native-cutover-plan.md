@@ -2,7 +2,31 @@
 
 Last updated: 2026-04-03
 Status: active, but now focused on final executor-shape cleanup rather than JS sticky ownership promotion
-Scope:
+
+> **Correction 2026-08-03 (truth audit): "active" is FALSE — this plan's entire subject
+> matter no longer exists.** Search-map labels were migrated OFF GL symbol layers onto
+> Mapbox ViewAnnotations (`SearchMapRenderController.swift:99-101` — "Phase-2 (labels →
+> ViewAnnotation): the per-restaurant NAME label hosted by a self-colliding VA
+> (enableSymbolLayerCollision → wins over basemap; variableAnchors → the SDK picks the
+> first open side)"). Side selection is now the SDK's `variableAnchors`, not our sticky
+> lock. Verified gone today:
+>
+> - `src/screens/Search/runtime/map/use-map-label-sources.ts` — deleted (the LO7
+>   candidate-static source universe it describes as "materially landed" no longer
+>   exists).
+> - `android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java` — deleted;
+>   the only Java left is BottomSheetHostView* / ProfilePresentationTransactionExecutor*.
+>   LO5's "iOS and Android both use the native-managed observation contract" is void
+>   (Android parity is now tracked in `plans/android-parity.md`, rewrite ruled).
+> - `queryRenderedLabelObservation`, `label_observation_updated`,
+>   `nativeLabelPreference`, `applyLabelOneOfFourSelector` — zero occurrences in the
+>   controller.
+> - The four-candidate GL label universe (`RESTAURANT_LABEL_RENDER_SOURCE_ID`,
+>   `labelCandidateStyles`, the mutex icon) is gone from `search-map.tsx`.
+>
+> Every path in §Scope also still uses the old `/crave-search/` repo root. The
+> "Remaining Non-Ideal Seams" and the Validation commands are unrunnable. Archaeology.
+> Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
 - `/Users/brandonkimble/crave-search/apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java`

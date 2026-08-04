@@ -1,5 +1,23 @@
 # 06 — Label Snap-Out Fix + Residual Elimination (Phase 1) → VA Substrate (Phase 2, conditional)
 
+> **OUTCOME BANNER 2026-08-03 (truth audit) — Phase 2 WAS taken, and closer to mechanism B
+> than this doc expected.** Labels are ViewAnnotations today:
+> `SearchMapRenderController.swift:5` imports `@_spi(Experimental) MapboxMaps` explicitly to
+> unlock `ViewAnnotation.enableSymbolLayerCollision`, and :99-100 documents "Phase-2 (labels
+> → ViewAnnotation): the per-restaurant NAME label hosted by a self-colliding VA
+> (enableSymbolLayerCollision → wins over basemap; variableAnchors → the SDK picks the first
+> open side)". The GL label render layer, the one-of-four selector, `__lea_revealed__`, and
+> the label QRF observation stack are all DELETED — see
+> `07-va-migration-cleanup-manifest.md` for the executed deletion log. Consequences for this
+> doc: Phase 1 (the `__lea_suppressed__` inversion, §4) was overtaken and never became the
+> end state; §5.4's "11.16.6" SDK survey is stale (the migration happened on Mapbox 11.26,
+> `@rnmapbox/maps` 10.3.1 per apps/mobile/package.json:29); and §2.3/§6's hard reject "**Do
+> not build the twin … Never build it**" was overruled by events — a collision twin WAS
+> built (2026-07-02), then deleted 2026-07-11 as harmful to dot density, while the GL label
+> collision SOURCE was retained by design as the broad basemap suppressor (manifest §"FINAL
+> RESOLUTION"). §2.3's "the twin is fiction" was correct about the _cited commits_, not
+> about the twin's later existence.
+
 **Author:** analysis/attribution session (6497f062). **For:** the active map session.
 **Status:** ready to implement Phase 1; Phase 2 is a conditional prototype spec.
 **Date:** 2026-07-03.

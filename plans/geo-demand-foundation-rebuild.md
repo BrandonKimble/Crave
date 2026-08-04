@@ -1124,3 +1124,22 @@ the time-critical footprint per source per day collapses from ~dozens of
 requests to ~2, and comment fetching joins keyword as a purely elastic
 lane. Not built now (§16: no speculative machinery at 2 sources); the
 schema cost when triggered is one staged-ids table + a drain lane.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** §3's deletion story ("actorId→user mapping is a
+> separate severable table") is CONFIRMED as the live law — and it survived a challenge. A
+> parallel k-anonymity mechanism (`signal_demand_anonymous` / `signal_place_demand_anonymous`
+>
+> - `demand-anonymization.service.ts`) was built and then RETIRED the same week (migration
+>   `20260803215311_retire_anonymous_demand_tables`, whose own header records the reasoning): a
+>   table with no actor column cannot compute the §4 demand algebra (mass = Σ_actors log2(1+acts)),
+>   so it could only freeze a mass baked at promotion time, silently disagreeing with
+>   `polls/supply/demand-mass.reader.ts` on the recency kernel, kind weights, echo-kind exclusion,
+>   place lineage and window. The concern was always ONE COLUMN (`subject_text`), and it now lives
+>   as a HAVING floor at the two reads that project text across people
+>   (`apps/api/src/modules/signals/subject-text-floor.ts`). Deletion of a person's demand data
+>   remains the §3 severance: null the text columns, sever `signal_actors.user_id`.
+>   Also amended since this text was written: §11's explore family now selects by UCB
+>   (`content-processing/reddit-collector/keyword-explore-yield.estimator.ts`), replacing the
+>   staleness/demand-percentile blend; and `signals.occurred_at` is `timestamptz`.

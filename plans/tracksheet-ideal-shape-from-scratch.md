@@ -437,3 +437,32 @@ DESIGNED, NOT LANDED. Deliberately: three blind landings this session each
 regressed and were reverted, and this is a larger restructure than any of them.
 The order is native mask first (additive, inert until used), then the chrome
 lane, verifying the ORIGIN invariant and a new body-top probe at each step.
+
+---
+
+## CORRECTION 2026-08-03 (truth audit F1243) — appended, nothing above altered
+
+**§9 ("Why §3 was wrong — the chrome was never inside the scroll", marked
+"Status: DESIGNED, NOT LANDED") has been REVERSED BY THE SHIPPED TREE.**
+`plans/chrome-in-content-cutover.patch` (2026-08-02) has been APPLIED: the
+working tree puts the chrome back IN CONTENT and moves the band mask onto the
+row-bearing views. Verified 2026-08-03 — `chromeContentTag` is present in both
+`apps/mobile/ios/TrackScrollKit/Sources/TrackScrollPhysics.m` and
+`apps/mobile/src/tracksheet/TrackSheetPage.tsx:358`; `pinChrome(...)` at :354;
+`<TrackShellSlot slotRole="chromeContent">` at :869; `chromeOverlay` returns
+zero hits. The CALayer band mask §9 specifies as un-landed IS landed
+(`shellBandMask` + per-row masks in `TrackScrollPhysics.m`). Since §9 is the
+loudest "the design is X" statement in the sheet corpus, read it as history.
+
+Two stale coordinates in §8 (mechanisms still true, line numbers moved):
+`TrackSheetPage.tsx:491` → the `FrostedGlassBackground` render is now at
+**:1100** (import at :23) and is no longer inside a chrome block;
+`TrackSheetRouteHost.tsx:545` → the per-row `SceneBodyFoundationSurface`
+wrapping is now at **:675/:694/:711/:807**, `scrollOffset={zeroScrollOffset}`
+still present at :694/:711.
+
+Also stale: §7 F1's inventory "the only two `FrostCutout` users: ProfilePanel
+stats and HomePanel row band" — `FrostCutout` now appears in
+`useBottomSheetSceneStackBodyContentRuntime.tsx`, `sheetBodyScrollDefaults.ts`,
+`SceneBodyFoundationSurface.tsx` and `BottomSheetSceneStackHost.tsx` among
+others. §7 F2 (`SHORT_PAGE_SCROLL_ROOM_PX` deleted) re-verified TRUE, 0 hits.

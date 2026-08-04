@@ -1,5 +1,15 @@
 # Session handoff — map-LOD-v6 toggle fade rework
 
+> **ARCHAEOLOGY BANNER 2026-08-03 (truth audit).** A one-session handoff from 2026-07-01,
+> long since consumed: the "NOT done" items (A double-fade, B toggle-back staleness, C
+> transientVisualPropertyKeys rebuild) were all resolved in `02-CONFIRMED-FINDINGS.md` /
+> `06-CANONICAL-SWAP-REFACTOR.md`, and the substrate it describes is gone (labels + pins are
+> ViewAnnotations now — `07-va-migration-cleanup-manifest.md`). Do not follow its rig
+> instructions: the memory paths it cites (`…/projects/-Users-brandonkimble-Crave/memory/`)
+> and the second-Metro/:8082 + sim-udid setup are stale, and CLAUDE.md's "the LOD harness"
+> reference in §"Reference material" points at the `[lodev]` harness that never existed in
+> code (see `plans/lod-v5-architecture.md`, correction 2026-08-03).
+
 Branch `fix/map-lod-wiggle-dismiss`, HEAD `0a778178`. **Everything below is UNCOMMITTED** in the working tree.
 
 ## What this session was doing

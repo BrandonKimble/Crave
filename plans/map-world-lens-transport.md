@@ -460,3 +460,25 @@ returns ALL restaurants in the polygon across every market, LIMIT 50000
 (search-coverage.service.ts:181,310). So at multi-state zoom: one market's dots (center
 market), never merged — and the 50k no-marketKey path is a payload footgun to cap/decide
 before multi-market load.
+
+---
+
+> **Correction 2026-08-03 (truth audit) — §12 rests on the exterminated MARKET system.**
+> "Multi-market coverage — VERIFIED THROUGH BACKEND LOGIC" cites
+> `market-resolver.service.ts:207` and `search-coverage.service.ts:181,310`. **Neither
+> file exists**; the market system was removed wholesale on 2026-07-22. There is no
+> `marketKey` in the search API, no market polygon resolution, and no "50k no-marketKey
+> path" footgun to cap. The market→viewport scoping described there is dead, so the
+> whole §12 verification and the multi-market residency framing it feeds (§2's
+> "market-keyed" substrate, §5's "residency cap", §7.4's market keying) are void. §8's
+> S-5 already concluded market-keyed LRU is MOOT under the delivered design — that
+> conclusion stands for a second, stronger reason now.
+>
+> Same substitution in the lens vocabulary: `SearchLens` shipped with `cityPlaceId`, not
+> `marketKey` (`apps/mobile/src/screens/Search/runtime/shared/search-desired-state-contract.ts:266-272`).
+>
+> The rest of the build ledger (§8-§11) checks out against code — the frame-channel
+> fan-out, the acked-parity proof, the epoch/visibility contract violations
+> (`contract_violation_visibility_dorm_mid_ramp`, controller) are all live. Only the
+> market-scoped reasoning is dead. The "uncommitted" status in the header is also stale;
+> the work is on `main`.

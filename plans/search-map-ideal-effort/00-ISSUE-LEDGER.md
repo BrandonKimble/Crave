@@ -89,3 +89,30 @@ Memory (`/Users/brandonkimble/.claude/projects/-Users-brandonkimble-Crave/memory
 3. **Stage 3 — RED-TEAM + IMPLEMENTATION-MENTAL-MODEL** (workflow): adversarially break each design vs every issue + every zoom scenario; mentally implement each in real code, hit blockers, write implementation plans.
 4. **Stage 4 — SYNTHESIS**: master plan(s) (likely: LOD/labels plan, canonical-fade+collision-crossfade plan, portable-toggle-primitive plan).
 5. **Stage 5 — INSTRUMENT + IMPLEMENT**: build H1 harness, prove each fix on the mimic flow, implement per plan, validate, then a cleanup + commit pass (strip scaffolding, `lodDebugLoggingEnabled=false`).
+
+---
+
+> **Correction 2026-08-03 (truth audit) — the "Current architecture (inherited)" section
+> no longer describes the shipped map.**
+>
+> - **"dots + labels = GL SymbolLayers in the collision index (must collide … CA is
+>   ruled out for them)"** — FALSE for labels. Labels are Mapbox ViewAnnotations
+>   (`SearchMapRenderController.swift:99-101`), self-colliding via
+>   `enableSymbolLayerCollision` (:5, :8001) on **MapboxMaps 11.26.0-rc.1**
+>   (`Podfile.lock:387`) — the API that did not exist in 11.16.6 and that the whole
+>   "CA/GL split" reasoning was built around. Dots DO remain a colliding GL SymbolLayer.
+> - **"pins = self-owned CA overlay"** — half true. The per-pin views are real
+>   (`PinVAView`, `vaByKey`, `refreshOverlayFrame`) but they are **hosted by, positioned
+>   by and z-ordered by the Mapbox ViewAnnotation manager** (:77-80, `priority`), not
+>   self-owned as `map-lod-va-pin-architecture.md` specified.
+> - **L1's two-writer conflict is CLOSED by the migration:** `applyLabelOneOfFourSelector`
+>   has zero occurrences today. `__lea_lod__`, `__lea_revealed__`,
+>   `commitSettledLeaAuthorityUnderCover` and `setLayerPresentationOpacity` are still
+>   live (dots + the presentation ramp).
+> - **H1 (the durable telemetry harness) was never built**, and the `[lodev]` harness the
+>   sibling plans assume was deleted at `364e17be2` (audit F709/F729/F752).
+> - The memory path cited under "Reference docs" (`…/-Users-brandonkimble-Crave/memory/`)
+>   is wrong for this checkout (`-Users-brandonkimble-Crave-Crave`).
+>
+> "Nothing is deployed; no users" is also no longer true — the Stripe two-plan web rail
+> is live at craveapp.ai. The custom iOS map SHIPPED ~2026-07. Archaeology.

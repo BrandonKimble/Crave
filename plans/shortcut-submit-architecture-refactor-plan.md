@@ -1,5 +1,29 @@
 # Frontend Runtime Re-Architecture Blueprint (V3, Executable)
 
+> **SUPERSEDED 2026-04-30 — archaeology only.** The Search-runtime cutover this blueprint
+> sequences was closed out by `f26102bc9` "Split frontend runtime UI closeout" and recorded in
+> `plans/app-route-runtime-closeout-handoff.md`; the prepared-snapshot presentation track it
+> names as "current" was then deleted outright in `45fa716c6` (2026-07-10, "the
+> prepared-presentation MACHINE IS DELETED (22 files)"). Current transition contract:
+> `plans/transition-endstate-contract.md` (2026-08-03).
+
+> **Correction 2026-08-03 (truth audit):** the "Execution prerequisites (current state)" claim
+> that "live harness wiring is re-established in runtime code via …`Search/index.tsx`" and that
+> the metric contract "is schema-locked … (`perf-shortcut-report.v1`)" is false against code as
+> of today. `apps/mobile/src/screens/Search/index.tsx` contains zero occurrences of `harness`;
+> the strings `shortcut_loop` and `perf-shortcut-report` appear nowhere in the repo outside
+> these plan files; `scripts/perf-shortcut-local-ci.sh`, the `yarn ios:device:perf-shortcut-loop`
+> script, and `plans/perf-logs/` no longer exist. The only surviving artifact is the orphaned
+> `plans/perf-baselines/perf-shortcut-live-baseline.json`. Slice P0.5 ("Live harness
+> reactivation + metric lock") must be treated as UNDONE/removed, not as a satisfied gate.
+
+> **Correction 2026-08-03 (truth audit):** all repo paths are rooted at the retired
+> `/Users/brandonkimble/crave-search/`; the repo is `/Users/brandonkimble/Crave/Crave`.
+> §0.1 "Current Implementation Reality Check" is stale: 82 of the 186 modules this doc asserts
+> in the present tense ("`X.ts` now owns…") do not exist under `apps/mobile`, including the
+> whole `use-results-prepared-*`, `use-results-presentation-owner-*`, `use-results-sheet-*`,
+> `use-search-foreground-*`, and `profile-prepared-presentation-*` families.
+
 Last updated: 2026-04-10
 Status: active Search runtime cutover; prepared-snapshot presentation and motion-pressure follow-up are the current architecture tracks
 Scope: `/Users/brandonkimble/crave-search/apps/mobile/src/**`

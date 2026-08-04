@@ -1,6 +1,15 @@
 # Search Map Per-Pin Group Cutover Plan
 
 > SUPERSEDED (LOD/slot sections): the per-slot physical-source model described below is dead — replaced by the single-layer pin + opacity-crossfade model in map-lod-ideal-model-v4.md. Only the Label, Collision, and Native-Press-Targeting sections remain authoritative.
+>
+> **Correction 2026-08-03 (truth audit): the carve-out above is now also dead — NOTHING in
+> this document is authoritative.** Labels are ViewAnnotations, not GL candidate layers
+> (SearchMapRenderController.swift:99-100); the 4-candidate label emit, the GL label render
+> layer and the GL label press query were all deleted in the VA migration, with label taps
+> served by `labelVAHitTest` and press targeting resolving pin > label > dot — see
+> `plans/search-map-ideal-effort/07-va-migration-cleanup-manifest.md`. What survives of the
+> "Collision" section is only the invisible collision SOURCE (the dot/pin obstacle + broad
+> basemap suppressor), which that manifest retains by design. Treat this doc as archaeology.
 
 ## Objective
 

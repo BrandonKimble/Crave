@@ -1,3 +1,19 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** This is the ROOT of the transition-
+> engine lineage and is design background only. Explicitly superseded by
+> `transition-engine-final-master-plan.md` ("Supersedes `sheet-transition-engine-design.md`…"),
+> which was itself superseded by `page-switch-master-plan.md`, then
+> `page-composition-from-scratch-design.md` (THE PAGE v2 → TrackSheet),
+> `page-world-derivation.md`, and `residents-cutover-plan.md`.
+>
+> **Correction 2026-08-03 (truth audit):** this doc's central proposal — the OVERLAP model
+> (co-rendered legs cross-fading on one `transitionProgress`) — was REVERSED. The cross-dissolve
+> was retired 2026-06-29 in favour of a paint-ack-gated HARD SWAP + skeleton; see
+> `transition-engine-final-master-plan.md`'s PIVOT block ("the cross-dissolve is RETIRED… `held-
+dissolve` == `hard` in the live code"). Treat every "delete swapImmediately entirely / drive
+> progress off sheetYValue / four presets" prescription here as an overturned handoff. The
+> §"Favorites-as-search" BUILD STATUS section is a separate, genuinely-shipped backend slice and
+> is not affected by this reversal.
+
 # Sheet Page-Transition Engine — Ideal Shape (design spec)
 
 Status: **DESIGN (pre-implementation)**. Authoritative spec for replacing the non-ideal sheet
@@ -13,7 +29,7 @@ Goal: every page switch in the app — in-sheet swaps, full-screen nav-push, mod
 Poll-card → pollDetail is an `openChild` with **no explicit `contentHandoff`** → it defaults to
 `swapImmediately` (`app-route-scene-transition-policy-runtime.ts:251-265`), which presents the incoming
 scene **the same frame the switch commits — before it has painted** → blank. Result→restaurant uses the
-same path; it only *looks* fine because that page paints within a frame. **Both modes are render-at-swap,
+same path; it only _looks_ fine because that page paints within a frame. **Both modes are render-at-swap,
 never overlap**: `swapImmediately` shows only the incoming (too early), `preserveOutgoingUntilSettle`
 shows only the outgoing (incoming never renders until settle). Visibility is a binary opacity snap
 (`resolveSceneStackStaticVisibility`, `sceneKey === displayedSceneKey`) on a plain `<View>` — no crossfade
@@ -24,14 +40,14 @@ primitive exists.
 - **Declarative policy layer**: `resolveAppRouteSceneTransitionPlan` + the `RouteSceneSwitchRequestInput`
   contract. Routes declare intent; one pure resolver produces the plan. Extend, don't replace.
 - **The simultaneous-mount substrate**: `ActiveSceneStackSurfaceHost` already renders every scene as an
-  absolute-fill sibling, **never unmounted mid-switch**. "Both scenes live during the window" is *already
-  structurally true* — only opacity arbitration + content-readiness gating change. (This is the big de-risk.)
+  absolute-fill sibling, **never unmounted mid-switch**. "Both scenes live during the window" is _already
+  structurally true_ — only opacity arbitration + content-readiness gating change. (This is the big de-risk.)
 - **Token-gated multi-plane settle barrier** (`activeSettlePlanesByToken` + `completeRouteSceneSwitchMotionPlane`):
   the exact mechanism to add a `content` (incoming-painted) plane.
 - **`AppRouteSceneBodyAdmissionPolicy`** (per-scene retain/prewarm flags, plumbed end-to-end): the new
   "admit incoming during transition" belongs here.
 - The nav-push signal+latch pattern, the chin-rides-the-body geometry, the `OverlayModalSheet` modal path,
-  and the persistent-poll / search-surface forcings — all preserved; only their *triggering* moves into the engine.
+  and the persistent-poll / search-surface forcings — all preserved; only their _triggering_ moves into the engine.
 - **Reuse the existing `isTransitionParticipant` signal** (`app-route-scene-stack-runtime.ts:1909`) for
   admission — it already identifies the incoming scene during the window. Don't add a parallel flag.
 
@@ -42,7 +58,7 @@ incoming-paint:
 
 1. **PREPARE** (commit): resolve a per-route **preset**; build a `{ outgoing, incoming, preset, progress }`
    display descriptor; **admit + render the incoming HIDDEN** (opacity 0) while outgoing stays at 1.
-2. **AWAIT-PAINT**: incoming body reports first paint (onLayout/commit ack) → *gates* the ramp start.
+2. **AWAIT-PAINT**: incoming body reports first paint (onLayout/commit ack) → _gates_ the ramp start.
 3. **OVERLAP** (~one window): `progress` 0→1 drives both layers per the preset; both opacity-live.
 4. **SETTLE**: completion rides the **crossfade's `onFinish`** (UI-thread guaranteed); drop outgoing.
 
@@ -56,12 +72,13 @@ incoming-paint:
    and interactive drag-to-dismiss then share one continuous, **interruptible** driver (UIKit
    `percentDrivenInteractiveTransition`). A fixed 200ms clock fights a flick-to-dismiss mid-enter.
 3. **Bound the `content` plane with a timeout.** Complete it on the crossfade `onFinish`; the paint-ack only
-   *gates clock start* under a max-wait. A missed ack degrades to "slightly-early reveal" (today's behavior),
-   never a permanently stuck overlay. (The settle barrier currently only ever *deletes* planes — no timeout.)
+   _gates clock start_ under a max-wait. A missed ack degrades to "slightly-early reveal" (today's behavior),
+   never a permanently stuck overlay. (The settle barrier currently only ever _deletes_ planes — no timeout.)
 4. **Single-source the preset from the registry**, not a `resolveTransitionPreset` scene-key switch. The
-   `transitionKind` selects among the presets the route *declares it supports* in `APP_ROUTE_SCENE_POLICY_BY_KEY`.
+   `transitionKind` selects among the presets the route _declares it supports_ in `APP_ROUTE_SCENE_POLICY_BY_KEY`.
 
 ### Presets (motion styling on the one engine)
+
 - **bodySwap** — sibling pages, shared header pinned; body crossfade/slide. (result↔restaurant, top-level)
 - **navPush** — full-screen promotion; incoming lifts + nav slides; header morphs its cutout set. (pollDetail)
 - **modal** — `OverlayModalSheet` owns its own fade over a dimmed backdrop. (price/scoreInfo, trial pages)
@@ -84,6 +101,7 @@ incoming-paint:
 6. **search-dismiss preserve is a second, controller-independent preserve source** + the search surface
    renders on a **separate** host — so a search↔polls bodySwap crossfades only the polls layer. Both must be
    modeled, not bypassed.
+
 - Plus: closeChild's explicit `swapImmediately` override (decide: honor or strip); modal-opened-mid-transition
   must not orphan the `content` plane; restaurant-root surface-suppression must no-op the descriptor;
   `preserveLiveY` children (favoriteListDetail) have no sheet plane → settle hinges on the content-plane
@@ -106,13 +124,13 @@ their opacity) and a **separate search surface** (`SearchSceneStackBodyDisplayTa
   a **persistent full-screen BASE layer** (`SearchScreen` renders only `<SearchMapRenderSurface>`; the sheet
   host is a sibling overlay above it), bound to JS purely by **React node tag** (`findNodeHandle → attach({mapTag})`).
   It is **orthogonal** to which sheet body is mounted — nothing in `SearchMapRenderController.swift` references
-  the scene-stack body. AND the search **body is already a scene-stack scene** ('search' ∈ PERSISTENT_ROUTE_SCENE_STACK_KEYS,
+  the scene-stack body. AND the search **body is already a scene-stack scene** ('search' ∈ PERSISTENT*ROUTE_SCENE_STACK_KEYS,
   wrapped in the SAME `BottomSheetSceneStackPageFrame` as polls/profile). So **the canvas is already shared and
   the map is already separate.** What actually makes search special is the **`SearchSurfaceRuntime` transaction
   lifecycle** — the native-readiness **reveal join** (`cardsReady && nativeMarkerFrameReady && sheetReady`, where
   `nativeMarkerFrameReady` comes from the map's `render_frame_synced` handshake) and the **sheet-drag dismiss
   handoff** — which the generic admission model (boolean-only retention) cannot express. The docked-persistent-poll
-  resting lane *also* lives inside this surface (`activeBundle.kind==='poll'`), so it's entangled too.
+  resting lane \_also* lives inside this surface (`activeBundle.kind==='poll'`), so it's entangled too.
 
   **So the "ultimately ideal" is NOT "move search to the canvas" (it's already there) — it's FOLD UP: generalize
   the strong transaction/readiness abstraction into the generic scene model**, so any future native-readiness-gated
@@ -139,8 +157,9 @@ their opacity) and a **separate search surface** (`SearchSceneStackBodyDisplayTa
 
 Triggering a search from ANY page (deep link, a button on profile/favorites, tapping a highlighted entity in
 a poll-detail comment) → origin goes to loading → native map settles → results-list OR restaurant-profile
-reveals with correct timing — is ONE transition: *origin scene* → *results/restaurant scene* with a
+reveals with correct timing — is ONE transition: _origin scene_ → _results/restaurant scene_ with a
 **`readinessGatedReveal`** preset. It decomposes onto the two systems already in this doc:
+
 - **Outgoing**: the overlap **engine** crossfades the origin out — origin-agnostic (polls, profile, favorites,
   restaurant, all the same).
 - **Incoming**: the **generalized readiness primitive** (fold-up Stage 2) runs loading → the native-marker-frame
@@ -160,18 +179,19 @@ the first user of a general primitive" goal made concrete.
 ## Dismiss = return-to-origin (unified back-navigation) — the genuinely ideal shape
 
 INVESTIGATION FINDING. Position-memory exists but is fragmented, and an origin-restore is **half-built**:
+
 - The route back-stack (`overlayRouteStack[]`) stores **only `{key, params}`** — no per-frame snap/scroll.
-- Child-back (pollDetail→polls) does **not** restore a remembered snap; it `preserveLiveY`s and only *looks*
+- Child-back (pollDetail→polls) does **not** restore a remembered snap; it `preserveLiveY`s and only _looks_
   preserved because poll children share one physical sheet that never moved.
 - `SearchSessionOriginContext { rootOverlay, tabSnap }` already captures origin + snap and restores it — but
   only for ROOT overlays, and `armSearchCloseRestore` **clobbers the snap to `collapsed`** for the search/poll
-  origin, so it's *actively wrong* for the most common case, not just incomplete.
+  origin, so it's _actively wrong_ for the most common case, not just incomplete.
 - There are **TWO** polls hardcodes (`dismissAppSearchRouteResultsToPolls` AND `closeActiveRoute`'s
   restaurant-with-no-parent → polls@collapsed), plus a press-up-vs-finalize **race** (two targets issued).
 
 **The genuinely ideal shape (don't bolt on a wider search descriptor — fix the ROOT defect):** put
 **snap + scroll on the back-stack entry** (`OverlayRouteEntry` gains a per-frame position) and make **search a
-real frame** on that stack. Then *child-back and search-dismiss are literally ONE mechanism* (pop → restore the
+real frame** on that stack. Then _child-back and search-dismiss are literally ONE mechanism_ (pop → restore the
 entry's scene + snap + scroll), both polls hardcodes dissolve, and "search-dismiss is just back-navigation"
 becomes true instead of approximated by a parallel session descriptor. `results → docked-polls@collapsed`
 becomes the case where the popped entry is `polls@collapsed`.
@@ -179,7 +199,7 @@ becomes the case where the popped entry is `polls@collapsed`.
 **The hard, fragile part (net-new infra, harness-gated):** the dismiss READINESS HANDOFF is **collapsed-only
 and poll-shaped in 3–4 places** — `commitDismissBoundary` fires only on `snap==='collapsed'`; the release gates
 (`completeDismissHandoff`, the activeBundle swap, the settle gate) all require `pollHeader/Body/HostReady`. So
-restoring to a *non-collapsed* or *non-poll* origin re-triggers the exact **2026-06-22 deadlock** ("leftover
+restoring to a _non-collapsed_ or _non-poll_ origin re-triggers the exact **2026-06-22 deadlock** ("leftover
 sheet, can't search again"). Generalizing it to **target-snap-driven + substrate-agnostic** release is the real
 work, and it MUST keep `{polls,search}@collapsed` byte-identical. The `searchSurfaceOwnsVisibleSheet` override
 also only holds the frozen results while `displayedSceneKey ∈ {null,search,polls}`, so a restaurant/profile
@@ -187,7 +207,7 @@ origin needs the engine crossfade to cover the surface drop.
 
 **Forward vs back (settled):** keep FORWARD = policy (`resolveDefaultSheetMotionPlan`), BACK = remembered
 snapshot with policy as fallback. Do NOT reuse `promoteAtLeast` for back (it no-ops when already above the
-floor → can't move *down* to a remembered lower snap); back uses explicit `snapTo descriptor.sheetSnap`,
+floor → can't move _down_ to a remembered lower snap); back uses explicit `snapTo descriptor.sheetSnap`,
 clamped to the target's `allowedSnaps`.
 
 **VERIFY-FIRST (load-bearing):** does launch-search actually RESET `overlayRouteStack` to `[search]`? If it
@@ -197,18 +217,19 @@ leaves the stack intact, child-origin back-navigation may ALREADY work via `clos
 ## Favorites-as-search = a second results SOURCE (independently buildable NOW)
 
 INVESTIGATION FINDING — most of this already exists, and it does **not** depend on the transition engine.
+
 - **A favorites list IS just entity IDs.** `FavoriteListItem` = `restaurantId` XOR `connectionId` + `position`;
   `listType` is single-axis (all-restaurant or all-dish). All display data is hydrated at read time. So
   "favorites = IDs we hydrate" is exactly right.
 - **The FE surface is already source-agnostic at ONE seam:** `publishSearchMountedResultsDataSnapshot(results:
-  SearchResponse, …)` / `handleSearchResponse` is the SOLE input for the list, sectioned projection, cards,
+SearchResponse, …)` / `handleSearchResponse` is the SOLE input for the list, sectioned projection, cards,
   marker catalog, AND the `cardsReady/nativeMarkerFrameReady/sheetReady` reveal gates. **Nothing downstream
   reads the query string.** Any source that yields a `SearchResponse` reuses the list + toggle strip + pins +
   reveal/dismiss for free. The "source abstraction" = add a `SearchRequestRuntimeMode = 'favorites'` that
   fetches and routes a `SearchResponse` through the existing funnel.
 - **The hydrate endpoint reuses the search EXECUTOR**, not the hand-rolled favorites mapper: build a `QueryPlan`
   whose `restaurantFilters` carry the favorite entity IDs → `parseFilters → collectEntityIds → r.entity_id =
-  ANY(...)` (zero builder change for **restaurant** lists), then call `SearchQueryExecutor.executeDual` and
+ANY(...)` (zero builder change for **restaurant** lists), then call `SearchQueryExecutor.executeDual` and
   hand-assemble a `SearchResponse` envelope. The executor computes rank/craveScore/open-now/price/distance/
   lat-lng/locations/topFood in one SQL — exactly the fields the favorites mapper hardcodes to null today, so
   pins + cards + sort reach **parity-for-every-field-the-surface-reads** (NOT "byte-identical": query-only
@@ -216,6 +237,7 @@ INVESTIGATION FINDING — most of this already exists, and it does **not** depen
 - **Sort parity holds** (both order by score columns, no query-relevance term), so badge==list-position is real.
 
 ### v1 now-slice (refined by the parity review — these are correctness gates, not polish)
+
 - **RESTAURANT lists only.** DISH lists need a new builder filter — a dish favorite stores a `connectionId`,
   but the builder has no `connection_id` filter (only `food_id`, which fans out to many restaurants). Add
   `EntityScope.CONNECTION` + a `c.connection_id = ANY(...)` branch (mirrors the existing `excludeConnectionIds`
@@ -242,8 +264,10 @@ dismiss flow already exists and already consumes a `SearchResponse`. It's also t
 "source-agnostic results" thesis is real.
 
 ### BUILD STATUS — BE DONE (uncommitted), FE next
+
 `POST /api/v1/favorites/lists/:listId/results` is built + live (401-guarded; 0 TS errors; two adversarial
 review rounds). It reuses `SearchQueryExecutor.executeDual` by entity IDs for BOTH axes:
+
 - **restaurant list** → restaurants scoped to favorited IDs; dishes `[]` + `totalFoodResults:0` (TODO: skip the
   dish query once the executor exposes a single-axis path — today it runs and is discarded).
 - **dish list** → dishes = favorited connections; restaurants = those connections' DISTINCT restaurants (so the
@@ -252,14 +276,14 @@ review rounds). It reuses `SearchQueryExecutor.executeDual` by entity IDs for BO
   array → would otherwise flood the global universe).
 - `droppedItemCount` (in `metadata.analysisMetadata.favorites`) reconciles saved-vs-shown (executor INNER-JOINs
   scores/locations → score-less/un-geocoded favorites silently drop).
-Files: `favorite-lists.service.ts` (getListResults), `favorites.controller.ts`, `favorites.module.ts`
-(imports SearchModule), `favorites/dto/favorite-list-results.dto.ts` (new), `search.module.ts` (exports the
-executor), `search-query.builder.ts` (+ first-class `connection_id` filter — additive, inert for normal search),
-`search-query.dto.ts` + `packages/shared/.../search.ts` (`EntityScope` widened with `'connection'`).
-**Remaining:** runtime parity-diff needs a real Clerk token (no dev bypass) → validate end-to-end via the FE on
-the sim (real auth). Then the **FE `'favorites'` source mode**: route `BookmarksPanel`'s list tap through
-`handleSearchResponse` (records favorites as reveal origin → return-to-origin dismiss), extend
-`resolveResponseActiveTab`, delete the standalone `FavoriteListDetail` FlashList.
+  Files: `favorite-lists.service.ts` (getListResults), `favorites.controller.ts`, `favorites.module.ts`
+  (imports SearchModule), `favorites/dto/favorite-list-results.dto.ts` (new), `search.module.ts` (exports the
+  executor), `search-query.builder.ts` (+ first-class `connection_id` filter — additive, inert for normal search),
+  `search-query.dto.ts` + `packages/shared/.../search.ts` (`EntityScope` widened with `'connection'`).
+  **Remaining:** runtime parity-diff needs a real Clerk token (no dev bypass) → validate end-to-end via the FE on
+  the sim (real auth). Then the **FE `'favorites'` source mode**: route `BookmarksPanel`'s list tap through
+  `handleSearchResponse` (records favorites as reveal origin → return-to-origin dismiss), extend
+  `resolveResponseActiveTab`, delete the standalone `FavoriteListDetail` FlashList.
 
 ## Sequence (instrument-FIRST per CLAUDE.md, then build increment-by-increment)
 

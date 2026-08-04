@@ -4,6 +4,21 @@
 > offline dish-knowledge pass (see memory: ingredient-feature). Remaining launch-relevant items
 > moved to product/pre-launch.md + product/launch-runbook.md. Kept for design rationale only.
 
+> **Correction 2026-08-03 (truth audit):** the "TWO widening systems" reference section is
+> now HALF false — **Lever 2 (relaxation stages) no longer exists.** The relaxation ladder
+> was deleted in the 2026-08-02 search cutover and replaced by one pooled execution behind
+> a pooled richness gate (`apps/api/src/modules/search/search-constraints.ts:45-47`; zero
+> repo hits for `relaxed_food_attributes` / `relaxed_modifiers`). Everything downstream in
+> this doc that keys off it is archaeology too: the A2 "relaxation dedupe/totals break when
+> pageSize<10" fix, the P1 "relaxation clamp + pooled-page slice", the A3 note that the
+> chip threshold is "NOT the relaxation threshold (10)", and the dense-sibling `always`
+> mode's "relaxation decided after dense" ordering. Lever 1 (plan expansion) survives
+> (`search-entity-expansion.service.ts`). The "market scoping can hide an exact owner"
+> MINOR item is also dead — markets were exterminated 2026-07-22.
+>
+> Housekeeping note is also stale: the branch workflow described at the bottom was
+> retired 2026-07-05 (solo dev commits straight to `main`, no branches/PRs).
+
 # Search + Collection — Open Threads (backlog & pickup plan)
 
 **Provenance.** This gathers everything we touched but did **not** finish across the

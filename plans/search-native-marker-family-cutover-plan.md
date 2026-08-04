@@ -2,7 +2,15 @@
 
 Last updated: 2026-03-29
 Status: active
-Scope: `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
+
+> **ARCHAEOLOGY 2026-08-03 (truth audit).** "Status: active" is false. This plan's subject —
+> the native pin/label marker-family projection with `DesiredPinSnapshotState` /
+> `LivePinTransition` / `prepareDerivedPinAndLabelOutput` and label-interaction output — was
+> dissolved by the pins→VA + labels→VA migration; the whole label data family was deleted
+> end-to-end on 2026-07-11 (`plans/search-map-ideal-effort/07-va-migration-cleanup-manifest.md`,
+> "Label DATA family follow-up — EXECUTED"). Paths here are also stale
+> (`/Users/brandonkimble/crave-search/…`; the repo is `/Users/brandonkimble/Crave/Crave`).
+> Scope: `/Users/brandonkimble/crave-search/apps/mobile/ios/cravesearch/SearchMapRenderController.swift`
 
 ## Objective
 

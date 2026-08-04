@@ -6,15 +6,18 @@ Owner decisions captured below; this is the forward plan for the next polls phas
 and supersede earlier rounds where they conflict.** The card/+ nav bug (§9) is FIXED.
 
 ### Round-5 (2026-06-24): sheet / modal / thread UX overhaul — investigation + sequenced plan
+
 Five-way parallel investigation (workflow wsaesnh1g) mapped each subsystem. Two assumptions
 were corrected: (A) the poll-feed/poll-detail headers are NOT a different component — all
 three sheets render the same `OverlaySheetHeaderChrome` (fixedHeight → `OVERLAY_TAB_HEADER_HEIGHT`),
 identical cutouts; the divergence is the LANE (result scenes thread `headerDividerScrollOffset`
-+ measured reserved height; generic `BottomSheetSceneStackPageFrame` threads neither). (B)
-poll-detail is ALREADY `canSwipeDismiss:false`; `polls` is the ONLY route scene whose
-swipe-to-hidden is consumed (the docked-poll-bar dismiss → `dismissDockedPolls`).
+
+- measured reserved height; generic `BottomSheetSceneStackPageFrame` threads neither). (B)
+  poll-detail is ALREADY `canSwipeDismiss:false`; `polls` is the ONLY route scene whose
+  swipe-to-hidden is consumed (the docked-poll-bar dismiss → `dismissDockedPolls`).
 
 DISMISS MODEL (owner reframe, supersedes the old §D.7 "all sheets swipe-to-dismiss"):
+
 - **Modals** (AppModalHost popup, the OverlayModalSheet price/score sheets, the active compose
   chin): standardize the Instagram/Google "armed-outside" dismiss — a touch that STARTS outside
   the modal rect dismisses on first finger MOVE or on LIFT, never on touch-down. New shared
@@ -28,6 +31,7 @@ DISMISS MODEL (owner reframe, supersedes the old §D.7 "all sheets swipe-to-dism
 
 SEQUENCED IMPLEMENTATION (lowest-risk → highest; runtime-sensitive ones instrumented FIRST,
 not fixed from static reading per CLAUDE.md):
+
 1. **Header divider parity** (low risk): thread `headerDividerScrollOffset={bodyScrollRuntime.scrollOffset}`
    into the generic `BottomSheetSceneStackPageFrame` (BottomSheetSceneStackHost) + the body-frame
    memo-equality. Instrument header measured-height vs body-lane-top to confirm/deny the strip-top
@@ -53,6 +57,7 @@ ships; remove the inline reply composer remnants (done); collapse the old §D.7 
 framing in favor of the two-bucket model above; prune the stale "REMAINING" notes already superseded.
 
 ### Build progress (2026-06-24)
+
 - ✅ **Round-5.1 — Header divider parity DONE (+ the "taller header / strip clip" claim attributed
   as a misperception, on-device).** Threaded `headerDividerScrollOffset` into the generic lane:
   `SceneStackBodyLayerHost` now selects `bodyScrollRuntime?.scrollOffset` (same `useRouteAuthoritySelector`
@@ -114,7 +119,7 @@ framing in favor of the two-bucket model above; prune the stale "REMAINING" note
   so polls joins every other route scene as swipe-non-dismissable; the docked bar is now a permanent
   fixture. Verified safe first: the swipe-to-hidden path (`settleRouteScenePollsSnap → dismissDockedPolls`,
   gesture-only) is the ONLY thing removed — the PROGRAMMATIC dismiss (`requestReturnToSearchFromPolls →
-  dismissDockedPolls`) and the nav-push-to-detail flow are untouched (explicit snap targets aren't
+dismissDockedPolls`) and the nav-push-to-detail flow are untouched (explicit snap targets aren't
   bounded by `upperBound`). (b) Made the expand-pan onChange BOTTOM elastic in
   `useBottomSheetSharedGestureRuntime` — replaced the hard `Math.max(expanded, Math.min(upperBound, raw))`
   with `Math.max(expanded, applyElasticBounds(raw, expanded, upperBound))`: hard top (so the top still
@@ -188,7 +193,7 @@ framing in favor of the two-bucket model above; prune the stale "REMAINING" note
   frames to scroll. **Fix (principled, not a magic epsilon):** decide at-top from the STABLE
   touch-down offset. One shared `gestureStartedAtScrollTop` SharedValue set in BOTH pans'
   `onTouchesDown` (`= isAtScrollTop(off, topOff)`); both at-top checks become `isAtScrollTop(off) ||
-  (gestureStartedAtScrollTop && isWithinScrollTopRetileGuard(off))` with `SCROLL_TOP_RETILE_GUARD_PX=24`
+(gestureStartedAtScrollTop && isWithinScrollTopRetileGuard(off))` with `SCROLL_TOP_RETILE_GUARD_PX=24`
   (new export in `bottomSheetSharedRuntimeUtils`). Targeted: no change at off=0 (result sheet) or when
   genuinely scrolled (off=49 > guard proven → still not-at-top). Lives in the SHARED runtime → every
   sheet gets it. **Device-validated:** feed expand/scroll/collapse all clean, immediate first-frame
@@ -198,19 +203,21 @@ framing in favor of the two-bucket model above; prune the stale "REMAINING" note
   0 TS / 0 lint. Memory: [[sheet-scroll-handoff-fix]].
 
 ### Round-5.6 (2026-06-24): ALL-SHEETS header + frost + divider audit (owner request) — TODO
+
 Owner wants EVERY sheet's header to read identically to the canonical RESULT sheet header:
 (1) correct height (`OVERLAY_TAB_HEADER_HEIGHT`); (2) the grab-handle hole + close-button hole
 cut-outs that SEE THROUGH to a frosty layer; (3) every sheet HAS a frosty layer; (4) NO white
 layer covering/occluding the frost; (5) any sheet with a toggle/filter strip also has the
 `HeaderScrollDivider` that fades in under the strip on scroll (the #25 fix).
 STATIC AUDIT (frost layer behind the header):
+
 - ✅ has own `<FrostedGlassBackground />`: search/**Results** (`SearchMountedScenePageBundleAuthority`
   ~L381) and **RestaurantPanel** (L511). These are the canonical-correct ones.
 - ⚠️ **PollsPanel** — renders NO own frost; relies on "the mounted-scene FrostedGlassBackground
   showing through" (comment ~L660). Fragile: if no frosted scene is mounted behind, the header
   cutouts read white. Give it its own frost (or verify the show-through holds in every state).
 - ⚠️ **PollDetailPanel** (L1134) + **PollCreationPanel** (L284) — `backgroundComponent = <View
-  style={sheetSurface}/>` (`#ffffff`, absoluteFill). This WHITE full-bleed surface IS the "white
+style={sheetSurface}/>` (`#ffffff`, absoluteFill). This WHITE full-bleed surface IS the "white
   layer covering the frost": the header cutouts reveal white, not frost. Fix: put a
   `FrostedGlassBackground` behind + stop the white surface from covering the HEADER band (scope the
   white to below the header, or drop it and let content carry its own bg) so the cutouts see frost.
@@ -222,13 +229,14 @@ STATIC AUDIT (frost layer behind the header):
   still instrument measured heights per sheet to confirm none diverge.
 - DIVIDER: the generic-lane `headerDividerScrollOffset` threading (#25) already covers every
   non-search scene; confirm the polls feed (the toggle-strip sheet) actually shows it on scroll.
-OWNER CLARIFIED (2026-06-24): NO sheet is intentionally white. Architecture = every sheet's
-FOUNDATION is the shared frosty compound layer (frosty by default); content sits on WHITE layers on
-top of the frost; cutouts punch holes in the white to expose the frost (because it looks cool) and
-must be trivial to add anywhere. Result sheet is canonical — standardize + replicate it. Saved as
-memory [[sheet-frost-architecture]].
+  OWNER CLARIFIED (2026-06-24): NO sheet is intentionally white. Architecture = every sheet's
+  FOUNDATION is the shared frosty compound layer (frosty by default); content sits on WHITE layers on
+  top of the frost; cutouts punch holes in the white to expose the frost (because it looks cool) and
+  must be trivial to add anywhere. Result sheet is canonical — standardize + replicate it. Saved as
+  memory [[sheet-frost-architecture]].
 
 ### Build progress — Round-5.6 (2026-06-24): shared frost foundation DONE + device-validated
+
 - ✅ **ONE shared frost foundation.** `BottomSheetSceneStackPageFrame` now renders a single
   `<FrostedGlassBackground />` in the background lane (zIndex 1, beneath `{backgroundComponent}`), so
   EVERY sheet that routes through the page frame is frosty by default. Removed the 3 now-duplicate
@@ -281,6 +289,7 @@ memory [[sheet-frost-architecture]].
   convert it to N MaskedHoleOverlay masks). Tracked as a follow-up task.
 
 ### Build progress (2026-06-23)
+
 - ✅ **Toggle strip FIDELITY fix** (owner caught it didn't match search): band height
   (paddingVertical 0), removed the chip borders (`FilterChip`), removed the segmented
   toggle's dark track tint (transparent, like search), and ported search's exact
@@ -336,6 +345,7 @@ memory [[sheet-frost-architecture]].
   into `feedQuery`, and disables FlashList `maintainVisibleContentPosition` for re-sorts.
 
 ### Build progress (2026-06-22)
+
 - ✅ **White full-bleed sheets** for `pollDetail` + `pollCreation` (§B.2) — replaced
   `FrostedGlassBackground` with a solid white surface; validated on sim (Maestro
   `poll-card-open.yaml` / `poll-create-open.yaml`). 0 TS / 0 lint.
@@ -358,7 +368,7 @@ memory [[sheet-frost-architecture]].
   (§4/§6) is frontend-only; remaining work there is the toggle UI (must mirror the
   search restaurant⇄dish sliding-pill toggle per Round-2.5).
 - ✅ **Dedup §3 — COMPLETE end-to-end (backend + FE two-stage).** `POST
-  /polls/check-duplicate` (precision-favoring `word_similarity ≥ 0.6` over active
+/polls/check-duplicate` (precision-favoring `word_similarity ≥ 0.6` over active
   market polls) curl-validated. Creation submit now runs **stage-1 dedup before
   create**: a near-match shows a "This poll already exists" prompt with **View poll**
   (routes to the existing pollDetail via `pushRoute`) / **Cancel**. Maestro-validated
@@ -411,11 +421,12 @@ memory [[sheet-frost-architecture]].
   close at exactly the same time as before). API compiles, healthy, 0 TS/lint.
   REMAINING (sim-blocked): the creation **close-window picker UI** (3–14 slider; backend
   already defaults to 7 without it) + an authed-create e2e check that a chosen window
-  persists. The cron's per-poll *integration* (vs the unit-tested decision) is only
+  persists. The cron's per-poll _integration_ (vs the unit-tested decision) is only
   fully provable by a cron run.
 - Trending-heat-from-entity-scores was REJECTED in favor of engagement (above).
 
 ### ⚠️ Validation blocker (2026-06-22)
+
 The **sim signed itself out** (session expiry mid-session) — a gated "Sign back into
 Crave Search" sheet now blocks the app, with no guest path. **Re-authenticating is a
 prohibited action**, so I cannot continue Maestro validation of authed poll features
@@ -423,15 +434,16 @@ prohibited action**, so I cannot continue Maestro validation of authed poll feat
 turn is code-clean (0 TS / 0 lint; backend curl-validated); the thread-collapse +
 rails specifically are built but **not yet visually validated**. **Need: sign back in
 on the sim** to resume validate-as-you-go.
+
 - ⏳ **§K search-from-anywhere return** — de-risked + breakthrough (scene stays
   mounted → state free; route-restore via `requestOverlaySwitch` proven), but the
   smooth dismiss-coordination is a focused remaining task; reverted to clean baseline
   (see §K notes). NOT shipped.
 - ⏳ Remaining: market-picker, close-window picker, §J keyboard choreography, dedup,
   feed/toggles, thread polish (§D), trending, etc.
-Supersedes the "create-dish/restaurant flow" placeholder in the community-polls
-master plan §13A — we are NOT building a one-off creator-seeding flow; the
-creator's **description** is their organic seed instead.
+  Supersedes the "create-dish/restaurant flow" placeholder in the community-polls
+  master plan §13A — we are NOT building a one-off creator-seeding flow; the
+  creator's **description** is their organic seed instead.
 
 Companion plans: `community-polls-discussion-driven-collection-plan.md` (master),
 `polls-frontend-plan.md` (the shipped FE foundation). Memory: [[polls-plan-structure]].
@@ -472,7 +484,7 @@ These ground every decision below; verify before building on them.
   > the all-time score), no snapshots. Anywhere below that proposes a "trending heat" as a decayed-sum over
   > `core_public_entity_score_history`, use `rising` instead (it already encodes the decay). **Search ships
   > `rising DESC` as the "Rising" sort** end-to-end (`risingActive` → `search-query.builder.ts`). Polls feed
-  orders only by `launchedAt DESC` (`polls.service.ts:63-96`) — no sort param.
+  > orders only by `launchedAt DESC` (`polls.service.ts:63-96`) — no sort param.
 - **No generic toggle/segmented/chip component exists** in mobile; the search
   restaurant⇄dish toggle is bespoke + entangled with the search runtime
   (`SearchFilters.tsx:514-690`, `use-results-presentation-tab-toggle-runtime.ts`).
@@ -489,7 +501,7 @@ A dedicated `pollCreation` child scene (already registered) rebuilt as an
 
 - **Entry:** the `+` button swaps to the creation page (own scene like pollDetail).
 - **Shared canvas = the live poll UI as an editable shell.** Standardize the poll
-  card/detail visual components so the creation canvas *is* an empty poll being
+  card/detail visual components so the creation canvas _is_ an empty poll being
   edited. If the poll UI changes later, the canvas inherits it. Extract the poll
   presentation (header, question, bars area, description block) into shared
   components consumed by card + detail + creation.
@@ -527,7 +539,7 @@ like a comment** and the LLM/gazetteer extracts their suggestion from it.
   fold the resulting endorsements into the live leaderboard **attributed to the
   creator's userId**, with the **same per-user-per-entity dedup as comments** (Set
   semantics in `rebuildPollLeaderboard` already dedup by userId — a creator who
-  later repeats the same entity in a comment counts once; a *different* entity in a
+  later repeats the same entity in a comment counts once; a _different_ entity in a
   comment counts as a second suggestion).
   - Implementation choice (recommended): keep `description` as a poll field for
     display, and seed the creator's endorsements directly into the leaderboard from
@@ -557,8 +569,10 @@ duplication ("best tacos in Austin" asked 10×). We do NOT cap or reject creatio
 we route duplicates to the existing poll.
 
 ### UX: duplicate modal (bottom sheet)
+
 When a submit matches an active poll, show a bottom modal: "This looks like an
 active poll" + a card/link to that poll, with two actions:
+
 - **View the poll** → discard the draft + open the existing active poll (pollDetail).
 - **Discard** → discard the draft + return to the poll sheet they were on.
 
@@ -567,10 +581,11 @@ comment on the existing poll — we show the modal and let them choose. They can
 re-add their take by joining that poll's discussion themselves.)
 
 ### Speed: two-stage, dedup-first (the ideal flow)
+
 On **submit (press-up)** show a brief loading state and run:
 
 1. **Stage 1 — fast text dedup (sub-100ms).** `word_similarity(question, active
-   poll questions)` in the market (the `fetchPollMatches` SQL, **high** threshold to
+poll questions)` in the market (the `fetchPollMatches` SQL, **high** threshold to
    avoid false rejects on "best tacos" vs "best taco truck"). Strong match → show
    the duplicate modal immediately. No LLM yet.
 2. **Stage 2 — LLM type resolution (~1–3s).** Only if Stage 1 found no obvious dup:
@@ -592,13 +607,16 @@ stage-3 entity-match do the precise work).
 ## 4. The feed: Live/Results split, ordering, and surfacing
 
 ### Primary split — segmented toggle
+
 **Live ⇄ Results** (recommended names; "Results" reads better than "Closed" and
-*is* the weekly payoff). Default **Live**. Same two-position segmented pattern as
+_is_ the weekly payoff). Default **Live**. Same two-position segmented pattern as
 search's restaurant⇄dish, but Live vs Results are distinct datasets → this toggle
 **refetches** (search's cached-both-datasets swap does not apply).
 
 ### Default order (the silent nudge) — agreed
+
 No explicit sort label by default (chip reads "Sort"). The default order:
+
 1. **App Crave polls pinned on top** (already algorithmically chosen by the
    scheduler), with the sparkles "Crave" treatment.
 2. **User polls ranked by demand alignment** — read the precomputed
@@ -610,6 +628,7 @@ Feasible as a join/read (do NOT compute `planMarketTopicCandidates` inline per f
 load — too heavy; read the stamped score or a cached map).
 
 ### User-selectable sorts
+
 - **New** — chronological (`launchedAt DESC`, the current behavior).
 - **Top** — engagement = distinct endorsers (matches the leaderboard signal).
 - **Trending** — `score_delta_7d` of the poll's target entity (reuse the search
@@ -620,6 +639,7 @@ load — too heavy; read the stamped score or a cached map).
   votes are tap-toggle + multi-author, but adds toggle clutter at launch.)
 
 ### Card differentiation
+
 User-created polls show a **snapshot of the description** under the poll on the
 feed card (app polls usually won't have one) → makes user polls visibly more
 human/inviting and distinguishes them from app polls.
@@ -645,6 +665,7 @@ results + app polls, not user creation.**
   tab filling, not a forced global batch.
 
 ### Per-user soft cap — agreed
+
 **2 active polls / week / user / market.** Rolling 7-day window check at creation;
 soft (clear "you've used your 2 polls this week in {market}" message), not a silent
 fail. **No limit on comments / discussion.**
@@ -659,12 +680,12 @@ today). **Extract `SegmentedToggle({options:[a,b], value, onChange})` +
 technique + `FrostedGlassBackground`/`MaskedHoleOverlay` from `SearchFilters.tsx`),
 and optionally retrofit search onto them later.
 
-| Control | Type | Default | Options |
-|---|---|---|---|
-| **Live / Results** | segmented (primary) | **Live** | Live, Results |
-| **Type** | filter chip | **All** | All, + each poll-type, + Discussion |
-| **Sort** | filter chip | **(silent demand default)** | New, Top, Trending |
-| **Time** | filter chip (mainly Results) | **This Week** | This Week, All Time |
+| Control            | Type                         | Default                     | Options                             |
+| ------------------ | ---------------------------- | --------------------------- | ----------------------------------- |
+| **Live / Results** | segmented (primary)          | **Live**                    | Live, Results                       |
+| **Type**           | filter chip                  | **All**                     | All, + each poll-type, + Discussion |
+| **Sort**           | filter chip                  | **(silent demand default)** | New, Top, Trending                  |
+| **Time**           | filter chip (mainly Results) | **This Week**               | This Week, All Time                 |
 
 - **Type options naming:** the 4 axis types (best_dish, what_to_order,
   best_dish_attribute, best_restaurant_attribute) are jargon. Recommend
@@ -682,6 +703,7 @@ and optionally retrofit search onto them later.
 The shipped replies/edit/delete (`PollDetailPanel.tsx`) put the composer in the
 **list header (top)** with inline reply boxes and a text "Reply" label. The agreed
 shape:
+
 - **Move the main compose box to the BOTTOM** of the poll detail page (chat/Reddit
   style) — simple, elegant, attractive.
 - **Reply = an icon button** on each comment / nested comment (entry point to nest),
@@ -700,13 +722,14 @@ shape:
 restaurant⇄dish toggle): **Best** (current default) and **Trending/Hot** (score
 delta). FINDING: this **already exists** as the **"Rising"** boolean
 (`score_delta_7d DESC`, shipped DB→API→mobile chip). So the task is:
+
 1. Verify "Rising" is complete + correct (it appears fully wired).
 2. Surface it as a proper **Best ⇄ Trending** sort toggle in the results header
    (left of restaurant/dish), instead of (or alongside) the current "Rising" chip —
    rename to "Trending"/"Hot" for clarity.
 3. Confirm it re-runs/re-orders the search correctly on toggle.
-Minimal new work — mostly UX surfacing + a possible rename; the delta data + sort
-order-token already exist (`search-query.builder.ts` `resolveRestaurant/DishOrderSql`).
+   Minimal new work — mostly UX surfacing + a possible rename; the delta data + sort
+   order-token already exist (`search-query.builder.ts` `resolveRestaurant/DishOrderSql`).
 
 ---
 
@@ -756,17 +779,17 @@ feed/curation layer that matters once volume grows (keep simple until then).
 
 - **§9 BUG — REPRODUCED, re-scoped.** Not staleness (a fresh `launchApp` pulls
   current Metro JS and still fails). Reproduced via `maestro/perf/flows/poll-card-open.yaml`
-  + screenshots: the docked "Polls in New York · N live · +" lane renders but
-  **won't expand to the feed** — tap-header / swipe-up / `open_overlay_scene
-  scene=polls` (snap:'expanded') all leave it collapsed; the `+` is unresponsive.
-  The `pollDetail`/`pollCreation` SCENES open fine when pushed via the harness
-  (`open_overlay_scene` → `pushRoute`), so the break is the **docked-lane →
-  expanded-feed handoff**, NOT the scenes. Feed cards render only when
-  `visiblePolls` is populated AND `!shouldHoldFreshLiveContent` AND not loading
-  (`PollsPanel.tsx:456-459`); in the docked/collapsed state they don't surface.
-  Root-cause area: `usePollsPanelFeedRuntime` + the `mode`('docked'|'overlay')/snap
-  transition (`PollsPanel.tsx:241,395-448`) + the gesture-handoff sheet. FIX THIS
-  FIRST — everything else is untestable until the feed opens.
+  - screenshots: the docked "Polls in New York · N live · +" lane renders but
+    **won't expand to the feed** — tap-header / swipe-up / `open_overlay_scene
+scene=polls` (snap:'expanded') all leave it collapsed; the `+` is unresponsive.
+    The `pollDetail`/`pollCreation` SCENES open fine when pushed via the harness
+    (`open_overlay_scene` → `pushRoute`), so the break is the **docked-lane →
+    expanded-feed handoff**, NOT the scenes. Feed cards render only when
+    `visiblePolls` is populated AND `!shouldHoldFreshLiveContent` AND not loading
+    (`PollsPanel.tsx:456-459`); in the docked/collapsed state they don't surface.
+    Root-cause area: `usePollsPanelFeedRuntime` + the `mode`('docked'|'overlay')/snap
+    transition (`PollsPanel.tsx:241,395-448`) + the gesture-handoff sheet. FIX THIS
+    FIRST — everything else is untestable until the feed opens.
 - **Demand-cooldown coupling (the feedback loop).** A user poll that matches/targets
   an entity is "we're collecting on it again" — it should bump that entity's
   `lastPolledAt`, exactly as the scheduler does when IT creates a poll
@@ -811,7 +834,7 @@ feed/curation layer that matters once volume grows (keep simple until then).
   lightweight `scanForKnownEntities` gazetteer scan folded into the live
   leaderboard (not the full LLM chunk pipeline). Two paths, by design.
 - **Rising / 7-day delta (T2 answer + the surfacing fix).** "Rising" = `score_delta_7d
-  DESC`. Why 7d: "this week's movement" — responsive but smoothed over daily noise,
+DESC`. Why 7d: "this week's movement" — responsive but smoothed over daily noise,
   and aligned to the weekly cadence; the 28d delta (also persisted) is the smoother
   "this month" view. It got built as a right-side chip; the OWNER's original intent
   was a **left-side sort toggle styled like the old global/local sort toggle**
@@ -848,7 +871,7 @@ feed/curation layer that matters once volume grows (keep simple until then).
   a single smooth knob — the **half-life** (e.g. 2–4 days), not a window.
   - `heat = Σ_events e^(−λ·(now − t_event))`, `λ = ln2 / half_life`. Computable now
     from the existing daily score history: `heat = Σ_days (daily_delta_d ·
-    e^(−λ·days_ago_d))` over ~30–60d of history — cheap, window-free, reuses
+e^(−λ·days_ago_d))` over ~30–60d of history — cheap, window-free, reuses
     `core_public_entity_score_history`.
   - Behavior: more movement in less time → higher decayed sum → trends harder; an
     OLDER entity with a recent surge CAN outrank a NEWER one with less movement
@@ -873,6 +896,7 @@ current word. Grounded against the live panels (`PollCreationPanel.tsx`,
 `PollDetailPanel.tsx`) + the sheet-host/transition runtime.
 
 ### A. The card/+ "opens nothing" bug — FIXED (no longer the blocker)
+
 Root cause was NOT staleness or the `Pressable` swap alone. Attributed via
 Metro-log instrumentation: the sheet-host body-snapshot equality
 (`areAppRouteSheetHostSurfaceBodySnapshotsEqual`) **excluded `displayedSceneKey`**,
@@ -883,14 +907,15 @@ treated it as equal → never republished → the host stayed on the `polls` fra
 **Fix shipped (commit 05ed7a6f):** include `displayedSceneKey` in the equality.
 Both card→detail and +→creation verified on sim (Maestro flows
 `poll-card-open.yaml`, `poll-create-open.yaml`). The content-swap now works; §C
-below is the remaining *choreography* polish, not a blocker. See memory
+below is the remaining _choreography_ polish, not a blocker. See memory
 [[snapshot-equality-load-bearing-fields]].
 
 ### B. Locked product decisions
+
 1. **Creation = type-less, subject-first.** REMOVE the 4-template type picker +
    the per-type target autocomplete entirely from `PollCreationPanel` (it is
    type-first today). The page sends free-text `createPoll({ question, description,
-   marketKey, closeWindowDays })`; the backend already infers mode+axis via
+marketKey, closeWindowDays })`; the backend already infers mode+axis via
    `createPollFromQuestion` and **ignores** `topicType`/target when `question` is
    present (`create-poll.dto.ts:34-42`). The options area stays an **empty,
    visibly non-editable placeholder** ("Your ranking forms from the discussion").
@@ -924,14 +949,16 @@ below is the remaining *choreography* polish, not a blocker. See memory
    **2 active polls / week / market** (rolling window). No cap on comments.
 
 ### C. Transition choreography (NEW — make poll-open feel like search-submit)
+
 Today a poll-card/+ tap visibly tears the whole bottom sheet away and rebuilds it
 as the new scene. Required instead: the **same choreography as submitting a
-search** — the persistent poll sheet *expands in place* into the detail/creation
+search** — the persistent poll sheet _expands in place_ into the detail/creation
 sheet, with the **nav pushed down at the sheet's bottom edge** (the illusion that
 the sheet shoves the bottom nav down), content switching **on top**, and the page
 switching **immediately on press-up into a loading state** until the data is ready
 (mirrors tapping a restaurant on the results sheet, but the nav-push expansion runs
 on the **poll-card tap**, not on search submit).
+
 - Reuse the existing machinery, do not reinvent: the `results_dismissing` phase +
   `bottomBandOwner: 'persistent_polls' → 'results_header'` handoff in
   `search-surface-runtime.ts`, the nav push-down in `NavSilhouetteHost.tsx` +
@@ -941,6 +968,7 @@ on the **poll-card tap**, not on search submit).
   choreography + a press-up loading state on the detail/creation body.
 
 ### D. Poll-detail thread — full behavioral spec (supersedes §7)
+
 1. **Persistent compose chin.** A bottom bar pinned over the discussion with the
    text box inside it, **always visible** (Reddit/IG/Twitter pattern). It is NOT in
    the list header anymore (move it off the top — `composeRow` currently lives in
@@ -968,12 +996,14 @@ on the **poll-card tap**, not on search submit).
    it as the reply composer (today modals only dismiss on tap-outside).
 
 ### E. Research-first mandate (do a spike before building each complex piece)
+
 Owner directive: every non-trivial piece gets a "best-in-class implementation"
 research spike (short findings doc + a small POC where useful) BEFORE code. Spikes:
+
 1. **Reddit-grade threaded comments** — vertical connector lines, collapse/expand
    animation, flatten-@-cap, virtualization compatible with the FlashList sheet body.
 2. **Keyboard-tracked compose modal + reply-target float** — `react-native-keyboard-
-   controller` vs Reanimated `useAnimatedKeyboard`; the highlight-and-float-to-top
+controller` vs Reanimated `useAnimatedKeyboard`; the highlight-and-float-to-top
    animation; the global swipe-to-dismiss modal shell.
 3. **Search-style nav-push transition** reused for poll-card→detail (§C).
 4. **Shared poll-canvas component extraction** — card / detail / creation consume
@@ -989,6 +1019,7 @@ Available libs: **Reanimated 4.1** (`useAnimatedKeyboard`), **FlashList 2.0**
 **react-native-svg 15.12**. The app currently uses RN `KeyboardAvoidingView`
 (Onboarding, EmailAuthModal) — NOT frame-accurate; do NOT use it for the compose
 modal. `react-native-keyboard-controller` is NOT installed.
+
 - **Keyboard-tracked compose modal (§D.2): use Reanimated `useAnimatedKeyboard`** —
   no new dep, frame-accurate (keyboard height is a shared value), and consistent with
   the Reanimated-heavy sheet/gesture runtime. The compose bar's
@@ -1014,6 +1045,7 @@ modal. `react-native-keyboard-controller` is NOT installed.
   keyboard tap.
 
 ### F. Threading research findings (recorded)
+
 - **Instagram / YouTube:** 2 levels (comment → flat replies); deeper replies just
   @mention and stay in the one group. Collapsible ("View N replies").
 - **Twitter/X:** drill-down — each node is its own focused page; not an indented tree.
@@ -1022,24 +1054,26 @@ modal. `react-native-keyboard-controller` is NOT installed.
 - **Our collection pipeline:** fetches `depth: 50` "to get all nested comments"
   (`llm-processing.processor.ts:133`) — **no 5-layer cap**; the remembered limit was
   inaccurate. Nothing upstream constrains the live thread UI.
-- **Decision (D.4):** Reddit *visuals* (lines + collapse) + Instagram *depth
-  handling* (cap ~4, flatten/@mention past it) — keeps one bounded thread per poll.
+- **Decision (D.4):** Reddit _visuals_ (lines + collapse) + Instagram _depth
+  handling_ (cap ~4, flatten/@mention past it) — keeps one bounded thread per poll.
 
 ## Round-4 updates (2026-06-22 cont.) — nav foundation, creation-sheet behavior, resolved opens
 
 ### G. Locked refinements
+
 - **Thread indent cap = 5 levels** (was ~4), then flatten + @mention (amends D.4/F).
 - **The sheet stays named "Polls."** Do NOT rename to "Feed"/generic. "Polls" is the
   recognizable hook; discussions are a **discoverable sub-kind** of poll. Filter
   labels = **`All · Polls · Discussions`** (the ranked best-of polls are "Polls"; the
   open-ended ones are "Discussions"). The sheet-name/filter overlap is intentional —
-  it reinforces that a "poll" *is* the ranked best-of format.
+  it reinforces that a "poll" _is_ the ranked best-of format.
 - **Discussion-poll cards lead with a body/description preview** (no bars). They must
   NOT look empty — the description snapshot IS the card's content. "Polls" (ranked)
   cards show bars (user polls may also show a description snapshot). Amends §4
   card-diff.
 
 ### H. Resolved opens (with rationale)
+
 - **Description storage → poll FIELD + leaderboard-seed (Option A).** `description` is
   a poll column; renders as a body block under the question + a card snapshot. At
   creation, scan it for entity mentions and seed the creator's endorsements straight
@@ -1061,11 +1095,12 @@ modal. `react-native-keyboard-controller` is NOT installed.
   and dismisses back to creation — that's a value-picker, not a destination.
 
 ### I. Scene vs modal — the reusable pattern (we'll do this often)
+
 - **Child scene** (pollDetail, pollCreation, restaurant, profile): a registered route
   in the scene stack — pushed/popped, **preserved in back-history**
   (`overlayRouteStack` + `parentSceneKeys`), gets the sheet-host + transition
-  treatment. Heavier to register. **Use for destinations** you navigate *to* and
-  *back from*.
+  treatment. Heavier to register. **Use for destinations** you navigate _to_ and
+  _back from_.
 - **Modal / sheet-over-scene** (duplicate-poll modal, market picker, sort picker):
   transient UI on top of the current scene, local state, **not** in the route stack;
   dismiss → same scene. **Use for value-pickers + confirmations.**
@@ -1073,6 +1108,7 @@ modal. `react-native-keyboard-controller` is NOT installed.
   → **scene**.
 
 ### J. Creation-sheet open + keyboard choreography (amends §1, §C)
+
 - **Creation uses the same nav-push expansion transition** (§C). Because the keyboard
   covers ~half the sheet (nav can't sit on-screen anyway), on open the creation sheet
   **auto-extends to the HIGHEST snap** with the **subject text box focused + keyboard
@@ -1080,7 +1116,7 @@ modal. `react-native-keyboard-controller` is NOT installed.
 - **Keyboard discipline (precise):**
   - Auto keyboard-up happens **only on first open** of the creation sheet.
   - The grab handle drags the sheet to mid/low like any sheet. The instant the user
-    touches anything to drag the sheet (anything *but* the text box), the **keyboard
+    touches anything to drag the sheet (anything _but_ the text box), the **keyboard
     dismisses** and stays gone at the lower snaps.
   - The keyboard only returns when the sheet is at the **top** snap **and** the user
     **taps the text box** again. Dragging back to top does NOT auto-raise it — only a
@@ -1088,8 +1124,10 @@ modal. `react-native-keyboard-controller` is NOT installed.
 - Shares the keyboard-tracked modal mechanics with the comment composer (§D.2).
 
 ### K. FOUNDATIONAL — "surrender search from anywhere → explore → return"
+
 A core navigation invariant to standardize across the WHOLE app (current + future
 screens), not a per-screen feature:
+
 - From ANY screen (poll creation, poll detail, profile, favorites, a not-yet-built
   screen…), the user can **run a search**; the current screen yields to the **results
   sheet** via the standard search transition.
@@ -1103,6 +1141,7 @@ screens), not a per-screen feature:
 **SPIKE RESULT (owner-run, 2026-06-22) — the invariant FAILS today; §K is a confirmed
 core-nav task that PRECEDES the creation build.** Repro: open the creation sheet → run
 a search. Findings:
+
 - **In** is fine: the creation sheet transitions to the search/results sheet cleanly.
 - **Out is broken:** closing the search does NOT return to the creation sheet. Instead
   it runs the **standard dismiss flow** (sheet slides to the bottom snap and tears
@@ -1110,6 +1149,7 @@ a search. Findings:
   position** from when the search was launched.
 
 Two required fixes:
+
 1. **Restore the origin scene on back-out** — when search (and any pages explored from
    it) is dismissed, the stack must **stop at the scene that was active when search was
    launched** (creation), not fall through to the global dismiss-to-bottom path.
@@ -1139,10 +1179,11 @@ launching a search commits a **`setRoot` route action** →
 root-switch path does not. Two more confirmed gaps: the close handler defaults every
 non-restaurant route to `'search'` (`use-results-presentation-close-actions-runtime.ts:141-144`),
 and the sheet snap is never captured/restored (it resolves the destination scene's
-*policy* initial snap, `app-route-sheet-host-authority-controller.ts:1000-1006`).
+_policy_ initial snap, `app-route-sheet-host-authority-controller.ts:1000-1006`).
 
 **Approach (chosen — contained "search-origin memory", NOT restructuring search off
 the root model, which is too risky in this runtime):**
+
 1. At the search `setRoot` commit, when it is **displacing a child route** (the
    outgoing stack top is a child scene like `pollCreation`/`pollDetail`), **capture
    `{ originRouteState, originSnap }`** into a memory slot before the reset.
@@ -1161,14 +1202,15 @@ the root model, which is too risky in this runtime):**
    displacing a child, stash `{originRouteEntry(params), originSnap}` in a
    search-return memory AND keep that scene in `mountedSceneKeys` while search is
    active; (b) on close, re-activate/re-push the preserved origin route (state intact)
-   + animate to `originSnap`. Build incrementally, validate each step via Maestro +
-   Metro logs.
+   - animate to `originSnap`. Build incrementally, validate each step via Maestro +
+     Metro logs.
 
 **Levers found (2026-06-22, code-grounded) + the two-increment split:**
+
 - The route state **already tracks `previousOverlayRoute`** — `setRootRouteState`
   stamps it with the displaced scene (`app-route-scene-switch-controller.ts:214-217`),
   so after a search from creation it holds the **full `pollCreation` entry incl.
-  params**. `getPreviousRouteKey()` exposes the key. So the *navigation* restore does
+  params**. `getPreviousRouteKey()` exposes the key. So the _navigation_ restore does
   NOT need a new memory — reuse `previousOverlayRoute`.
 - The return-to-search command is **`restoreDockedPolls()`**
   (`app-overlay-route-command-runtime.ts:115-124`, called from
@@ -1199,13 +1241,14 @@ the root model, which is too risky in this runtime):**
   `maestro/perf/flows/poll-search-return.yaml` (creation → low snap → search → close).
 
 **Build attempt #1 — precise path nailed (2026-06-22, reverted to clean):**
+
 - The "Close results" / search-close path is **`beginCloseSearch`**
   (`use-results-presentation-close-actions-runtime.ts`), which runs the **dismiss
   transition** — NOT `restoreDockedPolls` (that's only the back-gesture/editing-exit
   path; an edit there had no effect on the tested close). Confirmed via `[ATTRK]`.
 - At `beginCloseSearch`, the route is already `search`, but **`previousOverlayRoute`
   still reliably holds the full `pollCreation` entry** (`[ATTRK] active=search
-  prev=pollCreation outgoing=search`). So the origin IS recoverable here — the bug is
+prev=pollCreation outgoing=search`). So the origin IS recoverable here — the bug is
   that `outgoingSheetSceneKey` is hard-collapsed to `'search'` (only `restaurant` is
   special-cased), discarding the available origin.
 - BUT `outgoing=pollCreation` alone won't restore it: the scene was unmounted at
@@ -1222,6 +1265,7 @@ the root model, which is too risky in this runtime):**
 
 **Build attempt #2 — BREAKTHROUGH + the remaining blocker pinned (2026-06-22,
 reverted to clean baseline; NO regression left behind):**
+
 - **State preservation is FREE.** Instrumented the scene-stack mounted set
   (`[ATTRMNT]`): **`pollCreation` stays in `mountedSceneKeys` the entire time** —
   through the search and after close (`resolveMountedSceneKeys` only adds, never
@@ -1230,8 +1274,8 @@ reverted to clean baseline; NO regression left behind):**
   mount-preservation" worry.
 - **The route restore WORKS.** Re-activating the still-mounted child via
   `routeSceneRuntime.routeSceneSwitchRuntime.requestOverlaySwitch({ targetSceneKey:
-  originChild, routeAction:'push', routeParams: previousOverlayRoute.params,
-  sheetTransitionKind:'openChild', sheetMotion:{kind:'snapTo', snap:'collapsed'} })`
+originChild, routeAction:'push', routeParams: previousOverlayRoute.params,
+sheetTransitionKind:'openChild', sheetMotion:{kind:'snapTo', snap:'collapsed'} })`
   brought the docked creation sheet back (verified on-screen). NOTE:
   `routeOverlayCommandActions.pushRoute` does NOT exist (crashed) — the push lives on
   `routeSceneSwitchRuntime.requestOverlaySwitch`.
@@ -1254,11 +1298,13 @@ reverted to clean baseline; NO regression left behind):**
   mechanism + the restore call are both proven.
 
 ## Open questions to resolve at build time
+
 - Poll-close notification: build push-on-close now vs **defer** (lean: defer push,
   ship in-app "results are in" state now — §5).
 - Whether "poll of the week" pin earns its keep (§5 — post-launch validation).
 
 ## Resolved
+
 - Type filter → `All · Polls · Discussions`; sheet stays named **Polls** (B.3, G).
 - Discussion cards → lead with description/body preview, no bars (G).
 - Trending model → heat + log-magnitude, half-life ~3d, window-free (B.4).
@@ -1276,6 +1322,7 @@ reverted to clean baseline; NO regression left behind):**
 - Poll-close notification → defer push, in-app state now (H/lean).
 
 ## Toggle strip build status (2026-06-23)
+
 - ✅ Reusable `FrostedFilterStrip` + `SegmentedToggle` + `FilterChip` (in
   `apps/mobile/src/components/`) — faithful frost + masked-hole cutout + horizontal
   scroll, matching the search results strip. Polls feed sheet made frosted (dropped
@@ -1290,8 +1337,10 @@ reverted to clean baseline; NO regression left behind):**
   to Top in the FE later if the windowless-New/Trending rule matters.
 
 ## §D nav-push transition — DONE + shareable (2026-06-23)
+
 ✅ Ported the search-submit "sheet grows while the bottom tab bar slides down + fades"
 transition to the poll-detail open, and made it **shareable**:
+
 - `apps/mobile/src/navigation/runtime/nav-hide-intent-store.ts` (NEW) — a generic
   intent registry. `useNavHideIntent(key, active)` in ANY scene pushes the nav down
   while active (self-cleans on unmount). `useHasNavHideIntent()` reads it.
@@ -1319,6 +1368,7 @@ transition to the poll-detail open, and made it **shareable**:
   rather than the full-screen overlay decor layer. Then add the sheet-position clamp.
 
 ## §D composer-to-bottom — first attempt notes (superseded by the nav-push above)
+
 Tried moving the poll-detail composer from the list header to a pinned,
 keyboard-tracked bottom bar (`useAnimatedKeyboard`) in the scene's `overlayComponent`.
 Mechanics proven (the bar renders + the overlay surface publishes for the inline
@@ -1333,9 +1383,11 @@ the very bottom (above the home indicator). Reverted to the working header compo
 now; pick this up with the nav-hide first.
 
 ## In-app modal migration — DONE (2026-06-23)
+
 ✅ Shareable styled modal replacing native `Alert.alert`:
+
 - `apps/mobile/src/components/app-modal-store.ts` — imperative `showAppModal({title,
-  message, actions})` (mirrors `Alert.alert` shape) + `useAppModalConfig`.
+message, actions})` (mirrors `Alert.alert` shape) + `useAppModalConfig`.
 - `AppModalHost.tsx` — beautiful in-app modal (dimmed backdrop, white rounded card +
   soft shadow, centered title/message, `ZoomIn` spring entrance; buttons: primary
   accent pill / cancel ghost / destructive red; 1 button = full-width, 2 = row).
@@ -1343,3 +1395,24 @@ now; pick this up with the nav-hide first.
 - ALL poll-flow `Alert.alert` calls migrated (PollCreationPanel incl. the dedup
   View-poll/Cancel, PollsPanel, PollCandidateBars, PollDetailPanel incl. the
   Delete-comment destructive). Sim-validated the 2-button destructive variant.
+
+---
+
+> **Supersession 2026-08-03 (truth audit):** the CADENCE/SUPPLY/SCOPE half of this plan is
+> superseded by `plans/geo-demand-foundation-rebuild.md` §4 (poll supply controller + the
+> Sunday-09:00-LOCAL weekly ritual, warm start, median test, no caps) and §6 (feed =
+> places-in-view + cursor pagination). The SHEET/THREAD/MODAL build log (Rounds 5.1–5.6) is
+> accurate archaeology and still describes live mobile behavior.
+>
+> **Correction 2026-08-03 (truth audit):** every "market" in §1/§3/§4/§5/§6 is false against
+> code as of today — markets were exterminated 2026-07-22. Specifically: the §1 **market
+> dropdown + market-picker** and §H "market picker → modal value-picker" were never built and
+> cannot be (no market registry exists); the §5/§B.6 per-user cap is now **2 active polls per
+> USER per PLACE per rolling week** (Phase C re-key, `polls-creation-place-rekey.spec.ts`); the
+> §3 dedup is **place-scoped** (`POST /polls/check-duplicate` takes bounds); the §B.5 "fixed
+> weekly cron, publish Sunday" is now the pacer-adjacent weekly ritual keyed on the place's own
+> timezone, not a global Mon/Sun cron. The §4/§B.4/Round-2.5 **Trending heat over
+> `core_public_entity_score_history`** is impossible — that table was dropped in migration
+> `20260628000000_crave_score_rising_contract`; the doc's own inline note at ~L468 is the
+> correct one (`rising` column). Polls-feed trending remains its own engagement-velocity heat
+> and is unaffected.

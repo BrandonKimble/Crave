@@ -71,3 +71,48 @@ Driving without a user: `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`; Maestro
 3. Re-enable JS `[TGLDBG-v2]` reading (`/tmp/crave-metro.log`) + native `[lodev]`/`[LODDBG]` (`lodDebugLoggingEnabled=true`, fresh binary). Attribute before touching code.
 4. Re-verify regression #3 (segment tap → does strip survive?) and the two conflicting T4 readings on a dishes≠restaurants dataset.
 5. Only after attribution: decide TR5 extraction / Rising→Sort / any point-fix. One change at a time, verify each via the harness.
+
+---
+
+## Correction 2026-08-03 (truth audit) — this handoff is SUPERSEDED end-to-end
+
+**Superseded by:** `toggle-strip-audit-leg1.md` (leg-1 audit, 2026-07-12) →
+`toggle-strip-and-edit-charter.md` (owner charter) → `toggle-strip-rebuild-ledger.md`
+(legs 2-15). Read those; this doc is the June-era pre-rebuild picture.
+
+> **Correction 2026-08-03 (truth audit):** "All three surfaces now render their strip UI
+> through one shared shell: `FrostedFilterStrip`" is false against code as of today —
+> `FrostedFilterStrip.tsx` was DELETED in strip leg 3 (ledger §Leg 3 progress log,
+> "FrostedFilterStrip DELETED (component + index export; zero references left)"); a
+> repo-wide grep over `apps/mobile/src` returns zero hits. The shipped engine is
+> `apps/mobile/src/toggles/ToggleStrip.tsx` + its pure modules.
+
+> **Correction 2026-08-03 (truth audit):** the "open FIRST, in this order" file list is
+> stale — `use-results-presentation-toggle-state-runtime.ts` and
+> `use-results-presentation-toggle-commit-runtime.ts` do not exist. The live coordinator is
+> `apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-toggle-coordinator.ts`.
+> `PollsPanel.tsx:486-532` no longer hosts the strip either: polls declares
+> `strip: 'header'` (`scene-foundation-spec.ts:83`) and mounts through the persistent-header
+> Strip slot, not a `ListHeaderComponent`.
+
+> **Correction 2026-08-03 (truth audit):** "Native / map (the LOD harness is source of
+> truth) … Stream `[lodev]` events. Read `roleP` … `renderP`" is false — **the `[lodev]`
+> harness has never existed in this codebase.** A grep for `lodev` over `apps/` returns
+> exactly one hit and it is a COMMENT
+> (`apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417`). There is no
+> emitter, no `roleP`/`renderP`/`snapPromoted` field, and `log stream --predicate
+'[lodev]'` returns nothing. CLAUDE.md already adjudicated this. Every instrumentation
+> step in this doc that reads `[lodev]` is unrunnable. Only the narrative `[LODDBG]` NSLog
+> behind `static let lodDebugLoggingEnabled = false` (same file, :10357) exists, and it is
+> inert. (Ironic note: this doc's own "Stale-context warnings" section is otherwise
+> accurate — it correctly flagged `CompositorToggle`/`fade_swap`/
+> `SearchResultsHeaderChromeAuthority` as non-existent; it simply missed that `[lodev]`
+> belongs on the same list.)
+
+> **Correction 2026-08-03 (truth audit):** "Known-open #3 — segment toggle nukes the strip"
+> is resolved, not merely unverified. The results strip is converted to the ToggleStrip
+> engine and the dual co-mounted lists hand ONE header element between scroll owners
+> (`SearchMountedSceneBody.tsx`); ledger §Leg 2 records the sim-verified round trip
+> (scrollX survives the tab flip). The "restore `SearchResultsHeaderChromeAuthority` via
+> `git show`" prescription is dead — that file no longer exists and the fixed-chrome idea
+> was superseded by the header-extension mount (audit D4).

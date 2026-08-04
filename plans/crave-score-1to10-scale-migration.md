@@ -4,7 +4,7 @@
 
 Execution + canonical record (2026-06-28). Migrates the **public Crave Score display** off the
 squished `60.0–99.9` band onto a **flat, native `0.0–10.0` scale**, and reshapes the
-displayed-score DISTRIBUTION with a gentle bell curve (see *Display curve* below). The underlying
+displayed-score DISTRIBUTION with a gentle bell curve (see _Display curve_ below). The underlying
 endorsement→global-percentile RANKING pipeline
 (`crave-score-v3-endorsement-redesign-plan.md` + `crave-score-rising-heat-redesign.md`) is
 unchanged, and the display reshape is rank-preserving (monotonic) — same ordering, new band and
@@ -68,7 +68,7 @@ migration).
   the number users already think in for a rating, with no translation layer.
 - **The RANKING is untouched — only the display band and spacing change.** The band swap
   (`[60, 99.9]` → `[0, 10]`) and the bell reshape are both pure functions of the SAME global
-  percentile, applied at display time. Rankings and ties are identical; only the *spacing* of the
+  percentile, applied at display time. Rankings and ties are identical; only the _spacing_ of the
   numbers moves (the bell deliberately fattens the middle and thins the tails). No endorsement or
   composite dial moves — this is a presentation layer on top of the unchanged percentile.
 - **The map color mix is intentional, not flat.** Tiers are cut on the bell-mapped `display_score`
@@ -81,9 +81,11 @@ migration).
 ## The 10-tier color ramp (V3 — Apple-green anchored)
 
 Ten color tiers = deciles aligned to the integer rating:
+
 ```
 tier = clamp(floor(score), 0, 9)        # score in [0,10] → tier in 0..9
 ```
+
 The canonical source is **`apps/mobile/src/constants/score-bucket-palette.json`** (`default` key —
 10 hex + `defaultRgb` 10 `[r,g,b]` triples). NEVER hardcode these colors elsewhere; both
 `quality-color.ts` and the `scripts/generate-*-sprites.js` generators import/require this file so
@@ -91,28 +93,28 @@ pins, dots, and rank pills stay in lockstep.
 
 Red→green ramp (V3), tier 0..9:
 
-| Tier | Range | Hex |
-|---|---|---|
-| 0 | `[0,1)` | `#FF5C60` |
-| 1 | `[1,2)` | `#FF775B` |
-| 2 | `[2,3)` | `#FF8D52` |
-| 3 | `[3,4)` | `#FEA245` |
-| 4 | `[4,5)` | `#FEB528` |
-| 5 | `[5,6)` | `#F8C810` |
-| 6 | `[6,7)` | `#D5CA09` |
-| 7 | `[7,8)` | `#ABCB31` |
-| 8 | `[8,9)` | `#7BCA48` |
-| 9 | `[9,10]` | `#35C759` |
+| Tier | Range    | Hex       |
+| ---- | -------- | --------- |
+| 0    | `[0,1)`  | `#FF5C60` |
+| 1    | `[1,2)`  | `#FF775B` |
+| 2    | `[2,3)`  | `#FF8D52` |
+| 3    | `[3,4)`  | `#FEA245` |
+| 4    | `[4,5)`  | `#FEB528` |
+| 5    | `[5,6)`  | `#F8C810` |
+| 6    | `[6,7)`  | `#D5CA09` |
+| 7    | `[7,8)`  | `#ABCB31` |
+| 8    | `[8,9)`  | `#7BCA48` |
+| 9    | `[9,10]` | `#35C759` |
 
 The ramp is perceptually OKLab-spaced (not a naive RGB lerp), with a chroma-lifted gold→green
 middle so the 4–7 deciles stay distinct instead of muddying into olive. **V3 detail:** the three
 anchor colors were sampled from macOS system surfaces with Digital Color Meter in
-*display-native* (Display-P3) mode, then converted P3→sRGB so each renders as the exact measured
+_display-native_ (Display-P3) mode, then converted P3→sRGB so each renders as the exact measured
 color on a P3 display — tier 9 is the macOS system green (`#35C759`, renders as P3 `(101,196,102)`).
 The vivid-looking hex values are the sRGB encodings; on a wide-gamut screen they render as the
 softer measured colors. **Open item:** the map pin/dot sprites are untagged PNGs uploaded to
 Mapbox GL — color management of those textures on a real P3 device is unverified (the RN
-`backgroundColor` path for card pills/dots *is* sRGB-managed). Confirm on a physical P3 device that
+`backgroundColor` path for card pills/dots _is_ sRGB-managed). Confirm on a physical P3 device that
 map sprites match the card pills; if GL samples them raw, bake the sprite PNGs with the P3-native
 values instead. A `NEUTRAL_SCORE_COLOR` gray is used for null/unknown scores (distinct from the red
 bottom tier).
@@ -128,6 +130,7 @@ is read (mobile color util + sprite generators), no scoring change.
 ## File-by-file change list
 
 ### Backend (scorer + schema)
+
 - `apps/api/src/modules/content-processing/public-crave-score/public-crave-score.service.ts`
   — set the display band to `displayMin: 0` / `displayMax: 10`; store `display_score` rounded to
   **2dp** (was 1dp); `rising` rounded to **3dp** in 0–10 units; **delete** the `confidenceLabel`
@@ -141,6 +144,7 @@ is read (mobile color util + sprite generators), no scoring change.
   `60–99.9` band to `0–10` (deciles, full-range distribution, no `confidenceLabel`).
 
 ### Search read path
+
 - `apps/api/src/modules/search/search-query.builder.ts`,
   `search-query.executor.ts`, `search.service.ts`, `search-coverage.service.ts` — SELECT the
   0–10 `display_score`/`rising`; **remove the `confidenceLabel` SQL `CASE`** from the score-info
@@ -152,6 +156,7 @@ is read (mobile color util + sprite generators), no scoring change.
   `confidenceLabel` from `ScoreInfoSummary`.
 
 ### Mobile
+
 - `apps/mobile/src/constants/score-bucket-palette.json` — canonical palette (already created):
   `default` (soft ramp) + `defaultRgb` + `colorblind` (viridis). Single source of truth.
 - `apps/mobile/src/utils/quality-color.ts` — color from `tier = clamp(floor(score), 0, 9)`,
@@ -169,6 +174,7 @@ is read (mobile color util + sprite generators), no scoring change.
   bucket color.
 
 ### Sprites
+
 - `apps/mobile/.../scripts/generate-*-sprites.js` — regenerate pin/dot/rank-pill sprites reading
   the `default` palette + `defaultRgb` from `score-bucket-palette.json` (10 tiers). Re-run the
   node generators after the palette is final so on-device sprites match `quality-color.ts`.
@@ -188,3 +194,14 @@ is read (mobile color util + sprite generators), no scoring change.
 - [ ] `confidenceLabel` is gone from scorer, schema, search payload, shared types, and mobile UI
       (grep returns no active references).
 - [ ] Viridis `colorblind` palette present in the json but NOT wired to a runtime toggle.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the decision and the display curve are accurate and
+> live (`displayCurveVersion 'crave-score-display-v6'`, `displayMin 0` / `displayMax 10`,
+> `bellK 3.0`, `display_score Decimal(4,2)`, `rising Decimal(5,3)` —
+> `public-crave-score.service.ts:73-82`, `schema.prisma:695-699`). ONE internal contradiction:
+> the Verification-checklist line "Map colored across the FULL range — all ten deciles visible,
+> **~10% per tier**" contradicts this doc's own default — under the bell (`bellK = 3.0`) the
+> deciles are deliberately NOT equal-population (~60% in tiers 3–6, ~3–5% at each end). The
+> ~10%-per-tier expectation only holds for the non-default `bellK = null` linear mode.

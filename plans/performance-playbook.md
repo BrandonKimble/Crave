@@ -108,3 +108,20 @@ Use these when perf is shaky:
 - `apps/mobile/src/screens/Search/hooks/use-top-food-measurement.ts`: measurement debouncing + logs.
 - `apps/mobile/src/hooks/useSearchRequests.ts` and `apps/mobile/src/services/search.ts`: parse timing debug hooks.
 - `apps/mobile/src/components/MaskedHoleOverlay.tsx`: placeholder rendering to avoid mount churn.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** two of the "Where to Look" pointers are
+> dead paths as of today —
+> `apps/mobile/src/screens/Search/hooks/use-search-submit.ts` and
+> `apps/mobile/src/screens/Search/components/search-results-sheet.tsx` do not
+> exist (the submit hook's successor is
+> `apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts`; the sheet
+> moved into the scene-stack/persistent-sheet hosts). Every reference in
+> "Patterns Applied" to `use-search-submit.ts` batching / phase logs and to
+> `search-results-sheet.tsx` prop-change logging is therefore historical. The
+> other listed instruments still exist (`search-perf-debug.ts`,
+> `use-top-food-measurement.ts`, `useSearchRequests.ts`, `MaskedHoleOverlay.tsx`,
+> `screens/Search/index.tsx`). Note also that `screens/Search/index.tsx` is now
+> 87 lines, not the ~10k-line root this doc's era assumed — the "hot subtree"
+> advice predates the runtime decomposition.

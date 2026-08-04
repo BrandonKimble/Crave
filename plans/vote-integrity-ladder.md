@@ -146,3 +146,13 @@ Functionality, linked, no ATT).
 The fake-elite fixture remains the scoring-side floor — stuffing can't
 mint elite scores even BEFORE detection catches the ring; polls'
 leaderboards (raw counts, small N) are exactly what this ladder protects.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** none — verified accurate against code as of today.
+> `signal_actors.excluded_at` (schema.prisma:2559), `user_devices` (schema.prisma:2570) with
+> the deviceKey index, the sybil clustering report
+> (`apps/api/src/modules/integrity/sybil-cluster-report.service.ts` → ops_alerts), the
+> auth-endpoint throttler tier, `trustProxy: 1` (`apps/api/src/main.ts:94`), and the
+> HMAC'd vote meta (`modules/signals/audit-hmac.ts` under `SIGNAL_AUDIT_HMAC_KEY`) are all
+> present as described. Accurate archaeology.

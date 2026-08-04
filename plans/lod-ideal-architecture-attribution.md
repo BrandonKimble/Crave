@@ -5,6 +5,7 @@ architectural conflict that causes it, and the ideal shape to cut over to. Sourc
 the `[lodev]` harness + the code, not screenshots.
 
 Status of the verified wins (context):
+
 - #8 (30 pins) FIXED: rank pool sourced from the ranked `shortcut_coverage` call, decoupled from
   card pagination. Verified promoted=30, ranks contiguous 1..30.
 - #11 invisibility ORPHANS root-fixed (await self-resolves on bundle-resident in the stepper; demote
@@ -14,6 +15,7 @@ Status of the verified wins (context):
 ---
 
 ## Issue A — dots don't yield to pin BODIES (#9) — ✅ IMPLEMENTED + VERIFIED
+
 DONE (search-map.tsx, JS-only): added a second invisible obstacle `DOT_PIN_COLLISION_STYLE` (full pin
 silhouette, scale 1.0) on layer `RESTAURANT_PIN_DOT_COLLISION_LAYER_ID`, positioned
 `belowLayerID=SEARCH_LABELS_Z_ANCHOR_LAYER_ID` — BELOW the name-labels (labels never yield to it) but
@@ -25,13 +27,16 @@ FILL sprite for a tighter body-circle box if dot density feels too sparse.
 ### (original attribution, for reference)
 
 ### Proven root (code: apps/mobile/src/screens/Search/components/search-map.tsx:160-208)
+
 There is exactly ONE invisible "pin collision obstacle" per promoted pin (the 3 obstacle layers,
 `PIN_COLLISION_OBSTACLE_SCALE`, `iconIgnorePlacement:false` → it occupies collision space). It does
 TWO jobs at once:
+
 1. Make OTHER restaurants' dots (dot layer `iconAllowOverlap:false`) AND labels yield to this pin.
 2. NOT cull THIS pin's own below-pin name-label.
 
 These two jobs CONFLICT and the comment documents the whole tuning war:
+
 - At scale 1.1 (commit 73719a62) the obstacle was ~10% bigger than the visible pin → it swallowed the
   pin's OWN min-gapped name-label → ALL name-labels vanished.
 - So it was pinned back to 0.6 + shifted UP (`PIN_COLLISION_OFFSET_Y_PX = -0.25*size`): the obstacle now
@@ -42,11 +47,13 @@ inside the pin body but outside the 0.6 core is NOT culled → it paints over th
 restaurant dot-under-pin is separate and already 0: `promDotOpaque=0` — that's the crossfade, not this.)
 
 ### The architectural conflict
+
 One obstacle cannot be simultaneously "full pin body" (to make dots yield to the whole body) and
 "smaller than the own label gap" (to not cull the own label). The single shared obstacle is a forced
 compromise; 0.6 favours the label and loses the dots.
 
 ### Ideal cut-over: TWO obstacles at distinct collision priorities
+
 Mapbox places symbols highest-priority-first (symbol-sort-key / layer order); a symbol is culled if it
 overlaps an already-placed higher-priority symbol.
 
@@ -65,6 +72,7 @@ between labels and dots).
 ---
 
 ## Issue B — labels stale/missing after dismiss → re-search (#10) — ATTRIBUTION CORRECTED (not the JS source)
+
 CORRECTED by instrumentation (a `[L10]` console.log of the listener): after a dismiss→re-search the
 NATIVE render state has `labelFeat=7/30` (only 7 promoted pins carry a name-label), BUT the JS label
 SOURCE (`sourceFramePort.getSnapshot().labelSourceStore`) already holds labels for **390** distinct
@@ -96,7 +104,9 @@ the other 390 for the same frame.
 ### (original, partially-wrong attribution — superseded by the above)
 
 ### Proven root (harness: re-search settles roleP=30 renderP=30 but labelFeat=7/30; code:
+
 ### use-direct-search-map-source-controller.ts buildDirectLabelStores ~840-908 + ~1953)
+
 Labels are built in **JS**, inside the data-frame (`publishSources`), gated on
 `onScreenMarkerKeys = sourceFramePort.getNativeVisibleMarkerKeys()` — a **native-derived** on-screen set
 delivered to JS via the `map_native_visible_markers` event. That is a native→JS→native round-trip:
@@ -116,14 +126,17 @@ full projection arrives `isMoving=true` → skipped. The label gate genuinely ne
 on-screen set, which JS only ever sees second-hand and late.
 
 ### The architectural conflict
+
 Native is the SOLE owner of promotion and the on-screen set, but the LABEL membership decision (which
 on-screen pins show a name-label) lives in JS and is gated on a stale copy of native's set. The
 round-trip is the root: JS's gate is always one projection behind native's truth.
 
 ### Ideal cut-over: NATIVE-OWNED label gating (mirror pin promotion)
+
 Native already decides which markers are pins (`projectAndEmitOnScreenMarkers` →
 `nativePromotedKeysInOrder`) every projection. Labels are exactly "the name-labels for the promoted +
 crossfading-out pins" — the SAME on-screen membership native already computes. So:
+
 - JS publishes label CONTENT once per search/data-change: for every candidate, its 4 label-candidate
   features (text/anchor/diffKey) — viewport-independent, no on-screen gate.
 - NATIVE selects WHICH markers' labels to mount each projection from its own promoted/on-screen set (the
@@ -138,8 +151,10 @@ during-pan label lag — labels stop being a JS-frame concern.)
 ## Issue C — invisibility residual: bundle-missing under sustained panning
 
 ### PROVEN root (harness, refined this pass with gapPinSrc/gapCatalog over a 48-swipe storm):
+
 596/1494 frames had `gapBundle>0`, and in EVERY one **`gapPinSrc=0` and `gapCatalog=0`**. So the
 invisible marker:
+
 - IS in the candidate catalog (gapCatalog=0) → JS published it (full residency includes it),
 - IS in the pin/role source `pinSourceId` (gapPinSrc=0),
 - is NOT in the pin BUNDLE source `pinBundleSourceId` (gapBundle>0) → no geometry/art to paint.
@@ -155,6 +170,7 @@ doesn't (the prior-run 3-4 residual). Almost all gapBundle frames are `mv=T` (in
 is the rare case where the catch-up is missed at the settle frame.
 
 ### The architectural conflict
+
 "Full residency / promote = pure opacity flip" is only HALF-implemented: the role source is fully
 resident, but the BUNDLE source (the one that actually has to re-tile to add geometry) is still built
 incrementally and deferred during motion. So the resident-model promise ("no source mutation mid-gesture")
@@ -162,6 +178,7 @@ is not guaranteed for the bundle source — promote can need a deferred bundle a
 all.
 
 ### Ideal cut-over
+
 Make full residency cover the BUNDLE source too: pre-seed `pinBundleSourceId` with EVERY catalog
 candidate's bundle at search time (one O(N) re-tile during the reveal, which is already a non-interactive
 moment), so the bundle source is fully resident and a promote is ALWAYS opacity-only — no mid-gesture
@@ -173,9 +190,25 @@ markers and flush their bundle adds in a single non-retain settle pass (guarante
 ---
 
 ## Summary of the ideal cut-overs
+
 - #9: split the one shared pin obstacle into a label-core obstacle (priority > labels) and a full-body
   dot obstacle (labels > it > dots). Pure style change.
 - #10: move label membership gating from JS (stale native-visible round-trip) to NATIVE (it already owns
   promotion + on-screen); JS supplies label content only. Deletes the race.
 - #C: guarantee true full residency — every catalog candidate's bundle mounted before LOD can promote it,
   with a tracked settle-flush — so promote is always opacity-only and bundle-missing is impossible.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the header's "Source of truth = the `[lodev]`
+> harness" is dead — that emitter was removed at `364e17be2` and a repo-wide grep for
+> `lodev` over `apps/` returns one COMMENT (`SearchMapRenderController.swift:10417`), no
+> events (audit F709/F729/F752). Every `labelFeat=7/30` / `renderP` / `roleP` number
+> above is historical data from a binary that no longer exists.
+>
+> Issue B's "IDEAL CUT-OVER: NATIVE-OWNED label gating" was overtaken, not implemented as
+> written: labels left GL entirely for Mapbox ViewAnnotations
+> (`SearchMapRenderController.swift:99-101`, `enableSymbolLayerCollision` on MapboxMaps
+> 11.26.0-rc.1), so `labelFeaturesByMarkerKey` / `labelSourceStore` / the
+> `map_native_visible_markers` round-trip are no longer the mechanism. Issue A's
+> `DOT_PIN_COLLISION_STYLE` obstacle IS still live (dots still collide on GL). Archaeology.

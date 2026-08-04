@@ -232,3 +232,39 @@ List searchability (owner+Jarvis discussion) · profile page (LATER; plus = bark
 4-way switchers + inline text sorts · [MAPFRAME] reject (perf session, re-check after
 they land) · custom-rank question = RESOLVED by wave-3 §1.1. All confirmed present in
 ledgers; none silently dropped.
+
+---
+
+## Correction 2026-08-03 (truth audit) — two NOT-DONE register items have since CLOSED
+
+> **Correction 2026-08-03 (truth audit):** ND #2 — "**'Use your photos' gallery effect** …
+> `favorite-list-tile-gallery.service.ts` never reads `useOwnPhotos`/owner userId — the 2x2
+> gallery NEVER switches to the user's photos" — is false against code as of today. The
+> service moved and now consumes the flag:
+> `apps/api/src/modules/user-lists/user-list-tile-gallery.service.ts:27` types
+> `useOwnPhotos: boolean`, :43 documents the ranking rule under the flag, and :100/:130
+> branch on `list?.useOwnPhotos` (`ownOnly`). The loop the audit found open is closed. (The
+> effect was also sim-proven both directions in ledger Leg 15 item 3 — "My shots ATX 2x2
+> flips global(4) ↔ own-photos(3 + sparse MID-GRID placeholder)"; that evidence postdates
+> this audit's code-read.)
+
+> **Correction 2026-08-03 (truth audit):** ND #3 — "**Favorites→Lists CODE vocabulary
+> rename** … agent-deferred ('quiet tree'), never owner-parked" — is DONE.
+> `BookmarksPanel.tsx` → `apps/mobile/src/overlays/panels/ListsPanel.tsx`; the foundation
+> scene key is `lists` (`scene-foundation-spec.ts:90`, still `strip: 'header'`); the API
+> module is `apps/api/src/modules/user-lists/`. W2-11's **ND** status flips.
+
+> **Correction 2026-08-03 (truth audit):** ND #4 / W2-30 / W3-19 — "**List-open world push**
+> … EG on the perf/map session" — is also DONE, and by owner override rather than by the
+> gate opening: `wave4-foundations-charter.md` §3 records "§3 STATUS: COMPLETE. 7 root reveal
+> fixes + all 5 mouths (sim/spec-proven) + panel world-read + bounds-independent keys +
+> targetUserId/shareSlug identity/access + strip world flip." The `listWorld` composite is
+> live in `apps/mobile/src/navigation/runtime/entity-ref-action-policy.ts`.
+
+> **Correction 2026-08-03 (truth audit):** W2-28's "Price + **Market** data paths CLOSED" —
+> the Market half is void; the markets system was exterminated 2026-07-22 and no Market chip
+> or `/markets/active` endpoint exists. Feel-check item #2 ("Market sheet breadth") is moot.
+
+The header COUNTS line (VD 58 · DU 8 · ND 6 · OP 9 · EG 4) was already stale by Leg 15's own
+status flips and is now further stale by the four corrections above; treat the per-row
+statuses, not the counts, as the record.

@@ -1,5 +1,40 @@
 # Search JS Frame-Budget Optimization Plan v2
 
+> **SUPERSEDED 2026-08-03 (truth audit): archaeology.** This doc belongs to the
+> Feb–Apr 2026 SearchScreen-decomposition / nav-switch-perf line. It was overtaken by the
+> July 2026 lifecycle rebuild — `plans/search-desired-state-architecture.md` (S1–S4
+> charter, recorded fully executed) and then
+> `plans/search-lifecycle-phase0-autopsy.md` → `-phase0-requirements.md` →
+> `-phase1-ideal-design.md` → `-phase2-gap-verdict.md` → `-phase3-charter.md`. Read those
+> for the current shape.
+>
+> **Correction 2026-08-03 (truth audit):** the premise is false against code as of today.
+> `apps/mobile/src/screens/Search/index.tsx` is **87 lines**, not the 5,558/6,199-line
+> monolith with 452 hook operations described here; the decomposition landed via the
+> `screens/Search/runtime/**` owner tree (adapters/camera/controller/map/mutations/native/
+> profile/read-models/reconciler/resolver), NOT via the planned
+> `screens/Search/subtrees/` or `session/search-session-bus.ts` (neither path exists).
+> Android new-arch is already on: `apps/mobile/android/gradle.properties:38`
+> `newArchEnabled=true`, and `@rnmapbox/maps` is `10.3.1` (package.json:29), not 10.2.9.
+>
+> **Correction 2026-08-03 (truth audit):** every validation command here is dead. The repo
+> root is `/Users/brandonkimble/Crave/Crave`, not `/Users/brandonkimble/crave-search`
+> (that directory does not exist), and of the named scripts only
+> `scripts/no-bypass-search-runtime.sh` survives — `perf-shortcut-loop.sh`,
+> `perf-shortcut-loop-report.sh`, `perf-nav-switch-loop.sh`,
+> `search-runtime-natural-cutover-contract.sh`, and
+> `search-runtime-s4-mode-cutover-contract.sh` are all absent from `scripts/`. Any
+> "Status: active" line below is stale.
+>
+> **Correction 2026-08-03 (truth audit), file-specific:** the anchors this plan edits are
+> gone. There is no `apps/mobile/src/screens/Search/components/search-map.tsx` (the map
+> surface is now `SearchMapRenderSurface.tsx` / `SearchMapRenderHostLayers.tsx` /
+> `SearchMapWithMarkerEngine.tsx`), so the Phase-8 "ShapeSource Property Map" appendix and
+> the Phase-2 style-expression audit are keyed to a file that no longer exists. Reanimated
+> is now `~4.1.0` (package.json:62) — re-verify the Phase-9 `withTiming` callback claims
+> against 4.x, not the 3.x-era note. Phase 9's dual-mode transition claim is superseded by
+> the S4 (worldId, phase) native protocol.
+
 ## Implementation Doctrine
 
 **This plan is the source of truth for all implementation work.** The following rules are non-negotiable:
@@ -11,7 +46,6 @@
 3. **No speculative additions or side-quests.** Implement what the plan says, nothing more. Do not refactor surrounding code, add features, or "improve" areas outside the plan's scope. Stay focused on the stated changes.
 
 4. **UX parity is mandatory, with conditional improvements.** The pin layer stack (30 z-slots × 6 layers), label sticky placement system, z-ordering, and pin positioning are off-limits for structural changes. Transition mechanics (fade, scale timing, frequency) may be changed. Visual output must remain identical to the user. However, the following UX improvements are explicitly desired and should be pursued if achievable within the performance budget:
-
    - **Instant first-page list render:** If the full first page of results (~20 items) can be rendered in a single frame without exceeding the 50ms stall ceiling, do it. Eliminate progressive row ramping in favor of showing all 20 items at once. The current 2 → 6 → 10 → ... ramp is a performance workaround, not a UX choice — users would prefer seeing all results immediately.
 
    - **Instant pin render:** Same principle for map pins. If all pins for the first page can be committed to the map in a single frame without exceeding the stall ceiling, do it instead of staggering pin reveals. Show all pins at once.

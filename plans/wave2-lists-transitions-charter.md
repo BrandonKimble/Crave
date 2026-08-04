@@ -315,3 +315,20 @@ canon). Design leg first; owner reviews before build.
   attribution (find the plans, why unwired). Build after owner review.
 - **Media leg 1 (new agent)**: §7 — equation design for ratification + photo pull +
   test data build.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the STRIP LEG 11 status-ledger entry's "Market
+> data path closed (activeMarketKey directive + **NEW GET /markets/active** vocabulary)" is
+> false against code as of today — the markets system was exterminated 2026-07-22 (memory
+> `markets-extermination`). No `MarketRegistryService`, no `/markets/active` route, no
+> `listActiveMarkets` client, no Market chip. The §6 strip inventory line "Edit ·
+> My-ranking/Best/Recently-added · **Market**" no longer applies; the surviving locality
+> axis is `cityPlaceId`. Same correction applies to `toggle-strip-rebuild-ledger.md` §Leg 11.
+
+> **Correction 2026-08-03 (truth audit):** §2's "Rename Favorites → Lists everywhere: nav
+> text, headers, **and code vocabulary**" — recorded in the leg-7 ledger entry as "code
+> rename deferred to a quiet tree" and filed as ND #3 by `wave3-conformance-audit.md` — is
+> now DONE. `BookmarksPanel.tsx` → `ListsPanel.tsx`, scene key `bookmarks` → `lists`
+> (`scene-foundation-spec.ts:90`), API module `favorites` → `user-lists`
+> (`apps/api/src/modules/user-lists/`).

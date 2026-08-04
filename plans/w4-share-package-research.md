@@ -128,3 +128,19 @@ image for the web landing.
 Owner-in-loop: the card design itself (registry §8.2 explicitly defers the
 beauty pass), and whether Snapchat/TikTok SDK lanes are worth their review
 overhead at launch.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** §4's premise "the `/l` `/r` `/p` links currently
+> point at `crave-search.app`, which has **no OG meta pages today — there is no web app in
+> the repo at all**" is half false as of today. A web app DOES exist: `apps/site/` (Express
+>
+> - `src/pages/{index,privacy,support,terms}.html`, `premium-page.ts`, `router.ts`) — it is
+>   the Stripe two-plan web rail live at craveapp.ai. What remains TRUE is the actual blocker:
+>   `apps/site/src/pages` contains no `/l` `/r` `/p` route or `og:image` meta, so external
+>   shares are still bare URLs. The named dependency is therefore no longer "the marketing
+>   site must exist" but "add resolver-fed OG routes to the EXISTING `apps/site`" — a smaller
+>   slice than this doc assumed. Note also `SHARE_BASE_URL` still defaults to
+>   `https://crave-search.app` (`apps/mobile/src/components/share-modal-store.ts:45`) while
+>   the live domain is craveapp.ai — a real mismatch worth an owner decision before build
+>   slice 5.

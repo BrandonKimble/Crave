@@ -599,3 +599,27 @@ scene-chrome-ack-runtime (height cache), page-foundation-standard (8 pieces).
    Each item: logic walkthrough → build → MY eyes on the sim → only then reported.
    Rig: iPhone 17 Pro 7B0DD874-3496-46F7-9480-3EDDABCE2F31, Austin pinned; reload rig
    from repo ROOT; API restarts per hardened recipe; never touch the Pro Max.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** §3's STRIP 'WORLD' FLIP bullet — "filterVariant
+> grew listSort + **marketKey** (equality + worldKey append-only when present)" and "fetch
+> arm passes the full slice (sort/openNow/price/**market**)" — is false against code as of
+> today. The markets system was exterminated 2026-07-22 (memory `markets-extermination`).
+> The shipped variant axis is `cityPlaceId`, not `marketKey`:
+> `apps/mobile/src/screens/Search/runtime/shared/search-desired-state-contract.ts:95` types
+> `listSort`, :270 the lens, and :293 keys `...|city:${lens.cityPlaceId}` — no market
+> segment. The `listWorld` action's `slice` likewise carries `cityPlaceId`
+> (`entity-ref-action-policy.ts`). The RED-lawed contract spec the charter cites
+> (`search-desired-state-contract.spec.ts`) still exists and still proves the key-pollution
+> guard — on the renamed axis.
+
+> **Correction 2026-08-03 (truth audit):** §3's lane-map cites are stale on names —
+> `BookmarksPanel handleOpenAll` now lives in
+> `apps/mobile/src/overlays/panels/ListsPanel.tsx` (Favorites→Lists code rename completed
+> after this charter). The bypass deletion itself stands as recorded.
+
+> **Correction 2026-08-03 (truth audit):** the §1 STATUS note "on-screen proof pending a
+> real 5xx (connection-refused never raises the banner — the interceptor reports only
+> status>=500)" is still an open, honest gap — not corrected, flagged so the next reader
+> does not mistake "§1 COMPLETE" for "banner proven on screen."

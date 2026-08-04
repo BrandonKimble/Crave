@@ -349,3 +349,13 @@ for autocomplete/gazetteer beyond the resolution decision band; ship bare, obser
 - **Then:** P0.3 (after P0.2) ‖ P1.2 (after P0.1) ‖ P1.3 (after P0.1/P0.2).
 - **Last in phase:** P1.4 (after P1.3 for clean vocab).
 - Everything here is **poll-independent** and individually shippable — each lands a real bug fix.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** accurate archaeology overall (P0.1–P1.4 all verified
+> live: migration discipline, `thinkingLevel`-always, Gemini moderation, brand-purity chain
+> gate, attribute quarantine + ontology worker, the RRF shared recall core). One drift note:
+> P1.4's Stage-2 resolution head has since been re-based on the pooled search gate + gazetteer
+> Understand path (search ladder + sync-LLM deleted 2026-08-02), and the shared recall core now
+> also feeds the taste-profile substrate — the increments described here are the foundation,
+> not the current top layer.

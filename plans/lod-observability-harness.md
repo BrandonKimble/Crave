@@ -226,3 +226,31 @@ timestamps to get the frame at the EXACT moment. (Sync via the t0 event + known 
   resident candidates (~220+ rendered/culled every frame). Bounding the resident dot set to roughly
   the viewport (or cheaper dot symbols / clustering) attacks the actual render cost; the LOD code is
   no longer the bottleneck. Keep the dot-collection cache regardless (less main-thread work/battery).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the WORKLOG entries above claiming the
+> harness was **"BUILT + WORKING"** — "Native [lodev] event stream (frame/lod/step) in
+> SearchMapRenderController.swift" — were TRUE when written and are FALSE today. The
+> emitter was real (added `a13230e87`, extended `328a89b04`/`8eedc51ae`) and was
+> **removed at `364e17be2`** ("checkpoint: pre map-LOD-v6 cutover failsafe"). A
+> repo-wide grep for `lodev` over `apps/` today returns exactly one hit and it is a
+> COMMENT (`apps/mobile/ios/cravesearch/SearchMapRenderController.swift:10417`); there is
+> no `lodHarnessEnabled`, no `step`/`mut`/`frame`/`render`/`lod`/`cwork` event, no
+> `renderP`/`roleP`/`roleGap`/`projectMs`/`driveMs` field. `log stream --predicate
+'[lodev]'` returns nothing. The only live map telemetry is narrative `[LODDBG]` NSLog
+> behind `static let lodDebugLoggingEnabled = false` (same file, :10357) — inert.
+>
+> CONSEQUENCE: every measurement in the V1–V4 worklogs above is **historical data from a
+> binary that no longer exists**, and the runner/analyzer it names —
+> `scripts/lod-harness.sh` + `scripts/lod-harness-analyze.js`, plus 10 sibling
+> `scripts/lod-*` parsers — still exist on disk but drive an event stream nothing emits.
+> They are classified `@script-class: dead-scaffolding` in their own headers (audit
+> F709/F729/F752). Do not "re-run the harness"; per CLAUDE.md its proper replacement (a
+> structured mach-clock event log) gets built as PART of a real map change.
+> `plans/lod-greenfield-redesign-synthesis.md:258` is the only doc that recorded the
+> deletion at the time and says to re-add a minimal step probe FIRST — follow that.
+>
+> The "DONE criteria" at the top of this document are therefore permanently unmet and
+> should not be treated as open work: the custom iOS map SHIPPED (~2026-07, pins/labels/
+> dots LOD, crossfade, wiggle) without this harness. This document is archaeology.

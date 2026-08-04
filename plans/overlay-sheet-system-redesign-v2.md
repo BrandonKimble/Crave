@@ -1,3 +1,14 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** Superseded by
+> `overlay-sheet-system-redesign-v3.md` (post-Hermes-trace pivot) and then by
+> `sheet-v4-foundation-plan.md`, which audited this plan as "~80% executed"; the whole line
+> ends at the TrackSheet cutover (`page-composition-from-scratch-design.md` §THE ONE TRACK →
+> `residents-cutover-plan.md`). Kept for provenance. Every file this plan names as a change
+> target — `overlays/BottomSheetWithFlashList.tsx`, `overlays/SecondaryBottomSheet.tsx`,
+> `screens/Search/index.tsx` as the sheet/drag owner — no longer exists in that role
+> (`BottomSheetWithFlashList.tsx` and `SecondaryBottomSheet.tsx` are absent from
+> `apps/mobile/src/overlays/`; only type-contract residue remains in
+> `overlays/bottomSheetWithFlashListContract.ts`).
+
 # Overlay Sheet System Redesign Plan v2
 
 ## Decision Summary
@@ -17,24 +28,20 @@
 ## Current Implementation Gaps vs v1 Plan
 
 1. JS state updates still fire on drag/snap transitions.
-
    - `apps/mobile/src/overlays/BottomSheetWithFlashList.tsx` runs `runOnJS` for drag/settle state changes.
    - `apps/mobile/src/screens/Search/index.tsx` updates React state for `isResultsSheetDragging` and `isResultsSheetSettling`.
    - Effect: full Search screen re-render at the exact moment the spring starts, which is when JS FPS drops during flicks.
 
 2. Map processing still runs frequently when not interacting.
-
    - `apps/mobile/src/screens/Search/index.tsx` `handleCameraChanged` sets timers and persists state for every camera event.
    - Effect: high-frequency JS work whenever the map moves; with MarkerViews in play, this can still starve JS even if UI is ~60.
 
 3. Per-row measurement work is still queued on JS.
-
    - `apps/mobile/src/screens/Search/components/restaurant-result-card.tsx` uses `useTopFoodMeasurement`.
    - `apps/mobile/src/screens/Search/hooks/use-top-food-measurement.ts` batches layout measurements with `setTimeout`.
    - Effect: when the sheet settles, measurement work can run immediately, stealing JS time during snap/settle transitions.
 
 4. Frosted toggle cutouts are still visually wrong (light gray).
-
    - `apps/mobile/src/screens/Search/components/SearchFilters.tsx` uses a masked `whiteFill`.
    - `apps/mobile/src/screens/Search/index.tsx` `resultsListBackground` can still sit behind the header when top offsets are zero.
    - Effect: blur is washed out by white underlay or by the mask fill.

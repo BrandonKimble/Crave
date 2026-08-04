@@ -4,6 +4,16 @@ Last updated: 2026-04-16
 Status: active
 Owner: Codex execution plan
 
+> **ARCHAEOLOGY 2026-08-03 (truth audit).** "Status: active" is false. Phases 6-8 target an
+> overlay host that no longer exists: `useResolvedSearchRouteHostModel.ts`,
+> `useSearchRouteFrozenOverlayRenderModel.ts`, `SearchRouteLayerHost.tsx`,
+> `OverlaySheetShell.tsx` and `SearchAppShellHost.tsx` are all absent from
+> `apps/mobile/src/overlays/`, and `use-search-root-runtime.ts` is gone from
+> `screens/Search/runtime/shared/` — the scene/route layer was rebuilt under
+> `apps/mobile/src/navigation/runtime/` (app-route-scene-stack-runtime and friends). Scope
+> paths are also stale (`/Users/brandonkimble/crave-search/…`; the repo is
+> `/Users/brandonkimble/Crave/Crave`). Kept for the attribution history only.
+
 ## Objective
 
 Cut the search map runtime and overlay host runtime over to the most ideal end state:

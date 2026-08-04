@@ -1,8 +1,28 @@
 # Global Overlay Route Runtime Cutover Plan
 
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** "Status: active / ~90%" is false as
+> of today; this plan closed out into `app-route-runtime-closeout-handoff.md` (2026-04-30, "the
+> runtime/performance foundation can be treated as closed at this checkpoint") and the overlay
+> layer it describes was then rewritten twice — by the scene-stack era
+> (`page-switch-master-plan.md`) and by the TrackSheet cutover
+> (`page-composition-from-scratch-design.md` §THE FLIP → `residents-cutover-plan.md`).
+>
+> **Correction 2026-08-03 (truth audit):** every path in this document is unreachable. (a) The
+> repo root moved: `/Users/brandonkimble/crave-search/` no longer exists (the tree is
+> `/Users/brandonkimble/Crave/Crave/`; a separate rename ~/CraveApp → ~/Crave is recorded as a
+> Metro trap in `page-composition-from-scratch-design.md` §L3 SLICE 5). (b) The named artifacts
+> are gone from `apps/mobile/src` regardless of prefix — verified absent:
+> `store/overlayStore.ts`, `overlays/OverlaySheetShell.tsx`, `overlays/SearchRouteLayerHost.tsx`,
+> `overlays/appOverlayRouteHostStore.ts`, `overlays/useAppOverlaySheetResolution.ts`,
+> `overlays/restaurantRouteRuntimeStore.ts`, `overlays/searchRouteOverlayRuntimeStore.ts`,
+> `screens/FavoritesListDetail.tsx`, `screens/Profile/index.tsx`. Only three referenced files
+> still exist: `navigation/RootNavigator.tsx`, `overlays/AppOverlayRouteHost.tsx`, and
+> `overlays/useRestaurantRouteProducer.ts`. Read §"Current Reality" and the per-slice Progress
+> logs as archaeology of the April cutover, not as a description of the tree.
+
 Last updated: 2026-04-07
-Status: active
-Rough doneness: ~90%
+Status: CLOSED (superseded — see banner)
+Rough doneness (as of 2026-04-07): ~90%
 Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/**`

@@ -95,3 +95,14 @@ and the (future) leaderboard projection no-ops for `mode='discussion'`.
 
 - **Files:** `polls.service.ts`, option-seed path. **Dep:** 3B. **Accept:** a discussion poll is a
   pure thread (no options/leaderboard).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** 3C's target file `poll-scheduler.service.ts` no
+> longer exists — the demand-scheduler was deleted in the poll SUPPLY cut (commit 1ac21b70)
+> and replaced by `apps/api/src/modules/polls/supply/` (demand-mass reader, supply controller,
+> `poll-weekly-ritual.service.ts`). Seeded polls now derive from the weekly ritual, not a
+> `refreshTopics`/`publishWeeklyPolls` cron pair. 3A/3B are accurate: `inferPollSubject` is live
+> at `apps/api/src/modules/external-integrations/llm/llm.service.ts:1853` on
+> `gemini-3.1-flash-lite-preview` (`gemini-caller-profiles.ts:65`), and `axis.marketHint`
+> survives only as an inference hint — poll placement is `placeId`.

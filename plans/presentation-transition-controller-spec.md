@@ -1,3 +1,20 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** The PTC as specced was never built
+> under this name. Its two halves shipped separately and elsewhere: (1) the toggle settle/cancel
+> /visual-sync half became `use-results-presentation-toggle-coordinator.ts` (live — consumed by
+> `screens/Search/runtime/shared/use-results-presentation-interaction-runtime.ts:9`), whose five
+> guarantees and remaining extraction work are specified in `page-foundation-codification.md`
+> §4b (THE TOGGLE CONTRACT); (2) the atomic-reveal/readiness-barrier half became the scene
+> readiness contract + redraw transaction — see `canonical-sheet-transition-master-plan.md` §2
+> Layer 1 and the live `SCENE_READINESS_LIVENESS_MS` watchdog in
+> `navigation/runtime/app-route-scene-transition-policy-runtime.ts:145`.
+>
+> **Correction 2026-08-03 (truth audit):** the §"Global State Contract" types do not exist —
+> greps for `PresentationTransactionState` and `PresentationTransitionController` over
+> `apps/mobile/src` return zero hits. The §"Migration Plan" delete gates are already moot rather
+> than pending: the booleans they were to remove are gone independently — `isFilterTogglePending`
+> has zero hits in `apps/mobile/src` today. Read this as the design ancestor of the toggle
+> coordinator, not as open work.
+
 # Presentation Transition Controller Spec
 
 ## Objective
@@ -29,13 +46,16 @@ Use a single `PresentationTransitionController` (PTC) that owns presentation tim
 Separate concerns:
 
 1. `Draft UI state`:
+
 - Immediate chip/segmented visual response on UI thread.
 - No heavy compute requirement.
 
 2. `Committed data state`:
+
 - The currently revealed cards + map payload.
 
 3. `Pending transaction state`:
+
 - Next intent, next payload, next map visual token, and readiness flags.
 
 Only PTC can move from pending to committed reveal.
@@ -146,31 +166,38 @@ PTC emits:
 ### Transitions
 
 1. `idle -> settling`
+
 - on user interaction intent (except initial search).
 - set loading mode `interaction_frost`.
 - clear visible cards/map presentation.
 - keep draft UI responsive.
 
 2. `idle -> executing`
+
 - on initial search submit.
 - set loading mode `initial_cover`.
 
 3. `settling -> executing`
+
 - when settle timer expires with latest intent still active.
 - start producer work (network or local projection).
 
 4. `executing -> awaiting_readiness`
+
 - when producer has started and PTC awaits required readiness signals.
 
 5. `awaiting_readiness -> revealing`
+
 - only when all required readiness flags are true for same `intentId`.
 
 6. `revealing -> settled`
+
 - commit pending payload to committed payload.
 - hide loading mode.
 - publish final active tab/filter state.
 
 7. `* -> cancelled`
+
 - superseded by newer intent or explicit cancel.
 - drop stale callbacks/events by `intentId`.
 
@@ -312,21 +339,25 @@ Delete gate:
 ## Acceptance Criteria
 
 1. Rapid tap any toggle:
+
 - toggle UI stays smooth and immediate.
 - no network work starts until settle window expires.
 
 2. Initial load:
+
 - only initial white cover.
 - one reveal event.
 - cards and map become visible atomically.
 
 3. Interaction load:
+
 - only frosty interaction loading surface.
 - no white cover flashes.
 
 4. Stale responses:
+
 - never release UI for superseded intent.
 
 5. Telemetry:
-- each transaction shows phase sequence with one reveal commit.
 
+- each transaction shows phase sequence with one reveal commit.

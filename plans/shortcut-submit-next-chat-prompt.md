@@ -1,5 +1,15 @@
 # Next Chat Kickoff Prompt (Shortcut Submit Perf)
 
+> **DEAD PROMPT — do not run. Archaeology only.**
+> **Correction 2026-08-03 (truth audit):** every input this prompt requires is gone.
+> `/Users/brandonkimble/crave-search/` is not the repo (`/Users/brandonkimble/Crave/Crave` is);
+> `plans/agent-log.md` does not exist; the harness command
+> `yarn ios:device:perf-shortcut-loop` is not defined in any `package.json`; and the markers it
+> gates validity on (`shortcut_loop_run_start` / `shortcut_loop_run_complete`) appear nowhere in
+> the source. The Search runtime it targets was closed out by `f26102bc9` (2026-04-30). Also
+> note this predates the solo-dev workflow law in CLAUDE.md — its "strict no-checkpoint
+> autonomy" reply policy is not in force.
+
 Use this as the first user prompt in a fresh Codex chat.
 
 ---

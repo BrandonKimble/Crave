@@ -153,6 +153,27 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
   (c) Batch cached-token billing (the residual ~$69) remains unproven —
   verify against the first billing-export data.
 
+> **Correction 2026-08-03 (truth audit):** two numbers in this section and
+> in "Economics facts" are false against today's measurements.
+>
+> - **"reconciled to within 2%" / "ledger token counts were accurate" is
+>   no longer true.** Measured against the BigQuery billing export
+>   (`crave-467301.billing_export`), `api_usage_ledger` **under-meters
+>   Gemini by ~1.7x**. BigQuery remains the only cost truth; the ledger is
+>   the live meter, not the bill. The rate table itself IS correct as
+>   written (`gemini-3.5-flash` $1.50/M in, $9.00/M out —
+>   `apps/api/src/modules/external-integrations/shared/gemini-pricing.ts:50-56`,
+>   batch a flat 50% off).
+> - **"$0.044/new restaurant" is the wrong unit and ~2x low on the
+>   long-standing companion figure.** Re-measured 2026-08-02 against the
+>   billing export on the cleanest event (the 07-30/31 re-grounding: 7,115
+>   locations, $323.10 billed): **~$0.045 per newly GROUNDED LOCATION**,
+>   not per restaurant. The $0.028 figure quoted elsewhere in plans/ summed
+>   `placeDetails` only and dropped `findPlaceFromText` + autocomplete.
+> - Related: the Austin fresh-start later cost ~$118 of avoidable Places
+>   spend, which is why place-grounded restaurants are never deleted and
+>   wipes are community-scoped (`apps/api/scripts/reload/wipe-city-derived.sql`).
+
 ---
 
 ## Economics facts locked in by the audit (red-team verified)

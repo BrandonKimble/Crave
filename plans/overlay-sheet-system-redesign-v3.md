@@ -1,3 +1,11 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** Superseded by
+> `sheet-v4-foundation-plan.md` (the "final sheet-architecture pass"), and thereafter by the
+> scene-stack / TrackSheet line (`page-switch-master-plan.md` →
+> `page-composition-from-scratch-design.md` → `page-world-derivation.md` →
+> `residents-cutover-plan.md`). Kept for provenance: this doc is where the "eliminate React
+> commits during interactions" diagnosis was pinned. The named surfaces
+> (`SearchResultsSheet`, `SearchMap` as a sheet-coupled subtree) no longer exist in that shape.
+
 # Overlay Sheet System Redesign Plan v3 (Post-Hermes Trace)
 
 ## Key Evidence

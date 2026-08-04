@@ -83,6 +83,18 @@ Value note: this is a latency/ops win (batch results land seconds after completi
 
 ## Adoption plan, ranked by dollar impact
 
+> **Correction 2026-08-03 (truth audit) — status, not a factual dispute:**
+> NONE of items 1–3 below has been adopted. `service_tier` / `serviceTier`
+> appears nowhere in `apps/api/src` (so judges and the relevance gate still
+> run Standard), and there is no Gemini webhook route or
+> `GEMINI_WEBHOOK_URL` / `GEMINI_WEBHOOK_SECRET` anywhere — the 5-min poller
+> is still the only batch-completion mechanism. The research verdicts
+> themselves (§A–E, incl. "flex does not stack with Batch") were not
+> re-verified against the vendor and are dated 2026-07-11; re-check the
+> pricing page before acting on the dollar figures. One number here IS
+> confirmed against code: extraction rides Batch at 50%, and the rate table
+> lives in `apps/api/src/modules/external-integrations/shared/gemini-pricing.ts`.
+
 1. **Judges + dedupe judges → flex** (~50% off ≈ $6.8 saved per Austin-scale load; scales linearly with load size). One-line `service_tier:'flex'` + 10-min client timeout + 503/429 exponential backoff in the shared Gemini client path for judge calls. Fallback: on repeated flex eviction, retry the same call at standard tier so a load never stalls.
 2. **Relevance gate → flex** (≈ $0.44–$1.24/load). Free rider on #1's plumbing.
 3. **Batch webhooks on Railway** ($0; latency/ops win). Controller + signature verification + shared idempotent reconcile; poller stays as backstop and as the only dev-mode path.

@@ -13,6 +13,24 @@ the need/capacity admission; no demonstrated need for a 4-tier model. Validated 
 no membership churn on motion. Real-device pan feel pending. NOTE: paths below reference the old
 /crave-search/ root and pre-refactor filenames — stale, re-baseline if revisited.
 
+> **Correction 2026-08-03 (truth audit):** the "CUTOVER DONE" status above describes a
+> mechanism that no longer exists. `resolveMapPlannerAdmission` has **zero occurrences**
+> in `apps/mobile/src` today, and both files the cutover landed in are DELETED:
+> `runtime/map/map-diff-applier.ts` and `runtime/map/map-presentation-controller.ts`.
+> The `MotionWorkClass` union (`viewport_candidates | lod_planner | source_publish`) and
+> the `MotionAdmissionDecision` type in §4.2 are gone. What survives of
+> `runtime/map/map-motion-pressure.ts` is 165 lines: `MotionPressureState`,
+> `createMapMotionPressureController`, `hasActiveProtectedPresentationTransaction`,
+> `MAP_PLANNER_NORMAL_WORK_FAIRNESS_POLICY`, `shouldAdmitMapPlannerFairnessWork` and
+> `shouldDeferMapMovementWork` — i.e. the protected-transaction + fairness half, not the
+> LOD-planner admission half.
+>
+> Reason: the JS LOD planner it was admitting no longer exists. LOD promotion moved
+> wholly native (`MapLodKit` `LodEngine.decide/step`, driven per camera frame from
+> `SearchMapRenderController.swift`), so there is no JS-side `lod_pins`/`lod_planner`
+> work class left to admit. MP1-MP4's exit gates are moot, and the "Real-device pan feel
+> pending" note is closed by the shipped map (~2026-07). Archaeology.
+
 --- original plan below (historical) ---
 Scope:
 

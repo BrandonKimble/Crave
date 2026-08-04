@@ -129,3 +129,11 @@ user)`), rebuilt on interaction + authoritatively at close.
   build each table _with_ its Phase-4 logic. **Recommend: schema-first** (smaller migrations; unblocks
   2A's "rewrite the legit half" which needs the endorsement table; lets Phase 3/4 build on stable
   schema) — but it's a real choice.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** 2B's "existing `marketKey`/`region`/`state` stay"
+> is false against code as of today — `Poll.marketKey` is gone (markets exterminated
+> 2026-07-22; re-keyed to `Poll.placeId` in migration `20260719120000_poll_supply_place_rekey`,
+> see `apps/api/prisma/schema.prisma:1040`). `origin`, `mode`, `axis` all landed as described
+> and survive. `region` survives as a plain varchar.

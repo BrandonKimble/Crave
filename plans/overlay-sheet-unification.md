@@ -1,3 +1,10 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** Successor of
+> `sheet-v4-foundation-plan.md`; superseded in turn by the scene-stack era
+> (`page-switch-master-plan.md` — the Committed-Presentation-Frame architecture) and finally by
+> the TrackSheet cutover (`page-composition-from-scratch-design.md` §THE ONE TRACK →
+> `residents-cutover-plan.md`). The _idea_ shipped (one shared sheet, content swaps, panels are
+> content-only); the _named artifacts_ did not survive.
+
 # Single Overlay Sheet Unification Plan
 
 ## Goals
@@ -445,3 +452,18 @@ Check items off as we implement to keep scope and regressions visible.
 - [x] Post-cutover runtime audit confirms search bar, suggestions/autocomplete, and tab-switch plumbing still route through the same unified overlay host.
 
 Manual UI regression testing is still recommended when touching overlay motion again, but the architectural unification work itself is no longer open.
+
+> **Correction 2026-08-03 (truth audit):** the fully-checked "Shell + Registry (Base)" and
+> "Files to Touch" sections are false against code as of today — the two artifacts they claim as
+> built do not exist: there is no `apps/mobile/src/overlays/OverlaySheetShell.tsx` and no
+> `apps/mobile/src/overlays/OverlayRegistry.ts` (nor `overlays/registry.ts`). Neither does
+> `apps/mobile/src/overlays/BottomSheetWithFlashList.tsx` (the "single sheet engine" this plan
+> mandates keeping) or `overlays/SecondaryBottomSheet.tsx`. `apps/mobile/src/store/overlayStore.ts`
+> — the store this plan extends with `overlayScrollOffsets` — is also gone; per-scene scroll state
+> lives in `apps/mobile/src/overlays/sceneScrollStateRegistry.ts`. What the checkmarks record is
+> that the unification LANDED and was then REPLACED twice: first by the scene-stack host
+> (`overlays/BottomSheetSceneStackHost.tsx` + `overlays/panels/*` + the PresentationFrame in
+> `navigation/runtime/app-route-presentation-frame-contract.ts`), then by TrackSheet
+> (`apps/mobile/src/tracksheet/TrackSheetPage.tsx`, default-on at
+> `tracksheet/track-flip-store.ts:12`). Read the checkmarks as archaeology, not as a map of the
+> current tree.

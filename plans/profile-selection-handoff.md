@@ -71,3 +71,27 @@ If (1) never logs, the transition currently settles ONLY via a fallback (gesture
 3. Run the single load-bearing log: does `handleCameraAnimationComplete` (`search-map.tsx`) fire for a profile open? Add the arbiter + completion-runtime logs alongside.
 4. From the answer, choose **re-port graft** vs **JS timer fallback** — attribution first, no static guess.
 5. Confirm `npx tsc -p apps/mobile/tsconfig.json --noEmit` = 2 errors (not `timeout`); expect them to clear only once the graft re-port lands.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the doc's central open item — "the
+> rnmapbox Camera graft patch does not apply to installed 10.3.1 / the graft is
+> ABSENT / re-port VERIFIED still pending" — is **false as of 2026-08-02**. The
+> patch has been re-ported: `patches/@rnmapbox+maps+10.2.9.patch` is gone and
+> `patches/@rnmapbox+maps+10.3.1.patch` (976 lines) is the only patch in
+> `patches/`. It carries the full graft on BOTH platforms —
+> `ios/RNMBX/ProfilePresentationCameraHostRegistry.swift` (patch line 329) with the
+> `ProfilePresentationCameraHostRegistryBridge` ObjC export, plus the Android
+> mirror (`ProfilePresentationCameraHostRegistry.kt`, `RNMBXCamera.kt` hostKey
+> register/unregister, `MapCameraAnimationCompleteEvent.kt`, and the
+> `onCameraAnimationComplete` event key in `RNMBXCameraManager.kt`). So "Open plan
+> items → Re-port the rnmapbox Camera graft to 10.3.1" is DONE, and the two tsc
+> errors that item predicted would clear should be re-counted rather than assumed.
+> CAVEAT before measuring: `node_modules/@rnmapbox/maps` in a fresh checkout is
+> **unpatched** (`ios/RNMBX/ProfilePresentationCameraHostRegistry.swift` is absent
+> there) — patch-package runs on install, so confirm it has been applied before
+> concluding anything about whether `onCameraAnimationComplete` fires. See MEMORY
+> `rnmapbox-patch-reported` for the patch-package wrong-baseline traps. The
+> handoff's remaining instruction — attribute the completion path with a real
+> on-device log rather than static reading — still stands and is still the right
+> first step.

@@ -7,6 +7,16 @@
 > references below are stale/rejected unless the current cutover plan explicitly
 > says otherwise.
 
+> **Correction 2026-08-03 (truth audit):** the superseder named above
+> (`plans/search-demand-architecture-review.md`) is ITSELF archaeology now — it and its
+> cutover plan both carry supersession banners as of today. Neither is implementation
+> authority. The shipped demand substrate is the §3 signals ledger:
+> `signals` → `signal_demand_daily` → `SignalDemandRebuildState`
+> (`apps/api/prisma/schema.prisma:2363-2455`, owners in
+> `apps/api/src/modules/signals/`). Additionally, every `marketKey` /
+> `collectableMarketKey` / `marketScopeKey` reference below is dead: the market system
+> was exterminated 2026-07-22 and scope is now place containment (`Signal.placeId`).
+
 ## Summary
 
 Search activity currently flows through `user_search_logs`, but the table is being asked to serve several different jobs:

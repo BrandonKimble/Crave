@@ -334,7 +334,9 @@ Implemented defaults (all tunable via `apps/api/.env`):
   - Personal boost: `AUTOCOMPLETE_QUERY_SUGGESTION_PERSONAL_BOOST=0.05`
   - Counts use `COUNT(DISTINCT COALESCE(search_request_id, log_id))` to avoid per-target overcounting.
 - Restaurant view history:
-  - Cooldown: `RESTAURANT_VIEW_COOLDOWN_MS=120000` (prevents rapid open/close spam from inflating counts)
+  - Cooldown: `RESTAURANT_VIEW_COOLDOWN_MS=120000` (prevents rapid open/close spam from inflating counts) > **Correction 2026-08-03 (truth audit):** everything in this note about > **`EntityPriorityMetric` / collection-priority demand** is false against > code as of today. There is no `EntityPriorityMetric` model in > `apps/api/prisma/schema.prisma` and no `connectionDemand` / `appDemand` > blend anywhere in `apps/api/src` — the `0.6/0.4` split and the > `queryImpressions 0.55 / autocompleteSelections 0.15 / viewImpressions
+0.20 / favoriteCount 0.10` weights below describe machinery that does not > exist. Collection selection is now UCB explore > (`apps/api/src/modules/content-processing/reddit-collector/keyword-explore-ucb.spec.ts`, > `keyword-explore-yield.estimator.ts`), which REPLACED the blend. The > autocomplete-side and view-history parts of this note ARE real: the > `history` module ships `/history/restaurants/viewed` > (`apps/api/src/modules/history/`), with the view cooldown folded into > `history.service.ts:292` (the env var `RESTAURANT_VIEW_COOLDOWN_MS` was > retired 2026-07-11 — the note's env-dial framing is stale).
+
 - Entity priority (collection) demand blend:
   - `connectionDemand` vs `appDemand`: `0.6 / 0.4`
   - `appDemand` weights: `queryImpressions 0.55`, `autocompleteSelections 0.15`, `viewImpressions 0.20` (restaurants), `favoriteCount 0.10`

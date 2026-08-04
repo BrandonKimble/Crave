@@ -91,3 +91,16 @@ model EntityRedirect {
   @@index([toEntityId])
   @@map("entity_redirects")
 }
+
+// ---
+// Correction 2026-08-03 (truth audit): this staging file has LANDED and is superseded — do
+// NOT merge it again. All four models are live in apps/api/prisma/schema.prisma with evolved
+// shapes: Place (:2229) gained `county` and the identity index is a RAW expression index
+// (country, subdivision, lower(county), level, lower(name)) NULLS NOT DISTINCT — the
+// `@@unique` above cannot express it and was deliberately REMOVED from the model (commit
+// bc2ed912); PlaceGeometry (:2272) carries the PostGIS geometry column plus
+// PlaceGeometryPromotion (:2324); Signal (:2363) is `occurred_at @db.Timestamptz(3)` (this
+// file's naive DateTime caused a live +5h corruption incident — 1,634 rows, fixed 2026-07-20)
+// and gained `recorded_at` for watermark rebuilds; SignalActor (:2551) gained `excluded_at`
+// (vote-integrity ban seam). The signals table is still a plain (unpartitioned) table —
+// monthly partitioning stayed deferred.

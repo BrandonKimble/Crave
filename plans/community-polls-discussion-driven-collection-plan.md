@@ -880,3 +880,22 @@ Module-local under `external-integrations/llm/prompts/` (root duplicates deleted
   (Dev so far used `db push` against an expendable DB; productionizing needs migration files.)
 - Same DB-cleanup discipline applies to the entity-vocabulary/identity work (junk-attribute
   purge, restaurant un-merge) — do it via migrations + one-time backfill scripts.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** three claims are false against code as of today.
+> (1) §2.1's `marketKey`/`region` "already present; the per-market feed key" and §8.1's
+> "market match" ranking input — the markets system was exterminated 2026-07-22; polls key on
+> `Poll.placeId` (`apps/api/prisma/schema.prisma:1040`) and the feed is places-in-view.
+> (2) §10's "**KEEP `poll-scheduler`'s demand-driven topic selection** … do NOT gut the
+> scheduler" — `poll-scheduler.service.ts` is DELETED (grep-zero); topic choice is now
+> demandMass × cooldown × resurgence inside `apps/api/src/modules/polls/supply/`
+> (`demand-mass.reader.ts`, `poll-supply-controller.ts`, `poll-weekly-ritual.service.ts`) per
+> `plans/geo-demand-foundation-rebuild.md` §4. `SearchDemandService` is also gone (Phase C
+> purge) — demand reads the signals ledger/aggregate.
+> (3) §12's "**Phases 2–9 below are the remaining feature work — not started**" — Phases 2–5
+> shipped (see the ✅ statuses in `poll-phase-{2,3,4,5}-execution-scope.md`: Seam-1 cutover,
+> comment/like/leaderboard tables, axis inference, thread + endorsement projection, gazetteer
+> highlighting, close-time graduation).
+> Accurate as written: §1A's kernel taxonomy, §6.5/§6.6 (shared matcher + attribute ontology,
+> both live), §9's Gemini moderation (live), §13A's abuse posture.

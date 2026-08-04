@@ -1148,7 +1148,6 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Schema and Prisma
 
 - `/Users/brandonkimble/crave-search/apps/api/prisma/schema.prisma`
-
   - add `Market` model and `MarketType` enum
   - rename market-scoped columns from coverage/location language to market language
   - remove `SearchLog.collectionCoverageKey`
@@ -1164,14 +1163,12 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Market registry and resolver
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/coverage-key/**`
-
   - replace with a market-oriented module path and names
   - implement one canonical read-only resolver
   - remove nearest-existing-market fallback
   - remove create-on-read behavior from read resolver
 
 - new or renamed DTO/controller files
-
   - add `POST /markets/resolve`
   - implement the new request/response contract
 
@@ -1186,14 +1183,12 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Polls
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/polls/polls.service.ts`
-
   - stop using `resolveOrCreateCoverage(...)` for `queryPolls(...)`
   - switch reads to the market resolver
   - move explicit market creation to `createPoll(...)`
   - rename DTO/service fields from coverage to market
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/polls/dto/*`
-
   - rename `coverageKey` request/response fields to `marketKey`
   - add response support for no-market CTA state if needed
 
@@ -1204,23 +1199,19 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Search, demand, and on-demand
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/search.service.ts`
-
   - replace dual `uiCoverageKey` / `collectionCoverageKey` flow with one `marketKey`
   - remove create-on-read fallback
   - implement viewport/user-location anchor rule
   - rename metadata fields to market language
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/search-query.executor.ts`
-
   - rename result metadata fields to market language
   - stop enriching labels from overloaded coverage records
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/search-entity-expansion.service.ts`
-
   - switch `locationKey` usage to `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/analytics/search-demand.service.ts`
-
   - rename and rebase aggregation on `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/search/on-demand-request.service.ts`
@@ -1229,12 +1220,10 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Entity resolution and ingestion
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/reddit-collector/unified-processing.service.ts`
-
   - replace subreddit -> coverage lookup with subreddit -> market lookup
   - write restaurant entities with `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/content-processing/entity-resolver/entity-resolution.service.ts`
-
   - change grouping/filtering from `locationKey` to `marketKey`
   - preserve place-aware matching priority over market-only name matching
 
@@ -1245,7 +1234,6 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Restaurant enrichment and profile behavior
 
 - `/Users/brandonkimble/crave-search/apps/api/src/modules/restaurant-enrichment/restaurant-location-enrichment.service.ts`
-
   - resolve exact market geometry first
   - derive bbox only for Google query
   - post-filter returned locations against exact market geography
@@ -1256,29 +1244,23 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Mobile runtime
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/services/coverage.ts`
-
   - replace with market-oriented service/client
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/services/polls.ts`
-
   - rename cache shape from coverage to market
   - key poll bootstrap cache by `marketKey`
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/runtime/polls-runtime-controller.ts`
-
   - switch reads to the market resolver response
   - support `no_market` state and CTA
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/runtime/polls-panel-state-runtime.ts`
-
   - rename local state from coverage to market
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/pollsHeaderVisuals.tsx`
-
   - update header/title logic for market copy and CTA states
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/shared/use-search-results-panel-card-metrics-runtime.ts`
-
   - remove default result-row market badge logic
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/useSearchRouteOverlayRouteState.ts`
@@ -1287,19 +1269,16 @@ Use this as the immediate execution checklist for the first real cutover slice.
 ### Verification
 
 - resolver tests
-
   - Austin metro resolves correctly
   - Burnet returns no metro/micro and yields place candidate
   - read path does not create local fallback
 
 - poll flow tests
-
   - browsing does not create market
   - explicit poll creation can create local fallback
   - header reflects market or no-market CTA state correctly
 
 - search tests
-
   - viewport inside active market returns in-market locations only
   - zoomed-out viewport containing user keeps user market
   - zoomed-out viewport away from user uses center-nearest market
@@ -1319,3 +1298,21 @@ Use this as the immediate execution checklist for the first real cutover slice.
 - Should `local_fallback` markets be created lazily on first poll, or pre-materialized from a place dataset in areas outside CBSA coverage?
 - Should the poll model store both `marketKey` and `originPlaceName` / `originPlaceId` immediately, or can `originPlace` wait for a later migration?
 - Once market resolution is stable, should search results hide market labels in `Global` mode by default?
+
+---
+
+> **Supersession 2026-08-03 (truth audit):** superseded by
+> `plans/geo-demand-foundation-rebuild.md` (§1 place catalog, §2/§2.5/§2.6 header law, §3
+> signals ledger, §4 poll supply) — and note the superseders this file already names
+> (`tomtom-market-cutover-plan.md`, `search-demand-*`) are themselves dead.
+>
+> **Correction 2026-08-03 (truth audit):** every concrete artifact this plan recommends is
+> gone. There is no `Market` model, no `MarketType` enum, no `markets`/`core_markets`/
+> `core_entity_market_presence` table, no `POST /markets/resolve`, and no `marketKey` column on
+> polls/search/on-demand — the markets system was fully exterminated 2026-07-22 (see
+> `plans/rebuild-execution-ledger.md`, "ENGINE-COVERAGE RE-KEY (markets extermination leg 2)"
+> and the Phase C purge). Geography is now the places containment DAG
+> (`apps/api/prisma/schema.prisma:2229 model Place` + `place_geometries` polygon ground);
+> collection scope is engines (`EngineCoverageService`); poll scope is `Poll.placeId`.
+> The file paths herein (`/Users/brandonkimble/crave-search/...`) also predate the repo move
+> to `/Users/brandonkimble/Crave/Crave`. Historical context only.

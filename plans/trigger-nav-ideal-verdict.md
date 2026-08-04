@@ -431,3 +431,17 @@ grow (people/lists are pushes, not tuple identities). Note §4.1's "still on Fav
 tab/route truth, not map truth: today `ensureAppSearchRouteSearchScene` re-roots to search
 before entity pushes (destroying the Favorites root) — S-B/S-C remove that re-rooting; the
 root's world is restored by the dismissal chain, not untouched.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** S-E's headline claim — "crave://l/<slug> → the
+> shared list's world with members rendered — **list sharing works end-to-end for the first
+> time**" — was TRUE when written (59dc2413) and then REVERSED. `trigger-regression-audit.md`
+> (2026-07-13) traced it: the `/list/` codec arms and the listWorld launch-intent consumer
+> were erased in 9bec4810, leaving `sharedList` a plain `pushRoute('listDetail', {shareSlug})`
+> with no world half. Anyone handed this doc between those dates would have built on an
+> answer the tree had already discarded. The world half was rebuilt in wave-4 §3
+> (`wave4-foundations-charter.md`, "MOUTH 5 (SLUG) BUILT + SIM-PROVEN"); today the slug lane
+> is world-backed again via the `listWorld` composite
+> (`apps/mobile/src/navigation/runtime/entity-ref-action-policy.ts`). Net: the claim is true
+> again, but by a different mechanism than the one S-E shipped — cite wave-4 §3, not 59dc2413.

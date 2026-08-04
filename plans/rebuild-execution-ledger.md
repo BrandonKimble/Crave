@@ -2251,3 +2251,21 @@ House. The api agent died at a session limit at ~95%: recovered by
 assessing the tree (913 tests already green) + 2 lint fixes + the
 migration reorder — a dead agent's tree must be ASSESSED, never assumed
 lost. api 913 / mobile 477 green.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** two staleness notes.
+> (1) The **"Execution order (master §22) + status"** list at the top of this file is stale —
+> it still shows item 1 `[IN PROGRESS]` and items 2–7 unchecked, while the body records TASK
+> #5/#6/#7, Phase C purge, the wave-5 red team and the §24 cost-governance cutover all
+> COMPLETE. Read the dated body sections, not the header checklist.
+> (2) This ledger's last entry is **2026-07-26**; it is no longer the current record. Work
+> landed since that it does not contain includes: staging environment + the staging→production
+> deploy law, the search redesign cutover (pooled gate + gazetteer Understand canonical; ladder
+> and sync-LLM deleted 2026-08-02), UCB explore selection replacing the blend
+> (`content-processing/reddit-collector/keyword-explore-yield.estimator.ts`), timestamptz
+> everywhere, the taste-profile substrate (`signals/user-taste-profile.builder.ts`), the Stripe
+> two-plan web rail, the invariant registry + CI gating, and the retirement of the anonymous
+> demand tables (migration `20260803215311_retire_anonymous_demand_tables`; the k-anonymity
+> floor now lives at `signals/subject-text-floor.ts`). Note this ledger's own "§3 anonymous
+> deviceKey plumbing dormant" line refers to actor device keys, NOT those retired tables.

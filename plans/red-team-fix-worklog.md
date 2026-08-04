@@ -179,3 +179,23 @@ PENDING (environment limits, not unaddressed work):
   sticky correctness (#7), and the broader reveal/dismiss device pass.
 - Android #2 (on-screen opacity sweep): not portable without building the Android screen-space
   projection pipeline — left as the full-sweep fallback (functionally correct).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** item **#1 "Android parity — bring
+> `SearchMapRenderControllerModule.java` to the residency model" is marked `[x]`
+> but is superseded and its premise rejected.** `plans/android-parity.md` (owner
+> ruling D52, 2026-08-03) measures that same Java file against today's Swift and
+> finds the bridge contract diverged 45% (5 of 11 iOS map-controller externs —
+> `setCandidateCatalog`, `commitEnterStart`, `beginInteractionFadeOut`,
+> `resetNativeApplyAttribution`, `flushNativeApplyAttribution` — were never
+> ported) with 2 Java-only method names anchored to a superseded iOS design, and
+> the mirrored source 55% rewritten underneath it since Android's last commit
+> `e2654b211` (2026-06-17 — the very commit this worklog cites for #1). The ruling
+> is a **from-scratch rewrite, not repair**; Android is not deleted. The file
+> still exists at
+> `apps/mobile/android/app/src/main/java/com/crave/SearchMapRenderControllerModule.java`.
+> So #1's `[x]` and the "PENDING: gradle compile / structurally verified" note
+> should be read as "a port was attempted in June and has since been ruled
+> unrecoverable" — go to `plans/android-parity.md`, not here, for the Android
+> plan. The iOS/JS items #2–#15 are not affected by this note.

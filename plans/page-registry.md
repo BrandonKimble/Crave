@@ -16,6 +16,23 @@ child) nav-stack participation. Registry code homes: `overlays/types.ts:9` (Over
 
 ---
 
+> **Correction 2026-08-03 (truth audit) — two stale pointers in the header + §1:**
+>
+> 1. The "Registry code homes" list above is out of date. Skeleton specs are NOT at
+>    `BottomSheetSceneStackHost.tsx:769`; the table is `SCENE_FOUNDATION_SPECS` at
+>    `apps/mobile/src/navigation/runtime/scene-foundation-spec.ts:66`, a compile-exhaustive
+>    `Record<SheetSceneKey, SceneFoundationSpec>` (the rename is recorded in
+>    `plans/child-transition-primitive.md` §1.3 and in
+>    `navigation/runtime/ADDING_A_SCENE.md:81`). The dead name
+>    `SCENE_STACK_BODY_SKELETON_SPECS` has zero hits in `apps/mobile/src`.
+> 2. The §1 `profile` row's "Created/Contributed/Lists tabs" is false against code as of today.
+>    That segment machine was DELETED in the profile-unification pass (`b15f179d`, logged in
+>    `plans/registry-implementation-plan.md` §"Owner feedback round 3"): the root profile tab and
+>    `userProfile` now render ONE shared `ProfileSectionsBody` with sections
+>    `'polls' | 'comments' | 'lists' | 'photos'` (`overlays/panels/ProfileSectionsBody.tsx:38`).
+>    §9a's row for `userProfile / profile` already states the correct 4-section shape — §1 is the
+>    lagging copy.
+
 ## 1. The registry
 
 ### Top-level scenes (bottom-nav legs; nav bar IN)

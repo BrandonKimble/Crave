@@ -3,6 +3,19 @@
 **Last updated:** 2026-07-03 · **Status:** merged to `main` (`4eeaa27b`), UX shape built + happy-path
 verified on-device; owner finger-test of a few edge cases still pending.
 
+> **[PARTLY SUPERSEDED — banner added 2026-08-03 (truth audit)]** §2's architecture description
+> is accurate for the PresentationFrame layer, which is still live
+> (`navigation/runtime/app-route-presentation-frame-contract.ts`, extended since by
+> `plans/child-transition-primitive.md` leg 6 and `plans/root-snap-law.md` leg 9). But the SHEET
+> substrate this handoff describes — co-mounted legs inside `BottomSheetSceneStackHost`, the
+> SV swap-lane, the paint-ack player, the `useBottomSheetShared*` gesture family — is no longer
+> the default: TrackSheet took over 2026-07-27 (`plans/page-composition-from-scratch-design.md`
+> §THE FLIP; `apps/mobile/src/tracksheet/`, default-on at `tracksheet/track-flip-store.ts:12`,
+> old host reachable only via `crave://tracksheet-host?on=0`). Current live plan for this
+> territory: `plans/residents-cutover-plan.md`. §4's "immediate next steps" (pod install for the
+> Mapbox 10.3.1 upgrade) are long done — the rnmapbox patch has since been re-ported and lives
+> in `patches/`.
+
 This doc hands off the nav **page-switch redesign** + the **zero-JS-switch frame-fix** to a fresh
 session. Read this first, then the deeper docs it points to.
 

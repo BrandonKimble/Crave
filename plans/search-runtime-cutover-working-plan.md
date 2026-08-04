@@ -1,5 +1,31 @@
 # Search Runtime Cutover Working Plan
 
+> **SUPERSEDED 2026-08-03 (truth audit): archaeology.** This doc belongs to the
+> Feb–Apr 2026 SearchScreen-decomposition / nav-switch-perf line. It was overtaken by the
+> July 2026 lifecycle rebuild — `plans/search-desired-state-architecture.md` (S1–S4
+> charter, recorded fully executed) and then
+> `plans/search-lifecycle-phase0-autopsy.md` → `-phase0-requirements.md` →
+> `-phase1-ideal-design.md` → `-phase2-gap-verdict.md` → `-phase3-charter.md`. Read those
+> for the current shape.
+>
+> **Correction 2026-08-03 (truth audit):** the premise is false against code as of today.
+> `apps/mobile/src/screens/Search/index.tsx` is **87 lines**, not the 5,558/6,199-line
+> monolith with 452 hook operations described here; the decomposition landed via the
+> `screens/Search/runtime/**` owner tree (adapters/camera/controller/map/mutations/native/
+> profile/read-models/reconciler/resolver), NOT via the planned
+> `screens/Search/subtrees/` or `session/search-session-bus.ts` (neither path exists).
+> Android new-arch is already on: `apps/mobile/android/gradle.properties:38`
+> `newArchEnabled=true`, and `@rnmapbox/maps` is `10.3.1` (package.json:29), not 10.2.9.
+>
+> **Correction 2026-08-03 (truth audit):** every validation command here is dead. The repo
+> root is `/Users/brandonkimble/Crave/Crave`, not `/Users/brandonkimble/crave-search`
+> (that directory does not exist), and of the named scripts only
+> `scripts/no-bypass-search-runtime.sh` survives — `perf-shortcut-loop.sh`,
+> `perf-shortcut-loop-report.sh`, `perf-nav-switch-loop.sh`,
+> `search-runtime-natural-cutover-contract.sh`, and
+> `search-runtime-s4-mode-cutover-contract.sh` are all absent from `scripts/`. Any
+> "Status: active" line below is stale.
+
 Last updated: 2026-03-28
 Status: active
 Scope: `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/**`

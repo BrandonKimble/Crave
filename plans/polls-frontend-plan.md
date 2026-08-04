@@ -175,3 +175,17 @@ sibling deeplinks (`openRestaurantProfilePreview` for restaurant spans; entity-s
    `ProfilePanel`/profile vote display) once the new UI replaces it.
 7. Real-time + profile rebind + polish (empty states, share, report).
    Each UI step: verify on device + a maestro flow where it touches sheet motion/perf.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the **market** vocabulary throughout this plan
+> (§2A "Polls in {Market}" header, §2C create with `market`, §5 "polls are market-scoped",
+> §7 `PollListHeader` (market + live badge)) is false against code as of today — the entire
+> markets system was exterminated 2026-07-22. Polls attach to `Poll.placeId` (place catalog),
+> not `marketKey` (`apps/api/prisma/schema.prisma:1040`); the feed is places-in-view with
+> keyset cursor pagination and the §2 header verdict ("Polls in this area"), see
+> `plans/geo-demand-foundation-rebuild.md` §4/§6 and the TASK #6 entries in
+> `plans/rebuild-execution-ledger.md`. There is no market resolver, no market picker, and no
+> "out-of-market" state. The comment/like/leaderboard/graduation shapes this plan targets DID
+> ship (`apps/api/src/modules/polls/polls.controller.ts`, `PollComment`/`PollCommentLike`/
+> `PollLeaderboardEntry`/`PollEndorsement` in schema.prisma:1072-1160).

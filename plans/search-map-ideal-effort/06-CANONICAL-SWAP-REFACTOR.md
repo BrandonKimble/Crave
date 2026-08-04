@@ -1,5 +1,18 @@
 # The Canonical-Swap Refactor — plan of record (2026-07-02)
 
+> **Correction 2026-08-03 (truth audit).** The channel-lockstep half landed (`cb97686f`,
+> logged below) but "plan of record" has expired — the effort was overtaken by the pins→VA /
+> labels→VA migration (`07-va-migration-cleanup-manifest.md`) and the map shipped ~2026-07.
+> Two premises are false against code today: (a) the **label z-order** item's mechanism —
+> "pins render on a UIView overlay `addSubview` + `bringSubviewToFront` above the WHOLE GL
+> surface" — is gone; the CA pin overlay was deleted in `3b26e86b` and pin z-order is now
+> owned by each pin ViewAnnotation's `priority`
+> (SearchMapRenderController.swift:2055), with labels also VAs; (b) the
+> `PresentationSwapCoordinator` in "REMAINING" was never built — no
+> coordinator/`declareToggle`/`useToggleCoordinator` exists in apps/mobile/src, and
+> `SegmentedToggle.tsx` is still a separate hand-rolled pill. Treat the REMAINING list as an
+> open backlog re-derived against the VA substrate, not as a ready plan.
+
 Owner ruling (drive round 3): ONE canonical presentation flow for EVERY catalog-replacing trigger
 (initial search, restaurant↔dish toggle, filter chips, re-search, search-this-area). Toggling without
 moving the map = ZERO network. Complete refactor to the ideal shape, no dead/duplicate paths.

@@ -141,3 +141,23 @@ listType, displayTitle}}}`; executor pushes route THEN writes the desired tuple 
 
 Sizing: item 1 = L (designed, gated only on the perf/map commit); item 2 = S; item 3 =
 M (API S + shared renderer S + two render sites S); item 4 rides items 1-3.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the VERDICT's core finding — "the list world lane
+> is DEAD on the world half across all five mouths" — is no longer true against code as of
+> today. The restoration plan in §4 was EXECUTED in `wave4-foundations-charter.md` §3
+> (owner override: "BUILD NOW, gate or no gate"). `entity-ref-action-policy.ts` now carries a
+> first-class `listWorld` composite action (`{listId, listType, title, targetUserId?,
+shareSlug?, source?, slice?}` — see the "Wave-4 §3 (favorites-as-search restored)" comment
+> on the action union), and wave-4 §3's ledger records all five mouths sim- or spec-proven:
+> home tile, per-side All (bypass deleted), profile list taps, messaging share card
+> (listType threaded through the share-package resolver), and the `/l/<slug>` deep link.
+> The strip also flipped consequence `'content' → 'world'`. Items 11-13 (NEVER-BUILT span
+> surfaces: profile comment spans, restaurant mention spans, notification rows) are still
+> accurate and still open.
+
+> **Correction 2026-08-03 (truth audit):** every `BookmarksPanel.tsx` file:line cite in this
+> doc is stale — the file was renamed to `apps/mobile/src/overlays/panels/ListsPanel.tsx`
+> (Favorites→Lists code-vocabulary rename, commit b1e81850d "root tab is Home, lists is
+> canonical"). The scene key is `lists`, not `bookmarks`.

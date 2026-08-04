@@ -3,7 +3,26 @@
 Status: planned via red-teamed 12-agent consensus (2026-06-26), grounded in the runtime
 attribution in `lod-v5-canonicalization-worklog.md`. NOT yet implemented.
 
+> **Correction 2026-08-03 (truth audit):** "NOT yet implemented" is FALSE — the ideal
+> design in this document **shipped**, verified against code today:
+>
+> - Time-based wall-clock fade: `MapLodKit/Sources/MapLodKit/LodEngine.swift` — the
+>   `Fade` struct is "a PURE projection of wall-clock time", "a SETTLED fade projects to
+>   `target` forever, so it doubles as the persistent current-opacity truth — it is never
+>   pruned on settle" (ROOT-A + ROOT-C closed structurally).
+> - Guaranteed residency: `SearchMapRenderController.swift:5516`
+>   `let retainResidentDemotesFlag = true` (unconditional; Step 3 landed).
+> - Steps 4-6: `updateLivePinTransitions`, `updateLiveDotTransitions`, `driveNativeLod`
+>   and `idle_reassert` are all GONE from the controller (0 hits each); the
+>   `lodV5Enabled` flag is collapsed (0 hits). `membershipRetentionPad` was NOT
+>   re-enabled (0 hits) — open decision #1 resolved as "no".
+>
+> Residual: `MarkerRoleTable` (11 hits) and the `LivePinTransition`/`LiveDotTransition`
+> types (33 hits) still exist — the Step-4 deletion was partial, tracked in
+> `lod-v5-canonicalization-worklog.md` C3/C4. Everything else here is history.
+
 ## Root cause (corrected — the inventory's headline was runtime-refuted)
+
 The "two-authority opacity write" is NOT the root. Code-verified: `updateLivePinTransitions`
 (`SearchMapRenderController.swift:7064`) writes only the in-memory struct (`setDerivedFamilyState`
 7260); its GPU writer `applyLivePinTransitionFeatureStates` early-returns under v5 (8951), writing
@@ -12,6 +31,7 @@ showed the stranded-mid pins were the engine's OWN, not v4-driven; `fsdrop=0`). 
 under v5 is a cheap cleanup, not the cause.
 
 The TRUE root has three parts (all fixed together — no single fix suffices):
+
 - **ROOT-A — rate-incremental ease + internal-accumulator prune.** `LodEngine.advance` is dt-rate
   (`next = current + (target-current)*min(1, dt/fadeSeconds)`); under the 12–18fps render jank
   (dt 54–90ms) each step jumps 30–55% (the staircase = "snapping"). `step()` prunes a key the instant
@@ -26,8 +46,9 @@ The TRUE root has three parts (all fixed together — no single fix suffices):
 The "no self-heal path" the user named is a SYMPTOM of A+B+C, not the root.
 
 ## Ideal design (single-authority, time-based, no heal)
+
 - **Time-based wall-clock fade.** Per-key `Fade{from, target, startMs}`; `opacity(nowMs) =
-  from + (target-from)*clamp((nowMs-startMs)/fadeMs, 0, 1)`. `step(nowMs)` is a PURE PROJECTION; prune
+from + (target-from)*clamp((nowMs-startMs)/fadeMs, 0, 1)`. `step(nowMs)` is a PURE PROJECTION; prune
   only at `clamp==1` (emits exactly target). `dt` never appears in the opacity math. `decide` restarts a
   Fade ONLY on a target CHANGE (`from=current, startMs=now`). Reaches target on schedule regardless of
   frame rate/drops/stalls → ROOT-A gone.
@@ -40,6 +61,7 @@ The "no self-heal path" the user named is a SYMPTOM of A+B+C, not the root.
   machinery deleted.
 
 ## Heal verdict
+
 A heal is AVOIDABLE — but only with all three fixes together (red-team unanimous: fade model alone is
 insufficient). `idle_reassert` is deleted, but ONLY after residency is proven airtight at runtime
 (`fsdrop=0`, `paint_stuck=0`, `idle_reassert writes=0`). If residency can't be made airtight, the fallback
@@ -47,6 +69,7 @@ is an EASED reseed-on-mutation (re-enter the legitimate fade from the current va
 un-eased batch `idle_reassert` is deleted regardless.
 
 ## Implementation sequence (each phase verified via the file-sink harness)
+
 1. **Gate the leak/noise** — wrap ONLY the `updateLivePinTransitions`/`updateLiveDotTransitions` CALLS
    (5337/5353) in `!lodV5Enabled` (NOT the reconcile body — it builds admission v5 needs). Verify
    `v4_authority_fire=0`, map not `life:hidden`. Low-risk, reversible.
@@ -70,6 +93,7 @@ un-eased batch `idle_reassert` is deleted regardless.
    no render work. 40–90ms → collision/symbol-load reduction is a SEPARATE follow-up PR (not bundled).
 
 ## Key risks
+
 - Gate scope: gate the two CALLS, not the reconcile top (prior B1 dropped map to `life:hidden`).
 - Label producer `labelFeatures` (7168) is inside a to-be-deleted v4 fn AND the JS path (~1993) — verify
   before deleting or labels freeze.
@@ -80,6 +104,7 @@ un-eased batch `idle_reassert` is deleted regardless.
 - Engine interface change touches all 28 unit tests (rewrite for clock semantics).
 
 ## Open decisions for the user
+
 1. Re-enable `membershipRetentionPad` (4–6) for boundary oscillation, sequenced last after the
    commit-invariant? (You previously banned dampers; the invariant removes the masking concern.)
 2. Smoothstep vs strict-linear time-based curve?

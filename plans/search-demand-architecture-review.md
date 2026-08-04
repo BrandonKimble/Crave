@@ -1,5 +1,30 @@
 # Search Demand Architecture Review
 
+> **SUPERSEDED 2026-08-03 (truth audit): this whole document is archaeology.** The
+> demand layer it decides was never built in this shape. The shipped substrate is the
+> §3 SIGNALS LEDGER — `signals` (append-only, monthly range-partitioned on
+> `occurred_at timestamptz`, place-anchored via `place_id`) → `signal_demand_daily`
+> (day × actor × place × subject × kind) → `SignalDemandRebuildState` watermark, all in
+> `apps/api/prisma/schema.prisma:2363-2455` with owners under
+> `apps/api/src/modules/signals/`. Read that code, not this file.
+
+> **Correction 2026-08-03 (truth audit):** the "Market Contract Dependency" section is
+> false against code as of today — the entire market system was exterminated 2026-07-22.
+> There is no `core_markets`, no `core_entity_market_presence`, no `marketKey` /
+> `collectableMarketKey` anywhere in `apps/api/prisma/schema.prisma` (grep returns zero
+> hits). Geographic scope is now PLACE containment/tiling (`Signal.placeId`,
+> `SignalDemandDaily.placeId`, schema.prisma:2374-2381 and 2434-2445), not a market key.
+> Do not implement anything from that section.
+
+> **Correction 2026-08-03 (truth audit):** the tables this review reasons over do not
+> exist. `user_search_logs`, `user_search_demand_daily`, `user_restaurant_views`,
+> `user_food_views`, `collection_entity_priority_metrics` are all absent from
+> `apps/api/prisma/schema.prisma`; only `collection_on_demand_requests`
+> (schema.prisma:1851) survives. The `eventKind` / `SearchLogSource` cutover, the
+> "fresh same-day overlay uses `logged_at::date` because the column is timestamp-
+> WITHOUT-time-zone" rule, and the UI-market/collectable/global view split are all
+> obsolete — signals is timestamptz everywhere (`occurred_at ... @db.Timestamptz(3)`).
+
 ## Purpose
 
 This document is the source-of-truth review and decision log for the search demand architecture. Treat `plans/search-demand-layer-architecture-pass.md` as raw notes only. Decisions in this file are inventory-backed and are carried into `plans/search-demand-layer-cutover-plan.md`.

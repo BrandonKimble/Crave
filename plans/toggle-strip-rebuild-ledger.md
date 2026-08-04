@@ -1704,3 +1704,36 @@ counts line now stale by these flips (register prose left untouched per the read
 mandate). Still DU after this leg: W1-9 one-line placement flip ONLY — deliberately not
 exercised (would mean mutating a live surface declaration on the uncommitted tree for a
 structural claim; recommend proving it as part of the commit-adjacent cleanup).
+
+---
+
+## Correction 2026-08-03 (truth audit)
+
+> **Correction 2026-08-03 (truth audit):** Leg 11 §2 "**Market data path — CLOSED**
+> (leg-9 defect) … NEW GET /markets/active (MarketRegistryService.listActiveMarkets) +
+> mobile listActiveMarkets(); the chip (SelectorChip, VALUE-displayed, All lists only)
+> reads it" describes machinery that no longer exists. **The entire markets system was
+> exterminated 2026-07-22** (see memory `markets-extermination`). Verified today: grep for
+> `MarketRegistry`, `markets/active`, or `listActiveMarkets` over `apps/api/src` and
+> `apps/mobile/src` returns zero live hits — only historical comments in
+> `polls.service.ts` / `query-polls.dto.ts` naming `marketKey` as the LEGACY key that died.
+> The Market chip is gone from the ListDetail strip; its axis is now `cityPlaceId`, not
+> `marketKey` (`search-desired-state-contract.ts:95, 293`). The leg-11 owner feel-check
+> "Market vocabulary breadth (all active markets vs collectable-only)" is therefore MOOT —
+> withdraw it from the outstanding-gates list.
+
+> **Correction 2026-08-03 (truth audit):** the `BookmarksPanel.tsx` cites throughout legs
+> 2-15 are stale — the file was renamed to `apps/mobile/src/overlays/panels/ListsPanel.tsx`
+> and the scene key `bookmarks` became `lists` (`scene-foundation-spec.ts`, the
+> Favorites→Lists code-vocabulary rename that leg 7 deferred "to a quiet tree" and that
+> `wave3-conformance-audit.md` filed as ND #3). That deferral is now CLOSED.
+
+Everything else spot-checked against the tree today stands: `src/toggles/` holds the engine
+
+- the pure modules + `use-content-toggle.ts` + `EditModeActionRow.tsx`; `components/reorder/`
+  holds `ReorderableGrid` + `ReorderableRows` + `reorder-drag-math`; `overlays/edit-mode-session.ts`
+- `edit-mode-session-core.ts` exist; `components/cards/ResultCard/` holds the extracted
+  primitive + `CardActionPillRow.tsx`; `BookmarksEditList` and `FrostedFilterStrip` are gone.
+  (One residual: `EDIT_ROW_HEIGHT_ESTIMATE` survives in `ListDetailPanel.tsx:172` as the
+  FlashList size estimate — NOT the deleted `EDIT_ROW_HEIGHT` layout constant; the leg-10
+  deletion claim is accurate.)

@@ -1,3 +1,14 @@
+> **[SUPERSEDED — supersession banner added 2026-08-03 (truth audit)]** This file is a raw
+> ChatGPT transcript, not a plan — it is the _provenance_ of the overlay-sheet redesign line.
+> Succession chain: this → `overlay-sheet-system-redesign-v2.md` → `overlay-sheet-system-redesign-v3.md`
+> → `sheet-v4-foundation-plan.md` → `overlay-sheet-unification.md` → the scene-stack era
+> (`page-switch-master-plan.md`) → `page-composition-from-scratch-design.md` (THE PAGE v2) →
+> `page-world-derivation.md` → `residents-cutover-plan.md`. Do NOT build from this file.
+> Every implementation file it names (`BottomSheetWithFlashList.tsx`, `SecondaryBottomSheet.tsx`,
+> `overlays/PollsOverlay.tsx`, `screens/Search/index.tsx` as sheet orchestrator) is gone from
+> `apps/mobile/src` as of today; the shipped sheet is `apps/mobile/src/tracksheet/` (default-on,
+> `tracksheet/track-flip-store.ts:12`).
+
 Is there any info out there about what approach Google Maps devs took with their bottom sheet + list implementations? My implementation is very low in JS performance and I’m curious if I can learn anything from the approach they have taken and why.
 
 There **isn’t a direct, official deep-dive from Google engineers specifically documenting exactly how the Google Maps team implemented their bottom sheet + list system (e.g., exact view hierarchies, diffing strategies, rendering pipeline choices, etc.)** in the way you might find for an open-source project. That said, we _do_ have several credible clues and community/engineering signals you can learn from to understand why their implementation is performant — and what patterns they’re likely using under the hood.
@@ -332,7 +343,6 @@ Fast ways:
 - **Hermes profiling** (Chrome/Flipper) to see what functions spike during drag
 - Turn off **LogBox** and remove logs
 - Temporarily replace your row with a `<View style={{height:…}} />` skeleton:
-
   - If JS FPS recovers → it’s your row rendering / props churn
   - If it doesn’t → it’s global state updates / handlers / computations
 

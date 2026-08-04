@@ -2,7 +2,19 @@
 
 Last updated: 2026-03-30
 Status: active implementation plan
-Scope:
+
+> **SUPERSEDED / ARCHAEOLOGY 2026-08-03 (truth audit).** "Status: active implementation
+> plan" is false — this is the March-2026 GL-label era. Every mechanism it legislates is
+> gone: labels are ViewAnnotations (SearchMapRenderController.swift:99-100), and the GL
+> label layer, the 4-candidate emit, `nativeLabelOpacity`, the label observation runtime and
+> the label transition machinery were deleted in the VA migration
+> (`plans/search-map-ideal-effort/07-va-migration-cleanup-manifest.md`). The label-snap
+> product goal it argued for was ultimately delivered by that migration, not by these gates.
+> Also stale: every path here is rooted at `/Users/brandonkimble/crave-search/…` (the repo
+> is `/Users/brandonkimble/Crave/Crave`), the hook files under
+> `components/hooks/use-search-map-label-*.ts` no longer exist, and
+> `scripts/search-runtime-natural-cutover-contract.sh` is not in the repo.
+> Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/components/search-map.tsx`
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/hooks/use-map-marker-engine.ts`

@@ -1,5 +1,21 @@
 # Search-Map Ideal-Shape Effort — State Brief (2026-07-01, strategic checkpoint)
 
+> **ARCHAEOLOGY BANNER 2026-08-03 (truth audit).** This is a snapshot of an effort that
+> has since COMPLETED: the custom iOS map is SHIPPED and best-in-class as of ~2026-07.
+> Read this for history, not for current state. Specific claims that are false today:
+> (a) the substrate described here (CA-overlay pins / GL dots+labels, the `__lea_revealed__`
+> label selector, the 4-candidate GL label layer) was replaced by the pins→VA + labels→VA
+> migration — see `plans/search-map-ideal-effort/07-va-migration-cleanup-manifest.md`;
+> labels are ViewAnnotations with `enableSymbolLayerCollision`
+> (SearchMapRenderController.swift:5,:99-100) and the whole GL label observation/selector
+> stack is deleted. (b) F-C's SDK line is stale: `@rnmapbox/maps` is **10.3.1** with a
+> local patch in `patches/@rnmapbox+maps+10.3.1.patch` (apps/mobile/package.json:29), not
+> 10.2.9. (c) W9/TR5 was never built — there is no `useToggleCoordinator`/`declareToggle`/
+> `CompositorToggle` anywhere in apps/mobile/src, and `SegmentedToggle.tsx` is still a live
+> standalone component. (d) W10/H1 "durable map-object telemetry harness" was never built;
+> the `[lodev]` harness this family of docs assumes NEVER EXISTED in code (see the
+> correction block at the bottom of `plans/lod-v5-architecture.md`).
+
 Written at the owner's request as the anchor for a full stop-and-scrutinize review: where we were, where we
 are, where we're going — so the path forward can be re-derived from the ground up and either confirmed or
 replaced. Companion docs: `00-ISSUE-LEDGER.md` (issue IDs), `01-MASTER-PLAN.md` (the Stage-2 consensus plan),

@@ -1,5 +1,19 @@
 # Search-Map Ideal-Shape — Consensus Roadmap (2026-07-01 strategic review)
 
+> **ARCHAEOLOGY BANNER 2026-08-03 (truth audit).** The map effort this roadmap sequences is
+> DONE — the custom iOS map shipped ~2026-07. Steps 0-5 landed (logged in
+> `02-CONFIRMED-FINDINGS.md`); the effort was then overtaken by the canonical-swap refactor
+> (`06-CANONICAL-SWAP-REFACTOR.md`) and the pins→VA / labels→VA migration
+> (`07-va-migration-cleanup-manifest.md`), which deleted most of the machinery named here.
+> Steps NOT executed, verified against code today: **Step 7 (TR5)** — no
+> `useToggleCoordinator`/`declareToggle`/`CompositorToggle` exists in apps/mobile/src, and
+> `apps/mobile/src/components/SegmentedToggle.tsx` was never absorbed; **Step 9's H1
+> harness** — never built, and the `[lodev]` harness the plan assumes never existed at all
+> (see `plans/lod-v5-architecture.md`'s 2026-08-03 correction). A5/A7's SDK facts are stale:
+> `@rnmapbox/maps` is 10.3.1 today (apps/mobile/package.json:29) with a repo-local patch in
+> `patches/`. The workspace topology section is also historical — the second `~/Crave-map`
+> clone is gone and this repo lives at `/Users/brandonkimble/Crave/Crave`.
+
 Product of the 8-reviewer + synthesis-lead strategic review (4 ground-up derivations: blank-slate /
 pragmatist / perceptual / risk; 4 adversaries: R1-mechanism / TR5-abstraction / owner-decisions /
 completeness). **Verdict on the plan of record: AMEND, unanimous 8/8 — zero votes for REPLACE.**

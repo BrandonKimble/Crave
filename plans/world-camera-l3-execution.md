@@ -6,6 +6,13 @@ Companions: `plans/world-camera-l1-execution.md` (restaurantOnly map + L1.c sequ
 its profile-adjacent arms land HERE), L2's pure `resolve-focus-camera.ts` (shipped 640e98f5)
 plugs in here, and the L5 resolver roll-up shipped 9e656bc4.
 
+> **Correction 2026-08-03 (truth audit):** the "L5 resolver roll-up shipped" reference is
+> void — the market system was exterminated 2026-07-22 and
+> `findOutermostCoveringMarket` no longer exists in the API. Nothing in L3's cutover depended
+> on it. (The rest of this doc is accurate archaeology: the re-adjudication was accepted and
+> the prepared-presentation machine was dissolved — see `plans/world-camera-l4-execution.md`'s
+> scoreboard.)
+
 ---
 
 ## ⚠️ PROPOSED RE-ADJUDICATION (2026-07-10 ~5AM) — the more ideal L3: NO ProfileBody world

@@ -2,7 +2,21 @@
 
 Last updated: 2026-04-13
 Status: delivered
-Scope:
+
+> **Correction 2026-08-03 (truth audit):** this doc describes exterminated
+> machinery as live. **The MARKETS system was fully removed 2026-07-22 and
+> is never to be reintroduced** — there is no `apps/api/src/modules/markets`
+> (see the module list under `apps/api/src/modules/`), no `/markets/resolve`
+> endpoint, and no `marketContext` / `marketKey` contract. Every "market"
+> sentence below (the `marketContext` target model, locked rule 3's
+> market-then-bounds preference, the `/markets/resolve` delivery note, and
+> the `services/markets.ts` scope entry) is historical only. The
+> location-optional SUBSTANCE still holds and is the durable part: viewport
+> is not user location, bootstrap coordinates are not semantic location,
+> proximity features require real `userLocation`. Also note the `Scope` and
+> `Related plans` paths point at `/Users/brandonkimble/crave-search/`, a
+> repo root that no longer exists — the tree is `/Users/brandonkimble/Crave/Crave`.
+> Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/navigation/runtime/MainLaunchCoordinator.tsx`
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/**`

@@ -4,19 +4,18 @@
 
 ## Recommended architecture: GRAFT: "prior-art-research" single-source/dual-layer GL design as the skeleton, hardened with (a) the pure-gl wall-clock single-scalar fade, (b) a CRITICAL fix that NO design got right — opacity authority must be unified by removing Mapbox's collision-fade and tile-reparse as competing opacity writers, and (c) the invariant must be bound to RENDERED pins (the prior-art Max-30 break), not an abstract allocator set. Reject all native-ViewAnnotation designs: they introduce a renderer-owned visibility authority (bounds-culling, async show/hide, SDK reverting isHidden) that no completion-gated state machine can fence off, and they cannot participate in the GL collision engine that the label-mutex requirement depends on.
 
-
 ## Recommendation
 
 GRAFT: "prior-art-research" single-source/dual-layer GL design as the skeleton, hardened with (a) the pure-gl wall-clock single-scalar fade, (b) a CRITICAL fix that NO design got right — opacity authority must be unified by removing Mapbox's collision-fade and tile-reparse as competing opacity writers, and (c) the invariant must be bound to RENDERED pins (the prior-art Max-30 break), not an abstract allocator set. Reject all native-ViewAnnotation designs: they introduce a renderer-owned visibility authority (bounds-culling, async show/hide, SDK reverting isHidden) that no completion-gated state machine can fence off, and they cannot participate in the GL collision engine that the label-mutex requirement depends on.
 
 Architecture name: "Unified-Authority Dual-Layer GL LOD." One immutable GeoJSON source (one feature per restaurant), two symbol layers (PIN: teardrop+badge+text; DOT: icon-only). Every pixel of marker opacity is the product of exactly TWO factors — paint-expression opacity (which we own via feature-state) and Mapbox collision-placement opacity (which Mapbox owns). The entire design is built to make the second factor a CONSTANT 1.0 on the opacity-bearing geometry, so our owned scalar is the SOLE opacity authority. That is the single insight every red-team exposed and no design fully executed.
 
-
 ## Substrate
 
 GL symbol layers only. ONE shared GeoJSON source, one Feature per restaurant, stable feature-id = restaurant id, written ONCE per data version, NEVER during camera movement.
 
 Two layers off that source:
+
 - PIN layer: icon=teardrop+badge, text=name label. icon-opacity = text-opacity = ["coalesce",["feature-state","p"], 0]. CRITICAL: icon-allow-overlap=TRUE and icon-ignore-placement=TRUE on the PIN ICON, so Mapbox's collision engine NEVER hides or collision-fades the pin glyph — the icon's only opacity factor is our scalar p. icon-opacity-transition and text-opacity-transition = 0ms (kills the implicit ~300ms GL paint transition; feature-state value becomes the instantaneous rendered value — confirmed settable on SymbolLayer in 11.x).
 - DOT layer: icon-only, icon-allow-overlap=TRUE, icon-ignore-placement=TRUE, icon-opacity = ["coalesce",["feature-state","d"], 1], transition 0ms.
 
@@ -24,53 +23,55 @@ The LABEL is the one place we KEEP Mapbox's collision engine: text-allow-overlap
 
 Why GL not ViewAnnotations: ViewAnnotations (1) are a second renderer-owned visibility authority (bounds-cull hide, async show/hide, SDK reverts manual isHidden — Mapbox issues #1748/#2057/#2149) that fences off our state machine and breaks no-flash/no-stuck at the viewport edge during pan; (2) cannot participate in GL collision, so the 4-anchor mutex would have to be reimplemented; (3) lag the GL camera mid-pan (trail). All three native designs broke on exactly these.
 
-
 ## Full architecture
 
 DATA FLOW:
+
 1. JS pushes result set {id,lat,lng,rank,score,color,name}. Native builds ONE FeatureCollection, also bakes a SOURCE PROPERTY "pinDefault" (0) and "dotDefault" (1) per feature so the coalesce fallback after a reparse renders fail-safe-to-DOT, never fail-to-PIN. Paint expr becomes ["coalesce",["feature-state","p"],["get","pinDefault"]]. Source set ONCE.
 2. SELECTOR runs on a CADisplayLink-gated dirty flag, throttled to ~12Hz while moving + once on onMapIdle. It (a) reads viewport bounds from cameraState, (b) filters the in-memory restaurant array (built once, with a grid/R-tree index) to in-viewport, (c) nth_element top-30 by rank. Output = desiredPins (≤30 ids). O(M) at 12Hz, off the render frame.
 
 PROMOTE/DEMOTE — the SLOT model is bound to RENDERED pins, not an abstract set (fixes prior-art's fatal Max-30 break):
+
 - A "slot" is occupied by any feature whose p>0 (i.e. visibly a pin OR mid-fade). The allocator counts features-with-active-or-settled-pin, NOT just "intended" pins.
 - Each tick, do a PAIRED crossfade swap: for each id leaving desiredPins, start demote (p→0); for each id entering, start promote (p→1) ONLY when count(p>0) < 30. A demoting feature still counts toward the 30 until its p actually reaches 0. This means a promote can be deferred one tick when the field is saturated mid-fade (acceptable: momentarily ≤30, never >30, never wrong). Short FADE_MS (~180ms) frees slots fast.
 - d is always written as 1−p from the single scalar, so a feature is never both fully-pin and fully-dot, and the pair always sums to ~1 (always-visible, no blank seam).
 
 FADE — single owned scalar, wall-clock, single writer:
+
 - Per id transition struct {startT=CACurrentMediaTime, fromP, targetP∈{0,1}, dur}. p(now)=lerp(fromP,targetP,clamp((now−startT)/dur,0,1)).
 - ONE CADisplayLink walks only the ACTIVE set (transitions not at endpoint), computes p, writes setFeatureState{p, d=1−p}. On reaching t≥1 it writes the EXACT endpoint once. Settled markers cost zero/frame; link self-pauses when active set empties.
 - RETARGET: from=current p, startT=now, target=new. (See howNoWiggle/openQuestions for the V-dip hysteresis that makes this monotonic-as-perceived.)
 
 DATA-VERSION / REPARSE PROTOCOL (the self-heal that no design fully had):
+
 - Subscribe to onSourceDataLoaded (fires on GeoJSON reparse, incl. zoom-bucket re-tile) AND onStyleDataLoaded. On either, AND for several ticks after any source set, re-assert feature-state {p,d} for every in-viewport id at its current owned value — not diff-only. Combined with the fail-safe-to-dot paint default, a reparsed tile shows at-worst a dot (never a phantom pin), and the next event/tick re-asserts the true value.
 - The reconciler is FULLY reconciling, not incremental: each selector tick asserts the owned target for every in-viewport id, so a dropped async write self-heals on the next tick (≤~80ms), not only on idle.
-
 
 ## Invariant: ≤30 (structural)
 
 TWO independent structural caps, both on RENDERED pins (the prior-art design's fatal flaw was capping an abstract allocator set while >30 fading-out pins rendered):
+
 1. INPUT cap: desiredPins is the output of nth_element take(30) — emitting a 31st id is unrepresentable by the bounded selection.
 2. RENDER cap: a feature's PIN icon renders iff p>0, and p is written >0 ONLY by a promote, and a promote fires ONLY when count(features-with-p>0) < 30. A demoting feature keeps counting toward 30 until its p reaches exactly 0 (endpoint write). So the number of features with p>0 — i.e. the number of pins that can paint a single pixel — provably never exceeds 30 at any instant, including mid-crossfade. The cap is on the rendered quantity, enforced by the promote-gate reading the live p>0 count, not a memory-set count.
-Because we also set icon-allow-overlap=TRUE / icon-ignore-placement=TRUE on the pin icon, Mapbox never adds a hidden-but-placed phantom and never collision-fades a 31st in — the GL placement budget can't introduce an extra pin either. There is no code path that paints a pin icon for a feature with p=0.
-
+   Because we also set icon-allow-overlap=TRUE / icon-ignore-placement=TRUE on the pin icon, Mapbox never adds a hidden-but-placed phantom and never collision-fades a 31st in — the GL placement budget can't introduce an extra pin either. There is no code path that paints a pin icon for a feature with p=0.
 
 ## Invariant: no flash (structural)
 
 Flash = a non-monotonic on-screen opacity trajectory. We make on-screen opacity EQUAL the owned scalar p (no hidden second factor), then make p monotonic:
+
 1. UNIFIED AUTHORITY: rendered pin-icon opacity = p × collision_opacity. We force collision_opacity≡1 for the icon (icon-allow-overlap=TRUE, icon-ignore-placement=TRUE) and set icon-opacity-transition=0 (no implicit GL ramp). So rendered opacity ≡ p, with no competing animator. This is the exact seam (the collision-fade multiplier + implicit transition) that broke pure-gl, hybrid, declarative-reconcile and prior-art; we close it by removing both.
 2. p has ONE writer (the display link) and moves linearly toward ONE target; d≡1−p so the marker is never both-high (double render) nor both-low (blank). A brand-new/reparsed feature renders the fail-safe-to-dot default — never a flash-of-pin.
 3. SOURCE is immutable during movement, so no feature is ever added/removed mid-flight → no "appear then vanish" from a source edit.
 4. The label opacity ALSO ≡ p with transition 0, so label and pin are algebraically lockstep. (The label's PLACEMENT can still change via the native mutex — that is anchor movement, addressed under wiggle/labels, not an opacity flash.)
-The only residual non-monotonicity is the boundary V-dip (demote then re-promote of the same id), handled structurally by membership hysteresis (howNoWiggle / labelCollisionPlan) — without it, p bends but reverses; with it, the id doesn't re-toggle.
-
+   The only residual non-monotonicity is the boundary V-dip (demote then re-promote of the same id), handled structurally by membership hysteresis (howNoWiggle / labelCollisionPlan) — without it, p bends but reverses; with it, the id doesn't re-toggle.
 
 ## Invariant: no stuck (structural)
 
 Three layers, defense-in-depth, the last of which is a true structural backstop:
+
 1. WALL-CLOCK TERMINATION: every transition's progress = (now−startT)/dur reaches ≥1 in bounded real time regardless of retargets (each retarget resets startT but keeps finite dur), and the link writes the EXACT endpoint (0 or 1) on completion. No per-transition object to orphan; the only writer of partials is the always-firing link, which by definition holds an active transition for any partial it produces.
 2. FAIL-SAFE PAINT DEFAULT: coalesce falls back to a source property (pinDefault=0), so even if a feature-state write is dropped or a tile reparses without state (#7122), the feature renders at a clean DOT, never a stuck partial and never a phantom pin.
 3. REPARSE-AWARE FULL RECONCILER: the selector asserts the owned target for EVERY in-viewport id every tick (idempotent, not diff-only), AND we re-assert all in-viewport feature-state on onSourceDataLoaded/onStyleDataLoaded. This converges any silently-dropped or reparse-cleared value back to {0,1} within ≤~80ms even during a sustained zoom storm (when onMapIdle never fires — the gap that made the prior-art and declarative designs' no-stuck claims non-structural). A partial with no active transition cannot persist: either the link is converging it, or the next reconcile tick re-issues its endpoint.
-
 
 ## No wiggle
 
@@ -79,20 +80,18 @@ Three layers, defense-in-depth, the last of which is a true structural backstop:
 3. LABEL ANCHOR-HOP (the subtle wiggle the red-teams flagged): labels DO use the native mutex, and a promote/demote changes the collision field, which can re-anchor a neighbor's label mid-pan. Mitigations: (a) DOT layer carries text=none and icon-ignore-placement=TRUE so dots never perturb label placement (kills the two-layer double-reserve); (b) FREEZE text-variable-anchor re-selection during camera movement — only re-solve label anchors on onMapIdle and on settled promote/demote, so labels hold their chosen anchor through a pan and re-solve when motion stops (the same hold-on-idle technique the native-design fix recommended, applied to GL). Anchor selection during motion is held; opacity still crossfades live.
 4. BOUNDARY V-DIP (a self-induced flicker, not classic wiggle): membership hysteresis (rank dead-band: promote on entering top-30, demote only on falling below ~rank 36) plus a commit-the-fade latch (a fade past X% toward an endpoint completes before it may reverse) so a fling grazing the boundary doesn't toggle a marker in/out. Hysteresis lives in the SELECTOR, never in the opacity path, so it cannot reintroduce stuck/flash.
 
-
 ## Labels + collision
 
 PRESERVE the existing 4-candidate mutex + space reservation natively, but DECOUPLE label OPACITY from label PLACEMENT:
+
 - PLACEMENT (kept native): PIN layer text-variable-anchor=[top,bottom,left,right] → Mapbox picks exactly one of 4 (the per-restaurant mutex, for free). text-allow-overlap=FALSE so labels reserve space and basemap labels + neighbors yield. symbol-sort-key=rank → lower rank wins placement (top-30 win their space). This is the ONE place Mapbox's collision engine stays authoritative — and it governs label PLACEMENT/visibility-by-collision, which is acceptable and desired (a label that genuinely can't fit should yield), NOT marker opacity.
 - OPACITY (made ours): text-opacity = same ["coalesce",["feature-state","p"],pinDefault], text-opacity-transition=0. So the label fades in lockstep with the pin via the single scalar, with no implicit GL transition. Label-present-iff-pin-present is algebraic.
 - ANCHOR STABILITY: re-solve variable-anchor only on idle / settled transitions (freeze during motion) to prevent neighbor anchor-hop wiggle.
 - TENSION ACKNOWLEDGED: text-allow-overlap=false means Mapbox MAY collision-hide a label (set its collision_opacity→0) independent of p. We accept this for LABELS only (a label dropping when it truly cannot fit is correct behavior and is what the existing system already does), but we keep it OFF the ICONS (allow-overlap=true) so the marker glyph itself — the thing the Max-30/no-flash invariants are defined on — is never collision-hidden. The pin icon is the invariant-bearing object; the label is allowed to yield. If product requires the label to never collision-flicker mid-pan, the fallback is self-computed label placement over the ≤30 known pins in Swift (bounded, trivial) writing the chosen anchor via feature-state — listed as an open question.
 
-
 ## Complexity
 
 Moderate. Substantially SIMPLER than any native-view design (no view pool, no CA, no completion bookkeeping, no second-authority reconciliation against the SDK). Core is: one source builder, one 12Hz selector (viewport filter + nth_element + hysteresis), one CADisplayLink fade loop over an active set, one paint-expression pair, and a reparse/reconcile re-assert hook. The genuinely new work vs. a naive GL design is small but essential: (1) setting transitions to 0 and allow-overlap=true on icons, (2) baking fail-safe-to-dot source defaults, (3) the onSourceDataLoaded re-assert, (4) binding the 30-cap to count(p>0) with paired swap + deferral, (5) freezing variable-anchor during motion. Estimate ~1-1.5k lines of Swift plus harness validation passes. Highest-risk items are all empirical (the open questions) — verify each on the existing LOD harness before locking, per the project's attribute-before-ideate rule.
-
 
 ## Borrowed from
 
@@ -137,6 +136,7 @@ Moderate. Substantially SIMPLER than any native-view design (no view pool, no CA
 ## Did it change?
 
 Yes. The corrected symptom (PINS flash/snap/stuck + >30 stuck; dots fine) invalidates the dot-collision framing the prior synthesis leaned on and re-centers the diagnosis on the PIN feature-state lifecycle: tile-reparse clearing LOD feature-state with no re-assert (against an asymmetric baked-0 fallback), plus decide() being gated on the on-screen SET signature (not rank/zoom). The two-scalar product and the abstract-30 cap are real smells but NOT the steady-state pin driver.
+
 ## Revised root cause (code-verified)
 
 Verified in code, the pin flash/snap/stuck during normal pan/zoom is driven by TWO compounding boundary bugs between the (correct) LodEngine and the Mapbox render substrate — neither is inside the engine:
@@ -146,6 +146,7 @@ Verified in code, the pin flash/snap/stuck during normal pan/zoom is driven by T
 (2) decide() GATED ON THE ON-SCREEN SET SIGNATURE (controller L10353: `guard visibleSignature != state.lastVisibleMarkerSetSignature`). The signature is the sorted on-screen marker-KEY set — not rank order, not zoom. On a pure zoom (or a post-movement idle settle whose signature was already seen mid-move), the on-screen set can be stable while the correct top-30 by rank shifts; decide() early-returns, `want` is stale, a pin that should demote stays at lod=1 and a replacement never gets a target. This is the >30-stuck path and a second class of stuck-at-1 pins, independent of reparse.
 
 The >30-stuck is the two together: stale want (gating) leaves the old top-30 at lod=1 while new promotes paint, and reparse strands settled survivors the engine no longer drives. The engine's step()/settle/retarget-from-current logic itself is CORRECT (every motion exit is via isSettled at an exact endpoint; the continuous display link L7526-7530 converges any in-MOTION key); it is starved of fresh `want` (gating) or has its output erased underneath it (reparse).
+
 ## Original fixes verdict
 
 Prior #1 (cap on count(p>0) RENDERED pins instead of the abstract prefix(30) set): AMENDED -> demoted to a low-priority guard. Verified the engine already converges demotions to 0 via the continuous display link (L7526-7530) and drains motion only at the exact endpoint, so a demoting pin renders only ~180ms transiently; it does NOT leave pins stuck >30. The real >30-stuck is decide-gating + reparse, not the cap. Keep the rendered-count invariant as a regression assertion only.
@@ -153,8 +154,8 @@ Prior #1 (cap on count(p>0) RENDERED pins instead of the abstract prefix(30) set
 Prior #2 (take the DOT render out of collision): DROPPED for the pin case. Targeted a dot symptom the corrected report retracts; irrelevant to pins (the pin icon is already out of collision via allow-overlap + ignore-placement).
 
 Prior #3 (dot opacity = 1 - pin): DROPPED / already implemented. Verified applyV5OpacityWrites writes liveDotFeatureState(opacity: 1 - p) at controller L7727. No-op to re-apply; does not touch the pin bug.
-## Prioritized fix plan
 
+## Prioritized fix plan
 
 ### 1. FIX A (HIGHEST LEVERAGE): Re-assert LOD feature-state on tile reparse. In handleSourceDataLoaded (SearchMapRenderController.swift ~L10050), when the acked sourceId is the pin/dot/label physical source (state.pinBundleSourceId / dotSourceId / labelRenderSourceId), re-emit applyV5OpacityWrites for every engine-tracked key at its CURRENT engine-projected opacity — engine.lastPromotedInOrder -> ~1 plus any mid-fade straggler with engine.pinOpacity(key) in (0,1). Add a small engine read accessor to enumerate non-zero fades, or iterate lastPromotedInOrder (pin=1) + demoted-on-screen (0). MUST be feature-state-only (no source republish / no removeGeoJSONSourceFeatures), preserving Phase 2 residency.
 
@@ -195,14 +196,13 @@ Proceed, but ATTRIBUTE before implementing — per the project's own rule, do no
 
 > 7-agent panel, SDK-verified (MapboxMaps 11.16.6). Verdict: keep GL, CAP the source maxzoom (the unused lever). VAs re-rejected on verified-missing APIs.
 
-
 ## Consensus ideal substrate
 
 GL symbol layers over ONE immutable, MAXZOOM-CAPPED GeoJSON source — NOT ViewAnnotations, NOT annotation managers, NOT a custom Metal/CALayer overlay. This is the decisive new consensus, and it is the same family we already use, re-tuned. Verified against the pinned SDK (MapboxMaps 11.16.6, Podfile.lock) and the live app code:
 
 (1) The three LOD ShapeSources in apps/mobile/src/screens/Search/components/search-map.tsx (DOT_SOURCE_ID L343, RESTAURANT_PIN_BUNDLE_SOURCE_ID L356, RESTAURANT_LABEL_RENDER_SOURCE_ID L399) set NO maxZoom/buffer/tolerance props — so they inherit the gl-native default maxzoom=18. GeoJSONSource.swift (Pods/.../Generated/Sources/GeoJSONSource.swift L15) documents maxzoom as 'Maximum zoom level at which to create vector tiles. Default value: 18.' THAT default is the proven cause of the ~27 z14->z17 reparses: every integer zoom up to 18 re-slices/re-parses tiles and clears feature-state. Capping maxzoom at/below the operating floor makes Mapbox OVERZOOM (reuse+scale) the existing maxzoom tile for all higher zooms — no new parse, no feature-state clear, for point data.
 
-(2) ViewAnnotations are decisively REJECTED for the marker field on a now-VERIFIED basis, not the prior outdated one. The two panels that 'vindicated' VAs rest on APIs that DO NOT EXIST in the pinned SDK: enableSymbolLayerCollision, mbxCollisionBox, and the auto-symbol-hiding Marker return ZERO matches in Pods/MapboxMaps/Sources. viewAnnotationAvoidLayers DOES exist (ViewAnnotationManager.swift L89) but is @_spi(Experimental) and its own doc says it 'currently only supports line layers' — it CANNOT suppress basemap POI/label SYMBOL layers, which is the single load-bearing label requirement. ViewAnnotationOptions.visible (L41-48) auto-syncs to the UIView's own visibility (a confirmed second visibility authority). So VAs lose the basemap-suppression invariant outright AND re-introduce a second authority. variableAnchors (L59) is real, but a 4-anchor mutex with no basemap suppression is a non-starter.
+(2) ViewAnnotations are decisively REJECTED for the marker field on a now-VERIFIED basis, not the prior outdated one. The two panels that 'vindicated' VAs rest on APIs that DO NOT EXIST in the pinned SDK: enableSymbolLayerCollision, mbxCollisionBox, and the auto-symbol-hiding Marker return ZERO matches in Pods/MapboxMaps/Sources. viewAnnotationAvoidLayers DOES exist (ViewAnnotationManager.swift L89) but is @\_spi(Experimental) and its own doc says it 'currently only supports line layers' — it CANNOT suppress basemap POI/label SYMBOL layers, which is the single load-bearing label requirement. ViewAnnotationOptions.visible (L41-48) auto-syncs to the UIView's own visibility (a confirmed second visibility authority). So VAs lose the basemap-suppression invariant outright AND re-introduce a second authority. variableAnchors (L59) is real, but a 4-anchor mutex with no basemap suppression is a non-starter.
 
 (3) Annotation managers are internally GeoJSONSource+SymbolLayer (same re-tile, fewer levers). CustomGeometrySource is MORE tiled. There is no non-tiled point substrate in this SDK.
 
@@ -219,11 +219,12 @@ HOW: This is the experiment that decides everything and has NOT yet been run on 
 ## ViewAnnotations decision
 
 REJECT — and the prior rejection is now CONFIRMED by reading the pinned SDK, not weakened by the runtime finding. The runtime bucketing finding made VAs LOOK attractive (they are literally always-resident individual views), and two panels argued 11.16.6 APIs vindicate them. I verified those APIs in Pods/MapboxMaps/Sources and they DO NOT support the claim:
+
 - enableSymbolLayerCollision / mbxCollisionBox / auto-symbol-hiding Marker: ZERO matches — do not exist in 11.16.6. The 'VAs can now suppress basemap labels' argument is FALSE for our SDK.
-- viewAnnotationAvoidLayers: exists but @_spi(Experimental) and 'currently only supports line layers' — cannot suppress the basemap POI/label SYMBOL layers, which is the load-bearing requirement (the app's label collision suppresses basemap name-rectangles via allowOverlap:false on GL; VAs cannot replicate this).
+- viewAnnotationAvoidLayers: exists but @\_spi(Experimental) and 'currently only supports line layers' — cannot suppress the basemap POI/label SYMBOL layers, which is the load-bearing requirement (the app's label collision suppresses basemap name-rectangles via allowOverlap:false on GL; VAs cannot replicate this).
 - ViewAnnotationOptions.visible auto-syncs to UIView visibility = the second-authority objection is real and present.
 - variableAnchors (4-anchor) IS real, but useless without basemap suppression.
-So VAs would forfeit the basemap-suppression invariant AND re-introduce a second visibility authority, while only solving the re-parse axis that maxzoom-capping already solves on GL. GL-with-maxzoom dominates VAs on the UNION of the owner's own requirements. VAs remain a possible future only for a tiny selected pinned-detail overlay (line-layer avoidance is fine there), never the LOD marker field.
+  So VAs would forfeit the basemap-suppression invariant AND re-introduce a second visibility authority, while only solving the re-parse axis that maxzoom-capping already solves on GL. GL-with-maxzoom dominates VAs on the UNION of the owner's own requirements. VAs remain a possible future only for a tiny selected pinned-detail overlay (line-layer avoidance is fine there), never the LOD marker field.
 
 ## Fix A verdict
 
@@ -282,6 +283,7 @@ CHANGED 3 — ViewAnnotations were RE-OPENED and DECISIVELY RE-CLOSED on verifie
 DID NOT CHANGE — The substrate is still GL symbol layers over one immutable source. We are NOT migrating off GL. The prior 'GL-only' direction was correct; it was just under-configured (maxzoom) and mis-attributed (Fix A as headline).
 
 ## Open questions
+
 - EMPIRICAL, make-or-break (must run before locking, per attribute-before-ideate): Does capping maxZoom at ~12-13 + buffer~512 actually drop the z14->z17 reparse count from ~27 to ~0 in THIS app with @rnmapbox + MapboxMaps 11.16.6? The overzoom mechanism strongly predicts yes for point data, but it has NOT been measured here. This single experiment validates or breaks the entire consensus.
 - What is the lowest interactive zoom the user actually reaches? maxZoom must be set at/below that floor; if users pan out to city/region scale below the cap, multi-tile reparses recur there (caught by Fix A, but worth knowing the frequency).
 - Below maxzoom, can a single horizontal PAN still cross a tile x/y boundary and reparse a fresh edge tile? Buffer mitigates (carry-over skirt), but the residual pan-boundary reparse rate at the chosen maxzoom/buffer must be measured.
@@ -294,7 +296,6 @@ DID NOT CHANGE — The substrate is still GL symbol layers over one immutable so
 # HISTORY ARCHAEOLOGY (2026-06-28) — how we got from 'map working well' (dc202882) to the coupled state
 
 > 7-agent git archaeology, code-verified. KEY: the anchor used the SAME tiled-GeoJSON+feature-state substrate (same maxzoom=18, re-parsed just as much) but was reparse-IMMUNE because at-rest truth lived in membership + baked-fallback=1, NOT volatile feature-state. Residency (wiggle fix) + V5 bake-to-0 moved truth onto feature-state and dropped the baked fallback to 0, losing the free immunity.
-
 
 ## Historical narrative
 
@@ -391,6 +392,7 @@ STEP 5 — UNIFY ICON AUTHORITY (if Step 0 shows any residual collision-fade/ram
 CLEANUP: remove the cceab1ae/[lodprobe] TEMP attribution once Steps 1-4 are validated. Keep the brain (MapLodKit.LodEngine) byte-intact throughout.
 
 ## Open questions
+
 - EMPIRICAL HINGE (make-or-break, unrun on this app): does maxZoom-capping at ~12-13 actually collapse the z14->z17 reparse storm to ~0 for POINT data via overzoom? No panel has run this. It is Step 1 and everything downstream assumes it; if overzoom does NOT preserve point feature-state in-band, the headline fix degrades to the Fix-A backstop racing 27 reparses (the compromise the owner rejects). Measure FIRST.
 - Does icon-ignore-placement:true + icon-allow-overlap:true FULLY remove the icon from the collision engine so rendered opacity == our feature-state scalar with no residual collision_opacity multiplier (on the pinned MapboxMaps 11.16.6)? If a residual factor remains, the unified-authority claim weakens and label placement may need self-computing in Swift.
 - Can icon/text-opacity-transition be set to 0ms on a SymbolLayer in 11.x and does that truly zero the implicit ~300ms paint ramp? Synthesis says 'confirmed settable' but flags it for harness confirmation on this exact SDK.
@@ -398,3 +400,49 @@ CLEANUP: remove the cceab1ae/[lodprobe] TEMP attribution once Steps 1-4 are vali
 - Mid-pan re-rank: when JS pushes a new top-30 during a gesture, is there a visible frame where the whole field pops to dot before the re-assert lands (fail-safe-to-dot default + re-assert-after-source-set)? If so, consider a feature-state-preserving superset source so geometry need not be re-set on a pure re-rank.
 - Does Step 3's re-assert risk re-introducing the wiggle if it ever triggers a source republish instead of pure setFeatureState? Must validate bundle:[*,*,0] holds during reparse recovery; applyV5OpacityWrites is already feature-state-only but the engine.reassert path is new.
 - Step 4 CPU: does folding zoom-bucket+rank-hash into the decide signature run decide() too often on a dense catalog? Mitigate via the signature fold + onMapIdle force-decide rather than removing the guard; measure CPU on a dense scene.
+
+---
+
+## Correction 2026-08-03 (truth audit) — the substrate verdict was reversed; only STEP 1 of the migration shipped
+
+**1. "Reject all native-ViewAnnotation designs" / "VAs are decisively REJECTED" is FALSE
+against code today.** The shipped map renders BOTH pins and labels as Mapbox
+ViewAnnotations: `SearchMapRenderController.swift:77-97` (`PinVAView` — "the per-pin view
+HOSTED BY a Mapbox ViewAnnotation") and :99-101 (labels → self-colliding VA). The
+rejection rested on an SDK census — "`enableSymbolLayerCollision` / `mbxCollisionBox` /
+auto-symbol-hiding Marker: ZERO matches — do not exist in 11.16.6". The repo has since
+upgraded to **MapboxMaps 11.26.0-rc.1** (`apps/mobile/ios/Podfile.lock:387`), where
+`enableSymbolLayerCollision` is public
+(`Pods/MapboxMaps/Sources/MapboxMaps/Annotations/ViewAnnotation.swift:120`) and is what
+makes VA labels win over the basemap (controller :5, :8001). The load-bearing
+basemap-suppression invariant that killed VAs is now satisfied BY the VA path. The GL
+pin/label symbol layers this document defended no longer exist in `search-map.tsx`.
+
+**2. Of the migration path, only STEP 1 landed.** Verified today:
+
+- STEP 1 (freeze the tile) — **SHIPPED.** `search-map.tsx:251, :277, :285` set
+  `maxZoomLevel={13}` on the LOD ShapeSources. This was the "make-or-break experiment no
+  panel had run"; it was run and kept.
+- STEP 2 (honest fail-safe-to-dot bake) — **NOT DONE.** The bake is still hardcoded 0
+  (`use-direct-search-map-source-controller.ts:848, :1991`) and the paint coalesce still
+  falls back to 0 (`search-map.tsx:218`).
+- STEP 3 (reparse re-assert / `engine.reassert`) — **NOT DONE.** `handleSourceDataLoaded`
+  still early-returns on `dataId == nil` (`SearchMapRenderController.swift:10042-10044`);
+  there is no `reassert` in `LodEngine.swift`.
+- STEP 4 (un-gate `decide()`) — **NOT DONE as specified.** The guard at controller
+  :10399 is still the on-screen-set signature; what was added instead is an EPOCH fold
+  (`epochChanged || visibleSignature != …`, :10388/:10399) — the presentation-epoch
+  derivation of `map-presentation-epoch-and-participation.md`, not a zoom-bucket +
+  rank-prefix hash.
+
+Steps 2-4 were never needed: freezing the tile removed the reparse storm, and the
+pin/label substrate then left GL entirely. Do not implement them.
+
+**3. The `[lodev]` prerequisite is permanently unavailable.** STEP 0 ("re-add a minimal
+step probe … the emitter was DELETED on this branch") is accurate archaeology — it was
+deleted at `364e17be2` and was never re-added. This is the only doc in the family that
+recorded the deletion honestly; the other four described the harness as live (audit
+F709/F729/F752).
+
+The custom iOS map is SHIPPED and best-in-class as of ~2026-07. This document is
+archaeology.

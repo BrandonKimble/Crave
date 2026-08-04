@@ -1,5 +1,31 @@
 # Search JS Run-1 Handoff Burst Breaker Plan
 
+> **SUPERSEDED 2026-08-03 (truth audit): archaeology.** This doc belongs to the
+> Feb–Apr 2026 SearchScreen-decomposition / nav-switch-perf line. It was overtaken by the
+> July 2026 lifecycle rebuild — `plans/search-desired-state-architecture.md` (S1–S4
+> charter, recorded fully executed) and then
+> `plans/search-lifecycle-phase0-autopsy.md` → `-phase0-requirements.md` →
+> `-phase1-ideal-design.md` → `-phase2-gap-verdict.md` → `-phase3-charter.md`. Read those
+> for the current shape.
+>
+> **Correction 2026-08-03 (truth audit):** the premise is false against code as of today.
+> `apps/mobile/src/screens/Search/index.tsx` is **87 lines**, not the 5,558/6,199-line
+> monolith with 452 hook operations described here; the decomposition landed via the
+> `screens/Search/runtime/**` owner tree (adapters/camera/controller/map/mutations/native/
+> profile/read-models/reconciler/resolver), NOT via the planned
+> `screens/Search/subtrees/` or `session/search-session-bus.ts` (neither path exists).
+> Android new-arch is already on: `apps/mobile/android/gradle.properties:38`
+> `newArchEnabled=true`, and `@rnmapbox/maps` is `10.3.1` (package.json:29), not 10.2.9.
+>
+> **Correction 2026-08-03 (truth audit):** every validation command here is dead. The repo
+> root is `/Users/brandonkimble/Crave/Crave`, not `/Users/brandonkimble/crave-search`
+> (that directory does not exist), and of the named scripts only
+> `scripts/no-bypass-search-runtime.sh` survives — `perf-shortcut-loop.sh`,
+> `perf-shortcut-loop-report.sh`, `perf-nav-switch-loop.sh`,
+> `search-runtime-natural-cutover-contract.sh`, and
+> `search-runtime-s4-mode-cutover-contract.sh` are all absent from `scripts/`. Any
+> "Status: active" line below is stale.
+
 Last updated: 2026-02-15
 Status: Implementation-ready
 Scope: `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/**`
@@ -272,7 +298,6 @@ Primary owner of response fanout (`handleSearchResponse`).
 Changes:
 
 1. Introduce explicit handoff phase emissions for run-1 page-1 path:
-
    - `handoff_phase: h1_phase_a_committed`
    - `handoff_phase: h2_marker_reveal`
    - `handoff_phase: h3_hydration_ramp`
@@ -280,7 +305,6 @@ Changes:
    - emissions must target runtime handoff coordinator owner (not root setter callback).
 
 2. Keep phase-A minimal:
-
    - `setResults` + visible-tab correctness only.
 
 3. Move non-critical root writes (`setSubmittedQuery`, pagination meta) behind H4 gate.
@@ -310,7 +334,6 @@ This is where heavy trees currently co-commit.
 Changes:
 
 1. Add handoff-phase state read and derived freeze flags:
-
    - `isRun1HandoffActive`
    - `isChromeDeferred` (true in H2/H3)
    - derive from runtime coordinator snapshot/selector, not root-local source-of-truth state.
@@ -339,19 +362,16 @@ Locked freeze implementation style:
 - do not use broad conditional JSX branching as primary freeze mechanism.
 
 3. Keep map visual-ready contract intact (`resultsVisualSyncCandidate`, `markVisualRequestReady`).
-
    - `index.tsx` must consume (not derive) phase transitions from coordinator.
    - `shouldHoldMapMarkerReveal` and timeout paths cannot directly advance to `H4`.
 
 4. Keep run-scoped profiler and stall correlation hooks only:
-
    - profiler attribution,
    - profiler span logs,
    - stall probe,
    - all run-scoped via `runNumber` + `harnessRunId`.
 
 5. Wire scheduler/governor from runtime composition into search submit + panel spec:
-
    - add `runtimeWorkSchedulerRef` to composition destructure (around current composition call near `:350-357`),
    - pass scheduler ref into `useSearchSubmit(...)`,
    - pass handoff phase and freeze flags into `useSearchResultsPanelSpec(...)`.
@@ -392,7 +412,6 @@ Changes:
 Changes:
 
 1. Introduce handoff-aware lightweight mode for H2/H3:
-
    - keep core rows rendering,
    - defer non-critical header/chrome recomputation and low-priority adornments,
    - avoid unnecessary list header churn until H4.
@@ -409,7 +428,6 @@ Changes:
 Changes:
 
 1. Keep run-scoped correlation support stable:
-
    - `getActiveShortcutRunNumber`,
    - harness run id propagation,
    - no pre-run event pollution.
@@ -429,7 +447,6 @@ Changes:
 Changes:
 
 1. Add `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/scheduler/frame-budget-governor.ts`.
-
    - implement `FrameBudgetGovernor` with:
      - `beginFrame(frameStartMs: number): void`
      - `canRun(lane: RuntimeWorkLane, estimatedCostMs: number): boolean`
@@ -442,7 +459,6 @@ Changes:
      - scheduler work budget: soft `<=8ms`, hard `<=12ms`.
 
 2. Upgrade `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/scheduler/runtime-work-scheduler.ts`.
-
    - extend task model:
      - `estimatedCostMs?: number`
      - `phase?: 'h1' | 'h2' | 'h3' | 'h4'`
@@ -455,7 +471,6 @@ Changes:
    - use governor before each task dispatch; defer when budget exhausted.
 
 3. Update `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/scheduler/phase-b-materializer.ts`.
-
    - constructor accepts shared scheduler instance (already accepts scheduler; keep shared singleton from composition),
    - hydration ramp uses scheduler-governed stepping instead of standalone timing loop as control source,
    - keep cancellation semantics via `operationId`.

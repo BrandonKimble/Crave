@@ -1,7 +1,28 @@
 # Map-LOD v5 — Single-Authority Per-Anchor FSM (the redesign)
 
 Status: DESIGN APPROVED-IN-PRINCIPLE 2026-06-23. Not yet built. Build in parallel behind `lodV5Enabled`.
-Produced by the lod-redesign workflow (3 independent designs → adversarial red-team → synthesis).
+
+> **Status correction 2026-08-03 (truth audit): "not yet built" is permanent — the parallel
+> v5 build never happened and never will in this shape.** There is no `lodV5Enabled` flag,
+> no `SearchMapLodV5.swift`, and no `*V5` sources/layers anywhere in `apps/`. The v5 name
+> survives only as vocabulary inside the shipped controller (`lodV5Engine`,
+> `applyV5OpacityWrites`, `applyV5ObstacleReseed`) wrapping the real single-authority brain,
+> `apps/mobile/ios/MapLodKit/Sources/MapLodKit/LodEngine.swift` (`public struct LodEngine`,
+> golden-tested via `swift test`). The map shipped ~2026-07 on that engine plus the
+> pins→VA / labels→VA substrate — most of the SCRAP list here died with those migrations
+> rather than with a v5 cutover. Do not use this as a build plan.
+
+> **Correction 2026-08-03 (truth audit):** the status line above is stale — **v5 WAS
+> built and shipped.** `apps/mobile/ios/MapLodKit/Sources/MapLodKit/LodEngine.swift` is
+> the live engine (one scalar per anchor, `decide(onScreenKeys:forcedKeys:)` +
+> `step(nowMs:)`, wall-clock `Fade`), driven from
+> `SearchMapRenderController.swift` (`state.lodV5Engine`, e.g. :1707). The
+> `lodV5Enabled` flag was collapsed — zero occurrences in the controller today — so
+> there is no "parallel behind a flag" build left to do. The engine has since grown
+> world-camera fields the design never anticipated (`Anchor.groupId`,
+> `Anchor.isInvisibleResident`). Read this document as the design rationale for shipped
+> code, not as pending work.
+> Produced by the lod-redesign workflow (3 independent designs → adversarial red-team → synthesis).
 
 ## TL;DR — the one idea
 

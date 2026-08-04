@@ -279,3 +279,33 @@ grid scroll/drag-auto-scroll/header-clamp at scale both sides, tile 2x2
 galleries on ~30 lists, dish cards with real connection photos on any
 account, and the Use-your-photos toggle flipping "My shots ATX" between own
 (sparse) and global galleries.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** three claims in §2/§3 have been
+> overtaken since 2026-07-13.
+>
+> 1. **Markets are gone.** "Polls: … ALL NYC/NJ markets … feed resolves market
+>    from map bounds (polls.service resolveMarket)" and "Market =
+>    region-us-tx-austin" describe exterminated machinery — the market system was
+>    removed 2026-07-22 and there is no `resolveMarket` in `apps/api/src` today.
+>    `region-us-tx-austin` survives only as an ENGINE/community name (e.g.
+>    `keyword-eligibility.spec.ts:77`), not a market. The fixture scripts'
+>    market arguments are archaeology; re-read them before re-running.
+> 2. **The followers gap (§2, "the reported bug") is FIXED.** The own-profile
+>    stat blocks are tappable now —
+>    `apps/mobile/src/overlays/panels/ProfilePanel.tsx:46` documents
+>    "Followers/Following are TAPPABLE (→ followList child push, same as
+>    UserProfilePanel's)". The one-line-class mobile fix this ledger deferred was
+>    taken.
+> 3. **The deferred `use_own_photos` column LANDED.** Leg 2 §1 says it "needs a
+>    `favorite_lists.use_own_photos` column — deferred … (no migration now)"; the
+>    column exists today as `useOwnPhotos Boolean @default(false)
+@map("use_own_photos")` (`apps/api/prisma/schema.prisma:1540`).
+>
+> STILL ACCURATE: §1's image-ranking equation is **unbuilt, as designed** — no
+> `eng_impressions/eng_taps/eng_view_seconds/eng_decayed_at/eng_score` columns
+> exist on `photos`, so the interim `focus-floor + uploadedAt DESC` ordering in
+> `photo-read.service.ts` is still the shipped policy. The equation remains
+> awaiting owner ratification, exactly as §1 states. `photo_events` also still
+> exists (`model PhotoEvent`, schema.prisma:1796) with no `view` type yet.

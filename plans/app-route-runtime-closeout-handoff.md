@@ -1,5 +1,16 @@
 # App Route Runtime Closeout Handoff
 
+> **[HISTORICAL — banner added 2026-08-03 (truth audit)]** This is the CLOSEOUT of the April
+> runtime/perf era (successor to `global-overlay-route-runtime-cutover-plan.md`). Its
+> "Closeout Standard" — _"runtime performance work should stop here unless a new profiler run
+> shows a concrete parent listener/writer"_ — was legitimately re-opened many times since by
+> exactly that evidence, and the layer it closes out was rewritten twice: by the scene-stack /
+> PresentationFrame era (`plans/page-switch-master-plan.md`) and then by the TrackSheet cutover
+> (`plans/page-composition-from-scratch-design.md` §THE FLIP → `plans/residents-cutover-plan.md`).
+> Its "Recommended next prompt" and "Commit Readiness Manifest" are spent. What still holds and
+> is worth carrying: the delete-gate discipline (`scripts/app-route-runtime-delete-gate.sh`,
+> `yarn app-route:delete-gate`) and the §"Intentional Remaining Subscriptions" reasoning.
+
 Last reconciled: 2026-04-30.
 
 Source plans:

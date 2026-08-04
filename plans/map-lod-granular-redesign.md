@@ -1,5 +1,18 @@
 # Map LOD — ground-up redesign to one granular per-pin rule (2026-06-19)
 
+> **⚠️ SUPERSEDED (noted 2026-08-03, truth audit).** THE ONE RULE ("a marker is a PIN iff
+> it is in the top-N by rank among the markers currently ON SCREEN, decided natively per
+> camera frame") SHIPPED and is canonical — it is `LodEngine.decide(onScreenKeys:forcedKeys:)`
+> in `apps/mobile/ios/MapLodKit/Sources/MapLodKit/LodEngine.swift`. But the machinery
+> named throughout is gone: `updateLivePinTransitions`, `driveNativeLod`,
+> `livePinTransitionsByMarkerKey` and the whole v4 stepper were deleted (see
+> `lod-v5-canonicalization-worklog.md`), and the DELETE list's JS targets
+> (`map-render-model.ts`, `buildShortcutViewportProjectionToken`,
+> `resolveMapPlannerAdmission`) no longer exist. Superseded by `lod-v5-architecture.md`
+> → `lod-v5-ideal-architecture-plan.md` → `map-lod-master-plan.md` →
+> `map-lod-va-pin-architecture.md` (the ViewAnnotation cutover that actually shipped).
+> Archaeology.
+
 Decision: stop layering hysteresis / stable-membership / quantized-cadence / whole-frame
 republish on top of a model that drifted from the simple thing that worked. Restore the
 granular per-pin behavior the OLD code had (Feb–Mar 2026) and that EVERY later plan

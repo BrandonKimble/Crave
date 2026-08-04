@@ -1,5 +1,19 @@
 # Search Map Reveal/Dismiss Smoothness Cutover Plan
 
+> **ARCHAEOLOGY 2026-08-03 (truth audit).** The resident-data + dormant-layers end-state
+> below is real and shipped, but the surrounding status is stale by two months. The "NOT
+> done" clusters were overtaken: presentation/structural framing was reworked by the
+> layer-level O(1) presentation + canonical-swap work
+> (`plans/search-map-ideal-effort/02-CONFIRMED-FINDINGS.md`,
+> `06-CANONICAL-SWAP-REFACTOR.md`), and the label-observation lane this plan gates on no
+> longer exists — labels are ViewAnnotations and the observation/selector stack is deleted
+> (`07-va-migration-cleanup-manifest.md`). Scope paths point at
+> `/Users/brandonkimble/Crave/apps/mobile/…` and at
+> `components/hooks/use-search-map-label-observation.ts` /
+> `use-search-map-label-runtime.ts`, none of which exist (the repo is
+> `/Users/brandonkimble/Crave/Crave`). "Android parity is pending" is still true and now has
+> a home: `plans/android-parity.md`.
+
 ## Current status (2026-06-16)
 
 This doc carried TWO contradictory models for a while — an older 8-cluster

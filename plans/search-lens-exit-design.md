@@ -68,8 +68,8 @@ and the §8.8 invariant becomes grep/spec-assertable).
 ## 2. The vocabulary change (the actual cut)
 
 - `SearchDesiredTuple` splits: `{ identity: SearchQueryIdentity, tab, committedBounds,
-  lens: SearchLens }` where `SearchLens = { openNow, priceLevels, rising, listSort?,
-  marketKey? }` and `filterVariant` keeps ONLY `includeSimilar` (or dissolves into
+lens: SearchLens }` where `SearchLens = { openNow, priceLevels, rising, listSort?,
+marketKey? }` and `filterVariant` keeps ONLY `includeSimilar` (or dissolves into
   identity outright).
 - `buildSearchCardsWorldKey` = identity + tab + bounds + includeSimilar. The lens is
   NOT in the world key; the slice cache keys `(worldKey, lensKey)`.
@@ -80,7 +80,7 @@ and the §8.8 invariant becomes grep/spec-assertable).
   mid-pagination) vs LENS-FLIP (a new, lighter class: no world teardown, no episode
   camera work — the map re-slices markers, the list re-slices rows, ONE joint).
 - The episode (reveal pipeline): a lens flip stages a `revise` txn with plan `{paint,
-  mapFrame}` — exactly the soak-proven toggle/revise vocabulary; nothing new.
+mapFrame}` — exactly the soak-proven toggle/revise vocabulary; nothing new.
 
 ## 3. What deletes
 
@@ -96,8 +96,8 @@ and the §8.8 invariant becomes grep/spec-assertable).
   the slice fetch — unchanged behavior, new vocabulary. The RED proof re-runs: open
   pins count === open cards count on a paginated world.
 - §8.8 `listIdSet === mapIdSet` under every lens: spec at the mounted-store chokepoint
-  + a harness assertion (compare mountedResults ids to the marker catalog ids under
-  openNow on/off).
+  - a harness assertion (compare mountedResults ids to the marker catalog ids under
+    openNow on/off).
 - M-1: a lens flip never pushes/revises a session (harness: entryId stable across chip
   flips — extends the existing M-1 check).
 - Dismiss/restore: X from a lensed world unwinds identically to unlensed (the lens is
@@ -145,7 +145,7 @@ and the §8.8 invariant becomes grep/spec-assertable).
 
 - The strip chip's write path for openNow on NATURAL/SHORTCUT worlds (today a tuple
   write): confirm every caller flows through one setter that can retarget to the lens.
-- Coverage worlds (openNow SHORTCUT mouth): the openNow *shortcut submit* is an
+- Coverage worlds (openNow SHORTCUT mouth): the openNow _shortcut submit_ is an
   IDENTITY (a shortcut world whose retrieval is open-scoped) — NOT a lens flip over
   'best restaurants'. Verify the mouth vocabulary survives the split (the shortcut
   tab axis stays identity; only the in-results chip becomes a lens).
@@ -160,3 +160,15 @@ and the §8.8 invariant becomes grep/spec-assertable).
   (leg 10); confirm the natural lane's variant fetch covers the same axes (believed yes
   — today's variant_rerun re-queries with filters; the slice fetch is that fetch,
   re-keyed under the identity).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the lens axis list in §1/§2 includes
+> `marketKey` — the market system was exterminated 2026-07-22 and there is no `marketKey`
+> in the search runtime. The shipped `SearchLens` is
+> `{ openNow, priceLevels, rising, listSort?, cityPlaceId? }`
+> (`apps/mobile/src/screens/Search/runtime/shared/search-desired-state-contract.ts:266-272`)
+> — `cityPlaceId` took that slot ("changes membership but not identity — a city slice of
+> the same list", :263-264). The S1/S2/S3 EXECUTED status at the top otherwise checks out:
+> `SearchLens` + `selectSearchLens` are live, `search-open-now-variant.ts` is gone, and
+> the surviving projection is `search-world-derivation.ts`.

@@ -1,5 +1,23 @@
 # Search Candidate Generation (Score-Ranked)
 
+> **Correction 2026-08-03 (truth audit): the Progressive Relaxation half of this plan —
+> including the "Implementation Notes (What We Actually Shipped)" claims about it — is
+> false against code as of today.** The relaxation ladder was DELETED in the 2026-08-02
+> search cutover and replaced by ONE pooled execution behind a pooled richness gate. See
+> `apps/api/src/modules/search/search-constraints.ts:45-47`: "CUTOVER 2026-08-02: the
+> relaxation ladder is deleted — there is one pooled execution, so the former per-stage
+> `stage`/`stagePresence` … are gone; the pooled richness gate replaced staged drops."
+> Nothing in the repo defines `relaxed_food_attributes` / `relaxed_restaurant_attributes`
+> / `relaxed_modifiers` any more (grep: zero hits under `apps/api/src/modules/search`);
+> the gate lives in `search-pooled-gate.spec.ts`. Treat every "Attempt A (strict) → if too
+> small → drop attributes", the adaptive stage-selection rule, the sectioned
+> Exact/Broader page-1 UX, and the `counts.stage` on-demand context enum as archaeology.
+>
+> Also stale in the same section: `SearchExecutionDirectives` survives
+> (`search-execution-directives.ts`) but no longer gates an attribute-only OR _inside a
+> relaxation stage_, and the "market" wording under "Stage selection when both modifiers
+> exist" refers to a system exterminated 2026-07-22.
+
 This plan captures the agreed direction for improving search relevance while keeping **ranking purely by existing score** (restaurant score for restaurants, dish/connection score for dishes).
 
 ## Goals
@@ -347,7 +365,6 @@ Dish list:
 ### Proposed
 
 - Dish list candidates (union):
-
   - `food_id` matches taco IDs
   - OR `categories` overlap taco IDs (supports broad category matching)
   - OR (optional) `food_attributes` overlap when explicitly provided/resolved

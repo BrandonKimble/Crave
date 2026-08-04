@@ -1,5 +1,21 @@
 # Shortcut Submit Performance Investigation Log (Compacted)
 
+> **SUPERSEDED — archaeology only.** This Feb-2026 Codex-era loop ran against a Search runtime
+> that no longer exists (closed out by `f26102bc9`, 2026-04-30; see
+> `plans/app-route-runtime-closeout-handoff.md`). Its "Active Thread Latch" and "Next Loop
+> Plan" are not live instructions.
+
+> **Correction 2026-08-03 (truth audit):** the "Canonical Harness Command" and the whole
+> metric contract described here are false against code as of today. There is no
+> `yarn ios:device:perf-shortcut-loop` script, no `scripts/perf-shortcut-local-ci.sh`, no
+> `plans/perf-logs/` directory, and no occurrence of `shortcut_loop_run_start` /
+> `shortcut_loop_run_complete` / `perf-shortcut-report.v1` anywhere in the repo. Every log path
+> cited under "Latest key metrics" is dead, and all of them are rooted at the retired
+> `/Users/brandonkimble/crave-search/`. The only surviving artifact is
+> `plans/perf-baselines/perf-shortcut-live-baseline.json`, whose numbers (JS floor 1.3) no
+> longer describe any runnable harness. The live perf substrate today is
+> `apps/mobile/src/perf/` (command registry + JS/UI frame samplers), per CLAUDE.md.
+
 Last updated: 2026-02-13 03:20
 Owner: Codex autonomous loop sessions
 
@@ -52,14 +68,12 @@ Calibration note (2026-02-13):
 - local gate flow (`bash ./scripts/perf-shortcut-local-ci.sh gate`) is the promotion source of truth until hosted live perf CI is reintroduced.
 
 - Fresh baseline (`covdelay-base`):
-
   - log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T025050Z-covdelay-base.log`
   - JS floor mean: `3.27`
   - JS stall max mean: `219.4ms`
   - dominant floor stage: `coverage_loading`
 
 - Candidate (`phaseA=4 + phaseB step4/80 + coverage post-settle delay 700ms`):
-
   - log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T025210Z-covdelay-phaseA4.log`
   - JS floor mean: `3.23` (`-0.03`)
   - JS stall max mean: `256.6ms` (`+37.2ms`)
@@ -67,7 +81,6 @@ Calibration note (2026-02-13):
   - dominant floor stage moved to `results_hydration_commit` / `marker_reveal_state`
 
 - Candidate (`phaseA=4 + coverage delay + keep previous markers during loading`):
-
   - log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T025330Z-covdelay-phaseA4-keepprev.log`
   - JS floor mean: `3.17` (`-0.10`)
   - JS stall max mean: `230.5ms` (`+11.1ms`)
@@ -75,14 +88,12 @@ Calibration note (2026-02-13):
   - dominant floor stage: `marker_reveal_state`
 
 - Candidate (`map presentation freeze during submit`):
-
   - baseline log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T024500Z-mapfreeze-off.log`
   - candidate log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T024620Z-mapfreeze-on.log`
   - floor delta: `-0.87` (regression)
   - stall delta: `+60.7ms` (regression)
 
 - Validation run (`P0.5 live harness wiring verification`, `runs=1`):
-
   - log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260213T023338Z-signin-rerun.log`
   - report: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260213T023338Z-signin-rerun.report.json`
   - parser schema: `perf-shortcut-report.v1`

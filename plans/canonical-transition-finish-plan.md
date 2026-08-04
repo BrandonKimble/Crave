@@ -1,3 +1,24 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** The blockquote below calls this
+> "THE canonical roadmap"; it has not been canonical since 2026-06-27, the same day
+> `canonical-sheet-transition-master-plan.md` was written ("Supersedes
+> `canonical-transition-finish-plan.md`… as the execution spine"). The chain from there:
+> `transition-engine-final-master-plan.md` (2026-06-29, hard-swap+skeleton pivot) →
+> `page-switch-master-plan.md` (2026-07-01, the Committed Presentation Frame) →
+> `page-composition-from-scratch-design.md` (THE PAGE v2, 2026-07-16, and its TrackSheet
+> cutover) → `page-world-derivation.md` (2026-07-29) → `residents-cutover-plan.md` (2026-08-01).
+>
+> **Correction 2026-08-03 (truth audit):** Phase 7's "Final DoD: zero swapImmediately/
+> preserveOutgoing" was never met and is now moot — a grep over `apps/mobile/src` still returns
+> 53 `swapImmediately|preserveOutgoing` hits, and the seeded-forward-open lever the phase was
+> supposed to delete is still live (`SEEDED_FORWARD_OPEN_SCENES` referenced from
+> `navigation/runtime/app-overlay-route-command-runtime.ts:173,195`,
+> `app-route-overlay-session-state-controller.ts:98,497`). What DID survive from this plan and is
+> real in code today: the readiness collector and the demoted watchdog —
+> `SCENE_READINESS_LIVENESS_MS` is present at
+> `navigation/runtime/app-route-scene-transition-policy-runtime.ts:145,424,432` and
+> `app-route-scene-motion-executor.ts:183`, documented there as a never-hit watchdog exactly as
+> Phase 4 specified.
+
 # Canonical Transition Architecture + Finish-Both-Plans Build Plan
 
 > THE canonical roadmap (2026-06-27, from a 9-agent review workflow, code-spot-checked). Supersedes the scattered
@@ -6,6 +27,7 @@
 > and a FINITE end (work demonstrably ENDS at Phase 7). Full synthesis archived in the run output (wzi67785r).
 
 ## WHERE WE ARE
+
 - **Plan A (Polls): essentially DONE.** BE phases 0–5 + FE creation/feed/cadence/thread built + sim-validated. Real
   remnants: (1) **description-as-seed** — `scanForKnownEntities` runs only on comments (polls.service.ts:826), never on
   `description`; graduation sends only `poll.question`. (2) **Sunday cron default** — POLL_RELEASE_DAY_OF_WEEK=1 (Monday)
@@ -17,8 +39,10 @@
   (OverlayRouteEntry is {key,params} only; dismiss poll-hardcoded + collapsed-only). **19 cruft items to delete.**
 
 ## THE CANONICAL ARCHITECTURE — three composable layers (all load-bearing)
+
 One sentence: **every scene declares readiness via one contract; every transition is a row in one descriptor table;
 every navigation is a push/pop on one origin-carrying back-stack.** Nothing else governs timing, content, or return.
+
 1. **Readiness contract (spine).** Replace the boolean-bag admission policy with `SceneReadinessContract`
    {requiredContentGates[], loadingGates?[], requiredRestoreGates?[]} + a transaction-keyed collector
    `markSceneContentGate(settleToken, gate)` (in app-route-scene-switch-controller.ts, beside activeSettlePlanesByToken).
@@ -34,6 +58,7 @@ every navigation is a push/pop on one origin-carrying back-stack.** Nothing else
    hardcodes by construction.
 
 ## 320ms + FOLD-UP — explicit answer
+
 - **320ms: REMOVED as the completer, kept as a never-hit watchdog** (renamed SCENE_READINESS_LIVENESS_MS) guarding
   Reanimated's non-guaranteed withTiming.onFinish. Layer 1 supplies the real ready signal → the timer stops governing
   normal behavior. Satisfies "no blind timers."
@@ -41,6 +66,7 @@ every navigation is a push/pop on one origin-carrying back-stack.** Nothing else
   hypothesis is confirmed half-right — and the right half (one readiness contract for all scenes) is the whole fix.
 
 ## BOTH BUGS (canonical fixes, no special-casing)
+
 - **BUG 2 (poll-card stale feed) = the `seeded` axis + Layer 1.** Keep the instant-cover snap (correct for a full-screen
   child). pollDetail seeded:true → seeded header paints same frame; `emptyComponent = loading ? null` (PollDetailPanel
   .tsx:1115) → `loading ? <CommentSkeleton/>`; the `thread` gate fires on comments-resolved. **Stale window = 0.**
@@ -49,14 +75,16 @@ every navigation is a push/pop on one origin-carrying back-stack.** Nothing else
   Return pops to the exact comment. The child-vs-root distinction that caused the bug disappears.
 
 ## DELETION LIST (19, → zero opt-outs/hardcodes, one handoff path)
+
 320ms-as-completer (→watchdog); 7 swapImmediately/preserveOutgoing opt-out sites; dead swapAfterCollapse enum (+ the
 whole RouteSceneSwitchSheetContentHandoff enum); 2 'polls' dismiss hardcodes (closeActiveRoute polls@collapsed,
 dismissAppSearchRouteResultsToPolls); 3 poll-welded dismiss gates (completeDismissHandoff + markPollPagePartReady +
 commitDismissBoundary collapsed-only); armSearchCloseRestore clobber + ROOT-only SearchSessionOriginContext;
-searchSurfaceOwnsVisibleSheet fork + isForwardOpen* relabel cluster; isFavoritesSourcedResults + favorites/
+searchSurfaceOwnsVisibleSheet fork + isForwardOpen\* relabel cluster; isFavoritesSourcedResults + favorites/
 shouldHideResultsSheet suppression gates.
 
 ## BUILD SEQUENCE — finite, each phase sim-verifiable, deadlock seam LAST
+
 - **Phase 0 — Close Plan A remnants** (independent, low-risk): ✅ IMPLEMENTED + diff/typecheck-verified (uncommitted).
   (1) description-as-seed: rebuildPollLeaderboard re-scans `poll.topic.description` (NOTE: description lives on
   PollTopic, not Poll) + folds keyed by createdByUserId in both axes; createStructuredPoll now calls rebuild at create.
@@ -121,6 +149,7 @@ shouldHideResultsSheet suppression gates.
   watchdog; both bugs fixed on sim; all 4 pillars built. WORK ENDS HERE.**
 
 ## OPEN RUNTIME QUESTIONS — sim-verify (instrument-first), per phase
+
 - Q1 [3a]: instrument contentTransitionToken arm-vs-commit on the poll-CARD path (prior instrumentation was the
   comment-span path); confirm the ~2.7s split + that the `thread` gate closes the window.
 - Q2 [1/3]: can markSceneContentGate generalize markPollPagePartReady's source-validation without regression?
@@ -130,5 +159,6 @@ shouldHideResultsSheet suppression gates.
 - Q5 [4]: confirm the watchdog never fires on healthy opens across the full matrix.
 
 ## RISK (honest): Phases 0–4 low-risk/additive/reversible. Phase 5 medium (new cross-surface push). Phase 7 HIGH
+
 (touches the 2026-06-22 deadlock) — mitigated to acceptable by going dead-last behind the mandatory NULL-DELTA harness
 gate + byte-identical-by-construction for the existing seam.

@@ -225,6 +225,15 @@ KEEP: collisionBuilder + onScreenMarkerKeys (shared loop), dot/pin lea writes, c
 (feeds the VA labels). Execute in a DEDICATED session: native family removal first (guards →
 family registration → mutations → emits), then the JS emit cut, full build + on-device re-verify.
 
+> **Correction 2026-08-03 (truth audit) — two stale references in this doc.**
+> (1) The `[lodev]` harness named as a verification gate twice above ("Verify dots still
+> LOD-fade on the `[lodev]` harness", and gate (A) of the STEP-3 reopen path) DOES NOT EXIST
+> and never did — a repo-wide grep for `lodev` under `apps/` returns exactly one hit and it
+> is a comment (`SearchMapRenderController.swift:10417`). Those gates are unrunnable as
+> written; see the correction block at the bottom of `plans/lod-v5-architecture.md`.
+> (2) The repo path note below is stale: `/Users/brandonkimble/CraveApp` does not exist; the
+> repo lives at `/Users/brandonkimble/Crave/Crave` today.
+
 Space-in-path NOTE RESOLVED: repo moved to /Users/brandonkimble/CraveApp/Crave (space-free);
 "~/Crave" and "~/Crave App" are compat symlinks. The Pods-side quote patch is now unnecessary
 (and will wash out on the next pod install); the committed app-pbxproj quoting stays as a

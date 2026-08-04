@@ -2,15 +2,16 @@
 
 ## Decision summary
 
-Migrate the <=30 promoted pins off the tiled GL `restaurant-pin-single-symbol-layer` (search-map.tsx:386) + `restaurant-pin-shared-shadow-layer` (search-map.tsx:371) onto a **self-owned `PinOverlayView` UIView holding pooled per-pin `CALayer`-backed tiles, positioned by per-frame `mapboxMap.point(for:)` projection on the existing LodEngine CADisplayLink** — NOT the Mapbox `ViewAnnotationManager`. This is the **performance proposal's spine** (single own-clock pass = project + opacity + z-order, no SDK collider, no second positioning signal, no `bringSubviewToFront` churn), grafted with the **correctness proposal's lifecycle/parity rigor** (per-instance ownership keyed by `(mapTag, markerKey)`, demoting-residual latched on the *delivered* `pinOpacity==0` write + `engine.wants(key)==false`, single-clock presentation multiply as the default, async tap-resolve integration) and the **minimal proposal's seam discipline** (the only engine change is the write target inside `applyV5OpacityWrites`; `LodEngine` stays byte-intact). The decisive reason to reject Mapbox VA: I re-verified that `ViewAnnotationManager.placeAnnotations` calls `containerView.bringSubviewToFront(view)` **per annotation on every GL-Native positions pass** (ViewAnnotationManager.swift:404) and that with `allowOverlap=true` "the ordering of the views are determined by the order of their addition" (ViewAnnotationOptions.swift:32; class doc line 48: "Z-index is based on addition order") — there is **no per-frame screen-Y z-lever in the VA SDK**, and the SDK re-applies its own subview order each pass, so any manual resort is fought every frame. A self-owned overlay sidesteps this entirely: sibling `CALayer.zPosition` under one superlayer gives exact continuous viewport-y ordering with zero SDK interference. The wiggle dies because position comes from `point(for: coordinate)` every frame (no geojson-vt tile, no re-quantization) — structurally, at any zoom.
+Migrate the <=30 promoted pins off the tiled GL `restaurant-pin-single-symbol-layer` (search-map.tsx:386) + `restaurant-pin-shared-shadow-layer` (search-map.tsx:371) onto a **self-owned `PinOverlayView` UIView holding pooled per-pin `CALayer`-backed tiles, positioned by per-frame `mapboxMap.point(for:)` projection on the existing LodEngine CADisplayLink** — NOT the Mapbox `ViewAnnotationManager`. This is the **performance proposal's spine** (single own-clock pass = project + opacity + z-order, no SDK collider, no second positioning signal, no `bringSubviewToFront` churn), grafted with the **correctness proposal's lifecycle/parity rigor** (per-instance ownership keyed by `(mapTag, markerKey)`, demoting-residual latched on the _delivered_ `pinOpacity==0` write + `engine.wants(key)==false`, single-clock presentation multiply as the default, async tap-resolve integration) and the **minimal proposal's seam discipline** (the only engine change is the write target inside `applyV5OpacityWrites`; `LodEngine` stays byte-intact). The decisive reason to reject Mapbox VA: I re-verified that `ViewAnnotationManager.placeAnnotations` calls `containerView.bringSubviewToFront(view)` **per annotation on every GL-Native positions pass** (ViewAnnotationManager.swift:404) and that with `allowOverlap=true` "the ordering of the views are determined by the order of their addition" (ViewAnnotationOptions.swift:32; class doc line 48: "Z-index is based on addition order") — there is **no per-frame screen-Y z-lever in the VA SDK**, and the SDK re-applies its own subview order each pass, so any manual resort is fought every frame. A self-owned overlay sidesteps this entirely: sibling `CALayer.zPosition` under one superlayer gives exact continuous viewport-y ordering with zero SDK interference. The wiggle dies because position comes from `point(for: coordinate)` every frame (no geojson-vt tile, no re-quantization) — structurally, at any zoom.
 
-> **Naming note:** despite the title "ViewAnnotation Migration," the chosen substrate is a **hand-built overlay that mirrors `ViewAnnotationsContainer`'s hitTest passthrough**, not the Mapbox VA API. This is deliberate and load-bearing (see Z-order). The VA *concept* (UIView bound to a coordinate, above GL, frame-only positioning) is preserved; the VA *manager* is not used.
+> **Naming note:** despite the title "ViewAnnotation Migration," the chosen substrate is a **hand-built overlay that mirrors `ViewAnnotationsContainer`'s hitTest passthrough**, not the Mapbox VA API. This is deliberate and load-bearing (see Z-order). The VA _concept_ (UIView bound to a coordinate, above GL, frame-only positioning) is preserved; the VA _manager_ is not used.
 
 ---
 
 ## Components
 
 ### `PinOverlayView.swift` (NEW — `apps/mobile/ios/cravesearch/`)
+
 - **Responsibility:** one passthrough `UIView` per map instance, inserted as a sibling directly above `handle.mapView` (so it tracks the MapView's frame and sits above all GL content, matching where VAs would live). Hosts all pin tile views as direct subviews under its single `layer`. Owns the pool.
 - **Key types / API:**
   - `override func hitTest(_:with:) -> UIView?` — **exact mirror of `ViewAnnotationsContainer.hitTest` (ViewAnnotationsContainer.swift:13-16):** `let v = super.hitTest(...); return v == self ? nil : v`. Returns nil for empty areas so map pan/zoom pass through; returns the hit tile otherwise. **Verified** this is the correct passthrough idiom.
@@ -18,6 +19,7 @@ Migrate the <=30 promoted pins off the tiled GL `restaurant-pin-single-symbol-la
   - `userInteractionEnabled = true`, `clipsToBounds = false`, `layer.masksToBounds = false`, **no `shouldRasterize`** (would flatten and ignore zPosition).
 
 ### `PinTileView.swift` (NEW — nested or sibling file)
+
 - **Responsibility:** one reusable per-pin view. `CALayer` tree built **once**, rebound on reuse:
   - `bodyLayer: CALayer` — `contents` = the `(bucket,rank)` badge `CGImage`, `anchorPoint=(0.5,1.0)` (tip at bottom-center → tip lands on the projected coordinate), `contentsScale = UIScreen.main.scale`, bounds = 28pt box.
   - `shadowLayer: CALayer` — `contents` = `restaurant-pin-shadow` `CGImage`, `anchorPoint=(0.5,1.0)`, constant screen-space offset `(0, +STYLE_PINS_SHADOW_TRANSLATE.y)` below the tip, sized `PIN_MARKER_RENDER_SIZE/98` (search-map.tsx:198), composited **below** bodyLayer.
@@ -25,6 +27,7 @@ Migrate the <=30 promoted pins off the tiled GL `restaurant-pin-single-symbol-la
 - **Key API:** `configure(markerKey:restaurantId:badgeCGImage:activeCGImage:)`, `setHighlighted(_:)` (swaps bodyLayer.contents body↔active), `setCombinedOpacity(_:)` (body & shadow), `setScreenPoint(_:)`, `reset()` (clear contents, opacity 0, transform identity, highlight false). Implements `point(inside:)` override to expand the hit area to `PIN_TAP_INTENT_RADIUS_PX` (= `PIN_MARKER_RENDER_SIZE/2`, search-map.tsx:1166) with `PIN_INTERACTION_CENTER_SHIFT_Y_PX` (search-map.tsx:1165) for tap-geometry parity.
 
 ### `PinOverlayController` slice (NEW methods in `SearchMapRenderController.swift`)
+
 - **Responsibility:** **per-instance** state, keyed alongside the existing instance/handle maps. Holds `[instanceId: PinOverlayInstance]` where `PinOverlayInstance = { overlayView, slotsByMarkerKey: [String: PinTileView], freePool: [PinTileView], cgImageCache: [String: CGImage] }`.
 - **Key methods:**
   - `syncOverlayRoster(instanceId:promotedInOrder:anchorsByKey:)` — lifecycle reconcile (create/recycle).
@@ -35,10 +38,12 @@ Migrate the <=30 promoted pins off the tiled GL `restaurant-pin-single-symbol-la
   - `teardownOverlay(instanceId:)`.
 
 ### `PinSpriteCatalog` (NEW — native sprite bridge)
+
 - **Responsibility:** resolve sprite ids → `CGImage` **lazily** for the <=~34 in-roster ids only. Mirrors `rankBadgeImageId`/`activeRankBadgeImageId`/`plainBucketImageId` (quality-color.ts:91-109, search-map.tsx:130).
 - **CRITICAL (reviewer mustFix):** PIN_BADGE_IMAGES are RN Metro asset modules, not loose bundle PNGs — `[UIImage(named:)]`-by-filename will fail in release builds. The catalog must receive a **native `[imageId: UIImage]` table delivered over the bridge** (resolving the RN asset refs the JS side already imports), then decode-to-`CGImage` on demand. **Asset count is ~1100 `pin-rank-b{0..9}-{1..99|overflow}` + ~100 `pin-rank-active-*` + 10 `pin-b{0..9}` + shadow** (the "369" figure from two proposals is wrong; verify the real matrix). Lazy decode keeps memory bounded.
 
 ### Seam edits in `SearchMapRenderController.swift`
+
 - `applyV5OpacityWrites` (7721-7778): branch on `pinSubstrate` flag — in `.overlay` mode route pinOpacity to `applyOverlayOpacities`, **skip** the pin + shared-shadow `setFeatureState` writes (dot + label writes unchanged).
 - New **unconditional** per-frame projection pass added to the live-pin display-link handler (see Z-order/Opacity).
 - `decide` drive site (~10461): after `engine.decide`, call `syncOverlayRoster(promoted, anchorsByKey:)`.
@@ -57,6 +62,7 @@ Migrate the <=30 promoted pins off the tiled GL `restaurant-pin-single-symbol-la
 **Today (GL):** `applyV5OpacityWrites` (7721-7763), per `(markerKey, pinOpacity)`: `let p = clamp(pinOpacity, 0, 1)`; `setFeatureState(pinPhysicalSourceId, markerKey, [nativeLodOpacity: p, nativeLodRankOpacity: p])`. The GL expression `iconOpacity: ['*', presentation, lod]` (search-map.tsx:2664) does the multiply on the GPU.
 
 **After (overlay):** at the same call site, in `.overlay` mode:
+
 ```
 let p = clamp(pinOpacity, 0, 1)
 let presentation = state.currentPresentationOpacityValue   // per-instance scalar, 8090/8191
@@ -66,6 +72,7 @@ tile.bodyLayer.opacity = combined
 tile.shadowLayer.opacity = combined * Float(STYLE_PINS_SHADOW_OPACITY)  // 0.65, search-map.tsx:190
 CATransaction.commit()
 ```
+
 `setDisableActions(true)` defeats CALayer's implicit 0.25s opacity animation, so `layer.opacity` exactly equals the engine's wall-clock projection each tick — **the engine's `Fade` IS the animation curve**, never CA's.
 
 **Clock — the single decisive correctness fix (resolves the cross-proposal "same clock" error).** There are genuinely **two CADisplayLinks**: the per-controller main link that steps presentation, and the per-instance converge link that steps LOD. Two independent failure modes were surfaced by reviewers and are resolved here:
@@ -85,6 +92,7 @@ CATransaction.commit()
 **Strategy:** replicate `symbolZOrder: 'viewport-y'` (search-map.tsx:2622; lower-on-screen draws in front) via **`CALayer.zPosition` on sibling tile layers under the one `PinOverlayView.layer`**, set in the **same unconditional per-frame pass** that projects positions.
 
 **Per-frame pass (unconditional — runs every display-link tick regardless of `engine.step` motion):**
+
 ```
 for each resident tile:
   let sp = handle.mapView.mapboxMap.point(for: coordinate)   // MapboxMap.swift:809, VERIFIED public
@@ -92,13 +100,14 @@ for each resident tile:
   tile.layer.position = sp                                    // bottom-center anchor → tip on coord
   tile.layer.zPosition = CGFloat(sp.y)                        // larger y = lower = front = correct
 ```
+
 All tile layers are siblings under a single non-flattening superlayer → CoreAnimation honors `zPosition` for compositing **regardless of subview-array index**, with no re-add/remove and no layout pass. This is a UIKit/CA fact (not a Mapbox one) and is the **single Step-1 on-device validation item** flagged below.
 
 **Hit-test order** (separate from compositing): UIView `hitTest` walks subviews back-to-front by **array order**, which `zPosition` does NOT affect. So after the position pass, when residency or screen-Y order changes, also reorder the actual subviews ascending-by-screenY (`overlayView` brings each tile to front in screen-Y order) so the **frontmost-composited (largest y) pin is also last in the subview array = hit first**. Because we own the container (no SDK `bringSubviewToFront` fighting us — the whole reason for rejecting the VA manager), this resort is authoritative and never overwritten. Skip the subview resort on ticks where neither residency nor relative screen-Y order changed (cache last order) to avoid waste.
 
 **Forced/selected bias:** a highlighted pin gets `zPosition += FORCED_Z_BIAS` (e.g. +100000) and is brought to the front of the subview array, so a selected pin floats above neighbors (GL emphasis parity).
 
-**Shadow z:** shadow is a sublayer of its own tile, composited below that tile's body, and the whole tile composites as one unit at the tile's zPosition. **Known deviation from GL:** GL draws ALL shadows in one shared layer *under* ALL bodies; here a nearer pin's shadow can draw over a farther pin's body. **Decision: accept this** — under dense overlap it is visually negligible and the wiggle/perf win dominates. If a Step-4 pixel-compare shows it objectionable, render shadows in a separate sub-plane (a second container layer below the body container, both sorted by the same screenY) — specified as the fallback, not the default.
+**Shadow z:** shadow is a sublayer of its own tile, composited below that tile's body, and the whole tile composites as one unit at the tile's zPosition. **Known deviation from GL:** GL draws ALL shadows in one shared layer _under_ ALL bodies; here a nearer pin's shadow can draw over a farther pin's body. **Decision: accept this** — under dense overlap it is visually negligible and the wiggle/perf win dominates. If a Step-4 pixel-compare shows it objectionable, render shadows in a separate sub-plane (a second container layer below the body container, both sorted by the same screenY) — specified as the fallback, not the default.
 
 **Per-frame cost:** 30× `point(for:)` (cheap matrix transform) + 30 `position`/`zPosition` scalar writes + an occasional 30-element subview resort. Well under 0.1ms against 16.6ms. GATE-A already proved 30 views hold 60fps; re-measure with this full write load before deleting GL (open question).
 
@@ -146,7 +155,7 @@ All tile layers are siblings under a single non-flattening superlayer → CoreAn
 
 **Remove / recycle:** when the demoting-latch fires, recycle the tile (`reset()` → freePool); it is NOT deallocated. Views are never destroyed mid-session (matches "VAs don't reuse views" reality but we add our own pool so zero per-frame allocations during pan). **No leak:** every alloc'd tile is either resident (added) or pooled (removed from superview); pool bounded.
 
-**`setRanking` / new search:** the engine prunes vanished keys from `fades`/`want` immediately. **Reviewer-flagged regression:** for those keys `engine.pinOpacity` drops to 0 at once → a tile would *pop*, not fade. **Decision:** accept the pop for new-search (the whole map is being replaced; the result-engine's gapless transition covers it) OR, if owner wants a fade, hold a controller-side 180ms fade for vanished keys before recycle. Default: **document the pop**; revisit only if it reads badly on device.
+**`setRanking` / new search:** the engine prunes vanished keys from `fades`/`want` immediately. **Reviewer-flagged regression:** for those keys `engine.pinOpacity` drops to 0 at once → a tile would _pop_, not fade. **Decision:** accept the pop for new-search (the whole map is being replaced; the result-engine's gapless transition covers it) OR, if owner wants a fade, hold a controller-side 180ms fade for vanished keys before recycle. Default: **document the pop**; revisit only if it reads badly on device.
 
 **Dismiss / teardown:** on `isVisualSourceInactiveOrDismissing` (same guards at 7919/7992), the **presentation stepper** drives every resident tile's opacity to 0 over the dismiss (per the Opacity section — this is why the presentation stepper, not the cancelled LOD link, owns resident-pin opacity). On terminal hidden / instance teardown: `teardownOverlay` removes all tiles, empties the pool, drops refs, and **`overlayView.removeFromSuperview()`** — wired into the existing per-instance cleanup (`cancelLivePinTransitionAnimation`/`removeInstance`/`invalidate` 887-903) so the overlay is torn down **before** the MapView, no orphaned views.
 
@@ -182,7 +191,7 @@ Set `overlayMirrorsGl=false`. `applyV5OpacityWrites` in `.overlay` mode skips th
 
 **STEP 5 — TAP + HIGHLIGHT PORT.** Prepend `overlayHitTest` in `resolveRenderedPressTarget`; emit `targetKind:'pin'`; remove the pin branch (3289) of the GL query; append `applyOverlayHighlight`. Validate: tap opens detail identically; active sprite recolor; tapped-dot forced-promotes to a tile; pin>label>dot priority; dots/labels tap unchanged. **Gate the GL pin tap query OFF the moment `overlayHitTest` is live** (don't wait for Step 6) to avoid double-resolution. Two-sim.
 
-**STEP 6 — DELETE GL PIN LAYERS.** Only after Steps 1-5 green on both sims: delete `PIN_SINGLE_SYMBOL_LAYER_ID` (search-map.tsx:386) + `PIN_SHARED_SHADOW_LAYER_ID` (371) + their style/expression/registration; remove the pin + shadow entries from `updateLeaMembershipLiterals` (7796-7799, **keep dot + labels**); remove the pin feature-state branch (incl. the Step-1 telemetry mirror) from `applyV5OpacityWrites`; repoint the harness pin metric to overlay opacity; delete the pin `queryRenderedFeatures` path. **Keep:** engine, dots GL + LEA, labels GL + collision/mutex, the invisible obstacle source (still fed from `lastPromotedInOrder`). The pin GL *source* may be slimmed to data-only or kept for the obstacle feed. **GATE:** full two-sim regression — wiggle (zoom-in AND zoom-out, extreme), crossfade, tap, highlight, z-order, shadow, dismiss-fade, no leaks (instrument pool size + live count), LEA/lagged-literal still operating for dots+labels.
+**STEP 6 — DELETE GL PIN LAYERS.** Only after Steps 1-5 green on both sims: delete `PIN_SINGLE_SYMBOL_LAYER_ID` (search-map.tsx:386) + `PIN_SHARED_SHADOW_LAYER_ID` (371) + their style/expression/registration; remove the pin + shadow entries from `updateLeaMembershipLiterals` (7796-7799, **keep dot + labels**); remove the pin feature-state branch (incl. the Step-1 telemetry mirror) from `applyV5OpacityWrites`; repoint the harness pin metric to overlay opacity; delete the pin `queryRenderedFeatures` path. **Keep:** engine, dots GL + LEA, labels GL + collision/mutex, the invisible obstacle source (still fed from `lastPromotedInOrder`). The pin GL _source_ may be slimmed to data-only or kept for the obstacle feed. **GATE:** full two-sim regression — wiggle (zoom-in AND zoom-out, extreme), crossfade, tap, highlight, z-order, shadow, dismiss-fade, no leaks (instrument pool size + live count), LEA/lagged-literal still operating for dots+labels.
 
 **STEP 7 — Cleanup.** Remove the `overlayMirrorsGl` scaffolding and the `pinSubstrate` flag (overlay is the only path). Final two-sim regression.
 
@@ -191,7 +200,8 @@ Set `overlayMirrorsGl=false`. `applyV5OpacityWrites` in `.overlay` mode skips th
 ## Pre-build API verifications
 
 **Re-verified by me against Pods source (confirmed):**
-- `mapView.viewAnnotations` is `public private(set)` (MapView.swift:44) — *not used* but confirms the manager is reachable; the overlay's "above all GL content" placement mirrors VA behavior (ViewAnnotation.swift:12).
+
+- `mapView.viewAnnotations` is `public private(set)` (MapView.swift:44) — _not used_ but confirms the manager is reachable; the overlay's "above all GL content" placement mirrors VA behavior (ViewAnnotation.swift:12).
 - `mapboxMap.point(for: coordinate) -> CGPoint` is public (MapboxMap.swift:809); batch `points(for:)` at 820 — the per-frame projection lever exists.
 - `ViewAnnotationsContainer.hitTest` returns nil for self (ViewAnnotationsContainer.swift:13-16) — the passthrough idiom `PinOverlayView` copies. **Confirmed correct.**
 - Z-order reality: `placeAnnotations` calls `containerView.bringSubviewToFront` per annotation per positions pass (ViewAnnotationManager.swift:404); with `allowOverlap=true`, "ordering of the views are determined by the order of their addition" (ViewAnnotationOptions.swift:32); class doc "Z-index is based on addition order" (line 48). **Confirms the VA manager has no per-frame screen-Y z-lever → rejecting it is correct.**
@@ -201,6 +211,7 @@ Set `overlayMirrorsGl=false`. `applyV5OpacityWrites` in `.overlay` mode skips th
 - VA size via `systemLayoutSizeFitting` (ViewAnnotation.swift:376-385) — **the overlay avoids this entirely** by setting `CALayer.bounds` directly (the correctness reviewer's zero-size risk does not apply).
 
 **Must verify on-device before/early in coding (cannot confirm from source):**
+
 1. **`CALayer.zPosition` reorders sibling tile layers under `PinOverlayView.layer` for compositing without re-adding subviews, given no `shouldRasterize`/flattening mask.** This is a CA fact, not Mapbox — **Step 1 on-device validation item.** If it fails (unlikely), fall back to subview-array reordering (which we fully own).
 2. **`mapboxMap.point(for:)` cadence vs GL paint during fast pan.** Driven on the LOD/converge display link, it may lag GL dots by ≤1 frame, uniform across all 30 pins (not jittery). Measure against a recording in Step 1; if a visible drift appears, also project inside `onCameraChanged`/`onMapIdle`.
 3. **`point(for:)` behavior for behind-camera/off-screen coords** — reuse the existing `computeOnScreenMarkerKeys` finiteness/behind-camera guard (10345) before positioning a tile (a NaN position mis-places/crashes a layer).
@@ -222,3 +233,32 @@ Set `overlayMirrorsGl=false`. `applyV5OpacityWrites` in `.overlay` mode skips th
 - **Open: does the search map ever pitch/rotate?** If yes, the constant-offset shadow and `screenY` z-sort need rotation-aware handling. Confirm camera/gesture config before Step 4.
 - **Open: GATE-A 60fps headroom** with the full Step-1-3 write load (project + opacity + zPosition + subview resort, worst-case budget+forced ~34 tiles) — re-measure on both sims before deleting GL.
 - **Open: press-scale feedback** — add it (parity requirement mentions it) or strictly match today's none? Confirm with owner before Step 5.
+
+---
+
+> **Correction 2026-08-03 (truth audit): the decision summary's decisive rejection was
+> reversed in the shipped code.** This document's headline is "**NOT** the Mapbox
+> `ViewAnnotationManager`" — a self-owned `PinOverlayView` positioned by per-frame
+> `mapboxMap.point(for:)` with `CALayer.zPosition` z-order, rejecting the VA manager
+> because `placeAnnotations` calls `bringSubviewToFront` every pass and there is "no
+> per-frame screen-Y z-lever in the VA SDK". What actually shipped is the opposite, and
+> it cites this file while contradicting it:
+>
+> `apps/mobile/ios/cravesearch/SearchMapRenderController.swift:77-80` —
+> "PIN OVERLAY (self-owned ViewAnnotation-style substrate) — plans/map-lod-va-pin-architecture.md /
+> The per-pin view **HOSTED BY a Mapbox ViewAnnotation** … the VA is **SDK-positioned +
+> SDK-z-ordered (via `priority`), so there is no per-frame `point(for:)` projection**".
+>
+> So: `PinOverlayView.swift` / `PinTileView.swift` were never built as specified; the
+> per-frame projection pass, the `zPosition` sort and the subview resort are not the
+> shipped mechanism; `PinVAView` + `vaByKey` are. Labels followed pins onto VAs in a
+> Phase 2 this document did not plan (controller :99-101), which also deleted the GL
+> label substrate the "What stays untouched" section promised to keep. The enabling
+> change was the SDK upgrade to **MapboxMaps 11.26.0-rc.1** (`Podfile.lock:387`) with
+> `enableSymbolLayerCollision` (controller :5, :8001) — the whole 11.16.6-era API
+> verification block above is obsolete.
+>
+> Also stale: STEP 1's gate is written against "the `[lodev]` harness" and its
+> `renderP`/`roleGap` metrics — that emitter was deleted at `364e17be2` and does not
+> exist (audit F709/F729/F752). Treat this file as the design that pointed the way, not
+> as a description of the shipped substrate.

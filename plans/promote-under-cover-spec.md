@@ -10,7 +10,7 @@ two wins.
 
 The loading cover must lift ONLY once the promoted rank pins are already PICKED and their labels
 already SETTLED **under the cover**, and the cover lift is synced to the moment the map content
-BEGINS to fade in — so the *correct* pins fade in already-settled. No pin pop, no re-jig after the
+BEGINS to fade in — so the _correct_ pins fade in already-settled. No pin pop, no re-jig after the
 fade.
 
 ## The current gap
@@ -44,7 +44,7 @@ commit so labels are placed for the promoted set).
 ## Gotchas (the parts that bite)
 
 1. **`projectAndEmitOnScreenMarkers` guards on `.visible`** (`guard visualSourceLifecycleState ==
-   .visible else { return }`, ~line 11182). Under cover the state is `.preparingReveal`/`.revealing`,
+.visible else { return }`, ~line 11182). Under cover the state is `.preparingReveal`/`.revealing`,
    so a naive call early-returns. The guard needs to also allow the under-cover preroll states for
    this promotion pass (or factor the projection body so the preroll path can call it).
 2. **Promote BEFORE the label-placement commit**, not after — promotion decides which markers are
@@ -64,11 +64,27 @@ commit so labels are placed for the promoted set).
 
 ## Verification (per the LOD harness)
 
+> **Correction 2026-08-03 (truth audit):** the verification section below is UNRUNNABLE as
+> written — the `[lodev]` telemetry harness DOES NOT EXIST in this repo and never did. A
+> repo-wide grep for `lodev` over `apps/` returns zero hits in any `.swift`/`.ts`/`.tsx` source
+> (the only hits anywhere are inside `plans/*.md`), and `log stream --predicate '[lodev]'`
+> returns nothing. There is no `frame` event, no `promotedRanks` field, no `roleP`/`renderP`.
+> The only live map telemetry is the narrative `[LODDBG]` NSLog probes gated behind
+> `static let lodDebugLoggingEnabled = false` in `SearchMapRenderController.swift`. Same
+> correction already recorded in `plans/lod-ideal-residency-refactor.md` §CORRECTION 2026-08-03
+> and noted in `CLAUDE.md` (the map is SHIPPED; the `[lodev]` harness is a ghost — do not go
+> looking for it). To verify this spec you must first BUILD an instrument (a minimal step probe
+> emitting renderP/roleP, per `plans/lod-greenfield-redesign-synthesis.md` STEP 0). Also note
+> CLAUDE.md's standing rule: the shipped map is a finished surface — do not add instrumentation
+> there unless you are actually changing the map.
+
 - `[lodev]` `frame` event with the promote reason fires BEFORE `mounted_hidden`/fade-in (not at
   settle), `promotedRanks` contiguous `1..N`, `roleP == renderP`, matching the cards.
-- On reveal AND on a toggle re-search: the cover lifts and the *already-correct* pins fade in — no
+- On reveal AND on a toggle re-search: the cover lifts and the _already-correct_ pins fade in — no
   pin pop / re-jig mid-fade.
 - Toggle into a changed/filtered set with a static camera settles deterministically (no stuck
   spinner, `roleP > 0`).
 - No regression to the wiggle/jank metrics (`mut` bundle adds/removes ~0 while moving).
-</content>
+
+<!-- Correction 2026-08-03 (truth audit): a stray `</content>` tag closed this file — an
+     artifact of the generating tool, not content. Removed. -->

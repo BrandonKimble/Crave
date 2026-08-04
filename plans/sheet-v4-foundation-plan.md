@@ -1,3 +1,20 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** Successor of
+> `overlay-sheet-system-redesign-v2/v3.md`; superseded by `overlay-sheet-unification.md`, then by
+> the scene-stack era (`page-switch-master-plan.md`) and finally by the TrackSheet cutover
+> (`page-composition-from-scratch-design.md` §THE ONE TRACK → `page-world-derivation.md` →
+> `residents-cutover-plan.md`).
+>
+> **Correction 2026-08-03 (truth audit):** §D's verdict — "V4 is essentially complete… keep the
+> custom core… snap-on-swap already supported, no new code" — was overtaken. The custom
+> reanimated core it blesses (`BottomSheetWithFlashList` + `useBottomSheetShared*`) was later
+> judged structurally un-red-teamable and REPLACED: see
+> `page-composition-from-scratch-design.md` §THE GESTURE REDESIGN CHARTER (2026-07-24, "the sheet
+> gesture/scroll system's correctness is an emergent property of mount order… Patches end here")
+> and §THE ONE TRACK. `overlays/BottomSheetWithFlashList.tsx` no longer exists;
+> `apps/mobile/src/tracksheet/` is the shipped sheet. §B's decision record is still accurate and
+> its artifact survives:
+> `apps/mobile/src/screens/Search/runtime/shared/NAV_SHEET_VISIBILITY_MAP.md` exists on disk.
+
 # Sheet V4 — The Foundation Pass (DISCUSSION DRAFT)
 
 > Successor to `overlay-sheet-system-redesign-v2.md`. This is the **final** sheet-architecture

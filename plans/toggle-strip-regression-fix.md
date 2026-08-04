@@ -64,3 +64,28 @@ itself is rebuilt.
 
 1. Validate #1 on device. 2. #3 fixed-chrome restore (focused). 3. Rising→Sort modal. 4. #2 once the
    residency map work is committed. Each behind a maestro rapid-toggle flow.
+
+---
+
+## Correction 2026-08-03 (truth audit) — SUPERSEDED
+
+**Superseded by:** `toggle-strip-audit-leg1.md` → `toggle-strip-and-edit-charter.md` →
+`toggle-strip-rebuild-ledger.md` (legs 2-15). This June-2026 archaeology is preserved as
+the record of the three regressions; do not execute its prescriptions.
+
+> **Correction 2026-08-03 (truth audit):** regression #3's fix — "render the strip as FIXED
+> chrome OUTSIDE the list (restore the `SearchResultsHeaderChromeAuthority` pattern —
+> recover via `git show 9fa642d7~1:...`)" — is false as a go-forward instruction against
+> code as of today. `SearchResultsHeaderChromeAuthority` does not exist and was not
+> restored; the strip layer was rebuilt instead as `apps/mobile/src/toggles/ToggleStrip.tsx`
+> with two declared mounts (`strip: 'none' | 'in-list' | 'header'` in
+> `apps/mobile/src/navigation/runtime/scene-foundation-spec.ts:31`). `FrostedFilterStrip`
+> — the shared shell all three regressions were described against — was DELETED in leg 3.
+
+> **Correction 2026-08-03 (truth audit):** "Also still pending — Rising → Sort modal" is
+> DONE. `toggle-strip-primitive.md` session 2 shipped `SelectorChip` + `OptionSelectorSheet`
+>
+> - `OptionSelectorHost`, put Sort ⌄ left of the segment pill, and deleted the Rising chip.
+>   `SearchSortSheet.tsx` and the "sort modal-layer runtime" named here were never built and
+>   are not needed — the root-hosted option selector is the shipped mechanism
+>   (`apps/mobile/src/components/OptionSelectorSheet.tsx`).

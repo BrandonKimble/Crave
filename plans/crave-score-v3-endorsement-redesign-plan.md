@@ -12,7 +12,8 @@ scoring systems left standing, no faked signals — just the correct flow.
 
 > **⚠️ Superseded during implementation — read before trusting the math below.** The endorsement
 > RANKING in §4 shipped as described, but three pieces changed and are now canonical elsewhere:
-> - **Endorsement pooling (§4.1, §4.2, §8).** The `w_m / w_u = 0.7 / 0.3` mention/upvote *split* was
+>
+> - **Endorsement pooling (§4.1, §4.2, §8).** The `w_m / w_u = 0.7 / 0.3` mention/upvote _split_ was
 >   replaced by a single pooled term `log1p(mentions + upvoteWeight·upvotes)` with
 >   **`upvoteWeight = 0.7`** (a gentle writer premium, NOT a 0.7/0.3 split). See
 >   `crave-score-rising-heat-redesign.md` + `product/scoring/composite-tuning.md`.
@@ -179,7 +180,7 @@ Geometric `discount(i) = ρ^i`, ρ∈(0,1):
   middle or tails is a tunable, decided by eyeballing the map (§10).
 - **Color = score, everywhere.** No relative/percentile-per-viewport coloring, no hybrid —
   rejected as "two color meanings on one screen." Color is 10 deciles (`tier = clamp(floor(score),
-  0, 9)`) from `apps/mobile/src/constants/score-bucket-palette.json`.
+0, 9)`) from `apps/mobile/src/constants/score-bucket-palette.json`.
 
 ---
 
@@ -404,3 +405,18 @@ dishes exist + their categories; a Step-2 attempt to read raw events dropped it 
   collection backfills ~5 yr of history (post-date plumbing already correct → no pipeline work),
   decay becomes meaningful automatically, and the only remaining task is **tuning
   `endorsementHalfLifeDays`** by eyeballing whether once-hot-now-quiet places sink.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the Status line's "`scoreVersion 'crave-score-v3'`
+> is the live default" is false against code as of today — the live default is
+> **`crave-score-v4`** (`apps/api/src/modules/content-processing/public-crave-score/
+public-crave-score.service.ts:72`), cut 2026-07-20 with the §8 per-source calibration room
+> (`A_source` per observed day, `g = max(A, floor)/ref` pinned per epoch in
+> `crave_score_calibration_epochs`, calibrated counts INSIDE `log1p`, sourceClassInfluence 1.0).
+> Two further drifts: §7/§9's `score_delta_7d`/`score_delta_28d`/`movement_state` were DROPPED
+> (migration `20260628000000_crave_score_rising_contract`) — the live column is `rising`; and
+> §8's `w_m/w_u = 0.7/0.3` split is dead — the live term is
+> `log1p(Σ influence·(m + upvoteWeight·u)/g)` with `upvoteWeight = 0.7`
+> (public-crave-score.service.ts:93,219-238). §5's "1,801 restaurants / 1,175 dishes" figures
+> are the June-2026 corpus, not current.

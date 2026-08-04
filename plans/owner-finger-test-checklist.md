@@ -170,3 +170,16 @@ only where the _feel_ still needs your eye.
 - No gallery paging (>60), no photoViewer (grid tap is a no-op seam).
 - Profile section tabs/tiles are plain pills/text rows.
 - Poll close/delete/report have NO backend yet (nothing fake-wired).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** §1's `listDetail: … disabled "Market ·
+soon" chip` is untestable — the market system was exterminated 2026-07-22 and
+> the string appears nowhere in `apps/mobile/src` today. Skip that clause; the
+> rest of the listDetail line (sort strip, collaborator chip → modal, invite
+> copy-link `?join=1` vs "Share list") stands. §7's flagged $9.99/$79.99-vs-
+> $7.99/$39.99 reconcile is still OPEN and has grown a second half: prod's
+> `REVENUECAT_ENTITLEMENT_MAP` is `premium:entl60198dffff`, the entitlement
+> `plans/payments-ideal-shape.md` records as detached+ARCHIVED — see that doc's
+> F1203 note. Both are RevenueCat/ASC config, not code, and both must be settled
+> before `ENTITLEMENT_GATING` flips to `enforce` (prod is still `log`).

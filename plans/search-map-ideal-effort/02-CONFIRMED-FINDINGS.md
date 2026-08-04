@@ -1,5 +1,16 @@
 # STEP-0 Confirmed Findings (owner mimic-flow drive, 2026-07-01 ~01:56)
 
+> **ARCHAEOLOGY BANNER 2026-08-03 (truth audit).** An accurate running fix-log of the
+> 2026-07-01/02 map effort; the map shipped ~2026-07 and this file is history. One section
+> must not be read as current: the **COLLISION-TWIN "BUILT + CORE-VALIDATED"** entry. The
+> twin was later DELETED (2026-07-11) — its 4-candidates-per-restaurant invisible boxes were
+> culling dots in phantom label-sized groups — and labels moved to ViewAnnotations carrying
+> their own collision via `enableSymbolLayerCollision`
+> (`07-va-migration-cleanup-manifest.md`; SearchMapRenderController.swift:99-100). The GL
+> label collision SOURCE was retained by design as the broad basemap suppressor. Everything
+> here that depends on the GL label render layer, the one-of-four selector, or
+> `__lea_revealed__` describes deleted machinery.
+
 All root causes confirmed on-device from the owner's drive (search → zoom → pan → twist → toggle → rapid toggle-back → dismiss). Native `[l3dbg]/[lbldbg]/[presramp]/[leamem]/[LODDBG]` + JS `[t4dbg]`.
 
 ## T4 — toggle-back staleness: CONFIRMED (worse than dedup — stale rankedCandidates upstream)

@@ -73,3 +73,16 @@ subjects; dedupe `(user, subject, poll)` → `COUNT(DISTINCT user)` → `poll_le
 Polarity/sentiment ("X is overrated, go Y") is the §6.2 _upgrade_ (per-comment LLM), not required for
 v1 (presence = endorsement, ~95%, corrected at close). So **4D v1 needs NO sentiment** — just project
 from spans + likes, then retire the vote tally (§2.4).
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the "market-scoped restaurants" claim in the
+> span-scan signature is false against code as of today —
+> `EntityTextSearchService.scanForKnownEntities(text, entityTypes, { engineId?, maxPhraseWords? })`
+> (`apps/api/src/modules/entity-text-search/entity-text-search.service.ts:1262`) takes an
+> **engineId** scope, not `marketKey` (markets exterminated 2026-07-22). 5D's "market scoping"
+> rationale for keeping first-match likewise no longer applies; the single-winner choice is now
+> made DETERMINISTICALLY by caller type-order + id at that call site. 5C graduation is still
+> live (`poll-graduation.service.ts` → `ExtractionPipelineService.processPosts`), but note the
+> §4 K6 ballot law added since: each distinct voter also mints ONE structured mention that
+> BYPASSES LLM extraction (`polls/supply/poll-ballot-mention.service.ts`).

@@ -9,9 +9,24 @@
 >
 > Originally planned, red-teamed ×2 (2026-06-27). Two coupled changes: (1) **unify the base endorsement
 > model** to a single decayed person-endorsement count (drop the split `0.7·log1p(mentions) +
-> 0.3·log1p(upvotes)`), and (2) replace the snapshot `score_delta_7d/28d` + `movementState` with a
+0.3·log1p(upvotes)`), and (2) replace the snapshot `score_delta_7d/28d` + `movementState` with a
 > continuous **dual-pass score-point surge** (`rising = recent − baseline`). Supersedes the §7
 > "Momentum (Δ) axis" approach in `crave-score-v3-endorsement-redesign-plan.md`.
+
+> **Correction 2026-08-03 (truth audit):** the headline "pool mentions +
+> upvotes **1:1**" / "an upvote = a mention = a poll like = **1**" (this
+> section and the "Decided" list at the bottom) is FALSE against the shipped
+> scorer. What landed is a single pooled term with a **gentle writer
+> premium**: `log1p(mentions + upvoteWeight·upvotes)` with
+> **`upvoteWeight = 0.7`** —
+> `apps/api/src/modules/content-processing/public-crave-score/public-crave-score.service.ts:93`
+> (and the formula comment at `:220-222`). The 0.7/0.3 SPLIT this doc
+> correctly kills is indeed gone; the 1:1 pooling that replaced it in this
+> doc's prose is not what runs. `crave-score-v3-endorsement-redesign-plan.md`'s
+> superseded-banner already states the correct shipped form. CONFIRMED TRUE
+> against code from this doc: `risingHalfLifeDays: 21` (`:97`), the dual-pass
+> `rising` column, and the death of `score_delta_7d`/`movement_state` (no
+> longer in `schema.prisma`).
 
 ## Base-score model — pool mentions + upvotes 1:1 (KEEP the log)
 
@@ -25,20 +40,20 @@ The ONLY change is pooling the two channels equally; **keep `log1p`** (see below
 ```
 
 - **DELIBERATE, NON-COSMETIC change — validate empirically.** This is NOT rank-preserving: `0.7·log(m)+
-  0.3·log(u)` and `log(m+u)` are different functions of two variables, so they reorder subjects (e.g. a
+0.3·log(u)` and `log(m+u)` are different functions of two variables, so they reorder subjects (e.g. a
   dish at (1 mention, 50 upvotes) rises above (10, 10) — the intended effect of counting upvotes as
   full equal votes). There is no percentile-invariance argument; the earlier claim was wrong.
 - **Mentions and upvotes pool 1:1** (each unit = 1 person): `1 (author) + its upvotes`. Drop the
   `dishMentionWeight` / `dishUpvoteWeight` split from `DEFAULT_CONFIG`. The SQL change is literally
-  *summing the two existing decayed columns* (`mentions + upvotes`) before the log — not a new aggregate.
-- **KEEP `log1p` — it is load-bearing, not cosmetic.** For *dishes* (a single pooled mass) log-vs-raw is
-  rank-identical, so the log costs nothing there. For the *restaurant composite* the log is essential:
+  _summing the two existing decayed columns_ (`mentions + upvotes`) before the log — not a new aggregate.
+- **KEEP `log1p` — it is load-bearing, not cosmetic.** For _dishes_ (a single pooled mass) log-vs-raw is
+  rank-identical, so the log costs nothing there. For the _restaurant composite_ the log is essential:
   the composite percentiles a COMBINED value `dishWeight·(rho-discounted acclaim) + praiseWeight·praise`,
   and `rho`/`dishWeight`/`praiseWeight` were tuned against **log-scale operands (~0–5)**. Feeding raw
   counts (~0–hundreds) silently re-tunes those dials (a viral single-dish place leaps over a broad
   beloved one). Keeping the per-term `log1p` holds the composite operands on the tuned scale, so the
   composite dials stay valid and need **no** re-derivation.
-- **Polls already route correctly with zero graduation change.** `comment.score` *is* the distinct-liker
+- **Polls already route correctly with zero graduation change.** `comment.score` _is_ the distinct-liker
   count (maintained in lockstep with `PollCommentLike` rows: PK `[commentId,userId]`, ±1 in the same
   tx), and it flows to `source_upvotes`. So under `endorse = log1p(mentions + upvotes)`, a comment with
   N likes already contributes `1 (author) + N (likers)` — consistent with Reddit. **Do NOT touch
@@ -78,8 +93,8 @@ rising = display_score_fast − display_score                          # rating 
   quantity, both jobs.
 - **Inherits the unified base model above.** Both passes use the new `endorsers` count; rising is the
   fast-vs-slow display delta on top of it. No separate mention/upvote handling.
-- **Semantic shift (intentional):** the old arrow was *temporal* ("moved +X over 7 days," needed
-  snapshots). This is *cross-sectional* ("ranks +X higher on recent activity than on its baseline").
+- **Semantic shift (intentional):** the old arrow was _temporal_ ("moved +X over 7 days," needed
+  snapshots). This is _cross-sectional_ ("ranks +X higher on recent activity than on its baseline").
   Reads identically to a user, is always fresh (no warm-up), and is snapshot-free.
 - **Steady ≈ 0 (approximate).** A place whose recent rate matches its baseline scores ~the same both
   passes → rising ≈ 0. Surging → positive; cooling → negative. Discrete sparse arrivals scatter around
@@ -92,15 +107,17 @@ rising = display_score_fast − display_score                          # rating 
   noisy, prefer raising the inclusion floor for the fast pass over a hard cutoff.
 
 ### Config
+
 - `risingHalfLifeDays` — **default 21** (≈3-month horizon). One dial, tunable.
 
 ### Sort discrimination — sort on `rising`, stored at high precision
+
 **Sort on `rising` (the point delta) — the SAME key as the displayed arrow**, so the Rising list is
 always monotone in the number users can see. Do NOT sort on a percentile delta: because `display_score`
-is a *nonlinear* map of percentile, the percentile delta is a *different ordering*, so sorting by it
+is a _nonlinear_ map of percentile, the percentile delta is a _different ordering_, so sorting by it
 while showing the point delta would put `↑3.0` above `↑5.0` (looks broken).
 
-The "mushy tail" is a *precision* problem, not a wrong-key problem: it only happens if `rising` is
+The "mushy tail" is a _precision_ problem, not a wrong-key problem: it only happens if `rising` is
 derived from the `0.1`-granular stored `display_score`. Fix it by **computing `rising` from the
 un-rounded percentile→display values and storing it at `Decimal(5,3)`** (≈0.001 granularity); display
 the arrow rounded to `0.1`. Clean tie-free sort + sort == arrow. (Ties cluster near `rising ≈ 0` — the
@@ -108,6 +125,7 @@ bottom of the list — anyway.) Never sort restaurants and dishes together by ri
 normalization (the four sort paths are per-type, so within-type is fine).
 
 ## Per-user / source spam — unchanged posture
+
 Rising inherits the base score's dedup posture (Reddit mentions un-deduped; polls distinct-user
 deduped). It adds no new exposure. Future hardening: capture the Reddit author on `SourceDocument`,
 then dedup the masses to distinct `(author, subject)`.
@@ -115,6 +133,7 @@ then dedup the masses to distinct `(author, subject)`.
 ## Implementation
 
 ### 0. Verify before building
+
 - Nothing outside the score service reads `core_public_entity_score_history` or `movementState`
   (verified: history read only by `loadPriorScores`; `movementState` has zero downstream consumers).
 - `endorsementRaw` / `factorTrace` are **write-only** (zero downstream readers in api/mobile/packages) —
@@ -125,10 +144,11 @@ then dedup the masses to distinct `(author, subject)`.
 - **Add reorder-regime fixtures BEFORE shipping** — the scorer has **zero `*.spec.ts` coverage**, and
   the existing fixtures (`validate-crave-score-fixtures.ts` ~L218-256) use extreme separations that
   survive any model by luck (a green run would falsely imply "rankings didn't shift"). Add cases that
-  exercise the flip: a *viral single-dish* restaurant vs a *broad-modest + praise* one; a *one-hot-comment*
-  dish vs a *many-low-upvote-mentions* dish. Pin the intended ordering; run under old + new.
+  exercise the flip: a _viral single-dish_ restaurant vs a _broad-modest + praise_ one; a _one-hot-comment_
+  dish vs a _many-low-upvote-mentions_ dish. Pin the intended ordering; run under old + new.
 
 ### 1. Scorer — `public-crave-score.service.ts`
+
 - **Pool the endorsement channels** (the base change): in `endorse()` (~L154-156) use
   `log1p(mentions + upvotes)` — i.e. sum the two existing decayed columns (`mentions = SUM(decay)`,
   `upvotes = SUM(source_upvotes·decay)`, dish SQL ~L434-435; restaurant praise ~L447-448) before the
@@ -158,9 +178,11 @@ then dedup the masses to distinct `(author, subject)`.
 - During the expand phase the new scorer writes `rising`, omits legacy columns (legacy nullable per M1).
 
 ### 2. Schema + migration — EXPAND / CONTRACT across ≥2 deploys (do NOT do it atomically)
+
 Prisma `migrate deploy` is atomic per migration, so split:
 
 **M1 (expand):**
+
 - `ALTER` `movement_state` → **nullable** on BOTH `core_public_entity_scores` and
   `core_public_entity_score_history` (both are `NOT NULL` no-default today — without this neither old
   nor new binary can write during rollover).
@@ -193,21 +215,24 @@ DROP TYPE "crave_score_movement_state";          -- LAST: fails if any column st
 ```
 
 ### 3. Rename surface — grep `score_delta_7d|scoreDelta7d` repo-wide (~45 API hits); do ALL
+
 - `search-query.builder.ts`: the four Rising `ORDER BY` paths + every SELECT and JSON key (`'scoreDelta7d'`).
 - `search.service.ts`: `getPublicRestaurantScore` (`SELECT score_delta_7d AS scoreDelta7d`, ~L1633)
   feeding the restaurant **profile** payload (~L1523), plus ~L64/1187/1237/1504.
 - `search-query.executor.ts`: prefixed aliases `connection_score_delta_7d` / `restaurant_score_delta_7d`.
 - `search-coverage.service.ts`: `top_food_score_delta_7d` (type ~L24, SQL ~L178, read ~L308) → `top_food_rising`.
 - `favorites/favorite-lists.service.ts` (Prisma SELECT — sequence AFTER schema rename + `prisma
-  generate`): `Pick` type `FavoritePublicScore` (~L59-61), `select { scoreDelta7d: true }` (~L928),
+generate`): `Pick` type `FavoritePublicScore` (~L59-61), `select { scoreDelta7d: true }` (~L928),
   `toPublicScoreDelta` helper (~L955-958), emit sites (~L999).
 - `packages/shared/src/types/search.ts`: field decls (~L57/82/131/203) AND the `Omit` literal
   `'scoreDelta7d'` (~L159) + the `scoreDelta7d?: null` override (~L166) — all six.
 - `search/README.md` (~L36): **reword** — it's the recent-vs-baseline surge, not a "7-day delta."
 
 ### 4. Mobile UI — keep the arrow, point it at `rising`
+
 `rising` is now a real score-point delta, so the existing "↑X.X pts" arrow stays — just rename the
 field it reads and reword copy (it's "trending vs baseline," not "last 7 days"):
+
 - `quality.ts` (~L75-84, `formatCraveScoreMovementDetail`) and `SearchRankAndScoreSheets.tsx` (~L48):
   read `rising` instead of `scoreDelta7d`. The `CRAVE_RATING_SCALE` / `/10` divisor is GONE (the
   score is now native `0–10`, see `crave-score-1to10-scale-migration.md`) — render `rising`
@@ -221,12 +246,14 @@ field it reads and reword copy (it's "trending vs baseline," not "last 7 days"):
 - `dist/` artifacts regenerate on build — never hand-edit.
 
 ## Rollout / rollback
+
 - No warm-up (rising computes from the ledger each run) — but NULL until the first post-M1 global run,
   so trigger `rebuildAllScores()` and verify before flipping search.
 - **Rollback:** destructive, no down-migration. Snapshot the DB before M2; gate M2 behind verification
   of the live `rising` path so it can be deferred without touching M1.
 
 ## Decided (folded into "Base-score model" above)
+
 - Upvotes = mentions = poll likes = **1 person-endorsement each** (we trust Reddit: app-agnostic
   historical data + 1-vote-per-user). Pool channels 1:1: `log1p(mentions + upvotes)` — drop the 0.7/0.3
   split, **keep the log** (load-bearing for the restaurant composite scale).
@@ -238,5 +265,23 @@ field it reads and reword copy (it's "trending vs baseline," not "last 7 days"):
 - Score **leans volume** ("most endorsed"); exposure-normalized "quality" is a future dial, not now.
 
 ## Leave alone
+
 - The polls Trending heat (`polls.service.ts`, `POLL_TRENDING_HALF_LIFE_DAYS = 3`) — separate system,
-  engagement-velocity heat for the poll *feed*, already spam-safe via distinct-engager dedup. No change.
+  engagement-velocity heat for the poll _feed_, already spam-safe via distinct-engager dedup. No change.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** two claims are false against code as of today.
+> (1) "**Mentions and upvotes pool 1:1** … a Reddit upvote = a mention = a poll like = **1** …
+> Drop the `dishMentionWeight`/`dishUpvoteWeight` split" — the live scorer pools at
+> `m + upvoteWeight·u` with **`upvoteWeight = 0.7`** (a deliberate writer premium, classified
+> K5 with a K2 adoption path), and the pooled term is divided by the source's calibration `g`
+> INSIDE `log1p`: `apps/api/src/modules/content-processing/public-crave-score/
+public-crave-score.service.ts:90-93, 219-238`. The 1:1 pooling shipped and was then amended
+> by the crave-score-v4 calibration cut (2026-07-20).
+> (2) The Status header's "**REMAINING:** … then the **M2 contract** migration (drop legacy) as
+> a separate later release" — M2 LANDED as
+> `apps/api/prisma/migrations/20260628000000_crave_score_rising_contract`; `score_delta_7d/28d`,
+> `movement_state` and `core_public_entity_score_history` are all gone from `schema.prisma`.
+> The dual-pass `rising` mechanism itself is accurate and live (`rising Decimal(5,3)`,
+> schema.prisma:699, with `idx_public_entity_scores_subject_rising`).

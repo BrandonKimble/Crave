@@ -23,6 +23,19 @@ Deliver each refactor slice to promotion quality with minimal process overhead.
 
 ## Validation Matrix
 
+> **Correction 2026-08-03 (truth audit):** every script path below is wrong,
+> and three of the four scripts do not exist. The repo root is
+> `/Users/brandonkimble/Crave/Crave` — `/Users/brandonkimble/crave-search`
+> does not exist on this machine. Only `scripts/no-bypass-search-runtime.sh`
+> is real (plus `scripts/search-runtime-root-ownership-gate.sh`, unlisted
+> here). `search-runtime-natural-cutover-contract.sh`,
+> `search-runtime-s4-mode-cutover-contract.sh`, and
+> `perf-shortcut-local-ci.sh` are all absent from `scripts/` — the natural
+> cutover / S4 mode-cutover contracts they gated died with the search-ladder
+> deletion (2026-08-02; pooled gate + gazetteer Understand are canonical).
+> The standing gate today is CI (`.github/workflows/ci.yml`), which is green
+> and GATING, invariants job included.
+
 Always:
 
 - relevant lint/tests for touched files

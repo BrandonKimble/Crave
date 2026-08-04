@@ -1,3 +1,20 @@
+> **[SUPERSEDED for the SHEET/INTERACTION layer — banner added 2026-08-03 (truth audit)]** This
+> doc is still the authority for the PresentationFrame (PF) itself — `PresentationFrame` is live
+> at `apps/mobile/src/navigation/runtime/app-route-presentation-frame-contract.ts` and remains
+> the one chrome clock (extended by `child-transition-primitive.md` leg 6 and `root-snap-law.md`
+> leg 9). But the sheet/render substrate it assumes (co-mounted legs inside
+> `BottomSheetSceneStackHost`, the paint-ack player, the RNGH pan pair) was replaced by the
+> TrackSheet cutover: `page-composition-from-scratch-design.md` §THE ONE TRACK / §THE FLIP
+> (2026-07-27, TrackSheet is the default sheet system — `apps/mobile/src/tracksheet/`,
+> `track-flip-store.ts:12`), then `page-world-derivation.md` (2026-07-29) and
+> `residents-cutover-plan.md` (2026-08-01, which is the live plan for the resident-legs work).
+>
+> **Correction 2026-08-03 (truth audit):** the §9.5(c) POST-SOAK CLEANUP LEDGER is stale as a
+> to-do list — `root-snap-law.md` leg 3 item 4 already re-audited it (item 5, dead
+> `getRouteSceneVisibilityPolicySnapshot`, is DONE; items 1/2/3/6/7/8 were still outstanding at
+> that audit). Item 8's premise is now moot: the `held-dissolve` ContentMode it proposed
+> collapsing rode the crossfade engine that the TrackSheet cutover removed from the default path.
+
 # Page-Switch Master Plan — the Committed-Presentation-Frame Architecture
 
 **Canonical source of truth** for the nav-page-switch redesign (2026-07-01). This is the actionable

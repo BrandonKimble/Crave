@@ -1,6 +1,21 @@
 # Search Demand Layer Cutover Plan
 
-## Status
+> **SUPERSEDED 2026-08-03 (truth audit): never executed in this shape; archaeology.**
+> The shipped demand substrate is the §3 signals ledger — `signals` +
+> `signal_demand_daily` + `SignalDemandRebuildState`
+> (`apps/api/prisma/schema.prisma:2363-2455`, owners in
+> `apps/api/src/modules/signals/`). This plan's target shape
+> (`raw facts -> user_search_demand_daily -> consumer scoring`) does not exist.
+
+> **Correction 2026-08-03 (truth audit):** every schema instruction below is false
+> against code as of today. (a) `user_search_logs` and `user_search_demand_daily` do not
+> exist in `apps/api/prisma/schema.prisma`; there is no `eventKind` column and no
+> `SearchLogSource` enum. (b) The market columns this plan makes load-bearing —
+> `market_key`, `collectable_market_key`, `marketScopeKey`, `core_markets` — do not
+> exist: the market system was exterminated 2026-07-22, and geographic scope is now
+> place containment (`Signal.placeId` / `SignalDemandDaily.placeId`,
+> schema.prisma:2374 and 2434). Do not build the delete gate, the migrations, or the
+> market-scoped aggregate views described here.
 
 Execution-ready target plan. This supersedes `plans/search-demand-layer-architecture-pass.md` and `plans/keyword-collection-priority-overhaul.md`.
 

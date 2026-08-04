@@ -210,6 +210,18 @@ SelectionOverlay (tapping a restaurant inside a presented search/list world):
 
 ### 3.5 Market roll-up + market-wide data
 
+> **Correction 2026-08-03 (truth audit): this section is dead — the MARKET SYSTEM WAS
+> EXTERMINATED on 2026-07-22.** There is no market roll-up rule, no `core_markets` read, no
+> `findOutermostCoveringMarket`, and no market-bounded aggregate anywhere in the API.
+> `buildLocationAggregatesCte` still exists
+> (apps/api/src/modules/search/search-query.builder.ts:1892) but its own comment now reads
+> "Locations are a fact about the restaurant, not the viewport or any market … the aggregate
+> is GLOBAL", capped at the nearest ~30 to the search center — it is bounded by proximity,
+> never by `ST_Covers(m.geometry, point)`. What the multi-location machinery below depends
+> on (an aggregate WIDER than the viewport) is still true; the mechanism named here is not.
+> Read `plans/geo-demand-foundation-rebuild.md` for the place/community model that replaced
+> markets. Anything reading "market" in this doc means "place/viewport" today.
+
 - **Rule:** resolve the market by rolling UP: the market containing the anchor point whose
   geometry is not covered by any larger active market ("keep rolling up until it doesn't fit
   within another market" — the brief). No market ⇒ fall back to a viewport-derived radius.

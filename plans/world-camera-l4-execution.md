@@ -133,8 +133,19 @@ L1 ✅ (group competition, sibling emission, restaurantOnly deletion, Phase D
 closed-by-reshape) · L2 ✅ pure + profile integration (camera-in-origin owner-gated) ·
 L3 ✅ (machine dissolved, direct presentation, pop-teardown, dismiss matcher source-only) ·
 L4 ✅ (invisible-resident, z-lift, group-dense rank, additive tab-agnostic overlay,
-on-device) · L5 ✅ (roll-up + market-wide aggregates verified). Plus the app-wide reveal
-deadlock found and fixed en route (4ca51f39).
+on-device) · L5 ✅ (roll-up + market-wide aggregates verified).
+
+> **Correction 2026-08-03 (truth audit): the "L5 ✅ (roll-up …)" tick is void.** The market
+> system was exterminated 2026-07-22 — `findOutermostCoveringMarket` is gone and
+> `buildLocationAggregatesCte` (apps/api/src/modules/search/search-query.builder.ts:1892) is
+> now a GLOBAL, proximity-capped aggregate with no `core_markets` join. L1-L4 above are
+> unaffected (they only need an aggregate wider than the viewport, which still holds).
+> Note also that `plans/viewport-only-location-centric-plan.md` Leg 2.1 later proposed
+> DELETING L4's sibling force-promotion (`shouldRenderAllLocations` + invisible-resident
+> emission for selection) in favour of one-location selection; that leg has NOT been
+> executed — both live in `map-read-model-builder.ts:157-237` today — so the two plans are an
+> open contradiction awaiting an owner call, not a landed reversal. Plus the app-wide reveal
+> deadlock found and fixed en route (4ca51f39).
 
 ## The two owner decisions — DECIDED + LANDED (2026-07-10 ~18:39, 1f666fd5)
 

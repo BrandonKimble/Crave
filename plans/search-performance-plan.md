@@ -1,5 +1,27 @@
 # Search Performance Plan (Natural Queries)
 
+> **SUPERSEDED 2026-08-03 (truth audit): archaeology — this plan optimizes a request path
+> that no longer exists.**
+>
+> **Correction 2026-08-03 (truth audit):** the plan's two headline items (§"LLM Analysis
+> Caching" and §"Entity Resolution Caching", and the `SearchOrchestrationService.runNaturalQuery`
+> "LLM analysis" phase timing) are false against code as of today. The synchronous-LLM
+> Understand path was deleted in the 2026-08-02 search cutover and replaced by the pooled
+> gate + gazetteer Understand (`apps/api/src/modules/entity-text-search/gazetteer-spans.ts`,
+> `query-analyzer.ts`). `apps/api/src/modules/search/search-orchestration.service.ts`
+> contains ZERO references to llm/LLM/Gemini — there is no LLM call in the search request
+> path to cache. `POST /search/natural` still exists
+> (`search.controller.ts:134`) but its body is no longer LLM-backed.
+>
+> **Correction 2026-08-03 (truth audit):** the §"SQL + Indexes" candidate
+> `core_public_entity_scores: (scoring_market_key, subject_type, display_score DESC)` is
+> false — `scoring_market_key` does not exist in `apps/api/prisma/schema.prisma` (the
+> market system was exterminated 2026-07-22).
+>
+> Also stale: §"Open-Now Post-Processing Cost". Open-now is now governed by the lens law
+> (see `plans/search-results-unification-verdict.md`) — the target is to stop computing
+> openness server-side at all, not to cache it in Redis.
+
 > Superseded scoring note: any references below to old display-rank tables,
 > contextual percentiles, or raw quality as the public score are stale. Public
 > search ordering and payloads now use stable

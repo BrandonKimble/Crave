@@ -1,3 +1,18 @@
+> **[CONTINUED ELSEWHERE — banner added 2026-08-03 (truth audit)]** This is the live-history
+> ledger of the composition + ONE-TRACK arc and it ENDS at 2026-07-27 with rung 5's implementation
+> order ("do NOT half-land it"). Two later docs carry it forward and are the current authorities
+> for this territory: `plans/page-world-derivation.md` (2026-07-29 — the full re-derivation after
+> the mask landing froze the sheet, six layers / one τ law) and `plans/residents-cutover-plan.md`
+> (2026-08-01 — THE RESIDENT PAGE, the four ratified-choreography violations the track migration
+> introduced, and the rungs to fix them). Read those before building from the tail of this file.
+> Confirmed in code today: TrackSheet is the default sheet system
+> (`apps/mobile/src/tracksheet/track-flip-store.ts:12`, `state = { on: true, debug: false }`),
+> and rung 1 of the residents cutover has landed — `TrackSheetPage.tsx` hosts per-scene resident
+> `legs` with display-flip visibility (`TrackSheetPage.tsx:185,230,251`). The old sheet system is
+> NOT yet deleted (the rung-5 delete pass + grep-invariants remain open): the
+> `useBottomSheetShared*` family (11 files) still lives in `apps/mobile/src/overlays/`, reachable
+> via the `crave://tracksheet-host?on=0` rollback path.
+
 # THE PAGE — a from-scratch composition system (v2, post-red-team)
 
 2026-07-16. v1 was attacked by two philosophy-seeded adversaries (A: abstraction purist;
@@ -39,8 +54,8 @@ injected at reveal (a pushed child's backing depends on what it sits over — a 
 fact). Panel authors still cannot pass it; the one computer is the residency manager.
 Understack changes while resident (page beneath a modal switches) re-derive on the
 next reveal beat.
-*Honesty note (A#16): L0's derivation is defined in terms of L1's stack — L0 alone is
-the one-material decision; the derivation is ratified with L1.*
+_Honesty note (A#16): L0's derivation is defined in terms of L1's stack — L0 alone is
+the one-material decision; the derivation is ratified with L1._
 
 ## L1 — THE SURFACE STACK (geometry computed, with the laws that make it true)
 
@@ -102,8 +117,8 @@ The shell is a runtime interpreter component keyed by PageSpec identity (A#17).
   express a pending branch because the pending case never renders its slots.
 - **The body state enum is CLOSED AND TOTAL (A#10, B#3):**
   `pending | present(content) | empty(declared empty-view) | error(class, declared
-  error material + retry, integrated with the wave-4 failure law) | appending(tail
-  placeholder rows)`. Empty and error are L0-material variants declared in the
+error material + retry, integrated with the wave-4 failure law) | appending(tail
+placeholder rows)`. Empty and error are L0-material variants declared in the
   PageSpec. A panel-level loading/error branch has no state left to express.
 
 **L2 STATUS 2026-07-17: THE INTERPRETER + FIRST MIGRATIONS EXECUTED.** page-body-
@@ -173,6 +188,7 @@ results first, then they roll back over the migrated scenes:
 ## THE SCROLL HANDOFF + RUBBER-BAND ARC (owner spec 2026-07-18 — separate deep dive)
 
 The one-gesture snap↔scroll handoff currently suppresses ALL edge bounce. Wanted:
+
 - **Top of list**: momentum flick (finger UP) hitting the top → rubber-band rebound.
   Finger DOWN reaching the top → the existing handoff to sheet-grab (no bounce).
 - **Bottom of list**: sheet AT top snap + finger down hitting the end → overscroll +
@@ -231,6 +247,7 @@ panel's useSyncExternalStore world-read, today's shape) or through the BEAT-WRIT
 (push — L3/L4's "reveal = one batched write to the target shell")?
 
 **Verdict: they are the same seam at different levels, not competitors.**
+
 - The mounted store IS the presented world's residency — the one content truth. The
   page CONTROLLER subscribes to it (pull), identity-matches, and derives the closed
   PageBodyState — exactly the L2 law (stores/queries live in controllers; slots get
@@ -248,6 +265,7 @@ panel's useSyncExternalStore world-read, today's shape) or through the BEAT-WRIT
 
 **listDetail execution plan (from this verdict — the userProfile pattern, bigger).**
 THE EDIT MAP (cataloged 2026-07-18 — the exact partition, so the split is mechanical):
+
 - CONTROLLER (stays in ListDetailPanelBody; produces the composite data + commands):
   params parsing (listId/shareSlug/targetUserId/joinIntent/worldBacked/warmTitle),
   virtual-All derivation, metaQuery, slug world-launch effect, SLICE STATE
@@ -335,6 +353,7 @@ not speculative machinery now). Sheet-drag/scroll-during-pending: structural by
 construction (the block is list content); owner finger-test to confirm feel.
 
 **FAMILY EXECUTION STATUS 2026-07-18:**
+
 - LENGTH LAW LANDED for shell pending faces (PageBodyShell): the pending face fills the
   floored scroll box (BottomSheetScrollContainer short-page floor = viewport +
   SHORT_PAGE_SCROLL_ROOM_PX) with the material ABSOLUTE + CLIPPED inside — a skeleton's
@@ -362,6 +381,7 @@ SingleLineText, FlashList cell mode, listDetail full spec, transport seam.
 
 **RESULTS PageSpec/BAND LEG EXECUTED 2026-07-21 (bands + SingleLineText + template
 declaration):**
+
 - **BANDS ARE THE GENERAL FORM (A#14/B#15 landed in the contract):** PageListBodySpec
   = `{ kind:'list', scene, bands: [PageListBandSpec, ...] }` — an ordered band set
   with ONE active; one band is the trivial case (notifications migrated to it; the
@@ -406,6 +426,7 @@ target sim/device — boot delta, resident memory, steady-state UI fps.
 harness driven by `action=mount_shell_prototype&markerCount=<shells>&routeParam=
 <rowsPerShell>`; hidden per the visibility law: display:'none', zero animation).
 Dev lane, iPhone 17 Pro sim, PageBodyShell shells with a synthetic band:**
+
 - **EMPTY SHELLS ARE FREE — the claim HOLDS:** 20 empty shells mount in ~11-13ms
   (one commit; the boot-delta proxy), RSS delta ≈ 0 (within noise), steady-state
   60fps untouched (worst JS p95 25.7 one window, UI worst 18.5 — idle-normal).
@@ -420,9 +441,10 @@ Dev lane, iPhone 17 Pro sim, PageBodyShell shells with a synthetic band:**
   pass: image-bearing rows (real results cards carry photos; decoded surfaces live
   mostly in the shared image cache, but the per-shell figure here excludes them) —
   measure when the content budget is set. Harness stays in the tree (null when
-  idle; release-capable via the os_log sink).**
+  idle; release-capable via the os_log sink).\*\*
 
 Laws that are part of L3 regardless:
+
 - **The visibility fact has ONE writer** (A#13): the residency manager owns one
   per-shell visibility bit that DERIVES pointerEvents, accessibility hiding
   (`no-hide-descendants`), subscription liveness, AND animation liveness — a hidden
@@ -484,6 +506,7 @@ content-heavy scenes join. (4) grow the managed set per the bridge order (profil
 → listDetail/bookmarks pair → search family last).
 
 **L3 SLICE 2 EXECUTED 2026-07-22 (the one-writer display consolidation, managed set).**
+
 - **THE SCENE-KEYED RESIDENT UNIT:** a residency-managed LEAF has ONE unit with a
   STABLE key (`resident:<scene>`) — React never remounts the shell tree: a re-push
   updates the entry prop in place; a pop keeps the last entry (dismissal changes
@@ -579,17 +602,17 @@ wrong term — the release-measured burst is ROW MOUNTING when the response land
 seconds after the transition, outside any transition edge. L4 is now two laws:
 
 - **Law 1 — transitions only reveal.** With L3 real, a switch is: retarget visibility
-  + run the animation + stamp the target shell (chrome + whatever content exists) in
-  one pre-reveal batch. **L4 is re-derived from L0–L3, not inherited (A#1):** the
-  transition object needed is `{from, to, animation, contentBeat}`. The existing
-  engine's cold-path vocabulary — paintAck production, warm gates, painted-evidence
-  records, synthetic acks, freeze bundles — exists to choreograph CONSTRUCTION during
-  motion; with no construction reachable, it reduces to constants and DIES (B#12 —
-  §gut-list, and its survival is the falsifier: if any ack is still needed, L3 was not
-  achieved). What survives of the engine: identity, supersession, the trace, and
-  progress semantics (below). Gesture transitions are functions of progress ∈ [0,1]
-  with content beats pinned to threshold crossings, idempotent under reversal (a
-  landed beat stays landed; reversal only retargets visibility — A#12).
+  - run the animation + stamp the target shell (chrome + whatever content exists) in
+    one pre-reveal batch. **L4 is re-derived from L0–L3, not inherited (A#1):** the
+    transition object needed is `{from, to, animation, contentBeat}`. The existing
+    engine's cold-path vocabulary — paintAck production, warm gates, painted-evidence
+    records, synthetic acks, freeze bundles — exists to choreograph CONSTRUCTION during
+    motion; with no construction reachable, it reduces to constants and DIES (B#12 —
+    §gut-list, and its survival is the falsifier: if any ack is still needed, L3 was not
+    achieved). What survives of the engine: identity, supersession, the trace, and
+    progress semantics (below). Gesture transitions are functions of progress ∈ [0,1]
+    with content beats pinned to threshold crossings, idempotent under reversal (a
+    landed beat stays landed; reversal only retargets visibility — A#12).
 - **Law 2 — every shell owns a CONTENT-LANDING CLOCK** (B#2 — beats exist in steady
   state, not just transitions): all slot writes — responses, pagination, live updates,
   image loads, the collaborator-row class — coalesce through the shell's landing gate:
@@ -666,6 +689,7 @@ scenario plumbing is intact for a future build). Landed instead: **[COMMITDBG]**
 per-leg React.Profiler wrappers in the host's co-mount map (dev-only; logs leg
 subtree renders >8ms). WHAT IT PROVED, with an inner split + a controller-input
 probe (both stripped after reading):
+
 - The reveal-gated beat machinery WORKS: the bookmarks activation renders (grid,
   ~58-75ms total) land POST-reveal on normal opens — the deferred beat as designed.
 - The return-from-child pre-reveal weight = the bookmarks BODY subtree re-rendering
@@ -679,11 +703,12 @@ probe (both stripped after reading):
   bisection (per-hook identity logging, or why-did-you-render). This is the
   background-render-tax class in a new costume: an uninvolved resident tab's
   full grid re-rendering on every transition.
-Gates: jest 390/390, invariants 29/29, matrix 21/21 (fresh app; the 20/21
-warm-app pollution pattern reconfirmed the rig lore).
+  Gates: jest 390/390, invariants 29/29, matrix 21/21 (fresh app; the 20/21
+  warm-app pollution pattern reconfirmed the rig lore).
 
 **L4 SLICE 5 EXECUTED 2026-07-23 (the return-from-child diet LANDS — two cuts).**
 The bisection probe named both diseases and both are dead:
+
 - **THE CONTEXT-VOLATILITY SPLIT:** the render-activity context bundled `isActive`
   (flips on EVERY transition for both participants) with the stable data-lane
   flags — every consumer re-rendered its full body per transition, including
@@ -700,12 +725,12 @@ The bisection probe named both diseases and both are dead:
   (contentEntry/transport/units — cold mounts) publish synchronously so the
   premount law (C4) holds. Internal admission truth (the activity map) stays
   synchronous — only the UI-facing projection waits.
-**[L4STAMP] VERDICT: return-from-child ~90-112ms → ~34ms.** Every managed
-transition now reveals in 20-35ms — the residual IS the header commit. The
-activation renders land in the post-reveal beat by construction. Gates: jest
-390/390, invariants 29/29, matrix 21/21 cold, bookmarks return grid eye-verified.
-L4 Law 1 is now REAL for the managed set: reveal batch = chrome + visibility;
-content = beats after.
+  **[L4STAMP] VERDICT: return-from-child ~90-112ms → ~34ms.** Every managed
+  transition now reveals in 20-35ms — the residual IS the header commit. The
+  activation renders land in the post-reveal beat by construction. Gates: jest
+  390/390, invariants 29/29, matrix 21/21 cold, bookmarks return grid eye-verified.
+  L4 Law 1 is now REAL for the managed set: reveal batch = chrome + visibility;
+  content = beats after.
 
 **L3/L4 SLICE 6 EXECUTED 2026-07-23 (the census sweep — every registry child joins
 the managed set).** userProfile (`user:<userId>` — drill chains get per-user
@@ -776,6 +801,7 @@ RED-PROVEN with a throwaway service probe: 4 fetches in ~20s visible, ZERO acros
 29/29, matrix 21/21 cold.
 
 **THE DEBT-REPAIR PASS, PARTS 2-3 (2026-07-23).**
+
 - **The bookmarks render-residue: RESOLVED.** Post-fixes probe: 4 renders at
   activation (the legitimate beat sequence), +2 when bookmarks is the OUTGOING
   participant (its own deactivation/A#9 flip — post-reveal by the flush), and
@@ -816,6 +842,7 @@ bespoke scenes).
 
 **THE FOUNDATION'S CLOSING VERDICTS (2026-07-23 — search wrapped, B#12 rescoped,
 the census complete).**
+
 - **SEARCH JOINED (the structural half):** the registry type widened
   (ResidencyManagedSceneKey = SheetSceneKey | 'search'); the search sheet body now
   display-detaches when another root presents, via ShellVisibilityBoundary INSIDE
@@ -832,21 +859,22 @@ the census complete).**
   uniformity without measured need — NOT migrated, BY VERDICT.
 - **B#12 RESCOPED, honestly:** the cold-path vocabulary does not die wholesale —
   it SHRINKS TO ITS TRUE DOMAIN: cold constructions (the ephemeral three's pushes
-  + genuine first visits before prewarm). For the resident world it is already
-  inert (paint = same-tick evidence-offer; chrome = the real header commit; the
-  managed set reveals in 20-35ms with content as post-reveal beats). The falsifier
-  permits this: where L3-residency is deliberately not applied, the ack is
-  legitimately needed. What survives everywhere: identity, supersession, the
-  trace, progress semantics, the mapFrame content-readiness join.
-**L0-L4 STANDS COMPLETE for the resident world.** Remaining, all owner-gated or
-blocked: the slow-network law (owner ratifies), the listDetail image-memory
-measure (blocked on list-open automation), polls (the parallel session's domain),
-and the owner's queued arcs (frost pass, overscroll, the global surface
-abstraction) which build ON this foundation.
+  - genuine first visits before prewarm). For the resident world it is already
+    inert (paint = same-tick evidence-offer; chrome = the real header commit; the
+    managed set reveals in 20-35ms with content as post-reveal beats). The falsifier
+    permits this: where L3-residency is deliberately not applied, the ack is
+    legitimately needed. What survives everywhere: identity, supersession, the
+    trace, progress semantics, the mapFrame content-readiness join.
+    **L0-L4 STANDS COMPLETE for the resident world.** Remaining, all owner-gated or
+    blocked: the slow-network law (owner ratifies), the listDetail image-memory
+    measure (blocked on list-open automation), polls (the parallel session's domain),
+    and the owner's queued arcs (frost pass, overscroll, the global surface
+    abstraction) which build ON this foundation.
 
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
+
 - The persistent header host gains a **shell-owned-scene mode**: renders nothing and
   occupies nothing for migrated scenes; the shell's chrome is part of the leg's atomic
   reveal. Two-headers-fighting is unrepresentable because the host checks the shell
@@ -870,15 +898,15 @@ The strangler needs an explicit, budgeted-for-deletion bridge:
 - **L3**: PROTOTYPE MEASURED (2026-07-16, ShellResidencyProbe — dev harness verb
   `shell_probe`, 20 shell facsimiles = chrome band + the real cutout material, 4 rows):
   · **LAW pole** (1 visible + 19 `display:none`): mount 134ms TOTAL (~6.7ms/shell —
-    trivially schedulable at idle, won't even need slicing), RSS delta lost in GC noise,
-    steady **60fps with 17–19ms max frames — indistinguishable from baseline**.
+  trivially schedulable at idle, won't even need slicing), RSS delta lost in GC noise,
+  steady **60fps with 17–19ms max frames — indistinguishable from baseline**.
   · **ANTI-LAW pole** (20 live stacked, shimmer running): mount 707ms, **+96MB RSS**,
-    UI thread COLLAPSES to 15–40fps with 60–425ms frames, sustained until turned off
-    (instant recovery after). The visibility law is not hygiene — it is THE load-bearing
-    law, now RED-proven: violating it reproduces the exact measured disease.
+  UI thread COLLAPSES to 15–40fps with 60–425ms frames, sustained until turned off
+  (instant recovery after). The visibility law is not hygiene — it is THE load-bearing
+  law, now RED-proven: violating it reproduces the exact measured disease.
   · Caveats: facsimile fidelity (no strips/decor — the anti-law pole bounds the worst
-    case), Rosetta sim, `display:none` as the pause approximation (the real L0 adds a
-    true shimmer-off + detach). **L3 is ratifiable on these numbers.**
+  case), Rosetta sim, `display:none` as the pause approximation (the real L0 adds a
+  true shimmer-off + detach). **L3 is ratifiable on these numbers.**
 - **L4**: ratifiable with Law 1/Law 2 as written, WITH the slow-network law as an
   explicit owner call.
 
@@ -893,6 +921,7 @@ The strangler needs an explicit, budgeted-for-deletion bridge:
    pair → search family).
 
 ## Frost pass — SUPERSEDED same day by the TRUE-CUTOUT law below (the material was a
+
 ## painted imitation — owner-rejected; kept here as the record of the wrong turn)
 
 Self-frost disease attributed and fixed at the frost layer's look, per the skeleton-sheet
@@ -925,6 +954,7 @@ map. The law: ONE shared frosted layer founds every sheet; every see-through ele
 No self-frost, no imitation, ever.
 
 What shipped:
+
 - The entire `frostBacking`/`withFrost` self-frost fork is DELETED: prop, config tokens
   (`frostTintColor/Opacity`, `frostMaterial`), `FrostMaterialBackdrop` (file deleted),
   the `bodySurface === 'white'` derivation in `resolveSceneLoadingMaterial`, and every
@@ -953,6 +983,7 @@ on solid white with no frost flash. Gates: jest 396/396, invariants 29/29, matri
 ## L3 debt repair — warm-before-navigate WIRED + boundary derivation + ledger honesty (2026-07-23)
 
 The audit's three residency findings, fixed in order:
+
 1. **Warm-before-navigate is real now**: `RESIDENT_SHELL_PREWARM_SCENES` (derived from
    the one membership list, minus bespoke 'search') joins the always-mounted legs at the
    SAME first-idle readiness edge the static tabs use (`residentShellsPrewarmed` in
@@ -1013,6 +1044,7 @@ is a declared block on the one computed boundary, so an overscrolling list under
 pinned band has exactly one number to respect.
 
 ### Strip-band seam law — slice 1 SHIPPED (2026-07-23)
+
 §1 ONE BAND BLOCK: STRIP_BAND_BOTTOM_SPACER_HEIGHT lives in toggle-strip-metrics; the
 chrome geometry, search's resultsListHeaderBottomStrip, listDetail's stripBlock bottom
 margin (was bespoke 6), and the skeleton pill block's gap (was 12) all consume it; the
@@ -1029,6 +1061,7 @@ face + pre-bundle search face; then the rubber-band overscroll deep dive on this
 foundation.
 
 ### Strip-band seam law — slice 2 SHIPPED (2026-07-23): the measured lane is dead
+
 The vestigial results-header measured thread is DELETED end-to-end: the unfed
 handleResultsHeaderLayout contract field (live-state, page-header runtime, read-model
 selectors, selector-results), the effectiveResultsHeaderHeight state + its freeze
@@ -1059,8 +1092,8 @@ OWNS the beyond-boundary physics. The law:
    owner, momentum) keep their exact meaning.
 2. **ONE PHYSICS VOCABULARY.** The overscroll curve and rebound spring are THE SAME
    constants the sheet's elastic bounds already use (RUBBER_BAND_RANGE_PX/COEFFICIENT
-   + the snap spring family) — the sheet-between-snaps band and the list-past-boundary
-   band are one material, so the two can never feel different.
+   - the snap spring family) — the sheet-between-snaps band and the list-past-boundary
+     band are one material, so the two can never feel different.
 3. **OWNERSHIP DERIVES FROM THE EXISTING FACTS** (the owner's cases become a table):
    - top boundary + finger-DOWN drag → sheet grab (collapsePan — unchanged, exists);
    - top boundary reached BY MOMENTUM (finger up) → runtime overscroll: capture exit
@@ -1088,6 +1121,7 @@ reconciliation; (5) the strip/header seam under overscroll (pinned chrome, band
 block never separates — the seam law's block is the one number to respect).
 
 ### Boundary-physics law — slice 1 SHIPPED (2026-07-23): the value + consumer sign-up
+
 `contentOverscroll` minted in the shared sheet runtime (one value, host-owned like the
 scroll offsets), threaded through BottomSheetSharedScrollRuntime +
 BottomSheetSceneStackBodyScrollRuntime; the scene white plate's translate becomes
@@ -1098,6 +1132,7 @@ Gates: tsc/jest 396, matrix 21/21, invariants 30/30. Next slices per the build o
 floor deletion; (5) seam-under-overscroll verification.
 
 ### Boundary-physics slice 2 design note (pre-implementation)
+
 The failed-pan trap: at expanded, expandPan FAILS into native scroll
 (handoffExpandGestureToScroll) — a failed pan cannot drive bottom overscroll. The
 architecture is therefore a MIRROR of the existing at-top pattern: collapsePan proves
@@ -1114,6 +1149,7 @@ construction — nothing opaque may paint there; that is the true-cutout law's
 guarantee).
 
 ### Boundary-physics slice 2 SHIPPED (2026-07-23): the bottom-overscroll pan
+
 The collapsePan mirror: `overscrollPanGesture` (manual activation, simultaneous with
 the container's native scroll) activates on up-drag + atExpanded + atBottom
 (`maxScrollOffset` now published by every onScroll: contentSize − viewport, ≥0) +
@@ -1130,11 +1166,12 @@ surface is a short page's bottom, which is slice 4's territory (short-page floor
 verify both together with the owner's eye.
 
 ### Boundary-physics slice 3 SHIPPED (2026-07-23): the top momentum-rebound
+
 Momentum arrival at the pinned top converts to a rubber-band impulse: each onScroll
 (all three handlers, active list only) detects isInMomentum + offset≤top edge +
 arrival velocity ≥ MOMENTUM_EDGE_MIN_VELOCITY_PT_MS(0.15) and fires ONCE per episode
 (topReboundFired, reset on begin-drag): contentOverscroll = withSpring(0,
-{TOP_REBOUND_SPRING, velocity: -v*1000}) — dips negative and springs home; the
+{TOP_REBOUND_SPRING, velocity: -v\*1000}) — dips negative and springs home; the
 container + plate translate together.
 VERIFICATION STATE: tsc/jest 396, invariants 30/30, matrix 21/21 cold; normal
 scrolling regression-clean by eye. The impulse FIRING is not yet attributed on-sim
@@ -1145,6 +1182,7 @@ FlashList's scroll-event throttle may also gate the edge frame's velocity) — N
 overscroll surface) and slice 5 (seam under overscroll).
 
 ### Boundary-physics slice 4 SHIPPED (2026-07-23): the short-page floor is dead
+
 SHORT_PAGE_SCROLL_ROOM_PX deleted (constant, container minHeight floor, viewport
 measurement state, stale comments). A short page's interior range is honestly 0 — both
 boundaries at once — and the overscroll pan now treats maxScrollOffset===0 as a legal
@@ -1159,8 +1197,10 @@ ARC STATUS: slices 1-4 shipped; slice 5 (seam under overscroll) + the FEEL passe
 tuning) are the owner-eye rounds — the eye is the oracle for feel, per the law.
 
 ### Boundary-physics feel round 1 — attribution findings (2026-07-23, probes in tree)
+
 [BOUNCEDBG] probe round (uncommitted dev probes in
 useBottomSheetSharedScrollEventsRuntime + useBottomSheetSharedGestureRuntime):
+
 1. REAL BUG CAUGHT & FIXED (uncommitted yet): pre-first-scroll, maxScrollOffset was
    unpublished (0) so a fresh LONG list read as at-bottom and the bottom pan ATE the
    first up-drag (probe: "bottom-pan activate off=0.0 max=0.0"). Fix implemented: the
@@ -1178,6 +1218,7 @@ useBottomSheetSharedScrollEventsRuntime + useBottomSheetSharedGestureRuntime):
    flick attribution, then the feel pass.
 
 ### Boundary-physics feel round 1 — SHIPPED FIX + final attribution (2026-07-23)
+
 Committed: the maxScrollOffset container-publication fix (the fresh-long-list at-bottom
 misread, probe-caught, re-repro'd clean after the fix). Final attribution of the
 missing top-rebound, probe-proven twice over: the SEARCH results list's scroll events
@@ -1192,6 +1233,7 @@ bespoke-exception disease again), then the rebound fires there for free; then th
 owner-eye feel pass (springs).
 
 ### Boundary-physics feel round 2 — THE REBOUND FIRES (2026-07-23)
+
 CORRECTION to round 1's finding: search does NOT bypass the events runtime — the
 "zero events" observation came from testing against an EXPIRED perf scenario (the app
 was on home; no results list existed). With a live results list, the primary handler
@@ -1207,6 +1249,7 @@ Probes stripped. Gates: tsc/jest 396, matrix 21/21. REMAINING: the owner-eye fee
 pass (spring constants, the bottom band on a short page, rebound-interrupt-by-touch).
 
 ### Boundary-physics feel round 3 — the bottom band, eye-verified (2026-07-23)
+
 Settings page (real content ≈ viewport + ~150px after the floor deletion): up-drag at
 its scroll bottom stretches the content past its end (~80px on a ~200px pull — the
 shared rubber curve), header pinned, seam flush, ~230ms spring back on release. The
@@ -1220,7 +1263,9 @@ useBottomSheetSharedScrollEventsRuntime (TOP_REBOUND_SPRING) +
 useBottomSheetSharedGestureRuntime (OVERSCROLL_REBOUND_SPRING).
 
 ### Boundary-physics — THE NATIVE BASELINE (2026-07-23, SHIPPED)
+
 Content overscroll now runs Apple's own physics instead of hand-tuned numbers:
+
 - Curve: nativeRubberBandDistance — offset = (1 − 1/(x·c/d + 1))·d, c = 0.55 (the
   WebKit elasticity constant), d = the LIVE viewport height (published by the scroll
   container alongside maxScrollOffset — no magic range).
@@ -1230,12 +1275,13 @@ Content overscroll now runs Apple's own physics instead of hand-tuned numbers:
 - The SHEET's between-snap band deliberately keeps the tighter fixed 96/0.44 curve —
   one formula family, two declared materials (sheet drag is firmer than content
   bounce on-platform too).
-Eye-checked on settings: stretch present, header pinned, seam flush, part of finger
-travel correctly spends on interior scroll before the band engages. Gates: tsc/jest
-396, invariants 30/30, matrix 21/21. Owner-thumb pass is now a DEVIATION from a
-known-correct baseline (say "stretchier/softer/shorter" to move off native).
+  Eye-checked on settings: stretch present, header pinned, seam flush, part of finger
+  travel correctly spends on interior scroll before the band engages. Gates: tsc/jest
+  396, invariants 30/30, matrix 21/21. Owner-thumb pass is now a DEVIATION from a
+  known-correct baseline (say "stretchier/softer/shorter" to move off native).
 
 ### Boundary-physics RED TEAM (owner-directed, 2026-07-23) — full-plan review + fixes
+
 Owner symptoms (early handoff, grabber shake, frozen lists) fully attributed via
 complete logic read + topology sweep + probes. THE UNIFYING ROOT CAUSE: the bottom
 overscroll pan could IMPERSONATE scrolling on any max=0 surface (round-1's clobbered
@@ -1259,6 +1305,7 @@ attribution). Gates: tsc/jest 396, invariants 30/30, matrix 21/21, on-sim scroll
 flick re-verified post-fix.
 
 ### Events-runtime handler factory (red-team ledger, 2026-07-23 — SHIPPED)
+
 The three hand-copied scroll-handler configs (primary list / primary scrollview /
 secondary list) collapse into ONE buildHandlerConfig factory parameterized by exactly
 the two facts that differ: activeWhenPrimary + the per-list offset pair. All shared-
@@ -1268,6 +1315,7 @@ roles (the secondary's unconditional reset was drift — the disease this refact
 kills). Verified: scroll + flick-to-top on-sim, jest 396/396, matrix 21/21.
 
 ### Boundary-physics §5 addendum SHIPPED (2026-07-24): the short-page fact
+
 Layout-time boundary publication returns to the container, gated PER-LEG: publish only
 while shellLiveness && stack-body isActive (both false for hidden co-mounted legs — the
 exact gate the clobbered round lacked; host-level flags are banned from this fact). A
@@ -1285,6 +1333,7 @@ misfires); tsc/jest 396, invariants 30/30, matrix 21/21. OPEN: deliberate settin
 band eye pass (blind rig taps landed on a restaurant page) + owner thumb.
 
 ### Relation-staleness guard REVERTED (2026-07-24) — it froze all scrolling
+
 The revision-subscription guard (applied for real earlier today) was the owner's
 all-pages freeze: pan identities re-mint on host renders, so the subscription forced
 every container to re-render and re-attach its Gesture.Native continuously —
@@ -1300,6 +1349,7 @@ unaffected and stays.
 ## RED TEAM 2 CHARTER — the scroll-fact architecture (owner-directed, 2026-07-24)
 
 OWNER SYMPTOM LEDGER (this session, per page):
+
 - polls: down-drag shake persists; up-drag = sheet drags WHILE list scrolls (double
   motion, no clean handoff); scrolls otherwise; header divider never fades in.
 - results (search): scrolls fine; NO top rubber-band anymore (flick stops dead at the
@@ -1307,41 +1357,43 @@ OWNER SYMPTOM LEDGER (this session, per page):
   round); divider fade works.
 - lists page: scrolls; NO rubber-band top or bottom; divider inconsistent.
 - profile: scrolls; divider doesn't fade in.
-ATTRIBUTED (probe-proven): `overscroll ACTIVATE off=0.0 max=0.0 vp=806` ON POLLS —
-the host-shared boundary facts (scrollOffset/maxScrollOffset/scrollViewportHeight)
-LINGER across leg switches; a non-publishing leg inherits a stale mixture (vp from a
-tall leg + max=0 from a short one) and my viewport-proves-publication gate reads it
-as a trusted short page → the pan impersonates scroll (double motion) + fake at-top
-(collapse grab = shake). Mitigated tonight: pan requires scroll-proven max>0 (short-
-page band OFF again).
-INSTRUMENT LESSON: Gesture.Native onBegin/onStart/onFinalize DO NOT FIRE in this
-RNGH version — a probe there is always-silent (lying). The live instruments are the
-pan worklet logs + the scroll-handler logs ([ARBDBG] set, currently in tree,
-uncommitted).
-THE DISEASE (the from-scratch target): ONE shared mutable fact-set with per-leg
-writers and no owner identity. Facts arrive from whichever leg wrote last and
-survive presentation switches. The divider inconsistency is the same disease via
-another consumer (its opacity reads the shared scrollOffset, which some pages' lists
-apparently never feed — same routing question).
-THE REDESIGN DIRECTION: per-scene SCROLL-FACT RECORDS (offset, max, viewport,
-momentum) — sceneScrollStateRegistry already holds per-scene offsets; extend it to
-the full fact record, and THE PRESENTED SCENE'S RECORD is the one the pans, the
-divider, and the rebound read, switched atomically with the presentation frame (the
-same one-writer law as shell visibility). No fact survives a scene switch; a scene
-with no record has UNKNOWN facts (pans decline). Also in scope: why the top rebound
-regressed on results; why polls' list feeds no divider offset; whether polls (bespoke
-host vs scene-stack leg) double-hosts its gesture runtime.
-STATUS: charter recorded; mitigation reloaded; redesign NOT started — needs a fresh
-full-context session (this one is at its end).
+  ATTRIBUTED (probe-proven): `overscroll ACTIVATE off=0.0 max=0.0 vp=806` ON POLLS —
+  the host-shared boundary facts (scrollOffset/maxScrollOffset/scrollViewportHeight)
+  LINGER across leg switches; a non-publishing leg inherits a stale mixture (vp from a
+  tall leg + max=0 from a short one) and my viewport-proves-publication gate reads it
+  as a trusted short page → the pan impersonates scroll (double motion) + fake at-top
+  (collapse grab = shake). Mitigated tonight: pan requires scroll-proven max>0 (short-
+  page band OFF again).
+  INSTRUMENT LESSON: Gesture.Native onBegin/onStart/onFinalize DO NOT FIRE in this
+  RNGH version — a probe there is always-silent (lying). The live instruments are the
+  pan worklet logs + the scroll-handler logs ([ARBDBG] set, currently in tree,
+  uncommitted).
+  THE DISEASE (the from-scratch target): ONE shared mutable fact-set with per-leg
+  writers and no owner identity. Facts arrive from whichever leg wrote last and
+  survive presentation switches. The divider inconsistency is the same disease via
+  another consumer (its opacity reads the shared scrollOffset, which some pages' lists
+  apparently never feed — same routing question).
+  THE REDESIGN DIRECTION: per-scene SCROLL-FACT RECORDS (offset, max, viewport,
+  momentum) — sceneScrollStateRegistry already holds per-scene offsets; extend it to
+  the full fact record, and THE PRESENTED SCENE'S RECORD is the one the pans, the
+  divider, and the rebound read, switched atomically with the presentation frame (the
+  same one-writer law as shell visibility). No fact survives a scene switch; a scene
+  with no record has UNKNOWN facts (pans decline). Also in scope: why the top rebound
+  regressed on results; why polls' list feeds no divider offset; whether polls (bespoke
+  host vs scene-stack leg) double-hosts its gesture runtime.
+  STATUS: charter recorded; mitigation reloaded; redesign NOT started — needs a fresh
+  full-context session (this one is at its end).
 
 ### RED TEAM 2 — THE SCROLL-FACT REDESIGN (implementation spec, 2026-07-24)
+
 THE LAW: per-scene fact RECORDS are the store; the host's live SharedValues are a
 PROJECTION of the presented scene's record; writers write records; ONE projector
 switches the projection on the presentation frame flip (same driver as shell
 visibility: PersistentSheetHeaderHost's frame effect).
 Slices:
+
 1. REGISTRY EXTENSION (pure): SceneScrollState gains `boundaryFacts: { maxScrollOffset:
-   number; viewportHeight: number; known: boolean }` + setters/readers
+number; viewportHeight: number; known: boolean }` + setters/readers
    (`recordSceneBoundaryFacts(sceneKey, max, viewport)`, `readSceneBoundaryFacts`),
    default { 0, 0, known:false }. Hermetic tests.
 2. WRITER REROUTE: BottomSheetScrollContainer publication (per-leg gated as today)
@@ -1365,10 +1417,11 @@ Slices:
    (polls = bespoke host split — likely reads the WRONG host's offset; decide: route
    polls divider from its own host or record the polls-host migration as the cure);
    (c) strip the [ARBDBG] probes when done.
-Each slice: tsc/jest + matrix + owner-eye where feel changes; commit separately with
-pathspec + --no-verify.
+   Each slice: tsc/jest + matrix + owner-eye where feel changes; commit separately with
+   pathspec + --no-verify.
 
 ### Scroll-fact redesign slices 1-3 SHIPPED (2026-07-24)
+
 1. Per-scene boundary-fact records in sceneScrollStateRegistry (max, viewport, known;
    UNKNOWN default). 2. Scene-keyed writers: SceneScrollFactsSceneKeyContext at each
    leg's body root; the container's per-leg-gated publication writes the scene's
@@ -1381,11 +1434,12 @@ pathspec + --no-verify.
    live publication set known; UNKNOWN scenes (bespoke polls; search pre-scroll)
    decline. Verified: no overscroll misfires post-reload on up-drags (probe count
    flat); scroll healthy; jest 396/396, matrix 21/21, invariants 30/30.
-REMAINING in red team 2: owner re-repro on polls (shake/double-motion should be dead —
-polls is UNKNOWN now); results top-rebound regression attribution; divider-fade
-per-page audit (polls/profile/lists — routing); strip [ARBDBG] probes after.
+   REMAINING in red team 2: owner re-repro on polls (shake/double-motion should be dead —
+   polls is UNKNOWN now); results top-rebound regression attribution; divider-fade
+   per-page audit (polls/profile/lists — routing); strip [ARBDBG] probes after.
 
 ### RED TEAM 2 — ROOT CAUSE PINNED (2026-07-24): stale relations via rare pan re-mints
+
 [REMINT] probe: the sheet pans mint 3× (2 at boot, 1 at search open) — NOT per-render
 churn. That is exactly the stale-relations window: a container mounted before the
 LAST mint that never re-renders again (polls: boot-mounted, memo'd feed) keeps
@@ -1395,15 +1449,15 @@ double-motion + shake + early-handoff feel, page-dependent by mount recency (res
 remounts per search → always fresh → behaves). Same-build proven (red divider
 marker). THE FIX (the recorded ideal, now mandatory): MOUNT-STABLE PANS — mint the
 gesture set ONCE; every changing input must be an SV or a stable worklet:
-  (a) audit useBottomSheetSharedGestureRuntime's useMemo deps: find what changed at
-      the search-open re-mint (suspects: resolveDestination/startSpring identity from
-      useBottomSheetSharedSnapExecutionRuntime dep churn; runtimeConfigValues object
-      identity; snap-number props on the assembly path);
-  (b) stabilize those (SV-read worklets, empty-dep useCallbacks; the legacy
-      BottomSheetWithFlashList host is DEAD CODE — delete it rather than support its
-      number-prop fallbacks);
-  (c) then the pans' useMemo deps collapse to stable identities → single mint →
-      relations can never stale; the revision-store guard stays unnecessary.
+(a) audit useBottomSheetSharedGestureRuntime's useMemo deps: find what changed at
+the search-open re-mint (suspects: resolveDestination/startSpring identity from
+useBottomSheetSharedSnapExecutionRuntime dep churn; runtimeConfigValues object
+identity; snap-number props on the assembly path);
+(b) stabilize those (SV-read worklets, empty-dep useCallbacks; the legacy
+BottomSheetWithFlashList host is DEAD CODE — delete it rather than support its
+number-prop fallbacks);
+(c) then the pans' useMemo deps collapse to stable identities → single mint →
+relations can never stale; the revision-store guard stays unnecessary.
 PROBES IN TREE (uncommitted): [ARBDBG] set + [REMINT]. Keep until the fix verifies
 (the owner's polls repro is the acceptance test: no shake, no double-motion, clean
 handoff), then strip all probes.
@@ -1411,10 +1465,11 @@ ALSO STILL OPEN: results top-rebound regression; divider-fade routing audit; the
 dead BottomSheetWithFlashList deletion.
 
 ### MOUNT-STABLE PANS SHIPPED (2026-07-24) — the stale-relations cure
+
 The snap-number props (motionStateEntry.snapPoints, per presented scene) were captured
 raw in both the gesture runtime's pan useMemo and the snap-execution callbacks — every
 snap-set change re-minted resolveDestination/startSpring and therefore the PANS.
-Fix: SV mirrors (expandedSnapValue/... in the gesture runtime; *Mirror in snap
+Fix: SV mirrors (expandedSnapValue/... in the gesture runtime; \*Mirror in snap
 execution) — worklets read live values through stable identities; dep lists carry the
 mirrors. RED→GREEN: [REMINT] went from 3 mints (boot 2 + search-open 1) to ONE mint
 for boot + search-open combined. With a single mint, a container's Gesture.Native
@@ -1432,6 +1487,7 @@ acceptance evidence: polls locked at boot, unlocks after leave-and-return, then
 double-scroll + shake persist THROUGH mount-stable pans. Patches end here.
 
 FIRST PRINCIPLES (the design's laws):
+
 1. ONE GESTURE AUTHORITY, ZERO RELATION WEBS. A single root detector owns every sheet
    touch. Ownership (sheet-drag | scroll | boundary-physics) is an EXPLICIT STATE
    MACHINE on shared values — no requireExternalGestureToFail / simultaneousWith
@@ -1456,6 +1512,7 @@ deletion list). Owner reviews before code.
 STEP 3+: build behind the polls acceptance test.
 
 ### GESTURE REDESIGN — THE MAP'S VERDICT + THE IMMUTABLE-PAN DESIGN (2026-07-24)
+
 Survey (definitive, file:line in agent report): ONE runtime instance
 (assembly:123), ONE detector (SurfaceHost:177), ONE pan set for every surface;
 BottomSheetWithFlashList is DEAD (never mounted). The polls pathology is purely
@@ -1469,6 +1526,7 @@ Leave-and-return re-renders the container → fresh relations → "unlocked" but
 deeper double-motion persists whenever any later re-mint outruns polls' next render.
 
 THE DESIGN (charter law 1, refined by the map): IMMUTABLE PANS + COMMAND BUS.
+
 - The pan set mints ONCE per runtime mount (useMemo deps: []). INVARIANT: nothing
   captured by a pan worklet may have JS identity that can change — facts arrive via
   stable owned SharedValues only.
@@ -1485,8 +1543,10 @@ THE DESIGN (charter law 1, refined by the map): IMMUTABLE PANS + COMMAND BUS.
   scene hops (RED-capable); then the owner's polls repro.
 
 ### IMMUTABLE PANS + COMMAND BUS SHIPPED (2026-07-24)
+
 The gesture set now mints with EMPTY useMemo deps — one mint per runtime mount, by
 construction:
+
 - Config mirrors: a useAnimatedReaction (outside gesture identity) syncs
   runtimeConfigValues' SVs into the runtime-owned mirrors (snaps, preventSwipeDismiss,
   gestureEnabled); the pans read mirrors only. resolveRuntimeSnapValues no longer
@@ -1495,15 +1555,16 @@ construction:
   an executor reaction consumes them with the CURRENT resolveDestination/startSpring —
   JS-function identity can no longer reach the pans.
 - gestureEnabledValue = the owned SV always.
-VERIFIED: [REMINT] delta ZERO across search submits + scrolls (previously re-minted
-per snap-set change); drag-release settles via the executor (delta-0 settle shot);
-scroll healthy; jest 396/396, matrix 21/21, invariants 30/30.
-ACCEPTANCE PENDING: the owner's polls repro (boot lock + double-motion + shake) —
-with immutable pans, a boot-minted container's relations stay valid forever; the
-polls mechanism is unrepresentable. THEN: strip probes ([REMINT], [ARBDBG], red
-divider marker), delete dead BottomSheetWithFlashList, rebound + divider audits.
+  VERIFIED: [REMINT] delta ZERO across search submits + scrolls (previously re-minted
+  per snap-set change); drag-release settles via the executor (delta-0 settle shot);
+  scroll healthy; jest 396/396, matrix 21/21, invariants 30/30.
+  ACCEPTANCE PENDING: the owner's polls repro (boot lock + double-motion + shake) —
+  with immutable pans, a boot-minted container's relations stay valid forever; the
+  polls mechanism is unrepresentable. THEN: strip probes ([REMINT], [ARBDBG], red
+  divider marker), delete dead BottomSheetWithFlashList, rebound + divider audits.
 
 ### THE POISONED WRITER — polls finally reproduced + fixed (2026-07-24)
+
 Populated the polls feed on the rig (Closed tab) and reproduced the owner's exact
 sequence: probe showed `overscroll ACTIVATE off=0.0 max=0.0 vp=766` SURVIVING all
 structural fixes. Root cause: event.contentSize is NULL in these Reanimated scroll
@@ -1520,6 +1581,7 @@ Gesture.Native callbacks, event.contentSize — NEVER trust an event field witho
 RED-capable probe first.
 
 ## THE SCROLL/GESTURE ARC REVERT (owner-directed, 2026-07-24)
+
 DECISION: five verified fixes changed nothing the owner could feel, and the layers
 added real frame cost (owner: laggy). The methodological failure is recorded: every
 slice was accepted against RIG reproductions, which repeatedly failed to predict the
@@ -1539,19 +1601,22 @@ GROUND-TRUTH CHECK PENDING: the owner verifies polls/results/lists/profile feel
 restored (stable, fast, no shake) before anything new lands.
 
 ## THE UN-REVERT + THE GROUND-TRUTH RESET (2026-07-24)
+
 Owner's baseline check delivered the arc's missing ground truth:
+
 1. THE NATIVE BOUNCE WAS FELT AND WANTED ("the overscroll bounce we implemented that
    felt native") — the arc's core reached the owner and worked. Revert overshot.
 2. THE SHAKE (down-drag) and THE POLLS BOOT-FREEZE exist ON THE PRE-ARC BASELINE —
    they are PRE-EXISTING bugs the arc never caused and arc-focused fixes could never
    remove. This resolves the "five fixes changed nothing" paradox: the two felt
    issues were never the arc's.
-ACTION: scroll/gesture files restored to the final arc state (cc6f0b59 — all writer
-laws, immutable pans, per-scene facts, native physics), with the lag suspects fixed
-during re-land: all probes stripped; the config-sync reaction now writes-on-change
-only (it fired per frame with unconditional 6-SV writes — the likely lag).
-Gates: tsc/jest 396, matrix 21/21, invariants 30/30.
-NEXT (the real remaining bugs, now correctly framed as BASELINE issues):
+   ACTION: scroll/gesture files restored to the final arc state (cc6f0b59 — all writer
+   laws, immutable pans, per-scene facts, native physics), with the lag suspects fixed
+   during re-land: all probes stripped; the config-sync reaction now writes-on-change
+   only (it fired per frame with unconditional 6-SV writes — the likely lag).
+   Gates: tsc/jest 396, matrix 21/21, invariants 30/30.
+   NEXT (the real remaining bugs, now correctly framed as BASELINE issues):
+
 - THE SHAKE: down-drag sheet-grab oscillation — attribute on this state with a
   sheetY-writer trace (who writes sheetY during a collapse drag; two-writer check
   between collapse onChange and any spring/settle path).
@@ -1561,25 +1626,31 @@ NEXT (the real remaining bugs, now correctly framed as BASELINE issues):
   arbitration on the boot-mounted container.
 
 # ═══════════════════════════════════════════════════════════════════════════════════
+
 # THE ONE TRACK — the sheet interaction system from first principles
+
 # (owner-directed full derivation, 2026-07-25 — no current-code assumptions)
+
 # ═══════════════════════════════════════════════════════════════════════════════════
 
 ## 0. The axiom (where every observed failure comes from)
+
 A finger applies ONE displacement stream. Every failure we have ever observed is a
 violation of one law: DISPLACEMENT DISTRIBUTION MUST BE A TOTAL FUNCTION of (touch
 phase, system state) — never an emergent negotiation.
+
 - The shake = two consumers writing sheet position in the same frames.
 - Double-scroll = sheet AND list both consuming one drag.
 - Frozen scroll = a distribution rule with a gap (no consumer).
 - Broken handoffs = the rule's value changing mid-gesture through recognizer
   negotiation (require-to-fail webs), whose validity is temporal (stale relations).
-The current architecture CANNOT satisfy the axiom, because it delegates distribution
-to two independent physics engines (RNGH pans + UIScrollView's native pan) glued by
-declarative relations. Both-consume and neither-consume states are REACHABLE by
-design. No amount of fixing reaches impossibility. The abstraction itself is wrong.
+  The current architecture CANNOT satisfy the axiom, because it delegates distribution
+  to two independent physics engines (RNGH pans + UIScrollView's native pan) glued by
+  declarative relations. Both-consume and neither-consume states are REACHABLE by
+  design. No amount of fixing reaches impossibility. The abstraction itself is wrong.
 
 ## 1. The two architectures that satisfy the axiom, and the verdict
+
 (B) ONE ARBITER, SCROLL ENSLAVED: a single root pan consumes everything; the list
 scrolls programmatically. Distribution is a literal total function — but it means
 hand-rolling scroll physics (momentum, deceleration, edge feel). This repo already
@@ -1593,32 +1664,35 @@ best physics in the business). This is how the canonical iOS sheets actually fee
 VERDICT: A.
 
 ## 2. THE MODEL
+
 Two DISJOINT input surfaces; one value each; everything else is pure derivation.
 
 STATE (the only interaction state that exists):
-- D  — the sheet DETENT position (collapsed..expanded), global, snapped.
+
+- D — the sheet DETENT position (collapsed..expanded), global, snapped.
 - Lₛ — per-scene list offset (the registry's per-scene record — kept from this arc).
-- τ  — THE TRACK: the presented scene's native scroll offset. Its content is laid
-       out as [SHEET REGION spacer of height = distance(D_at_touch → expanded)]
-       followed by [the scene's list content].
+- τ — THE TRACK: the presented scene's native scroll offset. Its content is laid
+  out as [SHEET REGION spacer of height = distance(D_at_touch → expanded)]
+  followed by [the scene's list content].
 
 INPUT SURFACE 1 — THE BODY (the track): every touch on the sheet body feeds the ONE
 native scroll view. The track is partitioned by a single number H (remaining sheet
 travel at gesture start):
-  τ ∈ [0,H): the spacer region — sheetY DERIVES from τ (linear collapsed→expanded
-             map). The list hasn't moved. Dragging down here IS the sheet grab.
-  τ ≥ H:     the list region — sheet pinned expanded; list offset = τ − H.
-  τ < 0 / τ > end: NATIVE bounce (bounces=true — the native rubber band, free).
+τ ∈ [0,H): the spacer region — sheetY DERIVES from τ (linear collapsed→expanded
+map). The list hasn't moved. Dragging down here IS the sheet grab.
+τ ≥ H: the list region — sheet pinned expanded; list offset = τ − H.
+τ < 0 / τ > end: NATIVE bounce (bounces=true — the native rubber band, free).
 PHASE-DEPENDENT BOUNDS (the one boundary law, replacing every handoff rule):
-  - FINGER DOWN: bounds = [0, end] — a drag can travel continuously from deep list
-    up through H and into sheet travel (the "grab at top" case is just... scrolling).
-  - BALLISTIC (finger up): lower bound = H — momentum arriving at the list top
-    BOUNCES natively (the owner's case a), it never collapses the sheet. Implemented
-    as a contentInset/limit flip on touch-up — one animated prop, no negotiation.
-SNAPS: only meaningful inside the spacer region. On release with τ < H: drive τ to
-the velocity-chosen detent (worklet-driven spring scrollTo; the arc's proven spring
-constants). On settle, D updates and the spacer re-bases. In the list region there is
-no snapping — free native scroll (exactly native sheet feel).
+
+- FINGER DOWN: bounds = [0, end] — a drag can travel continuously from deep list
+  up through H and into sheet travel (the "grab at top" case is just... scrolling).
+- BALLISTIC (finger up): lower bound = H — momentum arriving at the list top
+  BOUNCES natively (the owner's case a), it never collapses the sheet. Implemented
+  as a contentInset/limit flip on touch-up — one animated prop, no negotiation.
+  SNAPS: only meaningful inside the spacer region. On release with τ < H: drive τ to
+  the velocity-chosen detent (worklet-driven spring scrollTo; the arc's proven spring
+  constants). On settle, D updates and the spacer re-bases. In the list region there is
+  no snapping — free native scroll (exactly native sheet feel).
 
 INPUT SURFACE 2 — THE HEADER (the grab): one pan on the header/grab-handle region
 drives D directly (the only way to move the sheet while the list is deep-scrolled).
@@ -1634,6 +1708,7 @@ when its natural position crosses the header bottom — a τ-derivation, NOT an 
 map parallax; dismiss progress.
 
 ## 3. The permutation table (why every configuration is now trivially coherent)
+
 - Header-mounted strip (polls/bookmarks): chrome. Lives in input surface 2's region;
   taps only. Zero interaction with the track.
 - In-list strip (search results): content. Scrolls with τ like any row.
@@ -1650,6 +1725,7 @@ map parallax; dismiss progress.
   dies with the architecture.
 
 ## 4. Impossibility arguments (the owner's acceptance list, proven structurally)
+
 1. SHAKE impossible: sheet position has exactly one writer per touch — the header
    pan (surface 2) XOR the τ-derivation (surface 1). Two-writer frames are
    unrepresentable.
@@ -1665,6 +1741,7 @@ map parallax; dismiss progress.
    with no role in displacement distribution, by type.
 
 ## 5. What dies, what survives
+
 DIES (the deletion list): both body pans + the overscroll pan and every RNGH
 relation (require-to-fail/simultaneous webs); the gesture-owner flags and handoff
 locks; SHEET_BODY_NO_OVERSCROLL (bounces becomes TRUE — native); the contentOverscroll
@@ -1677,18 +1754,20 @@ the snap-spring constants (the detent settle); scene foundation specs; everythin
 above the interaction layer.
 
 ## 6. Honest unknowns (the prototype must answer, RED-capable)
+
 U1. The spacer mechanism inside FlashList (leading spacer as content vs animated
-    contentInset) and re-basing it on detent change without visible jumps.
+contentInset) and re-basing it on detent change without visible jumps.
 U2. The ballistic lower-bound flip on touch-up (animated contentInset vs clamp) —
-    latency and bounce fidelity at H.
+latency and bounce fidelity at H.
 U3. Worklet-driven spring scrollTo for detent snaps (feel parity with today's
-    spring) — including catch-during-settle (touch mid-snap must hand the track
-    back seamlessly; native does this for free if the snap is scroll-driven).
+spring) — including catch-during-settle (touch mid-snap must hand the track
+back seamlessly; native does this for free if the snap is scroll-driven).
 U4. Velocity continuity crossing H finger-down (native handles it — verify on
-    device, not simulator assumptions).
+device, not simulator assumptions).
 U5. FlashList virtualization with a large leading spacer (viewport calculations).
 
 ## 7. The build law (learned the hard way, now binding)
+
 - PROTOTYPE FIRST: one scene (search results), behind a presented-scene flag,
   owner-thumb accepted BEFORE any migration begins. The rig is an instrument; the
   owner is the acceptance.
@@ -1747,7 +1826,8 @@ U4: velocity continuity gets verified on REAL hardware, not only the simulator (
 sim's HID timing has already misled this arc once).
 
 ### ONE TRACK — prototype slice 1 SHIPPED (2026-07-25)
-Dev-only overlay (App.tsx __DEV__ mount): crave://one-track-proto?show=1 — a real
+
+Dev-only overlay (App.tsx **DEV** mount): crave://one-track-proto?show=1 — a real
 fullscreen UIScrollView track over a fake map: transparent spacer [0,H), sheet
 content after; three detents; pinned header + divider + backdrop dim as pure
 τ-derivations; readout HUD (τ/H/phase). MACHINE-VERIFIED on-sim: one continuous
@@ -1761,6 +1841,7 @@ grab with deep list) not in this slice; U5 (FlashList) deliberately excluded.
 OWNER FEEL PASS = the gate for everything next.
 
 ### ONE TRACK prototype — top-edge dip investigation (in flight, 2026-07-25)
+
 OWNER GROUND TRUTH: bottom edge bounces natively (engine-known edge — momentum
 carries, rubber-band works); TOP edge (H) hard-stops regardless of momentum; also
 noted: no visible overscroll AREA at the sheet edge (prototype artifact — the real
@@ -1786,9 +1867,11 @@ entirely. Uncommitted prototype edits in tree: OneTrackPrototype.tsx (energy mod
 HUD probe).
 
 ### THE NATIVE HATCH SHIPPED — the top rubber-band is REAL (2026-07-25)
+
 TrackScrollKit (local pod, ios/TrackScrollKit): a delegate-proxy module over the real
 UIScrollView of any RN scroll view (Fabric-proof, recycler-proof). It owns exactly
 what only native can know:
+
 - willBeginDragging lifts the ballistic bound (finger = full 1:1 track through H);
 - willEndDragging (sync, pre-decel) installs the H bound, detent-targets releases in
   the sheet region via targetContentOffset (velocity-aware for free), and emits
@@ -1796,17 +1879,17 @@ what only native can know:
   the one trustworthy velocity in the system;
 - attach() is RE-ASSERTIVE (re-wraps when Fabric replaces the delegate; JS re-asserts
   per drag start) — the delegate-replacement failure mode is self-healing.
-JS: the dip is a τ-derivation-adjacent spring (170/26) driven by the emitted
-velocity; fires on arrival ≤H+3.
-PLATFORM LORE BANKED (three-and-counting Reanimated/UIKit traps):
+  JS: the dip is a τ-derivation-adjacent spring (170/26) driven by the emitted
+  velocity; fires on arrival ≤H+3.
+  PLATFORM LORE BANKED (three-and-counting Reanimated/UIKit traps):
 - UIScrollView NEVER bounces at an inset-synthesized minimum — decel re-targets with
   ease (RED-proven at willEndDragging timing). Real bounce only at content edges.
 - Fabric replaces scroll delegates after attach — proxies must re-assert.
 - Reanimated withSpring(to) from value==to EARLY-EXITS and SWALLOWS initial velocity
   — nudge off zero before velocity springs (this hid the dip through FOUR rounds).
-MEASURED: flick → 84pt dip below the pinned header with a clean critically-damped
-return (video trajectory 660→804px→rest). Detents + continuous grab + no-collapse +
-bottom native bounce all hold. OWNER FEEL PASS NEXT: crave://one-track-proto?show=1.
+  MEASURED: flick → 84pt dip below the pinned header with a clean critically-damped
+  return (video trajectory 660→804px→rest). Detents + continuous grab + no-collapse +
+  bottom native bounce all hold. OWNER FEEL PASS NEXT: crave://one-track-proto?show=1.
 
 ### THE CROSSING INTERCEPT (2026-07-26) — velocity-continuous top rubber-band
 
@@ -1825,6 +1908,7 @@ and hands {velocity, overshoot} to JS; the dip spring starts AT the overshoot
 with the measured velocity — one continuous motion through the edge.
 
 Two follow-on laws, both RED-proven this round:
+
 - SUPPRESS THE OVERSHOOT FRAME: the snap's nested didScroll(edge) reaches React
   first; forwarding the older sub-edge frame afterwards leaves every JS
   derivation resting on a stale y (HUD read τ = H − overshoot while the real
@@ -1884,6 +1968,7 @@ Verified: same release now lands τ=623 exactly, list at top, unscrolled.
 
 Owner's pass confirmed physics; caught two missing SURFACE derivations (both
 prototype artifacts with real-implementation laws):
+
 - THE WORLD MASK: the region above the sheet's top edge IS the map — scroll
   content may never surface there. A map-replica cover (same color + same
   animated dim) spans [0, sheetTopY): pure derivation, invisible as a layer.
@@ -1896,6 +1981,7 @@ prototype artifacts with real-implementation laws):
 
 Owner: merge the shipped app's surface trickery with the one-track physics.
 Done in the prototype, using the REAL production pieces:
+
 - DOCKED STRIP CUTOUTS: the strip band is the production composition
   miniaturized — frost replica under a WHITE PLATE with chip-shaped holes
   punched via MaskedHoleOverlay (the same component the header cutout plate and
@@ -1908,8 +1994,8 @@ Done in the prototype, using the REAL production pieces:
   the rounded radius reads rounded even while content slides beneath the
   chrome — the notches outside the radius are world, not sheet. The world mask
   alone drew a straight line and made the sheet read square.
-Verified: deep scroll τ=1807 — rows swallow at the band edge, chips still show
-frost, corners rounded, world clean above the header.
+  Verified: deep scroll τ=1807 — rows swallow at the band edge, chips still show
+  frost, corners rounded, world clean above the header.
 
 ### U5 PASSED — FlashList rides the one track (2026-07-26)
 
@@ -1917,6 +2003,7 @@ The prototype's list layer is now FlashList 2.0.2 (real recycler) and every
 physics gate re-verified on it: continuous grab, detent spring, ballistic wall,
 crossing-intercept rubber (native spring), rows materialized at every offset
 after hard ballistic journeys. Three laws earned:
+
 - DURABLE ATTACH: Fabric re-sets the scroll delegate constantly under a
   recycler; a fast flick beats any JS-timed re-assert (RED: sheet collapsed
   through H with no arrival). The proxy now KVO-observes the delegate slot and
@@ -1928,10 +2015,10 @@ after hard ballistic journeys. Three laws earned:
   handler coexist.
 - MVCP DISABLED on the track (offset 0 = sheet collapsed; anchoring fights
   sheet travel).
-RED HERRING RECORDED: the "blank viewport at deep tau" was the prototype's own
-screen-tall white footer at the legitimate end of the track — the recycler was
-fine (internal-handler probe: events flowed at every offset; rows 26-33 painted
-at tau=2523). Footer shortened.
+  RED HERRING RECORDED: the "blank viewport at deep tau" was the prototype's own
+  screen-tall white footer at the legitimate end of the track — the recycler was
+  fine (internal-handler probe: events flowed at every offset; rows 26-33 painted
+  at tau=2523). Footer shortened.
 
 ### THE SHEET CLIP (2026-07-26) — production-real surface shape
 
@@ -1949,6 +2036,7 @@ surface (it IS sheet material) — no separate translate.
 ### THE TRACKSHEET KIT (2026-07-26) — the sheet-page standard extracted
 
 apps/mobile/src/tracksheet/ — the baked-in standard the owner mandated:
+
 - useTrackSheetPhysics: the one-track physics as a hook (τ, sheetTopY,
   ballistic phase, durable native-hatch attach with recycler retries).
 - TrackSheetPage: the standard page — sheet clip surface + counter-positioned
@@ -1958,18 +2046,19 @@ apps/mobile/src/tracksheet/ — the baked-in standard the owner mandated:
 - TrackSheetDockedStrip/TrackSheetStripCutout: the production cutout
   composition generalized — cutouts measureLayout against the band
   (nesting-proof), plate holes via MaskedHoleOverlay.
-OneTrackPrototype is now the kit's first consumer (~190 lines of pure page
-authoring). Verified on-sim: collapsed→deep-list in one gesture, cutouts,
-chrome swallow, corners. Lesson: header content must be pointerEvents
-box-none or it eats the grab (chrome overlays the track).
-NEXT (migration ladder): header-grab input surface for off-track states,
-then scene-by-scene strangler onto TrackSheetPage, then delete the old
-gesture system.
+  OneTrackPrototype is now the kit's first consumer (~190 lines of pure page
+  authoring). Verified on-sim: collapsed→deep-list in one gesture, cutouts,
+  chrome swallow, corners. Lesson: header content must be pointerEvents
+  box-none or it eats the grab (chrome overlays the track).
+  NEXT (migration ladder): header-grab input surface for off-track states,
+  then scene-by-scene strangler onto TrackSheetPage, then delete the old
+  gesture system.
 
 ### PRODUCTION MIGRATION MAP (2026-07-26) — the strangler ladder
 
 Owner mandate: TrackSheet is the standard everywhere; delete the old system.
 Architecture facts (mapped from code):
+
 - THE SEAM: AppOverlayRouteHost → SearchOverlayRouteSheetSurfaceHost →
   SearchRouteSheetFrameHost → SearchRouteSceneStackBottomSheetSurfaceHost
   (assembly + GestureDetector + BottomSheetSceneStackHost, 1856 LOC). The sheet
@@ -1984,11 +2073,12 @@ Architecture facts (mapped from code):
   middle=max(exp+96, 40%), collapsed=navBarOffset−headerHeight, hidden=h+80).
 - SNAP DRIVERS: app-route-sheet-motion-descriptor-table (from,to,kind → rule),
   snap session posture memory, promoteActiveSheet verbs, snapLock (settings).
-- DELETE LIST (once strangled): useBottomSheetShared* family (9 runtimes),
+- DELETE LIST (once strangled): useBottomSheetShared\* family (9 runtimes),
   BottomSheetScrollContainer, BottomSheetWithFlashList, sceneScrollStateRegistry
-  + friends, sheetUtils spring configs, the assembly.
+  - friends, sheetUtils spring configs, the assembly.
 
 THE RUNGS:
+
 1. TrackSheetRouteHost (dev-flagged parallel host at the seam): TrackSheetPage
    with real calculateSnapPoints geometry + persistent-header-registry titles +
    scene-spec strip modes; scenes render via a body adapter (real bodies where
@@ -2008,6 +2098,7 @@ mounted at the seam (AppOverlayRouteHost, dev-only), rendering TrackSheetPage
 with real calculateSnapPoints geometry and the scene's registry Title/Strip
 inside ChromeProbeBoundary (a context-needing chrome component is a FINDING
 rendered in place, not a crash). Findings so far:
+
 - FINDING 1: registry chrome (PollsPanel Title) throws "useAppRouteSceneRuntime
   must be used within AppRouteSceneRuntimeProvider" even at the AppOverlayRouteHost
   seam — the provider mounts BELOW the seam. Rung 1b: locate
@@ -2029,6 +2120,7 @@ system's own (my host never touches snap writers) — pre-existing noise to
 triage separately.
 
 RUNG 2 LANDED (2026-07-26): real geometry + live scene switching.
+
 - Geometry: getSearchStartupGeometrySeed().routeOverlaySnapPoints (the
   canonical production snap points; H=647.75 on this sim).
 - Scene: usePresentationFrame(sceneRuntime.routeSceneSwitchRuntime) — the frame
@@ -2055,6 +2147,7 @@ mapping = τ−H), transport scroll props, secondaryList.
 The old sheet's hard-earned integration behavior is PART OF THE DEFINITION OF
 DONE for the TrackSheet migration — rungs 4/5 cannot flip the default until
 each is verified on the track host:
+
 - NAV EXCLUSION: the sheet↔nav interplay (collapsed seat aligned to the nav
   cutout via navBarTopForSnaps/navBarCutoutHeight; nav hide/show choreography;
   bottomNavHiddenTranslateY) — geometry already flows from the same seed, the
@@ -2103,6 +2196,7 @@ lists' body renders blank on the track host because activation never fires
 without the old sheet; bridge activation from the track (τ-derived) or force it
 for track scenes.
 DEV IRRITANTS FIXED (owner directive: fix everything that surfaces):
+
 - snap-law LogBox: 'home' joined the posture-seat scenes (home-surface work)
   but recordRouteSceneSnapFact's fall-through still recorded PROGRAMMATIC
   settles for it — now gesture-gated exactly like lists/profile.
@@ -2120,6 +2214,7 @@ expanded on the track. Rung-4 note: derive shouldRenderExpandedContent from τ
 for collapsed postures instead of constant true.
 
 RUNG 3 — SCENE SWEEP PROGRESS (2026-07-26 late):
+
 - PROFILE: REAL on the track, amber-verified, after the BODY INSET fix
   (mounted cells now carry OVERLAY_HORIZONTAL_PADDING — production applies it
   via the body-content runtime; profile rendered edge-to-edge without it).
@@ -2161,6 +2256,7 @@ userProfile, followList, editProfile, postPhotos, pollDetail/pollCreation
 
 Owner: "pages still have double scroll / handoff issues — feels not fully cut
 over." BOTH readings correct, recorded as law:
+
 1. FLAG OFF = OLD SYSTEM ENTIRELY. The track host is parallel + dev-flagged;
    production pages keep the old runtimes (and their diseases) until rung 5.
    Feel verdicts on the normal app are verdicts on the OLD system.
@@ -2170,11 +2266,11 @@ over." BOTH readings correct, recorded as law:
    the new host. The mounted-body adapter is scaffolding, correct ONLY for
    bodies whose height is content-bound (inner ScrollViews collapse and the
    track owns all motion — lists/profile/settings verified this way).
-THE CONVERSION LAW (finishing rung 3): every scrollable scene's rows must BE
-the track's rows — a body-content 'list' spec consumed by TrackSheetPage (the
-polls/home path). Conversion queue: listDetail → pollDetail → any body that
-binds its inner list to viewport height. A grep-invariant lands with rung 5:
-no FlashList/ScrollView may render INSIDE a track cell with bounded height.
+   THE CONVERSION LAW (finishing rung 3): every scrollable scene's rows must BE
+   the track's rows — a body-content 'list' spec consumed by TrackSheetPage (the
+   polls/home path). Conversion queue: listDetail → pollDetail → any body that
+   binds its inner list to viewport height. A grep-invariant lands with rung 5:
+   no FlashList/ScrollView may render INSIDE a track cell with bounded height.
 
 CORRECTION (verified in code, 2026-07-26): the earlier scene map misclassified
 listDetail — it has NO internal FlashList ("rows ride the leg's shared
@@ -2222,6 +2318,7 @@ hit-blocking. Seat latch (userOwnsPosture) landed: seats never fight gestures.
 ### HEADER GRAB IS THE TRACK + THE FILL LAW (2026-07-27, ground-up rebuild)
 
 Owner directive: question everything, no second-rate abstractions. Result:
+
 - THE HEADER GRAB IS THE TRACK: the RNGH header pan (second engine: per-frame
   JS hops, separate release snap, ordering races) is DELETED. A chrome-born
   drag drives the same native track bounded to [0,H] (TrackScrollKit
@@ -2236,10 +2333,11 @@ Owner directive: question everything, no second-rate abstractions. Result:
   footer fill — every detent reachable on every page BY CONSTRUCTION.
 - Also this arc: stable physics identity (the seat-fight feel bug), the
   user-owns-posture latch, native setOffset channel retired with the pan.
-Verified: header drag follows the finger natively and settles exactly on the
-middle detent; body drags follow + stay.
+  Verified: header drag follows the finger natively and settles exactly on the
+  middle detent; body drags follow + stay.
 
 RUNG 4 PROGRESS (2026-07-27 late):
+
 - PUBLICATION BRIDGE: kit publicationBindings mirror the track into the shared
   sheet SVs. sheetScrollOffset BOUND (divider/origin riders). sheetTranslateY
   HELD — RED: behavioral riders (dismiss plane, foreground-launch intent) read
@@ -2256,10 +2354,10 @@ RUNG 4 PROGRESS (2026-07-27 late):
   cell). Sheet clip TRANSPARENT so the ONE frost samples the real MAP (white
   clip bg deadened the tint). VERIFIED: profile stats band = true frost, full
   width, production-identical.
-REMAINING rung 4: translateY rider audit → bind; motion-descriptor table
-snaps (replace home/content rule); pollDetail chin + anchor listRef; remaining
-scene eyeballs (notifications, messaging, saveList, userProfile, followList,
-editProfile, postPhotos); search LAST; then rung 5 flip + delete + invariants.
+  REMAINING rung 4: translateY rider audit → bind; motion-descriptor table
+  snaps (replace home/content rule); pollDetail chin + anchor listRef; remaining
+  scene eyeballs (notifications, messaging, saveList, userProfile, followList,
+  editProfile, postPhotos); search LAST; then rung 5 flip + delete + invariants.
 
 RUNG 4 BATCH 3 (2026-07-27 night): settle observer (gesture→posture memory);
 strip cutouts unblocked (chrome plate = header block only); nav exclusion
@@ -2293,6 +2391,7 @@ imports outside the rollback path, no nested scrollables in track cells).
 
 Rung-5 status honestly: FLIP done; DELETE PASS / GREP-INVARIANTS / full
 acceptance walk NOT yet (burn-in first, by design). Findings (owner + repro):
+
 1. HEADER/BODY GRAB DEAD ON SEARCH SCENE (repro'd: collapsed drag moves
    nothing). Suspects: (a) geometry mismatch — native chrome band computes
    sheetTop = chromeTopInset + (H − τ) with H = collapsed−expanded from the
@@ -2311,9 +2410,9 @@ acceptance walk NOT yet (burn-in first, by design). Findings (owner + repro):
 6. HOME CONTENT: fixed this commit (search scene → home shelves).
 7. SEARCH CHROME CHOREOGRAPHY: translateY bound this commit — VERIFY fade +
    scale + scrim on device next round.
-NEXT ROUND ORDER: attribute #1 first (grab is the core), then #4/#2 geometry
-pair, then #3 cutouts, then verify #6/#7, then native mask (#5), then delete
-pass + invariants + acceptance walk.
+   NEXT ROUND ORDER: attribute #1 first (grab is the core), then #4/#2 geometry
+   pair, then #3 cutouts, then verify #6/#7, then native mask (#5), then delete
+   pass + invariants + acceptance walk.
 
 ### THE CHROME/TRACK CONFLICT (2026-07-27) — the real architectural finding
 
@@ -2336,6 +2435,7 @@ times). I implemented B (full-bleed track) → cutouts show content, not map,
 and the polls "gap" appears where the spacer/cap seam lands.
 
 THE RESOLUTION (next session, in order):
+
 1. Keep the track full-bleed (LAW B — input is the harder constraint and the
    physics depend on it).
 2. Restore LAW A visually WITHOUT a clip: give the CHROME its own frost that
@@ -2350,7 +2450,7 @@ THE RESOLUTION (next session, in order):
    shelf cutouts (HomePanel FrostCutout usage — the shelves' boxes must
    register holes exactly as the pre-flip home did), and header flushness
    (the amber debug bar occupies real space — verify with debug=0).
-STILL TRUE: `crave://tracksheet-host?on=0` restores the old system whole.
+   STILL TRUE: `crave://tracksheet-host?on=0` restores the old system whole.
 
 ### THE HEADER WIGGLE + "EVERYTHING SHOULD BE GRABBABLE" — one root, one shape
 
@@ -2370,26 +2470,26 @@ So: the counter-translate was not only a trick — it was the sync mechanism.
 
 THE IDEAL SHAPE (fixes the wiggle AND the grab law in one move):
 THE CHROME BELONGS TO THE TRACK'S CONTENT, AS A STICKY HEADER.
-  content = spacer[0,H] → CHROME (sticky) → rows
+content = spacer[0,H] → CHROME (sticky) → rows
 With contentInset.top = expandedTop, the chrome rides the content natively
 (zero derived values, zero lag, zero wiggle) while τ ≤ H, and the scroll view
 PINS it at expandedTop once τ > H — which is exactly the production behavior
 (chrome pinned, content sliding under it) but enforced by UIKit itself.
 CONSEQUENCES, all of them wins:
-  • No derived transform for the chrome ⇒ the wiggle is impossible.
-  • The chrome is INSIDE the scroll view ⇒ every touch on it (title, close
-    button, grab handle, strip chips) is a scroll touch. THE WHOLE SHEET IS
-    GRABBABLE BY CONSTRUCTION — and UIScrollView's own tap-vs-drag arbitration
-    (touchesShouldBegin/cancelContentTouches) is exactly the "swipe direction
-    logic" the owner describes: taps still hit buttons, drags become sheet
-    motion. No chromeGrab arbitration, no pointerEvents rules, no exceptions.
-  • chromeGrab / the chrome inset bound / the hit-transparency law all become
-    UNNECESSARY and get deleted — three mechanisms collapse into one.
-  • The sheet SURFACE (frost + corners) still rides sheetTopY, but it is a
-    pure backdrop with no content relationship, so a frame of lag on it is
-    invisible (it is a solid field, not a texture the eye can register against
-    the content) — and it can be eliminated too by giving the sticky chrome
-    the rounded top and letting the frost span the viewport.
+• No derived transform for the chrome ⇒ the wiggle is impossible.
+• The chrome is INSIDE the scroll view ⇒ every touch on it (title, close
+button, grab handle, strip chips) is a scroll touch. THE WHOLE SHEET IS
+GRABBABLE BY CONSTRUCTION — and UIScrollView's own tap-vs-drag arbitration
+(touchesShouldBegin/cancelContentTouches) is exactly the "swipe direction
+logic" the owner describes: taps still hit buttons, drags become sheet
+motion. No chromeGrab arbitration, no pointerEvents rules, no exceptions.
+• chromeGrab / the chrome inset bound / the hit-transparency law all become
+UNNECESSARY and get deleted — three mechanisms collapse into one.
+• The sheet SURFACE (frost + corners) still rides sheetTopY, but it is a
+pure backdrop with no content relationship, so a frame of lag on it is
+invisible (it is a solid field, not a texture the eye can register against
+the content) — and it can be eliminated too by giving the sticky chrome
+the rounded top and letting the frost span the viewport.
 WHY THIS IS THE GROUND-UP SHAPE: the ONE TRACK axiom says every visual is a
 derivation of τ. The chrome is the one thing that is not a derivation — it IS
 content at a known content-offset. Modeling it as content (sticky) instead of
@@ -2413,23 +2513,23 @@ FINDING 2 (model): every element of the sheet is one of exactly two things —
 And (b) is just (a) plus a pin rule. There is no third category. The sheet is
 therefore not "a container holding a scroll view"; THE SCROLL VIEW IS THE
 SHEET:
-    content = [transparent spacer = sheet travel][chrome][body]
-    contentInset.top = expandedTop
-    background = transparent (the map shows through the spacer region)
+content = [transparent spacer = sheet travel][chrome][body]
+contentInset.top = expandedTop
+background = transparent (the map shows through the spacer region)
 Under this model:
-  • sheetTopY stops being structural — it is only a READOUT for external
-    riders (scrim, search chrome). Nothing positions itself from it.
-  • The mask is unnecessary: above the sheet is the transparent spacer by
-    construction; content passing the chrome goes UNDER it because the chrome
-    is opaque and pinned.
-  • The rounded top belongs to the chrome (the chrome IS the sheet's top edge
-    whenever pinned, and travels with content when not).
-  • THE WHOLE SHEET IS GRABBABLE BY CONSTRUCTION — chrome is inside the scroll
-    view, so every touch is a scroll touch, and UIScrollView's own
-    delaysContentTouches/cancelContentTouches IS the tap-vs-drag arbitration.
-  • DELETED: counter-translate, MaskedView, surface overlay, chrome overlay,
-    chromeGrab, the chrome inset bound, chrome hit-transparency rules — seven
-    mechanisms replaced by one sentence.
+• sheetTopY stops being structural — it is only a READOUT for external
+riders (scrim, search chrome). Nothing positions itself from it.
+• The mask is unnecessary: above the sheet is the transparent spacer by
+construction; content passing the chrome goes UNDER it because the chrome
+is opaque and pinned.
+• The rounded top belongs to the chrome (the chrome IS the sheet's top edge
+whenever pinned, and travels with content when not).
+• THE WHOLE SHEET IS GRABBABLE BY CONSTRUCTION — chrome is inside the scroll
+view, so every touch is a scroll touch, and UIScrollView's own
+delaysContentTouches/cancelContentTouches IS the tap-vs-drag arbitration.
+• DELETED: counter-translate, MaskedView, surface overlay, chrome overlay,
+chromeGrab, the chrome inset bound, chrome hit-transparency rules — seven
+mechanisms replaced by one sentence.
 THE ONE PIECE THAT MUST BE NATIVE: the pin. Because FlashList's sticky is JS,
 TrackScrollKit must pin the chrome itself — the module already owns the scroll
 view and its delegate, so it positions the chrome subview inside
@@ -2438,9 +2538,10 @@ construction (this is exactly how RCTScrollView implements native sticky
 headers). That is the last native primitive this design needs.
 
 IMPLEMENTATION ORDER (next session, one coherent pass — do NOT half-land it):
- 1. TrackScrollKit: pinChromeTag(tag, pinY) — pin a subview in didScroll.
- 2. Kit: chrome moves INTO the list content (after the spacer); delete the
+
+1.  TrackScrollKit: pinChromeTag(tag, pinY) — pin a subview in didScroll.
+2.  Kit: chrome moves INTO the list content (after the spacer); delete the
     chrome overlay + surface overlay + mask + chromeGrab + inset bound.
- 3. Re-derive sheetTopY as a pure readout for the publication bridge.
- 4. Verify: no wiggle (chrome and rows share one motion source), whole-sheet
+3.  Re-derive sheetTopY as a pure readout for the publication bridge.
+4.  Verify: no wiggle (chrome and rows share one motion source), whole-sheet
     grab, cutouts (frost behind chrome samples map through the spacer).

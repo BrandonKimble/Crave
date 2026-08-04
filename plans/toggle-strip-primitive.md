@@ -168,3 +168,35 @@ SaveListPanel sideOption, BookmarksPanel visibilityToggle.
   dots+pins+labels; nothing swaps above the floor; fade-in is the canonical reveal.
   Wire assert: `[TOGGLE] begin` → `presentation_fade_out_acked` → runner commit order.
 - Cutouts: every strip renders holes to the frost on every surface (visual pass).
+
+---
+
+## Correction 2026-08-03 (truth audit)
+
+Superseded for the strip layer by `toggle-strip-audit-leg1.md` → `toggle-strip-and-edit-charter.md`
+→ `toggle-strip-rebuild-ledger.md`. The GESTURE/ENGINE half (T1/T2/T3, SegmentedToggle,
+toggle-interaction-engine) survives verbatim and is still the shipped truth.
+
+> **Correction 2026-08-03 (truth audit):** the adoption law "any strip band MUST be
+> `FrostedFilterStrip` children (cutouts are automatic)" is false against code as of today —
+> `FrostedFilterStrip.tsx` was deleted in strip leg 3 (see toggle-strip-rebuild-ledger.md
+> §Leg 3) after the leg-1 audit judged it a half-engine ("bleed is consumer folklore,
+> backdrop truth is unowned, no scrollX warm restore, no action-row slot"). The law today
+> reads: any strip band MUST be `apps/mobile/src/toggles/ToggleStrip.tsx`, and the scene
+> must DECLARE its placement in `scene-foundation-spec.ts` (`strip: 'none'|'in-list'|'header'`),
+> RED-lawed by `apps/mobile/src/toggles/toggle-strip-scene-law.ts`. Item 4 of §Shape
+> ("FrostedFilterStrip becomes the composition root") describes a path not taken.
+
+> **Correction 2026-08-03 (truth audit):** "Polls strip: Type/Sort/Time chip groups → three
+> dropdown toggles ('Default' = the silent demand order)" is false — there was never a
+> demand-ranked default. Strip leg 7 attributed it: the client mapped Default → omit `sort`,
+> and the API resolves `query.sort ?? PollListSort.new` (plain chronological). "Default" was
+> a vocabulary lie; it is deleted, New is the stated default, and Time folded under Top.
+
+> **Correction 2026-08-03 (truth audit):** the strip-inventory table's file:line anchors are
+> stale — `BookmarksPanel.tsx` no longer exists (renamed to
+> `apps/mobile/src/overlays/panels/ListsPanel.tsx` with the Favorites→Lists code-vocabulary
+> rename), and the Bookmarks/ListDetail hand-rolled translateX morph pair listed on the
+> delete-list was deleted (legs 3, 9-10). The remaining DESIGN-DECISION rows
+> (ProfileSectionsBody 4-way, RestaurantProfileViews, PollDetailPanel text toggle) are still
+> accurate and still owner-parked.

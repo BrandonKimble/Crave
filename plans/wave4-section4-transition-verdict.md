@@ -218,3 +218,14 @@ taps on the gesture-handoff sheet get eaten by the pan gesture — CLAUDE.md got
   chrome/body seam — no residual gap band. The transient mid-transition flash remains the
   owner's live oracle (a settle screenshot cannot show a 1-frame flash), but the structural
   proof (three RED-lawed mechanisms) makes a gap hard to produce by construction.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** the current-declarations list "`polls`,
+> `bookmarks` → `strip: 'header'`" is stale on the name only — the scene key is `lists`, not
+> `bookmarks` (`apps/mobile/src/navigation/runtime/scene-foundation-spec.ts:90`, `strip:
+'header'`; polls at :83). The structural verdict is unaffected and re-verified today:
+> `strip: 'none' | 'in-list' | 'header'` is declared per scene at :31, `listDetail` is
+> `'in-list'` at :163, and every other scene declares `'none'`. Likewise the per-permutation
+> matrix's "bookmarks[header] ↔ listDetail[in-list]" crossing is the Lists↔list-detail
+> crossing.

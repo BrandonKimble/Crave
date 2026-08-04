@@ -1,5 +1,31 @@
 # Map LOD — Master Plan
 
+> **⚠️ SUPERSEDED 2026-08-03 (truth audit) — this plan's two headline rulings were both
+> REVERSED by what shipped. Read the corrections before acting on anything here.**
+>
+> **1. "ES1 FULL-VA is dead" / "GATE-PREMISE CLOSED: ES3 LOCKED, ES2/pin-VA PARKED"
+> (§2.1, §2.2) is FALSE against code.** The shipped map renders BOTH pins and labels as
+> Mapbox ViewAnnotations: `SearchMapRenderController.swift:77-97` (`PinVAView` — "the
+> per-pin view HOSTED BY a Mapbox ViewAnnotation") and :99-101 ("Phase-2 (labels →
+> ViewAnnotation): the per-restaurant NAME label hosted by a self-colliding VA"). The
+> basemap-suppression objection that made full-VA "dead" was dissolved by an SDK upgrade
+> — the repo is on **MapboxMaps 11.26.0-rc.1** (`Podfile.lock:387`), where
+> `enableSymbolLayerCollision` exists (`Pods/MapboxMaps/Sources/MapboxMaps/Annotations/
+ViewAnnotation.swift:120`) and is used at controller :5 / :8001. Every "ZERO matches in
+> 11.16.6" verification in this family is obsolete.
+>
+> **2. §1 Option A (per-rank mutex offset) NEVER SHIPPED.** There is no `stackRank`
+> anywhere in `apps/mobile/src` or `apps/mobile/ios`, no `LABEL_MUTEX_IMAGE_ID`, no
+> `labelCandidateStyles`, and no `RESTAURANT_LABEL_RENDER_SOURCE_ID` in
+> `search-map.tsx` — the entire GL label substrate Option A was tuning was DELETED when
+> labels moved to VAs. The stacked-label problem is solved by the SDK's own
+> `variableAnchors` instead. GATE-STACKED (§1.5) is moot, and its harness precondition
+> (`lodHarnessEnabled=true`, the `[lodev]` stream) never existed post-`364e17be2`.
+>
+> The intermediate step that carried the VA cutover is `map-lod-va-pin-architecture.md`
+> — which itself was only partly followed (see its own correction note). The custom iOS
+> map is SHIPPED and best-in-class as of ~2026-07; this document is archaeology.
+
 The all-encompassing plan for the search-map marker system (pins · dots · labels · collision · fade). §1 = the
 LABEL stacking solution (Option A, locked in). §2 = the merged RENDER-SUBSTRATE decision (v6) — the pins/dots/
 fade redesign merged with §1 and red-teamed (the ideal shape is ES2 Hybrid, gate-conditioned, with ES3 as the
@@ -15,12 +41,13 @@ kept gated; its label-VA leg is rejected — see §2.1). The detailed v4→v5 ch
 # §1 — Labels: stacking via "per-rank mutex offset" (the decision)
 
 ## 1.1 The problem
+
 Each promoted pin gets ONE name-label, placed on one of 4 sides (bottom/right/top/left), each side at its own
 distance from the pin. Today a per-restaurant **mutex** dedups a restaurant's 4 candidate labels to one: all 4
 candidates carry a shared invisible icon at `P(restaurant) = projected(pin) + a fixed offset`, with
 `iconAllowOverlap:false`, so only one candidate can place → one label per restaurant.
 
-The mutex is **keyed on screen position**. Two pins at the *same* world coordinate project to the same screen
+The mutex is **keyed on screen position**. Two pins at the _same_ world coordinate project to the same screen
 point, so `P(A) = P(B)` **exactly** → their mutexes collide cross-restaurant → only ONE restaurant keeps a
 label → **the rest of a stack go nameless.** Measured: 57% of stacked promoted pins lose their label. This is
 the single defect — everything else about labels works.
@@ -29,6 +56,7 @@ Why it's not "just tune the geometry": any dedup region keyed on screen position
 pins. No padding/sort-key/shape change separates two pins at one pixel. (Verified exhaustively.)
 
 ## 1.2 The constraints any fix must meet (all 8)
+
 - **C1 per-anchor distances** — top farthest (clear the tall pin), bottom nearest, left/right own distance +
   raised. (Rules out `text-variable-anchor`: single radial offset.)
 - **C2 stacking** — N pins at one exact pixel → each label a DISTINCT slot, all show (the 4-exact-stacked test).
@@ -44,6 +72,7 @@ pins. No padding/sort-key/shape change separates two pins at one pixel. (Verifie
   pan (the wiggle).
 
 ## 1.3 The fix — Option A: per-rank mutex OFFSET
+
 Keep the entire current label system unchanged (4 candidate SymbolLayers, each its own `textOffset` = C1;
 `symbolZOrder:'source'`; `textAllowOverlap:false` so Mapbox live-picks the free side = C6/C7; the per-restaurant
 mutex doing intra-restaurant dedup). Make ONE change: separate stacked restaurants' mutex points by **identity,
@@ -75,6 +104,7 @@ re-runs only LABEL placement, never the resident pins — it cannot wiggle pins;
 reseed that already runs every camera tick), via the incremental per-feature path, diffKey-gated.
 
 ## 1.4 Honest tradeoffs (tuning, NOT architecture)
+
 1. **Distinct collision slot ≠ non-overlapping rendered text** — two stacked labels a few px apart could
    visually touch. Tune `step` against the pin/label obstacle sizes.
 2. The `iconTranslate → iconOffset` switch is **mandatory and fails silently if missed** (the exact paint-vs-
@@ -88,9 +118,11 @@ reseed that already runs every camera tick), via the incremental per-feature pat
    it clumps in practice.**
 
 ## 1.5 Validation gate — the 4-exact-stacked repro
+
 Build, then drive the canonical repro (4 restaurants at one identical world coord — perf deep link
 `crave://perf-scenario-command?action=set_map_camera` + `submit_shortcut_restaurants`, or the maestro jitter
 flow, `lodHarnessEnabled=true`). PASS, read in order:
+
 - **(a) C2** — all 4 stacked labels paint simultaneously, each on a distinct side (renderP for labels = 4, not
   1; the eye must see 4 names).
 - **(b) C7** — pan so one stacked member's preferred side is blocked by a neighbor; confirm it FALLS to another
@@ -104,6 +136,7 @@ Build gotcha (CLAUDE.md): `BUILD SUCCEEDED` ≠ linked — stat the installed bi
 unique harness marker prints, or you measure a stale binary.
 
 ## 1.6 Why every alternative is ruled out (so they stay closed)
+
 - **ViewAnnotations** (UIView labels with native per-anchor `variableAnchors` + collision) — solves C1/C2/C6/C7
   natively, BUT they live in a SEPARATE collision world above all GL layers, so basemap symbol labels **cannot**
   yield to them (the avoid-API is line-layers-only) → **fails C3 and C4** (the basemap requirement). Also: labels
@@ -120,10 +153,11 @@ unique harness marker prints, or you measure a stale binary.
   re C3/C4. DEAD.
 - **Single-slot custom placement** (1 data-driven layer, or a chosenCandidate filter) — solves C2 by assigning
   the side ourselves, but **loses C7** (a blocked label just hides) and risks C6/C8. Inferior to A, which keeps
-  the native fallback. (This is the line A improves on: A nudges only the per-restaurant *mutex* and leaves all
+  the native fallback. (This is the line A improves on: A nudges only the per-restaurant _mutex_ and leaves all
   4 candidates competing, so fallback survives.)
 
 ## 1.7 Label rendering + collision context Option A touches (for the implementer)
+
 - **4 candidate label layers** (bottom/right/top/left), `labelCandidateStyles` (~search-map.tsx:2509), each its
   own `textAnchor`+`textOffset` (the per-anchor distances), `textAllowOverlap:false`. Un-bundled source
   `RESTAURANT_LABEL_RENDER_SOURCE_ID` (separate from pins so label churn never re-tiles the resident pins).
@@ -146,6 +180,7 @@ unique harness marker prints, or you measure a stale binary.
 ---
 
 # §2 — Render substrate (pins · dots · fade): merged decision (v6)
+
 Merged from the render-substrate plan (`lod-render-substrate-ideal-plan.md`) + §1, via a merge+red-team
 (wf_2ab1237c, 2026-06-25). **Ideal long-term shape = ES2 HYBRID, gate-conditioned, with ES3 as a guaranteed
 floor that is a strict prefix of ES2.** The LodEngine brain (decide/step/budget/CADisplayLink) is byte-intact
@@ -153,9 +188,10 @@ in every phase; only WRITE TARGETS / fade-source change, behind independent flag
 
 > **⚠️ OPERATIVE ORDER — the RED-TEAM CONSENSUS at the END of this doc OVERRIDES §2.2/§2.3 where they conflict; read it first.** Four binding corrections: (1) **GATE-PREMISE runs FIRST**, before any production code — one on-device frame-gap read collapses the whole ES2-vs-ES3 decision (~17ms → ES3 suffices, pin-VA unjustified; ~50ms → skip Phase 0, go straight to ES2). (2) Phase 0's wall-clock fade kills the dt-rate **jump-on-jank**, NOT the frame-rate staircase (only ES2/`view.alpha` or a fast on-device GL removes that), and MUST carry the commit-invariant. (3) The ES3 floor delivers ONLY wiggle + basemap suppression + stall-robustness — snapping / choppy / >30 / liveliness need ES2 or a fast on-device GL; whole-scene 60fps is structurally unreachable. (4) The label fix LEADS with the **OBSTACLE reshape + candidate-offset push** (the measured 57% cause), with Option A for the exact-stack mutex; validate by re-running the real `slabel` probe, not just the synthetic 4-stack.
 
-> **✅ GATE-PREMISE — CLOSED (2026-06-27): ES3 LOCKED, ES2/pin-VA PARKED.** Brandon trusts the sim as the perf substrate ("the sim has never deviated from on-device"). Measured on the current *harness-free* build via a frame-gap probe on `onRenderFrameFinished` (Mapbox's real GL paint-complete signal — the staircase source): real-gesture PAN storm p50/p95 = 17/18ms (98% at 60fps, 1% <30fps); armed dense ZOOM churn p50/p90/p95/p99 = 17/22/29/65ms (4% <30fps, ~2% staircase frames). **60fps median under both — no dominant 12–18fps staircase.** The worklog's 12–18fps was a HARNESS-build artifact (oracle queryRendered + paint-monitor + drift-census, all main-thread every frame); harness-free renders far better. ⇒ At 60fps the **ES3 floor + wall-clock fade delivers EVERYTHING**: snapping (≈11 steps/180ms is smooth), choppy gone, >30 bounded by strict-budget + on-schedule fade-out, basemap suppression (GL labels), AND liveliness. **The pin-VA (ES2/Phase 4) leg is UNJUSTIFIED; GATE-A + GATE-OBSTACLE are MOOT.** Only remaining gate: GATE-STACKED — the obstacle-led label fix, validated by the real `slabel` probe.
+> **✅ GATE-PREMISE — CLOSED (2026-06-27): ES3 LOCKED, ES2/pin-VA PARKED.** Brandon trusts the sim as the perf substrate ("the sim has never deviated from on-device"). Measured on the current _harness-free_ build via a frame-gap probe on `onRenderFrameFinished` (Mapbox's real GL paint-complete signal — the staircase source): real-gesture PAN storm p50/p95 = 17/18ms (98% at 60fps, 1% <30fps); armed dense ZOOM churn p50/p90/p95/p99 = 17/22/29/65ms (4% <30fps, ~2% staircase frames). **60fps median under both — no dominant 12–18fps staircase.** The worklog's 12–18fps was a HARNESS-build artifact (oracle queryRendered + paint-monitor + drift-census, all main-thread every frame); harness-free renders far better. ⇒ At 60fps the **ES3 floor + wall-clock fade delivers EVERYTHING**: snapping (≈11 steps/180ms is smooth), choppy gone, >30 bounded by strict-budget + on-schedule fade-out, basemap suppression (GL labels), AND liveliness. **The pin-VA (ES2/Phase 4) leg is UNJUSTIFIED; GATE-A + GATE-OBSTACLE are MOOT.** Only remaining gate: GATE-STACKED — the obstacle-led label fix, validated by the real `slabel` probe.
 
 ## 2.1 The decision
+
 - **Labels** → STAY GL symbols + §1 Option A. The lynchpin conflict (render-substrate sent labels→VA) is
   resolved here for THREE source-verified structural reasons (the render-substrate plan named 2, missed the 3rd):
   (1) name-footprint basemap leak — the GL label text's own collision box reserves the restaurant-NAME
@@ -182,6 +218,7 @@ in every phase; only WRITE TARGETS / fade-source change, behind independent flag
   ES2 and ES3 alike — a preserved capability, not a current feature.
 
 ## 2.2 Merged sequence (flag-gated, individually revertible)
+
 - **Phase 0 — wall-clock fade** inside LodEngine only: `step(dtSeconds)→step(nowMs)`, a `Fade` struct
   (from/target/startMs/fadeMs), pure projection `opacity(now)=from+(target−from)·clamp((now−start)/fadeMs,0,1)`,
   prune-at-clamp==1. `applyV5OpacityWrites` + targets (pin=p, dot=1−p, label=p) byte-identical; only the scalar
@@ -203,6 +240,7 @@ in every phase; only WRITE TARGETS / fade-source change, behind independent flag
   `pinsAsViewAnnotations`. Result = ES2 HYBRID.
 
 ## 2.3 Ordered gates (cheapest make-or-break first — run in this order)
+
 1. **GATE-PREMISE** (after Phase 0+1, ON-DEVICE, hours, zero new code): with the wall-clock fade, do pins read
    smooth (dtMs ~17ms, no staircase) under a hard pinch + the maestro jitter flow? The choppy premise is partly
    a SIM artifact (controller:4436 fingers a 30-53ms CPU-reconcile spike, not GPU fill; the render-substrate
@@ -216,9 +254,10 @@ in every phase; only WRITE TARGETS / fade-source change, behind independent flag
    to the pin footprint via the RETAINED obstacles (reseeded by `applyV5ObstacleReseed`, independent of pin
    substrate), and basemap stays suppressed under the pin body.
 4. **GATE-STACKED** (part of Phase 1): the §1.5 4-exact-stacked repro; explicitly confirm `iconTranslate→
-   iconOffset` actually MOVED the collision box (the paint-vs-layout trap).
+iconOffset` actually MOVED the collision box (the paint-vs-layout trap).
 
 ## 2.4 THE one product decision (Brandon) — everything else the gates resolve
+
 **Is per-name-footprint basemap suppression a HARD requirement?** Code + stated requirement imply YES → labels
 stay GL → ES2/ES3, full-VA dead. The ONLY path that rescues full-VA (labels→VA) is globally hiding basemap
 road/POI label categories during search via `setStyleImportConfigProperty` — but that's an unrun probe with a
@@ -229,6 +268,7 @@ marginally bigger choppy win + native stacking Option A already delivers.
 ---
 
 ## Mental model (the label fix)
+
 The labels are fine; the pins are fine. The one broken thing is the invisible "only one of my four names may
 win" point each restaurant uses to pick a single side. When two restaurants sit on the exact same pixel, those
 points land on top of each other and fight, so one restaurant loses its name. We don't replace anything — we

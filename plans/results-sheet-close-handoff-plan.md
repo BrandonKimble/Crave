@@ -1,3 +1,21 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** This is the earliest statement of the
+> return-to-origin product contract. Its DESIGN was superseded by
+> `return-to-origin-foundation-design.md` (the OriginSnapshot / capture-provider-registry model),
+> which is what actually shipped — `OriginSnapshot` is live at
+> `apps/mobile/src/overlays/searchRouteSessionTypes.ts:36` and its capture/restore lives in
+> `navigation/runtime/app-route-overlay-session-state-controller.ts` (`buildCurrentOriginSnapshot`
+> :387, `isDegenerateHomeOrigin` :105). The transition machinery around it moved on again via
+> `page-switch-master-plan.md` → `page-composition-from-scratch-design.md` (TrackSheet).
+>
+> **Correction 2026-08-03 (truth audit):** §"Current Architecture" is false against code as of
+> today — none of the five reusable pieces it names exist: `BottomSheetWithFlashList`,
+> `overlayStore`, `useOverlaySheetPositionStore`, `createOverlayRegistry`, and
+> `Search/index.tsx` as the close/launch orchestrator are all absent from `apps/mobile/src`.
+> Likewise the §"Implementation Structure" module list (`screens/Search/session/*` — five files):
+> no such directory. The PRODUCT contracts at the top (contextual collapsed handoff; return to
+> the exact origin tab + snap; no second collapsed→hidden leg) did ship and are still the law —
+> read those, not the file plan.
+
 # Results Sheet + Cross-Tab Search Session Plan
 
 ## What You Were Asking For (Exact Product Contract)

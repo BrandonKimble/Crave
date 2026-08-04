@@ -165,3 +165,21 @@ Notes:
 ## Questions to answer before implementation
 
 - None for now.
+
+---
+
+> **Correction 2026-08-03 (truth audit):** beyond the existing supersession
+> banner, the `locationKey` model this doc locks as a decision **never landed and
+> can no longer land as written**. There is no `location_key` / `locationKey`
+> column anywhere in `apps/api/prisma/schema.prisma`, and the subreddit-centric
+> substrate it keys off is gone: `collection_subreddits` was replaced by
+> `model CollectionCommunity` → `@@map("collection_communities")`
+> (schema.prisma:1810-1822) in the markets-extermination legs (2026-07-22), and
+> `SearchSubredditResolverService` no longer exists. So "Decisions (locked) → Use
+> `locationKey` = nearest subreddit name", the per-(name,type,locationKey)
+> restaurant uniqueness, and "On-demand keyword search runs for the nearest
+> subreddit only" are all unimplementable against today's schema. What DOES
+> survive: `collection_on_demand_requests` (`model OnDemandRequest`,
+> schema.prisma:1851) and the on-demand services under
+> `apps/api/src/modules/search/on-demand-*`. Read the whole file as historical
+> context only, per its own banner.

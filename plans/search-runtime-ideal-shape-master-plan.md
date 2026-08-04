@@ -1,5 +1,38 @@
 # Search Runtime Ideal-Shape Master Plan
 
+> **SUPERSEDED 2026-04-30 — archaeology only.** This plan was closed out by
+> `plans/app-route-runtime-closeout-handoff.md` (which names this file as one of its two
+> source plans) landing in commit `f26102bc9` "Split frontend runtime UI closeout". The
+> authoritative scene-switch runtime this plan calls "Program 1, ~25% done" SHIPPED there:
+> `apps/mobile/src/navigation/runtime/app-route-scene-switch-controller.ts` plus the
+> `app-route-*` authority family and the `BottomSheetSceneStack*` overlay host. The current
+> transition contract is `plans/transition-endstate-contract.md` (2026-08-03). Do not plan
+> against this file; read it for intent, not for current state.
+
+> **Correction 2026-08-03 (truth audit):** every repo path in this doc is rooted at
+> `/Users/brandonkimble/crave-search/` — that repo root no longer exists; the repo is
+> `/Users/brandonkimble/Crave/Crave`. Rewrite paths mentally before using any of them.
+
+> **Correction 2026-08-03 (truth audit):** the "Current profile prepared-runtime note" block
+> (lines ~37-52) and the "Current Reality" narration describe as LIVE a file topology that is
+> largely gone. Of the 224 modules this doc asserts in the present tense ("`X.ts` now owns /
+> now hosts / now composes / is now"), 105 do not exist anywhere under `apps/mobile`. The
+> entire `profile-prepared-presentation-*` family (transaction-contract, transaction-resolver,
+> transaction-runtime, command-executor, state-executor, event-runtime, entry-runtime,
+> binding-runtime, settle-runtime, dismiss-runtime, completion-executor, transition-runtime,
+> open/close/focus builders) was DELETED on 2026-07-10 in `45fa716c6` "feat(profile): L3 slice
+> 4 — the prepared-presentation MACHINE IS DELETED (22 files)". `profile-transition-state-contract.ts`
+> and `profile-transition-state-mutations.ts` moved to
+> `apps/mobile/src/navigation/runtime/app-route-profile-transition-state-{contract,mutations}.ts`.
+
+> **Correction 2026-08-03 (truth audit):** the Program 1 / Program 3 "Delete gates" are already
+> satisfied, not pending. `useResolvedSearchRouteHostModel.ts`, `useSearchRouteFrozenOverlayRenderModel.ts`,
+> `SearchRouteOverlayHost`, and `use-search-root-runtime.ts` itself no longer exist under
+> `apps/mobile/src` (the surviving descendants are the split
+> `runtime/shared/use-search-root-runtime-{stage,control-stage,visual-stage}-runtime.ts`).
+> The doneness header ("authoritative scene-switch and motion cutover: ~25%") and the
+> "Immediate Execution Order" are therefore both false as of today.
+
 Last updated: 2026-04-21
 Status: active master plan
 Rough doneness:
@@ -7,7 +40,7 @@ Rough doneness:
 - architectural pressure relief / ownership narrowing: ~85%
 - authoritative scene-switch and motion cutover: ~25%
 - overall path to target end state: ~68%
-Scope:
+  Scope:
 
 - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/**`
 - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/**`

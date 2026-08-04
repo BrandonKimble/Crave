@@ -1,5 +1,25 @@
 # Shortcut Submit First >50ms Stall Worklog
 
+> **SUPERSEDED — archaeology only.** This Feb-2026 loop was run against a Search runtime that
+> was closed out by `f26102bc9` (2026-04-30, "Split frontend runtime UI closeout"; see
+> `plans/app-route-runtime-closeout-handoff.md`) and again by `45fa716c6` (2026-07-10, "the
+> prepared-presentation MACHINE IS DELETED"). Its kept/reverted verdicts are not statements
+> about today's code.
+
+> **Correction 2026-08-03 (truth audit):** the harness this worklog measures with no longer
+> exists — no `yarn ios:device:perf-shortcut-loop`, no `shortcut_loop_*` markers in source, no
+> `plans/perf-logs/`, and every `/tmp/perf-shortcut-*.log` cited is long gone. The
+> "Validation Status" claim `bash …/scripts/search-runtime-natural-cutover-contract.sh: PASS`
+> is unverifiable: that script does not exist in the repo (only
+> `scripts/no-bypass-search-runtime.sh` survives). Paths are rooted at the retired
+> `/Users/brandonkimble/crave-search/`.
+
+> **Correction 2026-08-03 (truth audit):** the modules this worklog edits are gone —
+> `use-search-submit.ts`, `use-search-runtime-composition.ts`, `shortcut-harness-observer.ts`,
+> `use-shortcut-coverage-owner.ts`, `use-search-results-panel-spec.tsx`,
+> `use-autocomplete-controller.ts`, `restaurant-result-card.tsx`, `map-diff-applier.ts`,
+> `SearchPanel.tsx`, and `SearchResultsSheetTree.tsx` are all absent from `apps/mobile`.
+
 Last updated: 2026-02-15
 Owner: Codex
 Scope: `apps/mobile/src/screens/Search/**`

@@ -1,5 +1,36 @@
 # Restaurant Tag Signals + Search Plan
 
+> **SUPERSEDED IN PART 2026-08-03 (truth audit):** the "LLM in the search loop"
+> section and Phase 5 are overtaken by the **search-redesign cutover of
+> 2026-08-02** (pooled gate + gazetteer Understand canonical; the ladder and the
+> per-search synchronous LLM were deleted). See MEMORY `search-redesign-takeover`.
+> The tag-signal half of this doc is still live and accurate.
+>
+> **Correction 2026-08-03 (truth audit):** "Current code path: … natural search
+> always calls `llmService.analyzeSearchQuery(...)`" is false against code as of
+> today. `apps/api/src/modules/search/search-query-interpretation.service.ts:140`
+> carries the header "CUTOVER 2026-08-02 (zero-per-search-LLM, spec §1.1)"; the
+> service now runs the deterministic gazetteer + `analyzeQuery` from
+> `entity-text-search/query-analyzer` (:173) and reports `llmMs: 0` (:496) with a
+> measured `gazetteerMs` (:497). It never imports an LLM client. The ONLY surviving
+> `analyzeSearchQuery` caller in the search module is the residue lane
+> (`unsegmented-residue.service.ts:121`), which is on-demand collection, not the
+> per-search path. Consequently Phase 5's exit criterion ("exact/simple entity
+> searches do not require LLM") is met — but by full deterministic interpretation,
+> not by the "hybrid fast-path + LLM fallback" this doc proposes; do not build the
+> proposed bypass.
+>
+> Also stale: every path in "Scope"/"Related docs"/"Current code path" is written
+> under `/Users/brandonkimble/crave-search/…`; the repo is
+> `/Users/brandonkimble/Crave/Crave`. Still TRUE as of today: the tag substrate
+> shipped and is live — `core_restaurant_entity_events` /
+> `core_restaurant_entity_signals` exist in `apps/api/prisma/schema.prisma` and are
+> read by `search-query.builder.ts`, `projection-rebuild.service.ts` and
+> `polls/restaurant-mentions.service.ts`. Phase 4's rename also landed _as
+> described_: the Prisma model is still `Connection` mapping to
+> `@@map("core_restaurant_items")` (schema.prisma:240,283) — model name kept for
+> code stability, table renamed.
+
 Last updated: 2026-04-15
 Status: implemented
 Scope:

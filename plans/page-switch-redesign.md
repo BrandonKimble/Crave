@@ -1,3 +1,12 @@
+> **[SUPERSEDED — banner added 2026-08-03 (truth audit)]** This is the requirements +
+> attribution doc for the page-switch effort; its build spine is `page-switch-master-plan.md`
+> (which supersedes it for execution and answers §6's OPEN QUESTIONS — see that doc §7/§8/§9).
+> The sheet substrate both assume was later replaced: `page-composition-from-scratch-design.md`
+> §THE ONE TRACK / §THE FLIP → `page-world-derivation.md` → `residents-cutover-plan.md`.
+> Open question 1 in §6 ("plan canonicalization: final-master-plan vs pillars") was ANSWERED:
+> `transition-pillars-build-plan.md` is RETIRED (its own banner) and `page-switch-master-plan.md`
+> became canonical.
+
 # Page-Switch Redesign — Ideal Ground-Up Architecture
 
 **Status:** design/red-team phase (2026-07-01). Owner wants the most-ideal LONG-TERM shape for

@@ -1,5 +1,17 @@
 # Two-Group Pin LOD — diagnosis + fix worklog (2026-06-18)
 
+> **ARCHAEOLOGY 2026-08-03 (truth audit).** A June-2026 worklog whose open TODOs are no
+> longer actionable as written. Item #3's subject — the reveal label-gate
+> (`isActiveFrameLabelPlacementReady`) and the whole label-observation machinery — was
+> DELETED once labels became ViewAnnotations (the gate first became `return true`, then the
+> function itself went; see `plans/search-map-ideal-effort/07-va-migration-cleanup-manifest.md`,
+> commits `58d27180` / `26e8c45d`), so "make label observation reliably commit on reveal" no
+> longer describes anything in code. The reveal-deadlock class it chased was separately
+> root-caused and fixed in `4ca51f39` (`plans/world-camera-l4-execution.md`). The two-group
+> in/out-region model and the padded-AABB fallback decisions in §1 are still the recorded
+> owner calls; the file:line evidence throughout has drifted by months of refactors — re-grep
+> symbols, never trust these numbers.
+
 From on-device testing: several behaviors don't match the intended model. Investigation
 (3 agents) found one central defect + two specific issues. Two of this session's earlier
 changes worsened things. Do NOT stop until #1-#3 + #5 are fixed; #4 (jitter) is deferred per
@@ -50,9 +62,9 @@ dormancy-revert/no-hang 3b72da20). Validated in-sim: pins+dots+labels fade in an
 
 **A. The native projection CAN be made reliable, but it is NOT the only job the fallback does.**
 NSLog in projectAndEmitOnScreenMarkers proved the lifecycle on a fresh search:
-  catalog_arrival     state=hidden        → GATED (isVisualSourceInactiveOrDismissing blocks .hidden)
-  source_frame_arrival state=hidden        → GATED
-  source_frame_arrival state=preparingReveal → EMIT keys=206   (only here does the set first appear)
+catalog_arrival state=hidden → GATED (isVisualSourceInactiveOrDismissing blocks .hidden)
+source_frame_arrival state=hidden → GATED
+source_frame_arrival state=preparingReveal → EMIT keys=206 (only here does the set first appear)
 So on a fresh search the catalog arrives while `.hidden`; the projection is blocked; the set is null
 until `.preparingReveal`. Adding `forceDespiteHidden:true` to the catalog_arrival call (the projection
 is pure geometry — camera+coords, independent of paint) made it EMIT keys=206 during `.hidden` — set
@@ -71,10 +83,10 @@ tree restored to HEAD) since it hangs without the gate fix. Build is fallback-pr
 **A.2 — PINNED the exact stall + why both simple fixes fail (2026-06-18, second NSLog session).**
 Instrumented startEnterPresentationIfReady's else-branch to log which guard holds the reveal with the
 fallback removed (+ forceDespiteHidden + the JS subscriber). STEADY-STATE stuck line:
-  reveal_blocked state=preparingReveal status=pending_mount phase=enter_requested
-    mountedHidden=false hasStartToken=false labelReady=false
-    | labels=2124 observationEnabled=true hasCommittedObservation=TRUE
-      effectiveRendered=0 visibleLabels=0 layerRendered=0
+reveal_blocked state=preparingReveal status=pending_mount phase=enter_requested
+mountedHidden=false hasStartToken=false labelReady=false
+| labels=2124 observationEnabled=true hasCommittedObservation=TRUE
+effectiveRendered=0 visibleLabels=0 layerRendered=0
 So the reveal NEVER reaches the "entering" phase — it sits at JS status `pending_mount`/`enter_requested`.
 Persistently-false guards (530/530 lines): mountedHidden, hasStartToken (both follow from not-entering),
 and labelReady. labelReady=false because the label observation COMMITTED on the empty seed frame
@@ -82,15 +94,15 @@ and labelReady. labelReady=false because the label observation COMMITTED on the 
 NB the gate returns TRUE for labelCount==0 (line ~6497) — so "empty → hang" was the WRONG mechanism;
 the real one is "reveal MOUNTS/observes on the empty FIRST marker frame and latches there."
 TWO simple fixes were tried and BOTH fail (do not retry either):
-  (1) HOLD the publish: early-return from publishSources when nativeVisibleMarkerKeys==null &&
-      rankedCandidates.length>0 (wait for the catalog_arrival emit → subscriber → re-publish populated).
-      RESULT: breaks the RESULT SHEET — publishSources also publishes the whole source-frame snapshot
-      (mapSearchSurfaceResultsSourcesReady, label/coverage sources) that drives the sheet reveal, so a
-      blanket early-return leaves the sheet spinning forever (no data shown). PROVEN by an A/B: reverting
-      ONLY the JS to HEAD (same native binary, same clean metro) → search loads instantly; the hold-fix
-      JS → endless spinner.
-  (2) PRESERVE in-region pins but still publish (the old inRegionVisibilityNotReady guard) → the
-      fade-out reversal (documented above in §1 REVERTED).
+(1) HOLD the publish: early-return from publishSources when nativeVisibleMarkerKeys==null &&
+rankedCandidates.length>0 (wait for the catalog_arrival emit → subscriber → re-publish populated).
+RESULT: breaks the RESULT SHEET — publishSources also publishes the whole source-frame snapshot
+(mapSearchSurfaceResultsSourcesReady, label/coverage sources) that drives the sheet reveal, so a
+blanket early-return leaves the sheet spinning forever (no data shown). PROVEN by an A/B: reverting
+ONLY the JS to HEAD (same native binary, same clean metro) → search loads instantly; the hold-fix
+JS → endless spinner.
+(2) PRESERVE in-region pins but still publish (the old inRegionVisibilityNotReady guard) → the
+fade-out reversal (documented above in §1 REVERTED).
 ⇒ REAL FIX must keep publishing the source frame (sheet needs it) AND make the reveal not latch on the
 empty seed: re-arm the label observation when the promoted marker set first goes empty→populated
 (reset hasCommittedObservationForConfiguredRequest + re-schedule the placement observation for the same
@@ -119,24 +131,25 @@ fallback does not compromise "native is the truth" in any user-visible way — i
 
 **A.4 — DEFINITIVE characterization (emitVisualDiag→NSLog builds, diag3/diag4).** Mirrored emitVisualDiag
 to NSLog and ran two no-fallback variants:
-  - diag3 (no-fallback ONLY, native NEVER projects → markers stay 0 forever): reveal COMPLETES fine —
-    frame_begin reaches phase=live opacity=1.0, reveal_apply_result frame:3 phase=entering renderPhase=
-    live with all marker counts 0. The labelCount==0 gate path opens; an all-empty reveal is healthy.
-  - diag4 (no-fallback + source_frame project + subscriber, but NO forceDespiteHidden): native emits too
-    late/gated → markers also stay 0 → reveal COMPLETES empty again.
-  - diag2 (no-fallback + forceDespiteHidden + catalog_arrival project + subscriber): native emits 206
-    keys DURING `.hidden`, so labels populate 0→2124 WHILE the reveal preroll is in flight → HANGS at
-    pending_mount (mountedHidden=false 530/530).
-⇒ ROOT, definitively: the hang is NOT emptiness and NOT populated-steady-state (both reveal fine). It is
-the empty→populated TRANSITION *mid-reveal* — markers arriving while the reveal preroll is in flight.
-The mid-flight population spawns a new frame generation the in-flight reveal can't absorb; the transient
-mount reason seen is `enter_mount_blocked_source_not_ready` (likely persistent for that new generation —
-its source admission/markFrameSourceAdmission isn't synthesized for the subscriber-driven re-publish
-during preroll). This is inherent to "native answers one async hop late": the answer lands mid-reveal.
-REAL FIX (Option 3, now scoped): make the reveal ABSORB a mid-flight marker population — i.e. ensure the
-subscriber-driven populated re-publish during reveal preroll marks its frame-generation source ready so
-the mount can (re-)elect on it, and re-arms the label observation for that generation. Targeted at the
-source-admission/mount path, not a full rewrite — but still in the fragile reveal handshake.
+
+- diag3 (no-fallback ONLY, native NEVER projects → markers stay 0 forever): reveal COMPLETES fine —
+  frame_begin reaches phase=live opacity=1.0, reveal_apply_result frame:3 phase=entering renderPhase=
+  live with all marker counts 0. The labelCount==0 gate path opens; an all-empty reveal is healthy.
+- diag4 (no-fallback + source_frame project + subscriber, but NO forceDespiteHidden): native emits too
+  late/gated → markers also stay 0 → reveal COMPLETES empty again.
+- diag2 (no-fallback + forceDespiteHidden + catalog*arrival project + subscriber): native emits 206
+  keys DURING `.hidden`, so labels populate 0→2124 WHILE the reveal preroll is in flight → HANGS at
+  pending_mount (mountedHidden=false 530/530).
+  ⇒ ROOT, definitively: the hang is NOT emptiness and NOT populated-steady-state (both reveal fine). It is
+  the empty→populated TRANSITION \_mid-reveal* — markers arriving while the reveal preroll is in flight.
+  The mid-flight population spawns a new frame generation the in-flight reveal can't absorb; the transient
+  mount reason seen is `enter_mount_blocked_source_not_ready` (likely persistent for that new generation —
+  its source admission/markFrameSourceAdmission isn't synthesized for the subscriber-driven re-publish
+  during preroll). This is inherent to "native answers one async hop late": the answer lands mid-reveal.
+  REAL FIX (Option 3, now scoped): make the reveal ABSORB a mid-flight marker population — i.e. ensure the
+  subscriber-driven populated re-publish during reveal preroll marks its frame-generation source ready so
+  the mount can (re-)elect on it, and re-arms the label observation for that generation. Targeted at the
+  source-admission/mount path, not a full rewrite — but still in the fragile reveal handshake.
 
 **B. ranks-40s is NOT a projection/timing bug — it is the GEOGRAPHIC in/out-region split (= complaint #1).**
 NSLog of the on-screen markers' RANKS on a fresh "best restaurants": ranks(min24) =
@@ -152,10 +165,10 @@ top-N (1..maxFullPins) should get rank badges regardless of overlap region, OR t
 encompass the top results, OR collapse the two-group model. Decide the model before coding.
 
 NEXT (sequenced):
+
 - [ ] (Prereq for fallback removal) Make the reveal label-gate not hang on a momentarily-empty first
       promotion — open it once pins ARE promoted (subscriber re-decide), never latch closed on the
-      empty seed frame. Then re-apply forceDespiteHidden (project-on-arrival, catalog bypasses .hidden)
-      + the JS subscriber + delete the padded-AABB fallback (map-render-model native-only). Validate:
+      empty seed frame. Then re-apply forceDespiteHidden (project-on-arrival, catalog bypasses .hidden) + the JS subscriber + delete the padded-AABB fallback (map-render-model native-only). Validate:
       fresh search HOLDS the reveal with native-only (lifecycle reaches `visible`, no spin).
 - [ ] (ranks-40s) Decide the two-group model: should rank badges be the global top-N (rank-filtered)
       rather than geography-filtered? Then implement. The native set + ranks are already correct inputs.
