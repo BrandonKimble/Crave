@@ -203,6 +203,21 @@ into one dense probe. The market build needs script/language detection
   detection, not new NLP machinery). M6's Intl.Segmenter (CJK word
   boundaries) is a different problem and does not cover this.
 
+M4b THESIS TESTED 2026-08-03 (mirror, real scanForKnownEntityGroups,
+seeded aliases in/out): BASELINE "tacos vegetarianos" grounds only
+[tacos] — the constraint drops silently, as predicted. After seeding
+TWO alias rows (vegetariano, vegetarianos) on the vegetarian concept:
+"tacos vegetarianos" → [tacos→tacos][vegetarianos→vegetarian] — the
+EXISTING chopper decomposed the Spanish query with ZERO code changes.
+Instructive miss: "pizza vegetariana" stayed ungrounded because the
+feminine form wasn't seeded — Spanish gender/number morphology IS the
+alias-coverage problem (language pack #2's morphology or fuller alias
+forms), exactly as the plan claims. Remaining non-alias slice:
+directive words (baratos/cerca → price/proximity) need spine mappings
+to the existing filter directives, not entity aliases. VERDICT: M4b =
+alias coverage + language detection + directive vocabulary; no new
+NLP machinery. Confirmed empirically.
+
 MARKET-LAUNCH GATE (the checklist's former biggest omission): a
 stratified ≥150-query native-graded set per launch language — 40
 single-noun, 30 compound, 20 negation, 20 attribute-not-dish, 20
