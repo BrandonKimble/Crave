@@ -173,11 +173,6 @@ static __weak UIScrollView *gTrackPostureOwner = nil;
 static CGFloat gTrackShellExpandedTop = 0;
 static CGFloat gTrackShellTrackH = 0;
 
-UIScrollView *TrackPresentedScrollView(void)
-{
-  return gTrackPostureOwner;
-}
-
 static void *kTrackDelegateKVOContext = &kTrackDelegateKVOContext;
 static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
@@ -479,16 +474,35 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView
 {
-  // THE LEGITIMACY FILTER: classify this change before anything reacts to it.
+  // THE LEGITIMACY FILTER, refined by its own red team (2026-08-02).
+  //
+  // The first cut enumerated legitimate WRITERS (finger / momentum / spring /
+  // engine) and reverted everything else. That inverted the burden: it also
+  // reverted UIKit's OWN legitimate writers we had not thought to list — the
+  // keyboard scrolling a focused TextInput into view (create-poll, the DM
+  // composer, edit-profile all have inputs), VoiceOver's three-finger scroll,
+  // any future OS-animated scroll. A revert there is worse than the bug: the
+  // field stays under the keyboard and the engine fights the OS every frame.
+  //
+  // The disease was never "a writer we did not list". It is THE CLAMP: UIKit
+  // pinning tau to the reachability bound in a single frame because the
+  // content shrank underneath it. So classify by the CLAMP'S SIGNATURE, which
+  // no legitimate writer produces:
+  //   (1) tau lands exactly AT the reachable maximum (that is what a clamp IS),
+  //   (2) it is a DROP of real size (> 8pt — larger than any scroll step),
+  //   (3) no finger is down and we are not inside an engine write.
+  // Momentum is deliberately NOT trusted as a blessing here: a clamp during
+  // deceleration was slipping through the old classifier unbarked.
   const CGFloat tauIn = scrollView.contentOffset.y;
-  const BOOL legitimate = scrollView.isTracking || scrollView.isDragging ||
-      scrollView.isDecelerating || self.springLink != nil || self.engineWriteDepth > 0;
-  if (legitimate) {
-    self.lastLegitimateTau = tauIn;
-  } else if (fabs(tauIn - self.lastLegitimateTau) > 0.5) {
-    // Nobody asked for this movement — a UIKit clamp (or a stray writer).
-    // Make the legitimate τ reachable, put it back before paint, and bark so
-    // the missing prevention path gets named.
+  const CGFloat maxOffsetNow = scrollView.contentSize.height +
+      scrollView.contentInset.bottom - CGRectGetHeight(scrollView.bounds);
+  const BOOL clampShaped = fabs(tauIn - maxOffsetNow) < 0.5 &&
+      (self.lastLegitimateTau - tauIn) > 8.0 && self.engineWriteDepth == 0 &&
+      !scrollView.isTracking && !scrollView.isDragging;
+  if (clampShaped) {
+    // Grant reachability first, then put the sheet back — before paint — and
+    // bark so the missing PREVENTION path gets named. (Prevention is the
+    // prior-grow KVO; this is the backstop that makes the class closed.)
     const CGFloat viewport = CGRectGetHeight(scrollView.bounds);
     const CGFloat needed = ceil(self.lastLegitimateTau - scrollView.contentSize.height + viewport);
     if (scrollView.contentInset.bottom < needed) {
@@ -496,12 +510,13 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       insets.bottom = needed;
       scrollView.contentInset = insets;
     }
-    NSLog(@"[TRACKFILTER] reverted unauthorized tau %.1f -> %.1f (contentH=%.1f inset=%.1f)",
+    NSLog(@"[TRACKFILTER] reverted CLAMP tau %.1f -> %.1f (contentH=%.1f inset=%.1f)",
           tauIn, self.lastLegitimateTau, scrollView.contentSize.height,
           scrollView.contentInset.bottom);
     [self engineWrite:scrollView offsetY:self.lastLegitimateTau];
     return;
   }
+  self.lastLegitimateTau = tauIn;
   // THE DISSOLVE: τ back at (or past) the effective boundary means the sheet
   // is fully expanded and the content offset IS the old scroll — σ has done
   // its job and evaporates. sheetTop is unchanged by algebra; nothing moves.
@@ -576,12 +591,19 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
       self.postureOvershootActive = NO;
     }
     const CGFloat tug = (self.postureOvershootActive && tau > tugBoundary) ? (tau - tugBoundary) : 0.0;
-    const CGFloat sheetTop = TrackPixelSnap(self.shellExpandedTop + MAX(0.0, tugBoundary - tau) - tug);
+    // SNAP ONLY AT REST (red team #2): during motion every layer rides the
+    // same raw tau, so raw floats mean ZERO relative motion — snapping a
+    // transform inside unsnapped content made the chrome dither ±1/(2·scale)
+    // against the rows. At rest, snap for crisp grid-aligned edges.
+    const BOOL inMotion = scrollView.isTracking || scrollView.isDragging ||
+        scrollView.isDecelerating || self.springLink != nil;
+    const CGFloat sheetTopRaw = self.shellExpandedTop + MAX(0.0, tugBoundary - tau) - tug;
+    const CGFloat sheetTop = inMotion ? sheetTopRaw : TrackPixelSnap(sheetTopRaw);
     // THE REAL SLOT: registry-first (self-registered, transform-sealed views);
     // the tag-bound views remain as the legacy fallback until the delete pass.
     TrackShellRegistry *registry = [TrackShellRegistry shared];
     TrackShellSlotView *frostSlot = [registry viewForRole:@"frost"];
-    UIView *frost = frostSlot ?: self.shellFrostView;
+    UIView *frost = frostSlot;
     if (frost != nil) {
       const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
       if (!CGAffineTransformEqualToTransform(frost.transform, t)) {
@@ -592,20 +614,8 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
         }
       }
     }
-    TrackShellSlotView *chromeSlot = [registry viewForRole:@"chrome"];
-    UIView *chromeOverlay = chromeSlot ?: self.shellChromeView;
-    if (chromeOverlay != nil) {
-      const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
-      if (!CGAffineTransformEqualToTransform(chromeOverlay.transform, t)) {
-        if (chromeSlot != nil) {
-          [chromeSlot trackApplyTransform:t];
-        } else {
-          chromeOverlay.transform = t;
-        }
-      }
-    }
     TrackShellSlotView *tailSlot = [registry viewForRole:@"tail"];
-    UIView *tail = tailSlot ?: self.shellTailView;
+    UIView *tail = tailSlot;
     if (tail != nil) {
       const CGFloat contentEnd = scrollView.contentSize.height - tau;
       const CGFloat tailTop = MAX(sheetTop, contentEnd);
@@ -669,7 +679,8 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
             // fractional 68.25), so left raw it lands MID-PIXEL and the row
             // white fades in over a partial pixel — a hairline of frost under
             // the header. Snap the edge to the device grid.
-            const CGFloat edgeY = TrackPixelSnap(bandBottom - origin.y);
+            const CGFloat edgeYRaw = bandBottom - origin.y;
+            const CGFloat edgeY = inMotion ? edgeYRaw : TrackPixelSnap(edgeYRaw);
             const CGRect next = CGRectMake(-w, edgeY, w * 3.0, h * 6.0);
             if (!CGRectEqualToRect(rowMask.frame, next)) { rowMask.frame = next; }
           }
@@ -708,7 +719,10 @@ static void *kTrackClampGuardCtx = &kTrackClampGuardCtx;
     const CGFloat boundary = self.shellTrackH + self.stashSigma;
     const CGFloat tugNow =
         (self.postureOvershootActive && tauNow > boundary) ? (tauNow - boundary) : 0.0;
-    const CGFloat hold = TrackPixelSnap(self.stashSigma + MAX(0.0, tauNow - boundary) - tugNow);
+    const CGFloat holdRaw = self.stashSigma + MAX(0.0, tauNow - boundary) - tugNow;
+    const BOOL pinInMotion = scrollView.isTracking || scrollView.isDragging ||
+        scrollView.isDecelerating || self.springLink != nil;
+    const CGFloat hold = pinInMotion ? holdRaw : TrackPixelSnap(holdRaw);
     const CGAffineTransform next = CGAffineTransformMakeTranslation(0, hold);
     if ([chrome isKindOfClass:[TrackShellSlotView class]]) {
       [(TrackShellSlotView *)chrome trackApplyTransform:next];
@@ -980,35 +994,6 @@ RCT_EXPORT_METHOD(refuse:(nonnull NSNumber *)reactTag
   }];
 }
 
-// setOffset is τ-SPACE and RESETS σ: callers (the switch formula) re-fuse
-// posture+scroll into one absolute offset, so any standing stash is stale.
-RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
-                  offset:(nonnull NSNumber *)offset)
-{
-  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-    UIView *root = viewRegistry[reactTag] ?: [uiManager viewForReactTag:reactTag];
-    UIScrollView *scrollView = root ? TrackFindScrollView(root) : nil;
-    if (scrollView == nil) {
-      return;
-    }
-    TrackScrollDelegateProxy *fuseProxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
-    if (fuseProxy != nil && fuseProxy.stashSigma != 0) {
-      fuseProxy.stashSigma = 0;
-      if (fuseProxy.onSigmaChanged) {
-        fuseProxy.onSigmaChanged(0);
-      }
-    }
-    // SYNCHRONOUS with this UI block (the switch formula's re-fuse): an extra
-    // dispatch hop let the freshly swapped content render one frame at the
-    // OLD deep tau — the owner's "content floating up in the sky" flash.
-    if (fuseProxy != nil) {
-      [fuseProxy engineWrite:scrollView offsetY:offset.doubleValue];
-    } else {
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, offset.doubleValue)
-                          animated:NO];
-    }
-  }];
-}
 
 // ─── THE SWITCH TRANSACTION (atomic switch, 2026-08-01) ─────────────────────
 // One CATransaction: seed the incoming leg's offset from the posture register,
@@ -1017,206 +1002,10 @@ RCT_EXPORT_METHOD(setOffset:(nonnull NSNumber *)reactTag
 // a not-yet-registered leg PENDS natively and executes inside the leg slot's
 // own registering transaction: the leg's first painted frame is already
 // seeded and visible.
-static NSString *gTrackPendingSwitchKey = nil;
-static double gTrackPendingSwitchRestore = 0;
-static double gTrackPendingSwitchChromeH = 0;
 
-/// THE LEG MUST BE LIVE INSIDE THE TRANSACTION (measured 2026-08-01): a fresh
-/// leg's engine proxy is installed by the JS attach path, which lands AFTER the
-/// switch. Until then that leg's scroll view has NO delegate proxy — so when
-/// the seat spring animated its contentOffset, no didScroll ran the shell
-/// writer: the rows rose while frost/chrome/tail stayed parked at the old
-/// sheetTop (the owner's "header stranded at the bottom"). The transaction now
-/// ADOPTS the incoming scroll view — proxy installed, ballistic config
-/// inherited from the outgoing leg, shell wired from the config mirrors — so
-/// the leg drives the shell from its very first animated frame. The later JS
-/// attach/bindShell then merely re-assert.
-static TrackScrollDelegateProxy *TrackAdoptScrollView(UIScrollView *scrollView, double chromeH)
-{
-  TrackScrollDelegateProxy *proxy = objc_getAssociatedObject(scrollView, kTrackProxyKey);
-  TrackScrollDelegateProxy *donor =
-      gTrackPostureOwner != nil && gTrackPostureOwner != scrollView
-          ? objc_getAssociatedObject(gTrackPostureOwner, kTrackProxyKey)
-          : nil;
-  if (proxy == nil) {
-    proxy = [TrackScrollDelegateProxy new];
-    proxy.original = scrollView.delegate;
-    objc_setAssociatedObject(scrollView, kTrackProxyKey, proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    scrollView.delegate = proxy;
-    [proxy beginObservingDelegateOf:scrollView];
-  } else if (scrollView.delegate != proxy) {
-    proxy.original = scrollView.delegate;
-    scrollView.delegate = proxy;
-  }
-  // Physics config is a property of the SHEET, not of a leg: inherit it so an
-  // adopted leg has the same ballistic wall and detents from frame one.
-  if (donor != nil) {
-    if (proxy.ballisticEdge <= 0) {
-      proxy.ballisticEdge = donor.ballisticEdge;
-    }
-    if (proxy.snapRegionEnd <= 0) {
-      proxy.snapRegionEnd = donor.snapRegionEnd;
-    }
-    if (proxy.snapOffsets.count == 0) {
-      proxy.snapOffsets = donor.snapOffsets;
-    }
-    if (proxy.onTopArrival == nil) {
-      proxy.onTopArrival = donor.onTopArrival;
-    }
-    if (proxy.onSigmaChanged == nil) {
-      proxy.onSigmaChanged = donor.onSigmaChanged;
-    }
-  }
-  if (!proxy.shellEnabled && gTrackShellTrackH > 0) {
-    proxy.shellExpandedTop = gTrackShellExpandedTop;
-    proxy.shellTrackH = gTrackShellTrackH;
-    proxy.shellChromeHeight = chromeH;
-    if (proxy.chromeContentView == nil) {
-      if (proxy.shellBandMask == nil) {
-        CALayer *mask = [CALayer layer];
-        mask.backgroundColor = [UIColor blackColor].CGColor;
-        proxy.shellBandMask = mask;
-        scrollView.layer.mask = mask;
-      } else if (scrollView.layer.mask != proxy.shellBandMask) {
-        scrollView.layer.mask = proxy.shellBandMask;
-      }
-    }
-    proxy.hostScrollView = scrollView;
-    proxy.shellEnabled = YES;
-  }
-  return proxy;
-}
+// (THE SWITCH TRANSACTION machinery deleted 2026-08-02 — the collapse made
+// switches a data swap on ONE track; refuse() is the only switch-time write.)
 
-static void TrackExecuteSwitch(NSString *legKey, double restore, double chromeH)
-{
-  TrackLegRegistry *legs = [TrackLegRegistry shared];
-  TrackLegSlotView *rows = [legs viewForKey:legKey kind:@"rows"];
-  UIScrollView *scrollView = rows != nil ? TrackFindScrollView(rows) : nil;
-  if (scrollView == nil) {
-    gTrackPendingSwitchKey = [legKey copy];
-    gTrackPendingSwitchRestore = restore;
-    gTrackPendingSwitchChromeH = chromeH;
-    return;
-  }
-  gTrackPendingSwitchKey = nil;
-  // Springs die inside the transaction: a snap launched mid-switch may not
-  // animate a position this transaction is about to define.
-  UIScrollView *oldOwner = gTrackPostureOwner;
-  if (oldOwner != nil && oldOwner != scrollView) {
-    TrackScrollDelegateProxy *oldProxy = objc_getAssociatedObject(oldOwner, kTrackProxyKey);
-    [oldProxy stopSpring];
-  }
-  TrackScrollDelegateProxy *proxy = TrackAdoptScrollView(scrollView, chromeH);
-  [proxy stopSpring];
-  if (proxy != nil) {
-    if (proxy.stashSigma != 0) {
-      proxy.stashSigma = 0;
-      if (proxy.onSigmaChanged) {
-        proxy.onSigmaChanged(0);
-      }
-    }
-    proxy.shellChromeHeight = chromeH;
-  }
-  proxy.shellChromeHeight = chromeH;
-  // THE RANGE LAW RUNS FIRST (measured: lists->profile landed BETWEEN detents).
-  // UIKit clamps contentOffset to contentH + insetBottom - viewport at write
-  // time. Seeding the carried posture before the incoming leg's reachability
-  // inset exists let UIKit clamp the write to wherever that leg's content
-  // happened to end — a landing at no snap point at all, and (because it is a
-  // clamp, not a spring) an instant one. Every posture must be REACHABLE
-  // before the offset is written.
-  [proxy applyRangeLawTo:scrollView];
-  const CGFloat trackH = proxy != nil && proxy.shellTrackH > 0 ? proxy.shellTrackH : gTrackShellTrackH;
-  const CGFloat posture = trackH > 0 ? MIN(gTrackPostureRegister, trackH) : gTrackPostureRegister;
-  const CGFloat target = posture + restore;
-  gTrackPostureOwner = scrollView;
-  if (fabs(scrollView.contentOffset.y - target) > 0.5) {
-    if (proxy != nil) {
-      [proxy engineWrite:scrollView offsetY:target];
-    } else {
-      [scrollView setContentOffset:CGPointMake(scrollView.contentOffset.x, target) animated:NO];
-    }
-  }
-  // Re-aim the shell NOW, in this transaction — setContentOffset with an
-  // unchanged value fires no didScroll, and a fresh leg has no proxy at all.
-  if (proxy != nil && proxy.shellEnabled) {
-    [proxy scrollViewDidScroll:scrollView];
-  } else {
-    const CGFloat expandedTop = gTrackShellExpandedTop;
-    const CGFloat sheetTop = TrackPixelSnap(expandedTop + MAX(0.0, trackH - target));
-    gTrackCarveSheetTop = sheetTop;
-    TrackShellRegistry *registry = [TrackShellRegistry shared];
-    const CGAffineTransform t = CGAffineTransformMakeTranslation(0, sheetTop);
-    [[registry viewForRole:@"frost"] trackApplyTransform:t];
-    [[registry viewForRole:@"chrome"] trackApplyTransform:t];
-    const CGFloat contentEnd = scrollView.contentSize.height - target;
-    [[registry viewForRole:@"tail"]
-        trackApplyTransform:CGAffineTransformMakeTranslation(0, MAX(sheetTop, contentEnd))];
-  }
-  [legs applyAlphasForPresentedKey:legKey];
-}
-
-RCT_EXPORT_METHOD(switchTo:(nonnull NSString *)legKey
-                  restore:(nonnull NSNumber *)restore
-                  chromeHeight:(nonnull NSNumber *)chromeHeight)
-{
-  [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-    TrackLegRegistry *legs = [TrackLegRegistry shared];
-    if (legs.onLegRegistered == nil) {
-      legs.onLegRegistered = ^(TrackLegSlotView *view) {
-        if (gTrackPendingSwitchKey != nil && [view.legKind isEqualToString:@"rows"] &&
-            [view.legKey isEqualToString:gTrackPendingSwitchKey]) {
-          TrackExecuteSwitch(gTrackPendingSwitchKey, gTrackPendingSwitchRestore,
-                             gTrackPendingSwitchChromeH);
-        }
-      };
-    }
-    TrackExecuteSwitch(legKey, restore.doubleValue, chromeHeight.doubleValue);
-  }];
-}
-
-// DEV AUDIT: who owns the touch at (x,y)? Walks hitTest from the key window
-// and returns the resolved view's class + ancestor chain (accessibility ids
-// where present) so a touch thief can be NAMED, not guessed.
-RCT_EXPORT_METHOD(auditHit:(nonnull NSNumber *)x
-                  y:(nonnull NSNumber *)y
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-{
-  dispatch_async(dispatch_get_main_queue(), ^{
-    UIWindow *window = nil;
-    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-      if ([scene isKindOfClass:[UIWindowScene class]]) {
-        for (UIWindow *w in ((UIWindowScene *)scene).windows) {
-          if (w.isKeyWindow) { window = w; break; }
-        }
-      }
-      if (window != nil) { break; }
-    }
-    if (window == nil) {
-      reject(@"no_window", @"no key window", nil);
-      return;
-    }
-    CGPoint p = CGPointMake(x.doubleValue, y.doubleValue);
-    UIView *hit = [window hitTest:p withEvent:nil];
-    NSMutableArray<NSString *> *chain = [NSMutableArray array];
-    UIView *v = hit;
-    int depth = 0;
-    while (v != nil && depth < 24) {
-      NSString *name = NSStringFromClass(v.class);
-      NSString *nid = v.accessibilityIdentifier ?: v.nativeID;
-      [chain addObject:nid.length > 0 ? [NSString stringWithFormat:@"%@(%@)", name, nid] : name];
-      v = v.superview;
-      depth++;
-    }
-    resolve(@{ @"hit": hit ? NSStringFromClass(hit.class) : @"nil",
-               @"legs": [[TrackLegRegistry shared] auditLegs],
-               @"presentedKey": [TrackLegRegistry shared].presentedKey ?: @"nil",
-               @"frame": hit ? NSStringFromCGRect([hit convertRect:hit.bounds toView:nil]) : @"",
-               @"chain": chain,
-               @"carveTop": @(gTrackCarveSheetTop) });
-  });
-}
 
 // Register the chrome view to pin (pass chromeTag = nil to clear).
 RCT_EXPORT_METHOD(pinChrome:(nonnull NSNumber *)reactTag
@@ -1277,17 +1066,6 @@ RCT_EXPORT_METHOD(bindShell:(nonnull NSNumber *)reactTag
       }
       return viewRegistry[(NSNumber *)tag] ?: [uiManager viewForReactTag:(NSNumber *)tag];
     };
-    proxy.shellFrostView = resolve(config[@"frostTag"]);
-    proxy.shellTailView = resolve(config[@"tailTag"]);
-    proxy.shellChromeView = resolve(config[@"chromeTag"]);
-    // THE NIL-ASSERT (XII red team 3): a chrome tag that fails to resolve
-    // means the shell never transforms that view -- the header parks at the
-    // screen top with no error anywhere. Bark loudly instead of silently.
-    if (config[@"chromeTag"] != nil && ![config[@"chromeTag"] isKindOfClass:[NSNull class]] &&
-        proxy.shellChromeView == nil) {
-      [weakSelf2 sendEventWithName:@"trackShellWarning"
-                              body:@{ @"part": @"chrome", @"tag": config[@"chromeTag"] }];
-    }
     proxy.shellExpandedTop = [config[@"expandedTop"] doubleValue];
     proxy.shellTrackH = [config[@"trackH"] doubleValue];
     gTrackShellExpandedTop = proxy.shellExpandedTop;

@@ -833,7 +833,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({ scene, snapPoint
         onNavActionPress={onNavActionPress}
         grabHandleHidden={scene === 'settings'}
         onGrabHandlePress={onGrabHandlePress}
-        strips={strips}
         legs={legs}
         presentedSceneKey={scene as string}
         debugHud={debugVisuals}
@@ -883,12 +882,6 @@ const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, zIndex: 91 },
   hidden: { opacity: 0 },
   hostAboveStack: { zIndex: 91 },
-  headerRow: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-  },
   fallbackTitle: { fontSize: 20, fontWeight: '700', color: '#0f172a' },
   // Production's body inset (useBottomSheetSceneStackBodyContentRuntime applies
   // OVERLAY_HORIZONTAL_PADDING via the transport) — mounted bodies expect it.
@@ -898,18 +891,6 @@ const styles = StyleSheet.create({
   mountedSurface: { backgroundColor: 'transparent' },
   mountedBodyInset: { paddingHorizontal: OVERLAY_HORIZONTAL_PADDING },
   mountedSurfaceUnpadded: { backgroundColor: 'transparent' },
-  closeAction: {
-    position: 'absolute',
-    right: 16,
-    top: 12,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeActionText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
 });
 
 export default TrackSheetRouteHost;

@@ -137,7 +137,6 @@ export type TrackSheetListProps<Item> = Pick<
 export type TrackSheetLeg = {
   sceneKey: string;
   list: TrackSheetListProps<unknown>;
-  listLeader?: React.ReactNode;
   rowSurfaceStyle?: ViewStyle;
   onUserListScrollActivity?: TrackSheetPhysicsOptions['onUserListScrollActivity'];
   /** PER-LEG CHROME (the residents centerpiece): each leg carries its OWN
@@ -146,6 +145,7 @@ export type TrackSheetLeg = {
    * twin feeds the native pin. */
   title?: React.ReactNode;
   stripChildren?: React.ReactNode;
+  listLeader?: React.ReactNode;
 };
 
 export type TrackSheetCommands = {
@@ -175,7 +175,6 @@ export type TrackSheetPageProps = {
    * is unwritable. The presented scene's entry decides the band's presence. */
   strips?: Array<{ sceneKey: string; children: React.ReactNode }>;
   /** In-list leader content — scrolls away with the page (in-list strip mode). */
-  listLeader?: React.ReactNode;
   /** Footer surface extension below the last row. */
   footerHeight?: number;
   /** THE RESIDENT LEGS — every visited scene's rows. The presented leg is
@@ -241,6 +240,15 @@ export function TrackSheetPage({
   // Pagination signals route to the PRESENTED leg only (hidden legs emit no
   // scroll events anyway; this keeps the physics hook identity stable).
   const presentedLegRef = React.useRef<TrackSheetLeg | null>(null);
+  // Handlers behind refs: chrome elements are CACHED per scene, and an element
+  // that closes over a per-switch callback identity defeats the cache (red
+  // team: the cache never hit). The elements read through these refs instead.
+  const onNavActionPressRef = React.useRef(onNavActionPress);
+  onNavActionPressRef.current = onNavActionPress;
+  const onGrabHandlePressRef = React.useRef(onGrabHandlePress);
+  onGrabHandlePressRef.current = onGrabHandlePress;
+  const stableNavActionPress = React.useCallback(() => onNavActionPressRef.current?.(), []);
+  const stableGrabHandlePress = React.useCallback(() => onGrabHandlePressRef.current?.(), []);
   const presentedLeg = legs.find((leg) => leg.sceneKey === presentedSceneKey) ?? null;
   presentedLegRef.current = presentedLeg;
   const onUserListScrollActivity = React.useCallback((offsetY: number, distanceFromEnd: number) => {
@@ -248,7 +256,6 @@ export function TrackSheetPage({
   }, []);
   const physics = useTrackSheetPhysics(geometry, { onUserListScrollActivity });
   const { tau, trackH, sheetTopY, onScroll, attachToTag } = physics;
-  const listLeader = presentedLeg?.listLeader ?? null;
 
   // THE SHORT-PAGE FILL (declared early; law documented at the handler below).
   // NOT mirrored into the ref on every render: the ref is the monotonic
@@ -258,17 +265,12 @@ export function TrackSheetPage({
 
   // PRODUCTION CHROME GEOMETRY (acceptance inventory §1): the header block is
   // the exact un-rounded 68.25; strip scenes add band(32) + spacer(8).
-  const legChromeHeightBySceneRef = React.useRef<(sceneKey: string) => number>(() => 0);
   const legChromeHeight = (leg: TrackSheetLeg | null) =>
     OVERLAY_TAB_HEADER_HEIGHT +
     (leg?.stripChildren != null
       ? TOGGLE_STRIP_BAND_HEIGHT + OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM
       : 0);
   const chromeHeight = legChromeHeight(presentedLeg);
-  const legsForHeightRef = React.useRef(legs);
-  legsForHeightRef.current = legs;
-  legChromeHeightBySceneRef.current = (sceneKey: string) =>
-    legChromeHeight(legsForHeightRef.current.find((l) => l.sceneKey === sceneKey) ?? null);
 
   // THE HEADER CUTOUT PLATE (inventory §1.5): white plate with the grab-handle
   // slot and the close-circle punched through to the frost beneath.
@@ -342,9 +344,6 @@ export function TrackSheetPage({
   const applyPinRef = React.useRef<(() => void) | null>(null);
   React.useEffect(() => physics.subscribeAttached(() => applyPinRef.current?.()), [physics]);
   const trackTagRef = React.useRef<number | null>(null);
-  const chromeVisualTagRef = React.useRef<number | null>(null);
-  const frostTagRef = React.useRef<number | null>(null);
-  const tailTagRef = React.useRef<number | null>(null);
   const applyPin = React.useCallback(() => {
     const nativePhysics = NativeModules.TrackScrollPhysics;
     if (trackTagRef.current == null) {
@@ -355,8 +354,6 @@ export function TrackSheetPage({
         nativePhysics.pinChrome(trackTagRef.current, chromeContentTagRef.current);
       }
       nativePhysics.bindShell(trackTagRef.current, {
-        frostTag: frostTagRef.current,
-        tailTag: tailTagRef.current,
         chromeTag: null,
         chromeContentTag: chromeContentTagRef.current,
         leaderTag: leaderTagRef.current,
@@ -380,7 +377,6 @@ export function TrackSheetPage({
   // setFrame, so there is no stale-tag window left to compensate for. The
   // bind now re-asserts only when it MEANS something: geometry change
   // (below), native attach, and the touch twin's ref.
-  const chromeVisualViewRef = React.useRef<View | null>(null);
   // THE SHELL AUDIT (P10, 2026-07-31): Fabric's measureInWindow is SHADOW-TREE
   // layout — blind to native transforms (it barked y=0 while the screen was
   // provably correct). Truth is asked of UIKit via the native auditShell, at
@@ -438,53 +434,6 @@ export function TrackSheetPage({
       clearInterval(timer);
     };
   }, [applyPin]);
-  // ── THE ORIGIN INVARIANT (RED-capable; this exact defect regressed 3x) ─────
-  // The chrome IS the sheet's top edge, so its window y must equal sheetTopY.
-  // It diverged by exactly expandedTop every time a layer applied that origin
-  // twice — or, in the clip's case, applied the offset while its counter-offset
-  // was silently dropped (FlashList ignores `top` in its style prop; MEASURED,
-  // not assumed). A drift here is always an origin-ownership bug, so it barks
-  // with both numbers rather than failing quietly on screen.
-  const chromeViewRef = React.useRef<View | null>(null);
-  React.useEffect(() => {
-    if (!__DEV__) {
-      return undefined;
-    }
-    // AT-REST ONLY (false-positive fix, 2026-07-29): measureInWindow is async,
-    // so a moving sheet samples position and sheetTopY a frame apart — a 3pt
-    // "drift" mid-settle is measurement skew, not an origin bug. Bark only when
-    // two samples 600ms apart both drift AND the sheet did not move between
-    // them (a real double-count is constant; skew is not).
-    let cancelled = false;
-    const sample = (onDrift: (drift: number, y: number) => void) => {
-      const before = sheetTopY.value;
-      chromeViewRef.current?.measureInWindow((_x, y) => {
-        if (cancelled || sheetTopY.value !== before) {
-          return; // moved while measuring — meaningless sample
-        }
-        const drift = Math.round(y - before);
-        if (Math.abs(drift) > 1) {
-          onDrift(drift, y);
-        }
-      });
-    };
-    const timer = setTimeout(() => {
-      sample(() => {
-        setTimeout(() => {
-          sample((drift, y) => {
-            // eslint-disable-next-line no-console
-            console.error(
-              `[ORIGIN] chrome window y (${Math.round(y)}) != sheetTopY (${Math.round(sheetTopY.value)}) — drift ${drift}pt; expandedTop=${Math.round(geometry.expandedTop)}. Some layer is applying the sheet origin twice, or dropping a counter-offset.`
-            );
-          });
-        }, 600);
-      });
-    }, 2500);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [geometry.expandedTop, sheetTopY]);
 
   applyPinRef.current = applyPin;
 
@@ -739,14 +688,9 @@ export function TrackSheetPage({
     refCallback: ((node: View | null) => void) | null,
     chromeTitle: React.ReactNode,
     band: React.ReactNode | null,
-    chromeH: number,
-    painted: boolean
+    chromeH: number
   ) => (
-    <View
-      ref={refCallback}
-      collapsable={false}
-      style={[styles.chrome, { height: chromeH }, !painted && styles.unpaintedChrome]}
-    >
+    <View ref={refCallback} collapsable={false} style={[styles.chrome, { height: chromeH }]}>
       {/* NO CHROME FROST SLAB: the frost founds the SHEET (see the founding
               layers below). A slab here would sit ON that frost and blur an
               already-blurred layer — the owner's "double frosty". The chrome's
@@ -790,7 +734,7 @@ export function TrackSheetPage({
           testID="track-chrome-control"
         >
           <Pressable
-            onPress={onGrabHandlePress}
+            onPress={stableGrabHandlePress}
             hitSlop={10}
             accessibilityLabel="Expand sheet"
             disabled={onGrabHandlePress == null}
@@ -809,7 +753,7 @@ export function TrackSheetPage({
             {navActionProgress != null && onNavActionPress != null ? (
               <HeaderNavAction
                 progress={navActionProgress}
-                onPress={onNavActionPress}
+                onPress={stableNavActionPress}
                 accessibilityLabel={navActionLabel}
               />
             ) : null}
@@ -818,11 +762,7 @@ export function TrackSheetPage({
         {/* header block bottom padding — the 10 in 8+3.25+7+32+8+10=68.25 */}
         <View style={styles.headerBottomPad} />
       </View>
-      {band != null ? (
-        <View nativeID="track-chrome-control" testID="track-chrome-control">
-          {band}
-        </View>
-      ) : null}
+      {band != null ? <View>{band}</View> : null}
       {/* The 8pt under the band is sheet material. As a FLOW child it shares
           the band's bottom edge exactly (same-edge law) instead of being an
           absolutely-positioned box rounded on its own. */}
@@ -835,11 +775,6 @@ export function TrackSheetPage({
       <Reanimated.View style={[styles.divider, dividerStyle]} />
     </View>
   );
-  // THE TWINS (per-leg chrome, the residents centerpiece): each leg carries
-  // its OWN touch chrome permanently — it never changes parents on a flip, so
-  // it never remounts and its strip's touch layer never re-measures. Only the
-  // presented leg's twin feeds the pin (ref gated at fire time + on flip).
-  // The VISUAL twin stays single in the stable overlay with the flip band.
   // CHROME IDENTITY IS PER SCENE, NOT PER LEG (strip-lateness fix, 2026-08-01).
   // `legs` is rebuilt whenever ANY scene's data changes, so keying the chrome
   // off it remounted the strip on unrelated data ticks — and a remounted strip
@@ -856,19 +791,18 @@ export function TrackSheetPage({
   const visualChromeLegs = React.useMemo(
     () =>
       legs.map((leg) => {
+        // Signature holds ONLY per-scene inputs. Handlers go through stable
+        // refs; shared inputs (holes, colors, progress) change rarely and are
+        // included; per-switch identities are excluded BY DESIGN so the cache
+        // actually hits across switches (red team: it never did).
         const signature: readonly unknown[] = [
           leg.title,
           leg.stripChildren,
-          navActionProgress,
-          navActionLabel,
-          onNavActionPress,
-          onGrabHandlePress,
           grabHandleHidden,
           headerExtras,
           plateHoles,
           surfaceColor,
-          title,
-          dividerStyle,
+          navActionProgress,
         ];
         const cached = chromeElementCacheRef.current.get(leg.sceneKey);
         if (
@@ -886,7 +820,7 @@ export function TrackSheetPage({
               </TrackSheetDockedStrip>
             </View>
           ) : null;
-        const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg), true);
+        const element = renderChrome(null, leg.title ?? title, band, legChromeHeight(leg));
         chromeElementCacheRef.current.set(leg.sceneKey, { signature, element });
         return { sceneKey: leg.sceneKey, element };
       }),
@@ -905,8 +839,6 @@ export function TrackSheetPage({
     ]
   );
 
-  const presentedChromeElement =
-    visualChromeLegs.find((entry) => entry.sceneKey === presentedSceneKey)?.element ?? null;
   // Per-leg header: [spacer H][chrome band][leader]. The chrome TOUCH TWIN
   // renders ONLY in the presented leg (its ref feeds the pin; a hidden twin
   // would steal it); hidden legs reserve the same band height so their
@@ -923,11 +855,32 @@ export function TrackSheetPage({
   // scroller (the strip) wins horizontal by the same rule. None of that is
   // expressible while the chrome sits outside the scroll view, because
   // hitTest must choose at touch-DOWN, before direction exists.
-  const headerForLeg = (leg: TrackSheetLeg | null, _isPresented: boolean) => (
+  // THE RESIDENT CHROME STACK (strip red team, 2026-08-02). Rendering only
+  // the presented chrome UNMOUNTED the strip on every strip<->plain switch:
+  // the band came back as a fresh mount — blank white plate first, chips and
+  // cutouts frames later ("the toggle strip switches first / does weird
+  // stuff"). Every leg's chrome now stays mounted in the slot, absolutely
+  // stacked, and WHICH ONE SHOWS flips by opacity in the SAME React commit as
+  // the data swap — chips, holes, measurements and strip scroll state are
+  // immortal, and header/rows can no longer change on different frames.
+  const headerForLeg = (leg: TrackSheetLeg | null) => (
     <View style={styles.chromeLane}>
       <View style={{ height: trackH }} pointerEvents="none" />
       <TrackShellSlot slotRole="chromeContent" ref={chromeContentRef as never}>
-        {presentedChromeElement}
+        <View style={{ height: legChromeHeight(leg) }}>
+          {visualChromeLegs.map((entry) => {
+            const isPresented = entry.sceneKey === presentedSceneKey;
+            return (
+              <View
+                key={entry.sceneKey}
+                style={isPresented ? styles.chromeStackLayer : styles.chromeStackLayerHidden}
+                pointerEvents={isPresented ? 'box-none' : 'none'}
+              >
+                {entry.element}
+              </View>
+            );
+          })}
+        </View>
       </TrackShellSlot>
       {leg?.listLeader != null ? (
         <View ref={leaderRef} collapsable={false}>
@@ -1025,10 +978,8 @@ export function TrackSheetPage({
   // fabricated scroll length (R4/R5).
 
   // THE SWITCH FORMULA — applied synchronously at the switch commit, instant
-  // (setOffset, never a spring: restoring YOUR scroll is not motion).
+  // (native refuse: restoring YOUR scroll is not motion).
   const sceneScrollMemoryRef = React.useRef(new Map<string, number>());
-  // Boot presentation seed for the leg slots (native presentedKey starts here).
-  const initialSceneKeyRef = React.useRef(presentedSceneKey);
   const presentedSceneKeyRef = React.useRef<string>(presentedSceneKey);
   presentedSceneKeyRef.current = presentedSceneKey;
   const prevSceneKeyRef = React.useRef<string | null>(presentedSceneKey);
@@ -1184,13 +1135,16 @@ export function TrackSheetPage({
           drawDistance={SCREEN.height}
           maintainVisibleContentPosition={{ disabled: true }}
           renderScrollComponent={TrackScrollComponent}
-          ListHeaderComponent={headerForLeg(presentedLeg, true)}
+          ListHeaderComponent={headerForLeg(presentedLeg)}
           ListFooterComponent={legFooter}
           showsVerticalScrollIndicator={false}
           bounces
           alwaysBounceVertical
           scrollEventThrottle={16}
           automaticallyAdjustContentInsets={false}
+          // status-bar scroll-to-top targets contentOffset 0 = COLLAPSED sheet
+          // in tau-space, not top-of-list; explicitly off (red team #5).
+          scrollsToTop={false}
           onScroll={onScroll}
           onContentSizeChange={(_w: number, h: number) =>
             handleContentSizeChange(presentedSceneKey, h)
@@ -1224,11 +1178,6 @@ const styles = StyleSheet.create({
   // NO OPACITY HERE, EVER: leg visibility is the engine's (TrackLegSlot alpha,
   // flipped inside the switch transaction). A React opacity would multiply it
   // on the interop wrapper and fight the transaction.
-  // opacity 0 keeps layout AND hit-testing (unlike display:none) — the touch
-  // twin stays grabbable while painting nothing.
-  unpaintedChrome: { opacity: 0 },
-  legLayer: { ...StyleSheet.absoluteFillObject },
-  legChromeLayer: { ...StyleSheet.absoluteFillObject },
   // The shadow must live on a view that does NOT clip, so the silhouette is a
   // shadow shell (radii, no overflow) wrapping a clipped frost.
   silhouette: {
@@ -1242,8 +1191,7 @@ const styles = StyleSheet.create({
   },
   // Containment (R6): nothing renders above the sheet's top edge. A clip, not
   // a reposition — the track inside is counter-offset so nothing shifts.
-  chromeLane: { zIndex: 60 },
-  chromeOverlay: { position: 'absolute', left: 0, right: 0, top: 0, zIndex: 60 },
+  chromeLane: {},
   founding: {
     position: 'absolute',
     left: 0,
@@ -1263,6 +1211,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
   },
   headerBlock: {},
+  chromeStackLayer: { position: 'absolute', top: 0, left: 0, right: 0 },
+  chromeStackLayerHidden: { position: 'absolute', top: 0, left: 0, right: 0, opacity: 0 },
   plateUnderlap: { position: 'absolute', top: 0, left: 0, right: 0, bottom: -1 },
   grabWrapper: { alignItems: 'center', paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP },
   grabHandle: {
@@ -1299,7 +1249,6 @@ const styles = StyleSheet.create({
   },
   // Layer marker (debug builds of the parallel host): the TrackSheet surface is
   // the one with the amber top edge — never confuse it with the old sheet again.
-  debugEdge: { borderTopWidth: 3, borderTopColor: '#f59e0b' },
   hud: {
     position: 'absolute',
     bottom: 40,
