@@ -56,6 +56,7 @@ function makeService(overrides?: {
     revokeAllForUser: jest.fn().mockResolvedValue(2),
   };
   const billing = {
+    deleteRevenueCatSubscriber: jest.fn().mockResolvedValue(true),
     cancelSubscription:
       overrides?.cancelSubscription ??
       jest.fn().mockRejectedValue(new BadRequestException('none')),
@@ -249,5 +250,27 @@ describe('AccountDeletionService', () => {
     const eraseOrder = (eraser.erase as jest.Mock).mock
       .invocationCallOrder[0];
     expect(reserveOrder).toBeLessThan(eraseOrder);
+  });
+
+  it('PROPAGATES to RevenueCat — nulling our pointer locally is not deletion', () => {
+    // The defect this guards (2026-08-03): deletion nulled
+    // `revenueCatAppUserId` and stopped, severing OUR pointer while the
+    // subscriber record stayed live at the processor — the link deleted from
+    // the side that was not holding the data. GDPR 17(2)/CCPA 1798.105(c)
+    // extend the duty to processors.
+    const { service, billing } = makeService();
+    return service
+      .deleteAccount({
+        userId: 'u-del-1',
+        email: 'Person@Example.com',
+        username: 'handle',
+        authProviderUserId: 'clerk-del-1',
+        revenueCatAppUserId: 'rc-app-user-1',
+      } as never)
+      .then(() => {
+        expect(billing.deleteRevenueCatSubscriber).toHaveBeenCalledWith(
+          'rc-app-user-1',
+        );
+      });
   });
 });

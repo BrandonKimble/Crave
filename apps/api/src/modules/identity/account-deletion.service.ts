@@ -137,6 +137,28 @@ export class AccountDeletionService {
           // asset may not exist; deletion proceeds either way
         }
       }
+      // PROCESSOR PROPAGATION (GDPR 17(2), CCPA 1798.105(c)): the duty reaches
+      // processors, and a single API call is neither impossible nor
+      // disproportionate. Deletion used to null `revenueCatAppUserId` locally,
+      // which severed OUR pointer while leaving the subscriber live at
+      // RevenueCat — the link deleted from the side not holding the data.
+      //
+      // Best-effort: a processor outage must not block a legally-required
+      // deletion, and the failure is logged CRITICAL for replay.
+      //
+      // The other processors, for the record:
+      //   Clerk    — the user is destroyed above. Because native Apple sign-in
+      //              is BROKERED BY CLERK (native-apple-auth.service talks to
+      //              clerk.apiUrl) and we store no Apple refresh token
+      //              anywhere, that delete IS our Sign-in-with-Apple
+      //              revocation — the one third-party act Apple mandates. We
+      //              cannot revoke a token we never held.
+      //   Cloudinary — the avatar asset is destroyed above.
+      //   Expo     — holds nothing but the push token, which the eraser
+      //              deletes; there is no remote record to propagate to.
+      if (user.revenueCatAppUserId) {
+        await this.billing.deleteRevenueCatSubscriber(user.revenueCatAppUserId);
+      }
       await this.entitlements.revokeAllForUser(user.userId, 'account_deleted');
       // HARD-CONTACT PII MUST ACTUALLY BE DELETED (red-team 2026-08-02).
       // This is a SOFT delete (the users row is anonymized so content

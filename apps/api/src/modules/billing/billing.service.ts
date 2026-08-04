@@ -798,6 +798,55 @@ export class BillingService {
     }
   }
 
+  /**
+   * PROCESSOR PROPAGATION on account deletion (GDPR Art.17(2) / CCPA
+   * 1798.105(c): the duty extends to processors, "unless this proves
+   * impossible or involves disproportionate effort" — a single API call is
+   * neither).
+   *
+   * Before this, deletion nulled `revenueCatAppUserId` locally, which severed
+   * OUR pointer while leaving the subscriber record live at RevenueCat: the
+   * link was deleted from the side that wasn't holding the data.
+   *
+   * Best-effort by design. A processor outage must never block a
+   * legally-required deletion, and the local record is already gone — so this
+   * reports rather than throws, and a failure is loud enough to replay.
+   */
+  async deleteRevenueCatSubscriber(appUserId: string): Promise<boolean> {
+    const apiKey = this.configService.get<string>('revenueCat.apiKey');
+    if (!apiKey) {
+      this.logger.warn(
+        'REVENUECAT_API_KEY not configured — subscriber not propagated on deletion',
+        { appUserId },
+      );
+      return false;
+    }
+    try {
+      const response = await fetch(
+        `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
+        { method: 'DELETE', headers: { Authorization: `Bearer ${apiKey}` } },
+      );
+      // 404 = already gone; that is success for our purposes (idempotent).
+      if (!response.ok && response.status !== 404) {
+        this.logger.error(
+          'CRITICAL: RevenueCat subscriber delete failed — replay manually',
+          { appUserId, status: response.status },
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      this.logger.error(
+        'CRITICAL: RevenueCat subscriber delete threw — replay manually',
+        {
+          appUserId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+      return false;
+    }
+  }
+
   /** Read the subscriber's current entitlement truth from RC's v1 API
    *  (public SDK keys work here — REVENUECAT_API_KEY). */
   private async fetchRevenueCatEntitlementState(appUserId: string): Promise<{
