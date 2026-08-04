@@ -14,6 +14,8 @@
  * store changes and the component re-renders, does the hook report the new value?
  */
 
+type HookKind = 'useMemo' | 'useCallback' | 'useRef' | 'useSyncExternalStore' | 'useContext';
+
 type Cell = { deps: readonly unknown[] | null; value: unknown };
 
 type Instance = {
@@ -21,6 +23,11 @@ type Instance = {
   cursor: number;
   cleanups: Array<() => void>;
   dirtyCount: number;
+  /** Hook kinds recorded during the render currently in flight. */
+  sequence: HookKind[];
+  /** The sequence recorded by the FIRST render — the contract every later render must match. */
+  baselineSequence: HookKind[] | null;
+  renderCount: number;
 };
 
 let currentInstance: Instance | null = null;
@@ -30,6 +37,52 @@ const requireInstance = (): Instance => {
     throw new Error('react-hook-harness: hook called outside of render()');
   }
   return currentInstance;
+};
+
+/**
+ * Reserve the next hook slot and RECORD ITS KIND.
+ *
+ * The recording is the whole point of the hook-order guard (F1013): the wiring of the
+ * search runtime is the hook CALL ORDER, and nothing in the type system enforces it.
+ * A composition that calls its child hooks in a different order — or a different number
+ * of them — on a later render is the exact defect class that collapsing ceremonial
+ * per-concern hook files can introduce. React catches this at runtime with an opaque
+ * "Rendered more hooks than during the previous render"; here it is caught in a spec,
+ * with the position and both kinds named.
+ */
+const allocateCell = (kind: HookKind): { instance: Instance; index: number } => {
+  const instance = requireInstance();
+  const index = instance.cursor;
+  instance.cursor += 1;
+  instance.sequence.push(kind);
+  return { instance, index };
+};
+
+class HookOrderViolationError extends Error {}
+
+const assertStableHookSequence = (instance: Instance): void => {
+  const baseline = instance.baselineSequence;
+  const observed = instance.sequence;
+  if (baseline == null) {
+    instance.baselineSequence = [...observed];
+    return;
+  }
+  if (baseline.length !== observed.length) {
+    throw new HookOrderViolationError(
+      `react-hook-harness: hook COUNT changed across renders — render #${instance.renderCount} ` +
+        `called ${observed.length} hooks, the first render called ${baseline.length}.\n` +
+        `  first:  ${baseline.join(' -> ')}\n  now:    ${observed.join(' -> ')}`
+    );
+  }
+  const divergence = observed.findIndex((kind, index) => kind !== baseline[index]);
+  if (divergence !== -1) {
+    throw new HookOrderViolationError(
+      `react-hook-harness: hook ORDER changed across renders at position ${divergence} — ` +
+        `render #${instance.renderCount} called ${observed[divergence]}, ` +
+        `the first render called ${baseline[divergence]}.\n` +
+        `  first:  ${baseline.join(' -> ')}\n  now:    ${observed.join(' -> ')}`
+    );
+  }
 };
 
 const depsEqual = (left: readonly unknown[] | null, right: readonly unknown[] | null): boolean => {
@@ -42,10 +95,8 @@ const depsEqual = (left: readonly unknown[] | null, right: readonly unknown[] | 
   return left.every((entry, index) => Object.is(entry, right[index]));
 };
 
-const useMemo = <T>(factory: () => T, deps?: readonly unknown[]): T => {
-  const instance = requireInstance();
-  const index = instance.cursor;
-  instance.cursor += 1;
+const memoCell = <T>(kind: HookKind, factory: () => T, deps?: readonly unknown[]): T => {
+  const { instance, index } = allocateCell(kind);
   const cell = instance.cells[index];
   const nextDeps = deps ?? null;
   if (cell != null && depsEqual(cell.deps, nextDeps)) {
@@ -56,12 +107,14 @@ const useMemo = <T>(factory: () => T, deps?: readonly unknown[]): T => {
   return value;
 };
 
-const useCallback = <T>(callback: T, deps?: readonly unknown[]): T => useMemo(() => callback, deps);
+const useMemo = <T>(factory: () => T, deps?: readonly unknown[]): T =>
+  memoCell('useMemo', factory, deps);
+
+const useCallback = <T>(callback: T, deps?: readonly unknown[]): T =>
+  memoCell('useCallback', () => callback, deps);
 
 const useRef = <T>(initial: T): { current: T } => {
-  const instance = requireInstance();
-  const index = instance.cursor;
-  instance.cursor += 1;
+  const { instance, index } = allocateCell('useRef');
   const cell = instance.cells[index];
   if (cell != null) {
     return cell.value as { current: T };
@@ -75,9 +128,7 @@ const useSyncExternalStore = <T>(
   subscribe: (listener: () => void) => () => void,
   getSnapshot: () => T
 ): T => {
-  const instance = requireInstance();
-  const index = instance.cursor;
-  instance.cursor += 1;
+  const { instance, index } = allocateCell('useSyncExternalStore');
   const cell = instance.cells[index];
   if (cell == null || !Object.is((cell.value as { subscribe: unknown }).subscribe, subscribe)) {
     if (cell != null) {
@@ -98,7 +149,10 @@ const useSyncExternalStore = <T>(
  */
 const createContext = <T>(defaultValue: T) => ({ Provider: null, Consumer: null, defaultValue });
 
-const useContext = <T>(context: { defaultValue: T }): T => context.defaultValue;
+const useContext = <T>(context: { defaultValue: T }): T => {
+  allocateCell('useContext');
+  return context.defaultValue;
+};
 
 export const reactHookHarnessApi = {
   useMemo,
@@ -119,21 +173,36 @@ export type HookHarness<TResult> = {
   render: () => TResult;
   latest: () => TResult;
   dirtyCount: () => number;
+  /** The hook kinds the most recent render called, in order. */
+  hookSequence: () => readonly HookKind[];
+  /** How many hooks the composition calls per render — the F1013 wiring contract, as a number. */
+  hookCount: () => number;
   unmount: () => void;
 };
 
 export const mountHook = <TResult>(run: () => TResult): HookHarness<TResult> => {
-  const instance: Instance = { cells: [], cursor: 0, cleanups: [], dirtyCount: 0 };
+  const instance: Instance = {
+    cells: [],
+    cursor: 0,
+    cleanups: [],
+    dirtyCount: 0,
+    sequence: [],
+    baselineSequence: null,
+    renderCount: 0,
+  };
   let latest: TResult;
   const render = (): TResult => {
     const previousInstance = currentInstance;
     currentInstance = instance;
     instance.cursor = 0;
+    instance.sequence = [];
+    instance.renderCount += 1;
     try {
       latest = run();
     } finally {
       currentInstance = previousInstance;
     }
+    assertStableHookSequence(instance);
     return latest;
   };
   render();
@@ -141,6 +210,8 @@ export const mountHook = <TResult>(run: () => TResult): HookHarness<TResult> => 
     render,
     latest: () => latest,
     dirtyCount: () => instance.dirtyCount,
+    hookSequence: () => [...instance.sequence],
+    hookCount: () => instance.sequence.length,
     unmount: () => {
       instance.cleanups.forEach((cleanup) => cleanup());
       instance.cleanups = [];
