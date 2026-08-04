@@ -6,13 +6,13 @@ import type {
 import { useSearchRuntimeControllerRuntime } from './use-search-runtime-controller-runtime';
 
 export const useSearchRootOverlayLocalRestaurantSheetPublicationRuntime = ({
-  localRestaurantSheetSessionHostAuthority,
+  routeLocalRestaurantOverlaySessionAuthority,
   localRestaurantSheetControlSelectionAuthority,
   localRestaurantSheetVisualHostAuthority,
 }: SearchRootOverlayLocalRestaurantSheetStateRuntime): SearchRootOverlayLocalRestaurantSheetPublicationRuntime => {
   const localRestaurantSheetHostController = useSearchRuntimeControllerRuntime(() =>
     createSearchOverlayLocalRestaurantSheetHostController({
-      localRestaurantSheetSessionHostAuthority,
+      overlayLocalRestaurantSessionHostAuthority: routeLocalRestaurantOverlaySessionAuthority,
       localRestaurantSheetControlSelectionAuthority,
       localRestaurantSheetVisualHostAuthority,
     })

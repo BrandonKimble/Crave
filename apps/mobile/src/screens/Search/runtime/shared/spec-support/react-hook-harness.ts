@@ -14,7 +14,14 @@
  * store changes and the component re-renders, does the hook report the new value?
  */
 
-type HookKind = 'useMemo' | 'useCallback' | 'useRef' | 'useSyncExternalStore' | 'useContext';
+type HookKind =
+  | 'useMemo'
+  | 'useCallback'
+  | 'useRef'
+  | 'useSyncExternalStore'
+  | 'useContext'
+  | 'useEffect'
+  | 'useLayoutEffect';
 
 type Cell = { deps: readonly unknown[] | null; value: unknown };
 
@@ -154,6 +161,30 @@ const useContext = <T>(context: { defaultValue: T }): T => {
   return context.defaultValue;
 };
 
+/**
+ * `useEffect` occupies a hook SLOT and nothing more.
+ *
+ * The harness never commits, so the effect body is NEVER invoked — that is deliberate and
+ * matches this repo's standing law that body-spec hooks do not fire effects. The slot must
+ * still be recorded, because a composition that owns controller LIFETIMES (the
+ * `use-search-runtime-controller-runtime` family) calls `useEffect` for disposal, and its
+ * position is part of the F1013 wiring contract just like every other hook.
+ *
+ * Do NOT "improve" this into a real effect runner without also deciding what unmount means;
+ * a half-real effect is worse than an honestly absent one.
+ */
+const useEffect = (_effect: () => void | (() => void), _deps?: readonly unknown[]): void => {
+  allocateCell('useEffect');
+};
+
+/** Same contract as `useEffect` above: a recorded slot, never invoked. */
+const useLayoutEffect = (
+  _effect: () => void | (() => void),
+  _deps?: readonly unknown[]
+): void => {
+  allocateCell('useLayoutEffect');
+};
+
 export const reactHookHarnessApi = {
   useMemo,
   useCallback,
@@ -161,6 +192,8 @@ export const reactHookHarnessApi = {
   useSyncExternalStore,
   createContext,
   useContext,
+  useEffect,
+  useLayoutEffect,
 };
 
 export const createReactHookHarnessModuleMock = () => ({

@@ -1,15 +1,16 @@
 import type { SearchOverlayLocalRestaurantSheetHostSnapshot } from '../shared/search-overlay-local-restaurant-sheet-host-snapshot-contract';
-import type { SearchOverlayLocalRestaurantSheetHostAuthority } from '../shared/search-root-host-authority-contract';
-import { areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual } from '../shared/route-local-restaurant-overlay-control-selection-snapshot-contract';
+import type {
+  SearchOverlayLocalRestaurantSessionHostAuthority,
+  SearchOverlayLocalRestaurantSheetHostAuthority,
+} from '../shared/search-root-host-authority-contract';
 import type { SearchOverlayLocalRestaurantSheetControlSelectionAuthority } from './search-overlay-local-restaurant-sheet-control-selection-state-controller';
-import type { SearchOverlayLocalRestaurantSheetSessionHostAuthority } from './search-overlay-local-restaurant-sheet-session-host-state-controller';
 import type { SearchOverlayLocalRestaurantSheetVisualAuthority } from './search-overlay-local-restaurant-sheet-visual-state-controller';
 
 type Listener = () => void;
 
 export class SearchOverlayLocalRestaurantSheetHostController {
-  private sessionHostSnapshot: ReturnType<
-    SearchOverlayLocalRestaurantSheetSessionHostAuthority['getSnapshot']
+  private restaurantSessionSnapshot: ReturnType<
+    SearchOverlayLocalRestaurantSessionHostAuthority['getSnapshot']
   >;
 
   private controlSelectionSnapshot: ReturnType<
@@ -29,15 +30,15 @@ export class SearchOverlayLocalRestaurantSheetHostController {
   public readonly outputAuthority: SearchOverlayLocalRestaurantSheetHostAuthority;
 
   constructor({
-    localRestaurantSheetSessionHostAuthority,
+    overlayLocalRestaurantSessionHostAuthority,
     localRestaurantSheetControlSelectionAuthority,
     localRestaurantSheetVisualHostAuthority,
   }: {
-    localRestaurantSheetSessionHostAuthority: SearchOverlayLocalRestaurantSheetSessionHostAuthority;
+    overlayLocalRestaurantSessionHostAuthority: SearchOverlayLocalRestaurantSessionHostAuthority;
     localRestaurantSheetControlSelectionAuthority: SearchOverlayLocalRestaurantSheetControlSelectionAuthority;
     localRestaurantSheetVisualHostAuthority: SearchOverlayLocalRestaurantSheetVisualAuthority;
   }) {
-    this.sessionHostSnapshot = localRestaurantSheetSessionHostAuthority.getSnapshot();
+    this.restaurantSessionSnapshot = overlayLocalRestaurantSessionHostAuthority.getSnapshot();
     this.controlSelectionSnapshot = localRestaurantSheetControlSelectionAuthority.getSnapshot();
     this.visualHostSnapshot = localRestaurantSheetVisualHostAuthority.getSnapshot();
     this.snapshot = this.resolveSnapshot();
@@ -47,8 +48,8 @@ export class SearchOverlayLocalRestaurantSheetHostController {
     };
 
     this.unsubscribers.push(
-      localRestaurantSheetSessionHostAuthority.subscribe(() => {
-        this.setSessionHostSnapshot(localRestaurantSheetSessionHostAuthority.getSnapshot());
+      overlayLocalRestaurantSessionHostAuthority.subscribe(() => {
+        this.setRestaurantSessionSnapshot(overlayLocalRestaurantSessionHostAuthority.getSnapshot());
       }),
       localRestaurantSheetControlSelectionAuthority.subscribe(() => {
         this.setControlSelectionSnapshot(
@@ -74,7 +75,7 @@ export class SearchOverlayLocalRestaurantSheetHostController {
 
   private resolveSnapshot(): SearchOverlayLocalRestaurantSheetHostSnapshot {
     return {
-      restaurantSessionSnapshot: this.sessionHostSnapshot.restaurantSessionSnapshot,
+      restaurantSessionSnapshot: this.restaurantSessionSnapshot,
       restaurantControlSelectionSnapshot: this.controlSelectionSnapshot,
       shouldRenderSearchOverlay: this.visualHostSnapshot.shouldRenderSearchOverlay,
       routeHostVisualSnapshot: this.visualHostSnapshot.routeHostVisualSnapshot,
@@ -82,31 +83,38 @@ export class SearchOverlayLocalRestaurantSheetHostController {
     };
   }
 
+  /**
+   * F1606: this was the fourth hand-written comparator in the relay, and its
+   * control-selection arm called the seven-field deep compare that its OWN PRODUCER had
+   * just run — the ControlSelection authority only ever swaps that object when one of the
+   * seven fields actually changed, so re-deriving the answer here could not change it.
+   * Identity on all five slots is the derivation, not an approximation of it. The composite
+   * transcript's publication counts are what hold it: weaken any slot to a constant and a
+   * step's `publications` moves.
+   */
   private matchesSnapshot(
     currentSnapshot: SearchOverlayLocalRestaurantSheetHostSnapshot,
     nextSnapshot: SearchOverlayLocalRestaurantSheetHostSnapshot
   ): boolean {
     return (
       currentSnapshot.restaurantSessionSnapshot === nextSnapshot.restaurantSessionSnapshot &&
-      areRouteLocalRestaurantOverlayControlSelectionSnapshotsEqual(
-        currentSnapshot.restaurantControlSelectionSnapshot,
-        nextSnapshot.restaurantControlSelectionSnapshot
-      ) &&
+      currentSnapshot.restaurantControlSelectionSnapshot ===
+        nextSnapshot.restaurantControlSelectionSnapshot &&
       currentSnapshot.shouldRenderSearchOverlay === nextSnapshot.shouldRenderSearchOverlay &&
       currentSnapshot.routeHostVisualSnapshot === nextSnapshot.routeHostVisualSnapshot &&
       currentSnapshot.onProfilerRender === nextSnapshot.onProfilerRender
     );
   }
 
-  private setSessionHostSnapshot(
-    sessionHostSnapshot: ReturnType<
-      SearchOverlayLocalRestaurantSheetSessionHostAuthority['getSnapshot']
+  private setRestaurantSessionSnapshot(
+    restaurantSessionSnapshot: ReturnType<
+      SearchOverlayLocalRestaurantSessionHostAuthority['getSnapshot']
     >
   ): void {
-    if (this.sessionHostSnapshot === sessionHostSnapshot) {
+    if (this.restaurantSessionSnapshot === restaurantSessionSnapshot) {
       return;
     }
-    this.sessionHostSnapshot = sessionHostSnapshot;
+    this.restaurantSessionSnapshot = restaurantSessionSnapshot;
     this.recompute();
   }
 
@@ -153,14 +161,14 @@ export class SearchOverlayLocalRestaurantSheetHostController {
 }
 
 export const createSearchOverlayLocalRestaurantSheetHostController = ({
-  localRestaurantSheetSessionHostAuthority,
+  overlayLocalRestaurantSessionHostAuthority,
   localRestaurantSheetControlSelectionAuthority,
   localRestaurantSheetVisualHostAuthority,
 }: ConstructorParameters<
   typeof SearchOverlayLocalRestaurantSheetHostController
 >[0]): SearchOverlayLocalRestaurantSheetHostController =>
   new SearchOverlayLocalRestaurantSheetHostController({
-    localRestaurantSheetSessionHostAuthority,
+    overlayLocalRestaurantSessionHostAuthority,
     localRestaurantSheetControlSelectionAuthority,
     localRestaurantSheetVisualHostAuthority,
   });

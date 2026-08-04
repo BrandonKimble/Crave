@@ -1,54 +1,48 @@
 import type { SearchOverlayLocalRestaurantRouteVisualSnapshot } from '../shared/search-overlay-local-restaurant-sheet-visual-snapshot-contract';
-import type {
-  SearchOverlayLocalRestaurantRouteGeometryFrameAuthority,
-  SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot,
-} from './search-overlay-local-restaurant-route-geometry-frame-state-controller';
-import type {
-  SearchOverlayLocalRestaurantRouteMotionFrameAuthority,
-  SearchOverlayLocalRestaurantRouteMotionFrameSnapshot,
-} from './search-overlay-local-restaurant-route-motion-frame-state-controller';
-import type {
-  SearchOverlayLocalRestaurantRouteSheetAuthority,
-  SearchOverlayLocalRestaurantRouteSheetSnapshot,
-} from './search-overlay-local-restaurant-route-sheet-state-controller';
+import type { RouteHostOverlayGeometryBinding } from '../../../../navigation/runtime/route-host-overlay-geometry-state-controller';
+import type { RouteHostVisualRuntime } from '../../../../navigation/runtime/route-host-visual-runtime-state-controller';
+import type { RouteSharedSheetVisualBinding } from '../../../../navigation/runtime/route-shared-sheet-visual-state-controller';
 
 type Listener = () => void;
 
-/** F1601: the geometry+motion → frame composition used to be hand-inlined TWICE in this file
- *  (constructor and `recompute`), with a third dead copy in a zero-constructor controller file.
- *  ONE resolver now; the two call sites are byte-identical to the expressions they replaced. */
-type SearchOverlayLocalRestaurantRouteFrameSnapshot = {
-  overlayGeometryRuntime: NonNullable<SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot>['overlayGeometryRuntime'];
-  visualRuntime: NonNullable<SearchOverlayLocalRestaurantRouteMotionFrameSnapshot>['visualRuntime'];
-} | null;
+type BindingAuthority<T> = {
+  subscribe: (listener: Listener) => () => void;
+  getSnapshot: () => T;
+};
 
-const resolveLocalRestaurantRouteFrameSnapshot = ({
-  routeGeometryFrameSnapshot,
-  routeMotionFrameSnapshot,
-}: {
-  routeGeometryFrameSnapshot: SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot;
-  routeMotionFrameSnapshot: SearchOverlayLocalRestaurantRouteMotionFrameSnapshot;
-}): SearchOverlayLocalRestaurantRouteFrameSnapshot =>
-  routeGeometryFrameSnapshot == null || routeMotionFrameSnapshot == null
-    ? null
-    : {
-        overlayGeometryRuntime: routeGeometryFrameSnapshot.overlayGeometryRuntime,
-        visualRuntime: routeMotionFrameSnapshot.visualRuntime,
-      };
-
+/**
+ * THE ROUTE-FRAME AUTHORITY (D45/F958 Cluster A).
+ *
+ * Three controllers used to sit between the route bindings and this one — geometry-frame,
+ * motion-frame and route-sheet — each doing nothing but wrapping a nullable binding in a
+ * single-field object (`x == null ? null : { field: x }`). Each carried a dedupe guard that
+ * could never fire (F1604): the wrapper allocates a FRESH object on every recompute, and the
+ * only way to reach the recompute was a binding identity change, which the guard then
+ * compared by that same identity. Three allocations and three comparator runs per event,
+ * all of them provably no-ops. A fourth allocation — the throwaway intermediate "frame"
+ * object this file used to build inside both its constructor and `recompute` (F1601/F1608) —
+ * died with them.
+ *
+ * What survives is the one honest thing in the lane: a three-input projection with a real
+ * comparator that CAN show RED, kept below as the positive control.
+ */
 const resolveLocalRestaurantRouteVisualSnapshot = ({
-  routeFrameSnapshot,
-  routeSheetSnapshot,
+  routeHostOverlayGeometry,
+  routeHostVisualRuntime,
+  routeSharedSheetVisual,
 }: {
-  routeFrameSnapshot: SearchOverlayLocalRestaurantRouteFrameSnapshot;
-  routeSheetSnapshot: SearchOverlayLocalRestaurantRouteSheetSnapshot;
+  routeHostOverlayGeometry: RouteHostOverlayGeometryBinding;
+  routeHostVisualRuntime: RouteHostVisualRuntime;
+  routeSharedSheetVisual: RouteSharedSheetVisualBinding;
 }): SearchOverlayLocalRestaurantRouteVisualSnapshot | null =>
-  routeFrameSnapshot == null || routeSheetSnapshot == null
+  routeHostOverlayGeometry == null ||
+  routeHostVisualRuntime == null ||
+  routeSharedSheetVisual == null
     ? null
     : {
-        overlayGeometryRuntime: routeFrameSnapshot.overlayGeometryRuntime,
-        sharedSheetRuntimeOwner: routeSheetSnapshot.sharedSheetRuntimeOwner,
-        visualRuntime: routeFrameSnapshot.visualRuntime,
+        overlayGeometryRuntime: routeHostOverlayGeometry,
+        sharedSheetRuntimeOwner: routeSharedSheetVisual,
+        visualRuntime: routeHostVisualRuntime,
       };
 
 const areLocalRestaurantRouteVisualSnapshotsEqual = (
@@ -68,11 +62,11 @@ export type SearchOverlayLocalRestaurantRouteVisualAuthority = {
 };
 
 export class SearchOverlayLocalRestaurantRouteVisualStateController {
-  private routeGeometryFrameSnapshot: SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot;
+  private routeHostOverlayGeometry: RouteHostOverlayGeometryBinding;
 
-  private routeMotionFrameSnapshot: SearchOverlayLocalRestaurantRouteMotionFrameSnapshot;
+  private routeHostVisualRuntime: RouteHostVisualRuntime;
 
-  private routeSheetSnapshot: SearchOverlayLocalRestaurantRouteSheetSnapshot;
+  private routeSharedSheetVisual: RouteSharedSheetVisualBinding;
 
   private snapshot: SearchOverlayLocalRestaurantRouteVisualSnapshot | null;
 
@@ -83,40 +77,35 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
   public readonly outputAuthority: SearchOverlayLocalRestaurantRouteVisualAuthority;
 
   constructor({
-    localRestaurantRouteGeometryFrameAuthority,
-    localRestaurantRouteMotionFrameAuthority,
-    localRestaurantRouteSheetAuthority,
+    routeHostOverlayGeometryAuthority,
+    routeHostVisualRuntimeAuthority,
+    routeSharedSheetVisualAuthority,
   }: {
-    localRestaurantRouteGeometryFrameAuthority: SearchOverlayLocalRestaurantRouteGeometryFrameAuthority;
-    localRestaurantRouteMotionFrameAuthority: SearchOverlayLocalRestaurantRouteMotionFrameAuthority;
-    localRestaurantRouteSheetAuthority: SearchOverlayLocalRestaurantRouteSheetAuthority;
+    routeHostOverlayGeometryAuthority: BindingAuthority<RouteHostOverlayGeometryBinding>;
+    routeHostVisualRuntimeAuthority: BindingAuthority<RouteHostVisualRuntime>;
+    routeSharedSheetVisualAuthority: BindingAuthority<RouteSharedSheetVisualBinding>;
   }) {
-    this.routeGeometryFrameSnapshot = localRestaurantRouteGeometryFrameAuthority.getSnapshot();
-    this.routeMotionFrameSnapshot = localRestaurantRouteMotionFrameAuthority.getSnapshot();
-    this.routeSheetSnapshot = localRestaurantRouteSheetAuthority.getSnapshot();
-    const routeFrameSnapshot = resolveLocalRestaurantRouteFrameSnapshot({
-      routeGeometryFrameSnapshot: this.routeGeometryFrameSnapshot,
-      routeMotionFrameSnapshot: this.routeMotionFrameSnapshot,
-    });
+    this.routeHostOverlayGeometry = routeHostOverlayGeometryAuthority.getSnapshot();
+    this.routeHostVisualRuntime = routeHostVisualRuntimeAuthority.getSnapshot();
+    this.routeSharedSheetVisual = routeSharedSheetVisualAuthority.getSnapshot();
     this.snapshot = resolveLocalRestaurantRouteVisualSnapshot({
-      routeFrameSnapshot,
-      routeSheetSnapshot: this.routeSheetSnapshot,
+      routeHostOverlayGeometry: this.routeHostOverlayGeometry,
+      routeHostVisualRuntime: this.routeHostVisualRuntime,
+      routeSharedSheetVisual: this.routeSharedSheetVisual,
     });
     this.outputAuthority = {
       subscribe: (listener) => this.subscribe(listener),
       getSnapshot: () => this.snapshot,
     };
     this.unsubscribers.push(
-      localRestaurantRouteGeometryFrameAuthority.subscribe(() => {
-        this.setRouteGeometryFrameSnapshot(
-          localRestaurantRouteGeometryFrameAuthority.getSnapshot()
-        );
+      routeHostOverlayGeometryAuthority.subscribe(() => {
+        this.setRouteHostOverlayGeometry(routeHostOverlayGeometryAuthority.getSnapshot());
       }),
-      localRestaurantRouteMotionFrameAuthority.subscribe(() => {
-        this.setRouteMotionFrameSnapshot(localRestaurantRouteMotionFrameAuthority.getSnapshot());
+      routeHostVisualRuntimeAuthority.subscribe(() => {
+        this.setRouteHostVisualRuntime(routeHostVisualRuntimeAuthority.getSnapshot());
       }),
-      localRestaurantRouteSheetAuthority.subscribe(() => {
-        this.setRouteSheetSnapshot(localRestaurantRouteSheetAuthority.getSnapshot());
+      routeSharedSheetVisualAuthority.subscribe(() => {
+        this.setRouteSharedSheetVisual(routeSharedSheetVisualAuthority.getSnapshot());
       })
     );
   }
@@ -136,44 +125,37 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
     };
   }
 
-  private setRouteGeometryFrameSnapshot(
-    routeGeometryFrameSnapshot: SearchOverlayLocalRestaurantRouteGeometryFrameSnapshot
+  private setRouteHostOverlayGeometry(
+    routeHostOverlayGeometry: RouteHostOverlayGeometryBinding
   ): void {
-    if (this.routeGeometryFrameSnapshot === routeGeometryFrameSnapshot) {
+    if (this.routeHostOverlayGeometry === routeHostOverlayGeometry) {
       return;
     }
-    this.routeGeometryFrameSnapshot = routeGeometryFrameSnapshot;
+    this.routeHostOverlayGeometry = routeHostOverlayGeometry;
     this.recompute();
   }
 
-  private setRouteMotionFrameSnapshot(
-    routeMotionFrameSnapshot: SearchOverlayLocalRestaurantRouteMotionFrameSnapshot
-  ): void {
-    if (this.routeMotionFrameSnapshot === routeMotionFrameSnapshot) {
+  private setRouteHostVisualRuntime(routeHostVisualRuntime: RouteHostVisualRuntime): void {
+    if (this.routeHostVisualRuntime === routeHostVisualRuntime) {
       return;
     }
-    this.routeMotionFrameSnapshot = routeMotionFrameSnapshot;
+    this.routeHostVisualRuntime = routeHostVisualRuntime;
     this.recompute();
   }
 
-  private setRouteSheetSnapshot(
-    routeSheetSnapshot: SearchOverlayLocalRestaurantRouteSheetSnapshot
-  ): void {
-    if (this.routeSheetSnapshot === routeSheetSnapshot) {
+  private setRouteSharedSheetVisual(routeSharedSheetVisual: RouteSharedSheetVisualBinding): void {
+    if (this.routeSharedSheetVisual === routeSharedSheetVisual) {
       return;
     }
-    this.routeSheetSnapshot = routeSheetSnapshot;
+    this.routeSharedSheetVisual = routeSharedSheetVisual;
     this.recompute();
   }
 
   private recompute(): void {
-    const routeFrameSnapshot = resolveLocalRestaurantRouteFrameSnapshot({
-      routeGeometryFrameSnapshot: this.routeGeometryFrameSnapshot,
-      routeMotionFrameSnapshot: this.routeMotionFrameSnapshot,
-    });
     const nextSnapshot = resolveLocalRestaurantRouteVisualSnapshot({
-      routeFrameSnapshot,
-      routeSheetSnapshot: this.routeSheetSnapshot,
+      routeHostOverlayGeometry: this.routeHostOverlayGeometry,
+      routeHostVisualRuntime: this.routeHostVisualRuntime,
+      routeSharedSheetVisual: this.routeSharedSheetVisual,
     });
 
     if (areLocalRestaurantRouteVisualSnapshotsEqual(this.snapshot, nextSnapshot)) {
@@ -188,14 +170,14 @@ export class SearchOverlayLocalRestaurantRouteVisualStateController {
 }
 
 export const createSearchOverlayLocalRestaurantRouteVisualStateController = ({
-  localRestaurantRouteGeometryFrameAuthority,
-  localRestaurantRouteMotionFrameAuthority,
-  localRestaurantRouteSheetAuthority,
+  routeHostOverlayGeometryAuthority,
+  routeHostVisualRuntimeAuthority,
+  routeSharedSheetVisualAuthority,
 }: ConstructorParameters<
   typeof SearchOverlayLocalRestaurantRouteVisualStateController
 >[0]): SearchOverlayLocalRestaurantRouteVisualStateController =>
   new SearchOverlayLocalRestaurantRouteVisualStateController({
-    localRestaurantRouteGeometryFrameAuthority,
-    localRestaurantRouteMotionFrameAuthority,
-    localRestaurantRouteSheetAuthority,
+    routeHostOverlayGeometryAuthority,
+    routeHostVisualRuntimeAuthority,
+    routeSharedSheetVisualAuthority,
   });

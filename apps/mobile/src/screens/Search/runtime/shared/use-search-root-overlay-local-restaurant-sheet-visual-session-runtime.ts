@@ -1,33 +1,29 @@
 import type {
   SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
-  SearchRootOverlayLocalRestaurantSheetPresenceRuntime,
   SearchRootOverlayLocalRestaurantSheetVisualSessionRuntime,
 } from './search-root-overlay-local-restaurant-runtime-contract';
-import { useSearchRootOverlayLocalRestaurantSheetSessionRuntime } from './use-search-root-overlay-local-restaurant-sheet-session-runtime';
-import { useSearchRootOverlayLocalRestaurantSheetVisualRuntime } from './use-search-root-overlay-local-restaurant-sheet-visual-runtime';
+import { useSearchRootOverlayLocalRestaurantSheetVisualHostRuntime } from './use-search-root-overlay-local-restaurant-sheet-visual-host-runtime';
 
 export const useSearchRootOverlayLocalRestaurantSheetVisualSessionRuntime = ({
   routeLocalRestaurantOverlaySessionAuthority,
   localRestaurantRouteVisualAuthority,
-  localRestaurantSheetPresenceAuthority,
+  routeOverlayVisibilityAuthority,
+  overlayGateSnapshot,
 }: Pick<
   SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
-  'routeLocalRestaurantOverlaySessionAuthority' | 'localRestaurantRouteVisualAuthority'
-> &
-  SearchRootOverlayLocalRestaurantSheetPresenceRuntime): SearchRootOverlayLocalRestaurantSheetVisualSessionRuntime => {
-  const localRestaurantSheetVisualRuntime = useSearchRootOverlayLocalRestaurantSheetVisualRuntime({
-    localRestaurantRouteVisualAuthority,
-    localRestaurantSheetPresenceAuthority,
-  });
-  const localRestaurantSheetSessionRuntime = useSearchRootOverlayLocalRestaurantSheetSessionRuntime(
-    {
-      routeLocalRestaurantOverlaySessionAuthority,
-    }
-  );
-
+  | 'routeLocalRestaurantOverlaySessionAuthority'
+  | 'localRestaurantRouteVisualAuthority'
+  | 'routeOverlayVisibilityAuthority'
+  | 'overlayGateSnapshot'
+>): SearchRootOverlayLocalRestaurantSheetVisualSessionRuntime => {
+  const localRestaurantSheetVisualRuntime =
+    useSearchRootOverlayLocalRestaurantSheetVisualHostRuntime({
+      routeOverlayVisibilityAuthority,
+      overlayGateSnapshot,
+      localRestaurantRouteVisualAuthority,
+    });
   return {
-    localRestaurantSheetSessionHostAuthority:
-      localRestaurantSheetSessionRuntime.localRestaurantSheetSessionHostAuthority,
+    routeLocalRestaurantOverlaySessionAuthority,
     localRestaurantSheetVisualHostAuthority:
       localRestaurantSheetVisualRuntime.localRestaurantSheetVisualHostAuthority,
   };

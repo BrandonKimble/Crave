@@ -3,17 +3,10 @@ import {
   type RouteLocalRestaurantOverlayControlSelectionSnapshot,
 } from '../shared/route-local-restaurant-overlay-control-selection-snapshot-contract';
 import type {
-  SearchOverlayLocalRestaurantSheetInteractionSelectionAuthority,
-  SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot,
-} from './search-overlay-local-restaurant-sheet-interaction-selection-state-controller';
-import type {
-  SearchOverlayLocalRestaurantSheetPanelSelectionAuthority,
-  SearchOverlayLocalRestaurantSheetPanelSelectionSnapshot,
-} from './search-overlay-local-restaurant-sheet-panel-selection-state-controller';
-import type {
-  SearchOverlayLocalRestaurantSheetPolicySelectionAuthority,
-  SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot,
-} from './search-overlay-local-restaurant-sheet-policy-selection-state-controller';
+  SearchOverlayLocalRestaurantInteractionHostAuthority,
+  SearchOverlayLocalRestaurantPanelContentHostAuthority,
+  SearchOverlayLocalRestaurantPolicyHostAuthority,
+} from '../shared/search-root-host-authority-contract';
 
 type Listener = () => void;
 
@@ -22,35 +15,50 @@ export type SearchOverlayLocalRestaurantSheetControlSelectionAuthority = {
   getSnapshot: () => RouteLocalRestaurantOverlayControlSelectionSnapshot;
 };
 
+type PanelContentSnapshot = ReturnType<
+  SearchOverlayLocalRestaurantPanelContentHostAuthority['getSnapshot']
+>;
+type PolicySnapshot = ReturnType<SearchOverlayLocalRestaurantPolicyHostAuthority['getSnapshot']>;
+type InteractionSnapshot = ReturnType<
+  SearchOverlayLocalRestaurantInteractionHostAuthority['getSnapshot']
+>;
+
+/**
+ * THE CONTROL-SELECTION AUTHORITY (D45/F958 Cluster A).
+ *
+ * Three single-source `Pick<>` controllers used to sit in front of this one — panel,
+ * policy and interaction selection. Each was an honest subset projection, but each was
+ * also fully SUBSUMED here: this controller's comparator already compares all seven
+ * fields, so a source that re-mints with equal fields is deduped at this seam whether or
+ * not an intermediate deduped it first. That equivalence is what the composite transcript
+ * proves — the `re-minted, same fields` steps publish exactly as often as before.
+ */
 const createControlSelectionSnapshot = ({
-  panelSelectionSnapshot,
-  policySelectionSnapshot,
-  interactionSelectionSnapshot,
+  panelContentSnapshot,
+  policySnapshot,
   onToggleFavorite,
   closeRestaurantProfile,
 }: {
-  panelSelectionSnapshot: SearchOverlayLocalRestaurantSheetPanelSelectionSnapshot;
-  policySelectionSnapshot: SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot;
-  interactionSelectionSnapshot: SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot;
+  panelContentSnapshot: PanelContentSnapshot;
+  policySnapshot: PolicySnapshot;
   onToggleFavorite: RouteLocalRestaurantOverlayControlSelectionSnapshot['onToggleFavorite'];
   closeRestaurantProfile: RouteLocalRestaurantOverlayControlSelectionSnapshot['closeRestaurantProfile'];
 }): RouteLocalRestaurantOverlayControlSelectionSnapshot => ({
-  restaurantPanelSnapshot: panelSelectionSnapshot.restaurantPanelSnapshot,
-  suggestionProgress: panelSelectionSnapshot.suggestionProgress,
-  shouldSuppressRestaurantOverlay: policySelectionSnapshot.shouldSuppressRestaurantOverlay,
-  shouldFreezeRestaurantPanelContent: policySelectionSnapshot.shouldFreezeRestaurantPanelContent,
-  shouldEnableRestaurantOverlayInteraction:
-    policySelectionSnapshot.shouldEnableRestaurantOverlayInteraction,
+  restaurantPanelSnapshot: panelContentSnapshot.restaurantPanelSnapshot,
+  suggestionProgress: panelContentSnapshot.suggestionProgress,
+  shouldSuppressRestaurantOverlay: policySnapshot.shouldSuppressRestaurantOverlay,
+  shouldFreezeRestaurantPanelContent: policySnapshot.shouldFreezeRestaurantPanelContent,
+  shouldEnableRestaurantOverlayInteraction: policySnapshot.shouldEnableRestaurantOverlayInteraction,
   onToggleFavorite,
   closeRestaurantProfile,
 });
 
 export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
-  private panelSelectionSnapshot: SearchOverlayLocalRestaurantSheetPanelSelectionSnapshot;
+  private panelContentSnapshot: PanelContentSnapshot;
 
-  private policySelectionSnapshot: SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot;
+  private policySnapshot: PolicySnapshot;
 
-  private interactionSelectionSnapshot: SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot;
+  private interactionSnapshot: InteractionSnapshot;
 
   private snapshot: RouteLocalRestaurantOverlayControlSelectionSnapshot;
 
@@ -61,30 +69,28 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
   public readonly outputAuthority: SearchOverlayLocalRestaurantSheetControlSelectionAuthority;
 
   private readonly onToggleFavorite = (id: string, locationId?: string | null): void => {
-    this.interactionSelectionSnapshot.onToggleFavorite(id, locationId);
+    this.interactionSnapshot.onToggleFavorite(id, locationId);
   };
 
   private readonly closeRestaurantProfile = (): void => {
-    this.interactionSelectionSnapshot.closeRestaurantProfile();
+    this.interactionSnapshot.closeRestaurantProfile();
   };
 
   constructor({
-    localRestaurantSheetPanelSelectionAuthority,
-    localRestaurantSheetPolicySelectionAuthority,
-    localRestaurantSheetInteractionSelectionAuthority,
+    overlayLocalRestaurantPanelContentHostAuthority,
+    overlayLocalRestaurantPolicyHostAuthority,
+    overlayLocalRestaurantInteractionHostAuthority,
   }: {
-    localRestaurantSheetPanelSelectionAuthority: SearchOverlayLocalRestaurantSheetPanelSelectionAuthority;
-    localRestaurantSheetPolicySelectionAuthority: SearchOverlayLocalRestaurantSheetPolicySelectionAuthority;
-    localRestaurantSheetInteractionSelectionAuthority: SearchOverlayLocalRestaurantSheetInteractionSelectionAuthority;
+    overlayLocalRestaurantPanelContentHostAuthority: SearchOverlayLocalRestaurantPanelContentHostAuthority;
+    overlayLocalRestaurantPolicyHostAuthority: SearchOverlayLocalRestaurantPolicyHostAuthority;
+    overlayLocalRestaurantInteractionHostAuthority: SearchOverlayLocalRestaurantInteractionHostAuthority;
   }) {
-    this.panelSelectionSnapshot = localRestaurantSheetPanelSelectionAuthority.getSnapshot();
-    this.policySelectionSnapshot = localRestaurantSheetPolicySelectionAuthority.getSnapshot();
-    this.interactionSelectionSnapshot =
-      localRestaurantSheetInteractionSelectionAuthority.getSnapshot();
+    this.panelContentSnapshot = overlayLocalRestaurantPanelContentHostAuthority.getSnapshot();
+    this.policySnapshot = overlayLocalRestaurantPolicyHostAuthority.getSnapshot();
+    this.interactionSnapshot = overlayLocalRestaurantInteractionHostAuthority.getSnapshot();
     this.snapshot = createControlSelectionSnapshot({
-      panelSelectionSnapshot: this.panelSelectionSnapshot,
-      policySelectionSnapshot: this.policySelectionSnapshot,
-      interactionSelectionSnapshot: this.interactionSelectionSnapshot,
+      panelContentSnapshot: this.panelContentSnapshot,
+      policySnapshot: this.policySnapshot,
       onToggleFavorite: this.onToggleFavorite,
       closeRestaurantProfile: this.closeRestaurantProfile,
     });
@@ -93,16 +99,14 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
       getSnapshot: () => this.snapshot,
     };
     this.unsubscribers.push(
-      localRestaurantSheetPanelSelectionAuthority.subscribe(() => {
-        this.setPanelSelectionSnapshot(localRestaurantSheetPanelSelectionAuthority.getSnapshot());
+      overlayLocalRestaurantPanelContentHostAuthority.subscribe(() => {
+        this.setPanelContentSnapshot(overlayLocalRestaurantPanelContentHostAuthority.getSnapshot());
       }),
-      localRestaurantSheetPolicySelectionAuthority.subscribe(() => {
-        this.setPolicySelectionSnapshot(localRestaurantSheetPolicySelectionAuthority.getSnapshot());
+      overlayLocalRestaurantPolicyHostAuthority.subscribe(() => {
+        this.setPolicySnapshot(overlayLocalRestaurantPolicyHostAuthority.getSnapshot());
       }),
-      localRestaurantSheetInteractionSelectionAuthority.subscribe(() => {
-        this.setInteractionSelectionSnapshot(
-          localRestaurantSheetInteractionSelectionAuthority.getSnapshot()
-        );
+      overlayLocalRestaurantInteractionHostAuthority.subscribe(() => {
+        this.setInteractionSnapshot(overlayLocalRestaurantInteractionHostAuthority.getSnapshot());
       })
     );
   }
@@ -122,41 +126,40 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
     };
   }
 
-  private setPanelSelectionSnapshot(
-    panelSelectionSnapshot: SearchOverlayLocalRestaurantSheetPanelSelectionSnapshot
-  ): void {
-    if (this.panelSelectionSnapshot === panelSelectionSnapshot) {
+  private setPanelContentSnapshot(panelContentSnapshot: PanelContentSnapshot): void {
+    if (this.panelContentSnapshot === panelContentSnapshot) {
       return;
     }
-    this.panelSelectionSnapshot = panelSelectionSnapshot;
+    this.panelContentSnapshot = panelContentSnapshot;
     this.recompute();
   }
 
-  private setPolicySelectionSnapshot(
-    policySelectionSnapshot: SearchOverlayLocalRestaurantSheetPolicySelectionSnapshot
-  ): void {
-    if (this.policySelectionSnapshot === policySelectionSnapshot) {
+  private setPolicySnapshot(policySnapshot: PolicySnapshot): void {
+    if (this.policySnapshot === policySnapshot) {
       return;
     }
-    this.policySelectionSnapshot = policySelectionSnapshot;
+    this.policySnapshot = policySnapshot;
     this.recompute();
   }
 
-  private setInteractionSelectionSnapshot(
-    interactionSelectionSnapshot: SearchOverlayLocalRestaurantSheetInteractionSelectionSnapshot
-  ): void {
-    if (this.interactionSelectionSnapshot === interactionSelectionSnapshot) {
-      return;
-    }
-    this.interactionSelectionSnapshot = interactionSelectionSnapshot;
-    this.recompute();
+  /**
+   * F1607: this path is a FRESHNESS WRITE, not a publication.
+   *
+   * The two interaction handlers reach consumers through the stable `onToggleFavorite` /
+   * `closeRestaurantProfile` façades above, which read `this.interactionSnapshot` at call
+   * time. So the published snapshot's fields are identical no matter how often the
+   * interaction source re-mints — the recompute this used to trigger allocated a snapshot,
+   * ran the seven-field comparator, and provably could never publish. Storing the snapshot
+   * IS the whole job; the publish machinery on this path is gone.
+   */
+  private setInteractionSnapshot(interactionSnapshot: InteractionSnapshot): void {
+    this.interactionSnapshot = interactionSnapshot;
   }
 
   private recompute(): void {
     const nextSnapshot = createControlSelectionSnapshot({
-      panelSelectionSnapshot: this.panelSelectionSnapshot,
-      policySelectionSnapshot: this.policySelectionSnapshot,
-      interactionSelectionSnapshot: this.interactionSelectionSnapshot,
+      panelContentSnapshot: this.panelContentSnapshot,
+      policySnapshot: this.policySnapshot,
       onToggleFavorite: this.onToggleFavorite,
       closeRestaurantProfile: this.closeRestaurantProfile,
     });
@@ -173,14 +176,14 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
 }
 
 export const createSearchOverlayLocalRestaurantSheetControlSelectionStateController = ({
-  localRestaurantSheetPanelSelectionAuthority,
-  localRestaurantSheetPolicySelectionAuthority,
-  localRestaurantSheetInteractionSelectionAuthority,
+  overlayLocalRestaurantPanelContentHostAuthority,
+  overlayLocalRestaurantPolicyHostAuthority,
+  overlayLocalRestaurantInteractionHostAuthority,
 }: ConstructorParameters<
   typeof SearchOverlayLocalRestaurantSheetControlSelectionStateController
 >[0]): SearchOverlayLocalRestaurantSheetControlSelectionStateController =>
   new SearchOverlayLocalRestaurantSheetControlSelectionStateController({
-    localRestaurantSheetPanelSelectionAuthority,
-    localRestaurantSheetPolicySelectionAuthority,
-    localRestaurantSheetInteractionSelectionAuthority,
+    overlayLocalRestaurantPanelContentHostAuthority,
+    overlayLocalRestaurantPolicyHostAuthority,
+    overlayLocalRestaurantInteractionHostAuthority,
   });

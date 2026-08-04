@@ -2,7 +2,6 @@ import type {
   SearchRootOverlayLocalRestaurantSheetHostRuntimeParams,
   SearchRootOverlayLocalRestaurantSheetStateRuntime,
 } from './search-root-overlay-local-restaurant-runtime-contract';
-import { useSearchRootOverlayLocalRestaurantSheetPresenceRuntime } from './use-search-root-overlay-local-restaurant-sheet-presence-runtime';
 import { useSearchRootOverlayLocalRestaurantSheetSelectionRuntime } from './use-search-root-overlay-local-restaurant-sheet-selection-runtime';
 import { useSearchRootOverlayLocalRestaurantSheetVisualSessionRuntime } from './use-search-root-overlay-local-restaurant-sheet-visual-session-runtime';
 
@@ -15,11 +14,6 @@ export const useSearchRootOverlayLocalRestaurantSheetStateRuntime = ({
   overlayGateSnapshot,
   localRestaurantRouteVisualAuthority,
 }: SearchRootOverlayLocalRestaurantSheetHostRuntimeParams): SearchRootOverlayLocalRestaurantSheetStateRuntime => {
-  const localRestaurantSheetPresenceRuntime =
-    useSearchRootOverlayLocalRestaurantSheetPresenceRuntime({
-      routeOverlayVisibilityAuthority,
-      overlayGateSnapshot,
-    });
   const localRestaurantSheetSelectionRuntime =
     useSearchRootOverlayLocalRestaurantSheetSelectionRuntime({
       routeLocalRestaurantOverlayPanelContentAuthority,
@@ -30,13 +24,13 @@ export const useSearchRootOverlayLocalRestaurantSheetStateRuntime = ({
     useSearchRootOverlayLocalRestaurantSheetVisualSessionRuntime({
       routeLocalRestaurantOverlaySessionAuthority,
       localRestaurantRouteVisualAuthority,
-      localRestaurantSheetPresenceAuthority:
-        localRestaurantSheetPresenceRuntime.localRestaurantSheetPresenceAuthority,
+      routeOverlayVisibilityAuthority,
+      overlayGateSnapshot,
     });
 
   return {
-    localRestaurantSheetSessionHostAuthority:
-      localRestaurantSheetVisualSessionRuntime.localRestaurantSheetSessionHostAuthority,
+    routeLocalRestaurantOverlaySessionAuthority:
+      localRestaurantSheetVisualSessionRuntime.routeLocalRestaurantOverlaySessionAuthority,
     localRestaurantSheetControlSelectionAuthority:
       localRestaurantSheetSelectionRuntime.localRestaurantSheetControlSelectionAuthority,
     localRestaurantSheetVisualHostAuthority:
