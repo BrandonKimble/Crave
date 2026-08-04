@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Animated,
@@ -47,6 +48,12 @@ import {
 } from './onboarding/runtime/onboarding-step-machine';
 import { useOnboardingAnimationLane } from './onboarding/runtime/use-onboarding-animation-lane';
 import { useAuthController } from '../hooks/use-auth-controller';
+import { getCurrentLocale } from '../i18n/current-locale';
+import {
+  formatCurrency as formatCurrencyForLocale,
+  formatList,
+  formatPercent,
+} from '../i18n/formatting';
 
 type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -116,15 +123,18 @@ const FREQUENCY_RANGES: Record<
 const BUDGET_RANGES: Record<
   string,
   {
-    label: string;
+    // The dollar FIGURES are market facts (US cities, USD) and stay in the
+    // message; only the phrasing around them is translated — hence a key here
+    // rather than a literal.
+    labelKey: string;
     min: number;
     max?: number;
   }
 > = {
-  'under-20': { label: 'Under $20 each', min: 10, max: 20 },
-  '20-40': { label: '$20–$40 each', min: 20, max: 40 },
-  '40-70': { label: '$40–$70 each', min: 40, max: 70 },
-  '70-plus': { label: '$70+ each', min: 70 },
+  'under-20': { labelKey: 'onboarding.budgetRanges.under20', min: 10, max: 20 },
+  '20-40': { labelKey: 'onboarding.budgetRanges.20to40', min: 20, max: 40 },
+  '40-70': { labelKey: 'onboarding.budgetRanges.40to70', min: 40, max: 70 },
+  '70-plus': { labelKey: 'onboarding.budgetRanges.70plus', min: 70 },
 };
 
 type CarouselStepType = Extract<OnboardingStep, { type: 'carousel' }>;
@@ -224,6 +234,7 @@ const CarouselStepView: React.FC<{ step: CarouselStepType }> = ({ step }) => {
 };
 
 const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }) => {
+  const { t } = useTranslation();
   const [processingReady, setProcessingReady] = React.useState(true);
   const [usernameValue, setUsernameValue] = React.useState('');
   const [usernameStatus, setUsernameStatus] = React.useState<UsernameAvailability | null>(null);
@@ -295,14 +306,14 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       return '';
     }
     if (!locationValue) {
-      return 'your city';
+      return t('onboarding.waitlist.yourCity');
     }
     return locationValue
       .split(' ')
       .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : ''))
       .filter(Boolean)
       .join(' ');
-  }, [isWaitlistSelection, locationValue]);
+  }, [isWaitlistSelection, locationValue, t]);
 
   // Waitlist short track: non-live-city users get an honest, trimmed flow —
   // city truth up front, then only the questions that feed city-seeding
@@ -502,9 +513,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         });
       }
       setCompletionError(
-        error instanceof Error
-          ? error.message
-          : 'We could not finish setting up your account. Please try again.'
+        error instanceof Error ? error.message : t('onboarding.errors.completionFailed')
       );
       return false;
     } finally {
@@ -516,6 +525,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     isSignedIn,
     locationValue,
     recordPendingServerCompletion,
+    t,
   ]);
 
   React.useEffect(() => {
@@ -608,7 +618,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     if (!isSignedIn) {
       setUsernameStatus(null);
       setUsernameLoading(false);
-      setUsernameError('Sign in to check your username.');
+      setUsernameError(t('onboarding.errors.signInToCheckUsername'));
       return;
     }
 
@@ -634,7 +644,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
             return;
           }
           const message =
-            error instanceof Error ? error.message : 'Unable to check that username. Try again.';
+            error instanceof Error ? error.message : t('onboarding.errors.usernameCheckFailed');
           setUsernameStatus(null);
           setUsernameError(message);
         })
@@ -650,31 +660,25 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         clearTimeout(usernameDebounceRef.current);
       }
     };
-  }, [activeStep.type, isSignedIn, usernameNormalized]);
+  }, [activeStep.type, isSignedIn, t, usernameNormalized]);
 
   const handleRegretTrackLayout = React.useCallback((event: LayoutChangeEvent) => {
     const { width } = event.nativeEvent.layout;
     setGraphTrackWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
   }, []);
 
-  const currencyFormatter = React.useMemo(
-    () =>
-      new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0,
-      }),
-    []
-  );
-
+  // i18n (plans/multilingual.md M7): this was `new Intl.NumberFormat('en-US',
+  // { currency: 'USD' })` pinned at render. The CURRENCY pin was right and is
+  // kept in src/i18n/formatting — this money is literally US dollars spent in
+  // Austin and NYC, a market fact rather than a reader preference. The LOCALE
+  // pin was the bug: it grouped and placed the symbol the English way for every
+  // reader. Driving it from the resolved locale also makes `Intl` render USD in
+  // es-MX as `US$25`, which tells a Spanish-speaking reader these are dollars
+  // and not pesos — something the old pin could not say.
+  const activeLocale = getCurrentLocale();
   const formatCurrency = React.useCallback(
-    (value: number) => {
-      if (!Number.isFinite(value)) {
-        return '$0';
-      }
-      return currencyFormatter.format(Math.max(0, Math.round(value)));
-    },
-    [currencyFormatter]
+    (value: number) => formatCurrencyForLocale(value, activeLocale),
+    [activeLocale]
   );
 
   const budgetAmount = React.useMemo(() => {
@@ -712,14 +716,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     const frequencyRange = frequencySelection ? FREQUENCY_RANGES[frequencySelection] : undefined;
     const monthlyMealRange = frequencyRange?.monthly;
     const monthlyMealRangeText = monthlyMealRange
-      ? `${monthlyMealRange[0]}–${monthlyMealRange[1]} meals/month`
-      : `${monthlyMealsAverage} meals/month`;
+      ? t('onboarding.graph.regret.mealsPerMonthRange', {
+          min: monthlyMealRange[0],
+          max: monthlyMealRange[1],
+        })
+      : t('onboarding.graph.regret.mealsPerMonth', { count: monthlyMealsAverage });
     const budgetRange = budgetSelection ? BUDGET_RANGES[budgetSelection] : undefined;
     const perMealLabel = budgetRange
-      ? budgetRange.label
-      : budgetLabel
-        ? `${budgetLabel} each`
-        : `${formatCurrency(budgetAmount)} each`;
+      ? t(budgetRange.labelKey)
+      : t('onboarding.budgetRanges.eachSuffix', {
+          amount: budgetLabel ?? formatCurrency(budgetAmount),
+        });
     const monthlySpendMin =
       (monthlyMealRange?.[0] ?? monthlyMealsAverage) * (budgetRange?.min ?? budgetAmount);
     const monthlySpendMax =
@@ -729,8 +736,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           ? (monthlyMealRange?.[1] ?? monthlyMealsAverage) * budgetRange.max
           : undefined;
     const monthlySpendRangeLabel = monthlySpendMax
-      ? `${formatCurrency(monthlySpendMin)}–${formatCurrency(monthlySpendMax)}`
-      : `${formatCurrency(monthlySpendMin)}+`;
+      ? t('onboarding.graph.regret.spendRange', {
+          min: formatCurrency(monthlySpendMin),
+          max: formatCurrency(monthlySpendMax),
+        })
+      : t('onboarding.graph.regret.spendMinimum', { min: formatCurrency(monthlySpendMin) });
     const baselineRegretRate = 0.35;
     const craveRegretRate = 0.08;
     const monthlySpendAverage = monthlyMealsAverage * budgetAmount;
@@ -752,7 +762,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       baselineRegretRate,
       craveRegretRate,
     };
-  }, [answers, budgetAmount, diningFrequencyPerMonth, formatCurrency]);
+  }, [answers, budgetAmount, diningFrequencyPerMonth, formatCurrency, t]);
 
   // Processing screen timer with dynamic duration
   React.useEffect(() => {
@@ -868,16 +878,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
 
   const continueLabel = React.useMemo(() => {
     if (completionSubmitting) {
-      return 'Finishing…';
+      return t('onboarding.cta.finishing');
     }
     if (activeStep.type === 'account' && isSignedIn) {
-      return 'Continue';
+      return t('onboarding.cta.continue');
     }
     if (activeStep.ctaLabel) {
       return activeStep.ctaLabel;
     }
-    return isFinalStep ? 'Finish' : 'Continue';
-  }, [activeStep, completionSubmitting, isFinalStep, isSignedIn]);
+    return isFinalStep ? t('onboarding.cta.finish') : t('onboarding.cta.continue');
+  }, [activeStep, completionSubmitting, isFinalStep, isSignedIn, t]);
 
   const renderHero = (step: Extract<OnboardingStep, { type: 'hero' }>) => (
     <View style={styles.heroContainer}>
@@ -887,7 +897,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           {step.showAppScreenshot ? (
             <View style={styles.screenshotBadge}>
               <Text variant="caption" weight="semibold" style={styles.screenshotBadgeText}>
-                👆 Replace with actual app screenshot
+                {t('onboarding.hero.screenshotPlaceholder')}
               </Text>
             </View>
           ) : null}
@@ -904,14 +914,15 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
 
   const renderSummary = (step: Extract<OnboardingStep, { type: 'summary' }>) => {
     const isWaitlistSummary = step.id === STEP_IDS.waitlistInfo;
-    const waitlistDisplay = waitlistCityLabel || 'your city';
-    const summaryTitle = isWaitlistSummary ? `We're building ${waitlistDisplay} next` : step.title;
+    const waitlistDisplay = waitlistCityLabel || t('onboarding.waitlist.yourCity');
+    // The city name is capitalized ONCE, here, so the message itself never has
+    // to encode English's mid-sentence capitalization rules.
+    const waitlistCityDisplay = `${waitlistDisplay.charAt(0).toUpperCase()}${waitlistDisplay.slice(1)}`;
+    const summaryTitle = isWaitlistSummary
+      ? t('onboarding.waitlist.buildingNext', { city: waitlistDisplay })
+      : step.title;
     const summaryDescription = isWaitlistSummary
-      ? `Crave is live in Austin and NYC today. ${waitlistDisplay
-          .charAt(0)
-          .toUpperCase()}${waitlistDisplay.slice(
-          1
-        )} comes off the waitlist by demand — save your spot, bring your friends, and we'll walk you through everything fresh the day it's ready.`
+      ? t('onboarding.waitlist.summaryDescription', { city: waitlistCityDisplay })
       : step.description;
 
     return (
@@ -1049,7 +1060,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               <View style={styles.customInputRow}>
                 <TextInput
                   style={[styles.textInput, styles.customInputField]}
-                  placeholder={step.customPlaceholder ?? 'Add your own'}
+                  placeholder={step.customPlaceholder ?? t('onboarding.choice.addYourOwn')}
                   placeholderTextColor={MUTED_TEXT}
                   value={customInputValue}
                   onChangeText={(text) => updateAnswer(customInputKey, text)}
@@ -1070,7 +1081,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                       !customInputValue.trim() && styles.addCustomButtonTextDisabled,
                     ]}
                   >
-                    Add
+                    {t('onboarding.cta.add')}
                   </Text>
                 </Pressable>
               </View>
@@ -1112,13 +1123,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         <View style={styles.locationDivider}>
           <View style={styles.locationDividerLine} />
           <Text variant="caption" style={styles.locationDividerText}>
-            or request another city
+            {t('onboarding.waitlist.requestAnotherCity')}
           </Text>
           <View style={styles.locationDividerLine} />
         </View>
         <TextInput
           style={styles.textInput}
-          placeholder={step.placeholder ?? 'City name'}
+          placeholder={step.placeholder ?? t('onboarding.waitlist.cityPlaceholder')}
           placeholderTextColor={MUTED_TEXT}
           value={requestValue}
           onChangeText={(text) => updateAnswer(step.id, text)}
@@ -1127,21 +1138,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         {showWaitlistMessage ? (
           <View style={styles.waitlistMessage}>
             <Text variant="body" weight="semibold" style={styles.waitlistMessageTitle}>
-              🚀 {requestedCity} is coming soon!
+              {t('onboarding.waitlist.comingSoon', { city: requestedCity })}
             </Text>
             <Text variant="body" style={styles.waitlistMessageText}>
-              The bigger a city's waitlist, the sooner we build it. Save your spot — and bring your
-              friends — and we'll tell you the moment {requestedCity} is ready.
+              {t('onboarding.waitlist.cityWaitlistBody', { city: requestedCity })}
             </Text>
             <View style={styles.waitlistBenefits}>
               <Text variant="caption" weight="semibold" style={styles.waitlistBenefitTitle}>
-                What you'll get:
+                {t('onboarding.waitlist.whatYouGet')}
               </Text>
               <Text variant="caption" style={styles.waitlistBenefitText}>
-                ✓ First-day access the moment {requestedCity} goes live
+                {t('onboarding.waitlist.benefitFirstDay', { city: requestedCity })}
               </Text>
               <Text variant="caption" style={styles.waitlistBenefitText}>
-                ✓ Your signup moves {requestedCity} up the build order
+                {t('onboarding.waitlist.benefitBuildOrder', { city: requestedCity })}
               </Text>
             </View>
           </View>
@@ -1192,43 +1202,51 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         : undefined;
     const budgetDisplay = budgetValue
       ? getSingleChoiceLabel(STEP_IDS.budget, budgetValue)
-      : 'Flexible';
+      : t('onboarding.processing.flexible');
 
     const highlights = step.showSummary
       ? [
           {
-            label: 'Budget',
-            value: budgetDisplay ?? 'Flexible',
+            label: t('onboarding.processing.budget'),
+            value: budgetDisplay ?? t('onboarding.processing.flexible'),
           },
           {
-            label: 'Cravings',
+            label: t('onboarding.processing.cravings'),
             value:
-              getMultiChoiceLabels(STEP_IDS.cuisines, answers[STEP_IDS.cuisines] as string[]).join(
-                ', '
-              ) || 'Open to anything',
+              formatList(
+                getMultiChoiceLabels(STEP_IDS.cuisines, answers[STEP_IDS.cuisines] as string[]),
+                activeLocale
+              ) || t('onboarding.processing.openToAnything'),
           },
           {
-            label: 'Go-tos',
+            label: t('onboarding.processing.goTos'),
             value:
-              getMultiChoiceLabels(
-                STEP_IDS.alwaysCraving,
-                answers[STEP_IDS.alwaysCraving] as string[]
-              ).join(', ') || 'Anything great',
+              formatList(
+                getMultiChoiceLabels(
+                  STEP_IDS.alwaysCraving,
+                  answers[STEP_IDS.alwaysCraving] as string[]
+                ),
+                activeLocale
+              ) || t('onboarding.processing.anythingGreat'),
           },
           {
-            label: 'You choose for',
+            label: t('onboarding.processing.youChooseFor'),
             value:
-              getMultiChoiceLabels(STEP_IDS.contexts, answers[STEP_IDS.contexts] as string[]).join(
-                ', '
-              ) || 'Everyday eats',
+              formatList(
+                getMultiChoiceLabels(STEP_IDS.contexts, answers[STEP_IDS.contexts] as string[]),
+                activeLocale
+              ) || t('onboarding.processing.everydayEats'),
           },
           {
-            label: 'Priorities',
+            label: t('onboarding.processing.priorities'),
             value:
-              getMultiChoiceLabels(
-                STEP_IDS.diningGoals,
-                answers[STEP_IDS.diningGoals] as string[]
-              ).join(', ') || 'The best food, period',
+              formatList(
+                getMultiChoiceLabels(
+                  STEP_IDS.diningGoals,
+                  answers[STEP_IDS.diningGoals] as string[]
+                ),
+                activeLocale
+              ) || t('onboarding.processing.bestFoodPeriod'),
           },
         ]
       : [];
@@ -1295,7 +1313,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           <View style={styles.processingSpinnerRow}>
             <ActivityIndicator color={CRAVE_ACCENT} size="small" />
             <Text variant="caption" style={styles.processingSpinnerLabel}>
-              Processing…
+              {t('onboarding.processing.working')}
             </Text>
           </View>
         ) : null}
@@ -1323,36 +1341,38 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     return (
       <View>
         <Text variant="title" weight="bold" style={styles.heroTitle}>
-          {isWaitlistUser ? `Reserve your spot in ${locationValue}` : step.title}
+          {isWaitlistUser
+            ? t('onboarding.account.reserveSpot', { city: locationValue })
+            : step.title}
         </Text>
         <Text variant="body" style={styles.heroDescription}>
           {isWaitlistUser
-            ? `Create an account to get curated drops for ${locationValue}, be first to know when we launch, and unlock a few free searches in Austin & NYC so you can poke around today.`
+            ? t('onboarding.account.reserveDescription', { city: locationValue })
             : step.description}
         </Text>
         {isWaitlistUser ? (
           <View style={styles.waitlistBenefits}>
             <Text variant="caption" weight="semibold" style={styles.waitlistBenefitTitle}>
-              Your waitlist benefits:
+              {t('onboarding.account.waitlistBenefitsTitle')}
             </Text>
             <Text variant="caption" style={styles.waitlistBenefitText}>
-              ✓ Early access notification (est. Q2 2025)
+              {t('onboarding.account.benefitEarlyAccess')}
             </Text>
             <Text variant="caption" style={styles.waitlistBenefitText}>
-              ✓ 2-3 free searches in Austin & NYC today
+              {t('onboarding.account.benefitFreeSearches')}
             </Text>
             <Text variant="caption" style={styles.waitlistBenefitText}>
-              ✓ Priority access to vote on neighborhoods we rank first
+              {t('onboarding.account.benefitPriorityVote')}
             </Text>
           </View>
         ) : null}
         {isSignedIn ? (
           <View style={styles.signedInCard}>
             <Text variant="body" weight="semibold" style={styles.signedInCardTitle}>
-              You’re already signed in
+              {t('onboarding.account.alreadySignedIn')}
             </Text>
             <Text variant="caption" style={styles.signedInCardCopy}>
-              We kept your session. Continue and finish setting up your Crave profile.
+              {t('onboarding.account.alreadySignedInCopy')}
             </Text>
           </View>
         ) : (
@@ -1363,7 +1383,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               disabled={oauthStatus !== 'idle'}
             >
               <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-                {oauthStatus === 'apple' ? '🍎 Connecting…' : '🍎 Continue with Apple'}
+                {oauthStatus === 'apple'
+                  ? t('onboarding.account.connectingApple')
+                  : t('onboarding.account.continueWithApple')}
               </Text>
             </Pressable>
             <Pressable
@@ -1372,7 +1394,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               disabled={oauthStatus !== 'idle'}
             >
               <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-                {oauthStatus === 'google' ? '🔍 Connecting…' : '🔍 Continue with Google'}
+                {oauthStatus === 'google'
+                  ? t('onboarding.account.connectingGoogle')
+                  : t('onboarding.account.continueWithGoogle')}
               </Text>
             </Pressable>
             <Pressable
@@ -1381,7 +1405,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               disabled={oauthStatus !== 'idle'}
             >
               <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-                ✉️ Continue with email
+                {t('onboarding.account.continueWithEmail')}
               </Text>
             </Pressable>
           </View>
@@ -1396,11 +1420,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
             <Text variant="caption" style={styles.disclaimerText}>
               {step.disclaimer.split('Terms of Service')[0]}
               <Text variant="caption" style={styles.disclaimerLink} onPress={openTerms}>
-                Terms of Service
+                {t('onboarding.account.termsOfService')}
               </Text>
-              {' and '}
+              {t('onboarding.account.disclaimerConjunction')}
               <Text variant="caption" style={styles.disclaimerLink} onPress={openPrivacy}>
-                Privacy Policy
+                {t('onboarding.account.privacyPolicy')}
               </Text>
               {step.disclaimer.split('Privacy Policy')[1]}
             </Text>
@@ -1410,30 +1434,33 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     );
   };
 
-  const getUsernameStatusCopy = React.useCallback((status: UsernameAvailability) => {
-    switch (status.reason) {
-      case 'available':
-        return 'Available — this one is yours.';
-      case 'taken':
-        return 'That username is already taken.';
-      case 'reserved':
-        return 'That name is reserved by Crave.';
-      case 'invalid_format':
-        return 'Use letters, numbers, dots, or underscores.';
-      case 'too_short':
-        return 'Usernames need at least 3 characters.';
-      case 'too_long':
-        return 'Usernames can be up to 20 characters.';
-      case 'blocked_word':
-        return 'Please avoid names that imply official accounts.';
-      case 'profanity':
-        return 'That name was flagged — try another.';
-      case 'cooldown':
-        return 'You can only change your username every 30 days.';
-      default:
-        return 'Pick another username.';
-    }
-  }, []);
+  const getUsernameStatusCopy = React.useCallback(
+    (status: UsernameAvailability) => {
+      switch (status.reason) {
+        case 'available':
+          return t('onboarding.username.available');
+        case 'taken':
+          return t('onboarding.username.taken');
+        case 'reserved':
+          return t('onboarding.username.reserved');
+        case 'invalid_format':
+          return t('onboarding.username.invalidFormat');
+        case 'too_short':
+          return t('onboarding.username.tooShort');
+        case 'too_long':
+          return t('onboarding.username.tooLong');
+        case 'blocked_word':
+          return t('onboarding.username.blockedWord');
+        case 'profanity':
+          return t('onboarding.username.profanity');
+        case 'cooldown':
+          return t('onboarding.username.cooldown');
+        default:
+          return t('onboarding.username.fallback');
+      }
+    },
+    [t]
+  );
 
   const renderUsername = (step: Extract<OnboardingStep, { type: 'username' }>) => {
     const statusText = usernameStatus ? getUsernameStatusCopy(usernameStatus) : null;
@@ -1456,7 +1483,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           <TextInput
             value={usernameValue}
             onChangeText={handleUsernameChange}
-            placeholder={step.placeholder?.replace('@', '') ?? 'yourname'}
+            placeholder={step.placeholder?.replace('@', '') ?? t('onboarding.username.placeholder')}
             placeholderTextColor={MUTED_TEXT}
             style={styles.usernameInput}
             autoCapitalize="none"
@@ -1465,13 +1492,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           />
         </View>
         <Text variant="caption" style={styles.usernameHint}>
-          3-20 characters · letters, numbers, dots, or underscores
+          {t('onboarding.username.hint')}
         </Text>
         {usernameLoading ? (
           <View style={styles.usernameStatusRow}>
             <ActivityIndicator size="small" color={CRAVE_ACCENT} />
             <Text variant="caption" style={styles.usernameStatusText}>
-              Checking availability…
+              {t('onboarding.username.checking')}
             </Text>
           </View>
         ) : null}
@@ -1490,7 +1517,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         {usernameStatus?.suggestions?.length ? (
           <View style={styles.usernameSuggestions}>
             <Text variant="caption" style={styles.usernameSuggestionLabel}>
-              Try one of these:
+              {t('onboarding.username.trySuggestions')}
             </Text>
             <View style={styles.usernameSuggestionRow}>
               {usernameStatus.suggestions.map((suggestion) => (
@@ -1521,17 +1548,19 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               ? (answers[STEP_IDS.diningFrequency] as string)
               : undefined;
 
-          // Map frequency ID to display label (preserving dashes)
-          const frequencyMap: Record<string, string> = {
-            rarely: '1-2 times/week',
-            weekly: '3-4 times/week',
-            often: '5-6 times/week',
-            daily: 'every day',
+          // Frequency ID → a translated display phrase. These read as prose
+          // inside the callout sentence below, so they are message keys, not
+          // literals: Spanish says "1 o 2 veces por semana", not "1-2 x/sem".
+          const frequencyKeys: Record<string, string> = {
+            rarely: 'onboarding.graph.frequency.rarely',
+            weekly: 'onboarding.graph.frequency.weekly',
+            often: 'onboarding.graph.frequency.often',
+            daily: 'onboarding.graph.frequency.daily',
           };
-          const frequencyLabel =
-            frequencySelection && frequencyMap[frequencySelection]
-              ? frequencyMap[frequencySelection]
-              : 'regularly';
+          const frequencyLabel = t(
+            (frequencySelection && frequencyKeys[frequencySelection]) ||
+              'onboarding.graph.frequency.fallback'
+          );
 
           // Map frequency to meals per week for visualization
           const mealsPerWeekMap: Record<string, number> = {
@@ -1550,15 +1579,18 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               ? (answers[STEP_IDS.budget] as string)
               : undefined;
 
-          // Map budget ID to dollar range
-          const budgetMap: Record<string, string> = {
-            'under-20': 'under $20',
-            '20-40': '$20-$40',
-            '40-70': '$40-$70',
-            '70-plus': '$70+',
+          // Budget ID → a translated dollar-range phrase. The FIGURES are US
+          // market facts; only the words around them ("under" / "menos de")
+          // translate, so the whole phrase is a message.
+          const budgetKeys: Record<string, string> = {
+            'under-20': 'onboarding.graph.budget.under20',
+            '20-40': 'onboarding.graph.budget.20to40',
+            '40-70': 'onboarding.graph.budget.40to70',
+            '70-plus': 'onboarding.graph.budget.70plus',
           };
-          const budgetLabel =
-            budgetSelection && budgetMap[budgetSelection] ? budgetMap[budgetSelection] : '$20-$40';
+          const budgetLabel = t(
+            (budgetSelection && budgetKeys[budgetSelection]) || 'onboarding.graph.budget.20to40'
+          );
 
           // Generate calendar pattern based on frequency
           // 30 days (full month), weighted towards weekends with some clustering
@@ -1663,12 +1695,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                 style={styles.calendarGradientBackground}
               />
               <Text variant="body" weight="semibold" style={styles.calendarGraphTitle}>
-                Your Month
+                {t('onboarding.graph.calendar.title')}
               </Text>
               <View style={styles.calendarComparisonRow}>
                 <View style={styles.calendarColumn}>
                   <Text variant="caption" style={styles.calendarColumnLabel}>
-                    Without Crave
+                    {t('onboarding.graph.calendar.withoutCrave')}
                   </Text>
                   <View style={styles.calendarGrid}>
                     {withoutCraveCalendar.map((dayType, index) => {
@@ -1702,12 +1734,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                     })}
                   </View>
                   <Text variant="caption" style={styles.calendarStat}>
-                    1 in 3 meals miss
+                    {t('onboarding.graph.calendar.withoutCraveStat')}
                   </Text>
                 </View>
                 <View style={styles.calendarColumn}>
                   <Text variant="caption" style={styles.calendarColumnLabel}>
-                    With Crave
+                    {t('onboarding.graph.calendar.withCrave')}
                   </Text>
                   <View style={styles.calendarGrid}>
                     {withCraveCalendar.map((dayType, index) => {
@@ -1741,14 +1773,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                     })}
                   </View>
                   <Text variant="caption" style={styles.calendarStat}>
-                    11 in 12 meals hit
+                    {t('onboarding.graph.calendar.withCraveStat')}
                   </Text>
                 </View>
               </View>
               <Text variant="caption" style={styles.graphCallout}>
-                At {frequencyLabel} and {budgetLabel} per meal, you'll redirect ~
-                {formatCurrency(regretGraphData.regretSavings)}/month toward meals actually worth
-                your time and money.
+                {t('onboarding.graph.calendar.callout', {
+                  frequency: frequencyLabel,
+                  budget: budgetLabel,
+                  savings: formatCurrency(regretGraphData.regretSavings),
+                })}
               </Text>
             </View>
           );
@@ -1757,11 +1791,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           return (
             <View style={styles.graphContainer}>
               <Text variant="caption" style={styles.graphLabel}>
-                Finding great food
+                {t('onboarding.graph.timeSaved.label')}
               </Text>
               <View style={styles.graphBarRow}>
                 <Text variant="caption" style={styles.graphBarLabel}>
-                  Without Crave:
+                  {t('onboarding.graph.timeSaved.withoutCrave')}
                 </Text>
                 <View style={styles.graphBarTrack}>
                   <View
@@ -1769,12 +1803,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                   />
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
-                  High effort
+                  {t('onboarding.graph.timeSaved.highEffort')}
                 </Text>
               </View>
               <View style={styles.graphBarRow}>
                 <Text variant="caption" style={styles.graphBarLabel}>
-                  With Crave:
+                  {t('onboarding.graph.timeSaved.withCrave')}
                 </Text>
                 <View style={styles.graphBarTrack}>
                   <View
@@ -1782,13 +1816,14 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                   />
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
-                  Low effort
+                  {t('onboarding.graph.timeSaved.lowEffort')}
                 </Text>
               </View>
               <Text variant="body" weight="bold" style={styles.graphCallout}>
-                4x less time and effort. At {diningFrequencyPerMonth} times/month, that's{' '}
-                {formatCurrency(regretGraphData.monthlySpendAverage * 0.33)}/month saved from
-                disappointing meals.
+                {t('onboarding.graph.timeSaved.callout', {
+                  count: diningFrequencyPerMonth,
+                  savings: formatCurrency(regretGraphData.monthlySpendAverage * 0.33),
+                })}
               </Text>
             </View>
           );
@@ -1809,19 +1844,26 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           return (
             <View style={styles.graphContainer}>
               <Text variant="caption" style={styles.graphLabel}>
-                Meals you regret after ordering
+                {t('onboarding.graph.regret.label')}
               </Text>
               <Text variant="body" style={styles.graphBody}>
-                {`Based on your ${
-                  frequencyLabel ?? 'current'
-                } habit (${monthlyMealRangeText}) at ${perMealLabel}, you're putting ${monthlySpendRangeLabel}/mo into eating out.`}
+                {t('onboarding.graph.regret.body', {
+                  frequency: frequencyLabel ?? t('onboarding.graph.frequency.current'),
+                  mealRange: monthlyMealRangeText,
+                  perMeal: perMealLabel,
+                  spendRange: monthlySpendRangeLabel,
+                })}
               </Text>
               <Text variant="caption" style={styles.graphDetailText}>
-                ~ {formatCurrency(monthlySpendAverage)} each month on food.
+                {t('onboarding.graph.regret.monthlyDetail', {
+                  amount: formatCurrency(monthlySpendAverage),
+                })}
               </Text>
               <View style={styles.graphBarRow}>
                 <Text variant="caption" style={styles.graphBarLabel}>
-                  Missing intel ({Math.round(baselineRegretRate * 100)}%):
+                  {t('onboarding.graph.regret.missingIntel', {
+                    rate: formatPercent(baselineRegretRate, activeLocale),
+                  })}
                 </Text>
                 <View style={styles.graphBarTrack} onLayout={handleRegretTrackLayout}>
                   {graphTrackWidth > 0 ? (
@@ -1843,12 +1885,14 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                   )}
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
-                  {formatCurrency(baselineWaste)}/mo wasted
+                  {t('onboarding.graph.regret.wasted', { amount: formatCurrency(baselineWaste) })}
                 </Text>
               </View>
               <View style={styles.graphBarRow}>
                 <Text variant="caption" style={styles.graphBarLabel}>
-                  Using Crave ({Math.round(craveRegretRate * 100)}%):
+                  {t('onboarding.graph.regret.usingCrave', {
+                    rate: formatPercent(craveRegretRate, activeLocale),
+                  })}
                 </Text>
                 <View style={styles.graphBarTrack}>
                   {graphTrackWidth > 0 ? (
@@ -1870,12 +1914,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                   )}
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
-                  {formatCurrency(craveWaste)}/mo wasted
+                  {t('onboarding.graph.regret.wasted', { amount: formatCurrency(craveWaste) })}
                 </Text>
               </View>
               <Text variant="body" weight="bold" style={styles.graphCallout}>
-                Crave keeps roughly {formatCurrency(Math.max(regretSavings, 0))} of that budget in
-                play every month.
+                {t('onboarding.graph.regret.callout', {
+                  amount: formatCurrency(Math.max(regretSavings, 0)),
+                })}
               </Text>
             </View>
           );
@@ -1884,12 +1929,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           return (
             <View style={styles.graphContainer}>
               <Text variant="caption" style={styles.graphLabel}>
-                Time to find 10 spots you love
+                {t('onboarding.graph.discovery.label')}
               </Text>
               <View style={styles.graphBarColumn}>
                 <View style={styles.graphBarRow}>
                   <Text variant="caption" style={styles.graphBarLabel}>
-                    Trial & Error:
+                    {t('onboarding.graph.discovery.trialAndError')}
                   </Text>
                   <View style={styles.graphBarTrack}>
                     <View
@@ -1897,12 +1942,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                     />
                   </View>
                   <Text variant="caption" style={styles.graphBarValue}>
-                    6 months
+                    {t('onboarding.graph.discovery.sixMonths')}
                   </Text>
                 </View>
                 <View style={styles.graphBarRow}>
                   <Text variant="caption" style={styles.graphBarLabel}>
-                    Friend Recs:
+                    {t('onboarding.graph.discovery.friendRecs')}
                   </Text>
                   <View style={styles.graphBarTrack}>
                     <View
@@ -1910,12 +1955,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                     />
                   </View>
                   <Text variant="caption" style={styles.graphBarValue}>
-                    3 months
+                    {t('onboarding.graph.discovery.threeMonths')}
                   </Text>
                 </View>
                 <View style={styles.graphBarRow}>
                   <Text variant="caption" style={styles.graphBarLabel}>
-                    Crave:
+                    {t('onboarding.graph.discovery.crave')}
                   </Text>
                   <View style={styles.graphBarTrack}>
                     <View
@@ -1923,7 +1968,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                     />
                   </View>
                   <Text variant="caption" style={styles.graphBarValue}>
-                    2 weeks
+                    {t('onboarding.graph.discovery.twoWeeks')}
                   </Text>
                 </View>
               </View>
@@ -1967,9 +2012,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     const usesReviewSites =
       decideHowSelections.includes('google-maps') || decideHowSelections.includes('review-sites');
     const notificationBody = usesReviewSites
-      ? "You said you rely on ratings and reviews. We'll ping you when rankings actually move instead."
+      ? t('onboarding.notification.usesReviewSites')
       : decideHowSelections.length === 0
-        ? "We'll keep you updated on what's worth trying."
+        ? t('onboarding.notification.noSelection')
         : step.body;
     return (
       <View>
@@ -1981,7 +2026,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
         </Text>
         <View style={styles.notificationFeatureList}>
           <Text variant="body" weight="semibold" style={styles.notificationFeatureTitle}>
-            What you'll get:
+            {t('onboarding.notification.whatYouGet')}
           </Text>
           {step.features.map((feature) => (
             <View key={feature} style={styles.notificationFeatureRow}>
@@ -1993,7 +2038,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
           ))}
         </View>
         <Text variant="body" weight="semibold" style={styles.notificationOptionsTitle}>
-          How often:
+          {t('onboarding.notification.howOften')}
         </Text>
         <View style={styles.choiceColumn}>
           {step.options.map((option) => {
@@ -2011,7 +2056,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
                   {option.recommended ? (
                     <View style={styles.recommendedBadge}>
                       <Text variant="caption" weight="semibold" style={styles.recommendedBadgeText}>
-                        RECOMMENDED
+                        {t('onboarding.notification.recommended')}
                       </Text>
                     </View>
                   ) : null}
@@ -2182,11 +2227,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
 
   const submitUsernameStep = React.useCallback(async () => {
     if (!isSignedIn) {
-      setUsernameError('Please sign in to claim a username.');
+      setUsernameError(t('onboarding.errors.signInToClaimUsername'));
       return false;
     }
     if (!usernameNormalized) {
-      setUsernameError('Pick a username to continue.');
+      setUsernameError(t('onboarding.errors.pickUsernameToContinue'));
       return false;
     }
 
@@ -2214,17 +2259,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
       return true;
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Unable to claim that username right now.';
+        error instanceof Error ? error.message : t('onboarding.errors.usernameClaimFailed');
       setUsernameError(message);
       return false;
     } finally {
       setUsernameSubmitting(false);
     }
-  }, [getUsernameStatusCopy, isSignedIn, usernameNormalized, usernameStatus]);
+  }, [getUsernameStatusCopy, isSignedIn, t, usernameNormalized, usernameStatus]);
 
   const continueOnboardingFlow = React.useCallback(() => {
     if (requiresAuthToAdvance) {
-      setAuthError('Please sign in to keep going.');
+      setAuthError(t('onboarding.errors.signInToContinue'));
       setEmailModalVisible(true);
       return;
     }
@@ -2264,6 +2309,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     setEmailModalVisible,
     stepIndex,
     animateToStepIndex,
+    t,
   ]);
 
   const goBackStep = React.useCallback(() => {
@@ -2395,7 +2441,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
               onPress={goBackStep}
               disabled={!canGoBack || isAnimating}
               accessibilityRole="button"
-              accessibilityLabel="Go back"
+              accessibilityLabel={t('onboarding.cta.goBack')}
             >
               <Text variant="body" weight="bold" style={styles.backButtonIcon}>
                 ←

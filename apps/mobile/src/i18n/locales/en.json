@@ -1,0 +1,223 @@
+{
+  "search": {
+    "placeholder": "What are you craving?",
+    "suggestions": {
+      "seeLocations": "See locations",
+      "seeLocationsOf": "See locations of {name}",
+      "recentSearches": "Recent searches",
+      "recentlyViewed": "Recently viewed",
+      "viewMore": "View more",
+      "viewMoreRecentSearches": "View more recent searches",
+      "viewMoreRecentlyViewed": "View more recently viewed items"
+    }
+  },
+  "restaurant": {
+    "metaSeparator": " · ",
+    "header": {
+      "save": "Save restaurant",
+      "unsave": "Unsave restaurant",
+      "share": "Share"
+    },
+    "metrics": {
+      "craveRating": "Crave rating",
+      "basedOn": "Based on {evidence}",
+      "mentions": "{count, plural, one {# mention} other {# mentions}}",
+      "votes": "{count, plural, one {# vote} other {# votes}}"
+    },
+    "status": {
+      "open": "Open",
+      "openUntil": "Open until {time}",
+      "closed": "Closed",
+      "closedUntil": "Closed until {time}"
+    },
+    "actions": {
+      "directions": "Directions",
+      "website": "Website",
+      "call": "Call",
+      "addPhoto": "Add photo"
+    },
+    "locations": {
+      "title": "Locations",
+      "fallbackLabel": "Location",
+      "count": "{count, plural, one {# location} other {# locations}}",
+      "showMore": "{count, plural, one {# more location} other {# more locations}}",
+      "addressLabel": "Address",
+      "addressUnavailable": "Address unavailable",
+      "phoneLabel": "Phone",
+      "hoursLabel": "Hours",
+      "hoursUnavailable": "Hours unavailable",
+      "websiteLabel": "Website"
+    },
+    "days": {
+      "sunday": "Sun",
+      "monday": "Mon",
+      "tuesday": "Tue",
+      "wednesday": "Wed",
+      "thursday": "Thu",
+      "friday": "Fri",
+      "saturday": "Sat"
+    },
+    "dishes": {
+      "topDishes": "Top dishes",
+      "menuHighlights": "Menu highlights",
+      "rankedByRating": "Ranked by dish rating",
+      "seeAll": "{count, plural, one {See the # dish} other {See all # dishes}}",
+      "ratingLabel": "Dish rating: ",
+      "pollCount": "Poll count",
+      "totalVotes": "Total votes",
+      "empty": "No dishes found for this restaurant."
+    }
+  },
+  "onboarding": {
+    "cta": {
+      "continue": "Continue",
+      "finish": "Finish",
+      "finishing": "Finishing…",
+      "goBack": "Go back",
+      "add": "Add"
+    },
+    "errors": {
+      "completionFailed": "We could not finish setting up your account. Please try again.",
+      "signInToCheckUsername": "Sign in to check your username.",
+      "usernameCheckFailed": "Unable to check that username. Try again.",
+      "signInToClaimUsername": "Please sign in to claim a username.",
+      "pickUsernameToContinue": "Pick a username to continue.",
+      "usernameClaimFailed": "Unable to claim that username right now.",
+      "signInToContinue": "Please sign in to keep going."
+    },
+    "hero": {
+      "screenshotPlaceholder": "👆 Replace with actual app screenshot"
+    },
+    "waitlist": {
+      "yourCity": "your city",
+      "buildingNext": "We're building {city} next",
+      "summaryDescription": "Crave is live in Austin and NYC today. {city} comes off the waitlist by demand — save your spot, bring your friends, and we'll walk you through everything fresh the day it's ready.",
+      "comingSoon": "🚀 {city} is coming soon!",
+      "cityWaitlistBody": "The bigger a city's waitlist, the sooner we build it. Save your spot — and bring your friends — and we'll tell you the moment {city} is ready.",
+      "whatYouGet": "What you'll get:",
+      "benefitFirstDay": "✓ First-day access the moment {city} goes live",
+      "benefitBuildOrder": "✓ Your signup moves {city} up the build order",
+      "requestAnotherCity": "or request another city",
+      "cityPlaceholder": "City name"
+    },
+    "choice": {
+      "addYourOwn": "Add your own"
+    },
+    "processing": {
+      "flexible": "Flexible",
+      "budget": "Budget",
+      "cravings": "Cravings",
+      "openToAnything": "Open to anything",
+      "goTos": "Go-tos",
+      "anythingGreat": "Anything great",
+      "youChooseFor": "You choose for",
+      "everydayEats": "Everyday eats",
+      "priorities": "Priorities",
+      "bestFoodPeriod": "The best food, period",
+      "working": "Processing…"
+    },
+    "account": {
+      "reserveSpot": "Reserve your spot in {city}",
+      "reserveDescription": "Create an account to get curated drops for {city}, be first to know when we launch, and unlock a few free searches in Austin & NYC so you can poke around today.",
+      "waitlistBenefitsTitle": "Your waitlist benefits:",
+      "benefitEarlyAccess": "✓ Early access notification (est. Q2 2025)",
+      "benefitFreeSearches": "✓ 2-3 free searches in Austin & NYC today",
+      "benefitPriorityVote": "✓ Priority access to vote on neighborhoods we rank first",
+      "alreadySignedIn": "You're already signed in",
+      "alreadySignedInCopy": "We kept your session. Continue and finish setting up your Crave profile.",
+      "continueWithApple": "🍎 Continue with Apple",
+      "continueWithGoogle": "🔍 Continue with Google",
+      "continueWithEmail": "✉️ Continue with email",
+      "connectingApple": "🍎 Connecting…",
+      "connectingGoogle": "🔍 Connecting…",
+      "termsOfService": "Terms of Service",
+      "privacyPolicy": "Privacy Policy",
+      "disclaimerConjunction": " and "
+    },
+    "username": {
+      "placeholder": "yourname",
+      "hint": "3-20 characters · letters, numbers, dots, or underscores",
+      "checking": "Checking availability…",
+      "trySuggestions": "Try one of these:",
+      "available": "Available — this one is yours.",
+      "taken": "That username is already taken.",
+      "reserved": "That name is reserved by Crave.",
+      "invalidFormat": "Use letters, numbers, dots, or underscores.",
+      "tooShort": "Usernames need at least 3 characters.",
+      "tooLong": "Usernames can be up to 20 characters.",
+      "blockedWord": "Please avoid names that imply official accounts.",
+      "profanity": "That name was flagged — try another.",
+      "cooldown": "You can only change your username every 30 days.",
+      "fallback": "Pick another username."
+    },
+    "budgetRanges": {
+      "under20": "Under $20 each",
+      "20to40": "$20–$40 each",
+      "40to70": "$40–$70 each",
+      "70plus": "$70+ each",
+      "eachSuffix": "{amount} each"
+    },
+    "graph": {
+      "frequency": {
+        "rarely": "1-2 times/week",
+        "weekly": "3-4 times/week",
+        "often": "5-6 times/week",
+        "daily": "every day",
+        "fallback": "regularly",
+        "current": "current"
+      },
+      "budget": {
+        "under20": "under $20",
+        "20to40": "$20-$40",
+        "40to70": "$40-$70",
+        "70plus": "$70+",
+        "fallback": "your usual spend"
+      },
+      "calendar": {
+        "title": "Your Month",
+        "withoutCrave": "Without Crave",
+        "withCrave": "With Crave",
+        "withoutCraveStat": "1 in 3 meals miss",
+        "withCraveStat": "11 in 12 meals hit",
+        "callout": "At {frequency} and {budget} per meal, you'll redirect ~{savings}/month toward meals actually worth your time and money."
+      },
+      "timeSaved": {
+        "label": "Finding great food",
+        "withoutCrave": "Without Crave:",
+        "withCrave": "With Crave:",
+        "highEffort": "High effort",
+        "lowEffort": "Low effort",
+        "callout": "4x less time and effort. At {count, plural, one {# time} other {# times}}/month, that's {savings}/month saved from disappointing meals."
+      },
+      "regret": {
+        "label": "Meals you regret after ordering",
+        "body": "Based on your {frequency} habit ({mealRange}) at {perMeal}, you're putting {spendRange}/mo into eating out.",
+        "monthlyDetail": "~ {amount} each month on food.",
+        "missingIntel": "Missing intel ({rate}):",
+        "usingCrave": "Using Crave ({rate}):",
+        "wasted": "{amount}/mo wasted",
+        "callout": "Crave keeps roughly {amount} of that budget in play every month.",
+        "mealsPerMonthRange": "{min}–{max} meals/month",
+        "mealsPerMonth": "{count, plural, one {# meal/month} other {# meals/month}}",
+        "spendRange": "{min}–{max}",
+        "spendMinimum": "{min}+"
+      },
+      "discovery": {
+        "label": "Time to find 10 spots you love",
+        "trialAndError": "Trial & Error:",
+        "friendRecs": "Friend Recs:",
+        "crave": "Crave:",
+        "sixMonths": "6 months",
+        "threeMonths": "3 months",
+        "twoWeeks": "2 weeks"
+      }
+    },
+    "notification": {
+      "usesReviewSites": "You said you rely on ratings and reviews. We'll ping you when rankings actually move instead.",
+      "noSelection": "We'll keep you updated on what's worth trying.",
+      "whatYouGet": "What you'll get:",
+      "howOften": "How often:",
+      "recommended": "RECOMMENDED"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   BarChart3,
@@ -138,6 +139,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   onPressRecentlyViewedMore,
   style,
 }) => {
+  const { t } = useTranslation();
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
   // Never-blank rule (c): only when there is truly nothing better to show — a
   // list (even a stale placeholder) always outranks the failure notice.
@@ -323,11 +325,15 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                         onPress={() => onSelectSuggestion(match, { seeLocations: true })}
                         style={styles.seeLocationsChip}
                         accessibilityRole="button"
-                        accessibilityLabel={`See locations of ${match.name}`}
+                        accessibilityLabel={t('search.suggestions.seeLocationsOf', {
+                          name: match.name,
+                        })}
                         testID={`autocomplete-see-locations-${testIdSafeName(match.name)}`}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Text style={styles.seeLocationsChipText}>See locations</Text>
+                        <Text style={styles.seeLocationsChipText}>
+                          {t('search.suggestions.seeLocations')}
+                        </Text>
                       </TouchableOpacity>
                     ) : null}
                     {match.badges?.favorite ? (
@@ -346,7 +352,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           {shouldRenderRecentSearchesSection ? (
             <View>
               <View style={styles.recentHeaderRow}>
-                <Text style={styles.recentHeaderText}>Recent searches</Text>
+                <Text style={styles.recentHeaderText}>
+                  {t('search.suggestions.recentSearches')}
+                </Text>
               </View>
               {recentSearchesToRender.map((term, index) => {
                 const statusLine =
@@ -379,10 +387,10 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   onPress={onPressRecentViewMore}
                   style={styles.recentViewMore}
                   accessibilityRole="button"
-                  accessibilityLabel="View more recent searches"
+                  accessibilityLabel={t('search.suggestions.viewMoreRecentSearches')}
                 >
                   <Text variant="body" weight="semibold" style={styles.recentViewMoreText}>
-                    View more
+                    {t('search.suggestions.viewMore')}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -397,7 +405,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   shouldRenderRecentSearchesSection ? styles.recentHeaderRowSpaced : null,
                 ]}
               >
-                <Text style={styles.recentHeaderText}>Recently viewed</Text>
+                <Text style={styles.recentHeaderText}>
+                  {t('search.suggestions.recentlyViewed')}
+                </Text>
               </View>
               {recentlyViewedToRender.map((entry, index) => {
                 if (entry.type === 'food') {
@@ -467,10 +477,10 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   onPress={onPressRecentlyViewedMore}
                   style={[styles.recentViewMore, styles.recentViewMoreLast]}
                   accessibilityRole="button"
-                  accessibilityLabel="View more recently viewed items"
+                  accessibilityLabel={t('search.suggestions.viewMoreRecentlyViewed')}
                 >
                   <Text variant="body" weight="semibold" style={styles.recentViewMoreText}>
-                    View more
+                    {t('search.suggestions.viewMore')}
                   </Text>
                 </TouchableOpacity>
               ) : null}

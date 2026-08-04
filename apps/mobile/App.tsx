@@ -1,6 +1,11 @@
 // App.tsx
 // IMPORTANT: This must be the FIRST import to patch react-native before anything else loads
 import './src/polyfills/react-native-codegen';
+// i18n bootstrap (plans/multilingual.md M7): loads the Intl polyfills Hermes
+// lacks and initializes i18next BEFORE the first component renders — a t() call
+// against an uninitialized instance returns the raw key, so this import cannot
+// move below the screens.
+import './src/i18n';
 import 'react-native-gesture-handler';
 import {
   captureHandledError,

@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { NativeModules } from 'react-native';
 import { usePerfScenarioRuntimeStore } from '../perf/perf-scenario-runtime-store';
 import { withPerfScenarioMetadata } from '../perf/perf-scenario-attribution';
+import { getCurrentLocale } from '../i18n/current-locale';
 import { logger } from '../utils';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
@@ -347,6 +348,21 @@ api.interceptors.request.use(
     const deviceKey = await getOrCreateDeviceKey();
     if (deviceKey) {
       config.headers['x-device-key'] = deviceKey;
+    }
+    // LOCALE ON THE WIRE (plans/multilingual.md M1, ruling D4): every request
+    // carries the resolved BCP 47 locale so the API can negotiate labels, and
+    // so any cache that carries rendered text can key on it.
+    //
+    // Per-REQUEST, not per-session, and read from the same getCurrentLocale()
+    // the UI renders with — the failure this prevents is a screen in Spanish
+    // asking the API in English (or worse, half a session in each after a
+    // profile override). Deliberately NOT the push-device locale row: D4 rules
+    // that out because a user who declines notifications has no locale there.
+    //
+    // Not `config.headers.Accept-Language ??=`: an explicit per-call override
+    // wins, and axios lowercases header names on match, so the check is too.
+    if (!config.headers['Accept-Language']) {
+      config.headers['Accept-Language'] = getCurrentLocale();
     }
     return config;
   },

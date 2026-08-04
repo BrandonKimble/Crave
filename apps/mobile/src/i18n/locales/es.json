@@ -1,0 +1,223 @@
+{
+  "search": {
+    "placeholder": "¿Qué se te antoja?",
+    "suggestions": {
+      "seeLocations": "Ver sucursales",
+      "seeLocationsOf": "Ver sucursales de {name}",
+      "recentSearches": "Búsquedas recientes",
+      "recentlyViewed": "Vistos recientemente",
+      "viewMore": "Ver más",
+      "viewMoreRecentSearches": "Ver más búsquedas recientes",
+      "viewMoreRecentlyViewed": "Ver más elementos vistos recientemente"
+    }
+  },
+  "restaurant": {
+    "metaSeparator": " · ",
+    "header": {
+      "save": "Guardar restaurante",
+      "unsave": "Quitar restaurante de guardados",
+      "share": "Compartir"
+    },
+    "metrics": {
+      "craveRating": "Calificación Crave",
+      "basedOn": "Con base en {evidence}",
+      "mentions": "{count, plural, one {# mención} other {# menciones}}",
+      "votes": "{count, plural, one {# voto} other {# votos}}"
+    },
+    "status": {
+      "open": "Abierto",
+      "openUntil": "Abierto hasta las {time}",
+      "closed": "Cerrado",
+      "closedUntil": "Abre a las {time}"
+    },
+    "actions": {
+      "directions": "Cómo llegar",
+      "website": "Sitio web",
+      "call": "Llamar",
+      "addPhoto": "Agregar foto"
+    },
+    "locations": {
+      "title": "Sucursales",
+      "fallbackLabel": "Sucursal",
+      "count": "{count, plural, one {# sucursal} other {# sucursales}}",
+      "showMore": "{count, plural, one {# sucursal más} other {# sucursales más}}",
+      "addressLabel": "Dirección",
+      "addressUnavailable": "Dirección no disponible",
+      "phoneLabel": "Teléfono",
+      "hoursLabel": "Horario",
+      "hoursUnavailable": "Horario no disponible",
+      "websiteLabel": "Sitio web"
+    },
+    "days": {
+      "sunday": "Dom",
+      "monday": "Lun",
+      "tuesday": "Mar",
+      "wednesday": "Mié",
+      "thursday": "Jue",
+      "friday": "Vie",
+      "saturday": "Sáb"
+    },
+    "dishes": {
+      "topDishes": "Platillos destacados",
+      "menuHighlights": "Lo mejor del menú",
+      "rankedByRating": "Ordenados por calificación",
+      "seeAll": "{count, plural, one {Ver el # platillo} other {Ver los # platillos}}",
+      "ratingLabel": "Calificación del platillo: ",
+      "pollCount": "Encuestas",
+      "totalVotes": "Votos totales",
+      "empty": "No encontramos platillos de este restaurante."
+    }
+  },
+  "onboarding": {
+    "cta": {
+      "continue": "Continuar",
+      "finish": "Finalizar",
+      "finishing": "Finalizando…",
+      "goBack": "Regresar",
+      "add": "Agregar"
+    },
+    "errors": {
+      "completionFailed": "No pudimos terminar de configurar tu cuenta. Inténtalo de nuevo.",
+      "signInToCheckUsername": "Inicia sesión para revisar tu nombre de usuario.",
+      "usernameCheckFailed": "No pudimos revisar ese nombre de usuario. Inténtalo de nuevo.",
+      "signInToClaimUsername": "Inicia sesión para apartar un nombre de usuario.",
+      "pickUsernameToContinue": "Elige un nombre de usuario para continuar.",
+      "usernameClaimFailed": "No pudimos apartar ese nombre de usuario en este momento.",
+      "signInToContinue": "Inicia sesión para seguir."
+    },
+    "hero": {
+      "screenshotPlaceholder": "👆 Reemplazar con una captura real de la app"
+    },
+    "waitlist": {
+      "yourCity": "tu ciudad",
+      "buildingNext": "{city} es la que sigue",
+      "summaryDescription": "Hoy Crave está en Austin y Nueva York. {city} sale de la lista de espera según la demanda: aparta tu lugar, invita a tus amigos y el día que esté lista te mostramos todo desde cero.",
+      "comingSoon": "🚀 ¡{city} viene en camino!",
+      "cityWaitlistBody": "Entre más grande la lista de espera de una ciudad, más pronto la construimos. Aparta tu lugar —e invita a tus amigos— y te avisamos en cuanto {city} esté lista.",
+      "whatYouGet": "Esto te llevas:",
+      "benefitFirstDay": "✓ Acceso desde el primer día, en cuanto {city} arranque",
+      "benefitBuildOrder": "✓ Tu registro sube a {city} en la fila de construcción",
+      "requestAnotherCity": "o pide otra ciudad",
+      "cityPlaceholder": "Nombre de la ciudad"
+    },
+    "choice": {
+      "addYourOwn": "Agrega la tuya"
+    },
+    "processing": {
+      "flexible": "Flexible",
+      "budget": "Presupuesto",
+      "cravings": "Antojos",
+      "openToAnything": "Abierto a lo que sea",
+      "goTos": "De cajón",
+      "anythingGreat": "Cualquier cosa buena",
+      "youChooseFor": "Eliges para",
+      "everydayEats": "Comidas de diario",
+      "priorities": "Prioridades",
+      "bestFoodPeriod": "La mejor comida, punto",
+      "working": "Procesando…"
+    },
+    "account": {
+      "reserveSpot": "Aparta tu lugar en {city}",
+      "reserveDescription": "Crea tu cuenta para recibir recomendaciones de {city}, enterarte primero cuando lancemos y desbloquear algunas búsquedas gratis en Austin y Nueva York para que le eches un ojo hoy mismo.",
+      "waitlistBenefitsTitle": "Tus beneficios por estar en la lista:",
+      "benefitEarlyAccess": "✓ Aviso de acceso anticipado (aprox. 2.º trimestre de 2025)",
+      "benefitFreeSearches": "✓ 2 o 3 búsquedas gratis hoy en Austin y Nueva York",
+      "benefitPriorityVote": "✓ Acceso prioritario para votar por las zonas que calificamos primero",
+      "alreadySignedIn": "Ya iniciaste sesión",
+      "alreadySignedInCopy": "Guardamos tu sesión. Continúa y termina de configurar tu perfil de Crave.",
+      "continueWithApple": "🍎 Continuar con Apple",
+      "continueWithGoogle": "🔍 Continuar con Google",
+      "continueWithEmail": "✉️ Continuar con correo",
+      "connectingApple": "🍎 Conectando…",
+      "connectingGoogle": "🔍 Conectando…",
+      "termsOfService": "Términos del Servicio",
+      "privacyPolicy": "Aviso de Privacidad",
+      "disclaimerConjunction": " y "
+    },
+    "username": {
+      "placeholder": "tunombre",
+      "hint": "3-20 caracteres · letras, números, puntos o guiones bajos",
+      "checking": "Verificando disponibilidad…",
+      "trySuggestions": "Prueba una de estas:",
+      "available": "Disponible: ya es tuyo.",
+      "taken": "Ese nombre de usuario ya está ocupado.",
+      "reserved": "Ese nombre está reservado por Crave.",
+      "invalidFormat": "Usa letras, números, puntos o guiones bajos.",
+      "tooShort": "El nombre de usuario necesita al menos 3 caracteres.",
+      "tooLong": "El nombre de usuario puede tener hasta 20 caracteres.",
+      "blockedWord": "Evita nombres que parezcan cuentas oficiales.",
+      "profanity": "Ese nombre se marcó; prueba con otro.",
+      "cooldown": "Solo puedes cambiar tu nombre de usuario cada 30 días.",
+      "fallback": "Elige otro nombre de usuario."
+    },
+    "budgetRanges": {
+      "under20": "Menos de $20 c/u",
+      "20to40": "De $20 a $40 c/u",
+      "40to70": "De $40 a $70 c/u",
+      "70plus": "Más de $70 c/u",
+      "eachSuffix": "{amount} c/u"
+    },
+    "graph": {
+      "frequency": {
+        "rarely": "1 o 2 veces por semana",
+        "weekly": "3 o 4 veces por semana",
+        "often": "5 o 6 veces por semana",
+        "daily": "todos los días",
+        "fallback": "seguido",
+        "current": "actual"
+      },
+      "budget": {
+        "under20": "menos de $20",
+        "20to40": "de $20 a $40",
+        "40to70": "de $40 a $70",
+        "70plus": "más de $70",
+        "fallback": "lo que sueles gastar"
+      },
+      "calendar": {
+        "title": "Tu mes",
+        "withoutCrave": "Sin Crave",
+        "withCrave": "Con Crave",
+        "withoutCraveStat": "1 de cada 3 comidas falla",
+        "withCraveStat": "11 de cada 12 comidas le atinan",
+        "callout": "Comiendo fuera {frequency} y gastando {budget} por comida, vas a redirigir ~{savings} al mes hacia comidas que de verdad valen tu tiempo y tu dinero."
+      },
+      "timeSaved": {
+        "label": "Encontrar buena comida",
+        "withoutCrave": "Sin Crave:",
+        "withCrave": "Con Crave:",
+        "highEffort": "Mucho esfuerzo",
+        "lowEffort": "Poco esfuerzo",
+        "callout": "4 veces menos tiempo y esfuerzo. Comiendo fuera {count, plural, one {# vez} other {# veces}} al mes, son {savings} al mes que dejas de tirar en comidas decepcionantes."
+      },
+      "regret": {
+        "label": "Comidas de las que te arrepientes",
+        "body": "Con tu ritmo de {frequency} ({mealRange}) a {perMeal}, estás destinando {spendRange} al mes a comer fuera.",
+        "monthlyDetail": "~ {amount} cada mes en comida.",
+        "missingIntel": "Sin información ({rate}):",
+        "usingCrave": "Con Crave ({rate}):",
+        "wasted": "{amount} al mes desperdiciados",
+        "callout": "Crave mantiene en juego cerca de {amount} de ese presupuesto cada mes.",
+        "mealsPerMonthRange": "{min} a {max} comidas al mes",
+        "mealsPerMonth": "{count, plural, one {# comida al mes} other {# comidas al mes}}",
+        "spendRange": "{min} a {max}",
+        "spendMinimum": "{min} o más"
+      },
+      "discovery": {
+        "label": "Tiempo para encontrar 10 lugares que te encanten",
+        "trialAndError": "Prueba y error:",
+        "friendRecs": "Recomendaciones de amigos:",
+        "crave": "Crave:",
+        "sixMonths": "6 meses",
+        "threeMonths": "3 meses",
+        "twoWeeks": "2 semanas"
+      }
+    },
+    "notification": {
+      "usesReviewSites": "Nos dijiste que te guías por calificaciones y reseñas. Mejor te avisamos cuando los rankings de verdad se muevan.",
+      "noSelection": "Te mantenemos al tanto de lo que vale la pena probar.",
+      "whatYouGet": "Esto te llevas:",
+      "howOften": "Cada cuándo:",
+      "recommended": "RECOMENDADO"
+    }
+  }
+}

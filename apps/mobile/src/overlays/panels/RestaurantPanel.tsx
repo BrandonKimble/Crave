@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Dimensions,
   Linking,
@@ -96,15 +97,18 @@ const approximateDistanceMeters = (
   const dy = (first.lat - second.lat) * APPROX_METERS_PER_LAT_DEGREE;
   return Math.sqrt(dx * dx + dy * dy);
 };
-const DAY_LABELS: Array<{ key: string; label: string }> = [
-  { key: 'sunday', label: 'Sun' },
-  { key: 'monday', label: 'Mon' },
-  { key: 'tuesday', label: 'Tue' },
-  { key: 'wednesday', label: 'Wed' },
-  { key: 'thursday', label: 'Thu' },
-  { key: 'friday', label: 'Fri' },
-  { key: 'saturday', label: 'Sat' },
-];
+// The schedule's day keys, in display order. The KEY is the API's day name and
+// the only stable thing here — the short day NAME is a translation
+// (`restaurant.days.*`), resolved at render, never a literal in this table.
+const DAY_KEYS = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
 
 // The header (title / heart-share-close actions / grab press) no longer rides this spec — it is
 // extracted to the persistent-header descriptor below (P3), fed by the restaurant-header
@@ -126,6 +130,12 @@ export const useRestaurantPanelSpec = ({
     () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
     [headerHeight, insets.top, navBarOffset, searchBarTop]
   );
+  // NOTE (CLAUDE.md: effects do not commit in these scene body-spec hooks):
+  // `useTranslation` is safe here because everything it gives us is RENDER-TIME.
+  // Its effect only exists to re-render on a runtime language change, and the
+  // one supported language switch (i18n's setLocale) is a profile action that
+  // reloads — so nothing is lost by that effect never firing.
+  const { t } = useTranslation();
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
   // Collapsed-tail expander state (render-time keyed by restaurantId — the useEffect reset
   // pattern is dead code in these spec hooks, CLAUDE.md).
@@ -185,15 +195,23 @@ export const useRestaurantPanelSpec = ({
     if (mentions <= 0 && votes <= 0) {
       return null;
     }
+    // i18n (plans/multilingual.md M7): this used to be an English sentence
+    // assembled in code — `n + ' ' + (n === 1 ? 'mention' : 'mentions')` and a
+    // hardcoded ' · ' — which bakes in TWO assumptions no other language is
+    // obliged to share: that plurality is a two-way choice, and that the count
+    // precedes its noun. Both now live inside ICU messages, where a translator
+    // can change either without touching this file.
     const parts: string[] = [];
     if (mentions > 0) {
-      parts.push(`${mentions} ${mentions === 1 ? 'mention' : 'mentions'}`);
+      parts.push(t('restaurant.metrics.mentions', { count: mentions }));
     }
     if (votes > 0) {
-      parts.push(`${votes} ${votes === 1 ? 'vote' : 'votes'}`);
+      parts.push(t('restaurant.metrics.votes', { count: votes }));
     }
-    return `Based on ${parts.join(' · ')}`;
-  }, [restaurant]);
+    return t('restaurant.metrics.basedOn', {
+      evidence: parts.join(t('restaurant.metaSeparator')),
+    });
+  }, [restaurant, t]);
   const locationCandidates = React.useMemo<RestaurantPanelLocation[]>(() => {
     if (!restaurant) {
       return [];
@@ -290,18 +308,25 @@ export const useRestaurantPanelSpec = ({
   const primaryPhone =
     restaurant?.displayLocation?.phoneNumber ?? sortedLocations[0]?.phoneNumber ?? null;
 
-  const formatOperatingStatus = React.useCallback((status?: OperatingStatus | null) => {
-    if (!status) {
+  const formatOperatingStatus = React.useCallback(
+    (status?: OperatingStatus | null) => {
+      if (!status) {
+        return null;
+      }
+      if (status.isOpen) {
+        return status.closesAtDisplay
+          ? t('restaurant.status.openUntil', { time: status.closesAtDisplay })
+          : t('restaurant.status.open');
+      }
+      if (status.isOpen === false) {
+        return status.nextOpenDisplay
+          ? t('restaurant.status.closedUntil', { time: status.nextOpenDisplay })
+          : t('restaurant.status.closed');
+      }
       return null;
-    }
-    if (status.isOpen) {
-      return status.closesAtDisplay ? `Open until ${status.closesAtDisplay}` : 'Open';
-    }
-    if (status.isOpen === false) {
-      return status.nextOpenDisplay ? `Closed until ${status.nextOpenDisplay}` : 'Closed';
-    }
-    return null;
-  }, []);
+    },
+    [t]
+  );
 
   const toggleLocationExpanded = React.useCallback((locationId: string) => {
     setExpandedLocations((prev) => ({
@@ -323,21 +348,24 @@ export const useRestaurantPanelSpec = ({
 
   const formatHoursRows = React.useCallback(
     (hours?: Record<string, unknown> | null) =>
-      DAY_LABELS.map((day) => {
-        const value = formatHoursValue(hours?.[day.key]);
-        return value ? { label: day.label, value } : null;
+      DAY_KEYS.map((dayKey) => {
+        const value = formatHoursValue(hours?.[dayKey]);
+        return value ? { label: t(`restaurant.days.${dayKey}`), value } : null;
       }).filter((entry): entry is { label: string; value: string } => Boolean(entry)),
-    [formatHoursValue]
+    [formatHoursValue, t]
   );
 
-  const resolveLocationLabel = React.useCallback((address?: string | null) => {
-    if (!address) {
-      return 'Location';
-    }
-    const [street] = address.split(',');
-    const trimmed = street?.trim();
-    return trimmed || 'Location';
-  }, []);
+  const resolveLocationLabel = React.useCallback(
+    (address?: string | null) => {
+      if (!address) {
+        return t('restaurant.locations.fallbackLabel');
+      }
+      const [street] = address.split(',');
+      const trimmed = street?.trim();
+      return trimmed || t('restaurant.locations.fallbackLabel');
+    },
+    [t]
+  );
 
   const handleWebsitePress = React.useCallback(() => {
     if (sharedWebsiteUrl) {
@@ -389,8 +417,7 @@ export const useRestaurantPanelSpec = ({
   // The server caps the locations ARRAY (~30 nearest) but the COUNT stays global —
   // prefer locationCount for the label when present.
   const totalLocationCount = restaurant?.locationCount ?? locationCandidates.length;
-  const locationsLabel =
-    totalLocationCount === 1 ? '1 location' : `${totalLocationCount} locations`;
+  const locationsLabel = t('restaurant.locations.count', { count: totalLocationCount });
 
   // connectionId → { name, rank } for the Photos view's ranked dish slices.
   const dishByConnectionId = React.useMemo(() => {
@@ -420,7 +447,7 @@ export const useRestaurantPanelSpec = ({
         <RestaurantSavedNote restaurantId={restaurant.restaurantId} />
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Crave rating</Text>
+            <Text style={styles.metricLabel}>{t('restaurant.metrics.craveRating')}</Text>
             <CraveScoreText score={restaurant.craveScore} style={styles.metricValue} />
             {scoreEvidence ? <Text style={styles.scoreEvidence}>{scoreEvidence}</Text> : null}
           </View>
@@ -428,7 +455,7 @@ export const useRestaurantPanelSpec = ({
         {/* Google-style compact meta line: "Brunch restaurant · $10–20" (revamp). */}
         {categoryLabel || priceLabel ? (
           <Text style={styles.metaLine}>
-            {[categoryLabel, priceLabel].filter(Boolean).join(' · ')}
+            {[categoryLabel, priceLabel].filter(Boolean).join(t('restaurant.metaSeparator'))}
           </Text>
         ) : null}
         {/* Hours: the Google-style live status + expandable weekly schedule (revamp).
@@ -446,21 +473,21 @@ export const useRestaurantPanelSpec = ({
             style={styles.actionPill}
             onPress={handleDirectionsPress}
             accessibilityRole="button"
-            accessibilityLabel="Directions"
+            accessibilityLabel={t('restaurant.actions.directions')}
             testID="restaurant-directions"
           >
             <Feather name="navigation" size={16} color="#0f172a" />
-            <Text style={styles.actionPillText}>Directions</Text>
+            <Text style={styles.actionPillText}>{t('restaurant.actions.directions')}</Text>
           </Pressable>
           {sharedWebsiteUrl ? (
             <Pressable style={styles.actionPill} onPress={handleWebsitePress}>
               <Feather name="globe" size={16} color="#0f172a" />
-              <Text style={styles.actionPillText}>Website</Text>
+              <Text style={styles.actionPillText}>{t('restaurant.actions.website')}</Text>
             </Pressable>
           ) : null}
           <Pressable style={styles.actionPill} onPress={handleCallPress}>
             <Feather name="phone" size={16} color="#0f172a" />
-            <Text style={styles.actionPillText}>Call</Text>
+            <Text style={styles.actionPillText}>{t('restaurant.actions.call')}</Text>
           </Pressable>
           {/* W2 (page-registry §7.4): the restaurant-profile add-photo entry. Plain-function
               funnel entry (this is a spec hook — effects/hooks-with-effects are off the
@@ -474,17 +501,17 @@ export const useRestaurantPanelSpec = ({
               })
             }
             accessibilityRole="button"
-            accessibilityLabel="Add photo"
+            accessibilityLabel={t('restaurant.actions.addPhoto')}
             testID="restaurant-add-photo"
           >
             <Feather name="camera" size={16} color="#0f172a" />
-            <Text style={styles.actionPillText}>Add photo</Text>
+            <Text style={styles.actionPillText}>{t('restaurant.actions.addPhoto')}</Text>
           </Pressable>
         </ScrollView>
         {sortedLocations.length > 0 ? (
           <View style={styles.locationsSection}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Locations</Text>
+              <Text style={styles.sectionTitle}>{t('restaurant.locations.title')}</Text>
               <Text style={styles.sectionSubtitle}>{locationsLabel}</Text>
             </View>
             {visibleLocations.map((location, index) => {
@@ -518,21 +545,27 @@ export const useRestaurantPanelSpec = ({
                   </Pressable>
                   {isExpanded ? (
                     <View style={styles.locationDetails}>
-                      <Text style={styles.locationDetailLabel}>Address</Text>
+                      <Text style={styles.locationDetailLabel}>
+                        {t('restaurant.locations.addressLabel')}
+                      </Text>
                       <Text style={styles.locationDetailValue}>
-                        {location.address ?? 'Address unavailable'}
+                        {location.address ?? t('restaurant.locations.addressUnavailable')}
                       </Text>
                       {locationPhone ? (
                         <Pressable
                           style={styles.locationDetailRow}
                           onPress={() => void Linking.openURL(`tel:${locationPhone}`)}
                         >
-                          <Text style={styles.locationDetailLabel}>Phone</Text>
+                          <Text style={styles.locationDetailLabel}>
+                            {t('restaurant.locations.phoneLabel')}
+                          </Text>
                           <Text style={styles.locationDetailLink}>{locationPhone}</Text>
                         </Pressable>
                       ) : null}
                       <View style={styles.locationDetailRow}>
-                        <Text style={styles.locationDetailLabel}>Hours</Text>
+                        <Text style={styles.locationDetailLabel}>
+                          {t('restaurant.locations.hoursLabel')}
+                        </Text>
                         {hoursRows.length ? (
                           <View style={styles.locationHoursList}>
                             {hoursRows.map((entry) => (
@@ -543,7 +576,9 @@ export const useRestaurantPanelSpec = ({
                             ))}
                           </View>
                         ) : (
-                          <Text style={styles.locationDetailValue}>Hours unavailable</Text>
+                          <Text style={styles.locationDetailValue}>
+                            {t('restaurant.locations.hoursUnavailable')}
+                          </Text>
                         )}
                       </View>
                       {shouldShowPerLocationWebsite && locationWebsite ? (
@@ -551,7 +586,9 @@ export const useRestaurantPanelSpec = ({
                           style={styles.locationDetailRow}
                           onPress={() => void Linking.openURL(locationWebsite)}
                         >
-                          <Text style={styles.locationDetailLabel}>Website</Text>
+                          <Text style={styles.locationDetailLabel}>
+                            {t('restaurant.locations.websiteLabel')}
+                          </Text>
                           <Text style={styles.locationDetailLink} numberOfLines={1}>
                             {locationWebsite.replace(/^https?:\/\//, '')}
                           </Text>
@@ -567,14 +604,13 @@ export const useRestaurantPanelSpec = ({
                 style={[styles.locationCard, styles.locationsTailExpander]}
                 onPress={expandLocationsTail}
                 accessibilityRole="button"
-                accessibilityLabel={`Show ${collapsedLocationCount} more ${
-                  collapsedLocationCount === 1 ? 'location' : 'locations'
-                }`}
+                accessibilityLabel={t('restaurant.locations.showMore', {
+                  count: collapsedLocationCount,
+                })}
                 testID="restaurant-locations-expander"
               >
                 <Text style={styles.locationsTailExpanderText}>
-                  {collapsedLocationCount} more{' '}
-                  {collapsedLocationCount === 1 ? 'location' : 'locations'}
+                  {t('restaurant.locations.showMore', { count: collapsedLocationCount })}
                 </Text>
                 <Feather name="chevron-down" size={16} color={themeColors.textBody} />
               </Pressable>
@@ -589,8 +625,8 @@ export const useRestaurantPanelSpec = ({
           onSeeAllDiscussions={() => setActiveView('discussions')}
         />
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Top dishes</Text>
-          <Text style={styles.sectionSubtitle}>Ranked by dish rating</Text>
+          <Text style={styles.sectionTitle}>{t('restaurant.dishes.topDishes')}</Text>
+          <Text style={styles.sectionSubtitle}>{t('restaurant.dishes.rankedByRating')}</Text>
         </View>
       </View>
     );
@@ -619,6 +655,7 @@ export const useRestaurantPanelSpec = ({
     setActiveView,
     sharedWebsiteUrl,
     shouldShowPerLocationWebsite,
+    t,
     toggleLocationExpanded,
     viewSwitcher,
   ]);
@@ -635,12 +672,12 @@ export const useRestaurantPanelSpec = ({
       <View>
         {viewSwitcher}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Menu highlights</Text>
-          <Text style={styles.sectionSubtitle}>Ranked by dish rating</Text>
+          <Text style={styles.sectionTitle}>{t('restaurant.dishes.menuHighlights')}</Text>
+          <Text style={styles.sectionSubtitle}>{t('restaurant.dishes.rankedByRating')}</Text>
         </View>
       </View>
     );
-  }, [isLoading, restaurant, viewSwitcher]);
+  }, [isLoading, restaurant, t, viewSwitcher]);
 
   const photosViewHeaderComponent = React.useMemo(() => {
     if (!restaurant || isLoading) {
@@ -681,11 +718,13 @@ export const useRestaurantPanelSpec = ({
         accessibilityRole="button"
         testID="restaurant-see-all-dishes"
       >
-        <Text style={styles.seeAllDishesText}>See all {dishes.length} dishes</Text>
+        <Text style={styles.seeAllDishesText}>
+          {t('restaurant.dishes.seeAll', { count: dishes.length })}
+        </Text>
         <Feather name="chevron-right" size={16} color={themeColors.textBody} />
       </Pressable>
     );
-  }, [dishes.length, isLoading, restaurant, setActiveView]);
+  }, [dishes.length, isLoading, restaurant, setActiveView, t]);
 
   const activeViewParts = React.useMemo(() => {
     switch (activeView) {
@@ -739,18 +778,18 @@ export const useRestaurantPanelSpec = ({
           <View style={{ flex: 1 }}>
             <Text style={styles.dishName}>{item.foodName}</Text>
             <Text style={styles.dishMeta}>
-              Dish rating:{' '}
+              {t('restaurant.dishes.ratingLabel')}
               <CraveScoreText score={item.craveScore} style={styles.dishMetaScoreValue} />
             </Text>
           </View>
         </View>
         <View style={styles.dishStatsRow}>
           <View style={styles.dishStat}>
-            <Text style={styles.dishStatLabel}>Poll count</Text>
+            <Text style={styles.dishStatLabel}>{t('restaurant.dishes.pollCount')}</Text>
             <Text style={styles.dishStatValue}>{item.mentionCount}</Text>
           </View>
           <View style={styles.dishStat}>
-            <Text style={styles.dishStatLabel}>Total votes</Text>
+            <Text style={styles.dishStatLabel}>{t('restaurant.dishes.totalVotes')}</Text>
             <Text style={styles.dishStatValue}>{item.totalUpvotes}</Text>
           </View>
         </View>
@@ -765,7 +804,7 @@ export const useRestaurantPanelSpec = ({
         </View>
       </View>
     ),
-    []
+    [t]
   );
 
   const keyExtractor = React.useCallback((item: FoodResult) => item.connectionId, []);
@@ -789,10 +828,10 @@ export const useRestaurantPanelSpec = ({
     }
     return (
       <View style={styles.emptyState}>
-        <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
+        <Text style={styles.emptyStateText}>{t('restaurant.dishes.empty')}</Text>
       </View>
     );
-  }, [activeViewParts.showsDishEmptyState, emptyAreaMinHeight, isLoading]);
+  }, [activeViewParts.showsDishEmptyState, emptyAreaMinHeight, isLoading, t]);
 
   // Seed-frame skeleton (used by the `!data` hard-swap seed spec): always paints the dish
   // skeleton over the empty list so the first frame is structure, not a blank or empty-state text.
@@ -905,6 +944,7 @@ RestaurantPersistentHeaderTitle.displayName = 'RestaurantPersistentHeaderTitle';
 // (the §3.5 seam — they fade in synchronized with the plus→X rotation, starting on press-up).
 const RestaurantPersistentHeaderExtras = React.memo(
   ({ transitionProgress }: PersistentHeaderExtrasProps) => {
+    const { t } = useTranslation();
     const headerState = useRestaurantHeaderLiveState();
     const data = headerState?.data ?? null;
     const restaurant = data?.restaurant ?? null;
@@ -952,7 +992,9 @@ const RestaurantPersistentHeaderExtras = React.memo(
         <Pressable
           onPress={handleToggleFavorite}
           style={styles.headerIconButton}
-          accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
+          accessibilityLabel={
+            isFavorite ? t('restaurant.header.unsave') : t('restaurant.header.save')
+          }
         >
           <Feather
             name="heart"
@@ -961,7 +1003,11 @@ const RestaurantPersistentHeaderExtras = React.memo(
             {...(isFavorite ? { fill: '#ef4444' } : {})}
           />
         </Pressable>
-        <Pressable onPress={handleShare} style={styles.headerIconButton} accessibilityLabel="Share">
+        <Pressable
+          onPress={handleShare}
+          style={styles.headerIconButton}
+          accessibilityLabel={t('restaurant.header.share')}
+        >
           <Feather name="share-2" size={18} color="#1f2937" />
         </Pressable>
       </Animated.View>

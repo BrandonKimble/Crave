@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   View,
@@ -99,6 +100,7 @@ const SearchOverlayHeaderChrome = ({
   handleSearchThisAreaButtonLayout,
   handleSearchThisArea,
 }: SearchOverlayHeaderChromeProps) => {
+  const { t } = useTranslation();
   const searchThisAreaScalarSurfaceRef =
     useSearchChromeScalarSurfaceMeasuredControlRef('search_this_area');
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
@@ -168,7 +170,7 @@ const SearchOverlayHeaderChrome = ({
           displayValue={headerVisualModel.displayQuery}
           // Refit layer 2 zero-state (plans/suggest-ideal-shape.md): the
           // placeholder NAMES the accepted intents. K1 feel copy.
-          placeholder="What are you craving?"
+          placeholder={t('search.placeholder')}
           loading={shouldShowAutocompleteSpinnerInBar}
           onChangeText={handleQueryChange}
           onSubmit={handleSubmit}
