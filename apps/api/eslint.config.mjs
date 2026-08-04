@@ -137,6 +137,9 @@ export default tseslint.config(
       'src/modules/identity/auth/clerk-auth.service.ts',
       // Owns the one boolean vocabulary, so it is where the literals live.
       'src/shared/config/env-flag.ts',
+      // Owns the only legal write to enrichmentFailureCount, so its own type
+      // annotation names the field.
+      'src/modules/restaurant-enrichment/enrichment-failure-counter.ts',
     ],
     rules: {
       // FIVE SELECTORS, BECAUSE THE FIRST ONE HAD FOUR HOLES.
@@ -180,6 +183,24 @@ export default tseslint.config(
             'BinaryExpression[operator=/^[!=]==$/] > Literal[value=/^(true|false|TRUE|FALSE)$/]',
           message:
             "Comparing against the STRING 'true'/'false' is a hand-rolled flag dialect — the failure mode is a plausible value (yes, TRUE, on) reading the wrong way, silently. Use isEnvFlagEnabled / isEnvFlagExplicitlyDisabled from shared/config/env-flag.",
+        },
+        {
+          // A COUNTER THAT CAN ONLY COUNT. Its predecessor was ASSIGNED the
+          // number of Google candidates, so the restaurants with the MOST
+          // evidence got archived, and the error path wrote nothing at all and
+          // re-enriched those placeholders weekly at real Places spend. Prisma's
+          // update type accepts a bare `number`, so the increment form is a
+          // convention the type system permits breaking — this refuses it.
+          // `{ increment: 1 }` is an ObjectExpression and passes; a Prisma
+          // `select: { enrichmentFailureCount: true }` is a boolean and passes.
+          // SCOPED TO THE VALUE, NOT A CHILD. `Property > Identifier` matches
+          // the KEY as well, so the first attempt flagged every Prisma
+          // `select: { enrichmentFailureCount: true }` — caught by testing the
+          // legitimate case, which is as important as testing the defect.
+          selector:
+            "Property[key.name='enrichmentFailureCount'][value.type=/^(Identifier|BinaryExpression|CallExpression|MemberExpression|ConditionalExpression)$/], Property[key.name='enrichmentFailureCount'][value.type='Literal'][value.raw=/^[0-9]/]",
+          message:
+            'enrichmentFailureCount may only be INCREMENTED, never assigned — an assigned value is how the candidate-count blob archived the best-evidenced restaurants. Use countEnrichmentFailure() from restaurant-enrichment/enrichment-failure-counter.',
         },
         {
           selector:

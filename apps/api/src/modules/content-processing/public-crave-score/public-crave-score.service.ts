@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { notABallotDocumentSql } from '../../polls/supply/ballot-document-marker';
 import { randomUUID } from 'crypto';
 import { activeRestaurantEventsSourceSql } from '../reddit-collector/extraction-scope.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -600,8 +601,9 @@ export class PublicCraveScoreService {
           -- Per-voter ballot documents (round-3 red team C2) are claim
           -- carriers, not room activity: one poll must contribute ONE doc
           -- to A(τ), not voters+1, or the poll room's calibration silently
-          -- re-weights by turnout.
-          AND COALESCE(NOT (sd.raw_payload ? 'voterUserId'), true)
+          -- re-weights by turnout. The predicate and the key it tests are
+          -- one fact, owned by polls/supply/ballot-document-marker.
+          AND ${notABallotDocumentSql('sd')}
           AND NOT EXISTS (
             SELECT 1 FROM collection_relevance_verdicts v
             WHERE v.platform = sd.platform

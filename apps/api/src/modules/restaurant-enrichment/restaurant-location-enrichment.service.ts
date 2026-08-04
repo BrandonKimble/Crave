@@ -1,3 +1,4 @@
+import { countEnrichmentFailure } from './enrichment-failure-counter';
 import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -3957,7 +3958,7 @@ export class RestaurantLocationEnrichmentService {
           // metadata.lastEnrichmentAttempt.count, whose only writer set it to
           // the number of Google CANDIDATES — so the restaurants with the most
           // evidence got archived. See the migration for the full account.
-          enrichmentFailureCount: { increment: 1 },
+          ...countEnrichmentFailure(),
           lastUpdated: new Date(),
         },
       });
@@ -4002,7 +4003,7 @@ export class RestaurantLocationEnrichmentService {
           restaurantMetadata: mergedMetadata,
           // The `error` path wrote NO count at all, so these placeholders sat
           // at 0 forever and were re-enriched every week at real Places spend.
-          enrichmentFailureCount: { increment: 1 },
+          ...countEnrichmentFailure(),
           lastUpdated: new Date(),
         },
       });

@@ -15,6 +15,7 @@
  * Idempotent: the document is unique per poll; a run that already carries
  * events is never re-minted (retry-safe against crashes mid-mint).
  */
+import { BALLOT_VOTER_MARKER } from './ballot-document-marker';
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import {
@@ -223,7 +224,9 @@ export class PollBallotMentionService {
             sourceCreatedAt: poll.launchedAt ?? poll.createdAt,
             rawPayload: {
               pollId,
-              voterUserId: choice.userId,
+              // The key is imported, not typed: the scorer excludes documents
+              // carrying it, and one spelling means the two cannot drift.
+              [BALLOT_VOTER_MARKER]: choice.userId,
               sourceId: source.sourceId,
               mapping: BALLOT_PROMPT_HASH,
             } as Prisma.InputJsonValue,
