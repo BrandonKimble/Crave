@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { DEMAND_KERNEL_HORIZON_DAYS } from '../polls/supply/poll-supply.constants';
 
 /**
  * PROMOTION INTO THE ANONYMOUS DEMAND TABLE.
@@ -80,17 +81,27 @@ export class DemandAnonymizationService {
           `
           INSERT INTO signal_demand_anonymous (
             day, place_id, kind, subject_type, subject_id, subject_text,
-            distinct_actors, act_count
+            distinct_actors, act_count, demand_mass
           )
           SELECT day, place_id, kind, subject_type, subject_id, subject_text,
-                 distinct_actors, act_count
+                 distinct_actors, act_count, demand_mass
           FROM (
             SELECT d.day, d.place_id, d.kind, d.subject_type, d.subject_id,
                    d.subject_text,
                    count(DISTINCT d.actor_id)::int AS distinct_actors,
-                   sum(d.signal_count)::bigint     AS act_count
-            FROM signal_demand_daily d
-            WHERE d.day = $1::date
+                   sum(d.per_actor_acts)::bigint   AS act_count,
+                   -- PER-ACTOR sub-linear weighting, computed here because the
+                   -- actor dimension does not survive this statement.
+                   sum(ln(1 + d.per_actor_acts) / ln(2))::float8 AS demand_mass
+            FROM (
+              SELECT day, place_id, kind, subject_type, subject_id,
+                     subject_text, actor_id,
+                     sum(signal_count) AS per_actor_acts
+              FROM signal_demand_daily
+              WHERE day = $1::date
+              GROUP BY day, place_id, kind, subject_type, subject_id,
+                       subject_text, actor_id
+            ) d
             GROUP BY d.day, d.place_id, d.kind, d.subject_type, d.subject_id,
                      d.subject_text
           ) g
@@ -122,32 +133,46 @@ export class DemandAnonymizationService {
           `
           INSERT INTO signal_demand_anonymous (
             day, place_id, kind, subject_type, subject_id, subject_text,
-            distinct_actors, act_count
+            distinct_actors, act_count, demand_mass
           )
-          SELECT d.day, d.place_id, d.kind, d.subject_type, NULL, NULL,
-                 count(DISTINCT d.actor_id)::int,
-                 sum(d.signal_count)::bigint
-          FROM signal_demand_daily d
-          WHERE d.day = $1::date
-            AND d.subject_id IS NULL
-            AND d.subject_text IS NOT NULL
-            AND (d.place_id, d.kind, d.subject_type, d.subject_text) IN (
-              SELECT g.place_id, g.kind, g.subject_type, g.subject_text
-              FROM (
-                SELECT place_id, kind, subject_type, subject_text,
-                       count(DISTINCT actor_id) AS n
-                FROM signal_demand_daily
-                WHERE day = $1::date AND subject_id IS NULL
-                  AND subject_text IS NOT NULL
-                GROUP BY place_id, kind, subject_type, subject_text
-              ) g
-              WHERE g.n < $2
-            )
-          GROUP BY d.day, d.place_id, d.kind, d.subject_type
+          -- One bucket per (day, place, kind, subject_type). The words are
+          -- discarded; the demand they represent is not. Counted from the
+          -- PER-ACTOR grain so someone who typed several rare things is one
+          -- person here, not several — and so demand_mass keeps the same
+          -- sub-linear weighting the above-floor rows use.
+          SELECT a.day, a.place_id, a.kind, a.subject_type, NULL, NULL,
+                 count(DISTINCT a.actor_id)::int,
+                 sum(a.per_actor_acts)::bigint,
+                 sum(ln(1 + a.per_actor_acts) / ln(2))::float8
+          FROM (
+            SELECT day, place_id, kind, subject_type, subject_text, actor_id,
+                   sum(signal_count) AS per_actor_acts
+            FROM signal_demand_daily
+            WHERE day = $1::date
+              AND subject_id IS NULL
+              AND subject_text IS NOT NULL
+            GROUP BY day, place_id, kind, subject_type, subject_text, actor_id
+          ) a
+          -- Only the terms that fell below the floor.
+          JOIN (
+            SELECT place_id, kind, subject_type, subject_text
+            FROM signal_demand_daily
+            WHERE day = $1::date
+              AND subject_id IS NULL
+              AND subject_text IS NOT NULL
+            GROUP BY place_id, kind, subject_type, subject_text
+            HAVING count(DISTINCT actor_id) < $2
+          ) lo
+            ON lo.kind = a.kind
+           AND lo.subject_type = a.subject_type
+           AND lo.subject_text = a.subject_text
+           AND lo.place_id IS NOT DISTINCT FROM a.place_id
+          GROUP BY a.day, a.place_id, a.kind, a.subject_type
           `,
           dayKey,
           DemandAnonymizationService.TEXT_K_FLOOR,
         );
+
         const inserted = Number(above) + Number(below);
 
         const suppressedRows = await tx.$queryRawUnsafe<Array<{ n: bigint }>>(
@@ -169,6 +194,64 @@ export class DemandAnonymizationService {
   }
 
   /**
+   * PLACE DEMAND SNAPSHOT over the fixed kernel horizon.
+   *
+   * Separate from promoteDay because it is a different SHAPE, not a different
+   * schedule: `demand-mass.reader` collapses all of an actor's acts for a
+   * place across the WHOLE window before the sub-linear ln weighting, and
+   * that number cannot be rebuilt by summing finer-grained rows (ln is
+   * concave — slicing inflates it; measured max error 41.26 by day, 102.35 by
+   * subject). So it is computed once, at the window, with the actor still
+   * present, and stored without one.
+   *
+   * Legitimate as a snapshot only because the horizon is a DERIVED constant
+   * (RECENCY_FLAT_DAYS + 10 half-lives), not a caller parameter. If a caller
+   * ever needs a different window, this must become per-window rows rather
+   * than silently answering the wrong question.
+   */
+  async refreshPlaceDemandSnapshot(
+    windowDays: number,
+  ): Promise<{ places: number }> {
+    const rows = await this.prisma.$executeRawUnsafe(
+      `
+      WITH per_actor AS (
+        SELECT place_id, actor_id, sum(signal_count) AS acts
+        FROM signal_demand_daily
+        WHERE place_id IS NOT NULL
+          AND day >= (CURRENT_DATE - ($1::int))
+        GROUP BY place_id, actor_id
+      ),
+      rolled AS (
+        SELECT place_id,
+               count(DISTINCT actor_id)::int         AS distinct_actors,
+               sum(acts)::bigint                     AS act_count,
+               sum(ln(1 + acts) / ln(2))::float8     AS demand_mass
+        FROM per_actor
+        GROUP BY place_id
+      )
+      INSERT INTO signal_place_demand_anonymous (
+        place_id, window_days, distinct_actors, act_count, demand_mass,
+        computed_at
+      )
+      SELECT place_id, $1::int, distinct_actors, act_count, demand_mass, now()
+      FROM rolled
+      ON CONFLICT (place_id) DO UPDATE SET
+        window_days     = EXCLUDED.window_days,
+        distinct_actors = EXCLUDED.distinct_actors,
+        act_count       = EXCLUDED.act_count,
+        demand_mass     = EXCLUDED.demand_mass,
+        computed_at     = EXCLUDED.computed_at
+      `,
+      windowDays,
+    );
+    this.logger.info('Place demand snapshot refreshed', {
+      places: rows,
+      windowDays,
+    });
+    return { places: Number(rows) };
+  }
+
+  /**
    * Nightly: promote yesterday, and re-promote the day before in case late
    * acts landed. Cheap (two days), and it keeps the anonymous table the
    * durable record while the raw ledger becomes the short-lived one.
@@ -179,5 +262,9 @@ export class DemandAnonymizationService {
     for (const offset of [1, 2]) {
       await this.promoteDay(new Date(now - offset * 86_400_000));
     }
+    // The place snapshot is a WINDOW, so it is recomputed whole rather than
+    // rolled forward — see refreshPlaceDemandSnapshot for why summing days
+    // would be the wrong number.
+    await this.refreshPlaceDemandSnapshot(DEMAND_KERNEL_HORIZON_DAYS);
   }
 }
