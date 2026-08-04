@@ -134,6 +134,15 @@ export const GEMINI_CALLER_PROFILES: Record<string, GeminiCallerProfile> = {
     context: 'query',
     maxOutputTokens: MODEL_MAX_OUTPUT,
   },
+  // ---- multilingual: the SPINE label seeder (M2, scripts/seed-spine-labels)
+  // Flash-Lite tier on purpose: ~75 single-word terms, three samples, five
+  // calls total. The expensive part of label quality is the CONSENSUS rule,
+  // not the model size.
+  'labels.seed_spine': {
+    model: FLASH_LITE,
+    context: 'query',
+    maxOutputTokens: MODEL_MAX_OUTPUT,
+  },
   'photos.is_food': {
     // gemini-2.5 tier: no thinking control exists (and no HIGH default to
     // guard against); a yes/no on a thumbnail needs no more model than this.

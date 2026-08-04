@@ -36,7 +36,17 @@
   "exclude": [
     "dist/**/*",
     "node_modules/**/*",
-    "../../scripts/**/*"
+    "../../scripts/**/*",
+    // (2026-08-04, F1657) packages/shared's OWN test files. The api pulls that
+    // package in by SOURCE (the `paths` mapping above), so without this it would
+    // also compile the shared suite — which imports with explicit `.ts` specifiers
+    // because its runner is node's type-stripping test runner, and that needs
+    // `allowImportingTsExtensions`, which is incompatible with an emitting project
+    // like this one. Narrow on purpose: `*.test.ts` under packages/shared ONLY.
+    // Everything else in that package is still type-checked here, which is the
+    // point of the mapping. The suite is type-checked by its own package
+    // (`yarn workspace @crave-search/shared build:types`).
+    "../../packages/shared/src/**/*.test.ts"
     // (2026-08-03, F1255) The `scripts/search-harness/rt-*.ts` exclusion is
     // GONE. It read "throwaway by convention", but a throwaway that READS and
     // a throwaway that WRITES are not the same object, and this glob flattened

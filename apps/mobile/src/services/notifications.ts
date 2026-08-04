@@ -1,4 +1,5 @@
 import api from './api';
+import type { AuthorIdentity } from './author-identity';
 
 export interface RegisterDeviceRequest {
   token: string;
@@ -33,12 +34,9 @@ export const notificationsService = {
 };
 
 /** The in-app feed (the notifications page). */
-export interface NotificationFeedActor {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export type NotificationFeedActor = AuthorIdentity;
 
 export interface NotificationFeedItem {
   userNotificationId: string;

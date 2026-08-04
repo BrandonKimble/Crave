@@ -185,6 +185,13 @@ jobs:
       - name: 'Static guard: scripts/ containment lockdown'
         run: scripts/scripts-containment-gate.sh
 
+      # WIRED 2026-08-04 (F1665). audit/COVERAGE.md held 4,318 rows for 4,297
+      # distinct paths, and the duplicate rows disagreed with each other — so a
+      # reader's answer depended on which row they hit and the audit's own
+      # denominator was inflated. The 21 pairs are merged; this keeps path a key.
+      - name: 'Static guard: audit ledger path uniqueness'
+        run: scripts/audit-coverage-ledger-gate.sh
+
       # WIRED 2026-08-03 (D37/F703 + F758). Run by nothing since its creation;
       # the day it was repaired it caught a live no-fake-estimates violation
       # (`?? 0` painting unscored restaurants as the worst map tier). The

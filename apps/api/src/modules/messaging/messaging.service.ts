@@ -25,6 +25,10 @@ import {
   SendMessageDto,
   ShareFanOutDto,
 } from './dto/messaging.dto';
+import {
+  AUTHOR_SELECT,
+  publicAuthorIdentity,
+} from '../identity/public-author-identity';
 
 const DEFAULT_CONVERSATION_PAGE = 20;
 const DEFAULT_MESSAGE_PAGE = 30;
@@ -623,14 +627,11 @@ export class MessagingService {
   // -------------------------------------------------------------- internals
 
   private peerSelect() {
-    return {
-      select: {
-        userId: true,
-        username: true,
-        displayName: true,
-        avatarUrl: true,
-      },
-    } as const;
+    // AUTHOR_SELECT carries `deletedAt`, which the byline decision turns on: a
+    // conversation outlives the other party's account (the ruling keeps the
+    // recipient's copy of the thread), so the peer must be renderable as a
+    // ghost rather than as a blank.
+    return { select: AUTHOR_SELECT } as const;
   }
 
   private async requireMembership(

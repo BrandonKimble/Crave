@@ -2,6 +2,7 @@ import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/sha
 import type { AxiosRequestConfig } from 'axios';
 import api from './api';
 import { SILENT, type ApiRequestBehaviorConfig } from './api';
+import type { AuthorIdentity } from './author-identity';
 
 export interface UserStats {
   pollsCreatedCount: number;
@@ -64,12 +65,9 @@ export interface FollowEdge {
   hasBlockedMe?: boolean;
 }
 
-export interface FollowListUser {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export type FollowListUser = AuthorIdentity;
 
 /** §9b profileActions — user report reasons (server-validated enum). */
 export type UserReportReason = 'spam' | 'harassment' | 'impersonation' | 'other';
@@ -100,6 +98,18 @@ export const usersService = {
    *  by the user in iOS Settings (the confirm dialog says so). */
   async deleteMe(): Promise<{ deleted: true }> {
     const response = await api.delete<{ deleted: true }>('/users/me');
+    return response.data;
+  },
+
+  /**
+   * Undo a deletion inside the disclosed 30-day window.
+   *
+   * The ONE route a deleted account may reach — restore stopped being a side
+   * effect of any authenticated request (which let a stray background call
+   * un-delete an account nobody meant to bring back) and became a decision.
+   */
+  async restoreAccount(): Promise<{ restored: true }> {
+    const response = await api.post<{ restored: true }>('/users/me/restore');
     return response.data;
   },
   async completeOnboarding(payload: {

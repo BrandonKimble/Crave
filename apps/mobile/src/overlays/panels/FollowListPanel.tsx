@@ -12,6 +12,7 @@ import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 import { resolveUserDisplayName } from '../../utils/user-display-name';
 import { AVATAR_SIZES } from '../../constants/avatar-sizes';
+import { isInteractableAuthor } from '../../services/author-identity';
 
 // ─── followList — the REAL page body (trigger-nav pages) ────────────────────────────────────
 // Replaces the S-B drill-in practice body. Rows push userProfile — the same-key nesting loop
@@ -89,9 +90,17 @@ export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         users.map((user) => (
           <Pressable
             key={user.userId}
-            onPress={() => pushRoute('userProfile', { userId: user.userId })}
+            // A deleted account has no profile page — the API's public read
+            // filters deletedAt, so this push would land on a 404. Inert row.
+            onPress={() =>
+              isInteractableAuthor(user) &&
+              pushRoute('userProfile', { userId: user.userId as string })
+            }
+            disabled={!isInteractableAuthor(user)}
             accessibilityRole="button"
-            accessibilityLabel={`View ${resolveRowTitle(user)}`}
+            accessibilityLabel={
+              isInteractableAuthor(user) ? `View ${resolveRowTitle(user)}` : resolveRowTitle(user)
+            }
             testID={`follow-list-user-${user.userId}`}
             style={styles.row}
           >

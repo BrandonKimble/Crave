@@ -233,8 +233,16 @@ golden home (`swift test`, no sim).
   (add an ack + `read_state()` return so a no-op can't silently pass).
 - Maestro needs JDK: `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`. Old map-saga flows
   live under `maestro/perf/flows/` (mostly historical throwaway; `market-demand/` is
-  current search work; `map-accept.sh` is the best existing "outer-shell drives + asserts
-  on a probe" example).
+  current search work). **CORRECTION 2026-08-04 (F1651):** this used to recommend
+  `maestro/perf/map-accept.sh` as "the best existing outer-shell-drives-and-asserts-on-a-probe
+  example". It was inoperative and is DELETED: both flows it drove (`map-accept-drive.yaml`,
+  `map-accept-dismiss.yaml`) were never in the repo, and all four probe families it asserted on
+  (`[t4dbg]` cb97686f9, `[tclur]` 43358ef14, `[presramp]` 8f790e797, `[lbldbg]` 58d27180c) were
+  deleted long before. For the drive-and-assert shape use the perf-scenario command contracts
+  instead — `apps/mobile/src/perf/perf-scenario-command-registry.ts` +
+  `PerfScenarioCoordinator.tsx` (the deep links above) with
+  `maestro/perf/contracts/*.json` read by `scripts/perf-scenario-visual-contracts.js`; and
+  `maestro/failure-matrix/run.sh` for a live end-to-end driver.
 
 ---
 

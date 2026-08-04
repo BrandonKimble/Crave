@@ -40,23 +40,23 @@ import { UserListTileGalleryService } from './user-list-tile-gallery.service';
 import { SignalsService } from '../signals/signals.service';
 import { UserBlockService } from '../identity/user-block.service';
 import { SaveableEntityResolver } from '../entities/saveable-entity.resolver';
+import {
+  AUTHOR_SELECT,
+  publicAuthorIdentity,
+  type PublicAuthorIdentity,
+} from '../identity/public-author-identity';
 
 export type { UserListViewerRole, UserListSort };
 
-/** The person-rows shape (matches user-follow's select). */
-export type UserListPersonDto = {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-};
+/**
+ * A person as the world sees them — the shared type, not a local copy. The
+ * comment this replaced said "matches user-follow's select", which was the
+ * problem: three shapes kept in step by hand, each free to disagree about
+ * what a deleted person looks like.
+ */
+export type UserListPersonDto = PublicAuthorIdentity;
 
-const PERSON_SELECT = {
-  userId: true,
-  username: true,
-  displayName: true,
-  avatarUrl: true,
-} as const;
+const PERSON_SELECT = AUTHOR_SELECT;
 
 /**
  * Virtual "All" lists (spec B.1.6 / page-registry §8.16): no stored row —
@@ -1180,8 +1180,12 @@ export class UserListsService {
     }
     await this.access.resolveViewerRole(list, userId, shareSlug);
     return {
-      owner: list.owner,
-      collaborators: list.collaborators.map((row) => row.user),
+      // A list survives its owner's account; the roster shows a ghost byline
+      // rather than a blank one.
+      owner: publicAuthorIdentity(list.owner),
+      collaborators: list.collaborators.map((row) =>
+        publicAuthorIdentity(row.user),
+      ),
     };
   }
 

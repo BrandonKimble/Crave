@@ -454,6 +454,8 @@ PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTit
 // host owns the ONE plus↔X control; children get the X + the canonical close by role derivation.
 registerPersistentHeaderDescriptor('pollCreation', {
   Title: PollCreationPersistentHeaderTitle,
+  // F1650 (restores the label 9ad80e338 dropped when the per-panel close button went away).
+  navActionLabels: { close: 'Close poll creation' },
 });
 
 const styles = StyleSheet.create({

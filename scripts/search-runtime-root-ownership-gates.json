@@ -1,0 +1,221 @@
+{
+  "schemaVersion": "runtime-root-ownership-gates.v1",
+  "generatedAt": "2026-02-13T23:30:00Z",
+  "description": "Root-ownership checks for the search runtime. RELOCATED 2026-08-04 (F1654) from plans/perf-baselines/ — CI rule DATA lives next to its runner in scripts/, never up in plans/, which is exactly how the two rotted apart. RETIRED IN THE SAME PASS: slices S9A, S9D, S9E, S9F and S10, whose checks named 9 files that later refactors legitimately deleted, so every one of them had been exiting 1 unread for weeks. Kept slices are exactly those whose every declared path resolves against the live tree.",
+  "enforcedSliceIds": ["S7", "S8", "S9B", "S9C", "S11"],
+  "slices": {
+    "S7": [
+      {
+        "id": "root_camera_writer_center",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsetMapCenter\\(",
+        "maxCount": 0,
+        "description": "S7 requires camera center writes to be owned by arbiter/runtime, not root."
+      },
+      {
+        "id": "root_camera_writer_zoom",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsetMapZoom\\(",
+        "maxCount": 0,
+        "description": "S7 requires camera zoom writes to be owned by arbiter/runtime, not root."
+      }
+    ],
+    "S8": [
+      {
+        "id": "root_mode_specific_shortcut_submit_alias_or_branch",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\b(runBestHere|runShortcutSearch)\\b|\\bnormalized\\s*===\\s*['\\\"](?:best dishes|best restaurants|food)['\\\"]",
+        "maxCount": 0,
+        "description": "S8 removes root mode-specific shortcut rerun fan-out branches (symbol aliases and query-normalized shortcut branches)."
+      },
+      {
+        "id": "submit_hook_no_shortcut_alias_export",
+        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
+        "pattern": "\\brunShortcutSearch\\s*:",
+        "maxCount": 0,
+        "description": "S8 requires shortcut execution to stay runtime-owned without exporting direct root shortcut submit aliases."
+      },
+      {
+        "id": "root_filter_submit_fanout_options",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsubmitSearch\\(\\s*\\{[^)]*(minimumVotes|openNow|scoreMode)\\b",
+        "maxCount": 0,
+        "description": "S8 requires filter mutation reruns to flow through query mutation orchestrator."
+      },
+      {
+        "id": "root_overlay_store_setter",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsetOverlay\\(",
+        "maxCount": 0,
+        "description": "S8 requires overlay/search coupling to be runtime-owned (no direct root setOverlay)."
+      },
+      {
+        "id": "root_overlay_store_params_setter",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsetOverlayParams\\(",
+        "maxCount": 0,
+        "description": "S8 requires overlay/search coupling to be runtime-owned (no direct root setOverlayParams)."
+      },
+      {
+        "id": "root_overlay_store_pop",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bpopOverlay\\(",
+        "maxCount": 0,
+        "description": "S8 requires overlay/search coupling to be runtime-owned (no direct root popOverlay)."
+      }
+    ],
+    "S9B": [
+      {
+        "id": "s9b_root_effect_hook_budget",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bReact\\.use(?:LayoutEffect|Effect)\\(",
+        "maxCount": 101,
+        "description": "S9B complexity budget: root lifecycle hook pressure should step down."
+      },
+      {
+        "id": "s9b_root_derivation_hook_budget",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bReact\\.use(?:Callback|Memo)\\(",
+        "maxCount": 238,
+        "description": "S9B complexity budget: root derivation hook pressure should step down."
+      },
+      {
+        "id": "s9b_owner_module_list_read_model_builder_exists",
+        "kind": "path_exists",
+        "path": "apps/mobile/src/screens/Search/runtime/read-models/list-read-model-builder.ts",
+        "description": "S9B requires list read-model builder module to exist."
+      },
+      {
+        "id": "s9b_owner_module_header_read_model_builder_exists",
+        "kind": "path_exists",
+        "path": "apps/mobile/src/screens/Search/runtime/read-models/header-read-model-builder.ts",
+        "description": "S9B requires header read-model builder module to exist."
+      },
+      {
+        "id": "s9b_owner_module_chip_read_model_builder_exists",
+        "kind": "path_exists",
+        "path": "apps/mobile/src/screens/Search/runtime/read-models/chip-read-model-builder.ts",
+        "description": "S9B requires chip read-model builder module to exist."
+      },
+      {
+        "id": "s9b_owner_module_read_model_selectors_exists",
+        "kind": "path_exists",
+        "path": "apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors.ts",
+        "description": "S9B requires read-model selectors module to exist."
+      },
+      {
+        "id": "root_list_read_model_blocks",
+        "kind": "function_declaration_absent",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "functionNames": [
+          "resultsData",
+          "safeResultsData",
+          "sectionedResultsData",
+          "resultsListData",
+          "resultsListDataForRender",
+          "renderResultsFlashListItem",
+          "resultsListEmptyComponent",
+          "resultsHeaderComponent",
+          "resultsFlashListProps"
+        ],
+        "maxCount": 0,
+        "description": "S9B requires list/header read-model derivation to move out of root."
+      }
+    ],
+    "S9C": [
+      {
+        "id": "s9c_root_effect_hook_budget",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bReact\\.use(?:LayoutEffect|Effect)\\(",
+        "maxCount": 97,
+        "description": "S9C complexity budget: root lifecycle hook pressure should continue downward."
+      },
+      {
+        "id": "s9c_root_derivation_hook_budget",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bReact\\.use(?:Callback|Memo)\\(",
+        "maxCount": 228,
+        "description": "S9C complexity budget: root derivation hook pressure should continue downward."
+      },
+      {
+        "id": "s9c_owner_module_query_mutation_orchestrator_exists",
+        "kind": "path_exists",
+        "path": "apps/mobile/src/screens/Search/runtime/mutations/query-mutation-orchestrator.ts",
+        "description": "S9C requires query mutation orchestrator owner module to exist."
+      },
+      {
+        "id": "root_query_mutation_blocks",
+        "kind": "function_declaration_absent",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "functionNames": [
+          "scheduleFilterToggleSearch",
+          "toggleVotesFilter",
+          "toggleOpenNow",
+          "commitPriceSelection",
+          "commitRankSelection",
+          "handleScoreModeChange"
+        ],
+        "maxCount": 0,
+        "description": "S9C requires filter/query mutation rerun orchestration to be runtime-owned."
+      }
+    ],
+    "S11": [
+      {
+        "id": "s11_root_effect_hook_budget",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bReact\\.use(?:LayoutEffect|Effect)\\(",
+        "maxCount": 70,
+        "description": "S11 end-state budget: root lifecycle hook pressure must converge to composition-shell levels."
+      },
+      {
+        "id": "s11_root_derivation_hook_budget",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bReact\\.use(?:Callback|Memo)\\(",
+        "maxCount": 150,
+        "description": "S11 end-state budget: root derivation hook pressure must converge to composition-shell levels."
+      },
+      {
+        "id": "s11_no_root_runtime_owner_constructors",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\b(createSearchSessionController|createPhaseBMaterializer|createOverlayRuntimeController|createCameraIntentArbiter|createViewportBoundsService|createMapViewportQueryService|createMapQueryBudget)\\(",
+        "maxCount": 0,
+        "description": "S11 keeps runtime owner construction outside root composition shell."
+      },
+      {
+        "id": "s11_no_shadow_controller_in_root",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsearchSessionShadowController\\b",
+        "maxCount": 0,
+        "description": "S11 requires shadow runtime controller wiring to be fully deleted from root."
+      },
+      {
+        "id": "s11_no_shadow_controller_in_submit_hook",
+        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
+        "pattern": "\\bruntimeShadowController\\b",
+        "maxCount": 0,
+        "description": "S11 requires submit runtime to remove shadow controller path."
+      },
+      {
+        "id": "s11_no_root_search_perf_debug_import",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bsearchPerfDebug\\b",
+        "maxCount": 0,
+        "description": "S11 requires legacy search perf debug shim usage to be removed from root."
+      },
+      {
+        "id": "s11_no_console_log_root_search",
+        "path": "apps/mobile/src/screens/Search/index.tsx",
+        "pattern": "\\bconsole\\.log\\(",
+        "maxCount": 0,
+        "description": "S11 requires removal of root console logging debug probes."
+      },
+      {
+        "id": "s11_no_console_log_submit_runtime",
+        "path": "apps/mobile/src/screens/Search/hooks/use-search-submit-owner.ts",
+        "pattern": "\\bconsole\\.log\\(",
+        "maxCount": 0,
+        "description": "S11 requires removal of submit-runtime console logging debug probes."
+      }
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 import api, { SILENT } from './api';
 import { requestPushPermissionIfEligible } from './push-permission';
+import type { AuthorIdentity } from './author-identity';
 
 // ─── W3 messaging client (plans/w3-messaging-design.md §3.2) ─────────────────────────────────
 // isRequest / frozen / unreadCount are SERVER-derived flags shipped on the DTO —
@@ -37,12 +38,9 @@ export interface DmMessage {
   clientDedupeId: string | null;
 }
 
-export interface ConversationPeer {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export type ConversationPeer = AuthorIdentity;
 
 export interface Conversation {
   conversationId: string;

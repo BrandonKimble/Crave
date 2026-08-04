@@ -157,8 +157,13 @@ export class PollsController {
   @AllowUnentitled()
   @Get(':pollId')
   @UseGuards(OptionalClerkAuthGuard)
-  getPoll(@Param('pollId', new ParseUUIDPipe()) pollId: string) {
-    return this.pollsService.getPoll(pollId);
+  getPoll(
+    @Param('pollId', new ParseUUIDPipe()) pollId: string,
+    @RequestLocale() locale: SupportedLocale,
+  ) {
+    // F6 (wave-3 red team): the share link — the most viral surface — was
+    // the one poll read NOT localized, while asserting Content-Language.
+    return this.pollsService.getPoll(pollId, locale);
   }
 
   @AllowUnentitled()

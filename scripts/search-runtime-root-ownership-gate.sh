@@ -8,7 +8,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SLICE_ID="${1:-}"
-RULES_PATH="${2:-$REPO_ROOT/plans/perf-baselines/runtime-root-ownership-gates.json}"
+# F1654 (2026-08-04): the rules moved from plans/perf-baselines/ to sit NEXT TO this
+# runner. A gate reaching up out of scripts/ into a plans/ directory for its truth is what
+# let the rules and the tree rot apart unnoticed (9 of 22 declared paths were dead, 5 of
+# 10 slices exiting 1 where nobody looked). Rule DATA is part of the gate.
+RULES_PATH="${2:-$REPO_ROOT/scripts/search-runtime-root-ownership-gates.json}"
 
 if [[ -z "$SLICE_ID" ]]; then
   echo "Usage: scripts/search-runtime-root-ownership-gate.sh <slice_id> [rules_json_path]" >&2

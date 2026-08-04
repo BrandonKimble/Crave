@@ -340,6 +340,17 @@ export interface SearchResponseMetadata {
     type: EntityScope;
     terms: string[];
   }>;
+  /** i18n F5: negated constraints recorded by the fail-closed gate —
+   *  surfaced so UI can show "excluding X" and the launch gate can grade
+   *  non-inversion. */
+  excludedSpans?: Array<{ text: string; concept?: string | null; cue: string }>;
+  /** i18n F5: per-query analysis facts (script, detected locale, dense
+   *  tier usage) — observability for the gate. */
+  queryAnalysis?: {
+    script?: string;
+    detectedLocale?: { tag: string; confidence: number; source: string } | null;
+    denseTierUsed?: boolean;
+  };
   sourceQuery?: string;
   searchRequestId?: string;
   originalBackendSearchRequestId?: string;
@@ -413,9 +424,4 @@ export interface NaturalSearchRequest {
   includeSimilar?: boolean;
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
-}
-
-export interface SearchFixtureMap {
-  default: SearchResponse;
-  byQuery?: Record<string, SearchResponse | undefined>;
 }

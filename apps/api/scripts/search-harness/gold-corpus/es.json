@@ -1,0 +1,1866 @@
+{
+  "readBy": "../run-launch-gate.ts (assertion semantics are documented below and in that file's header)",
+  "locale": "es-US",
+  "version": 1,
+  "authoredAt": "2026-08-04",
+  "authoredAgainst": "dev mirror crave_search (localhost:5432) — EVERY name in expected.concepts / mustNotResolve was verified to exist as an ACTIVE core_entities row on 2026-08-04",
+  "purpose": "D3's ONE shared artifact: M4 dense-tier calibration + the MARKET-LAUNCH GATE (plans/multilingual.md ROUND 3 M4 section). 150 queries, stratified 40/30/20/20/20/20.",
+  "assertionSemantics": {
+    "expected.concepts": "English CANONICAL entity names (core_entities.name) that must appear in the grounded parse. Grounded set = every entityId in structuredRequest.entities, resolved back to its canonical name.",
+    "expected.excluded": "Folded text that must appear as an excludedSpan (R5-3 negation record).",
+    "expected.mustNotResolve": "Canonical names that must NEVER appear in the grounded set. A hit here is an INVERSION or a wrong-language grounding — the hard failures.",
+    "park": "true = 'unresolved/park' is a CORRECT outcome for this query. Used for translation-bridge nouns with no corpus twin and for homographs where silence beats a confident wrong answer.",
+    "strataRules": {
+      "single_noun": "PASS iff every expected concept is grounded (or, when park=true, the query cleanly parked with nothing outside expected grounded).",
+      "compound": "Constraint preservation measured on the PARSE: PASS iff EVERY expected concept is present. Partial credit is reported separately as the ≥90% constraint-preservation number.",
+      "negation": "HARD, 100%: every expected.excluded text must be recorded in excludedSpans AND no mustNotResolve name may be grounded. Non-inversion is the assertion, not recall.",
+      "attribute": "PASS iff the expected attribute-type entity (food_attribute / restaurant_attribute) is grounded. Grounding the right word to a FOOD entity of the same name is scored as a type miss.",
+      "homograph": "SAFE-BEHAVIOR assertion, inverted from the others: PASS iff the grounded set is a SUBSET of expected.concepts (empty set = clean park = PASS). Any grounding outside the allowed set is a confident wrong-language mis-grounding = FAIL.",
+      "code_switched": "PASS iff the ENGLISH span's concept is grounded. Spanish carrier words are not asserted (they may junk-ground; that is the extraction-hygiene backlog, not i18n)."
+    }
+  },
+  "knownRedSeeds": ["hg-01 (pan)", "hg-02 (тако)", "ng-01 (ramen sin cerdo)"],
+  "entries": [
+    {
+      "id": "sn-01",
+      "query": "birria",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["birria"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful: the Spanish word IS the corpus name. Gazetteer exact, no dense needed.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-02",
+      "query": "pan dulce",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["pan dulce"],
+        "excluded": [],
+        "mustNotResolve": ["bread"]
+      },
+      "park": false,
+      "notes": "Source-faithful compound noun. Must NOT decompose to 'pan'→bread — the 2-gram must beat the 1-gram.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-03",
+      "query": "carnitas",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["carnitas"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-04",
+      "query": "barbacoa",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["barbacoa"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-05",
+      "query": "chilaquiles",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["chilaquiles"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-06",
+      "query": "guacamole",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["guacamole"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-07",
+      "query": "churros",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["churros"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful (plural is the corpus form).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-08",
+      "query": "horchata",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["horchata"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-09",
+      "query": "elote",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["elote"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-10",
+      "query": "pozole",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["pozole"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-11",
+      "query": "menudo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["menudo"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-12",
+      "query": "torta",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["torta"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful. R5-5 note: es-MX torta ≠ es-ES/es-AR torta (cake) — a regional-locale row, not a bug.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-13",
+      "query": "quesadilla",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["quesadilla"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-14",
+      "query": "burrito",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["burrito"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-15",
+      "query": "empanada",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["empanada"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-16",
+      "query": "ceviche",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["ceviche"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-17",
+      "query": "paella",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["paella"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-18",
+      "query": "arepa",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["arepa"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-19",
+      "query": "aguachile",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["aguachile"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-20",
+      "query": "cochinita pibil",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["cochinita pibil"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful 2-gram.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-21",
+      "query": "pulpo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["octopus"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE. No 'pulpo' row exists — only the M4 dense tier can reach octopus. The plan's headline dense result.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-22",
+      "query": "camarones",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["shrimp"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE. No 'camarones' row (only 'camarones enchilados' compound).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-23",
+      "query": "aguacate",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["avocado"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE. R5-5: es-AR/es-CL say 'palta' — a regional alias row, not a fix here.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-24",
+      "query": "pescado",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["fish"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-25",
+      "query": "arroz",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["rice"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-26",
+      "query": "frijoles",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["beans"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-27",
+      "query": "langosta",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["lobster"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-28",
+      "query": "cangrejo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["crab"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-29",
+      "query": "helado",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["ice cream"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE to a MULTI-WORD English concept — dense must bridge across token count.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-30",
+      "query": "fresa",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["strawberry"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE (ingredient-typed target).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-31",
+      "query": "sandía",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["watermelon"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE + accent (N1 fold must not break the residue text).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-32",
+      "query": "bistec",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["steak"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-33",
+      "query": "pastel",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["cake"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-34",
+      "query": "ensalada",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["salad"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-35",
+      "query": "fideos",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["fideo"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "AUTHORING CORRECTION (gate run 1, surfaced by the LLM spot check, which scored this 100 against a mechanical FAIL): 'fideo' is a source-faithful corpus row and the singularish() lemma reaches it from 'fideos'. Grounding a Spanish word to its own row beats bridging to 'noodles' — the first draft demanded the bridge and scored a success as red.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-36",
+      "query": "mariscos",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["seafood"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE. Target exists as food AND restaurant_attribute — either is correct.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-37",
+      "query": "postre",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["dessert"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE (category noun — dense is weakest on abstractions; park is tolerable, a WRONG dish is not).",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-38",
+      "query": "café",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["coffee"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE + accent. Also a near-homograph with the venue sense ('a café').",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-39",
+      "query": "pollo",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["pollo"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "A9 TWIN: 'pollo' AND 'chicken' both exist as food rows — evidence mass is split across an unmerged cross-language twin. Grounding 'pollo' is correct TODAY; the twin belongs in the judge-merge queue.",
+      "allowCompositional": true
+    },
+    {
+      "id": "sn-40",
+      "query": "camarón",
+      "stratum": "single_noun",
+      "expected": {
+        "concepts": ["shrimp"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRANSLATION BRIDGE, SINGULAR + accent — the Spanish-morphology half of sn-22.",
+      "allowCompositional": true
+    },
+    {
+      "id": "cp-01",
+      "query": "tacos vegetarianos baratos",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["tacos", "vegetarian"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "The plan's named failure. 'baratos' is a PRICE DIRECTIVE, not an entity — M4b's directive vocabulary, deliberately not asserted as a concept."
+    },
+    {
+      "id": "cp-02",
+      "query": "pizza sin gluten cerca",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pizza", "gluten free"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "TRAP: 'sin' is a negation cue, but 'sin gluten' is a SEEDED 2-gram alias for gluten free. The n-gram must win over the cue — negating it would be a false-positive fail-closed. 'cerca' is a proximity directive."
+    },
+    {
+      "id": "cp-03",
+      "query": "comida mexicana barata",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["mexican"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded cuisine label 'mexicana'. 'comida'/'barata' are carrier + directive."
+    },
+    {
+      "id": "cp-04",
+      "query": "restaurante italiano romántico",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["italian", "romantic"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "MORPHOLOGY: seeded forms are 'italiana' (fem) and 'romántico'. Masculine 'italiano' is the plan's named gender/number gap."
+    },
+    {
+      "id": "cp-05",
+      "query": "tacos veganos",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["tacos", "vegan"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "MORPHOLOGY: seeded 'vegano', queried plural 'veganos'."
+    },
+    {
+      "id": "cp-06",
+      "query": "sushi japonés",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["sushi", "japanese"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "MORPHOLOGY: seeded 'japonesa' (fem), queried masculine + accent."
+    },
+    {
+      "id": "cp-07",
+      "query": "ramen coreano",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["ramen", "korean"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "MORPHOLOGY: seeded 'coreana'."
+    },
+    {
+      "id": "cp-08",
+      "query": "pizza vegetariana",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pizza", "vegetarian"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "THE PLAN'S RECORDED MISS (M4b thesis test): feminine 'vegetariana' was not seeded. Kept as a standing morphology probe."
+    },
+    {
+      "id": "cp-09",
+      "query": "comida tailandesa picante",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["thai", "spicy"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "'picante' is the P3 cross-language CONCEPT normalization case (picante→spicy) — spine seeding territory, not dish."
+    },
+    {
+      "id": "cp-10",
+      "query": "desayuno mexicano",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["breakfast", "mexican"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Bridge noun + seeded cuisine, masculine form."
+    },
+    {
+      "id": "cp-11",
+      "query": "mariscos peruanos",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["seafood", "peruvian"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Bridge noun + seeded cuisine ('peruana'), masculine plural."
+    },
+    {
+      "id": "cp-12",
+      "query": "pollo halal",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pollo", "halal"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Source-faithful noun + an identical-in-both-languages dietary spine word."
+    },
+    {
+      "id": "cp-13",
+      "query": "sushi kosher",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["sushi", "kosher"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Both words are locale-invariant — the control for this stratum."
+    },
+    {
+      "id": "cp-14",
+      "query": "comida china para llevar",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["chinese", "takeout"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded cuisine + UNSEEDED tail attribute 'para llevar'→takeout. The M3 label-as-match-surface case."
+    },
+    {
+      "id": "cp-15",
+      "query": "tacos de birria",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["birria tacos"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Spanish head-final order over an English head-initial corpus name. The compound 'birria tacos' exists; grounding [tacos]+[birria] separately is a partial, not a pass."
+    },
+    {
+      "id": "cp-16",
+      "query": "helado de fresa",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["strawberry ice cream"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "AUTHORING CORRECTION (gate run 1): the dense tier resolved the WHOLE span to the single concept 'strawberry ice cream', which is strictly better than the two-noun parse the first draft demanded. Two bridge nouns in one query, answered as one concept."
+    },
+    {
+      "id": "cp-17",
+      "query": "sopa de pollo",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["chicken soup"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "'chicken soup' exists as one concept. 'sopa' has no row; 'pollo' does."
+    },
+    {
+      "id": "cp-18",
+      "query": "arroz con pollo",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["rice", "pollo"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "A real dish name that is ALSO decomposable — no 'arroz con pollo' row exists on the mirror, so the parse is the two nouns."
+    },
+    {
+      "id": "cp-19",
+      "query": "pizza napolitana",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["pizza", "neapolitan"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded 'napolitana' — exact form, should pass."
+    },
+    {
+      "id": "cp-20",
+      "query": "restaurante vegetariano tranquilo",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["vegetarian", "quiet"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Two seeded spine words, exact forms."
+    },
+    {
+      "id": "cp-21",
+      "query": "comida india vegetariana",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["indian", "vegetarian"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded 'india' exact + feminine 'vegetariana' (unseeded)."
+    },
+    {
+      "id": "cp-22",
+      "query": "brunch romántico",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["brunch", "romantic"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Loanword + seeded accented spine word (fold symmetry on 'romántico')."
+    },
+    {
+      "id": "cp-23",
+      "query": "café con terraza",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["coffee", "outdoor seating"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Bridge noun + UNSEEDED tail attribute 'terraza'→outdoor seating."
+    },
+    {
+      "id": "cp-24",
+      "query": "comida coreana barata",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["korean"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded 'coreana' exact form; 'barata' is a directive."
+    },
+    {
+      "id": "cp-25",
+      "query": "pescado a la parrilla",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["grilled fish"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "'grilled fish' exists as one concept; the Spanish is a 4-token postmodifier — the hardest decomposition shape in the set."
+    },
+    {
+      "id": "cp-26",
+      "query": "tacos de camarones",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["tacos", "shrimp"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "No 'shrimp tacos' row on the mirror (verified) — the two-concept parse IS the right answer here."
+    },
+    {
+      "id": "cp-27",
+      "query": "postre vegano",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["dessert", "vegan"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Bridge category noun + seeded spine word, exact form."
+    },
+    {
+      "id": "cp-28",
+      "query": "cocina mediterránea",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["mediterranean"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded 'mediterránea' exact — accented, exercises fold symmetry on the seeded alias."
+    },
+    {
+      "id": "cp-29",
+      "query": "restaurante griego con terraza",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["greek", "outdoor seating"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "MORPHOLOGY ('griega' seeded) + UNSEEDED tail attribute. Expected double miss; kept because it is the shape real users type."
+    },
+    {
+      "id": "cp-30",
+      "query": "comida vegana para llevar",
+      "stratum": "compound",
+      "expected": {
+        "concepts": ["vegan", "takeout"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Feminine 'vegana' (seeded form is 'vegano') + unseeded tail attribute."
+    },
+    {
+      "id": "ng-01",
+      "query": "ramen sin cerdo",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["ramen"],
+        "excluded": ["cerdo"],
+        "mustNotResolve": ["vegan", "vegetarian", "pork"]
+      },
+      "park": false,
+      "notes": "KNOWN-RED SEED. Pre-R5-3 this returned VEGAN ramen — silent inversion. Non-inversion is the hard clause."
+    },
+    {
+      "id": "ng-02",
+      "query": "tacos sin queso",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["tacos"],
+        "excluded": ["queso"],
+        "mustNotResolve": ["queso", "cheese"]
+      },
+      "park": false,
+      "notes": "The negated span IS a corpus entity ('queso' ingredient) — the fail-closed path must drop a groundable span, not just unknown residue."
+    },
+    {
+      "id": "ng-03",
+      "query": "pizza sin queso",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pizza"],
+        "excluded": ["queso"],
+        "mustNotResolve": ["queso", "cheese"]
+      },
+      "park": false,
+      "notes": "Same cue over a different head."
+    },
+    {
+      "id": "ng-04",
+      "query": "sushi sin arroz",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["sushi"],
+        "excluded": ["arroz"],
+        "mustNotResolve": ["rice"]
+      },
+      "park": false,
+      "notes": "Negated span is a BRIDGE word — it must not reach the dense tier (dense is precisely what inverts)."
+    },
+    {
+      "id": "ng-05",
+      "query": "ramen sin pollo",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["ramen"],
+        "excluded": ["pollo"],
+        "mustNotResolve": ["pollo", "chicken"]
+      },
+      "park": false,
+      "notes": "Negated span is a source-faithful corpus row."
+    },
+    {
+      "id": "ng-06",
+      "query": "pizza sin carne",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pizza"],
+        "excluded": ["carne"],
+        "mustNotResolve": ["beef", "vegetarian", "vegan"]
+      },
+      "park": false,
+      "notes": "The classic inversion bait: 'no meat' semantically equals vegetarian, and a bi-encoder WILL say so. It must not."
+    },
+    {
+      "id": "ng-07",
+      "query": "ensalada sin aguacate",
+      "stratum": "negation",
+      "expected": {
+        "concepts": [],
+        "excluded": ["aguacate"],
+        "mustNotResolve": ["avocado"]
+      },
+      "park": true,
+      "notes": "Head is itself a bridge word — parking the head is acceptable; INVERTING the constraint is not. Concepts left empty deliberately."
+    },
+    {
+      "id": "ng-08",
+      "query": "tacos sin cebolla",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["tacos"],
+        "excluded": ["cebolla"],
+        "mustNotResolve": ["onion"]
+      },
+      "park": false,
+      "notes": "Negated span is unknown residue in the English corpus — still a recorded constraint (the excludedSpan carries empty entityIds)."
+    },
+    {
+      "id": "ng-09",
+      "query": "burrito sin frijoles",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["burrito"],
+        "excluded": ["frijoles"],
+        "mustNotResolve": ["beans"]
+      },
+      "park": false,
+      "notes": "Bridge word behind a cue."
+    },
+    {
+      "id": "ng-10",
+      "query": "quesadilla sin crema",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["quesadilla"],
+        "excluded": ["crema"],
+        "mustNotResolve": ["crema", "sour cream"]
+      },
+      "park": false,
+      "notes": "'crema' IS a corpus ingredient — groundable span behind a cue."
+    },
+    {
+      "id": "ng-11",
+      "query": "pollo sin piel",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pollo"],
+        "excluded": ["piel"],
+        "mustNotResolve": ["skin"]
+      },
+      "park": false,
+      "notes": "'skin' exists as an ingredient row — a bridge target that must stay unreached."
+    },
+    {
+      "id": "ng-12",
+      "query": "pasta sin cebolla",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pasta"],
+        "excluded": ["cebolla"],
+        "mustNotResolve": ["onion"]
+      },
+      "park": false,
+      "notes": "Locale-invariant head + negated residue."
+    },
+    {
+      "id": "ng-13",
+      "query": "tacos sin carne",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["tacos"],
+        "excluded": ["carne"],
+        "mustNotResolve": ["beef", "vegetarian", "vegan"]
+      },
+      "park": false,
+      "notes": "Second inversion-bait shape, different head."
+    },
+    {
+      "id": "ng-14",
+      "query": "ramen sin huevo",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["ramen"],
+        "excluded": ["huevo"],
+        "mustNotResolve": ["egg"]
+      },
+      "park": false,
+      "notes": "Bridge word behind a cue."
+    },
+    {
+      "id": "ng-15",
+      "query": "pizza no vegetariana",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["pizza"],
+        "excluded": ["vegetariana"],
+        "mustNotResolve": ["vegetarian"]
+      },
+      "park": false,
+      "notes": "Cue 'no' (both an es and an en pack cue). Negating a SPINE constraint — the case where a wrong answer is most visible."
+    },
+    {
+      "id": "ng-16",
+      "query": "sushi que no sea caro",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["sushi"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "KNOWN-RED SHAPE: the cue is NOT adjacent to the negated word (negatedSpan only looks one token left), and 'caro' is a price directive, not a concept. Asserts only NON-INVERSION — excluded is deliberately empty so this entry cannot manufacture a false green."
+    },
+    {
+      "id": "ng-17",
+      "query": "comida sin picante",
+      "stratum": "negation",
+      "expected": {
+        "concepts": [],
+        "excluded": ["picante"],
+        "mustNotResolve": ["spicy"]
+      },
+      "park": true,
+      "notes": "Negating the P3 normalized concept. 'comida' is a carrier with no expected grounding."
+    },
+    {
+      "id": "ng-18",
+      "query": "postre sin azúcar",
+      "stratum": "negation",
+      "expected": {
+        "concepts": [],
+        "excluded": ["azucar"],
+        "mustNotResolve": ["sugar"]
+      },
+      "park": true,
+      "notes": "Accent inside the negated span — the excludedSpan text is asserted FOLDED (azúcar→azucar)."
+    },
+    {
+      "id": "ng-19",
+      "query": "café sin leche",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["coffee"],
+        "excluded": ["leche"],
+        "mustNotResolve": ["milk"]
+      },
+      "park": true,
+      "notes": "Bridge head + bridge negated span. park=true: the head may legitimately not reach 'coffee'; the constraint record is the hard part."
+    },
+    {
+      "id": "ng-20",
+      "query": "birria sin cilantro",
+      "stratum": "negation",
+      "expected": {
+        "concepts": ["birria"],
+        "excluded": ["cilantro"],
+        "mustNotResolve": ["cilantro"]
+      },
+      "park": false,
+      "notes": "Source-faithful head + a negated span that is an EXACT English-corpus ingredient name — the cleanest fail-closed test in the set."
+    },
+    {
+      "id": "at-01",
+      "query": "para llevar",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["takeout"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE. Not in the 73-word seeded spine; correct behavior needs entity_labels read as a match surface."
+    },
+    {
+      "id": "at-02",
+      "query": "terraza",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["outdoor seating"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE. Unseeded."
+    },
+    {
+      "id": "at-03",
+      "query": "romántico",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["romantic"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED spine word, accented — should pass; also proves fold symmetry on seeded alias rows."
+    },
+    {
+      "id": "at-04",
+      "query": "acepta mascotas",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["allows dogs"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE, and a LEXICAL GAP: the English concept is 'allows dogs', not 'pet friendly' — a literal label draft would miss it. The plan's own example."
+    },
+    {
+      "id": "at-05",
+      "query": "tranquilo",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["quiet"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED spine word."
+    },
+    {
+      "id": "at-06",
+      "query": "ideal para grupos",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["good for groups"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED 3-gram spine phrase — the longest seeded form."
+    },
+    {
+      "id": "at-07",
+      "query": "sin gluten",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["gluten free"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED, and the cue/alias collision case in isolation: 'sin' must not negate the phrase it is part of."
+    },
+    {
+      "id": "at-08",
+      "query": "vegano",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["vegan"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED. Note 'vegan' exists as food AND food_attribute — attribute typing is what is scored."
+    },
+    {
+      "id": "at-09",
+      "query": "vegetariano",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["vegetarian"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED."
+    },
+    {
+      "id": "at-10",
+      "query": "halal",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["halal"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Locale-invariant spine word."
+    },
+    {
+      "id": "at-11",
+      "query": "kosher",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["kosher"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Locale-invariant spine word."
+    },
+    {
+      "id": "at-12",
+      "query": "mexicana",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["mexican"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED cuisine."
+    },
+    {
+      "id": "at-13",
+      "query": "japonesa",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["japanese"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED cuisine."
+    },
+    {
+      "id": "at-14",
+      "query": "italiana",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["italian"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED cuisine."
+    },
+    {
+      "id": "at-15",
+      "query": "tailandesa",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["thai"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED cuisine."
+    },
+    {
+      "id": "at-16",
+      "query": "coreana",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["korean"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "SEEDED cuisine."
+    },
+    {
+      "id": "at-17",
+      "query": "entrega a domicilio",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["delivery"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE, 3-gram."
+    },
+    {
+      "id": "at-18",
+      "query": "en la azotea",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["rooftop"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE with function words — the label sweep must draft 'azotea', not the whole phrase."
+    },
+    {
+      "id": "at-19",
+      "query": "abierto hasta tarde",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["late night"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE, idiomatic (not a word-for-word rendering of 'late night')."
+    },
+    {
+      "id": "at-20",
+      "query": "bar de vinos",
+      "stratum": "attribute",
+      "expected": {
+        "concepts": ["wine bar"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "M3 TAIL-LABEL CASE; head-final Spanish over a head-initial English concept name."
+    },
+    {
+      "id": "hg-01",
+      "query": "pan",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["bread"],
+        "excluded": [],
+        "mustNotResolve": ["pan pizza", "panini", "pan dulce", "paneer"]
+      },
+      "park": true,
+      "notes": "KNOWN-RED SEED. Spanish 'pan'=bread; English 'pan'=cookware and the prefix of 60+ corpus names. SAFE = bread, or clean park. Anything else is a confident wrong-language grounding."
+    },
+    {
+      "id": "hg-02",
+      "query": "тако",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": [],
+        "excluded": [],
+        "mustNotResolve": ["tako", "taco", "tacos"]
+      },
+      "park": true,
+      "notes": "KNOWN-RED SEED, cross-script. Russian 'тако' embedded NEAREST to the Japanese dish 'tako' (octopus) at the adversarial set's HIGHEST confidence — a wrong answer outscoring right ones. SAFE = park. Locale is deliberately ru-RU on this entry.",
+      "locale": "ru-RU"
+    },
+    {
+      "id": "hg-03",
+      "query": "sopa",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["soup"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "No 'sopa' row. SAFE = soup via dense, or park."
+    },
+    {
+      "id": "hg-04",
+      "query": "crema",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["crema", "cream", "sour cream"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'crema' IS an English-corpus ingredient (the Mexican cream) AND a Spanish word for cream generally. Any of the three, or park, is safe."
+    },
+    {
+      "id": "hg-05",
+      "query": "chile",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["chile"],
+        "excluded": [],
+        "mustNotResolve": ["chilean sea bass"]
+      },
+      "park": true,
+      "notes": "Pepper vs. the country. The corpus holds 'chilean sea bass' — a country-shaped capture would be the failure."
+    },
+    {
+      "id": "hg-06",
+      "query": "salsa",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["salsa"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "Sauce vs. the dance. Corpus row exists and is the food sense — control entry, should pass."
+    },
+    {
+      "id": "hg-07",
+      "query": "tuna",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["tuna"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "THE SHARPEST LATIN-SCRIPT HOMOGRAPH IN THE SET: es 'tuna' = prickly pear; en 'tuna' = the fish, which exists as an exact confidence-1.0 corpus row. Today's gazetteer has no locale filter on the alias/name arms — this is the M3 homograph guard's reason to exist. RECLASSIFIED (parent ruling): exact English NAME matches are correct for ANY locale in an English-corpus market — source-faithful names match for everyone; the locale guard governs tagged alias rows only. es-MX users on US menus read \"tuna\" as the fish."
+    },
+    {
+      "id": "hg-08",
+      "query": "pie",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["pie"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "es 'pie' = foot. English 'pie' is an exact corpus food row. SAFE = park. RECLASSIFIED (parent ruling): exact English NAME matches are correct for ANY locale in an English-corpus market — source-faithful names match for everyone; the locale guard governs tagged alias rows only. es-MX users on US menus read \"tuna\" as the fish."
+    },
+    {
+      "id": "hg-09",
+      "query": "vino",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["wine", "red wine"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "Bridge word that is also the past tense of 'venir'. Safe = wine or park."
+    },
+    {
+      "id": "hg-10",
+      "query": "col",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["cabbage"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "3-letter bridge word — short-string fuzzy floors are exactly where a wrong confident match appears."
+    },
+    {
+      "id": "hg-11",
+      "query": "miel",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["honey"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "Bridge word, no English collision — the negative control for this stratum."
+    },
+    {
+      "id": "hg-12",
+      "query": "pera",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["pear"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "One edit from 'pear' — tests that a LEXICAL near-miss does not masquerade as a translation."
+    },
+    {
+      "id": "hg-13",
+      "query": "lima",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["lime"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "Fruit vs. the Peruvian capital vs. restaurant proper nouns. R5-4 type-aware admission: a constraint-shaped span must not capture a RESTAURANT."
+    },
+    {
+      "id": "hg-14",
+      "query": "mango",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["mango"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Identical in both languages (es also = 'handle'). CONTROL — must pass."
+    },
+    {
+      "id": "hg-15",
+      "query": "taco",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["taco", "tacos"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "CONTROL — a Spanish word fully naturalized into the English corpus. Must pass, and must not be dragged into hg-02's cross-script confusion."
+    },
+    {
+      "id": "hg-16",
+      "query": "sal",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["salt"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "3-letter bridge word; also an English name prefix (Sal's). Type-aware admission case."
+    },
+    {
+      "id": "hg-17",
+      "query": "ave",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["poultry"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "es 'ave' = bird/poultry; en 'Ave' = Avenue, which appears in thousands of address strings and restaurant names. SAFE = park."
+    },
+    {
+      "id": "hg-18",
+      "query": "caldo",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["caldo", "broth"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "AUTHORING CORRECTION (gate run 1): 'caldo' IS an exact source-faithful corpus row — grounding a Spanish word to its own row is the CORRECT answer, not a mis-grounding. The first draft allowed only 'broth' and scored a real success as red."
+    },
+    {
+      "id": "hg-19",
+      "query": "masa",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["masa", "dough"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "'masa' IS an English-corpus row (the nixtamalized dough) AND the general Spanish word for dough. Either is safe."
+    },
+    {
+      "id": "hg-20",
+      "query": "tinto",
+      "stratum": "homograph",
+      "expected": {
+        "concepts": ["red wine", "coffee"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": true,
+      "notes": "R5-5 REGIONAL DIVERGENCE, deliberately included: es-ES 'tinto' = red wine; es-CO 'tinto' = black coffee. Bare 'es' CANNOT be right for both — the entry exists to make the regional-locale need measurable rather than arguable."
+    },
+    {
+      "id": "cs-01",
+      "query": "quiero breakfast tacos",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["breakfast tacos"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Spanish verb + English compound dish. The English span must ground as if English."
+    },
+    {
+      "id": "cs-02",
+      "query": "brunch en downtown",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["brunch"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "'downtown' is a PLACE directive, not a concept — deliberately unasserted."
+    },
+    {
+      "id": "cs-03",
+      "query": "busco ramen cerca",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["ramen"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Spanish carrier + proximity directive around an English/loan dish."
+    },
+    {
+      "id": "cs-04",
+      "query": "quiero sushi barato",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["sushi"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Price directive unasserted."
+    },
+    {
+      "id": "cs-05",
+      "query": "el mejor pho de la ciudad",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["pho"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Long Spanish carrier around a one-syllable loan dish; 'pho' also exists as a RESTAURANT name — type-aware admission matters."
+    },
+    {
+      "id": "cs-06",
+      "query": "dónde hay dim sum",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["dim sum"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Accented carrier + English 2-gram concept."
+    },
+    {
+      "id": "cs-07",
+      "query": "tacos with cheese",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["tacos", "cheese"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "REVERSE code-switch (Spanish noun, English frame) from an es-US phone. 'with' must NOT be read as the English cue 'without'."
+    },
+    {
+      "id": "cs-08",
+      "query": "quiero comer bbq",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["bbq"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Seeded spine word that is identical in both languages."
+    },
+    {
+      "id": "cs-09",
+      "query": "restaurantes con rooftop",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["rooftop"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "The English form of at-18's attribute — proves the attribute red is a LABEL gap, not a grounding gap."
+    },
+    {
+      "id": "cs-10",
+      "query": "me gusta el ice cream",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["ice cream"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-29 — same isolation test for the bridge red."
+    },
+    {
+      "id": "cs-11",
+      "query": "hay algún wine bar",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["wine bar"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of at-20."
+    },
+    {
+      "id": "cs-12",
+      "query": "quiero un bagel",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["bagel"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Bagel exists as ingredient AND restaurant_attribute — cross-type placement under a Spanish carrier."
+    },
+    {
+      "id": "cs-13",
+      "query": "pizza para takeout",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["pizza", "takeout"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of cp-14's attribute — isolates the label gap from the cuisine word."
+    },
+    {
+      "id": "cs-14",
+      "query": "busco curry tailandés",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["curry", "thai"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English dish + Spanish masculine cuisine adjective (seeded form is 'tailandesa')."
+    },
+    {
+      "id": "cs-15",
+      "query": "quiero pancakes",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["pancakes"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Plural English dish under a Spanish verb."
+    },
+    {
+      "id": "cs-16",
+      "query": "dónde comer steak",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["steak"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-32."
+    },
+    {
+      "id": "cs-17",
+      "query": "un buen salad",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["salad"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-34; ungrammatical mixing is normal bilingual input."
+    },
+    {
+      "id": "cs-18",
+      "query": "quiero probar korean bbq",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["korean bbq"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English 2-gram concept that must beat its own parts ('korean' + 'bbq')."
+    },
+    {
+      "id": "cs-19",
+      "query": "algo de seafood",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["seafood"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "English form of sn-36."
+    },
+    {
+      "id": "cs-20",
+      "query": "quiero un sandwich",
+      "stratum": "code_switched",
+      "expected": {
+        "concepts": ["sandwich"],
+        "excluded": [],
+        "mustNotResolve": []
+      },
+      "park": false,
+      "notes": "Control for the stratum — a plain English noun under a Spanish carrier must ground exactly as English."
+    }
+  ]
+}

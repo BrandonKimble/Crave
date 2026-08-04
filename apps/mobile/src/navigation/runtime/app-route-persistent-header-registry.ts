@@ -52,6 +52,23 @@ export type PersistentHeaderDescriptor = {
   // load-bearing both ways: declared-'header' with no Strip barks, and a Strip on a
   // scene not declared 'header' barks (PersistentSheetHeaderHost).
   Strip?: React.ComponentType;
+  /**
+   * ACCESSIBILITY LABELS for the host-owned HeaderNavAction, per scene and per STATE
+   * (F1650, 2026-08-04). The one plus↔X control is host-owned, so before this it announced
+   * a generic 'Close page' / 'Create' for every scene — a screen-reader user could not tell
+   * which surface the X dismisses. Each scene declares what its control actually does;
+   * the host falls back to the generic pair when a scene declares nothing.
+   *
+   * These labels are ALSO the only stable text anchors the outer-shell rig has on these
+   * sheets (CLAUDE.md's maestro gotcha) — but they are product a11y copy first: label what
+   * the control TRULY does, never what a flow wishes it said.
+   */
+  navActionLabels?: {
+    /** Announced while the control is the black X (children / a session close). */
+    close?: string;
+    /** Announced while the control is the red plus (parents / create). */
+    create?: string;
+  };
 };
 
 const persistentHeaderDescriptors = new Map<OverlayKey, PersistentHeaderDescriptor>();

@@ -82,6 +82,10 @@ const SearchResultsPersistentHeaderTitle: React.FC = () => {
 // header math reads the same computed fact via its own layout runtime.
 registerPersistentHeaderDescriptor('search', {
   Title: SearchResultsPersistentHeaderTitle,
+  // F1650: the results X announces the surface it dismisses (this label was an
+  // accessibilityLabel on the old in-frame header button until 9ad80e338 moved the
+  // control host-side and dropped it).
+  navActionLabels: { close: 'Close results' },
 });
 
 // Leg 6 (§4 HeaderNavAction): the results X is the HOST-OWNED control now; the session close

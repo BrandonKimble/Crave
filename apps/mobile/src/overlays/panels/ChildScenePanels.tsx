@@ -190,6 +190,10 @@ const BlockedUsersSection = () => {
   });
   const handleUnblock = React.useCallback(
     (user: FollowListUser) => {
+      // The blocked account may since have been deleted — the block is
+      // RETAINED (it protects whoever placed it), so this list renders ghosts.
+      // Unblocking one is still meaningful bookkeeping, but it needs an id.
+      if (!user.userId) return;
       setPendingUnblockId(user.userId);
       usersService
         .unblockUser(user.userId)

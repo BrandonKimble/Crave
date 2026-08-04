@@ -42,21 +42,39 @@ cd "$ROOT_DIR"
 
 VALID_CLASSES="operational gate harness dead-scaffolding"
 
+# THE FENCE IS EVERY SHELL PROGRAM IN THE REPO, NOT ONE DIRECTORY (F1653, 2026-08-04).
+# The scan root used to be `scripts` alone, so the single largest dead script in the repo
+# (maestro/perf/map-accept.sh, 470 lines, 100% inoperative — F1651) sat OUTSIDE the fence
+# the whole time the fence existed. maestro/ is now scanned too. apps/ is deliberately NOT
+# scanned here: apps/api has its own spec-side lockdown
+# (apps/api/src/shared/testing/script-containment.spec.ts) and the two stay disjoint by
+# EXPLICIT exclusion, not by accident. Adding a new top-level script home means adding it
+# to SCAN_ROOTS — the per-root floors below make a forgotten root fail loudly.
+SCAN_ROOTS="scripts maestro"
+
 # Executable scripts only. Data files (.allowlist, .sql, .json) carry no class.
 # (no `mapfile` — macOS ships bash 3.2 and this must run locally, not just in CI)
 SCRIPT_FILES=()
 while IFS= read -r script_file; do
   SCRIPT_FILES+=("$script_file")
 done < <(
-  find scripts -type f \
+  find $SCAN_ROOTS -type f \
     \( -name '*.sh' -o -name '*.js' -o -name '*.py' -o -name '*.swift' \) \
     | sort
 )
 
 # NO-EMPTY-LOOP GREEN. An always-green guard is the disease, not the cure: if
 # this scan ever loses the tree, every assertion below becomes vacuously true.
-if [[ "${#SCRIPT_FILES[@]}" -lt 40 ]]; then
-  echo "scripts-containment-gate: scan found only ${#SCRIPT_FILES[@]} scripts — it has lost the tree; the assertions below would be vacuously green." >&2
+# PER-ROOT floors, because a whole-repo total can stay above a single floor while
+# one root silently contributes zero (which is exactly how maestro/ went unscanned).
+scripts_seen="$(printf '%s\n' "${SCRIPT_FILES[@]}" | grep -c '^scripts/' || true)"
+maestro_seen="$(printf '%s\n' "${SCRIPT_FILES[@]}" | grep -c '^maestro/' || true)"
+if [[ "$scripts_seen" -lt 40 ]]; then
+  echo "scripts-containment-gate: scan found only ${scripts_seen} scripts under scripts/ — it has lost the tree; the assertions below would be vacuously green." >&2
+  exit 1
+fi
+if [[ "$maestro_seen" -lt 1 ]]; then
+  echo "scripts-containment-gate: scan found NO scripts under maestro/ — the F1653 widening has lost that root; scripts there would be unfenced again." >&2
   exit 1
 fi
 
@@ -86,7 +104,7 @@ done
 failed=0
 
 if [[ "${#undeclared[@]}" -ne 0 ]]; then
-  echo "scripts-containment-gate: every script under scripts/ must declare '@script-class: <c>' in its header. Undeclared:" >&2
+  echo "scripts-containment-gate: every script under $SCAN_ROOTS must declare '@script-class: <c>' in its header. Undeclared:" >&2
   printf '  %s\n' "${undeclared[@]}" >&2
   failed=1
 fi

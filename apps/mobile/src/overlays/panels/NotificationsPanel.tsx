@@ -18,6 +18,7 @@ import {
 import { resolveUserDisplayName } from '../../utils/user-display-name';
 import { AVATAR_SIZES } from '../../constants/avatar-sizes';
 import { colors as themeColors } from '../../constants/theme';
+import { isInteractableAuthor } from '../../services/author-identity';
 
 // ─── notifications — THE PAGE L2's first migrated list body ─────────────────────────
 // The in-app feed over GET /notifications/feed. Opening the page marks the feed read
@@ -65,8 +66,10 @@ const RowAvatar = ({ item }: { item: NotificationFeedItem }) => {
 const NotificationRow = React.memo(({ item }: { item: NotificationFeedItem }) => {
   const { pushRoute } = useAppOverlayRouteController();
   const handlePress = React.useCallback(() => {
-    if (item.type === 'follower_added' && item.actor?.userId) {
-      pushRoute('userProfile', { userId: item.actor.userId });
+    // A notification outlives the account that caused it; a follow from an
+    // account that has since been deleted has no profile to open.
+    if (item.type === 'follower_added' && isInteractableAuthor(item.actor)) {
+      pushRoute('userProfile', { userId: item.actor?.userId as string });
     }
   }, [item, pushRoute]);
   return (

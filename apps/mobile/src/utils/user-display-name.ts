@@ -19,11 +19,25 @@
 type NamedUserLike = {
   displayName?: string | null;
   username?: string | null;
+  /** Server fact (publicAuthorIdentity): the account is gone. */
+  isDeleted?: boolean;
 };
+
+// A DELETED ACCOUNT OUTRANKS THE CALLER'S FALLBACK. Deletion nulls the name
+// columns, so without this branch a ghost would inherit whichever word the
+// surface happened to pass — "Member" here, "Someone" there, "Crave member"
+// elsewhere — and the reader would never learn the account is gone. It is also
+// why `isDeleted` is a FIELD and not a sniff for the string below: editing or
+// translating this copy must not change what the app believes about an
+// account's existence.
+export const DELETED_USER_DISPLAY_NAME = 'Deleted user';
 
 export const DEFAULT_USER_DISPLAY_NAME_FALLBACK = 'Crave member';
 
 export const resolveUserDisplayName = (
   user: NamedUserLike | null | undefined,
   fallback: string = DEFAULT_USER_DISPLAY_NAME_FALLBACK
-): string => user?.displayName?.trim() || user?.username?.trim() || fallback;
+): string =>
+  user?.isDeleted
+    ? DELETED_USER_DISPLAY_NAME
+    : user?.displayName?.trim() || user?.username?.trim() || fallback;

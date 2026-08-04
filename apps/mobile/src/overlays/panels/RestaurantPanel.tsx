@@ -1020,6 +1020,8 @@ RestaurantPersistentHeaderExtras.displayName = 'RestaurantPersistentHeaderExtras
 registerPersistentHeaderDescriptor('restaurant', {
   Title: RestaurantPersistentHeaderTitle,
   Extras: RestaurantPersistentHeaderExtras,
+  // F1650 (restores the label 9ad80e338 dropped when the per-panel close button went away).
+  navActionLabels: { close: 'Close restaurant' },
 });
 
 // Restaurant's close is a SESSION verb (token-guarded closeRestaurantRoute), not the canonical

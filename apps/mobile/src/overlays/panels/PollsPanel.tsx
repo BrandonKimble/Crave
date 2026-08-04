@@ -561,6 +561,10 @@ PollsFeedStrip.displayName = 'PollsFeedStrip';
 registerPersistentHeaderDescriptor('polls', {
   Title: PollsPersistentHeaderTitle,
   Strip: PollsFeedStrip,
+  // F1650. The pre-9ad80e338 label was the single string 'Create or close polls' because
+  // ONE morphing button carried both meanings; the host-owned control now announces per
+  // STATE, so each label says exactly what a press will do.
+  navActionLabels: { close: 'Close polls', create: 'Create poll' },
 });
 
 const POLLS_LIST_ESTIMATED_ITEM_SIZE = 190;

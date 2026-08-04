@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import type { SupportedLocale } from '../../shared/locale';
 import { randomBytes } from 'crypto';
 import {
   PollState,
@@ -1238,7 +1239,7 @@ export class PollsService {
     return enriched;
   }
 
-  async getPoll(pollId: string) {
+  async getPoll(pollId: string, locale?: SupportedLocale) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
       include: {

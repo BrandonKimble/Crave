@@ -356,6 +356,27 @@ export const INVARIANTS: readonly Invariant[] = [
 
   // ── THE LEDGER ───────────────────────────────────────────────────────
   {
+    id: 'identity.author-identity-has-one-home',
+    statement:
+      'Any read that exposes another person\'s name goes through publicAuthorIdentity, so a deleted account renders as "Deleted user" rather than as whatever a component does with a null.',
+    incident:
+      "Deletion nulls username and displayName. Five surfaces each invented their own fallback — '?', 'user', a seeded pseudo-name, a bare null, a blank byline — and NONE said \"deleted\". Nothing failed; the thread just rendered a nameless comment.",
+    level: 'lint',
+    mechanism:
+      'scripts/check-author-identity.ts — every user-shaped select is either AUTHOR_SELECT-based (which carries deletedAt) and mapped through publicAuthorIdentity, or classified with a reason.',
+    check: {
+      command: 'npx ts-node -T scripts/check-author-identity.ts',
+      reads: 'every select in src/ that exposes a username',
+    },
+    mutations: [
+      {
+        file: 'src/modules/identity/probe-author.service.ts',
+        content:
+          'export const sel = { userId: true, username: true, displayName: true, deletedAt: true };\n',
+      },
+    ],
+  },
+  {
     id: 'signals.subject-text-emission',
     statement:
       "A person's typed words leave a query only if the read is scoped to that person's own actor, or the words cleared the k-anonymity floor (signal_emittable_terms).",

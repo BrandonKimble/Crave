@@ -12,6 +12,7 @@ import {
   type CollaboratorModalPayload,
 } from './collaborator-modal-store';
 import { useSingletonSurfaceHost } from './singleton-surface-store';
+import { isInteractableAuthor } from '../services/author-identity';
 
 // ─── Shared person atoms (the collaborator chip on ListDetail uses these too) ────────────────
 // F892 (2026-08-03): module-local — every caller is in this file.
@@ -50,10 +51,18 @@ const CollaboratorPersonRow = ({
   const [revealKick, setRevealKick] = React.useState(false);
   return (
     <View style={styles.personRow} testID={`collaborator-row-${person.userId}`}>
+      {/* A deleted collaborator has no profile to open (the public profile
+          read filters deletedAt), so the row is inert rather than a tap that
+          404s. `disabled` also drops it from the accessibility tap order. */}
       <Pressable
-        onPress={() => onOpenProfile(person.userId)}
+        onPress={() => isInteractableAuthor(person) && onOpenProfile(person.userId as string)}
+        disabled={!isInteractableAuthor(person)}
         accessibilityRole="button"
-        accessibilityLabel={`Open ${personDisplayName(person)}'s profile`}
+        accessibilityLabel={
+          isInteractableAuthor(person)
+            ? `Open ${personDisplayName(person)}'s profile`
+            : personDisplayName(person)
+        }
         style={styles.personRowMain}
       >
         <PersonAvatar person={person} size={36} />
@@ -84,7 +93,7 @@ const CollaboratorPersonRow = ({
       {canKick ? (
         revealKick ? (
           <Pressable
-            onPress={() => onKick(person.userId)}
+            onPress={() => person.userId && onKick(person.userId)}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${personDisplayName(person)}`}
             testID={`collaborator-kick-${person.userId}`}

@@ -1,5 +1,6 @@
 import api from './api';
 import type { Coordinate, FoodResult, RestaurantResult, SearchResponse } from '../types';
+import type { AuthorIdentity } from './author-identity';
 
 export type UserListType = 'restaurant' | 'dish';
 export type UserListVisibility = 'public' | 'private';
@@ -69,12 +70,9 @@ export type UserListViewerRole = 'owner' | 'collaborator' | 'viewer';
 export type UserListSort = 'custom' | 'best' | 'recent';
 
 /** Collaborator roster person (spec B.1.3 — PERSON_SELECT on the API). */
-export interface UserListPerson {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export type UserListPerson = AuthorIdentity;
 
 export interface UserListCollaborators {
   owner: UserListPerson;

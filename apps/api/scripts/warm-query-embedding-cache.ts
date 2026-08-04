@@ -47,12 +47,21 @@ async function main(): Promise<void> {
     );
     // Phase C: search history lives on the signals ledger (kind='search',
     // subject_text = the normalized query term).
+    //
+    // THROUGH signal_emittable_terms, NOT the raw column (2026-08-03). This
+    // read is cross-person AND outbound: the terms are shipped to a
+    // third-party embedding API. It previously read `signals.subject_text`
+    // directly, so a term exactly one person had ever typed left the system.
+    // The k-floor view is the eligibility authority; joining it is what makes
+    // that impossible rather than merely unlikely.
     const queryRows = await prisma.$queryRawUnsafe<{ query_text: string }[]>(
-      `SELECT subject_text AS query_text
-       FROM signals
-       WHERE kind = 'search'
-         AND subject_text IS NOT NULL AND length(trim(subject_text)) >= 3
-       GROUP BY subject_text
+      `SELECT s.subject_text AS query_text
+       FROM signals s
+       JOIN signal_emittable_terms _emit ON _emit.term = s.subject_text
+       WHERE s.kind = 'search'
+         AND s.subject_text IS NOT NULL
+         AND length(trim(s.subject_text)) >= 3
+       GROUP BY s.subject_text
        ORDER BY count(*) DESC
        LIMIT $1`,
       topQueries,

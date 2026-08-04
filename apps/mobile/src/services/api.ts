@@ -11,6 +11,7 @@ import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
 import { useSessionLapseStore } from '../store/sessionLapseStore';
 import { getOrCreateDeviceKey } from './device-key';
 import { resolveApiFailureAction } from './api-failure-policy';
+import { useAccountDeletedStore } from '../store/accountDeletedStore';
 
 const DEFAULT_API_URL = 'http://localhost:3000/api/v1';
 // PROVENANCE (F839, 2026-08-03): the DEV timeout is deliberately absurd (2 minutes) so a
@@ -400,7 +401,15 @@ api.interceptors.response.use(
 
     // What this failure MEANS is decided in one pure place
     // (api-failure-policy.ts), so the set of outcomes is closed and provable.
-    const failureAction = resolveApiFailureAction({ status, errorCode });
+    const purgeDueAt =
+      responseRecord && typeof responseRecord.purgeDueAt === 'string'
+        ? responseRecord.purgeDueAt
+        : null;
+    const failureAction = resolveApiFailureAction({
+      status,
+      errorCode,
+      purgeDueAt,
+    });
 
     // THE SESSION-LAPSE SEAM (F804): the server says 401 — the token is
     // expired, revoked, for a deleted user, or was never resolved because the
@@ -413,6 +422,16 @@ api.interceptors.response.use(
     if (failureAction.kind === 'session_lapse') {
       useSessionLapseStore.getState().announceLapse();
       (error as { isSessionLapse?: boolean }).isSessionLapse = true;
+      return Promise.reject(error);
+    }
+
+    // Deleted account inside its grace window. ONE chokepoint, mirroring the
+    // two lapse branches: announce the story so the app root can offer restore,
+    // and tag the error so callers stay quiet — otherwise every in-flight
+    // request raises its own "something went wrong" on top of the takeover.
+    if (failureAction.kind === 'account_deleted') {
+      useAccountDeletedStore.getState().announceDeleted(failureAction.purgeDueAt);
+      (error as { isAccountDeleted?: boolean }).isAccountDeleted = true;
       return Promise.reject(error);
     }
 

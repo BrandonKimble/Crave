@@ -1,4 +1,11 @@
-// PRD Section 4 compliant unified entity model types
+// The shared entity model. HISTORY (F1656, 2026-08-04): this header used to read
+// "PRD Section 4 compliant unified entity model types" and the file carried a block of
+// PRD-§4.1-era shapes that NOTHING imported — EntityInMenuContext, EntityInCategoryContext,
+// DualPurposeEntity, LocationData, ApiResponse, PaginatedResponse, EntityFilter,
+// LocationQuery (plus EntityUsageType/AttributeScope, live only as EntityFilter's fields).
+// A 130-name export census across apps/api and apps/mobile found zero consumers, and the
+// banking re-grep found only doc mentions in PRD.md/CRAVE.md, which are not consumers.
+// They are deleted. What remains is what both apps actually import.
 
 /**
  * Restaurant Metadata structure
@@ -72,88 +79,6 @@ export interface Connection {
   lastMentionedAt?: Date;
   lastUpdated: Date;
   createdAt: Date;
-}
-
-/**
- * Context-aware entity resolution types
- * PRD 4.3.1: Dual-purpose entity handling
- */
-export interface EntityInMenuContext {
-  entity: Entity;
-  connection: Connection;
-}
-
-export interface EntityInCategoryContext {
-  entity: Entity;
-  connectionCount: number;
-  usageType: 'category';
-}
-
-export interface DualPurposeEntity {
-  entity: Entity;
-  menuItemUsage: number;
-  categoryUsage: number;
-}
-
-/**
- * Location interface for restaurant entities
- * PRD 4.2: Location data for restaurants
- */
-export interface LocationData {
-  locationId: string;
-  googlePlaceId?: string | null;
-  coordinates?: {
-    lat: number;
-    lng: number;
-  };
-  address?: string | null;
-  city?: string | null;
-  state?: string | null;
-  zipCode?: string | null;
-  priceLevel?: number | null;
-  metadata?: Record<string, unknown> | null;
-}
-
-/**
- * API Response types
- */
-export interface ApiResponse<T> {
-  data: T;
-  success: boolean;
-  message?: string;
-  timestamp: string;
-}
-
-export interface PaginatedResponse<T> extends ApiResponse<T[]> {
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
-
-/**
- * Search and filter types
- */
-export type EntityUsageType = 'menu_item' | 'category' | 'both';
-export type AttributeScope = 'food' | 'restaurant';
-
-export interface EntityFilter {
-  usageContext?: EntityUsageType;
-  restaurantId?: string;
-  scope?: AttributeScope;
-  limit?: number;
-  offset?: number;
-}
-
-export interface LocationQuery {
-  centerPoint: {
-    lat: number;
-    lng: number;
-  };
-  radiusKm: number;
-  includeInactive?: boolean;
 }
 
 export type OnboardingStatus = 'not_started' | 'in_progress' | 'completed';

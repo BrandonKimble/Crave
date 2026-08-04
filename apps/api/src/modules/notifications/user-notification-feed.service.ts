@@ -2,6 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
+import {
+  AUTHOR_SELECT,
+  publicAuthorIdentity,
+} from '../identity/public-author-identity';
 
 const DEFAULT_PAGE_SIZE = 30;
 
@@ -69,12 +73,7 @@ export class UserNotificationFeedService {
     const actors = visibleActorIds.length
       ? await this.prisma.user.findMany({
           where: { userId: { in: visibleActorIds } },
-          select: {
-            userId: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
+          select: AUTHOR_SELECT,
         })
       : [];
     const actorById = new Map(actors.map((actor) => [actor.userId, actor]));
@@ -86,7 +85,10 @@ export class UserNotificationFeedService {
           : null;
       return {
         ...row,
-        actor: followerUserId ? (actorById.get(followerUserId) ?? null) : null,
+        // A notification outlives the account that caused it.
+        actor: followerUserId
+          ? publicAuthorIdentity(actorById.get(followerUserId))
+          : null,
       };
     });
     return { items, unreadCount };

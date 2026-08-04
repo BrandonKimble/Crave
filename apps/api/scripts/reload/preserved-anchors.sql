@@ -29,8 +29,20 @@ SELECT DISTINCT entity_id FROM (
   UNION SELECT entity_id FROM curated_list_items WHERE entity_id IS NOT NULL
   UNION SELECT restaurant_id FROM curated_list_items WHERE restaurant_id IS NOT NULL
   UNION SELECT entity_id FROM collection_on_demand_requests WHERE entity_id IS NOT NULL
-  -- signal acts (searches, views, favorites, poll votes) are user data
+  -- signal acts (searches, views, favorites, poll votes) are user data.
+  -- Read from BOTH the raw ledger and the DURABLE daily aggregate.
+  -- Why both (2026-08-03): this union decides which entities survive a city
+  -- wipe, and it is the $118 law — wrongly dropping a grounded restaurant
+  -- costs real Places re-enrichment. The raw ledger is becoming SHORT-LIVED
+  -- (a retention window is the whole point of the signals redesign), so a
+  -- TTL would silently SHRINK the preserved set and start deleting anchors
+  -- that raw simply no longer remembers. `signal_demand_daily` is the durable
+  -- record of the same fact — an entity was acted on — and outlives raw by
+  -- design. Keeping raw as well costs nothing while it exists and means this
+  -- query never depends on the aggregate pass having caught up to today.
   UNION SELECT subject_id FROM signals
+    WHERE subject_type = 'entity' AND subject_id IS NOT NULL
+  UNION SELECT subject_id FROM signal_demand_daily
     WHERE subject_type = 'entity' AND subject_id IS NOT NULL
   -- poll endorsements: restaurant axis is a bare uuid; dish axis is a
   -- poll-local 'restaurantId::foodId' composite — preserve both halves

@@ -1,4 +1,11 @@
 #!/bin/bash
+# @script-class: harness
+# @run-by: NOTHING automated, by design — the owner runs it by hand from
+#   maestro/failure-matrix/ per page before launch (product/README.md pre-launch gate;
+#   plans/foundation-hardening-and-failure-matrix.md §D). It drives a booted simulator +
+#   a live Metro, so it is far too slow and too stateful to gate a push.
+#   (Classified 2026-08-04 under F1653, when the containment fence widened to maestro/.)
+#
 # THE FAILURE MATRIX (product/README.md pre-launch gate; design of record:
 # plans/foundation-hardening-and-failure-matrix.md §D).
 #

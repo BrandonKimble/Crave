@@ -2,6 +2,7 @@ import api from './api';
 import { expectArray, expectArrayAt } from './expect-shape';
 import type { MapBounds } from '../types';
 import { resolveUserDisplayName } from '../utils/user-display-name';
+import type { AuthorIdentity } from './author-identity';
 
 // ─── Live model (comment + endorsement + leaderboard) ────────────────────────
 
@@ -15,12 +16,9 @@ export interface EntitySpan {
   type: string; // 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute'
 }
 
-export interface PollCommentUser {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export type PollCommentUser = AuthorIdentity;
 
 export interface PollComment {
   commentId: string;
@@ -38,11 +36,10 @@ export interface PollComment {
 
 export type PollCommentSort = 'top' | 'new';
 
-export interface PollCreator {
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export interface PollCreator extends AuthorIdentity {
   origin: 'seeded' | 'user' | 'curator';
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
 }
 
 /**
@@ -368,12 +365,9 @@ export const checkPollDuplicate = async (body: {
 
 // ─── Restaurant mentions (W3, page-registry §8.4 Discussions view) ──────────
 
-export interface RestaurantMentionUser {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+// One shared shape (services/author-identity): these were seven
+// near-identical copies, each free to disagree about a deleted person.
+export type RestaurantMentionUser = AuthorIdentity;
 
 export interface RestaurantMentionReply {
   commentId: string;

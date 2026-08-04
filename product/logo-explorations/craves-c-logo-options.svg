@@ -1,0 +1,192 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1300" viewBox="0 0 1800 1300" role="img" aria-labelledby="title desc">
+  <title id="title">Craves C logo exploration sheet</title>
+  <desc id="desc">Six red-pink C shaped logo mark options inspired by rounded 3D half rings and the Craves restaurant pill color.</desc>
+  <defs>
+    <linearGradient id="sheetBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbfbfc"/>
+      <stop offset="1" stop-color="#f1f2f5"/>
+    </linearGradient>
+
+    <linearGradient id="brandTube" x1="70" y1="46" x2="218" y2="236" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff2f6"/>
+      <stop offset="0.18" stop-color="#ff7995"/>
+      <stop offset="0.47" stop-color="#e84868"/>
+      <stop offset="0.78" stop-color="#d62d53"/>
+      <stop offset="1" stop-color="#a71f40"/>
+    </linearGradient>
+
+    <linearGradient id="brandFlat" x1="58" y1="68" x2="220" y2="216" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ff8aa1"/>
+      <stop offset="0.46" stop-color="#e84868"/>
+      <stop offset="1" stop-color="#c92249"/>
+    </linearGradient>
+
+    <linearGradient id="brandSatin" x1="56" y1="48" x2="224" y2="238" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffbdca"/>
+      <stop offset="0.2" stop-color="#f15a79"/>
+      <stop offset="0.55" stop-color="#e84868"/>
+      <stop offset="1" stop-color="#be2247"/>
+    </linearGradient>
+
+    <linearGradient id="softHighlight" x1="72" y1="62" x2="190" y2="110" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+      <stop offset="0.42" stop-color="#ffffff" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+
+    <radialGradient id="specular" cx="38%" cy="24%" r="76%">
+      <stop offset="0" stop-color="#fff7fa" stop-opacity="0.95"/>
+      <stop offset="0.27" stop-color="#ffc0cd" stop-opacity="0.5"/>
+      <stop offset="0.7" stop-color="#e84868" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#9f1b3b" stop-opacity="0.28"/>
+    </radialGradient>
+
+    <linearGradient id="tileWash" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#f7f7f9"/>
+    </linearGradient>
+
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#a91f40" flood-opacity="0.2"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#3a1020" flood-opacity="0.12"/>
+    </filter>
+
+    <filter id="tightShadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="9" flood-color="#9a1c39" flood-opacity="0.22"/>
+    </filter>
+
+    <filter id="blur6" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+
+    <filter id="bevelShadow" x="-20%" y="-20%" width="150%" height="160%">
+      <feDropShadow dx="10" dy="16" stdDeviation="12" flood-color="#8d1937" flood-opacity="0.22"/>
+    </filter>
+
+    <mask id="biteMask">
+      <rect width="280" height="280" fill="black"/>
+      <path d="M 196 75 A 84 84 0 1 0 196 205" fill="none" stroke="white" stroke-width="60" stroke-linecap="round"/>
+      <circle cx="213" cy="118" r="16" fill="black"/>
+      <circle cx="224" cy="145" r="12" fill="black"/>
+    </mask>
+
+    <mask id="iconMask">
+      <rect width="280" height="280" fill="black"/>
+      <path d="M 195 77 A 84 84 0 1 0 195 203" fill="none" stroke="white" stroke-width="58" stroke-linecap="round"/>
+    </mask>
+
+    <style>
+      .title { font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; font-size: 44px; font-weight: 750; fill: #16181d; letter-spacing: 0; }
+      .subtitle { font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; font-size: 22px; font-weight: 450; fill: #5c626d; letter-spacing: 0; }
+      .label { font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; font-size: 22px; font-weight: 700; fill: #262a31; letter-spacing: 0; }
+      .note { font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; font-size: 16px; font-weight: 460; fill: #707680; letter-spacing: 0; }
+      .tile { fill: url(#tileWash); stroke: #e4e6ea; stroke-width: 1; }
+      .chipText { font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; font-size: 18px; font-weight: 650; fill: #ffffff; letter-spacing: 0; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1300" fill="url(#sheetBg)"/>
+
+  <g transform="translate(90 68)">
+    <text class="title" x="0" y="0" dominant-baseline="hanging">Craves C logo directions</text>
+    <text class="subtitle" x="0" y="62">Dominant color sampled from the restaurant pill: #E84868, with deeper red shadows and pale pink highlights.</text>
+    <g transform="translate(1394 2)">
+      <rect x="0" y="0" width="280" height="58" rx="24" fill="#e84868"/>
+      <text class="chipText" x="140" y="30" text-anchor="middle" dominant-baseline="middle">Restaurants</text>
+    </g>
+  </g>
+
+  <g transform="translate(90 170)">
+    <rect class="tile" x="0" y="0" width="500" height="330" rx="22"/>
+    <text class="label" x="28" y="34" dominant-baseline="hanging">1. Gloss Donut C</text>
+    <text class="note" x="28" y="66" dominant-baseline="hanging">Closest to the 3D tube reference.</text>
+    <g transform="translate(110 54)" filter="url(#softShadow)">
+      <path d="M 196 75 A 84 84 0 1 0 196 205" fill="none" stroke="#951b38" stroke-width="64" stroke-linecap="round" opacity="0.22" transform="translate(8 12)"/>
+      <path d="M 196 75 A 84 84 0 1 0 196 205" fill="none" stroke="url(#brandTube)" stroke-width="64" stroke-linecap="round"/>
+      <path d="M 184 74 A 74 74 0 0 0 81 109" fill="none" stroke="url(#softHighlight)" stroke-width="16" stroke-linecap="round" opacity="0.82"/>
+      <path d="M 90 178 A 74 74 0 0 0 168 220" fill="none" stroke="#8f1835" stroke-width="13" stroke-linecap="round" opacity="0.18" filter="url(#blur6)"/>
+      <ellipse cx="132" cy="88" rx="64" ry="17" fill="#ffffff" opacity="0.28" transform="rotate(-12 132 88)"/>
+      <ellipse cx="184" cy="180" rx="18" ry="38" fill="#ffffff" opacity="0.2" transform="rotate(26 184 180)"/>
+    </g>
+  </g>
+
+  <g transform="translate(650 170)">
+    <rect class="tile" x="0" y="0" width="500" height="330" rx="22"/>
+    <text class="label" x="28" y="34" dominant-baseline="hanging">2. Satin Washer C</text>
+    <text class="note" x="28" y="66" dominant-baseline="hanging">Flatter, with crisp cut ends.</text>
+    <g transform="translate(110 54)" filter="url(#bevelShadow)">
+      <path d="M 199 76 A 86 86 0 1 0 199 204" fill="none" stroke="#a41d3c" stroke-width="66" stroke-linecap="butt" opacity="0.28" transform="translate(12 15)"/>
+      <path d="M 199 76 A 86 86 0 1 0 199 204" fill="none" stroke="url(#brandSatin)" stroke-width="66" stroke-linecap="butt"/>
+      <path d="M 199 76 A 86 86 0 1 0 199 204" fill="none" stroke="#ffffff" stroke-width="10" stroke-linecap="butt" opacity="0.28" transform="translate(-5 -8)"/>
+      <path d="M 199 76 A 86 86 0 1 0 199 204" fill="none" stroke="#8f1835" stroke-width="9" stroke-linecap="butt" opacity="0.22" transform="translate(8 9)"/>
+      <ellipse cx="198" cy="76" rx="30" ry="13" fill="#ffd5de" opacity="0.95" transform="rotate(-19 198 76)"/>
+      <ellipse cx="200" cy="204" rx="30" ry="13" fill="#f7a1b4" opacity="0.88" transform="rotate(19 200 204)"/>
+    </g>
+  </g>
+
+  <g transform="translate(1210 170)">
+    <rect class="tile" x="0" y="0" width="500" height="330" rx="22"/>
+    <text class="label" x="28" y="34" dominant-baseline="hanging">3. Pill Gradient C</text>
+    <text class="note" x="28" y="66" dominant-baseline="hanging">Simplest app-mark direction.</text>
+    <g transform="translate(110 54)" filter="url(#tightShadow)">
+      <path d="M 196 75 A 84 84 0 1 0 196 205" fill="none" stroke="url(#brandFlat)" stroke-width="58" stroke-linecap="round"/>
+      <path d="M 188 78 A 74 74 0 0 0 86 107" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity="0.38"/>
+      <path d="M 78 174 A 76 76 0 0 0 164 218" fill="none" stroke="#a51d3d" stroke-width="9" stroke-linecap="round" opacity="0.18"/>
+    </g>
+  </g>
+
+  <g transform="translate(90 560)">
+    <rect class="tile" x="0" y="0" width="500" height="330" rx="22"/>
+    <text class="label" x="28" y="34" dominant-baseline="hanging">4. Crave Bite C</text>
+    <text class="note" x="28" y="66" dominant-baseline="hanging">Food hint through negative space.</text>
+    <g transform="translate(110 54)" filter="url(#tightShadow)">
+      <path d="M 196 75 A 84 84 0 1 0 196 205" fill="none" stroke="url(#brandFlat)" stroke-width="60" stroke-linecap="round" mask="url(#biteMask)"/>
+      <path d="M 186 75 A 74 74 0 0 0 83 108" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" opacity="0.42"/>
+      <circle cx="213" cy="118" r="16" fill="#f7f7f9"/>
+      <circle cx="224" cy="145" r="12" fill="#f7f7f9"/>
+      <circle cx="216" cy="116" r="4" fill="#ffffff" opacity="0.45"/>
+    </g>
+  </g>
+
+  <g transform="translate(650 560)">
+    <rect class="tile" x="0" y="0" width="500" height="330" rx="22"/>
+    <text class="label" x="28" y="34" dominant-baseline="hanging">5. Tilted Soft Slab</text>
+    <text class="note" x="28" y="66" dominant-baseline="hanging">More like the flat 3D reference.</text>
+    <g transform="translate(110 58) rotate(-10 140 140)" filter="url(#softShadow)">
+      <path d="M 202 71 A 90 90 0 1 0 197 211" fill="none" stroke="#8f1835" stroke-width="62" stroke-linecap="butt" opacity="0.18" transform="translate(10 15)"/>
+      <path d="M 202 71 A 90 90 0 1 0 197 211" fill="none" stroke="url(#brandSatin)" stroke-width="62" stroke-linecap="butt"/>
+      <path d="M 92 97 A 78 78 0 0 1 193 75" fill="none" stroke="#fff7fa" stroke-width="11" stroke-linecap="round" opacity="0.52"/>
+      <path d="M 76 176 A 78 78 0 0 0 153 223" fill="none" stroke="#8d1733" stroke-width="14" stroke-linecap="round" opacity="0.16"/>
+      <path d="M 202 71 L 222 95 L 189 111 L 170 89 Z" fill="#ffd1db" opacity="0.75"/>
+      <path d="M 197 211 L 217 235 L 179 247 L 161 223 Z" fill="#f58aa0" opacity="0.64"/>
+    </g>
+  </g>
+
+  <g transform="translate(1210 560)">
+    <rect class="tile" x="0" y="0" width="500" height="330" rx="22"/>
+    <text class="label" x="28" y="34" dominant-baseline="hanging">6. App Icon Bubble C</text>
+    <text class="note" x="28" y="66" dominant-baseline="hanging">A ready-made icon container test.</text>
+    <g transform="translate(110 42)">
+      <rect x="34" y="34" width="212" height="212" rx="58" fill="#e84868" filter="url(#tightShadow)"/>
+      <rect x="46" y="46" width="188" height="188" rx="48" fill="url(#specular)" opacity="0.96"/>
+      <path d="M 195 77 A 84 84 0 1 0 195 203" fill="none" stroke="#ffffff" stroke-width="58" stroke-linecap="round" mask="url(#iconMask)" opacity="0.96"/>
+      <path d="M 185 78 A 74 74 0 0 0 91 103" fill="none" stroke="#ffe8ee" stroke-width="10" stroke-linecap="round" opacity="0.72"/>
+      <circle cx="208" cy="143" r="11" fill="#e84868" opacity="0.86"/>
+      <ellipse cx="146" cy="68" rx="62" ry="15" fill="#ffffff" opacity="0.22" transform="rotate(-8 146 68)"/>
+    </g>
+  </g>
+
+  <g transform="translate(90 970)">
+    <rect x="0" y="0" width="1620" height="166" rx="20" fill="#ffffff" stroke="#e4e6ea"/>
+    <text class="label" x="32" y="34" dominant-baseline="hanging">Read on the set</text>
+    <text class="note" x="32" y="72" dominant-baseline="hanging">The strongest directions are likely 1 for the donut/Craves personality, 2 for a more mature brand mark, and 3 for the cleanest app icon scalability.</text>
+    <g transform="translate(32 116)">
+      <rect x="0" y="0" width="98" height="28" rx="14" fill="#e84868"/>
+      <text class="note" x="116" y="15" dominant-baseline="middle">#E84868 brand red-pink</text>
+      <rect x="440" y="0" width="98" height="28" rx="14" fill="#ff7995"/>
+      <text class="note" x="556" y="15" dominant-baseline="middle">highlight pink</text>
+      <rect x="800" y="0" width="98" height="28" rx="14" fill="#a71f40"/>
+      <text class="note" x="916" y="15" dominant-baseline="middle">deep edge shadow</text>
+    </g>
+  </g>
+</svg>

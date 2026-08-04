@@ -338,7 +338,11 @@ export const PersistentSheetHeaderHost: React.FC<{
             <HeaderNavAction
               progress={navActionProgress}
               onPress={handleNavActionPress}
-              accessibilityLabel={headerNavAction === 'close' ? 'Close page' : 'Create'}
+              accessibilityLabel={
+                headerNavAction === 'close'
+                  ? (descriptor.navActionLabels?.close ?? 'Close page')
+                  : (descriptor.navActionLabels?.create ?? 'Create')
+              }
             />
           </View>
         }

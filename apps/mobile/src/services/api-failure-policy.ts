@@ -14,6 +14,8 @@ export type ApiFailureAction =
   | { kind: 'session_lapse' }
   /** Entitlement wall: announce the lapse, the paywall takeover handles it. */
   | { kind: 'entitlement_lapse' }
+  /** The account is inside its deletion grace window — offer restore. */
+  | { kind: 'account_deleted'; purgeDueAt: string | null }
   /** The server is unwell: the system-status banner owns this one. */
   | { kind: 'service_issue' }
   /** Everything else — the caller's own error handling. */
@@ -22,6 +24,8 @@ export type ApiFailureAction =
 export const resolveApiFailureAction = (failure: {
   status: number | undefined;
   errorCode: string | undefined;
+  /** ISO deadline from an ACCOUNT_DELETED body — how long is left to restore. */
+  purgeDueAt?: string | null;
 }): ApiFailureAction => {
   const { status, errorCode } = failure;
   if (status === 401) {
@@ -31,6 +35,13 @@ export const resolveApiFailureAction = (failure: {
   }
   if (status === 403 && errorCode === 'ENTITLEMENT_REQUIRED') {
     return { kind: 'entitlement_lapse' };
+  }
+  // A DELETED ACCOUNT IS A STORY, NOT A FAILURE. The server refuses every
+  // route for an account inside its grace window; without this branch that
+  // arrived as a generic "something went wrong" on every screen at once, with
+  // no mention that the account is recoverable and no way to do it.
+  if (status === 403 && errorCode === 'ACCOUNT_DELETED') {
+    return { kind: 'account_deleted', purgeDueAt: failure.purgeDueAt ?? null };
   }
   if (typeof status === 'number' && status >= 500) {
     return { kind: 'service_issue' };

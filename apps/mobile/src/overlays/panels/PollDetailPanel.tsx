@@ -1422,6 +1422,8 @@ PollDetailPersistentHeaderExtras.displayName = 'PollDetailPersistentHeaderExtras
 registerPersistentHeaderDescriptor('pollDetail', {
   Title: PollDetailPersistentHeaderTitle,
   Extras: PollDetailPersistentHeaderExtras,
+  // F1650 (restores the label 9ad80e338 dropped when the per-panel close button went away).
+  navActionLabels: { close: 'Close poll' },
 });
 
 const styles = StyleSheet.create({

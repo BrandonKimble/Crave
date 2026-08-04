@@ -33,10 +33,22 @@ export class RequestLocaleInterceptor implements NestInterceptor {
     const locale = resolveRequestLocale(http.getRequest<LocaleAwareRequest>());
     const response = http.getResponse<{
       header?: (name: string, value: string) => void;
+      getHeader?: (name: string) => string | string[] | number | undefined;
     }>();
     if (typeof response?.header === 'function') {
       response.header('Content-Language', locale);
-      response.header('Vary', 'Accept-Language');
+      const existingVary = response.getHeader?.('Vary');
+      const varyParts = new Set(
+        String(existingVary ?? '')
+          .split(',')
+          .map((v: string) => v.trim())
+          .filter(Boolean),
+      );
+      varyParts.add('Accept-Language');
+      // F3 (red team, executed): Fastify header() SETS — it clobbered the
+      // CORS 'Vary: Origin', making origin-dependent responses cacheable
+      // without varying on Origin. Merge, never set.
+      response.header('Vary', Array.from(varyParts).join(', '));
     }
     return next.handle();
   }

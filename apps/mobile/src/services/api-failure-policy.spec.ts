@@ -100,3 +100,47 @@ describe('the 401 seam drives real, observable state', () => {
     expect(useSessionLapseStore.getState().lapsed).toBe(false);
   });
 });
+
+/**
+ * THE DELETED-ACCOUNT VERDICT.
+ *
+ * The server refuses every authenticated route for an account inside its
+ * 30-day deletion window. Without its own branch that verdict fell through to
+ * `caller_owned` and surfaced as a generic failure on whatever screen was
+ * mounted — repeated per request, never saying the account is recoverable.
+ *
+ * It must ALSO stay distinct from the two neighbours: signing the person out
+ * would strand them (only an authenticated call can restore), and raising the
+ * paywall would tell them the wrong story entirely.
+ */
+describe('a deleted account is its own story', () => {
+  it('403 + ACCOUNT_DELETED carries the deadline the copy needs', () => {
+    expect(
+      resolveApiFailureAction({
+        status: 403,
+        errorCode: 'ACCOUNT_DELETED',
+        purgeDueAt: '2026-09-02T00:00:00.000Z',
+      })
+    ).toEqual({
+      kind: 'account_deleted',
+      purgeDueAt: '2026-09-02T00:00:00.000Z',
+    });
+  });
+
+  it('does not sign the person out, and does not raise the paywall', () => {
+    const action = resolveApiFailureAction({
+      status: 403,
+      errorCode: 'ACCOUNT_DELETED',
+      purgeDueAt: null,
+    });
+    // Signing out would strand them: restore is an AUTHENTICATED call.
+    expect(action.kind).not.toBe('session_lapse');
+    expect(action.kind).not.toBe('entitlement_lapse');
+  });
+
+  it("a plain 403 is still the caller's, not a deletion verdict", () => {
+    expect(resolveApiFailureAction({ status: 403, errorCode: undefined }).kind).toBe(
+      'caller_owned'
+    );
+  });
+});
