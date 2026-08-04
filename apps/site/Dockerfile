@@ -13,16 +13,18 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-# tsc only. Nothing in this app has a runtime dependency.
-RUN npm install -g typescript@5
-
-COPY apps/site/package.json ./apps/site/
-COPY apps/site/tsconfig.json ./apps/site/
-COPY apps/site/src ./apps/site/src
-COPY apps/site/test ./apps/site/test
-
+# tsc + the node type stubs ONLY — build-time deps, never shipped (the
+# production stage copies dist only). Locally these resolve from the repo's
+# hoisted node_modules; the image must install its own or tsc dies with
+# TS2688 (build 085b98b6 did exactly that).
 WORKDIR /app/apps/site
-RUN tsc -p tsconfig.json \
+RUN npm install --no-save --no-package-lock typescript@5 @types/node@22
+
+COPY apps/site/package.json /app/apps/site/
+COPY apps/site/tsconfig.json /app/apps/site/
+COPY apps/site/src /app/apps/site/src
+COPY apps/site/test /app/apps/site/test
+RUN ./node_modules/.bin/tsc -p tsconfig.json \
  && mkdir -p dist/src/pages \
  && cp src/pages/*.html dist/src/pages/
 
