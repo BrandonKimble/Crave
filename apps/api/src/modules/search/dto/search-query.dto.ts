@@ -387,6 +387,13 @@ export class NaturalSearchRequestDto {
   @IsString()
   sourceQuery?: string;
 
+  // Same semantics as SearchQueryRequestDto.includeSimilar (the chip toggle). The
+  // service already reads it on the natural path; only this whitelist entry was
+  // missing, so the client chip state 400'd every natural search.
+  @IsOptional()
+  @IsBoolean()
+  includeSimilar?: boolean;
+
   @IsOptional()
   @IsUUID()
   searchRequestId?: string;
