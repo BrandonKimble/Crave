@@ -23,16 +23,18 @@ import { foodNameVariants } from './food-lemma';
  *   punctuation/possessives ("Phil's" == "Phils"), collapse whitespace.
  *   No token sort — restaurant word order is branding.
  */
-/** Accent translate table (final red team F3): the fold's `[^a-z0-9]+`
+/** Accent translate table (final red team F3; Vietnamese precomposed
+ *  tone marks added in the i18n build — WS1 caught that 'pho hoai'
+ *  could not reach 'Phở Hoài'): the fold's `[^a-z0-9]+`
  *  arm turned every accented char into a SPACE, so "crème brûlée" and
  *  "creme brulee" held different keys and the unique index + advisory
  *  lock were both blind to the twin. One explicit 1:1 map, mirrored
  *  byte-for-byte by the DB's crave_fold() function — do not use NFKD
  *  here, the SQL side can't, and the two MUST stay identical. */
 const FOLD_ACCENTS_FROM =
-  'àáâãäåāăąçćčèéêëēĕėęěìíîïĩīĭįñńňòóôõöøōŏőùúûüũūŭůűųýÿžźżšśşğłđřťßæœ';
+  'àáâãäåāăąçćčèéêëēĕėęěìíîïĩīĭįñńňòóôõöøōŏőùúûüũūŭůűųýÿžźżšśşğłđřťßæœảạằắẳẵặầấẩẫậẻẽẹềếểễệỉịỏọồốổỗộơờớởỡợủụưừứửữựỳỷỹỵ';
 const FOLD_ACCENTS_TO =
-  'aaaaaaaaaccceeeeeeeeeiiiiiiiinnnooooooooouuuuuuuuuuyyzzzsssgldrtsao';
+  'aaaaaaaaaccceeeeeeeeeiiiiiiiinnnooooooooouuuuuuuuuuyyzzzsssgldrtsaoaaaaaaaaaaaaeeeeeeeeiiooooooooooooouuuuuuuuyyyy';
 const FOLD_ACCENT_MAP: Record<string, string> = {};
 for (let i = 0; i < FOLD_ACCENTS_FROM.length; i += 1) {
   FOLD_ACCENT_MAP[FOLD_ACCENTS_FROM[i]] = FOLD_ACCENTS_TO[i];
