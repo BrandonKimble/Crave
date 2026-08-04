@@ -401,3 +401,18 @@ event, 700ms backstop) — the honest wiring the old deferral demanded. D6 stays
 declare-sheet-always + at-rest self-offer (conditional declaration would race the
 post-txn reveal snap). OA6 correction: home curated lists ARE implemented (verified
 E4); all five mouths arm the SAME join (parity table in the R7 report).
+
+## END-TO-END RED TEAM (2026-08-04) — verdict + burn-in watchlist
+
+F1 (HIGH) FIXED same-day (23434ef24): the hidden-domain switch immediately re-fused
+through the >= 0 posture clamp — an OA5 teleport; now armed-only with a falsifier.
+Watchlist for burn-in (not blocking): F2 a redraw arming mid-flight is born
+sheetMotionSettled:true (seed path never asks the host's at-rest fact) — the one
+remaining D2-class window; F3 falsifier debt — fence/hidden specs cover the pure
+modules, not the host wiring (G-HIDDEN sim acceptance owns the runtime side), and
+hasClearedScreenEdge is an unused JS mirror to delete; F4 hygiene — OneTrackPrototype
+corpse, unused delete()/forget(), one ungated console.log; F5 owner-eyeball — the
+presented 'search' leg resolves through homeParts (docked-feed lane): confirm intended
+in every phase. Everything else walked clean: contract conformance, falsifier honesty
+on the other suites, no prod per-frame work added (60fps hard requirement holds).
+Verdict: burn-in ready.
