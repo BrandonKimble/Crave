@@ -25,9 +25,6 @@ import { PERSON_DATA_RULES } from './person-data-class';
  * against the local database and leaves nothing behind.
  */
 
-const TEST_UUID = '00000000-dead-4000-8000-00000000feed';
-const TEST_TEXT = 'zzq-erasure-probe-needle';
-
 describe('person data erasure — proven against a live database', () => {
   const prisma = new PrismaClient();
 
@@ -126,7 +123,10 @@ describe('person data erasure — proven against a live database', () => {
         // And the person's identifying TEXT is gone from the shell.
         const shell = await tx.$queryRawUnsafe<
           Array<{ username: string | null; display_name: string | null }>
-        >(`SELECT username, display_name FROM users WHERE user_id = $1::uuid`, subjectId);
+        >(
+          `SELECT username, display_name FROM users WHERE user_id = $1::uuid`,
+          subjectId,
+        );
         // (The anonymize step is the deletion service's job; here we only
         // prove the eraser did not leave rows behind.)
         expect(shell.length).toBeLessThanOrEqual(1);
