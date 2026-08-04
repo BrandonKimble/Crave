@@ -1001,3 +1001,226 @@ dep array is a fourth hand-written copy of the same field list (F1610).
 
 **Controllers territory TERMINAL.** Cluster A (15 relay hops → 4 authorities, 24 files, commit 3965f285e) and Cluster B (all 18 repacker sites, 14 more controllers deleted, commits 76c7355a0 + b6d78d36f) both landed byte-identical under proven instruments. Durable guards: the 16-step composite transcript spec and repacker-dep-array-coverage.spec (comment-stripped parsing, self-checked factory population — watch that self-check if the factory count ever hits zero). F1666 (the upstream memo that GATED the F1611 hand-fix — the fix was coincidental until B0), F1668 (spread-with-filter: a destructure acting as a runtime filter that inlining would silently drop, tsc green throughout — explicit field literals are the law at those three sites), F1669 corrections recorded.
 **D59 EXECUTED** (commit da628275f): scalar-surface stack gone (~2,160 real lines — F1700's count had included the live twin, kept), three RED-proven delete-gate checks, F1709 done, F1708 stands open (the rider lives in the KEPT hit-target registry).
+
+## D61 — camera command lane rederivation: park-and-replay at the arbiter (APPROVED 2026-08-04; findings F1715, F1716)
+
+**ORCHESTRATOR VERDICT: APPROVED as written.** Sequencing ruled: batch 1 = JS lane (arbiter park/replay/watchdog, fallback deletion, F1715 single-staging, specs 1-5); batch 2 = the patch repair + registry removal + nm symbol gate (same commit as pod install + build-trust recipe); rig recipe (spec 6) runs after batch 2 on a freshly built binary and must FIRST promote the defect-3 attribution from matches to proven via the nm check. The watchdog-noise red-team point is accepted as loud-by-design during the gap between batches.
+
+**Bedrock obligation of the lane:** an intent, once committed by the arbiter, must eventually
+execute on the composite or be superseded by a NEWER committed intent (or by the user's own
+gesture). It must never silently vanish, and the lane must never report success it cannot
+prove. Today the lane violates all three: reject → cancel-and-drop; native "resolve" means
+"parked, maybe never applied"; the executor returns `true` synchronously before the promise
+settles, so the arbiter runs its success-side writers even on the reject path.
+
+### New evidence found during this design pass (changes the attribution picture)
+
+Binary autopsy of the installed dev client
+(`~/Library/Developer/Xcode/DerivedData/cravesearch-ebulueazabvxrcfekwsqmhnjeydn/Build/Products/Debug-iphonesimulator/cravesearch.app/cravesearch.debug.dylib`,
+mtime Aug 4 00:13 — same day as the F1716 rig session):
+
+1. **The native half of the rnmapbox camera patch is NOT in the binary.** `nm` shows ZERO
+   symbols for `ProfilePresentationCameraHostRegistry`, `RNMBXCamera.hostKey`, or
+   `onCameraAnimationComplete` (the only matching strings are the reflection literals
+   compiled from the app's own ProfilePresentationTransactionExecutor.swift). The
+   `rnmapbox_maps` pod IS compiled in (247 symbols) — from UNPATCHED native sources.
+   Consequence (i): the native fallback's reflection lookup misses 100% of the time on this
+   build — `camera_command_unavailable` is DETERMINISTIC here, not racy. That is exactly the
+   reject the predecessor session captured live.
+2. **The 10.3.1 re-port DROPPED the iOS `applyProfilePresentationCameraCommand` method.**
+   `patches/@rnmapbox+maps+10.3.1.patch` adds
+   `ios/RNMBX/ProfilePresentationCameraHostRegistry.swift`, which calls
+   `host.applyProfilePresentationCameraCommand(stop)` — but the patch's RNMBXCamera.swift hunk
+   never defines that method (the parked 10.2.9 patch did, at its line ~13005, with the
+   completion-id dedupe). Grep of all of `node_modules/@rnmapbox/maps/ios` at HEAD confirms:
+   one call site, zero definitions. So the current patched iOS pod CANNOT compile if the new
+   registry file is actually added to the Pods project — which is presumably why it isn't in
+   the binary (the new-file half of the patch never entered the pod build; a `pod install`
+   that picked it up would turn the silent no-op into a build error). Android's Kotlin half
+   kept its `applyProfilePresentationCameraCommand`; only iOS lost it in the re-port
+   (consistent with the "wrong-baseline" trap recorded in the rnmapbox re-port memory).
+3. **Corollary — every ANIMATED commit on this build strands by construction.** The ONLY
+   caller of `handleProgrammaticCameraAnimationCompletion` outside specs is the
+   `onCameraAnimationComplete` native event (search-root-map-presentation-controller-runtime.ts:50);
+   the emitter for that event is part of the missing native patch half. No caller of
+   `resolvePendingProgrammaticCameraAnimation` exists outside specs. So an `easeTo` commit
+   with `deferControlledCameraStateUntilCompletion: true` (fitAll, resolve-fit-all-camera.ts:202;
+   profile flyTo, profile-native-command-runtime.ts:49; scene motion targets,
+   use-app-route-scene-camera-motion-target-runtime.ts:115) leaves the arbiter pending
+   FOREVER — the deferred JS state sync never flushes — until a user gesture cancels it.
+   The F1716 run-1 stranding (map settled at the profile fly-to region, four byte-correct
+   [CAMCOMMIT]s, none landed as JS state) matches this shape precisely: the fly-to's
+   completion never arrived, the restores' deferred/controlled state never reconciled.
+   **Caveat, honestly stated:** which binary the rig sim actually had installed during run 1
+   is unverified (the mtime and the live reject both corroborate, but the next rig session
+   must confirm with `nm ... | grep -c onCameraAnimationComplete` against the installed app
+   before this attribution is promoted from "matches" to "proven").
+
+So the lane has THREE defects stacked: the arbiter's drop-on-reject (F1716's core), the
+lying native-fallback contract (parked ≠ applied; sync-true-before-settle), and a broken
+patch re-port that turned the fallback into a permanent corpse while also severing the
+completion channel every deferred sync depends on.
+
+### What is the single-shot design compensating for?
+
+The transient hostlessness of the `MapboxGL.Camera` ref during scene switches: React
+unmounts/remounts the camera component across profile push/pop and world switches, and a
+commit issued in that window has no writer. The compensation was built TWICE, both BELOW the
+arbiter: (1) the JS native-executor fallback (search-map-native-camera-executor.ts), and
+(2) the native registry itself — which, read closely, ALREADY implements the ideal shape:
+`dispatchCommand` parks `pendingCommandsByKey[hostKey]` and returns; `register` replays the
+latest parked command; newest-wins by overwrite. The right mechanism exists, at the wrong
+layer, behind a promise contract that cannot express it ("resolve" = parked-or-applied,
+indistinguishable), invisible to the arbiter that owns supersession, and — after the re-port
+— not even compiled in. The rederivation moves the park to the one place that already owns
+intent lifecycle: **the arbiter**.
+
+### Candidate evaluation
+
+- **(b) retry with bounded backoff — REJECTED.** Retrying against a reflection miss that is
+  permanent (patch unapplied) spins forever or gives up arbitrarily; retrying against a
+  transient unmount is just a worse-timed version of (a) with sleep-guessing. Retry treats
+  the symptom's schedule, not the obligation.
+- **(c) guarantee a host always exists — REJECTED as primary.** Why doesn't one exist? Because
+  the camera ref's lifecycle is owned by React scene switching — the map component genuinely
+  unmounts across worlds. Guaranteeing mount ordering would couple the command lane into the
+  scene-switch controller and the map host config (adjacent to the OFF-LIMITS map core), and
+  it cannot fix the severed completion channel at all. The ref lifecycle is a fact; the lane
+  must be correct UNDER it, not legislate it away.
+- **(a) host-aware deferral at the arbiter — CHOSEN**, generalized: the arbiter owns a parked
+  intent until it executes or is superseded (by a newer commit or a user gesture). This is
+  the native registry's own proven shape, promoted to the layer that already owns
+  supersession, gestures, completion, and the D56 in-flight target.
+
+### Mechanism
+
+**1. Arbiter park-and-replay (camera-intent-arbiter.ts).**
+`commit()` calls `commandCameraViewport`; if it returns false (no writer executed), the
+intent is PARKED (`parkedIntent: CameraIntent | null`, newest wins — a later commit replaces
+it; the fallthrough writer block that today runs anyway is deleted, so controlled state is
+no longer written for an unexecuted intent). New public
+`notifyCameraWriterAvailable()` — called from a mount effect in the real map component that
+owns `cameraRef` (a real component, so effects fire; NOT the scene body-spec hooks, per the
+effects-don't-fire law) — re-commits the parked intent through the normal `commit()` path.
+`setGestureActive(true)` CLEARS the park (the user's gesture is supersession).
+`getInFlightCameraTarget()` returns the parked target while parked — a D56 origin captured
+mid-park must capture where the map is GOING, same ruling as in-flight (F1513).
+
+**2. The native fallback DIES.** `commandCameraViewport` keeps only the ref path and returns
+an honest executed-or-not boolean. DELETED: `search-map-native-camera-executor.ts` (whole
+file); the fallback branch + `latestNativeCameraExecutorRef` in
+use-search-runtime-camera-intent-runtime.ts; `executeCameraCommand`,
+`dispatchProfilePresentationCameraCommand`, the `camera_command_unavailable` reject and the
+`cameraCommandExecutionAvailable` constant in ProfilePresentationTransactionExecutor.swift
+(the sheet-command half of that file stays); `onCommandRejected` from the arbiter writer
+contract. At the NEXT patch re-port: the host-registry halves of the rnmapbox patch
+(iOS ProfilePresentationCameraHostRegistry.swift, the Android registry + apply method, the
+`hostKey`/`nativeHostKey` prop plumbing) are removed — they are the second, now-redundant
+parker. The completion-event half (`onCameraAnimationComplete`, `animationCompletionId`
+through CameraUpdateItem) is KEPT and must be REPAIRED, because item 3 below depends on it
+and it is not in the binary today.
+
+**3. Completion honesty — a bounded watchdog in the arbiter.** A lane whose only settle
+signal can silently not exist must not trust it blindly. On an animated commit, arm a timer
+(injectable clock) for `animationDurationMs + slackMs`. On expiry with the completion still
+pending: read the EXISTING observed viewport (ViewportBoundsService — read-only, no map-core
+touch); if within epsilon of the target, resolve 'finished' (the composite is the oracle,
+the event was merely lost); else re-commit the same intent ONCE; else fail LOUD — a
+breadcrumb through the crash-reporting seam + `[CAMCOMMIT-path] surrendered` in __DEV__,
+and resolve 'cancelled' so the deferred state sync is discarded rather than stranded and the
+arbiter is free for the next intent. Never silent, never stuck, never fake-green: the
+'finished' arm requires a composite match, not a timer alone.
+
+**4. F1715 subsumed — one pop, one staging.** The reducer chokepoint
+(applyTransitionPlanToRouteState 'closeActive'/'popToEntry' + the bare-pop paths in
+app-route-scene-switch-controller.ts:848-861) becomes the ONLY stager; the three verb-time
+stagings (app-overlay-route-command-runtime.ts:97,299,334) are DELETED. The verb-time layer
+existed partly to stage while a live host might still be around — a timing compensation the
+arbiter park makes unnecessary (a reducer-time commit that lands hostless simply parks).
+Detent-ledger reads, scroll staging and camera commit all run exactly once per pop.
+
+**Performance:** steady state adds one nullable field and one mount-effect notification;
+per-commit adds one timer arm/disarm on animated commits only. It REMOVES a bridge
+promise round-trip, the double staging per pop (F1715's duplicated ledger reads/writes),
+and a dead reflection dispatch. Map core untouched.
+
+### Files touched / deleted
+
+- `apps/mobile/src/screens/Search/runtime/map/camera-intent-arbiter.ts` — park, replay,
+  gesture-clears-park, watchdog, honest fallthrough (the biggest edit).
+- `apps/mobile/src/screens/Search/hooks/use-search-runtime-camera-intent-runtime.ts` —
+  fallback branch deleted; `[CAMCOMMIT-path]` gains `parked` / `replayed` / `surrendered` legs.
+- `apps/mobile/src/screens/Search/components/search-map.tsx` (or the component that owns
+  `cameraRef` mount) — the `notifyCameraWriterAvailable()` mount effect.
+- `apps/mobile/src/screens/Search/runtime/map/search-map-native-camera-executor.ts` — DELETE.
+- `apps/mobile/ios/cravesearch/ProfilePresentationTransactionExecutor.swift` — camera half
+  DELETE (D44's documented reflection hatch #1 dies with it; the comment block updates).
+- `apps/mobile/src/navigation/runtime/app-overlay-route-command-runtime.ts` — verb stagings
+  DELETE (F1715).
+- `patches/@rnmapbox+maps+10.3.1.patch` — separate, sequenced SECOND: repair the completion
+  half (restore the emitter path the re-port lost), remove the registry/hostKey halves;
+  `pod install` + the build-trust recipe + an `nm`-based symbol gate
+  (`nm cravesearch.debug.dylib | grep -c onCameraAnimationComplete` must be > 0) so a
+  future silent patch failure cannot recreate defect 3 invisibly.
+
+### Mutation-proof plan (the racy stranding becomes deterministic)
+
+The race is "commit lands while the ref is unmounted" — in a spec that is just a writer that
+returns false. No timing needed.
+
+1. **Stranding spec (goes RED under the reverted defect):** arbiter with
+   `commandCameraViewport` returning false; commit an intent with
+   `deferControlledCameraStateUntilCompletion`. Assert: no controlled-state writer ran,
+   intent is parked, `getInFlightCameraTarget()` returns the parked target. Then flip the
+   writer to a recorder and call `notifyCameraWriterAvailable()`. Assert: exactly the parked
+   intent executes and state syncs. Reverting to cancel-and-drop makes both halves RED
+   (intent vanished; state never syncs) — this is the F1716 stranding, deterministic.
+2. **Supersession spec:** park A, commit B while still hostless, host arrives → only B
+   executes, A never does. Gesture variant: park A, `setGestureActive(true)`, host arrives →
+   nothing executes.
+3. **Watchdog spec (fake clock):** animated commit, no completion event. (a) observed
+   viewport at target → resolves 'finished', deferred state flushes; (b) observed viewport
+   elsewhere → exactly one re-commit, then loud surrender, deferred sync discarded, arbiter
+   accepts a fresh commit. Reverting the watchdog → RED (pending forever — defect 3).
+4. **F1715 spec:** one `closeActive` pop through the real controller stages the origin
+   restore exactly ONCE (count staging invocations). Restoring the unconditional reducer
+   fallback alongside the verbs → RED with 2.
+5. **Delete gate:** `camera_command_unavailable` and `executeCameraCommand` join the
+   exterminated-pattern proof greps (spec-excluded per the F1664 fix).
+6. **Rig verification recipe (next sim session):** symbol-gate the installed binary first;
+   then the F1716 repro loop (profile push under in-flight fitAll → dismiss ×10) watching
+   `[CAMCOMMIT-path]` — the `parked`→`replayed` pair must appear on at least one iteration
+   (proving the hostless window is really hit and really healed), and the settled screenshot
+   must match the committed target every iteration.
+
+### Red-team of this proposal
+
+- **Late replay = camera jerk?** A host returning seconds later could yank the map to a stale
+  target. Mitigations already in the mechanism: user gesture clears the park; any newer
+  commit replaces it. Residual: an old park replaying with no intervening gesture/commit —
+  but that is exactly the obligation (the intent was never superseded, so it must land).
+  If the rig shows a felt jerk, the remedy is an easing-mode floor on replays, not an expiry.
+- **Two parkers = double execution.** If the native registry stays alive while the arbiter
+  parks, a resurrected patch could replay a byte-stale command underneath the arbiter. That
+  is why the registry halves must die in the SAME re-port that repairs the completion half —
+  the two mechanisms are mutually exclusive, and the native one also has an unfixed stale-replay
+  bug (its `pendingCommandsByKey` is never cleared after application, so EVERY re-register
+  replays the last command forever — one more reason it loses).
+- **Watchdog false-'finished':** epsilon comparison against observed viewport could pass on a
+  coincidentally-close camera. Epsilon must be tight (center delta + zoom delta both small)
+  and the spec's RED arm proves a wrong region does not pass. It reads the composite — this
+  is the instrument-the-composite law, not a timer lie.
+- **Watchdog noise while the patch is broken:** until the patch repair lands, EVERY animated
+  commit will watchdog. That is loud-by-design (it names defect 3 on every occurrence) but
+  argues for landing the patch repair in the same batch, and the symbol gate keeps it from
+  silently regressing later.
+- **`notifyCameraWriterAvailable` placement risk:** if the effect lands in a scene body-spec
+  hook it is dead code (proven law). The spec cannot catch a wrong placement — the rig
+  recipe's `replayed` leg is the instrument that can show RED there. Named explicitly so the
+  implementer doesn't discover it the hard way.
+- **Android:** the patch registry deletion must remove BOTH sides (Kotlin registry + apply +
+  hostKey manager prop) or Android stops compiling; the parity plan's stage list gets the
+  same string-pin note as F1702/F1703.
+- **What this draft does NOT fix:** the D44 reflection hatch #2 (BottomSheetHostRegistryBridge)
+  stays as ruled; F1717 (pins source delta) untouched; the F1715 detent/scroll lanes are
+  de-duplicated but not redesigned.
