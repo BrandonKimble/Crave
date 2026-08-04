@@ -64,12 +64,14 @@ export const logPageSwitchDebug = (tag: string, data: Record<string, unknown>): 
  * RED reads: a capture whose center is not where the finger was; a pop line with no
  * matching restore line; a restore with `camera=null` on a flow that should carry one.
  *
- * ON by default (unlike its siblings) because the next sim session must verify
- * capture-timing on the real rig before a store build ships — F1516's prescribed first
- * executable step. Flip to `false` once that session signs off; `__DEV__` stays in the
- * conjunction so it can never reach a release build.
+ * Signed off on the rig 2026-08-04: all five D56 verification points passed
+ * ([CAMORIGIN-capture] timing, in-flight fitAll arbiterTarget, home-shelf byte-identity,
+ * profile-pop restore byte+pixel match, and the F1505 tripwire — which needed the
+ * closeActive leg of the `pop` probe added before it could arm at all; see F1714-F1717).
+ * DEFAULT OFF now, one edit to flip when debugging the camera lane (the open F1717
+ * stuck-map thread is the likely reason to).
  */
-export const CAMORIGIN_DEBUG_ENABLED = true;
+export const CAMORIGIN_DEBUG_ENABLED = false;
 
 export const isCameraOriginDebugEnabled = (): boolean => __DEV__ && CAMORIGIN_DEBUG_ENABLED;
 

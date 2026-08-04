@@ -94,6 +94,17 @@ export const createAppOverlayRouteCommandRuntime = ({
     const previousOverlayRoute = routeSceneSwitchRuntime.getPreviousRouteEntry();
     // Stage the POPPED entry's origin BEFORE the switch request: the motion plan reads the
     // remembered-snap ledger during plan resolution (staging at commit is a stale read).
+    // D56/F1516(C) — the HALF-POP tripwire, closeActive leg. The popToEntry/popToRoot verbs
+    // carried this probe from day one but closeActive — the verb EVERY ordinary dismiss uses —
+    // did not, so the tripwire never armed in a whole sim session (an instrument that cannot
+    // fire is an always-green lie). Same shape as its siblings: a `pop` line with no matching
+    // `[CAMORIGIN-restore]` line is F1505 resurrected.
+    logCameraOriginDebug('pop', {
+      verb: 'closeActive',
+      targetKey: previousOverlayRoute?.key ?? null,
+      hasOrigin: activeOverlayRoute.origin != null,
+      hasCamera: activeOverlayRoute.origin?.camera != null,
+    });
     stageRouteEntryOriginRestore(activeOverlayRoute.origin);
     if (previousOverlayRoute != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
       // Ledger item 6 VERDICT (one mechanism per POP CLASS, not one flag-free mechanism):
