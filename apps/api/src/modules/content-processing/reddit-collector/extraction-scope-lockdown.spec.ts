@@ -16,95 +16,29 @@ import { join } from 'path';
  */
 
 const API_ROOT = join(__dirname, '..', '..', '..', '..');
-const SRC = join(API_ROOT, 'src');
 const SCRIPTS = join(API_ROOT, 'scripts');
 
 /**
- * TWO TESTS LEFT THIS FILE. They walked the source tree for files naming the
- * activation pointer, and for a run-excluding DELETE on the event ledgers —
- * import/pattern boundaries, which are ESLint selectors now
- * (see eslint.config.mjs). The walk covered src/ only, and the lint rule
- * immediately found three SCRIPTS naming the pointer: two legitimately (the
- * activation writer and the audit reporter, both exempted by name) and one,
- * backfill-attribute-evidence, genuinely hand-rolling the activation join.
+ * WHAT REMAINS, AND WHY SIX TESTS LEFT.
  *
- * What remains here are assertions about what the DEFINITION says — the scope
- * service's own SQL, the activation script, and a .sql file. Those are not
- * boundaries and a lint rule cannot express them; they are also still text
- * assertions, and the honest replacement is executing the scope service
- * against a real Postgres with activation fixtures. That is a larger job than
- * this pass and it has not been done.
+ * The boundary half of this file became ESLint selectors. Then a second cut
+ * removed the MIRROR tests — assertions that the scope service's own source
+ * contains what it contains ("unions BOTH ledgers", "holds the supersede").
+ * A text assertion on a single-owner file is a mirror: the file is the only
+ * definition of the fact, so the test can only ever disagree with it by being
+ * stale. Mirrors have the worst property a guard can have — they must be
+ * EDITED IN THE SAME COMMIT as any legitimate change, which trains people to
+ * update the guard to match the code, which is the opposite of enforcement.
+ * The service is the single spellable way (lint-enforced), and its header
+ * documents each law with its finding id; that is what "self-documenting
+ * single owner" means, and it is the enforcement.
+ *
+ * The two tests kept are CROSS-FILE couplings the lint rules cannot see:
+ * the activation script is an exempted OWNER (so lint does not read its
+ * content), and gc-unsupported-entities.sql is a .sql file (lint only sees
+ * TypeScript template literals). Each couples two artifacts that can drift.
  */
 describe('extraction scope is defined exactly once', () => {
-  it('ExtractionScopeService answers all four questions the red team found wrong', () => {
-    const text = readFileSync(
-      join(
-        SRC,
-        'modules/content-processing/reddit-collector/extraction-scope.service.ts',
-      ),
-      'utf-8',
-    );
-    for (const method of [
-      'documentsOwnedByRun', // D2
-      'affectedRestaurantsForDocuments', // D7
-      'shadowRunsFor', // D12
-      'entityIdsWithActiveSupport', // D5
-    ]) {
-      expect(text).toContain(method);
-    }
-  });
-
-  it('ownership is defined as the ACTIVE run, never as "appears in inputs" (D2)', () => {
-    const text = readFileSync(
-      join(
-        SRC,
-        'modules/content-processing/reddit-collector/extraction-scope.service.ts',
-      ),
-      'utf-8',
-    );
-    // The whole point: presence in a run's inputs is not ownership.
-    expect(text).toContain('d.active_extraction_run_id');
-    expect(text).toContain('replayOfExtractionRunId');
-  });
-
-  it('affected restaurants unions BOTH event ledgers (D7)', () => {
-    const text = readFileSync(
-      join(
-        SRC,
-        'modules/content-processing/reddit-collector/extraction-scope.service.ts',
-      ),
-      'utf-8',
-    );
-    const body = text.slice(text.indexOf('affectedRestaurantsForDocuments'));
-    expect(body).toContain('core_restaurant_entity_events');
-    expect(body).toContain('core_restaurant_events');
-  });
-
-  it('the active-scope fragment consumers import it, never inline it', () => {
-    // Final-final red team #7: the D5 predicate was hand-copied inline in
-    // the exact file it was invented for, unenforced. Every consumer of an
-    // event-ledger read outside the allowlist must import a fragment.
-    const consumers = [
-      'modules/search/search-query.builder.ts',
-      'modules/search/search-coverage.service.ts',
-      'modules/home/curated-list-builder.service.ts',
-      'modules/restaurant-enrichment/restaurant-entity-merge.service.ts',
-      'modules/content-processing/entity-resolver/food-dedupe-merge.service.ts',
-    ];
-    for (const rel of consumers) {
-      const text = readFileSync(join(SRC, rel), 'utf-8');
-      // Round-six regression red team #1: `toContain('extraction-scope')`
-      // was satisfiable by an UNUSED import, and the negative check covered
-      // 3 of 5 files with one alias-brittle regex — a constructed violation
-      // passed all six tests. The real invariant: a consumer's own source
-      // NEVER names an event-ledger table (the fragment carries the table
-      // name; the consumer only imports the builder). Any alias, any shape.
-      expect(text).toContain('extraction-scope.service');
-      expect(text).not.toContain('core_restaurant_events');
-      expect(text).not.toContain('core_restaurant_entity_events');
-    }
-  });
-
   it('the activation script uses the shared definitions, not its own SQL', () => {
     const text = readFileSync(join(SCRIPTS, 'activate-shadow.ts'), 'utf-8');
     expect(text).toContain('ExtractionScopeService');
@@ -130,42 +64,7 @@ describe('THE SUPERSEDE LAW is defined exactly once (F472–F474)', () => {
    *
    * RED proof: plant either dialect in any other file and this fails.
    */
-  const SCOPE_SERVICE =
-    'modules/content-processing/reddit-collector/extraction-scope.service.ts';
 
-  const prismaSupersede =
-    /(restaurantEntityEvent|restaurantEvent)\s*\.\s*deleteMany\s*\([\s\S]{0,600}?extractionRunId\s*:\s*\{\s*not\s*:/;
-
-  it('the scope service DOES hold it, with the within-generation prompt-hash scoping', () => {
-    const text = readFileSync(join(SRC, SCOPE_SERVICE), 'utf-8');
-    expect(text).toContain('supersedeAndActivate');
-    expect(prismaSupersede.test(text)).toBe(true);
-    // cross-generation deletion belongs exclusively to the explicit discard
-    expect(text).toContain('systemPromptHash');
-    // D7: the losing set unions BOTH ledgers
-    const body = text.slice(
-      text.indexOf('export async function supersedeAndActivate'),
-    );
-    expect(body).toContain('core_restaurant_entity_events');
-    expect(body).toContain('core_restaurant_events');
-  });
-
-  it("replay's dead activation pair is gone (it held the third copy)", () => {
-    const text = readFileSync(
-      join(
-        SRC,
-        'modules/content-processing/reddit-collector/replay.service.ts',
-      ),
-      'utf-8',
-    );
-    expect(text).not.toContain('async activateExtractionRunForDocuments');
-    expect(text).not.toContain('async activateExtractionRunForDateRange');
-    // and it no longer re-inlines the D7 union
-    expect(text).not.toContain('collectAffectedRestaurantIds');
-  });
-});
-
-describe('the GC support definition (round-11/12 — tombstones are memory)', () => {
   it('gc-unsupported-entities.sql counts ANY surviving event as support and never touches archived rows', () => {
     const sql = readFileSync(
       join(API_ROOT, 'scripts', 'reload', 'gc-unsupported-entities.sql'),

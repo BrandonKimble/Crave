@@ -44,14 +44,40 @@
  *     skip. Code moves; a proof that quietly stops applying is the same lie
  *     this file exists to end.
  *
- * ─── WHAT THIS IS NOT ────────────────────────────────────────────────────
+ * ─── WHAT BELONGS HERE, AND WHAT DOES NOT ───────────────────────────────
  *
- * It is not a place to put invariants. Every entry below points AT a mechanism
- * that lives with the code it governs — a type, a boot assertion, a lint rule,
- * a query against Postgres. This is the census and the proof harness, not the
- * enforcement. Enforcement belongs next to what it protects; knowing the set
- * exists and still works belongs here, because that is the fact nobody can
- * establish by reading one file.
+ * THE REGISTRY SHRINKS. IT DOES NOT GROW TOWARD THE CENSUS.
+ *
+ * The census that motivated this file counted ~125 invariants, and the first
+ * instinct was to register them all. The census's own data refutes that: of
+ * 19 historical guard failures, ZERO were types, schema constraints, or
+ * anything else that runs as a side effect of compiling, booting, or testing.
+ * All 19 were separate artifacts — scanners, unwired gates, allowlists —
+ * because an artifact nothing exercises is an artifact nothing notices dying.
+ *
+ * So registering a branded type here would be proving that tsc works. Do not.
+ * An entry earns its place only when ALL THREE hold:
+ *
+ *   1. The mechanism CAN SILENTLY DIE. Lint rules qualify (a config edit can
+ *      switch one off with no failing test — it happened three times in one
+ *      day). Types and CHECK constraints do not qualify: deleting one breaks
+ *      compilation or the migration replay loudly, on every push, for free.
+ *   2. The defect is an ATTRACTOR, not a one-off. New paid-API surfaces, new
+ *      routes, new readers of the ledger — places where ordinary development
+ *      keeps regenerating the opportunity for the same mistake. A disease
+ *      killed by deleting its pattern and installing a single owner is not an
+ *      attractor; nothing regenerates it but deliberate archaeology.
+ *   3. Being wrong is EXPENSIVE — money, user trust, or unrecoverable data.
+ *
+ * Everything else is handled the better way: make the abstraction the only
+ * spellable path and let the code be its own enforcement. When an entry's
+ * mechanism moves up the ladder — a lint boundary becomes a module that no
+ * longer exports the dangerous thing — DELETE the entry with the move. The
+ * unrepresentable and behaviour entries below are the deliberate exceptions:
+ * they guard money and identity, the two places where "almost certainly
+ * cannot regress" is not a sentence anyone should have to say out loud.
+ *
+ * ─── WHAT THIS IS NOT ────────────────────────────────────────────────────
  */
 
 /** Where an invariant sits on the ladder. Higher is better: it costs less to
@@ -329,6 +355,27 @@ export const INVARIANTS: readonly Invariant[] = [
   },
 
   // ── THE LEDGER ───────────────────────────────────────────────────────
+  {
+    id: 'signals.subject-text-emission',
+    statement:
+      "A person's typed words leave a query only if the read is scoped to that person's own actor, or the words cleared the k-anonymity floor (signal_emittable_terms).",
+    incident:
+      "Measured 2026-08-03: 26 of 30 distinct search subjects had exactly ONE actor behind them, and the only k-floor in the codebase was one service's private constant — three other readers that emit text had none. Two successor guards were themselves too weak: a shared SQL fragment bound only callers who imported it, and its test counted call sites in ONE file while warm-query-embedding-cache read the raw column and shipped the terms to a third-party embedding API.",
+    level: 'lint',
+    mechanism:
+      'scripts/check-subject-text-emission.ts — a CLOSED allowlist over every file in src/ and scripts/ that touches the column, each classified own-scoped | internal-pipeline | floored | declaration. A new unclassified reader fails until someone writes down which kind it is; the failure IS the design review. The floor itself is the database view, not any TypeScript.',
+    check: {
+      command: 'npx ts-node -T scripts/check-subject-text-emission.ts',
+      reads: 'every file in the repo that names the column, not one file',
+    },
+    mutations: [
+      {
+        file: SCRATCH,
+        content:
+          'export const q = `SELECT subject_text FROM signals GROUP BY subject_text`;\n',
+      },
+    ],
+  },
   {
     id: 'ledger.subject-identity-resolves-in-one-place',
     statement:
