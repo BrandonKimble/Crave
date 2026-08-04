@@ -633,3 +633,34 @@ architecture, at the largest food-search scale there is. Wikidata's
 label/alias/search split is our trichotomy. The one capability class
 we deliberately lack (cross-encoder reranking) is the acknowledged
 ceiling of retrieval-only stacks and is what R5-3 tier 2 exists for.
+
+---
+
+## BUILD LOG (i18n phase, started 2026-08-04 — as-built corrections)
+
+WAVE 1 SHIPPED (foundation + mobile scaffolding):
+
+- entity_alias/entity_labels landed per A1/R5-5/R5-6; EIGHT alias
+  writers existed, not seven (poll-entity-seed creates restaurants via
+  buildRestaurantCreateInput); all route through one projection writer;
+  21,585 legacy rows backfilled; the invariant registry caught the new
+  FK columns and its guard was classified — the meta-machinery works.
+- A8 AS-BUILT CORRECTION: ingredient uniqueness keys on identity_key,
+  NOT identity_key_sorted — the sorted key is deliberately coarse and
+  collides on 60+ live NON-duplicate ingredient pairs (orange bitters /
+  bitter orange). 4 genuine violator groups archived with redirects.
+- Ontology rename demotion now writes the old display form as a
+  'deprecated' alias row — R5-6b's demotion memory, landed a phase
+  early because the writer conversion made it free.
+- VIETNAMESE JOINED THE FOLD: 47 precomposed tone-marked chars added
+  (WS1 caught that 'pho hoai' could never reach Phở Hoài); mirror
+  healed (10 entities, 16 alias rows).
+- Mobile scaffolding live: react-i18next + ICU MF1 + Hermes plural
+  polyfills; Accept-Language on every request; RFC 4647 lookup;
+  3 core screens fully keyed; es.json drafted native-register.
+  R5-8 CORRECTION: NativeWind is UNUSED in the app (className ×0,
+  StyleSheet ×83) — RTL is codemod+triage over ~149 unambiguous +
+  ~566 triage sites, under the 800 estimate but with no auto-flip
+  discount. Onboarding's constants file (~64 literals) + the shared
+  option labels are the remaining string debt; option labels are M2
+  concept-label territory, not M7.
