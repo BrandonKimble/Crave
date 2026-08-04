@@ -8,6 +8,14 @@ import { Text } from '../../components';
 import { announceFailureIfOnline } from '../../components/app-modal-store';
 import { MANAGE_SUBSCRIPTIONS_URL, PRIVACY_URL, TERMS_URL } from '../../constants/legalLinks';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
+import { areOverlayRoutesEqual } from '../../navigation/runtime/app-overlay-route-stack-algebra';
+import type {
+  OverlayRouteEntry,
+  OverlayRouteParamsMap,
+} from '../../navigation/runtime/app-overlay-route-types';
+import type { RouteOverlayNavigationSnapshot } from '../../navigation/runtime/route-overlay-navigation-snapshot-contract';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
@@ -39,13 +47,71 @@ type ChildSceneKey =
   | 'settings'
   | 'editProfile';
 
-const CHILD_SCENE_TITLES: Record<ChildSceneKey, string> = {
-  userProfile: 'Profile',
-  listDetail: 'List',
-  followList: 'Followers',
-  notifications: 'Notifications',
-  settings: 'Settings',
-  editProfile: 'Edit profile',
+// ─── THE PAGE'S NAME IS A FUNCTION OF THE PAGE'S PARAMS (F925) ───────────────────────
+// This table used to be `Record<ChildSceneKey, string>` with `followList: 'Followers'`
+// hardcoded — while the followList BODY derived the real mode from its own params and
+// rendered a `contextLabel` caption that existed ONLY to compensate for the header
+// being wrong half the time (a user tapping "Following" got a page titled
+// "Followers"). Truth in two places, already diverged. The title is now derived from
+// the same route entry the body reads, once, and the compensating caption is gone.
+//
+// Static-titled scenes declare a constant resolver — the shape is uniform, so a future
+// param-dependent title has nowhere else to grow.
+type ChildSceneTitleResolver = (entry: OverlayRouteEntry | null) => string;
+
+const staticTitle =
+  (title: string): ChildSceneTitleResolver =>
+  () =>
+    title;
+
+const CHILD_SCENE_TITLES: Record<ChildSceneKey, ChildSceneTitleResolver> = {
+  userProfile: staticTitle('Profile'),
+  listDetail: staticTitle('List'),
+  notifications: staticTitle('Notifications'),
+  settings: staticTitle('Settings'),
+  editProfile: staticTitle('Edit profile'),
+  followList: (entry) => {
+    const params = (entry?.key === 'followList' ? entry.params : null) as
+      | OverlayRouteParamsMap['followList']
+      | null;
+    // Same defaulting rule as FollowListPanelBody's `mode`, and the only place either
+    // of them spells it.
+    return params?.mode === 'following' ? 'Following' : 'Followers';
+  },
+};
+
+/** The topmost route entry for a scene key. THE HEADER always describes the top of the
+ *  stack (unlike leg bodies, where topmost-per-key is the warned anti-pattern) — the
+ *  same reading `useTopMostListDetailEntryForHeader` does for listDetail, generalised
+ *  so every child header can derive its title from its own params. */
+const useTopMostChildEntryForHeader = (sceneKey: ChildSceneKey): OverlayRouteEntry | null => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const selector = React.useCallback(
+    (snapshot: RouteOverlayNavigationSnapshot): OverlayRouteEntry | null => {
+      for (let index = snapshot.overlayRouteStack.length - 1; index >= 0; index -= 1) {
+        const entry = snapshot.overlayRouteStack[index];
+        if (entry?.key === sceneKey) {
+          return entry;
+        }
+      }
+      return null;
+    },
+    [sceneKey]
+  );
+  return useRouteAuthoritySelector({
+    subscribe: (listener, attributionLabel) =>
+      routeSceneRuntime.routeOverlayNavigationAuthority.registerTarget({
+        selector,
+        syncNavigationSnapshot: () => listener(),
+        isEqual: (left, right) => areOverlayRoutesEqual(left, right),
+        attributionLabel: attributionLabel ?? `childHeaderTitle:${sceneKey}`,
+      }),
+    getSnapshot: () => routeSceneRuntime.routeOverlayNavigationAuthority.getSnapshot(),
+    selector,
+    isEqual: (left, right) => areOverlayRoutesEqual(left, right),
+    attributionOwner: 'useTopMostChildEntryForHeader',
+    attributionOperation: sceneKey,
+  });
 };
 
 const DrillInRow = ({
@@ -307,12 +373,16 @@ const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => (
 SettingsSceneBody.displayName = 'SettingsSceneBody';
 
 const createChildPersistentHeaderTitle = (sceneKey: ChildSceneKey): React.ComponentType => {
-  // Static text → synchronous first-frame render (same contract as SaveListPanel's title).
-  const ChildPersistentHeaderTitle = React.memo(() => (
-    <View style={styles.headerTextGroup}>
-      <ChromeTitleText>{toSingleLineText(CHILD_SCENE_TITLES[sceneKey])}</ChromeTitleText>
-    </View>
-  ));
+  // Params-derived text, resolved synchronously from the route entry that is ALREADY
+  // committed when the header renders → still a first-frame render, no skeleton.
+  const ChildPersistentHeaderTitle = React.memo(() => {
+    const entry = useTopMostChildEntryForHeader(sceneKey);
+    return (
+      <View style={styles.headerTextGroup}>
+        <ChromeTitleText>{toSingleLineText(CHILD_SCENE_TITLES[sceneKey](entry))}</ChromeTitleText>
+      </View>
+    );
+  });
   ChildPersistentHeaderTitle.displayName = `ChildPersistentHeaderTitle(${sceneKey})`;
   return ChildPersistentHeaderTitle;
 };

@@ -29,11 +29,17 @@ type ExpoTokenCache = {
   saveToken: (key: string, token: string | null) => Promise<void>;
 };
 
+import { captureHandledError } from '../observability/crash-reporting';
 const tokenCache: ExpoTokenCache = {
   async getToken(key: string) {
     try {
       return (await SecureStore.getItemAsync(key)) ?? null;
     } catch (error) {
+      // F813 (2026-08-03): routed through the crash-reporting seam. A `console.warn` in the
+      // AUTH/MONEY path is invisible in production — this is the seam App.tsx wires and whose
+      // own docstring states the law: "a silent catch plus captureHandledError beats a silent
+      // catch alone". The `seam:` tag names which door failed.
+      captureHandledError(error, { seam: 'auth:token-cache-read', key });
       console.warn('[AuthProvider] Failed to read token from cache', error);
       return null;
     }
@@ -46,6 +52,9 @@ const tokenCache: ExpoTokenCache = {
         await SecureStore.deleteItemAsync(key);
       }
     } catch (error) {
+      // F813: a token cache that stops persisting silently signs the user out on the
+      // next cold start, with nothing anywhere saying why.
+      captureHandledError(error, { seam: 'auth:token-cache-write', key });
       console.warn('[AuthProvider] Failed to persist token', error);
     }
   },

@@ -1,13 +1,13 @@
+// F873: ONE clock for the whole perf directory (was six identical re-declarations).
+import { perfNow } from './perf-clock';
+
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
 } from './perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from './perf-scenario-runtime-store';
 
-export const getPerfScenarioWorkNow = (): number =>
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now();
+export const getPerfScenarioWorkNow = (): number => perfNow();
 
 export const logPerfScenarioWorkSpan = ({
   owner,

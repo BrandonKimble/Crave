@@ -46,7 +46,7 @@ import {
   getVisibleStepPosition,
 } from './onboarding/runtime/onboarding-step-machine';
 import { useOnboardingAnimationLane } from './onboarding/runtime/use-onboarding-animation-lane';
-import { useOnboardingAuthLane } from './onboarding/runtime/use-onboarding-auth-lane';
+import { useAuthController } from '../hooks/use-auth-controller';
 
 type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -282,7 +282,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation: _navigation }
     setEmailModalVisible,
     continueWithApple,
     continueWithGoogle,
-  } = useOnboardingAuthLane({ navigation: _navigation });
+  } = useAuthController();
 
   const locationValue = typeof answers.location === 'string' ? answers.location.trim() : '';
   const storedUsername = typeof answers.username === 'string' ? answers.username : '';

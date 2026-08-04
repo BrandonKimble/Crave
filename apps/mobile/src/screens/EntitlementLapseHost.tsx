@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
 import { useAccess } from '../hooks/useAccess';
+import { captureHandledError } from '../observability/crash-reporting';
 import { PaywallScreen } from './PaywallScreen';
 
 /**
@@ -20,12 +21,31 @@ export function EntitlementLapseHost(): React.ReactElement | null {
   // the user actually has access self-dismisses instead of walling them.
   React.useEffect(() => {
     if (!lapsed) return;
-    void access.refresh().then((summary) => {
-      if (summary?.active) clearLapse();
-    });
+    void access
+      .refresh()
+      .then((summary) => {
+        if (summary?.active) clearLapse();
+      })
+      // F812 (2026-08-03): this probe had NO `.catch`, inside the paywall takeover. It
+      // fires precisely when the server just returned 403 — the likeliest next outcome is
+      // that /users/me fails too, which produced an UNHANDLED PROMISE REJECTION on the
+      // wall. `.catch(() => {})` is not the fix: the honest answer is that we could not
+      // confirm access, so THE WALL STAYS UP (doing nothing here is exactly that), and the
+      // reason goes to the crash-reporting seam instead of nowhere.
+      .catch((error) => {
+        captureHandledError(error, { seam: 'entitlement:lapse-recheck' });
+      });
     // access.refresh is stable-enough (fetchQuery wrapper); depending on it
     // would re-fire the probe on every render.
-  }, [lapsed]); // eslint-disable-line
+    // F808 (2026-08-03): the bare `// eslint-disable-line` that lived here is DELETED. It
+    // named NO RULE, so it disabled EVERY rule on this line — a blanket mute — in order to
+    // silence exhaustive-deps, which WAS NOT INSTALLED at the time. Now that the plugin is
+    // installed, this hook does produce an exhaustive-deps WARNING (missing 'access' and
+    // 'clearLapse'), and that warning is left VISIBLE on purpose: the omission is the
+    // deliberate design stated two lines above, and the fix is to make `access` stable at
+    // its source, not to re-mute the line. If it is ever suppressed again, it must be with
+    // `// eslint-disable-next-line react-hooks/exhaustive-deps` — a named rule, one line.
+  }, [lapsed]);
 
   // Access restored (purchase/restore completed): drop the wall.
   React.useEffect(() => {

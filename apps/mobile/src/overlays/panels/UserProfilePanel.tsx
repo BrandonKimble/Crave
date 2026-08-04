@@ -13,10 +13,7 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { PageBodyShell } from '../PageBodyShell';
-import {
-  resolvePageContentBodyState,
-  type PageContentBodySpec,
-} from '../page-body-contract';
+import { resolvePageContentBodyState, type PageContentBodySpec } from '../page-body-contract';
 import {
   ProfileSectionsBody,
   PROFILE_DEFAULT_SECTION,
@@ -100,10 +97,14 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
   const { userId, profile, edge } = data;
   const { pushRoute } = useAppOverlayRouteController();
   const queryClient = useQueryClient();
-  const [followOverride, setFollowOverride] = React.useState<{
-    forUserId: string;
-    value: boolean;
-  } | null>(null);
+  // F931(a): this used to carry a `forUserId` alongside the value, read back as
+  // `followOverride.forUserId === userId` — a guard that cannot fail. The override is
+  // WRITTEN only from this component's own follow/unfollow handlers, always with this
+  // same `userId`, and the effect below clears it the moment the server agrees. There
+  // was no path that could produce an override for another user, so the comparison
+  // could only ever be true and the field only ever stored what the reader already
+  // knew. Both are gone; the override is what it is, a pending local value.
+  const [followOverride, setFollowOverride] = React.useState<{ value: boolean } | null>(null);
   const [followBusy, setFollowBusy] = React.useState(false);
   const [blockBusy, setBlockBusy] = React.useState(false);
   const [activeSection, setActiveSection] =
@@ -114,10 +115,7 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
       setFollowOverride(null);
     }
   }, [followOverride, serverFollowed]);
-  const isFollowedByMe =
-    followOverride != null && followOverride.forUserId === userId
-      ? followOverride.value
-      : serverFollowed;
+  const isFollowedByMe = followOverride != null ? followOverride.value : serverFollowed;
 
   // §8.6: either direction of block renders the unavailable body.
   const isBlockedByMe = edge.isBlockedByMe === true;
@@ -138,7 +136,7 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
       return;
     }
     const next = !isFollowedByMe;
-    setFollowOverride({ forUserId: userId, value: next });
+    setFollowOverride({ value: next });
     setFollowBusy(true);
     void (next ? usersService.followUser(userId) : usersService.unfollowUser(userId))
       .then(() => {
@@ -146,7 +144,7 @@ const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) 
         void queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
       })
       .catch(() => {
-        setFollowOverride({ forUserId: userId, value: !next });
+        setFollowOverride({ value: !next });
       })
       .finally(() => {
         setFollowBusy(false);
@@ -470,8 +468,7 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
     isPending: userId != null && profileQuery.isPending,
     isError: userId == null || profileQuery.isError,
     what: 'this profile',
-    data:
-      userId != null && profileQuery.data != null ? { userId, ...profileQuery.data } : null,
+    data: userId != null && profileQuery.data != null ? { userId, ...profileQuery.data } : null,
   });
   return <PageBodyShell spec={USER_PROFILE_PAGE_BODY} state={state} />;
 });

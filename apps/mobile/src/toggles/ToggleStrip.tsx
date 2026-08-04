@@ -19,7 +19,8 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { TOGGLE_STRIP_BAND_HEIGHT } from './toggle-strip-metrics';
+import { STRIP_CITIZEN_GAP, TOGGLE_STRIP_BAND_HEIGHT } from './toggle-strip-metrics';
+import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import CutoutBandMaterial from '../components/CutoutBandMaterial';
 import {
@@ -42,10 +43,12 @@ import {
 import {
   CUTOUT_FADE_IN_MS,
   resolveCutoutFadeCovers,
+  resolveStripHoleRadius,
   type CutoutFadeCoverRect,
   type FadeableStripHole,
 } from './toggle-strip-cutout-fade';
 import { useSceneStripLawAssert, type ToggleStripPlacement } from './toggle-strip-scene-law';
+import type { StripSlotConventionProps } from './toggle-strip-slot-conventions';
 import {
   ToggleStripSlotKeyContext,
   ToggleStripWarmRestoreContext,
@@ -80,8 +83,10 @@ import {
  * 6. ACTION-ROW SLOT — first-class alternate chrome (favorites-edit-mode-ideal
  *    decision 1): static (never scrollable), mounted ONLY while `actionProgress > 0`
  *    (unreachable by construction), per-row cutout holes, and the toggle row exits
- *    from its LIVE scroll position. No consumer exercises it in leg 2; the structure
- *    exists so edit mode (leg 5) lands on it rather than bolting on.
+ *    from its LIVE scroll position. CONSUMED: edit mode landed on it as designed —
+ *    ListsPanel and ListDetailPanel both pass `buildEditModeActionRow(...)`.
+ *    (F878, 2026-08-03: this used to read "No consumer exercises it in leg 2; the
+ *    structure exists so edit mode (leg 5) lands on it" — a caveat that outlived leg 5.)
  *
  * Placement mounts are thin: `'in-list'` = the band rides a list header (results).
  * `'header'` (persistent-header extension) is the leg-3 mount. The scene foundation's
@@ -89,13 +94,13 @@ import {
  */
 
 const STRIP_HOLE_BORDER_RADIUS = 8;
-// Matches search: CONTENT_HORIZONTAL_PADDING (= OVERLAY_HORIZONTAL_PADDING) = 20.
-const STRIP_CONTENT_INSET = 20;
-// Matches search TOGGLE_STACK_GAP.
-const STRIP_GAP = 8;
-// Matches search HOLE_RADIUS_BOOST — the cutout window is a hair larger than the
-// control so its rounded corners read cleanly against the frost.
-const HOLE_RADIUS_BOOST = 1;
+// F859 (2026-08-03): these two used to be hardcoded literals under comments ASSERTING a
+// coupling neither of them had. The inset said "Matches search: CONTENT_HORIZONTAL_PADDING"
+// while hardcoding 20 — the constant is importable, so it is imported and the claim is now
+// the code. The gap said "Matches search TOGGLE_STACK_GAP" — a symbol that exists NOWHERE in
+// the repo; the real declaration now lives in toggle-strip-metrics as STRIP_CITIZEN_GAP.
+const STRIP_CONTENT_INSET = OVERLAY_HORIZONTAL_PADDING;
+const STRIP_GAP = STRIP_CITIZEN_GAP;
 // Tolerance for the full-bleed contract bark (sub-pixel layout jitter).
 const FULL_BLEED_TOLERANCE_PX = 2;
 
@@ -127,7 +132,10 @@ const holesEqual = (a: FadeableStripHole | undefined, b: FadeableStripHole): boo
 // grow, keeping the frost cutouts riding the controls, not jumping to final rects.
 // (A visual-only transform (FadeIn + LinearTransition on the newcomer alone) was the
 // audited defect: siblings snapped because nothing animated THEIR layout.)
-const STRIP_CITIZEN_ENTER_MS = 240;
+// F860 (2026-08-03): IMPORTED, not restated — the cutout fade and the citizen entry are
+// ONE strip tempo (see CUTOUT_FADE_IN_MS's note). A cover that outlives the control it
+// covers, or vice versa, is the white-sliver/frost-ring defect this file's header warns of.
+const STRIP_CITIZEN_ENTER_MS = CUTOUT_FADE_IN_MS;
 const STRIP_CITIZEN_EXIT_MS = 180;
 
 const stripCitizenEntering = (values: EntryAnimationsValues) => {
@@ -313,12 +321,10 @@ const wrapChildrenInHoleSlots = (
     // congruent cover rect over the fresh hole and animates it clear), and
     // `stripHoleDisabled` (no window at all — plain chrome ON the plate, e.g. the
     // "Edit lists" label the pill replaces).
+    // F858 (2026-08-03): ONE declaration of the convention shape
+    // (toggle-strip-slot-conventions.ts) — the engine casts to it, consumers spread it.
     const childProps = React.isValidElement(child)
-      ? (child.props as {
-          stripHoleBorderRadius?: number;
-          stripHoleFadeIn?: boolean;
-          stripHoleDisabled?: boolean;
-        })
+      ? (child.props as StripSlotConventionProps)
       : undefined;
     const slotBorderRadius = childProps?.stripHoleBorderRadius ?? holeBorderRadius;
     let animateEntry = false;
@@ -589,7 +595,7 @@ export function ToggleStrip({
         y: hole.y,
         width: hole.width,
         height: hole.height,
-        borderRadius: (hole.borderRadius ?? holeBorderRadius) + HOLE_RADIUS_BOOST,
+        borderRadius: resolveStripHoleRadius(hole, holeBorderRadius),
       })),
     [holes, holeBorderRadius]
   );
@@ -603,7 +609,7 @@ export function ToggleStrip({
         y: hole.y,
         width: hole.width,
         height: hole.height,
-        borderRadius: (hole.borderRadius ?? holeBorderRadius) + HOLE_RADIUS_BOOST,
+        borderRadius: resolveStripHoleRadius(hole, holeBorderRadius),
       })),
     [actionHoleMap, holeBorderRadius]
   );
@@ -614,7 +620,6 @@ export function ToggleStrip({
       resolveCutoutFadeCovers({
         holeMap: toggleHoleMap,
         defaultBorderRadius: holeBorderRadius,
-        radiusBoost: HOLE_RADIUS_BOOST,
       }),
     [toggleHoleMap, holeBorderRadius]
   );
@@ -623,7 +628,6 @@ export function ToggleStrip({
       resolveCutoutFadeCovers({
         holeMap: actionHoleMap,
         defaultBorderRadius: holeBorderRadius,
-        radiusBoost: HOLE_RADIUS_BOOST,
       }),
     [actionHoleMap, holeBorderRadius]
   );
@@ -801,6 +805,8 @@ export function ToggleStrip({
                   left the hole's last ~1px as a see-through hairline (wave-3 §2.8,
                   attributed on-sim). Same overshoot, same coverage, by construction. */}
               <MaskedHoleOverlay
+                // F884: geometry comes from `style` below, not from filling the parent.
+                fill={false}
                 pointerEvents="none"
                 holes={actionMaskedHoles}
                 backgroundColor={surfaceColor}

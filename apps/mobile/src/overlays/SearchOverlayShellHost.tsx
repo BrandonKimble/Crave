@@ -1,6 +1,4 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
-import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import SearchPriceSheet from '../screens/Search/components/SearchPriceSheet';
 import SearchRankAndScoreSheets from '../screens/Search/components/SearchRankAndScoreSheets';
@@ -8,17 +6,10 @@ import SearchStatusBarFade from '../screens/Search/components/SearchStatusBarFad
 import type { SearchOverlayShellHostSnapshot } from '../screens/Search/runtime/shared/search-overlay-shell-host-snapshot-contract';
 import type { SearchOverlayShellHostAuthority } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
-import Svg, { Path } from 'react-native-svg';
-import { OVERLAY_BACKDROP_SCRIM_ZINDEX, OVERLAY_CORNER_RADIUS } from './overlaySheetStyles';
 
 type SearchOverlayShellStatusSnapshot = Pick<
   SearchOverlayShellHostSnapshot,
   'isFocused' | 'statusBarFadeHeight'
->;
-
-type SearchOverlayShellBackdropSnapshot = Pick<
-  SearchOverlayShellHostSnapshot,
-  'isFocused' | 'backdropDimProgress' | 'backdropSheetTopY'
 >;
 
 type SearchOverlayShellRankAndScoreSnapshot = Pick<
@@ -36,39 +27,6 @@ const areStatusSnapshotsEqual = (
   right: SearchOverlayShellStatusSnapshot
 ): boolean =>
   left.isFocused === right.isFocused && left.statusBarFadeHeight === right.statusBarFadeHeight;
-
-const areBackdropSnapshotsEqual = (
-  left: SearchOverlayShellBackdropSnapshot,
-  right: SearchOverlayShellBackdropSnapshot
-): boolean =>
-  left.isFocused === right.isFocused &&
-  left.backdropDimProgress === right.backdropDimProgress &&
-  left.backdropSheetTopY === right.backdropSheetTopY;
-
-// THE SCRIM IS OFF (owner decision 2026-07-29, transition derivation VIII):
-// the 12% dim plane over the search chrome is retired. 0 keeps the entire
-// plumbing inert (strip + wedges render fully transparent) while every other
-// search-chrome transform (scale ramp, visibility, dismiss plane) still rides
-// the transition progress unchanged. Deleting the host outright happens with
-// the old-system delete pass.
-const BACKDROP_DIM_MAX_OPACITY = 0;
-
-// The scrim dims "everything outside the sheet": a strip that ends flush at the sheet's top
-// edge plus two inverse-corner pieces that fill the notches beside the sheet's rounded top
-// corners. It never extends under the sheet body, so frost cutouts (skeletons, grab handle,
-// close circle) are never contaminated by the dim.
-const INVERSE_CORNER_PATH = `M 0 0 H ${OVERLAY_CORNER_RADIUS} A ${OVERLAY_CORNER_RADIUS} ${OVERLAY_CORNER_RADIUS} 0 0 0 0 ${OVERLAY_CORNER_RADIUS} Z`;
-
-const BackdropInverseCorner = ({ mirrored }: { mirrored: boolean }) => (
-  <Svg
-    pointerEvents="none"
-    width={OVERLAY_CORNER_RADIUS}
-    height={OVERLAY_CORNER_RADIUS}
-    style={mirrored ? styles.backdropCornerMirrored : null}
-  >
-    <Path d={INVERSE_CORNER_PATH} fill="#000000" />
-  </Svg>
-);
 
 const areRankAndScoreSnapshotsEqual = (
   left: SearchOverlayShellRankAndScoreSnapshot,
@@ -115,67 +73,16 @@ const SearchOverlayShellStatusHost = React.memo(
 
 SearchOverlayShellStatusHost.displayName = 'SearchOverlayShellStatusHost';
 
-const SearchOverlayShellBackdropHost = React.memo(
-  ({
-    overlayShellHostAuthority,
-  }: {
-    overlayShellHostAuthority: SearchOverlayShellHostAuthority;
-  }) => {
-    const { isFocused, backdropDimProgress, backdropSheetTopY } = useRouteAuthoritySelector<
-      SearchOverlayShellHostSnapshot,
-      SearchOverlayShellBackdropSnapshot
-    >({
-      subscribe: React.useCallback(
-        (listener: () => void) => overlayShellHostAuthority.subscribe(listener),
-        [overlayShellHostAuthority]
-      ),
-      getSnapshot: overlayShellHostAuthority.getSnapshot,
-      selector: React.useCallback(
-        (snapshot: SearchOverlayShellHostSnapshot) => ({
-          isFocused: snapshot.isFocused,
-          backdropDimProgress: snapshot.backdropDimProgress,
-          backdropSheetTopY: snapshot.backdropSheetTopY,
-        }),
-        []
-      ),
-      isEqual: areBackdropSnapshotsEqual,
-    });
-    const rootBackdropAnimatedStyle = useAnimatedStyle(
-      () => ({
-        opacity:
-          Math.max(0, Math.min(1, backdropDimProgress?.value ?? 0)) * BACKDROP_DIM_MAX_OPACITY,
-      }),
-      [backdropDimProgress]
-    );
-    const backdropStripAnimatedStyle = useAnimatedStyle(
-      () => ({
-        height: Math.max(0, backdropSheetTopY?.value ?? 0),
-      }),
-      [backdropSheetTopY]
-    );
-    const backdropCornersAnimatedStyle = useAnimatedStyle(
-      () => ({
-        transform: [{ translateY: Math.max(0, backdropSheetTopY?.value ?? 0) }],
-      }),
-      [backdropSheetTopY]
-    );
-
-    return isFocused && backdropDimProgress && backdropSheetTopY ? (
-      <Reanimated.View
-        pointerEvents="none"
-        style={[styles.rootBackdropScrimLayer, rootBackdropAnimatedStyle]}
-      >
-        <Reanimated.View style={[styles.rootBackdropStrip, backdropStripAnimatedStyle]} />
-        <Reanimated.View style={[styles.rootBackdropCorners, backdropCornersAnimatedStyle]}>
-          <BackdropInverseCorner mirrored={false} />
-          <BackdropInverseCorner mirrored />
-        </Reanimated.View>
-      </Reanimated.View>
-    ) : null;
-  }
-);
-
-SearchOverlayShellBackdropHost.displayName = 'SearchOverlayShellBackdropHost';
+// F973(b): THE SCRIM HOST IS DELETED, not disabled.
+//
+// `SearchOverlayShellBackdropHost` — ~60 lines: an SVG inverse-corner path, three
+// `useAnimatedStyle`s and four style rules — rendered PERMANENTLY INVISIBLE, because the
+// scrim was retired by owner decision (2026-07-29, transition derivation VIII) and left
+// behind as `BACKDROP_DIM_MAX_OPACITY = 0` multiplied into its own opacity. It paid a
+// per-frame worklet cost to compute `x * 0`, forever, and its own comment deferred the
+// deletion to "the old-system delete pass" — a pass that never happened. This is it.
+// Every other search-chrome transform (scale ramp, visibility, dismiss plane) is
+// untouched; the scrim's return is a git revert away if the decision reverses.
 
 const SearchOverlayShellRankAndScoreHost = React.memo(
   ({
@@ -272,35 +179,8 @@ export const SearchOverlayShellHost = React.memo(
   }) => (
     <>
       <SearchOverlayShellStatusHost overlayShellHostAuthority={overlayShellHostAuthority} />
-      <SearchOverlayShellBackdropHost overlayShellHostAuthority={overlayShellHostAuthority} />
       <SearchOverlayShellRankAndScoreHost overlayShellHostAuthority={overlayShellHostAuthority} />
       <SearchOverlayShellPriceHost overlayShellHostAuthority={overlayShellHostAuthority} />
     </>
   )
 );
-
-const styles = StyleSheet.create({
-  rootBackdropScrimLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: OVERLAY_BACKDROP_SCRIM_ZINDEX,
-    elevation: OVERLAY_BACKDROP_SCRIM_ZINDEX,
-  },
-  rootBackdropStrip: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#000000',
-  },
-  rootBackdropCorners: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  backdropCornerMirrored: {
-    transform: [{ scaleX: -1 }],
-  },
-});

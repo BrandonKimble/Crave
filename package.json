@@ -51,6 +51,7 @@
     "@commitlint/config-conventional": "^17.6.5",
     "axios": "^1.8.1",
     "dotenv": "^17.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "ioredis": "^5.5.0",
     "knip": "^6.1.0",
     "lefthook": "^1.11.2",

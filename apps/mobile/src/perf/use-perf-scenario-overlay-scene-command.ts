@@ -9,6 +9,12 @@ const isSwitchableOverlaySceneKey = (scene: string): scene is OverlayKey =>
   Object.prototype.hasOwnProperty.call(APP_OVERLAY_ROUTE_METADATA_BY_KEY, scene) &&
   APP_OVERLAY_ROUTE_METADATA_BY_KEY[scene as OverlayKey].sceneSwitch;
 
+// PROVENANCE (F874, 2026-08-03): NOT MEASURED — a "short settle" chosen by hand, and the
+// class of sleep that makes automation flaky. It is a HARNESS-ONLY delay (this module is a
+// verification lever, never a product path), so its failure mode is a flaky Maestro leg
+// rather than a user-visible stall. The real fix is to wait on the child scene's committed
+// fact instead of a clock; recorded here so the next person to see a flaky pollDetail leg
+// raises the number knowing it was never a measurement.
 const POLL_CHILD_COMMIT_DELAY_MS = 600;
 
 /**

@@ -1,3 +1,4 @@
+import { SCALE_PROBE_MAX_MARKERS } from './perf-scale-probe-store';
 import type {
   PerfJsFrameSamplerConfig,
   PerfJsTaskLatencySamplerConfig,
@@ -187,7 +188,15 @@ export const parsePerfScenarioDeepLinkEvent = (
           0,
           10000
         ),
-        count: parseOptionalInteger(parsed.searchParams.get('markerCount'), 0, 120000),
+        // F874 (2026-08-03): IMPORTED, not restated. This ceiling used to be a second
+        // literal `120000` — the same value perf-scale-probe-store declares as
+        // SCALE_PROBE_MAX_MARKERS. Two copies of one cap means a raise applies in one
+        // place and the deep link silently keeps clamping at the old number.
+        count: parseOptionalInteger(
+          parsed.searchParams.get('markerCount'),
+          0,
+          SCALE_PROBE_MAX_MARKERS
+        ),
         collide: parseBoolean(parsed.searchParams.get('collide'), false),
         spreadDeg: parseNumber(parsed.searchParams.get('spreadDeg'), 0.0001, 360),
         delayMs: parseInteger(parsed.searchParams.get('delayMs'), 100, 0, 5000),

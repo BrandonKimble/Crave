@@ -201,3 +201,51 @@ The lane's search→docked dismiss handoff marks readiness off the docked scene'
 body surface, so it is **surface-aware** (mounted OR list). If you change the
 docked scene's body surface kind, re-check
 `logDockedSceneHeaderRestorationContract` in `app-route-scene-stack-runtime.ts`.
+
+---
+
+## 7. Performance: what actually governs it here
+
+This section replaces `overlays/PERFORMANCE_PATTERNS.md`, deleted 2026-08-03
+(F961). That guide's headline recommendation — `useKeyedCallback` /
+`useCallbackFactory` for list-item callback stability — had **zero consumers
+anywhere in the app**, and its worked "hook extraction" example was written
+against a `useSaveSheetState` hook that does not exist in the codebase. It also
+predated the scene-stack architecture it sat beside, so it said nothing about
+the four mechanisms that actually decide whether a scene feels fast today. A
+guide recommending an unused hook sends a stranger down a dead path on their
+first day; these are the live mechanisms instead.
+
+**1. Body-spec hooks do not run effects.** The hooks that build
+`sceneBodyContent` / `sceneBodyTransport` render to produce a spec, and their
+effects never commit. Anything effect-shaped (a scroll command, a subscription,
+an imperative ref call) written there is DEAD CODE that will look correct in
+review. Put it in the feed runtime or the controller, whose effects do fire.
+
+**2. The reveal is paint-ack-gated, not timed.** A scene switch holds the
+outgoing body opaque until the incoming scene's first real paint, then swaps in
+one frame. So the cost that matters on a switch is the incoming scene's FIRST
+FRAME, not its steady state: seed a skeleton/shell that paints immediately and
+let the real content hydrate under it. A scene that cannot paint until its data
+arrives stalls the whole transition (and trips the engine's join-liveness
+watchdog, which barks).
+
+**3. Residency: hidden shells must be quiet.** Residency-managed scenes mount
+once and stay mounted; a switch retargets VISIBILITY. A hidden resident that
+keeps a query subscribed, an animation running or a socket open is paying for a
+screen nobody is looking at. Read `useShellLiveness()` and gate on it — that is
+the one bit that says "I am the visible scene".
+
+**4. MVCP is ON by default and will eat your header.** FlashList 2.x enables
+`maintainVisibleContentPosition`, which anchors the previously-top row. On a
+list whose rows RE-ORDER (any sortable feed), that scrolls your header off
+screen on every sort change. Re-sortable lists must pass
+`flashListProps: { maintainVisibleContentPosition: { disabled: true } }` through
+their transport. Append/chat lists should keep it ON.
+
+**Measuring it.** Instrument the COMPOSITE — what the eye actually sees — never
+intent (a state value, a handler firing). A metric that cannot be made to show
+RED against a real defect is lying, and a bare FPS target is not a finding. The
+old guide's "35-45+ FPS during interactions" goal is deliberately not carried
+over: the standard is a human-blessed baseline plus an instrument that can
+regress against it.

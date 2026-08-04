@@ -14,7 +14,8 @@ import {
 import { useSingletonSurfaceHost } from './singleton-surface-store';
 
 // ─── Shared person atoms (the collaborator chip on ListDetail uses these too) ────────────────
-export const personDisplayName = (person: UserListPerson): string =>
+// F892 (2026-08-03): module-local — every caller is in this file.
+const personDisplayName = (person: UserListPerson): string =>
   person.displayName?.trim() || person.username?.trim() || 'Crave member';
 
 export const PersonAvatar = ({ person, size }: { person: UserListPerson; size: number }) => (

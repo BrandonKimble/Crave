@@ -1756,9 +1756,12 @@ actually holds (F908).
 point — it explains the whole model. Then
 `transition-engine/transition-txn-stager.ts` (how a switch plan becomes a txn
 plan), then `BottomSheetSceneStackHost.tsx:1374-1660` (the host's arm / offer /
-reveal wiring). `overlays/PERFORMANCE_PATTERNS.md` and
-`navigation/runtime/ADDING_A_SCENE.md` are in-repo guides worth reading first if
-you are adding a page rather than changing the machinery.
+reveal wiring). `navigation/runtime/ADDING_A_SCENE.md` is the in-repo guide worth reading first
+if you are adding a page rather than changing the machinery. (It absorbed the
+performance section of the deleted `overlays/PERFORMANCE_PATTERNS.md` — F961:
+that guide's headline recommendation, `useKeyedCallback`/`useCallbackFactory`,
+had ZERO consumers anywhere in the app, and its worked example was written
+against a `useSaveSheetState` hook that does not exist.)
 
 ### Health as of pass 1 (2026-08-03)
 

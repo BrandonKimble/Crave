@@ -34,7 +34,6 @@ export type BottomSheetSharedRuntimeProps = {
   onMomentumBeginJS?: () => void;
   onMomentumEndJS?: () => void;
   showsVerticalScrollIndicator?: boolean;
-  dynamicScrollIndicator?: boolean;
   testID?: string;
   activeList?: 'primary' | 'secondary';
   onDragStateChange?: (isDragging: boolean) => void;
@@ -53,7 +52,6 @@ export type BottomSheetSharedRuntimeProps = {
   dataCount: number;
   secondaryDataCount: number;
   runtimeConfigAuthority?: BottomSheetSharedRuntimeConfigAuthority;
-  subscribeTouchBlockingToReact?: boolean;
 };
 
 export type BottomSheetSharedRuntimeConfigSnapshot = {

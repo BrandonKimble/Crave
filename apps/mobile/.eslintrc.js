@@ -4,6 +4,24 @@ module.exports = {
     node: true,
     es2021: true,
   },
+  // F808 (2026-08-03) — REACT HOOKS LINTING, LANDED STAGED.
+  //
+  // A 37k-line React Native app had NO `eslint-plugin-react-hooks` anywhere in the chain:
+  // every runtime hook's dependency array was hand-maintained with zero enforcement. The
+  // cost was already visible in code that REASONED ABOUT A LINTER THAT WASN'T THERE —
+  // `screens/EntitlementLapseHost.tsx` carried a bare `// eslint-disable-line` (no rule
+  // name, so it disabled EVERY rule on that line) to silence a rule that was not installed,
+  // and `screens/onboarding/OnboardingTeaser.tsx` wrote a comment explaining that no
+  // disable was needed because the plugin was absent.
+  //
+  // THE STAGING, per D48: `rules-of-hooks` is an ERROR — a conditional or out-of-order hook
+  // is a real crash, never a style opinion, and this repo's whole methodology is "make the
+  // failure a lint error that names the file" (see the ActivityIndicator and Alert.alert
+  // bans below, both written for exactly that reason). `exhaustive-deps` is a WARN: it is
+  // the largest defect class here, but turning it red today would block every commit on a
+  // backlog nobody has read, and a mechanically "fixed" dependency array can change
+  // behavior. A follow-up burns the warnings down per directory.
+  plugins: ['react-hooks'],
   parserOptions: {
     ecmaFeatures: {
       jsx: true,
@@ -134,6 +152,13 @@ module.exports = {
     },
   ],
   rules: {
+    // F808: see the staging note at the top of this file. A second top-level `rules` key
+    // would SILENTLY WIN over an earlier one (duplicate object key) — which is exactly how
+    // the first attempt at this landed a registered plugin with zero active rules, and
+    // `eslint --print-config` reported `{}` while everything looked configured. One `rules`
+    // block, here.
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
     // Mobile-specific rules
     '@typescript-eslint/no-explicit-any': 'warn',
     // THE STANDARD MODAL SURFACE (owner spec, 2026-07-08): every modal renders

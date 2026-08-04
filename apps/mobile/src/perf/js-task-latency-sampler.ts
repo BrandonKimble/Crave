@@ -1,3 +1,6 @@
+// F873: clamp/round1/percentile live in perf-clock.ts — one declaration, both samplers.
+import { clamp, percentile, round1 } from './perf-clock';
+
 type JsTaskLatencySamplerWindowSummary = {
   event: 'task_window';
   nowMs: number;
@@ -39,20 +42,6 @@ type JsTaskLatencySamplerOptions = {
 };
 
 const MAX_TRACKED_LAG_MS = 5000;
-
-const clamp = (value: number, min: number, max: number): number =>
-  Math.min(max, Math.max(min, value));
-
-const round1 = (value: number): number => Math.round(value * 10) / 10;
-
-const percentile = (values: number[], p: number): number => {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const index = clamp(Math.ceil((p / 100) * sorted.length) - 1, 0, sorted.length - 1);
-  return sorted[index] ?? 0;
-};
 
 const defaultNow = (): number => {
   if (typeof performance?.now === 'function') {

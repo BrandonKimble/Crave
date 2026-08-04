@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureHandledError } from '../observability/crash-reporting';
 import {
   StyleSheet,
   View,
@@ -6,7 +7,11 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import Reanimated, { useAnimatedStyle, useSharedValue, type SharedValue } from 'react-native-reanimated';
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import MaskedHoleOverlay, { type MaskedHole } from '../components/MaskedHoleOverlay';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
@@ -174,6 +179,8 @@ const SceneBodyWhitePlate: React.FC<SceneBodyWhitePlateProps> = ({
       style={[styles.holePlate, { height: plateHeight }, translateStyle]}
     >
       <MaskedHoleOverlay
+        // F884: geometry comes from `style` below, not from filling the parent.
+        fill={false}
         holes={holes}
         backgroundColor={WHITE}
         renderWhenEmpty
@@ -248,7 +255,17 @@ export const SceneBodyFoundationSurface: React.FC<SceneBodyFoundationSurfaceProp
             borderRadius,
           });
         },
-        () => undefined
+        () => {
+          // F979(e): this used to be `() => undefined`. A cutout that fails to measure
+          // leaves its STALE HOLE registered in the white plate — exactly the "hole
+          // drifts" class this file's own `scheduleRemeasureAll` doc describes — and
+          // reported nothing, in dev or Release. The hole is dropped (a missing hole is
+          // honest; a wrong one is not) and the failure is reported.
+          store.remove(id);
+          captureHandledError(new Error('[scene-body-cutout] measureLayout failed'), {
+            cutoutId: id,
+          });
+        }
       );
     };
 

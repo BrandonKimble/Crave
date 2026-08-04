@@ -58,18 +58,14 @@ type ActiveBottomSheetSceneStackListBodySurfaceProps = Omit<
   'shouldRenderListBody'
 >;
 
-type BottomSheetSceneStackListStaticDataSnapshot = {
-  activeList?: BottomSheetSceneStackBodyTransportEntry['bodyTransportSpec']['activeList'];
-  contentContainerStyle?: BottomSheetSceneStackBodyTransportEntry['bodyTransportSpec']['contentContainerStyle'];
-  primaryListFooterComponent?: ListBodyContentSpec['ListFooterComponent'];
-  primaryData?: ReadonlyArray<unknown>;
-  primaryExtraData?: unknown;
-  scrollIndicatorInsets?: BottomSheetSceneStackBodyTransportEntry['bodyTransportSpec']['scrollIndicatorInsets'];
-  secondaryData?: ReadonlyArray<unknown>;
-  secondaryExtraData?: unknown;
-};
-
-const EMPTY_LIST_DATA_SNAPSHOT: BottomSheetSceneStackListStaticDataSnapshot = {};
+// F973(a), mutation-proven: `const listDataAuthoritySnapshot = EMPTY_LIST_DATA_SNAPSHOT`
+// where `EMPTY_LIST_DATA_SNAPSHOT = {}` — a module constant assigned to a local, read at
+// NINE sites, every one of which could therefore only ever take the right-hand `??`
+// branch. Deleting the variable, all nine reads and the
+// `BottomSheetSceneStackListStaticDataSnapshot` type they were typed against changes
+// nothing observable; it also removes nine `??` rungs from the reader's job of working
+// out which value actually wins. The fossil of a list-data authority that was never
+// wired: when one exists, it comes back as a real subscription with a real snapshot.
 
 type ActiveSheetListSurfaceIdentityProbe = {
   activeList: unknown;
@@ -145,25 +141,19 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     useSearchNavSwitchCommitAttribution(`ActiveBottomSheetSceneStackListBodySurface:${sceneKey}`);
     const onProfilerRender = useSearchOverlayProfilerRender();
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
-    const listDataAuthoritySnapshot = EMPTY_LIST_DATA_SNAPSHOT;
-    const scenePrimaryData = listDataAuthoritySnapshot.primaryData ?? sceneBodyContentSpec.data;
-    const scenePrimaryExtraData =
-      listDataAuthoritySnapshot.primaryExtraData ?? sceneBodyContentSpec.extraData;
+    const scenePrimaryData = sceneBodyContentSpec.data;
+    const scenePrimaryExtraData = sceneBodyContentSpec.extraData;
     const sceneKeyboardShouldPersistTaps =
       sceneBodyTransportSpec.keyboardShouldPersistTaps ??
       bodyDefaults.resolvedKeyboardShouldPersistTaps;
     const sceneKeyboardDismissMode =
       sceneBodyTransportSpec.keyboardDismissMode ?? bodyDefaults.resolvedKeyboardDismissMode;
     const sceneScrollIndicatorInsets =
-      listDataAuthoritySnapshot.scrollIndicatorInsets ??
-      sceneBodyTransportSpec.scrollIndicatorInsets ??
-      bodyDefaults.resolvedScrollIndicatorInsets;
+      sceneBodyTransportSpec.scrollIndicatorInsets ?? bodyDefaults.resolvedScrollIndicatorInsets;
     const sceneFlashListProps =
       sceneBodyTransportSpec.flashListProps ?? bodyDefaults.activeFlashListProps;
     const sceneContentContainerStyle =
-      listDataAuthoritySnapshot.contentContainerStyle ??
-      sceneBodyTransportSpec.contentContainerStyle ??
-      bodyDefaults.resolvedContentContainerStyle;
+      sceneBodyTransportSpec.contentContainerStyle ?? bodyDefaults.resolvedContentContainerStyle;
     const sceneListContentContainerStyle = React.useMemo(
       () =>
         resolveListContentContainerStyle({
@@ -198,14 +188,11 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
 
     const sceneSecondaryList = sceneBodyContentSpec.secondaryList;
     const sceneSecondaryListTransport = sceneBodyTransportSpec.secondaryList;
-    const sceneSecondaryData = listDataAuthoritySnapshot.secondaryData ?? sceneSecondaryList?.data;
-    const sceneSecondaryExtraData =
-      listDataAuthoritySnapshot.secondaryExtraData ??
-      sceneSecondaryList?.extraData ??
-      scenePrimaryExtraData;
+    const sceneSecondaryData = sceneSecondaryList?.data;
+    const sceneSecondaryExtraData = sceneSecondaryList?.extraData ?? scenePrimaryExtraData;
     const sceneShouldRenderDualLists = sceneSecondaryList != null;
     const sceneResolvedActiveList = sceneShouldRenderDualLists
-      ? (listDataAuthoritySnapshot.activeList ?? sceneBodyTransportSpec.activeList ?? 'primary')
+      ? (sceneBodyTransportSpec.activeList ?? 'primary')
       : 'primary';
     const primaryOwnsScroll = !sceneShouldRenderDualLists || sceneResolvedActiveList === 'primary';
     const secondaryOwnsScroll =
@@ -325,7 +312,6 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         resolveListContentContainerStyle({
           baseStyle:
             sceneSecondaryListTransport?.contentContainerStyle ??
-            listDataAuthoritySnapshot.contentContainerStyle ??
             sceneBodyTransportSpec.contentContainerStyle ??
             bodyDefaults.resolvedContentContainerStyle,
           hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
@@ -333,7 +319,6 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
         }),
       [
         sceneSecondaryListTransport?.contentContainerStyle,
-        listDataAuthoritySnapshot.contentContainerStyle,
         sceneBodyTransportSpec.contentContainerStyle,
         bodyDefaults.resolvedContentContainerStyle,
         bodyDefaults.scrollHeaderComponent,
@@ -434,11 +419,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
               primaryOwnsScroll ? sceneBodyContentSpec.ListHeaderComponent : null
             }
             ListFooterComponent={
-              primaryOwnsScroll
-                ? listDataAuthoritySnapshot.primaryListFooterComponent !== undefined
-                  ? listDataAuthoritySnapshot.primaryListFooterComponent
-                  : sceneBodyContentSpec.ListFooterComponent
-                : null
+              primaryOwnsScroll ? sceneBodyContentSpec.ListFooterComponent : null
             }
             ListEmptyComponent={primaryOwnsScroll ? sceneBodyContentSpec.ListEmptyComponent : null}
             ItemSeparatorComponent={sceneBodyContentSpec.ItemSeparatorComponent}

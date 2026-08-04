@@ -36,7 +36,17 @@ export type CutoutFadeCoverRect = {
   borderRadius: number;
 };
 
-/** House fade duration — matches the strip-citizen entry (one strip tempo). */
+/**
+ * THE STRIP TEMPO — one declaration, two consumers.
+ *
+ * F860 (2026-08-03): this was `240` under a comment CLAIMING it "matches the strip-citizen
+ * entry", while ToggleStrip separately declared `STRIP_CITIZEN_ENTER_MS = 240` and the spec
+ * "checking" the coupling only restated the literal (`expect(CUTOUT_FADE_IN_MS).toBe(240)`)
+ * — it never referenced the other side, so the ASSERTED RELATION was unenforced and either
+ * number could have drifted silently. ToggleStrip now IMPORTS this value as its citizen-entry
+ * duration, so the relation is structural: there is one tempo, and disagreement is
+ * unrepresentable rather than merely untested.
+ */
 export const CUTOUT_FADE_IN_MS = 240;
 
 /**
@@ -44,14 +54,33 @@ export const CUTOUT_FADE_IN_MS = 240;
  * mask window (same radius default + boost the mask applies). Non-fade holes get
  * no cover — their appearance is first-paint chrome, not a mid-presentation punch.
  */
+/**
+ * THE CUTOUT WINDOW RADIUS — one formula, every consumer.
+ *
+ * The window is a hair larger than the control (HOLE_RADIUS_BOOST) so its rounded corners
+ * read cleanly against the frost.
+ *
+ * F857 (2026-08-03): this formula used to exist TWICE — inlined at ToggleStrip's two
+ * `maskedHoles` memos as `(hole.borderRadius ?? holeBorderRadius) + HOLE_RADIUS_BOOST`, and
+ * RECOMPUTED here from a `radiusBoost` the caller had to remember to pass identically. A
+ * mask and its fade cover computed with different boosts produce exactly the white sliver /
+ * frost ring at the corners that ToggleStrip's header warns about — and nothing could have
+ * caught it. The boost is no longer a parameter: it is owned here, so "pass it identically"
+ * is not a rule anyone can break.
+ */
+export const HOLE_RADIUS_BOOST = 1;
+
+export const resolveStripHoleRadius = (
+  hole: { borderRadius?: number },
+  defaultBorderRadius: number
+): number => (hole.borderRadius ?? defaultBorderRadius) + HOLE_RADIUS_BOOST;
+
 export const resolveCutoutFadeCovers = ({
   holeMap,
   defaultBorderRadius,
-  radiusBoost,
 }: {
   holeMap: Record<string, FadeableStripHole>;
   defaultBorderRadius: number;
-  radiusBoost: number;
 }): CutoutFadeCoverRect[] =>
   Object.entries(holeMap)
     .filter(([, hole]) => hole.fadeIn === true)
@@ -61,5 +90,5 @@ export const resolveCutoutFadeCovers = ({
       y: hole.y,
       width: hole.width,
       height: hole.height,
-      borderRadius: (hole.borderRadius ?? defaultBorderRadius) + radiusBoost,
+      borderRadius: resolveStripHoleRadius(hole, defaultBorderRadius),
     }));

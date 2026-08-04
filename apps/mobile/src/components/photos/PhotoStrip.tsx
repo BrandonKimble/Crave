@@ -70,8 +70,17 @@ const DECREED_SLIVER_FRACTION = 1 / 6;
 const MIN_PLUS_SLIVER_WIDTH = 24;
 const PLUS_SLIVER_ICON_SIZE = 14;
 
-const AddTile: React.FC<{ height: number; onPress?: () => void }> = ({ height, onPress }) => {
-  const blockWidth = Math.round(height * DEFAULT_ASPECT);
+// F896 (2026-08-03): `tileAspect` is THREADED THROUGH. AddTile used to compute its
+// "1/6 of an image block" sliver from DEFAULT_ASPECT (4/3), ignoring the `tileAspect` its
+// caller actually renders photos at (the result card passes 1.1) — so the decreed ratio was
+// measured against a block that is not on screen. The sliver is now a fraction of the REAL
+// neighbouring block.
+const AddTile: React.FC<{ height: number; tileAspect: number; onPress?: () => void }> = ({
+  height,
+  tileAspect,
+  onPress,
+}) => {
+  const blockWidth = Math.round(height * tileAspect);
   const width = Math.max(Math.round(blockWidth * DECREED_SLIVER_FRACTION), MIN_PLUS_SLIVER_WIDTH);
   return (
     <Pressable
@@ -113,7 +122,9 @@ export const PhotoStrip: React.FC<PhotoStripProps> = ({
       contentContainerStyle={[styles.content, { paddingHorizontal: contentInset }]}
       style={{ height }}
     >
-      {leadTile === 'add' ? <AddTile height={height} onPress={onAddPress} /> : null}
+      {leadTile === 'add' ? (
+        <AddTile height={height} tileAspect={tileAspect} onPress={onAddPress} />
+      ) : null}
       {photos.map((photo, index) => {
         const width = Math.round(height * (photo.aspect ?? tileAspect));
         return (

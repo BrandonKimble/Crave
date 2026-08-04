@@ -20,7 +20,7 @@ import { Search, ChevronLeft, X as LucideX } from 'lucide-react-native';
 import { SEARCH_BAR_SHADOW } from '../shadows';
 import { colors as themeColors } from '../../../constants/theme';
 import SquircleSpinner from '../../../components/SquircleSpinner';
-import { XCircleIcon } from '../../../components/icons/HeroIcons';
+import { XCircleIcon } from '../../../components/icons/XCircleIcon';
 import { FONT_SIZES } from '../../../constants/typography';
 import { SEARCH_HEADER_HEIGHT } from '../constants/search';
 

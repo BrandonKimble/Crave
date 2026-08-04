@@ -485,7 +485,9 @@ export const HOME_SCENE_LIST_BODY_ADMISSION_POLICY = {
  * the body can later become a TrackSheet body unchanged. `getItemType`
  * distinguishes 'shelf' rows from the city-picker row.
  */
-export const useHomeShelfListProps = (): TrackSheetListProps<HomeShelfRow> => {
+// F929: not exported — the only consumer is this file. A module-local hook that
+// looks public invites a second consumer to bind to it by accident.
+const useHomeShelfListProps = (): TrackSheetListProps<HomeShelfRow> => {
   const feed = useHomeFeedStore((state) => state.feed);
   const status = useHomeFeedStore((state) => state.status);
   const executeEntityRefAction = useEntityRefActionExecutor();

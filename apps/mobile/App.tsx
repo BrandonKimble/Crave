@@ -148,8 +148,15 @@ function App() {
                 <MainLaunchCoordinator>
                   <AppRouteSceneRuntimeProvider>
                     {/* L3 residency prototype (measurement harness): must sit INSIDE the
-                        scene runtime provider — PageBodyShell's failure-law hook reads it. */}
-                    <ResidentShellPrototype />
+                        scene runtime provider — PageBodyShell's failure-law hook reads it.
+                        F864 (2026-08-03): __DEV__-GATED, like its siblings on the lines
+                        above and below. It shipped UNGATED — a measurement prototype in the
+                        Release tree, driven only by a dev perf command, answering a question
+                        that CLOSED (shell-residency-manager banks both verdicts: law pole
+                        indistinguishable from baseline 2026-07-16, empty shells free
+                        2026-07-21). Harmless in practice (it returns null at shellCount===0)
+                        and shipped anyway, which is the pattern worth not repeating. */}
+                    {__DEV__ ? <ResidentShellPrototype /> : null}
                     <PollNotificationListener />
                     {__DEV__ ? <LifecycleHarnessBridge /> : null}
                     <PurchasesProvider />

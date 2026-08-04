@@ -24,7 +24,8 @@ import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 
 export type RestaurantProfileViewKey = 'overview' | 'dishes' | 'discussions' | 'photos';
 
-export const RESTAURANT_PROFILE_VIEWS: Array<{
+// F929: not exported — consumed only in this file.
+const RESTAURANT_PROFILE_VIEWS: Array<{
   key: RestaurantProfileViewKey;
   label: string;
 }> = [

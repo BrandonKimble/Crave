@@ -111,7 +111,13 @@ describe('toggle-strip-layout-cache', () => {
       expect(liveResets).toBe(1);
     });
 
-    it('no-ops on a cold seat and on an already-zero scrollX (no gratuitous writes)', () => {
+    // F876 (2026-08-03): RENAMED. This case asserts the SEAT WRITE is skipped when scrollX
+    // is already zero — it never touched the live-instance fan-out, which runs
+    // UNCONDITIONALLY (correctly: a retained strip's native ScrollView can hold a non-zero
+    // offset even when the cold seat reads zero, so the fan-out has no "already zero" to
+    // test). The old name, "no gratuitous writes", over-claimed a property of the whole
+    // mechanism from a check on half of it.
+    it('skips the SEAT WRITE on a cold seat and on an already-zero scrollX', () => {
       const cold = makeSeat(null);
       expect(() => clearToggleStripCacheScrollX(cold.seat)).not.toThrow();
       expect(cold.get()).toBeNull();

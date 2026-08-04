@@ -25,10 +25,6 @@ type BottomSheetSnapController = {
   clearCommand: () => void;
 };
 
-type BottomSheetProgrammaticSnapController = BottomSheetSnapController & {
-  handleProgrammaticSnapEvent: (snap: BottomSheetSnap, source: BottomSheetSnapChangeSource) => void;
-};
-
 export type BottomSheetRuntimeModel = {
   presentationState: {
     sheetY: SharedValue<number>;
@@ -47,15 +43,15 @@ export type BottomSheetRuntimeModel = {
   };
 };
 
-export type BottomSheetProgrammaticRuntimeModel = {
-  presentationState: BottomSheetRuntimeModel['presentationState'];
-  snapController: BottomSheetRuntimeModel['snapController'] & {
-    handleProgrammaticSnapEvent: (
-      snap: BottomSheetSnap,
-      source: BottomSheetSnapChangeSource
-    ) => void;
-  };
-};
+// F969(e), banked re-grep (repo-wide, zero external hits): the PROGRAMMATIC half of this
+// module — `BottomSheetProgrammaticRuntimeModel`, `BottomSheetProgrammaticSnapController`,
+// `useBottomSheetProgrammaticSnapController`, `useBottomSheetProgrammaticRuntimeModel` and
+// the whole `onProgrammaticHidden` / `onProgrammaticSnapSettled` settle protocol — is
+// DELETED: ~90 of this file's 272 lines, with no producer and no consumer. The type
+// additionally widened three union positions elsewhere (the sheet-host authority
+// controller, the surface-state contract and the dead-sheet contract) to admit a model
+// nothing could ever construct; those unions are narrowed to `BottomSheetRuntimeModel`.
+// Only `useBottomSheetRuntimeModel` was ever built or read.
 
 const useBottomSheetPresentationState = ({
   sheetYOverride,
@@ -129,53 +125,6 @@ const useBottomSheetSnapController = ({
   );
 };
 
-const useBottomSheetProgrammaticSnapController = ({
-  onProgrammaticHidden,
-  onProgrammaticSnapSettled,
-  motionCommandOverride,
-}: {
-  onProgrammaticHidden: (requestToken: number | null) => void;
-  onProgrammaticSnapSettled?: (
-    snap: Exclude<BottomSheetSnap, 'hidden'>,
-    requestToken: number | null
-  ) => void;
-  motionCommandOverride?: SharedValue<BottomSheetMotionCommand | null>;
-}): BottomSheetProgrammaticSnapController => {
-  const snapController = useBottomSheetSnapController({
-    motionCommandOverride,
-  });
-  const { motionCommand } = snapController;
-
-  const handleProgrammaticSnapEvent = React.useCallback(
-    (snap: BottomSheetSnap, source: BottomSheetSnapChangeSource) => {
-      if (source !== 'programmatic') {
-        return;
-      }
-      const command = motionCommand.value;
-      const requestToken = command?.token ?? null;
-      if (snap === 'hidden') {
-        motionCommand.value = null;
-        onProgrammaticHidden(requestToken);
-        return;
-      }
-      if (!command || command.snapTo !== snap) {
-        return;
-      }
-      motionCommand.value = null;
-      onProgrammaticSnapSettled?.(snap, requestToken);
-    },
-    [motionCommand, onProgrammaticHidden, onProgrammaticSnapSettled]
-  );
-
-  return React.useMemo(
-    () => ({
-      ...snapController,
-      handleProgrammaticSnapEvent,
-    }),
-    [handleProgrammaticSnapEvent, snapController]
-  );
-};
-
 export const useBottomSheetRuntimeModel = ({
   presentationStateOverride,
   snapControllerOverride,
@@ -206,58 +155,6 @@ export const useBottomSheetRuntimeModel = ({
     initialMomentumFlag,
   });
   const ownedSnapController = useBottomSheetSnapController({
-    motionCommandOverride,
-  });
-  const presentationState = presentationStateOverride ?? ownedPresentationState;
-  const snapController = snapControllerOverride ?? ownedSnapController;
-  return React.useMemo(
-    () => ({
-      presentationState,
-      snapController,
-    }),
-    [presentationState, snapController]
-  );
-};
-
-export const useBottomSheetProgrammaticRuntimeModel = ({
-  presentationStateOverride,
-  snapControllerOverride,
-  sheetYOverride,
-  scrollOffsetOverride,
-  momentumFlagOverride,
-  motionCommandOverride,
-  initialSheetY,
-  initialScrollOffset,
-  initialMomentumFlag,
-  onProgrammaticHidden,
-  onProgrammaticSnapSettled,
-}: {
-  presentationStateOverride?: BottomSheetProgrammaticRuntimeModel['presentationState'];
-  snapControllerOverride?: BottomSheetProgrammaticRuntimeModel['snapController'];
-  sheetYOverride?: SharedValue<number>;
-  scrollOffsetOverride?: SharedValue<number>;
-  momentumFlagOverride?: SharedValue<boolean>;
-  motionCommandOverride?: SharedValue<BottomSheetMotionCommand | null>;
-  initialSheetY?: number;
-  initialScrollOffset?: number;
-  initialMomentumFlag?: boolean;
-  onProgrammaticHidden: (requestToken: number | null) => void;
-  onProgrammaticSnapSettled?: (
-    snap: Exclude<BottomSheetSnap, 'hidden'>,
-    requestToken: number | null
-  ) => void;
-}): BottomSheetProgrammaticRuntimeModel => {
-  const ownedPresentationState = useBottomSheetPresentationState({
-    sheetYOverride,
-    scrollOffsetOverride,
-    momentumFlagOverride,
-    initialSheetY,
-    initialScrollOffset,
-    initialMomentumFlag,
-  });
-  const ownedSnapController = useBottomSheetProgrammaticSnapController({
-    onProgrammaticHidden,
-    onProgrammaticSnapSettled,
     motionCommandOverride,
   });
   const presentationState = presentationStateOverride ?? ownedPresentationState;

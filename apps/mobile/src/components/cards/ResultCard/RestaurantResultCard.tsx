@@ -1,4 +1,5 @@
 import React from 'react';
+import type { ScoreInfoStorePayload } from '../../score-info-store';
 import { type LayoutChangeEvent, Pressable, TouchableOpacity, View } from 'react-native';
 
 import { Store } from 'lucide-react-native';
@@ -72,14 +73,11 @@ const INFO_CIRCLE_ICON_RESTAURANT = (
 
 const MAX_MATCHED_TAGS = 3;
 
-type ScoreInfoPayload = {
-  type: 'dish' | 'restaurant';
-  title: string;
-  score: number | null | undefined;
-  rising: number | null | undefined;
-  votes: number | null | undefined;
-  polls: number | null | undefined;
-};
+// F898 (2026-08-03): ONE payload type. This shape was declared THREE times — here, in
+// DishResultCard, and (as `ScoreInfoStorePayload`) in score-info-store, which is the
+// declaration that actually crosses the seam. The two card-local copies are aliases of the
+// store's now, so a field added to the surface cannot be missing from a caller.
+type ScoreInfoPayload = ScoreInfoStorePayload;
 
 type RestaurantResultCardProps = {
   restaurant: RestaurantResult;

@@ -23,7 +23,11 @@ import { Text } from './ui/Text';
  * `translateX` + `width` interpolate over a 0→N-1 progress value across the
  * `onLayout`-measured segments, with each label cross-fading between a dark
  * (inactive) and white (active-on-pill) layer. Travel is distance-aware linear
- * `withTiming` (34–150ms per segment-width). Decoupled from the search runtime and
+ * `withTiming`: 34ms floor, 150ms PER SEGMENT CROSSED — so a 3-position end-to-end jump
+ * animates ~300ms, not 150. (F896, 2026-08-03: the header used to promise a "34–150ms"
+ * CEILING while `resolveSegmentTravelDurationMs` multiplies 150 by a distance measured in
+ * SEGMENT-INDEX units, which has no ceiling. The formula is the intended behavior — longer
+ * travel should take longer — so the CLAIM was corrected, not the code.) Decoupled from the search runtime and
  * the frosted-glass hole-punch overlay, so it drops onto any (incl. white) surface.
  * Consumers: polls feed Live/Results, lists Restaurants/Dishes, profile
  * Created/Contributed/Favorites. Every improvement to the toggle mechanism lands
@@ -211,6 +215,9 @@ export function SegmentedToggle<T extends string>({
       // guarantee JS-thread read-after-write, so a spread of `.value` here silently
       // lost the sibling segment's measurement (pill invisible, active label
       // white-on-white — caught on the Gate 2 sim pass).
+      // NOTE (F896): `runOnJS` below is called from the JS thread, where it is a plain
+      // pass-through. Harmless, but it reads as a worklet marker to every future reader —
+      // this callback is NOT a worklet.
       const nextXs = layoutsRef.current.map((entry) => entry?.x ?? 0);
       const nextWidths = layoutsRef.current.map((entry) => entry?.width ?? 0);
       segmentXs.value = nextXs;

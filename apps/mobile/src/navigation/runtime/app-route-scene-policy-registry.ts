@@ -14,12 +14,13 @@ export type AppRouteSheetScenePolicy = {
   allowedSnaps: readonly BottomSheetSnap[];
   requiresExpandedPresentation: boolean;
   canSwipeDismiss: boolean;
-  /**
-   * Per-scene `overlay:` snap persistence only. Root-page posture memory is NOT persistence —
-   * it lives in the two posture seats (`postureSeat` below); the old 'shared' lane was deleted
-   * with the dual shared-snap store collapse (plans/root-snap-law.md §Leg 4).
-   */
-  snapPersistence: 'none' | 'scene';
+  // F947: `snapPersistence: 'none' | 'scene'` used to live here. All 22 rows said 'none',
+  // so the 'scene' arm of its only consumer was unreachable and the store it fed
+  // (persistentSnaps / getPersistentSnap / recordPersistentSnap) had no reachable
+  // writer or reader — A WHOLE PERSISTENCE LANE WIRED TO NOTHING. Root-page posture
+  // memory is NOT persistence: it lives in the two posture seats (`postureSeat` below),
+  // which is why nothing ever needed this. Deleted, lane and all; it comes back with a
+  // scene that actually needs a second value.
   /**
    * TWO-POSTURE LAW membership (plans/root-snap-law.md §Leg 2/§Leg 3): which posture seat this
    * scene presents at when it is a NAV-PAGE (topLevelSwitch) target. 'home' = the search root's
@@ -45,7 +46,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
@@ -60,7 +60,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     // permanent fixture; the programmatic dismiss path (`dismissDockedScene`) still works
     // since explicit snap targets aren't bounded by the gesture upperBound.
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
@@ -71,7 +70,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: 'content',
     chromePolicy: { kind: 'preserve' },
   },
@@ -81,7 +79,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: 'content',
     chromePolicy: { kind: 'preserve' },
   },
@@ -91,7 +88,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: 'content',
     chromePolicy: { kind: 'preserve' },
   },
@@ -101,7 +97,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -111,7 +106,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -121,7 +115,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -131,7 +124,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -141,7 +133,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -151,7 +142,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: [],
     requiresExpandedPresentation: false,
     canSwipeDismiss: true,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -162,7 +152,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -172,7 +161,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -182,7 +170,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -192,7 +179,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -202,7 +188,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -212,7 +197,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -223,7 +207,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -236,7 +219,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -246,7 +228,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -256,7 +237,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: [],
     requiresExpandedPresentation: false,
     canSwipeDismiss: true,
-    snapPersistence: 'none',
     postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
@@ -276,7 +256,6 @@ export const resolveAppRouteSheetScenePolicy = (sceneKey: OverlayKey): AppRouteS
     allowedSnaps,
     requiresExpandedPresentation,
     canSwipeDismiss,
-    snapPersistence,
     postureSeat,
   } = APP_ROUTE_SCENE_POLICY_BY_KEY[sceneKey];
   return {
@@ -285,7 +264,6 @@ export const resolveAppRouteSheetScenePolicy = (sceneKey: OverlayKey): AppRouteS
     allowedSnaps,
     requiresExpandedPresentation,
     canSwipeDismiss,
-    snapPersistence,
     postureSeat,
   };
 };

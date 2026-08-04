@@ -158,7 +158,6 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     onMomentumBeginJS: scrollSharedRuntimeEntry.onMomentumBeginJS,
     onMomentumEndJS: scrollSharedRuntimeEntry.onMomentumEndJS,
     showsVerticalScrollIndicator: scrollSharedRuntimeEntry.showsVerticalScrollIndicator,
-    dynamicScrollIndicator: false,
     testID: scrollSharedRuntimeEntry.testID,
     onDragStateChange: motionCallbacksEntry.onDragStateChange,
     onSettleStateChange: motionCallbacksEntry.onSettleStateChange,
@@ -174,7 +173,6 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     dataCount: 0,
     secondaryDataCount: 0,
     runtimeConfigAuthority: routeSheetRuntimeConfigAuthority,
-    subscribeTouchBlockingToReact: false,
   });
 
   const resolvedShadowStyle = chromeEntry.shadowStyle ?? overlaySheetStyles.shadowShell;

@@ -2,23 +2,17 @@ import React from 'react';
 import { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { resolveExpandedTop } from '../../overlays/sheetUtils';
+import { resolveExpandedMiddleSnaps, resolveExpandedTop } from '../../overlays/sheetUtils';
 import { SCREEN_HEIGHT } from '../../screens/Search/constants/search';
 import type { SearchRouteSheetMotionStateSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-motion-state-snapshot-contract';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
-import type {
-  RouteOverlayChromeModeSnapshot,
-  RouteOverlayChromeMode,
-} from './route-overlay-display-snapshot-contract';
+import type {} from './route-overlay-display-snapshot-contract';
 import type { AppRouteSceneChromeMotionRuntime } from './app-route-scene-chrome-motion-runtime-contract';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { useAppRouteSheetHostOwner } from './AppRouteSheetHostRuntimeProvider';
 import type { AppRouteSheetHostSurfaceBodySnapshot } from './app-route-sheet-host-surface-runtime-contract';
-import type {
-  AppRouteChromeSurfaceTarget,
-  RouteScenePolicySnapshot,
-} from './app-route-scene-policy-contract';
+import type {} from './app-route-scene-policy-contract';
 import type { AppRouteOverlayCommandSnapshot } from './app-route-overlay-command-controller';
 import type { RouteHostOverlayGeometryBinding } from './route-host-overlay-geometry-state-controller';
 import type {
@@ -35,52 +29,64 @@ const startupGeometrySeed = getSearchStartupGeometrySeed();
 const AppRouteSceneChromeMotionRuntimeContext =
   React.createContext<AppRouteSceneChromeMotionRuntime | null>(null);
 
-type RouteChromeOverlayState = {
-  routeChromeOverlayMode: RouteOverlayChromeMode;
-};
-
-const selectRouteChromeOverlayState = (
-  snapshot: RouteOverlayChromeModeSnapshot
-): RouteChromeOverlayState => ({
-  routeChromeOverlayMode: snapshot.routeChromeOverlayMode,
-});
-
-const selectRouteChromePolicyState = (snapshot: RouteScenePolicySnapshot) => ({
-  chromeSurfaceTarget: snapshot.chromeSurfaceTarget,
-});
+// F948: `selectRouteChromeOverlayState` and `selectRouteChromePolicyState` are deleted
+// with the dead parameters they existed to compute — the chrome response zone is a pure
+// function of the search bar's top edge and the save-list mode, and nothing else.
 
 const selectSaveSheetVisible = (snapshot: AppRouteOverlayCommandSnapshot): boolean =>
   snapshot.saveSheetState.visible;
 
-const buildExpandedMiddleChromeSnaps = (searchBarTop: number, insetTop: number) => {
-  const expanded = resolveExpandedTop(searchBarTop, insetTop);
-  const rawMiddle = SCREEN_HEIGHT * 0.4;
-  const middle = Math.max(expanded + 96, rawMiddle);
-  const hidden = SCREEN_HEIGHT + 80;
-  const clampedMiddle = Math.min(middle, hidden - 120);
-  return { expanded, middle: clampedMiddle };
-};
-
-const buildSaveChromeSnaps = (searchBarTop: number, insetTop: number) => {
-  const expanded = resolveExpandedTop(searchBarTop, insetTop);
-  const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
+// F964: ONE SNAP-GEOMETRY FORMULA. This used to recompute the sheet's expanded/middle
+// pair here — the same four expressions with the same four literals as
+// `calculateSnapPoints`, with neither file importing the other, so tuning the sheet
+// would have silently drifted its own chrome. The chrome derives from the sheet's
+// resolver now.
+const buildExpandedMiddleChromeSnaps = (
+  searchBarTop: number,
+  insetTop: number
+): RouteOverlayChromeSnapConfig => {
+  const { expanded, middle } = resolveExpandedMiddleSnaps(SCREEN_HEIGHT, searchBarTop, insetTop);
   return { expanded, middle };
 };
 
+/** The SAVE-LIST overlay is a genuine MODE (a different surface), not a scene, and it
+ *  carries its own pair. The two literals below are the shipped values with no recorded
+ *  derivation — named here for the same reason as the sheet's (see sheetUtils.ts), and
+ *  deliberately NOT reconciled with the sheet's 96/0.4: making them equal is a design
+ *  decision about how the save sheet sits, not a refactor. */
+const SAVE_MIDDLE_MIN_GAP_BELOW_EXPANDED_PX = 140;
+const SAVE_MIDDLE_SCREEN_FRACTION = 0.5;
+
+const buildSaveChromeSnaps = (
+  searchBarTop: number,
+  insetTop: number
+): RouteOverlayChromeSnapConfig => {
+  const expanded = resolveExpandedTop(searchBarTop, insetTop);
+  const middle = Math.max(
+    expanded + SAVE_MIDDLE_MIN_GAP_BELOW_EXPANDED_PX,
+    SCREEN_HEIGHT * SAVE_MIDDLE_SCREEN_FRACTION
+  );
+  return { expanded, middle };
+};
+
+// F948: `routeChromeOverlayState`, `chromeSurfaceTarget` and `snapPoints` USED TO BE
+// PARAMETERS HERE and none of the three was read in the body — the function returns
+// `buildSaveChromeSnaps` or `buildExpandedMiddleChromeSnaps`, both of which take only
+// searchBarTop/insetTop. They were not free: computing them cost three live authority
+// subscriptions, and `activeRouteChromeSnaps` — a value that changes on EVERY sheet
+// motion-state entry change — existed ONLY to feed the discarded `snapPoints`. Because
+// it sat in `resolveChromeSnapTargets`' dep chain, and that callback is a dependency of
+// the layout-effect that registers FOUR authority subscriptions, all four tore down and
+// re-registered on every sheet movement. Deleting three dead parameters collapses the
+// dep to `insets.top` and makes those subscriptions mount-once.
 const resolveRouteChromeTransitionConfig = ({
   searchBarTop,
   insetsTop,
   showSaveListOverlay,
-  routeChromeOverlayState,
-  chromeSurfaceTarget,
-  snapPoints,
 }: {
   searchBarTop: number;
   insetsTop: number;
   showSaveListOverlay: boolean;
-  routeChromeOverlayState: RouteChromeOverlayState;
-  chromeSurfaceTarget: AppRouteChromeSurfaceTarget;
-  snapPoints: RouteOverlayChromeSnapConfig;
 }): RouteOverlayChromeSnapConfig => {
   if (showSaveListOverlay) {
     return buildSaveChromeSnaps(searchBarTop, insetsTop);
@@ -162,16 +168,6 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
   });
   const activeRouteSheetMotionStateEntry =
     mountedRouteSheetMotionStateEntry ?? routeSheetMotionStateEntry;
-  const routeOwnedBootstrapChromeSnaps = React.useMemo(
-    () =>
-      buildExpandedMiddleChromeSnaps(
-        getSearchBarTop(routeSceneRuntime.routeHostOverlayGeometryAuthority.getSnapshot()),
-        insets.top
-      ),
-    [insets.top, routeSceneRuntime.routeHostOverlayGeometryAuthority]
-  );
-  const activeRouteChromeSnaps =
-    activeRouteSheetMotionStateEntry?.snapPoints ?? routeOwnedBootstrapChromeSnaps;
   const initialChromeTransitionConfig = resolveRouteChromeTransitionConfig({
     searchBarTop: getSearchBarTop(
       routeSceneRuntime.routeHostOverlayGeometryAuthority.getSnapshot()
@@ -180,20 +176,13 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
     showSaveListOverlay: selectSaveSheetVisible(
       routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot()
     ),
-    routeChromeOverlayState: selectRouteChromeOverlayState(
-      routeSceneRuntime.routeOverlayChromeModeAuthority.getSnapshot()
-    ),
-    chromeSurfaceTarget: selectRouteChromePolicyState(
-      routeSceneRuntime.routeScenePolicyAuthority.getSnapshot()
-    ).chromeSurfaceTarget,
-    snapPoints: activeRouteChromeSnaps,
   });
   const routeOwnedBootstrapSheetTranslateY = useSharedValue(initialChromeTransitionConfig.middle);
   const chromeExpandedSnap = useSharedValue(initialChromeTransitionConfig.expanded);
   const chromeMiddleSnap = useSharedValue(initialChromeTransitionConfig.middle);
 
   const resolveChromeSnapTargets = React.useCallback(
-    (routeChromeOverlayState: RouteChromeOverlayState): RouteOverlayChromeSnapConfig =>
+    (): RouteOverlayChromeSnapConfig =>
       resolveRouteChromeTransitionConfig({
         searchBarTop: getSearchBarTop(
           routeSceneRuntime.routeHostOverlayGeometryAuthority.getSnapshot()
@@ -202,18 +191,15 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
         showSaveListOverlay: selectSaveSheetVisible(
           routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot()
         ),
-        routeChromeOverlayState,
-        chromeSurfaceTarget: selectRouteChromePolicyState(
-          routeSceneRuntime.routeScenePolicyAuthority.getSnapshot()
-        ).chromeSurfaceTarget,
-        snapPoints: activeRouteChromeSnaps,
       }),
+    // F948: with the three dead parameters gone this no longer depends on
+    // `activeRouteChromeSnaps` (which changed on every sheet motion) — so the
+    // layout-effect below, which lists this callback in its deps, registers its four
+    // authority subscriptions ONCE instead of on every sheet movement.
     [
-      activeRouteChromeSnaps,
       insets.top,
       routeSceneRuntime.routeHostOverlayGeometryAuthority,
       routeSceneRuntime.routeOverlayCommandAuthority,
-      routeSceneRuntime.routeScenePolicyAuthority,
     ]
   );
 
@@ -234,11 +220,7 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
         'AppRouteSceneChromeMotionRuntimeProvider',
         'syncChromeSnapTargets',
         () => {
-          const nextChromeTransitionConfig = resolveChromeSnapTargets(
-            selectRouteChromeOverlayState(
-              routeSceneRuntime.routeOverlayChromeModeAuthority.getSnapshot()
-            )
-          );
+          const nextChromeTransitionConfig = resolveChromeSnapTargets();
           chromeExpandedSnap.value = nextChromeTransitionConfig.expanded;
           chromeMiddleSnap.value = nextChromeTransitionConfig.middle;
         }
@@ -248,7 +230,7 @@ export const AppRouteSceneChromeMotionRuntimeProvider = ({
     const chromeSnapSharedValueTargets: RouteOverlayChromeSnapSharedValueTargets = {
       chromeExpandedSnap,
       chromeMiddleSnap,
-      resolveSnaps: (snapshot) => resolveChromeSnapTargets(selectRouteChromeOverlayState(snapshot)),
+      resolveSnaps: () => resolveChromeSnapTargets(),
     };
     const unregisterRouteOverlayChromeMode =
       routeSceneRuntime.routeOverlayChromeModeAuthority.registerSharedValues(

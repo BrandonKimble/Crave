@@ -175,12 +175,13 @@ export const userListsService = {
       shareSlug: opts?.shareSlug ?? undefined,
       targetUserId: opts?.targetUserId ?? undefined,
     });
-    const raw =
-      response.data && typeof response.data === 'object' && 'data' in response.data
-        ? (response.data as { data?: unknown }).data
-        : response.data;
-    return Array.isArray(raw)
-      ? (raw as Array<{ placeId: string; name: string; restaurantCount: number }>)
+    // F836 (2026-08-03): the `'data' in response.data` unwrap branch is DELETED — it was a
+    // GUARD THAT CANNOT FIRE. `listCitiesForList` (user-lists.service.ts) is typed
+    // `Promise<Array<{placeId; name; restaurantCount}>>` and returns a BARE ARRAY, so
+    // `'data' in []` is always false and the branch never ran. The Array.isArray check
+    // stays: that one CAN fail (a route change), and it is the real shape assertion.
+    return Array.isArray(response.data)
+      ? (response.data as Array<{ placeId: string; name: string; restaurantCount: number }>)
       : [];
   },
   async getShared(shareSlug: string): Promise<UserListDetail> {

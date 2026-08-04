@@ -7,79 +7,33 @@
 // host therefore does NOT know the rich call-site Intent — it only has the (outgoing, incoming)
 // scene-key pair.
 //
-// This adapter bridges that gap: it derives a TransitionDescriptor for the host-owned player from
-// just the (outgoing, incoming) scene keys + the live source detent. It is intentionally MINIMAL —
-// for the live cutover the player drives ONLY the content + header lanes (NOT sheet-Y, which stays
-// authoritatively driven by the kept spring runtime — no double-driver; NOT the camera, Phase 4).
-// So the only descriptor fields the host-owned player actually reads are content.swap (the content
-// mode) and (for the lane styles) the leg roles. sheet.from/to are set equal (the player's sheet-Y
-// lane is NOT mounted), and map/chrome are 'preserve' so the player never moves them.
+// This adapter bridges that gap. It is intentionally MINIMAL — for the live cutover the player
+// drives ONLY the content + header lanes (NOT sheet-Y, which stays authoritatively driven by the
+// kept spring runtime — no double-driver; NOT the camera, Phase 4).
 //
-// The content mode is the owner's default (relayed): HARD (immediate swap, paint-ack-gated) for
-// every seeded reveal — pollDetail / profile / restaurant, and as of P5 also 'search' (its
-// never-null results-skeleton page is the frame-1 seed, so the old search HELD-DISSOLVE is gone).
+// F906/F907, and the reason this file is now a handful of lines: it used to take
+// (outgoing, incoming, liveDetent) and build a seven-field descriptor, of which the app read
+// exactly two leaves. `liveDetent` was passed the literal 'middle' at both call sites. And the
+// content mode came from `CONTENT_MODE_BY_INCOMING_SCENE`, a per-scene table whose every row was
+// the SAME `{ mode: 'hard' }` object, consulted through a `?? HARD` fallback, feeding a player
+// that ignored the parameter — a table that could not change an outcome, in front of a lookup
+// that could not fail, in front of a consumer that did not look. Mutation-proven: delete it all
+// and return HARD unconditionally, zero observable change. The content law lives in ONE place now
+// (ContentMode in transition-descriptor-contract.ts), which is where a scene that genuinely needs
+// different content behaviour would come to argue for a second variant — together with the player
+// change that would make the variant mean something.
 
-import {
-  PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
-  PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
-} from '../app-overlay-route-transition-contract';
 import { DEFAULT_TRANSITION_SPRING_CONFIG } from './transition-lane-player';
-import type { OverlayKey } from '../../../overlays/types';
-import type {
-  ContentMode,
-  TransitionDescriptor,
-  TransitionDetent,
-} from './transition-descriptor-contract';
+import type { ContentMode, TransitionDescriptor } from './transition-descriptor-contract';
 
-const HARD: ContentMode = { mode: 'hard' };
+/** THE content law: immediate swap, gated on the incoming scene's single paint-ack. A module
+ *  constant, so its identity is stable for free — the host used to keep a `useRef` +
+ *  `JSON.stringify` memo key alive purely to stop a freshly-allocated `{ mode: 'hard' }` from
+ *  re-minting its ports context on every switch. */
+export const HOST_TOKEN_CONTENT_MODE: ContentMode = { mode: 'hard' };
 
-// Per-INCOMING-scene content mode. P5 (page-switch-master-plan.md §6-P5): 'search' is now SEEDED
-// — its never-null results-skeleton page is the frame-1 seed — so it hard-swaps like every other
-// destination; this adapter has NO held-dissolve row (and no HELD_DISSOLVE constant) anymore. The
-// `held-dissolve` VARIANT survives only in the ContentMode contract, where the player treats it
-// as a degenerate hard-swap. Every scene here resolves HARD (immediate, paint-ack-gated) — the
-// safe default (never a see-through fade, always gated on the incoming actually painting); the
-// explicit rows double as the extension point if a scene ever needs a non-HARD mode.
-const CONTENT_MODE_BY_INCOMING_SCENE: Partial<Record<OverlayKey, ContentMode>> = {
-  profile: HARD, // restaurant/dish profile (direct-seed) — immediate, gated
-  restaurant: HARD,
-  pollDetail: HARD, // poll-open / autocomplete-poll (skeleton frame-1) — immediate, gated
-};
-
-export const resolveHostTokenContentMode = (incomingSceneKey: OverlayKey): ContentMode =>
-  CONTENT_MODE_BY_INCOMING_SCENE[incomingSceneKey] ?? HARD;
-
-// Derive the descriptor the host-owned player plays from the (outgoing, incoming) pair the host has.
-// sheet.from == sheet.to: the player's sheet-Y lane is NOT mounted in this phase (translateY stays
-// with the kept spring runtime — no double-driver). map/chrome 'preserve': the player never moves
-// them. Only content.swap (the mode) and the leg roles are load-bearing for the cutover.
-export const deriveHostTokenDescriptor = (
-  outgoingSceneKey: OverlayKey,
-  incomingSceneKey: OverlayKey,
-  liveDetent: TransitionDetent
-): TransitionDescriptor => ({
-  trigger: 'press-up',
+/** The descriptor the host-owned player plays. */
+export const deriveHostTokenDescriptor = (): TransitionDescriptor => ({
   clock: { type: 'spring', config: DEFAULT_TRANSITION_SPRING_CONFIG },
-  // sheet-Y lane NOT mounted this phase — from==to so even if read it is a no-op (kept spring owns Y).
-  sheet: { from: liveDetent, to: liveDetent },
-  content: {
-    out: { sceneKey: outgoingSceneKey },
-    in: { sceneKey: incomingSceneKey },
-    swap: resolveHostTokenContentMode(incomingSceneKey),
-  },
-  map: {
-    from: PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
-    to: PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
-  },
-  chrome: {
-    from: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
-    to: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
-    threshold: [0, 1],
-  },
-  origin: {
-    sceneKey: outgoingSceneKey,
-    snap: liveDetent,
-    camera: PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
-    chrome: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
-  },
+  content: { swap: HOST_TOKEN_CONTENT_MODE },
 });

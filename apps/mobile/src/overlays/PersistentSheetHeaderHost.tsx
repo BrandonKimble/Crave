@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureHandledError } from '../observability/crash-reporting';
 import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Easing, useSharedValue, withTiming } from 'react-native-reanimated';
 
@@ -109,7 +110,12 @@ export const PersistentSheetHeaderHost: React.FC<{
   // ONE host-owned rotating control; the driver is the PF chrome clock (frame.headerNavAction,
   // committed on press-up), so the rotation starts DURING the transition by construction.
   // 0 = red plus (parents), 1 = black X (children/search results); child→child stays 1 (no
-  // animation). 220ms out-cubic — the proven prior-art feel (OverlayHeaderActionButton).
+  // animation). 220ms out-cubic. PROVENANCE, HONESTLY (F969b): this timing used to cite
+  // "the proven prior-art feel (OverlayHeaderActionButton)" — a component that had no
+  // consumers at all and has now been deleted as dead code, so the derivation's source
+  // was itself unreachable. 220ms is therefore the SHIPPED value with no surviving
+  // derivation; it is what the owner has been looking at, and it changes on a sim look,
+  // not on a refactor.
   const headerNavAction = frame.headerNavAction;
   const navActionProgress = useSharedValue(headerNavAction === 'close' ? 1 : 0);
   React.useEffect(() => {
@@ -162,6 +168,14 @@ export const PersistentSheetHeaderHost: React.FC<{
       // Fallback create-poll push. The place-gated create (place params + "Pick a place"
       // modal) registers from PollsPanel's header Title mount (leg 7) — this fallback only
       // fires if the plus is pressed before that effect commits, and the warn is the signal.
+      // F979(a): this is not a diagnostic — the user gets the WRONG CREATION FLOW (an
+      // un-place-gated push instead of the place-gated one), and `console.warn` is
+      // stripped in Release, so on the only lane that matters it happened silently. A
+      // defect that reaches the user must reach the owner.
+      captureHandledError(
+        new Error('[HeaderNavAction] polls create fell back to a bare pollCreation push'),
+        { scene: 'polls', reason: 'PollsPanel has not registered its place-gated create' }
+      );
       if (__DEV__) {
         // eslint-disable-next-line no-console
         console.warn(

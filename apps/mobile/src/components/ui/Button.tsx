@@ -22,7 +22,12 @@ export interface ButtonProps extends PressableProps {
   labelStyle?: StyleProp<TextStyle>;
 }
 
-const PRIMARY_BUTTON_COLOR = themeColors.accentDark ?? '#6366f1';
+// F887 (2026-08-03): the `?? '#6366f1'` fallback is DELETED — `themeColors.accentDark` is a
+// NON-OPTIONAL string sourced from the palette JSON, so the fallback was unreachable, and an
+// unreachable fallback hides a fact: `accentDark` is currently IDENTICAL to `primary`
+// (constants/theme.ts:9,12 — both `typedColorPalette.primaryColor`), i.e. the "dark" variant
+// is not dark. That is a token question (F881/F894), not a color to guess here.
+const PRIMARY_BUTTON_COLOR = themeColors.accentDark;
 const SECONDARY_BUTTON_COLOR = themeColors.secondary;
 
 const styles = StyleSheet.create({

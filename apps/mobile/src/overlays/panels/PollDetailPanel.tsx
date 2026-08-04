@@ -721,7 +721,13 @@ export const usePollDetailPanelSpec = ({
     socket.on('connect', subscribe);
     let task: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
     const handleUpdate = (payload: { pollId?: string }) => {
-      if (payload?.pollId !== pollId || task) return; // global broadcast — only ours; coalesce bursts
+      // F930: the `payload?.pollId !== pollId` half was deleted. Delivery has been
+      // ROOM-SCOPED since 2026-08-01 (see the comment 8 lines up) and this socket
+      // subscribes to exactly [pollId], so the id can only ever match — a guard that
+      // cannot fail, kept alive by a comment ("global broadcast") describing a
+      // delivery model that no longer exists. What remains is the real job: coalesce
+      // update bursts into one refresh.
+      if (task) return;
       task = InteractionManager.runAfterInteractions(() => {
         task = null;
         void refreshRef.current();

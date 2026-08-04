@@ -117,6 +117,8 @@ const SearchSuggestionSurface = ({
       {!shouldDisableSearchBlur && <FrostedGlassBackground />}
       {shouldShowSuggestionSurface ? (
         <MaskedHoleOverlay
+          // F884: geometry comes from `style` below, not from filling the parent.
+          fill={false}
           holes={resolvedSuggestionHeaderHoles}
           backgroundColor="#ffffff"
           renderWhenEmpty

@@ -52,6 +52,8 @@ const CutoutBandMaterial: React.FC<{
   return (
     <>
       <MaskedHoleOverlay
+        // F884: geometry comes from `style` below, not from filling the parent.
+        fill={false}
         pointerEvents="none"
         holes={plateHoles}
         backgroundColor={surfaceColor}

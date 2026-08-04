@@ -1,3 +1,22 @@
+/**
+ * THIS IS TOOLING, NOT PRODUCT (F893, 2026-08-03).
+ *
+ * `src/splash-studio/**` plus `components/{SplashStudioScene,BackdropMapScene,
+ * FrostedGridOverlay}.tsx` and `components/backdrop-dot-theme.ts` (~370 lines total) are a
+ * CAPTURE TOOL whose only output is `src/assets/splash.png` — they exist to be screenshotted
+ * by `apps/mobile/scripts/capture_splash_from_studio.sh`, which then runs
+ * `install_captured_splash.sh` to write the PNG into the app + iOS asset catalogs.
+ *
+ * It is NOT dead code: `EXPO_PUBLIC_SPLASH_STUDIO === '1'` (see `splashStudioEnabled` below)
+ * gates the single RootNavigator route (RootNavigator.tsx:46), so a normal build never
+ * mounts it. Recorded here so a future reader neither deletes it as unreachable nor reads it
+ * as shipped product surface. (`components/StaticSplashArtShell.tsx` is unrelated and DOES
+ * ship unconditionally.)
+ *
+ * NOT DONE (deliberate): the finding also proposed MOVING these files beside the scripts that
+ * drive them. Left in place — the move would rewrite the RootNavigator route registration and
+ * several component imports for a labelling benefit this comment already delivers.
+ */
 import type { StartupCameraSpec } from '../navigation/runtime/MainLaunchCoordinator';
 import splashStudioConfigData from './splash-studio-config.json';
 

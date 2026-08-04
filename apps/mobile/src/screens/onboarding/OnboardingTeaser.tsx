@@ -4,6 +4,7 @@ import { Text } from '../../components';
 import { announceFailureIfOnline } from '../../components/app-modal-store';
 import { fetchTeaserPreview, type TeaserPreviewPayload } from '../../services/teaser';
 import { logger } from '../../utils';
+import { captureHandledError } from '../../observability/crash-reporting';
 
 /**
  * The onboarding payoff beat (business/signal/teaser-spec.md): the first time
@@ -48,6 +49,9 @@ export const OnboardingTeaser: React.FC<Props> = ({ city, dishIds, contextIds, c
         setState(payload ? { kind: 'ready', payload } : { kind: 'fallback' });
       })
       .catch((error) => {
+        // F813: the teaser IS the onboarding payoff beat; a server-side failure here is
+        // worth knowing about in production, not just announcing to this one user.
+        captureHandledError(error, { seam: 'onboarding:teaser-preview' });
         logger.warn('Teaser preview failed', error);
         if (!cancelled) {
           announceFailureIfOnline({
@@ -59,8 +63,17 @@ export const OnboardingTeaser: React.FC<Props> = ({ city, dishIds, contextIds, c
     return () => {
       cancelled = true;
     };
-    // (join'd deps are intentional — stable across re-renders with equal ids;
-    // this package's eslint has no react-hooks plugin, so no disable needed)
+    // THE DEPS ARE THE JOINED KEYS, DELIBERATELY: `dishIds` / `contextIds` / `cuisineIds`
+    // are fresh arrays on every render, so depending on them directly would re-fetch the
+    // teaser on every commit. The joined strings are equal whenever the ids are equal,
+    // which is the actual dependency.
+    //
+    // F808 (2026-08-03): this comment used to end "this package's eslint has no react-hooks
+    // plugin, so no disable needed" — a file reasoning about a linter that wasn't there. The
+    // plugin IS installed now and does warn here (exhaustive-deps is staged as WARN). The
+    // warning is ACKNOWLEDGED, not suppressed: adding the arrays would be a behavior
+    // regression, and the honest fix is to memoize the keys at their source rather than
+    // silence the rule. Left for the exhaustive-deps burn-down, with the reason recorded.
   }, [city, dishIds.join('|'), contextIds.join('|'), cuisineIds.join('|')]);
 
   if (state.kind === 'loading') {

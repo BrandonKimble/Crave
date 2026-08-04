@@ -1,3 +1,6 @@
+// F873: ONE clock for the whole perf directory (was six identical re-declarations).
+import { perfNow } from './perf-clock';
+
 // REVEAL-COMMIT ATTRIBUTION (the release-lane JS ~164ms reveal stall, 2026-07-21):
 // the JsFrameSampler window proves ONE long JS task at the reveal commit; this span
 // decomposes it from the inside. Stage marks accumulate during the task and flush as
@@ -21,10 +24,7 @@ let spanStages: RevealCommitStage[] = [];
 let spanRowRenderCount = 0;
 let spanFlushScheduled = false;
 
-const resolveNowMs = (): number =>
-  typeof performance !== 'undefined' && typeof performance.now === 'function'
-    ? performance.now()
-    : Date.now();
+const resolveNowMs = (): number => perfNow();
 
 const emitRevealCommitLine = (line: string): void => {
   if (__DEV__) {
@@ -52,7 +52,9 @@ const flushRevealCommitSpan = (): void => {
   const stages = spanStages
     .map((stage) => {
       const rel = (stage.atMs - startedAtMs).toFixed(1);
-      return stage.durMs != null ? `${stage.label}@${rel}(+${stage.durMs.toFixed(1)})` : `${stage.label}@${rel}`;
+      return stage.durMs != null
+        ? `${stage.label}@${rel}(+${stage.durMs.toFixed(1)})`
+        : `${stage.label}@${rel}`;
     })
     .join(' ');
   emitRevealCommitLine(

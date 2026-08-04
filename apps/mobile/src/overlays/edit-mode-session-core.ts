@@ -15,5 +15,17 @@ export const isSessionDirty = (live: EditModeSessionState | null): boolean => {
     return false;
   }
   const baseline = live.history[0];
-  return baseline == null || baseline.join(' ') !== live.order.join(' ');
+  if (baseline == null) {
+    return true;
+  }
+  // F963: this used to be `baseline.join(' ') !== live.order.join(' ')`. That is correct
+  // ONLY while no id can contain a space — a precondition this file never stated and
+  // nothing enforces. The day an id gains one (a slug, a composite key, a
+  // server-generated label), `['a b','c']` and `['a','b c']` become indistinguishable
+  // and the dirty check silently returns FALSE: a real edit is discarded as a no-op
+  // cancel. Element-wise comparison is strictly correct, cheaper (no allocation), and
+  // has no precondition to remember.
+  return (
+    baseline.length !== live.order.length || baseline.some((id, index) => id !== live.order[index])
+  );
 };

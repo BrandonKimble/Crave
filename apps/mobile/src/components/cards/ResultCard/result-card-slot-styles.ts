@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native';
 
+import { CONTENT_HORIZONTAL_PADDING } from '../../../screens/Search/constants/search';
+
 // Styles for the ResultCard primitive's SLOT content only (note line etc.).
 // The card body's own styles remain the search styles module — a literal
 // move preserving byte-parity on the results surface (see the header comment
@@ -8,8 +10,12 @@ import { StyleSheet } from 'react-native';
 // Wave-3 §3.3: card gallery photos read BIGGER and slightly LESS WIDE.
 export const RESULT_CARD_GALLERY_HEIGHT = 96;
 export const RESULT_CARD_GALLERY_TILE_ASPECT = 1.1;
-// The card gutter the gallery/pill rows bleed out of (= CONTENT_HORIZONTAL_PADDING).
-export const RESULT_CARD_GUTTER = 20;
+// The card gutter the gallery/pill rows bleed out of.
+// F896 (2026-08-03): this was `= 20` under a comment RESTATING the two-hop derivation
+// (overlay-chrome-metrics -> OVERLAY_HORIZONTAL_PADDING -> CONTENT_HORIZONTAL_PADDING).
+// The constant is importable, so it is imported: a padding change now moves the full-bleed
+// math with it instead of silently desyncing the card from the page it sits on.
+export const RESULT_CARD_GUTTER = CONTENT_HORIZONTAL_PADDING;
 
 export const resultCardSlotStyles = StyleSheet.create({
   // The saver's note (§8.1: below the photo-strip row) — carried over from

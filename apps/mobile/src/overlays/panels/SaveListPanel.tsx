@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { SegmentedToggle, Text } from '../../components';
+import { announceFailureIfOnline } from '../../components/app-modal-store';
 import { colors as themeColors } from '../../constants/theme';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
@@ -249,9 +250,23 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
     setFormState({ mode: 'hidden', name: '', description: '', visibility: 'private' });
   }
 
-  // Publish the side to the persistent-header title store (render-time write
-  // is safe: idempotent set + the header subscribes, it never writes back).
-  saveSheetSideStore.set(side === triggerListType ? null : side);
+  // Publish the side to the persistent-header title store. The RENDER-TIME write is
+  // deliberate: the header must paint the right title on the FIRST frame of the switch
+  // (the chrome never skeletons), and the set is idempotent + the header only
+  // subscribes, never writes back.
+  //
+  // F933(b): a render-time write is nonetheless only as correct as the render staying
+  // committed, which React 18 concurrent rendering does not promise — a discarded
+  // render could leave the store holding a side the user never sees. So COMMIT is the
+  // authority: the layout effect below re-asserts the value from the render that
+  // actually landed, before paint. Render-time write = first-frame correctness;
+  // layout-effect write = the truth. They agree by construction because both compute
+  // the same expression from the same committed props.
+  const publishedSide = side === triggerListType ? null : side;
+  saveSheetSideStore.set(publishedSide);
+  React.useLayoutEffect(() => {
+    saveSheetSideStore.set(publishedSide);
+  }, [publishedSide]);
   React.useEffect(
     () => () => {
       saveSheetSideStore.set(null);
@@ -334,6 +349,14 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
         await queryClient.invalidateQueries({ queryKey: userListKeys.all });
         await queryClient.invalidateQueries({ queryKey: ['entityMemberships'] });
         onClose();
+      } catch {
+        // F923: this used to be try/finally with NO catch, so a failed save rejected
+        // into `void commitAdd(...)` as an unhandled rejection — the sheet stayed open
+        // with the spinner cleared, no message, nothing anywhere. Saving is the app's
+        // core write and every sibling surface in this directory announces; the sheet
+        // stays OPEN (deliberately: the user's selection survives, so retrying is one
+        // tap) and the announcer's own offline law keeps it quiet on a dead network.
+        announceFailureIfOnline();
       } finally {
         setIsSaving(false);
       }
@@ -368,6 +391,12 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
       await queryClient.invalidateQueries({ queryKey: ['entityMemberships'] });
       resetForm();
       onClose();
+    } catch {
+      // F923, same class as commitAdd above: create-then-add is TWO writes, so a
+      // failure here can also mean "the list exists but the item did not land". The
+      // form is left intact and the sheet open so the user can see what happened and
+      // retry rather than being told nothing at all.
+      announceFailureIfOnline();
     } finally {
       setIsSaving(false);
     }

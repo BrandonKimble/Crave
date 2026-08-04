@@ -138,10 +138,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   onPressRecentlyViewedMore,
   style,
 }) => {
-  if (!visible) {
-    return null;
-  }
-
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
   // Never-blank rule (c): only when there is truly nothing better to show — a
   // list (even a stale placeholder) always outranks the failure notice.
@@ -170,6 +166,21 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
     return items;
   }, [recentlyViewedFoods, recentlyViewedDeduped]);
+
+  // F808 (2026-08-03) — CONDITIONAL HOOKS, FIXED. `if (!visible) return null` used to sit
+  // ABOVE the two useMemos, so this component called two fewer hooks whenever it was
+  // hidden. Every `visible` toggle changed the hook COUNT, which is React's "Rendered more
+  // hooks than during the previous render" crash — a latent one, because this component
+  // happens to be unmounted rather than hidden on most paths today. Found the day
+  // eslint-plugin-react-hooks was installed; it was the only rules-of-hooks error in 37k
+  // lines, and it was real.
+  //
+  // The early return now happens AFTER every hook. The memos above are pure and cheap, so
+  // running them while hidden costs nothing observable.
+  if (!visible) {
+    return null;
+  }
+
   const recentlyViewedToRender = recentlyViewedItems.slice(0, RECENTLY_VIEWED_PREVIEW_LIMIT);
   const shouldRenderRecentlyViewedSection = showRecent && recentlyViewedToRender.length > 0;
   const shouldRenderRecentSection =

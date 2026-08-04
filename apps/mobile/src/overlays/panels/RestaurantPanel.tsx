@@ -982,9 +982,6 @@ registerHeaderCloseAction('restaurant', () => {
 });
 
 const styles = StyleSheet.create({
-  headerCloseButton: {
-    marginLeft: 2,
-  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',

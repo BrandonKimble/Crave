@@ -69,49 +69,22 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   scrollResults: null,
 };
 
+/**
+ * What a registrar may hand in. DERIVED from the snapshot, never hand-written.
+ *
+ * F871 (2026-08-03): this was a SECOND, hand-maintained copy of the snapshot's shape and it
+ * had already drifted — `setScaleProbeMarkers` accepts `collide` and `spreadDeg` in the
+ * snapshot, the registration omitted both, and PerfScenarioCoordinator passes them. So the
+ * registrar compiled against a signature that LIED about what it would receive: the extra
+ * fields were invisible to the type system at the registration site, and a rename of either
+ * one would have failed silently at runtime rather than at build. One declaration now — a
+ * registrar supplies any subset of the snapshot's verbs, each with the snapshot's exact
+ * signature, and drift is unrepresentable.
+ */
 export type PerfScenarioCommandRegistration = {
-  closeResults?: () => void;
-  setMapCamera?: (input: {
-    lat: number;
-    lng: number;
-    zoom: number;
-    bearing?: number | null;
-    pitch?: number | null;
-    label?: string | null;
-  }) => boolean;
-  animateMapCamera?: (input: {
-    lat: number;
-    lng: number;
-    zoom: number;
-    bearing?: number | null;
-    pitch?: number | null;
-    cameraDurationMs: number;
-    label?: string | null;
-  }) => boolean;
-  moveMapForSearchThisArea?: (input: {
-    lat: number;
-    lng: number;
-    zoom: number;
-    label?: string | null;
-  }) => boolean;
-  submitShortcutRestaurants?: () => Promise<void>;
-  toggleTab?: (input: { tab: 'dishes' | 'restaurants' }) => void;
-  flipOpenNow?: (input: { openNow: boolean }) => void;
-  setScaleProbeMarkers?: (input: {
-    count: number;
-    lat: number;
-    lng: number;
-    label?: string | null;
-  }) => boolean;
-  openOverlayScene?: (input: {
-    scene: string;
-    routeParam?: string | null;
-    label?: string | null;
-  }) => boolean;
-  /** Push a CHILD scene into the CURRENT context — mirrors pushRoute with
-   *  zero choreography (the from-anywhere probe verb; params via JSON). */
-  pushChildScene?: (input: { scene: string; params: Record<string, unknown> }) => boolean;
-  scrollResults?: (input: { offsetY: number; animated?: boolean | null }) => boolean;
+  [K in keyof PerfScenarioCommandRegistrySnapshot]?: NonNullable<
+    PerfScenarioCommandRegistrySnapshot[K]
+  >;
 };
 
 export const registerPerfScenarioCommands = ({

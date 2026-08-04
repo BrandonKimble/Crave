@@ -1,4 +1,5 @@
 import api from './api';
+import { expectArray, expectArrayAt } from './expect-shape';
 import type { MapBounds } from '../types';
 
 // ─── Live model (comment + endorsement + leaderboard) ────────────────────────
@@ -218,17 +219,15 @@ const normalizePlaceOptions = (value: unknown): PollFeedPlaceOptionRow[] => {
     const row = entry as {
       placeId?: unknown;
       name?: unknown;
-      placeName?: unknown;
       pollCount?: unknown;
     };
-    // The API row says `name`; accept `placeName` too so the client type is
-    // the single mobile vocabulary word.
-    const placeName =
-      typeof row.name === 'string'
-        ? row.name
-        : typeof row.placeName === 'string'
-          ? row.placeName
-          : null;
+    // The API row says `name`; `placeName` is the mobile vocabulary word, so this is a
+    // one-way RENAME at the wire boundary, not a two-format tolerance.
+    // F837 (2026-08-03): the `?? row.placeName` alias fallback is DELETED — NO server
+    // version emits `placeName` on a place-option row (`buildPlaceOptions` in
+    // polls.service.ts emits `name`), so the branch made a reader believe two wire
+    // formats exist. If the server word ever changes, this line should fail loudly.
+    const placeName = typeof row.name === 'string' ? row.name : null;
     if (typeof row.placeId === 'string' && placeName && typeof row.pollCount === 'number') {
       options.push({ placeId: row.placeId, placeName, pollCount: row.pollCount });
     }
@@ -236,6 +235,15 @@ const normalizePlaceOptions = (value: unknown): PollFeedPlaceOptionRow[] => {
   return options;
 };
 
+/**
+ * F837 (2026-08-03): the bare-array FALLBACK is DELETED. `POST /polls/query` always returns
+ * the place-native ENVELOPE (`buildFeedResponse` in polls.service.ts — header / promise /
+ * nextCursor / placeOptions / polls; the pre-cut legacy `marketName + bare polls array`
+ * envelope was deleted with the mobile cut, per that method's own docstring). The fallback
+ * therefore never ran, and it made a reader believe two wire formats exist. A payload that
+ * is NOT the envelope is now a shape break that THROWS rather than degrading to an empty
+ * feed — the same law polls.ts already applies everywhere else in this file.
+ */
 const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
@@ -258,14 +266,7 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
     }
   }
 
-  return {
-    header: { placeName: null },
-    catalogWatermark: null,
-    promise: null,
-    polls: normalizePollList(payload),
-    nextCursor: null,
-    placeOptions: [],
-  };
+  throw new Error('polls query returned an unrecognized shape (expected the polls envelope)');
 };
 
 const normalizePoll = (payload: unknown): Poll | null => {
@@ -307,7 +308,9 @@ export const fetchUserCreatedPolls = async (userId: string): Promise<UserProfile
   const response = await api.get<{ polls: UserProfilePollRow[] }>(`/polls/users/${userId}`, {
     params: { activity: 'created' },
   });
-  return response.data?.polls ?? [];
+  // F835 (2026-08-03): was `?? []` — a broken response rendered as "this user has created
+  // no polls", indistinguishable from the truth. Validate at the boundary; let it throw.
+  return expectArrayAt<UserProfilePollRow>(response.data, 'polls', 'GET /polls/users/:id');
 };
 
 /** §7.3 Comments section: the user's live comment rows w/ poll context. */
@@ -322,7 +325,7 @@ export interface UserProfileCommentRow {
 
 export const fetchUserComments = async (userId: string): Promise<UserProfileCommentRow[]> => {
   const response = await api.get<UserProfileCommentRow[]>(`/polls/users/${userId}/comments`);
-  return response.data ?? [];
+  return expectArray<UserProfileCommentRow>(response.data, 'GET /polls/users/:id/comments');
 };
 
 export const createPoll = async (body: CreatePollPayload): Promise<Poll> => {

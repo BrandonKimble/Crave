@@ -2,6 +2,7 @@ import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
+import { captureHandledError } from '../observability/crash-reporting';
 
 /**
  * §8.9 push-permission moment: the OS prompt fires after the user's FIRST
@@ -83,6 +84,9 @@ export const requestPushPermissionIfEligible = (): void => {
         notifyGranted();
       }
     } catch (error) {
+      // F813: a permission ask that throws leaves the user permanently un-prompted
+      // (askedThisSession / the persisted flag may already be set) with no trace.
+      captureHandledError(error, { seam: 'push:permission-ask' });
       console.warn('[PushPermission] Contribution-moment ask failed', error);
     } finally {
       askInFlight = false;

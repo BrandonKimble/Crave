@@ -16,3 +16,11 @@ export const TOGGLE_STRIP_BAND_HEIGHT = CONTROL_HEIGHT;
  *  margin, and the skeleton strip-pill block's gap all consume THIS constant.
  *  Independent seam constants are a grep-invariant failure. */
 export const STRIP_BAND_BOTTOM_SPACER_HEIGHT = 8;
+
+/** THE GAP BETWEEN STRIP CITIZENS. F859 (2026-08-03): ToggleStrip carried this as a bare
+ *  `8` under the comment "Matches search TOGGLE_STACK_GAP" — and `TOGGLE_STACK_GAP` DOES
+ *  NOT EXIST anywhere in the repo (grep: zero hits). A comment asserting a coupling to a
+ *  symbol that was deleted (or never existed) is the grep-invariant failure this module's
+ *  header warns about: the claim cannot be checked and quietly becomes false. The gap lives
+ *  HERE now, as a real export other strip geometry can import instead of restate. */
+export const STRIP_CITIZEN_GAP = 8;

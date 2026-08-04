@@ -1,10 +1,5 @@
 import React from 'react';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
-import { StyleSheet } from 'react-native';
-
-import { Text } from '../../components';
-import { colors as themeColors } from '../../constants/theme';
-import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 
 // The polls header now uses the standardized single header (title + close cutout only) — the
 // live-count badge cutout was removed 2026-07-01 (page-switch-master-plan.md). Only the TITLE model
@@ -43,7 +38,7 @@ export const PollsHeaderTitleText: React.FC<{ title: string }> = ({ title }) => 
   <ChromeTitleText>{toSingleLineText(title)}</ChromeTitleText>
 );
 
-const styles = StyleSheet.create({
-});
-
-export const pollsHeaderVisualStyles = styles;
+// F929: an exported EMPTY `StyleSheet.create({})` with zero consumers lived here, and
+// with it the file's StyleSheet/Text/themeColors/FONT_SIZES/LINE_HEIGHTS imports —
+// all fossils of the live-count badge cutout removed 2026-07-01. Deleted; the file is
+// now exactly the title model it says it is.

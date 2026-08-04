@@ -1,4 +1,4 @@
-import api from './api';
+import api, { SILENT } from './api';
 import { requestPushPermissionIfEligible } from './push-permission';
 
 // ─── W3 messaging client (plans/w3-messaging-design.md §3.2) ─────────────────────────────────
@@ -61,13 +61,19 @@ export interface ShareFanOutResult {
   error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | 'FAILED' | null;
 }
 
+// F831 (2026-08-03): THE POLLED READS SPEAK SILENTLY. MessagingPanels refetches these three
+// on 15s/15s/5s intervals; before this, every >=500 from a tick re-raised the app-wide
+// "Service temporarily unavailable" banner — which the health probe then cleared, which the
+// next tick repainted, forever, over unrelated screens. A timer-issued request has no user
+// waiting on it and must never speak for the whole app (see USER_INITIATED / SILENT in
+// services/api.ts). The panels render their own empty/failed state for these.
 export const messagingService = {
   async listConversations(
     filter: 'inbox' | 'requests' = 'inbox'
   ): Promise<{ conversations: Conversation[]; nextCursor: string | null }> {
     const response = await api.get<{ conversations: Conversation[]; nextCursor: string | null }>(
       '/messaging/conversations',
-      { params: { filter } }
+      { ...SILENT, params: { filter } }
     );
     return response.data;
   },
@@ -77,16 +83,33 @@ export const messagingService = {
     return response.data;
   },
   async getConversation(conversationId: string): Promise<Conversation> {
-    const response = await api.get<Conversation>(`/messaging/conversations/${conversationId}`);
+    const response = await api.get<Conversation>(
+      `/messaging/conversations/${conversationId}`,
+      SILENT
+    );
     return response.data;
   },
+  /**
+   * The thread's first page. THE POLL IS A FULL REFETCH, and the signature now says so.
+   *
+   * F833 (2026-08-03): this accepted `{ cursor?, after? }` and the ONE caller
+   * (MessagingPanels' 5s thread poll) passed neither — so both were dead, and worse, `after`
+   * ADVERTISED an incremental-poll capability this client structurally cannot use. The
+   * server's contract (messaging.dto.ts) is a TUPLE — "partner for `after` … senders should
+   * pass both" `after` + `afterMessageId`, so same-millisecond messages get a total order —
+   * and mobile's signature had no `afterMessageId` at all. A sender passing `after` alone
+   * would silently lose or duplicate messages that share a timestamp.
+   *
+   * The options are DELETED rather than half-wired: the surface should not imply a
+   * capability. Wiring the real delta poll means passing the tuple and merging pages, which
+   * is a feature (the plan calls it `useConversationSync`), not a parameter.
+   */
   async listMessages(
-    conversationId: string,
-    options: { cursor?: string; after?: string } = {}
+    conversationId: string
   ): Promise<{ messages: DmMessage[]; nextCursor: string | null }> {
     const response = await api.get<{ messages: DmMessage[]; nextCursor: string | null }>(
       `/messaging/conversations/${conversationId}/messages`,
-      { params: options }
+      SILENT
     );
     return response.data;
   },
@@ -120,6 +143,21 @@ export const messagingService = {
     recipientUserIds: string[];
     sharedEntityKind: SharedEntityKind;
     sharedEntityId: string;
+    /**
+     * THE CAPABILITY, when the shared thing needs one (F834, 2026-08-03).
+     *
+     * `ShareFanOutDto.sharedEntitySlug` has always been accepted and PERSISTED by the
+     * server (messaging.service.ts writes it onto the message row), and the "slug is the
+     * capability" law (commit b34cdbe8d) makes it the thing that grants a recipient
+     * access. Mobile's payload type OMITTED it and the share modal could not supply one —
+     * so DMing a PRIVATE list sent a preview whose tap carried NO capability, and under
+     * that law the recipient's read must fail. A hole in a just-landed law, on the client
+     * side of it.
+     *
+     * Required in practice for a private list; the modal resolves it (minting one via
+     * `enableShare` if the owner consents) before fanning out.
+     */
+    sharedEntitySlug?: string;
     body?: string;
     /** Per-modal-open uuid: the server derives `share:{clientShareId}` as each
      *  message's dedupe id, so a retry after a transport error replays instead

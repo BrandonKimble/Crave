@@ -103,20 +103,39 @@ export const buildShareLinkPath = (config: ShareModalConfig): string | null => {
   return link == null ? null : serializeDesireLinkToPath(link);
 };
 
+// F892 (2026-08-03): module-local, not exported — its only reader is
+// `shareConfigCanResolveLink` below. An export nothing imports is noise.
 /** Kinds with NO public URL hide the copy-link / OS-share rows entirely. */
-export const shareKindHasPublicLink = (kind: SharedEntityKind): boolean => kind !== 'comment';
+const shareKindHasPublicLink = (kind: SharedEntityKind): boolean => kind !== 'comment';
 
-/** Whether THIS config can produce a public link at all: comment never; a
- *  list with no known slug only via the owner's enable-on-demand path — a
- *  non-owner has no way to mint one, so the rows hide instead of failing. */
-export const shareConfigCanResolveLink = (config: ShareModalConfig): boolean => {
+/**
+ * THE ONE link-ownership verdict for a share config.
+ *
+ * F887 (2026-08-03): the three-clause predicate
+ * `kind === 'list' && listSource !== 'curated' && !listShareSlug` was written THREE times —
+ * once here (as `shareConfigCanResolveLink`, deciding whether the copy-link / OS-share rows
+ * render at all) and twice in ShareModalHost (`resolveLinkUrl`, `confirmEnableShareThen`),
+ * each re-deriving from raw fields the store had ALREADY evaluated. Three copies of one
+ * predicate, and the host's copies fed an unreachable `throw new Error('no share path')`.
+ * The store now returns a DISCRIMINANT and the host reads it:
+ *
+ *  - `'none'`        — no public URL exists, or minting one is not this viewer's to do
+ *                      (comment is DM-only; a slug-less list can only be enabled by its
+ *                      owner, so a non-owner's rows HIDE rather than fail on tap).
+ *  - `'needs-enable'`— an owned, slug-less, non-curated list: the link exists only after
+ *                      the owner confirms `enableShare`. Never mint silently.
+ *  - `'ready'`       — `buildShareLinkPath` will produce a path right now.
+ */
+export type ShareLinkMode = 'none' | 'needs-enable' | 'ready';
+
+export const resolveShareLinkMode = (config: ShareModalConfig): ShareLinkMode => {
   if (!shareKindHasPublicLink(config.kind)) {
-    return false;
+    return 'none';
   }
   if (config.kind === 'list' && config.listSource !== 'curated' && config.listShareSlug == null) {
-    return config.listOwnedByViewer === true;
+    return config.listOwnedByViewer === true ? 'needs-enable' : 'none';
   }
-  return true;
+  return 'ready';
 };
 
 const store = createSingletonSurfaceStore<ShareModalConfig>();

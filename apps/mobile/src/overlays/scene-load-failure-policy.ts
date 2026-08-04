@@ -25,9 +25,13 @@ import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 // registry field — the same source of truth the snap law and nav rows derive from): a
 // scene with a seat is a root page (polls/lists/profile; search never gates), so a
 // future scene classifies itself by construction.
+//
+// F915: this predicate used to read `sceneKey === 'search' || <seat>`, contradicting
+// the "search never gates" law six lines up. The law sentence is the ratified one, so
+// the disjunct is gone and the posture-seat registry is the SOLE classifier — which is
+// exactly what "a future scene classifies itself by construction" promises.
 
-const isRootNavScene = (sceneKey: OverlayKey): boolean =>
-  sceneKey === 'search' || resolveSheetPostureSeat(sceneKey) != null;
+const isRootNavScene = (sceneKey: OverlayKey): boolean => resolveSheetPostureSeat(sceneKey) != null;
 
 export type SceneLoadFailure = {
   /** The load-failure edge (e.g. react-query isError on the scene's primary query). */
@@ -65,17 +69,27 @@ export const useSceneLoadFailurePolicy = (
       announceFailureIfOnline({ message });
       // The retry moment is the scene's next PRESENTATION (frame-derived — the same
       // presented-key clock the chrome rides): returning to the page re-runs the load.
+      //
+      // EVERY RETURN IS AN EDGE (F914). This subscription used to unsubscribe on the
+      // first re-presentation and fire the retry WITHOUT re-arming the announce latch,
+      // so a second failure — with `isError` never dipping false, e.g. flaky network —
+      // was swallowed entirely: the user got a skeleton forever and no modal. The
+      // subscription now lives for as long as this error state does, and each return
+      // announces the failure we ALREADY know about and THEN re-runs the load. That
+      // ordering is what keeps the modal honest: it reports the outcome of the attempt
+      // that has already finished, never a guess about the one being started. When the
+      // retry succeeds the body leaves the `error` state, `isError` goes false, this
+      // effect tears down, and the announcements stop by construction.
       const runtime = routeSceneRuntime.routeSceneSwitchRuntime;
       let lastPresented = runtime.getPresentationFrame().presentedSceneKey;
-      const unsubscribe = runtime.subscribePresentationFrame(() => {
+      return runtime.subscribePresentationFrame(() => {
         const presented = runtime.getPresentationFrame().presentedSceneKey;
         if (presented === sceneKey && lastPresented !== sceneKey) {
-          unsubscribe();
+          announceFailureIfOnline({ message });
           retryRef.current?.();
         }
         lastPresented = presented;
       });
-      return unsubscribe;
     }
     // Child: modal first; ANY dismissal pops to the trigger screen (spec: the failed
     // transition unwinds via onDismissed).

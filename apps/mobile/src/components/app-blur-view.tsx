@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
+import { Platform, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 
 import { BlurView } from '@react-native-community/blur';
 import {
@@ -31,7 +31,16 @@ const AppBlurView: React.FC<AppBlurViewProps> = ({
   enabled = true,
 }) => {
   if (!enabled) {
-    return null;
+    // F885 (2026-08-03): this used to `return null`, DISCARDING CHILDREN — while the prop
+    // reads as "turn off the blur". The blur is the EFFECT; the box is the CONTRACT. It was
+    // latent only because the one disabled caller passes no children; the day someone
+    // nested content inside a conditionally-blurred surface it would have silently deleted
+    // that subtree with no type error and no visual clue beyond "the thing is missing".
+    return (
+      <View style={style} pointerEvents={pointerEvents}>
+        {children}
+      </View>
+    );
   }
 
   const iosFallbackProps =

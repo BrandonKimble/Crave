@@ -236,9 +236,14 @@ const DEFAULT_PRESENTATION_LANE_INPUTS: PresentationLaneInputs = {
   isDockedSceneDismissed: false,
 };
 
-// Ack records older than this many switches are pruned — supersede only ever consults the
-// immediately-previous frame's switchId.
-const PRESENTATION_ACK_RETENTION = 8;
+// Ack records older than this many switches are pruned. The NEEDED retention is 2:
+// supersede only ever consults the immediately-previous frame's switchId, so the current
+// frame plus one predecessor is the whole read set. It was 8 — an unexplained 8x margin
+// on a bounded-growth cache, exactly the shape of a number nobody can later reason about
+// (F938). Retaining 2 makes the constant say what the comment above it already implied;
+// the extra slack protected nothing, because a burst deeper than one frame still only
+// ever reads the immediately-previous record.
+const PRESENTATION_ACK_RETENTION = 2;
 
 // Route-stack algebra (entries-as-values) lives in app-overlay-route-stack-algebra.ts.
 

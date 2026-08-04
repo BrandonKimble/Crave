@@ -6,6 +6,7 @@ import { RotateCcw, RotateCw } from 'lucide-react-native';
 import { Text } from '../components/ui/Text';
 import SquircleSpinner from '../components/SquircleSpinner';
 import { colors as themeColors } from '../constants/theme';
+import type { StripSlotConventionProps } from './toggle-strip-slot-conventions';
 
 // ─── The ONE edit-mode action row (wave-3 §1.1/§2.8 — both reorder surfaces) ─────────────────
 // Content for the ToggleStrip engine's action-row slot: Cancel-left · undo/redo-center ·
@@ -24,17 +25,18 @@ import { colors as themeColors } from '../constants/theme';
 //   the undo/redo pill's cutout FADES in white → clear (`stripHoleFadeIn` — the engine
 //   mounts a congruent cover rect over the fresh window and animates it clear).
 
-/** Swallows the engine convention props (read off the element, never forwarded native). */
+/** Swallows the engine convention props (read off the element, never forwarded native).
+ *  F858 (2026-08-03): the convention shape is IMPORTED, not re-declared — one truth with
+ *  the engine, so a misspelled attribute below is a compile error rather than a silent
+ *  no-op slot. */
 const EditHistoryPillGroup = ({
   children,
-}: {
+}: StripSlotConventionProps & {
   children: React.ReactNode;
-  stripHoleBorderRadius?: number;
-  stripHoleFadeIn?: boolean;
 }) => <View style={styles.middlePill}>{children}</View>;
 
 /** Pre-first-edit middle slot: a plain label ON the plate (no cutout window). */
-const EditListsLabel = (_props: { stripHoleDisabled?: boolean }) => (
+const EditListsLabel = (_props: StripSlotConventionProps) => (
   <View style={styles.middleLabel}>
     <Text variant="caption" weight="semibold" style={styles.middleLabelText}>
       Edit lists

@@ -126,14 +126,59 @@ export const projectSceneBoundaryFacts = (sceneKey: string | null): void => {
   projection.boundaryFactsKnown.value = facts.known;
 };
 
+// ─── THE RECORD STORE IS A BOUNDED CACHE, NOT A LEDGER (F912) ────────────────────────
+// The key here is a CONTENT identity, not the bounded scene-key space — RestaurantPanel
+// passes `restaurant:${restaurantId}`, the list surfaces pass per-list identities. So
+// this Map used to grow by one permanent record for every restaurant / list / DM the
+// user ever opened in a session, with no removal path at all: the leak class in its
+// registry variant. A scroll memory is a CACHE with a policy, so it has one now.
+//
+// THE POLICY: least-recently-touched eviction, and only records that own nothing live.
+// A record is PINNED while it holds an imperative scroll handle (a mounted scroll
+// container), a header-offset publication (an in-stack body), or a staged one-shot
+// restore (a dismiss-return in flight) — evicting any of those would break a live
+// scene, and all three are released by their own registration teardown, so pinning
+// cannot wedge the cache.
+//
+// THE CAP is a MEMORY knob, not a UX knob (same class as
+// SCENE_ENTRY_MOUNT_DEPTH_LIMIT): it decides how far back the user can travel and
+// still land on their old scroll position. It is set well above the resident-unit
+// retention budget (RESIDENT_UNIT_RETENTION_LIMIT = 3) because a record here is a few
+// numbers, not a mounted tree — the point is a bound that exists, not a tight one.
+const SCENE_SCROLL_RECORD_LIMIT = 48;
+
 const states = new Map<string, SceneScrollState>();
 
-const getState = (sceneKey: string): SceneScrollState => {
-  let state = states.get(sceneKey);
-  if (state == null) {
-    state = createSceneScrollState();
-    states.set(sceneKey, state);
+const isEvictable = (state: SceneScrollState): boolean =>
+  state.scrollHandle == null && state.publishedOffsets.length === 0 && state.pendingRestore == null;
+
+const evictLeastRecentlyTouched = (): void => {
+  if (states.size <= SCENE_SCROLL_RECORD_LIMIT) {
+    return;
   }
+  // Map iteration is insertion order and `getState` re-inserts on touch, so the front
+  // of the iteration IS the least-recently-touched end.
+  for (const [key, state] of states) {
+    if (states.size <= SCENE_SCROLL_RECORD_LIMIT) {
+      return;
+    }
+    if (isEvictable(state)) {
+      states.delete(key);
+    }
+  }
+};
+
+const getState = (sceneKey: string): SceneScrollState => {
+  const existing = states.get(sceneKey);
+  if (existing != null) {
+    // Touch: move to the most-recently-used end.
+    states.delete(sceneKey);
+    states.set(sceneKey, existing);
+    return existing;
+  }
+  const state = createSceneScrollState();
+  states.set(sceneKey, state);
+  evictLeastRecentlyTouched();
   return state;
 };
 

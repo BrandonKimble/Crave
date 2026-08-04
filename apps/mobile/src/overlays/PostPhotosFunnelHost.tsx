@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureHandledError } from '../observability/crash-reporting';
 import { create } from 'zustand';
 import * as ImagePicker from 'expo-image-picker';
 import type { ImagePickerAsset } from 'expo-image-picker';
@@ -137,8 +138,16 @@ export function PostPhotosFunnelHost(): React.ReactElement | null {
   const handleDevTestImages = React.useCallback(() => {
     void loadDevTestAssets()
       .then(pushPostPhotos)
-      .catch(() => {
-        // Dev-only path; a resolve failure is loud enough as a silent no-op here.
+      .catch((error: unknown) => {
+        // F979(d): the old comment asserted "a resolve failure is loud enough as a
+        // silent no-op here" — a contradiction in one sentence. The user taps "Use test
+        // images" and NOTHING HAPPENS, with no signal anywhere. Dev-only surface or not,
+        // a dead button says so.
+        captureHandledError(error, { scope: 'postPhotosFunnel.devTestAssets' });
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.error('[post-photos] dev test images failed to resolve', error);
+        }
       });
   }, [pushPostPhotos]);
 

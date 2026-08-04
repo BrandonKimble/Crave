@@ -1,3 +1,9 @@
+// F840: the shape-readers below used to be duplicated verbatim in hooks/useSearchRequests.ts.
+import {
+  getSearchLifecycleErrorFields,
+  readRequestBoundsSummary,
+} from '../perf/search-request-telemetry';
+
 import axios from 'axios';
 import type { AxiosRequestConfig } from 'axios';
 import type {
@@ -15,7 +21,7 @@ import type { FeatureCollection, Point } from 'geojson';
 import { logPerfScenarioSearchRequestLifecycle } from '../perf/perf-scenario-attribution';
 import { getPerfScenarioWorkNow, logPerfScenarioWorkSpan } from '../perf/perf-scenario-work-span';
 import api from './api';
-import type { ApiRequestBehaviorConfig } from './api';
+import { SILENT, type ApiRequestBehaviorConfig } from './api';
 
 export interface StructuredSearchRequest {
   entities: {
@@ -100,12 +106,10 @@ type RequestOptions = {
   onCacheStatus?: (status: SearchRequestCacheStatus) => void;
 };
 
+// F832 (2026-08-03): was a private reinvention of the SILENT voice. One declaration now
+// lives in api.ts; this alias keeps the local name that reads well at these call sites.
 type OptionalAuthRequestConfig = AxiosRequestConfig & ApiRequestBehaviorConfig;
-
-const OPTIONAL_AUTH_REQUEST_CONFIG: OptionalAuthRequestConfig = {
-  suppressSystemStatus: true,
-  suppressErrorLog: true,
-};
+const OPTIONAL_AUTH_REQUEST_CONFIG: OptionalAuthRequestConfig = SILENT;
 
 type CachedSearchEntry<T> = {
   createdAt: number;
@@ -146,6 +150,18 @@ type SearchRequestLifecycleContext = {
   sourceQueryLength: number | null;
 };
 
+// PROVENANCE (F839, 2026-08-03). Every constant here is a CHOICE, not a measurement, and
+// the asymmetries below are the reasons for them — the counter-example done right in this
+// codebase is api.ts's HEALTH_PROBE_INTERVAL_MS, which carries its rationale.
+//
+// TTL: a search's page one is re-derivable and its content moves (hours, availability,
+// scores), so 5 minutes is "long enough that a back-swipe is instant, short enough that a
+// closed restaurant does not linger". A restaurant PROFILE is comparatively static, hence
+// the longer 10.
+//
+// MAX_ENTRIES: the caps are LRU bounds on a module-scope Map — their job is to keep memory
+// finite, not to hit a hit-rate target. The profile cap is larger because its entries are
+// small and a browse session revisits far more distinct restaurants than distinct QUERIES.
 const SEARCH_PAGE_ONE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SEARCH_PAGE_ONE_CACHE_MAX_ENTRIES = 25;
 const RESTAURANT_PROFILE_CACHE_TTL_MS = 10 * 60 * 1000;
@@ -217,48 +233,6 @@ const readStringField = (record: Record<string, unknown>, key: string): string |
   return typeof value === 'string' && value.length > 0 ? value : null;
 };
 
-const readCoordinateField = (value: unknown): { lat: number; lng: number } | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const lat = record.lat;
-  const lng = record.lng;
-  if (
-    typeof lat !== 'number' ||
-    typeof lng !== 'number' ||
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lng)
-  ) {
-    return null;
-  }
-  return { lat, lng };
-};
-
-const readRequestBoundsSummary = (
-  payloadRecord: Record<string, unknown>
-): Record<string, unknown> => {
-  const bounds = payloadRecord.bounds;
-  if (!bounds || typeof bounds !== 'object' || Array.isArray(bounds)) {
-    return { payloadHasBounds: false };
-  }
-  const boundsRecord = bounds as Record<string, unknown>;
-  const northEast = readCoordinateField(boundsRecord.northEast);
-  const southWest = readCoordinateField(boundsRecord.southWest);
-  if (!northEast || !southWest) {
-    return { payloadHasBounds: false };
-  }
-  return {
-    payloadHasBounds: true,
-    payloadBoundsNorthEastLat: northEast.lat,
-    payloadBoundsNorthEastLng: northEast.lng,
-    payloadBoundsSouthWestLat: southWest.lat,
-    payloadBoundsSouthWestLng: southWest.lng,
-    payloadBoundsCenterLat: Number(((northEast.lat + southWest.lat) / 2).toFixed(6)),
-    payloadBoundsCenterLng: Number(((northEast.lng + southWest.lng) / 2).toFixed(6)),
-  };
-};
-
 const readPaginationPage = (record: Record<string, unknown>): number | null => {
   const pagination = record.pagination;
   if (!pagination || typeof pagination !== 'object' || Array.isArray(pagination)) {
@@ -321,24 +295,6 @@ const createSearchRequestLifecycleContext = (
     payloadBoundsSummary: readRequestBoundsSummary(payloadRecord),
     queryLength: query == null ? null : query.length,
     sourceQueryLength: sourceQuery == null ? null : sourceQuery.length,
-  };
-};
-
-const getAxiosLifecycleErrorFields = (error: unknown): Record<string, unknown> => {
-  if (!axios.isAxiosError(error)) {
-    return {
-      errorName: error instanceof Error ? error.name : typeof error,
-      errorMessage: error instanceof Error ? error.message : 'unknown error',
-    };
-  }
-  const code = typeof error.code === 'string' ? error.code : null;
-  return {
-    errorName: error.name,
-    errorCode: code,
-    errorMessage: error.message,
-    status: typeof error.response?.status === 'number' ? error.response.status : null,
-    aborted: axios.isCancel(error) || code === 'ERR_CANCELED',
-    timedOut: code === 'ECONNABORTED' || code === 'ETIMEDOUT',
   };
 };
 
@@ -413,10 +369,13 @@ const maybeRecordSearchCacheAttribution = async (
     resultsDataKey: context.cacheKeyHash,
     submissionSource: context.submissionSource,
     submissionContext: context.submissionContext,
+    // F837 (2026-08-03): this used to be guarded by `if (cacheRevealRequestId)`. The
+    // parameter is a non-optional `string` whose ONLY caller passes
+    // `payloadSearchRequestId ?? createClientSearchRequestId()` — never empty — and the
+    // early return above already compares against it. The guard could not fire; it only
+    // implied an optional field the server contract does not have.
+    cacheRevealRequestId,
   };
-  if (cacheRevealRequestId) {
-    payload.cacheRevealRequestId = cacheRevealRequestId;
-  }
 
   try {
     await api.post('/search/cache-attribution', payload, OPTIONAL_AUTH_REQUEST_CONFIG);
@@ -427,7 +386,7 @@ const maybeRecordSearchCacheAttribution = async (
     });
   } catch (error) {
     logSearchServiceLifecycle('cache_attribution_error', context, {
-      ...getAxiosLifecycleErrorFields(error),
+      ...getSearchLifecycleErrorFields(error),
       originalBackendSearchRequestId,
       cacheRevealRequestId,
       cacheAgeMs,
@@ -554,7 +513,7 @@ const getCachedRequest = <T>(
   const rawPromise = load().catch((error) => {
     if (lifecycleContext) {
       logSearchServiceLifecycle('cache_load_error', lifecycleContext, {
-        ...getAxiosLifecycleErrorFields(error),
+        ...getSearchLifecycleErrorFields(error),
       });
     }
     if (entryRef.current != null && cache.get(key) === entryRef.current) {
@@ -658,7 +617,7 @@ export const searchService = {
           return data;
         } catch (error) {
           logSearchServiceLifecycle('http_error', lifecycleContext, {
-            ...getAxiosLifecycleErrorFields(error),
+            ...getSearchLifecycleErrorFields(error),
           });
           throw error;
         }
@@ -719,7 +678,7 @@ export const searchService = {
           return data;
         } catch (error) {
           logSearchServiceLifecycle('http_error', lifecycleContext, {
-            ...getAxiosLifecycleErrorFields(error),
+            ...getSearchLifecycleErrorFields(error),
           });
           throw error;
         }
@@ -785,21 +744,26 @@ export const searchService = {
       }
     );
   },
-  recentHistory: async (limit = 8): Promise<RecentSearch[]> => {
+  // F839 (2026-08-03): the DEFAULTS ARE DELETED. These three carried `limit = 8` / `= 10`
+  // while their only callers (use-search-history.ts) pass RECENT_HISTORY_LIMIT /
+  // RECENTLY_VIEWED_LIMIT = 30 from constants/searchHistory.ts. Two truths, and the one
+  // written here — the one a reader finds first — was both dead and wrong. `limit` is
+  // required now: the caller owns how much history it wants, and there is one answer.
+  recentHistory: async (limit: number): Promise<RecentSearch[]> => {
     const { data } = await api.get<RecentSearch[]>('/search/history', {
       params: { limit },
       ...OPTIONAL_AUTH_REQUEST_CONFIG,
     } satisfies OptionalAuthRequestConfig);
     return data;
   },
-  recentlyViewedRestaurants: async (limit = 10): Promise<RecentlyViewedRestaurant[]> => {
+  recentlyViewedRestaurants: async (limit: number): Promise<RecentlyViewedRestaurant[]> => {
     const { data } = await api.get<RecentlyViewedRestaurant[]>('/history/restaurants/viewed', {
       params: { limit },
       ...OPTIONAL_AUTH_REQUEST_CONFIG,
     } satisfies OptionalAuthRequestConfig);
     return data;
   },
-  recentlyViewedFoods: async (limit = 10): Promise<RecentlyViewedFood[]> => {
+  recentlyViewedFoods: async (limit: number): Promise<RecentlyViewedFood[]> => {
     const { data } = await api.get<RecentlyViewedFood[]>('/history/foods/viewed', {
       params: { limit },
       ...OPTIONAL_AUTH_REQUEST_CONFIG,

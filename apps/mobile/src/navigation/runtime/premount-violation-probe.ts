@@ -1,5 +1,7 @@
 import { NativeModules } from 'react-native';
 
+import { captureHandledError } from '../../observability/crash-reporting';
+
 // ─── W1 slice 3 — the [PREMOUNT] violation log (plans/w1-listdetail-structural-spec.md §A.1
 // C4; red-team-2026-07-10.md "a commit instant may only FLIP VISIBILITY; it may never build").
 //
@@ -64,8 +66,15 @@ const logPremountViolation = (line: string): void => {
     | undefined;
   try {
     nativeSampler?.logEvent?.(line);
-  } catch {
-    // loud contract, never a crash vector
+  } catch (error) {
+    // F960: this catch used to be empty under a comment still calling this a "loud
+    // contract". If the native UIFrameSampler is missing or its bridge throws, the
+    // ENTIRE Release-lane premount instrument went silent with zero signal — the
+    // always-green failure mode one level up: not a check that cannot go red, but a RED
+    // SIGNAL THAT CANNOT BE DELIVERED. Swallowing the throw is still right (an
+    // instrument must never be a crash vector), but the delivery failure is itself
+    // reportable, through the sink that survives Release.
+    captureHandledError(error, { scope: 'premountViolationProbe.nativeSink', line });
   }
 };
 

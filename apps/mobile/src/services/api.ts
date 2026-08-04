@@ -1,3 +1,4 @@
+import type { AxiosRequestConfig } from 'axios';
 import axios from 'axios';
 import Constants from 'expo-constants';
 import { NativeModules } from 'react-native';
@@ -11,6 +12,10 @@ import { getOrCreateDeviceKey } from './device-key';
 import { resolveApiFailureAction } from './api-failure-policy';
 
 const DEFAULT_API_URL = 'http://localhost:3000/api/v1';
+// PROVENANCE (F839, 2026-08-03): the DEV timeout is deliberately absurd (2 minutes) so a
+// breakpoint, a cold Metro bundle, or a locally-running LLM call does not abort mid-debug.
+// RELEASE is 15s: past that a user has already decided the app is broken, and the failure
+// surface (the system-status banner) is a better answer than a hanging spinner.
 const DEFAULT_API_TIMEOUT_MS = typeof __DEV__ !== 'undefined' && __DEV__ ? 120_000 : 15_000;
 
 const isTailscaleIp = (hostname: string) => {
@@ -285,6 +290,51 @@ export type ApiRequestBehaviorConfig = {
   suppressErrorLog?: boolean;
 };
 
+/**
+ * THE REQUEST'S VOICE — one exported pair, chosen at the call site (F805/F831/F832).
+ *
+ * A failing request either speaks for the whole app or it does not, and that is a property
+ * of WHO ASKED, not of the endpoint:
+ *
+ *   USER_INITIATED — a person is waiting on this. A 5xx here means the app is broken from
+ *                    their point of view, so the app-wide "Service temporarily unavailable"
+ *                    banner is the right answer. This is the interceptor's DEFAULT, so an
+ *                    un-annotated request already behaves this way; passing it explicitly is
+ *                    for call sites where the reader would otherwise have to guess.
+ *
+ *   SILENT         — a TIMER issued this. Nobody is waiting, and a poll must never speak for
+ *                    the whole app. Crucially, the banner has a RECOVERY LOOP (the health
+ *                    probe at the bottom of this file clears the banner when the API comes
+ *                    back); a repeating request that re-reports on every tick DEFEATS that
+ *                    loop — the probe clears, the next poll repaints, forever, over unrelated
+ *                    screens. That was F831, live, at 5s/15s from the DM panels.
+ *
+ * F805/F832 (2026-08-03): these flags used to be smuggled as EXTRA keys on the axios request
+ * config, with nothing typing a call site into remembering them and no way to see the
+ * omission in review. Two services had independently reinvented the same constant
+ * (`OPTIONAL_AUTH_REQUEST_CONFIG` in search.ts, an inline object in users.ts) and the other
+ * four services did not know it existed. There is now ONE declaration of each voice.
+ *
+ * NOT DONE, deliberately (F831's stronger form): the DEFAULT is still "speaks". Inverting it
+ * — so every request is silent until it opts in — is the shape that makes forgetting
+ * impossible, but it would mute the banner for every call site in the app in one step, and
+ * "the banner no longer appears when it should" is not a regression any type or unit test in
+ * this repo can catch. That inversion wants a sim pass over the real failure matrix
+ * (scripts/rig/lifecycle-matrix.sh drives `set_system_offline`), and should land with one.
+ */
+export type ApiRequestConfig = AxiosRequestConfig & ApiRequestBehaviorConfig;
+
+export const USER_INITIATED: ApiRequestConfig = {
+  suppressSystemStatus: false,
+  suppressErrorLog: false,
+};
+
+/** A timer issued this: no banner, no error log. See USER_INITIATED above. */
+export const SILENT: ApiRequestConfig = {
+  suppressSystemStatus: true,
+  suppressErrorLog: true,
+};
+
 // Request interceptor for adding token
 api.interceptors.request.use(
   async (config) => {
@@ -408,27 +458,48 @@ api.interceptors.response.use(
 // /health every 5s with a bare client (no interceptors — probes never re-report, never
 // log, never double-clear); the first healthy response clears the banner and stops the
 // loop. The loop exists ONLY while an issue is present, so the idle app makes no traffic.
-const HEALTH_PROBE_INTERVAL_MS = 5000;
+//
+// F806 (2026-08-03): OWNERSHIP MOVED, BEHAVIOR UNCHANGED. This used to be a MODULE-SCOPE
+// `useSystemStatusStore.subscribe(...)` sitting right here, so merely IMPORTING the api
+// client started a subscription with a `setInterval` as a side effect of module evaluation
+// — unstoppable, and unrunnable in the hermetic jest project (which imports this module for
+// its pure parts). The behavior was right and the design note was honest; the OWNER was
+// wrong. `startBannerRecoveryProbe` is now an explicit, idempotent start that RETURNS ITS
+// STOP, mounted by `NetworkStatusListener` beside the other app-lifetime listeners
+// (App.tsx:143). The store stays the seam: this reads it and writes it, and nothing else
+// changed.
+export const HEALTH_PROBE_INTERVAL_MS = 5000;
 const HEALTH_URL = `${String(API_URL).replace(/\/api\/v1\/?$/, '')}/health`;
-let healthProbeTimer: ReturnType<typeof setInterval> | null = null;
 
-useSystemStatusStore.subscribe((state) => {
-  const hasIssue = state.serviceIssue != null;
-  if (hasIssue && healthProbeTimer == null) {
-    healthProbeTimer = setInterval(() => {
-      void axios
-        .get(HEALTH_URL, { timeout: 3000 })
-        .then(() => {
-          useSystemStatusStore.getState().clearServiceIssue();
-        })
-        .catch(() => {
-          // Still down — keep probing.
-        });
-    }, HEALTH_PROBE_INTERVAL_MS);
-  } else if (!hasIssue && healthProbeTimer != null) {
-    clearInterval(healthProbeTimer);
-    healthProbeTimer = null;
-  }
-});
+export const startBannerRecoveryProbe = (): (() => void) => {
+  let healthProbeTimer: ReturnType<typeof setInterval> | null = null;
+  const stopProbe = () => {
+    if (healthProbeTimer != null) {
+      clearInterval(healthProbeTimer);
+      healthProbeTimer = null;
+    }
+  };
+  const unsubscribe = useSystemStatusStore.subscribe((state) => {
+    const hasIssue = state.serviceIssue != null;
+    if (hasIssue && healthProbeTimer == null) {
+      healthProbeTimer = setInterval(() => {
+        void axios
+          .get(HEALTH_URL, { timeout: 3000 })
+          .then(() => {
+            useSystemStatusStore.getState().clearServiceIssue();
+          })
+          .catch(() => {
+            // Still down — keep probing.
+          });
+      }, HEALTH_PROBE_INTERVAL_MS);
+    } else if (!hasIssue) {
+      stopProbe();
+    }
+  });
+  return () => {
+    unsubscribe();
+    stopProbe();
+  };
+};
 
 export default api;

@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureHandledError } from '../observability/crash-reporting';
 import { create } from 'zustand';
 
 import { userListsService } from '../services/user-lists';
@@ -79,6 +80,10 @@ const requested = { restaurant: new Set<string>(), connection: new Set<string>()
 const pending = { restaurant: new Set<string>(), connection: new Set<string>() };
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
+// PROVENANCE (F839, 2026-08-03): 50ms is a COALESCING WINDOW, not a delay budget — it is
+// sized to be longer than one render pass so that every card in a freshly-committed list
+// lands in ONE batch request instead of N. Short enough to be invisible (the pill's
+// "Save" state resolves within a frame or two of paint).
 const FLUSH_DELAY_MS = 50;
 
 const flush = (): void => {
@@ -93,9 +98,21 @@ const flush = (): void => {
   void userListsService
     .batchMemberships({ restaurantIds, connectionIds })
     .then((result) => useSavedMembershipStore.getState().absorb(result))
-    .catch(() => {
-      // Honest failure: pills simply stay in the "Save" state; a later
-      // mutation or fresh surface retries naturally.
+    .catch((error) => {
+      // F838 (2026-08-03): PARTIALLY ADDRESSED — the failure now reaches the crash seam.
+      //
+      // The deeper defect stands and is recorded rather than half-fixed: a failed
+      // membership batch leaves every card's pill reading "Save", so a user with 40 saved
+      // restaurants sees them all as UNSAVED and may re-save them. The store cannot
+      // currently distinguish EMPTY (we asked, the answer is "not saved") from UNKNOWN (we
+      // asked and could not find out) — the finding's fix is `T[] | null` + `lastError`
+      // plus a retry affordance on the pill. That second half is a RENDERING change across
+      // every card surface; adding the state without it would create exactly the write-only
+      // ledger this audit keeps finding. It belongs with the cards lane.
+      //
+      // The un-request below is genuinely right and stays: dropping these ids from
+      // `requested` means the next surface that needs them asks again.
+      captureHandledError(error, { seam: 'saved-membership:batch' });
       for (const id of restaurantIds) {
         requested.restaurant.delete(id);
       }

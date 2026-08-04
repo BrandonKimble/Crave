@@ -1,4 +1,5 @@
 import { createToggleStripConsequenceSeam } from '../../../toggles/toggle-strip-consequence';
+import { useListsHomeControlsStore } from './lists-home-controls-store';
 
 /**
  * THE LISTS HOME CONTENT-TOGGLE SEAM (leg 4 — audit D5; charter Part 3).
@@ -29,7 +30,31 @@ const listsHomeContentToggleSeam = createToggleStripConsequenceSeam<ListsHomeCon
   settleMs: 0,
 });
 
-/** The press edge: call AFTER the store write (the write IS the re-slice). */
-export const commitListsHomeSliceToggle = (kind: ListsHomeContentToggleKind): void => {
-  listsHomeContentToggleSeam.scheduleCommit(() => undefined, { kind });
-};
+/**
+ * THE PRESS EDGE IS THE STORE WRITE (F933a).
+ *
+ * This used to be an exported `commitListsHomeSliceToggle(kind)` documented as "call
+ * AFTER the store write (the write IS the re-slice)" — an ordering that NOTHING
+ * enforced and that both call sites had to remember, on a seam whose whole point is a
+ * uniform declaration. The correct shape already existed one directory over: the polls
+ * store fires its press edge from a store SUBSCRIPTION
+ * (`subscribeToPollsFeedControlChanges`), so a control write cannot happen without its
+ * seam commit. Lists does the same now.
+ *
+ * Consequences that fall out, both wanted: the two ListsPanel call sites stop carrying
+ * a rule, and control writes from OTHER paths (the reorder save flipping sortMode to
+ * 'custom') now declare themselves too — they are the same synchronous re-slice, and
+ * were silently missing from the instrumentation before.
+ *
+ * Module scope, like the seam itself: this subscription lives for the app's lifetime
+ * because the store does, and there is no runtime here to own a hook lifecycle.
+ */
+useListsHomeControlsStore.subscribe((state, previous) => {
+  if (state.listType !== previous.listType) {
+    listsHomeContentToggleSeam.scheduleCommit(() => undefined, { kind: 'list_type' });
+  }
+  if (state.sortMode !== previous.sortMode) {
+    listsHomeContentToggleSeam.scheduleCommit(() => undefined, { kind: 'sort_mode' });
+  }
+  // editSeat is EDIT-MODE state, not a content control — it re-slices nothing.
+});

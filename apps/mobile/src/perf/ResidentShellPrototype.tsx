@@ -1,3 +1,6 @@
+// F873: ONE clock for the whole perf directory (was six identical re-declarations).
+import { perfNow } from './perf-clock';
+
 import React from 'react';
 import { NativeModules, StyleSheet, Text, View } from 'react-native';
 
@@ -5,6 +8,15 @@ import { PageBodyShell } from '../overlays/PageBodyShell';
 import { defineListBand, type PageListBodySpec } from '../overlays/page-body-contract';
 
 // ─── THE L3 RESIDENCY PROTOTYPE (measurement harness, not product code) ─────────────
+//
+// STATUS: ITS QUESTION IS ANSWERED, AND IT IS NOW __DEV__-ONLY (F864, 2026-08-03).
+// Both verdicts are banked in overlays/shell-residency-manager.ts's header — the law pole
+// measured indistinguishable from baseline (2026-07-16, ShellResidencyProbe) and empty
+// shells are free, content is the budget (2026-07-21, this probe). Two probes were built
+// to price the same claim and BOTH remain, which is the shape to notice: keep them as the
+// RE-MEASUREMENT rig if L3's cost model is ever re-opened, not as open questions. Until
+// then neither should be believed to be measuring anything — nothing drives them except a
+// dev perf command. The mount site in App.tsx is gated like every other harness.
 //
 // L3's ratification gate (plans/page-composition-from-scratch-design.md): "shells are
 // cheap" is an unmeasured claim — this harness mounts N HIDDEN shells at runtime so
@@ -44,10 +56,7 @@ export const setResidentShellPrototype = (input: {
   prototypeState = {
     shellCount: Math.max(0, Math.min(64, Math.trunc(input.shellCount))),
     rowsPerShell: Math.max(0, Math.min(64, Math.trunc(input.rowsPerShell))),
-    requestedAtMs:
-      typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : Date.now(),
+    requestedAtMs: perfNow(),
   };
   listeners.forEach((listener) => {
     listener();
@@ -130,10 +139,7 @@ export const ResidentShellPrototype = (): React.ReactElement | null => {
     if (state.requestedAtMs === 0) {
       return;
     }
-    const committedAtMs =
-      typeof performance !== 'undefined' && typeof performance.now === 'function'
-        ? performance.now()
-        : Date.now();
+    const committedAtMs = perfNow();
     emitShellPrototypeLine(
       `[SHELLPROTO] committed shells=${state.shellCount} rowsPerShell=${state.rowsPerShell} mountMs=${(
         committedAtMs - state.requestedAtMs

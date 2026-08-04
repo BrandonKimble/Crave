@@ -39,17 +39,16 @@ export class HistoryController {
   listRecentlyViewedRestaurants(
     @Query() query: ListRestaurantViewsDto,
     @CurrentUser() user: User,
-  ): Promise<
-    Array<{
-      restaurantId: string;
-      restaurantName: string;
-      city?: string | null;
-      region?: string | null;
-      lastViewedAt: Date;
-      viewCount: number;
-      statusPreview?: RestaurantStatusPreviewDto | null;
-    }>
-  > {
+    // F843 (2026-08-03): the return type DEFERS to the service instead of restating it.
+    // Three hand-maintained mirrors of this one row shape existed — this controller, the
+    // service, and mobile's `RecentlyViewedRestaurant` — and THIS one was already STALE: it
+    // omitted `locationId` and `locationAddress`, which the service returns and mobile
+    // consumes (the earned-address suggestion rides on them). A restated return type on a
+    // pass-through method can only ever be a copy that rots; there is no third truth now.
+    // STILL OWED (the finding's full fix): the row belongs in `packages/shared`, imported by
+    // both sides, so the CLIENT copy cannot drift either — that is a cross-package move and
+    // wants the same pass that does F842's request-DTO generation.
+  ): ReturnType<HistoryService['listRecentlyViewedRestaurants']> {
     return this.historyService.listRecentlyViewedRestaurants(
       user.userId,
       query,

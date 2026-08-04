@@ -2,7 +2,6 @@ import type React from 'react';
 
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
 import type { OverlaySheetSnap } from '../../types';
-import type { SearchRouteSceneSnapMeta } from '../../searchRouteSceneShellMotionContract';
 
 export type PollsPanelParams = {
   /** A poll to auto-open on entry (notification deep links / post-create). */
@@ -12,8 +11,6 @@ export type PollsPanelParams = {
 export type PollsPanelMode = 'docked' | 'overlay';
 
 export type PollsPanelInitialSnapPoint = 'expanded' | 'middle' | 'collapsed';
-
-export type PollsPanelSnapMeta = SearchRouteSceneSnapMeta;
 
 export type PollsPanelInteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 

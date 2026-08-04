@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
 import { notificationsService, type NotificationFeedItem } from '../../services/notifications';
+import { captureHandledError } from '../../observability/crash-reporting';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 import { PageBodyShell } from '../PageBodyShell';
@@ -126,7 +127,15 @@ const useNotificationsPageBody = (): PageBodyState<NotificationFeedItem> => {
         setEdge({ isPending: false, isError: false, items });
         // Page-open marks read — fire-and-forget; the rows still show their unread dot
         // for THIS visit (readAt is the fetched value).
-        void notificationsService.markFeedRead().catch(() => {});
+        // F924: this used to be `.catch(() => {})`. If mark-read always fails the
+        // unread badge NEVER clears and nothing, anywhere, reports it — an
+        // indefinitely-wrong badge with zero signal. It stays fire-and-forget (the
+        // page is already rendered; there is nothing useful to say to the user about
+        // a bookkeeping write), but the failure now reaches the owner through the
+        // Release-visible sink instead of dying in an empty block.
+        void notificationsService.markFeedRead().catch((error: unknown) => {
+          captureHandledError(error, { scope: 'notificationsPanel.markFeedRead' });
+        });
       })
       .catch(() => {
         if (loadSeqRef.current !== seq) {
@@ -163,7 +172,13 @@ const NOTIFICATIONS_PAGE_BODY: PageListBodySpec = {
 
 export const NotificationsPanelBody = React.memo((_props: MountedSceneBodyProps) => {
   useOriginSceneScrollPublication('notifications');
-  return <PageBodyShell spec={NOTIFICATIONS_PAGE_BODY} bandStates={{ all: useNotificationsPageBody() }} />;
+  // F933(c): `useNotificationsPageBody()` used to be called INSIDE the `bandStates`
+  // JSX prop expression. It worked only because this render is unconditional — a
+  // conditional wrapper, an early return, or a second band added above it would have
+  // made hook order depend on control flow. Hooks are called at the top level, in one
+  // place, where the rule is visible.
+  const allBandState = useNotificationsPageBody();
+  return <PageBodyShell spec={NOTIFICATIONS_PAGE_BODY} bandStates={{ all: allBandState }} />;
 });
 NotificationsPanelBody.displayName = 'NotificationsPanelBody';
 

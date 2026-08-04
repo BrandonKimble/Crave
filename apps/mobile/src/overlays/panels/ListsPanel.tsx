@@ -36,7 +36,9 @@ import {
   type ListsEditSeat,
   type ListsSortMode,
 } from './runtime/lists-home-controls-store';
-import { commitListsHomeSliceToggle } from './runtime/lists-home-content-toggle';
+// F933a: the lists content-toggle seam subscribes to the controls store, so the press
+// edge fires from the store write itself — importing this module is what wires it.
+import './runtime/lists-home-content-toggle';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { showShareModal } from '../../components/share-modal-store';
 import { SegmentedToggle } from '../../components/SegmentedToggle';
@@ -84,6 +86,11 @@ const SEGMENT_TEXT = themeColors.textBody;
 // height by construction, which is exactly what the edit grid's slot math needs.
 const TILE_GALLERY_RATIO = 0.75;
 const TILE_FOOTER_HEIGHT = 40;
+/** The height a tile paints for the ONE pre-measure frame, before onLayout hands the
+ *  grid its width (F931b). Not a design value and not a fallback anything settles on —
+ *  purely what occupies the row until the real geometry arrives on the next frame.
+ *  Kept at the value that shipped so this change is pixel-identical. */
+const UNMEASURED_TILE_HEIGHT_PX = 160;
 const TILE_GALLERY_CELL_GAP = 2;
 const TILE_PLACEHOLDER_BG = '#eef1f5';
 
@@ -161,8 +168,13 @@ type ListsListTileProps = {
   item: UserListSummary;
   onPress: (list: UserListSummary) => void;
   onOpenMenu: (list: UserListSummary) => void;
-  /** Fixed tile height (uniform grid geometry — read AND edit render the same tile). */
-  tileHeight: number;
+  /** Fixed tile height (uniform grid geometry — read AND edit render the same tile).
+   *  NULL = NOT YET MEASURED (F931b): the grid's width arrives from onLayout, so the
+   *  very first frame has no geometry at all. That state used to be smuggled through
+   *  as the number 0 and papered over at one of the two call sites with a bare `: 160`
+   *  — a magic number standing in for "unknown". The type carries the state now, and
+   *  the placeholder is named once, below. */
+  tileHeight: number | null;
   /** Edit mode: the instant-lift handle gesture seated where the ellipsis lives. */
   editHandleGesture?: ReorderGridRenderContext['handleGesture'];
   isActiveDrag?: boolean;
@@ -215,7 +227,7 @@ const ListsListTile = React.memo(
         disabled={isEditingTile}
         style={({ pressed }) => [
           styles.tileWrapper,
-          { height: tileHeight },
+          { height: tileHeight ?? UNMEASURED_TILE_HEIGHT_PX },
           pressed && !isEditingTile && styles.tilePressed,
           isActiveDrag && styles.tileActiveDrag,
         ]}
@@ -336,12 +348,10 @@ const ListsHomeStrip = React.memo(() => {
             title: 'Sort',
             options: BOOKMARK_SORT_OPTIONS,
             value: sortMode,
-            onSelect: (value) => {
-              // Leg 4: the store write IS the synchronous re-slice; the content seam
-              // (settleMs 0) adds the uniform declaration + gap instrumentation.
-              setSortMode(value);
-              commitListsHomeSliceToggle('sort_mode');
-            },
+            // Leg 4: the store write IS the synchronous re-slice, and it is ALSO the
+            // seam's press edge — lists-home-content-toggle subscribes to the store
+            // (F933a), so there is no companion commit call to remember here.
+            onSelect: (value) => setSortMode(value),
             testID: 'lists-sort-sheet',
           })
         }
@@ -352,10 +362,7 @@ const ListsHomeStrip = React.memo(() => {
         key="list-type"
         options={BOOKMARK_LIST_TYPE_OPTIONS}
         value={listType}
-        onChange={(value) => {
-          setListType(value);
-          commitListsHomeSliceToggle('list_type');
-        }}
+        onChange={(value) => setListType(value)}
         accessibilityLabel="Toggle between restaurant and dish lists"
         testID="lists-list-type-toggle"
       />
@@ -408,7 +415,7 @@ const ListsSceneBody = React.memo(
     }, []);
     const cellWidth = gridWidth > 0 ? Math.floor((gridWidth - GRID_GAP) / 2) : 0;
     const tileHeight =
-      cellWidth > 0 ? Math.round(cellWidth * TILE_GALLERY_RATIO) + TILE_FOOTER_HEIGHT : 0;
+      cellWidth > 0 ? Math.round(cellWidth * TILE_GALLERY_RATIO) + TILE_FOOTER_HEIGHT : null;
 
     const renderEditTile = React.useCallback(
       (item: UserListSummary, context: ReorderGridRenderContext) => (
@@ -429,7 +436,7 @@ const ListsSceneBody = React.memo(
     const listContent = (
       <View onLayout={handleGridLayout}>
         <ListsAllTile listType={listType} onPress={onOpenAll} disabled={isEditing} />
-        {isEditing && tileHeight > 0 ? (
+        {isEditing && tileHeight != null ? (
           // §1.1: the primitive re-declared with 2-col TILE geometry — the same
           // tiles, now absolutely slotted by the grid's drag math.
           <View style={styles.editGridBlock}>
@@ -458,7 +465,7 @@ const ListsSceneBody = React.memo(
                       item={item}
                       onPress={onListPress}
                       onOpenMenu={onOpenMenu}
-                      tileHeight={tileHeight > 0 ? tileHeight : 160}
+                      tileHeight={tileHeight}
                     />
                   </View>
                 ))}

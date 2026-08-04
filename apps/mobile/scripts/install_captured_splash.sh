@@ -7,7 +7,14 @@ if [[ $# -ne 1 ]]; then
 fi
 
 SOURCE_PNG="$1"
-ROOT="/Users/brandonkimble/crave-search/apps/mobile"
+# F867 (2026-08-03): this was a HARDCODED absolute path
+# (`/Users/brandonkimble/crave-search/apps/mobile`) that a repo move broke — the directory
+# does not exist, and under `set -euo pipefail` the first `cp` aborted, so the whole
+# splash-capture pipeline (capture_splash_from_studio.sh calls this as its final step) was
+# dead. Derived from THIS script's own location, the sibling generate-pin-shadow.mjs pattern:
+# apps/mobile/scripts -> apps/mobile. The path is still absolute (CLAUDE.md's law); it is
+# just no longer a guess about where the repo lives.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ ! -f "$SOURCE_PNG" ]]; then
   echo "capture file not found: $SOURCE_PNG" >&2

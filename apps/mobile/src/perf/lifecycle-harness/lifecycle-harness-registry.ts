@@ -72,6 +72,14 @@ export const emitLifecycleHarnessAck = (ack: {
   console.log(`[HARNESS-ACK] ${JSON.stringify(ack)}`);
 };
 
+/**
+ * F866 (2026-08-03): ONE declaration of "what verbs exist". This used to be an EXPORTED
+ * `listLifecycleHarnessVerbs` with zero callers, while the one place that obviously wanted
+ * it — the `verb_not_registered` ack below — inlined `[...verbRegistry.keys()]`. It is now
+ * module-local and consumed; an exported symbol nothing imports is export noise.
+ */
+const listRegisteredVerbs = (): string[] => [...verbRegistry.keys()];
+
 export const invokeLifecycleHarnessVerb = async (args: {
   id: string;
   verb: string;
@@ -83,7 +91,7 @@ export const invokeLifecycleHarnessVerb = async (args: {
       id: args.id,
       verb: args.verb,
       ok: false,
-      reason: `verb_not_registered (registered: ${[...verbRegistry.keys()].join(',') || 'none'})`,
+      reason: `verb_not_registered (registered: ${listRegisteredVerbs().join(',') || 'none'})`,
     });
     return;
   }
@@ -99,5 +107,3 @@ export const invokeLifecycleHarnessVerb = async (args: {
     });
   }
 };
-
-export const listLifecycleHarnessVerbs = (): string[] => [...verbRegistry.keys()];

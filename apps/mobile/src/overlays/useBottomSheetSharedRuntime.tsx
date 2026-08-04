@@ -191,7 +191,6 @@ export const useBottomSheetSharedRuntime = ({
   onMomentumBeginJS,
   onMomentumEndJS,
   showsVerticalScrollIndicator,
-  dynamicScrollIndicator,
   testID,
   activeList = 'primary',
   onDragStateChange,
@@ -210,7 +209,6 @@ export const useBottomSheetSharedRuntime = ({
   dataCount,
   secondaryDataCount,
   runtimeConfigAuthority,
-  subscribeTouchBlockingToReact = true,
 }: BottomSheetSharedRuntimeProps): BottomSheetSharedRuntimeResult => {
   const { height: screenHeight } = useWindowDimensions();
   const fallbackRuntimeConfigSnapshot = React.useMemo(
@@ -251,7 +249,14 @@ export const useBottomSheetSharedRuntime = ({
     : visible
       ? initialSnapValue
       : hiddenOrCollapsed;
-  const sheetY = sheetYValue ?? useSharedValue(initialSheetY);
+  // F972: `sheetYValue ?? useSharedValue(initialSheetY)` SHORT-CIRCUITS — the hook was
+  // skipped whenever the prop was supplied, so hook order varied with props, in the file
+  // that states the correct rule 30 lines below ("Call useSharedValue unconditionally
+  // (hooks must never be conditional) then coalesce"). Latent only because the props are
+  // stable per mount; one prop-shape change from a hook-order crash. The file's own
+  // pattern, applied.
+  const fallbackSheetY = useSharedValue(initialSheetY);
+  const sheetY = sheetYValue ?? fallbackSheetY;
   const currentSnapKeyRef = React.useRef<BottomSheetSnap>(
     visible ? initialSnapPoint : hiddenSnap !== undefined ? 'hidden' : 'collapsed'
   );
@@ -295,7 +300,9 @@ export const useBottomSheetSharedRuntime = ({
   const primaryScrollTopOffset = useSharedValue(0);
   const secondaryScrollTopOffset = useSharedValue(0);
   const activePrimaryList = useSharedValue(true);
-  const isInMomentum = momentumFlag ?? useSharedValue(false);
+  // F972, second site — same short-circuit, same fix.
+  const fallbackIsInMomentum = useSharedValue(false);
+  const isInMomentum = momentumFlag ?? fallbackIsInMomentum;
   const wasVisible = React.useRef(visible);
   const hasNotifiedHidden = useSharedValue(false);
   const resolvedActiveList = secondaryDataCount > 0 ? activeList : 'primary';
@@ -309,11 +316,7 @@ export const useBottomSheetSharedRuntime = ({
 
   const publicationRuntime = useBottomSheetSharedPublicationRuntime({
     showsVerticalScrollIndicator,
-    dynamicScrollIndicator,
     scrollHeaderComponent,
-    subscribeTouchBlockingToReact,
-    scrollOffset,
-    scrollTopOffset,
   });
   const shouldEnableScroll = visible && listScrollEnabled && interactionEnabled;
 

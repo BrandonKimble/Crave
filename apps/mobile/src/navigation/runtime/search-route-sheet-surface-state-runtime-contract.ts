@@ -1,12 +1,8 @@
-import type { SearchRouteSceneStackFrameEntry } from '../../overlays/searchRouteSceneStackSheetContract';
 import type {
   SearchRouteOverlayRouteScope,
   SearchRouteOverlaySheetPolicy,
 } from '../../overlays/searchRouteOverlayRuntimeContract';
-import type {
-  BottomSheetProgrammaticRuntimeModel,
-  BottomSheetRuntimeModel,
-} from '../../overlays/useBottomSheetRuntime';
+import type { BottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
 
 export type SearchRouteSheetFrameHostInput = {
   activeSemanticOverlayKey: SearchRouteOverlayRouteScope['activeOverlayRouteKey'] | null;
@@ -17,19 +13,7 @@ export type SearchRouteSheetFrameHostInput = {
   sheetY: BottomSheetRuntimeModel['presentationState']['sheetY'] | null;
 };
 
-export type SearchRouteSheetMotionPersistenceInput = {
-  activeShellSpec: NonNullable<SearchRouteSceneStackFrameEntry['shellSpec']> | null;
-  resolvedShellIdentityKey: string;
-  activeSemanticOverlayKey: SearchRouteOverlayRouteScope['activeOverlayRouteKey'];
-  rootOverlayKey: SearchRouteOverlayRouteScope['rootOverlayKey'];
-  overlayRouteStackLength: SearchRouteOverlayRouteScope['overlayRouteStackLength'];
-};
-
-export type SearchRouteSheetMotionCallbacksInput = {
-  activeShellSpec: NonNullable<SearchRouteSceneStackFrameEntry['shellSpec']> | null;
-  visible: boolean;
-  resolvedRuntimeModel: BottomSheetRuntimeModel | BottomSheetProgrammaticRuntimeModel | null;
-  motionPersistenceInput: SearchRouteSheetMotionPersistenceInput;
-  handleDragStateChange: ((isDragging: boolean) => void) | undefined;
-  handleSettleStateChange: ((isSettling: boolean) => void) | undefined;
-};
+// F947, the tail of the dead persistence lane: `SearchRouteSheetMotionPersistenceInput`
+// (the shape assembled on every surface resolve purely to feed the persistence-key
+// resolver) and `SearchRouteSheetMotionCallbacksInput` (which carried it and had no
+// importer anywhere) are deleted with the lane itself.

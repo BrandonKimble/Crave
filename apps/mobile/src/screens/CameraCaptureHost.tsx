@@ -1,4 +1,6 @@
 import React from 'react';
+import { captureHandledError } from '../observability/crash-reporting';
+import { announceFailureIfOnline } from '../components/app-modal-store';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { create } from 'zustand';
 import { CameraView, useCameraPermissions, type CameraType, type FlashMode } from 'expo-camera';
@@ -77,8 +79,16 @@ const CameraCaptureScreen = ({ session }: { session: CameraCaptureSession }) => 
       if (picture?.uri) {
         setShot({ uri: picture.uri, width: picture.width, height: picture.height });
       }
-    } catch {
-      // Capture failed (backgrounded / hardware) — stay live, the user can retry.
+    } catch (error) {
+      // F811 (2026-08-03): this was a bare `catch {}` under the comment "stay live, the
+      // user can retry" — but NOTHING told the user anything had happened. They tap the
+      // shutter and the app does nothing, twice, three times, with no way to tell a failed
+      // capture from an unresponsive button. Staying live is right; staying SILENT is not.
+      // The app has a standard failure surface and this bypassed it.
+      captureHandledError(error, { seam: 'camera:take-picture' });
+      announceFailureIfOnline({
+        message: "That shot didn't save. Try again.",
+      });
     } finally {
       setIsCapturing(false);
     }

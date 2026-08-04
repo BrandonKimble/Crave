@@ -1,3 +1,10 @@
+// F840: ONE declaration of these readers (perf/search-request-telemetry) — they were
+// byte-identical copies of services/search.ts's, describing the SAME requests.
+import {
+  getSearchLifecycleErrorFields,
+  readRequestBoundsSummary,
+} from '../perf/search-request-telemetry';
+
 import * as React from 'react';
 import axios from 'axios';
 
@@ -51,49 +58,6 @@ const readRequestStringField = (payload: unknown, key: string): string | null =>
   return typeof value === 'string' && value.length > 0 ? value : null;
 };
 
-const readCoordinateField = (value: unknown): { lat: number; lng: number } | null => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const lat = record.lat;
-  const lng = record.lng;
-  if (
-    typeof lat !== 'number' ||
-    typeof lng !== 'number' ||
-    !Number.isFinite(lat) ||
-    !Number.isFinite(lng)
-  ) {
-    return null;
-  }
-  return { lat, lng };
-};
-
-const readRequestBoundsSummary = (payload: unknown): Record<string, unknown> => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return { payloadHasBounds: false };
-  }
-  const bounds = (payload as Record<string, unknown>).bounds;
-  if (!bounds || typeof bounds !== 'object' || Array.isArray(bounds)) {
-    return { payloadHasBounds: false };
-  }
-  const boundsRecord = bounds as Record<string, unknown>;
-  const northEast = readCoordinateField(boundsRecord.northEast);
-  const southWest = readCoordinateField(boundsRecord.southWest);
-  if (!northEast || !southWest) {
-    return { payloadHasBounds: false };
-  }
-  return {
-    payloadHasBounds: true,
-    payloadBoundsNorthEastLat: northEast.lat,
-    payloadBoundsNorthEastLng: northEast.lng,
-    payloadBoundsSouthWestLat: southWest.lat,
-    payloadBoundsSouthWestLng: southWest.lng,
-    payloadBoundsCenterLat: Number(((northEast.lat + southWest.lat) / 2).toFixed(6)),
-    payloadBoundsCenterLng: Number(((northEast.lng + southWest.lng) / 2).toFixed(6)),
-  };
-};
-
 const getRunSearchPayloadSummary = (request: RunSearchParams): Record<string, unknown> => {
   const query = readRequestStringField(request.payload, 'query');
   const sourceQuery = readRequestStringField(request.payload, 'sourceQuery');
@@ -116,24 +80,6 @@ const getRunSearchPayloadSummary = (request: RunSearchParams): Record<string, un
     sourceQueryLength: sourceQuery == null ? null : sourceQuery.length,
     debugLabel: request.debugLabel ?? null,
     ...readRequestBoundsSummary(request.payload),
-  };
-};
-
-const getRunSearchErrorFields = (error: unknown): Record<string, unknown> => {
-  if (!axios.isAxiosError(error)) {
-    return {
-      errorName: error instanceof Error ? error.name : typeof error,
-      errorMessage: error instanceof Error ? error.message : 'unknown error',
-    };
-  }
-  const code = typeof error.code === 'string' ? error.code : null;
-  return {
-    errorName: error.name,
-    errorCode: code,
-    errorMessage: error.message,
-    status: typeof error.response?.status === 'number' ? error.response.status : null,
-    aborted: axios.isCancel(error) || code === 'ERR_CANCELED',
-    timedOut: code === 'ECONNABORTED' || code === 'ETIMEDOUT',
   };
 };
 
@@ -328,7 +274,7 @@ export const useSearchRequests = () => {
                 phase: 'autocomplete_error',
                 requestAttemptId,
                 queryLength: query.trim().length,
-                ...getRunSearchErrorFields(error),
+                ...getSearchLifecycleErrorFields(error),
               });
               // Failures resolve [] quietly BY STANDARD (owner, 2026-07-24):
               // the api client reports service failures to the
@@ -419,13 +365,13 @@ export const useSearchRequests = () => {
           logRunSearchLifecycle('null_return', requestAttemptId, request, {
             reason: 'aborted_catch',
             durationMs: Number((getPerfNow() - startedAtMs).toFixed(3)),
-            ...getRunSearchErrorFields(error),
+            ...getSearchLifecycleErrorFields(error),
           });
           return null;
         }
         logRunSearchLifecycle('error', requestAttemptId, request, {
           durationMs: Number((getPerfNow() - startedAtMs).toFixed(3)),
-          ...getRunSearchErrorFields(error),
+          ...getSearchLifecycleErrorFields(error),
         });
         const status = axios.isAxiosError(error)
           ? typeof error.response?.status === 'number'
@@ -433,6 +379,10 @@ export const useSearchRequests = () => {
             : null
           : null;
         if (status === 429) {
+          // PROVENANCE (F839): 2000ms is the fallback for a 429 that arrives WITHOUT a
+          // Retry-After header. The server's own value always wins; this only has to be
+          // long enough not to hammer a rate limiter and short enough that the user does
+          // not read it as a hang. Not measured.
           const retryAfterMs = getRetryAfterMs(error) ?? 2000;
           rateLimitUntilRef.current = Math.max(
             rateLimitUntilRef.current,

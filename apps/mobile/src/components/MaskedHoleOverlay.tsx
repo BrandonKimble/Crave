@@ -22,6 +22,21 @@ type MaskedHoleOverlayProps = {
   backgroundColor?: string;
   opacity?: number;
   renderWhenEmpty?: boolean;
+  /**
+   * THE POSITIONING MODEL, NAMED (F884, 2026-08-03).
+   *
+   * `true` (default) — the plate ABSOLUTE-FILLS its parent.
+   * `false`          — the plate is an absolutely-positioned top-left box and `style` MUST
+   *                    carry its geometry (left/width/height, or equivalent).
+   *
+   * This used to be INFERRED FROM `style`'s TRUTHINESS: with no style the component filled
+   * the parent, with ANY style it silently became a top-left box with NO width or height.
+   * So a caller passing a purely decorative `{ opacity: 0.5 }` got an invisible zero-size
+   * plate, with nothing in the types or the name to warn them — the only working callers
+   * worked because they all happened to pass left/width/height. The branch is a decision
+   * now, not an accident of what else you wanted to style.
+   */
+  fill?: boolean;
   style?: StyleProp<AnimatedStyle<ViewStyle>>;
 } & Pick<ViewProps, 'pointerEvents'>;
 
@@ -32,6 +47,7 @@ const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(
       backgroundColor = '#ffffff',
       opacity = 1,
       renderWhenEmpty = false,
+      fill = true,
       style,
       pointerEvents,
     },
@@ -41,9 +57,9 @@ const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(
     // concurrent surfaces could share an id and one plate would render the other's holes).
     const maskId = `masked-hole-overlay-mask-${React.useId().replace(/:/g, '')}`;
 
-    const containerStyle = style
-      ? [overlayStyles.absoluteTopLeft, style]
-      : StyleSheet.absoluteFillObject;
+    const containerStyle = fill
+      ? [StyleSheet.absoluteFillObject, style]
+      : [overlayStyles.absoluteTopLeft, style];
 
     if (!holes.length) {
       if (!renderWhenEmpty) {

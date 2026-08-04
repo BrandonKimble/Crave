@@ -181,7 +181,15 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
           setReduceMotion(enabled);
         }
       })
-      .catch(() => undefined);
+      // F888 (2026-08-03): FAIL TOWARD THE ACCESSIBLE DEFAULT. `.catch(() => undefined)`
+      // left `reduceMotion` false — i.e. MOTION ON — for a user who may have asked for it
+      // off and whose preference we simply failed to read. When the answer is unknown, the
+      // safe answer is the one that cannot hurt: assume reduce-motion is ON.
+      .catch(() => {
+        if (mounted) {
+          setReduceMotion(true);
+        }
+      });
     const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
     return () => {
       mounted = false;

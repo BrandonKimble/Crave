@@ -251,7 +251,7 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
   // phase (the Q-2 deferred revise waits for the route txn to terminate) must hear
   // them, not only staged/offer edges.
   if (txn === liveTxn) {
-    listeners.forEach((listener) => listener());
+    notifySubscribers();
   }
   return true;
 };
@@ -328,8 +328,9 @@ const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {
       txnId: txn.txnId,
       detail: `forced reveal after ${windowMs}ms; missing [${[...txn.pendingJoinInputs].join(',')}]`,
     });
+    // F903: `advance` to a phase of the LIVE txn already notified — the trailing
+    // forEach that used to sit here was the second of two.
     advance(txn, 'revealed');
-    listeners.forEach((listener) => listener());
   }, windowMs);
 };
 
@@ -372,20 +373,79 @@ export const settleTransitionTxn = (txn: TransitionTxn): void => {
   advance(txn, 'settled');
 };
 
+/** F904: SUPERSEDE IS A TERMINAL EDGE AND IT NOTIFIES. It used to notify nothing —
+ *  only its caller `stageTransitionTxn` did, AFTER minting the replacement — so a
+ *  subscriber waiting for "the txn I armed for has terminated" was woken holding a
+ *  brand-new live txn in phase 'staged', matched none of its terminal conditions, and
+ *  neither unsubscribed nor flushed. (It self-healed on the new txn's revealed edge,
+ *  which is exactly the un-keyed-singleton smell the engine's header claims to have
+ *  killed: the subscriber was watching WHICHEVER txn is live, not the one it armed
+ *  for.) Both halves are fixed: this edge notifies, and `subscribeTransitionTxn`
+ *  hands the listener the transaction it subscribed FOR so it never has to re-read a
+ *  global to find out what happened to its own txn. The single notification per
+ *  operation is preserved by `inOneNotification` — a stage that supersedes still
+ *  wakes subscribers exactly once, with both facts already true. */
 const supersedeTransitionTxn = (txn: TransitionTxn): void => {
   if (!TERMINAL_PHASES.has(txn.phase)) {
     disarmJoinLivenessWatchdog(txn);
     txn.phase = 'superseded';
     (txn.marks as Record<string, number>).supersededAt = now();
     emitTrace(txn, 'superseded');
+    notifySubscribers();
   }
 };
 
 // ── The runtime holder: ONE live transaction (Q-5: keyed, not ambient) ─────────
 
-type Listener = () => void;
-const listeners = new Set<Listener>();
+/** Listeners receive the transaction they SUBSCRIBED FOR (F904) — the txn that was
+ *  live at subscribe time, or null if there was none. A subscriber that armed for a
+ *  specific transaction can therefore read its OWN txn's phase instead of re-reading
+ *  the global holder and being told about somebody else's. */
+type Listener = (subscribedTxn: TransitionTxn | null) => void;
+const listeners = new Map<Listener, TransitionTxn | null>();
 let liveTxn: TransitionTxn | null = null;
+
+// ── ONE NOTIFICATION PER OPERATION (F903) ─────────────────────────────────────────
+// `advance()` already notifies every listener when the txn is live, and five call
+// sites ALSO ran a trailing `listeners.forEach(...)` right after an advance-bearing
+// call — so every phase-changing path notified TWICE. Harmless while every listener
+// is an idempotent reader, and precisely the "who notifies" ambiguity that makes the
+// first non-idempotent subscriber fire twice.
+//
+// The rule now: notification is a property of the OPERATION, not of any step inside
+// it. Every notify goes through `notifySubscribers`, and each public entry point that
+// can produce more than one notify wraps its body in `inOneNotification`, which
+// suppresses inner notifications and emits exactly one at the end. Nothing is dropped
+// (the non-phase-changing mutations — amend, an intermediate join offer, a seal
+// remembered in the 'staged' window — still wake subscribers), and nothing fires
+// twice.
+let notifyDepth = 0;
+let notifyPending = false;
+
+const notifySubscribers = (): void => {
+  if (notifyDepth > 0) {
+    notifyPending = true;
+    return;
+  }
+  listeners.forEach((subscribedTxn, listener) => listener(subscribedTxn));
+};
+
+const inOneNotification = <T>(run: () => T): T => {
+  notifyDepth += 1;
+  let didNotify = false;
+  try {
+    return run();
+  } finally {
+    notifyDepth -= 1;
+    if (notifyDepth === 0) {
+      didNotify = notifyPending;
+      notifyPending = false;
+      if (didNotify) {
+        listeners.forEach((subscribedTxn, listener) => listener(subscribedTxn));
+      }
+    }
+  }
+};
 
 /** Stage a new transaction. SUPERSEDES the live one (the single arbitration point —
  *  design §4.6): its gates become unreachable, its late marks bark as stale. */
@@ -393,35 +453,25 @@ export const stageTransitionTxn = (
   mutation: TransitionMutation,
   plan: TransitionTxnPlan
 ): TransitionTxn => {
-  if (liveTxn != null) {
-    supersedeTransitionTxn(liveTxn);
-  }
-  liveTxn = createTransitionTxn(mutation, plan);
-  emitTrace(liveTxn, 'staged');
-  listeners.forEach((listener) => listener());
-  return liveTxn;
+  return inOneNotification(() => {
+    if (liveTxn != null) {
+      supersedeTransitionTxn(liveTxn);
+    }
+    liveTxn = createTransitionTxn(mutation, plan);
+    emitTrace(liveTxn, 'staged');
+    notifySubscribers();
+    return liveTxn;
+  });
 };
 
 export const getLiveTransitionTxn = (): TransitionTxn | null => liveTxn;
 
-/** Mark helpers addressed BY ID — a stale id is a loud no-op, never a silent write
- *  onto the wrong transaction (the boundaryGate leak class, structurally dead). */
-export const withLiveTransitionTxn = (
-  txnId: string,
-  apply: (txn: TransitionTxn) => void
-): boolean => {
-  if (liveTxn == null || liveTxn.txnId !== txnId) {
-    reportViolation({
-      reason: 'stale_txn_mark',
-      txnId,
-      detail: `live is ${liveTxn?.txnId ?? 'none'}`,
-    });
-    return false;
-  }
-  apply(liveTxn);
-  listeners.forEach((listener) => listener());
-  return true;
-};
+// F903 (banked re-grep, repo-wide: zero hits outside this file): `withLiveTransitionTxn`
+// — "mark helpers addressed BY ID" — is DELETED. It was one of the five duplicate
+// notifiers, and it had no callers anywhere: an id-addressed write path with nothing
+// writing through it. The stale-id protection it advertised is not lost, because
+// `markTransitionJoinInput` and `offerTransitionJoinInput` already report
+// `stale_txn_mark` / `dropped_join_offer` on the same class of mistake.
 
 /**
  * T1c: THE ARM-TIME AMENDMENT (the K-2 re-plan class, sanctioned and singular): the
@@ -470,7 +520,8 @@ export const amendTransitionTxnJoinInputs = (inputs: readonly TransitionJoinInpu
   live.pendingJoinInputs = new Set(nextInputs.filter((input) => !landedSet.has(input)));
   live.joinAmended = true;
   emitTrace(live, 'amended');
-  listeners.forEach((listener) => listener());
+  // NOT a phase edge, so `advance` never ran — this is the operation's ONE notify.
+  notifySubscribers();
   return true;
 };
 
@@ -499,21 +550,32 @@ export const offerTransitionJoinInput = (input: TransitionJoinInput): boolean =>
     });
     return false;
   }
-  markTransitionJoinInput(live, input);
-  listeners.forEach((listener) => listener());
-  return true;
+  return inOneNotification(() => {
+    // markTransitionJoinInput advances (and notifies) only when the LAST input lands;
+    // an intermediate landing still has to wake subscribers, and neither case may
+    // notify twice.
+    markTransitionJoinInput(live, input);
+    notifySubscribers();
+    return true;
+  });
 };
 
 /** Holder-level seal for the ARMING consumer (the scene-stack host). */
 export const sealLiveTransitionTxnJoin = (): void => {
-  if (liveTxn != null) {
-    sealTransitionTxnJoin(liveTxn);
-    listeners.forEach((listener) => listener());
+  if (liveTxn == null) {
+    return;
   }
+  inOneNotification(() => {
+    // Seals from 'committed' advance (and notify); a seal REMEMBERED in the 'staged'
+    // window does not, and still has to wake subscribers.
+    sealTransitionTxnJoin(liveTxn as TransitionTxn);
+    notifySubscribers();
+  });
 };
 
 export const subscribeTransitionTxn = (listener: Listener): (() => void) => {
-  listeners.add(listener);
+  // The txn that is live AT SUBSCRIBE TIME is the one this listener is watching (F904).
+  listeners.set(listener, liveTxn);
   return () => {
     listeners.delete(listener);
   };

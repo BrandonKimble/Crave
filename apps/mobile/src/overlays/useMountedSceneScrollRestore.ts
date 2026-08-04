@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureHandledError } from '../observability/crash-reporting';
 import type { ScrollView } from 'react-native';
 
 import { consumePendingOverlayScrollRestore } from './sceneScrollStateRegistry';
@@ -40,6 +41,16 @@ export const useMountedSceneScrollRestore = ({
     // guard — any staged offset is already a meaningful (> 0) scroll.
     if (pendingOffset == null) {
       return undefined;
+    }
+    if (scrollViewRef.current == null) {
+      // F979(c): the one-shot flag is ALREADY BURNED by the consume above, so the user's
+      // scroll position is gone, not merely un-restored — and the old report was
+      // dev-only. Release-visible now; the caller-must-remember trap (consume BEFORE
+      // checking the ref) stays recorded here rather than silently swallowed.
+      captureHandledError(
+        new Error('[origin-restore] pending scroll offset consumed with no scroller attached'),
+        { sceneKey, pendingOffset }
+      );
     }
     if (__DEV__ && scrollViewRef.current == null) {
       // Consumed a one-shot pending offset but no scroller ref is attached — e.g. a list-surface

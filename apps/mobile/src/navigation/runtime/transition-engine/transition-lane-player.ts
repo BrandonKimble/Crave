@@ -27,7 +27,6 @@ import {
 } from 'react-native-reanimated';
 
 import type {
-  ContentMode,
   TransitionDescriptor,
   TransitionSpringConfig,
 } from './transition-descriptor-contract';
@@ -71,11 +70,11 @@ export type ContentLaneOpacities = {
 // no see-through to the map while the incoming's first frame paints), then swap to the incoming in
 // ONE frame on the single ack. The incoming first frame is the scene's seeded shell / skeleton, so
 // the swap lands on structure, never a blank list. All ContentModes behave identically (degenerate).
-export const resolveContentLaneOpacities = (
-  _ramp: number,
-  paintAck: number,
-  _mode: ContentMode
-): ContentLaneOpacities => {
+// F906: the `_ramp` and `_mode` parameters are GONE. Neither was ever read — the mode
+// parameter in particular meant the per-scene ContentMode table upstream could not have
+// changed anything even if its rows had differed. The swap is a function of the paint-ack,
+// and now says so.
+export const resolveContentLaneOpacities = (paintAck: number): ContentLaneOpacities => {
   'worklet';
   if (paintAck < 0.5) {
     return { outgoing: 1, incoming: 0 };

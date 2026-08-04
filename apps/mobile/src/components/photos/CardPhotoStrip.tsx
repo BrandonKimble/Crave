@@ -53,8 +53,17 @@ const submitReport = (photoId: string, reason: PhotoReportReason): void => {
       });
     })
     .catch(() => {
-      // Uniform failure surface — but a report is quiet-by-design, so a
-      // duplicate/failed report simply doesn't confirm.
+      // F888 (2026-08-03): a failed report used to be BYTE-IDENTICAL TO SUCCESS from the
+      // user's side — no confirmation, no error, no way to know it didn't land. "Quiet by
+      // design" is right about not shouting; it is not a licence to be indistinguishable
+      // from working. The report itself stays quiet (no moderation detail leaks); only the
+      // DELIVERY outcome is stated, and a duplicate report reads as received because from
+      // the reporter's point of view it was.
+      showAppModal({
+        title: "Report didn't send",
+        message: "We couldn't submit that report. Check your connection and try again.",
+        actions: [{ label: 'OK', style: 'default' }],
+      });
     });
 };
 

@@ -40,13 +40,26 @@ const flush = (): void => {
   if (pending.size === 0) {
     return;
   }
-  const events = [...pending.values()]
-    .slice(0, MAX_BATCH)
-    .map(({ photoId, eventType, count }) => ({ photoId, eventType, count }));
+  const events = [...pending.values()].map(({ photoId, eventType, count }) => ({
+    photoId,
+    eventType,
+    count,
+  }));
   pending.clear();
-  // Fire-and-forget: a lost metrics batch is acceptable; a user-facing
-  // failure announcement for one is not.
-  void photosService.recordEvents(events).catch(() => undefined);
+  // F886 (2026-08-03): this used to `.slice(0, MAX_BATCH)` and then `clear()` — a guard that
+  // could not fire AND would have LOST DATA if it ever did. It could not fire because
+  // `pushPhotoEvent` flushes at FLUSH_AT_COUNT (50) and `pending.size <= pendingEventCount()`,
+  // so the map never reached 200 (mutating MAX_BATCH to 1 changed nothing observable). If it
+  // HAD fired, the untruncated remainder was discarded silently. The server cap is now
+  // honoured by CHUNKING rather than truncating, so the cap holds no matter what
+  // FLUSH_AT_COUNT becomes — silent loss is unrepresentable rather than merely unreachable.
+  for (let offset = 0; offset < events.length; offset += MAX_BATCH) {
+    // Fire-and-forget: a lost metrics batch is acceptable; a user-facing
+    // failure announcement for one is not.
+    void photosService
+      .recordEvents(events.slice(offset, offset + MAX_BATCH))
+      .catch(() => undefined);
+  }
 };
 
 const wireOnce = (): void => {
@@ -79,5 +92,5 @@ export const pushPhotoEvent = (photoId: string, eventType: PhotoEventType): void
   }
 };
 
-/** Test/debug escape hatch — force an immediate flush. */
-export const flushPhotoEvents = flush;
+// F892 (2026-08-03): `flushPhotoEvents` (an exported alias of `flush`) is DELETED — it was
+// a test hatch NO test uses. When a spec needs it, export it in the same change as the spec.

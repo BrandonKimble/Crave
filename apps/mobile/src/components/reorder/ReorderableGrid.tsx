@@ -1,4 +1,10 @@
 import React from 'react';
+import {
+  ReorderA11yControls,
+  REORDER_SLOT_SHUFFLE_MS,
+  REORDER_VIEWPORT_BOTTOM_INSET,
+  REORDER_VIEWPORT_TOP_Y,
+} from './ReorderA11yControls';
 import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { ChevronDown, ChevronUp, ChevronsUp } from 'lucide-react-native';
@@ -26,7 +32,9 @@ import type { ReorderScrollAdapter } from './reorder-types';
 // traffic during a drag is the rare slot-crossing callback and edge auto-scroll steps.
 // Settled shells shuffle live via per-shell withTiming toward their (JS-updated) slot.
 
-const SLOT_SHUFFLE_MS = 180;
+// F890 (2026-08-03): imported, not restated — the two reorder primitives must shuffle
+// at the same tempo, and they each declared their own 180.
+const SLOT_SHUFFLE_MS = REORDER_SLOT_SHUFFLE_MS;
 const TILE_ACTIVE_SCALE = 1.03;
 
 export type ReorderGridRenderContext = {
@@ -201,41 +209,17 @@ const ReorderTileShell = <T,>({
   // buttons on draggable tiles — one press = one complete slot move.
   const a11yControls =
     accessibilityMode && isDraggable ? (
-      <View style={styles.a11yControls}>
-        <Pressable
-          onPress={handleMoveToTop}
-          disabled={index <= pinnedLeadingCount}
-          accessibilityRole="button"
-          accessibilityLabel="Move to top"
-          hitSlop={6}
-          style={styles.a11yButton}
-          testID={testIDPrefix ? `${testIDPrefix}-move-top-${tileKey}` : undefined}
-        >
-          <ChevronsUp size={18} color={index <= pinnedLeadingCount ? '#cbd5e1' : '#475569'} />
-        </Pressable>
-        <Pressable
-          onPress={handleMoveUp}
-          disabled={index <= pinnedLeadingCount}
-          accessibilityRole="button"
-          accessibilityLabel="Move up"
-          hitSlop={6}
-          style={styles.a11yButton}
-          testID={testIDPrefix ? `${testIDPrefix}-move-up-${tileKey}` : undefined}
-        >
-          <ChevronUp size={18} color={index <= pinnedLeadingCount ? '#cbd5e1' : '#475569'} />
-        </Pressable>
-        <Pressable
-          onPress={handleMoveDown}
-          disabled={index >= itemCount - 1}
-          accessibilityRole="button"
-          accessibilityLabel="Move down"
-          hitSlop={6}
-          style={styles.a11yButton}
-          testID={testIDPrefix ? `${testIDPrefix}-move-down-${tileKey}` : undefined}
-        >
-          <ChevronDown size={18} color={index >= itemCount - 1 ? '#cbd5e1' : '#475569'} />
-        </Pressable>
-      </View>
+      <ReorderA11yControls
+        containerStyle={styles.a11yControls}
+        index={index}
+        itemCount={itemCount}
+        pinnedLeadingCount={pinnedLeadingCount}
+        onMoveToTop={handleMoveToTop}
+        onMoveUp={handleMoveUp}
+        onMoveDown={handleMoveDown}
+        itemKey={tileKey}
+        testIDPrefix={testIDPrefix}
+      />
     ) : null;
 
   const shellInner = (
@@ -331,8 +315,9 @@ export const ReorderableGrid = <T,>({
     // Coarse viewport bands: below the persistent sheet header, above the home bar.
     // (The §1.4 clamp is exact — resolved at lift; the band only gates WHEN the
     // edge pump engages, so the coarse constant is acceptable there.)
-    viewportTopY: 120,
-    viewportBottomY: windowHeight - 60,
+    // F890: ONE declaration of the bands (see ReorderA11yControls).
+    viewportTopY: REORDER_VIEWPORT_TOP_Y,
+    viewportBottomY: windowHeight - REORDER_VIEWPORT_BOTTOM_INSET,
     minTranslationY,
   });
   dragRef.current = drag;

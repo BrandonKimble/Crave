@@ -1,8 +1,5 @@
 import { getTrackFlipState } from '../../tracksheet/track-flip-store';
-import type {
-  BottomSheetProgrammaticRuntimeModel,
-  BottomSheetRuntimeModel,
-} from '../../overlays/useBottomSheetRuntime';
+import type { BottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
 import { runOnUI, type SharedValue } from 'react-native-reanimated';
 import type {
   BottomSheetSharedRuntimeConfigSharedValues,
@@ -69,10 +66,7 @@ import {
   type AppRouteSheetHostSurfaceBodySnapshot,
   type AppRouteSheetHostSurfaceFrameAuthority,
 } from './app-route-sheet-host-surface-runtime-contract';
-import type {
-  SearchRouteSheetFrameHostInput,
-  SearchRouteSheetMotionPersistenceInput,
-} from './search-route-sheet-surface-state-runtime-contract';
+import type { SearchRouteSheetFrameHostInput } from './search-route-sheet-surface-state-runtime-contract';
 import {
   syncSheetFrameHostNativeSharedValues,
   type AppRouteSheetFrameHostNativeSharedValues,
@@ -97,7 +91,7 @@ type SelectorListenerRecord<TSnapshot> = {
   selector: (snapshot: TSnapshot) => unknown;
 };
 
-type SheetRuntimeModel = BottomSheetRuntimeModel | BottomSheetProgrammaticRuntimeModel;
+type SheetRuntimeModel = BottomSheetRuntimeModel;
 
 export type AppRouteSheetHostNativeAdapterSnapshot = {
   presentationStateOverride: BottomSheetRuntimeModel['presentationState'];
@@ -273,14 +267,6 @@ const EMPTY_RUNTIME_CONFIG_SNAPSHOT: BottomSheetSharedRuntimeConfigSnapshot = {
   interactionEnabled: true,
 };
 
-const EMPTY_MOTION_PERSISTENCE_INPUT: SearchRouteSheetMotionPersistenceInput = {
-  activeShellSpec: null,
-  resolvedShellIdentityKey: 'route-sheet-surface:empty',
-  activeSemanticOverlayKey: 'sheetHost',
-  rootOverlayKey: 'sheetHost',
-  overlayRouteStackLength: 0,
-};
-
 const hasRenderableSheetSurface = ({
   isRenderable,
   overlaySheetVisible,
@@ -303,24 +289,10 @@ const hasRenderableSheetSurface = ({
     overlayComponent != null ||
     flashListProps != null);
 
-const resolveSnapPersistenceKey = ({
-  resolvedShellIdentityKey,
-  activeSemanticOverlayKey,
-  activeShellSpec,
-}: SearchRouteSheetMotionPersistenceInput): string | null => {
-  if (activeShellSpec == null) {
-    return null;
-  }
-  const sceneSnapPersistence =
-    resolveAppRouteSheetScenePolicy(activeSemanticOverlayKey).snapPersistence;
-  switch (sceneSnapPersistence) {
-    case 'scene':
-      return `overlay:${resolvedShellIdentityKey}`;
-    case 'none':
-    default:
-      return null;
-  }
-};
+// F947: `resolveSnapPersistenceKey` lived here. It read the policy's `snapPersistence`,
+// which was 'none' on every one of the 22 rows, so it could only ever return null — and
+// with it every persistent-snap read and write below was dead code. The function, the
+// policy field and the store are all gone.
 
 const isDockedSceneSearchSurface = ({
   activeSemanticOverlayKey,
@@ -1202,26 +1174,8 @@ class AppRouteSheetHostAuthorityController {
     };
   }
 
-  private createMotionPersistenceInput(
-    resolvedSurfaceInput = this.getResolvedSurfaceInput()
-  ): SearchRouteSheetMotionPersistenceInput {
-    const {
-      activeRenderableShellSpec,
-      activeSemanticOverlayKey,
-      overlayRouteScope,
-      resolvedShellIdentityKey,
-      rootOverlayKey,
-    } = resolvedSurfaceInput;
-    return activeRenderableShellSpec == null
-      ? EMPTY_MOTION_PERSISTENCE_INPUT
-      : {
-          activeShellSpec: activeRenderableShellSpec,
-          resolvedShellIdentityKey,
-          activeSemanticOverlayKey,
-          rootOverlayKey,
-          overlayRouteStackLength: overlayRouteScope.overlayRouteStackLength,
-        };
-  }
+  // F947: `createMotionPersistenceInput` is deleted with the persistence lane — its
+  // only consumer was the persistence-key resolver that could only return null.
 
   private createBodySnapshot(
     resolvedSurfaceInput = this.getResolvedSurfaceInput()
@@ -1731,13 +1685,9 @@ class AppRouteSheetHostAuthorityController {
 
   private scheduleInitialVisibleSnapBootstrap({
     dispatchKey,
-    persistenceKey,
-    persistedSnap,
     snap,
   }: {
     dispatchKey: string;
-    persistenceKey: string | null;
-    persistedSnap: OverlaySheetSnap | null;
     snap: Exclude<OverlaySheetSnap, 'hidden'>;
   }): void {
     if (this.pendingInitialVisibleSnapDispatchKey === dispatchKey) {
@@ -1757,12 +1707,6 @@ class AppRouteSheetHostAuthorityController {
       if (isExplicitlyDismissedDockedSceneRoot(latestSurfaceInput, latestSnapSessionSnapshot)) {
         this.initialVisibleSnapDispatchKey = null;
         return;
-      }
-      if (persistenceKey != null && persistedSnap == null) {
-        this.input.routeSheetSnapSessionActions.recordPersistentSnap({
-          key: persistenceKey,
-          snap,
-        });
       }
       this.input.routeSceneMotionRuntime.requestBootstrapSharedSheetTransition({
         snap,
@@ -1859,26 +1803,17 @@ class AppRouteSheetHostAuthorityController {
         return;
       }
 
-      const motionPersistenceInput = this.createMotionPersistenceInput(resolvedSurfaceInput);
-      const resolvedSnapPersistenceKey = resolveSnapPersistenceKey(motionPersistenceInput);
       if (this.currentSnap !== 'hidden') {
         this.initialVisibleSnapDispatchKey = null;
         return;
       }
-      const rawPersistedSnap =
-        resolvedSnapPersistenceKey != null
-          ? this.input.routeSheetSnapSessionActions.getPersistentSnap(resolvedSnapPersistenceKey)
-          : null;
-      const persistedSnap = rawPersistedSnap !== 'hidden' ? rawPersistedSnap : null;
       const desiredSnap =
         this.resolvePostureSeatSeedSnap(resolvedSurfaceInput.activeSemanticOverlayKey) ??
-        persistedSnap ??
         resolvePolicyInitialSnap(resolvedSurfaceInput.activeSemanticOverlayKey);
       const initialVisibleSnapDispatchKey = [
         rootOverlayKey,
         resolvedShellIdentityKey,
         desiredSnap,
-        resolvedSnapPersistenceKey ?? 'unpersisted',
       ].join(':');
 
       if (this.initialVisibleSnapDispatchKey === initialVisibleSnapDispatchKey) {
@@ -1895,8 +1830,6 @@ class AppRouteSheetHostAuthorityController {
 
       this.scheduleInitialVisibleSnapBootstrap({
         dispatchKey: initialVisibleSnapDispatchKey,
-        persistenceKey: resolvedSnapPersistenceKey,
-        persistedSnap,
         snap: desiredSnap,
       });
     });
@@ -2022,15 +1955,11 @@ class AppRouteSheetHostAuthorityController {
         resolvedSurfaceInput.surfaceVisualPolicy.transactionId
       );
     }
-    if (
-      resolvedRuntimeModel != null &&
-      'handleProgrammaticSnapEvent' in resolvedRuntimeModel.snapController
-    ) {
-      resolvedRuntimeModel.snapController.handleProgrammaticSnapEvent(
-        snap,
-        meta?.source ?? 'gesture'
-      );
-    }
+    // F969(e): a duck-typed `'handleProgrammaticSnapEvent' in ...` dispatch used to sit
+    // here for the programmatic runtime model. No such model was ever constructed
+    // anywhere in the app (its producer hook had zero callers), so this branch could
+    // never be taken — a runtime feature-test standing in for a type that had no
+    // instances. Deleted with the model.
     this.recordRouteSceneSnapFact(resolvedSurfaceInput, snap, meta);
 
     // A programmatic snap recorded during a forward-open PRE-PUBLISH hold is the transient
@@ -2038,16 +1967,6 @@ class AppRouteSheetHostAuthorityController {
     // to the held outgoing scene. Persisting it would stickily force that scene's `overlay:` key
     // to re-open 'expanded'. Skip the persist; currentSnap / shared sheetState above still update
     // for rendering. (Root-page posture memory lives in the two seats, gesture-gated upstream.)
-    const isTransientCoverSnap =
-      meta?.source === 'programmatic' && resolvedSurfaceInput.isForwardOpenHold;
-    const motionPersistenceInput = this.createMotionPersistenceInput(resolvedSurfaceInput);
-    const resolvedSnapPersistenceKey = resolveSnapPersistenceKey(motionPersistenceInput);
-    if (resolvedSnapPersistenceKey != null && !isTransientCoverSnap) {
-      this.input.routeSheetSnapSessionActions.recordPersistentSnap({
-        key: resolvedSnapPersistenceKey,
-        snap,
-      });
-    }
   };
 
   // Transition-perf fence: the sheet host is THE sheet-motion authority for the redraw

@@ -74,9 +74,10 @@ export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
 
   return (
     <View style={styles.body} testID="stub-scene-followList">
-      <Text variant="caption" style={styles.contextLabel} testID="follow-list-context">
-        {mode === 'following' ? 'Following' : 'Followers'}
-      </Text>
+      {/* F925: the in-body "Following"/"Followers" caption is GONE. It existed only to
+          compensate for the persistent header hardcoding 'Followers' for both modes;
+          the header now derives its title from this same entry's `mode`
+          (ChildScenePanels' CHILD_SCENE_TITLES), so the page states its name once. */}
       {users.length === 0 ? (
         <View style={styles.stateBody} testID="follow-list-empty">
           <Text variant="body" style={styles.stateText}>
@@ -123,10 +124,6 @@ const styles = StyleSheet.create({
   },
   stateText: {
     color: '#0f172a',
-  },
-  contextLabel: {
-    color: '#64748b',
-    marginBottom: 8,
   },
   row: {
     flexDirection: 'row',

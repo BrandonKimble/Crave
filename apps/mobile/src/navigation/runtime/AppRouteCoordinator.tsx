@@ -19,8 +19,27 @@ import {
 } from './app-route-types';
 
 type AppRouteCoordinatorContextValue = {
+  /** True once a destination has EVER been published — sticky by design (see
+   *  `exposedIsReady`). Pair it with `isResolving` before acting on the route. */
   isReady: boolean;
   routeState: AppRouteState | null;
+  /**
+   * THE ANTI-FLICKER DISTINCTION, NAMED (F917).
+   *
+   * `isReady` is STICKY: once any route state has been published the coordinator
+   * reports ready forever, and `routeState` keeps serving the LAST known destination
+   * even while auth is genuinely unresolved again (a session recovery, a lapse
+   * re-entering 'loading'). That is deliberate — it is what stops the app tearing down
+   * the current screen and flashing a splash on every auth blip — but it used to live
+   * entirely inside an unnamed `||`, so a consumer had no way to tell "this is the
+   * current destination" from "this is the last one we knew".
+   *
+   * `isResolving` is that missing fact: TRUE means what you are being handed is the
+   * last known destination, not a current one. A consumer that must not act on stale
+   * routing — a sign-out, an access-gated redirect — checks it; a consumer that just
+   * wants to keep painting (the whole point of the stickiness) ignores it.
+   */
+  isResolving: boolean;
   activeMainIntent: LaunchIntent;
   consumeActiveMainIntent: () => void;
   dispatchLaunchIntent: (intent: LaunchIntent) => void;
@@ -279,6 +298,20 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     pendingServerCompletion,
   ]);
 
+  // F916: A CACHE WRITE IS KEYED BY THE IDENTITY IT WAS FETCHED FOR.
+  //
+  // This effect used to depend on `[authStatus, hydrateCompletionFromServer]` and read
+  // `clerkUserId` out of the enclosing scope. On a USER SWITCH where `authStatus` stays
+  // 'signed_in' throughout — a Clerk `setActive` to a different session, which this very
+  // file drives — the effect did not re-run at all, and an in-flight `getMe()` resolved
+  // into a `.then` that wrote the NEW user's access payload under whatever `clerkUserId`
+  // happened to be current. The access cache is the paywall routing axis, so a mis-keyed
+  // write routes the wrong user. Two halves, both required:
+  //   (1) `clerkUserId` is a DEPENDENCY — a user change re-runs the fetch, which is the
+  //       correct behaviour independent of the bug;
+  //   (2) the id is CAPTURED at request time and the `.then` writes under the id it
+  //       asked for, so even a request that outlives its own effect cannot key its
+  //       result to somebody else.
   React.useEffect(() => {
     if (authStatus !== 'signed_in') {
       hasResolvedSignedInProfileRef.current = false;
@@ -287,6 +320,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
 
+    const requestedForClerkUserId = clerkUserId;
     let cancelled = false;
     if (!hasResolvedSignedInProfileRef.current) {
       setHasResolvedSignedInProfile(false);
@@ -299,7 +333,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
         }
         setServerOnboardingProfile(profile.onboarding ?? null);
         if (profile.access) {
-          queryClient.setQueryData(accessQueryKey(clerkUserId), profile.access);
+          queryClient.setQueryData(accessQueryKey(requestedForClerkUserId), profile.access);
         }
         if (profile.onboarding) {
           hydrateCompletionFromServer(profile.onboarding);
@@ -318,7 +352,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     return () => {
       cancelled = true;
     };
-  }, [authStatus, hydrateCompletionFromServer]);
+  }, [authStatus, clerkUserId, hydrateCompletionFromServer, queryClient]);
 
   React.useEffect(() => {
     if (
@@ -426,7 +460,10 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   }, [routeState]);
 
   const exposedRouteState = routeState ?? stableRouteState;
+  // Sticky-ready: see `isResolving` on the context type for why, and for the fact this
+  // hides. `stableRouteState` + `areRouteStatesEqual` exist to serve exactly this.
   const exposedIsReady = isReady || stableRouteState !== null;
+  const isResolving = !isReady && stableRouteState !== null;
 
   React.useEffect(() => {
     if (!routeState) {
@@ -467,6 +504,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   const value = React.useMemo<AppRouteCoordinatorContextValue>(
     () => ({
       isReady: exposedIsReady,
+      isResolving,
       routeState: exposedRouteState,
       activeMainIntent,
       consumeActiveMainIntent,
@@ -478,6 +516,7 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
       dispatchLaunchIntent,
       exposedIsReady,
       exposedRouteState,
+      isResolving,
     ]
   );
 

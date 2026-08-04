@@ -17,10 +17,7 @@ import type {
   BottomSheetSnapPoint as SheetSnapPoint,
   BottomSheetSnapPoints as SnapPoints,
 } from './bottomSheetMotionTypes';
-import type {
-  BottomSheetProgrammaticRuntimeModel,
-  BottomSheetRuntimeModel,
-} from './useBottomSheetRuntime';
+import type { BottomSheetRuntimeModel } from './useBottomSheetRuntime';
 import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 
 export type DualListSelection = 'primary' | 'secondary';
@@ -74,7 +71,7 @@ export type BottomSheetWithFlashListBaseProps<T> = {
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
   onSnapSettleComplete?: (settleToken: number) => void;
-  runtimeModel?: BottomSheetRuntimeModel | BottomSheetProgrammaticRuntimeModel;
+  runtimeModel?: BottomSheetRuntimeModel;
   dismissThreshold?: number;
   preventSwipeDismiss?: boolean;
   interactionEnabled?: boolean;

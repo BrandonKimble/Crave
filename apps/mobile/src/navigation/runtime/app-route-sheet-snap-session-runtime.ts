@@ -66,8 +66,6 @@ export type AppRouteSheetSnapSessionSnapshot = Readonly<{
   contentSeatSnap: Exclude<OverlaySheetSnap, 'hidden'>;
   /** Per-scene facts for CHILD scenes + the search session (closeChild/origin restores). */
   sceneSheetSnaps: Readonly<Partial<Record<OverlayKey, OverlaySheetSnap>>>;
-  /** Per-scene `overlay:` snap persistence (`snapPersistence:'scene'` — no shared lane). */
-  persistentSnaps: Readonly<Record<string, OverlaySheetSnap>>;
 }>;
 
 export type AppRouteSheetSnapSessionAuthority = {
@@ -95,8 +93,10 @@ export type AppRouteSheetSnapSessionActions = {
     source?: SearchRouteSceneSnapMeta['source'];
   }) => void;
   getRouteSceneSwitchSceneSnap: (sceneKey: OverlayKey) => OverlaySheetSnap;
-  getPersistentSnap: (key: string) => OverlaySheetSnap | null;
-  recordPersistentSnap: (options: { key: string; snap: OverlaySheetSnap }) => void;
+  // F947: `getPersistentSnap` / `recordPersistentSnap` and the `persistentSnaps` map
+  // they fronted are DELETED. Their only caller gated on a policy field that read
+  // 'none' for every scene, so nothing could ever write a persistent snap and nothing
+  // could ever read one back.
 };
 
 export type AppRouteSheetSnapSessionRuntime = {
@@ -110,7 +110,6 @@ const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
   homeSeatSnap: HOME_SEAT_SEED_SNAP,
   contentSeatSnap: CONTENT_SEAT_SEED_SNAP,
   sceneSheetSnaps: {},
-  persistentSnaps: {},
 });
 
 const resolveStateUpdate = <TValue>(current: TValue, next: React.SetStateAction<TValue>): TValue =>
@@ -165,10 +164,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
       this.settleRouteScenePollsSnap(args);
     },
     getRouteSceneSwitchSceneSnap: (sceneKey) => this.getRouteSceneSwitchSceneSnap(sceneKey),
-    getPersistentSnap: (key) => this.snapshot.persistentSnaps[key] ?? null,
-    recordPersistentSnap: (options) => {
-      this.recordPersistentSnap(options);
-    },
   };
 
   public dispose(): void {
@@ -269,21 +264,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     this.commit({
       isDockedSceneDismissed: true,
       homeSeatSnap: 'hidden',
-    });
-  }
-
-  private recordPersistentSnap({ key, snap }: { key: string; snap: OverlaySheetSnap }): void {
-    if (snap === 'hidden') {
-      return;
-    }
-    if (this.snapshot.persistentSnaps[key] === snap) {
-      return;
-    }
-    this.commit({
-      persistentSnaps: {
-        ...this.snapshot.persistentSnaps,
-        [key]: snap,
-      },
     });
   }
 

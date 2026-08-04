@@ -5,10 +5,15 @@ import { SceneLoadingSurface } from '../../components/skeletons';
 // THE PAGE L3 residency prototype (plans/page-composition-from-scratch-design.md §L3
 // gate). Mounts N shell FACSIMILES — chrome band + the real L0 cutout material with a
 // realistic hole count — to price "shells are cheap" before L3 ratification.
-// Modes: 'law' = 1 visible + (N-1) hidden under display:none (the visibility law's
-// cheapest available approximation — no 'off' shimmer mode exists yet; the real L0
-// adds one); 'antilaw' = all N mounted visible-stacked with shimmer RUNNING (the
-// pole the pause law exists to forbid). DEV-ONLY, mounted by LifecycleHarnessBridge.
+// Modes: 'law' = 1 visible + (N-1) hidden under display:none; 'antilaw' = all N mounted
+// visible-stacked with shimmer RUNNING (the pole the pause law exists to forbid).
+// DEV-ONLY, mounted by LifecycleHarnessBridge.
+//
+// THE QUESTION IS ANSWERED (banked in overlays/shell-residency-manager.ts): the law pole
+// measured indistinguishable from baseline (2026-07-16) and empty shells are free
+// (2026-07-21). This probe is kept as the re-measurement rig, not as an open question.
+// F878 (2026-08-03): the "no 'off' shimmer mode exists yet; the real L0 adds one" caveat
+// is deleted — it described scaffolding whose question closed 2026-07-16.
 
 export type ShellProbeMode = 'off' | 'law' | 'antilaw';
 

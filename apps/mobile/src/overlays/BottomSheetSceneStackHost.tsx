@@ -14,7 +14,10 @@ import {
   useTransitionLanePlayer,
 } from '../navigation/runtime/transition-engine/transition-lane-player';
 import type { ContentMode } from '../navigation/runtime/transition-engine/transition-descriptor-contract';
-import { deriveHostTokenDescriptor } from '../navigation/runtime/transition-engine/host-token-transition-adapter';
+import {
+  deriveHostTokenDescriptor,
+  HOST_TOKEN_CONTENT_MODE,
+} from '../navigation/runtime/transition-engine/host-token-transition-adapter';
 import {
   amendTransitionTxnJoinInputs,
   getLiveTransitionTxn,
@@ -630,7 +633,6 @@ const SceneStackBodyFrameHost = React.memo(
     // legRole is now a PROP (synchronous-in-render, from the surface host) — no context role read.
     const transitionDisplay = React.useContext(SceneStackTransitionDisplayContext);
     const player = transitionDisplay?.player ?? null;
-    const contentMode = transitionDisplay?.contentMode ?? null;
     const liveSwapRoles = transitionDisplay?.liveSwapRoles ?? null;
     const isSearchLeg = sceneKey === 'search';
     // ── The four-lane split (Phase 2). The player owns ONE progress + ONE paintAck. Per leg, we
@@ -648,16 +650,12 @@ const SceneStackBodyFrameHost = React.memo(
     const bodyDissolveStyle = useAnimatedStyle(() => {
       'worklet';
       const liveRole = resolveLiveLegRole(sceneKey, liveSwapRoles?.value ?? null, legRole);
-      if (player == null || contentMode == null || liveRole === 'idle') {
+      if (player == null || liveRole === 'idle') {
         return { opacity: liveRole === 'idle' ? 0 : 1 };
       }
-      const pair = resolveContentLaneOpacities(
-        player.settleRamp.value,
-        player.paintAck.value,
-        contentMode
-      );
+      const pair = resolveContentLaneOpacities(player.paintAck.value);
       return { opacity: pickLegOpacity(pair, liveRole) };
-    }, [player, contentMode, legRole, liveSwapRoles, sceneKey]);
+    }, [player, legRole, liveSwapRoles, sceneKey]);
     const chromeSwapStyle = useAnimatedStyle(() => {
       'worklet';
       const liveRole = resolveLiveLegRole(sceneKey, liveSwapRoles?.value ?? null, legRole);
@@ -1454,17 +1452,12 @@ const ActiveSceneStackSurfaceHost = React.memo(
     // every switch (the old deps) re-minted the ports context and re-rendered every leg. Recompute
     // the raw mode each render (cheap, pure), but only change the returned OBJECT identity when the
     // serialized mode actually changes — so a nav switch (always 'hard') keeps a stable identity.
-    const rawContentMode: ContentMode =
-      effectiveOutgoing != null && effectiveIncoming != null
-        ? deriveHostTokenDescriptor(effectiveOutgoing, effectiveIncoming, 'middle').content.swap
-        : { mode: 'hard' };
-    const rawContentModeRef = React.useRef(rawContentMode);
-    rawContentModeRef.current = rawContentMode;
-    const contentModeKey = JSON.stringify(rawContentMode);
-    const inFlightContentMode = React.useMemo<ContentMode>(
-      () => rawContentModeRef.current,
-      [contentModeKey]
-    );
+    // F906: this was a `useRef` + `JSON.stringify(rawContentMode)` memo key whose ENTIRE
+    // job was to keep a freshly-allocated `{ mode: 'hard' }` from re-minting the ports
+    // context and re-rendering every leg on each switch. The mode never varied — the
+    // per-scene table it came from resolved HARD for every row — so the stable identity
+    // is now simply the module constant, and the identity dance is deleted.
+    const inFlightContentMode = HOST_TOKEN_CONTENT_MODE;
     // Paint-ack producer SINK. The incoming body's first onLayout calls this; honor it ONLY for the
     // live transition's incoming scene (gate on identity), so an idle/outgoing re-layout — or a
     // stale leg — can never flip the gate; the txn's 'revealed' edge reveals the content.
@@ -1668,7 +1661,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
         return;
       }
       const settleToken = contentTransitionToken;
-      const descriptor = deriveHostTokenDescriptor(effectiveOutgoing, effectiveIncoming, 'middle');
+      const descriptor = deriveHostTokenDescriptor();
       // velocity 0 — programmatic tap. onSettle runs once on the spring's ramp-end (a superseded
       // start cancels the prior animation → finished=false → no stale settle).
       player.start(descriptor, 0, () => runContentSettleComplete(settleToken));

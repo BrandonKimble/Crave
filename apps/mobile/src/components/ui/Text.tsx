@@ -37,7 +37,11 @@ export const Text: React.FC<TextProps> = ({
   children,
   ...rest
 }) => {
-  const resolvedWeight = WEIGHT_MAP[weight] ?? 'regular';
+  // F887 (2026-08-03): the `?? 'regular'` fallback is DELETED — `weight` is a CLOSED
+  // 4-member union with a `'regular'` default in the destructure above, so `WEIGHT_MAP`
+  // is total over it and the fallback was unreachable. If the union grows, the missing
+  // WEIGHT_MAP entry should be a compile error, not a silent downgrade to regular.
+  const resolvedWeight = WEIGHT_MAP[weight];
   return (
     <RNText
       style={[styles.base, typeScale[variant], weightStyles[resolvedWeight], style]}

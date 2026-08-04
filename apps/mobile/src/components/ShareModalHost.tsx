@@ -23,7 +23,7 @@ import {
   buildShareLinkPath,
   dismissShareModal,
   SHARE_BASE_URL,
-  shareConfigCanResolveLink,
+  resolveShareLinkMode,
   shareModalStore,
   type ShareModalConfig,
 } from './share-modal-store';
@@ -124,6 +124,9 @@ const ShareRow = ({
 );
 
 const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
+  // THE link verdict, evaluated once (F887). Everything below reads this discriminant
+  // instead of re-deriving the three-clause predicate from raw config fields.
+  const linkMode = resolveShareLinkMode(config);
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(() => new Set());
   const [message, setMessage] = React.useState('');
   const [sending, setSending] = React.useState(false);
@@ -154,23 +157,29 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
     });
   }, []);
 
+  // F887 (2026-08-03): the three-clause link-ownership predicate is no longer re-derived
+  // here (or below) — `resolveShareLinkMode` in the store is the ONE evaluation, and it is
+  // the same one that decided whether these rows render at all.
+  //
   // Lists without a known slug enable share on demand (owner path — the same
   // service the W3F long-press Share action used).
   const resolveLinkUrl = React.useCallback(async (): Promise<string> => {
-    if (config.kind === 'list' && config.listSource !== 'curated' && !config.listShareSlug) {
-      const enabled = await userListsService.enableShare(config.id);
-      const path = buildShareLinkPath({ ...config, listShareSlug: enabled.shareSlug });
-      if (path == null) {
-        throw new Error('no share path');
-      }
-      return `${SHARE_BASE_URL}${path}`;
-    }
-    const path = buildShareLinkPath(config);
+    const linkConfig =
+      linkMode === 'needs-enable'
+        ? {
+            ...config,
+            listShareSlug: (await userListsService.enableShare(config.id)).shareSlug,
+          }
+        : config;
+    const path = buildShareLinkPath(linkConfig);
     if (path == null) {
-      throw new Error('no share path');
+      // Unreachable by construction: the rows only render for a config whose mode is not
+      // 'none', and both remaining modes produce a path. Loud rather than silent if the
+      // codec and the mode verdict ever disagree.
+      throw new Error('share link mode promised a path the url codec did not produce');
     }
     return `${SHARE_BASE_URL}${path}`;
-  }, [config]);
+  }, [config, linkMode]);
 
   // enableShare on a slug-less list mints a LIVE link — anyone holding it can
   // view until sharing is turned off. Visibility is untouched (visibility
@@ -179,7 +188,7 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   // on an already-linkable config runs straight through.
   const confirmEnableShareThen = React.useCallback(
     (run: () => void) => {
-      if (config.kind === 'list' && config.listSource !== 'curated' && !config.listShareSlug) {
+      if (linkMode === 'needs-enable') {
         showAppModal({
           title: 'Share this list?',
           message:
@@ -193,7 +202,7 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
       }
       run();
     },
-    [config]
+    [linkMode]
   );
 
   const handleCopyLink = React.useCallback(() => {
@@ -227,48 +236,91 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
     });
   }, [config.title, confirmEnableShareThen, resolveLinkUrl]);
 
+  /**
+   * The CAPABILITY slug this share must carry, or undefined when the shared thing needs
+   * none (F834). A public restaurant / dish / poll / profile is reachable by id; a
+   * non-curated list is not — its slug IS the access. When the list has no slug yet, this
+   * mints one, which is why every caller must go through `confirmEnableShareThen` first:
+   * minting a link is the owner's decision, never a side effect of tapping Send.
+   */
+  const resolveShareCapabilitySlug = React.useCallback(async (): Promise<string | undefined> => {
+    if (config.kind !== 'list' || config.listSource === 'curated') {
+      return undefined;
+    }
+    if (config.listShareSlug) {
+      return config.listShareSlug;
+    }
+    if (linkMode !== 'needs-enable') {
+      return undefined;
+    }
+    return (await userListsService.enableShare(config.id)).shareSlug;
+  }, [config, linkMode]);
+
+  const sendShare = React.useCallback(
+    (sharedEntitySlug: string | undefined) => {
+      const nameById = new Map(targets.map((t) => [t.userId, peerDisplayName(t)]));
+      messagingService
+        .shareFanOut({
+          recipientUserIds: [...selectedIds],
+          sharedEntityKind: config.kind,
+          sharedEntityId: config.id,
+          // F834 (2026-08-03): THREAD THE CAPABILITY. Without this a DM'd private list
+          // arrives as a preview whose tap carries no slug, and "slug is the capability"
+          // means that read fails. `shareSlug` is null for kinds that need no capability
+          // (a public restaurant / dish / poll is reachable by id) and for a list the
+          // viewer cannot mint one for — in which case the send is refused above rather
+          // than delivering a dead preview.
+          sharedEntitySlug,
+          body: message.trim() ? message.trim() : undefined,
+          clientShareId: clientShareIdRef.current,
+        })
+        .then(({ results }) => {
+          // This share is done — a future re-share must be a NEW dedupe scope.
+          clientShareIdRef.current = mintShareId();
+          dismissShareModal();
+          // Per-recipient honesty: surface exactly who it could not reach.
+          const failed = results.filter((r) => r.error != null);
+          if (failed.length > 0) {
+            const names = failed
+              .map((r) => nameById.get(r.recipientUserId) ?? 'a recipient')
+              .join(', ');
+            showAppModal({
+              title: 'Some shares didn’t send',
+              message: `Couldn’t send to ${names}.`,
+              actions: [{ label: 'OK', style: 'default' }],
+            });
+          }
+        })
+        .catch(() => {
+          announceFailureIfOnline();
+        })
+        .finally(() => {
+          setSending(false);
+        });
+    },
+    [config.id, config.kind, message, selectedIds, targets]
+  );
+
   const handleSend = React.useCallback(() => {
     if (selectedIds.size === 0 || sending) {
       return;
     }
-    setSending(true);
-    const nameById = new Map(targets.map((t) => [t.userId, peerDisplayName(t)]));
-    messagingService
-      .shareFanOut({
-        recipientUserIds: [...selectedIds],
-        sharedEntityKind: config.kind,
-        sharedEntityId: config.id,
-        body: message.trim() ? message.trim() : undefined,
-        clientShareId: clientShareIdRef.current,
-      })
-      .then(({ results }) => {
-        // This share is done — a future re-share must be a NEW dedupe scope.
-        clientShareIdRef.current = mintShareId();
-        dismissShareModal();
-        // Per-recipient honesty: surface exactly who it could not reach.
-        const failed = results.filter((r) => r.error != null);
-        if (failed.length > 0) {
-          const names = failed
-            .map((r) => nameById.get(r.recipientUserId) ?? 'a recipient')
-            .join(', ');
-          showAppModal({
-            title: 'Some shares didn’t send',
-            message: `Couldn’t send to ${names}.`,
-            actions: [{ label: 'OK', style: 'default' }],
-          });
-        }
-      })
-      .catch(() => {
-        announceFailureIfOnline();
-      })
-      .finally(() => {
-        setSending(false);
-      });
-  }, [config.id, config.kind, message, selectedIds, sending, targets]);
+    // F834: the slug is resolved (and, with consent, minted) BEFORE the fan-out — a DM'd
+    // private list must arrive with the capability that makes it readable.
+    confirmEnableShareThen(() => {
+      setSending(true);
+      void resolveShareCapabilitySlug()
+        .then(sendShare)
+        .catch(() => {
+          setSending(false);
+          announceFailureIfOnline();
+        });
+    });
+  }, [confirmEnableShareThen, resolveShareCapabilitySlug, selectedIds, sendShare, sending]);
 
   // Hidden (not failing) rows: comment has no public URL; a non-owned list
   // with no known slug can't mint one (enableShare is owner-only).
-  const hasLink = shareConfigCanResolveLink(config);
+  const hasLink = linkMode !== 'none';
   // Curated lists: the messaging share-package resolver speaks favorites list ids
   // only, so send-in-app is HIDDEN (never a failing fake) — link rows carry the /cl
   // public URL instead. Wiring curated ids into the resolver is a follow-up.

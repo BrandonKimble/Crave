@@ -7,10 +7,11 @@ import {
   offerTransitionJoinInput,
   resetTransitionTxnHolderForTest,
   sealTransitionTxnJoin,
+  sealLiveTransitionTxnJoin,
   setTransitionTxnViolationSink,
   settleTransitionTxn,
   stageTransitionTxn,
-  withLiveTransitionTxn,
+  subscribeTransitionTxn,
   type TransitionTxnContractViolation,
 } from './transition-transaction';
 
@@ -110,15 +111,12 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     const second = stageTransitionTxn(MUTATION, DEGENERATE_PLAN);
     expect(first.phase).toBe('superseded');
     expect(getLiveTransitionTxn()?.txnId).toBe(second.txnId);
-    // A consumer still holding the FIRST txn's id cannot write through the holder:
-    const applied = withLiveTransitionTxn(first.txnId, () => {
-      throw new Error('must not run');
-    });
-    expect(applied).toBe(false);
-    expect(violations.map((violation) => violation.reason)).toContain('stale_txn_mark');
-    // Nor can direct marks on the superseded object advance it:
+    // F903: the id-addressed `withLiveTransitionTxn` write path is DELETED (it had no
+    // callers outside this assertion — a green test of code nothing ran). The
+    // stale-write protection it advertised is still enforced, by the marks themselves:
     markTransitionJoinInput(first, 'paint');
     expect(first.phase).toBe('superseded');
+    expect(violations.map((violation) => violation.reason)).toContain('stale_txn_mark');
   });
 
   it('a settled txn is terminal — no further edges', () => {
@@ -292,6 +290,74 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
       commitTransitionTxn(txn);
       expect(txn.phase).toBe('revealed');
       expect(violations).toHaveLength(0);
+    });
+  });
+
+  // ── ONE NOTIFIER (F903) + THE SUBSCRIBER WATCHES ITS OWN TXN (F904) ──────────────
+  describe('notification', () => {
+    it('notifies subscribers EXACTLY ONCE per operation', () => {
+      const txn = stageTransitionTxn(MUTATION, JOINED_PLAN);
+      let notifyCount = 0;
+      const unsubscribe = subscribeTransitionTxn(() => {
+        notifyCount += 1;
+      });
+
+      // RED recipe: restore any of the five trailing `listeners.forEach(...)` calls
+      // that used to follow an advance-bearing call and each of these becomes 2.
+      commitTransitionTxn(txn);
+      expect(notifyCount).toBe(1);
+
+      notifyCount = 0;
+      amendTransitionTxnJoinInputs(['paint', 'chrome']);
+      expect(notifyCount).toBe(1);
+
+      notifyCount = 0;
+      sealLiveTransitionTxnJoin();
+      expect(notifyCount).toBe(1);
+
+      // An INTERMEDIATE join landing still wakes subscribers, exactly once...
+      notifyCount = 0;
+      offerTransitionJoinInput('paint');
+      expect(notifyCount).toBe(1);
+      expect(txn.phase).toBe('joining');
+
+      notifyCount = 0;
+      offerTransitionJoinInput('chrome');
+      expect(notifyCount).toBe(1);
+      // 'mapFrame' survives the amendment by design (only the controller knows the
+      // readiness link), so it is the last input outstanding.
+      expect(txn.phase).toBe('joining');
+
+      // ...and the LAST one notifies once too, while also advancing to 'revealed'.
+      notifyCount = 0;
+      offerTransitionJoinInput('mapFrame');
+      expect(notifyCount).toBe(1);
+      expect(txn.phase).toBe('revealed');
+
+      unsubscribe();
+    });
+
+    it('SUPERSEDE terminates the wait of the subscriber that armed for the superseded txn', () => {
+      const armed = stageTransitionTxn(MUTATION, JOINED_PLAN);
+      commitTransitionTxn(armed);
+
+      const seenPhases: string[] = [];
+      const unsubscribe = subscribeTransitionTxn((subscribedTxn) => {
+        seenPhases.push(subscribedTxn?.phase ?? 'none');
+      });
+
+      // A brand-new transaction supersedes the armed one. RED recipe: drop the
+      // `notifySubscribers()` from `supersedeTransitionTxn`, or hand the listener no
+      // txn (so it must re-read the global holder) — the observed phase becomes
+      // 'staged', which matches no terminal condition, and the waiter hangs until the
+      // NEXT transaction happens to reveal.
+      stageTransitionTxn(MUTATION, DEGENERATE_PLAN);
+
+      expect(armed.phase).toBe('superseded');
+      expect(seenPhases).toContain('superseded');
+      expect(seenPhases).not.toContain('staged');
+
+      unsubscribe();
     });
   });
 });

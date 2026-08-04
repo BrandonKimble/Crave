@@ -5,13 +5,16 @@ export const PRICE_LEVEL_SYMBOLS: Record<number, string> = {
   4: '$$$$',
 };
 
-export const PRICE_LEVEL_RANGE_LABELS: Record<number, string> = {
-  1: '$1–$25',
-  2: '$25–$50',
-  3: '$50–$75',
-  4: '$75+',
-};
-
+/**
+ * THE PRICE LEVELS — bounds are the single truth, every label is RENDERED from them.
+ *
+ * F895 (2026-08-03): price levels were encoded TWICE in INCOMPATIBLE representations —
+ * display strings (`PRICE_LEVEL_RANGE_LABELS`) and numbers (`PRICE_LEVEL_BOUNDS`) — and
+ * `formatPriceRangeText` read the STRINGS on its `min === max` path and the NUMBERS on its
+ * range path. Editing one and not the other produced "$25–$50" sitting next to "$25–$75",
+ * with no type error, no failing test, and no other symptom. There is now one table and one
+ * formatter; the two paths cannot disagree because they read the same numbers.
+ */
 type PriceBounds = { min: number | null; max: number | null };
 
 const PRICE_LEVEL_BOUNDS: Record<number, PriceBounds> = {
@@ -19,6 +22,20 @@ const PRICE_LEVEL_BOUNDS: Record<number, PriceBounds> = {
   2: { min: 25, max: 50 },
   3: { min: 50, max: 75 },
   4: { min: 75, max: null },
+};
+
+/** The ONE renderer: a bounds pair -> the string a user reads. */
+const formatBounds = ({ min, max }: PriceBounds): string | undefined => {
+  if (min === null && max === null) {
+    return undefined;
+  }
+  if (min === null) {
+    return `<$${max}`;
+  }
+  if (max === null) {
+    return `$${min}+`;
+  }
+  return `$${min}–$${max}`;
 };
 
 const clampPriceLevel = (value: number): number => {
@@ -37,25 +54,13 @@ export const formatPriceRangeText = (range: [number, number]): string => {
   if (min === 1 && max === 4) {
     return 'Any price';
   }
-  if (min === max) {
-    return PRICE_LEVEL_RANGE_LABELS[min] ?? `Level ${min}`;
-  }
 
-  const lower = PRICE_LEVEL_BOUNDS[min];
-  const upper = PRICE_LEVEL_BOUNDS[max];
-  const overallMin = lower?.min ?? null;
-  const overallMax = upper?.max ?? null;
-
-  if (overallMin === null && overallMax !== null) {
-    return `<$${overallMax}`;
-  }
-  if (overallMin !== null && overallMax === null) {
-    return `$${overallMin}+`;
-  }
-  if (overallMin !== null && overallMax !== null) {
-    return `$${overallMin}–$${overallMax}`;
-  }
-  return 'Any price';
+  // ONE path for one level and for a span — a single level is just the span [n, n].
+  const bounds: PriceBounds = {
+    min: PRICE_LEVEL_BOUNDS[min]?.min ?? null,
+    max: PRICE_LEVEL_BOUNDS[max]?.max ?? null,
+  };
+  return formatBounds(bounds) ?? 'Any price';
 };
 
 export const getPriceRangeLabel = (priceLevel?: number | null): string | undefined => {
@@ -63,9 +68,9 @@ export const getPriceRangeLabel = (priceLevel?: number | null): string | undefin
     return undefined;
   }
 
-  const rounded = Math.round(priceLevel);
-  const clamped = Math.max(1, Math.min(4, rounded));
-  return PRICE_LEVEL_RANGE_LABELS[clamped];
+  const clamped = clampPriceLevel(priceLevel);
+  // F895: rendered from the bounds table, never from a parallel string table.
+  return formatBounds(PRICE_LEVEL_BOUNDS[clamped] ?? { min: null, max: null });
 };
 
 export const getPriceSymbolLabel = (priceLevel?: number | null): string | undefined => {
@@ -73,7 +78,5 @@ export const getPriceSymbolLabel = (priceLevel?: number | null): string | undefi
     return undefined;
   }
 
-  const rounded = Math.round(priceLevel);
-  const clamped = Math.max(1, Math.min(4, rounded));
-  return PRICE_LEVEL_SYMBOLS[clamped];
+  return PRICE_LEVEL_SYMBOLS[clampPriceLevel(priceLevel)];
 };

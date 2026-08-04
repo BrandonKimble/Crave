@@ -1,5 +1,11 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  ReorderA11yControls,
+  REORDER_SLOT_SHUFFLE_MS,
+  REORDER_VIEWPORT_BOTTOM_INSET,
+  REORDER_VIEWPORT_TOP_Y,
+} from './ReorderA11yControls';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { Feather } from '@expo/vector-icons';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -27,7 +33,9 @@ import type { ReorderableRowsProps } from './reorder-types';
 // during a drag is the rare slot-crossing callback (consumer state swap) and edge
 // auto-scroll steps. Rows shuffle live via per-row withTiming toward their slot offset.
 
-const SLOT_SHUFFLE_MS = 180;
+// F890 (2026-08-03): imported, not restated — the two reorder primitives must shuffle
+// at the same tempo, and they each declared their own 180.
+const SLOT_SHUFFLE_MS = REORDER_SLOT_SHUFFLE_MS;
 
 const ROW_ACTIVE_SCALE = 1.02;
 
@@ -160,53 +168,17 @@ const ReorderRowShell = <T,>({
 
   const rowAffordance = accessibilityMode ? (
     isDraggable ? (
-      <View style={styles.a11yControls}>
-        <Pressable
-          onPress={handleMoveToTop}
-          disabled={index <= pinnedLeadingCount}
-          accessibilityRole="button"
-          accessibilityLabel="Move to top"
-          hitSlop={6}
-          style={styles.a11yButton}
-          testID={testIDPrefix ? `${testIDPrefix}-move-top-${rowKey}` : undefined}
-        >
-          <Feather
-            name="chevrons-up"
-            size={18}
-            color={index <= pinnedLeadingCount ? '#cbd5e1' : '#475569'}
-          />
-        </Pressable>
-        <Pressable
-          onPress={handleMoveUp}
-          disabled={index <= pinnedLeadingCount}
-          accessibilityRole="button"
-          accessibilityLabel="Move up"
-          hitSlop={6}
-          style={styles.a11yButton}
-          testID={testIDPrefix ? `${testIDPrefix}-move-up-${rowKey}` : undefined}
-        >
-          <Feather
-            name="chevron-up"
-            size={18}
-            color={index <= pinnedLeadingCount ? '#cbd5e1' : '#475569'}
-          />
-        </Pressable>
-        <Pressable
-          onPress={handleMoveDown}
-          disabled={index >= itemCount - 1}
-          accessibilityRole="button"
-          accessibilityLabel="Move down"
-          hitSlop={6}
-          style={styles.a11yButton}
-          testID={testIDPrefix ? `${testIDPrefix}-move-down-${rowKey}` : undefined}
-        >
-          <Feather
-            name="chevron-down"
-            size={18}
-            color={index >= itemCount - 1 ? '#cbd5e1' : '#475569'}
-          />
-        </Pressable>
-      </View>
+      <ReorderA11yControls
+        containerStyle={styles.a11yControls}
+        index={index}
+        itemCount={itemCount}
+        pinnedLeadingCount={pinnedLeadingCount}
+        onMoveToTop={handleMoveToTop}
+        onMoveUp={handleMoveUp}
+        onMoveDown={handleMoveDown}
+        itemKey={rowKey}
+        testIDPrefix={testIDPrefix}
+      />
     ) : null
   ) : isDraggable && gestures != null ? (
     // Handle fades in/out on the strip-morph tempo (leg-13 "ellipsis fade sync" —
@@ -309,9 +281,10 @@ export const ReorderableRows = <T,>({
     onReorder,
     onDragStateChange,
     scrollAdapter,
-    // Coarse viewport bands: below the persistent sheet header, above the home bar.
-    viewportTopY: 120,
-    viewportBottomY: windowHeight - 60,
+    // Coarse viewport bands (F890: ONE declaration, see ReorderA11yControls) — below the
+    // persistent sheet header, above the home bar.
+    viewportTopY: REORDER_VIEWPORT_TOP_Y,
+    viewportBottomY: windowHeight - REORDER_VIEWPORT_BOTTOM_INSET,
     slotBoundaries: variableHeights ? slotBoundariesSV : null,
   });
 

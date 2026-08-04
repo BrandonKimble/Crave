@@ -1,3 +1,6 @@
+// F873: ONE clock for the whole perf directory (was six identical re-declarations).
+import { perfNow as resolvePerfNow } from './perf-clock';
+
 import type { RuntimePerfScenarioConfig } from './perf-scenario-runtime-store';
 import { usePerfScenarioRuntimeStore } from './perf-scenario-runtime-store';
 
@@ -31,13 +34,6 @@ export const isPerfScenarioAttributionActive = (
       config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO}_`) ||
       config.scenario.startsWith(`${SEARCH_SUBMIT_DISMISS_INTERRUPT_SCENARIO}_`)
     : config.scenario === scenarioName || config.scenario.startsWith(`${scenarioName}_`));
-
-const resolvePerfNow = (): number => {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
-};
 
 export const isPerfScenarioQuietMeasuredLoopActive = (
   config: RuntimePerfScenarioConfig | null
@@ -841,16 +837,54 @@ const QUIET_VISUAL_CONTRACT_FIELD_ALLOWLIST = new Map<string, string[]>([
   ],
 ]);
 
+/**
+ * THE QUIET-MODE PROJECTION — and, since F853, an HONEST one.
+ *
+ * F853 (2026-08-03): this silently copied `field in payload` and warned about nothing, over
+ * a table of ~50 event names each with a HAND-LISTED field array whose keys must match emit
+ * -site string literals with no compile-time link. Three defects were invisible by
+ * construction, and the analysis you would run against these logs could be missing exactly
+ * the field that would show RED:
+ *
+ *   1. a field ADDED at the emit site never appears in quiet-mode logs — it is not in the
+ *      list, so it is dropped without trace;
+ *   2. a TYPO in a list entry drops the real field AND names a field that does not exist;
+ *   3. an event RENAMED at the emit site quietly falls back to "log everything", which at
+ *      least is loud in volume — the only one of the three that was ever noticeable.
+ *
+ * The projection now REPORTS itself. Both diagnostic keys are omitted when empty, so a
+ * healthy line is byte-identical to before and only a DRIFTING one grows:
+ *
+ *   `quietDroppedFields`  — payload keys the allowlist discarded. A field you cannot find
+ *                           in a quiet log is now named in the log that dropped it.
+ *   `quietUnlistedFields` — allowlist entries the payload does not have. A typo, a renamed
+ *                           emit-site field, or a list entry that has outlived its payload.
+ *
+ * The deeper rederivation the finding argues for — emit sites declaring their own quiet
+ * projection beside the payload, so there is ONE colocated truth — is NOT done here: it
+ * touches ~50 emit sites across the search runtime and belongs with that lane. These two
+ * keys make its absence VISIBLE rather than silent, which is the point of the instrument.
+ */
 const pickPayloadFields = (
   payload: Record<string, unknown>,
   fields: string[]
 ): Record<string, unknown> => {
   const next: Record<string, unknown> = {};
+  const unlisted: string[] = [];
   fields.forEach((field) => {
     if (field in payload) {
       next[field] = payload[field];
+    } else {
+      unlisted.push(field);
     }
   });
+  const dropped = Object.keys(payload).filter((key) => !(key in next));
+  if (dropped.length > 0) {
+    next.quietDroppedFields = dropped;
+  }
+  if (unlisted.length > 0) {
+    next.quietUnlistedFields = unlisted;
+  }
   return next;
 };
 

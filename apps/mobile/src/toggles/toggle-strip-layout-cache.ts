@@ -145,6 +145,11 @@ export const clearToggleStripCacheScrollX = (seat: ToggleStripCacheSeat): void =
   // mounted across dismiss) never re-seeds from the cache — its native ScrollView
   // keeps the old offset. The reset must reach the living scroll position, not just
   // the cold-remount seed, or the re-present rule only holds for scenes that unmount.
+  //
+  // DELIBERATELY UNCONDITIONAL (F876, 2026-08-03): the `scrollX !== 0` guard above covers
+  // the SEAT ONLY. It must not gate this fan-out — a cold seat reading zero says nothing
+  // about where a retained instance's native ScrollView actually sits, which is the exact
+  // desync this channel exists to fix.
   const listeners = seatResetListeners.get(seat);
   if (listeners) {
     for (const listener of [...listeners]) {

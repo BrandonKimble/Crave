@@ -1,3 +1,6 @@
+// F873: ONE clock for the whole perf directory (was six identical re-declarations).
+import { perfNow as resolvePerfNow } from './perf-clock';
+
 import React from 'react';
 import { NativeModules, Linking } from 'react-native';
 
@@ -26,13 +29,6 @@ import { startUiFrameSampler } from './ui-frame-sampler';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 
 const flushedNativeMapApplyRunIds = new Set<string>();
-
-const resolvePerfNow = (): number => {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
-};
 
 const logSamplerEventToNativeSink = (message: string): void => {
   const nativeSampler = (NativeModules as Record<string, unknown>).UIFrameSampler as
@@ -65,6 +61,26 @@ const withScenarioMetadata = (
   requestId: config.requestId,
   signature: config.signature,
 });
+
+/**
+ * LEVERS, NOT MEASUREMENTS — the verbs that do not require an active scenario.
+ *
+ * F875 (2026-08-03): EVERY perf command silently required an already-active scenario,
+ * including these two, which have nothing to do with sampling: `set_system_offline` pins
+ * the failure-matrix rig's offline override, and `mount_shell_prototype` mounts/unmounts
+ * the residency probe. Firing `crave://perf-scenario-command?action=set_system_offline`
+ * without first firing a scenario link was a NO-OP that announced itself only through a
+ * `perf_scenario_command_ignored` line on a console the operator may not be reading — so
+ * the rig looked like it had gone offline and had not.
+ *
+ * The gate is right for the measuring verbs (a camera move outside a scenario measures
+ * nothing and pollutes the log); it was never right for a lever. Levers now execute with
+ * `scenarioName: null` in their log line, which is the honest label.
+ */
+const SCENARIO_INDEPENDENT_ACTIONS: ReadonlySet<string> = new Set([
+  'set_system_offline',
+  'mount_shell_prototype',
+]);
 
 const roundScenarioPerfMs = (value: number): number => Number(value.toFixed(1));
 
@@ -240,7 +256,7 @@ export const PerfScenarioCoordinator: React.FC = () => {
 
   const executeCommandEvent = React.useCallback((event: PerfScenarioCommandEvent) => {
     const currentConfig = activeConfigRef.current;
-    if (!currentConfig) {
+    if (!currentConfig && !SCENARIO_INDEPENDENT_ACTIONS.has(event.action)) {
       logScenarioEvent({
         event: 'perf_scenario_command_ignored',
         action: event.action,
@@ -249,12 +265,16 @@ export const PerfScenarioCoordinator: React.FC = () => {
       });
       return;
     }
-    if (event.scenarioRunId && currentConfig?.runId !== event.scenarioRunId) {
+    if (currentConfig && event.scenarioRunId && currentConfig.runId !== event.scenarioRunId) {
       return;
     }
 
     const logPayload = (payload: Record<string, unknown>) => {
-      logScenarioEvent(withScenarioMetadata(currentConfig, payload));
+      logScenarioEvent(
+        currentConfig
+          ? withScenarioMetadata(currentConfig, payload)
+          : { ...payload, emittedAtMs: Number(resolvePerfNow().toFixed(1)), scenarioName: null }
+      );
     };
 
     logPayload({

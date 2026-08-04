@@ -26,11 +26,13 @@ export { isResidencyManagedScene } from './shell-residency-registry';
 //   transition. `ensureShellResident(scene, 'navigation')` mounting a cold shell is a
 //   LOUD contract violation (console.error — the RED instrument), not a fallback.
 // - **THE EVICTION SEAM (A#11/B#7):** shells never evict; CONTENT evicts under a
-//   budget. Today only the visit order (the last-N exemption input) is live.
-//   RECORDED DEFERRAL: the commitment ledger the measured prototype demands (RSS is
-//   sticky, so the budget counts COMMITMENT, not reclaim) gets built WITH the budget
-//   when content-heavy scenes join residency — real estimates from real body mounts,
-//   not dead scaffolding shipped ahead of its writer.
+//   budget. NOTHING of the eviction lane is live today, by design. RECORDED DEFERRAL:
+//   the commitment ledger the measured prototype demands (RSS is sticky, so the budget
+//   counts COMMITMENT, not reclaim) AND the last-N visit order it exempts get built
+//   WITH the budget when content-heavy scenes join residency — real estimates from
+//   real body mounts, not dead scaffolding shipped ahead of its writer. (F911: the
+//   `visitOrder` field WAS shipped ahead of its writer and read by nobody for its
+//   whole life; it is deleted and comes back with the budget, as this note promised.)
 // - **THE STRANGLER BOOLEAN (migration bridge B#5):** `isResidencyManagedScene` is
 //   the one check the legacy hosts consult (conditional mount, persistent header) —
 //   deleted with the last unmigrated scene.
@@ -44,15 +46,12 @@ type ShellResidencyState = {
    *  the crossfade never fades a blank, back to hidden at settle. Written by the same
    *  driver as visibleScene — one writer, two coordinated facts. */
   transitionLiveScenes: readonly ResidencyManagedSceneKey[];
-  /** Most-recent-first visit order (the eviction law's last-N exemption input). */
-  visitOrder: readonly ResidencyManagedSceneKey[];
 };
 
 let state: ShellResidencyState = {
   residentScenes: [],
   visibleScene: null,
   transitionLiveScenes: [],
-  visitOrder: [],
 };
 
 const listeners = new Set<() => void>();
@@ -130,10 +129,6 @@ export const setVisibleResidentScene = (
     ...state,
     visibleScene: nextVisible,
     transitionLiveScenes: nextTransitionLive,
-    visitOrder:
-      nextVisible == null
-        ? state.visitOrder
-        : [nextVisible, ...state.visitOrder.filter((visited) => visited !== nextVisible)],
   };
   notify();
 };
@@ -148,5 +143,29 @@ export const scheduleResidentShellPrewarm = (): void => {
     RESIDENCY_MANAGED_SCENES.forEach((scene) => {
       ensureShellResident(scene, 'prewarm_idle');
     });
+    reportPrewarmCoverage();
   });
+};
+
+/** THE PREWARM-EDGE RED (F910). `ensureShellResident(scene, 'navigation')`'s bark is
+ *  effectively unreachable once the prewarm pass has run — the prewarm list IS the
+ *  managed list, so after app-idle every managed scene is resident and the cold-mount
+ *  arm can never be taken. An instrument that cannot show RED is lying (CLAUDE.md), so
+ *  the assertion moved to the edge where a gap is actually representable: after the
+ *  prewarm pass, every managed scene MUST be resident. It goes RED whenever
+ *  `ensureShellResident` silently declined one — today the only such path is
+ *  `isResidencyManagedScene` disagreeing with `RESIDENCY_MANAGED_SCENES`, and any
+ *  future guard, budget or async mount added to the mount path joins it automatically.
+ *  Mutation recipe to prove RED: make `ensureShellResident` early-return for one scene
+ *  key (e.g. `if (scene === 'lists') return;`) — this barks and names `lists`. */
+const reportPrewarmCoverage = (): void => {
+  const missing = RESIDENCY_MANAGED_SCENES.filter((scene) => !state.residentScenes.includes(scene));
+  if (missing.length === 0) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error(
+    `[SHELL-RESIDENCY][CONTRACT] prewarm did not cover ${missing.length} managed scene(s): ` +
+      `${missing.join(',')} — warm-before-navigate cannot hold for them`
+  );
 };

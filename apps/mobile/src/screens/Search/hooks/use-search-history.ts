@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { captureHandledError } from '../../../observability/crash-reporting';
 import { logger } from '../../../utils';
 import {
   searchService,
@@ -109,6 +110,13 @@ const useSearchHistory = ({
           setRecentSearches(history);
           hasLoadedRecent = true;
         } catch (err) {
+          // F838 (2026-08-03): this failure used to reach NOBODY — the request passes
+          // `suppressErrorLog`, so the interceptor stays quiet, and this `logger.warn` is
+          // the only trace. Meanwhile the rendered result is "you have no history", which
+          // is BYTE-IDENTICAL to a brand-new account: the user cannot tell a broken read
+          // from an empty one, and neither could we. The failure now reaches the
+          // crash-reporting seam.
+          captureHandledError(err, { seam: 'history:recent-searches' });
           logger.warn('Unable to load recent searches', {
             message: err instanceof Error ? err.message : 'unknown error',
           });
@@ -148,6 +156,13 @@ const useSearchHistory = ({
           setRecentlyViewedRestaurants(items);
           hasLoadedRecentlyViewed = true;
         } catch (err) {
+          // F838 (2026-08-03): this failure used to reach NOBODY — the request passes
+          // `suppressErrorLog`, so the interceptor stays quiet, and this `logger.warn` is
+          // the only trace. Meanwhile the rendered result is "you have no history", which
+          // is BYTE-IDENTICAL to a brand-new account: the user cannot tell a broken read
+          // from an empty one, and neither could we. The failure now reaches the
+          // crash-reporting seam.
+          captureHandledError(err, { seam: 'history:recently-viewed-restaurants' });
           logger.warn('Unable to load recently viewed restaurants', {
             message: err instanceof Error ? err.message : 'unknown error',
           });
@@ -187,6 +202,13 @@ const useSearchHistory = ({
           setRecentlyViewedFoods(items);
           hasLoadedRecentlyViewedFoods = true;
         } catch (err) {
+          // F838 (2026-08-03): this failure used to reach NOBODY — the request passes
+          // `suppressErrorLog`, so the interceptor stays quiet, and this `logger.warn` is
+          // the only trace. Meanwhile the rendered result is "you have no history", which
+          // is BYTE-IDENTICAL to a brand-new account: the user cannot tell a broken read
+          // from an empty one, and neither could we. The failure now reaches the
+          // crash-reporting seam.
+          captureHandledError(err, { seam: 'history:recently-viewed-foods' });
           logger.warn('Unable to load recently viewed dishes', {
             message: err instanceof Error ? err.message : 'unknown error',
           });

@@ -1,4 +1,5 @@
 import type { ImagePickerAsset } from 'expo-image-picker';
+import { expectArray } from './expect-shape';
 import api from './api';
 
 // Photo client plumbing (plans/images-ideal-shape.md steps 1-2, mobile half):
@@ -290,10 +291,9 @@ export const photosService = {
     }
   },
 
-  async getPhoto(photoId: string): Promise<PhotoDto> {
-    const response = await api.get<PhotoDto>(`/photos/${photoId}`);
-    return response.data;
-  },
+  // F841 (2026-08-03): `getPhoto` DELETED — a verbatim duplicate of `confirm()` above with
+  // zero callers (repo-wide grep). `confirm()` is the one reader of GET /photos/:id and it
+  // carries the retry-without-re-uploading contract this copy silently dropped.
 
   async deletePhoto(photoId: string): Promise<{ deleted: true }> {
     const response = await api.delete<{ deleted: true }>(`/photos/${photoId}`);
@@ -327,7 +327,8 @@ export const photosService = {
 
   async getUserFoodLog(userId: string): Promise<FoodLogGroupDto[]> {
     const response = await api.get<FoodLogGroupDto[]>(`/photos/users/${userId}/food-log`);
-    return response.data ?? [];
+    // F835: an empty food log and a broken food log must not render the same.
+    return expectArray<FoodLogGroupDto>(response.data, 'GET /photos/users/:id/food-log');
   },
 
   /** Batched impression/tap emission (max 200 per call server-side). */

@@ -10,7 +10,9 @@ import { overlaySheetStyles } from './overlaySheetStyles';
 //
 // THE one host-owned header action control, rendered by PersistentSheetHeaderHost — never by a
 // per-scene Action descriptor (the per-scene close-X factories are deleted; the plus/X is
-// chrome LAW, not page choice). Geometry = the OverlayHeaderActionButton prior art's glyph
+// chrome LAW, not page choice). Geometry = the glyph of the retired OverlayHeaderActionButton
+// (F969b: that component was dead code and is deleted; the geometry it is described by lives
+// here now, which is the only place it is rendered)
 // (LucideX, the OLD close icon — its arms span the full icon diagonal, visibly larger than a
 // rotated Plus; owner-decreed §2.3 wave-3): ONE glyph shape, two stacked color layers —
 // RED at progress=0 (parents: the X rotated 45° IS the create plus) and BLACK at progress=1

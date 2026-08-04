@@ -2086,8 +2086,13 @@ class AppRouteSceneStackLayerStateController {
       liveTxn != null &&
       (liveTxn.phase === 'staged' || liveTxn.phase === 'committed' || liveTxn.phase === 'joining')
     ) {
-      this.deferredBodySurfaceTxnUnsubscribe = subscribeTransitionTxn(() => {
-        const current = getLiveTransitionTxn();
+      // F904: watch THE TXN WE ARMED FOR, not whichever transaction happens to be
+      // live. The subscription hands the listener the txn that was live at subscribe
+      // time, so a supersede (which now notifies) terminates this wait immediately
+      // instead of waking us with a brand-new 'staged' txn that matches none of the
+      // terminal conditions and self-healing one reveal later.
+      this.deferredBodySurfaceTxnUnsubscribe = subscribeTransitionTxn((armedTxn) => {
+        const current = armedTxn ?? getLiveTransitionTxn();
         if (
           current == null ||
           current.phase === 'revealed' ||

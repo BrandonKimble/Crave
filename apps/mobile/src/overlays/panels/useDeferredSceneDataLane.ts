@@ -1,12 +1,14 @@
 import React from 'react';
 import { InteractionManager } from 'react-native';
 
-const DEFAULT_SCENE_DATA_LANE_DELAY_MS = 350;
+// F932(a): this used to take a `delayMs` override. It had exactly ONE call site
+// (SaveListPanel), which omitted it — a parameterized API with one caller and one
+// value, i.e. a knob nobody turns wearing the cost of a dep-array entry. The delay is
+// the lane's own policy now; a second scene that genuinely needs a different one adds
+// the parameter back WITH its caller.
+const SCENE_DATA_LANE_DELAY_MS = 350;
 
-export const useDeferredSceneDataLane = (
-  enabled: boolean,
-  delayMs = DEFAULT_SCENE_DATA_LANE_DELAY_MS
-): boolean => {
+export const useDeferredSceneDataLane = (enabled: boolean): boolean => {
   const [isReady, setIsReady] = React.useState(false);
 
   React.useEffect(() => {
@@ -23,7 +25,7 @@ export const useDeferredSceneDataLane = (
           return;
         }
         setIsReady(true);
-      }, delayMs);
+      }, SCENE_DATA_LANE_DELAY_MS);
     });
 
     return () => {
@@ -33,7 +35,7 @@ export const useDeferredSceneDataLane = (
       }
       task.cancel();
     };
-  }, [delayMs, enabled]);
+  }, [enabled]);
 
   return isReady;
 };

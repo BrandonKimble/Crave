@@ -12,13 +12,13 @@ describe('resolveCutoutFadeCovers (wave-3 §2.8 cutout fade-in)', () => {
   };
 
   it('emits a cover ONLY for fade-in holes, keyed by the hole-slot key', () => {
-    const covers = resolveCutoutFadeCovers({ holeMap, defaultBorderRadius: 8, radiusBoost: 1 });
+    const covers = resolveCutoutFadeCovers({ holeMap, defaultBorderRadius: 8 });
     expect(covers).toHaveLength(1);
     expect(covers[0].key).toBe('strip-slot-history');
   });
 
   it('cover geometry is congruent with the mask window (rect + boosted radius)', () => {
-    const [cover] = resolveCutoutFadeCovers({ holeMap, defaultBorderRadius: 8, radiusBoost: 1 });
+    const [cover] = resolveCutoutFadeCovers({ holeMap, defaultBorderRadius: 8 });
     expect(cover).toEqual({
       key: 'strip-slot-history',
       x: 120,
@@ -33,7 +33,6 @@ describe('resolveCutoutFadeCovers (wave-3 §2.8 cutout fade-in)', () => {
     const covers = resolveCutoutFadeCovers({
       holeMap: { a: { x: 1, y: 2, width: 3, height: 4, fadeIn: true } },
       defaultBorderRadius: 8,
-      radiusBoost: 1,
     });
     expect(covers[0].borderRadius).toBe(9);
   });
@@ -43,12 +42,14 @@ describe('resolveCutoutFadeCovers (wave-3 §2.8 cutout fade-in)', () => {
       resolveCutoutFadeCovers({
         holeMap: { a: { x: 0, y: 0, width: 10, height: 10 } },
         defaultBorderRadius: 8,
-        radiusBoost: 1,
       })
     ).toEqual([]);
   });
 
-  it('fade tempo matches the strip-citizen entry (one strip tempo)', () => {
-    expect(CUTOUT_FADE_IN_MS).toBe(240);
-  });
+  // F860 (2026-08-03): the case that lived here — `expect(CUTOUT_FADE_IN_MS).toBe(240)`
+  // under a comment claiming it checked the strip-citizen-entry coupling — is DELETED.
+  // It restated the literal and never referenced the other side, so it could not show RED
+  // on the only defect it named (the two tempos drifting apart) while failing on every
+  // legitimate retune. The coupling is now STRUCTURAL: ToggleStrip's STRIP_CITIZEN_ENTER_MS
+  // IS this constant, so there is no relation left to assert.
 });

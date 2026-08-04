@@ -1,7 +1,7 @@
 import type { OnboardingAnswers, UserOnboardingProfile } from '@crave-search/shared';
 import type { AxiosRequestConfig } from 'axios';
 import api from './api';
-import type { ApiRequestBehaviorConfig } from './api';
+import { SILENT, type ApiRequestBehaviorConfig } from './api';
 
 export interface UserStats {
   pollsCreatedCount: number;
@@ -85,10 +85,9 @@ type UserServiceRequestConfig = AxiosRequestConfig & ApiRequestBehaviorConfig;
 
 export const usersService = {
   async getMe(): Promise<UserProfile> {
-    const requestConfig: UserServiceRequestConfig = {
-      suppressSystemStatus: true,
-      suppressErrorLog: true,
-    };
+    // F832: the shared SILENT voice, not a third inline copy of it. /users/me is polled on
+    // a schedule by the access lane — a failing poll must not raise the app-wide banner.
+    const requestConfig: UserServiceRequestConfig = SILENT;
     const response = await api.get<UserProfile>('/users/me', requestConfig);
     return response.data;
   },

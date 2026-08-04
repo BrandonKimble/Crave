@@ -1,3 +1,6 @@
+// F873: ONE clock for the whole perf directory (was six identical re-declarations).
+import { perfNow as resolvePerfNow } from './perf-clock';
+
 import type { RuntimePerfScenarioConfig } from './perf-scenario-runtime-store';
 
 type HermesSamplingProfilerLike = {
@@ -15,13 +18,6 @@ type HermesSamplingSession = {
 const HERMES_PROFILE_ENABLED = process.env.EXPO_PUBLIC_PERF_SCENARIO_HERMES_PROFILE === '1';
 
 let activeSession: HermesSamplingSession | null = null;
-
-const resolvePerfNow = (): number => {
-  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
-};
 
 const sanitizeFilePart = (value: string): string => value.replace(/[^A-Za-z0-9_.-]/g, '_');
 

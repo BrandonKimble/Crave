@@ -11,6 +11,7 @@ import {
 } from 'lucide-react-native';
 
 import { Text } from '../..';
+import { announceFailureIfOnline } from '../../app-modal-store';
 import { colors as themeColors } from '../../../constants/theme';
 import { CONTENT_HORIZONTAL_PADDING } from '../../../screens/Search/constants/search';
 
@@ -61,7 +62,14 @@ const CardActionPillRow: React.FC<CardActionPillRowProps> = ({
 }) => {
   const handleCall = React.useCallback(() => {
     if (phoneNumber) {
-      void Linking.openURL(`tel:${phoneNumber.replace(/[^+\d]/g, '')}`).catch(() => undefined);
+      // F888 (2026-08-03): the `.catch(() => undefined)` made this a DEAD-FEELING BUTTON —
+      // on a row whose own doc one field up promises "honest absence, never a dead button".
+      // `tel:` rejects on a device with no phone capability (iPad, simulator) and on a
+      // malformed number; the tap then did nothing at all. Absence is honest; a pill that
+      // visibly does nothing is not.
+      void Linking.openURL(`tel:${phoneNumber.replace(/[^+\d]/g, '')}`).catch(() => {
+        announceFailureIfOnline({ message: "This device can't place that call." });
+      });
     }
   }, [phoneNumber]);
 

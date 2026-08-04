@@ -18,6 +18,7 @@
  *   App Review is an automatic rejection.
  */
 import type { CustomerInfo, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
+import { captureHandledError } from '../observability/crash-reporting';
 
 type PurchasesModule = typeof import('react-native-purchases').default;
 
@@ -91,6 +92,10 @@ export function configurePurchases(clerkUserId: string): Promise<void> {
     } catch (error) {
       configureFailed = true;
       activeUserId = null;
+      // F813 (2026-08-03): a failed RevenueCat configure means PURCHASES ARE OFF for this
+      // session — the single most expensive silent failure in the app, and it was visible
+      // only in a dev console.
+      captureHandledError(error, { seam: 'purchases:configure', clerkUserId });
       // eslint-disable-next-line no-console
       console.warn(
         '[purchases] configure/logIn failed (native module missing or SDK error) — purchases disabled',

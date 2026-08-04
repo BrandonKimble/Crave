@@ -33,7 +33,16 @@ import { publishSceneHeaderScrollOffset } from '../sceneScrollStateRegistry';
 import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
-// messagesInbox: child SINGLETON (no params); MVCP disabled on its transport (re-sorting list).
+// messagesInbox: child SINGLETON (no params). It has NO FlashList and NO transport —
+//   the inbox is a `.map()`ed set of Views in the shared sheet scroll surface, so there
+//   is nothing here for maintainVisibleContentPosition to be set on. This line used to
+//   claim "MVCP disabled on its transport (re-sorting list)", which was false and in
+//   the repo's single most expensive failure class: a future migration of the inbox to
+//   FlashList would have read it as "already handled" and reproduced the exact MVCP
+//   bug CLAUDE.md documents. WHOEVER MIGRATES THE INBOX TO FlashList: the inbox
+//   re-sorts (newest message first), so its transport MUST pass
+//   `flashListProps: { maintainVisibleContentPosition: { disabled: true } }` — the
+//   claim becomes true at the point the transport exists, and not before.
 // dmSession: ENTRY-KEYED child per conversation — params flow FROM THE ENTRY (C2 contract);
 // STATIC body (owns its layout): thread ScrollView flex:1 above a composer bar pinned to the
 // sheet's visible bottom edge that rides above the keyboard (PollDetail chin geometry).

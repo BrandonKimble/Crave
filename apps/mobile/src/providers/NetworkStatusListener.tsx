@@ -1,4 +1,5 @@
 import React from 'react';
+import { startBannerRecoveryProbe } from '../services/api';
 import { AppState } from 'react-native';
 import NetInfo, { type NetInfoState } from '@react-native-community/netinfo';
 import { focusManager, onlineManager } from '@tanstack/react-query';
@@ -63,6 +64,14 @@ const NetworkStatusListener: React.FC = () => {
       subscription.remove();
     };
   }, []);
+
+  // THE BANNER RECOVERY PROBE (F806, 2026-08-03): app-lifetime, MOUNTED, and stoppable.
+  // It lived at module scope in services/api.ts, where importing the api client started a
+  // setInterval-bearing subscription as a side effect of module evaluation. It belongs
+  // here, beside the other app-lifetime listeners — this component already owns "what the
+  // app knows about connectivity", and the systemStatus store remains the seam between
+  // them. Behavior is unchanged: the probe only runs while a service issue is live.
+  React.useEffect(() => startBannerRecoveryProbe(), []);
 
   return null;
 };

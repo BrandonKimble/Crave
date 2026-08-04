@@ -38,8 +38,10 @@ const SplashStudioScene: React.FC<SplashStudioSceneProps> = ({
           blurEnabled={shouldEnableSplashStudioNativeBlur}
           intensity={SPLASH_STUDIO_CONFIG.frost.intensity}
           tint={SPLASH_STUDIO_CONFIG.frost.tint}
-          tintColor={SPLASH_STUDIO_CONFIG.frost.tintColor}
-          tintOpacity={SPLASH_STUDIO_CONFIG.frost.tintOpacity}
+          tintOverlay={{
+            color: SPLASH_STUDIO_CONFIG.frost.tintColor,
+            opacity: SPLASH_STUDIO_CONFIG.frost.tintOpacity,
+          }}
           reducedTransparencyFallbackColor="rgba(248, 251, 255, 0.12)"
         />
       ) : null}
