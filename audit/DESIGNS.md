@@ -935,25 +935,25 @@ under heavy concurrent churn); this table is the input to the work, not a record
 `SheetHostSnapshot`. The measured cost of one field change through it: **6 allocations,
 5 comparator runs, 5 fan-outs, 1 object read by React** (F1608).
 
-| controller | collapses into | hazards to carry / kill |
-| --- | --- | --- |
-| route-geometry-frame | **RouteFrame authority** | F1604 dedupe cannot fire (null-wrapper); alloc per event |
-| route-motion-frame | **RouteFrame authority** | F1604 same |
-| route-sheet | **RouteFrame authority** | F1604 same |
-| route-frame (**DEAD**) | — **DELETE** | F1601 zero constructors; keep ONLY the snapshot type. Its derived comparator (the F1052f fix) is in unreachable code — do NOT preserve it, re-derive it at the surviving authority |
-| route-visual | **RouteFrame authority** | F1601 re-inlines the dead controller's derivation TWICE (:76-82, :152-158) — must become ONE resolver; F1608 allocates a throwaway intermediate per recompute |
-| sheet-route-host-visual | **SheetVisual authority** | F1605 deep-compare arm unreachable; pure wrap that sheet-visual immediately unwraps |
-| sheet-render-visibility | **SheetPresence authority** | none — honest object→bool projection, guard CAN show RED. Positive control: keep this comparator's shape |
-| sheet-presence | **SheetPresence authority** | F1603 (its output IS render-visual's), F1609 unnamed inline comparator |
-| sheet-render-visual | — **DELETE** | F1603 identity projection of presence; guard provably cannot fire |
-| sheet-visual | **SheetVisual authority** | F1602 its authority is what actually feeds the VisualHost slot; F1605/F1608 |
-| sheet-visual-host (**DEAD**) | — **DELETE** | F1602 zero constructors; the exported Authority type names a producer that does not exist. Fix the consumer's import (sheet-host-controller.ts:6) in the same step |
-| sheet-panel-selection | **ControlSelection authority** | none — honest subset projection |
-| sheet-policy-selection | **ControlSelection authority** | none — honest subset projection |
-| sheet-interaction-selection | **ControlSelection authority** | none — honest subset projection |
-| sheet-control-selection | **ControlSelection authority** | F1607 the interaction subscription drives a recompute that provably cannot publish — keep the freshness write, drop the publish machinery on that path |
-| sheet-session-host | **SheetHost authority** | F1604 unfirable dedupe, F1609 unnamed comparator |
-| sheet-host | **SheetHost authority** (terminal) | F1606 fourth hand-written comparator (D45 said DERIVE it); its one deep arm re-runs a compare its producer already ran |
+| controller                   | collapses into                     | hazards to carry / kill                                                                                                                                                            |
+| ---------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| route-geometry-frame         | **RouteFrame authority**           | F1604 dedupe cannot fire (null-wrapper); alloc per event                                                                                                                           |
+| route-motion-frame           | **RouteFrame authority**           | F1604 same                                                                                                                                                                         |
+| route-sheet                  | **RouteFrame authority**           | F1604 same                                                                                                                                                                         |
+| route-frame (**DEAD**)       | — **DELETE**                       | F1601 zero constructors; keep ONLY the snapshot type. Its derived comparator (the F1052f fix) is in unreachable code — do NOT preserve it, re-derive it at the surviving authority |
+| route-visual                 | **RouteFrame authority**           | F1601 re-inlines the dead controller's derivation TWICE (:76-82, :152-158) — must become ONE resolver; F1608 allocates a throwaway intermediate per recompute                      |
+| sheet-route-host-visual      | **SheetVisual authority**          | F1605 deep-compare arm unreachable; pure wrap that sheet-visual immediately unwraps                                                                                                |
+| sheet-render-visibility      | **SheetPresence authority**        | none — honest object→bool projection, guard CAN show RED. Positive control: keep this comparator's shape                                                                           |
+| sheet-presence               | **SheetPresence authority**        | F1603 (its output IS render-visual's), F1609 unnamed inline comparator                                                                                                             |
+| sheet-render-visual          | — **DELETE**                       | F1603 identity projection of presence; guard provably cannot fire                                                                                                                  |
+| sheet-visual                 | **SheetVisual authority**          | F1602 its authority is what actually feeds the VisualHost slot; F1605/F1608                                                                                                        |
+| sheet-visual-host (**DEAD**) | — **DELETE**                       | F1602 zero constructors; the exported Authority type names a producer that does not exist. Fix the consumer's import (sheet-host-controller.ts:6) in the same step                 |
+| sheet-panel-selection        | **ControlSelection authority**     | none — honest subset projection                                                                                                                                                    |
+| sheet-policy-selection       | **ControlSelection authority**     | none — honest subset projection                                                                                                                                                    |
+| sheet-interaction-selection  | **ControlSelection authority**     | none — honest subset projection                                                                                                                                                    |
+| sheet-control-selection      | **ControlSelection authority**     | F1607 the interaction subscription drives a recompute that provably cannot publish — keep the freshness write, drop the publish machinery on that path                             |
+| sheet-session-host           | **SheetHost authority**            | F1604 unfirable dedupe, F1609 unnamed comparator                                                                                                                                   |
+| sheet-host                   | **SheetHost authority** (terminal) | F1606 fourth hand-written comparator (D45 said DERIVE it); its one deep arm re-runs a compare its producer already ran                                                             |
 
 Target: **four authorities** (RouteFrame, SheetVisual/Presence, ControlSelection, SheetHost)
 in place of fifteen hops, three files deleted outright before any collapse begins — F1601,
@@ -964,12 +964,12 @@ F1602 and F1603 are pure subtractions with no behavioural surface, so they are t
 `(x: T): T => ({…every field…})` functions, each wrapped by its call site in a `useMemo` whose
 dep array is a fourth hand-written copy of the same field list (F1610).
 
-| controllers | collapses into | hazards |
-| --- | --- | --- |
+| controllers                                                                                                                                                                                                                                                                                                                                | collapses into                                                        | hazards                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | search-root-{primitives, state-foundation, foreground-input, control-authority, results-control, profile-control, profile-owner, data-plane ×3}, search-{freeze-gate, autocomplete, foreground-submit, foreground-transient}, search-suggestion-layout-visual, results-presentation-{owner :14-50, presentation-actions, close-transition} | **the call site's `useMemo` object literal** — delete the indirection | F1610. **Do not sweep blind**: the field list currently lives in 4 places, and the 4th (the dep array) is already WRONG once — F1611 |
-| search-root-results-sheet-motion + -interaction | one `Pick<ResultsSheetInteractionModel, …>` | F1619 hand-copied subset type, six handlers repacked twice in a row |
-| search-suggestion-layout-state | type the param as its contract | F1620 one-directional coupling: removals go stale silently |
-| results-presentation-interaction, results-presentation-owner :52-119 | **KEEP** | genuine `Pick<>` narrowing — not members of this class |
+| search-root-results-sheet-motion + -interaction                                                                                                                                                                                                                                                                                            | one `Pick<ResultsSheetInteractionModel, …>`                           | F1619 hand-copied subset type, six handlers repacked twice in a row                                                                  |
+| search-suggestion-layout-state                                                                                                                                                                                                                                                                                                             | type the param as its contract                                        | F1620 one-directional coupling: removals go stale silently                                                                           |
+| results-presentation-interaction, results-presentation-owner :52-119                                                                                                                                                                                                                                                                       | **KEEP**                                                              | genuine `Pick<>` narrowing — not members of this class                                                                               |
 
 ### Ordering, and the one thing that must not wait
 
@@ -985,3 +985,8 @@ dep array is a fourth hand-written copy of the same field list (F1610).
 5. Independent of both: F1613+F1614 (derive the phase union from its order array) land as one
    edit; F1615/F1616 (profiler-hot-path allocation, the widened coordinator port) need a sim
    measurement first, per D55.6.
+
+## D58 — repo-tooling residue verdicts (Phase-2, 2026-08-04; findings F1650–F1665)
+
+**EXECUTED inline:** F1664 CI-red gate fixed (spec exclusion, RED-proven in-target); F1658 header truths.
+**APPROVED:** F1650 in two steps — (1) the six deleted close-anchor labels return as accessibilityLabels on the LIVE controls (ToggleStrip has none at all — an a11y defect independent of testing; labels are the fix, not flow surgery), then (2) the 59-flow census re-runs and flows still dead get a retirement list per family (market-demand cluster judged AFTER labels exist). F1651 map-accept.sh RETIRED (both flows + all four probe families dead by named commits) + CLAUDE.md's recommendation of it corrected. F1653 the containment fence extends to maestro/\*_/_.sh. F1654 perf-baselines retired WITH the two referencing sites repointed in the same change (ci.yml:149, no-bypass allowlist) — never a dangling reference. F1656 the ten PRD-§4.1 fossils deleted; the 27 internal-only helpers stop leaking via export \* (explicit exports); F1657 the echo-test lie replaced by a REAL suite over the geo/antimeridian math both apps depend on (that math has zero tests today — always-green in its purest form). F1660 PR template deleted (first law: no PRs). F1665 COVERAGE dedup: 21 duplicate rows merged by script, disagreeing cells reconciled by git provenance, path becomes the key (the finale depends on it).
