@@ -24,10 +24,16 @@ FROM core_entities
 WHERE type = 'food_attribute'
 LIMIT 5;
 
--- 4. Subreddits with coordinates
-SELECT name, center_latitude, center_longitude
-FROM collection_subreddits
-ORDER BY name;
+-- 4. Collection communities
+-- CORRECTED 2026-08-03 (pass-2 audit, executed RED: `relation
+-- "collection_subreddits" does not exist`). The table is
+-- `collection_communities` now, and it carries NO center_latitude /
+-- center_longitude — community geography moved to the place catalog, so
+-- there is no successor column to substitute. Ask the catalog for
+-- coordinates, not this table.
+SELECT community_name, location_name, is_active, last_processed
+FROM collection_communities
+ORDER BY community_name;
 
 -- 5. Top restaurants (by v3 public Crave Score)
 SELECT r.entity_id,
@@ -49,7 +55,11 @@ WHERE type = 'restaurant_attribute'
 LIMIT 5;
 
 -- 7. Keyword job stats (most recent)
-SELECT *
-FROM keyword_search_triggers
-ORDER BY last_triggered_at DESC
+-- CORRECTED 2026-08-03 (pass-2 audit, executed RED: `relation
+-- "keyword_search_triggers" does not exist`). Successor:
+-- collection_keyword_attempt_history, keyed by engine + normalized term.
+SELECT engine_name, normalized_term, last_attempt_at, last_success_at,
+       last_outcome, last_result_count
+FROM collection_keyword_attempt_history
+ORDER BY last_attempt_at DESC NULLS LAST
 LIMIT 5;

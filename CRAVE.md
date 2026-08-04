@@ -993,6 +993,76 @@ rest of `scripts/` should aspire to.
 - **`configuration.ts` defaults the env STRING, not the parsed number.** That
   is what keeps a deliberate `0` alive.
 
+### The scripts corpus, pass 2 (2026-08-03) — what the lockdown actually reaches
+
+Pass 2 re-read the 48 rows pass 1 left PARTIAL. That set turned out not to be a
+judgement call: it is EXACTLY the set of files carrying no `@script-class`
+header (executed `comm` of the two censuses — 48/48, zero difference). Pass 1
+stopped precisely where the containment lockdown's reach stops, and the reason
+it stops there is a defect (F1252).
+
+**The reach is one file deep.** `script-containment.spec.ts` finds scripts with
+a FILE-LOCAL `includes('createApplicationContext')`. Twenty-one search-harness
+scripts boot the full Nest graph through `bootstrap()` imported from
+`_shared.ts`; `_shared.ts` carries the header, so the suite is green while
+those 21 are invisible to both assertions. This is the `filesImporting()`
+disease the spec's own docstring quotes itself curing. The cron half is safe
+only by luck of construction (`_shared.bootstrap()` happens to call
+`stopCronsForScript`), and the `booting.length > 30` floor cannot see the gap —
+it counts 48 and passes. Nothing in the corpus reaches a `.sql` file at all,
+which is why the two most destructive files in the tree carry no class.
+
+**Booting Nest is not free, and it is not read-only.** Running the
+self-described "PURE read-only" `corpus-integrity.ts` minted a billed Gemini
+system-instruction cache (79,513-char prompt, 3h TTL) and re-derived durable
+spend-pool state, both from `onModuleInit`. The lesson is already written three
+lines away in `llm.service.ts` — the QUERY cache was made lazy for exactly this
+reason ("minting it at boot made every script run rent a cache it never read")
+— and stops there. `stopCronsForScript` is one member of a family nobody has
+named: _a script boot must not start billed or mutating background work_
+(F1257).
+
+**The wipe family is sound; the LAW it encodes has a hole.**
+`wipe-city-derived.sql` + `preserved-anchors.sql` were re-verified against
+every migration landed 2026-08-02/03 and run clean end-to-end as a dry run
+(F1251) — no schema drift, and F417's `-v dryrun=1` rehearsal seam works. But
+the user-anchor set is an ENUMERATION of surfaces, and `messages.shared_entity_id`
+(entity shares in DMs — a bare `core_entities` uuid in a `text` column, no FK)
+is not on it. A wipe deletes an entity a user shared in a conversation and the
+share card is permanently "unavailable" — proven RED on the mirror, with a
+GREEN control through a surface the set does cover (F1250). The file's header
+calls itself "THE canonical user-anchor set (single source of truth)"; a
+hand-maintained list cannot be that for a growing schema.
+
+**Three recurring shapes across the corpus**, each with a live instance:
+
+- _A replica nobody re-synced._ Five harnesses replicate the linker's decision
+  in-script and call `0.82` "the live rule". The flip shipped; the service now
+  reads `linker-calibration.generated.ts`. The worst case is the file that was
+  PARTIALLY updated — it uses the generated floors and still prints
+  `threshold=0.82` (F1260).
+- _A one-off that outlived its subject._
+  `data-fixes/fix-integrity-defects.sql` is 503 destructive lines targeting 26
+  hard-coded entity ids — 0 of 26 still exist — through 9 tables that no longer
+  exist, arguing at length for a market-presence model exterminated in July
+  (F1253). Its README still publishes the 2026-07 defect counts as the
+  baseline; the gate now returns entirely different numbers.
+- _A default pointed the wrong way._ `validate-crave-score-fixtures.ts` runs an
+  unlocked global `rebuildAllScores()` BY DEFAULT (`--skip-db` is the opt-OUT),
+  reaching past the advisory-locked `RescoreCoordinator` that §12.6 makes the
+  sole authority — while `rebuild-crave-scores.ts`, two files over, does it
+  correctly (F1254). The corpus already knows the right polarity: the wipe
+  script's own closing comment reasons about opt-in vs opt-out and picks opt-IN
+  for the routine sweep.
+
+**Also standing:** three `rt-*.ts` red-team scripts write to whatever
+`DATABASE_URL` names with no env guard, are excluded from `tsc`, and clean up
+on the happy path only, under a README that calls the family READ-ONLY (F1255);
+`seed-google-photos.ts` raw-fetches billed Places endpoints outside
+`api_usage_ledger`, contaminating the billed-vs-ledger reconciliation the cost
+law depends on (F1256); and `lib/gazetteer-names.ts` is still the orphan F414
+ratified for deletion and never deleted (F1259).
+
 ## Territory: apps/api/src/modules/content-processing — the heart (pass 1)
 
 **The pipeline, end to end.** `CollectorPacerService` (10-min cron,

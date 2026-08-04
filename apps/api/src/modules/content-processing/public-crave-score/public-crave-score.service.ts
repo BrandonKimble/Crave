@@ -974,50 +974,120 @@ export class PublicCraveScoreService {
       return;
     }
 
-    const scoreWrites: Prisma.PrismaPromise<number>[] = scored.map(
-      (row) =>
-        this.prisma.$executeRaw`
-          INSERT INTO core_public_entity_scores (
-            subject_type,
-            subject_id,
-            score_run_id,
-            provenance_source_id,
-            endorsement_raw,
-            percentile_rank,
-            display_score,
-            rising,
-            score_version,
-            display_curve_version,
-            factor_trace,
-            computed_at
-          )
-          VALUES (
-            ${row.subjectType}::crave_score_subject_type,
-            ${row.subjectId}::uuid,
-            ${scoreRunId}::uuid,
-            ${row.provenanceSourceId}::uuid,
-            ${row.endorsementRaw},
-            ${row.percentileRank},
-            ${row.displayScore},
-            ${row.rising},
-            ${config.scoreVersion},
-            ${config.displayCurveVersion},
-            ${JSON.stringify(row.factorTrace)}::jsonb,
-            now()
-          )
-          ON CONFLICT (subject_type, subject_id) DO UPDATE SET
-            score_run_id = EXCLUDED.score_run_id,
-            provenance_source_id = EXCLUDED.provenance_source_id,
-            endorsement_raw = EXCLUDED.endorsement_raw,
-            percentile_rank = EXCLUDED.percentile_rank,
-            display_score = EXCLUDED.display_score,
-            rising = EXCLUDED.rising,
-            score_version = EXCLUDED.score_version,
-            display_curve_version = EXCLUDED.display_curve_version,
-            factor_trace = EXCLUDED.factor_trace,
-            computed_at = EXCLUDED.computed_at
-        `,
+    // ONE STATEMENT, NOT ONE PER SUBJECT (D47 scale pass). The run scores the
+    // WHOLE graph — every restaurant and every connection — so `scored.length`
+    // is the corpus, not a page: 24,032 subjects on the mirror today. The
+    // previous shape built one $executeRaw per subject and handed the whole
+    // array to $transaction, which is a per-row round trip through the query
+    // engine and a per-row SQL string retained in memory until the transaction
+    // settles. MEASURED on the mirror against a clone of this table:
+    //   24,032 subjects (today):  per-row 2,229 ms   ->  unnest   643 ms
+    //  240,320 subjects (10x):    per-row 18,610 ms  ->  unnest 5,251 ms
+    //                             per-row heap 2,461 MB -> unnest 790 MB
+    // The heap is the real ceiling, not the seconds: 2.4 GB of retained
+    // statement objects inside one transaction is an OOM on any container we
+    // run, and it is reached by growing the corpus alone. Columns travel as
+    // parallel arrays and are re-assembled by unnest, so the wire cost is the
+    // data and nothing else.
+    //
+    // Numerics travel as TEXT, deliberately. endorsement_raw/percentile_rank/
+    // display_score/rising are numeric(p,s); binding a JS float64 and letting
+    // Postgres round is a second, silent rounding on top of the one
+    // scoreCandidates already performed. String(n) is the shortest round-trip
+    // decimal for the float64 we hold, and ::numeric parses it exactly.
+    //
+    // ONE ROW PER SUBJECT IS NOW A PRECONDITION, so it is stated here. The
+    // per-row loop this replaced would silently let a duplicated subject
+    // overwrite itself (last write wins, no trace); a set-based upsert instead
+    // raises Postgres' opaque "ON CONFLICT DO UPDATE command cannot affect row
+    // a second time". Distinctness is structural today — loadCandidates builds
+    // both candidate lists by iterating Maps keyed by connectionId and
+    // restaurantId, and subjectType separates the two — so a duplicate here
+    // means that construction broke upstream. Say which subject, and refuse.
+    const seenSubjects = new Set<string>();
+    for (const row of scored) {
+      const key = `${row.subjectType}:${row.subjectId}`;
+      if (seenSubjects.has(key)) {
+        throw new Error(
+          `Score run ${scoreRunId} produced two rows for subject ${key} — ` +
+            `candidate assembly is keyed by subject and must not duplicate.`,
+        );
+      }
+      seenSubjects.add(key);
+    }
+
+    const subjectTypes = scored.map((row) => row.subjectType);
+    const subjectIds = scored.map((row) => row.subjectId);
+    const provenanceSourceIds = scored.map((row) => row.provenanceSourceId);
+    const endorsementRaws = scored.map((row) => String(row.endorsementRaw));
+    const percentileRanks = scored.map((row) => String(row.percentileRank));
+    const displayScores = scored.map((row) => String(row.displayScore));
+    const risings = scored.map((row) =>
+      row.rising === null ? null : String(row.rising),
     );
+    const factorTraces = scored.map((row) => JSON.stringify(row.factorTrace));
+
+    const scoreWrites: Prisma.PrismaPromise<number>[] = [
+      this.prisma.$executeRaw`
+        INSERT INTO core_public_entity_scores (
+          subject_type,
+          subject_id,
+          score_run_id,
+          provenance_source_id,
+          endorsement_raw,
+          percentile_rank,
+          display_score,
+          rising,
+          score_version,
+          display_curve_version,
+          factor_trace,
+          computed_at
+        )
+        SELECT
+          row.subject_type::crave_score_subject_type,
+          row.subject_id::uuid,
+          ${scoreRunId}::uuid,
+          row.provenance_source_id::uuid,
+          row.endorsement_raw::numeric,
+          row.percentile_rank::numeric,
+          row.display_score::numeric,
+          row.rising::numeric,
+          ${config.scoreVersion},
+          ${config.displayCurveVersion},
+          row.factor_trace::jsonb,
+          now()
+        FROM unnest(
+          ${subjectTypes}::text[],
+          ${subjectIds}::text[],
+          ${provenanceSourceIds}::text[],
+          ${endorsementRaws}::text[],
+          ${percentileRanks}::text[],
+          ${displayScores}::text[],
+          ${risings}::text[],
+          ${factorTraces}::text[]
+        ) AS row(
+          subject_type,
+          subject_id,
+          provenance_source_id,
+          endorsement_raw,
+          percentile_rank,
+          display_score,
+          rising,
+          factor_trace
+        )
+        ON CONFLICT (subject_type, subject_id) DO UPDATE SET
+          score_run_id = EXCLUDED.score_run_id,
+          provenance_source_id = EXCLUDED.provenance_source_id,
+          endorsement_raw = EXCLUDED.endorsement_raw,
+          percentile_rank = EXCLUDED.percentile_rank,
+          display_score = EXCLUDED.display_score,
+          rising = EXCLUDED.rising,
+          score_version = EXCLUDED.score_version,
+          display_curve_version = EXCLUDED.display_curve_version,
+          factor_trace = EXCLUDED.factor_trace,
+          computed_at = EXCLUDED.computed_at
+      `,
+    ];
 
     if (pruneStaleSubjects) {
       // core_public_entity_scores is "latest only": every currently-scored

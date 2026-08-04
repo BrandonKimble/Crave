@@ -13,9 +13,6 @@ type ActiveRestaurantEvent = {
   evidenceType: string;
   mentionedAt: Date;
   sourceUpvotes: number;
-  sourceDocument: {
-    activeExtractionRunId: string | null;
-  };
 };
 
 type ActiveRestaurantEntityEvent = {
@@ -29,9 +26,6 @@ type ActiveRestaurantEntityEvent = {
   isMenuItem: boolean | null;
   mentionedAt: Date;
   sourceUpvotes: number;
-  sourceDocument: {
-    activeExtractionRunId: string | null;
-  };
 };
 
 type MentionEventGroup = {
@@ -244,62 +238,75 @@ export class ProjectionRebuildService implements OnModuleInit {
     );
   }
 
+  /* ACTIVE-RUN IS A JOIN PREDICATE, NOT A POST-FILTER (D47 scale pass).
+   * "This event belongs to its document's active generation" is
+   * `sd.active_extraction_run_id = ev.extraction_run_id` — a column-to-column
+   * comparison, which Prisma's relation filters cannot express, so both
+   * loaders used to fetch EVERY generation's events for the batch, carry a
+   * joined column solely to compare it in JS, and discard the losers. This
+   * file already states the same predicate in raw SQL twice (sweepTombstoneEvents'
+   * repoint and dup-delete CTEs); these were the odd dialect out.
+   *
+   * The discard rate is not static, and that is why this is a shape fix rather
+   * than a micro-optimisation. supersedeAndActivate only DELETES a superseded
+   * generation when it shares the activating run's systemPromptHash — a
+   * re-extraction under an ITERATED prompt, which is the entire point of the
+   * re-extract rail, retains its predecessor forever. So the rows fetched grow
+   * one full generation per prompt version while the rows kept stay at one.
+   * On the mirror today (one generation, so nothing is discarded yet) the
+   * hottest 50-restaurant batch measured 12,271 rows: 121 ms via findMany+JS
+   * filter, 59 ms via the join. Each retained generation multiplies the
+   * former and leaves the latter flat, because the index the predicate wants
+   * (idx_source_documents_active_run) can only be used inside the query. */
   private async loadActiveRestaurantEvents(
     tx: PrismaTransaction,
     restaurantIds: string[],
   ): Promise<ActiveRestaurantEvent[]> {
-    const rows = await tx.restaurantEvent.findMany({
-      where: {
-        restaurantId: { in: restaurantIds },
-      },
-      select: {
-        extractionRunId: true,
-        restaurantId: true,
-        sourceDocumentId: true,
-        mentionKey: true,
-        evidenceType: true,
-        mentionedAt: true,
-        sourceUpvotes: true,
-        sourceDocument: {
-          select: { activeExtractionRunId: true },
-        },
-      },
-    });
-
-    return rows.filter(
-      (row): row is ActiveRestaurantEvent =>
-        row.sourceDocument.activeExtractionRunId === row.extractionRunId,
-    );
+    if (!restaurantIds.length) {
+      return [];
+    }
+    return tx.$queryRaw<ActiveRestaurantEvent[]>`
+      SELECT
+        ev.extraction_run_id::text AS "extractionRunId",
+        ev.restaurant_id::text     AS "restaurantId",
+        ev.source_document_id::text AS "sourceDocumentId",
+        ev.mention_key             AS "mentionKey",
+        ev.evidence_type::text     AS "evidenceType",
+        ev.mentioned_at            AS "mentionedAt",
+        ev.source_upvotes          AS "sourceUpvotes"
+      FROM core_restaurant_events ev
+      JOIN collection_source_documents sd
+        ON sd.document_id = ev.source_document_id
+       AND sd.active_extraction_run_id = ev.extraction_run_id
+      WHERE ev.restaurant_id = ANY(${restaurantIds}::uuid[])
+    `;
   }
 
   private async loadActiveRestaurantEntityEvents(
     tx: PrismaTransaction,
     restaurantIds: string[],
   ): Promise<ActiveRestaurantEntityEvent[]> {
-    const rows = await tx.restaurantEntityEvent.findMany({
-      where: {
-        restaurantId: { in: restaurantIds },
-      },
-      select: {
-        extractionRunId: true,
-        restaurantId: true,
-        sourceDocumentId: true,
-        mentionKey: true,
-        entityId: true,
-        entityType: true,
-        evidenceType: true,
-        isMenuItem: true,
-        mentionedAt: true,
-        sourceUpvotes: true,
-        sourceDocument: {
-          select: { activeExtractionRunId: true },
-        },
-      },
-    });
-
-    return rows.filter(
-      (row) => row.sourceDocument.activeExtractionRunId === row.extractionRunId,
-    );
+    if (!restaurantIds.length) {
+      return [];
+    }
+    return tx.$queryRaw<ActiveRestaurantEntityEvent[]>`
+      SELECT
+        ev.extraction_run_id::text  AS "extractionRunId",
+        ev.restaurant_id::text      AS "restaurantId",
+        ev.source_document_id::text AS "sourceDocumentId",
+        ev.mention_key              AS "mentionKey",
+        ev.entity_id::text          AS "entityId",
+        ev.entity_type::text        AS "entityType",
+        ev.evidence_type::text      AS "evidenceType",
+        ev.is_menu_item             AS "isMenuItem",
+        ev.mentioned_at             AS "mentionedAt",
+        ev.source_upvotes           AS "sourceUpvotes"
+      FROM core_restaurant_entity_events ev
+      JOIN collection_source_documents sd
+        ON sd.document_id = ev.source_document_id
+       AND sd.active_extraction_run_id = ev.extraction_run_id
+      WHERE ev.restaurant_id = ANY(${restaurantIds}::uuid[])
+    `;
   }
 
   private groupEntityEventsByMention(
