@@ -115,11 +115,9 @@ export class EmbeddingService implements OnModuleInit {
     const key = this.queryCacheKey(normalized);
     if (this.redis) {
       try {
-        const cached = await this.redis.get(key);
-        if (cached) {
-          const vec = JSON.parse(cached) as number[];
-          if (Array.isArray(vec) && vec.length === this.dimensions) return vec;
-        }
+        const cached = await this.redis.getBuffer(key);
+        const vec = cached ? this.decodeVector(cached) : null;
+        if (vec) return vec;
       } catch {
         // fall through to a live embed
       }
@@ -131,7 +129,7 @@ export class EmbeddingService implements OnModuleInit {
       try {
         await this.redis.set(
           key,
-          JSON.stringify(out),
+          this.encodeVector(out),
           'EX',
           this.queryCacheTtlSeconds,
         );
@@ -140,6 +138,29 @@ export class EmbeddingService implements OnModuleInit {
       }
     }
     return out;
+  }
+
+  /** BINARY STORAGE (2026-08-04 Redis-full incident): a 768-dim vector as
+   *  JSON text is ~16KB; as raw Float32 it is 3,072 bytes — 5.3x smaller.
+   *  21k cached vectors filled the whole prod Redis instance under a
+   *  noeviction policy, one write away from failing the Bull queues that
+   *  share it. Float32 precision is what the model emits anyway. */
+  private encodeVector(vec: number[]): Buffer {
+    return Buffer.from(new Float32Array(vec).buffer);
+  }
+
+  private decodeVector(buf: Buffer): number[] | null {
+    if (buf.byteLength !== this.dimensions * 4) {
+      return null; // legacy JSON v1 entry or corruption — treat as a miss
+    }
+    // ioredis buffers live in a shared pool and are not 4-byte aligned;
+    // copy to an owned ArrayBuffer before viewing as Float32.
+    const aligned: Uint8Array = Uint8Array.prototype.slice.call(
+      buf,
+    ) as Uint8Array;
+    return Array.from(
+      new Float32Array(aligned.buffer as ArrayBuffer, 0, this.dimensions),
+    );
   }
 
   /**
@@ -160,7 +181,7 @@ export class EmbeddingService implements OnModuleInit {
     for (const term of unique) {
       if (this.redis) {
         try {
-          if (await this.redis.get(this.queryCacheKey(term))) {
+          if (await this.redis.getBuffer(this.queryCacheKey(term))) {
             alreadyCached++;
             continue;
           }
@@ -181,7 +202,7 @@ export class EmbeddingService implements OnModuleInit {
           try {
             await this.redis.set(
               this.queryCacheKey(batch[j]),
-              JSON.stringify(vec),
+              this.encodeVector(vec),
               'EX',
               this.queryCacheTtlSeconds,
             );
@@ -200,7 +221,9 @@ export class EmbeddingService implements OnModuleInit {
       .update(`${this.model}|${this.dimensions}|RETRIEVAL_QUERY|${term}`)
       .digest('hex')
       .slice(0, 32);
-    return `crave:qemb:v1:${hash}`;
+    // v2 = binary Float32 values; v1 (JSON text) keys expire away on
+    // their own TTL and are actively deleted by the incident cleanup.
+    return `crave:qemb:v2:${hash}`;
   }
 
   /** Cosine similarity of two L2-normalized vectors (a plain dot product). */

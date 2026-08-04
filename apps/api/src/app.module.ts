@@ -1,3 +1,4 @@
+import { RedisPolicyEnforcer } from './modules/infrastructure/redis-policy.enforcer';
 import { Module } from '@nestjs/common';
 import { join } from 'path';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -139,6 +140,6 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     ...(isDebugRoutesEnabled() ? [DebugModule] : []),
   ],
   controllers: [AppController],
-  providers: [],
+  providers: [RedisPolicyEnforcer],
 })
 export class AppModule {}
