@@ -1323,6 +1323,16 @@ export class RestaurantLocationEnrichmentService {
       canonicalTrimmed !== currentTrimmed
     ) {
       updateData.name = canonicalTrimmed;
+      // IDENTITY FOLLOWS THE NAME (round-4 foundations audit: this rename
+      // path had the same drift the ontology rename had — name changed,
+      // app-written identity keys kept the OLD string, on ~7k
+      // never-deleted restaurant rows).
+      const identity = identityInsertData(
+        canonicalTrimmed,
+        EntityType.restaurant,
+      );
+      updateData.identityKey = identity.identityKey;
+      updateData.identityKeySorted = identity.identityKeySorted;
       updatedFields.push('name');
       aliasSources.add(entity.name);
     }

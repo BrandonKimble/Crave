@@ -721,9 +721,18 @@ export class AttributeOntologyService {
             // so after an LLM rename the unique index and every probe
             // silently referred to the OLD display string — latent
             // identity drift, one adjudication run from live).
+            // round-4: use the row's REAL type, not a hardcoded one — the
+            // pass renames both attribute types (identical fold semantics
+            // today; latent divergence trap otherwise).
+            const renameTarget = await tx.$queryRawUnsafe<
+              Array<{ type: string }>
+            >(
+              `SELECT type::text AS type FROM core_entities WHERE entity_id = $1::uuid`,
+              rename.entityId,
+            );
             const identity = identityInsertData(
               rename.to,
-              EntityType.food_attribute,
+              (renameTarget[0]?.type ?? 'food_attribute') as EntityType,
             );
             counts.renames += await tx.$executeRawUnsafe(
               `UPDATE core_entities
