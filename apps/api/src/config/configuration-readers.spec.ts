@@ -44,6 +44,14 @@ function readConfigPaths(): { literal: Set<string>; prefixes: Set<string> } {
     )) {
       literal.add(m[1]);
     }
+    // Named config accessors count as readers too: `requireCeiling('a.b.c')`
+    // wraps configService.get with fail-closed validation (D51/F114) — the
+    // literal-get scan alone went RED on googlePlaces.* the day it landed.
+    for (const m of source.matchAll(
+      /\brequireCeiling\s*\(\s*['"]([A-Za-z][A-Za-z0-9_.]*)['"]/g,
+    )) {
+      literal.add(m[1]);
+    }
     // Template-literal paths, wherever they are built. `readThrottlerWindow`
     // assigns `` `throttler.${window}.${field}` `` to a local FIRST and passes
     // the variable to get(), so matching only inline `get(\`...\`)` misses it.

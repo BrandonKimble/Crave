@@ -1663,6 +1663,53 @@ mirrors into react-query's `onlineManager` and whose `subscribeToReconnect` is t
 singleton-surface pattern the other five copy) → `.eslintrc.js` (the laws that are enforced, which tells you which ones
 were broken before).
 
+### Pass-2 corrections and additions (D55, 2026-08-03)
+
+**Two facts above are now STALE — D48 fixed them and the map did not follow.** (1) "There is no
+401 branch (F804)" is no longer true: `services/api.ts:413` has a `session_lapse` branch that
+announces through `store/sessionLapseStore.ts` and tags the error `isSessionLapse`, exactly
+mirroring the entitlement branch beside it. (2) "A module-scope subscription runs a `/health`
+probe" is no longer true either: F806 moved that subscription behind
+`startBannerRecoveryProbe()`, an idempotent start that RETURNS ITS STOP and is mounted by
+`NetworkStatusListener` — importing the api client no longer starts a timer, which is what made
+the module unusable in the hermetic jest project. What DID survive unchanged is the request
+VOICE pair, `USER_INITIATED` / `SILENT`, which is now the one declaration of "does this failure
+speak for the whole app" (the default is still "speaks" — deliberately, see the header at :294).
+
+**The toggle engine is a territory this map never named, and it is one of the healthiest things
+in `apps/mobile`.** `toggles/toggle-interaction-engine.ts` is a pure, React-free state machine
+(begin → restarting quiet window → optional visual-floor gate → commit → optional visual-sync →
+finalize) with a seq guard at every boundary, so a superseded async landing can never publish.
+`toggles/toggle-strip-consequence.ts` wraps it in the one declaration a page makes — `'world'`
+(the commit waits for the presentation fade to bottom out) or `'content'` (old cards exit
+synchronously on press-up, bare white under the strip, never a skeleton) — and
+`toggles/use-content-toggle.ts` is its React face. The engine's LOUD bounded fallback
+(`visual_floor_ack_timeout`) is the pattern to copy: a gate that can hang instead barks and
+commits. Its instruments can show RED, which is more than most of this repo manages.
+`toggles/toggle-strip-scene-law.ts` is the consumer that made `scene-foundation-spec.strip` stop
+being a dead law.
+
+**The store layer is smaller than it looks.** `store/searchStore.ts` reads as a 269-line
+persisted search store; it is functionally a six-field filter mirror written by ONE bridge
+(`search-runtime-filter-state-store-bridge.ts`) — every other verb and field in it is dead
+(F1550), including its `query`/`page`/`history` lane, which duplicates the real, server-backed
+recent-search home in `store/searchHistoryStore.ts`. Do not extend it; publish to the
+SearchRuntimeBus instead, which is what its own header tells you.
+
+**`utils/logger.ts` gates `debug` only** — `info`, `warn` and `error` all reach production
+(F1552). Read any `logger.info('[TOGGLE] …')` in a gesture path as a shipped console call, not
+as dev instrumentation.
+
+**`src/hooks` is nine files and two of them are dead** (`useDebouncedLayoutMeasurement.ts`,
+`useCallbackFactory.ts` — 438 lines, zero consumers, F1551). The live ones worth knowing are
+`useAccess` (money, above), `use-favorite-heart` (the heart verb, which never rides the generic
+add-item route) and `use-transition-driver` (the shared 0↔1 progress driver, one consumer).
+
+**`src/tracksheet` is the DEFAULT sheet system now**, not a prototype: `track-flip-store.ts`
+seeds `{ on: true }` and `crave://tracksheet-host?on=0` is the emergency rollback to the old
+overlay hosts. `screens/OneTrackPrototype.tsx` is its dev-only demo consumer and carries
+refactor residue (F1560).
+
 ## Territory: mobile-nav-overlays (`apps/mobile/src/navigation` + `apps/mobile/src/overlays`)
 
 325 files, ~69k lines. This is the **scene-stack machinery**: how the app decides
