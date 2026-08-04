@@ -219,15 +219,18 @@ describe('AccountDeletionService', () => {
     await service.deleteAccount(user);
     // Every held handle is reserved — reserved_usernames has NO person
     // column, so the name is burned while nothing about who held it remains.
-    const burned = (prisma.reservedUsername.upsert as jest.Mock).mock.calls.map(
-      (c: any[]) => c[0].create.username,
+    const burned = prisma.reservedUsername.upsert.mock.calls.map(
+      (c: { create: { username: string } }[]) => c[0].create.username,
     );
     expect(burned).toEqual(expect.arrayContaining(['oldhandle']));
-    expect(
-      (prisma.reservedUsername.upsert as jest.Mock).mock.calls[0][0].create
-        .reason,
-    ).toBe('account_deleted');
+    expect(prisma.reservedUsername.upsert.mock.calls[0][0].create.reason).toBe(
+      'account_deleted',
+    );
     // ...and only THEN is the person<->handle mapping removed.
+    // `as jest.Mock` (2026-08-03): the inline mock object's inferred argument
+    // type collapsed to `never` here once the rt-* harnesses rejoined the
+    // compilation (F1255). The cast states the type this assertion always
+    // meant; the assertion itself is unchanged.
     expect(prisma.usernameHistory.deleteMany).toHaveBeenCalledWith({
       where: { userId: 'u-del-1' },
     });
