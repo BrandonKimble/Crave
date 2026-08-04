@@ -2125,7 +2125,9 @@ territory (F1514) — do not read them as damage you caused.
 
 98 tracked files. 72 reviewed in pass 1; the 26 UNREVIEWED are binary assets
 (app-icon/splash PNGs, `debug.keystore`, `gradle-wrapper.jar`, `gradlew`).
-Findings F1100–F1118. Executed evidence: `swift test` in `ios/MapLodKit`
+Findings F1100–F1118 (pass 1) and **F1700–F1710 (pass 2, the PARTIAL residue —
+Android source, TrackScrollKit at HEAD, the bridge modules, and the F1068/F1069
+both-halves recommendation)**. Executed evidence: `swift test` in `ios/MapLodKit`
 (**41/41 green**, and RED-proven — a one-line `LodEngine` mutation turns 15 of
 them red), `plutil -lint` on the three plists (all OK),
 `scripts/mobile-native-authority-gate.sh` (18/18, RED-proven two ways), and a
@@ -2165,11 +2167,19 @@ the trap note itself is deleted. Going back to prebuild is a real migration
   injected, podspec consumes the same source the tests cover, headers explain
   the physics and the invariant.
 - `ios/TrackScrollKit/` — the ONE TRACK scroll hatch (Obj-C, 3 bridge modules,
-  no tests). **Three files carry another session's uncommitted edits**; reviewed
-  at HEAD, not judged (F1118).
-- `android/` — a ~11,150-line Java parity port, **frozen 2026-06-17, no build
-  profile, no Mapbox download token, never compiled by anything** (F1110). The
-  single largest open question in this territory.
+  1,568 lines, **no tests**). F1118's in-flight edits LANDED (`13e567ffd`) and
+  the re-read at HEAD is clean (F1706): zero dead exports — all 7 `TrackScrollPhysics`
+  methods and all 4 of its events have JS call sites, and both view managers are
+  mounted. The open item is the one MapLodKit already answered elsewhere: there is
+  no pure kernel to test, and `plans/android-parity.md` §5 is its home.
+- `android/` — a Java parity port, **frozen 2026-06-17, no build profile, no
+  Mapbox download token, never compiled by anything** (F1110); D52 ruled REWRITE,
+  not repair (`plans/android-parity.md`). **Corrected counts (F1704): 57 tracked
+  files, of which 16 are `.java` totalling 11,684 lines** — the long-quoted
+  "34 files / ~11,150 lines" was never re-measured. F1705 re-verified the plan's
+  drift table exactly (11 iOS externs vs 8 Java `@ReactMethod`; 6 shared, 5
+  iOS-only, 2 Java-only dead names; zero `MapLod`/`TrackScroll` hits; zero
+  `android` keys in eas.json; nothing invokes `gradlew`).
 
 **How JS reaches native.** Every Swift module is bridged from ONE file,
 `UIFrameSamplerBridge.m`, which is named after one of the nine modules it
@@ -2179,6 +2189,27 @@ declares (F1112). Two cross-module command hatches go through
 much alive; it is reached only by reflection from
 `ProfilePresentationTransactionExecutor` (F1113, banked before any dead claim).
 The other reflection target lives inside the patched `@rnmapbox/maps` pod.
+**There is a THIRD reflection site** (F1701), in
+`SearchChromeScalarSurfaceRegistry.swift:427-473`: `bridge.value(forKey:"uiManager")`
+
+- `NSSelectorFromString("viewForReactTag:")`, i.e. the PAPER-era view lookup, on a
+  new-arch app. Compare `TrackScrollPhysics.m`'s `TrackFindScrollView`, which solves
+  the same problem architecture-proof and says so — one native surface here already
+  knows the Fabric answer. Two of the nine bridged names have no file of their own
+  (`PresentationCommandExecutor` is in `ProfilePresentationTransactionExecutor.swift`,
+  `SearchRouteNavSilhouetteHostViewManager` in `SearchRouteSheetNavExclusionMaskView.swift`),
+  so `UIFrameSamplerBridge.m` is the ONLY place the nine-module roster is written down.
+
+**BEFORE YOU MOVE ANY NATIVE SOURCE, READ `scripts/perf-scenario-parity-contracts.js`
+(F1702/F1703).** That 4,882-line gate (`perf:scenario:contracts`, called by
+`perf-scenario-contract-gate.js`) does UNCONDITIONAL top-level `readFileSync` on four
+hardcoded native paths — `SearchMapRenderController.swift`,
+`android/.../SearchMapRenderControllerModule.java`,
+`SearchRouteSheetNavExclusionMaskView.swift`, `UIFrameSamplerBridge.m` — and asserts on
+their SOURCE TEXT. Two consequences already in flight: the Android plan's Stage 2
+(`git rm` the mirror) ENOENT-crashes it, and F1112's approved bridge split turns its
+mask assertions RED with a message describing a defect that did not happen. Each of
+those refactors is a TWO-file commit, and the second file is this gate.
 
 **The New Architecture is on and nothing here uses it** (F1114). `RCTNewArchEnabled`,
 `newArchEnabled` (gradle), and `newArchEnabled` (Podfile.properties.json) are all
@@ -2246,6 +2277,24 @@ missing. Only the measured-frame observers (`registerNativeLayoutObserver` →
 KVO on bounds/center/transform) do real work today, and their output is read only
 by `measureRegisteredControls`, which the dead JS diagnostics path is the sole
 caller of. Both halves live or die together.
+
+**PASS-2 RECOMMENDATION (F1700): DELETE.** The question is not activation-cost vs
+deletion-scope, it is duplication. `SearchChromeNativeHitTargetId` is literally
+`'shortcut_restaurants' | 'shortcut_dishes' | 'search_this_area'` — the SAME three
+ids as the scalar runtime's `REQUIRED_CONTROL_IDS` — and that stack (211 Swift + 168
+JS lines) is LIVE, mounted in `SearchOverlayChromeHost`, syncing native regions and
+resolving presses in native. The scalar registry's own `missingHooks` list names
+`pressTimeActionResolver`, which is exactly what the hit-target surface already does
+in production. So "activate" means building a second implementation of a shipped one —
+and `active: false` is a TYPE on the runtime, not a value, so it is a public-surface
+rewrite, not a wiring change. Deletion scope: **~2,257 lines** = 1,244 JS + 529 Swift
+
+- 452 Java (`SearchChromeScalarSurfaceRegistryModule.java`, a third copy nobody had
+  counted) + the 32-line `RCT_EXTERN_MODULE` block at `UIFrameSamplerBridge.m:100-131`,
+  plus two live per-render bridge crossings (`SearchShortcutsRow.tsx:41-42`,
+  `SearchOverlayHeaderChrome.tsx:105`) that pay into a sink. Nothing user-visible changes.
+  If the owner instead wants a native chrome that OWNS scalar values, the honest move is
+  still to delete this and grow it from the hit-target surface's working shape.
 
 ## Territory: mobile-assets (`apps/mobile/src/assets` — 1,274 binaries)
 
