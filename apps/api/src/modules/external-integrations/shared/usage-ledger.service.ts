@@ -75,6 +75,13 @@ const ATMOSPHERE_FIELDS = new Set([
 ]);
 /** Places fields that force the Enterprise SKU. */
 const ENTERPRISE_FIELDS = new Set([
+  // `photos` is an Enterprise field (F1256, 2026-08-03). It was absent because
+  // nothing in src/ ever requested it — the only photo consumer was a raw
+  // `fetch` in a fixture seeder, so the classifier was never asked. A field
+  // the classifier does not know falls through to 'essentials', i.e. it
+  // UNDER-meters, which is the same "summed a source that does not contain
+  // all the spend" error this finding is about.
+  'photos',
   'internationalPhoneNumber',
   'nationalPhoneNumber',
   'websiteUri',
@@ -348,8 +355,12 @@ export class UsageLedgerService implements OnModuleDestroy {
 
   /** Highest-SKU-in-mask classification, mirroring Google's billing rule. */
   static classifyPlacesSku(fieldMaskFields: string[]): string {
-    // Strip the `places.` prefix text-search masks carry.
-    const fields = fieldMaskFields.map((f) => f.replace(/^places\./, ''));
+    // Strip the `places.` prefix text-search masks carry, then keep only the
+    // TOP-LEVEL field: a mask may name a sub-field (`photos.name`), and the
+    // SKU is priced on the top-level field, not the leaf.
+    const fields = fieldMaskFields.map(
+      (f) => f.replace(/^places\./, '').split('.')[0],
+    );
     if (fields.some((f) => ATMOSPHERE_FIELDS.has(f))) {
       return 'enterprise_atmosphere';
     }

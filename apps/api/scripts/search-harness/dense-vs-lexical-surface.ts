@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: dense-only vs lexical-only vs both, per realistic query — the owner-eyeball
+ * evidence for which surface a hungry user would rather see.
+ */
 import { EntityType } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { bootstrap, DEFAULT_MARKET_KEY } from './_shared';

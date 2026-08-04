@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: is the embedding lane good at semantic ranking? Answered the
+ * lean-on-dense question for the closeness design (plans/search-system-ideal.md).
+ */
 import { EntityType } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { bootstrap, DEFAULT_MARKET_KEY } from './_shared';

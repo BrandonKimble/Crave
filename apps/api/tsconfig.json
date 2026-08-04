@@ -36,11 +36,17 @@
   "exclude": [
     "dist/**/*",
     "node_modules/**/*",
-    "../../scripts/**/*",
-    // Red-team/exploratory harnesses: throwaway by convention (see the
-    // search-session records). They are run with ts-node ad hoc and must
-    // never gate CI — shipped scripts (reload, reextract, activate) stay
-    // covered because they live in scripts/ root, not this subdir.
-    "scripts/search-harness/rt-*.ts"
+    "../../scripts/**/*"
+    // (2026-08-03, F1255) The `scripts/search-harness/rt-*.ts` exclusion is
+    // GONE. It read "throwaway by convention", but a throwaway that READS and
+    // a throwaway that WRITES are not the same object, and this glob flattened
+    // the distinction: three of the rt-* files insert real extraction runs,
+    // source documents, polls and USERS. Excluded from compilation, they were
+    // invisible to `tsc --noEmit` — the very check the F414 sweep leaned on to
+    // call the corpus healthy — while using `$queryRawUnsafe` + `any`
+    // throughout, so Prisma's types did not cover them either. A schema change
+    // rotted them silently and no instrument in the repo noticed. They are
+    // type-checked now; genuinely throwaway code belongs in the gitignored
+    // scripts/scratch/ the containment spec already defines.
   ]
 }

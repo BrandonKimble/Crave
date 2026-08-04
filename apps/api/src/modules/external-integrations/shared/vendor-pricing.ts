@@ -66,12 +66,24 @@ export const tomtomBlendedCostMicrosPerDraw = tomtomScarceCostMicrosPerDraw;
  * the one you could not set, on the most expensive Places call ($0.032/call
  * versus placeDetails' $0.017), and nothing warned.
  */
-export type PlacesOperation = 'placeDetails' | 'autocomplete' | 'textSearch';
+export type PlacesOperation =
+  | 'placeDetails'
+  | 'autocomplete'
+  | 'textSearch'
+  // Places Photo Media — a BILLED SKU that had no operation here because its
+  // only caller was a raw `fetch` in a dev fixture seeder (audit 2026-08-03,
+  // F1256). An unmetered vendor call lands in the BigQuery billing export with
+  // no ledger counterpart, where it is indistinguishable from — and gets
+  // absorbed into — the known Gemini under-metering, and then
+  // `publish-reconciliation.ts` bakes the contamination into a durable
+  // per-vendor multiplier that every future estimate is multiplied by.
+  | 'photoMedia';
 
 export const PLACES_OPERATIONS: readonly PlacesOperation[] = [
   'placeDetails',
   'autocomplete',
   'textSearch',
+  'photoMedia',
 ];
 
 // verified 2026-07-08; cost-report's table folded in here.
@@ -84,11 +96,14 @@ const PLACES_RATES_MICRO_USD_PER_CALL: Record<string, number> = {
   'textSearch:enterprise': 35_000,
   'textSearch:enterprise_atmosphere': 40_000,
   'autocomplete:essentials': 2_800,
+  // Places Photos (New): $7.00 / 1k requests, list-price as of 2026-08-03.
+  'photoMedia:photo': 7_000,
 };
 
 /** Per-SKU ceiling across operations — used when the caller has no
  *  operation dimension. Over-meter, never vanish. */
 const SKU_MAX_MICRO_USD: Record<string, number> = {
+  photo: 7_000,
   essentials: 5_000,
   pro: 32_000,
   enterprise: 35_000,

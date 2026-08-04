@@ -1,3 +1,7 @@
+/**
+ * @script-class: probe
+ * @finding: value-census TEST #3: does LLM_MATCHER_SHORTLIST_K=8 pay for itself?
+ */
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import { LLMService } from '../../src/modules/external-integrations/llm/llm.service';
 import {

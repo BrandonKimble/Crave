@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# @script-class: operational
+# @run-by: cost-reconcile routine (CLAUDE.md billing truth) + operator, ad hoc
 # Re-derive WHICH Gemini surfaces cost money, from the bill.
 #
 # SURFACE_BILLING in apps/api/src/modules/external-integrations/llm/

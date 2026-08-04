@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: per-keystroke autocomplete quality: attributes a smelly suggestion to the
+ * lexical-fuzzy vs dense-semantic vs scoring stage. Findings in plans/search-system-ideal.md (Part C).
+ */
 import { EntityType } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { bootstrap, DEFAULT_MARKET_KEY } from './_shared';

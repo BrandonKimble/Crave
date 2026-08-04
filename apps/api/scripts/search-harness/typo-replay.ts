@@ -1,4 +1,14 @@
+/**
+ * @script-class: probe
+ * @finding: recall@10 / junk-link rate per length bucket under synthetic typos — the
+ * baseline the edit-distance rework had to beat. NOTE (F1260): re-synced to
+ * the live predicate in src/modules/search/linker-decision.ts.
+ */
 import { Logger } from '@nestjs/common';
+import {
+  LINK_ELIGIBLE_EVIDENCE,
+  linkerAdmits,
+} from '../../src/modules/search/evidence-admission';
 import { EntityType } from '@prisma/client';
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import {
@@ -25,10 +35,11 @@ import {
  *   - junkAdmitted: candidates returned that are NOT the true entity (noise the
  *                   ladder lets through, averaged per query)
  *   - junkLinkRate on NO-TRUE-ENTITY queries: feed random gibberish and count how
- *                  often the CURRENT 0.82 linker still links something (the
+ *                  often the CURRENT (imported) linker still links something (the
  *                  false-link failure rate the plan wants to kill).
  *
- * This documents the CURRENT 0.7/0.55/0.45/0.35 length ladder + 0.82 linker —
+ * This documents the CURRENT 0.7/0.55/0.45/0.35 length ladder + the LIVE
+ * linker predicate (imported; the 0.82 literal was retired — F1260) —
  * the baseline every later REPLACE ships against.
  *
  *   yarn workspace api ts-node scripts/search-harness/typo-replay.ts
@@ -37,8 +48,6 @@ import {
 
 const SHORTLIST_K = 10; // recall@10
 const RECALL_POOL = 50; // retrieveCandidates poolSize (production default)
-// Match the query-time linker's 0.82 sparse-similarity cutoff exactly.
-const LINK_THRESHOLD_0_82 = 0.82;
 const SAMPLE_PER_BUCKET = Number(process.env.SAMPLE_PER_BUCKET ?? 60);
 const GIBBERISH_COUNT = Number(process.env.GIBBERISH_COUNT ?? 120);
 const RNG = makeRng(Number(process.env.SEED ?? 1337));
@@ -244,7 +253,7 @@ async function main(): Promise<void> {
     out('');
     out('=== JUNK-LINK RATE on no-true-entity (gibberish) queries ===');
     out(
-      `Feeds random gibberish through retrieveCandidates + the CURRENT 0.82 linker rule;`,
+      `Feeds random gibberish through retrieveCandidates + the LIVE imported linker rule;`,
     );
     out(
       `counts how often it still (wrongly) links an entity. n=${GIBBERISH_COUNT}/type`,
@@ -263,7 +272,8 @@ async function main(): Promise<void> {
           poolSize: RECALL_POOL,
         });
         if (candidates.length > 0) nonEmpty++;
-        // Replicate the linker's decision (exact OR best sparse ≥ 0.82).
+        // F1260: the linker's decision is IMPORTED, not replicated. This
+        // block used to hard-code `>= 0.82`, a policy the service retired.
         const norm = g.toLowerCase();
         const exact = candidates.find(
           (c) => c.name.trim().toLowerCase() === norm,
@@ -272,10 +282,25 @@ async function main(): Promise<void> {
         if (exact) {
           didLink = true;
         } else if (candidates.length > 0) {
-          const best = candidates.reduce((a, c) =>
-            (c.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? c : a,
-          );
-          if ((best.sparseSimilarity ?? 0) >= LINK_THRESHOLD_0_82) {
+          const eligible = candidates
+            .filter(
+              (c) =>
+                c.sparseEvidence != null &&
+                LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+            )
+            .sort(
+              (a, c) => (c.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0),
+            );
+          const best = eligible[0];
+          if (
+            best != null &&
+            linkerAdmits({
+              topSim: best.sparseSimilarity ?? 0,
+              runnerSim: eligible[1]?.sparseSimilarity ?? 0,
+              eligibleCount: eligible.length,
+              tier: best.sparseEvidence ?? null,
+            })
+          ) {
             didLink = true;
             if (examples.length < 5)
               examples.push(

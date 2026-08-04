@@ -1,7 +1,13 @@
 -- identify-integrity-defects.sql
 -- =============================================================================
--- READ-ONLY. Lists the exact defect rows (with entity_ids + names) that the
--- Step-3 / Part-B7 data-integrity fix (fix-integrity-defects.sql) must resolve.
+-- @script-class: probe
+-- @finding: the Step-3 / Part-B7 defect census. Its paired executable,
+--   fix-integrity-defects.sql, was RETIRED and DELETED 2026-08-03 (F1253):
+--   spent one-off, 0 of its 26 hard-coded ids still alive, 9 referenced tables
+--   gone. See README.md for the banked reasoning and the re-measured counts.
+--
+-- READ-ONLY. Lists the exact defect rows (with entity_ids + names) the
+-- Step-3 / Part-B7 data-integrity work had to resolve.
 -- Nothing here mutates data. These queries mirror the audit's own queries in
 -- apps/api/scripts/search-harness/corpus-integrity.ts so the fix is reviewable
 -- against the same rows the gate counts.

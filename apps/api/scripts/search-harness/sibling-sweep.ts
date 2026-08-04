@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: K/R grid sweep + invariant gate for derived_entity_sibling_edges — the
+ * owner-eyeball evidence behind the production cut.
+ */
 import { Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { bootstrap, out } from './_shared';

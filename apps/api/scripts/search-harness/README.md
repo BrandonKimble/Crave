@@ -8,7 +8,21 @@ documentation.**
 
 These scripts are **new and self-contained**. They do **not** edit any hot search
 file (`entity-text-search.service.ts`, `autocomplete.service.ts`,
-`search-query-interpretation.service.ts`, …). They:
+`search-query-interpretation.service.ts`, …).
+
+> **READ-ONLY IS A PER-FILE PROPERTY, NOT A DIRECTORY BANNER** (corrected
+> 2026-08-03, F1255). This section used to claim the whole family reads the DB
+> read-only. Three files in it do not: **`rt-ballot-lane.ts`**,
+> **`rt-activation-scope.ts`** and **`rt-complete-chunk-plan.ts`** insert real
+> rows (extraction runs, source documents, polls, **users**) and vote through
+> the real ballot service. A blanket claim over a directory cannot be true of
+> every file in it, and this one was false for the three most dangerous files
+> it covered. Those three now call `requireNonProdDatabase()` — they refuse any
+> deployed environment and any non-local database host — and own their
+> synthetic rows in a `try/finally`, exiting non-zero on residue. Every OTHER
+> script in this directory is read-only.
+
+The read-only majority:
 
 - read the **live dev DB READ-ONLY** (creds in `apps/api/.env`, DB `crave_search`
   on localhost),
@@ -19,6 +33,14 @@ file (`entity-text-search.service.ts`, `autocomplete.service.ts`,
   linker), and
 - enumerate the corpus from a **frozen, versioned fixture** so the query set is
   stable and the gate can't rot.
+
+> **RESULTS BELOW ARE DATED, AND SOME PRE-DATE THE SHIPPED LINKER** (F1260,
+> corrected 2026-08-03). Every published number that names `0.82` was measured
+> under the retired hand-set threshold; the margin + per-tier-floor decision has
+> since shipped, and the harnesses now IMPORT it rather than replicate it. The
+> baselines are kept as history — re-run a harness before quoting it as current.
+> The corpus-integrity counts published in `scripts/data-fixes/README.md` were
+> re-measured 2026-08-03 and had ALL moved (F1253).
 
 ## Scripts
 
@@ -49,9 +71,11 @@ SQL** (`retrieveCandidates`, dense OFF). Reports per bucket:
 - **recall@10** — was the true entity in the top-10 shortlist?
 - **avgJunk** — non-true candidates admitted per query.
 - **junk-link rate on no-true-entity queries** — feeds random gibberish through the
-  current **0.82** linker rule and counts how often it still (wrongly) links.
+  **live** linker predicate (`linkerAdmits`, imported from
+  `src/modules/search/evidence-admission.ts`) and counts how often it still
+  (wrongly) links.
 
-Documents the current `0.7/0.55/0.45/0.35` length ladder + 0.82 linker — the
+Documents the current `0.7/0.55/0.45/0.35` length ladder + the live linker — the
 baseline the edit-distance rework (Step 6) must beat.
 
 ```bash
@@ -64,7 +88,7 @@ Env: `SAMPLE_PER_BUCKET` (default 60), `GIBBERISH_COUNT` (120), `SEED` (1337),
 ### 3. `variant-link-replay.ts`
 
 Builds two pair sets from the corpus and runs each through the linker's exact
-decision logic — **replicated from `linkViaHybridRecall`, reading the real
+decision logic — **imported from the service (`linkerAdmits`), reading the real
 `retrieveCandidates` shortlist, without modifying the service**:
 
 - **(a) alias → canonical** (non-name-copy aliases): variant-link recall — do
@@ -72,7 +96,9 @@ decision logic — **replicated from `linkViaHybridRecall`, reading the real
 - **(b) containment** ("Joe's" ⊂ "Joe's Pizza", restaurants): wrong-link error count
   — does the short name link to the wrong (longer) entity?
 
-Baseline for the planned `0.82 → margin` change (B6).
+Originally the baseline for the planned `0.82 → margin` change (B6). **That
+change SHIPPED**, and this harness now replays the calibrated incumbent it
+imports (F1260, 2026-08-03).
 
 ```bash
 yarn workspace api ts-node scripts/search-harness/variant-link-replay.ts
@@ -119,8 +145,8 @@ recall collapses on short words (the plan's core finding):
 | 6-8 chars | 61.5%     |
 | 9+ chars  | 82.4%     |
 
-Gibberish junk-link rate through the 0.82 rule = **0%** — the other half of the
-argument: 0.82 is so strict it rejects real variants too.
+Gibberish junk-link rate through the then-live 0.82 rule = **0%** — the other
+half of the argument: 0.82 was so strict it rejected real variants too.
 
 **variant-link-replay** — alias recall **99.0%** (1160/1172), 12 "wrong-entity"
 links that are actually the ambiguous-alias/duplicate **data defects** surfacing
@@ -129,9 +155,13 @@ links that are actually the ambiguous-alias/duplicate **data defects** surfacing
 
 ## Notes
 
-- **Read-only.** No harness writes to the DB or edits any service.
+- **Read-only — EXCEPT the three named at the top** (`rt-ballot-lane`,
+  `rt-activation-scope`, `rt-complete-chunk-plan`), which write synthetic rows
+  behind `requireNonProdDatabase()` and clean up in a `finally`. No harness
+  edits any service.
 - **tsc-clean.** `node_modules/.bin/tsc --noEmit` from `apps/api` stays exit 0;
-  `scripts/**/*` is already in `tsconfig.json`'s include.
+  `scripts/**/*` is in `tsconfig.json`'s include — and since 2026-08-03 the
+  `rt-*.ts` exclusion is gone, so the writers are type-checked too (F1255).
 - **Dependency-light.** Only `ts-node` + what the AppModule already pulls in; no new
   deps.
 - **Market scoping.** The dev corpus is ~99% NYC (`region-us-ny-new-york`), the

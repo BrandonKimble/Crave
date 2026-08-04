@@ -1,3 +1,9 @@
+/**
+ * @script-class: operational
+ * @runner: Runner: search-harness/README.md §1 (`yarn workspace api ts-node
+ * scripts/search-harness/frozen-fixture.ts`). Produces frozen-fixture.v1.json,
+ * the corpus every replay harness in this directory loads.
+ */
 import * as fs from 'fs';
 import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';

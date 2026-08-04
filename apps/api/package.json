@@ -48,7 +48,8 @@
     "crave-score:fixtures": "ts-node scripts/validate-crave-score-fixtures.ts",
     "crave-score:backfill-mentions": "ts-node scripts/backfill-item-mention-records.ts",
     "polls:seed-fixtures": "ts-node scripts/seed-poll-fixtures.ts",
-    "replay:extraction": "ts-node scripts/replay-extraction-run.ts"
+    "replay:extraction": "ts-node scripts/replay-extraction-run.ts",
+    "invariants": "ts-node -T --project tsconfig.json scripts/invariants.ts"
   },
   "dependencies": {
     "@clerk/clerk-sdk-node": "^5.1.3",

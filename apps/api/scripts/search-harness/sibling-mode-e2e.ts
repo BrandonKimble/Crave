@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: end-to-end effect of SEARCH_DENSE_SIBLINGS_MODE on fat vs thin queries — the
+ * evidence behind the shipped sibling mode.
+ */
 import { Logger } from '@nestjs/common';
 import { bootstrap, out } from './_shared';
 import { SearchService } from '../../src/modules/search/search.service';

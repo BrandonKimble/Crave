@@ -17,18 +17,11 @@ import {
   SearchQueryRequestDto,
   MapBoundsDto,
 } from './dto/search-query.dto';
-import {
-  LINK_ELIGIBLE_EVIDENCE,
-  linkerFloorsForTier,
-} from './evidence-admission';
+import { LINK_ELIGIBLE_EVIDENCE, linkerAdmits } from './evidence-admission';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import type { EntitySpanGroup } from '../entity-text-search/entity-text-search.service';
 import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
-import {
-  LINKER_MARGIN,
-  LINKER_MIN_FLOOR,
-} from './linker-calibration.generated';
 import { EngineCoverageService } from './engine-coverage.service';
 import { SignalsService } from '../signals/signals.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
@@ -555,13 +548,16 @@ export class SearchQueryInterpretationService {
     const top = eligible[0];
     const topSim = top?.sparseSimilarity ?? 0;
     const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
-    const floors = linkerFloorsForTier(top?.sparseEvidence ?? null);
+    // ONE definition of the live link decision, imported (F1260) — five
+    // harnesses used to replicate this expression by hand.
     const linkable =
       top != null &&
-      topSim >= LINKER_MIN_FLOOR &&
-      (topSim >= floors.absolute ||
-        (eligible.length === 1 && topSim >= floors.singleton) ||
-        (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
+      linkerAdmits({
+        topSim,
+        runnerSim,
+        eligibleCount: eligible.length,
+        tier: top?.sparseEvidence ?? null,
+      });
     if (!linkable || !top) return unmatched;
     // TIE PLURALITY: same-tier candidates within epsilon are
     // indistinguishable by evidence — reveal ALL of them.

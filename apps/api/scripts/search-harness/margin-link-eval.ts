@@ -1,4 +1,13 @@
+/**
+ * @script-class: probe
+ * @finding: candidate margin policy vs the incumbent, over the alias replay pairs — the
+ * evidence that gated the margin flip (now SHIPPED; see F1260).
+ */
 import { Logger } from '@nestjs/common';
+import {
+  LINK_ELIGIBLE_EVIDENCE,
+  linkerAdmits,
+} from '../../src/modules/search/evidence-admission';
 import { EntityType } from '@prisma/client';
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import {
@@ -13,7 +22,7 @@ import {
  * margin-link-eval.ts — Step 7 flip gate (plans/search-system-ideal.md B6).
  *
  * Runs BOTH link policies over the same ground-truth pairs and compares:
- *   - the live 0.82 rule (exact-name, else best sparse ≥ 0.82)
+ *   - the LIVE incumbent, imported (`linkerAdmits`) — F1260
  *   - the margin policy (L1 exact/alias-exact, L2 dominant top≥m·runnerUp,
  *     L3 tie→reveal-all) — a faithful replica of shadowMarginLinkDecision.
  *
@@ -26,7 +35,6 @@ import {
 
 const SHORTLIST_K = 5;
 const RECALL_POOL = 50;
-const THRESH = 0.82;
 const MARGIN = Number(process.env.MARGIN ?? 1.3);
 const CONTAINMENT_TYPES = new Set<string>(
   (process.env.CONTAINMENT_TYPES ?? 'restaurant')
@@ -55,16 +63,38 @@ async function recall(
   })) as Cand[];
 }
 
-/** Live 0.82 rule → the single linked id (or null). */
-function decide0_82(term: string, candidates: Cand[]): string | null {
+/**
+ * THE INCUMBENT → the single linked id (or null).
+ *
+ * F1260 (2026-08-03): this used to be `decide0_82`, a hand-written `>= 0.82`
+ * labelled "the live 0.82 rule". That rule was replaced by the calibrated
+ * per-tier floors + margin, and the replica was not re-synced — so this
+ * harness measured a policy nothing serves and reported it as the production
+ * baseline. The incumbent is IMPORTED now; only the CANDIDATE policy below is
+ * written out here, because only the candidate has no home yet.
+ */
+function decideIncumbent(term: string, candidates: Cand[]): string | null {
   if (candidates.length === 0) return null;
   const norm = term.trim().toLowerCase();
   const exact = candidates.find((c) => c.name.trim().toLowerCase() === norm);
   if (exact) return exact.entityId;
-  const best = candidates.reduce((a, c) =>
-    (c.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? c : a,
-  );
-  return (best.sparseSimilarity ?? 0) >= THRESH ? best.entityId : null;
+  const eligible = candidates
+    .filter(
+      (c) =>
+        c.sparseEvidence != null &&
+        LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+    )
+    .sort((a, c) => (c.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
+  const top = eligible[0];
+  if (!top) return null;
+  return linkerAdmits({
+    topSim: top.sparseSimilarity ?? 0,
+    runnerSim: eligible[1]?.sparseSimilarity ?? 0,
+    eligibleCount: eligible.length,
+    tier: top.sparseEvidence ?? null,
+  })
+    ? top.entityId
+    : null;
 }
 
 /** Margin policy → the linked id set (plural for reveal-all). Mirrors
@@ -113,7 +143,7 @@ async function main(): Promise<void> {
       }
     }
 
-    out('=== MARGIN-vs-0.82 LINK EVAL (Step 7 flip gate) ===');
+    out('=== MARGIN-vs-INCUMBENT LINK EVAL (Step 7 flip gate) ===');
     out(
       `fixture v${fixture.fixtureVersion}  market=${DEFAULT_MARKET_KEY}  m=${MARGIN}`,
     );
@@ -132,7 +162,7 @@ async function main(): Promise<void> {
     const recovered: string[] = [];
     for (const { alias, entity } of aliasPairs) {
       const cands = await recall(search, alias, entity.type);
-      const base = decide0_82(alias, cands);
+      const base = decideIncumbent(alias, cands);
       const m = decideMargin(cands);
       // baseline
       if (base === entity.entityId) A.base_correct++;
@@ -150,7 +180,7 @@ async function main(): Promise<void> {
       } else A.m_wrong++;
     }
     out(
-      `    0.82   : recall ${pct(A.base_correct, aliasPairs.length)}  wrong ${pct(A.base_wrong, aliasPairs.length)}  miss ${pct(A.base_miss, aliasPairs.length)}`,
+      `    live   : recall ${pct(A.base_correct, aliasPairs.length)}  wrong ${pct(A.base_wrong, aliasPairs.length)}  miss ${pct(A.base_miss, aliasPairs.length)}`,
     );
     out(
       `    margin : recall ${pct(A.m_correct, aliasPairs.length)}  wrong ${pct(A.m_wrong, aliasPairs.length)}  miss ${pct(A.m_miss, aliasPairs.length)}  [reveal-all=${A.m_reveal}]`,
@@ -182,7 +212,7 @@ async function main(): Promise<void> {
     const cErr: string[] = [];
     for (const { shortE, longE } of containment) {
       const cands = await recall(search, shortE.name, shortE.type);
-      const base = decide0_82(shortE.name, cands);
+      const base = decideIncumbent(shortE.name, cands);
       const m = decideMargin(cands);
       if (base != null && base !== shortE.entityId) C.base_wrong++;
       if (m.length > 0 && !m.includes(shortE.entityId)) {
@@ -193,7 +223,7 @@ async function main(): Promise<void> {
           );
       } else if (m.length > 1) C.m_reveal_safe++;
     }
-    out(`    0.82   : wrong-link ${pct(C.base_wrong, containment.length)}`);
+    out(`    live   : wrong-link ${pct(C.base_wrong, containment.length)}`);
     out(
       `    margin : wrong-link ${pct(C.m_wrong, containment.length)}  [reveal-included-short=${C.m_reveal_safe}]`,
     );
@@ -203,7 +233,7 @@ async function main(): Promise<void> {
     const recallLift = A.m_correct - A.base_correct;
     const containDelta = C.m_wrong - C.base_wrong;
     out(
-      `VERDICT: alias recall ${recallLift >= 0 ? '+' : ''}${recallLift} vs 0.82; ` +
+      `VERDICT: alias recall ${recallLift >= 0 ? '+' : ''}${recallLift} vs the live incumbent; ` +
         `containment wrong-link ${containDelta >= 0 ? '+' : ''}${containDelta}. ` +
         `Flip is justified iff recall lift > 0 AND containment delta <= 0.`,
     );

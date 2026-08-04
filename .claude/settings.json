@@ -56,9 +56,6 @@
       "Bash(cld admin destroy:*)",
       "Bash(cld admin delete_resources:*)",
       "Bash(cld uploader destroy:*)",
-      "Bash(./scripts/rig/deploy.sh:*)",
-      "Bash(railway up:*)",
-      "Bash(railway redeploy:*)",
       "Bash(npx eas-cli build:*)",
       "Bash(npx eas-cli submit:*)",
       "Bash(npx clerk init:*)"

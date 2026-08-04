@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: dense vs lexical vs hybrid top-K ordering, per query — the three-lane
+ * comparison behind the hybrid recall design.
+ */
 import { EntityType } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { bootstrap, DEFAULT_MARKET_KEY } from './_shared';

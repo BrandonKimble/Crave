@@ -459,6 +459,16 @@ export default () => {
           requestsPerMinute: 250, // measured peak 226/min
           requestsPerDay: 8_000, // 5,123 burst + 2,573 steady p95
         },
+        // Photo media (F1256, 2026-08-03). NOT a measurement — there is no
+        // ledger history to derive from, because every photo call ever made
+        // bypassed the meter. Its only caller is the dev-gallery seeder
+        // (8 photos x a few dozen restaurants), so this is a deliberately
+        // tight CEILING sized to that caller, to be re-derived from
+        // api_usage_ledger once real traffic exists.
+        photoMedia: {
+          requestsPerMinute: 120,
+          requestsPerDay: 2_000,
+        },
       }),
       defaultRadius: 5_000, // meters — default search radius
     },

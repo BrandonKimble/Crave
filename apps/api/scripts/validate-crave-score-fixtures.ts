@@ -1,7 +1,14 @@
+/**
+ * @script-class: operational
+ * @runner: package.json `crave-score:fixtures`
+ *   (`yarn workspace api crave-score:fixtures`). Add `--with-db` to also drive
+ *   one advisory-locked rescore-coordinator tick against the live DB.
+ */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
+import { RescoreCoordinatorService } from '../src/modules/content-processing/public-crave-score/rescore-coordinator.service';
 import {
   PublicCraveScoreService,
   buildCalibrationIndex,
@@ -24,8 +31,30 @@ import type {
 // (1) In-memory invariant suite over scoreCandidates — the scoring math:
 //     endorsement strength, discounted dish-acclaim + praise, global percentile,
 //     dishless-carried-by-praise, inclusion floor, full distribution spread.
-// (2) Real-DB rebuild smoke check (skip with --skip-db) — runs the production
-//     rebuildAllScores and asserts a healthy distribution + no orphans.
+// (2) Real-DB rebuild smoke check — OPT-IN with --with-db.
+//
+// THE DB LEG IS OPT-IN, AND IT DRIVES THE COORDINATOR (audit 2026-08-03,
+// F1254). Two defects, one edit:
+//
+//   POLARITY. A script named "validate…fixtures" ran a GLOBAL SCORE REBUILD
+//   by default; the escape was `--skip-db`, i.e. opt-OUT. The in-memory
+//   invariant suite is the part that belongs in a fixture validator, so that
+//   is what a bare invocation now runs. (wipe-city-derived.sql reasoned about
+//   exactly this and picked opt-IN, `-v execute=1`, for its routine sweep.)
+//
+//   AUTHORITY. It called `scorer.rebuildAllScores()` DIRECTLY — the only such
+//   caller in the tree outside RescoreCoordinatorService. §12.6 is explicit:
+//   global rebuilds happen ONLY through the singleton rescorer, advisory-locked
+//   (`pg_try_advisory_lock(0x63726176)`), flag cleared before the rebuild,
+//   re-dirtied on failure. Against any database where crons run, an operator
+//   "validating fixtures" raced the hourly rebuild — two concurrent global
+//   rebuilds over the same subject table, which is precisely what the lock
+//   exists to make impossible. If a service owns an operation under a lock,
+//   the lock IS the operation's entry point.
+//
+// The coordinator's tick can DECLINE (another holder owns the lock). That is
+// reported as its own outcome, never as a pass — a green that means "we did
+// not measure anything" is the disease.
 // ---------------------------------------------------------------------------
 
 type FixtureStatus = 'pass' | 'fail';
@@ -47,7 +76,12 @@ const outputPath = outputArg
       'crave-score-fixture-validation-report.md',
     );
 
-const skipDb = process.argv.includes('--skip-db');
+const withDb = process.argv.includes('--with-db');
+if (process.argv.includes('--skip-db')) {
+  console.warn(
+    '--skip-db is now the DEFAULT and the flag is a no-op (F1254). Pass --with-db to run the real-DB rebuild through the rescore coordinator.',
+  );
+}
 
 const noopLogger = {
   setContext() {
@@ -683,17 +717,45 @@ function runCalibrationChecks(): void {
 // ── Real-DB rebuild smoke check ─────────────────────────────────────────────
 
 async function runDbSmokeCheck(): Promise<void> {
-  if (skipDb) {
+  if (!withDb) {
     expectCheck(
-      'DB rebuild smoke check skipped by flag',
+      'DB rebuild smoke check not requested (in-memory invariant suite only)',
       true,
-      '--skip-db',
-      'skipped',
+      'pass --with-db to run it',
+      'not run',
     );
     return;
   }
 
-  const result = await scorer.rebuildAllScores();
+  // §12.6 SOLE AUTHORITY: mark dirty, drive ONE coordinator tick. Same code
+  // path the hourly cron takes, advisory lock included.
+  const coordinator = new RescoreCoordinatorService(
+    prisma as never,
+    noopLogger as never,
+    scorer,
+  );
+  coordinator.onModuleInit();
+  await coordinator.markDirty('validate-crave-score-fixtures --with-db');
+  const outcome = await coordinator.tick();
+  if (outcome !== 'rebuilt') {
+    // DECLINED / FAILED is NOT a pass. 'locked' means another rebuild holds
+    // the advisory lock — the honest report is "not measured", not "green".
+    expectCheck(
+      'DB rebuild ran through the rescore coordinator',
+      false,
+      "outcome === 'rebuilt'",
+      {
+        outcome,
+        meaning:
+          outcome === 'locked'
+            ? 'declined — another rebuild holds the advisory lock; nothing was measured'
+            : outcome === 'clean'
+              ? 'coordinator saw a clean flag (unexpected right after markDirty)'
+              : 'the rebuild FAILED; the dirty flag was re-set for the next tick',
+      },
+    );
+    return;
+  }
   const rows = await prisma.$queryRaw<
     Array<{ subject_type: string; display_score: unknown }>
   >`SELECT subject_type, display_score FROM core_public_entity_scores WHERE score_version = ${config.scoreVersion}`;
@@ -720,7 +782,9 @@ async function runDbSmokeCheck(): Promise<void> {
     restaurants.length > 0 && connections.length > 0,
     'restaurants > 0 and connections > 0',
     {
-      scored: result.scoredCount,
+      // Counted from the written rows: the coordinator's tick reports an
+      // outcome, not a row count, and the rows are the fact we care about.
+      scored: rows.length,
       restaurants: restaurants.length,
       connections: connections.length,
     },

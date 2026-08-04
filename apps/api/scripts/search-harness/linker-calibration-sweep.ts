@@ -1,3 +1,11 @@
+/**
+ * @script-class: operational
+ * @runner: Runner: search-harness/README.md. DERIVES the committed artifact
+ * `src/modules/search/linker-calibration.generated.ts` that the live linker
+ * reads, so it is live tooling, not a probe. Exempt from F1260's shared
+ * predicate BY CONSTRUCTION: it calibrates the constants, so importing them
+ * would calibrate against its own output.
+ */
 import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from '@nestjs/common';

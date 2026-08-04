@@ -1,4 +1,6 @@
 import {
+  LINKER_MARGIN,
+  LINKER_MIN_FLOOR,
   LINKER_TIER_FLOORS,
   type LinkerTierFloors,
 } from './linker-calibration.generated';
@@ -49,6 +51,56 @@ export const LINKER_FALLBACK_FLOORS: LinkerTierFloors = {
 
 export function linkerFloorsForTier(tier: string | null): LinkerTierFloors {
   return (tier && LINKER_TIER_FLOORS[tier]) || LINKER_FALLBACK_FLOORS;
+}
+
+/**
+ * THE LINK DECISION — ONE DEFINITION, IMPORTED (audit 2026-08-03, F1260).
+ *
+ * Five search harnesses re-implemented this rule in-script and each called its
+ * copy "the live rule". That was genuinely necessary once: the harnesses
+ * existed to compare a CANDIDATE policy against the INCUMBENT, and the
+ * incumbent had no importable home. The rung was writing the incumbent as a
+ * LITERAL — `const THRESH = 0.82 // the live 0.82 rule`. When the margin flip
+ * shipped, the service moved on and the five replicas did not; they went on
+ * reporting a policy nothing serves as the production baseline. One of them
+ * was worse than stale: it imported the calibrated constants, used them, and
+ * still printed `threshold=0.82` in its provenance line — a number it did not
+ * use, over output that looked freshly generated.
+ *
+ * So: exactly one definition of the live decision exists, and everything that
+ * evaluates the incumbent IMPORTS it. A harness holds CANDIDATE-policy code
+ * only, because only the candidate has no home yet, and a future flip is a
+ * one-line change here that every harness inherits.
+ *
+ * EXEMPT BY CONSTRUCTION: `scripts/search-harness/linker-calibration-sweep.ts`
+ * GENERATES `linker-calibration.generated.ts`, so it must keep its own
+ * derivation — unifying it would calibrate the constants against their own
+ * output.
+ */
+export interface LinkDecisionInput {
+  /** sparseSimilarity of the top eligible candidate. */
+  topSim: number;
+  /** sparseSimilarity of the runner-up, or 0 when there is none. */
+  runnerSim: number;
+  /** How many candidates survived link-eligibility filtering. */
+  eligibleCount: number;
+  /** The top candidate's sparse evidence tier (null → fallback floors). */
+  tier: string | null;
+}
+
+export function linkerAdmits(input: LinkDecisionInput): boolean {
+  const { topSim, runnerSim, eligibleCount, tier } = input;
+  const floors = linkerFloorsForTier(tier);
+  return (
+    topSim >= LINKER_MIN_FLOOR &&
+    (topSim >= floors.absolute ||
+      // SINGLETON: an absent runner-up is infinite dominance, so a lower bar
+      // is warranted — but only when nothing else competed.
+      (eligibleCount === 1 && topSim >= floors.singleton) ||
+      // MARGIN: dominance over the runner-up, self-normalizing, on
+      // sparseSimilarity and NEVER rrf (rrf's rank gap is a fixed constant).
+      (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim))
+  );
 }
 
 /** Expansion widens the ACTUAL result set, so it admits only strong lexical

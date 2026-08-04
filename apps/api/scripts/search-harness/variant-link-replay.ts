@@ -1,11 +1,15 @@
+/**
+ * @script-class: probe
+ * @finding: alias/variant link replay under the calibrated linker. NOTE (F1260): its
+ * provenance line used to print threshold=0.82, a number it did not use.
+ */
 import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import {
-  LINKER_TIER_FLOORS,
-  LINKER_MARGIN,
-  LINKER_MIN_FLOOR,
-} from '../../src/modules/search/linker-calibration.generated';
+  LINK_ELIGIBLE_EVIDENCE,
+  linkerAdmits,
+} from '../../src/modules/search/evidence-admission';
 import {
   bootstrap,
   loadFixture,
@@ -25,22 +29,23 @@ import {
  * Each pair is run through the linker's EXACT decision logic — replicated here,
  * reading the real `retrieveCandidates` shortlist, WITHOUT modifying the service:
  *   exact (name==term)  → link that entity
- *   else best sparse ≥ 0.82 → link that entity   (the current 0.82 rule)
+ *   else `linkerAdmits(...)` — the LIVE decision, imported from
+ *   src/modules/search/evidence-admission.ts (F1260)
  *   else                → unresolved
  *
  * Reports:
  *   - variant-link recall : aliases that link to the CORRECT entity
  *   - containment errors  : shorter name links to the WRONG (longer) entity, or v.v.
  *
- * This is the baseline for the planned 0.82 → margin change (B6). A margin sweep
- * lives in a later step; here we just document what the 0.82 rule does today.
+ * HISTORY: written as the baseline for the planned 0.82 → margin change (B6).
+ * That change SHIPPED; this file now replays the calibrated incumbent it
+ * imports, not the retired 0.82 literal.
  *
  *   yarn workspace api ts-node scripts/search-harness/variant-link-replay.ts
  */
 
 const SHORTLIST_K = 5; // HYBRID_LINK_SHORTLIST_K in the real linker
 const RECALL_POOL = 50;
-const LINK_THRESHOLD_0_82 = 0.82; // HYBRID_LINK_SIMILARITY_THRESHOLD
 const MAX_CONTAINMENT_PAIRS = Number(process.env.MAX_CONTAINMENT ?? 2000);
 const MAX_ALIAS_PAIRS = Number(process.env.MAX_ALIAS ?? 0); // 0 = all
 // Containment risk is the same-BRAND ambiguity ("Joe's" ⊂ "Joe's Pizza"), which
@@ -90,21 +95,9 @@ async function linkDecision(
       sim: 0,
     };
 
-  // MARGIN decider (mirrors the service): exact by evidence class; else link on
-  // the 0.82 floor OR a dominant margin over the runner-up (near-miss recovery),
-  // over link-eligible lexical evidence only.
-  // Mirrors the service: per-tier floors from the GENERATED calibration table
-  // (importing the same artifact the service reads kills replica drift).
-  const ELIGIBLE = new Set<string>([
-    'exact',
-    'prefix',
-    'name',
-    'alias',
-    'fuzzy',
-    'contains',
-    'edit',
-  ]);
-  const FALLBACK = { absolute: 0.82, singleton: 0.65 };
+  // The decider IS the service's: exact by evidence class, else the imported
+  // `linkerAdmits` predicate over link-eligible lexical evidence.
+  const ELIGIBLE = LINK_ELIGIBLE_EVIDENCE;
   const exact = candidates.find((c) => c.sparseEvidence === 'exact');
   if (exact) {
     return {
@@ -120,14 +113,15 @@ async function linkDecision(
   const top = eligible[0];
   const topSim = top?.sparseSimilarity ?? 0;
   const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
-  const floors =
-    (top?.sparseEvidence && LINKER_TIER_FLOORS[top.sparseEvidence]) || FALLBACK;
+  // F1260: THE INCUMBENT IS IMPORTED, NEVER REPLICATED.
   const linkable =
     top != null &&
-    topSim >= LINKER_MIN_FLOOR &&
-    (topSim >= floors.absolute ||
-      (eligible.length === 1 && topSim >= floors.singleton) ||
-      (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
+    linkerAdmits({
+      topSim,
+      runnerSim,
+      eligibleCount: eligible.length,
+      tier: top?.sparseEvidence ?? null,
+    });
   if (linkable) {
     return {
       linkedEntityId: top.entityId,
@@ -170,10 +164,14 @@ async function main(): Promise<void> {
     const aliasSample =
       MAX_ALIAS_PAIRS > 0 ? aliasPairs.slice(0, MAX_ALIAS_PAIRS) : aliasPairs;
 
-    out('=== VARIANT-LINK REPLAY (current 0.82 linker) ===');
+    out('=== VARIANT-LINK REPLAY (live calibrated linker) ===');
     out(`fixture v${fixture.fixtureVersion} @ ${fixture.generatedAt}`);
     out(
-      `market=${DEFAULT_MARKET_KEY}  shortlistK=${SHORTLIST_K}  threshold=0.82`,
+      // F1260: this line used to print `threshold=0.82` — a number this file
+      // had already STOPPED using. A provenance line that names a policy the
+      // run did not execute is worse than a stale file, because the output
+      // looks freshly generated.
+      `market=${DEFAULT_MARKET_KEY}  shortlistK=${SHORTLIST_K}  decision=linkerAdmits (src/modules/search/evidence-admission.ts)`,
     );
     out('');
     out(
@@ -301,7 +299,7 @@ async function main(): Promise<void> {
 
     out('');
     out(
-      'Baseline captured. The 0.82→margin change (B6) must lift variant recall',
+      'Baseline captured against the LIVE calibrated linker (the 0.82→margin change shipped). Must lift variant recall',
     );
     out('without inflating containment errors.');
   } finally {

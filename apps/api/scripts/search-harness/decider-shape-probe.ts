@@ -1,4 +1,18 @@
+/**
+ * @script-class: probe
+ * @finding: linker decision-region precision (A/B/C/D buckets) — the red-team evidence
+ * behind the margin rule. Re-synced 2026-08-03 (F1260) to the LIVE calibrated
+ * boundaries, which it now imports.
+ */
 import { EntityType } from '@prisma/client';
+import {
+  LINK_ELIGIBLE_EVIDENCE,
+  linkerFloorsForTier,
+} from '../../src/modules/search/evidence-admission';
+import {
+  LINKER_MARGIN,
+  LINKER_MIN_FLOOR,
+} from '../../src/modules/search/linker-calibration.generated';
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import { bootstrap, loadFixture, out, DEFAULT_MARKET_KEY } from './_shared';
 
@@ -6,10 +20,12 @@ import { bootstrap, loadFixture, out, DEFAULT_MARKET_KEY } from './_shared';
  * decider-shape-probe.ts — red-team probe (read-only).
  * Over the alias→canonical replay pairs, bucket every NON-exact decision by the
  * feature region the current decider uses, and measure per-region precision:
- *   A: topSim>=0.82                        (absolute floor)   -> links
- *   B: topSim in [0.5,0.82) & margin fires (runner>0)         -> links
- *   C: topSim in [0.5,0.82) & SINGLETON (runnerSim==0)        -> NO link today
- *   D: topSim in [0.5,0.82) & margin fails                    -> no link
+ *   A: topSim >= the tier's absolute floor                    -> links
+ *   B: above the hard minimum & margin fires (runner>0)       -> links
+ *   C: above the hard minimum & SINGLETON (runnerSim==0)      -> singleton branch
+ *   D: above the hard minimum & margin fails                  -> no link
+ * (F1260: the boundaries are IMPORTED from the calibration artifact the live
+ * linker reads — they were literals 0.5/0.82/1.3, a retired policy.)
  * Per-region: count, correct-target fraction (does top == expected entity),
  * plus sim distribution, so we can see if C is a recoverable dead-zone and
  * whether B's low-absolute fires are safe.
@@ -34,7 +50,8 @@ async function main() {
     correct: boolean;
   };
   const rows: Row[] = [];
-  const ELIGIBLE = new Set(['exact', 'prefix', 'name', 'alias', 'fuzzy']);
+  // F1260: the eligible-tier set is the service's, imported.
+  const ELIGIBLE = LINK_ELIGIBLE_EVIDENCE;
 
   const pairs: { term: string; type: EntityType; expected: string }[] = [];
   for (const e of fixture.entities) {
@@ -75,11 +92,16 @@ async function main() {
     if (!top) continue;
     const topSim = top.sparseSimilarity ?? 0;
     const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
-    if (topSim < 0.5) continue;
+    if (topSim < LINKER_MIN_FLOOR) continue;
+    // F1260: the region boundaries are the LIVE ones, read from the same
+    // calibration artifact the service reads. They used to be the literals
+    // 0.5 / 0.82 / 1.3 — a snapshot of a policy that has since been replaced
+    // by sweep-derived PER-TIER floors, so every bucket was mis-drawn.
+    const floors = linkerFloorsForTier(top.sparseEvidence ?? null);
     let region: string;
-    if (topSim >= 0.82) region = 'A_abs';
+    if (topSim >= floors.absolute) region = 'A_abs';
     else if (runnerSim === 0) region = 'C_singleton';
-    else if (topSim >= 1.3 * runnerSim) region = 'B_margin';
+    else if (topSim >= LINKER_MARGIN * runnerSim) region = 'B_margin';
     else region = 'D_nolink';
     rows.push({
       term: p.term,

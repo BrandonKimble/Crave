@@ -1,3 +1,9 @@
+/**
+ * @script-class: operational
+ * @runner: Runner: search-harness/README.md + scripts/data-fixes/README.md, which
+ * publishes its counts as the data-integrity gate (re-measured 2026-08-03,
+ * F1253).
+ */
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { bootstrap, out } from './_shared';

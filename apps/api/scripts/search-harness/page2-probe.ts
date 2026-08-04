@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: page-2 pagination shape for a broad query — recorded in
+ * plans/search-system-ideal.md.
+ */
 import { bootstrap, out } from './_shared';
 import { SearchService } from '../../src/modules/search/search.service';
 import { PrismaService } from '../../src/prisma/prisma.service';

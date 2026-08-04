@@ -1,10 +1,15 @@
+/**
+ * @script-class: probe
+ * @finding: red-team pass over the user-facing READ surfaces, end to end. Banked in
+ * audit/FINDINGS.md (2026-08-02 red-team pass).
+ */
 /* RED TEAM: user-facing READ surfaces, executed end-to-end. Read-only. */
 import { bootstrap } from './_shared';
 import { SearchService } from '../../src/modules/search/search.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
 async function idOf(prisma: any, name: string, type: string) {
-  const r = await prisma.$queryRawUnsafe<any[]>(
+  const r: any[] = await prisma.$queryRawUnsafe(
     `SELECT entity_id, name, status FROM core_entities WHERE lower(name)=lower($1) AND type=$2::entity_type ORDER BY (status='active') DESC LIMIT 1`,
     name,
     type,
@@ -148,10 +153,10 @@ async function main() {
       console.log('  getRestaurantProfile threw:', e?.message);
     }
     try {
-      const dishes = await search.listRestaurantDishes(
-        arch[0].entity_id,
-        {} as any,
-      );
+      // (F1255) This call passed a second argument that the method has not
+      // accepted for some time — rot the tsconfig exclusion hid until it was
+      // removed 2026-08-03.
+      const dishes = await search.listRestaurantDishes(arch[0].entity_id);
       console.log(
         '  listRestaurantDishes RETURNED:',
         JSON.stringify(dishes).slice(0, 200),

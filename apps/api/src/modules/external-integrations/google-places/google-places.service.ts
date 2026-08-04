@@ -415,6 +415,102 @@ export class GooglePlacesService {
     }
   }
 
+  /**
+   * Places Photo Media → a temporary CDN URI for one photo resource.
+   *
+   * ONE GATEWAY PER VENDOR, AND IT METERS (audit 2026-08-03, F1256). This
+   * endpoint is a billed SKU whose only caller was a raw `fetch` in
+   * `scripts/seed-google-photos.ts`, with a bare `GOOGLE_PLACES_API_KEY` — no
+   * spend gate, no rate coordinator, and no `api_usage_ledger` row. The money
+   * was small; the MEASUREMENT defect was not. The cost-truth law's whole
+   * method is billed-vs-ledger reconciliation, and a vendor call with no
+   * ledger counterpart is silently absorbed into the known under-metering,
+   * which `publish-reconciliation.ts` then bakes into a durable per-vendor
+   * multiplier applied to every future estimate. A dev-fixture seeder was
+   * therefore biasing the owner-facing cost manifest.
+   */
+  async getPlacePhotoUri(
+    photoName: string,
+    options: { maxWidthPx?: number } = {},
+  ): Promise<string> {
+    const apiKey = this.configService.get<string>('googlePlaces.apiKey');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'Google Places API key is not configured',
+      );
+    }
+    if (!photoName) {
+      throw new BadRequestException('photoName is required');
+    }
+
+    // Dollar gate before the rate gate — same order as every other call here.
+    await this.governance.assertPlacesSpendOpen();
+    const rateLimit = await this.rateLimitCoordinator.requestPermission({
+      service: ExternalApiService.GOOGLE_PLACES,
+      operation: 'photoMedia',
+    });
+    if (!rateLimit.allowed) {
+      throw this.buildTooManyRequestsError(
+        'Google Places rate limit reached. Try again shortly.',
+      );
+    }
+
+    this.usageLedger.record({
+      service: 'google_places',
+      operation: 'photoMedia',
+      skuTier: 'photo',
+      caller: 'google-places.getPlacePhotoUri',
+    });
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<{ photoUri?: string }>(
+          `${this.baseUrl}/${photoName}/media`,
+          {
+            params: {
+              maxWidthPx: String(options.maxWidthPx ?? 1600),
+              skipHttpRedirect: 'true',
+            },
+            timeout: this.requestTimeout,
+            headers: { 'X-Goog-Api-Key': apiKey },
+          },
+        ),
+      );
+      const uri = response.data?.photoUri;
+      if (!uri) {
+        throw new InternalServerErrorException(
+          `Google Places photo media returned no photoUri (${photoName})`,
+        );
+      }
+      return uri;
+    } catch (error) {
+      const axiosError = error as AxiosError<PlacesNewErrorResponse>;
+      const message =
+        axiosError.response?.data?.error?.message || axiosError.message;
+      if (
+        axiosError.response?.status === 429 ||
+        axiosError.response?.data?.error?.code === 429
+      ) {
+        await this.rateLimitCoordinator.reportRateLimitHit(
+          ExternalApiService.GOOGLE_PLACES,
+          60,
+          'photoMedia',
+        );
+        throw this.buildTooManyRequestsError(
+          'Google Places rate limit exceeded',
+        );
+      }
+      if (error instanceof HttpException) throw error;
+      this.logger.error('Failed to fetch Google Places photo media', {
+        photoName,
+        message,
+      });
+      throw new InternalServerErrorException(
+        'Failed to fetch Google Places photo',
+      );
+    }
+  }
+
   async autocompletePlace(
     input: string,
     options: GooglePlaceAutocompleteOptions = {},

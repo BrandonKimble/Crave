@@ -40,6 +40,20 @@ SELECT DISTINCT entity_id FROM (
     WHERE subject_id ~ '^[0-9a-f-]{36}::[0-9a-f-]{36}$'
   UNION SELECT split_part(subject_id, '::', 2)::uuid FROM poll_endorsements
     WHERE subject_id ~ '^[0-9a-f-]{36}::[0-9a-f-]{36}$'
+  -- DM entity shares (F1250, 2026-08-03): a user sharing a restaurant or a
+  -- dish into a conversation is a durable user link — the share card
+  -- hydrates LIVE from this id, so deleting the entity renders it
+  -- permanently "unavailable", which is exactly the broken link law 2
+  -- forbids. The redirect hop cannot rescue it (a wipe DELETES, it does not
+  -- merge, so no entity_redirects row exists). `shared_entity_id` is a bare
+  -- `text` column with no FK, and only the restaurant/dish kinds hold a
+  -- core_entities uuid — list/poll/comment/user_profile ids are NOT entity
+  -- ids — so the kind filter is load-bearing and the uuid-shape guard (the
+  -- poll_endorsements template) is the belt to its braces.
+  UNION SELECT shared_entity_id::uuid FROM messages
+    WHERE kind = 'entity_share'
+      AND shared_entity_kind IN ('restaurant', 'dish')
+      AND shared_entity_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
   UNION SELECT ci.food_id FROM core_restaurant_items ci
     JOIN preserved_connections pc ON pc.connection_id = ci.connection_id
   UNION SELECT ci.restaurant_id FROM core_restaurant_items ci

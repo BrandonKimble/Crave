@@ -1,3 +1,8 @@
+/**
+ * @script-class: probe
+ * @finding: lexical tie-mass + dense gradient: proved lexical has no gradient to margin
+ * on, which is why the margin rule reads dense similarity.
+ */
 import { EntityType } from '@prisma/client';
 import { Logger } from '@nestjs/common';
 import { bootstrap, DEFAULT_MARKET_KEY } from './_shared';

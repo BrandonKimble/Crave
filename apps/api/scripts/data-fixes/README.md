@@ -4,34 +4,70 @@ Reviewable, idempotent, transactional data surgery for the four corpus-integrity
 defects the audit's own gate reports (Part **B7** of `plans/search-system-ideal.md`),
 plus a runbook for the **separate** `food_attributes` re-projection.
 
-> ⚠️ **DESTRUCTIVE.** `fix-integrity-defects.sql` deletes entities, edits alias
-> arrays, and merges references. **Review the SQL and take a fresh database backup
-> before running it.** Nothing in this directory should be run unattended.
+> ## `fix-integrity-defects.sql` IS RETIRED — DELETED 2026-08-03 (audit F1253)
+>
+> **A one-off repair is a MIGRATION, not a permanent fixture with a warning
+> label.** It names the exact rows it fixes, runs once, and is retired. This
+> file's 503 destructive lines presented as live tooling for thirteen months
+> after they had ceased to be runnable:
+>
+> - it hard-coded **26 entity UUIDs** from the 2026-07-02 corpus — re-verified
+>   2026-08-03 against the live mirror: **0 of the 26 still exist**;
+> - it referenced **nine tables that no longer exist**, led by
+>   `core_entity_market_presence` (markets exterminated 2026-07-22) and the
+>   entire pre-signals user-event family (`user_favorites`,
+>   `user_favorite_events`, `user_food_views`, `user_restaurant_views`,
+>   `user_entity_view_events`, `search_event_entities`,
+>   `user_search_demand_daily`, `collection_on_demand_ask_events`) — so
+>   `ON_ERROR_STOP` aborted it on the first dead table;
+> - its 40-line winner-choice argument turned on `core_entity_market_presence`
+>   carrying "load-bearing" NYC recall visibility, while `_shared.ts` now says
+>   in its own comment that market-keyed recall scoping _died with the market
+>   model_. It was a preserved argument for a decision made in a world that no
+>   longer exists.
+>
+> It was deliberately **not repaired** to the new schema: the gate's counts
+> have completely turned over, so there are no defects left for it to fix —
+> repairing it would mint a fresh destructive script with no subject. THE
+> FINDING IS BANKED BELOW (winner-selection reasoning, the mistype-is-a-
+> duplicate analysis, the full FK repoint table, and the 2026-07-02 defect
+> census); only the executable expired.
 
-The gate that these fixes drive to zero:
+The gate this directory's fixes drove to zero:
 
 ```
-yarn workspace api ts-node scripts/search-harness/corpus-integrity.ts
+yarn workspace api ts-node scripts/search-harness/corpus-integrity.ts --json
 ```
 
-Baseline it reports (audit → target after Step 3):
+Baseline (audit 2026-07-02 → target after Step 3), and what the gate reports
+**today**:
 
-| Defect                                             | Count | Target |
-| -------------------------------------------------- | ----- | ------ |
-| exact same-name duplicate pairs within a type      | 7     | 0      |
-| word-order duplicate foods (trigram sim ≈ 1.0)     | 4     | 0      |
-| ambiguous aliases (1 alias → N same-type entities) | 18    | 0      |
-| mistyped entities (dish typed `restaurant`)        | 2     | 0      |
+| Defect                                             | Audit 2026-07-02 | Target | Re-measured 2026-08-03 |
+| -------------------------------------------------- | ---------------- | ------ | ---------------------- |
+| exact same-name duplicate pairs within a type      | 7                | 0      | **5**                  |
+| word-order duplicate foods (trigram sim ≈ 1.0)     | 4                | 0      | **3**                  |
+| ambiguous aliases (1 alias → N same-type entities) | 18               | 0      | **42**                 |
+| mistyped entities (dish typed `restaurant`)        | 2                | 0      | **29**                 |
+
+Every published number moved, and two moved UP — mistyped went 2 → 29. That is
+the evidence that the corpus has turned over completely since the fix was
+written, and the reason the fix was retired rather than repaired.
+
+> Measured twice, stably, on the local mirror `crave_search`:
+> `{"duplicatePairs":5,"duplicateGroups":5,"wordOrderDupFoods":3,"ambiguousAliases":42,"mistypedEntities":29,...}`.
+> NOTE for the record: the pass-2 audit note recorded 5 / 1 / 2 / 29 for these
+> four; two of its numbers did not reproduce on re-measure. The numbers above
+> are the executed ones, taken twice.
 
 ---
 
 ## Files
 
-| File                             | What it is                                                                                       | Mutates data?         |
-| -------------------------------- | ------------------------------------------------------------------------------------------------ | --------------------- |
-| `identify-integrity-defects.sql` | Read-only. Lists the exact defect rows (ids + names) so the fix is reviewable against real data. | **No**                |
-| `fix-integrity-defects.sql`      | Transactional, idempotent fix for all four defect classes.                                       | **Yes** (guard first) |
-| `README.md`                      | This file.                                                                                       | No                    |
+| File                             | What it is                                                                                                                      | Mutates data? |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| `identify-integrity-defects.sql` | Read-only. Lists the exact defect rows (ids + names) so the fix is reviewable against real data.                                | **No**        |
+| ~~`fix-integrity-defects.sql`~~  | **DELETED 2026-08-03** (F1253) — spent one-off; 0/26 target ids alive, 9 referenced tables gone. Its reasoning is banked below. | —             |
+| `README.md`                      | This file.                                                                                                                      | No            |
 
 ---
 
@@ -48,45 +84,15 @@ before touching the fix.
 
 ---
 
-## 2. Back up, then run the fix
+## 2. ~~Back up, then run the fix~~ — RETIRED
 
-### a. Back up
-
-```bash
-pg_dump "postgresql://postgres:postgres@localhost:5432/crave_search" \
-  -Fc -f crave_search.pre-b7-fix.dump
-```
-
-### b. Dry run (recommended) — proves it, persists nothing
-
-`fix-integrity-defects.sql` `BEGIN`s and `COMMIT`s itself and runs an in-transaction
-verification that **raises and rolls back** if any defect count is still non-zero.
-To dry-run, flip the final `COMMIT;` to `ROLLBACK;` (there's a commented `ROLLBACK;`
-right under it) and watch the `NOTICE` tally lines:
-
-```
-[merge]   13 loser->winner pair(s) live this run   (7 restaurants + 4 foods + 2 mistyped)
-[mistype] pre-clean removed restaurant-axis artifacts: entity_events=9, signals=2, restaurant_events=6, public_scores=2
-[merge]   loser rows still present after delete (want 0): 0
-[alias]   ambiguous alias strings stripped: 11
-[verify]  dupPairs=0 wordOrderFoods=0 ambiguousAliases=0 mistyped=0   (all want 0)
-```
-
-Re-running a second time is a proven no-op (`[merge] 0 pair(s) live`, `[alias] … 0`).
-
-### c. Run for real
-
-```bash
-PGPASSWORD=postgres psql -h localhost -U postgres -d crave_search \
-  -X -v ON_ERROR_STOP=1 -P pager=off \
-  -f apps/api/scripts/data-fixes/fix-integrity-defects.sql
-```
-
-Then confirm the gate reads clean:
-
-```bash
-yarn workspace api ts-node scripts/search-harness/corpus-integrity.ts
-```
+There is nothing to run. The executable was deleted 2026-08-03 (see the banner).
+The procedure it carried is recorded for the next one-off repair, whoever writes
+it: back up with `pg_dump -Fc` first; `BEGIN`/`COMMIT` in the script itself with
+an in-transaction verification that RAISES and rolls back while any defect count
+is non-zero; dry-run by flipping the final `COMMIT;` to `ROLLBACK;`; prove
+idempotency with a second pass. **And then retire it** — that last step is the
+one this directory did not do, which is the whole of F1253.
 
 ---
 
@@ -100,9 +106,13 @@ The FK footprint of every pair is **split**, so this needed care:
   `core_restaurant_entity_signals`, richer entity events, and (for 4 of 7) the
   public score;
 - the **newer** row holds the single `region-us-ny-new-york` `market_presence`
-  row — which is **load-bearing**: restaurant recall is market-scoped to NYC
-  (`scripts/search-harness/_shared.ts`), so an entity with no `market_presence` is
-  invisible in NYC recall.
+  row — which was, at the time, **load-bearing**: restaurant recall was
+  market-scoped to NYC, so an entity with no `market_presence` was invisible in
+  NYC recall.
+  **NO LONGER TRUE (markets exterminated 2026-07-22).** `core_entity_market_presence`
+  does not exist and market-keyed recall scoping died with the market model.
+  This half of the argument is kept as history, not as guidance — it is exactly
+  why the executable had to be retired rather than repaired.
 
 So **winner = the oldest row** (keeps the hard-to-recreate dish graph), and the fix
 **explicitly moves the loser's `market_presence` + aliases onto the winner** before
@@ -165,7 +175,12 @@ run); the loser-merge map is empty on re-run (losers already gone).
 
 ---
 
-## Defect rows found (verified against live `crave_search`, 2026-07-02)
+## Defect rows found (verified against live `crave_search`, 2026-07-02) — HISTORICAL
+
+**None of the 26 UUIDs below still exists** (re-verified 2026-08-03: `SELECT
+count(*) FROM core_entities WHERE entity_id = ANY(...)` → **0**). This census is
+banked as the record of what the July duplicate-pair analysis found, not as a
+worklist.
 
 Nothing below was mutated — these are read-only captures. The fix was validated by a
 `ROLLBACK`-forced dry run + a double-pass idempotency run; the DB is byte-for-byte

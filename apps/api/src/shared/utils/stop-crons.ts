@@ -47,6 +47,32 @@ const stopAllRegisteredCrons = (
  * PROCESS_ROLE (which defaults to 'all' — exactly why scripts used to boot
  * live crons). Call this right after createApplicationContext, before any
  * awaited work gives a cron its first tick.
+ *
+ * ── THE FAMILY THIS BELONGS TO (named 2026-08-03, F1257) ──────────────────
+ *
+ * A SCRIPT BOOT MUST NOT START BILLED OR MUTATING BACKGROUND WORK.
+ *
+ * Crons were the first member found, and for a while this function was
+ * mistaken for the whole law. It is not. Running `corpus-integrity.ts` — a
+ * file whose docstring reads "PURE read-only SQL against the live DB" —
+ * emitted a BILLED Gemini cache create at boot (a ~20k-token context rented
+ * for three hours by a nine-second query) and re-derived durable spend-pool
+ * state, both from module construction, both untouched by anything here. The
+ * containment lockdown stopped the crons a script boot starts and nothing
+ * else, so "this script is read-only" was a claim about the script's own
+ * statements that its dependency graph quietly falsified.
+ *
+ * The members closed so far, each at its own seam rather than by a
+ * script-mode flag — because the right owner of a cost-bearing resource is
+ * the CONSUMER that needs it, not a mode the boot remembers to set:
+ *   1. @Cron registration          → this function.
+ *   2. Gemini query-instruction cache → lazy (`getQueryCacheName`).
+ *   3. Gemini system-instruction cache → lazy (`getSystemCacheName`, F1257).
+ *
+ * Still open, recorded so it is not rediscovered as a surprise: the spend
+ * pool's monthly-backstop re-derivation still writes durable state at module
+ * init. When a fourth member appears, the answer is another lazy seam here in
+ * this list — not a new caller-must-remember call.
  */
 export const stopCronsForScript = (app: INestApplicationContext): void => {
   stopAllRegisteredCrons(app, 'script runtime');

@@ -18,6 +18,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { AppModule } from '../../src/app.module';
 import { stopCronsForScript } from '../../src/shared/utils/stop-crons';
+import { isDeployedEnv, resolveAppEnv } from '../../src/shared/config/app-env';
 
 /**
  * Shared plumbing for the Step-1 search validation harnesses (see README.md).
@@ -94,6 +95,48 @@ export function loadFixture(): Fixture {
 
 export function out(m = ''): void {
   process.stdout.write(`${m}\n`);
+}
+
+/**
+ * A SCRIPT THAT WRITES DECLARES ITS TARGET ENVIRONMENT AND REFUSES ANY OTHER
+ * (audit 2026-08-03, F1255).
+ *
+ * Three files in this directory (`rt-ballot-lane`, `rt-activation-scope`,
+ * `rt-complete-chunk-plan`) insert real rows — extraction runs, source
+ * documents, polls, and USERS — and vote through the real ballot service.
+ * They shipped with no environment guard of any kind: they wrote to whatever
+ * `DATABASE_URL` happened to name. Under the deploy-autonomy posture that is
+ * one exported variable away from synthetic users in production, and the
+ * directory README called the whole family "READ-ONLY", so nothing in the
+ * corpus contradicted it.
+ *
+ * Two independent tests, because either alone has a hole: the resolved app env
+ * catches a correctly-labelled deployed process, and the host check catches
+ * the real hazard — a laptop with `APP_ENV` unset and a hosted `DATABASE_URL`
+ * exported, which resolves to `dev` and would otherwise sail through.
+ */
+export function requireNonProdDatabase(what: string): void {
+  const env = resolveAppEnv();
+  if (isDeployedEnv(env)) {
+    throw new Error(
+      `${what} WRITES synthetic rows and refuses to run against a deployed environment (APP_ENV resolved to "${env}"). Run it on a local/dev database.`,
+    );
+  }
+  const url = process.env.DATABASE_URL ?? '';
+  let host = '';
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    throw new Error(
+      `${what} WRITES synthetic rows and could not parse DATABASE_URL to verify it is local. Refusing.`,
+    );
+  }
+  const local = ['localhost', '127.0.0.1', '::1', 'host.docker.internal'];
+  if (!local.includes(host)) {
+    throw new Error(
+      `${what} WRITES synthetic rows and refuses a non-local database host "${host}". Run it against the local dev DB.`,
+    );
+  }
 }
 
 /** Length buckets used across the typo + attribute harnesses (Part C). */

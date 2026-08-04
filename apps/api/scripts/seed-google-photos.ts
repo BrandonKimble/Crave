@@ -1,7 +1,19 @@
+/**
+ * @script-class: operational
+ * @runner: manual, per the usage line in the docstring below
+ *   (`yarn ts-node -r tsconfig-paths/register scripts/seed-google-photos.ts`).
+ */
 import 'dotenv/config';
+process.env.PROCESS_ROLE ||= 'api';
+
+import { NestFactory } from '@nestjs/core';
+import type { INestApplicationContext } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
 import { randomUUID } from 'node:crypto';
+import { AppModule } from '../src/app.module';
+import { stopCronsForScript } from '../src/shared/utils/stop-crons';
+import { GooglePlacesService } from '../src/modules/external-integrations/google-places/google-places.service';
 
 /**
  * Dev-gallery seeding (wave2 charter §7 / plans/media-images-ledger.md):
@@ -17,6 +29,19 @@ import { randomUUID } from 'node:crypto';
  * a restaurant with >=5 imported photos is skipped.
  *
  *   yarn ts-node -r tsconfig-paths/register scripts/seed-google-photos.ts [--limit N]
+ *
+ * BILLED CALLS GO THROUGH THE METERED CLIENT (F1256, 2026-08-03). This seeder
+ * used to call Places Details and Places Photo Media with a raw `fetch` and a
+ * bare `GOOGLE_PLACES_API_KEY` — bypassing the vendor client, the rate-limit
+ * coordinator, the durable spend pool and `api_usage_ledger` entirely. The
+ * spend was small, which is exactly what made it a MEASUREMENT defect rather
+ * than a spend defect: the cost-truth law is billed-vs-ledger reconciliation,
+ * and calls with no ledger counterpart get absorbed into the known
+ * under-metering and then baked into a durable per-vendor multiplier that
+ * biases every future estimate. There is one gateway per vendor and it meters;
+ * a raw `fetch` to a billed host is that law violated, whoever the caller is.
+ * (Same shape still open elsewhere: `data-fixes/audit-catalog-vs-vendor.ts`
+ * and `data-fixes/resolve-entity-names.ts` raw-fetch TomTom identically.)
  */
 
 const PHOTOS_PER_RESTAURANT = 8;
@@ -26,9 +51,9 @@ const TOP_AUSTIN_LIMIT = Number(
     : 15,
 );
 const IMPORT_USER_EMAIL = 'google-import@crave-search.local';
-const PLACES_BASE = 'https://places.googleapis.com/v1';
 
 const prisma = new PrismaClient();
+let app: INestApplicationContext | null = null;
 
 type Candidate = { entityId: string; name: string; googlePlaceId: string };
 
@@ -100,34 +125,17 @@ async function getCandidates(): Promise<Candidate[]> {
 }
 
 async function fetchPhotoNames(
+  places: GooglePlacesService,
   placeId: string,
-  key: string,
 ): Promise<string[]> {
-  const res = await fetch(
-    `${PLACES_BASE}/places/${placeId}?fields=photos.name&key=${key}`,
-  );
-  if (!res.ok) {
-    throw new Error(`place details ${placeId}: ${res.status}`);
-  }
-  const json = (await res.json()) as { photos?: { name: string }[] };
-  return (json.photos ?? []).map((p) => p.name);
-}
-
-async function fetchPhotoUri(photoName: string, key: string): Promise<string> {
-  const res = await fetch(
-    `${PLACES_BASE}/${photoName}/media?maxWidthPx=1600&skipHttpRedirect=true&key=${key}`,
-  );
-  if (!res.ok) {
-    throw new Error(`photo media ${photoName}: ${res.status}`);
-  }
-  const json = (await res.json()) as { photoUri?: string };
-  if (!json.photoUri) throw new Error(`photo media ${photoName}: no photoUri`);
-  return json.photoUri;
+  const details = await places.getPlaceDetails(placeId, {
+    fields: ['photos.name'],
+  });
+  const photos = (details.place as { photos?: { name: string }[] }).photos;
+  return (photos ?? []).map((p) => p.name);
 }
 
 async function main(): Promise<void> {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
-  if (!key) throw new Error('GOOGLE_PLACES_API_KEY missing');
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
   const apiKey = process.env.CLOUDINARY_API_KEY;
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
@@ -141,6 +149,13 @@ async function main(): Promise<void> {
     secure: true,
   });
   const envPrefix = process.env.CLOUDINARY_ENV_PREFIX || 'dev';
+
+  // Boot the real graph purely to obtain the METERED Places client.
+  app = await NestFactory.createApplicationContext(AppModule, {
+    logger: ['error', 'warn'],
+  });
+  stopCronsForScript(app);
+  const places = app.get(GooglePlacesService);
 
   const importUserId = await getImportUserId();
   const candidates = await getCandidates();
@@ -157,7 +172,7 @@ async function main(): Promise<void> {
     }
     let names: string[];
     try {
-      names = await fetchPhotoNames(c.googlePlaceId, key);
+      names = await fetchPhotoNames(places, c.googlePlaceId);
     } catch (err) {
       console.warn(`SKIP ${c.name}: ${(err as Error).message}`);
       continue;
@@ -166,7 +181,9 @@ async function main(): Promise<void> {
     console.log(`${c.name}: ${wanted.length} photos`);
     for (const photoName of wanted) {
       try {
-        const uri = await fetchPhotoUri(photoName, key);
+        const uri = await places.getPlacePhotoUri(photoName, {
+          maxWidthPx: 1600,
+        });
         const photoId = randomUUID();
         const publicId = `crave/${envPrefix}/photos/${photoId}`;
         const upload = await cloudinary.uploader.upload(uri, {
@@ -202,4 +219,7 @@ main()
     console.error(err);
     process.exitCode = 1;
   })
-  .finally(() => prisma.$disconnect());
+  .finally(async () => {
+    await app?.close();
+    await prisma.$disconnect();
+  });

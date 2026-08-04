@@ -1,5 +1,14 @@
+/**
+ * @script-class: probe
+ * @finding: per-term linker decision + top-5 shortlist. NOTE (F1260): re-synced to the
+ * live predicate in src/modules/search/linker-decision.ts.
+ */
 import { EntityType } from '@prisma/client';
 import { Logger } from '@nestjs/common';
+import {
+  LINK_ELIGIBLE_EVIDENCE,
+  linkerAdmits,
+} from '../../src/modules/search/evidence-admission';
 import { bootstrap, DEFAULT_MARKET_KEY } from './_shared';
 import {
   EntityTextSearchService,
@@ -8,15 +17,13 @@ import {
 
 /**
  * linker-decision-probe.ts — reproduce the EXACT current linker decision
- * (linkViaHybridRecall: exact-name→'exact'; else best-sparse ≥0.82→'fuzzy';
+ * (exact-name→'exact'; else the IMPORTED `linkerAdmits` predicate;
  * else unmatched) for a battery of real terms, and print the top-5 shortlist
  * with sparse/dense/rrf so we can see where dense/rrf would pick a BETTER
- * entity than the sparse-only 0.82 rule.
+ * entity than the lexical-only decision.
  *
  *   yarn workspace api ts-node scripts/search-harness/linker-decision-probe.ts
  */
-
-const THRESHOLD = 0.82; // HYBRID_LINK_SIMILARITY_THRESHOLD
 
 interface Case {
   term: string;
@@ -89,14 +96,31 @@ async function main(): Promise<void> {
       if (exact) {
         decision = `EXACT → link ${exact.name} (conf 1)`;
       } else {
-        const best = cands.reduce((a, b) =>
-          (b.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? b : a,
-        );
-        const sim = best.sparseSimilarity ?? 0;
-        decision =
-          sim >= THRESHOLD
-            ? `FUZZY ≥0.82 → link ${best.name} (sparse ${sim.toFixed(3)})`
-            : `UNMATCHED (best sparse ${best.name}=${sim.toFixed(3)} < 0.82)`;
+        // F1260: the decision is the IMPORTED one. This probe used to spell
+        // `sim >= 0.82` and call it "the live rule" after the service had
+        // moved to calibrated per-tier floors + margin.
+        const eligible = cands
+          .filter(
+            (c) =>
+              c.sparseEvidence != null &&
+              LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+          )
+          .sort(
+            (a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0),
+          );
+        const best = eligible[0] ?? cands[0];
+        const sim = best?.sparseSimilarity ?? 0;
+        const admits =
+          eligible[0] != null &&
+          linkerAdmits({
+            topSim: sim,
+            runnerSim: eligible[1]?.sparseSimilarity ?? 0,
+            eligibleCount: eligible.length,
+            tier: eligible[0].sparseEvidence ?? null,
+          });
+        decision = admits
+          ? `LINK ${best.name} (sparse ${sim.toFixed(3)}, tier ${best.sparseEvidence})`
+          : `UNMATCHED (best sparse ${best?.name ?? '-'}=${sim.toFixed(3)})`;
       }
 
       // ---- what DENSE-top / RRF-top would have picked ----
@@ -113,7 +137,7 @@ async function main(): Promise<void> {
             (b.sparseSimilarity as number) - (a.sparseSimilarity as number),
         )[0];
 
-      console.log(`  LIVE (sparse-only 0.82): ${decision}`);
+      console.log(`  LIVE (imported linkerAdmits): ${decision}`);
       console.log(
         `  rrf-top=${rrfTop?.name ?? '-'} | dense-top=${denseTop?.name ?? '-'} | sparse-top=${sparseTop?.name ?? '-'}`,
       );

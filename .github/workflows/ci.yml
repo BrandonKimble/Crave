@@ -94,6 +94,29 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
 
+      # DO THE GUARDS STILL BITE? For every entry in the invariant registry,
+      # apply a mutation that must break it and require the check to FAIL.
+      #
+      # This is the step the apparatus was missing. A census of this repo found
+      # ~125 invariants, 68 code comments claiming a guard was "proven RED", and
+      # ZERO scripts that could reproduce any of those proofs — while 19 separate
+      # historical incidents were guards discovered not to work, 13 of them
+      # source scanners defeated by a comment, a rename, or a regex that only
+      # matched the already-fixed shape. Five were caught only by red-teaming a
+      # guard its author had verified by hand the same day.
+      #
+      # It runs LAST because it mutates the working tree (restoring after each
+      # step), and it must run in CI rather than on demand: four gates in this
+      # repo were found wired to nothing, sitting green for months. An unrun
+      # proof harness would be the fifth.
+      - name: Invariants still bite (mutation proofs)
+        working-directory: apps/api
+        run: yarn invariants
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/crave_search_test?schema=public
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+
   search-runtime-contract-tests:
     # Contract-check job: static validation of the search-runtime cutover
     # guards. PRUNED 2026-08-02: the perf-shortcut fixture harness steps

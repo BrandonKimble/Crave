@@ -447,22 +447,29 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     this.attachFetchDiagnostics();
 
     this.initializeSystemCacheConfig();
-    // Initialize explicit cache for system instructions (async, non-blocking)
-    this.bootstrapSystemInstructionCache().catch((error) => {
-      this.logger.warn(
-        'System instruction cache initialization failed, continuing with fallback',
-        {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'module_init',
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        },
-      );
-    });
 
-    // Query-instruction cache is LAZY (getQueryCacheName): minting it at
-    // boot made every script run rent a cache it never read.
+    // THE LAW: A SCRIPT BOOT MUST NOT START BILLED OR MUTATING BACKGROUND
+    // WORK (named 2026-08-03, F1257 — the sibling of `stopCronsForScript`).
+    //
+    // `stopCronsForScript` closes ONE member of this family: the ~20 @Cron
+    // jobs a `createApplicationContext` boot registers. It was never the
+    // whole family. Every Nest-booting script — including
+    // `corpus-integrity.ts`, whose docstring says "PURE read-only SQL against
+    // the live DB" — also inherited whatever module construction happened to
+    // do, and module construction here MINTED A BILLED GEMINI CACHE: a ~20k-
+    // token context rented for three hours by a nine-second read-only query.
+    // Gemini cache STORAGE is priced in token-hours (scripts/lib/cost-report.ts
+    // was already burned by exactly that, reporting 13 cents as 0.2 cents).
+    //
+    // The fix was sitting three lines below, applied to the OTHER cache: the
+    // query-instruction cache is lazy because "minting it at boot made every
+    // script run rent a cache it never read". That sentence applied verbatim
+    // to the system cache too, and the lesson simply stopped at one sibling.
+    // Both are lazy now — a cost-bearing vendor resource is acquired by the
+    // CONSUMER that needs it, never by module construction.
+    //
+    // If the API's warm start is worth paying for, it becomes an EXPLICIT
+    // warm-up on the api role — not a side effect every `ts-node` inherits.
   }
 
   onModuleDestroy(): void {
@@ -491,6 +498,27 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       refreshLeadMs = Math.max(30_000, Math.floor(this.systemCacheTtlMs / 2));
     }
     this.systemCacheRefreshLeadMs = refreshLeadMs;
+  }
+
+  /**
+   * The system-instruction cache name, minted ON FIRST USE (F1257).
+   *
+   * Same seam as `getQueryCacheName` beside it. Fail-open on any error: null
+   * falls back to inline system instructions — paying full rate beats failing
+   * a request. The registry is the cross-process store, so the common case is
+   * reusing a sibling's live cache for free rather than paying a create.
+   */
+  private async getSystemCacheName(): Promise<string | null> {
+    const memo = this.systemInstructionCache?.name;
+    if (
+      memo &&
+      this.systemInstructionCacheExpiresAt !== null &&
+      this.systemInstructionCacheExpiresAt - Date.now() > 300_000
+    ) {
+      return memo;
+    }
+    await this.bootstrapSystemInstructionCache();
+    return this.systemInstructionCache?.name ?? null;
   }
 
   private async bootstrapSystemInstructionCache(): Promise<void> {
@@ -3279,7 +3307,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         ? null
         : (options.cacheName ??
           (collectionPath && targetModel === this.llmConfig.model
-            ? (this.systemInstructionCache?.name ?? null)
+            ? // LAZY (F1257): first collection call mints it; a read-only
+              // script boot never reaches here, so it never rents one.
+              await this.getSystemCacheName()
             : null));
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
