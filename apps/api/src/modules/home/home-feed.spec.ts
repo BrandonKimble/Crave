@@ -186,6 +186,12 @@ function createHarness(options: {
         ),
       ),
     },
+    // N6: the recipe renderer resolves the concept a parametric recipe points
+    // at. These fixtures carry no concept entities, so a parametric recipe is
+    // unrenderable and falls back to the stored title — the documented path.
+    entity: {
+      findMany: jest.fn(() => Promise.resolve([])),
+    },
     place: {
       findMany: jest.fn(({ where }: { where: { placeId: { in: string[] } } }) =>
         Promise.resolve(
@@ -321,6 +327,13 @@ function createHarness(options: {
     } as never,
     { addItem } as never,
     saveable as never,
+    // N10 display boundary: no label rows in these fixtures, so the display
+    // function is an identity — which is exactly what English callers get.
+    {
+      loadLabels: () => Promise.resolve(new Map()),
+      displayLabel: (entity: { name: string }) => entity.name,
+      localizeRows: (rows: unknown[]) => Promise.resolve(rows),
+    } as never,
     createLogger() as never,
   );
   return { service, prisma, addItem };

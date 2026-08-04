@@ -92,7 +92,10 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       ignoreNextSearchBlurRef.current = true;
       suppressAutocompleteResults();
       const typedPrefix = query;
-      const nextQuery = match.name;
+      // MATCHING ≠ DISPLAY (i18n N10): submit the canonical token when the
+      // server provides one — a localized display name must never become
+      // the matcher's input.
+      const nextQuery = match.submitToken ?? match.name;
       const shouldDeferSuggestionClear = beginSubmitTransition();
       cancelAutocomplete();
       setIsSearchFocused(false);

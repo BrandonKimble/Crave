@@ -35,6 +35,14 @@ import {
   RECIPE_HIDDEN_GEMS,
   RECIPE_TRENDING,
 } from './curated-lists.constants';
+import { EntityDisplayService } from '../entity-display/entity-display.service';
+import {
+  conceptCase,
+  recipeConceptId,
+  renderRecipe,
+} from '../entity-display/recipe-render';
+import { renderMessage } from '../entity-display/recipe-messages';
+import { DEFAULT_LOCALE } from '../../shared/locale';
 
 const PREVIEW_NAMES_COUNT = 3;
 const MAX_ROLLUP_DEPTH = 8;
@@ -110,6 +118,8 @@ type CuratedListRow = {
   subtitle: string | null;
   iconKey: string;
   itemCount: number;
+  /** N6: the recipe's cadence key doubles as the month parameter. */
+  rotationKey: string;
 };
 
 @Injectable()
@@ -124,15 +134,82 @@ export class HomeFeedService {
     // 'favorite_added' act and enforces every save invariant.
     private readonly userLists: UserListsService,
     private readonly saveableEntities: SaveableEntityResolver,
+    // N6/N10: titles are RENDERED here, from the recipe, in the reader's
+    // locale — the stored title/subtitle are fallback only.
+    private readonly entityDisplay: EntityDisplayService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('HomeFeedService');
+  }
+
+  /**
+   * N6 — RENDER FROM RECIPE, for a set of curated rows in one locale.
+   *
+   * Two queries at most, regardless of list count: one for the concept names
+   * the parametric recipes point at, one for their labels. The stored
+   * title/subtitle are the fallback when a recipe key is unknown or its
+   * concept has vanished — never the primary.
+   */
+  private async renderListTitles(
+    lists: ReadonlyArray<{
+      listId: string;
+      recipeKey: string;
+      rotationKey: string;
+      title: string;
+      subtitle: string | null;
+    }>,
+    cityName: string,
+    locale: string,
+  ): Promise<Map<string, { title: string; subtitle: string | null }>> {
+    const conceptIds = [
+      ...new Set(
+        lists
+          .map((list) => recipeConceptId(list.recipeKey))
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const concepts = conceptIds.length
+      ? await this.prisma.entity.findMany({
+          where: { entityId: { in: conceptIds } },
+          select: { entityId: true, name: true },
+        })
+      : [];
+    const labels = await this.entityDisplay.loadLabels(conceptIds, locale);
+    const conceptById = new Map(
+      concepts.map((concept) => [concept.entityId, concept]),
+    );
+
+    const rendered = new Map<
+      string,
+      { title: string; subtitle: string | null }
+    >();
+    for (const list of lists) {
+      const conceptId = recipeConceptId(list.recipeKey);
+      const concept = conceptId ? conceptById.get(conceptId) : undefined;
+      const conceptLabel = concept
+        ? conceptCase(
+            this.entityDisplay.displayLabel(concept, locale, labels),
+            locale,
+          )
+        : null;
+      const recipe = renderRecipe(list.recipeKey, locale, {
+        cityName,
+        conceptLabel,
+        rotationKey: list.rotationKey,
+      });
+      rendered.set(
+        list.listId,
+        recipe ?? { title: list.title, subtitle: list.subtitle },
+      );
+    }
+    return rendered;
   }
 
   async getFeed(
     view: GeoBbox,
     userId: string,
     pickedCityId?: string,
+    locale: string = DEFAULT_LOCALE,
   ): Promise<HomeFeedResponse> {
     const [verdict, liveCities, catalogWatermark] = await Promise.all([
       this.viewportVerdict.resolveViewportVerdict(view),
@@ -180,15 +257,17 @@ export class HomeFeedService {
         subtitle: true,
         iconKey: true,
         itemCount: true,
+        rotationKey: true,
       },
     });
-    const previews = await this.previewNamesByList(
-      lists.map((list) => list.listId),
-    );
+    const [previews, renderedTitles] = await Promise.all([
+      this.previewNamesByList(lists.map((list) => list.listId)),
+      this.renderListTitles(lists, resolvedCity.name, locale),
+    ]);
     const toShelfList = (list: CuratedListRow): HomeShelfList => ({
       listId: list.listId,
-      title: list.title,
-      subtitle: list.subtitle,
+      title: renderedTitles.get(list.listId)?.title ?? list.title,
+      subtitle: renderedTitles.get(list.listId)?.subtitle ?? list.subtitle,
       iconKey: list.iconKey,
       listType: list.listType,
       itemCount: list.itemCount,
@@ -202,7 +281,7 @@ export class HomeFeedService {
     if (personal.length) {
       shelves.push({
         key: 'made_for_you',
-        title: 'Made for you',
+        title: renderMessage('shelf.made_for_you', locale),
         lists: personal.map(toShelfList),
       });
     }
@@ -210,6 +289,8 @@ export class HomeFeedService {
       verdict.headerPlace,
       resolvedCityId,
       globals,
+      locale,
+      renderedTitles,
     );
     if (nearYou) {
       shelves.push(nearYou);
@@ -221,24 +302,26 @@ export class HomeFeedService {
     }> = [
       {
         key: 'best_of',
-        title: `Best of ${resolvedCity.name}`,
+        title: renderMessage('shelf.best_of', locale, {
+          city: resolvedCity.name,
+        }),
         match: (list) =>
           list.recipeKey.startsWith(RECIPE_CUISINE_BEST_PREFIX) ||
           list.recipeKey.startsWith(RECIPE_DISH_BEST_PREFIX),
       },
       {
         key: 'trending',
-        title: 'Trending',
+        title: renderMessage('shelf.trending', locale),
         match: (list) => list.recipeKey === RECIPE_TRENDING,
       },
       {
         key: 'hidden_gems',
-        title: 'Hidden gems',
+        title: renderMessage('shelf.hidden_gems', locale),
         match: (list) => list.recipeKey === RECIPE_HIDDEN_GEMS,
       },
       {
         key: 'moments',
-        title: 'For the moment',
+        title: renderMessage('shelf.moments', locale),
         match: (list) =>
           !list.recipeKey.startsWith(RECIPE_CUISINE_BEST_PREFIX) &&
           !list.recipeKey.startsWith(RECIPE_DISH_BEST_PREFIX) &&
@@ -262,6 +345,7 @@ export class HomeFeedService {
   async getListDetail(
     listId: string,
     userId: string,
+    locale: string = DEFAULT_LOCALE,
   ): Promise<CuratedListDetailResponse> {
     const list = await this.prisma.curatedList.findFirst({
       where: {
@@ -368,10 +452,29 @@ export class HomeFeedService {
       };
     });
 
+    // N6: the list's own title renders from its recipe. The ITEM labels below
+    // do NOT: dish and restaurant names are SOURCE-FAITHFUL surface forms and
+    // translating them at read time is on the plan's NEVER list.
+    const rendered = (
+      await this.renderListTitles(
+        [
+          {
+            listId: list.listId,
+            recipeKey: list.recipeKey,
+            rotationKey: list.rotationKey,
+            title: list.title,
+            subtitle: list.subtitle,
+          },
+        ],
+        list.city.name,
+        locale,
+      )
+    ).get(list.listId);
+
     return {
       listId: list.listId,
-      title: list.title,
-      subtitle: list.subtitle,
+      title: rendered?.title ?? list.title,
+      subtitle: rendered?.subtitle ?? list.subtitle,
       iconKey: list.iconKey,
       listType: list.listType,
       recipeKey: list.recipeKey,
@@ -411,10 +514,14 @@ export class HomeFeedService {
   async saveListToUserLists(
     listId: string,
     userId: string,
+    locale: string = DEFAULT_LOCALE,
   ): Promise<{ listId: string; name: string; itemCount: number }> {
     const list = await this.prisma.curatedList.findFirst({
       where: { listId, OR: [{ scope: 'global' }, { ownerUserId: userId }] },
-      include: { items: { orderBy: { rank: 'asc' } } },
+      include: {
+        items: { orderBy: { rank: 'asc' } },
+        city: { select: { name: true } },
+      },
     });
     if (!list) {
       throw new NotFoundException('Curated list not found');
@@ -441,16 +548,38 @@ export class HomeFeedService {
       this.prisma.userList.create({
         data: { ownerUserId: userId, name, listType, position },
       });
+    // N6 — THE SNAPSHOT SITE. A curated list COPIED into a user's own lists
+    // becomes USER DATA: it keeps the name it had when they saved it, in the
+    // language they saved it in, and it never re-renders afterwards. A user
+    // list is not a recipe — re-deriving its name later would silently rewrite
+    // something the user believes is theirs (and which they may have renamed).
+    const snapshotTitle =
+      (
+        await this.renderListTitles(
+          [
+            {
+              listId: list.listId,
+              recipeKey: list.recipeKey,
+              rotationKey: list.rotationKey,
+              title: list.title,
+              subtitle: list.subtitle,
+            },
+          ],
+          list.city.name,
+          locale,
+        )
+      ).get(list.listId)?.title ?? list.title;
+
     let created: { listId: string; name: string };
     try {
-      created = await createList(list.title);
+      created = await createList(snapshotTitle);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
         try {
-          created = await createList(`${list.title} (copy)`);
+          created = await createList(`${snapshotTitle} (copy)`);
         } catch (retryError) {
           if (
             retryError instanceof Prisma.PrismaClientKnownRequestError &&
@@ -600,6 +729,11 @@ export class HomeFeedService {
     headerPlace: { placeId: string; name: string } | null,
     resolvedCityId: string,
     globalLists: CuratedListRow[],
+    locale: string,
+    renderedTitles: ReadonlyMap<
+      string,
+      { title: string; subtitle: string | null }
+    >,
   ): Promise<HomeShelf | null> {
     if (!headerPlace || headerPlace.placeId === resolvedCityId) {
       return null;
@@ -650,8 +784,8 @@ export class HomeFeedService {
       }
       shelfLists.push({
         listId: list.listId,
-        title: list.title,
-        subtitle: list.subtitle,
+        title: renderedTitles.get(list.listId)?.title ?? list.title,
+        subtitle: renderedTitles.get(list.listId)?.subtitle ?? list.subtitle,
         iconKey: list.iconKey,
         listType: list.listType,
         itemCount: names.length,
@@ -663,7 +797,9 @@ export class HomeFeedService {
     }
     return {
       key: 'near_you',
-      title: `Best near you in ${headerPlace.name}`,
+      title: renderMessage('shelf.near_you', locale, {
+        place: headerPlace.name,
+      }),
       lists: shelfLists,
     };
   }

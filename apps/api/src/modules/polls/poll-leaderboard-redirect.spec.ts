@@ -38,6 +38,11 @@ function createService(prisma: Record<string, unknown>): ServicePrivate {
     m,
     m,
     m,
+    {
+      loadLabels: () => Promise.resolve(new Map()),
+      displayLabel: (entity: { name: string }) => entity.name,
+      localizeRows: (rows: unknown[]) => Promise.resolve(rows),
+    } as never,
   ) as unknown as ServicePrivate;
 }
 

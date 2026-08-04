@@ -36,7 +36,11 @@ export interface EntityResolutionResult {
    *  stays the first for single-id consumers. */
   entityIds?: string[];
   confidence: number;
-  resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'new' | 'unmatched';
+  /** 'dense' = admitted by the M4 dense tier (multilingual): semantic
+   *  evidence only, gated on the ABSENCE of any lexical evidence. It is
+   *  its own tier so a cross-lingual link is never laundered as a
+   *  lexical 'fuzzy' in the ledgers or the diagnostics. */
+  resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'dense' | 'new' | 'unmatched';
   matchedName?: string;
   originalInput: EntityResolutionInput;
 

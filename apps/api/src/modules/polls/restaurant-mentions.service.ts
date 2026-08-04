@@ -6,6 +6,11 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserBlockService } from '../identity/user-block.service';
+import {
+  AUTHOR_SELECT,
+  publicAuthorIdentity,
+  type PublicAuthorIdentity,
+} from '../identity/public-author-identity';
 
 // W3 (page-registry §8.4): the restaurant Discussions/mentions aggregation.
 // A "mention" = an approved, non-deleted poll comment whose gazetteer
@@ -32,12 +37,13 @@ const MAX_ANCESTOR_DEPTH = 20;
 
 export type RestaurantMentionSort = 'top' | 'new';
 
-export interface RestaurantMentionUserDto {
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  avatarUrl: string | null;
-}
+/**
+ * A person as the world sees them. NOT a local shape: three near-identical
+ * copies of this interface existed (here, user-lists, the poll creator), each
+ * free to disagree about what a deleted author looks like. One type, one
+ * builder — see public-author-identity.
+ */
+export type RestaurantMentionUserDto = PublicAuthorIdentity;
 
 export interface RestaurantMentionReplyDto {
   commentId: string;
@@ -156,12 +162,7 @@ export class RestaurantMentionsService {
           entitySpans: true,
           loggedAt: true,
           user: {
-            select: {
-              userId: true,
-              username: true,
-              displayName: true,
-              avatarUrl: true,
-            },
+            select: AUTHOR_SELECT,
           },
           poll: { select: { pollId: true, question: true } },
         },
@@ -244,7 +245,7 @@ export class RestaurantMentionsService {
           body: comment.body,
           score: comment.score,
           loggedAt: comment.loggedAt,
-          user: comment.user,
+          user: publicAuthorIdentity(comment.user),
         });
         repliesByRoot.set(ancestorId, bucket);
       } else {
@@ -291,7 +292,7 @@ export class RestaurantMentionsService {
         body: comment.body,
         score: comment.score,
         loggedAt: comment.loggedAt,
-        user: comment.user,
+        user: publicAuthorIdentity(comment.user),
         pollId: comment.poll.pollId,
         pollQuestion: comment.poll.question,
         replies: (repliesByTrueRoot.get(comment.commentId) ?? []).sort(

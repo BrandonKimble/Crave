@@ -171,6 +171,14 @@ model EntityLabel {
   description String?  @db.VarChar(500)
   isDefault   Boolean  @default(false) @map("is_default")
   rank        Int      @default(0)
+  /// R5-10: the sweep and the spine seeder judge by MULTI-SAMPLE CONSENSUS.
+  /// Agreement lands 'active'; disagreement lands 'candidate' for human
+  /// review; a rejected label is 'deprecated' (remembered as wrong, not
+  /// re-proposed). Only 'active' rows are ever displayed.
+  /// candidate | active | deprecated.
+  status      String   @default("active")
+  /// Provenance: seeded, swept, manual, or synthesis-produced.
+  source     String   @default("seed")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   entity      Entity   @relation("EntityLabelEntity", fields: [entityId], references: [entityId], onDelete: Cascade)
@@ -182,6 +190,7 @@ model EntityLabel {
   // index and permanent migrate-diff drift).
   @@id([entityId, locale, form], map: "pk_entity_labels")
   @@index([locale], map: "idx_entity_labels_locale")
+  @@index([locale, status], map: "idx_entity_labels_locale_status")
   @@map("entity_labels")
 }
 
@@ -999,6 +1008,14 @@ model PollTopic {
   targetFoodAttributeId       String?         @map("target_food_attribute_id") @db.Uuid
   targetRestaurantAttributeId String?         @map("target_restaurant_attribute_id") @db.Uuid
   topicType                   PollTopicType   @default(best_dish) @map("topic_type")
+  /// RATIFIED D1 — 'template' | 'user'. Templated titles (the weekly ritual's
+  /// three shapes) are RENDERABLE from a recipe per locale; user-authored
+  /// titles stay literal + a source-language tag and are translate-on-read
+  /// only. Without this marker the two are indistinguishable after the fact.
+  titleSource                 String          @default("user") @map("title_source")
+  /// BCP 47. For user prose: the language it was WRITTEN in. For templates:
+  /// the locale it was rendered in at write time.
+  titleLocale                 String?         @map("title_locale")
   targetDish                  Entity?         @relation("PollTopicTargetDish", fields: [targetDishId], references: [entityId])
   targetRestaurant            Entity?         @relation("PollTopicTargetRestaurant", fields: [targetRestaurantId], references: [entityId])
   targetFoodAttribute         Entity?         @relation("PollTopicTargetFoodAttribute", fields: [targetFoodAttributeId], references: [entityId])
@@ -1286,6 +1303,12 @@ model User {
   /// gone" are different facts, and conflating them is how a restore window
   /// silently becomes a retention violation.
   purgeDueAt               DateTime?                 @map("purge_due_at") @db.Timestamptz(3)
+  /// M1/D4 — the PROFILE half of locale negotiation. Canonical BCP 47 (R5-5).
+  /// NULL means "negotiate from Accept-Language per request", which is the
+  /// default for everyone; this column is only ever an EXPLICIT user choice.
+  /// Never sourced from the push-device row (a user who declines
+  /// notifications has no locale there).
+  locale                   String?                   @db.Text
   lastSignInAt             DateTime?                 @map("last_sign_in_at") @db.Timestamptz(3)
   revenueCatAppUserId      String?                   @unique @map("revenuecat_app_user_id") @db.VarChar(255)
   updatedAt                DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)

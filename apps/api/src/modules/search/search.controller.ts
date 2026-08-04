@@ -30,6 +30,9 @@ import type {
 } from './dto/search-query.dto';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { NoSignal, RecordsSignal } from '../signals/records-signal.decorator';
+import { RequestLocale, type SupportedLocale } from '../../shared/locale';
+import type { RestaurantMatchedTag } from '@crave-search/shared';
+import { EntityDisplayService } from '../entity-display/entity-display.service';
 
 @Controller('search')
 @UseGuards(ClerkAuthGuard)
@@ -40,9 +43,61 @@ export class SearchController {
     private readonly searchService: SearchService,
     private readonly searchOrchestrationService: SearchOrchestrationService,
     private readonly searchCoverageService: SearchCoverageService,
+    // N10: the tag chips are the one CONCEPT surface in a search response —
+    // restaurant and dish names are proper/source-faithful and stay as they
+    // are. Localizing here, at the response boundary, keeps the executor (and
+    // its SQL, and its caches) speaking canonical names end to end.
+    private readonly entityDisplay: EntityDisplayService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchController');
+  }
+
+  /**
+   * Localize the concept chips on a search response. ONE label query for the
+   * whole payload; every chip also gains its `submitToken` so a tapped chip
+   * re-runs the search with the canonical term, not the translated one.
+   */
+  private async localizeResponse(
+    response: SearchResponseDto,
+    locale: SupportedLocale,
+  ): Promise<SearchResponseDto> {
+    const buckets = [
+      response.restaurants,
+      response.similarRestaurants ?? [],
+    ].filter((bucket) => bucket?.length);
+    if (!buckets.length) {
+      return response;
+    }
+    const chips = buckets.flatMap((bucket) =>
+      bucket.flatMap((row) => row.matchedTags ?? []),
+    );
+    if (!chips.length) {
+      return response;
+    }
+    const localized = await this.entityDisplay.localizeRows(chips, locale);
+    const byId = new Map(
+      localized.map((chip) => [
+        chip.entityId,
+        { name: chip.name, submitToken: chip.submitToken },
+      ]),
+    );
+    const apply = (
+      rows: Array<{ matchedTags?: RestaurantMatchedTag[] }> | undefined,
+    ): void => {
+      for (const row of rows ?? []) {
+        if (!row.matchedTags?.length) {
+          continue;
+        }
+        row.matchedTags = row.matchedTags.map((tag) => {
+          const hit = byId.get(tag.entityId);
+          return hit ? { ...tag, ...hit } : tag;
+        });
+      }
+    };
+    apply(response.restaurants);
+    apply(response.similarRestaurants);
+    return response;
   }
 
   @Post('plan')
@@ -66,10 +121,14 @@ export class SearchController {
   async run(
     @Body() request: SearchQueryRequestDto,
     @CurrentUser() user: User,
+    @RequestLocale() locale: SupportedLocale,
   ): Promise<SearchResponseDto> {
     this.logger.debug('Received search execution request');
     request.userId = user.userId;
-    return this.searchService.runQuery(request);
+    return this.localizeResponse(
+      await this.searchService.runQuery(request),
+      locale,
+    );
   }
 
   @Post('natural')
@@ -79,10 +138,18 @@ export class SearchController {
   async runNatural(
     @Body() request: NaturalSearchRequestDto,
     @CurrentUser() user: User,
+    @RequestLocale() locale: SupportedLocale,
   ): Promise<SearchResponseDto> {
     this.logger.debug('Received natural language search request');
     request.userId = user.userId;
-    return this.searchOrchestrationService.runNaturalQuery(request);
+    // Parent-integration stitch: the negotiated request locale feeds the
+    // Understand (dense gate + negation cues + R5-7 embed prefix) unless
+    // the client pinned one explicitly.
+    request.locale = request.locale ?? locale;
+    return this.localizeResponse(
+      await this.searchOrchestrationService.runNaturalQuery(request),
+      locale,
+    );
   }
 
   @Post('cache-attribution')

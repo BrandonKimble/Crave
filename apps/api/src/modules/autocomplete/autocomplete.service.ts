@@ -31,6 +31,8 @@ import {
   evidenceTierStrength,
 } from '../entity-text-search/entity-text-search.service';
 import type { SignalKind } from '../signals/signals.service';
+import { EntityDisplayService } from '../entity-display/entity-display.service';
+import { DEFAULT_LOCALE } from '../../shared/locale';
 
 /** Row shape of the favorites read (user_list_items under the user's own
  *  lists): restaurant saves vs dish saves (connection → food entity). */
@@ -169,6 +171,9 @@ export class AutocompleteService {
     private readonly searchPopularityService: SearchPopularityService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signalDemandRead: SignalDemandReadService,
+    // N10: the one display boundary. Type-ahead rows are localized here and
+    // nowhere else in this file.
+    private readonly entityDisplay: EntityDisplayService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
     this.redis = redisService.getOrThrow();
@@ -214,9 +219,55 @@ export class AutocompleteService {
     );
   }
 
+  /**
+   * N10 — THE DISPLAY BOUNDARY FOR TYPE-AHEAD.
+   *
+   * Applied AFTER the response cache in both directions (fresh build and
+   * cache hit), which is why the cache key does not carry a locale: what is
+   * cached is the CANONICAL response, and localization is a pure projection
+   * of it. Caching per locale instead would multiply the hottest cache in the
+   * product by the language count for no gain.
+   *
+   * `submitToken` is the load-bearing half. The mobile attribute-tap submits
+   * the row's text as the next search string — so the moment `name` becomes
+   * "vegetariano", matching breaks unless the canonical token travels with
+   * it. Every row gets one, including the lanes that are never localized
+   * (polls, people, query suggestions): a client that has to ask "does this
+   * row have a submit token?" will eventually get it wrong.
+   */
+  private async localizeMatches(
+    matches: AutocompleteMatchDto[],
+    locale: string,
+  ): Promise<AutocompleteMatchDto[]> {
+    if (!matches.length) {
+      return matches;
+    }
+    // Only CONCEPTS are localized. Restaurants are proper nouns; dish names
+    // are source-faithful; polls and people are user text.
+    const conceptIds = matches
+      .filter(
+        (match) =>
+          match.entityType === EntityType.restaurant_attribute ||
+          match.entityType === EntityType.food_attribute ||
+          match.entityType === EntityType.ingredient,
+      )
+      .map((match) => match.entityId);
+    const labels = await this.entityDisplay.loadLabels(conceptIds, locale);
+    return matches.map((match) => ({
+      ...match,
+      submitToken: match.name,
+      name: this.entityDisplay.displayLabel(
+        { entityId: match.entityId, name: match.name },
+        locale,
+        labels,
+      ),
+    }));
+  }
+
   async autocompleteEntities(
     dto: AutocompleteRequestDto,
     user?: User,
+    locale: string = DEFAULT_LOCALE,
   ): Promise<AutocompleteResponseDto> {
     const normalizedQuery = this.textSanitizer.sanitizeOrThrow(dto.query, {
       maxLength: 140,
@@ -247,7 +298,13 @@ export class AutocompleteService {
     if (cacheLookup.response) {
       // A cache-hit serve is still an impression the LTR bootstrap needs.
       this.logImpressions(normalizedQuery, cacheLookup.response);
-      return cacheLookup.response;
+      return {
+        ...cacheLookup.response,
+        matches: await this.localizeMatches(
+          cacheLookup.response.matches,
+          locale,
+        ),
+      };
     }
 
     const injectedPromise =
@@ -349,7 +406,11 @@ export class AutocompleteService {
     this.logImpressions(normalizedQuery, response);
     await this.setInCache(cacheKey, response);
 
-    return response;
+    // Localize LAST: the canonical response is what got cached.
+    return {
+      ...response,
+      matches: await this.localizeMatches(response.matches, locale),
+    };
   }
 
   private mergeEntityMatches(

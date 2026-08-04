@@ -17,14 +17,48 @@ import {
   SearchQueryRequestDto,
   MapBoundsDto,
 } from './dto/search-query.dto';
-import { LINK_ELIGIBLE_EVIDENCE, linkerAdmits } from './evidence-admission';
+import {
+  LINK_ELIGIBLE_EVIDENCE,
+  denseAdmits,
+  linkerAdmits,
+} from './evidence-admission';
+import {
+  analyzeQuery,
+  negatedSpan,
+} from '../entity-text-search/query-analyzer';
 import { DietaryConstraintRegistry } from './dietary-constraints';
 import { UnsegmentedResidueService } from './unsegmented-residue.service';
 import type { EntitySpanGroup } from '../entity-text-search/entity-text-search.service';
 import { foodNameVariants } from '../content-processing/entity-resolver/food-lemma';
+import { canonicalFold } from '../content-processing/entity-resolver/entity-identity';
 import { EngineCoverageService } from './engine-coverage.service';
 import { SignalsService } from '../signals/signals.service';
 import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
+
+/**
+ * R5-3 TIER 1 — the NEGATION RECORD. The plan's launch gate demands 100%
+ * non-inversion and had NO MECHANISM: "ramen sin cerdo" silently returned
+ * VEGAN ramen. A cue that immediately precedes a groundable span now FAILS
+ * CLOSED — the span is not linked, not sent to dense, and never inverted;
+ * it is recorded here as an EXCLUDED constraint. The executor may ignore
+ * this today (excluding results is a separate, later change); the PARSE
+ * records it and the response diagnostics surface it, which is exactly
+ * what the gate measures ("≥90% constraint preservation measured on the
+ * PARSE").
+ */
+export interface ExcludedSpan {
+  /** Raw text of the negated span. */
+  text: string;
+  start: number;
+  end: number;
+  /** The cue that negated it, and the pack that owns the cue. */
+  cue: string;
+  cueLocale: string;
+  /** Entities the span named, when it was a grounded span (empty when the
+   *  negated span was unknown residue — "sin cerdo" against an English
+   *  corpus grounds nothing, and that is still a recorded constraint). */
+  entityIds: string[];
+}
 
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
@@ -37,6 +71,16 @@ interface InterpretationResult {
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
   phaseTimings?: Record<string, number>;
+  /** R5-3: negated spans, recorded not inverted. */
+  excludedSpans?: ExcludedSpan[];
+  /** What the analyzer decided, for diagnostics (detected vs requested
+   *  locale are recorded SEPARATELY and never collapsed — A10/R5-5). */
+  queryAnalysis?: {
+    script: string;
+    requestLocale: string | null;
+    detectedLocale: { tag: string; confidence: number; source: string } | null;
+    denseTierUsed: boolean;
+  };
 }
 
 // Confident-link thresholds for the shared-recall linking. No LLM on this
@@ -121,10 +165,16 @@ export class SearchQueryInterpretationService {
         scanEngineId = null;
       }
     }
+    // THE ANALYZER RUNS ONCE PER QUERY (A5). Everything language-shaped
+    // downstream — the gazetteer's fold, the negation gate, the dense
+    // tier's gate and its locale prefix — reads THIS object. Detection is
+    // never re-run per residue probe (the probe budget is 24; per-probe
+    // detection would 24x a cost the plan prices as ~free).
+    const analysis = analyzeQuery(request.query, request.locale ?? null);
     const rawGroups = await this.entityTextSearch.scanForKnownEntityGroups(
       request.query,
       GAZETTEER_UNDERSTAND_TYPES,
-      { engineId: scanEngineId },
+      { engineId: scanEngineId, analysis },
     );
     // NO WORD LIST (owner ruling 2026-08-02): junk grounding ("best" as a
     // restaurant, "dinner" as a food) is a DATA-QUALITY defect — junk
@@ -132,26 +182,47 @@ export class SearchQueryInterpretationService {
     // prompt work + the retroactive junk sweep, not a non-exhaustive
     // stop-list here. TODO(post-cleanup): enable the pinned generic-query
     // cases in search-generic-queries.spec.ts once the graph is clean.
+    // NEGATION GATE, TIER 1 (R5-3) — applied BEFORE anything can act on a
+    // span. Negated groups stay in `groups` for RESIDUE COVERAGE (their
+    // text was understood; it must not be re-probed or staged as unknown)
+    // but are excluded from placement, from the residue-join lane, and
+    // from the dense tier.
     const groups = rawGroups;
+    const excludedSpans: ExcludedSpan[] = [];
+    const negatedGroups = new Set<EntitySpanGroup>();
+    for (const group of groups) {
+      const cue = negatedSpan(analysis, group);
+      if (!cue) continue;
+      negatedGroups.add(group);
+      excludedSpans.push({
+        text: group.text,
+        start: group.start,
+        end: group.end,
+        cue: cue.cue,
+        cueLocale: cue.locale,
+        entityIds: group.entities.map((e) => e.entityId),
+      });
+    }
     const gazetteerMs = performance.now() - gazetteerStart;
 
     // Residue = token runs no grounded span covers. Same 48-token cap as
     // the scanner (red team R4-P7): text past the cap was never scanned,
     // so treating it as residue would stage and LLM-segment text the
     // gazetteer never looked at.
-    const tokenRe = /[\p{L}\p{N}][\p{L}\p{N}'&.-]*/gu;
-    const tokens: { text: string; start: number; end: number }[] = [];
-    let tokenMatch: RegExpExecArray | null;
-    while ((tokenMatch = tokenRe.exec(request.query)) !== null) {
-      tokens.push({
-        text: tokenMatch[0],
-        start: tokenMatch.index,
-        end: tokenMatch.index + tokenMatch[0].length,
-      });
-      if (tokens.length >= 48) break;
-    }
+    // ONE TOKENIZER (A2): the residue lane reads the analyzer's tokens
+    // rather than re-implementing the regex — the two copies had already
+    // drifted (the analyzer's class carries the curly apostrophe).
+    const tokens = analysis.tokens.map((t) => ({
+      text: t.raw,
+      start: t.start,
+      end: t.end,
+    }));
+    const cueTokenStarts = new Set(analysis.negationCues.map((c) => c.start));
     const covered = (t: { start: number; end: number }) =>
-      groups.some((g) => g.start <= t.start && g.end >= t.end);
+      groups.some((g) => g.start <= t.start && g.end >= t.end) ||
+      // A negation cue is UNDERSTOOD, not unknown: staging "sin" as an
+      // on-demand ask would seed collection with a Spanish stopword.
+      cueTokenStarts.has(t.start);
     const residueRuns: { text: string; start: number; end: number }[] = [];
     for (const token of tokens) {
       if (covered(token)) continue;
@@ -195,7 +266,24 @@ export class SearchQueryInterpretationService {
     // 1–3 unknown spans; when the budget is spent, remaining runs skip
     // probing and go straight to staging (the async lane still learns).
     let probeBudget = 24;
+    let denseTierUsed = false;
     for (const run of residueRuns) {
+      // R5-3 FAIL CLOSED on residue too: "ramen sin cerdo" grounds ramen
+      // and leaves "cerdo" as residue — a residue run behind a cue must
+      // NOT be probed, must NOT reach dense (dense is precisely what
+      // inverted it into vegan ramen), and must NOT be staged as demand.
+      const runCue = negatedSpan(analysis, run);
+      if (runCue) {
+        excludedSpans.push({
+          text: run.text,
+          start: run.start,
+          end: run.end,
+          cue: runCue.cue,
+          cueLocale: runCue.locale,
+          entityIds: [],
+        });
+        continue;
+      }
       if (probeBudget <= 0) {
         unresolvedResidues.push(run.text);
         continue;
@@ -203,12 +291,14 @@ export class SearchQueryInterpretationService {
       const left = groups.find(
         (g) =>
           !consumedGroups.has(g) &&
+          !negatedGroups.has(g) &&
           !isDietaryGroup(g) &&
           abuts(g.end, run.start),
       );
       const right = groups.find(
         (g) =>
           !consumedGroups.has(g) &&
+          !negatedGroups.has(g) &&
           !isDietaryGroup(g) &&
           abuts(run.end, g.start),
       );
@@ -257,6 +347,41 @@ export class SearchQueryInterpretationService {
           break;
         }
       }
+      // M4 DENSE ADMISSION TIER — gated on ABSENCE, one probe, last.
+      // Reached only when every sparse attempt failed AND the analyzer
+      // says the lexical lanes could not have seen this span: non-Latin
+      // script (hard gate) or a confidently non-English query. An English
+      // typo stays on the sparse/staging path exactly as before.
+      if (
+        !linked &&
+        probeBudget > 0 &&
+        (analysis.isNonLatinScript || analysis.isNonEnglish)
+      ) {
+        probeBudget -= 1;
+        denseTierUsed = true;
+        const denseResult = await this.linkUnified(
+          {
+            tempId: `food:${uuid()}`,
+            normalizedName: run.text.toLowerCase(),
+            originalText: run.text,
+            entityType: 'food',
+            aliases: [run.text],
+            engineId: null,
+          },
+          {
+            denseTier: {
+              // R5-7: the REQUEST locale rides into the embedded text —
+              // the detected tag is a prior about the query, not a claim
+              // about what the user reads.
+              locale: request.locale ?? analysis.detectedLocale?.tag ?? null,
+            },
+          },
+        );
+        if (denseResult?.entityId) {
+          residueResults.push(denseResult);
+          linked = true;
+        }
+      }
       if (!linked) {
         unresolvedResidues.push(run.text);
       }
@@ -267,7 +392,7 @@ export class SearchQueryInterpretationService {
     // by the deterministic order (curated list = calibration tail).
     const placedResults: EntityResolutionResult[] = [];
     for (const group of groups) {
-      if (consumedGroups.has(group)) continue;
+      if (consumedGroups.has(group) || negatedGroups.has(group)) continue;
       const dietaryEntity = group.entities.find((e) =>
         dietaryIds.has(e.entityId),
       );
@@ -387,6 +512,13 @@ export class SearchQueryInterpretationService {
         ? [{ type: 'food' as EntityType, terms: unresolvedResidues }]
         : [],
       phaseTimings,
+      ...(excludedSpans.length ? { excludedSpans } : {}),
+      queryAnalysis: {
+        script: analysis.script,
+        requestLocale: analysis.requestLocale,
+        detectedLocale: analysis.detectedLocale,
+        denseTierUsed,
+      },
     };
   }
 
@@ -449,6 +581,10 @@ export class SearchQueryInterpretationService {
        *  selectable — post-hoc rejection abandoned the whole attempt when
        *  a near-tied wrong candidate happened to sort first. */
       candidateGuard?: (candidate: { name: string }) => boolean;
+      /** M4: run the dense lane and let its candidates be SELECTABLE
+       *  through the dense admission tier. Absent = today's behavior
+       *  exactly (dense off, dense candidates unselectable). */
+      denseTier?: { locale: string | null };
     } = {},
   ): Promise<EntityResolutionResult> {
     const term = input.normalizedName?.trim().toLowerCase() ?? '';
@@ -470,9 +606,13 @@ export class SearchQueryInterpretationService {
           form,
           GAZETTEER_UNDERSTAND_TYPES,
           HYBRID_LINK_SHORTLIST_K,
-          // Dense OFF: the decider reads only sparseSimilarity — the dense
-          // call was measured pure dead cost on this path.
-          { denseMode: 'none' },
+          // Dense OFF BY DEFAULT: the decider reads only sparseSimilarity,
+          // so the dense call was measured pure dead cost on this path.
+          // M4 flips it ON only for the admission-tier probe, where a
+          // decider that can consume dense evidence now exists.
+          opts.denseTier
+            ? { denseMode: 'always', denseLocale: opts.denseTier.locale }
+            : { denseMode: 'none' },
         ),
       ),
     );
@@ -558,7 +698,11 @@ export class SearchQueryInterpretationService {
         eligibleCount: eligible.length,
         tier: top?.sparseEvidence ?? null,
       });
-    if (!linkable || !top) return unmatched;
+    if (!linkable || !top) {
+      return opts.denseTier
+        ? this.decideDenseLink(input, candidates, dietaryIds)
+        : unmatched;
+    }
     // TIE PLURALITY: same-tier candidates within epsilon are
     // indistinguishable by evidence — reveal ALL of them.
     const tied = eligible.filter(
@@ -578,6 +722,87 @@ export class SearchQueryInterpretationService {
       resolutionTier: 'fuzzy',
       matchedName: winner.name,
       originalInput: { ...input, entityType: winner.type },
+    };
+  }
+
+  /**
+   * THE DENSE TIER'S DECISION (M4 + R5-1 + R5-4). Reached only after every
+   * sparse route failed, and only for a query the analyzer flagged. RRF is
+   * the fusion authority: `rrfTop` is a RANK fact over the fused list, so
+   * no cosine is ever compared to a trigram similarity (R5-1 — the тако
+   * 0.821-beats-taco-0.751 hazard is a score comparison, and there are no
+   * score comparisons here).
+   */
+  private decideDenseLink(
+    input: EntityResolutionInput,
+    candidates: Array<{
+      entityId: string;
+      name: string;
+      type: EntityType;
+      rrf: number;
+      denseCosine: number | null;
+    }>,
+    dietaryIds: ReadonlySet<string>,
+  ): EntityResolutionResult {
+    const unmatched: EntityResolutionResult = {
+      tempId: input.tempId,
+      entityId: null,
+      confidence: 0,
+      resolutionTier: 'unmatched',
+      originalInput: input,
+    };
+    const dense = candidates
+      .filter((c) => c.denseCosine != null)
+      .sort((a, b) => (b.denseCosine ?? 0) - (a.denseCosine ?? 0));
+    const best = dense[0];
+    if (!best) return unmatched;
+    // THE SAME PLACEMENT LAW as every other lane: the food/ingredient twin
+    // ("octopus" exists as both) is ONE answer at one cosine, and which
+    // row sorts first must not be decided by float ties.
+    const tiedTop = dense.filter(
+      (c) =>
+        (best.denseCosine ?? 0) - (c.denseCosine ?? 0) <= LINKER_TIE_EPSILON,
+    );
+    const top = this.pickPlacedWinner(tiedTop, dietaryIds);
+    const topFolded = canonicalFold(top.name);
+    const runner = dense.find((c) => canonicalFold(c.name) !== topFolded);
+    // The fused rank is computed over the list DEDUPED BY FOLDED NAME:
+    // "octopus" occupies two rows (food + ingredient) and would otherwise
+    // push its own concept down a rank purely by existing twice.
+    const seenFolded = new Set<string>();
+    const fused = [...candidates]
+      .sort((a, b) => b.rrf - a.rrf)
+      .filter((c) => {
+        const key = canonicalFold(c.name);
+        if (seenFolded.has(key)) return false;
+        seenFolded.add(key);
+        return true;
+      });
+    const rrfRank = fused.findIndex((c) => canonicalFold(c.name) === topFolded);
+    // R5-4 span affinity: the ATTRIBUTE reading is available whenever any
+    // near-tied dense candidate is attribute-typed. Derived from the data
+    // (what the span could name), never guessed from the words.
+    const attributeNear = dense.find(
+      (c) =>
+        (c.type === 'food_attribute' || c.type === 'restaurant_attribute') &&
+        (top.denseCosine ?? 0) - (c.denseCosine ?? 0) <= 0.05,
+    );
+    const admitted = denseAdmits({
+      topCosine: top.denseCosine ?? 0,
+      runnerCosine: runner?.denseCosine ?? 0,
+      rrfRank: rrfRank === -1 ? Number.MAX_SAFE_INTEGER : rrfRank,
+      candidateType: top.type,
+      spanTypeAffinity: attributeNear ? 'attribute' : null,
+      inputType: input.entityType ?? 'food',
+    });
+    if (!admitted) return unmatched;
+    return {
+      tempId: input.tempId,
+      entityId: top.entityId,
+      confidence: top.denseCosine ?? 0,
+      resolutionTier: 'dense',
+      matchedName: top.name,
+      originalInput: { ...input, entityType: top.type },
     };
   }
 

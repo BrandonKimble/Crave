@@ -63,7 +63,22 @@ export class AutocompleteMatchDto {
   // For polls, `entityId` is the pollId and `name` is the poll question.
   entityId!: string;
   entityType!: EntityType | 'query' | 'poll' | 'user';
+  /**
+   * THE DISPLAY STRING — localized (N10). Never send this back to the server
+   * as a query: see `submitToken`.
+   */
   name!: string;
+  /**
+   * THE CANONICAL STRING the client must submit when this row is tapped.
+   *
+   * The attribute-tap flow submits a row's text as the next search string. As
+   * soon as `name` is localized ("vegetariano"), submitting it would ask the
+   * gazetteer a question it cannot answer in that language yet — a match
+   * break that LOOKS like a search-quality bug. So display and matching stop
+   * being the same field: `name` is for the eye, `submitToken` is for the
+   * matcher. Always present, equal to `name` whenever nothing was localized.
+   */
+  submitToken?: string;
   confidence!: number;
   aliases!: string[];
   matchType?: 'entity' | 'query' | 'poll' | 'user';

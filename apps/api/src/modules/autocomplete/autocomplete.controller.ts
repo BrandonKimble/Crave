@@ -9,6 +9,7 @@ import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { NoSignal } from '../signals/records-signal.decorator';
+import { RequestLocale, type SupportedLocale } from '../../shared/locale';
 
 @Controller('autocomplete')
 @UseGuards(ClerkAuthGuard)
@@ -26,7 +27,8 @@ export class AutocompleteController {
   autocompleteEntities(
     @Body() dto: AutocompleteRequestDto,
     @CurrentUser() user: User,
+    @RequestLocale() locale: SupportedLocale,
   ): Promise<AutocompleteResponseDto> {
-    return this.autocompleteService.autocompleteEntities(dto, user);
+    return this.autocompleteService.autocompleteEntities(dto, user, locale);
   }
 }

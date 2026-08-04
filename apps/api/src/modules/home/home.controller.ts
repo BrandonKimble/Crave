@@ -24,6 +24,7 @@ import {
   HomeFeedService,
 } from './home-feed.service';
 import { RecordsSignal } from '../signals/records-signal.decorator';
+import { RequestLocale, type SupportedLocale } from '../../shared/locale';
 
 @Controller('home')
 @UseGuards(ClerkAuthGuard)
@@ -35,6 +36,7 @@ export class HomeController {
   getFeed(
     @CurrentUser() user: User,
     @Query() query: HomeFeedQueryDto,
+    @RequestLocale() locale: SupportedLocale,
   ): Promise<HomeFeedResponse> {
     if (query.minLat > query.maxLat) {
       // Latitude is not circular — this shape is malformed, not wrap.
@@ -44,6 +46,7 @@ export class HomeController {
       query.toBbox(),
       user.userId,
       query.pickedCityId,
+      locale,
     );
   }
 
@@ -52,8 +55,9 @@ export class HomeController {
   getList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
+    @RequestLocale() locale: SupportedLocale,
   ): Promise<CuratedListDetailResponse> {
-    return this.homeFeed.getListDetail(listId, user.userId);
+    return this.homeFeed.getListDetail(listId, user.userId, locale);
   }
 
   /** Save-a-copy (list-detail verbs leg): copy the curated list's current items
@@ -70,7 +74,8 @@ export class HomeController {
   saveList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
+    @RequestLocale() locale: SupportedLocale,
   ): Promise<{ listId: string; name: string; itemCount: number }> {
-    return this.homeFeed.saveListToUserLists(listId, user.userId);
+    return this.homeFeed.saveListToUserLists(listId, user.userId, locale);
   }
 }

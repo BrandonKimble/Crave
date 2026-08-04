@@ -44,16 +44,12 @@ export interface QuerySuggestion {
 export class SearchQuerySuggestionService {
   private readonly logger: LoggerService;
   private readonly minPrefixLength = 1;
-  private readonly minGlobalDistinctUsers: number;
 
   constructor(
     private readonly signalDemandRead: SignalDemandReadService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQuerySuggestionService');
-    // Mirrors AutocompleteService.querySuggestionMinGlobalCount (2026-07-11
-    // fold-in: formerly env AUTOCOMPLETE_QUERY_SUGGESTION_MIN_GLOBAL_COUNT).
-    this.minGlobalDistinctUsers = 3;
   }
 
   async getSuggestions(
@@ -90,9 +86,16 @@ export class SearchQuerySuggestionService {
       const sortedPersonalRows = personalRows.sort((left, right) =>
         this.comparePersonalRows(left, right),
       );
-      const sortedGlobalRows = this.filterEligibleGlobalRows(
-        globalDemandRows.map((row) => this.toSuggestionRow(row)),
-      ).sort((left, right) => this.compareGlobalRows(left, right));
+      // NO LOCAL FLOOR (2026-08-03). This service used to hold a private
+      // `minGlobalDistinctUsers = 3` — the codebase's only k-anonymity floor,
+      // enforced by exactly one of the readers that emit other people's typed
+      // text. It is now SUBJECT_TEXT_K_FLOOR, enforced in the query itself
+      // (signals/subject-text-floor.ts), so a below-floor term never reaches
+      // any caller. Re-adding a filter here would just be a second opinion
+      // about a rule that has one home.
+      const sortedGlobalRows = globalDemandRows
+        .map((row) => this.toSuggestionRow(row))
+        .sort((left, right) => this.compareGlobalRows(left, right));
 
       const selectedKeys: string[] = [];
       const selectedKeySet = new Set<string>();
@@ -226,14 +229,6 @@ export class SearchQuerySuggestionService {
       demandScore: row.demandScore,
       lastUsed: row.lastUsed,
     };
-  }
-
-  private filterEligibleGlobalRows(
-    rows: QuerySuggestionRow[],
-  ): QuerySuggestionRow[] {
-    return rows.filter(
-      (row) => row.distinctUsers >= this.minGlobalDistinctUsers,
-    );
   }
 
   private async loadPersonalQueryRows(

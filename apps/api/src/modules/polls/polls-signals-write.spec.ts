@@ -101,6 +101,11 @@ function createHarness(
     {} as never, // placesCatalog (feed-only; unused in this spec)
     {} as never, // viewportVerdict (feed-only; unused in this spec)
     { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
+    {
+      loadLabels: () => Promise.resolve(new Map()),
+      displayLabel: (entity: { name: string }) => entity.name,
+      localizeRows: (rows: unknown[]) => Promise.resolve(rows),
+    } as never,
   );
   const internals = service as unknown as {
     rebuildPollLeaderboard: (pollId: string) => Promise<void>;

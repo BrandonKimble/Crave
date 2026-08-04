@@ -164,7 +164,14 @@ export interface RestaurantLocationResult {
 
 export interface RestaurantMatchedTag {
   entityId: string;
+  /** DISPLAY string — localized per request locale (N10). */
   name: string;
+  /**
+   * The CANONICAL string to submit when this chip is tapped. Tapping a tag
+   * chip re-runs a search with its text; once `name` is localized, only this
+   * field is safe to send back. Equal to `name` when nothing was localized.
+   */
+  submitToken?: string;
   entityType: string;
   mentionCount: number;
 }

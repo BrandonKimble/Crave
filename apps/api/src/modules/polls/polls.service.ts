@@ -51,6 +51,13 @@ import { PlacesCatalogService } from '../places/places-catalog.service';
 import { descendantPlaceIds } from '../places/place-dag-read';
 import { ViewportVerdictService } from '../places/viewport-verdict.service';
 import { UserBlockService } from '../identity/user-block.service';
+import { DEFAULT_LOCALE } from '../../shared/locale';
+import { EntityDisplayService } from '../entity-display/entity-display.service';
+import { renderPollTitle } from '../entity-display/poll-title-render';
+import {
+  AUTHOR_SELECT,
+  publicAuthorIdentity,
+} from '../identity/public-author-identity';
 import {
   GeoBbox,
   PLACES_SLICE_MARGIN_FACTOR,
@@ -128,6 +135,9 @@ export class PollsService {
     private readonly placesCatalog: PlacesCatalogService,
     private readonly viewportVerdict: ViewportVerdictService,
     private readonly blocks: UserBlockService,
+    // N10/D1: the ONE display boundary — templated poll questions render
+    // through it, user prose bypasses it entirely.
+    private readonly entityDisplay: EntityDisplayService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -178,7 +188,11 @@ export class PollsService {
    * nextCursor / per-poll placeName. (The pre-cut legacy envelope —
    * marketName + bare polls array — was deleted with the mobile cut.)
    */
-  async queryPolls(query: QueryPollsDto, viewerUserId?: string | null) {
+  async queryPolls(
+    query: QueryPollsDto,
+    viewerUserId?: string | null,
+    locale: string = DEFAULT_LOCALE,
+  ) {
     const sort = query.sort ?? PollListSort.new;
     const limit = query.limit ?? POLL_FEED_DEFAULT_PAGE_SIZE;
     const targetState =
@@ -233,7 +247,7 @@ export class PollsService {
       cursor,
     });
     const [polls, catalogWatermark] = await Promise.all([
-      this.hydrateFeedPolls(page.pollIds, viewerUserId),
+      this.hydrateFeedPolls(page.pollIds, viewerUserId, locale),
       this.placesCatalog.catalogWatermark(
         expandBboxByFactor(view, PLACES_SLICE_MARGIN_FACTOR),
       ),
@@ -470,9 +484,91 @@ export class PollsService {
   }
 
   /** Hydrate a feed page preserving SQL order, with labels + card stats. */
+  /**
+   * D1/N10 — TEMPLATED poll questions render in the reader's locale; USER
+   * prose never does.
+   *
+   * The marker (`topic.titleSource`) is the whole reason this is safe: before
+   * it, "Best tacos" and "where do y'all get tacos after 2am" were the same
+   * kind of string to a reader of this table. One label query for the page.
+   */
+  private async localizePollQuestions<
+    T extends {
+      question: string;
+      placeName?: string | null;
+      topic?: {
+        topicType: string;
+        titleSource?: string;
+        targetDishId: string | null;
+        targetRestaurantId: string | null;
+        targetFoodAttributeId: string | null;
+        targetRestaurantAttributeId: string | null;
+        metadata?: unknown;
+      } | null;
+    },
+  >(polls: T[], locale: string): Promise<T[]> {
+    const templated = polls.filter(
+      (poll) => poll.topic?.titleSource === 'template',
+    );
+    if (!templated.length) {
+      return polls;
+    }
+    // Concept targets get labels; restaurant targets keep their proper noun.
+    const conceptIds = templated.flatMap((poll) =>
+      [
+        poll.topic?.targetDishId,
+        poll.topic?.targetFoodAttributeId,
+        poll.topic?.targetRestaurantAttributeId,
+      ].filter((id): id is string => Boolean(id)),
+    );
+    const restaurantIds = templated.flatMap((poll) =>
+      poll.topic?.targetRestaurantId ? [poll.topic.targetRestaurantId] : [],
+    );
+    const [entities, labels] = await Promise.all([
+      this.prisma.entity.findMany({
+        where: { entityId: { in: [...conceptIds, ...restaurantIds] } },
+        select: { entityId: true, name: true },
+      }),
+      this.entityDisplay.loadLabels(conceptIds, locale),
+    ]);
+    const byId = new Map(entities.map((entity) => [entity.entityId, entity]));
+    return polls.map((poll) => {
+      const topic = poll.topic;
+      if (!topic || topic.titleSource !== 'template') {
+        return poll;
+      }
+      const conceptId =
+        topic.targetDishId ??
+        topic.targetFoodAttributeId ??
+        topic.targetRestaurantAttributeId ??
+        null;
+      const concept = conceptId ? byId.get(conceptId) : undefined;
+      const restaurant = topic.targetRestaurantId
+        ? byId.get(topic.targetRestaurantId)
+        : undefined;
+      const source = (topic.metadata as { source?: string } | null)?.source;
+      const rendered = renderPollTitle(
+        source === 'poll_supply_weekly_ritual'
+          ? 'weekly_ritual'
+          : 'user_created',
+        topic.topicType,
+        locale,
+        {
+          conceptLabel: concept
+            ? this.entityDisplay.displayLabel(concept, locale, labels)
+            : null,
+          restaurantName: restaurant?.name ?? null,
+          placeName: poll.placeName ?? null,
+        },
+      );
+      return rendered ? { ...poll, question: rendered } : poll;
+    });
+  }
+
   private async hydrateFeedPolls(
     pollIds: string[],
     viewerUserId?: string | null,
+    locale: string = DEFAULT_LOCALE,
   ) {
     if (!pollIds.length) {
       return [];
@@ -488,6 +584,8 @@ export class PollsService {
             targetFoodAttributeId: true,
             targetRestaurantAttributeId: true,
             title: true,
+            titleSource: true,
+            titleLocale: true,
             description: true,
             metadata: true,
           },
@@ -499,7 +597,9 @@ export class PollsService {
       .map((id) => byId.get(id))
       .filter((poll): poll is (typeof polls)[number] => poll != null);
     const labeled = await this.attachPlaceLabels(ordered);
-    return this.attachPollStats(labeled, viewerUserId);
+    // Place labels FIRST: 'best_restaurants' renders its place name.
+    const localized = await this.localizePollQuestions(labeled, locale);
+    return this.attachPollStats(localized, viewerUserId);
   }
 
   /**
@@ -879,6 +979,13 @@ export class PollsService {
       const topic = await tx.pollTopic.create({
         data: {
           title: question,
+          // D1 — the marker, written AT THE SOURCE where the fact is known.
+          // `sourceQuestion` present ⇒ the title IS the user's own prose;
+          // otherwise buildPollQuestion() produced it from a template and it
+          // is renderable per locale. Deriving this later from the string is
+          // exactly what D1 exists to avoid.
+          titleSource: opts.sourceQuestion ? 'user' : 'template',
+          titleLocale: DEFAULT_LOCALE,
           description,
           placeId: place.placeId,
           topicType,
@@ -1509,14 +1616,10 @@ export class PollsService {
         entitySpans: true,
         loggedAt: true,
         editedAt: true,
-        user: {
-          select: {
-            userId: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
-        },
+        // AUTHOR_SELECT, not a hand-written field list: `deletedAt` is the
+        // field the byline decision turns on, and a hand-written select is
+        // exactly how it got left out everywhere.
+        user: { select: AUTHOR_SELECT },
       },
     });
 
@@ -1535,6 +1638,10 @@ export class PollsService {
     // Flat list + parentCommentId — the client nests (presentational, shallow).
     return comments.map((c) => ({
       ...c,
+      // A deleted author keeps their comment (removing it would tear a hole in
+      // the thread) and loses their name. ONE function decides what the world
+      // sees, so every surface agrees — see public-author-identity.
+      user: publicAuthorIdentity(c.user),
       currentUserLiked: likedSet.has(c.commentId),
     }));
   }
@@ -2528,12 +2635,7 @@ export class PollsService {
     const creatorRows = creatorIds.length
       ? await this.prisma.user.findMany({
           where: { userId: { in: creatorIds } },
-          select: {
-            userId: true,
-            username: true,
-            displayName: true,
-            avatarUrl: true,
-          },
+          select: AUTHOR_SELECT,
         })
       : [];
     const creatorById = new Map(creatorRows.map((row) => [row.userId, row]));
@@ -2564,9 +2666,8 @@ export class PollsService {
         topCandidates: candidatesByPoll.get(poll.pollId) ?? [],
         creator: {
           origin,
-          username: user?.username ?? null,
-          displayName: user?.displayName ?? null,
-          avatarUrl: user?.avatarUrl ?? null,
+          // A poll outlives its creator's account; the byline does not.
+          ...publicAuthorIdentity(user),
         },
       };
     });

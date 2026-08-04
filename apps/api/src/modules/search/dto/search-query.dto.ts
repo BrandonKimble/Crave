@@ -400,4 +400,13 @@ export class NaturalSearchRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
+
+  /**
+   * M1/R5-7: the NEGOTIATED request locale (BCP 47). It is a PRIOR for the
+   * query analyzer and part of the dense query input — never a router, so a
+   * client-supplied value is harmless.
+   */
+  @IsOptional()
+  @IsString()
+  locale?: string;
 }

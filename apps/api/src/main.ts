@@ -81,6 +81,7 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
+import { RequestLocaleInterceptor } from './shared/locale';
 import fastifyRawBody from 'fastify-raw-body';
 
 async function bootstrap() {
@@ -168,6 +169,9 @@ async function bootstrap() {
       'Accept',
       'Authorization',
       'X-Correlation-ID',
+      // M1: the web rail negotiates locale like every other client. Omitting
+      // it here would make the browser drop the header before we ever see it.
+      'Accept-Language',
     ],
     credentials: false,
     maxAge: 86400,
@@ -175,6 +179,10 @@ async function bootstrap() {
 
   // Enhanced validation with security settings
   app.useGlobalPipes(createValidationPipeConfig(isProd));
+
+  // M1 — negotiate the request locale after the guards have attached the user
+  // (so a profile override is visible) and echo it as Content-Language.
+  app.useGlobalInterceptors(new RequestLocaleInterceptor());
 
   // API docs
   const config = new DocumentBuilder()

@@ -117,6 +117,11 @@ import {
   pickSpanWinner,
   type EntitySpanGroup,
 } from './gazetteer-spans';
+import {
+  analyzeQuery,
+  denseQueryInput,
+  type QueryAnalysis,
+} from './query-analyzer';
 
 export type { EntitySpanGroup, SpanEntity } from './gazetteer-spans';
 
@@ -167,12 +172,14 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { engineId?: string | null } = {},
+    options: { engineId?: string | null; locale?: string | null } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
 
-    const queryVec = await this.embeddingService.embedQuery(normalizedTerm);
+    const queryVec = await this.embeddingService.embedQuery(
+      denseQueryInput(normalizedTerm, options.locale ?? null),
+    );
     if (!queryVec?.length) return [];
 
     const safeLimit = Math.max(1, Math.min(limit, this.maxLimit));
@@ -245,6 +252,15 @@ export class EntityTextSearchService {
        * evidence.
        */
       denseMode?: 'always' | 'none';
+      /**
+       * R5-7 (Uber Eats 2026 ships an explicit search-language field): the
+       * request locale is threaded INTO THE DENSE QUERY INPUT, not just used
+       * as an alias-arm filter. gemini-embedding-001 is multilingual, so
+       * "pan" embedded as `[es] pan` sits nearer bread than nearer cookware.
+       * The SPARSE lane never sees the prefix — lexical matching against a
+       * bracketed tag would be nonsense.
+       */
+      denseLocale?: string | null;
     } = {},
   ): Promise<RecallCandidate[]> {
     if (
@@ -274,7 +290,10 @@ export class EntityTextSearchService {
     } else {
       [sparse, dense] = await Promise.all([
         this.searchEntities(normalizedTerm, entityTypes, pool, sparseOpts),
-        this.searchByEmbedding(normalizedTerm, entityTypes, pool, denseOpts),
+        this.searchByEmbedding(normalizedTerm, entityTypes, pool, {
+          ...denseOpts,
+          locale: options.denseLocale ?? null,
+        }),
       ]);
     }
 
@@ -1086,35 +1105,43 @@ export class EntityTextSearchService {
   async scanForKnownEntityGroups(
     text: string,
     entityTypes: EntityType[],
-    options: { engineId?: string | null; maxPhraseWords?: number } = {},
+    options: {
+      engineId?: string | null;
+      maxPhraseWords?: number;
+      /** BCP 47 request locale — a PRIOR for the analyzer, nothing more. */
+      requestLocale?: string | null;
+      /** A5: the analyzer runs ONCE PER QUERY. A caller that already
+       *  analyzed (the interpreter does, for negation + the dense gate)
+       *  passes its analysis in rather than paying for a second one. */
+      analysis?: QueryAnalysis;
+    } = {},
   ): Promise<EntitySpanGroup[]> {
     const raw = text ?? '';
     if (!raw.trim() || entityTypes.length === 0) return [];
 
-    const tokens: { text: string; start: number; end: number }[] = [];
-    const tokenRe = /[\p{L}\p{N}][\p{L}\p{N}'&.-]*/gu;
-    let match: RegExpExecArray | null;
-    while ((match = tokenRe.exec(raw)) !== null) {
-      tokens.push({
-        text: match[0],
-        start: match.index,
-        end: match.index + match[0].length,
+    // N1 FOLD SYMMETRY: both sides of the match are canonicalFold'd. The
+    // scan used to compare lowercased RAW tokens against lowercased raw
+    // names while identity holds FOLDED keys — 1,714 active entities
+    // (Despaña, Phở Hoài, Harry’s-with-curly-apostrophe) were unreachable
+    // by their obvious typed form. The analyzer owns the tokenizer (curly
+    // apostrophe in the char class) and the fold; this method owns the
+    // lookup. Offsets are the analyzer's contract, so spans still slice
+    // the RAW query.
+    const analysis =
+      options.analysis ??
+      analyzeQuery(raw, options.requestLocale ?? null, {
+        maxTokens: EntityTextSearchService.GAZETTEER_MAX_TOKENS,
       });
-      if (tokens.length >= EntityTextSearchService.GAZETTEER_MAX_TOKENS) break;
-    }
-    if (!tokens.length) return [];
+    if (!analysis.tokens.length) return [];
 
-    const maxN = Math.max(1, Math.min(options.maxPhraseWords ?? 4, 5));
     const candidateSpans = new Map<string, { start: number; end: number }[]>();
-    for (let i = 0; i < tokens.length; i++) {
-      for (let n = 1; n <= maxN && i + n <= tokens.length; n++) {
-        const slice = tokens.slice(i, i + n);
-        const norm = slice.map((t) => t.text.toLowerCase()).join(' ');
-        const span = { start: slice[0].start, end: slice[n - 1].end };
-        const arr = candidateSpans.get(norm);
-        if (arr) arr.push(span);
-        else candidateSpans.set(norm, [span]);
-      }
+    for (const ngram of analysis.ngrams(options.maxPhraseWords ?? 4)) {
+      const arr = candidateSpans.get(ngram.folded);
+      if (arr) arr.push({ start: ngram.start, end: ngram.end });
+      else
+        candidateSpans.set(ngram.folded, [
+          { start: ngram.start, end: ngram.end },
+        ]);
     }
     const candidates = Array.from(candidateSpans.keys());
     if (!candidates.length) return [];
@@ -1126,18 +1153,46 @@ export class EntityTextSearchService {
       'e',
       options.engineId ?? null,
     );
+    // FOUR INDEXED ARMS, unioned (never OR'd — an OR forces a seq scan of
+    // the active catalogue per search):
+    //   1. identity_key = folded candidate      (N1 name fold symmetry)
+    //   2. LOWER(name)  = candidate             (legacy arm, kept)
+    //   3. entity_alias.form_folded             (N1 alias fold symmetry)
+    //   4. crave_text_array_lower(aliases) GIN  (legacy array arm, kept)
+    // identity_key IS canonicalFold(name) for every type (identityInsertData);
+    // identity_key_sorted is the coarse lemma/dedupe key and is deliberately
+    // NOT probed here — grounding is an EQUALITY claim, not a dedupe probe.
+    const matchedFormsSelect = Prisma.sql`
+             LOWER(e.name) AS "normName",
+             e.identity_key AS "foldedName",
+             ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases",
+             ARRAY(
+               SELECT ea.form_folded FROM entity_alias ea
+               WHERE ea.entity_id = e.entity_id
+                 AND ea.status = 'active'
+                 AND ea.form_folded = ANY(${candidates}::text[])
+             ) AS "foldedAliases"`;
     const rows = await this.prisma.$queryRaw<
       {
         entityId: string;
         name: string;
         type: EntityType;
         normName: string;
+        foldedName: string | null;
         normAliases: string[];
+        foldedAliases: string[];
       }[]
     >(Prisma.sql`
       SELECT e.entity_id AS "entityId", e.name, e.type,
-             LOWER(e.name) AS "normName",
-             ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases"
+             ${matchedFormsSelect}
+      FROM core_entities e
+      WHERE e.status = 'active'::entity_status
+        AND e.type = ANY(${typeArray})
+        AND e.identity_key = ANY(${candidates}::text[])
+        ${territoryFilter}
+      UNION
+      SELECT e.entity_id AS "entityId", e.name, e.type,
+             ${matchedFormsSelect}
       FROM core_entities e
       WHERE e.status = 'active'::entity_status
         AND e.type = ANY(${typeArray})
@@ -1145,8 +1200,20 @@ export class EntityTextSearchService {
         ${territoryFilter}
       UNION
       SELECT e.entity_id AS "entityId", e.name, e.type,
-             LOWER(e.name) AS "normName",
-             ARRAY(SELECT LOWER(a) FROM unnest(e.aliases) a) AS "normAliases"
+             ${matchedFormsSelect}
+      FROM core_entities e
+      WHERE e.status = 'active'::entity_status
+        AND e.type = ANY(${typeArray})
+        AND EXISTS (
+          SELECT 1 FROM entity_alias ea
+          WHERE ea.entity_id = e.entity_id
+            AND ea.status = 'active'
+            AND ea.form_folded = ANY(${candidates}::text[])
+        )
+        ${territoryFilter}
+      UNION
+      SELECT e.entity_id AS "entityId", e.name, e.type,
+             ${matchedFormsSelect}
       FROM core_entities e
       WHERE e.status = 'active'::entity_status
         AND e.type = ANY(${typeArray})
@@ -1166,7 +1233,13 @@ export class EntityTextSearchService {
     for (const row of rows) {
       const matchedPhrases = new Set<string>();
       if (candidateSet.has(row.normName)) matchedPhrases.add(row.normName);
+      if (row.foldedName && candidateSet.has(row.foldedName)) {
+        matchedPhrases.add(row.foldedName);
+      }
       for (const alias of row.normAliases) {
+        if (candidateSet.has(alias)) matchedPhrases.add(alias);
+      }
+      for (const alias of row.foldedAliases) {
         if (candidateSet.has(alias)) matchedPhrases.add(alias);
       }
       for (const phrase of matchedPhrases) {

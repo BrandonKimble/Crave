@@ -31,6 +31,7 @@ import { UserBlockService } from '../identity/user-block.service';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { CurrentUser } from '../../shared';
+import { RequestLocale, type SupportedLocale } from '../../shared/locale';
 import type { AuthenticatedRequest } from '../../shared';
 import { UserDevicesService } from '../identity/user-devices.service';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
@@ -61,8 +62,12 @@ export class PollsController {
   )
   @RateLimitTier('heavyGeoRead')
   @UseGuards(ClerkAuthGuard)
-  queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {
-    return this.pollsService.queryPolls(body, user?.userId ?? null);
+  queryPolls(
+    @Body() body: QueryPollsDto,
+    @RequestLocale() locale: SupportedLocale,
+    @CurrentUser() user?: User | null,
+  ) {
+    return this.pollsService.queryPolls(body, user?.userId ?? null, locale);
   }
 
   @Post()

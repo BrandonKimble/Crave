@@ -165,6 +165,13 @@ function createHarness(overrides: HarnessOverrides = {}) {
     searchPopularityService as never,
     restaurantStatusService as never,
     signalDemandRead as never,
+    // N10 display boundary: no label rows in these fixtures, so the display
+    // function is an identity — which is exactly what English callers get.
+    {
+      loadLabels: () => Promise.resolve(new Map()),
+      displayLabel: (entity: { name: string }) => entity.name,
+      localizeRows: (rows: unknown[]) => Promise.resolve(rows),
+    } as never,
   );
 
   return {

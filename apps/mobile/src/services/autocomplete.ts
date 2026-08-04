@@ -15,6 +15,9 @@ export type AutocompleteEvidenceTier =
   | 'embedding';
 
 export type AutocompleteMatch = {
+  /** Canonical matcher input from the server (i18n N10) — display `name`
+   *  may be localized; submit THIS when present. */
+  submitToken?: string;
   entityId: string;
   entityType: string;
   name: string;

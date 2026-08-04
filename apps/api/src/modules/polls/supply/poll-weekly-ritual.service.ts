@@ -801,6 +801,12 @@ export class PollWeeklyRitualService {
             data: planned.map((plan) => ({
               topicId: plan.topicId,
               title: plan.title,
+              // D1: every title this service writes comes from one of three
+              // templates above — the one provably-templated writer in the
+              // repo, which is also why the back-classification could trust
+              // its metadata.source stamp.
+              titleSource: 'template',
+              titleLocale: 'en',
               description: plan.description,
               placeId,
               topicType: plan.topicType,

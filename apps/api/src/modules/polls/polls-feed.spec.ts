@@ -225,6 +225,11 @@ function createHarness(options: {
     placesCatalog as never,
     viewportVerdict,
     { blockedPeerIds: jest.fn().mockResolvedValue(new Set()) } as never, // blocks
+    {
+      loadLabels: () => Promise.resolve(new Map()),
+      displayLabel: (entity: { name: string }) => entity.name,
+      localizeRows: (rows: unknown[]) => Promise.resolve(rows),
+    } as never,
   );
   return { service, prisma, placesCatalog };
 }
