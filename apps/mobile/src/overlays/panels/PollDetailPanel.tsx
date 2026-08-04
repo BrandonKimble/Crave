@@ -61,6 +61,7 @@ import {
   type PollCommentSort,
   type PollCommentUser,
   type PollCreator,
+  resolvePollCreatorName,
   type PollLeaderboardEntry,
 } from '../../services/polls';
 import { requestPushPermissionIfEligible } from '../../services/push-permission';
@@ -76,6 +77,7 @@ import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
 import { formatRelativeTime } from '../../utils/relative-time';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -112,11 +114,7 @@ const resolveAnchorNodeIndex = (tree: ThreadNode[], commentId: string): number =
   return tree.findIndex(subtreeContains);
 };
 
-const resolveUserName = (user: PollCommentUser): string =>
-  user.displayName ?? user.username ?? 'Member';
-
-const resolveCreatorName = (creator: PollCreator | undefined): string =>
-  creator?.origin === 'user' ? (creator.displayName ?? creator.username ?? 'Member') : 'Crave';
+const resolveUserName = (user: PollCommentUser): string => resolveUserDisplayName(user, 'Member');
 
 // ─── Entity-highlighted comment body ─────────────────────────────────────────
 
@@ -1073,7 +1071,7 @@ export const usePollDetailPanelSpec = ({
           ) : poll?.creator?.origin === 'user' ? (
             <View style={styles.creatorAvatarFallback}>
               <Text variant="caption" weight="semibold" style={styles.creatorAvatarInitial}>
-                {resolveCreatorName(poll?.creator).charAt(0).toUpperCase() || 'M'}
+                {resolvePollCreatorName(poll?.creator).charAt(0).toUpperCase() || 'M'}
               </Text>
             </View>
           ) : (
@@ -1082,7 +1080,7 @@ export const usePollDetailPanelSpec = ({
             </View>
           )}
           <Text variant="caption" weight="semibold" style={styles.creatorName} numberOfLines={1}>
-            {resolveCreatorName(poll?.creator)}
+            {resolvePollCreatorName(poll?.creator)}
           </Text>
           {isActive ? (
             <View style={styles.liveTag}>

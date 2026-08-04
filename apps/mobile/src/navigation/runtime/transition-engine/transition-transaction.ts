@@ -240,9 +240,17 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
     const committedAt = (txn.marks as Record<string, number>).committedAt;
     const revealedAt = (txn.marks as Record<string, number>).revealedAt;
     if (committedAt != null && revealedAt != null) {
+      // F905: the line also carries the window THIS txn was judged against and the
+      // headroom fraction (joinWait / window). That is the missing half of the
+      // derivation: JOIN_LIVENESS_MS is currently unattributed, and the number that
+      // would attribute it is the p99 of `joinWaitMs` over machine-paced joins —
+      // greppable straight out of this line, per-kind, with the override visible so
+      // the 10000ms search plans do not pollute the default's distribution.
+      const windowMs = txn.plan.joinLivenessMs ?? JOIN_LIVENESS_MS;
+      const joinWaitMs = revealedAt - committedAt;
       // eslint-disable-next-line no-console
       console.log(
-        `[L4STAMP] target=${txn.mutation.targetSceneKey ?? 'none'} kind=${txn.mutation.kind} joinWaitMs=${(revealedAt - committedAt).toFixed(1)}`
+        `[L4STAMP] target=${txn.mutation.targetSceneKey ?? 'none'} kind=${txn.mutation.kind} joinWaitMs=${joinWaitMs.toFixed(1)} windowMs=${windowMs} windowOverridden=${txn.plan.joinLivenessMs != null} headroom=${(joinWaitMs / windowMs).toFixed(3)}`
       );
     }
   }
@@ -309,6 +317,15 @@ export const sealTransitionTxnJoin = (txn: TransitionTxn): void => {
 // such switch barks. freezeUntilSnap plans are EXEMPT — their 'boundary' join is
 // USER-paced (a held drag legitimately outlasts any timeout); a canceled dismissal
 // supersedes the txn instead.
+//
+// F905 — 600 IS UNATTRIBUTED. It is not a measurement, not a frame budget, and not a
+// dated owner choice: it is the number that decides whether a slow-but-correct switch
+// is "broken" or "fine", and the per-plan `joinLivenessMs` override is itself the
+// evidence the default is wrong somewhere (search's fade-paced revises measured ~2s and
+// were given 10000). Do NOT change the value by feel. The instrument that derives it is
+// live above: the [L4STAMP] line now emits joinWaitMs + windowMs + headroom per txn, so
+// the p99 of machine-paced (windowOverridden=false) joins is a grep away. When that
+// measurement exists, replace this number with it and state the sample inline.
 const JOIN_LIVENESS_MS = 600;
 
 const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {

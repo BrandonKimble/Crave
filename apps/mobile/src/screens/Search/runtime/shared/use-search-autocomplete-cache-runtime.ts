@@ -21,7 +21,6 @@ type CachedAutocompleteLookup = {
 type UseSearchAutocompleteCacheRuntimeArgs = {
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   cacheScopeKey: string;
 };
 
@@ -37,7 +36,6 @@ const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 64;
 export const useSearchAutocompleteCacheRuntime = ({
   cancelAutocomplete,
   setSuggestions,
-  setShowSuggestions,
   cacheScopeKey,
 }: UseSearchAutocompleteCacheRuntimeArgs): SearchAutocompleteCacheRuntime => {
   const autocompleteCacheRef = React.useRef<Map<string, CachedAutocompleteEntry>>(new Map());
@@ -47,8 +45,8 @@ export const useSearchAutocompleteCacheRuntime = ({
   }, [cacheScopeKey]);
 
   const clearAutocompleteSuggestions = React.useCallback(() => {
-    writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, []);
-  }, [setShowSuggestions, setSuggestions]);
+    writeAutocompleteSuggestions(setSuggestions, []);
+  }, [setSuggestions]);
 
   const lookupAutocompleteCache = React.useCallback(
     (rawQuery: string): CachedAutocompleteLookup | null => {
@@ -147,11 +145,11 @@ export const useSearchAutocompleteCacheRuntime = ({
       if (!cached) {
         return false;
       }
-      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, cached.matches);
+      writeAutocompleteSuggestions(setSuggestions, cached.matches);
       cancelAutocomplete();
       return true;
     },
-    [cancelAutocomplete, lookupAutocompleteCache, setShowSuggestions, setSuggestions]
+    [cancelAutocomplete, lookupAutocompleteCache, setSuggestions]
   );
 
   return React.useMemo(

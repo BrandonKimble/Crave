@@ -503,7 +503,6 @@ const areSceneChromePresentationSelectionsEqual = (
 
 export const BottomSheetSceneStackHost = ({
   sceneStackSurfaceAuthority,
-  routeSceneDisplayTargetRegistry,
   shadowShellStyle,
   surfaceStyle,
   scrollHeaderComponent,
@@ -523,7 +522,6 @@ export const BottomSheetSceneStackHost = ({
   const sceneStackHost = (
     <ActiveSceneStackHostLayers
       sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-      routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
       shadowShellStyle={shadowShellStyle}
       surfaceStyle={surfaceStyle}
       scrollHeaderComponent={scrollHeaderComponent}
@@ -565,7 +563,7 @@ export const BottomSheetSceneStackHost = ({
 
 type SceneStackBodyLayerHostProps = Pick<
   BottomSheetSceneStackHostProps,
-  'sceneStackSurfaceAuthority' | 'routeSceneDisplayTargetRegistry' | 'bodyRuntimeAuthority'
+  'sceneStackSurfaceAuthority' | 'bodyRuntimeAuthority'
 > & {
   sceneKey: OverlayKey;
   // This leg's role for THIS render, computed synchronous-in-render by the surface host. Changes
@@ -587,8 +585,7 @@ const areSceneStackBodyLayerHostPropsEqual = (
 ): boolean => {
   if (
     previousProps.sceneKey !== nextProps.sceneKey ||
-    previousProps.sceneStackSurfaceAuthority !== nextProps.sceneStackSurfaceAuthority ||
-    previousProps.routeSceneDisplayTargetRegistry !== nextProps.routeSceneDisplayTargetRegistry
+    previousProps.sceneStackSurfaceAuthority !== nextProps.sceneStackSurfaceAuthority
   ) {
     return false;
   }
@@ -611,7 +608,6 @@ const areSceneStackBodyContentLayerHostPropsEqual = (
 
 const SceneStackBodyFrameHost = React.memo(
   ({
-    routeSceneDisplayTargetRegistry,
     sceneStackSurfaceAuthority,
     sceneKey,
     chromeHeight,
@@ -619,11 +615,7 @@ const SceneStackBodyFrameHost = React.memo(
     children,
   }: Pick<
     SceneStackBodyLayerHostProps,
-    | 'routeSceneDisplayTargetRegistry'
-    | 'sceneStackSurfaceAuthority'
-    | 'sceneKey'
-    | 'chromeHeight'
-    | 'legRole'
+    'sceneStackSurfaceAuthority' | 'sceneKey' | 'chromeHeight' | 'legRole'
   > & {
     children: React.ReactNode;
   }) => {
@@ -771,7 +763,6 @@ const SceneStackBodyFrameHost = React.memo(
         underlayComponent={
           <SceneStackChromeLayerHost
             legRole={legRole}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
             sceneKey={sceneKey}
             sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
             surface="underlay"
@@ -780,7 +771,6 @@ const SceneStackBodyFrameHost = React.memo(
         backgroundComponent={
           <SceneStackChromeLayerHost
             legRole={legRole}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
             sceneKey={sceneKey}
             sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
             surface="background"
@@ -790,7 +780,6 @@ const SceneStackBodyFrameHost = React.memo(
         overlayComponent={
           <SceneStackChromeLayerHost
             legRole={legRole}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
             sceneKey={sceneKey}
             sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
             surface="overlay"
@@ -835,7 +824,6 @@ const SceneStackBodyFrameHost = React.memo(
     return profiledFrameHost;
   },
   (previousProps, nextProps) =>
-    previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.sceneKey === nextProps.sceneKey &&
     previousProps.chromeHeight === nextProps.chromeHeight &&
@@ -1023,16 +1011,12 @@ const SceneStackBodyContentLayerHost = React.memo(
 
 const SearchSceneStackBodyDisplayTarget = React.memo(
   ({
-    routeSceneDisplayTargetRegistry,
     sceneStackSurfaceAuthority,
     bodyRuntimeAuthority,
     legRole,
   }: Pick<
     SceneStackBodyLayerHostProps,
-    | 'routeSceneDisplayTargetRegistry'
-    | 'sceneStackSurfaceAuthority'
-    | 'bodyRuntimeAuthority'
-    | 'legRole'
+    'sceneStackSurfaceAuthority' | 'bodyRuntimeAuthority' | 'legRole'
   >) => {
     useSearchNavSwitchCommitAttribution('SearchSceneStackBodyDisplayTarget:search');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
@@ -1066,7 +1050,6 @@ const SearchSceneStackBodyDisplayTarget = React.memo(
       // header/inset props here.
       <SceneStackBodyFrameHost
         sceneKey="search"
-        routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
         sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
         legRole={legRole}
       >
@@ -1097,7 +1080,6 @@ const SearchSceneStackBodyDisplayTarget = React.memo(
   (previousProps, nextProps) =>
     previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
-    previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.legRole === nextProps.legRole
 );
 
@@ -1128,7 +1110,6 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
   const bodyLayerHost = (
     <SceneStackBodyFrameHost
       sceneKey={props.sceneKey}
-      routeSceneDisplayTargetRegistry={props.routeSceneDisplayTargetRegistry}
       sceneStackSurfaceAuthority={props.sceneStackSurfaceAuthority}
       chromeHeight={props.chromeHeight}
       legRole={props.legRole}
@@ -1156,7 +1137,7 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
 
 type SceneStackChromeLayerHostProps = Pick<
   BottomSheetSceneStackHostProps,
-  'routeSceneDisplayTargetRegistry' | 'sceneStackSurfaceAuthority'
+  'sceneStackSurfaceAuthority'
 > & {
   sceneKey: OverlayKey;
   // This leg's role for THIS render (surface-host-computed prop) — replaces the old context read.
@@ -1231,7 +1212,6 @@ const SceneStackChromeLayerHost = React.memo(
     return profiledChromeLayer;
   },
   (previousProps, nextProps) =>
-    previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.sceneKey === nextProps.sceneKey &&
     previousProps.surface === nextProps.surface &&
@@ -1334,7 +1314,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
     onContentSettleComplete,
     onHeaderLayout,
     onScrollHeaderLayout,
-    routeSceneDisplayTargetRegistry,
     sceneStackSurfaceAuthority,
     scrollHeaderComponent,
     scrollHeaderSyncStyle,
@@ -1747,7 +1726,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
                 sceneKey === 'search' ? (
                   <React.Profiler key="scene-search" id="leg-search" onRender={logSlowLegCommit}>
                     <SearchSceneStackBodyDisplayTarget
-                      routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
                       sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
                       bodyRuntimeAuthority={bodyRuntimeAuthority}
                       legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
@@ -1764,7 +1742,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
                     <SceneStackBodyLayerHost
                       sceneKey={sceneKey}
                       sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                      routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
                       bodyRuntimeAuthority={bodyRuntimeAuthority}
                       // THE PAGE L1: each leg's body-lane inset is ITS OWN scene's COMPUTED
                       // chrome height — pure, exact, same committed frame as the chrome box.
@@ -1822,7 +1799,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
     previousProps.onContentSettleComplete === nextProps.onContentSettleComplete &&
     previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
     previousProps.onScrollHeaderLayout === nextProps.onScrollHeaderLayout &&
-    previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.scrollHeaderComponent === nextProps.scrollHeaderComponent &&
     previousProps.scrollHeaderSyncStyle === nextProps.scrollHeaderSyncStyle &&
@@ -1832,7 +1808,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
 
 const ActiveSceneStackHostLayers = ({
   sceneStackSurfaceAuthority,
-  routeSceneDisplayTargetRegistry,
   shadowShellStyle,
   surfaceStyle,
   scrollHeaderComponent,
@@ -1854,7 +1829,6 @@ const ActiveSceneStackHostLayers = ({
       bodyRuntimeAuthority={bodyRuntimeAuthority}
       onHeaderLayout={onHeaderLayout}
       onScrollHeaderLayout={onScrollHeaderLayout}
-      routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
       sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
       shadowShellStyle={shadowShellStyle}
       surfaceStyle={surfaceStyle}

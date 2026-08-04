@@ -10,6 +10,7 @@ import type {
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchRootSessionPrimitivesLane } from './use-search-root-session-runtime-contract';
 import { getSearchStartupGeometrySeed } from './search-startup-geometry';
+import { useShouldDisableSearchShortcuts } from './use-should-disable-search-shortcuts';
 
 type UseSearchSuggestionLayoutPlaneRuntimeArgs = {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
@@ -23,14 +24,17 @@ export const useSearchSuggestionLayoutPlaneRuntime = ({
   suggestionVisibilityRuntime,
 }: UseSearchSuggestionLayoutPlaneRuntimeArgs): SearchSuggestionLayoutRuntime => {
   const startupGeometrySeed = React.useMemo(() => getSearchStartupGeometrySeed(), []);
+  const shouldDisableSearchShortcutsSubscribed = useShouldDisableSearchShortcuts(
+    rootPrimitivesRuntime.searchState
+  );
 
   const suggestionLayoutStateRuntime = useSearchSuggestionLayoutStateRuntime({
     searchInteractionRef: rootSessionPrimitivesLane.primitives.searchInteractionRef,
     startupGeometrySeed,
     query: rootPrimitivesRuntime.searchState.query,
     isSuggestionPanelActive: rootPrimitivesRuntime.searchState.isSuggestionPanelActive,
-    shouldDisableSearchShortcuts:
-      rootPrimitivesRuntime.searchState.shouldDisableSearchShortcutsRef.current,
+    // F1323: subscribed, not a render-time ref read.
+    shouldDisableSearchShortcuts: shouldDisableSearchShortcutsSubscribed,
     shouldDriveSuggestionLayout: suggestionVisibilityRuntime.shouldDriveSuggestionLayout,
     shouldRenderSuggestionPanel: suggestionVisibilityRuntime.shouldRenderSuggestionPanel,
   });

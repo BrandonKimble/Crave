@@ -32,7 +32,23 @@ export type SearchLayout = {
   height: number;
 };
 
-export type SuggestionTransitionVariant = 'default' | 'submitting';
+// F1311 — A THIRD WRITE-ONLY `useState`, AND ITS ENTIRE VOCABULARY, DELETED.
+//
+// `SuggestionTransitionVariant = 'default' | 'submitting'` lived here, backing a
+// `const [, setSearchTransitionVariant] = useState<SuggestionTransitionVariant>('default')`
+// whose value was discarded at the declaration. `searchTransitionVariant` had ZERO readers
+// repo-wide, yet the setter was published on both SearchSuggestionTransitionRuntime and
+// SearchSuggestionVisibilityRuntime, re-exported through the foreground overlay action args,
+// and called from four sites — beginSubmitTransition wrote 'submitting', beginSuggestionCloseHold
+// wrote the caller's variant, hold-sync reset to 'default' — each call re-rendering the
+// suggestion presentation plane to publish something unobservable.
+//
+// So the union, the `'submitting'` literal, and `beginSuggestionCloseHold`'s optional
+// `variant` parameter were all ceremony around a value that did not exist. The parameter is
+// gone with them: `beginSuggestionCloseHold()` now takes no arguments, and the
+// `setBeginSuggestionCloseHold` handler-registration path type-checks against the new arity.
+//
+// Same law as F1308: state exists only if something reads it, and a setter is not state.
 
 export type UseSearchSuggestionSurfaceRuntimeArgs = {
   searchInteractionRef: SearchInteractionRef;
@@ -45,7 +61,6 @@ export type UseSearchSuggestionSurfaceRuntimeArgs = {
   isAutocompleteSuppressed: boolean;
   isAutocompleteLoading: boolean;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setBeginSuggestionCloseHold: (handler: () => boolean) => void;
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
@@ -56,10 +71,9 @@ export type SearchSuggestionVisibilityRuntime = {
   isSuggestionPanelVisible: boolean;
   isSuggestionOverlayVisible: boolean;
   suggestionProgress: ReturnType<typeof useSharedValue<number>>;
-  setSearchTransitionVariant: React.Dispatch<React.SetStateAction<SuggestionTransitionVariant>>;
   resetSubmitTransitionHold: () => void;
   beginSubmitTransition: () => boolean;
-  beginSuggestionCloseHold: (variant?: SuggestionTransitionVariant) => boolean;
+  beginSuggestionCloseHold: () => boolean;
   shouldDriveSuggestionLayout: boolean;
   shouldShowSuggestionBackground: boolean;
   shouldShowSuggestionSurface: boolean;
@@ -115,7 +129,6 @@ export type SearchSuggestionTransitionRuntime = {
   isSuggestionPanelVisible: boolean;
   isSuggestionOverlayVisible: boolean;
   suggestionProgress: ReturnType<typeof useSharedValue<number>>;
-  setSearchTransitionVariant: React.Dispatch<React.SetStateAction<SuggestionTransitionVariant>>;
   shouldDriveSuggestionLayout: boolean;
 };
 
@@ -152,12 +165,11 @@ export type SearchSuggestionHoldRuntimeArgs = Pick<
   | 'recentlyViewedFoods'
   | 'isSuggestionPanelActive'
   | 'setSuggestions'
-  | 'setShowSuggestions'
   | 'setBeginSuggestionCloseHold'
 > &
   Pick<
     SearchSuggestionTransitionRuntime,
-    'setSearchTransitionVariant' | 'isSuggestionPanelVisible' | 'shouldDriveSuggestionLayout'
+    'isSuggestionPanelVisible' | 'shouldDriveSuggestionLayout'
   > &
   Pick<
     SearchSuggestionDisplayRuntime,
@@ -211,9 +223,7 @@ export type SearchSuggestionHoldEffectsRuntimeArgs = Pick<
   | 'query'
   | 'isSuggestionPanelActive'
   | 'setSuggestions'
-  | 'setShowSuggestions'
   | 'setBeginSuggestionCloseHold'
-  | 'setSearchTransitionVariant'
   | 'shouldDriveSuggestionLayout'
   | 'shouldShowSuggestionBackground'
   | 'liveShouldRenderAutocompleteSection'
@@ -228,7 +238,6 @@ export type SearchSuggestionHoldEffectsRuntimeArgs = Pick<
 
 export type SearchSuggestionHoldActionRuntimeArgs = Pick<
   SearchSuggestionHoldEffectsRuntimeArgs,
-  | 'setSearchTransitionVariant'
   | 'shouldDriveSuggestionLayout'
   | 'shouldShowSuggestionBackground'
   | 'liveShouldRenderAutocompleteSection'
@@ -238,7 +247,7 @@ export type SearchSuggestionHoldActionRuntimeArgs = Pick<
 
 export type SearchSuggestionHoldActionRuntime = {
   beginSubmitTransition: () => boolean;
-  beginSuggestionCloseHold: (variant?: SuggestionTransitionVariant) => boolean;
+  beginSuggestionCloseHold: () => boolean;
 };
 
 export type SearchSuggestionHoldSyncRuntimeArgs = Pick<
@@ -246,9 +255,7 @@ export type SearchSuggestionHoldSyncRuntimeArgs = Pick<
   | 'query'
   | 'isSuggestionPanelActive'
   | 'setSuggestions'
-  | 'setShowSuggestions'
   | 'setBeginSuggestionCloseHold'
-  | 'setSearchTransitionVariant'
   | 'shouldDriveSuggestionLayout'
   | 'resetSubmitTransitionHold'
   | 'resetSubmitTransitionHoldIfQueryChanged'
@@ -257,7 +264,7 @@ export type SearchSuggestionHoldSyncRuntimeArgs = Pick<
 
 export type SearchSuggestionHoldEffectsRuntime = {
   beginSubmitTransition: () => boolean;
-  beginSuggestionCloseHold: (variant?: SuggestionTransitionVariant) => boolean;
+  beginSuggestionCloseHold: () => boolean;
 };
 
 export type SearchSuggestionHeldDisplayRuntimeArgs = Pick<
@@ -287,7 +294,7 @@ export type SearchSuggestionHeldDisplayRuntime = Omit<
 export type SearchSuggestionHoldRuntime = {
   resetSubmitTransitionHold: () => void;
   beginSubmitTransition: () => boolean;
-  beginSuggestionCloseHold: (variant?: SuggestionTransitionVariant) => boolean;
+  beginSuggestionCloseHold: () => boolean;
   shouldShowSuggestionBackground: boolean;
   shouldShowSuggestionSurface: boolean;
   shouldRenderSuggestionPanel: boolean;

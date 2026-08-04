@@ -51,7 +51,6 @@ export const createSearchRootMapInteractionControllerArgs = ({
     setIsAutocompleteSuppressed: primitivesRuntime.searchState.setIsAutocompleteSuppressed,
     setIsSearchFocused: primitivesRuntime.searchState.setIsSearchFocused,
     setIsSuggestionPanelActive: primitivesRuntime.searchState.setIsSuggestionPanelActive,
-    setShowSuggestions: primitivesRuntime.searchState.setShowSuggestions,
     setSuggestions: primitivesRuntime.searchState.setSuggestions,
     clearMapHighlightedRestaurantId:
       profilePresentationControlLane.profileOwner.profileActions.clearMapHighlightedRestaurantId,

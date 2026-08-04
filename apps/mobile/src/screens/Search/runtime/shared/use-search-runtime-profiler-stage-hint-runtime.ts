@@ -1,9 +1,6 @@
 import React from 'react';
 
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
-import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
-import type { SearchRuntimeBus } from './search-runtime-bus';
-import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import {
   getSearchSurfaceRuntime,
   selectSearchSurfaceVisualPolicy,
@@ -11,27 +8,21 @@ import {
 import { getSearchMountedResultsBodyRuntimeSnapshot } from './search-mounted-results-data-store';
 
 export const useSearchRuntimeProfilerStageHintRuntime = ({
-  searchRuntimeBus,
   resultsPresentationAuthority,
-  resultsPresentationSurfaceAuthority,
   isSearchRequestLoadingRef,
 }: {
-  searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
-  resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
 }) => {
-  void resultsPresentationSurfaceAuthority;
-  const profilerRuntimeState = useSearchRuntimeBusSelector(
-    searchRuntimeBus,
-    (state) => ({
-      isLoadingMore: state.isLoadingMore,
-    }),
-    (left, right) => left.isLoadingMore === right.isLoadingMore,
-    ['isLoadingMore'] as const,
-    'profiler_stage_hint_state'
-  );
-
+  // F1312: a live `useSearchRuntimeBusSelector` subscription on ['isLoadingMore'] used to sit
+  // here, returned as `profilerRuntimeState` — and NOTHING read it. It was a real
+  // useSyncExternalStore subscription that re-rendered this instrumentation runtime on every
+  // isLoadingMore flip so a value nobody consumed could be recomputed. Instrumentation that
+  // costs renders and reports nothing is worse than no instrumentation.
+  //
+  // F1317: `resultsPresentationSurfaceAuthority` and `searchRuntimeBus` were the discarded
+  // parameters that fed it (`void resultsPresentationSurfaceAuthority;`) — both are gone from
+  // the signature rather than silenced.
   const resolveProfilerStageHint = React.useCallback(() => {
     const searchSurfacePolicy = selectSearchSurfaceVisualPolicy(
       getSearchSurfaceRuntime().getSnapshot()
@@ -54,8 +45,5 @@ export const useSearchRuntimeProfilerStageHintRuntime = ({
     return 'post_visual';
   }, [isSearchRequestLoadingRef, resultsPresentationAuthority]);
 
-  return {
-    profilerRuntimeState,
-    resolveProfilerStageHint,
-  };
+  return { resolveProfilerStageHint };
 };

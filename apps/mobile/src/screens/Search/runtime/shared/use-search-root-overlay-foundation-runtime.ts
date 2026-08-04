@@ -30,8 +30,6 @@ const selectRouteOverlaySessionSnapshot = (
   const isDockedSceneLane = frame.laneKind === 'docked';
   return {
     shouldShowDockedSceneTarget: isDockedSceneLane,
-    shouldShowDockedScene: isDockedSceneLane,
-    shouldShowPollsSheet: isDockedSceneLane,
   };
 };
 

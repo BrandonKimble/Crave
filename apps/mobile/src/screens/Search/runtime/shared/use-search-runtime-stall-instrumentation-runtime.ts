@@ -9,8 +9,30 @@ import { logger } from '../../../../utils';
 
 const JS_FLOOR_PROBE_STALL_CONSOLE_LOG_MODE = false;
 const JS_FLOOR_PROBE_STALL_CONSOLE_LOG_MIN_MS = 120;
+// D49/F1313 — THE F1070 DISEASE, SECOND INSTANCE, SAME RECIPE APPLIED.
+//
+// The dormant-flag pattern is blessed: instrumentation stays compiled and off rather than
+// being deleted. What is NOT blessed is a dormant instrument that is BROKEN WHEN WOKEN, and
+// this one was: `SHOULD_LOG_JS_STALLS = false` was paired with
+// `JS_STALL_MIN_MS = Number.POSITIVE_INFINITY`, and the ticker's threshold is
+// `SHOULD_LOG_JS_STALLS ? JS_STALL_MIN_MS : ...`. Flip the flag to true and the gate becomes
+// `drift > Infinity` — never satisfiable — so the instrument would run its 100ms interval,
+// pay for every tick, and report NOTHING. Exactly F1070's shape one file over: the flag and
+// its companion constant had never been exercised together, so nobody had paid for it yet.
+//
+// The threshold is now a REAL one, and it is derived rather than picked: a stall only matters
+// once the JS thread has missed enough frames to be visible, and the other two arms of this
+// same ternary already encode that judgement (50ms for the scenario probe, 120ms for the
+// floor probe). 120ms — about seven frames at 60Hz — is the same bar the console-log mode
+// uses, so waking the flag now reports the same events the floor probe reports, through the
+// logger instead of the console.
+//
+// RED RECIPE: set SHOULD_LOG_JS_STALLS = true and block the JS thread for ~200ms (a large
+// synchronous loop in a press handler); the `[SearchPerf] JS stall` line must appear. Before
+// this change that recipe produced silence, which is what "an instrument that cannot show
+// RED" means.
 const SHOULD_LOG_JS_STALLS = false;
-const JS_STALL_MIN_MS = Number.POSITIVE_INFINITY;
+const JS_STALL_MIN_MS = 120;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value != null && typeof value === 'object' && !Array.isArray(value);

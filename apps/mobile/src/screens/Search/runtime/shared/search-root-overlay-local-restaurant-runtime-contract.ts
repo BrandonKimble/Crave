@@ -152,9 +152,10 @@ export type SearchRootOverlayLocalRestaurantSheetVisualControllers = {
   >['outputAuthority'];
 };
 
+// F1316: this used to declare the SAME authority object under two names —
+// `overlayLocalRestaurantSheetHostAuthority` and `localRestaurantSheetHostAuthority`, both
+// assigned `controller.outputAuthority` — and nothing outside the publication runtime ever
+// consumed the second. One object, one name.
 export type SearchRootOverlayLocalRestaurantSheetPublicationRuntime = {
   overlayLocalRestaurantSheetHostAuthority: SearchOverlayLocalRestaurantSheetHostAuthority;
-  localRestaurantSheetHostAuthority: ReturnType<
-    typeof createSearchOverlayLocalRestaurantSheetHostController
-  >['outputAuthority'];
 };

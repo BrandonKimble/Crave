@@ -25,6 +25,8 @@ import { useSearchRuntimeProfilerStageHintRuntime } from './use-search-runtime-p
 import { useSearchRuntimeSearchSurfaceRedrawTelemetryRuntime } from './use-search-runtime-surface-redraw-telemetry-runtime';
 import { useSearchRuntimeStallInstrumentationRuntime } from './use-search-runtime-stall-instrumentation-runtime';
 import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-state-telemetry-runtime';
+import searchPerfDebug from '../../search-perf-debug';
+import { logger } from '../../../../utils';
 
 // Dormant map-event-rate instrument. The `false` flag is the blessed pattern
 // (same shape as the Swift map controller's `lodDebugLoggingEnabled`): map
@@ -40,8 +42,22 @@ import { useSearchRuntimeStateTelemetryRuntime } from './use-search-runtime-stat
 // The consumer also clamps this defensively — see map-interaction-diagnostics.
 const SHOULD_LOG_MAP_EVENT_RATES = false;
 const MAP_EVENT_LOG_INTERVAL_MS = 1000;
-const SHOULD_LOG_SEARCH_COMPUTES = false;
-const SHOULD_LOG_SEARCH_STATE_CHANGES = false;
+// F1333 — THESE WERE HARDCODED `false`, WHILE A REAL CONFIG FOR THE SAME DECISION EXISTED.
+//
+// `SHOULD_LOG_SEARCH_COMPUTES` was a bare `false` threaded through FIVE files
+// (map-presentation runtime -> map-engine-input controller -> SearchMapWithMarkerEngine ->
+// use-direct-search-map-source-controller) alongside a `logSearchCompute` wired to an empty
+// function — an entire plumbing run for a decision that could not be made and a channel that
+// could not report. Meanwhile `searchPerfDebug` already owned exactly this switch
+// (`logSearchComputes`, with a matching `logSearchComputeMinMs` threshold), dev-gated behind
+// DEV_FLAGS.perfLogsEnabled, and had owned it all along.
+//
+// Two sources of truth for "should we log search computes", one of them a literal that always
+// answered no. They are one now: the flags come from searchPerfDebug, and the channel below
+// actually writes. Same for the state-change flag, which had the same shape.
+const SHOULD_LOG_SEARCH_COMPUTES = searchPerfDebug.enabled && searchPerfDebug.logSearchComputes;
+const SHOULD_LOG_SEARCH_STATE_CHANGES =
+  searchPerfDebug.enabled && searchPerfDebug.logSearchStateChanges;
 
 const clampLatitude = (value: number): number => Math.max(-89.9, Math.min(89.9, value));
 
@@ -103,7 +119,15 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   isSearchOverlay,
   resultsPage,
 }: UseSearchRuntimeInstrumentationRuntimeArgs): UseSearchRuntimeInstrumentationRuntimeResult => {
-  const logSearchCompute = React.useCallback((_label: string, _duration: number) => {}, []);
+  // F1333: this was `(_label, _duration) => {}` — a channel the map's compute instrumentation
+  // wrote into and nothing ever read. It reports now, under the same dev gate as its flag, and
+  // honours searchPerfDebug's own minimum-duration threshold so it cannot flood.
+  const logSearchCompute = React.useCallback((label: string, duration: number) => {
+    if (!SHOULD_LOG_SEARCH_COMPUTES || duration < searchPerfDebug.logSearchComputeMinMs) {
+      return;
+    }
+    logger.debug(`[SearchPerf] compute ${label} ${duration.toFixed(1)}ms`);
+  }, []);
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const activeScenarioConfigRef = React.useRef(activeScenarioConfig);
   activeScenarioConfigRef.current = activeScenarioConfig;
@@ -390,9 +414,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   );
 
   const { resolveProfilerStageHint } = useSearchRuntimeProfilerStageHintRuntime({
-    searchRuntimeBus,
     resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
     isSearchRequestLoadingRef,
   });
   const readRuntimeDiagnostics = React.useCallback(() => {

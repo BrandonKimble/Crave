@@ -80,7 +80,6 @@ export const useSearchRuntimeRootStateCommitTelemetryRuntime = ({
       isSearchOverlay: latestRootFields.isSearchOverlay,
       resultsRequestKey: latestRootFields.resultsRequestKey,
       resultsPage: latestRootFields.resultsPage,
-      shouldHydrateResultsForRender: false,
       resultsPresentation: presentationSnapshot.resultsPresentation,
       resultsPresentationTransport: presentationSnapshot.resultsPresentationTransport,
       isMapRevealPending: presentationSnapshot.resultsPresentation.isPending,

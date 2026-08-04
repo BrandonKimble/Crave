@@ -19,6 +19,15 @@ import { captureHandledError } from '../../observability/crash-reporting';
 // a mirror so the body host needs no controller import (no cycle: controller → probe,
 // overlays → probe).
 
+// F920 — 48 IS UNATTRIBUTED, and it is the whole boundary between "the law is
+// satisfied" and a logged violation, so the instrument's honesty rests on it. It is
+// suspiciously ~3 frames at 60Hz, but nothing in this file's history says that, and if
+// the app targets 120Hz the same 48ms is 6 frames — i.e. the number silently means
+// different things on different devices. Do NOT restate it as `3 * FRAME_MS` without
+// evidence; that would invent a derivation. The number that WOULD attribute it is the
+// p99 `sinceAckMs` of a COMPLIANT post-flip first commit, and that distribution is now
+// emitted below ([PREMOUNT] compliant, __DEV__) instead of being silently swallowed by
+// the early return. Measure, then replace this with the measurement and its date.
 export const PREMOUNT_COMMIT_GRACE_MS = 48;
 
 type PremountProbeState = {
@@ -99,10 +108,17 @@ export const notePremountChildBodyFirstCommit = ({
   }
   const sinceAckMs = Date.now() - probeState.ackAtMs;
   if (sinceAckMs <= PREMOUNT_COMMIT_GRACE_MS) {
+    if (__DEV__) {
+      // F920: the compliant population — the only sample that can attribute the grace.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[PREMOUNT] compliant unit=${unitKey} scene=${sceneKey} switchId=${probeState.switchId} sinceAckMs=${sinceAckMs} graceMs=${PREMOUNT_COMMIT_GRACE_MS}`
+      );
+    }
     return;
   }
   logPremountViolation(
     `[PREMOUNT] violation: child body first Fabric commit AFTER the visibility flip — ` +
-      `unit=${unitKey} scene=${sceneKey} switchId=${probeState.switchId} sinceAckMs=${sinceAckMs}`
+      `unit=${unitKey} scene=${sceneKey} switchId=${probeState.switchId} sinceAckMs=${sinceAckMs} graceMs=${PREMOUNT_COMMIT_GRACE_MS}`
   );
 };

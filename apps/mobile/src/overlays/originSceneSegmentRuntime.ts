@@ -11,6 +11,13 @@
 // SEGMENT-SELECT runs BEFORE scroll-restore on a profile-origin restore (design §Restore §5):
 // the captured offset only makes sense against the captured segment's row extent, so the right
 // segment's rows must be in place before the deep scrollTo lands.
+// F971 (third instance, ASSESSED NOT A LEAK — recorded so the next reader need not re-derive
+// it): this Map only shrinks on consume, so a staged restore whose scene never re-activates
+// stays until the process ends. But the key is `sceneIdentityKey == sceneKey`, the bounded
+// scene vocabulary, and the value is one short segment string — the retained set has a fixed
+// ceiling of a handful of tiny strings, and `stageOriginSceneSegmentRestore` overwrites
+// (or deletes) per key rather than accumulating. Growth with a ceiling, not a leak; no
+// eviction policy is warranted, and adding one would be scaffolding without a cost to pay for.
 const originSceneSegmentRestorePending = new Map<string, string>();
 
 export const stageOriginSceneSegmentRestore = (

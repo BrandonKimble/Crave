@@ -15,6 +15,8 @@ import {
   type PageBodyState,
   type PageListBodySpec,
 } from '../page-body-contract';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
+import { AVATAR_SIZES } from '../../constants/avatar-sizes';
 
 // ─── notifications — THE PAGE L2's first migrated list body ─────────────────────────
 // The in-app feed over GET /notifications/feed. Opening the page marks the feed read
@@ -28,10 +30,11 @@ import {
 // panel-local load-state machine, in-body ready gate, and hand-rolled empty/failed
 // views are DELETED — a pending/error/empty branch has no state left to express here.
 
-const AVATAR_SIZE = 40;
+const AVATAR_SIZE = AVATAR_SIZES.list;
 
 const resolveActorTitle = (item: NotificationFeedItem): string =>
-  item.actor?.displayName?.trim() || item.actor?.username?.trim() || 'Someone';
+  // 'Someone' rather than the default: this name lands inside a sentence ("Someone followed you").
+  resolveUserDisplayName(item.actor, 'Someone');
 
 const resolveRowText = (item: NotificationFeedItem): string => {
   switch (item.type) {

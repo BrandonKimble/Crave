@@ -9,10 +9,7 @@ import type {
   BottomSheetSceneStackBodyDefaults,
   BottomSheetSceneStackBodyScrollRuntime,
 } from './bottomSheetSceneStackHostContract';
-import {
-  beginRevealCommitSpan,
-  markRevealCommitStage,
-} from '../perf/reveal-commit-attribution';
+import { beginRevealCommitSpan, markRevealCommitStage } from '../perf/reveal-commit-attribution';
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
@@ -188,6 +185,7 @@ const LANDING_ABOVE_FOLD_ROWS = 4;
 // +LANDING_SLICE_STEP rows per free frame pair until complete (idle-frame SLICES,
 // plural — the design's words).
 const LANDING_SLICE_STEP = 6;
+const SCROLL_ACTIVITY_EMIT_STRIDE_PX = 48;
 // THE RAMP HOLD (catalog arc 2026-07-19 — the attributed snap mechanism): the pin
 // fade ramp starts right after the reveal, and the frames it runs on are NOT idle —
 // the live frame apply + Fabric row mounts were eating them (the owner's "pins snap
@@ -273,6 +271,35 @@ const scheduleLandingClockNextBeat = (): void => {
 
 let landingSliceActiveTab: 'dishes' | 'restaurants' | null = null;
 
+// F971 — THE LANDING CLOCK HAS AN OWNER THAT ENDS IT.
+//
+// The clock's state is module globals driven by a SELF-RESCHEDULING rAF chain plus a 700ms
+// ramp-hold timeout, and it had NO unmount path: the data authority's subscribe cleanup only
+// removed the listener. If the search body unmounted mid-landing, the rAF chain kept
+// re-scheduling itself and kept mutating globals for a component that no longer existed, the
+// ramp-hold timer kept running, every one of those globals pinned the previous episode's
+// primaryData/secondaryData arrays alive, and the NEXT mount inherited a HALF-ADVANCED clock
+// — a partially-sliced list, which is a visible defect, not just retained bytes.
+//
+// State with a lifetime has an owner that ends it. The owner here is the listener set: the
+// clock only exists to notify subscribers, so when the last subscriber goes the clock is
+// disposed — cancel the pending beat, release the ramp hold, drop every retained snapshot,
+// and reset the beat counter so the next mount starts a FRESH landing.
+const disposeLandingClock = (): void => {
+  if (landingSliceTimer != null) {
+    cancelAnimationFrame(landingSliceTimer);
+    landingSliceTimer = null;
+  }
+  landingRampHoldRelease?.();
+  landingRampHoldRelease = null;
+  landingSliceBase = null;
+  landingSliceSnapshot = null;
+  landingSliceCount = 0;
+  landingSliceActiveTab = null;
+  motionFencedListDataSnapshot = null;
+  wasRedrawEpisodeLive = false;
+};
+
 const getLandingSlicedSnapshot = (
   base: SearchMountedResultsListDataSnapshot
 ): SearchMountedResultsListDataSnapshot => {
@@ -285,10 +312,8 @@ const getLandingSlicedSnapshot = (
     // tab's rows are pure post-ramp work: they land with the held beats (or instantly
     // via the tab-flip release below). primary = restaurants, secondary = dishes.
     landingSliceActiveTab = getSearchMountedResultsRowsSnapshot().activeTab;
-    const primaryAboveFold =
-      landingSliceActiveTab === 'restaurants' ? LANDING_ABOVE_FOLD_ROWS : 0;
-    const secondaryAboveFold =
-      landingSliceActiveTab === 'dishes' ? LANDING_ABOVE_FOLD_ROWS : 0;
+    const primaryAboveFold = landingSliceActiveTab === 'restaurants' ? LANDING_ABOVE_FOLD_ROWS : 0;
+    const secondaryAboveFold = landingSliceActiveTab === 'dishes' ? LANDING_ABOVE_FOLD_ROWS : 0;
     landingSliceSnapshot = {
       ...base,
       primaryData: base.primaryData.slice(0, primaryAboveFold),
@@ -379,6 +404,11 @@ const SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY: SearchMountedResultsListDataAu
       unsubscribe();
       unsubscribeFenceRelease();
       landingClockListeners.delete(listener);
+      // F971: the LAST subscriber leaving is the search body unmounting. End the clock's
+      // state here — nothing else ever will.
+      if (landingClockListeners.size === 0) {
+        disposeLandingClock();
+      }
     };
   },
 };
@@ -636,7 +666,12 @@ const SearchMountedResultsListTarget = React.memo(
     useAnimatedReaction(
       () => bodyScrollRuntime.scrollOffset.value,
       (current, previous) => {
-        if (previous == null || Math.abs(current - previous) >= 48) {
+        // F976(d): the pagination scroll-activity emit is rate-limited by DISTANCE, not by
+        // time — one emit per this many points of travel. FEEL/UNATTRIBUTED: 48 is not tied
+        // to a row height or a viewport fraction, it is simply "far enough that the user
+        // clearly moved". Its only job is to keep the emit off every frame; the pagination
+        // decision itself re-reads live offsets, so the granularity cannot cause a miss.
+        if (previous == null || Math.abs(current - previous) >= SCROLL_ACTIVITY_EMIT_STRIDE_PX) {
           runOnJS(emitUserListScrollActivity)(current);
         }
       },
@@ -1123,15 +1158,12 @@ const SearchMountedResultsListDataLeaf = React.memo(
       SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY.getSnapshot,
       SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY.getSnapshot
     );
-    const localRenderDishCard = React.useCallback(
-      (item: ResultsListItem, index: number) =>
-        sceneBodyContentRef.current.renderItem?.({
-          item,
-          index,
-        } as never) as React.ReactElement | null,
-      [sceneBodyContentRef]
-    );
-    const localRenderRestaurantCard = React.useCallback(
+    // F975(g): `localRenderDishCard` and `localRenderRestaurantCard` were CHARACTER-FOR-
+    // CHARACTER identical bodies passed under two names — the two names promised a
+    // dish/restaurant distinction that did not exist anywhere in the code, so a reader had to
+    // diff them to discover they were the same delegation. There is one card renderer: the
+    // scene's published `renderItem`, which decides the card KIND from the row itself.
+    const localRenderCard = React.useCallback(
       (item: ResultsListItem, index: number) =>
         sceneBodyContentRef.current.renderItem?.({
           item,
@@ -1148,8 +1180,8 @@ const SearchMountedResultsListDataLeaf = React.memo(
       []
     );
     const baseRenderItem = useSearchResultsListRenderItemRuntime({
-      renderDishCard: localRenderDishCard as never,
-      renderRestaurantCard: localRenderRestaurantCard as never,
+      renderDishCard: localRenderCard as never,
+      renderRestaurantCard: localRenderCard as never,
       handleShowMoreExactDishes,
       handleShowMoreExactRestaurants,
     });

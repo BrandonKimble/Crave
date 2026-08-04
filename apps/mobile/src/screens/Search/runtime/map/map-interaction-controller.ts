@@ -115,7 +115,6 @@ type UseMapInteractionControllerArgs = {
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   clearMapHighlightedRestaurantId: () => void;
   cancelAutocomplete: () => void;
@@ -160,7 +159,6 @@ export const useMapInteractionController = (
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setShowSuggestions,
     setSuggestions,
     clearMapHighlightedRestaurantId,
     cancelAutocomplete,
@@ -227,7 +225,6 @@ export const useMapInteractionController = (
     setIsSearchFocused(false);
     setIsSuggestionPanelActive(false);
     if (!shouldDeferSuggestionClear) {
-      setShowSuggestions(false);
       setSuggestions([]);
     }
     if (pendingMarkerOpenAnimationFrameRef.current != null) {
@@ -250,7 +247,6 @@ export const useMapInteractionController = (
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     clearMapHighlightedRestaurantId,
-    setShowSuggestions,
     setSuggestions,
     suppressAutocompleteResults,
   ]);

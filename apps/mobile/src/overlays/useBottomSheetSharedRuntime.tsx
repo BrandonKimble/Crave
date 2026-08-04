@@ -236,7 +236,9 @@ export const useBottomSheetSharedRuntime = ({
     fallbackSnapshot: fallbackRuntimeConfigSnapshot,
     runtimeConfigAuthority,
   });
-  const isSearchResultsSheet = testID === 'search-results-flatlist';
+  // F973(d): an `isSearchResultsSheet = testID === 'search-results-flatlist'` was computed
+  // here, threaded through two runtimes, and ended its life at `void isSearchResultsSheet;`
+  // — a magic testID string made load-bearing for nothing. Deleted at all four sites.
   const expandedSnap = snapPoints.expanded;
   const middleSnap = snapPoints.middle;
   const collapsedSnap = snapPoints.collapsed;
@@ -351,20 +353,7 @@ export const useBottomSheetSharedRuntime = ({
     });
 
   const snapPublicationRuntime = useBottomSheetSharedSnapPublicationRuntime({
-    visible,
-    listScrollEnabled,
-    interactionEnabled,
-    shouldEnableScroll,
-    gestureEnabled,
-    activeList: resolvedActiveList,
     screenHeight,
-    testID,
-    listKey,
-    dataCount,
-    secondaryDataCount,
-    scrollHeaderHeight: publicationRuntime.scrollHeaderHeight,
-    touchBlockingEnabled: publicationRuntime.touchBlockingEnabled,
-    isSearchResultsSheet,
     sheetYObserver,
     onHidden,
     onSnapStart,
@@ -408,7 +397,6 @@ export const useBottomSheetSharedRuntime = ({
     notifySnapStart: snapPublicationRuntime.notifySnapStart,
     notifySnapSettleComplete: snapPublicationRuntime.notifySnapSettleComplete,
     runtimeConfigValues,
-    isSearchResultsSheet,
   });
 
   const gestures = useBottomSheetSharedGestureRuntime({

@@ -48,14 +48,10 @@ export type SearchOverlayHeaderSearchThisAreaInteractionHostAuthority =
 export type SearchOverlayHeaderShortcutsHostAuthority =
   SnapshotAuthority<SearchForegroundHeaderShortcutsInputs>;
 
-export type SearchOverlaySuggestionShellContainerHostAuthority =
-  SnapshotAuthority<SearchRootOverlaySuggestionShellContainerRuntime>;
-
-export type SearchOverlaySuggestionShellLayoutHostAuthority =
-  SnapshotAuthority<SearchForegroundSuggestionLayoutInputs>;
-
-export type SearchOverlaySuggestionShellMotionHostAuthority =
-  SnapshotAuthority<SearchForegroundSuggestionMotionInputs>;
+// F1315: three `SearchOverlaySuggestionShell{Container,Layout,Motion}HostAuthority` aliases
+// lived here, each the sole consumer of a same-named one-line hook file whose entire body was
+// `useSnapshotAuthority(x)`. Neither the hooks nor the aliases had a single importer anywhere
+// in apps/mobile/src — three files, three exports, zero callers. Deleted with their hooks.
 
 export type SearchOverlaySuggestionPanelHostAuthority =
   SnapshotAuthority<SearchForegroundSuggestionPanelInputs>;

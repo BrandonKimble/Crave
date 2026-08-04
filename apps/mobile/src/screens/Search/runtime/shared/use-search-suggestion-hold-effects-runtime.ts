@@ -11,9 +11,7 @@ export const useSearchSuggestionHoldEffectsRuntime = ({
   query,
   isSuggestionPanelActive,
   setSuggestions,
-  setShowSuggestions,
   setBeginSuggestionCloseHold,
-  setSearchTransitionVariant,
   shouldDriveSuggestionLayout,
   shouldShowSuggestionBackground,
   liveShouldRenderAutocompleteSection,
@@ -24,7 +22,6 @@ export const useSearchSuggestionHoldEffectsRuntime = ({
 }: SearchSuggestionHoldEffectsRuntimeArgs): SearchSuggestionHoldEffectsRuntime => {
   const holdActionRuntime: SearchSuggestionHoldActionRuntime =
     useSearchSuggestionHoldActionsRuntime({
-      setSearchTransitionVariant,
       shouldDriveSuggestionLayout,
       shouldShowSuggestionBackground,
       liveShouldRenderAutocompleteSection,
@@ -36,9 +33,7 @@ export const useSearchSuggestionHoldEffectsRuntime = ({
     query,
     isSuggestionPanelActive,
     setSuggestions,
-    setShowSuggestions,
     setBeginSuggestionCloseHold,
-    setSearchTransitionVariant,
     shouldDriveSuggestionLayout,
     resetSubmitTransitionHold,
     resetSubmitTransitionHoldIfQueryChanged,

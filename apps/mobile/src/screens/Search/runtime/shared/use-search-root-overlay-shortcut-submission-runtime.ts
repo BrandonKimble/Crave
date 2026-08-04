@@ -38,5 +38,14 @@ export const useSearchRootOverlayShortcutSubmissionRuntime = ({
     ]
   );
 
-  instrumentationRuntime.submitShortcutScenarioCommandRef.current = submitShortcutSearch;
+  // F1326: this was a bare render-body assignment with no teardown — see the note in
+  // use-search-root-results-presentation-authority-runtime. Assign in an effect, restore the
+  // inert default on unmount, so a perf deep link can never drive a torn-down tree.
+  React.useEffect(() => {
+    const commandRef = instrumentationRuntime.submitShortcutScenarioCommandRef;
+    commandRef.current = submitShortcutSearch;
+    return () => {
+      commandRef.current = async () => undefined;
+    };
+  }, [instrumentationRuntime.submitShortcutScenarioCommandRef, submitShortcutSearch]);
 };

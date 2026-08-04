@@ -29,6 +29,11 @@ export type {
   RouteSceneLayoutAuthority,
 } from './route-authority-contract';
 
+/** F1334: what a real JS-heap reader would return. Deliberately open for now — the shape is
+ *  the platform's to define if one ever exists; what matters is that this is a TYPE with an
+ *  absent case rather than the literal `null`. */
+export type RuntimeMemoryDiagnostics = Record<string, unknown>;
+
 export type UseSearchRootSessionRuntimeArgs = {
   isSignedIn: boolean;
   accessToken: SearchRootEnvironment['accessToken'];
@@ -65,7 +70,10 @@ export type SearchRuntimePrimitivesRuntime = {
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
   searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   getPerfNow: () => number;
-  readRuntimeMemoryDiagnostics: () => null;
+  /** F1334: `null` means "this platform exposes no JS-heap diagnostics", not "not implemented
+   *  yet". Typed as an OPTION rather than as the literal `null` so consumers must handle the
+   *  absent case and a real reader can arrive without a contract change. */
+  readRuntimeMemoryDiagnostics: () => RuntimeMemoryDiagnostics | null;
   resetShortcutCoverageState: () => void;
 };
 
@@ -94,7 +102,6 @@ export type SearchRootRuntimeFlagsRuntime = {
 
 export type SearchRootCameraViewportRuntime = {
   lastSearchBoundsCaptureSeqRef: React.MutableRefObject<number>;
-  lastVisibleSheetStateRef: React.MutableRefObject<Exclude<OverlaySheetSnap, 'hidden'>>;
   lastCameraStateRef: React.MutableRefObject<{
     center: [number, number];
     zoom: number;

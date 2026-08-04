@@ -8,6 +8,11 @@ import {
   buildSearchStartupGeometrySeed,
   resolveSearchBottomInset,
 } from './search-startup-geometry';
+import { useRouteAuthoritySelector } from '../../../../navigation/runtime/use-route-authority-selector';
+import type { RouteOverlayVisibilitySnapshot } from '../../../../navigation/runtime/route-overlay-visibility-snapshot-contract';
+
+const selectShouldRenderSearchOverlay = (snapshot: RouteOverlayVisibilitySnapshot): boolean =>
+  snapshot.shouldRenderSearchOverlay;
 
 type UseSearchRootOverlaySessionSurfaceRuntimeArgs = {
   insetsTop: number;
@@ -48,8 +53,32 @@ export const useSearchRootOverlaySessionSurfaceRuntime = ({
     [startupGeometrySeed.bottomNavHeight, startupGeometrySeed.bottomNavTop]
   );
 
-  const shouldRenderSearchOverlay =
-    routeOverlayVisibilityAuthority.getSnapshot().shouldRenderSearchOverlay;
+  // F1323(a) — SUBSCRIBED, not read once during render.
+  //
+  // This was `routeOverlayVisibilityAuthority.getSnapshot().shouldRenderSearchOverlay` in the
+  // render body, folded straight into the memo below. The authority was never subscribed here,
+  // so the value only refreshed when something ELSE happened to re-render this hook — and it
+  // propagates from here into the chrome host, the suggestion shell's pointerEvents, and the
+  // presentation owner. A value that changes without re-rendering its readers is not state,
+  // and reading it during render is the failure mode that looks correct in every manual test:
+  // some unrelated render is almost always close enough to hide it.
+  //
+  // `useRouteAuthoritySelector` is the house pattern for exactly this and was already imported
+  // in this territory; the selector narrows to the one boolean so an unrelated visibility-
+  // snapshot field cannot wake this hook.
+  const shouldRenderSearchOverlay = useRouteAuthoritySelector<
+    RouteOverlayVisibilitySnapshot,
+    boolean
+  >({
+    subscribe: React.useCallback(
+      (listener: () => void) => routeOverlayVisibilityAuthority.subscribe(listener),
+      [routeOverlayVisibilityAuthority]
+    ),
+    getSnapshot: routeOverlayVisibilityAuthority.getSnapshot,
+    selector: selectShouldRenderSearchOverlay,
+    attributionOwner: 'useSearchRootOverlaySessionSurfaceRuntime',
+    attributionOperation: 'shouldRenderSearchOverlaySelector',
+  });
 
   return React.useMemo(
     () => ({

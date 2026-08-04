@@ -71,7 +71,6 @@ type UseBottomSheetSharedSnapExecutionRuntimeArgs = {
   notifySnapStart: BottomSheetSharedNotifySnapStart;
   notifySnapSettleComplete: BottomSheetSharedNotifySnapSettleComplete;
   runtimeConfigValues?: BottomSheetSharedRuntimeConfigSharedValues;
-  isSearchResultsSheet: boolean;
 };
 
 export const useBottomSheetSharedSnapExecutionRuntime = ({
@@ -102,10 +101,7 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
   notifySnapStart,
   notifySnapSettleComplete,
   runtimeConfigValues,
-  isSearchResultsSheet,
 }: UseBottomSheetSharedSnapExecutionRuntimeArgs): BottomSheetSharedSnapExecutionResult => {
-  void isSearchResultsSheet;
-
   // MOUNT-STABLE CALLBACKS (red team 2): snap-number props re-created
   // resolveDestination/startSpring per presented scene, which re-minted the sheet
   // pans downstream (the stale-relations disease). Worklets read SV mirrors instead.

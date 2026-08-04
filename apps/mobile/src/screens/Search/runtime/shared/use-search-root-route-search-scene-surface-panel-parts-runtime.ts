@@ -1,8 +1,6 @@
 import { computeSceneChromeHeight } from '../../../../navigation/runtime/scene-chrome-geometry';
 import type {
-  SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs,
   SearchRootRuntimeRouteSearchSceneDataRuntime,
-  SearchRootRuntimeRouteSearchSceneReadModelRuntime,
   SearchRootRuntimeRouteSearchSceneSurfaceStateRuntime,
 } from './route-search-scene-runtime-contract';
 import { useSearchRootSearchScenePanelSurfaceCompositeRuntime } from './use-search-root-search-scene-panel-surface-composite-runtime';
@@ -10,9 +8,11 @@ import { useSearchRootSearchScenePanelSurfaceCompositeRuntime } from './use-sear
 export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
   routeSearchSceneDataRuntime,
   routeSearchSceneSurfaceStateRuntime,
-}: Pick<SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs, 'visualAssemblyRuntime'> & {
+  // F1336(c): this used to also declare `visualAssemblyRuntime` (via a Pick<> on the results
+  // surface args) and `routeSearchSceneReadModelRuntime`. Neither was destructured; the caller
+  // passed both every render. Two more dead parameters, without even a `void` to admit it.
+}: {
   routeSearchSceneDataRuntime: SearchRootRuntimeRouteSearchSceneDataRuntime;
-  routeSearchSceneReadModelRuntime: SearchRootRuntimeRouteSearchSceneReadModelRuntime;
   routeSearchSceneSurfaceStateRuntime: SearchRootRuntimeRouteSearchSceneSurfaceStateRuntime;
 }) => {
   const routeSearchScenePanelSurfaceCompositeRuntime =

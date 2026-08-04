@@ -40,7 +40,14 @@ export type SearchRootStateCommitSnapshot = {
   isSearchOverlay: boolean;
   resultsRequestKey: string | null;
   resultsPage: number | null;
-  shouldHydrateResultsForRender: boolean;
+  // F1320: `shouldHydrateResultsForRender: boolean` used to be declared here and assigned the
+  // LITERAL `false` at every emit. The emitter diffs every key of this snapshot against the
+  // previous one to build `changedKeys` — so this field could never appear in that list, and a
+  // reader of the trace would reasonably conclude that hydration never changed during the
+  // span. A constant inside a changed-keys diff is worse than a missing field: it is a field
+  // that actively asserts "this never moved". The real value lives on the hydration runtime
+  // (search-results-panel-hydration-runtime-contract) and is read live by the presentation
+  // selectors; if this span ever needs it, it must be threaded from there, not re-declared.
   resultsPresentation: ResultsPresentationReadModel;
   resultsPresentationTransport: ResultsPresentationTransportState;
   isMapRevealPending: boolean;

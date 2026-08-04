@@ -1,7 +1,6 @@
 import React from 'react';
 
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
-import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootOverlaySuggestionShellVisualRuntime } from './search-root-visual-runtime-contract';
 
@@ -22,7 +21,9 @@ export const useSearchRootOverlaySuggestionShellContainerRuntime = ({
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
   stateFoundationLane: SearchRootStateFoundationLane;
-  rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
+  // F1336(a): `rootOverlayFoundationRuntime` was declared on this arg type and never
+  // destructured — the caller computed and passed it on every render for nothing. Removed
+  // here and at the call site.
   visualRuntime: SearchRootOverlaySuggestionShellVisualRuntime;
 }): SearchRootOverlaySuggestionShellContainerRuntime => {
   const suggestionRuntime = stateFoundationLane.rootSuggestionRuntime;

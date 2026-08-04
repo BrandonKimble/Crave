@@ -45,7 +45,7 @@ export const useSearchRootForegroundCommandRuntime = ({
     () =>
       registerSearchReconcilerViewInputs({
         getDockedSceneFlag: () =>
-          routeOverlaySessionSnapshotRef.current.shouldShowDockedScene === true,
+          routeOverlaySessionSnapshotRef.current.shouldShowDockedSceneTarget === true,
       }),
     [routeOverlaySessionSnapshotRef]
   );
@@ -96,7 +96,6 @@ export const useSearchRootForegroundCommandRuntime = ({
         resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
         setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
         setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-        setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
         setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
         setQuery: rootPrimitivesRuntime.searchState.setQuery,
         pendingRestaurantSelectionRef:
@@ -137,7 +136,6 @@ export const useSearchRootForegroundCommandRuntime = ({
       rootPrimitivesRuntime.searchState.setIsSearchFocused,
       rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
       rootPrimitivesRuntime.searchState.setQuery,
-      rootPrimitivesRuntime.searchState.setShowSuggestions,
       rootPrimitivesRuntime.searchState.setSuggestions,
       rootPrimitivesRuntime.searchState.suggestions,
       rootSharedSheetRuntimeLane.resetMapMoveFlag,

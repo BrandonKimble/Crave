@@ -1,6 +1,7 @@
 import api from './api';
 import { expectArray, expectArrayAt } from './expect-shape';
 import type { MapBounds } from '../types';
+import { resolveUserDisplayName } from '../utils/user-display-name';
 
 // ─── Live model (comment + endorsement + leaderboard) ────────────────────────
 
@@ -43,6 +44,17 @@ export interface PollCreator {
   displayName: string | null;
   avatarUrl: string | null;
 }
+
+/**
+ * F934(b): "what do I call this poll's creator" was byte-for-byte duplicated in PollsPanel
+ * and PollDetailPanel — the SAME two panels that render the same creator, so a drift in
+ * either would have shown two different names for one poll on two screens. It lives next to
+ * the type it reads, once.
+ *
+ * A non-user origin (seeded / curator) is attributed to the product, not to a person.
+ */
+export const resolvePollCreatorName = (creator: PollCreator | undefined): string =>
+  creator?.origin === 'user' ? resolveUserDisplayName(creator, 'Member') : 'Crave';
 
 export type PollLeaderboardSubjectType = 'entity' | 'connection';
 

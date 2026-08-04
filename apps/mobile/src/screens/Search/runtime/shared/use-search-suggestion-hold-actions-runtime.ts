@@ -4,11 +4,9 @@ import type {
   SearchSuggestionHoldActionRuntime,
   SearchSuggestionHoldActionRuntimeArgs,
   SearchSuggestionTransitionHoldCapture,
-  SuggestionTransitionVariant,
 } from './use-search-suggestion-surface-runtime-contract';
 
 export const useSearchSuggestionHoldActionsRuntime = ({
-  setSearchTransitionVariant,
   shouldDriveSuggestionLayout,
   shouldShowSuggestionBackground,
   liveShouldRenderAutocompleteSection,
@@ -33,31 +31,17 @@ export const useSearchSuggestionHoldActionsRuntime = ({
     ]
   );
 
+  // F1311: both verbs used to follow a successful hold with a write to the write-only
+  // `searchTransitionVariant` state ('submitting' here, the caller's variant below). With that
+  // state deleted the `if (didHold)` arms were empty — the HOLD itself is the whole effect,
+  // and it is what the return value reports.
   const beginSubmitTransition = React.useCallback(() => {
-    const didHold = captureSuggestionTransitionHold(buildSuggestionTransitionHoldCapture());
-    if (didHold) {
-      setSearchTransitionVariant('submitting');
-    }
-    return didHold;
-  }, [
-    buildSuggestionTransitionHoldCapture,
-    captureSuggestionTransitionHold,
-    setSearchTransitionVariant,
-  ]);
+    return captureSuggestionTransitionHold(buildSuggestionTransitionHoldCapture());
+  }, [buildSuggestionTransitionHoldCapture, captureSuggestionTransitionHold]);
 
   const beginSuggestionCloseHold = React.useCallback(
-    (variant: SuggestionTransitionVariant = 'default') => {
-      const didHold = captureSuggestionTransitionHold(buildSuggestionTransitionHoldCapture());
-      if (didHold) {
-        setSearchTransitionVariant(variant);
-      }
-      return didHold;
-    },
-    [
-      buildSuggestionTransitionHoldCapture,
-      captureSuggestionTransitionHold,
-      setSearchTransitionVariant,
-    ]
+    () => captureSuggestionTransitionHold(buildSuggestionTransitionHoldCapture()),
+    [buildSuggestionTransitionHoldCapture, captureSuggestionTransitionHold]
   );
 
   return {

@@ -11,7 +11,6 @@ type UseSuggestionInteractionControllerArgs = {
   resetSearchHeaderFocusProgress: () => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   shouldLogPerf?: boolean;
 };
@@ -24,7 +23,6 @@ export const useSuggestionInteractionController = ({
   resetSearchHeaderFocusProgress,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
-  setShowSuggestions,
   setSuggestions,
   shouldLogPerf: _shouldLogPerf = false,
 }: UseSuggestionInteractionControllerArgs) => {
@@ -40,7 +38,6 @@ export const useSuggestionInteractionController = ({
     ignoreNextSearchBlurRef.current = false;
     setIsSearchFocused(false);
     setIsSuggestionPanelActive(false);
-    setShowSuggestions(false);
     setSuggestions([]);
     setIsSuggestionScrollDismissing(false);
     resetSearchHeaderFocusProgress();
@@ -52,7 +49,6 @@ export const useSuggestionInteractionController = ({
     resetSearchHeaderFocusProgress,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setShowSuggestions,
     setSuggestions,
   ]);
 

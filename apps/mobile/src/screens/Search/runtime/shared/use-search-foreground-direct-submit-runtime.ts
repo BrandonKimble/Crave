@@ -32,7 +32,6 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'resetMapMoveFlag'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
   | 'pendingRestaurantSelectionRef'
@@ -76,7 +75,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   resetMapMoveFlag,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
-  setShowSuggestions,
   setSuggestions,
   setQuery,
   pendingRestaurantSelectionRef,
@@ -99,7 +97,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     beginSubmitTransition,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setShowSuggestions,
     setSuggestions,
     setQuery,
     pendingRestaurantSelectionRef,

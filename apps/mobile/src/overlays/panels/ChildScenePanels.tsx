@@ -31,6 +31,7 @@ import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import type { PageStaticBodySpec } from '../page-body-contract';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import SquircleSpinner from '../../components/SquircleSpinner';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
 
 // ─── Child-scene panel hub ───────────────────────────────────────────────────────────────────
 // The Settings scene body lives here, plus the re-export + persistent-header registration seam
@@ -230,7 +231,7 @@ const BlockedUsersSection = () => {
             <BlockedRowAvatar user={user} />
             <View style={styles.blockedRowText}>
               <Text variant="body" weight="semibold" numberOfLines={1} style={styles.bodyText}>
-                {user.displayName ?? user.username ?? 'User'}
+                {resolveUserDisplayName(user, 'User')}
               </Text>
               {user.username ? (
                 <Text variant="caption" numberOfLines={1} style={styles.blockedRowSubtitle}>

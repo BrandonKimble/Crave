@@ -22,12 +22,10 @@ export const useSearchForegroundExternalSubmitRuntime = ({
   ignoreNextSearchBlurRef,
   resetSearchHeaderFocusProgress,
   resetSubmitTransitionHold,
-  setSearchTransitionVariant,
   setIsAutocompleteSuppressed,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
   setIsSuggestionLayoutWarm,
-  setShowSuggestions,
   setSuggestions,
   cancelAutocomplete,
   submitHandlers,
@@ -41,12 +39,10 @@ export const useSearchForegroundExternalSubmitRuntime = ({
     }
     Keyboard.dismiss();
     resetSubmitTransitionHold();
-    setSearchTransitionVariant('default');
     setIsAutocompleteSuppressed(true);
     setIsSearchFocused(false);
     setIsSuggestionPanelActive(false);
     setIsSuggestionLayoutWarm(false);
-    setShowSuggestions(false);
     setSuggestions([]);
     cancelAutocomplete();
   }, [
@@ -59,8 +55,6 @@ export const useSearchForegroundExternalSubmitRuntime = ({
     setIsSearchFocused,
     setIsSuggestionLayoutWarm,
     setIsSuggestionPanelActive,
-    setSearchTransitionVariant,
-    setShowSuggestions,
     setSuggestions,
   ]);
 

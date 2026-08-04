@@ -16,7 +16,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   resetFocusedMapState,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
-  setShowSuggestions,
   setSuggestions,
   setQuery,
   isSearchEditingRef,
@@ -32,7 +31,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   | 'resetFocusedMapState'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
   | 'isSearchEditingRef'
@@ -54,7 +52,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
         setIsSuggestionPanelActive(false);
       }
       if (!shouldDeferSuggestionClear) {
-        setShowSuggestions(false);
         setSuggestions([]);
       }
     }
@@ -72,7 +69,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     resetFocusedMapState,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setShowSuggestions,
     setSuggestions,
     suppressAutocompleteResults,
   ]);
@@ -90,7 +86,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
       dismissSearchKeyboard();
       setQuery(queryValue);
       if (!shouldDeferSuggestionClear) {
-        setShowSuggestions(false);
         setSuggestions([]);
       }
       resetFocusedMapState();
@@ -106,7 +101,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,
-      setShowSuggestions,
       setSuggestions,
       suppressAutocompleteResults,
     ]

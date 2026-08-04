@@ -93,15 +93,6 @@ const isPreserveChromeTarget = (
   chromeVisibilityTarget: RouteSceneSwitchChromeVisibilityTarget
 ): boolean => chromeVisibilityTarget.searchChrome === 'preserve';
 
-const resolveRouteSceneSwitchSnapTarget = ({
-  snapTarget,
-}: Pick<AppRouteSceneTransitionPolicyInput, 'snapTarget'>): BottomSheetSnap | null => {
-  if (snapTarget !== undefined) {
-    return snapTarget;
-  }
-  return null;
-};
-
 const SHARED_SHEET_HOST_SCENE_KEY: OverlayKey = 'sheetHost';
 
 // F945: this was a FOURTH hand-list of the top-level scene set and it had dropped 'home' —
@@ -509,9 +500,10 @@ export const resolveAppRouteSceneTransitionPlan = ({
   resolveCurrentSheetSnapTarget,
   resolveSceneRememberedSnap,
 }: AppRouteSceneTransitionPolicyInput): AppRouteSceneTransitionPlan => {
-  const resolvedSnapTarget = resolveRouteSceneSwitchSnapTarget({
-    snapTarget,
-  });
+  // F951(f): this used to route through a `resolveRouteSceneSwitchSnapTarget` helper whose
+  // entire body was `snapTarget !== undefined ? snapTarget : null` — i.e. `?? null` spelled
+  // as a named function and a Pick<> type, which reads like a policy decision and is not one.
+  const resolvedSnapTarget = snapTarget ?? null;
   const resolvedTransitionKind =
     sheetTransitionKind ??
     resolveInferredSheetTransitionKind({

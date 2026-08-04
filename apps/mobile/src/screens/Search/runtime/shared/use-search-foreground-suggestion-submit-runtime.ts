@@ -16,7 +16,6 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   | 'beginSubmitTransition'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
   | 'pendingRestaurantSelectionRef'
@@ -42,7 +41,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
   beginSubmitTransition,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
-  setShowSuggestions,
   setSuggestions,
   setQuery,
   pendingRestaurantSelectionRef,
@@ -69,7 +67,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         setIsSearchFocused(false);
         setIsSuggestionPanelActive(false);
         dismissSearchKeyboard();
-        setShowSuggestions(false);
         setSuggestions([]);
         openUserProfile(match.entityId);
         return;
@@ -86,7 +83,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         setIsSearchFocused(false);
         setIsSuggestionPanelActive(false);
         dismissSearchKeyboard();
-        setShowSuggestions(false);
         setSuggestions([]);
         openPollDetail(match.entityId);
         return;
@@ -104,7 +100,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       dismissSearchKeyboard();
       setQuery(nextQuery);
       if (!shouldDeferSuggestionClear) {
-        setShowSuggestions(false);
         setSuggestions([]);
       }
       // "See locations" chip (multi-location restaurants): a committed
@@ -181,7 +176,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,
-      setShowSuggestions,
       setSuggestions,
       submitSearch,
       suppressAutocompleteResults,

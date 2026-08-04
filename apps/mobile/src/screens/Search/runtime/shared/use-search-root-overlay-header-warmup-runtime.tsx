@@ -1,6 +1,5 @@
 import React from 'react';
 
-import SearchFilters from '../../components/SearchFilters';
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import type { SearchOverlayChromeHiddenSearchFiltersWarmupProps } from './search-foreground-chrome-contract';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
@@ -13,7 +12,6 @@ type UseSearchRootOverlayHeaderWarmupRuntimeArgs = {
 };
 
 const NOOP = (): void => undefined;
-void SearchFilters;
 
 // The hidden warmup render exists purely to measure the strip's LAYOUT — its chip states are
 // irrelevant, so it renders against a detached throwaway bus (SearchFilters requires a live

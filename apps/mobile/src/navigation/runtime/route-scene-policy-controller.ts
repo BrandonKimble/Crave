@@ -114,15 +114,10 @@ export class RouteScenePolicyController {
     this.recompute(true);
   }
 
-  public resetScenePolicyInputs(sceneKey: RouteScenePolicyKey): void {
-    if (sceneKey !== 'search') {
-      return;
-    }
-
-    this.searchSceneForegroundPolicyInputs = EMPTY_APP_ROUTE_SCENE_FOREGROUND_POLICY_INPUTS;
-    this.searchSceneSheetPolicyInputs = EMPTY_APP_ROUTE_SCENE_SHEET_POLICY_INPUTS;
-    this.recompute(true);
-  }
+  // F956(d): `resetScenePolicyInputs` lived here — a public method with no caller
+  // anywhere in apps/mobile/src (symbol + bare-string grep both empty). Deleted rather
+  // than kept "in case": an untested reset path on a policy controller is a liability,
+  // and git has it if a real reset requirement ever shows up.
 
   public dispose(): void {
     this.listeners.clear();

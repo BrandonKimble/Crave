@@ -1,9 +1,6 @@
 import type React from 'react';
 
-import type {
-  BottomSheetSnap,
-  BottomSheetSnapChangeSource,
-} from './bottomSheetMotionTypes';
+import type { BottomSheetSnap, BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
 
 export type BottomSheetSharedSnapChangeOptions = {
   force?: boolean;
@@ -22,9 +19,7 @@ export type BottomSheetSharedNotifySnapStart = (
   source: BottomSheetSnapChangeSource
 ) => void;
 
-export type BottomSheetSharedNotifySnapSettleComplete = (
-  settleToken: number
-) => void;
+export type BottomSheetSharedNotifySnapSettleComplete = (settleToken: number) => void;
 
 export type BottomSheetSharedSnapExecutionResult = {
   resolveDestination: (value: number, velocity: number, gestureStartValue: number) => number;
@@ -37,21 +32,14 @@ export type BottomSheetSharedSnapExecutionResult = {
   ) => void;
 };
 
+// F974(a): this used to declare THIRTEEN more fields — visible, listScrollEnabled,
+// interactionEnabled, shouldEnableScroll, gestureEnabled, activeList, testID, listKey,
+// dataCount, secondaryDataCount, scrollHeaderHeight, touchBlockingEnabled and
+// isSearchResultsSheet — none of which the implementation ever destructured, while the one
+// caller computed and passed all thirteen on EVERY render. They are the fossil of a deleted
+// `SheetDiagSnapshot`. Same class F982 landed in the neighbouring publication runtime.
 export type BottomSheetSharedSnapPublicationArgs = {
-  visible: boolean;
-  listScrollEnabled: boolean;
-  interactionEnabled: boolean;
-  shouldEnableScroll: boolean;
-  gestureEnabled: boolean;
-  activeList: 'primary' | 'secondary';
   screenHeight: number;
-  testID?: string;
-  listKey?: string;
-  dataCount: number;
-  secondaryDataCount: number;
-  scrollHeaderHeight: number;
-  touchBlockingEnabled: boolean;
-  isSearchResultsSheet: boolean;
   sheetYObserver?: import('react-native-reanimated').SharedValue<number>;
   onHidden?: () => void;
   onSnapStart?: (

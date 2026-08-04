@@ -77,7 +77,6 @@ type UseSearchSubmitEntryOwnerArgs = {
   viewportBoundsService: ViewportBoundsService;
   query: string;
   isLoadingMore: boolean;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
   resetMapMoveFlag: () => void;
 };
@@ -103,7 +102,6 @@ export const useSearchSubmitEntryOwner = ({
   viewportBoundsService,
   query,
   isLoadingMore,
-  setError,
   searchRuntimeBus,
   resetMapMoveFlag,
 }: UseSearchSubmitEntryOwnerArgs) => {
@@ -141,7 +139,6 @@ export const useSearchSubmitEntryOwner = ({
             hasMoreRestaurants: false,
             currentPage: 1,
           });
-          setError(null);
         }
         return null;
       }
@@ -178,7 +175,7 @@ export const useSearchSubmitEntryOwner = ({
         tupleChanged,
       };
     },
-    [isLoadingMore, query, resetMapMoveFlag, searchRuntimeBus, setError, viewportBoundsService]
+    [isLoadingMore, query, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
 
   const resolveNaturalSearchAttemptConfig = React.useCallback(

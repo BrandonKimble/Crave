@@ -69,7 +69,36 @@ export const useSearchRootSearchPrimitivesRuntime = ({
     SearchChromeScalarSurfacePrimitiveSourceRuntime,
     'updatePrimitiveSnapshot'
   > | null>(null);
+  // F1323(b)(c)(d) — THE SHORTCUT-DISABLE FACT NOW HAS A SUBSCRIBABLE FORM.
+  //
+  // This is a NATIVE-FIRST scalar: the writer's whole point is to push the value straight at
+  // the chrome-scalar primitive source without a React render, and that part is right — the
+  // ref stays. What was missing is that THREE JS consumers (the visual-stage runtime, the
+  // suggestion layout plane, and the results-presentation authority) read
+  // `shouldDisableSearchShortcutsRef.current` DURING RENDER and passed it downstream as if it
+  // were reactive state. It never notified them, so each got a value that was correct at some
+  // render and stale otherwise — the failure mode that passes every manual test, because some
+  // unrelated render is usually close enough.
+  //
+  // The fix is not to make the writer render-driven (that would undo the native-first design);
+  // it is to give the same fact a NOTIFYING read alongside the ref. One writer, two shapes,
+  // both fed from the same assignment: the native push, and a listener set the JS readers
+  // subscribe through (`useShouldDisableSearchShortcuts` below).
   const shouldDisableSearchShortcutsRef = React.useRef(false);
+  const shouldDisableSearchShortcutsListenersRef = React.useRef(new Set<() => void>());
+  const shouldDisableSearchShortcutsAuthority = React.useMemo(
+    () => ({
+      subscribe: (listener: () => void) => {
+        const listeners = shouldDisableSearchShortcutsListenersRef.current;
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
+      getSnapshot: () => shouldDisableSearchShortcutsRef.current,
+    }),
+    []
+  );
   const setShouldDisableSearchShortcuts = React.useCallback((disabled: boolean) => {
     if (shouldDisableSearchShortcutsRef.current === disabled) {
       return;
@@ -77,6 +106,9 @@ export const useSearchRootSearchPrimitivesRuntime = ({
     shouldDisableSearchShortcutsRef.current = disabled;
     searchChromeScalarPrimitiveTargetRef.current?.updatePrimitiveSnapshot({
       shouldDisableSearchShortcuts: disabled,
+    });
+    shouldDisableSearchShortcutsListenersRef.current.forEach((listener) => {
+      listener();
     });
   }, []);
   const setSearchChromeScalarPrimitiveTarget = React.useCallback(
@@ -100,12 +132,10 @@ export const useSearchRootSearchPrimitivesRuntime = ({
     },
     [suggestionPanelStateController]
   );
-  const [, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
   const [suggestions, setSuggestionsState] = React.useState<AutocompleteMatch[]>(
     () => primitiveUiStateController.getSnapshot().suggestions
   );
-  const [, setShowSuggestions] = React.useState(false);
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressedState] = React.useState(
     () => primitiveUiStateController.getSnapshot().isAutocompleteSuppressed
   );
@@ -172,7 +202,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
         setIsAutocompleteSuppressed(true);
       },
       clearSuggestions: () => {
-        setShowSuggestions(false);
         setSuggestions([]);
       },
       blurInput: primitiveUiStateController.blurInput,
@@ -182,7 +211,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       primitiveUiStateController.blurInput,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
-      setShowSuggestions,
       setSuggestions,
     ]
   );
@@ -257,14 +285,13 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       beginSuggestionCloseHoldRef: primitiveUiStateController.beginSuggestionCloseHoldRef,
       setBeginSuggestionCloseHold,
       shouldDisableSearchShortcutsRef,
+      shouldDisableSearchShortcutsAuthority,
       setShouldDisableSearchShortcuts,
       setSearchChromeScalarPrimitiveTarget,
-      setError,
       query,
       setQuery,
       suggestions,
       setSuggestions,
-      setShowSuggestions,
       isAutocompleteSuppressed,
       setIsAutocompleteSuppressed,
       isSearchFocused,
@@ -300,7 +327,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       setActiveTab,
       setActiveTabPreference,
       setBeginSuggestionCloseHold,
-      setError,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,

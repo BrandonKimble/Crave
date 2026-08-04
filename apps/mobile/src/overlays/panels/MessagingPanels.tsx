@@ -31,6 +31,7 @@ import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { formatRelativeTime } from '../../utils/relative-time';
 import { publishSceneHeaderScrollOffset } from '../sceneScrollStateRegistry';
 import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
 
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
 // messagesInbox: child SINGLETON (no params). It has NO FlashList and NO transport —
@@ -57,9 +58,7 @@ const conversationQueryKey = (conversationId: string) =>
   ['dm', 'conversation', conversationId] as const;
 
 const peerTitle = (conversation: Conversation): string =>
-  conversation.otherUser.displayName?.trim() ||
-  conversation.otherUser.username?.trim() ||
-  'Crave member';
+  resolveUserDisplayName(conversation.otherUser);
 
 const previewText = (message: DmMessage | null): string => {
   if (!message) return 'Say hi';

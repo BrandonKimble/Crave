@@ -64,7 +64,6 @@ export const useSearchForegroundEditingHandlersRuntime = ({
     suppressAutocompleteResults: args.suppressAutocompleteResults,
     setIsSearchFocused: args.setIsSearchFocused,
     setIsSuggestionPanelActive: args.setIsSuggestionPanelActive,
-    setShowSuggestions: args.setShowSuggestions,
     setSuggestions: args.setSuggestions,
     setQuery: args.setQuery,
     setIsAutocompleteSuppressed: args.setIsAutocompleteSuppressed,

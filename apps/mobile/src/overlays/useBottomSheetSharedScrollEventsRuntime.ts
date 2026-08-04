@@ -11,6 +11,7 @@ import type { ReanimatedScrollEvent } from 'react-native-reanimated/lib/typescri
 import type { SharedValue } from 'react-native-reanimated';
 
 import { getScrollTopOffset } from './bottomSheetSharedRuntimeUtils';
+import { OVERSCROLL_REBOUND_SPRING } from './useBottomSheetSharedGestureRuntime';
 
 type UseBottomSheetSharedScrollEventsRuntimeArgs = {
   activePrimaryList: SharedValue<boolean>;
@@ -38,9 +39,14 @@ type UseBottomSheetSharedScrollEventsRuntimeArgs = {
 // on the pinned top boundary converts its arrival velocity into a rubber-band impulse —
 // contentOverscroll dips negative and springs home. RN iOS reports scroll velocity in
 // pt/ms; Reanimated springs take pt/s.
-// Native baseline: critically damped (no overshoot), ~450ms return — the impulse's
-// depth comes from the carried velocity, the spring only shapes the return.
-const TOP_REBOUND_SPRING = { mass: 1, stiffness: 170, damping: 26 } as const;
+// F975(b): ONE boundary physics, ONE constant. This used to be a second, separately-named
+// spring (`TOP_REBOUND_SPRING`) holding byte-identical values to
+// `OVERSCROLL_REBOUND_SPRING` in useBottomSheetSharedGestureRuntime, each with its own
+// justifying comment and only ONE of them stating the damping derivation. Two names for one
+// physical law is two places to drift; the boundary spring is imported now.
+//
+// Local note that is NOT duplicated knowledge: here the impulse's DEPTH comes from the
+// carried arrival velocity — the spring only shapes the return.
 // Arrival speed is DERIVED from momentum offset deltas (probe-proven 2026-07-23:
 // event.velocity is null in these Reanimated scroll events; the deltas are the
 // velocity — ~1 event/frame at 60Hz, so pt/frame × 60 = pt/s).
@@ -127,7 +133,7 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
           ) {
             topReboundFired.value = true;
             contentOverscroll.value = withSpring(0, {
-              ...TOP_REBOUND_SPRING,
+              ...OVERSCROLL_REBOUND_SPRING,
               velocity: -arrivalDelta * FRAMES_PER_SECOND,
             });
           }

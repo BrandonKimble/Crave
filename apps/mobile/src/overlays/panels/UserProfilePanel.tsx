@@ -19,6 +19,8 @@ import {
   PROFILE_DEFAULT_SECTION,
   type ProfileSectionKey,
 } from './ProfileSectionsBody';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
+import { AVATAR_SIZES } from '../../constants/avatar-sizes';
 
 // ─── userProfile — the REAL page body (trigger-nav pages; plans/page-registry.md) ───────────
 // W3: the §7.3 dynamic single-page shape — persistent identity header + the FOUR-section body
@@ -28,10 +30,9 @@ import {
 // Blocking (§8.6): the authed follow edge carries the block flags; either direction renders the
 // "unavailable" body.
 
-const AVATAR_SIZE = 64;
+const AVATAR_SIZE = AVATAR_SIZES.header;
 
-const resolveDisplayTitle = (profile: PublicUserProfile): string =>
-  profile.displayName?.trim() || profile.username?.trim() || 'Crave member';
+const resolveDisplayTitle = (profile: PublicUserProfile): string => resolveUserDisplayName(profile);
 
 const AvatarCircle = ({ profile }: { profile: PublicUserProfile }) => (
   <MonogramAvatar

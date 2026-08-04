@@ -7,7 +7,6 @@ import type {
   SearchSuggestionTransitionPresenceRuntime,
   SearchSuggestionTransitionRuntime,
   SearchSuggestionTransitionRuntimeArgs,
-  SuggestionTransitionVariant,
   SearchSuggestionTransitionTimingRuntime,
 } from './use-search-suggestion-surface-runtime-contract';
 
@@ -15,7 +14,6 @@ export const useSearchSuggestionTransitionRuntime = ({
   isSuggestionPanelActive,
   searchChromeScalarSurfacePresentationRuntime,
 }: SearchSuggestionTransitionRuntimeArgs): SearchSuggestionTransitionRuntime => {
-  const [, setSearchTransitionVariant] = React.useState<SuggestionTransitionVariant>('default');
   const transitionTimingRuntime: SearchSuggestionTransitionTimingRuntime =
     useSearchSuggestionTransitionTimingRuntime();
   const transitionPresenceRuntime: SearchSuggestionTransitionPresenceRuntime =
@@ -38,7 +36,6 @@ export const useSearchSuggestionTransitionRuntime = ({
     isSuggestionPanelVisible: transitionPresenceRuntime.isSuggestionPanelVisible,
     isSuggestionOverlayVisible: transitionPresenceRuntime.isSuggestionOverlayVisible,
     suggestionProgress: transitionPresenceRuntime.suggestionProgress,
-    setSearchTransitionVariant,
     shouldDriveSuggestionLayout: layoutWarmthRuntime.shouldDriveSuggestionLayout,
   };
 };

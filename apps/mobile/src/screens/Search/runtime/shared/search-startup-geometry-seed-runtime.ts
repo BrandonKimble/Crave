@@ -58,10 +58,8 @@ export const resolveSearchBottomInset = (insetsBottom: number): number =>
 export const resolveSearchBottomNavHeight = (bottomInset: number): number =>
   resolveAppRouteBottomNavHeight(bottomInset);
 
-export const resolveSearchBottomNavHiddenTranslateY = (
-  bottomNavHeight: number,
-  bottomInset: number
-): number => resolveAppRouteBottomNavHiddenTranslateY(bottomNavHeight, bottomInset);
+export const resolveSearchBottomNavHiddenTranslateY = (bottomNavHeight: number): number =>
+  resolveAppRouteBottomNavHiddenTranslateY(bottomNavHeight);
 
 export const buildSearchStartupGeometrySeed = ({
   windowWidth,

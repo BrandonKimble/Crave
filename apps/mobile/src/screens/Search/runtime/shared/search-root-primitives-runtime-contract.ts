@@ -24,17 +24,44 @@ export type SearchRootSearchStateRuntime = {
   primitiveUiCleanupActions: SearchPrimitiveUiCleanupActions;
   beginSuggestionCloseHoldRef: React.MutableRefObject<() => boolean>;
   setBeginSuggestionCloseHold: (handler: () => boolean) => void;
+  /** The native-first ref. Correct for the chrome-scalar push; NOT a reactive read — JS
+   *  consumers must go through `shouldDisableSearchShortcutsAuthority` (F1323). */
   shouldDisableSearchShortcutsRef: React.MutableRefObject<boolean>;
+  /** F1323: the notifying view of the same fact, for JS readers that render from it. */
+  shouldDisableSearchShortcutsAuthority: {
+    subscribe: (listener: () => void) => () => void;
+    getSnapshot: () => boolean;
+  };
   setShouldDisableSearchShortcuts: (disabled: boolean) => void;
   setSearchChromeScalarPrimitiveTarget: (
     target: Pick<SearchChromeScalarSurfacePrimitiveSourceRuntime, 'updatePrimitiveSnapshot'> | null
   ) => () => void;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
+  // F1308 — TWO WRITE-ONLY `useState` PAIRS ARE GONE FROM HERE.
+  //
+  // `showSuggestions` and `error` were both declared as `const [, setX] = useState(...)` — the
+  // VALUE discarded at the declaration — and only their SETTERS were published on this
+  // contract. A repo-wide grep for either name minus its setter returned EMPTY: nothing
+  // anywhere could read them. Yet `setShowSuggestions` was referenced in 35 FILES and threaded
+  // through six arg contracts, and every one of those calls scheduled a real React re-render
+  // of the search-root primitives runtime — the highest-fanout object in the search tree — to
+  // publish a value no consumer could observe.
+  //
+  // What they COMPENSATED FOR: `showSuggestions` was genuinely read once, before the
+  // suggestion display runtime replaced it with the `shouldRenderAutocompleteSection` /
+  // `shouldRenderSuggestionPanel` derivations. The setter was left wired so that no call site
+  // had to change — which is precisely how 35 files came to depend on a value that no longer
+  // existed.
+  //
+  // BANKED BEFORE DELETION: the five cleanup paths that called `setShowSuggestions(false)`
+  // beside `setSuggestions([])` were each checked to confirm they still clear the ARRAY — they
+  // do; `setSuggestions` is live and is the write that the suggestion surface actually derives
+  // from. `setError(null)` had three callers, none of them paired with anything.
+  //
+  // THE LAW: state exists only if something reads it, and a setter is not state.
   query: string;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
   suggestions: AutocompleteMatch[];
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   isAutocompleteSuppressed: boolean;
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   isSearchFocused: boolean;

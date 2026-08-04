@@ -49,24 +49,54 @@ const STATIC_SCENE_SCROLL_CONTENT_INSETS = {
 // (scene-foundation-spec `bodySurface: 'white'` → SceneBodyFoundationSurface) paints every sheet
 // scene's white plate at the body lane; the old lists/profile transport white was the
 // per-scene hack it replaces.
+// F950 — THE SCROLL-TAIL INSET, NAMED.
+//
+// `paddingBottom: 72` was written literally SIX times below and `160` once, with neither the
+// repetition nor the exception explained. Both are now named for the job they do, and their
+// status is stated honestly: they are OWNER CHOICES about how much empty runway a scrolled
+// body leaves under its last row, NOT derivations. Nobody should go looking for a formula.
+//
+// If they were ever meant to clear the bottom nav they would be derived from
+// `resolveAppRouteBottomNavHeight` — they are not, and this comment exists so the next reader
+// does not "fix" them into that and change every static scene's tail.
+const STATIC_SCENE_SCROLL_TAIL_INSET = 72;
+
+// The profile body's tail is deliberately DEEPER than every other static scene's. The
+// exception is the point: profile is the one static body whose last block is interactive
+// (the section list), so it wants runway to scroll that block clear of the thumb rather than
+// merely clear of the edge. Also an owner choice, also not a derivation.
+const PROFILE_SCENE_SCROLL_TAIL_INSET = 160;
+
 const LISTS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
+  contentContainerStyle: {
+    ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
+    paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET,
+  },
 };
 
 const PROFILE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 160 },
+  contentContainerStyle: {
+    ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
+    paddingBottom: PROFILE_SCENE_SCROLL_TAIL_INSET,
+  },
   keyboardShouldPersistTaps: 'handled',
 };
 
 const SAVE_LIST_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
+  contentContainerStyle: {
+    ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
+    paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET,
+  },
   keyboardShouldPersistTaps: 'handled',
 };
 
 // Shared transport for the stub child scenes (SAVE_LIST_BODY_TRANSPORT minus the
 // keyboard field — no inputs in a stub body).
 const STUB_CHILD_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
+  contentContainerStyle: {
+    ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
+    paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET,
+  },
 };
 
 // Leg 9 (listdetail-ideal §2b): listDetail hosts a FULL-BLEED in-list ToggleStrip — the
@@ -74,7 +104,7 @@ const STUB_CHILD_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 // carries NO horizontal inset; the panel owns per-block padding (strip full-bleed with
 // contentInset alignment, every other block padded to OVERLAY_HORIZONTAL_PADDING).
 const LIST_DETAIL_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { paddingBottom: 72 },
+  contentContainerStyle: { paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET },
 };
 
 const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
@@ -89,14 +119,20 @@ const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
 // W2: postPhotos publishes separately — same static-child shape, but with the
 // keyboard-persist transport (the panel has typeahead + free-text dish inputs).
 const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
+  contentContainerStyle: {
+    ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
+    paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET,
+  },
   keyboardShouldPersistTaps: 'handled',
 };
 
 // W3 messaging (§4.1): the inbox is a RE-SORTING list (rows re-order on every
 // new message) — MVCP must be OFF (CLAUDE.md: re-sortable feeds disable it).
 const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
+  contentContainerStyle: {
+    ...STATIC_SCENE_SCROLL_CONTENT_INSETS,
+    paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET,
+  },
   flashListProps: { maintainVisibleContentPosition: { disabled: true } },
 };
 

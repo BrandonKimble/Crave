@@ -31,22 +31,54 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 // Anything else springs back. This replaces the centered non-draggable card (the old
 // AppModalHost render) and upgrades the gesture-less toggle-strip sheets.
 
-/** Upward drag resistance: asymptotically approaches the ceiling, never past it. */
+// ─── F976(b): THIS MODAL'S PHYSICS NUMBERS, LABELLED ─────────────────────────────────
+// The house convention (see bottomSheetSharedRuntimeUtils): every tuning number is a FACT,
+// a FEEL (owner choice — change with the sim open), or UNATTRIBUTED (nobody recorded why;
+// re-tune by eye, never "derive").
+//
+// RECORDED, NOT FIXED: this is the app's THIRD rubber-band curve. The scene-stack sheet has
+// two already — the tight fixed-range band (RUBBER_BAND_RANGE_PX = 96 /
+// RUBBER_BAND_COEFFICIENT = 0.44) and Apple's native content curve
+// (NATIVE_RUBBER_COEFFICIENT = 0.55) — and this one is a different formula again with its own
+// ceiling. Unifying them is a VISUAL change on the app's one standard modal, so it is
+// owner-gated on a sim look and deliberately NOT done here; what is done is saying out loud
+// that three curves exist, so the next person adding a fourth knows they are adding a fourth.
+
+/** FEEL: upward drag resistance — asymptotically approaches this ceiling, never past it.
+ *  Deliberately does NOT reuse RUBBER_BAND_RANGE_PX (96): this is a different curve on a
+ *  different surface. UNATTRIBUTED as to why 56. */
 const RUBBER_BAND_CEILING = 56;
 const rubberBand = (distance: number): number => {
   'worklet';
   return (distance * RUBBER_BAND_CEILING) / (distance + RUBBER_BAND_CEILING * 2);
 };
 
-/** Swipe-down dismiss thresholds: distance OR a flick. */
+/** FEEL: swipe-down dismiss by DISTANCE — drag this far and release, and it goes. */
 const DISMISS_DISTANCE = 110;
+
+/** FEEL: ...or by FLICK — this fast downward, and it goes regardless of distance. Shares its
+ *  value with PROGRAMMATIC_SNAP_MIN_VELOCITY (900) on the scene-stack sheet, which is a
+ *  coincidence of taste rather than a shared derivation. */
 const DISMISS_VELOCITY = 900;
 
+/** FACT (the flick arm's distance floor): a flick still has to have MOVED, or a fast
+ *  downward tap-and-release would dismiss. 24pt is comfortably above AXIS_LOCK_SLOP_PX (4)
+ *  and the tap recogniser's maxDistance (12), so a tap can never satisfy it. */
+const DISMISS_FLICK_MIN_DISTANCE = 24;
+
+/** FEEL: the settle spring. damping 26 against stiffness 300 / mass 0.6 is UNDER-damped —
+ *  critical would be 2*sqrt(stiffness*mass) = 2*sqrt(180) ≈ 26.8 — so it lands with a barely
+ *  perceptible overshoot rather than creeping in. That near-critical relationship is the
+ *  reason the three numbers travel together; the exact trio is UNATTRIBUTED. */
 const SETTLE_SPRING = {
   damping: 26,
   stiffness: 300,
   mass: 0.6,
 } as const;
+
+/** FEEL: the modal never grows into the status bar, and stops this far short of it so the
+ *  card reads as a card rather than a full-screen takeover. */
+const TOP_BREATHING_ROOM = 48;
 
 type OverlayModalSheetProps = {
   visible: boolean;
@@ -205,7 +237,7 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
           'worklet';
           const shouldDismiss =
             event.translationY > DISMISS_DISTANCE ||
-            (event.translationY > 24 && event.velocityY > DISMISS_VELOCITY);
+            (event.translationY > DISMISS_FLICK_MIN_DISTANCE && event.velocityY > DISMISS_VELOCITY);
           if (shouldDismiss) {
             runOnJS(requestCloseFromDrag)();
             return;
@@ -266,7 +298,7 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
                 paddingHorizontal,
                 paddingTop,
                 paddingBottom: Math.max(insets.bottom, minBottomPadding),
-                maxHeight: SCREEN_HEIGHT - insets.top - 48,
+                maxHeight: SCREEN_HEIGHT - insets.top - TOP_BREATHING_ROOM,
               },
               sheetAnimatedStyle,
               sheetStyle,

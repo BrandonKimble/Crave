@@ -13,7 +13,17 @@ export { isResidencyManagedScene } from './shell-residency-registry';
 // switch retargets VISIBILITY, never mounts. Ratified on two measured prototypes
 // (ShellResidencyProbe 2026-07-16: law pole indistinguishable from baseline, anti-law
 // pole collapses the UI thread; ResidentShellPrototype 2026-07-21: empty shells free,
-// content is the budget). The laws this module makes structural:
+// content is the budget).
+//
+// F864 (2026-08-03): those two prototypes are the ONLY two, their shared question is
+// CLOSED, and this header is where its answer is banked — so neither probe is an open
+// investigation. Both are retained as the re-measurement rig for the day L3's cost
+// model is re-opened, both are now __DEV__-only (ResidentShellPrototype used to mount
+// UNGATED at App.tsx, i.e. a measurement harness shipping in Release), and neither is
+// driven by anything but a dev perf command. If you find yourself about to build a
+// THIRD probe for "are shells cheap", read the two verdicts above instead.
+//
+// The laws this module makes structural:
 //
 // - **ONE VISIBILITY WRITER (A#13):** `setVisibleResidentScene` is the only mutation
 //   of the visible bit. Everything else DERIVES from it through ShellVisibilityBoundary

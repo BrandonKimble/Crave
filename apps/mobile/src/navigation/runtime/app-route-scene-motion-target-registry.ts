@@ -21,6 +21,20 @@ type AppRouteSceneMotionTargetResolution<TTarget> =
       kind: 'unavailable';
     };
 
+// F955(b) — TWO REGISTRIES, ONE RULE.
+//
+// This registry stored an ARRAY of targets and resolved `targets[0]`: a second registrant
+// was stored, notified about, and never used, while unregistering the FIRST silently
+// promoted the second mid-flight. The sheet registry next door
+// (app-route-scene-sheet-motion-target-registry.ts) reverses its candidate list to prefer
+// the NEWEST registrant — so the two registries disagreed about which registrant wins, and
+// nothing said so.
+//
+// The rule is now the same one, stated: THE NEWEST REGISTRANT WINS. A second registrant
+// exists only while a switch has two live hosts for a plane (the outgoing one is tearing
+// down), and the incoming host is the one whose motion the user is about to see. Newest-wins
+// also makes unregistration monotone — dropping the OUTGOING registrant cannot change who
+// is driving, which is precisely the mid-flight promotion the old `targets[0]` could suffer.
 class AppRouteScenePlaneMotionTargetRegistry<TTarget> {
   private readonly targets: TTarget[] = [];
 
@@ -61,7 +75,7 @@ class AppRouteScenePlaneMotionTargetRegistry<TTarget> {
         kind: 'unavailable',
       };
     }
-    const target = this.targets[0];
+    const target = this.targets[this.targets.length - 1];
     if (target == null) {
       return {
         kind: 'awaiting-target',

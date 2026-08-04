@@ -12,11 +12,9 @@ type SearchRootForegroundOverlayActionArgs = Pick<
   | 'transitionActions'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setIsAutocompleteSuppressed'
   | 'setIsSuggestionLayoutWarm'
-  | 'setSearchTransitionVariant'
   | 'cancelAutocomplete'
   | 'resetSearchHeaderFocusProgress'
   | 'resetSubmitTransitionHold'
@@ -44,11 +42,9 @@ export const useSearchRootForegroundOverlayActionArgs = ({
       transitionActions: routeOverlayTransitionActions,
       setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
       setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-      setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
       setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
       setIsAutocompleteSuppressed: rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
       setIsSuggestionLayoutWarm: rootSuggestionRuntime.setIsSuggestionLayoutWarm,
-      setSearchTransitionVariant: rootSuggestionRuntime.setSearchTransitionVariant,
       cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
       resetSearchHeaderFocusProgress: rootSuggestionRuntime.resetSearchHeaderFocusProgress,
       resetSubmitTransitionHold: rootSuggestionRuntime.resetSubmitTransitionHold,
@@ -61,12 +57,10 @@ export const useSearchRootForegroundOverlayActionArgs = ({
       rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
       rootPrimitivesRuntime.searchState.setIsSearchFocused,
       rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-      rootPrimitivesRuntime.searchState.setShowSuggestions,
       rootPrimitivesRuntime.searchState.setSuggestions,
       rootSuggestionRuntime.resetSearchHeaderFocusProgress,
       rootSuggestionRuntime.resetSubmitTransitionHold,
       rootSuggestionRuntime.setIsSuggestionLayoutWarm,
-      rootSuggestionRuntime.setSearchTransitionVariant,
     ]
   );
 };

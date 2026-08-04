@@ -26,6 +26,7 @@ import { SearchOverlayShellHost } from './SearchOverlayShellHost';
 import { NavSilhouetteHost } from './NavSilhouetteHost';
 import { SearchResultsExternalPreMeasureHost } from './SearchResultsPreMeasureHost';
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
+import { areAppRouteSheetHostRuntimesFieldEqual } from '../navigation/runtime/app-route-sheet-host-runtime-contract';
 
 export type AppOverlayRouteHostRuntime = {
   overlayChromeHostAuthority: SearchOverlayChromeHostAuthority;
@@ -108,15 +109,12 @@ const areRouteSheetHostRuntimesFieldEqual = (
   left: AppRouteSheetHostRuntime,
   right: AppRouteSheetHostRuntime
 ): boolean =>
-  left === right ||
-  (left.searchInteractionRef === right.searchInteractionRef &&
-    left.routeSheetSurfaceAuthority === right.routeSheetSurfaceAuthority &&
-    left.routeSheetSurfaceBodyAuthority === right.routeSheetSurfaceBodyAuthority &&
-    left.routeSheetSurfaceFrameAuthority === right.routeSheetSurfaceFrameAuthority &&
-    left.routeSheetRuntimeConfigAuthority === right.routeSheetRuntimeConfigAuthority &&
-    left.sceneStackSurfaceAuthority === right.sceneStackSurfaceAuthority &&
-    left.routeSceneDisplayTargetRegistry === right.routeSceneDisplayTargetRegistry &&
-    left.routeHostVisualRuntimeAuthority === right.routeHostVisualRuntimeAuthority);
+  // F975(e): the shared field comparison has ONE home now
+  // (app-route-sheet-host-runtime-contract). This host adds the registry conjunct on top,
+  // because THIS host is the one that feeds NavSilhouetteHost, whose rendered output reads
+  // `routeSceneDisplayTargetRegistry.activeTabIndexValue`.
+  areAppRouteSheetHostRuntimesFieldEqual(left, right) &&
+  left.routeSceneDisplayTargetRegistry === right.routeSceneDisplayTargetRegistry;
 
 const AppOverlayRouteHost = ({
   overlayChromeHostAuthority,

@@ -22,6 +22,7 @@ import type {
   PollFeedTime,
   PollFeedType,
 } from '../../services/polls';
+import { resolvePollCreatorName } from '../../services/polls';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import {
@@ -133,16 +134,13 @@ const formatDaysLeft = (iso: string | null | undefined): string | null => {
   return daysLeft <= 1 ? 'last day' : `${daysLeft}d left`;
 };
 
-const resolveCreatorName = (creator: PollCreator | undefined): string =>
-  creator?.origin === 'user' ? (creator.displayName ?? creator.username ?? 'Member') : 'Crave';
-
 const PollCreatorBadge = ({ creator }: { creator?: PollCreator }) => {
   if (creator?.origin === 'user') {
     return (
       <MonogramAvatar
-        seed={creator.username ?? resolveCreatorName(creator)}
+        seed={creator.username ?? resolvePollCreatorName(creator)}
         avatarUrl={creator.avatarUrl}
-        title={resolveCreatorName(creator)}
+        title={resolvePollCreatorName(creator)}
         size={22}
         textVariant="caption"
         textStyle={styles.avatarInitial}
@@ -169,7 +167,7 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
       <View style={styles.pollCardHeader}>
         <PollCreatorBadge creator={poll.creator} />
         <Text variant="caption" weight="semibold" style={styles.pollCreator} numberOfLines={1}>
-          {resolveCreatorName(poll.creator)}
+          {resolvePollCreatorName(poll.creator)}
         </Text>
         <View style={styles.pollCardHeaderSpacer} />
         {isActive ? (

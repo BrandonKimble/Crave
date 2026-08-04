@@ -53,7 +53,6 @@ export const useSearchRootAutocompleteAuthorityRuntime = ({
     runAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.runAutocomplete,
     cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
-    setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
     bounds: autocompleteBounds,
     userLocation: null,
   });

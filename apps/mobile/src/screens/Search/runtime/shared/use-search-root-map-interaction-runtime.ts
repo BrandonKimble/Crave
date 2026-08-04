@@ -55,7 +55,6 @@ export const useSearchRootMapInteractionRuntime = ({
       stateFoundationLane.rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
       stateFoundationLane.rootPrimitivesRuntime.searchState.setIsSearchFocused,
       stateFoundationLane.rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-      stateFoundationLane.rootPrimitivesRuntime.searchState.setShowSuggestions,
       stateFoundationLane.rootPrimitivesRuntime.searchState.setSuggestions,
       stateFoundationLane.rootSuggestionRuntime.beginSuggestionCloseHold,
       stateFoundationLane.sessionPrimitivesLane.primitives.lastCameraStateRef,

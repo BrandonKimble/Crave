@@ -15,7 +15,6 @@ import type {
 } from './searchRouteSceneStackSheetContract';
 import type { SharedValue } from 'react-native-reanimated';
 import type { AppRouteSceneStackSurfaceAuthority } from '../navigation/runtime/app-route-scene-stack-surface-contract';
-import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type { OverlayKey } from './types';
 import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 
@@ -70,7 +69,12 @@ export type BottomSheetSceneStackChromeEntry = SearchRouteSceneChromeEntry;
 
 export type BottomSheetSceneStackHostProps = {
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
-  routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
+  // F974(b): `routeSceneDisplayTargetRegistry` used to be declared here, threaded through
+  // FIVE component layers of BottomSheetSceneStackHost, destructured twice and COMPARED in
+  // five memo comparators — while NO property of it was ever read in that file. Those
+  // comparators were pure cost: an identity change could only ever force an extra re-render
+  // of every leg, never prevent one. The registry's real consumer (NavSilhouetteHost, which
+  // reads `activeTabIndexValue`) is fed directly by AppOverlayRouteHost and is untouched.
   shadowShellStyle: StyleProp<ViewStyle>;
   surfaceStyle: StyleProp<ViewStyle>;
   scrollHeaderComponent: React.ReactNode;

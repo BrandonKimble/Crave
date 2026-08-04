@@ -26,7 +26,6 @@ const createInputs = () => {
     setIsAutocompleteSuppressed: fn('setIsAutocompleteSuppressed'),
     setIsSearchFocused: fn('setIsSearchFocused'),
     setIsSuggestionPanelActive: fn('setIsSuggestionPanelActive'),
-    setShowSuggestions: fn('setShowSuggestions'),
     setSuggestions: fn('setSuggestions'),
     setQuery: fn('setQuery'),
     isSuggestionPanelActive: true,
@@ -172,7 +171,6 @@ describe('useSearchRootForegroundEditingRuntimeArgs', () => {
     expect(args.setIsSuggestionPanelActive).toBe(
       lane.rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive
     );
-    expect(args.setShowSuggestions).toBe(lane.rootPrimitivesRuntime.searchState.setShowSuggestions);
     expect(args.setSuggestions).toBe(lane.rootPrimitivesRuntime.searchState.setSuggestions);
     expect(args.setQuery).toBe(lane.rootPrimitivesRuntime.searchState.setQuery);
 

@@ -294,7 +294,6 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
         expectedSheetMaskHeight: sample.expectedSheetMaskHeight,
         expectedVisiblePaintedHeight: sample.expectedVisiblePaintedHeight,
         groupedNavChromeMaskContainer: true,
-        hideLead: sample.hideLead,
         isResultsClosing,
         navAndCutoutShareProgress: true,
         navCutoutProofEdge: sample.navCutoutProofEdge,

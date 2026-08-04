@@ -38,7 +38,7 @@ type GestureStateManagerLike = {
 
 // The rebound spring (native baseline): CRITICALLY DAMPED — native scroll bounce never
 // overshoots; it returns asymptotically in ~450ms. damping = 2·√(stiffness·mass).
-const OVERSCROLL_REBOUND_SPRING = { mass: 1, stiffness: 170, damping: 26 } as const;
+export const OVERSCROLL_REBOUND_SPRING = { mass: 1, stiffness: 170, damping: 26 } as const;
 
 type UseBottomSheetSharedGestureRuntimeArgs = {
   gestureEnabled: boolean;
@@ -712,6 +712,14 @@ export const useBottomSheetSharedGestureRuntime = ({
     // competes with the pan/scroll handoff; cancelsTouchesInView(false) leaves
     // header controls (e.g. the polls "+") fully tappable.
     const tapToMiddleGesture = Gesture.Tap()
+      // F976(c): the tap recogniser's tolerances, stated against their siblings.
+      // 500ms is the FACT arm — the platform's own long-press boundary; past it the touch is
+      // a press, not a tap. 12pt is the WANDER allowance, and its only meaningful property is
+      // its relationship to the two drag tolerances next door: AXIS_LOCK_SLOP_PX = 4 (a pan
+      // claims an axis) and DRAG_EPSILON = 2 (a translation stops being noise). 2 < 4 < 12 —
+      // a drag commits to a direction long before a tap gives up on being a tap, which is
+      // what lets a slightly sloppy tap still fire while a real drag never registers as one.
+      // The exact 12 is UNATTRIBUTED; the ordering is the part that must hold.
       .maxDuration(500)
       .maxDistance(12)
       .cancelsTouchesInView(false)

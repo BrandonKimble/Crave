@@ -10,7 +10,6 @@ type UseSearchForegroundExitPresentationRuntimeArgs = Pick<
   | 'requestSearchPresentationIntent'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
   | 'setSuggestions'
   | 'isSearchEditingRef'
 >;
@@ -27,7 +26,6 @@ export const useSearchForegroundExitPresentationRuntime = ({
   requestSearchPresentationIntent,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
-  setShowSuggestions,
   setSuggestions,
   isSearchEditingRef,
 }: UseSearchForegroundExitPresentationRuntimeArgs): SearchForegroundExitPresentationRuntime => {
@@ -36,10 +34,9 @@ export const useSearchForegroundExitPresentationRuntime = ({
       if (shouldDeferSuggestionClear) {
         return;
       }
-      setShowSuggestions(false);
       setSuggestions([]);
     },
-    [setShowSuggestions, setSuggestions]
+    [setSuggestions]
   );
 
   const requestExitEditingPresentation = React.useCallback(() => {

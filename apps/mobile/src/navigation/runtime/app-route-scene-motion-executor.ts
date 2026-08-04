@@ -222,18 +222,19 @@ export class AppRouteSceneMotionExecutor {
       return;
     }
 
-    const sheetTargetResolution =
-      transitionContract == null
-        ? null
-        : withSearchNavSwitchRuntimeAttribution(
-            'sceneMotionExecutor',
-            `resolveTransitionSheetTarget:${sheetSceneKey}`,
-            () =>
-              this.input.sheetMotionTargetRegistry.resolveTransitionTarget(
-                sheetSceneKey,
-                transitionContract
-              )
-          );
+    // F951(b): `transitionContract` is NON-NULL from here down — the function already
+    // returned above when it was null. The re-test that used to wrap this call (and the
+    // `?.` on the two uses below) were both unreachable arms pretending the contract
+    // might still be missing.
+    const sheetTargetResolution = withSearchNavSwitchRuntimeAttribution(
+      'sceneMotionExecutor',
+      `resolveTransitionSheetTarget:${sheetSceneKey}`,
+      () =>
+        this.input.sheetMotionTargetRegistry.resolveTransitionTarget(
+          sheetSceneKey,
+          transitionContract
+        )
+    );
 
     if (sheetTargetResolution?.kind === 'awaiting-target') {
       return;
@@ -250,7 +251,7 @@ export class AppRouteSceneMotionExecutor {
           );
 
     if (target == null) {
-      if (transitionContract?.motionPlanes.includes('sheet')) {
+      if (transitionContract.motionPlanes.includes('sheet')) {
         this.completeMotionPlane(transitionContract.settleToken, 'sheet');
       }
       return;

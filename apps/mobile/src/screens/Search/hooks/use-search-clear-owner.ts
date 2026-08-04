@@ -42,18 +42,15 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
   searchRuntimeBus: SearchRuntimeBus;
   resetShortcutCoverageState: () => void;
   resetMapMoveFlag: () => void;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
   setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
   resetSheetToHidden: () => void;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   resetFocusedMapState: () => void;
   searchSessionQueryRef: React.MutableRefObject<string>;
-  setSearchTransitionVariant: React.Dispatch<React.SetStateAction<'default' | 'submitting'>>;
   inputRef: React.RefObject<TextInput | null>;
   scrollResultsToTop: () => void;
 };
@@ -74,18 +71,15 @@ export const useSearchClearOwner = <Suggestion>({
   setIsSearchFocused,
   setIsSuggestionPanelActive,
   setIsAutocompleteSuppressed,
-  setShowSuggestions,
   setQuery,
   searchRuntimeBus,
   resetShortcutCoverageState,
   resetMapMoveFlag,
-  setError,
   setSuggestions,
   resetSheetToHidden,
   lastAutoOpenKeyRef,
   resetFocusedMapState,
   searchSessionQueryRef,
-  setSearchTransitionVariant,
   inputRef,
   scrollResultsToTop,
 }: UseSearchClearOwnerArgs<Suggestion>): SearchClearOwner => {
@@ -94,14 +88,7 @@ export const useSearchClearOwner = <Suggestion>({
     setIsAutocompleteSuppressed(false);
     setQuery('');
     setSuggestions([]);
-    setShowSuggestions(false);
-  }, [
-    cancelAutocomplete,
-    setIsAutocompleteSuppressed,
-    setQuery,
-    setShowSuggestions,
-    setSuggestions,
-  ]);
+  }, [cancelAutocomplete, setIsAutocompleteSuppressed, setQuery, setSuggestions]);
 
   const clearSearchState = React.useCallback(
     ({
@@ -149,9 +136,11 @@ export const useSearchClearOwner = <Suggestion>({
         setIsSearchFocused(false);
         setIsSuggestionPanelActive(false);
         setIsAutocompleteSuppressed(true);
-        if (!deferSuggestionClear) {
-          setShowSuggestions(false);
-        }
+        // F1308 collateral: a `if (!deferSuggestionClear) { setShowSuggestions(false); }` sat
+        // here. That was the ONLY thing this arm of the flag did — the suggestion ARRAY is
+        // cleared by the two other `deferSuggestionClear` arms in this file, which are
+        // untouched and still live. With the dead write gone the arm is empty, so it is gone
+        // too rather than left as a branch that does nothing.
         setQuery('');
       }
       publishSearchMountedResultsDataSnapshot(null);
@@ -170,7 +159,6 @@ export const useSearchClearOwner = <Suggestion>({
       });
       resetShortcutCoverageState();
       resetMapMoveFlag();
-      setError(null);
       if (!deferSuggestionClear && !preserveForegroundEditing) {
         setSuggestions([]);
       }
@@ -188,7 +176,6 @@ export const useSearchClearOwner = <Suggestion>({
       resetRestaurantProfileFocusSessionRef.current();
       resetFocusedMapState();
       searchSessionQueryRef.current = '';
-      setSearchTransitionVariant('default');
       if (!preserveForegroundEditing) {
         Keyboard.dismiss();
         inputRef.current?.blur();
@@ -222,13 +209,10 @@ export const useSearchClearOwner = <Suggestion>({
       scrollResultsToTop,
       searchRuntimeBus,
       searchSessionQueryRef,
-      setError,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,
-      setSearchTransitionVariant,
-      setShowSuggestions,
       setSuggestions,
       submittedQuery,
     ]

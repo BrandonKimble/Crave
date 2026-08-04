@@ -14,6 +14,7 @@ import {
 } from '../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
+import { areAppRouteSheetHostRuntimesFieldEqual } from '../navigation/runtime/app-route-sheet-host-runtime-contract';
 
 type SearchOverlayRouteSheetSurfaceHostProps = {
   routeSheetHostRuntime: AppRouteSheetHostRuntime;
@@ -97,12 +98,11 @@ const markRouteSheetHostRuntimePropDiffs = (
     left.sceneStackSurfaceAuthority,
     right.sceneStackSurfaceAuthority
   );
-  markRouteSheetHostRuntimePropDiff(
-    owner,
-    'routeSceneDisplayTargetRegistry',
-    left.routeSceneDisplayTargetRegistry,
-    right.routeSceneDisplayTargetRegistry
-  );
+  // F974(b): the routeSceneDisplayTargetRegistry diff-mark and equality conjunct used to
+  // sit here. Nothing in THIS host's subtree reads the registry any more (it was threaded
+  // five layers deep into BottomSheetSceneStackHost and never dereferenced), so comparing
+  // it could only ever cost an extra re-render of the whole sheet surface. Its real reader,
+  // NavSilhouetteHost, is fed by AppOverlayRouteHost, which still compares it there.
   markRouteSheetHostRuntimePropDiff(
     owner,
     'routeHostVisualRuntimeAuthority',
@@ -128,7 +128,6 @@ const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
       >
         <SearchRouteSceneStackBottomSheetSurfaceHost
           sceneStackSurfaceAuthority={routeSheetHostRuntime.sceneStackSurfaceAuthority}
-          routeSceneDisplayTargetRegistry={routeSheetHostRuntime.routeSceneDisplayTargetRegistry}
           routeSheetSurfaceBodyAuthority={routeSheetHostRuntime.routeSheetSurfaceBodyAuthority}
           routeSheetRuntimeConfigAuthority={routeSheetHostRuntime.routeSheetRuntimeConfigAuthority}
           onContentSettleComplete={routeSheetHostRuntime.onContentSettleComplete}
@@ -160,18 +159,11 @@ const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
     );
     // BAIL-OUT (perf attribution 2026-07-12): field-compare — a fresh wrapper object
     // with identical members must bail, not cascade the sheet-surface subtree.
-    const left = previousProps.routeSheetHostRuntime;
-    const right = nextProps.routeSheetHostRuntime;
-    return (
-      left === right ||
-      (left.searchInteractionRef === right.searchInteractionRef &&
-        left.routeSheetSurfaceAuthority === right.routeSheetSurfaceAuthority &&
-        left.routeSheetSurfaceBodyAuthority === right.routeSheetSurfaceBodyAuthority &&
-        left.routeSheetSurfaceFrameAuthority === right.routeSheetSurfaceFrameAuthority &&
-        left.routeSheetRuntimeConfigAuthority === right.routeSheetRuntimeConfigAuthority &&
-        left.sceneStackSurfaceAuthority === right.sceneStackSurfaceAuthority &&
-        left.routeSceneDisplayTargetRegistry === right.routeSceneDisplayTargetRegistry &&
-        left.routeHostVisualRuntimeAuthority === right.routeHostVisualRuntimeAuthority)
+    // F975(e): the twin of this comparison lived in AppOverlayRouteHost and the two had
+    // already drifted apart. Both call the one comparator now.
+    return areAppRouteSheetHostRuntimesFieldEqual(
+      previousProps.routeSheetHostRuntime,
+      nextProps.routeSheetHostRuntime
     );
   }
 );

@@ -19,7 +19,6 @@ export const useSearchRootOverlayLocalRestaurantSheetPublicationRuntime = ({
   );
 
   return {
-    localRestaurantSheetHostAuthority: localRestaurantSheetHostController.outputAuthority,
     overlayLocalRestaurantSheetHostAuthority: localRestaurantSheetHostController.outputAuthority,
   };
 };

@@ -58,14 +58,16 @@ const PADDING_HORIZONTAL = OVERLAY_HORIZONTAL_PADDING;
 const barkedRowGeometryScenes = new Set<string>();
 
 const DEFAULT_MASK_PADDING = 2;
-const DEFAULT_HOLE_PADDING = 0;
-const DEFAULT_HOLE_Y_OFFSET = 0;
 const DEFAULT_CUTOUT_FILL = '#ffffff';
-// The white cutout plate used to overhang the header bottom by this much to "cover the seam"
-// with the content below. The header is now clipped to its box (`overflow:'hidden'` on
-// `overlaySheetStyles.header`) and the scroll divider is bottom-flush on the boundary, so the
-// overhang is obsolete — the plate ends exactly at the header bottom. Kept at 0 for clarity.
-const HEADER_FOREGROUND_PLATE_OVERLAP_PX = 0;
+// F973(c): three zero-valued constants used to thread through the geometry below —
+// DEFAULT_HOLE_PADDING, DEFAULT_HOLE_Y_OFFSET and HEADER_FOREGROUND_PLATE_OVERLAP_PX. Each
+// contributed nothing to any result, and together they OBSCURED the geometry they were
+// "kept for clarity" to explain: the close hole simply IS a circle of radius
+// closeButtonSize / 2 centred on the close button, and the mask simply IS the header box
+// plus its padding. (The plate overlap was a genuine value once, covering a seam with the
+// content below; the header has been clipped to its own box — `overflow: 'hidden'` on
+// overlaySheetStyles.header — with a bottom-flush scroll divider ever since, so the
+// overhang has been obsolete, and 0, for as long as anyone can point to.)
 
 const circlePath = (cx: number, cy: number, radius: number) =>
   `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${
@@ -103,10 +105,8 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   const paddingTop = PADDING_TOP;
   const paddingHorizontal = PADDING_HORIZONTAL;
   const maskPadding = DEFAULT_MASK_PADDING;
-  const holePadding = DEFAULT_HOLE_PADDING;
-  const holeYOffset = DEFAULT_HOLE_Y_OFFSET;
   const closeButtonSize = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
-  const holeRadius = closeButtonSize / 2 + holePadding;
+  const holeRadius = closeButtonSize / 2;
 
   const handleHeaderRowLayout = React.useCallback((event: LayoutChangeEvent) => {
     if (!__DEV__) {
@@ -133,7 +133,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   }, []);
 
   const cutoutBackground = React.useMemo(() => {
-    const maskHeight = headerHeight + maskPadding * 2 + HEADER_FOREGROUND_PLATE_OVERLAP_PX;
+    const maskHeight = headerHeight + maskPadding * 2;
     const fillColor = DEFAULT_CUTOUT_FILL;
 
     const headerRowY =
@@ -143,7 +143,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
       OVERLAY_HEADER_ROW_MARGIN_TOP;
 
     const closeCenterX = windowWidth - paddingHorizontal - closeButtonSize / 2;
-    const closeCenterY = headerRowY + closeButtonSize / 2 + holeYOffset + maskPadding;
+    const closeCenterY = headerRowY + closeButtonSize / 2 + maskPadding;
 
     const safeCloseCenterX = Math.max(holeRadius, Math.min(windowWidth - holeRadius, closeCenterX));
     const safeCloseCenterY = Math.max(holeRadius, Math.min(maskHeight - holeRadius, closeCenterY));
@@ -188,7 +188,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     closeButtonSize,
     headerHeight,
     holeRadius,
-    holeYOffset,
     maskPadding,
     paddingHorizontal,
     paddingTop,

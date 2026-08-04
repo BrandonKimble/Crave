@@ -24,7 +24,6 @@ type UseSearchForegroundExitEditingRuntimeArgs = Pick<
   | 'suppressAutocompleteResults'
   | 'setIsSearchFocused'
   | 'setIsSuggestionPanelActive'
-  | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
   | 'setIsAutocompleteSuppressed'
@@ -55,7 +54,6 @@ export const useSearchForegroundExitEditingRuntime = ({
   suppressAutocompleteResults,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
-  setShowSuggestions,
   setSuggestions,
   setQuery,
   setIsAutocompleteSuppressed,
@@ -72,7 +70,6 @@ export const useSearchForegroundExitEditingRuntime = ({
     requestSearchPresentationIntent,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setShowSuggestions,
     setSuggestions,
     isSearchEditingRef,
   });

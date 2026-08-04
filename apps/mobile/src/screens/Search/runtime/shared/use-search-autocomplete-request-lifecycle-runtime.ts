@@ -14,7 +14,6 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
   clearAutocompleteSuggestions,
   lookupAutocompleteCache,
   setSuggestions,
-  setShowSuggestions,
   requestStateRuntime,
 }: {
   query: string;
@@ -27,7 +26,6 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
     rawQuery: string
   ) => { matches: AutocompleteMatch[]; isExactMatch: boolean } | null;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   requestStateRuntime: ReturnType<typeof useSearchAutocompleteRequestStateRuntime>;
 }) => {
   const lifecycle = React.useMemo(() => {
@@ -93,14 +91,13 @@ export const useSearchAutocompleteRequestLifecycleRuntime = ({
       return;
     }
     if (lifecycle.cachedMatches != null) {
-      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, lifecycle.cachedMatches);
+      writeAutocompleteSuggestions(setSuggestions, lifecycle.cachedMatches);
     }
   }, [
     cancelAutocomplete,
     clearAutocompleteSuggestions,
     lifecycle,
     requestStateRuntime,
-    setShowSuggestions,
     setSuggestions,
   ]);
 

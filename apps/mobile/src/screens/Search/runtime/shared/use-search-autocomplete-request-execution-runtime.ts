@@ -36,7 +36,6 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
   runAutocomplete,
   cancelAutocomplete,
   setSuggestions,
-  setShowSuggestions,
   writeAutocompleteCache,
   requestStateRuntime,
   bounds,
@@ -54,7 +53,6 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   writeAutocompleteCache: (rawQuery: string, matches: AutocompleteMatch[]) => void;
   requestStateRuntime: ReturnType<typeof useSearchAutocompleteRequestStateRuntime>;
   bounds: MapBounds | null;
@@ -93,7 +91,7 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
           return;
         }
         writeAutocompleteCache(trimmed, matches);
-        writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, matches);
+        writeAutocompleteSuggestions(setSuggestions, matches);
       })
       .catch((error) => {
         if (
@@ -128,7 +126,6 @@ export const useSearchAutocompleteRequestExecutionRuntime = ({
     cancelAutocomplete,
     requestStateRuntime,
     runAutocomplete,
-    setShowSuggestions,
     setSuggestions,
     shouldRequest,
     trimmed,

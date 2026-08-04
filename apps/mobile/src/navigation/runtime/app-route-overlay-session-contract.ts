@@ -5,10 +5,13 @@ export type AppRouteSearchCloseRestoreOptions = {
   searchRootRestoreSnap?: TabOverlaySnap;
 };
 
+// F956(g)/(h): this snapshot used to carry THREE booleans — `shouldShowDockedSceneTarget`,
+// `shouldShowDockedScene` and `shouldShowPollsSheet` — all three assigned the SAME value by
+// the one writer (app-route-overlay-session-state-controller). Two thirds of the snapshot
+// was a rename ledger: an equality fn comparing a value to itself twice, and readers picking
+// a name by habit rather than by meaning. One target, one name.
 export type AppRouteOverlaySessionSnapshot = {
   shouldShowDockedSceneTarget: boolean;
-  shouldShowDockedScene: boolean;
-  shouldShowPollsSheet: boolean;
 };
 
 // S-C.4 item 3 step 2 — the close-restore origin is a VALUE the caller holds, not a store
@@ -29,5 +32,5 @@ export type AppRouteOverlaySessionAuthority = {
   getSnapshot: () => AppRouteOverlaySessionSnapshot;
 };
 
-export type AppRouteOverlaySessionRuntime = AppRouteOverlaySessionSnapshot &
-  AppRouteOverlaySessionActions;
+// F956(f): `AppRouteOverlaySessionRuntime` (snapshot & actions) lived here with no
+// importer anywhere in apps/mobile/src — the two halves are consumed separately. Deleted.

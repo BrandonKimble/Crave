@@ -37,7 +37,6 @@ export const useSearchRootSuggestionRuntime = ({
     isAutocompleteSuppressed: rootPrimitivesRuntime.searchState.isAutocompleteSuppressed,
     isAutocompleteLoading: rootDataPlaneRuntime.requestStatusRuntime.isAutocompleteLoading,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
-    setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
     setBeginSuggestionCloseHold: rootPrimitivesRuntime.searchState.setBeginSuggestionCloseHold,
     shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
     searchChromeScalarSurfacePresentationRuntime,

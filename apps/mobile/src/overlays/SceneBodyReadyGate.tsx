@@ -82,6 +82,10 @@ const styles = StyleSheet.create({
   // header); the skeleton fills the lane it replaces.
   pendingSurface: {
     flex: 1,
+    // F976(e): a floor so the skeleton still occupies a plausible page when the body lane has
+    // not been measured yet (first paint) — without it the gate can collapse to nothing and
+    // the sheet visibly pops when real content arrives. FEEL/UNATTRIBUTED: 320 is "about a
+    // half-screen of rows", not a derived value.
     minHeight: 320,
   },
 });

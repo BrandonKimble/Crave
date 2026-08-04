@@ -7,8 +7,6 @@ import type {
 import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import type { RouteOverlayVisibilitySnapshot } from './route-overlay-visibility-snapshot-contract';
 import {
-  EMPTY_ROUTE_OVERLAY_IDENTITY_SNAPSHOT,
-  EMPTY_ROUTE_OVERLAY_NAVIGATION_SNAPSHOT,
   type RouteOverlayIdentitySnapshot,
   type RouteOverlayNavigationSnapshot,
 } from './route-overlay-navigation-snapshot-contract';
@@ -669,12 +667,12 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   let chromeModeSignature = resolveChromeModeSignature(initialSourceSnapshot);
   let sheetPolicySignature = resolveSheetPolicySignature(initialSourceSnapshot);
   let visibilitySignature = resolveVisibilitySignature(initialSourceSnapshot);
-  if (navigationSnapshot == null) {
-    navigationSnapshot = EMPTY_ROUTE_OVERLAY_NAVIGATION_SNAPSHOT;
-  }
-  if (identitySnapshot == null) {
-    identitySnapshot = EMPTY_ROUTE_OVERLAY_IDENTITY_SNAPSHOT;
-  }
+  // F951(a): two null-coalescing guards used to sit here, re-seeding navigationSnapshot /
+  // identitySnapshot from the EMPTY_* constants. Both `resolveNavigationSnapshot` and
+  // `resolveIdentitySnapshot` return an object LITERAL on every path, so neither guard
+  // could fire — mutation-tested: delete them and nothing observable changes, because
+  // nothing ever reached them. A guard that cannot fail teaches the next reader that the
+  // resolver is nullable when it is not.
   const chromeSnapSharedValueTargets = new Set<RouteOverlayChromeSnapSharedValueTargets>();
   const displaySharedValueTargets = new Set<DisplaySharedValueTarget>();
   const identityTargets = new Set<IdentityTarget>();

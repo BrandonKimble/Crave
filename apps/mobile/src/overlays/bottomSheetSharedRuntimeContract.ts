@@ -139,16 +139,6 @@ export type BottomSheetSharedRuntimeResult = {
   surfaceRuntime: BottomSheetSharedSurfaceRuntime;
 };
 
-export type SheetDiagSnapshot = {
-  visible: boolean;
-  listScrollEnabled: boolean;
-  interactionEnabled: boolean;
-  shouldEnableScroll: boolean;
-  gestureEnabled: boolean;
-  activeList: 'primary' | 'secondary';
-  currentSnapKey: BottomSheetSnap;
-  dataCount: number;
-  secondaryDataCount: number;
-  touchBlockingEnabled: boolean;
-  scrollHeaderHeight: number;
-};
+// F974(a): `SheetDiagSnapshot` lived here with ZERO consumers — the deleted diagnostic
+// whose ghost kept thirteen arguments alive in BottomSheetSharedSnapPublicationArgs. The
+// args are gone; so is the type that explained them.

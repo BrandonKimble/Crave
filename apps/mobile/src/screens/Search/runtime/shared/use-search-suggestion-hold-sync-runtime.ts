@@ -6,9 +6,7 @@ export const useSearchSuggestionHoldSyncRuntime = ({
   query,
   isSuggestionPanelActive,
   setSuggestions,
-  setShowSuggestions,
   setBeginSuggestionCloseHold,
-  setSearchTransitionVariant,
   shouldDriveSuggestionLayout,
   resetSubmitTransitionHold,
   resetSubmitTransitionHoldIfQueryChanged,
@@ -22,21 +20,12 @@ export const useSearchSuggestionHoldSyncRuntime = ({
     if (!isSuggestionPanelActive) {
       return;
     }
-    setSearchTransitionVariant('default');
     const didReset = resetSubmitTransitionHoldIfQueryChanged(query);
     if (!didReset) {
       return;
     }
     setSuggestions([]);
-    setShowSuggestions(false);
-  }, [
-    isSuggestionPanelActive,
-    query,
-    resetSubmitTransitionHoldIfQueryChanged,
-    setSearchTransitionVariant,
-    setShowSuggestions,
-    setSuggestions,
-  ]);
+  }, [isSuggestionPanelActive, query, resetSubmitTransitionHoldIfQueryChanged, setSuggestions]);
 
   React.useEffect(() => {
     if (shouldDriveSuggestionLayout) {
@@ -44,6 +33,5 @@ export const useSearchSuggestionHoldSyncRuntime = ({
     }
     resetSubmitTransitionHold();
     setSuggestions([]);
-    setShowSuggestions(false);
-  }, [resetSubmitTransitionHold, setShowSuggestions, setSuggestions, shouldDriveSuggestionLayout]);
+  }, [resetSubmitTransitionHold, setSuggestions, shouldDriveSuggestionLayout]);
 };

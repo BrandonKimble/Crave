@@ -65,7 +65,6 @@ type SearchSubmitOwnerReadModel = {
 };
 
 type SearchSubmitOwnerUiPorts = {
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
   isSearchEditingRef?: React.MutableRefObject<boolean>;
@@ -206,7 +205,6 @@ const useSearchSubmitOwner = ({
 }: UseSearchSubmitOwnerOptions): SearchSubmitOwner => {
   const { query, isLoadingMore } = readModel;
   const {
-    setError,
     resetSheetToHidden,
     scrollResultsToTop,
     isSearchEditingRef,
@@ -233,7 +231,6 @@ const useSearchSubmitOwner = ({
       viewportBoundsService,
       query,
       isLoadingMore,
-      setError,
       searchRuntimeBus,
       resetMapMoveFlag,
     });
@@ -290,7 +287,6 @@ const useSearchSubmitOwner = ({
     // Presentation-path tab publish (S4c-1b): the enter presents its tab directly —
     // the tuple writer no longer projects activeTab for in-session tab deltas.
     searchRuntimeBus.publish({ activeTab: tuple.tab });
-    setError(null);
     Keyboard.dismiss();
   };
   // Post-present side effects (the response owner's post-commit UI sequence, reduced to

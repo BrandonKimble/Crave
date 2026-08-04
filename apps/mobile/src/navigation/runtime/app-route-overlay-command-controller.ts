@@ -88,9 +88,50 @@ const getRouteOwnerSceneKey = (
 class AppRouteOverlayCommandController {
   private readonly listeners = new Set<Listener>();
 
+  // ─── THE SAVE-HANDLER CACHES ARE BOUNDED (F955(a), F912's shape) ───────────────────
+  // These are keyed by CONTENT identity (`${connectionId|restaurantId}|${locationId}`),
+  // not by the bounded scene-key space, so they used to grow by one permanent entry for
+  // every dish and restaurant the user ever saw a save button for, with the only clear
+  // being `dispose()` at teardown: the leak class, cache variant. They exist purely to
+  // keep the handler IDENTITY stable so memoised rows do not re-render — that is a CACHE
+  // with a policy, so it has one now: least-recently-used eviction at a cap.
+  //
+  // THE CAP is a MEMORY knob, not a UX knob (same class as SCENE_ENTRY_MOUNT_DEPTH_LIMIT
+  // and SCENE_SCROLL_RECORD_LIMIT): evicting a handler costs one new closure and one row
+  // re-render the next time that row scrolls back into view, never a wrong or missing
+  // save — the handler is rebuilt from the same key. It is set well above any plausible
+  // on-screen row count so eviction can only ever touch rows the user has scrolled far
+  // past.
+  private static readonly SAVE_HANDLER_LIMIT = 256;
+
   private readonly dishSaveHandlers = new Map<string, () => void>();
 
   private readonly restaurantSaveHandlers = new Map<string, () => void>();
+
+  /** LRU read-through: Map iteration is insertion order, so re-inserting on hit keeps the
+   *  front of the iteration as the least-recently-used end. */
+  private resolveCachedSaveHandler(
+    cache: Map<string, () => void>,
+    handlerKey: string,
+    build: () => () => void
+  ): () => void {
+    const existing = cache.get(handlerKey);
+    if (existing != null) {
+      cache.delete(handlerKey);
+      cache.set(handlerKey, existing);
+      return existing;
+    }
+    const handler = build();
+    cache.set(handlerKey, handler);
+    while (cache.size > AppRouteOverlayCommandController.SAVE_HANDLER_LIMIT) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey === undefined) {
+        break;
+      }
+      cache.delete(oldestKey);
+    }
+    return handler;
+  }
 
   private nextSaveSheetRouteInstance = 0;
 
@@ -143,28 +184,18 @@ class AppRouteOverlayCommandController {
       // different in-context location across worlds, and a stale cached
       // handler would save the wrong pin.
       const handlerKey = `${connectionId}|${locationId ?? ''}`;
-      let handler = this.dishSaveHandlers.get(handlerKey);
-      if (!handler) {
-        handler = () => {
-          this.openSaveSheetRoute({
-            listType: 'dish',
-            target: { connectionId, locationId: locationId ?? null },
-          });
-        };
-        this.dishSaveHandlers.set(handlerKey, handler);
-      }
-      return handler;
+      return this.resolveCachedSaveHandler(this.dishSaveHandlers, handlerKey, () => () => {
+        this.openSaveSheetRoute({
+          listType: 'dish',
+          target: { connectionId, locationId: locationId ?? null },
+        });
+      });
     },
     getRestaurantSaveHandler: (restaurantId, locationId) => {
       const handlerKey = `${restaurantId}|${locationId ?? ''}`;
-      let handler = this.restaurantSaveHandlers.get(handlerKey);
-      if (!handler) {
-        handler = () => {
-          this.actions.handleRestaurantSavePress(restaurantId, locationId);
-        };
-        this.restaurantSaveHandlers.set(handlerKey, handler);
-      }
-      return handler;
+      return this.resolveCachedSaveHandler(this.restaurantSaveHandlers, handlerKey, () => () => {
+        this.actions.handleRestaurantSavePress(restaurantId, locationId);
+      });
     },
     handleRestaurantSavePress: (restaurantId, locationId) => {
       this.openSaveSheetRoute({

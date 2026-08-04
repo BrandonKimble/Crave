@@ -17,10 +17,11 @@ export const useSearchRootSessionPrimitivesLaneRuntime = ({
   cameraIntentArbiter,
 }: UseSearchRootSessionPrimitivesLaneRuntimeArgs): SearchRootSessionPrimitivesLane => {
   const lastSearchBoundsCaptureSeqRef = React.useRef(0);
-  const lastVisibleSheetStateRef =
-    React.useRef<Exclude<import('../../../../overlays/types').OverlaySheetSnap, 'hidden'>>(
-      'middle'
-    );
+  // F1335: `lastVisibleSheetStateRef` was minted here, typed on
+  // SearchRootCameraViewportRuntime and threaded through the session lane — and never read
+  // OR written anywhere in apps/mobile/src. A ref that is never written cannot hold state and
+  // a ref that is never read cannot inform anything; it was a name promising a memory that
+  // did not exist. Deleted here and on the contract.
   const lastCameraStateRef = React.useRef<{
     center: [number, number];
     zoom: number;
@@ -46,7 +47,6 @@ export const useSearchRootSessionPrimitivesLaneRuntime = ({
   const cameraViewportRuntime: SearchRootCameraViewportRuntime = React.useMemo(
     () => ({
       lastSearchBoundsCaptureSeqRef,
-      lastVisibleSheetStateRef,
       lastCameraStateRef,
       lastPersistedCameraRef,
       commitCameraViewport,

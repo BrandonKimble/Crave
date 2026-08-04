@@ -106,6 +106,7 @@ import {
   mapCuratedDetailToUserListDetail,
   mapCuratedDetailToSearchResponse,
 } from '../../services/curated-list-adapter';
+import { AVATAR_SIZES } from '../../constants/avatar-sizes';
 
 // ─── listDetail — the REAL page body (W1 slices 4/8/9;
 // plans/w1-listdetail-structural-spec.md §A.3 / §C.4 / §C.8 / §C.9) ──────────────────────────
@@ -249,7 +250,7 @@ const useTopMostListDetailHeaderSeat = (): {
 };
 
 // ─── Collaborator stack chip (§8.1): [plus] [owner] [collab…≤3] [+N] ─────────────────────────
-const CHIP_AVATAR_SIZE = 28;
+const CHIP_AVATAR_SIZE = AVATAR_SIZES.chip;
 const MAX_VISIBLE_COLLABORATORS = 3;
 
 const CollaboratorStackChip = ({

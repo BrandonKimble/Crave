@@ -181,17 +181,12 @@ const assertDegenerateHomeEmission = (
 
 const EMPTY_APP_ROUTE_OVERLAY_SESSION_SNAPSHOT: AppRouteOverlaySessionSnapshot = {
   shouldShowDockedSceneTarget: false,
-  shouldShowDockedScene: false,
-  shouldShowPollsSheet: false,
 };
 
 const areAppRouteOverlaySessionSnapshotsEqual = (
   left: AppRouteOverlaySessionSnapshot,
   right: AppRouteOverlaySessionSnapshot
-): boolean =>
-  left.shouldShowDockedSceneTarget === right.shouldShowDockedSceneTarget &&
-  left.shouldShowDockedScene === right.shouldShowDockedScene &&
-  left.shouldShowPollsSheet === right.shouldShowPollsSheet;
+): boolean => left.shouldShowDockedSceneTarget === right.shouldShowDockedSceneTarget;
 
 export class AppRouteOverlaySessionStateController {
   private readonly routeOverlayIdentityAuthority: SnapshotSource<RouteOverlayIdentitySnapshot>;
@@ -562,11 +557,8 @@ export class AppRouteOverlaySessionStateController {
       this.routeSceneSwitchActions.getPresentationFrame().laneKind === 'docked' &&
       !sessionSnapshot.isDockedSceneDismissed;
 
-    return {
-      shouldShowDockedSceneTarget,
-      shouldShowDockedScene: shouldShowDockedSceneTarget,
-      shouldShowPollsSheet: shouldShowDockedSceneTarget,
-    };
+    // F956(h): this used to return the same boolean under three names. One target, one name.
+    return { shouldShowDockedSceneTarget };
   }
 }
 

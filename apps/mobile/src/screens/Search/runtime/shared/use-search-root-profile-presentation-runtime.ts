@@ -55,7 +55,6 @@ export const useSearchRootProfilePresentationRuntime = ({
     resetSearchHeaderFocusProgress: rootSuggestionRuntime.resetSearchHeaderFocusProgress,
     setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
     setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-    setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
     shouldLogPerf:
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.shouldLogSearchStateChanges,

@@ -10,16 +10,17 @@ import { useQuery } from '@tanstack/react-query';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
+import { resolveUserDisplayName } from '../../utils/user-display-name';
+import { AVATAR_SIZES } from '../../constants/avatar-sizes';
 
 // ─── followList — the REAL page body (trigger-nav pages) ────────────────────────────────────
 // Replaces the S-B drill-in practice body. Rows push userProfile — the same-key nesting loop
 // stays live. Origin scroll publication stays (this scene remains a return-to-origin source;
 // the S-B standing rig proof rode this page's scroll). Failure/empty per §5.6.
 
-const AVATAR_SIZE = 40;
+const AVATAR_SIZE = AVATAR_SIZES.list;
 
-const resolveRowTitle = (user: FollowListUser): string =>
-  user.displayName?.trim() || user.username?.trim() || 'Crave member';
+const resolveRowTitle = (user: FollowListUser): string => resolveUserDisplayName(user);
 
 const RowAvatar = ({ user }: { user: FollowListUser }) => (
   <MonogramAvatar

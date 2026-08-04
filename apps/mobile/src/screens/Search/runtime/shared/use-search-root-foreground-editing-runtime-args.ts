@@ -99,7 +99,6 @@ export const useSearchRootForegroundEditingRuntimeArgs = ({
       // search UI
       setIsSearchFocused: searchState.setIsSearchFocused,
       setIsSuggestionPanelActive: searchState.setIsSuggestionPanelActive,
-      setShowSuggestions: searchState.setShowSuggestions,
       setSuggestions: searchState.setSuggestions,
       setQuery: searchState.setQuery,
     }),
@@ -134,7 +133,6 @@ export const useSearchRootForegroundEditingRuntimeArgs = ({
       searchState.setIsSearchFocused,
       searchState.setIsSuggestionPanelActive,
       searchState.setQuery,
-      searchState.setShowSuggestions,
       searchState.setSuggestions,
     ]
   );

@@ -38,16 +38,25 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
     if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
       return;
     }
+    // F1319 — INSTRUMENT HONESTY (the F1305 catalogue class).
+    //
+    // This payload used to report ONE boolean under THREE names — `hasListHeaderInput`,
+    // `hasListHeaderForRender` and `hasStableHeaderChromeForRender` were all
+    // `resultsToggleStripForRenderLive != null` (the first via `listHeader != null`, which the
+    // runtime memo copies through unchanged) — plus two fields that were LITERALS:
+    // `stableHeaderChromeLane` was always the same string, and `stableHeaderChromeOwner` was a
+    // second spelling of the same boolean. A trace reader diffing those five columns would
+    // reasonably believe they were five independent facts about the header, and could
+    // "discover" a correlation that is an identity. Three of the five could never disagree,
+    // and none of the five could ever show RED on its own.
+    //
+    // One fact, one column: `hasListHeaderForRender`. The two genuinely distinct fields — the
+    // measured height and whether the cover is hiding the chrome — stay.
     const contractPayload = {
       event: 'search_results_header_source_contract',
       effectiveFiltersHeaderHeightBase,
       effectiveFiltersHeaderHeightForRender: runtime.effectiveFiltersHeaderHeightForRenderLive,
-      hasListHeaderInput: listHeader != null,
       hasListHeaderForRender: runtime.resultsToggleStripForRenderLive != null,
-      hasStableHeaderChromeForRender: runtime.resultsToggleStripForRenderLive != null,
-      stableHeaderChromeLane: 'mounted_results_list_header',
-      stableHeaderChromeOwner:
-        runtime.resultsToggleStripForRenderLive == null ? 'none' : 'search_mounted_results_list',
       stableHeaderChromeCoveredByLoadingCover:
         searchSceneSurfacePanelStateRuntime.surfaceMode === 'initial_loading' &&
         runtime.resultsToggleStripForRenderLive != null,

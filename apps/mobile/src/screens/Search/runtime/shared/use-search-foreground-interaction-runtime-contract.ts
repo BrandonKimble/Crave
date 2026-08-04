@@ -125,7 +125,6 @@ export type SearchForegroundSubmitRuntimeArgs = {
   resetMapMoveFlag: () => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
   pendingRestaurantSelectionRef: React.MutableRefObject<{
@@ -168,7 +167,6 @@ export type SearchForegroundEditingRuntimeArgs = {
   restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -195,11 +193,9 @@ export type SearchForegroundOverlayRuntimeArgs = {
   transitionActions: RouteSceneSwitchTransitionActions;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionLayoutWarm: React.Dispatch<React.SetStateAction<boolean>>;
-  setSearchTransitionVariant: React.Dispatch<React.SetStateAction<'default' | 'submitting'>>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   allowSearchBlurExitRef: React.MutableRefObject<boolean>;
   inputRef: React.RefObject<TextInput | null>;

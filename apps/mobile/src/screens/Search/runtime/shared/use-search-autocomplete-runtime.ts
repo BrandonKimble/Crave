@@ -21,7 +21,6 @@ type UseSearchAutocompleteRuntimeArgs = {
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   bounds: MapBounds | null;
   userLocation: Coordinate | null;
 };
@@ -47,7 +46,6 @@ export const useSearchAutocompleteRuntime = ({
   runAutocomplete,
   cancelAutocomplete,
   setSuggestions,
-  setShowSuggestions,
   bounds,
   userLocation,
 }: UseSearchAutocompleteRuntimeArgs) => {
@@ -55,7 +53,6 @@ export const useSearchAutocompleteRuntime = ({
   const autocompleteCacheRuntime = useSearchAutocompleteCacheRuntime({
     cancelAutocomplete,
     setSuggestions,
-    setShowSuggestions,
     cacheScopeKey,
   });
 
@@ -67,7 +64,6 @@ export const useSearchAutocompleteRuntime = ({
     runAutocomplete,
     cancelAutocomplete,
     setSuggestions,
-    setShowSuggestions,
     clearAutocompleteSuggestions: autocompleteCacheRuntime.clearAutocompleteSuggestions,
     lookupAutocompleteCache: autocompleteCacheRuntime.lookupAutocompleteCache,
     writeAutocompleteCache: autocompleteCacheRuntime.writeAutocompleteCache,

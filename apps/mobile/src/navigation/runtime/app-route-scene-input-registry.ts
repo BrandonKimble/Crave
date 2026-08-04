@@ -455,6 +455,22 @@ export class AppRouteSceneInputController {
     this.notifySceneLane(sceneKey, 'body');
   }
 
+  /**
+   * F955(c) — WHAT "CLEAR" MEANS HERE, stated because the name over-promises.
+   *
+   * This writes an explicit `null` at the key; it does NOT delete the key, so the snapshot
+   * object retains one property per scene that has ever published. That is NOT the leak
+   * class: `AppRouteSceneInputKey` is a closed, compile-guarded set
+   * (APP_ROUTE_SCENE_INPUT_KEYS), so the retained key set is bounded by the scene
+   * vocabulary, not by anything the user does — growth, and a fixed ceiling at that, rather
+   * than a leak.
+   *
+   * The `null` is LOAD-BEARING and deliberate: readers distinguish "this scene has published
+   * nothing" (null) from "this key is not part of the snapshot at all", and the lane
+   * notifications below depend on the transition to null being an observable edge. Deleting
+   * the key instead would make `clear` live up to its name and quietly change what every
+   * reader sees.
+   */
   private clearSceneInput(sceneKey: AppRouteSceneInputKey): void {
     const previousSceneInput = this.currentSnapshot[sceneKey] ?? null;
     if (previousSceneInput == null) {

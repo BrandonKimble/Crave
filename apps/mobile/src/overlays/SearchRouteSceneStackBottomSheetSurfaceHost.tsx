@@ -7,7 +7,6 @@ import {
   type SearchRouteSceneStackBottomSheetRuntimeAssembly,
   useSearchRouteSceneStackBottomSheetRuntimeAssembly,
 } from './useSearchRouteSceneStackBottomSheetRuntimeAssembly';
-import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type {
   AppRouteSheetHostRuntimeConfigAuthority,
   AppRouteSheetHostSurfaceBodyAuthority,
@@ -26,7 +25,6 @@ import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attributi
 
 type SearchRouteSceneStackBottomSheetSurfaceHostProps = {
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
-  routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
   onContentSettleComplete: (token: number) => void;
@@ -156,7 +154,6 @@ type SearchRouteSceneStackBottomSheetRuntimeSurfaceProps = Omit<
 const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
   ({
     sceneStackSurfaceAuthority,
-    routeSceneDisplayTargetRegistry,
     routeSheetRuntimeConfigAuthority,
     surfaceBodySnapshot,
     onContentSettleComplete,
@@ -177,7 +174,6 @@ const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
         <GestureDetector gesture={runtimeAssembly.sheetGesture}>
           <BottomSheetSceneStackHost
             sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
             shadowShellStyle={runtimeAssembly.shadowShellStyle}
             surfaceStyle={runtimeAssembly.surfaceStyle}
             scrollHeaderComponent={null}
@@ -226,7 +222,6 @@ const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
 export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
   ({
     sceneStackSurfaceAuthority,
-    routeSceneDisplayTargetRegistry,
     routeSheetRuntimeConfigAuthority,
     routeSheetSurfaceBodyAuthority,
     onContentSettleComplete,
@@ -260,7 +255,6 @@ export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
     const sceneStackBottomSheetSurface = (
       <SearchRouteSceneStackBottomSheetRuntimeSurface
         sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-        routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
         routeSheetRuntimeConfigAuthority={routeSheetRuntimeConfigAuthority}
         surfaceBodySnapshot={surfaceBodySnapshot}
         onContentSettleComplete={onContentSettleComplete}

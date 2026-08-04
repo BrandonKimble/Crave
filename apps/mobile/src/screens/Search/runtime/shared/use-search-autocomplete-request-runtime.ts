@@ -20,7 +20,6 @@ type UseSearchAutocompleteRequestRuntimeArgs = {
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   clearAutocompleteSuggestions: () => void;
   lookupAutocompleteCache: (
     rawQuery: string
@@ -43,7 +42,6 @@ export const useSearchAutocompleteRequestRuntime = ({
   runAutocomplete,
   cancelAutocomplete,
   setSuggestions,
-  setShowSuggestions,
   clearAutocompleteSuggestions,
   lookupAutocompleteCache,
   writeAutocompleteCache,
@@ -65,7 +63,6 @@ export const useSearchAutocompleteRequestRuntime = ({
     runAutocomplete,
     cancelAutocomplete,
     setSuggestions,
-    setShowSuggestions,
     clearAutocompleteSuggestions,
     lookupAutocompleteCache,
     writeAutocompleteCache,

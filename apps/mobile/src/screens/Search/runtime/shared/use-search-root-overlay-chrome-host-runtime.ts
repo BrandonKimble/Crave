@@ -107,7 +107,6 @@ export const useSearchRootOverlayChromeHostRuntime = ({
   const suggestionShellContainerRuntime = useSearchRootOverlaySuggestionShellContainerRuntime({
     appEntryPlaneRuntime,
     stateFoundationLane,
-    rootOverlayFoundationRuntime,
     visualRuntime: overlaySceneHostVisualRuntime,
   });
   const suggestionShellLayoutRuntime = useSearchRootOverlaySuggestionShellLayoutRuntime({
@@ -138,7 +137,12 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       isSuggestionOverlayVisible: suggestionShellContainerRuntime.isSuggestionOverlayVisible,
       shouldHideBottomNavForRender: suggestionShellContainerRuntime.shouldHideBottomNavForRender,
     }),
-    [shouldRenderSearchOverlay, suggestionShellContainerRuntime]
+    // F1337: `shouldRenderSearchOverlay` used to ride this dep array without being an input —
+    // the memo reads only the three suggestionShellContainerRuntime fields above. Every
+    // overlay-visibility flip therefore minted a fresh container snapshot with identical
+    // members, cascading the chrome host for nothing. A dep that is not an input is not a
+    // safety margin; it is a guaranteed false invalidation.
+    [suggestionShellContainerRuntime]
   );
   const chromeHeaderProps = React.useMemo<SearchOverlayChromeHeaderProps>(() => {
     const chromeShortcutInputs = {
@@ -200,22 +204,21 @@ export const useSearchRootOverlayChromeHostRuntime = ({
       suggestionShellMotionRuntime,
     ]
   );
+  const runOneFreezeGate = stateFoundationLane.rootDataPlaneRuntime.freezeGate;
+  const isRunOneFreezeActive =
+    runOneFreezeGate.isSearchSurfaceRedrawChromeFreezeActive ||
+    runOneFreezeGate.isSearchSurfaceRedrawPreflightFreezeActive ||
+    runOneFreezeGate.isResponseFrameFreezeActive;
   const chromeFrameSnapshot = React.useMemo<SearchOverlayChromeFrameSnapshot>(
     () => ({
       isFocused: appEntryPlaneRuntime.isFocused,
       shouldRenderSearchOverlay,
-      shouldFreezeSuggestionSurfaceForRunOne:
-        stateFoundationLane.rootDataPlaneRuntime.freezeGate
-          .isSearchSurfaceRedrawChromeFreezeActive ||
-        stateFoundationLane.rootDataPlaneRuntime.freezeGate
-          .isSearchSurfaceRedrawPreflightFreezeActive ||
-        stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
-      shouldFreezeOverlayHeaderChromeForRunOne:
-        stateFoundationLane.rootDataPlaneRuntime.freezeGate
-          .isSearchSurfaceRedrawChromeFreezeActive ||
-        stateFoundationLane.rootDataPlaneRuntime.freezeGate
-          .isSearchSurfaceRedrawPreflightFreezeActive ||
-        stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
+      // F1324: these two were written out as byte-identical three-disjunct expressions under
+      // two names, in this one memo — so a change to the freeze rule had to be made twice, in
+      // adjacent lines, with nothing to catch a half-edit. There is ONE freeze decision here;
+      // the two consumers that read it under different names still get their own field.
+      shouldFreezeSuggestionSurfaceForRunOne: isRunOneFreezeActive,
+      shouldFreezeOverlayHeaderChromeForRunOne: isRunOneFreezeActive,
       onProfilerRender:
         rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       hiddenSearchFiltersWarmupProps,
@@ -223,10 +226,7 @@ export const useSearchRootOverlayChromeHostRuntime = ({
     [
       appEntryPlaneRuntime.isFocused,
       shouldRenderSearchOverlay,
-      stateFoundationLane.rootDataPlaneRuntime.freezeGate.isResponseFrameFreezeActive,
-      stateFoundationLane.rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawChromeFreezeActive,
-      stateFoundationLane.rootDataPlaneRuntime.freezeGate
-        .isSearchSurfaceRedrawPreflightFreezeActive,
+      isRunOneFreezeActive,
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       hiddenSearchFiltersWarmupProps,
     ]

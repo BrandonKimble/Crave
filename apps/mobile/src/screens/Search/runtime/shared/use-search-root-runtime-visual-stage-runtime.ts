@@ -19,6 +19,7 @@ import type { SearchRootViewportShortcutControlLane } from './use-search-root-co
 import type { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import type { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
 import type { SearchRouteSheetMotionStateSnapshot } from './search-route-sheet-motion-state-snapshot-contract';
+import { useShouldDisableSearchShortcuts } from './use-should-disable-search-shortcuts';
 
 export const useSearchRootRuntimeVisualStageRuntime = ({
   appEntryPlaneRuntime,
@@ -43,6 +44,9 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
 }): {
   visualAssemblyRuntime: ReturnType<typeof useSearchRootRuntimeVisualAssemblyRuntime>;
 } => {
+  const shouldDisableSearchShortcutsSubscribed = useShouldDisableSearchShortcuts(
+    stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
+  );
   const appRouteSceneChromeMotionRuntime = useAppRouteSceneChromeMotionRuntimeOwner();
   const appRouteSheetHostRuntimeOwner = useAppRouteSheetHostOwner();
   const routeSheetRuntimeMotionState = useRouteAuthoritySelector<
@@ -149,9 +153,8 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
       isSuggestionPanelActive:
         stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
           .isSuggestionPanelActive,
-      shouldDisableSearchShortcuts:
-        stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
-          .shouldDisableSearchShortcutsRef.current,
+      // F1323: subscribed, not a render-time ref read.
+      shouldDisableSearchShortcuts: shouldDisableSearchShortcutsSubscribed,
       appRouteSceneChromeMotionRuntime,
     });
   const foregroundVisualPresentationSourceRuntime =
