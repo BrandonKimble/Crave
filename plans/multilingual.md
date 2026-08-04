@@ -140,7 +140,26 @@ allowlisted display layer. Cheap at 574 attributes; archaeology at
 DISPLAY name into the alias bag — record provenance (or stop
 demoting) so label history is not laundered through the untagged bag.
 
-## FIRST NON-ENGLISH MARKET — the market checklist (build then)
+## THE I18N BUILD PHASE (owner reframing 2026-08-03: the product goal
+
+## is ALL major languages, like every peer app — so this is ONE
+
+## scheduled build phase, not a per-market gate)
+
+Nearly everything below is BUILD-ONCE regardless of language count
+(labels relation, locale plumbing, dense admission tier, label-sweep
+pipeline, mobile scaffolding, MT-on-read, gate harness). Each
+additional language afterward is DATA, not code: a locale file, ~60
+spine words, sweep-generated label rows — LLM-drafted, enabled in
+batches. Genuinely per-language residue: launch-gate grading
+(LLM-graded first pass, native spot-checks for major languages),
+morphology packs only where the language demands one (Spanish
+inflection; CJK segmentation; many languages need none), RTL for
+ar/he. SEQUENCING: this phase runs AFTER the database/extraction-
+prompt phase — the prompt rewrite (cross-language normalization,
+spine/tail split, N-items) is upstream of everything here; building
+i18n on vocabulary rules about to change would be building on sand.
+The checklist:
 
 M1. Locale on the wire: client sends Accept-Language/profile locale;
 API negotiates and threads it; caches carrying rendered text key
@@ -337,8 +356,9 @@ adversarial set is not a product, and embeddings cannot express
 - A second fold implementation (SQL or otherwise).
 - Labels written into the alias bag; untagged multilingual aliases.
 - Per-request MT on hot surfaces.
-- Building M-items before a market exists (N-items are all justified
-  by today's corpus).
+- Building M-items before the scheduled i18n phase (N-items are all
+  justified by today's corpus; the i18n phase follows the DB/prompt
+  phase because the prompt rewrite is upstream of it).
 
 ## Open questions for the owner
 
