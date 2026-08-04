@@ -664,3 +664,48 @@ WAVE 1 SHIPPED (foundation + mobile scaffolding):
   discount. Onboarding's constants file (~64 literals) + the shared
   option labels are the remaining string debt; option labels are M2
   concept-label territory, not M7.
+
+### Wave 2/3 as-builts (2026-08-03/04)
+
+- **WS5b red team — ten findings, every one EXECUTED before the verdict**
+  (F1 lost-update in the alias projection → FOR UPDATE serialization;
+  F2 seeded es aliases grounded for ENGLISH requests → locale filter on
+  both alias arms, tagged rows excluded absent a request locale; F3 the
+  Vary header CLOBBERED CORS's `Vary: Origin` → merge-never-set; F4 the
+  detector overruled explicit request priors on 15% of an English probe
+  set → DETECTOR_OVERRULE_PRIOR=0.5 placeholder; F5 excludedSpans +
+  queryAnalysis now thread to response metadata — the gate grades them;
+  F6 the share-link poll localizes via `getPoll(pollId, locale)`;
+  F8 blank-label totality — trim floor in `displayLabel` + a DB
+  `CHECK (btrim(form) <> '')`; F9 ruled moot — recents replay the
+  user's own text; F7 DEFERRED with a recorded shape: the durable
+  lockdown is a type-level `LocalizedName` brand, not a regex spec;
+  F10 string-debt: display `t()` on data-bearing suggestion tokens).
+- **Gate-driven fixes G1-G3**: weak fuzzy links no longer pre-empt the
+  dense tier on non-English queries (dense arbitrates and REPLACES —
+  this was the 19-red cause of run 1); sub-4-char spans refuse fuzzy
+  evidence ("sal"→salsa class); entity_labels became a locale-filtered
+  match arm of the gazetteer.
+- **Launch-gate scoreboard** (150-query es gold corpus, run 3, real DB
+  and real interpretation path): overall 78%; **negation non-inversion
+  100% GREEN (the HARD clause)**; **homograph mis-groundings
+  @conf≥0.95 = 0 GREEN**; code-switched 100%; single_noun 77.5%;
+  compound 50%; attribute 70%. Two parent rulings shaped the gold:
+  compositional source-faithful groundings (camarones → "camarones
+  enchilados") are CORRECT single-noun outcomes (`allowCompositional`),
+  and exact English NAME matches (tuna, pie) are correct for ANY
+  request locale in an English-corpus market.
+- **Why the remaining reds are data, not machinery** — proven by the
+  floor sweep: rank∈{3,5,8} × cosine∈{0.68,0.70,0.72} moved single-noun
+  accuracy NOT AT ALL (62.5-65% pre-ruling). The tail is (a) morphology
+  — "vegetarianos"/"japonés" are unseeded inflections of seeded forms:
+  language-pack territory, per-locale inflection expansion at seed time;
+  (b) tail labels — the sweep's generator is still the Noop; the real
+  generator run is a market-checklist item. The M4 floors REMAIN
+  placeholders; the sweep-flatness finding says calibration needs a
+  labeled set with dense-tier-reachable cases, which the judge-banking
+  loop produces in operation.
+- **Verification state**: full suite 1,489 pass / 1 fail — the failure
+  is FOREIGN (another session's configuration-readers keys), named not
+  touched. Commits: 7511f0479 (wave 2), 9053822c3 (spine aliases),
+  8199074c7 (wave 3), 68d0fdc6d (F8 migration).
