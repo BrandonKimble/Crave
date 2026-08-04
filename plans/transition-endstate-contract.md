@@ -250,3 +250,36 @@ abstractions while implementing" — owner directive, now regime rule 5.
 **OA4 — pollCreation's instant mode: owner to reaffirm or retire** (added
 to Part 5 ratifications; the field ships either way, the default is the
 question).
+
+## OWNER AMENDMENTS — round 2 (2026-08-03, ratifications answered)
+
+**OA5 — INSTANT MODE IS DEAD (Part 5 ratification answered).** "I don't ever want a
+sheet to just instantly appear where it should be. Every sheet needs to glide between
+transitions. That is the canonical movement pattern and the only one really." The
+`mode: 'instant'` field is DELETED, not kept as data — the glide is universal.
+pollCreation springs to expanded like every other child. Executed same-turn: descriptor
+row + spec oracle updated. Kill-list obligation: the `mode?: 'spring'|'instant'`
+plumbing in the motion command types dies with the old system (R8) or earlier if a rung
+touches it. Falsifier: any code path that sets a sheet's position without an animated
+glide (outside the hidden excursion's declared primitive) is RED.
+
+**OA6 — THE SEARCH FLOW IS SOURCE-AGNOSTIC (scope expansion for R7 + world join).**
+Owner enumeration of search-flow entry points, all of which must share ONE choreography
+(map items ready + cards ready → revealed simultaneously; skeleton sheet as the loading
+state throughout):
+
+- query search (search page)
+- listDetail from the LISTS page
+- listDetail from the user's PROFILE page (shared lists)
+- curated list from the HOME page (may not be implemented yet — home is new)
+- poll-detail discussion comment text-highlight spans: tapping a DISH span triggers the
+  query search flow; tapping a RESTAURANT span triggers the restaurant search flow.
+  Owner: this machinery "may be broken given we haven't looked at it in a while" — R7
+  begins with a dedicated research/rederivation pass over the old search-flow plans
+  (intent, choreography bar, 60fps hard requirement) before any code change, and the
+  rederived ideal shape is appended to this contract before R7 implementation.
+
+**OA7 — EXECUTION MODE.** Owner directive: run the whole ladder end-to-end under
+parent-managed subagents; parent reviews code between rungs and re-derives continuously;
+owner-gated decisions are surfaced as FYIs but never pause development; 60fps during
+every transition is a HARD requirement; red team + test at the end.

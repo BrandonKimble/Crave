@@ -111,7 +111,7 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     from: '*',
     to: 'pollCreation',
     transitionKind: 'openChild',
-    motion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
+    motion: { kind: 'snapTo', snap: 'expanded' },
   },
   {
     from: '*',

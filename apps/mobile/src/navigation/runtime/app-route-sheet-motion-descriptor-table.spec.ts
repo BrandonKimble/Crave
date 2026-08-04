@@ -150,14 +150,13 @@ const legacyOracleSheetMotionPlan = ({
     case 'terminalDismiss':
       return { kind: 'hide' };
     case 'openChild':
-      // pollCreation: the pre-table DEFAULT switch said {snapTo, expanded}, but the only real
-      // pollCreation open (revealRoute) carried an EXPLICIT mode:'instant' override at the call
-      // site. P6 step 1 deleted that redundant override and folded mode:'instant' into the row,
-      // so the oracle pins the pre-change EFFECTIVE flow behavior (instant expanded cover).
-      if (targetSceneKey === 'pollCreation') {
-        return { kind: 'snapTo', snap: 'expanded', mode: 'instant' };
-      }
-      if (targetSceneKey === 'saveList' || targetSceneKey === 'pollDetail') {
+      // Owner ruling 2026-08-03: every sheet GLIDES — there is no instant mode anywhere.
+      // pollCreation's historical mode:'instant' override is deleted; it springs like any child.
+      if (
+        targetSceneKey === 'pollCreation' ||
+        targetSceneKey === 'saveList' ||
+        targetSceneKey === 'pollDetail'
+      ) {
         return { kind: 'snapTo', snap: 'expanded' };
       }
       if (targetSceneKey === 'restaurant') {
