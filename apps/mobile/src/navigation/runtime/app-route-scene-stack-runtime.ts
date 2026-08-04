@@ -86,6 +86,7 @@ import {
   logPerfScenarioAttributionEvent,
 } from '../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
+import { logPageSwitchDebug } from './pageswitch-debug-flag';
 
 type Listener = () => void;
 
@@ -723,24 +724,18 @@ const shouldDeferSceneBodyInputPublication = ({
   }
   const bodyAdmissionPolicy = sceneEntry.sceneBodyAdmissionPolicy;
 
+  // F1385: an INACTIVE scene never retains its list body — the policy field that could
+  // have said otherwise had no producer and is deleted.
   if (activeSceneKey !== sceneKey) {
-    return (
-      sceneEntry.sceneBodyContent.surfaceKind === 'list' &&
-      shouldRetainSceneListBody(bodyAdmissionPolicy)
-    );
+    return false;
   }
 
   return (
     transitionPhase !== 'idle' &&
     previousSceneEntry?.contentEntry != null &&
-    (shouldRetainSceneListBody(bodyAdmissionPolicy) ||
-      shouldRetainMountedSceneBody(bodyAdmissionPolicy))
+    shouldRetainMountedSceneBody(bodyAdmissionPolicy)
   );
 };
-
-const shouldRetainSceneListBody = (
-  bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined
-): boolean => bodyAdmissionPolicy?.retainListBodyDuringTransition === true;
 
 const shouldRetainMountedSceneBody = (
   bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined
@@ -754,13 +749,20 @@ const shouldDelaySceneDataLane = (
   bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined
 ): boolean => bodyAdmissionPolicy?.delayFirstDataAdmission === true;
 
-const shouldDelaySceneDataLaneOnActivation = (
-  bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined
-): boolean => bodyAdmissionPolicy?.delayDataAdmissionOnActivation === true;
-
-const resolveSceneDataLaneAdmissionDelayMs = (
-  bodyAdmissionPolicy: AppRouteSceneBodyAdmissionPolicy | null | undefined
-): number => bodyAdmissionPolicy?.dataAdmissionDelayMs ?? SCENE_DATA_LANE_QUIET_DELAY_MS;
+// ONE definition of "the results sheet is dismissing and still owes the docked scene its
+// data lane". Both call sites below (the per-scene prewarm predicate and the recompute's
+// scene-key inclusion) gated on this exact four-clause read; written twice they could
+// silently disagree after an edit to either. Read live off the search-surface runtime.
+const isSearchDismissHoldingDockedSceneData = (): boolean => {
+  const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+  const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
+  return (
+    searchSurfaceSnapshot.activeBundle.kind === 'results' &&
+    searchSurfaceSnapshot.dismissTransaction != null &&
+    surfaceVisualPolicy.phase === 'results_dismissing' &&
+    !surfaceVisualPolicy.canReleaseDockedScene
+  );
+};
 
 const shouldPrewarmSearchDismissPollDataLane = ({
   bodyAdmissionPolicy,
@@ -778,31 +780,13 @@ const shouldPrewarmSearchDismissPollDataLane = ({
   ) {
     return false;
   }
-  const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
-  const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
-  return (
-    searchSurfaceSnapshot.activeBundle.kind === 'results' &&
-    searchSurfaceSnapshot.dismissTransaction != null &&
-    surfaceVisualPolicy.phase === 'results_dismissing' &&
-    !surfaceVisualPolicy.canReleaseDockedScene
-  );
+  return isSearchDismissHoldingDockedSceneData();
 };
 
 const shouldSyncSearchDismissDockedSceneDataPrewarmScene = (
   mountedSceneKeys: readonly OverlayKey[]
-): boolean => {
-  if (!mountedSceneKeys.includes(DOCKED_SCENE_KEY)) {
-    return false;
-  }
-  const searchSurfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
-  const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(searchSurfaceSnapshot);
-  return (
-    searchSurfaceSnapshot.activeBundle.kind === 'results' &&
-    searchSurfaceSnapshot.dismissTransaction != null &&
-    surfaceVisualPolicy.phase === 'results_dismissing' &&
-    !surfaceVisualPolicy.canReleaseDockedScene
-  );
-};
+): boolean =>
+  mountedSceneKeys.includes(DOCKED_SCENE_KEY) && isSearchDismissHoldingDockedSceneData();
 
 const shouldRetainSceneBodySnapshotDuringTransition = ({
   transitionPhase,
@@ -814,8 +798,7 @@ const shouldRetainSceneBodySnapshotDuringTransition = ({
   transitionPhase !== 'idle' &&
   previousSceneEntry?.contentEntry != null &&
   previousSceneEntry.transportEntry != null &&
-  (shouldRetainSceneListBody(previousSceneEntry.bodyAdmissionPolicy) ||
-    shouldRetainMountedSceneBody(previousSceneEntry.bodyAdmissionPolicy));
+  shouldRetainMountedSceneBody(previousSceneEntry.bodyAdmissionPolicy);
 
 const appendRouteSceneKey = ({
   mountedSceneKeys,
@@ -2272,8 +2255,6 @@ class AppRouteSceneStackLayerStateController {
         canPrewarmSearchDismissPollData,
       retainMountedBody: shouldRetainMountedBody,
       delayFirstDataAdmission: shouldDelaySceneDataLane(bodyAdmissionPolicy),
-      delayDataAdmissionOnActivation: shouldDelaySceneDataLaneOnActivation(bodyAdmissionPolicy),
-      dataAdmissionDelayMs: resolveSceneDataLaneAdmissionDelayMs(bodyAdmissionPolicy),
     });
     const shouldRunDataLane = canAdmitDataLane && isDataLaneReady;
     if (shouldRetainMountedBody && shouldRunDataLane) {
@@ -2299,8 +2280,7 @@ class AppRouteSceneStackLayerStateController {
       // OR in isTransitionParticipant so BOTH the incoming (active) AND the
       // outgoing (handoff) scene paint their body during the overlap window —
       // else the crossfade's outgoing leg (opacity 1→0) would fade a blank.
-      shouldRenderListBody:
-        isActive || isTransitionParticipant || shouldRetainSceneListBody(bodyAdmissionPolicy),
+      shouldRenderListBody: isActive || isTransitionParticipant,
       shouldAttachMountedContent:
         canInteract || isTransitionParticipant || shouldRetainMountedBody || hasRetainedEntryUnits,
       isTransitionParticipant,
@@ -2362,35 +2342,30 @@ class AppRouteSceneStackLayerStateController {
     ) {
       return false;
     }
-    if (__DEV__) {
-      // [pageswitch] ACTIVITY producer probe (P4 blank-body attribution): per-scene activation
-      // flags whenever the snapshot CHANGES, plus the producer inputs that decided them — pins
-      // which flag is stuck and which input failed to flip on a cold presented leg.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[pageswitch] activity ${JSON.stringify({
-          scene: sceneKey,
-          attach: nextSnapshot.shouldAttachMountedContent,
-          expand: nextSnapshot.shouldRenderExpandedContent,
-          activated: nextSnapshot.hasActivatedExpandedContent,
-          runData: nextSnapshot.shouldRunDataLane,
-          subData: nextSnapshot.shouldSubscribeDataLane,
-          active: nextSnapshot.isActive,
-          canInteract: nextSnapshot.isInteractive,
-          actPhase: nextSnapshot.activationPhase,
-          in: {
-            act: activeSceneKey,
-            inter: interactiveSceneKey,
-            handoff: handoffSceneKey,
-            phase: transitionPhase,
-            interactive: isInteractive,
-            mounted: isMounted,
-            entry: sceneEntry != null,
-            retain: sceneEntry?.bodyAdmissionPolicy?.retainMountedBodyDuringTransition === true,
-          },
-        })}`
-      );
-    }
+    // [pageswitch] ACTIVITY producer probe (P4 blank-body attribution): per-scene activation
+    // flags whenever the snapshot CHANGES, plus the producer inputs that decided them — pins
+    // which flag is stuck and which input failed to flip on a cold presented leg.
+    logPageSwitchDebug('activity', {
+      scene: sceneKey,
+      attach: nextSnapshot.shouldAttachMountedContent,
+      expand: nextSnapshot.shouldRenderExpandedContent,
+      activated: nextSnapshot.hasActivatedExpandedContent,
+      runData: nextSnapshot.shouldRunDataLane,
+      subData: nextSnapshot.shouldSubscribeDataLane,
+      active: nextSnapshot.isActive,
+      canInteract: nextSnapshot.isInteractive,
+      actPhase: nextSnapshot.activationPhase,
+      in: {
+        act: activeSceneKey,
+        inter: interactiveSceneKey,
+        handoff: handoffSceneKey,
+        phase: transitionPhase,
+        interactive: isInteractive,
+        mounted: isMounted,
+        entry: sceneEntry != null,
+        retain: sceneEntry?.bodyAdmissionPolicy?.retainMountedBodyDuringTransition === true,
+      },
+    });
     if (nextSnapshot === EMPTY_APP_ROUTE_SCENE_STACK_SCENE_ACTIVITY_SNAPSHOT) {
       this.sceneActivitySnapshots.delete(sceneKey);
     } else {
@@ -2482,23 +2457,15 @@ class AppRouteSceneStackLayerStateController {
     allowInactiveDataLaneAdmission,
     retainMountedBody,
     delayFirstDataAdmission,
-    delayDataAdmissionOnActivation,
-    dataAdmissionDelayMs,
   }: {
     sceneKey: OverlayKey;
     canAdmitDataLane: boolean;
     allowInactiveDataLaneAdmission: boolean;
     retainMountedBody: boolean;
     delayFirstDataAdmission: boolean;
-    delayDataAdmissionOnActivation: boolean;
-    dataAdmissionDelayMs: number;
   }): boolean {
     if (!canAdmitDataLane) {
       this.cancelSceneDataLaneTimer(sceneKey);
-      if (delayDataAdmissionOnActivation) {
-        this.dataLaneReadySceneKeys.delete(sceneKey);
-        return false;
-      }
       if (retainMountedBody && this.retainedExpandedContentSceneKeys.has(sceneKey)) {
         return true;
       }
@@ -2515,7 +2482,7 @@ class AppRouteSceneStackLayerStateController {
       return true;
     }
 
-    if (!delayFirstDataAdmission && !delayDataAdmissionOnActivation) {
+    if (!delayFirstDataAdmission) {
       if (retainMountedBody) {
         this.retainedExpandedContentSceneKeys.add(sceneKey);
       }
@@ -2572,7 +2539,9 @@ class AppRouteSceneStackLayerStateController {
             this.notifyScenePresentationListeners(changedScenePresentationKeys);
           }
         });
-      }, dataAdmissionDelayMs);
+        // F1385: the per-scene `dataAdmissionDelayMs` override had no producer, so this
+        // delay was ALWAYS the module constant. It is now named as such.
+      }, SCENE_DATA_LANE_QUIET_DELAY_MS);
       this.dataLaneTimers.set(sceneKey, timer);
     }
 

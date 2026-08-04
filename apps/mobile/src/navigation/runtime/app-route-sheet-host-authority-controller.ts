@@ -29,7 +29,6 @@ import {
 import { EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract';
 import { EMPTY_SEARCH_ROUTE_SHEET_SCROLL_BODY_DEFAULTS_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-scroll-body-defaults-snapshot-contract';
 import { EMPTY_SEARCH_ROUTE_SHEET_SCROLL_SHARED_RUNTIME_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-scroll-shared-runtime-snapshot-contract';
-import type { SearchRouteSheetHostFrameSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-host-frame-snapshot-contract';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type {
   RouteOverlayNavigationAuthority,
@@ -53,7 +52,6 @@ import {
 } from './app-route-presentation-frame-contract';
 import type { AppRouteSharedSheetPresentationRuntime } from './app-route-shared-sheet-presentation-controller';
 import {
-  EMPTY_APP_ROUTE_SHEET_HOST_FRAME_SNAPSHOT,
   EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_SNAPSHOT,
   EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_BODY_SNAPSHOT,
   areAppRouteSheetHostSurfaceSnapshotsEqual,
@@ -64,7 +62,6 @@ import {
   type AppRouteSheetHostSurfaceAuthority,
   type AppRouteSheetHostSurfaceSnapshot,
   type AppRouteSheetHostSurfaceBodySnapshot,
-  type AppRouteSheetHostSurfaceFrameAuthority,
 } from './app-route-sheet-host-surface-runtime-contract';
 import type { SearchRouteSheetFrameHostInput } from './search-route-sheet-surface-state-runtime-contract';
 import {
@@ -108,7 +105,6 @@ export type AppRouteSheetHostNativeAdapterAuthority = {
 
 type AppRouteSheetHostNativeRuntimeInput = {
   sharedRuntimeModel: BottomSheetRuntimeModel;
-  routeSheetFrameHostAuthority: AppRouteSheetHostSurfaceFrameAuthority;
 };
 
 // P2: the nav `isDockedLane` scalar is gone from this selector — the lane decision is
@@ -227,7 +223,6 @@ export type AppRouteSheetHostAuthorityControllerRuntime = {
   routeSheetMotionRuntimeAuthority: AppRouteSheetHostMotionRuntimeAuthority;
   routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
-  routeSheetSurfaceFrameAuthority: AppRouteSheetHostSurfaceFrameAuthority;
   routeSheetSurfaceAuthority: AppRouteSheetHostSurfaceAuthority;
   setNativeRuntime: (input: AppRouteSheetHostNativeRuntimeInput) => void;
   dispose: () => void;
@@ -536,17 +531,10 @@ class AppRouteSheetHostAuthorityController {
   private motionRuntimeSnapshot: SearchRouteSheetMotionStateSnapshot =
     EMPTY_SEARCH_ROUTE_SHEET_MOTION_STATE_SNAPSHOT;
 
-  private frameSnapshot: SearchRouteSheetHostFrameSnapshot =
-    EMPTY_APP_ROUTE_SHEET_HOST_FRAME_SNAPSHOT;
-
   private surfaceSnapshot: AppRouteSheetHostSurfaceSnapshot =
     EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_SNAPSHOT;
 
   private sharedRuntimeModel: BottomSheetRuntimeModel | null = null;
-
-  private nativeRouteSheetFrameHostAuthority: AppRouteSheetHostSurfaceFrameAuthority | null = null;
-
-  private unsubscribeRouteSheetFrameHost: (() => void) | null = null;
 
   private unregisterSheetMotionTarget: (() => void) | null = null;
 
@@ -591,12 +579,6 @@ class AppRouteSheetHostAuthorityController {
     SelectorListenerRecord<AppRouteSheetHostSurfaceBodySnapshot>
   >();
 
-  private readonly frameListeners = new Set<Listener>();
-  private readonly frameSelectorListeners = new Map<
-    Listener,
-    SelectorListenerRecord<SearchRouteSheetHostFrameSnapshot>
-  >();
-
   private readonly surfaceListeners = new Set<Listener>();
   private readonly surfaceSelectorListeners = new Map<
     Listener,
@@ -624,8 +606,6 @@ class AppRouteSheetHostAuthorityController {
   public readonly routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
 
   public readonly routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
-
-  public readonly routeSheetSurfaceFrameAuthority: AppRouteSheetHostSurfaceFrameAuthority;
 
   public readonly routeSheetSurfaceAuthority: AppRouteSheetHostSurfaceAuthority;
 
@@ -672,18 +652,6 @@ class AppRouteSheetHostAuthorityController {
           isEqual
         ),
       getSnapshot: () => this.bodySnapshot,
-    };
-    this.routeSheetSurfaceFrameAuthority = {
-      subscribe: (listener) => this.subscribeFrame(listener),
-      subscribeSelector: (selector, listener, isEqual = Object.is) =>
-        this.subscribeSelector(
-          this.frameSelectorListeners,
-          this.frameSnapshot,
-          selector,
-          listener,
-          isEqual
-        ),
-      getSnapshot: () => this.frameSnapshot,
     };
     this.routeSheetSurfaceAuthority = {
       subscribe: (listener) => this.subscribeSurface(listener),
@@ -768,21 +736,10 @@ class AppRouteSheetHostAuthorityController {
     );
   }
 
-  public setNativeRuntime({
-    sharedRuntimeModel,
-    routeSheetFrameHostAuthority,
-  }: AppRouteSheetHostNativeRuntimeInput): void {
+  public setNativeRuntime({ sharedRuntimeModel }: AppRouteSheetHostNativeRuntimeInput): void {
     withSearchNavSwitchRuntimeAttribution('sheetHost', 'setNativeRuntime', () => {
       this.sharedRuntimeModel = sharedRuntimeModel;
-      if (this.nativeRouteSheetFrameHostAuthority !== routeSheetFrameHostAuthority) {
-        this.unsubscribeRouteSheetFrameHost?.();
-        this.nativeRouteSheetFrameHostAuthority = routeSheetFrameHostAuthority;
-        this.unsubscribeRouteSheetFrameHost = routeSheetFrameHostAuthority.subscribe(() => {
-          this.recomputeFrame(true);
-        });
-      }
       const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-      const frameChanged = this.recomputeFrame(false, false, false);
       const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
       const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
       const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
@@ -791,7 +748,6 @@ class AppRouteSheetHostAuthorityController {
       this.recomputeSurface(true);
       this.notifyBatchedSurfaceLaneListeners({
         bodyChanged,
-        frameChanged,
         motionRuntimeChanged,
         runtimeConfigChanged,
         notify: true,
@@ -800,8 +756,6 @@ class AppRouteSheetHostAuthorityController {
   }
 
   public dispose(): void {
-    this.unsubscribeRouteSheetFrameHost?.();
-    this.unsubscribeRouteSheetFrameHost = null;
     this.unregisterSheetMotionTarget?.();
     this.unregisterSheetMotionTarget = null;
     this.unsubscribers.forEach((unsubscribe) => {
@@ -815,8 +769,6 @@ class AppRouteSheetHostAuthorityController {
     this.motionRuntimeSelectorListeners.clear();
     this.bodyListeners.clear();
     this.bodySelectorListeners.clear();
-    this.frameListeners.clear();
-    this.frameSelectorListeners.clear();
     this.surfaceListeners.clear();
     this.surfaceSelectorListeners.clear();
     this.pendingInitialVisibleSnapDispatchKey = null;
@@ -908,13 +860,6 @@ class AppRouteSheetHostAuthorityController {
     this.bodyListeners.add(listener);
     return () => {
       this.bodyListeners.delete(listener);
-    };
-  }
-
-  private subscribeFrame(listener: Listener): () => void {
-    this.frameListeners.add(listener);
-    return () => {
-      this.frameListeners.delete(listener);
     };
   }
 
@@ -1306,7 +1251,6 @@ class AppRouteSheetHostAuthorityController {
       () => {
         const resolvedSurfaceInput = this.getResolvedSurfaceInput();
         this.recomputeNativeAdapter(notify, resolvedSurfaceInput);
-        const frameChanged = this.recomputeFrame(false, false, false);
         const runtimeConfigChanged = this.recomputeRuntimeConfig(false, resolvedSurfaceInput);
         const motionRuntimeChanged = this.recomputeMotionRuntime(false, resolvedSurfaceInput);
         const bodyChanged = this.recomputeBody(false, resolvedSurfaceInput, false, false);
@@ -1315,7 +1259,6 @@ class AppRouteSheetHostAuthorityController {
         this.recomputeSurface(notify);
         this.notifyBatchedSurfaceLaneListeners({
           bodyChanged,
-          frameChanged,
           motionRuntimeChanged,
           runtimeConfigChanged,
           notify,
@@ -1337,7 +1280,6 @@ class AppRouteSheetHostAuthorityController {
         this.syncInitialVisibleSnap(resolvedSurfaceInput);
         this.notifyBatchedSurfaceLaneListeners({
           bodyChanged: false,
-          frameChanged: false,
           motionRuntimeChanged: false,
           runtimeConfigChanged,
           notify,
@@ -1363,7 +1305,6 @@ class AppRouteSheetHostAuthorityController {
       this.syncInitialVisibleSnap(resolvedSurfaceInput);
       this.notifyBatchedSurfaceLaneListeners({
         bodyChanged,
-        frameChanged: false,
         motionRuntimeChanged,
         runtimeConfigChanged,
         notify,
@@ -1538,57 +1479,19 @@ class AppRouteSheetHostAuthorityController {
     });
   }
 
-  private recomputeFrame(
-    notify: boolean,
-    notifySurface = true,
-    notifyFrame = notifySurface
-  ): boolean {
-    return withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeFrame', () => {
-      const nextSnapshot =
-        this.nativeRouteSheetFrameHostAuthority?.getSnapshot() ??
-        EMPTY_APP_ROUTE_SHEET_HOST_FRAME_SNAPSHOT;
-      if (this.frameSnapshot.sheetClipStyle === nextSnapshot.sheetClipStyle) {
-        return false;
-      }
-      this.frameSnapshot = nextSnapshot;
-      if (notify && notifyFrame) {
-        withSearchNavSwitchRuntimeAttribution('sheetHost', 'notify:frame', () => {
-          this.frameListeners.forEach((listener) => {
-            listener();
-          });
-          this.notifySelectorListeners(this.frameSelectorListeners, this.frameSnapshot);
-        });
-      }
-      if (notifySurface) {
-        this.recomputeSurface(notify);
-      }
-      return true;
-    });
-  }
-
   private notifyBatchedSurfaceLaneListeners({
     bodyChanged,
-    frameChanged,
     motionRuntimeChanged,
     runtimeConfigChanged,
     notify,
   }: {
     bodyChanged: boolean;
-    frameChanged: boolean;
     motionRuntimeChanged: boolean;
     runtimeConfigChanged: boolean;
     notify: boolean;
   }): void {
     if (!notify) {
       return;
-    }
-    if (frameChanged) {
-      withSearchNavSwitchRuntimeAttribution('sheetHost', 'notifyBatched:frame', () => {
-        this.frameListeners.forEach((listener) => {
-          listener();
-        });
-        this.notifySelectorListeners(this.frameSelectorListeners, this.frameSnapshot);
-      });
     }
     if (motionRuntimeChanged) {
       withSearchNavSwitchRuntimeAttribution('sheetHost', 'notifyBatched:motionRuntime', () => {

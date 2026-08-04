@@ -24,8 +24,10 @@ export type AppRouteSaveSheetState = {
   routeInstanceId: string | null;
 };
 
+// F1360 — `searchHeaderActionResetToken` is GONE. It was the surviving half of the
+// 'follow-collapse' header policy that app-overlay-route-types.ts:42-44 records as
+// DELETED: a token with no reader, bumped by an action with no caller.
 export type AppRouteOverlayCommandSnapshot = {
-  searchHeaderActionResetToken: number;
   saveSheetState: AppRouteSaveSheetState;
 };
 
@@ -35,7 +37,6 @@ export type AppRouteOverlayCommandAuthority = {
 };
 
 export type AppRouteOverlayCommandActions = {
-  requestSearchHeaderActionFollowCollapse: () => void;
   setSaveSheetState: (next: React.SetStateAction<AppRouteSaveSheetState>) => void;
   restoreSaveSheetState: (state: AppRouteSaveSheetState) => void;
   restoreDockedScene: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
@@ -66,9 +67,7 @@ const resolveStateUpdate = <T>(current: T, next: React.SetStateAction<T>): T =>
 const areCommandSnapshotsEqual = (
   left: AppRouteOverlayCommandSnapshot,
   right: AppRouteOverlayCommandSnapshot
-): boolean =>
-  left.searchHeaderActionResetToken === right.searchHeaderActionResetToken &&
-  left.saveSheetState === right.saveSheetState;
+): boolean => left.saveSheetState === right.saveSheetState;
 
 // F945: the hand-copied set + predicate that used to live here (and had already dropped
 // 'home') now come from the ONE leaf home, derived from ALL_TOP_LEVEL_SCENE_KEYS.
@@ -136,7 +135,6 @@ class AppRouteOverlayCommandController {
   private nextSaveSheetRouteInstance = 0;
 
   private snapshot: AppRouteOverlayCommandSnapshot = {
-    searchHeaderActionResetToken: 0,
     saveSheetState: DEFAULT_SAVE_SHEET_STATE,
   };
 
@@ -146,12 +144,6 @@ class AppRouteOverlayCommandController {
   };
 
   public readonly actions: AppRouteOverlayCommandActions = {
-    requestSearchHeaderActionFollowCollapse: () => {
-      this.updateSnapshot({
-        ...this.snapshot,
-        searchHeaderActionResetToken: this.snapshot.searchHeaderActionResetToken + 1,
-      });
-    },
     setSaveSheetState: (next) => {
       const nextSaveSheetState = resolveStateUpdate(this.snapshot.saveSheetState, next);
       if (nextSaveSheetState === this.snapshot.saveSheetState) {

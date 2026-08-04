@@ -1,5 +1,4 @@
 import React from 'react';
-import { DOCKED_SCENE_KEY } from './docked-scene-target';
 import { PixelRatio } from 'react-native';
 import { useDerivedValue, type DerivedValue, type SharedValue } from 'react-native-reanimated';
 

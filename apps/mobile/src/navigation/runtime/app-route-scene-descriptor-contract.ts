@@ -100,13 +100,18 @@ export type AppRouteSceneChromePublication =
   | AppRouteInlineSceneChromePublication
   | AppRouteMountedSceneChromePublication;
 
+// F1385 — `retainListBodyDuringTransition`, `delayDataAdmissionOnActivation` and
+// `dataAdmissionDelayMs` are DELETED. They had NO PRODUCER anywhere in the repo: the only
+// hits were this declaration, the equality function below, and the readers in
+// app-route-scene-stack-runtime.ts. So `shouldRetainSceneListBody` was permanently false,
+// the per-scene admission delay was permanently SCENE_DATA_LANE_QUIET_DELAY_MS, and a
+// list-body retention path existed that nothing could switch on. The surviving fields are
+// the ones a scene actually sets (PollsPanel.tsx:577-578, HomePanel.tsx:478-479) — that is
+// what a live policy field looks like.
 export type AppRouteSceneBodyAdmissionPolicy = {
-  retainListBodyDuringTransition?: boolean;
   retainMountedBodyDuringTransition?: boolean;
   prewarmRetainedMountedBody?: boolean;
   delayFirstDataAdmission?: boolean;
-  delayDataAdmissionOnActivation?: boolean;
-  dataAdmissionDelayMs?: number;
   keepDataSubscribedAfterActivation?: boolean;
 };
 
@@ -326,15 +331,10 @@ export const areAppRouteSceneBodyAdmissionPoliciesEqual = (
   right: AppRouteSceneBodyAdmissionPolicy | null | undefined
 ): boolean =>
   left === right ||
-  ((left?.retainListBodyDuringTransition ?? false) ===
-    (right?.retainListBodyDuringTransition ?? false) &&
-    (left?.retainMountedBodyDuringTransition ?? false) ===
-      (right?.retainMountedBodyDuringTransition ?? false) &&
+  ((left?.retainMountedBodyDuringTransition ?? false) ===
+    (right?.retainMountedBodyDuringTransition ?? false) &&
     (left?.prewarmRetainedMountedBody ?? false) === (right?.prewarmRetainedMountedBody ?? false) &&
     (left?.delayFirstDataAdmission ?? false) === (right?.delayFirstDataAdmission ?? false) &&
-    (left?.delayDataAdmissionOnActivation ?? false) ===
-      (right?.delayDataAdmissionOnActivation ?? false) &&
-    (left?.dataAdmissionDelayMs ?? 0) === (right?.dataAdmissionDelayMs ?? 0) &&
     (left?.keepDataSubscribedAfterActivation ?? false) ===
       (right?.keepDataSubscribedAfterActivation ?? false));
 

@@ -107,15 +107,6 @@ const LIST_DETAIL_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: { paddingBottom: STATIC_SCENE_SCROLL_TAIL_INSET },
 };
 
-const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
-  'userProfile',
-  'listDetail',
-  'followList',
-  'notifications',
-  'settings',
-  'editProfile',
-];
-
 // W2: postPhotos publishes separately — same static-child shape, but with the
 // keyboard-persist transport (the panel has typeahead + free-text dish inputs).
 const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
@@ -147,6 +138,50 @@ const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 const DM_SESSION_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: STATIC_SCENE_SCROLL_CONTENT_INSETS,
 };
+
+// F1390 — TOTALITY, not a hand-kept list.
+//
+// This used to be `readonly StaticStubChildSceneKey[]` naming SIX of the union's NINE
+// members, with the other three hand-published one-by-one below. `readonly T[]` cannot
+// express totality, so adding a tenth union member COMPILED CLEANLY and published NO
+// descriptor — the sheet would mount with a null shell/chrome/body, a silent blank scene
+// instead of a type error. (This is the F908 shape exactly.)
+//
+// It is now a TOTAL `Record<StaticStubChildSceneKey, ...>`: every member must appear, and
+// a new one is a BUILD ERROR until its spec is written. The per-scene differences the
+// hand-publishing existed to express (a different transport, dmSession's static body) are
+// now DATA in the record, so there is nothing left to publish by hand.
+type StaticStubChildSceneSpec = {
+  bodyTransport: AppRouteSceneBodyTransportSpec;
+  /** Omitted = the default scrolled mounted body. */
+  bodyContent?: AppRouteSceneBodyContentSpec;
+};
+
+const STATIC_STUB_CHILD_SCENE_SPECS: Record<StaticStubChildSceneKey, StaticStubChildSceneSpec> = {
+  userProfile: { bodyTransport: STUB_CHILD_BODY_TRANSPORT },
+  listDetail: { bodyTransport: LIST_DETAIL_BODY_TRANSPORT },
+  followList: { bodyTransport: STUB_CHILD_BODY_TRANSPORT },
+  notifications: { bodyTransport: STUB_CHILD_BODY_TRANSPORT },
+  settings: { bodyTransport: STUB_CHILD_BODY_TRANSPORT },
+  editProfile: { bodyTransport: STUB_CHILD_BODY_TRANSPORT },
+  // W2: postPhotos — same static-child shape with the keyboard-persist transport
+  // (the panel has typeahead + free-text dish inputs).
+  postPhotos: { bodyTransport: POST_PHOTOS_BODY_TRANSPORT },
+  // W3 messaging (§4.1) — per-scene transports.
+  messagesInbox: { bodyTransport: MESSAGES_INBOX_BODY_TRANSPORT },
+  dmSession: {
+    bodyTransport: DM_SESSION_BODY_TRANSPORT,
+    bodyContent: {
+      surfaceKind: 'mounted',
+      mountedBodyKey: 'dmSession',
+      contentScrollMode: 'static',
+    },
+  },
+};
+
+const STATIC_STUB_CHILD_SCENE_KEYS = Object.keys(
+  STATIC_STUB_CHILD_SCENE_SPECS
+) as readonly StaticStubChildSceneKey[];
 
 const STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
   retainMountedBodyDuringTransition: true,
@@ -244,8 +279,11 @@ class AppRouteStaticSceneDescriptorController {
       sceneBodyContent: createMountedBody('saveList'),
       sceneBodyTransport: SAVE_LIST_BODY_TRANSPORT,
     });
-    // Stub-pass child scenes — same static-descriptor shape as saveList, placeholder bodies.
+    // Stub-pass child scenes — same static-descriptor shape as saveList. EVERY member of
+    // StaticStubChildSceneKey publishes here, by construction (F1390): the spec record is
+    // total, so no scene can be forgotten.
     STATIC_STUB_CHILD_SCENE_KEYS.forEach((sceneKey) => {
+      const stubChildSpec = STATIC_STUB_CHILD_SCENE_SPECS[sceneKey];
       sceneInputLane.publishRouteSceneDescriptor({
         sceneKey,
         shellSpec: createStaticChildShellSpec({
@@ -253,45 +291,9 @@ class AppRouteStaticSceneDescriptorController {
           sceneLayout,
         }),
         sceneChrome: createMountedChrome(sceneKey),
-        sceneBodyContent: createMountedBody(sceneKey),
-        sceneBodyTransport:
-          sceneKey === 'listDetail' ? LIST_DETAIL_BODY_TRANSPORT : STUB_CHILD_BODY_TRANSPORT,
+        sceneBodyContent: stubChildSpec.bodyContent ?? createMountedBody(sceneKey),
+        sceneBodyTransport: stubChildSpec.bodyTransport,
       });
-    });
-    sceneInputLane.publishRouteSceneDescriptor({
-      sceneKey: 'postPhotos',
-      shellSpec: createStaticChildShellSpec({
-        sceneKey: 'postPhotos',
-        sceneLayout,
-      }),
-      sceneChrome: createMountedChrome('postPhotos'),
-      sceneBodyContent: createMountedBody('postPhotos'),
-      sceneBodyTransport: POST_PHOTOS_BODY_TRANSPORT,
-    });
-    // W3 messaging (§4.1) — separate publishes for the per-scene transports.
-    sceneInputLane.publishRouteSceneDescriptor({
-      sceneKey: 'messagesInbox',
-      shellSpec: createStaticChildShellSpec({
-        sceneKey: 'messagesInbox',
-        sceneLayout,
-      }),
-      sceneChrome: createMountedChrome('messagesInbox'),
-      sceneBodyContent: createMountedBody('messagesInbox'),
-      sceneBodyTransport: MESSAGES_INBOX_BODY_TRANSPORT,
-    });
-    sceneInputLane.publishRouteSceneDescriptor({
-      sceneKey: 'dmSession',
-      shellSpec: createStaticChildShellSpec({
-        sceneKey: 'dmSession',
-        sceneLayout,
-      }),
-      sceneChrome: createMountedChrome('dmSession'),
-      sceneBodyContent: {
-        surfaceKind: 'mounted',
-        mountedBodyKey: 'dmSession',
-        contentScrollMode: 'static',
-      },
-      sceneBodyTransport: DM_SESSION_BODY_TRANSPORT,
     });
     sceneInputLane.publishRouteSceneDescriptor({
       sceneKey: 'lists',

@@ -3,7 +3,6 @@ import type {
   AppRouteSheetHostRuntimeConfigAuthority,
   AppRouteSheetHostMotionRuntimeAuthority,
   AppRouteSheetHostSurfaceBodyAuthority,
-  AppRouteSheetHostSurfaceFrameAuthority,
   AppRouteSheetHostSurfaceAuthority,
 } from './app-route-sheet-host-surface-runtime-contract';
 import type { AppRouteSceneDisplayTargetRegistry } from './app-route-scene-display-target-registry';
@@ -15,7 +14,6 @@ export type AppRouteSheetHostRuntimeBase = {
   routeSheetSurfaceAuthority: AppRouteSheetHostSurfaceAuthority;
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
   routeSheetMotionRuntimeAuthority: AppRouteSheetHostMotionRuntimeAuthority;
-  routeSheetSurfaceFrameAuthority: AppRouteSheetHostSurfaceFrameAuthority;
   routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
@@ -55,7 +53,6 @@ const APP_ROUTE_SHEET_HOST_RUNTIME_COMPARED_KEYS = [
   'routeSheetSurfaceAuthority',
   'routeSheetSurfaceBodyAuthority',
   'routeSheetMotionRuntimeAuthority',
-  'routeSheetSurfaceFrameAuthority',
   'routeSheetRuntimeConfigAuthority',
   'sceneStackSurfaceAuthority',
   'routeHostVisualRuntimeAuthority',

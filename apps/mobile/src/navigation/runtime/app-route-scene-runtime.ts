@@ -207,7 +207,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     sceneTransitionAuthority,
     routeSceneSwitchRuntime,
     routeSceneVisibilityPolicyRuntime,
-    routeOverlayCommandAuthority: routeOverlayCommandController.authority,
     routeSheetSnapSessionAuthority: routeSheetSnapSessionRuntime.authority,
   });
   // Created AFTER the foundation runtime: the motion dispatcher resolves the semantic target

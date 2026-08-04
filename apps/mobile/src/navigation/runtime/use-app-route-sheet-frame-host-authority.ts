@@ -2,7 +2,6 @@ import React from 'react';
 import { useAnimatedReaction, useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { SearchRouteSceneStackChromeVisualState } from '../../overlays/searchRouteSceneStackSheetContract';
-import type { SearchRouteSheetHostFrameSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-host-frame-snapshot-contract';
 import { EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT } from '../../screens/Search/runtime/shared/search-route-sheet-resolved-visual-selection-snapshot-contract';
 import type { AppRouteNavSilhouetteSheetExclusionModeValue } from './app-route-nav-silhouette-authority';
 import type {
@@ -10,7 +9,6 @@ import type {
   AppRouteSheetHostNativeAdapterSnapshot,
 } from './app-route-sheet-host-authority-controller';
 import type { AppRouteSheetFrameHostNativeSharedValues } from './app-route-sheet-frame-host-native-targets';
-import type { AppRouteSheetHostSurfaceFrameAuthority } from './app-route-sheet-host-surface-runtime-contract';
 
 type UseAppRouteSheetFrameHostAuthorityArgs = {
   nativeAdapterAuthority: AppRouteSheetHostNativeAdapterAuthority;
@@ -25,7 +23,7 @@ const resolveChromeVisualState = (
 
 export const useAppRouteSheetFrameHostAuthority = ({
   nativeAdapterAuthority,
-}: UseAppRouteSheetFrameHostAuthorityArgs): AppRouteSheetHostSurfaceFrameAuthority => {
+}: UseAppRouteSheetFrameHostAuthorityArgs): void => {
   const initialNativeAdapterSnapshotRef =
     React.useRef<AppRouteSheetHostNativeAdapterSnapshot | null>(null);
   if (initialNativeAdapterSnapshotRef.current == null) {
@@ -127,14 +125,4 @@ export const useAppRouteSheetFrameHostAuthority = ({
   // Leg 6 (§4 HeaderNavAction): the old mode→progress header-action driver (follow-collapse /
   // fixed-close, overlayHeaderActionProgress) is DELETED — the ONE host-owned HeaderNavAction on
   // PersistentSheetHeaderHost drives its own progress off the PF chrome clock.
-
-  return React.useMemo<AppRouteSheetHostSurfaceFrameAuthority>(
-    () => ({
-      subscribe: () => () => {},
-      getSnapshot: (): SearchRouteSheetHostFrameSnapshot => ({
-        sheetClipStyle: null,
-      }),
-    }),
-    []
-  );
 };

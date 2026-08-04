@@ -29,7 +29,6 @@ import type { RouteOverlayDisplaySharedValueTargets } from './route-overlay-disp
 import type { RouteOverlayChromeSnapSharedValueTargets } from './route-overlay-chrome-snap-targets';
 import type { AppRouteSceneSwitchRuntime } from './app-route-scene-switch-controller';
 import type { RouteSceneVisibilityPolicyRuntime } from './app-route-scene-visibility-policy-contract';
-import type { AppRouteOverlayCommandAuthority } from './app-route-overlay-command-controller';
 import type { AppRouteSheetSnapSessionAuthority } from './app-route-sheet-snap-session-runtime';
 
 export type RouteShellSceneTransitionAuthority = {
@@ -143,7 +142,6 @@ export const createAppRouteSceneFoundationRuntime = ({
   sceneTransitionAuthority,
   routeSceneSwitchRuntime,
   routeSceneVisibilityPolicyRuntime,
-  routeOverlayCommandAuthority,
   routeSheetSnapSessionAuthority,
 }: {
   sceneActivityAuthority: RouteShellSceneActivityAuthority;
@@ -153,14 +151,12 @@ export const createAppRouteSceneFoundationRuntime = ({
   sceneTransitionAuthority: RouteShellSceneTransitionAuthority;
   routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
-  routeOverlayCommandAuthority: AppRouteOverlayCommandAuthority;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
 }): AppRouteSceneFoundationRuntime => {
   const routeSceneRegistryRuntime = createRouteSceneRegistryRuntime();
   const nativeOverlayTargetAuthorities = createAppRouteNativeOverlayTargetAuthorities({
     routeScenePolicyAuthority: routeSceneRegistryRuntime.searchScenePolicyAuthority,
     routeSceneSwitchRuntime,
-    routeOverlayCommandAuthority,
     routeSheetSnapSessionAuthority,
   });
   return {

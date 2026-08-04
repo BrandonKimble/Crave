@@ -20,7 +20,6 @@ import type {
   PresentationLaneInputs,
 } from './app-route-presentation-frame-contract';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
-import type { AppRouteOverlayCommandAuthority } from './app-route-overlay-command-controller';
 import type { AppRouteSheetHostSurfaceSnapshot } from './app-route-sheet-host-surface-runtime-contract';
 import type { RouteScenePolicyAuthority } from './route-scene-policy-authority-contract';
 import type {
@@ -132,21 +131,22 @@ type SheetPolicyOutputAuthority = {
   registerTarget: (target: SheetPolicyTarget) => () => void;
 };
 
+// F1363 — `shouldNotify` is GONE. `subscribeToSet` is the sole entry factory and never
+// set it, so the guard in `notifyListeners` was structurally unreachable: this file had
+// copied the shape from app-route-scene-switch-controller.ts (where it IS live, with a
+// real writer) without the writer.
 type ListenerEntry = {
   listener: Listener;
   attributionLabel: string;
-  shouldNotify?: () => boolean;
 };
 
 type RouteScenePolicySnapshot = ReturnType<RouteScenePolicyAuthority['getSnapshot']>;
-type AppRouteOverlayCommandSnapshot = ReturnType<AppRouteOverlayCommandAuthority['getSnapshot']>;
 type RouteSceneSheetSessionSnapshot = AppRouteSheetSnapSessionSnapshot;
 
 type NativeOverlayTargetSourceSnapshot = {
   routeSceneSwitchSnapshot: RouteSceneSwitchSnapshot;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   routeScenePolicySnapshot: RouteScenePolicySnapshot;
-  commandSnapshot: AppRouteOverlayCommandSnapshot;
   sheetSessionSnapshot: RouteSceneSheetSessionSnapshot;
   /**
    * The committed PresentationFrame (page-switch-master-plan.md §1/§9) — the ONE
@@ -189,8 +189,6 @@ const POLICY_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] 
   'pollsVisibility',
   'sheetPolicy',
 ];
-
-const COMMAND_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] = ['sheetPolicy'];
 
 // The lanes whose outputs read the PresentationFrame (laneKind / presentedSceneKey). Recomputed
 // on every frame publish so a re-mint that reaches no other subscription (§9.1 R1 — lane-input
@@ -325,12 +323,10 @@ const resolveRouteSceneSwitchSnapshotFromTransitionState = (
 export const createAppRouteNativeOverlayTargetAuthorities = ({
   routeSceneSwitchRuntime,
   routeScenePolicyAuthority,
-  routeOverlayCommandAuthority,
   routeSheetSnapSessionAuthority,
 }: {
   routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
   routeScenePolicyAuthority: RouteScenePolicyAuthority;
-  routeOverlayCommandAuthority: AppRouteOverlayCommandAuthority;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
 }): NativeOverlayTargetAuthorities => {
   const resolveSourceSnapshot = (
@@ -339,7 +335,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeSceneSwitchSnapshot: resolveRouteSceneSwitchSnapshotFromTransitionState(transitionState),
     surfaceVisualPolicy: selectSearchSurfaceVisualPolicy(getSearchSurfaceRuntime().getSnapshot()),
     routeScenePolicySnapshot: routeScenePolicyAuthority.getSnapshot(),
-    commandSnapshot: routeOverlayCommandAuthority.getSnapshot(),
     sheetSessionSnapshot: routeSheetSnapSessionAuthority.getSnapshot(),
     presentationFrame: routeSceneSwitchRuntime.getPresentationFrame(),
   });
@@ -691,10 +686,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       return;
     }
     withSearchNavSwitchRuntimeAttribution('nativeOverlayTargets', `notify:${outputKey}`, () => {
-      listeners.forEach(({ listener, attributionLabel, shouldNotify }) => {
-        if (shouldNotify != null && !shouldNotify()) {
-          return;
-        }
+      listeners.forEach(({ listener, attributionLabel }) => {
         withSearchNavSwitchRuntimeAttribution(
           'nativeOverlayTargets',
           `notify:${outputKey}:${attributionLabel}`,
@@ -1055,9 +1047,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     ),
     routeScenePolicyAuthority.subscribe(() =>
       recomputeLanes(POLICY_NATIVE_OVERLAY_TARGET_LANES, 'policy')
-    ),
-    routeOverlayCommandAuthority.subscribe(() =>
-      recomputeLanes(COMMAND_NATIVE_OVERLAY_TARGET_LANES, 'command')
     ),
     routeSheetSnapSessionAuthority.subscribe(() =>
       recomputeLanes(SHEET_SESSION_NATIVE_OVERLAY_TARGET_LANES, 'sheetSession')

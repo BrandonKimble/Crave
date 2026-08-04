@@ -2,7 +2,6 @@ import type React from 'react';
 
 import type { OverlaySheetSnap } from '../../overlays/types';
 import type { SheetPosition } from '../../overlays/sheetUtils';
-import { appRouteSharedSheetLastVisibleStateRef } from './app-route-shared-sheet-visible-state-runtime';
 
 type Listener = () => void;
 
@@ -192,9 +191,6 @@ export class AppRouteSharedSheetPresentationController
       panelVisible,
       sheetState,
     });
-    if (nextSnapshot.sheetState !== 'hidden') {
-      appRouteSharedSheetLastVisibleStateRef.current = nextSnapshot.sheetState;
-    }
     this.shouldRenderMountedSharedSheetRef.current = nextSnapshot.shouldRenderMountedSharedSheet;
     if (areSnapshotsEqual(this.snapshot, nextSnapshot)) {
       return;

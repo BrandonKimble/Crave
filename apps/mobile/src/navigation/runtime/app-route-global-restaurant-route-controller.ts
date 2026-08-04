@@ -309,6 +309,11 @@ class AppRouteGlobalRestaurantRouteRuntimeController
         this.routeOverlayRouteCommandRuntime.getRouteState()
       )
     ) {
+      // F1350 — this continuation now runs under BOTH settle verdicts. Under
+      // 'superseded' it is still the right call: `clearGlobalRestaurantDraftAfterSettle`
+      // re-checks the session token and the live route, so a supersede that re-entered
+      // the same restaurant session is a no-op, while one that navigated away clears the
+      // draft it would otherwise have stranded. The verdict is deliberately unread.
       this.routeOverlayRouteCommandRuntime.closeActiveRouteAfterSettle(() => {
         this.clearGlobalRestaurantDraftAfterSettle(targetSessionToken);
       });

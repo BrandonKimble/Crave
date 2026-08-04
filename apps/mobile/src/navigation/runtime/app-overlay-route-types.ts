@@ -11,10 +11,7 @@ export type { OverlayKey } from '../../overlays/types';
 // at runtime) — hosting them here produced a boot-order TDZ through this file's import
 // cycles. Import values from './docked-scene-target' directly; the type re-export below
 // is safe (erased at runtime).
-import {
-  ALL_TOP_LEVEL_SCENE_KEYS,
-  type AppOverlayTopLevelProductRouteKey,
-} from './docked-scene-target';
+import type { AppOverlayTopLevelProductRouteKey } from './docked-scene-target';
 export type { AppOverlayTopLevelProductRouteKey } from './docked-scene-target';
 
 export type AppOverlaySaveListType = 'restaurant' | 'dish';
@@ -43,10 +40,14 @@ export type AppOverlayRouteChromePolicy = 'searchChrome' | 'preserve' | 'modal';
 // PresentationFrame (resolveHeaderNavAction); 'follow-collapse' had been visually dead since
 // e9bd105a pinned the polls button.
 
+// F1366: `parentSceneKeys` is DELETED. It was populated on every one of the 20 metadata
+// rows and read by NOTHING — `saveList: ['search','lists','profile']` read as enforced
+// policy while the runtime applied no such rule, so a wrong entry cost nothing and taught
+// the next reader a law that did not exist. The dmSession row admitted this inline. If a
+// parent-scope rule is ever wanted, it comes back as the INPUT TO A REAL CHECK.
 export type AppOverlayRouteMetadata = {
   role: AppOverlayRouteRole;
   productSceneKey: AppOverlayTopLevelProductRouteKey | null;
-  parentSceneKeys: readonly AppOverlayTopLevelProductRouteKey[];
   requiresOwnerSceneKey: boolean;
   sceneSwitch: boolean;
   sceneInput: boolean;
@@ -62,7 +63,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   search: {
     role: 'topLevel',
     productSceneKey: 'search',
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -74,7 +74,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   sheetHost: {
     role: 'shell',
     productSceneKey: null,
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: false,
     sceneInput: false,
@@ -88,7 +87,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   home: {
     role: 'topLevel',
     productSceneKey: 'home',
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -102,7 +100,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   polls: {
     role: 'topLevel',
     productSceneKey: 'polls',
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -114,7 +111,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   lists: {
     role: 'topLevel',
     productSceneKey: 'lists',
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -126,7 +122,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   profile: {
     role: 'topLevel',
     productSceneKey: 'profile',
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -138,7 +133,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   restaurant: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
@@ -150,7 +144,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   saveList: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['search', 'lists', 'profile'],
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
@@ -162,7 +155,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   price: {
     role: 'modalExtension',
     productSceneKey: null,
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: false,
     sceneInput: false,
@@ -174,7 +166,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   scoreInfo: {
     role: 'modalExtension',
     productSceneKey: null,
-    parentSceneKeys: [],
     requiresOwnerSceneKey: false,
     sceneSwitch: false,
     sceneInput: false,
@@ -186,7 +177,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   pollCreation: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['polls'],
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
@@ -198,7 +188,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   pollDetail: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['polls'],
     requiresOwnerSceneKey: true,
     sceneSwitch: true,
     sceneInput: true,
@@ -213,7 +202,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   userProfile: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -225,7 +213,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   listDetail: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -237,7 +224,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   followList: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -249,7 +235,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   notifications: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -261,7 +246,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   settings: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['profile'],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -273,7 +257,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   editProfile: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['profile'],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -286,7 +269,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   postPhotos: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ALL_TOP_LEVEL_SCENE_KEYS,
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -300,7 +282,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   messagesInbox: {
     role: 'child',
     productSceneKey: null,
-    parentSceneKeys: ['profile'],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,
@@ -314,9 +295,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
   dmSession: {
     role: 'child',
     productSceneKey: null,
-    // (parentSceneKeys is top-level product keys only + has zero runtime
-    // consumers; dmSession's real parents are userProfile/messagesInbox.)
-    parentSceneKeys: ['profile'],
     requiresOwnerSceneKey: false,
     sceneSwitch: true,
     sceneInput: true,

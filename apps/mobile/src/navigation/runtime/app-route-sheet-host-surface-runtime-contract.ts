@@ -1,5 +1,4 @@
 import type { SearchRouteSheetChromeTransportSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-chrome-transport-snapshot-contract';
-import type { SearchRouteSheetHostFrameSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-host-frame-snapshot-contract';
 import type { SearchRouteSheetMotionCallbacksSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-motion-callbacks-snapshot-contract';
 import type { SearchRouteSheetMotionStateSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-motion-state-snapshot-contract';
 import type { SearchRouteSheetScrollBodyDefaultsSnapshot } from '../../screens/Search/runtime/shared/search-route-sheet-scroll-body-defaults-snapshot-contract';
@@ -37,9 +36,6 @@ export type AppRouteSheetHostSurfaceSnapshot = {
   shouldRenderSceneStackSurface: boolean;
 };
 
-export type AppRouteSheetHostSurfaceFrameAuthority =
-  SnapshotAuthority<SearchRouteSheetHostFrameSnapshot>;
-
 export type AppRouteSheetHostMotionRuntimeAuthority =
   SnapshotAuthority<SearchRouteSheetMotionStateSnapshot>;
 
@@ -49,10 +45,6 @@ export type AppRouteSheetHostSurfaceBodyAuthority =
 export type AppRouteSheetHostSurfaceAuthority = SnapshotAuthority<AppRouteSheetHostSurfaceSnapshot>;
 
 export type AppRouteSheetHostRuntimeConfigAuthority = BottomSheetSharedRuntimeConfigAuthority;
-
-export const EMPTY_APP_ROUTE_SHEET_HOST_FRAME_SNAPSHOT: SearchRouteSheetHostFrameSnapshot = {
-  sheetClipStyle: null,
-};
 
 const EMPTY_APP_ROUTE_SHEET_MOTION_CALLBACKS_SNAPSHOT: SearchRouteSheetMotionCallbacksSnapshot = {
   callbacksEntry: {

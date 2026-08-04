@@ -23,6 +23,10 @@ import {
   stageRouteEntryOriginRestore,
 } from './route-entry-origin-capture-delegate';
 import {
+  RouteSceneSwitchSettleCallbackRegistry,
+  type RouteSceneSwitchSettleCallback,
+} from './route-scene-switch-settle-registry';
+import {
   commitStagedTransitionTxn,
   settleLiveTransitionTxnAtIdle,
   stageTransitionTxnForCommittedSwitch,
@@ -99,7 +103,15 @@ type RouteSceneSwitchTransitionListenerEntry = {
   shouldNotify?: (transitionState: RouteSceneSwitchTransitionState) => boolean;
 };
 
-export type RouteSceneSwitchSettleCallback = () => void;
+// F1350 — the settle-continuation registry lives in its own dependency-free module so
+// its two rules (a continuation ALWAYS reaches its caller with a verdict; at most one
+// pending set can exist) are provable in the hermetic jest lane. Re-exported here
+// because this controller is the type's established import site.
+export type {
+  RouteSceneSwitchSettleCallback,
+  RouteSceneSwitchSettleVerdict,
+} from './route-scene-switch-settle-registry';
+import { logPageSwitchDebug } from './pageswitch-debug-flag';
 
 export type RouteSceneSwitchMotionDispatchSnapshot = {
   activeSceneKey: OverlayKey | null;
@@ -521,10 +533,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
 
   private readonly listeners = new Set<RouteSceneSwitchTransitionListenerEntry>();
 
-  private readonly settleCallbacksByTransitionToken = new Map<
-    number,
-    Set<RouteSceneSwitchSettleCallback>
-  >();
+  // F1350 — single-slot, verdict-carrying. Superseded switches drain at commit time
+  // (see the `supersedeFor` calls in both commit paths), so no continuation is ever
+  // silently dropped and nothing accumulates across the process lifetime.
+  private readonly settleCallbacks = new RouteSceneSwitchSettleCallbackRegistry();
 
   private readonly activeSettlePlanesByToken = new Map<
     number,
@@ -555,7 +567,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       activeAppRouteSceneSwitchController = null;
     }
     this.listeners.clear();
-    this.settleCallbacksByTransitionToken.clear();
+    this.settleCallbacks.abandon();
     this.activeSettlePlanesByToken.clear();
     this.motionDispatchTarget = null;
     this.sceneStackTransitionDispatchTarget = null;
@@ -1230,25 +1242,20 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     }
     this.hasPendingPresentationFrameFlush = false;
     const frame = this.presentationFrame;
-    if (__DEV__) {
-      // [pageswitch] PF flush probe (P4 blank-body attribution): the exact frame every consumer
-      // reads, plus the transition-state fields the activity chain keys on.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[pageswitch] frame ${JSON.stringify({
-          t: Math.round(performance.now()),
-          switchId: frame.switchId,
-          rev: frame.revision,
-          active: frame.activeSceneKey,
-          presented: frame.presentedSceneKey,
-          out: frame.outgoingSceneKey,
-          lane: frame.laneKind,
-          phase: this.transitionState.transitionPhase,
-          interactive: this.transitionState.isInteractive,
-          interKey: this.transitionState.interactiveSceneKey,
-        })}`
-      );
-    }
+    // [pageswitch] PF flush probe (P4 blank-body attribution): the exact frame every consumer
+    // reads, plus the transition-state fields the activity chain keys on.
+    logPageSwitchDebug('frame', {
+      t: Math.round(performance.now()),
+      switchId: frame.switchId,
+      rev: frame.revision,
+      active: frame.activeSceneKey,
+      presented: frame.presentedSceneKey,
+      out: frame.outgoingSceneKey,
+      lane: frame.laneKind,
+      phase: this.transitionState.transitionPhase,
+      interactive: this.transitionState.isInteractive,
+      interKey: this.transitionState.interactiveSceneKey,
+    });
     this.presentationFrameListeners.forEach((listener) => {
       listener(frame);
     });
@@ -1344,9 +1351,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     transitionToken: number,
     onSettle: RouteSceneSwitchSettleCallback
   ): void {
-    const callbacks = this.settleCallbacksByTransitionToken.get(transitionToken) ?? new Set();
-    callbacks.add(onSettle);
-    this.settleCallbacksByTransitionToken.set(transitionToken, callbacks);
+    this.settleCallbacks.register(transitionToken, onSettle);
   }
 
   private commitRouteSceneSwitchTransition(transitionPlan: AppRouteSceneTransitionPlan): number {
@@ -1384,10 +1389,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:syncSettlePlanes',
       () => {
+        // F1350 — this switch supersedes whatever was in flight. Anything still waiting
+        // on the OLDER token can no longer reach a settle boundary, so its caller's
+        // continuation is delivered NOW with the 'superseded' verdict instead of being
+        // stranded (and leaked) forever.
+        this.settleCallbacks.supersedeFor(nextToken);
         this.activeSettlePlanesByToken.delete(settleToken);
-        // satisfiedReadinessGatesByTransaction is keyed by redraw transactionId, not
-        // the settle token — its size cap + idle/dispose clears handle cleanup, so no
-        // per-settle-token delete here.
         if (transitionPlan.motionPlanes.length > 0) {
           this.activeSettlePlanesByToken.set(settleToken, {
             transitionToken: nextToken,
@@ -1396,8 +1403,6 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         }
       }
     );
-    // Reveal-ack correlation (final red-team mustFix): stamp WHICH txn is THIS switch's own
-    // reveal txn before the frame mints, so the collector's evaluator can refuse to ack the
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:setTransitionState',
@@ -1453,13 +1458,15 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:clearSettlePlanes',
       () => {
+        // F1350 — same supersede drain as the motion path: an idle-committed switch
+        // replaces the in-flight one just as decisively, and it is the path that carries
+        // no continuation of its own, so it is exactly where the old code leaked.
+        this.settleCallbacks.supersedeFor(nextToken);
         this.activeSettlePlanesByToken.clear();
       }
     );
-    // Reveal-ack correlation — recorded AFTER the clearAllContentPlaneTimeouts sweep above
-    // (which nulls lastRevealContentReadinessTransactionId), so an idle-committed switch only
-    // records a txn its own plan carried. Idle switches self-ack in setTransitionState anyway;
-    // this keeps the single slot from pointing at a superseded switch's txn.
+    // Idle switches self-ack in setTransitionState (the !isOverlaySwitchInFlight branch),
+    // so there is no separate reveal-ack correlation to record on this path.
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:setTransitionState',
@@ -1550,14 +1557,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   }
 
   private flushSettleCallbacks(transitionToken: number): void {
-    const callbacks = this.settleCallbacksByTransitionToken.get(transitionToken);
-    if (!callbacks) {
-      return;
-    }
-    this.settleCallbacksByTransitionToken.delete(transitionToken);
-    callbacks.forEach((callback) => {
-      callback();
-    });
+    this.settleCallbacks.flush(transitionToken);
   }
 
   private applyRouteStateMutation(
@@ -1590,17 +1590,14 @@ export const createAppRouteSceneSwitchRuntime = ({
     sheetMotionTargetRegistry,
     resolveSceneRememberedSnap
   );
-  if (__DEV__ && activeAppRouteSceneSwitchController != null) {
+  if (activeAppRouteSceneSwitchController != null) {
     // [pageswitch] watch item: a REPLACED module-global controller means two scene-switch
     // runtimes were constructed in one JS session (a re-created runtime tree / a leaked old
     // one). Gate marks + acks route to the NEW instance from here on; if the old one is still
     // mounted somewhere, that split-brain is the bug to chase.
-    // eslint-disable-next-line no-console
-    console.log(
-      `[pageswitch] controller replaced (prev switchId=${
-        activeAppRouteSceneSwitchController.getPresentationFrame().switchId
-      })`
-    );
+    logPageSwitchDebug('controllerReplaced', {
+      prevSwitchId: activeAppRouteSceneSwitchController.getPresentationFrame().switchId,
+    });
   }
   activeAppRouteSceneSwitchController = controller;
   return controller;

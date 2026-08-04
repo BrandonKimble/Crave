@@ -131,7 +131,9 @@ export const createAppOverlayRouteCommandRuntime = ({
       return;
     }
     routeSceneSwitchRuntime.closeActiveRouteState();
-    onSettle?.();
+    // No scene switch was requested, so this close IS its own settle boundary — the
+    // continuation reaches its caller here, with the settled verdict (F1350).
+    onSettle?.('settled');
   };
 
   // Phase 3b — the canonical PUSH reveal, extracted so both `revealRoute` and the legacy

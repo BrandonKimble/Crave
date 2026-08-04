@@ -28,16 +28,18 @@ const AppRouteSheetHostNativeRuntimeBinder = React.memo(
   }) {
     const sharedSheetRuntimeOwner = useAppRouteSharedSheetRuntimeOwner();
     const sharedSheetRuntimeModel = sharedSheetRuntimeOwner.sharedSheetRuntimeModel;
-    const routeSheetFrameHostAuthority = useAppRouteSheetFrameHostAuthority({
+    // Drives the native shared values + chrome-visual animated reactions. It publishes no
+    // snapshot lane of its own (F1371: the sheet-clip frame authority it used to return was a
+    // constant `null`, left over from the clip that 1ce800846 deleted).
+    useAppRouteSheetFrameHostAuthority({
       nativeAdapterAuthority: routeSheetHostAuthorityRuntime.nativeAdapterAuthority,
     });
 
     React.useLayoutEffect(() => {
       routeSheetHostAuthorityRuntime.setNativeRuntime({
         sharedRuntimeModel: sharedSheetRuntimeModel,
-        routeSheetFrameHostAuthority,
       });
-    }, [sharedSheetRuntimeModel, routeSheetFrameHostAuthority, routeSheetHostAuthorityRuntime]);
+    }, [sharedSheetRuntimeModel, routeSheetHostAuthorityRuntime]);
 
     return null;
   }
@@ -107,8 +109,6 @@ export const AppRouteSheetHostRuntimeProvider = ({
       routeSheetSurfaceBodyAuthority: routeSheetHostAuthorityRuntime.routeSheetSurfaceBodyAuthority,
       routeSheetMotionRuntimeAuthority:
         routeSheetHostAuthorityRuntime.routeSheetMotionRuntimeAuthority,
-      routeSheetSurfaceFrameAuthority:
-        routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,
       routeSheetRuntimeConfigAuthority:
         routeSheetHostAuthorityRuntime.routeSheetRuntimeConfigAuthority,
       sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
@@ -122,7 +122,6 @@ export const AppRouteSheetHostRuntimeProvider = ({
       routeSceneRuntime.sceneStackSurfaceAuthority,
       routeSheetHostAuthorityRuntime.routeSheetMotionRuntimeAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceBodyAuthority,
-      routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,
       routeSheetHostAuthorityRuntime.routeSheetRuntimeConfigAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceAuthority,
       handleContentSettleComplete,

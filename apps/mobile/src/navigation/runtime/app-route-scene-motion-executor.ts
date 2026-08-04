@@ -22,6 +22,7 @@ import type {
   RouteSceneSwitchMotionDispatchSnapshot,
 } from './app-route-scene-switch-controller';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
+import { logPageSwitchDebug } from './pageswitch-debug-flag';
 
 type AppRouteSceneSheetMotionDispatchState = {
   sceneKey: OverlayKey;
@@ -306,20 +307,15 @@ export class AppRouteSceneMotionExecutor {
       mode: request.mode,
       ...(shellSnapPoints != null ? { snapPoints: shellSnapPoints } : {}),
     };
-    if (__DEV__) {
-      // [pageswitch] content-lag attribution: the sheet-motion dispatch instant (the JS write the
-      // UI-thread spring picks up next frame) — compared against the host's paintAck instant.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[pageswitch] motion ${JSON.stringify({
-          t: Math.round(performance.now()),
-          scene: target.sceneKey,
-          snapTo: request.snap,
-          mode: request.mode,
-          snapPoints: shellSnapPoints,
-        })}`
-      );
-    }
+    // [pageswitch] content-lag attribution: the sheet-motion dispatch instant (the JS write the
+    // UI-thread spring picks up next frame) — compared against the host's paintAck instant.
+    logPageSwitchDebug('motion', {
+      t: Math.round(performance.now()),
+      scene: target.sceneKey,
+      snapTo: request.snap,
+      mode: request.mode,
+      snapPoints: shellSnapPoints,
+    });
   }
 
   private completeMotionPlane(settleToken: number, plane: RouteSceneSwitchMotionPlane): void {
