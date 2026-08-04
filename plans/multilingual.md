@@ -1,15 +1,12 @@
 # Multilingual — the from-scratch shape
 
-Status: round-1 red team complete (2 Opus agents + self-audit); round-2
-verdict pass: self-run with spot-check verification (both Opus agents
-hit the session usage cap mid-verdict — re-run them after reset only if
-the owner wants belt-and-braces; every load-bearing number below was
-re-verified first-hand: 1,714 unreachable entities, both Places
-language pins, denseMode:'none', stored English titles). Owner intent: the
-system must look as if multilinguality was designed in from day one —
-re-derived, never additive; no speculative abstraction (nothing built
-before its first real consumer, but nothing built ON a foundation that
-could not have been the day-one design).
+Status: FINAL — three red-team rounds (round 3: 2 Opus agents, verdict
+REVISE, all revisions integrated below 2026-08-03; adversarial 25-query
+embedding re-run included). Owner intent: the system must look as if
+multilinguality was designed in from day one — re-derived, never
+additive; no speculative abstraction (nothing built before its first
+real consumer, but nothing built ON a foundation that could not have
+been the day-one design).
 
 Two directions, ONE architecture: (A) collection over any-language
 corpora writes into one canonical concept space; (B) a day-one
@@ -34,9 +31,11 @@ right structure for recall and the wrong one for display. The original
 plan's "language lives in aliases" was half right: SURFACE forms live
 in aliases; DISPLAY forms live in labels. Corollary: the label
 producer is a separate offline translation pass writing entity_labels
-— NEVER a relaxation of the extraction-time translation ban
-(llm.service.ts:1660), which would write translations into the recall
-bag and cement the fusion.
+— NEVER a relaxation of the translation bans (the dish-knowledge
+prompt's ban at llm.service.ts:~1649; the extraction prompt is a
+versioned llm_prompts DB row — read the active row, no source line can
+cite it), which would write translations into the recall bag and
+cement the fusion.
 
 RULING (homographs): when multilingual aliases arrive they carry a
 language tag (alias rows or a tagged structure), and the gazetteer's
@@ -87,18 +86,21 @@ N1. FOLD SYMMETRY (a live bug, not i18n): the gazetteer matches
 lowercased raw tokens while identity holds folded keys — 1,714
 active entities (≈23% of restaurants: Despaña, Harry's-with-curly-
 apostrophe, Phở Hoài) are unreachable by their obvious typed form.
-Fix: fold BOTH sides with canonicalFold (fold query candidates;
-match against identity_key/pre-folded aliases); add curly
-apostrophe to the tokenizer char class. One fold, both sides of
-every comparison — the multilingual precondition that is also
-today's recall bug.
+Fix: fold BOTH sides with canonicalFold; add curly apostrophe to the
+tokenizer char class. HONEST SIZE (round-3): names can match against
+the existing identity_key column, but ALIASES HAVE NO FOLDED MIRROR —
+a folded-alias column/index is part of this fix; a migration, not a
+one-liner.
 N2. UN-PIN PLACES from language:'en' (two call sites): every day it
 runs it bakes anglicized renderings into permanent, expensive,
 never-deleted restaurant rows — corrupting the very proper nouns
 the plan promises to preserve. Request the location's language.
-N3. QUARANTINE the ~20 remaining `[a-z0-9]` normalizers (ontology,
-resolution types, enrichment, slugs) → the \p{L}\p{N} shape; they
-currently annihilate the 340 non-ASCII names already in the graph.
+N3. QUARANTINE the remaining `[a-z0-9]` normalizers — real targets ~4
+(entity-resolution.types slug, ontology grouping keys, one
+unified-processing site, enrichment) → the \p{L}\p{N} shape; they
+annihilate the 355 non-ASCII names already in the graph. Do NOT touch
+the ASCII-correct SQL-identifier guards (signals act/subject identity,
+ballot marker) — those are deliberately ASCII-only.
 N4. P3 PROMPT RULE (corrected): CONCEPTS normalize cross-language
 (picante→spicy) + surface banked as alias; DISHES stay source-
 faithful. Verification fixture exercises BOTH forking doors
@@ -107,8 +109,10 @@ N5. RESIDUE-LANGUAGE GUARD: an unresolved query token resolves-or-
 parks; on_demand may not mint twin concepts from raw foreign
 strings. (Query-door half of N4's fixture.)
 N6. DE-MATERIALIZE English sentences: curated_lists title/subtitle
-(and poll_topics.title) store recipeKey+params, rendered at read
-time — English stops being data.
+(and poll_topics.title) render from recipeKey+params at read time.
+PARTLY DONE (recipe_key already exists on curated_lists); full
+completion blocked on entity_labels for the attribute display word —
+do the render-from-recipe move now, accept English labels until M2.
 N7. LANGUAGE PACK #1 (consolidation, not speculation): food-lemma +
 the head-final rule's THREE duplicated encodings (identity,
 sibling-expansion SQL, singularish()) move behind one LanguagePack
@@ -117,10 +121,24 @@ leaves the inside of identity and becomes the English pack.
 N8. Ruling P2.3 formally splits the vocabulary: CLOSED SPINE (59
 cuisines + curated dietary + occasions + price levels — the
 filterable concepts) vs OPEN TAIL (everything else).
-N9. ICU COLLATION on user-facing ORDER BY name surfaces (round-2
-self-verdict promotion from MARKET: the C.UTF-8 byte sort
-mis-orders the 355 non-ASCII names in TODAY'S corpus — Despaña
-sorts after Zebra in Austin lists now, not in some future market).
+N9. ICU COLLATION on user-facing ORDER BY name surfaces — DEMOTED
+back toward market by round-3: nearly every such ORDER BY is a
+TIEBREAKER behind score/count; the only primary alphabetical sorts
+are place/city names (ASCII today). Correct in principle, low
+present-day harm; do it opportunistically or at M8.
+N10. CONCEPT IDENTITY LOCKDOWN (round-3 promotion from M2 — the
+foundation most likely to make future-us curse present-us): attribute
+identity IS the English display string today, and the LLM ontology
+worker RENAMES display strings. The rename-identity-drift bug is
+FIXED in code (rename now updates identity_key/identity_key_sorted in
+the same statement), but the LAW still has no enforcement: add a
+stable slug written at mint and never rewritten, plus a
+lockdown-shaped spec (the extraction-scope-lockdown pattern)
+asserting no read surface renders a concept name outside an
+allowlisted display layer. Cheap at 574 attributes; archaeology at
+8,272 renamed nouns. ALSO: the ontology rename demotes the old
+DISPLAY name into the alias bag — record provenance (or stop
+demoting) so label history is not laundered through the untagged bag.
 
 ## FIRST NON-ENGLISH MARKET — the market checklist (build then)
 
@@ -129,32 +147,77 @@ API negotiates and threads it; caches carrying rendered text key
 on it. (Today: locale is captured at device auth and read by
 NOTHING.)
 M2. entity_labels relation + per-locale label tables for the SPINE
-(hand-curated, genuinely an afternoon per language) + mint-time
-label generation for the TAIL (concept-creation drafts labels per
-active locale; explicit unlabeled fallback = English slug;
-market-bound terms like `under $100` localize currency, not
-words).
+(hand-curated/LLM-drafted, genuinely an afternoon per language) + for
+the TAIL a NIGHTLY UNLABELED-CONCEPT SWEEP (round-3 revision,
+replacing mint-time drafting: a batch pass over concepts lacking
+labels for active locales — judge-gated, retry-able, covers past AND
+future with ONE mechanism, and never couples concept minting to the
+active-locale set; the ontology adjudicator's PASS-3 naming call is
+the fallback seam if sweep latency ever matters). Explicit unlabeled
+fallback = English slug; market-bound terms like `under $100` localize
+currency, not words.
 M3. Language-tagged alias rows + locale filter on the gazetteer alias
 arm (homograph guard) + per-locale surface seeding for the spine.
-M4. LANGUAGE-GATED DENSE FALLBACK: gazetteer+sparse miss on non-
-English text → enable dense retrieval (multilingual embeddings
-carry pulpo→octopus nearly free; zero English hot-path cost).
-PREREQUISITE EXPERIMENT — RUN 2026-08-02, PASSED DECISIVELY: 15
-foreign queries (es/fr/ja/zh/ko) embedded as RETRIEVAL_QUERY against
-the LIVE index (15,103 vectors, zero multilingual rows): 15/15 correct
-concept in top-5, 10/15 at rank #1. pulpo→octopus, poulpe→octopus,
-章魚→octopus (cos .796), ラーメン→ramen, 새우→shrimp, tacos de
-birria→birria tacos, 餃子→gyoza+dumpling. The "miss" was pan dulce→pan
-dulce: the source-faithful corpus already held the Spanish-named
-entity — proving the dish ruling empirically. Near-misses were
-Spanish-named dishes from our own corpus outranking the English
-concept (camarones → four camarones dishes, then shrimp) — the index
-is already bilingual where the food culture is. VERDICT: the dense
-fallback carries cross-lingual dish matching; per-dish alias
-pre-generation stays NEVER; the judge-banking loop handles the
-residue. Non-English dish-search quality ≈ English quality from day
-one of a market.
-M5. Dish display labels via the offline knowledge-synthesis pass.
+PRICED HONESTLY (round-3): the untagged array has THREE read arms
+(gazetteer GIN overlap, the FTS generated tsv column, the nightly
+SymSpell delete-dictionary) and FOUR writers (dedupe fold, ontology
+merge/rename, extraction banking, dish-knowledge LLM) — tagging is a
+migration touching all of them, and an untagged shadow array is on the
+NEVER list. Existing rows back-tag wholesale as lang='und'.
+M4. DENSE ADMISSION TIER (round-3 correction: NOT a flag flip). The
+lane exists but dense candidates are structurally unselectable — the
+linker's decider reads only sparseSimilarity and LINK_ELIGIBLE_EVIDENCE
+excludes 'embedding' (the ham/rum guard). M4 = a second admission path:
+dense tier, its own swept cosine floor + margin, gated on
+non-English/no-sparse-evidence queries; insertion point confirmed at
+search-query-interpretation.service.ts:253-260. The embedding call is
+~free; the CALIBRATION is the work — a wrong answer can outscore a
+right one (тако→tako 0.821 vs taco 0.751).
+
+EXPERIMENTS, both run against the live index:
+
+- 2026-08-02 (n=15, single-word dishes, es/fr/ja/zh/ko): 15/15 top-5,
+  10/15 rank-1. pulpo→octopus, 章魚→octopus, tacos de birria→birria
+  tacos; pan dulce found its own source-faithful entity.
+- 2026-08-03 ADVERSARIAL (n=25: compound, negation, homographs,
+  code-switching, misspellings): 22/25 top-5, 15/25 rank-1. VERDICT:
+  dense de-risks SINGLE-CONCEPT non-English search only. Named failure
+  classes, now known-red seeds for the launch gate: Latin-script
+  homograph (es "pan" → zero bread in top-5); cross-script homograph
+  (ru тако → ja tako/octopus at the set's HIGHEST confidence); negation
+  (ramen sin cerdo → vegan ramen — silently inverted); foreign-named
+  restaurant capture (sin gluten → the restaurant "Senza Gluten");
+  compound constraints blended away (tacos vegetarianos baratos cerca
+  → vegetarian taco, baratos+cerca dropped — fails looking like
+  success).
+
+M4b. LANGUAGE-AWARE QUERY DECOMPOSITION (round-3 gap, new item): dense
+returns ONE blended neighbour list; it cannot decompose multi-
+constraint queries. English gets decomposition from the n-gram
+gazetteer scan; a Spanish query matches no n-grams and falls whole
+into one dense probe. The market build needs script/language detection
+
+- per-language span decomposition IN FRONT of the dense arm (seeded
+  spine aliases give the gazetteer its Spanish n-grams; dense handles
+  the remaining spans — decomposition is mostly alias coverage plus
+  detection, not new NLP machinery). M6's Intl.Segmenter (CJK word
+  boundaries) is a different problem and does not cover this.
+
+MARKET-LAUNCH GATE (the checklist's former biggest omission): a
+stratified ≥150-query native-graded set per launch language — 40
+single-noun, 30 compound, 20 negation, 20 attribute-not-dish, 20
+homograph, 20 code-switched. Thresholds: ≥95% top-1 overall; 100%
+negation non-inversion (wrong worse than none); ≥90% constraint
+preservation measured on the PARSE; zero homograph mis-groundings at
+confidence ≥0.95 in the spine. Known-red seeds (pan, тако, ramen sin
+cerdo) stay in the set until green.
+
+M5. Dish display labels via a SIBLING pass of knowledge synthesis
+(round-3: the existing pass WRITES INTO aliases and its prompt bans
+translation — reusing its writer would be the exact label/alias fusion
+the NEVER list bans). New prompt + writer targeting entity_labels,
+sharing only the batching harness; the labels relation itself is the
+watermark (NOT EXISTS per locale — never a second timestamp column).
 M6. Segmenter capability per script (Intl.Segmenter for ja/zh/th);
 fuzzy-tier floors re-derived for short CJK names.
 M7. Mobile i18n retrofit (a scoped project: ~600+ multi-word strings
@@ -190,10 +253,19 @@ THE SELF-TEACHING LOOP (query-side, replaces any per-query LLM):
 2. Mint-time generation keeps new concepts covered as they are born.
 3. The language-gated dense (embedding) fallback catches whatever has
    no row yet — slang, regional words, one-offs.
-4. A successful dense catch is BANKED AS A CANDIDATE pairing
-   (query→concept); it becomes a real tagged alias only after
-   recurrence or the LLM-judge gate (the dedupe judge) approves —
-   trust through repetition or judgment, never one keystroke.
+4. A successful dense catch is BANKED AS A CANDIDATE pairing in ITS
+   OWN relation keyed (normalized_term, lang, entity_id) with a
+   confirmations counter — NOT on_demand_request (that is a collection
+   queue: banking there would trigger unbudgeted crawling for terms we
+   already answered, and its engine-scoped key would stop the loop
+   compounding across cities). The lang tag comes from SCRIPT +
+   LANGUAGE DETECTION OF THE QUERY STRING with device locale as a
+   prior only, both recorded (a Spanish-locale phone types English
+   constantly — a fabricated tag would poison both languages'
+   retrieval with no rollback). Promotion to a real tagged alias
+   requires recurrence AND the LLM-judge gate (round-3: OR let query
+   spam and popularity drift — the quesabirria problem — write
+   permanent aliases with no semantic check).
 5. Understanding therefore COMPOUNDS: the vector net handles less over
    time, rows handle more, and no per-query LLM ever returns.
 
@@ -222,6 +294,14 @@ A real industry pattern, considered explicitly. Rejected because:
 5. Strictly dominated: the chosen design already contains the
    gateway's one good idea (meaning-level bridging via embeddings) but
    as owned, compounding data instead of perpetual per-query rent.
+
+ALSO REJECTED (round 3): per-market/per-language indexes — the
+corpus is already bilingual where the food culture is (pan dulce,
+camarones, birria live in the "English" index); splitting would sever
+exactly those rows from the queries that want them and make cross-
+language merges cross-index. Dense-only-no-aliases — 60% top-1 on the
+adversarial set is not a product, and embeddings cannot express
+"this exact string means this concept at confidence 1.0".
 
 ## NEVER
 

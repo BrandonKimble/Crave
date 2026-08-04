@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../shared';
+import { identityInsertData } from '../content-processing/entity-resolver/entity-identity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { EmbeddingService } from '../external-integrations/llm/embedding.service';
@@ -715,6 +716,15 @@ export class AttributeOntologyService {
           // After merges so the group's aliases are already folded in: relabel,
           // keep the old name as an alias, drop the new name from the aliases.
           for (const rename of plan.renames) {
+            // IDENTITY FOLLOWS THE NAME (multilingual-plan round-3 audit:
+            // this UPDATE set name but not the app-written identity keys,
+            // so after an LLM rename the unique index and every probe
+            // silently referred to the OLD display string — latent
+            // identity drift, one adjudication run from live).
+            const identity = identityInsertData(
+              rename.to,
+              EntityType.food_attribute,
+            );
             counts.renames += await tx.$executeRawUnsafe(
               `UPDATE core_entities
                SET name = $2,
@@ -722,11 +732,15 @@ export class AttributeOntologyService {
                      SELECT array_agg(DISTINCT a)
                      FROM unnest(array_remove(aliases || ARRAY[$3]::varchar[], $2)) a
                    ),
+                   identity_key = $4,
+                   identity_key_sorted = $5,
                    name_embedding_stale = true
                WHERE entity_id = $1::uuid`,
               rename.entityId,
               rename.to,
               rename.from,
+              identity.identityKey,
+              identity.identityKeySorted,
             );
           }
 
