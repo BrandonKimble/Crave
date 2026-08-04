@@ -137,6 +137,40 @@ export default tseslint.config(
       'src/modules/identity/auth/clerk-auth.service.ts',
       // Owns the one boolean vocabulary, so it is where the literals live.
       'src/shared/config/env-flag.ts',
+      // THE owner of subject-identity resolution.
+      'src/modules/signals/subject-identity.ts',
+      'src/modules/signals/subject-identity.spec.ts',
+      // Merge-WRITE and projection machinery: they create redirects, or resolve
+      // identity on tables that are not the ledger (documents, entity events,
+      // connections), so the ledger builder does not apply to them.
+      'src/modules/signals/signals.service.ts',
+      'src/modules/content-processing/entity-resolver/entity-anchor-rehome.service.ts',
+      'src/modules/content-processing/entity-resolver/food-dedupe-merge.service.ts',
+      'src/modules/content-processing/reddit-collector/extraction-scope.service.ts',
+      'src/modules/content-processing/reddit-collector/projection-rebuild.service.ts',
+      'src/modules/content-processing/reddit-collector/unified-processing.service.ts',
+      'src/modules/restaurant-enrichment/restaurant-entity-merge.service.ts',
+      // Resolves CURATED ROW identity at read time (the archived-leak law), not
+      // signals.subject_id — same category as the projection machinery.
+      'src/modules/home/home-feed.service.ts',
+      // Ledger readers the original finding named as not yet converted. Listed
+      // rather than silently excluded, so the debt is visible and countable.
+      'src/modules/polls/supply/demand-mass.reader.ts',
+      'src/modules/polls/supply/poll-ballot-mention.service.ts',
+      // EXTRACTION-SCOPE owners: the service IS the definition, and these
+      // three WRITE activation (evidence, projection rebuild, the reextract
+      // runner). Everything else must ask ExtractionScopeService.
+      'src/modules/content-processing/reddit-collector/collection-evidence.service.ts',
+      'src/modules/content-processing/reddit-collector/city-reextract.runner.ts',
+      // scripts/activate-shadow WRITES activation; scripts/prompt-audit REPORTS
+      // on it (which run is live, per prompt hash), so both must name the
+      // pointer. The src-only Jest walk never saw either — nor the third
+      // script, backfill-attribute-evidence, which really was hand-rolling the
+      // activation join and now uses the shared fragment.
+      'scripts/activate-shadow.ts',
+      'scripts/prompt-audit.ts',
+      // Asserts on the scope service's own emitted SQL.
+      'src/modules/polls/supply/poll-ballot-mention.service.spec.ts',
       // Owns the only legal write to enrichmentFailureCount, so its own type
       // annotation names the field.
       'src/modules/restaurant-enrichment/enrichment-failure-counter.ts',
@@ -157,7 +191,19 @@ export default tseslint.config(
       // this rule exists is that two spellings of APP_ENV became two Redis
       // key prefixes and silently doubled the rate-limit ceiling on the two
       // vendors that cost the most.
-      // ONE no-restricted-syntax BLOCK FOR THE WHOLE TREE — AGAIN.
+      // ONE no-restricted-syntax BLOCK FOR THE WHOLE TREE. NON-NEGOTIABLE.
+      //
+      // THREE separate additions to this file have each silently replaced the
+      // selectors already here, because flat config does not merge rule
+      // OPTIONS — a later block wins outright for any file matching both. Every
+      // time, a RED re-run caught it and reading the config did not. So there
+      // is exactly one block, its `ignores` is the union of every selector's
+      // exemptions, and adding a selector means adding it HERE.
+      //
+      // The cost of the union is that a file exempted for one selector is
+      // exempted for all of them. That is a real loss of precision, accepted
+      // knowingly: a rule that is silently absent is worth less than a rule
+      // that is present and slightly broad.
       // A separate block for the boolean-flag selector below silently REPLACED
       // these APP_ENV selectors for all of src/, because flat config does not
       // merge rule OPTIONS. That is the second time this exact trap has bitten
@@ -183,6 +229,42 @@ export default tseslint.config(
             'BinaryExpression[operator=/^[!=]==$/] > Literal[value=/^(true|false|TRUE|FALSE)$/]',
           message:
             "Comparing against the STRING 'true'/'false' is a hand-rolled flag dialect — the failure mode is a plausible value (yes, TRUE, on) reading the wrong way, silently. Use isEnvFlagEnabled / isEnvFlagExplicitlyDisabled from shared/config/env-flag.",
+        },
+        {
+          // EXTRACTION SCOPE IS DEFINED ONCE. The activation pointer decides
+          // which extraction run OWNS a document, and a second definition of
+          // "active" is a second answer to "what is live" — the shape that let
+          // three copies of the activation pair coexist.
+          selector:
+            "Identifier[name='activeExtractionRunId'], TemplateElement[value.raw=/active_extraction_run_id/]",
+          message:
+            'The activation pointer has one owner: ExtractionScopeService. Ask it rather than joining active_extraction_run_id yourself.',
+        },
+        {
+          // A DELETE on an event ledger that EXCLUDES a run is the supersede
+          // step. Expressed anywhere but the scope service it is a second
+          // supersede, and the two can disagree about what survives.
+          selector:
+            "TemplateElement[value.raw=/DELETE\\s+FROM\\s+core_restaurant(_entity)?_events/i], Property[key.name='extractionRunId'] > ObjectExpression > Property[key.name='not']",
+          message:
+            'A run-excluding delete on the event ledgers is the supersede step, and it belongs to ExtractionScopeService.supersedeAndActivate — a second one is a second answer about what survives.',
+        },
+        {
+          // The fold-back, hand-rolled. This exact form lived at FOURTEEN sites
+          // in one file, which is how three SQL dialects coexisted under one
+          // vocabulary; a reader that joined entity_redirects and then ignored
+          // the fold-back satisfied the guard this replaced
+          // (`toContain('entity_redirects')`).
+          selector:
+            'TemplateElement[value.raw=/COALESCE\\(\\s*\\w+\\.to_entity_id\\s*,/]',
+          message:
+            'Hand-rolled subject-identity fold-back. Use resolvedSubjectSql()/subjectMatchesSql() from signals/subject-identity — they take one alias argument, so a caller cannot take the join and skip the fold-back.',
+        },
+        {
+          selector:
+            'TemplateElement[value.raw=/LEFT JOIN\\s+entity_redirects/i]',
+          message:
+            'Hand-rolled redirect join. Use redirectJoinSql() from signals/subject-identity.',
         },
         {
           // A COUNTER THAT CAN ONLY COUNT. Its predecessor was ASSIGNED the

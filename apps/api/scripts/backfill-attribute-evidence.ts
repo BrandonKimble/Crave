@@ -8,6 +8,8 @@
  * not the second, and inventing one would be worse than leaving it visible.
  * Until a finding is written here, this file is a deletion candidate.
  */
+import { Prisma } from '@prisma/client';
+import { activeEntityEventsSourceSql } from '../src/modules/content-processing/reddit-collector/extraction-scope.service';
 import 'dotenv/config';
 process.env.PROCESS_ROLE ||= 'api';
 
@@ -52,13 +54,12 @@ async function main(): Promise<void> {
     const reddit = await prisma.$executeRaw`
       INSERT INTO core_restaurant_attribute_evidence
         (restaurant_id, attribute_id, source_class, observations)
-      SELECT e.restaurant_id, e.entity_id, 'reddit_evidence', count(*)
-      FROM core_restaurant_entity_events e
-      JOIN collection_source_documents d
-        ON d.document_id = e.source_document_id
-       AND d.active_extraction_run_id = e.extraction_run_id
-      WHERE e.evidence_type = 'restaurant_attribute'
-      GROUP BY e.restaurant_id, e.entity_id
+      SELECT ev_scope.restaurant_id, ev_scope.entity_id, 'reddit_evidence', count(*)
+      -- The ACTIVE-scope source, from the one owner of "active" — this join
+      -- was hand-rolled here, in a script the src-only guard never walked.
+      FROM ${Prisma.raw(activeEntityEventsSourceSql())}
+      WHERE ev_scope.evidence_type = 'restaurant_attribute'
+      GROUP BY ev_scope.restaurant_id, ev_scope.entity_id
       ON CONFLICT DO NOTHING
     `;
     const legacy = await prisma.$executeRaw`

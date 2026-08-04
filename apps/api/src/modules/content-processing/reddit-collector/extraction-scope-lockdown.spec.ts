@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync } from 'fs';
 import { join } from 'path';
 
 /**
@@ -19,47 +19,23 @@ const API_ROOT = join(__dirname, '..', '..', '..', '..');
 const SRC = join(API_ROOT, 'src');
 const SCRIPTS = join(API_ROOT, 'scripts');
 
-/** Files allowed to reference the raw activation pointer.
- *  - the scope service: it IS the definition
- *  - evidence/replay/projection: the machinery that WRITES activation
- *  - the reload SQL + activation script: operator surfaces that run
- *    outside Nest and are covered by their own review
- *  Anything else must go through ExtractionScopeService. */
-const ALLOWED = [
-  'reddit-collector/extraction-scope.service.ts',
-  'reddit-collector/collection-evidence.service.ts',
-  'reddit-collector/projection-rebuild.service.ts',
-  'reddit-collector/unified-processing.service.ts',
-  'reddit-collector/city-reextract.runner.ts',
-  'polls/supply/poll-ballot-mention.service.ts',
-];
-
-function walk(dir: string, out: string[] = []): string[] {
-  for (const name of readdirSync(dir)) {
-    if (name === 'node_modules' || name === 'dist') continue;
-    const full = join(dir, name);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (name.endsWith('.ts') && !name.includes('.spec.')) out.push(full);
-  }
-  return out;
-}
-
+/**
+ * TWO TESTS LEFT THIS FILE. They walked the source tree for files naming the
+ * activation pointer, and for a run-excluding DELETE on the event ledgers —
+ * import/pattern boundaries, which are ESLint selectors now
+ * (see eslint.config.mjs). The walk covered src/ only, and the lint rule
+ * immediately found three SCRIPTS naming the pointer: two legitimately (the
+ * activation writer and the audit reporter, both exempted by name) and one,
+ * backfill-attribute-evidence, genuinely hand-rolling the activation join.
+ *
+ * What remains here are assertions about what the DEFINITION says — the scope
+ * service's own SQL, the activation script, and a .sql file. Those are not
+ * boundaries and a lint rule cannot express them; they are also still text
+ * assertions, and the honest replacement is executing the scope service
+ * against a real Postgres with activation fixtures. That is a larger job than
+ * this pass and it has not been done.
+ */
 describe('extraction scope is defined exactly once', () => {
-  it('no TypeScript file outside the allowlist hand-rolls the activation join', () => {
-    const offenders = walk(SRC)
-      .filter((file) => {
-        const text = readFileSync(file, 'utf-8');
-        return (
-          text.includes('active_extraction_run_id') ||
-          text.includes('activeExtractionRunId')
-        );
-      })
-      .map((file) => file.slice(SRC.length + 1))
-      .filter((rel) => !ALLOWED.some((allowed) => rel.endsWith(allowed)));
-
-    expect(offenders).toEqual([]);
-  });
-
   it('ExtractionScopeService answers all four questions the red team found wrong', () => {
     const text = readFileSync(
       join(
@@ -157,22 +133,8 @@ describe('THE SUPERSEDE LAW is defined exactly once (F472–F474)', () => {
   const SCOPE_SERVICE =
     'modules/content-processing/reddit-collector/extraction-scope.service.ts';
 
-  const rawSupersede =
-    /DELETE\s+FROM\s+core_restaurant(_entity)?_events[\s\S]{0,600}?extraction_run_id\s*<>/i;
   const prismaSupersede =
     /(restaurantEntityEvent|restaurantEvent)\s*\.\s*deleteMany\s*\([\s\S]{0,600}?extractionRunId\s*:\s*\{\s*not\s*:/;
-
-  it('no file outside the scope service expresses a run-excluding delete on the event ledgers', () => {
-    const offenders = walk(SRC)
-      .filter((file) => {
-        const text = readFileSync(file, 'utf-8');
-        return rawSupersede.test(text) || prismaSupersede.test(text);
-      })
-      .map((file) => file.slice(SRC.length + 1))
-      .filter((rel) => !rel.endsWith('extraction-scope.service.ts'));
-
-    expect(offenders).toEqual([]);
-  });
 
   it('the scope service DOES hold it, with the within-generation prompt-hash scoping', () => {
     const text = readFileSync(join(SRC, SCOPE_SERVICE), 'utf-8');
