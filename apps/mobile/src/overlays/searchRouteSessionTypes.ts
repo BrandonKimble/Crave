@@ -2,6 +2,7 @@ import type {
   OverlayKey,
   OverlayRouteParamsMap,
 } from '../navigation/runtime/app-overlay-route-types';
+import type { CameraSnapshot } from '../navigation/runtime/app-route-profile-transition-state-contract';
 
 export type SearchOverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 
@@ -50,4 +51,23 @@ export type OriginSnapshot = {
   // departing scene publishes its own anchor via the origin live-state registry, like scroll/
   // segment) writes this when a scene wants sub-scroll anchoring on return. S-D/EntityLink.
   anchor?: { sceneKey: string; pollId?: string; commentId?: string } | null;
+  // D56 — THE SEVENTH FIELD (findings F1500-F1516). "The map returns to the EXACT position
+  // where the search flow was triggered" is the same law as "the sheet returns to the exact
+  // presentation it departed from", one plane over — so it is the same snapshot, taken at the
+  // same instant, at the same chokepoint. Before D56 the camera lived in FOUR uncoordinated
+  // ledgers (a session slot keyed off committedBounds — null by design for list entries; the
+  // profile `savedCamera`; a stale idle-only tracker; a dismiss-time capture) that unwound
+  // OPPOSITE to the sheet. On the entry, the camera inherits the stack: nesting, per-pop
+  // restore, and "add a source = captureOrigin + route/params" all fall out for free.
+  //
+  // Shape is the RICHER of the two dead ledgers (the profile's padded CameraSnapshot), so a
+  // profile pop keeps its band-centering. `null` = no camera was knowable at capture (no
+  // viewport event yet, or no port registered) — restore then does nothing, never guesses.
+  //
+  // CAPTURED ONLY AT PUSH COMMIT. A dismiss-time origin build (buildCurrentOriginSnapshot)
+  // pins this to null on purpose: an origin is captured at DEPARTURE, never at RETURN, and a
+  // camera on that lane would fly the map to the place it is already leaving. Pans AFTER the
+  // trigger do NOT move the target (owner law, verbatim: "the exact position where the search
+  // flow was triggered").
+  camera?: CameraSnapshot | null;
 };

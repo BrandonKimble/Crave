@@ -73,13 +73,9 @@ export const useProfileOwner = ({
     appExecutionArgs,
   });
 
-  const {
-    transitionExecutionModel: { getLastCameraState },
-  } = nativeExecutionModel;
   const { currentMapZoom, presentationModelRuntime } = useProfileOwnerPresentationViewRuntime({
     cameraTransitionPorts,
     runtimeStateOwner,
-    getLastCameraState,
   });
   const profileViewState = presentationModelRuntime.profileViewState;
 

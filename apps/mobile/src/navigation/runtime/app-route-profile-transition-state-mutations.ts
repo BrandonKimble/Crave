@@ -7,7 +7,6 @@ import type {
 // fields; the transition state is the pop-teardown owner's small record.
 export const createInitialProfileTransitionState = (): ProfileTransitionState => ({
   status: 'idle',
-  savedCamera: null,
   savedResultsScrollOffset: null,
 });
 
@@ -22,9 +21,8 @@ export const applyProfileTransitionSnapshotCapture = ({
   transition: ProfileTransitionState;
   snapshotCapture: ProfileTransitionSnapshotCapture;
 }): void => {
-  if (!transition.savedCamera && snapshotCapture.savedCamera) {
-    transition.savedCamera = snapshotCapture.savedCamera;
-  }
+  // D56: the first-write-wins `savedCamera` arm is DELETED with the field (F1506). The scroll
+  // offset keeps its own first-write-wins rule — that one is deliberate and unrelated.
   if (transition.savedResultsScrollOffset === null) {
     transition.savedResultsScrollOffset = snapshotCapture.savedResultsScrollOffset;
   }

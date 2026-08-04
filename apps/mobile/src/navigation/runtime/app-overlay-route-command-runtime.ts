@@ -11,6 +11,7 @@ import type {
   RouteSceneSwitchRouteParams,
 } from './app-overlay-route-transition-contract';
 import type { OverlaySheetSnap } from '../../overlays/types';
+import { logCameraOriginDebug } from './pageswitch-debug-flag';
 import { stageRouteEntryOriginRestore } from './route-entry-origin-capture-delegate';
 import type {
   AppRouteSceneSwitchRuntime,
@@ -287,6 +288,14 @@ export const createAppOverlayRouteCommandRuntime = ({
       }
       // The revealed entry's presentation restores from the entry directly above it.
       const entryAboveTarget = routeState.overlayRouteStack[targetIndex + 1] ?? null;
+      // D56/F1516(C) — the HALF-POP tripwire. A `pop` line with no matching `[CAMORIGIN-restore]`
+      // line is the F1505 failure (sheet returns, map stays) resurrected.
+      logCameraOriginDebug('pop', {
+        verb: 'popToEntry',
+        targetKey: targetEntry.key,
+        hasOrigin: entryAboveTarget?.origin != null,
+        hasCamera: entryAboveTarget?.origin?.camera != null,
+      });
       stageRouteEntryOriginRestore(entryAboveTarget?.origin);
       if (isAppOverlayRouteSceneSwitchKey(targetEntry.key)) {
         const originDetent =
@@ -316,6 +325,12 @@ export const createAppOverlayRouteCommandRuntime = ({
       // (stack[1]); popToRoot restores it (intermediate entries' origins are correctly
       // discarded). Staged before the request — the motion plan reads the ledger.
       const deepestPushedOrigin = routeState.overlayRouteStack[1]?.origin ?? null;
+      logCameraOriginDebug('pop', {
+        verb: 'popToRoot',
+        targetKey: rootOverlayRouteKey,
+        hasOrigin: deepestPushedOrigin != null,
+        hasCamera: deepestPushedOrigin?.camera != null,
+      });
       stageRouteEntryOriginRestore(deepestPushedOrigin);
       if (rootOverlayRouteKey != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
         const originDetent =

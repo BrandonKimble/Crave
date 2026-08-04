@@ -8,7 +8,7 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRootSessionAssemblyRuntime } from './use-search-root-session-assembly-runtime';
 import { useSearchRootSessionCoreLaneRuntime } from './use-search-root-session-core-lane-runtime';
 import { useSearchRootSessionPrimitivesLaneRuntime } from './use-search-root-session-primitives-lane-runtime';
-import { useSearchSessionOriginCameraRuntime } from './use-search-session-origin-camera-runtime';
+import { useRouteEntryOriginCameraPortRuntime } from './use-route-entry-origin-camera-port-runtime';
 import type {
   SearchRootSessionRuntimeLanes,
   UseSearchRootSessionRuntimeArgs,
@@ -59,13 +59,14 @@ export const useSearchRootSessionRuntime = ({
     interactionPrimitivesRuntime,
     cameraIntentArbiter: sessionControlServices.cameraIntentArbiter,
   });
-  // Camera-in-origin (owner decision 2026-07-10): terminal dismiss glides the camera back
-  // to the latest search's trigger viewport — read from the committed tuple's own camera
-  // snapshot (single source). Session-boundary-only — never overlaps the profile pop's
-  // savedCamera channel.
-  useSearchSessionOriginCameraRuntime({
+  // D56 camera-in-ORIGIN: the camera is a field of the route entry's OriginSnapshot, captured
+  // at push commit and restored per-pop by the origin seam. This hook only lends that seam the
+  // two map-owned verbs (read the trigger camera / commit it back through the arbiter); it holds
+  // no slot of its own, and there is no session-boundary special case left anywhere.
+  useRouteEntryOriginCameraPortRuntime({
     searchRuntimeBus,
     viewportBoundsService: sessionControlServices.viewportBoundsService,
+    cameraIntentArbiter: sessionControlServices.cameraIntentArbiter,
     commitCameraViewport: sessionPrimitivesLane.primitives.commitCameraViewport,
   });
   const sessionCoreLane = useSearchRootSessionCoreLaneRuntime({

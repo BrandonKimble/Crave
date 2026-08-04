@@ -62,13 +62,6 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   const clearMapHighlightedRestaurantId = React.useCallback(() => {
     actionExecutionPorts.setMapHighlightedRestaurantId(null);
   }, [actionExecutionPorts.setMapHighlightedRestaurantId]);
-  const prepareRestaurantProfileForTerminalSearchDismiss = React.useCallback(() => {
-    const savedCamera = getProfileTransitionState().savedCamera;
-    if (savedCamera) {
-      actionExecutionPorts.focusPreparedProfileCamera(savedCamera);
-    }
-  }, [actionExecutionPorts, getProfileTransitionState]);
-
   // S-C.5 slices B+C — POP-OWNED teardown (plans/s-c5-restaurant-stack-fact.md): the
   // restaurant entry leaving the route stack IS the close signal for a profile presentation
   // the machine did not close itself. The machine-initiated close (back button) pops the
@@ -90,7 +83,10 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     }
     // L3 slice 4: the machine-yield guard is DELETED — with the machine gone, the pop
     // writer is the sole close owner (dissolution trace §2c/§3).
-    prepareRestaurantProfileForTerminalSearchDismiss();
+    // D56: the saved-camera restore that used to run HERE is gone with the `savedCamera`
+    // ledger (F1506). The restaurant ENTRY's own OriginSnapshot.camera is restored by the
+    // pop that removes it — the same pop this handler is reacting to — so the camera return
+    // is no longer a profile-lane side effect racing the session lane through a microtask.
     // L3 slice 3: an autocomplete/auto-open-sourced profile dismisses with 'clear' —
     // the search session ends with it (the machine's close finalization used to do this;
     // the behavior record resets at the settle-half finalize).
@@ -114,7 +110,6 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     getProfileShouldClearSearchOnDismiss,
     getProfileTransitionState,
     getRestaurantProfileRequestSeq,
-    prepareRestaurantProfileForTerminalSearchDismiss,
     resetRestaurantProfileFocusSession,
     setRestaurantProfileRequestSeq,
   ]);
@@ -147,7 +142,6 @@ export const useProfileOwnerActionSurfaceRuntime = ({
       finalizeRestaurantEntryPopTeardown,
       hydrateRestaurantProfileById,
       presentationActions,
-      prepareRestaurantProfileForTerminalSearchDismiss,
       resetRestaurantProfileFocusSession,
       runtimeActions,
     ]

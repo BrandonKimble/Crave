@@ -13,7 +13,6 @@ import { useTopMostRouteEntryForScene } from '../../../../navigation/runtime/use
 type UseProfileOwnerPresentationViewRuntimeArgs = {
   cameraTransitionPorts: ProfilePresentationCameraLayoutModel;
   runtimeStateOwner: Pick<ProfileRuntimeStateOwner, 'shellRuntimeState' | 'transitionRuntimeState'>;
-  getLastCameraState: () => { center: [number, number]; zoom: number } | null;
 };
 
 export type ProfileOwnerPresentationViewRuntime = {
@@ -24,7 +23,6 @@ export type ProfileOwnerPresentationViewRuntime = {
 export const useProfileOwnerPresentationViewRuntime = ({
   cameraTransitionPorts,
   runtimeStateOwner,
-  getLastCameraState,
 }: UseProfileOwnerPresentationViewRuntimeArgs): ProfileOwnerPresentationViewRuntime => {
   // L3 cutover slice 1: the reactive stack fact feeds the presence-shaped model facts.
   const hasRestaurantRouteEntry = useTopMostRouteEntryForScene('restaurant') != null;
@@ -66,9 +64,8 @@ export const useProfileOwnerPresentationViewRuntime = ({
       createProfilePresentationModelRuntime({
         profileShellState,
         cameraLayoutModel: cameraTransitionPorts,
-        getCurrentLastCameraState: getLastCameraState,
       }),
-    [cameraTransitionPorts, getLastCameraState, profileShellState]
+    [cameraTransitionPorts, profileShellState]
   );
 
   const currentMapZoom =

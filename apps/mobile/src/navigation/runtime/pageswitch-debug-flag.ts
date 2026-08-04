@@ -51,6 +51,36 @@ export const logPageSwitchDebug = (tag: string, data: Record<string, unknown>): 
  * so the flag-off build pays nothing at all — not even the Profiler tree.
  */
 
+/**
+ * The `[CAMORIGIN-*]` return-to-origin CAMERA probe (D56 / F1516) — same family, same
+ * shape, but DEFAULT ON in `__DEV__` for now.
+ *
+ * D56 moved the camera onto the OriginSnapshot: captured at push commit inside the
+ * existing origin seam, restored per-pop through the CameraIntentArbiter. Three edges
+ * carry the whole story and each has exactly one probe:
+ *   `[CAMORIGIN-capture]` — the push-commit read (source: arbiter target vs live viewport)
+ *   `[CAMORIGIN-restore]` — the origin restorer committing (or declining) a camera
+ *   `[CAMORIGIN-pop]`     — popToEntry/popToRoot staging, the F1505 half-pop tripwire
+ * RED reads: a capture whose center is not where the finger was; a pop line with no
+ * matching restore line; a restore with `camera=null` on a flow that should carry one.
+ *
+ * ON by default (unlike its siblings) because the next sim session must verify
+ * capture-timing on the real rig before a store build ships — F1516's prescribed first
+ * executable step. Flip to `false` once that session signs off; `__DEV__` stays in the
+ * conjunction so it can never reach a release build.
+ */
+export const CAMORIGIN_DEBUG_ENABLED = true;
+
+export const isCameraOriginDebugEnabled = (): boolean => __DEV__ && CAMORIGIN_DEBUG_ENABLED;
+
+export const logCameraOriginDebug = (tag: string, data: Record<string, unknown>): void => {
+  if (!isCameraOriginDebugEnabled()) {
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.log(`[CAMORIGIN-${tag}] ${JSON.stringify({ ...data, ts: Date.now() })}`);
+};
+
 /** Flip to `true` to re-enable the `[COMMITDBG]` per-leg commit probe in a dev build. */
 export const SLOW_LEG_COMMIT_DEBUG_ENABLED = false;
 

@@ -2017,44 +2017,51 @@ unreachable no-notify guard (F1061). Pass 1 found the inverse — an instrument
 stuck permanently RED (F1051). **Before trusting any metric in this territory,
 find the code that would make it flip.**
 
-### The camera-origin choreography, as built (D55 territory, 2026-08-03)
+### The camera-origin choreography, as built (D56, 2026-08-03)
 
-"Where does the map go back to when you dismiss a search?" is answered by **four
-independent ledgers**, none of which knows about the others. Read this before touching
-any of them.
+"Where does the map go back to when you dismiss a search?" is answered by **ONE ledger** —
+the same one that answers it for the sheet. This section used to describe FOUR independent
+ledgers (a session slot, the profile `savedCamera`, a stale idle-only tracker, and a
+dismiss-time capture); D56 collapsed them into the origin. Read this before touching it.
 
-1. **The per-entry sheet origin (the good one).** `OriginSnapshot`
-   (`overlays/searchRouteSessionTypes.ts`) lives on the PUSHED route entry
-   (`app-overlay-route-types.ts:589`), captured at **push commit, before any motion**,
-   through the total-capture seam `captureRouteEntryOrigin`
-   (`navigation/runtime/route-entry-origin-capture-delegate.ts`), and applied on pop by
-   the matching restorer. It carries sceneKey / sceneParams / detent / segment / scroll —
-   and **no camera**. It is a stack, it never loses a nested origin, and adding a source
-   costs one publication call. This is the shape everything else should have.
-2. **The session origin camera.** `screens/Search/runtime/shared/use-search-session-origin-camera-runtime.ts`
-   — ONE module ref, written when `tuple.committedBounds.bounds` changes identity (a search
-   COMMIT), read once on the tuple's set→idle edge (a TERMINAL dismiss), then nulled. No
-   stack, no per-pop restore, and list launches deliberately write `committedBounds: null`
-   so they can only seed it when the slot happens to be empty.
-3. **The profile lane's `savedCamera`.** A single mutable field on the profile transition
-   record, **first-write-wins** (`app-route-profile-transition-state-mutations.ts:25`), read
-   at restaurant-entry pop. It still sources from `lastCameraStateRef` — the idle-only
-   tracker the search lane abandoned as the cd59e8a2 stale-camera bug class. It races
-   ledger 2 on a terminal X; the tie is broken by a `queueMicrotask` in ledger 2.
-4. **The close origin.** `captureSearchCloseOrigin` snapshots the **live** scene at dismiss
-   time and hands it to the restore. It is correct today only because the identity resolver
-   it reads is root-collapsed and the caller forces `collapsed`, which degenerates it into
-   the golden home emission.
+**THE origin.** `OriginSnapshot` (`overlays/searchRouteSessionTypes.ts`) lives on the PUSHED
+route entry (`app-overlay-route-types.ts`), captured at **push commit, before any motion**,
+through the total-capture seam `captureRouteEntryOrigin`
+(`navigation/runtime/route-entry-origin-capture-delegate.ts`), and applied on pop by the
+matching restorer. It carries sceneKey / sceneParams / detent / segment / scroll — **and
+`camera`**, the seventh field (`{center, zoom, padding|null} | null`).
 
-The owner's law (D55) is "the map returns to the exact position where the search flow was
-TRIGGERED". Ledger 1 obeys it. Ledger 2 answers a different question ("where did the LATEST
-search commit"), which is why the sheet and the camera unwind to different places in any
-multi-world session, and why a pop that keeps the session alive restores the sheet and not
-the map. Full trace + the one-origin rederivation: FINDINGS F1500-F1516.
+- **Capture** happens in ONE place: the capturer registered in
+  `app-route-overlay-session-state-controller.ts`. Its value comes from the port in
+  `screens/Search/runtime/shared/use-route-entry-origin-camera-port-runtime.ts`:
+  `ViewportBoundsService.getCamera()` when the map is settled, the **CameraIntentArbiter's
+  in-flight committed target** when a programmatic move is in flight
+  (`getInFlightCameraTarget`) — the user perceives the destination of a fly-to as "where I
+  am". Never `lastCameraStateRef` (idle-only, lags programmatic moves — the cd59e8a2 class).
+- **Restore** happens in ONE place: the origin restorer, beside the detent and scroll lanes,
+  committed through the **CameraIntentArbiter** (never a direct camera write). Every pop that
+  stages an origin — closeActive / popToEntry / popToRoot — restores the camera, so a pop that
+  keeps a world alive is no longer a half-pop.
+- **A pan after the trigger does NOT move the target.** Owner law, verbatim.
+- **The dismiss-time lane carries no camera by construction**: `buildCurrentOriginSnapshot`
+  pins `camera: null`. An origin is captured at DEPARTURE, never at RETURN.
+- **The camera is NOT a richness axis**: a camera-bearing home origin still takes the
+  degenerate short-circuit and the golden `assertDegenerateHomeEmission` contract (no
+  `cameraIntent` on the home switch, ever). Proven both ways in
+  `navigation/runtime/route-entry-origin-camera.spec.ts` (14 specs, 4 mutation proofs).
+- **Instrumentation:** `[CAMORIGIN-capture|restore|pop]`, gated by `CAMORIGIN_DEBUG_ENABLED`
+  in `pageswitch-debug-flag.ts` — DEFAULT ON in `__DEV__` until the sim session signs off on
+  capture timing, then flip it off.
+
+Deleted by D56, do not resurrect: `use-search-session-origin-camera-runtime.ts` (the session
+slot), `ProfileTransitionState.savedCamera` + `resolveProfileCameraSnapshot` (the profile
+ledger and its stale source), and the profile lane's terminal-dismiss camera focus. Full
+trace: FINDINGS F1500-F1516, DESIGNS D56.
 
 Two standing traps in this area: (a) the launch of a list world is a **composite** —
 `pushRoute` fires synchronously at the tap, the world write lands one `useEffect` later, so
-anything "captured at launch" in the effect is a frame behind the push; (b) `tsc` in
+anything "captured at launch" in the effect is a frame behind the push — which is exactly why
+the camera capture rides the PUSH, not the launch effect; (b) `tsc` in
 apps/mobile has a permanent 2-error baseline, both rnmapbox typing gaps in this exact
 territory (F1514) — do not read them as damage you caused.
 

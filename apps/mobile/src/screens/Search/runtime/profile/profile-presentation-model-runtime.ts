@@ -1,8 +1,5 @@
 import type { OverlaySheetSnap } from '../../../../overlays/types';
-import {
-  resolveProfileCameraPadding,
-  resolveProfileCameraSnapshot,
-} from './profile-camera-presentation-runtime';
+import { resolveProfileCameraPadding } from './profile-camera-presentation-runtime';
 import type {
   CameraSnapshot,
   ProfileTransitionSnapshotCapture,
@@ -56,7 +53,6 @@ export type CreateProfilePresentationModelRuntimeArgs = {
     mapHighlightedRestaurantId: string | null;
   };
   cameraLayoutModel: ProfilePresentationCameraLayoutModel;
-  getCurrentLastCameraState: () => { center: [number, number]; zoom: number } | null;
 };
 
 export type ProfilePresentationModelRuntime = {
@@ -77,17 +73,12 @@ export const createProfilePresentationModelRuntime = ({
   cameraLayoutModel: {
     sheetScrollOffset,
     snapPoints,
-    mapCenter,
-    mapZoom,
     searchBarTop,
     searchBarHeight,
     insetsTop,
     screenHeight,
     profilePinMinVisibleHeight,
-    fallbackCenter,
-    fallbackZoom,
   },
-  getCurrentLastCameraState,
 }: CreateProfilePresentationModelRuntimeArgs): ProfilePresentationModelRuntime => {
   const getResolvedProfileCameraPadding = (): CameraSnapshot['padding'] =>
     resolveProfileCameraPadding({
@@ -97,16 +88,6 @@ export const createProfilePresentationModelRuntime = ({
       insetsTop,
       middleSnapPoint: snapPoints.middle,
       profilePinMinVisibleHeight,
-    });
-
-  const captureProfileCameraSnapshot = (): CameraSnapshot | null =>
-    resolveProfileCameraSnapshot({
-      currentLastCameraState: getCurrentLastCameraState(),
-      mapCenter,
-      mapZoom,
-      fallbackCenter,
-      fallbackZoom,
-      mapCameraPadding,
     });
 
   return {
@@ -121,7 +102,6 @@ export const createProfilePresentationModelRuntime = ({
     resolveProfileCameraPadding: getResolvedProfileCameraPadding,
     getProfileTransitionSnapshotCapture: () =>
       resolveProfileTransitionSnapshotCapture({
-        cameraSnapshot: captureProfileCameraSnapshot(),
         sheetScrollOffset: sheetScrollOffset.value,
       }),
   };

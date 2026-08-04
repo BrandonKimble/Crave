@@ -10,6 +10,11 @@ import {
   registerRouteEntryOriginCapturer,
   registerRouteEntryOriginRestorer,
 } from './route-entry-origin-capture-delegate';
+import {
+  commitRouteEntryOriginCamera,
+  readRouteEntryOriginCamera,
+} from './route-entry-origin-camera-delegate';
+import { logCameraOriginDebug } from './pageswitch-debug-flag';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import {
   primeDockedSceneForHomeLanding,
@@ -64,6 +69,9 @@ type AppRouteOverlaySessionStateControllerArgs = {
 // The degenerate snapshot is the minimal origin: a scene identity + its LIVE detent, with
 // empty scroll/segment/anchor. The home roots capture EXACTLY this (see
 // buildCurrentOriginSnapshot); rich capture merges published live state onto it.
+// D56: `camera` is null HERE by construction. The camera is attached ONLY by the push-commit
+// capturer (below), never by the degenerate base and never by the dismiss-time origin build —
+// an origin is captured at DEPARTURE, never at RETURN.
 const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): OriginSnapshot => ({
   sceneKey,
   sceneParams: null,
@@ -71,6 +79,7 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
   segment: null,
   scroll: [],
   anchor: null,
+  camera: null,
 });
 
 // Return-to-origin foundation — TOP-LEVEL-RICH dismiss seam (the LAST gap).
@@ -102,6 +111,12 @@ const SEEDED_TOP_LEVEL_RESTORE_TARGETS = new Set<OverlayKey>(['lists', 'profile'
 const resolveRestoreRootOverlay = (snapshot: OriginSnapshot): OverlayKey =>
   snapshot.sceneKey === DOCKED_SCENE_KEY ? 'search' : snapshot.sceneKey;
 
+// D56 — the camera is DELIBERATELY NOT a richness axis. A home departure captures a camera like
+// any other push, and it must still take the byte-identical degenerate home emission (the
+// {polls,search}@collapsed deadlock seam). The camera restores on its OWN lane, in the origin
+// restorer, alongside the detent and scroll lanes — it never becomes a `cameraIntent` on the home
+// switch args (assertDegenerateHomeEmission forbids exactly that, and a spec proves a
+// camera-bearing origin cannot flip this predicate or that emission).
 const isDegenerateHomeOrigin = (snapshot: OriginSnapshot): boolean =>
   (snapshot.scroll == null || snapshot.scroll.length === 0) &&
   (snapshot.anchor ?? null) == null &&
@@ -258,7 +273,15 @@ export class AppRouteOverlaySessionStateController {
       // every pushed entry through this seam. The departing key is passed EXPLICITLY (the
       // controller's own identity resolution is root-collapsed — wrong for child departures).
       registerRouteEntryOriginCapturer((departingSceneKey) => {
-        const captured = this.captureRichSceneOrigin(departingSceneKey);
+        // D56: the CAMERA joins the snapshot HERE and only here — the push-commit chokepoint,
+        // before any motion, in the same instant as the detent/scroll/segment fields. Two halves
+        // of one snapshot, one instant. (The old camera lane read the map a commit AND a scene
+        // transition later, from a slot keyed to search commits — F1503/F1502.)
+        const originCamera = readRouteEntryOriginCamera();
+        const captured = {
+          ...this.captureRichSceneOrigin(departingSceneKey),
+          camera: originCamera,
+        };
         // Ledger item 7 (red team code#2): captureRichSceneOrigin's detent comes from
         // resolveLiveOriginIdentity, which is ROOT-collapsed (it only knows the top-level
         // lanes). For a CHILD departure the ONE physical sheet's remembered snap for that
@@ -286,6 +309,18 @@ export class AppRouteOverlaySessionStateController {
         origin.scroll?.forEach((lane) => {
           stageOverlayScrollRestore(lane.laneKey, lane.offset);
         });
+        // D56 — the CAMERA lane, a peer of the detent and scroll lanes. It rides EVERY pop that
+        // stages an origin (closeActive / popToEntry / popToRoot), which is what kills the
+        // half-pop (F1505): a pop that restored the sheet but left the map wherever the dismissed
+        // world's fitAll put it. Committed through the CameraIntentArbiter by the registered port
+        // — never a direct camera write from the router.
+        logCameraOriginDebug('restore', {
+          sceneKey: origin.sceneKey,
+          detent: origin.detent,
+          center: origin.camera?.center ?? null,
+          zoom: origin.camera?.zoom ?? null,
+        });
+        commitRouteEntryOriginCamera(origin.camera);
       })
     );
     this.snapshot = this.computeSnapshot();
@@ -393,6 +428,13 @@ export class AppRouteOverlaySessionStateController {
     return {
       ...captured,
       anchor: captured.anchor ?? null,
+      // D56 — THE FOURTH CAMERA LANE IS CLOSED HERE. This builder runs at DISMISS time
+      // (captureSearchCloseOrigin, F1508): it snapshots the scene being LEFT, at the moment it
+      // is left. That is a photograph of the departure gate, not a return address — a camera on
+      // it would fly the map to the world the user is dismissing. The return address for the
+      // camera is the one captured at PUSH commit and carried on the popped entry; that origin
+      // reaches the arbiter through the pop's own origin restore, not through this lane.
+      camera: null,
     };
   }
 

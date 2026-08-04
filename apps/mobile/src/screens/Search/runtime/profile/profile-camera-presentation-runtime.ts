@@ -1,31 +1,11 @@
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
-export const resolveProfileCameraSnapshot = ({
-  currentLastCameraState,
-  mapCenter,
-  mapZoom,
-  fallbackCenter,
-  fallbackZoom,
-  mapCameraPadding,
-}: {
-  currentLastCameraState: { center: [number, number]; zoom: number } | null;
-  mapCenter: [number, number] | null;
-  mapZoom: number | null;
-  fallbackCenter: [number, number];
-  fallbackZoom: number;
-  mapCameraPadding: CameraSnapshot['padding'];
-}): CameraSnapshot | null => {
-  const center = currentLastCameraState?.center ?? mapCenter ?? fallbackCenter;
-  const zoom = currentLastCameraState?.zoom ?? mapZoom ?? fallbackZoom;
-  if (!center || typeof zoom !== 'number' || !Number.isFinite(zoom)) {
-    return null;
-  }
-  return {
-    center: [center[0], center[1]],
-    zoom,
-    padding: mapCameraPadding ? { ...mapCameraPadding } : null,
-  };
-};
+// D56: `resolveProfileCameraSnapshot` lived here and is DELETED (F1506/F1507). It built the
+// profile lane's `savedCamera` and preferred `lastCameraStateRef` — the idle-only tracker that
+// lags programmatic moves — over every other source, so a profile opened mid-fly saved a camera
+// the map had already left, and the pop flew back to it. The origin camera is read from
+// ViewportBoundsService (or the arbiter's in-flight target) at push commit instead. Only the
+// PADDING derivation, a pure layout function with no camera-source problem, remains.
 
 // Centers the focus pin in the visible band between the search-bar bottom edge and the sheet's TOP
 // edge at the MIDDLE snap — the area the sheet does not cover at the middle snap. Mapbox centers a

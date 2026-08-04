@@ -55,6 +55,16 @@ export class CameraIntentArbiter {
     shouldSyncPadding: boolean;
     padding: CameraSnapshot['padding'];
   } | null = null;
+  // D56: the target of the CURRENTLY-IN-FLIGHT programmatic commit. The user perceives the
+  // place the map is flying TO, not the frame it happens to be passing through, so an origin
+  // captured while an intent is in flight must capture the TARGET (F1513 ruling). Set on every
+  // commit; only ever READ while a completion is pending, so a settled map always answers from
+  // the observed viewport instead.
+  private lastCommittedCameraTarget: {
+    center: [number, number];
+    zoom: number;
+    padding: CameraSnapshot['padding'];
+  } | null = null;
   private nextProgrammaticCameraCompletionSeq = 0;
   private readonly programmaticCameraAnimationCompletionListeners = new Set<
     (payload: ProgrammaticCameraAnimationCompletionPayload) => void
@@ -147,6 +157,11 @@ export class CameraIntentArbiter {
       };
       const completionId = animation.completionId;
       const shouldSyncPadding = Object.prototype.hasOwnProperty.call(intent, 'padding');
+      this.lastCommittedCameraTarget = {
+        center: [intent.center[0], intent.center[1]],
+        zoom: intent.zoom,
+        padding: intent.padding ?? null,
+      };
       this.pendingProgrammaticCameraCompletionId = completionId;
       this.pendingProgrammaticCameraRequestToken = intent.requestToken ?? null;
       this.pendingControlledCameraStateSync = null;
@@ -311,6 +326,31 @@ export class CameraIntentArbiter {
 
   public hasPendingProgrammaticCameraCompletion(): boolean {
     return this.pendingProgrammaticCameraCompletionId != null;
+  }
+
+  /**
+   * D56 — the committed target of an IN-FLIGHT programmatic camera move, or null when the
+   * map is not under one. The origin capture prefers this over the observed viewport for
+   * exactly that window: a flow triggered mid-flight departs from where the map is GOING.
+   * A cancelled/finished animation clears the pending id, so this returns null again and the
+   * observed viewport (the truth once settled) takes over.
+   */
+  public getInFlightCameraTarget(): {
+    center: [number, number];
+    zoom: number;
+    padding: CameraSnapshot['padding'];
+  } | null {
+    if (this.pendingProgrammaticCameraCompletionId == null) {
+      return null;
+    }
+    const target = this.lastCommittedCameraTarget;
+    return target == null
+      ? null
+      : {
+          center: [target.center[0], target.center[1]],
+          zoom: target.zoom,
+          padding: target.padding ? { ...target.padding } : null,
+        };
   }
 }
 
