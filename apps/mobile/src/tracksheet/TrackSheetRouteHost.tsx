@@ -23,7 +23,6 @@ import {
   runHeaderCloseAction,
   runHeaderCreateAction,
 } from '../navigation/runtime/header-nav-action-registry';
-import { TOGGLE_STRIP_BAND_HEIGHT } from '../toggles/toggle-strip-metrics';
 import { useAppOverlayRouteController } from '../overlays/useAppOverlayRouteController';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlays/overlay-chrome-metrics';
 import { SceneBodyFoundationSurface } from '../overlays/SceneBodyFoundationSurface';
@@ -57,13 +56,17 @@ import { SaveListMountedSceneBody } from '../overlays/panels/SaveListPanel';
 import { useHomePanelListSceneParts } from '../overlays/panels/HomePanel';
 import { usePollsPanelListSceneParts } from '../overlays/panels/PollsPanel';
 import type { SearchRouteMountedSceneBodyKey } from '../overlays/searchOverlayRouteHostContract';
-import {
-  TrackSheetPage,
-  type TrackSheetCommands,
-  type TrackSheetPageProps,
-} from './TrackSheetPage';
+import { TrackSheetPage, type TrackSheetCommands } from './TrackSheetPage';
 import { makeTrackEntryKey, type TrackEntryKey } from './track-entry-identity';
 import { TrackEntryRetention, TRACK_CHILD_RETENTION_DEPTH } from './track-entry-retention';
+import { deriveTrackEntryBodyActivity } from './track-entry-activity';
+import {
+  isResolutionReady,
+  resolutionHasRealRows,
+  TrackEntryReadinessLedger,
+  type TrackEntryBodyResolution,
+} from './track-entry-readiness';
+import { trackSkeletonMaterialForScene } from './track-entry-skeleton';
 
 // ─── TrackSheetRouteHost — THE PRODUCTION SHEET HOST ──────────────────────────
 //
@@ -359,6 +362,22 @@ const MOUNTED_TRACK_SCENES = new Set<OverlayKey>(
 // the shared route-metadata contract in navigation/, owned by another lane — it should land
 // there, with that table's own exhaustiveness guard, not as a local copy here.
 
+/** A leg's resolved body — whatever phase produced it (content, frozen, or the
+ * skeleton), it feeds TrackSheetPage's per-leg FlashList props. Loosely typed
+ * on purpose: the three lanes (published spec / parts spec / mounted one-item)
+ * carry different concrete row types, reconciled at the page boundary. */
+type ResolvedLegList = {
+  leader?: unknown;
+  data: readonly unknown[];
+  renderItem: unknown;
+  keyExtractor?: unknown;
+  ListEmptyComponent?: unknown;
+  ItemSeparatorComponent?: unknown;
+  extraData?: unknown;
+  onEndReached?: unknown;
+  onEndReachedThreshold?: unknown;
+};
+
 type TrackScenePageProps = {
   scene: OverlayKey;
   /** Route-stack entry id for the presented scene (null for tab roots / pre-commit). */
@@ -612,7 +631,6 @@ const useTrackScenePageChrome = (
     geometry,
     navActionProgress,
     onNavActionPress,
-    isChildScene,
     onGrabHandlePress,
     sharedSheetPublicationBindings,
     onGestureSettle,
@@ -639,7 +657,6 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     geometry,
     navActionProgress,
     onNavActionPress,
-    isChildScene,
     onGrabHandlePress,
     sharedSheetPublicationBindings,
     onGestureSettle,
@@ -689,6 +706,10 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       { entry: OverlayRouteEntry | null; render: () => React.ReactElement | null }
     >()
   );
+  // G-ACTIVITY live read: cached render closures must never capture a
+  // presented-flag (stale) nor an all-true (the pre-R2 defect) — they read the
+  // current commit's presented entry through this ref at invoke time.
+  const presentedEntryKeyLiveRef = React.useRef<TrackEntryKey | null>(null);
   const rendererForMountedEntry = (
     legEntryKey: TrackEntryKey,
     legScene: OverlayKey,
@@ -706,22 +727,19 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       if (Body == null) {
         return null;
       }
-      // THE ACTIVATION BRIDGE: mounted bodies gate their data lanes on the old
-      // host's activity contexts (all-false defaults left lists blank on the
-      // track). All-true still (G-ACTIVITY lands in R2) — the retention depth
-      // bounds how many hidden entries pay this cost (see the bark below).
-      const activity = {
-        sceneKey: legScene,
-        shouldAttachMountedContent: true,
-        shouldRunDataLane: true,
-        shouldSubscribeDataLane: true,
-        shouldRenderExpandedContent: true,
-        hasActivatedExpandedContent: true,
-      };
+      // THE ACTIVATION BRIDGE (G-ACTIVITY, R2): mounted bodies gate their data
+      // lanes on the old host's activity contexts (all-false defaults left
+      // lists blank on the track). Activity is DERIVED from presentation at
+      // invoke time — the render closure is cached per entry, so the value may
+      // not be captured (a captured all-true was the pre-R2 defect; a captured
+      // presented-flag would freeze). The live ref reads the current commit's
+      // presented entry.
+      const isPresented = presentedEntryKeyLiveRef.current === legEntryKey;
+      const activity = deriveTrackEntryBodyActivity(legScene, isPresented);
       return (
         <BottomSheetSceneStackBodyDataActivityContext.Provider value={activity}>
           <BottomSheetSceneStackBodyRenderActivityContext.Provider value={activity}>
-            <BottomSheetSceneStackBodyIsActiveContext.Provider value={true}>
+            <BottomSheetSceneStackBodyIsActiveContext.Provider value={isPresented}>
               {/* THE REAL FOUNDATION (rung 4): white plate + FrostCutout store —
                 profile stats / home bands punch through to the kit's frost;
                 the strip law sees its plate. Zero scroll offset: the cell
@@ -748,16 +766,38 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     mountedRendererCacheRef.current.set(legEntryKey, { entry: legEntry, render });
     return render;
   };
-  const renderSkeletonBody = React.useCallback(
-    () => (
-      <SceneBodyFoundationSurface scrollOffset={zeroScrollOffset} sceneKey={scene as SheetSceneKey}>
+  // THE SKELETON IS PER-SCENE DATA (G-SKEL / OA2, R2): the variant — rowType +
+  // strip-in-skeleton pills — comes from the scene's foundation spec through
+  // ONE resolver (trackSkeletonMaterialForScene), never a hardcoded rowType.
+  // Renderers are cached per SCENE (the material is scene data, not entry
+  // state) so cold legs keep stable renderItem identities.
+  const skeletonRendererCacheRef = React.useRef(new Map<OverlayKey, () => React.ReactElement>());
+  const rendererForSkeleton = (legScene: OverlayKey): (() => React.ReactElement) => {
+    const cached = skeletonRendererCacheRef.current.get(legScene);
+    if (cached != null) {
+      return cached;
+    }
+    const material = trackSkeletonMaterialForScene(legScene);
+    const render = () => (
+      <SceneBodyFoundationSurface
+        scrollOffset={zeroScrollOffset}
+        sceneKey={legScene as SheetSceneKey}
+      >
         <View style={styles.mountedBodyInset}>
-          <SceneLoadingSurface rowType="restaurant" />
+          {/* insetX=0: the surface already renders inside the mountedBodyInset
+              padding — the default inset would double it and the skeleton
+              would jump narrower→wider on the content swap (its own doc). */}
+          <SceneLoadingSurface
+            rowType={material.rowType}
+            withFilterStripHoles={material.withStripHoles}
+            insetX={0}
+          />
         </View>
       </SceneBodyFoundationSurface>
-    ),
-    [scene, zeroScrollOffset]
-  );
+    );
+    skeletonRendererCacheRef.current.set(legScene, render);
+    return render;
+  };
 
   // ROWS ON THE FOUNDATION (owner report: home shelf boxes lost their
   // cutouts): lane/list rows render in bare track cells, so a row's
@@ -793,6 +833,13 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     new Map<TrackEntryKey, { scene: OverlayKey; entry: OverlayRouteEntry | null }>()
   );
   const childRetentionRef = React.useRef(new TrackEntryRetention(TRACK_CHILD_RETENTION_DEPTH));
+  // ── THE READINESS AXIS STATE (G-READY + OA6.1, R2) ──
+  // The ledger latches "this entry has shown content"; the last-good store is
+  // the OA6.1 frozen world — when a latched entry's lane momentarily resolves
+  // to nothing, its previous body renders, never a skeleton.
+  const readinessLedgerRef = React.useRef(new TrackEntryReadinessLedger());
+  const lastGoodListRef = React.useRef(new Map<TrackEntryKey, ResolvedLegList>());
+  presentedEntryKeyLiveRef.current = presentedEntryKey;
   if (!isResidentScene) {
     // Refresh the stored entry value each render (params can update in place —
     // the algebra preserves entryId across param writes).
@@ -802,24 +849,25 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       legTitleCacheRef.current.delete(evictedKey);
       stripElementCacheRef.current.delete(evictedKey);
       mountedRendererCacheRef.current.delete(evictedKey);
+      readinessLedgerRef.current.forget(evictedKey);
+      lastGoodListRef.current.delete(evictedKey);
       // Scroll memory deliberately survives eviction (TrackEntryScrollMemory).
     }
-    if (__DEV__ && childRetentionRef.current.size >= TRACK_CHILD_RETENTION_DEPTH) {
-      // A7 BARK BUDGET: per-entry retention multiplies the all-true activity
-      // cost until G-ACTIVITY (R2) derives activity from (presented, posture).
-      // Retention is at capacity — hidden retained entries are running live
-      // data lanes right now.
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[TRACK] entry retention at capacity (${TRACK_CHILD_RETENTION_DEPTH}); hidden legs run all-true data lanes until G-ACTIVITY (R2)`
-      );
-    }
+    // The A7 capacity bark is DELETED with its premise (R2 kill-list): activity
+    // now derives from presentation (deriveTrackEntryBodyActivity) — hidden
+    // entries' host-owned lanes are suspended, so retention at capacity no
+    // longer means live all-true data lanes.
   }
-  const resolveLegList = (
+  // ── THE READINESS AXIS (G-READY, R2): resolution → phase → body ────────────
+  // Step 1 names WHAT EXISTS for the entry this commit (a pure fact); step 2
+  // asks the ledger WHICH BODY to paint (content | skeleton | frozen — never a
+  // wait, so the switch commit always paints in the same frame); step 3 builds
+  // it. The old skeleton "fallthrough" is now the not-ready phase by CONDITION
+  // — the dead branch of the contract's G-READY row, made reachable.
+  const resolveLegBodyResolution = (
     legEntryKey: TrackEntryKey,
-    legScene: OverlayKey,
-    legEntry: OverlayRouteEntry | null
-  ) => {
+    legScene: OverlayKey
+  ): TrackEntryBodyResolution => {
     // The published scene-input lane is SCENE-keyed — only the PRESENTED entry
     // may read it (a hidden same-scene entry reading it would alias the
     // presented entry's rows: the exact G-ENTRY collision).
@@ -828,7 +876,53 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
       publishedBody != null &&
       publishedBody.surfaceKind === 'list'
     ) {
-      return {
+      return { kind: 'list', rowCount: publishedBody.data?.length ?? 0 };
+    }
+    const partsFor =
+      legScene === 'polls'
+        ? pollsParts
+        : legScene === 'home' || legScene === 'search'
+          ? homeParts
+          : null;
+    if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
+      return { kind: 'list', rowCount: partsFor.sceneBodyContent.data?.length ?? 0 };
+    }
+    if (MOUNTED_TRACK_SCENES.has(legScene)) {
+      return { kind: 'mounted' };
+    }
+    return { kind: 'none' };
+  };
+  const resolveLegList = (
+    legEntryKey: TrackEntryKey,
+    legScene: OverlayKey,
+    legEntry: OverlayRouteEntry | null
+  ): ResolvedLegList => {
+    const resolution = resolveLegBodyResolution(legEntryKey, legScene);
+    const phase = readinessLedgerRef.current.present(legEntryKey, isResolutionReady(resolution));
+    if (phase !== 'content') {
+      if (phase === 'frozen') {
+        // OA6.1: content is never replaced by a skeleton when content exists —
+        // a latched entry whose lane momentarily resolves to nothing keeps its
+        // frozen last-good body.
+        const frozen = lastGoodListRef.current.get(legEntryKey);
+        if (frozen != null) {
+          return frozen;
+        }
+      }
+      // THE SKELETON (G-READY cold visit + G-SKEL variant-as-data): a cold leg
+      // is a REAL sheet body whose one item renders THE ONE loading material
+      // (the cutout plate — THE SKELETON SHEET laws), shaped by the scene's
+      // foundation spec. Painted in the SAME commit as the switch — the switch
+      // never waits on data; readiness flips it to real rows (two-phase).
+      return { data: ['skeleton'], renderItem: rendererForSkeleton(legScene) };
+    }
+    let list: ResolvedLegList;
+    if (
+      legEntryKey === presentedEntryKey &&
+      publishedBody != null &&
+      publishedBody.surfaceKind === 'list'
+    ) {
+      list = {
         leader: publishedBody.ListHeaderComponent ?? null,
         data: publishedBody.data,
         renderItem: publishedBody.renderItem,
@@ -839,17 +933,15 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         onEndReached: publishedBody.onEndReached,
         onEndReachedThreshold: publishedBody.onEndReachedThreshold,
       };
-    }
-    const partsFor =
-      legScene === 'polls'
-        ? pollsParts
-        : legScene === 'home' || legScene === 'search'
-          ? homeParts
-          : null;
-    if (partsFor != null && partsFor.sceneBodyContent.surfaceKind === 'list') {
+    } else if (resolution.kind === 'list') {
+      const partsFor = legScene === 'polls' ? pollsParts : homeParts;
       const spec = partsFor.sceneBodyContent;
+      if (spec.surfaceKind !== 'list') {
+        // Unreachable by construction (the resolution said 'list'); typed out.
+        return { data: ['skeleton'], renderItem: rendererForSkeleton(legScene) };
+      }
       const specRenderItem = spec.renderItem;
-      return {
+      list = {
         data: spec.data,
         renderItem: (info: Parameters<NonNullable<typeof specRenderItem>>[0]) =>
           wrapRowOnFoundation(specRenderItem?.(info) ?? null),
@@ -860,21 +952,16 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
         onEndReached: spec.onEndReached,
         onEndReachedThreshold: spec.onEndReachedThreshold,
       };
-    }
-    if (MOUNTED_TRACK_SCENES.has(legScene)) {
+    } else {
       // data carries the ENTRY key so a same-scene entry switch is a data
       // change to the one FlashList, never an aliased row.
-      return {
+      list = {
         data: [legEntryKey],
         renderItem: rendererForMountedEntry(legEntryKey, legScene, legEntry),
       };
     }
-    // THE SKELETON RESTORATION (residents rung 2): a cold leg is a REAL
-    // sheet body whose one item renders THE ONE loading material (the
-    // cutout plate — THE SKELETON SHEET laws). The improvised gray rows
-    // are deleted; the skeleton is the leg's own content state, once per
-    // cold visit, never a transition state.
-    return { data: ['skeleton'], renderItem: renderSkeletonBody };
+    lastGoodListRef.current.set(legEntryKey, list);
+    return list;
   };
 
   const legs = React.useMemo(() => {
@@ -959,6 +1046,44 @@ const UnifiedTrackScenePage: React.FC<TrackScenePageProps> = ({
     // real inputs are the deps below; caches keep renderItem identities stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pollsParts, homeParts, publishedBody, scene, entry, presentedEntryKey, zeroScrollOffset]);
+
+  // ── THE TWO-PHASE COLD-FLIP PROBE ([PERF], R2) ────────────────────────────
+  // The owner's original complaint was a multi-second polls switch. The law:
+  // the switch PRESENTS in one commit (skeleton or retained content); real
+  // rows are the second phase. This probe measures phase two — the time from
+  // the switch commit to the first commit whose presented body has real rows —
+  // so the on-device claim is a number, not an impression. Dev-only.
+  const presentedHasRealRows = resolutionHasRealRows(
+    resolveLegBodyResolution(presentedEntryKey, scene)
+  );
+  const coldFlipProbeRef = React.useRef<{ entryKey: TrackEntryKey; t0: number } | null>(null);
+  const probePrevEntryRef = React.useRef<TrackEntryKey | null>(null);
+  React.useEffect(() => {
+    if (!__DEV__) {
+      return;
+    }
+    if (probePrevEntryRef.current !== presentedEntryKey) {
+      probePrevEntryRef.current = presentedEntryKey;
+      if (presentedHasRealRows) {
+        coldFlipProbeRef.current = null;
+        // eslint-disable-next-line no-console
+        console.log(`[PERF] switch ${presentedEntryKey} presented real rows in the switch commit`);
+      } else {
+        coldFlipProbeRef.current = { entryKey: presentedEntryKey, t0: Date.now() };
+        // eslint-disable-next-line no-console
+        console.log(`[PERF] switch ${presentedEntryKey} presented cold (skeleton commit)`);
+      }
+      return;
+    }
+    const probe = coldFlipProbeRef.current;
+    if (probe != null && probe.entryKey === presentedEntryKey && presentedHasRealRows) {
+      coldFlipProbeRef.current = null;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[PERF] cold-flip ${presentedEntryKey} switch-commit->real-rows=${Date.now() - probe.t0}ms`
+      );
+    }
+  }, [presentedEntryKey, presentedHasRealRows]);
 
   return (
     <View style={styles.root} pointerEvents="box-none">

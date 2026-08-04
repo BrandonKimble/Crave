@@ -1,7 +1,7 @@
 import React from 'react';
 import { Dimensions, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { TrackSheetPage, TrackSheetStripCutout } from '../tracksheet';
+import { TrackSheetPage } from '../tracksheet';
 
 // ─── THE ONE TRACK — kit consumer (design doc "THE ONE TRACK") ─────────────────
 //
@@ -18,7 +18,6 @@ const EXPANDED_TOP = 120;
 const MIDDLE_TOP = Math.round(SCREEN.height * 0.55);
 const COLLAPSED_TOP = Math.round(SCREEN.height * 0.85);
 const ROW_DATA = Array.from({ length: 40 }, (_, index) => index);
-const STRIP_LABELS = ['Sort', 'Restaurants', 'Dishes', 'Open now'];
 
 export const OneTrackPrototype: React.FC = () => {
   const [visible, setVisible] = React.useState(false);
@@ -56,17 +55,6 @@ const OneTrackSurface: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       </View>
     ),
     [onClose]
-  );
-
-  // Frost replica under the strip plate (production: the real frosted layer).
-  const stripBackdrop = React.useMemo(
-    () => (
-      <>
-        <View style={styles.stripFrost} />
-        <View style={styles.stripFrostWash} />
-      </>
-    ),
-    []
   );
 
   const renderRow = React.useCallback(
@@ -133,8 +121,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: { fontSize: 20, color: '#0f172a', lineHeight: 22 },
-  stripFrost: { ...StyleSheet.absoluteFillObject, backgroundColor: '#a9bfab' },
-  stripFrostWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.45)' },
   stripRow: {
     flexDirection: 'row',
     gap: 8,

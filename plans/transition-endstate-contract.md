@@ -308,3 +308,31 @@ Falsifiers proven RED-able (identity collapse → 4 failures; offset-0 collapse 
 Kill-list executed: strips prop, scene-keyed stripCacheRef/scroll memory/pendingRestore,
 scene-keyed renderMountedBody. Retention K=3 with capacity bark; hidden legs still run
 all-true data lanes until G-ACTIVITY (R2).
+
+## R2 RE-DERIVATION CHECKPOINT (G-READY + G-SKEL + G-ACTIVITY + two-phase flip)
+
+Readiness landed as resolution → phase, all pure (track-entry-readiness.ts): each
+commit an entry resolves to {none | mounted | list(rowCount)}, and a latching ledger
+maps that to a total paint decision {content | skeleton | frozen} — "wait" is
+unrepresentable, so the switch commit always paints. TWO contract sharpenings: (1)
+"ready" is A CONCRETE BODY EXISTS, not "rows exist" — a published list with zero rows
+is the scene SPEAKING (polls' leg-4 bare-white toggle gap, the §6 promise card, every
+declared empty face); gating on rows would replace owner-ratified empty states with a
+host skeleton. Rows-exist remains a separate fact (resolutionHasRealRows) and is what
+the [PERF] cold-flip probe measures (switch-commit → real-rows). (2) OA6.1's frozen
+world got a mechanism: a latched entry whose lane resolves to nothing renders its
+LAST-GOOD body from an entry-keyed store — which also erases the pop-back skeleton
+flash for lane-published children. G-SKEL: the variant rides the existing
+resolveSceneLoadingMaterial (rowType + strip-holes law) through one total resolver.
+G-ACTIVITY: activity derives from presentation (deriveTrackEntryBodyActivity) — hidden
+= attached-but-suspended, activation never revoked; HONESTY NOTE: on today's one-
+FlashList page only the presented leg's rows mount, so hidden mounted bodies are
+structurally unmounted — A3's "byte-exact pop-back hook state" is narrower in code
+than in prose (renderer caches + scroll memory + chrome/strip elements survive; body
+hook state does not). Assigned R6: rule whether hidden-mount retention is required or
+A3's wording is amended. Item-5 scope review: the scene-input lane stays scene-keyed;
+no scene needs entry-SCOPING now, but same-scene pop (pollDetail A→B) can alias A's
+still-published rows into B for a commit until the writer republishes — R6 should
+entry-STAMP the publication so the host can reject a mismatched entryId. Kill-list
+executed: hardcoded restaurant skeleton, all-true activity object, the A7 capacity
+bark (premise deleted), R1's leftover unused vars (host + OneTrackPrototype).
