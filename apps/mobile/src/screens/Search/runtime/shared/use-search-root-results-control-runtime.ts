@@ -12,12 +12,6 @@ import type {
 } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootResultsControlRuntimeValue } from '../controller/search-root-results-control-runtime';
-import {
-  useSearchRootSearchSurfaceResultsTransactionControlLane,
-  useSearchRootResultsPresentationStateControlLane,
-  useSearchRootResultsSheetControlLane,
-  useSearchRootResultsTransitionControlLane,
-} from './use-search-root-results-control-lanes';
 import { useSearchRootResultsInteractionPortPublicationRuntime } from './use-search-root-results-interaction-port-publication-runtime';
 import { useSearchRootResultsPresentationStateRuntime } from './use-search-root-results-presentation-state-runtime';
 import { useSearchRootResultsSheetInteractionModelRuntime } from './use-search-root-results-sheet-interaction-model-runtime';
@@ -57,15 +51,24 @@ export const useSearchRootResultsControlRuntime = ({
     profileOwner,
   });
 
-  const resultsSheetControlLane = useSearchRootResultsSheetControlLane(
-    resultsSheetInteractionModel
+  // F1012 lane-cluster collapse: each lane is the single-field wrapper its deleted
+  // `use-search-root-results-control-lanes.ts` hook produced, memoized PER LANE so a
+  // change in one source cannot invalidate a sibling lane's identity.
+  const resultsSheetControlLane: SearchRootResultsSheetControlLane = React.useMemo(
+    () => ({ resultsSheetInteractionModel }),
+    [resultsSheetInteractionModel]
   );
-  const resultsPresentationStateControlLane =
-    useSearchRootResultsPresentationStateControlLane(presentationState);
-  const resultsTransitionControlLane =
-    useSearchRootResultsTransitionControlLane(closeTransitionActions);
-  const searchSurfaceResultsTransactionControlLane =
-    useSearchRootSearchSurfaceResultsTransactionControlLane(searchSurfaceResultsTransactionKey);
+  const resultsPresentationStateControlLane: SearchRootResultsPresentationStateControlLane =
+    React.useMemo(() => ({ presentationState }), [presentationState]);
+  const resultsTransitionControlLane: SearchRootResultsTransitionControlLane = React.useMemo(
+    () => ({ closeTransitionActions }),
+    [closeTransitionActions]
+  );
+  const searchSurfaceResultsTransactionControlLane: SearchRootSearchSurfaceResultsTransactionControlLane =
+    React.useMemo(
+      () => ({ searchSurfaceResultsTransactionKey }),
+      [searchSurfaceResultsTransactionKey]
+    );
 
   useSearchRootResultsInteractionPortPublicationRuntime({
     resultsInteractionPorts,

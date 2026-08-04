@@ -3,12 +3,6 @@ import React from 'react';
 import { useSearchForegroundLaunchIntentRuntime } from './use-search-foreground-launch-intent-runtime';
 import { useSearchForegroundInteractionRenderRegistrationRuntime } from './use-search-foreground-interaction-effects-runtime';
 import { useSearchRootForegroundEffectsRegistrationArgs } from './use-search-root-foreground-effects-registration-args';
-import {
-  useSearchRootFilterModalControlLane,
-  useSearchRootForegroundInputControlLane,
-  useSearchRootForegroundInteractionControlLane,
-  useSearchRootViewportShortcutControlLane,
-} from './use-search-root-foreground-control-lanes';
 import { useSearchRootForegroundCommandRuntime } from './use-search-root-foreground-command-runtime';
 import { useSearchRootForegroundTransientRuntime } from './use-search-root-foreground-transient-runtime';
 import { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
@@ -19,7 +13,12 @@ import { useSearchRootSubmitControlRuntime } from './use-search-root-submit-cont
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import { createSearchForegroundTransientCleanupActions } from './search-foreground-transient-cleanup-actions';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
-import type { SearchRootViewportShortcutControlLane } from './use-search-root-control-plane-runtime-contract';
+import type {
+  SearchRootFilterModalControlLane,
+  SearchRootForegroundInputControlLane,
+  SearchRootForegroundInteractionControlLane,
+  SearchRootViewportShortcutControlLane,
+} from './use-search-root-control-plane-runtime-contract';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
 import type { useSearchRootRuntimeFoundationStageRuntime } from './use-search-root-runtime-foundation-stage-runtime';
 import type { useSearchRootRuntimeOverlayFoundationAssemblyRuntime } from './use-search-root-runtime-overlay-foundation-assembly-runtime';
@@ -48,12 +47,10 @@ export const useSearchRootRuntimeControlStageRuntime = ({
   controlAuthorityRuntime: ReturnType<typeof useSearchRootControlAuthorityRuntime>;
   profileControlRuntime: ReturnType<typeof useSearchRootControlProfileExperienceRuntime>;
   viewportShortcutControlLane: SearchRootViewportShortcutControlLane;
-  filterModalControlLane: ReturnType<typeof useSearchRootFilterModalControlLane>;
+  filterModalControlLane: SearchRootFilterModalControlLane;
   resultsControlRuntime: ReturnType<typeof useSearchRootControlResultsExperienceRuntime>;
-  foregroundInteractionControlLane: ReturnType<
-    typeof useSearchRootForegroundInteractionControlLane
-  >;
-  foregroundInputControlLane: ReturnType<typeof useSearchRootForegroundInputControlLane>;
+  foregroundInteractionControlLane: SearchRootForegroundInteractionControlLane;
+  foregroundInputControlLane: SearchRootForegroundInputControlLane;
 } => {
   const controlAuthorityRuntime = useSearchRootControlAuthorityRuntime({
     sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,
@@ -94,8 +91,13 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     profileOwner: profileControlRuntime.profileOwner,
     userLocation: appEntryPlaneRuntime.userLocation,
   });
-  const viewportShortcutControlLane = useSearchRootViewportShortcutControlLane(
-    submitRuntimeResult.submitViewportShortcut
+  // F1012 lane-cluster collapse: each lane is the single-field wrapper its deleted
+  // `use-search-root-foreground-control-lanes.ts` hook produced, memoized PER LANE so a
+  // change in one source cannot invalidate a sibling lane's identity.
+  const { submitViewportShortcut } = submitRuntimeResult;
+  const viewportShortcutControlLane: SearchRootViewportShortcutControlLane = React.useMemo(
+    () => ({ submitViewportShortcut }),
+    [submitViewportShortcut]
   );
   const filterModalRuntime = useSearchRootFilterModalRuntime({
     sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,
@@ -106,7 +108,10 @@ export const useSearchRootRuntimeControlStageRuntime = ({
         .resultsPresentationOwner,
     submitRuntimeResult,
   });
-  const filterModalControlLane = useSearchRootFilterModalControlLane(filterModalRuntime);
+  const filterModalControlLane: SearchRootFilterModalControlLane = React.useMemo(
+    () => ({ filterModalRuntime }),
+    [filterModalRuntime]
+  );
   const resultsControlRuntime = useSearchRootControlResultsExperienceRuntime({
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
     rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
@@ -188,11 +193,12 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     }),
     [foregroundCommandRuntime, foregroundTransientHandlersRuntime]
   );
-  const foregroundInteractionControlLane = useSearchRootForegroundInteractionControlLane(
-    foregroundInteractionRuntime
-  );
-  const foregroundInputControlLane = useSearchRootForegroundInputControlLane(
-    controlAuthorityRuntime.presentationAuthorityRuntime.foregroundInputRuntime
+  const foregroundInteractionControlLane: SearchRootForegroundInteractionControlLane =
+    React.useMemo(() => ({ foregroundInteractionRuntime }), [foregroundInteractionRuntime]);
+  const { foregroundInputRuntime } = controlAuthorityRuntime.presentationAuthorityRuntime;
+  const foregroundInputControlLane: SearchRootForegroundInputControlLane = React.useMemo(
+    () => ({ foregroundInputRuntime }),
+    [foregroundInputRuntime]
   );
 
   const foregroundEffectsRegistrationArgs = useSearchRootForegroundEffectsRegistrationArgs({

@@ -8,11 +8,11 @@ import type {
   SearchRootProfileBridgeAuthorityRuntime,
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
-import {
-  useSearchRootMapProfileControlLane,
-  useSearchRootProfilePresentationControlLane,
-  useSearchRootSuggestionInteractionControlLane,
-} from './use-search-root-profile-control-lanes';
+import type {
+  SearchRootMapProfileControlLane,
+  SearchRootProfilePresentationControlLane,
+  SearchRootSuggestionInteractionControlLane,
+} from './use-search-root-control-plane-runtime-contract';
 import { useSearchRootProfileMapCommandRuntime } from './use-search-root-profile-map-command-runtime';
 import { useSearchRootProfileOwnerRuntime } from './use-search-root-profile-owner-runtime';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
@@ -60,18 +60,32 @@ export const useSearchRootProfileControlRuntime = ({
     pendingMarkerOpenAnimationFrameRef: profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
   });
 
-  const suggestionInteractionControlLane = useSearchRootSuggestionInteractionControlLane(
-    profileOwnerRuntime.suggestionInteractionRuntime
+  // F1012 lane-cluster collapse: each lane is the wrapper its deleted
+  // `use-search-root-profile-control-lanes.ts` hook produced, memoized PER LANE so a
+  // change in one source cannot invalidate a sibling lane's identity.
+  const { suggestionInteractionRuntime } = profileOwnerRuntime;
+  const suggestionInteractionControlLane: SearchRootSuggestionInteractionControlLane =
+    React.useMemo(() => ({ suggestionInteractionRuntime }), [suggestionInteractionRuntime]);
+  const { profileOwner, pendingMarkerOpenAnimationFrameRef, restaurantSelectionModel } =
+    profileOwnerRuntime;
+  const profilePresentationControlLane: SearchRootProfilePresentationControlLane = React.useMemo(
+    () => ({
+      profileOwner,
+      stableOpenRestaurantProfileFromResults:
+        profileOwner.profileActions.openRestaurantProfileFromResults,
+      pendingMarkerOpenAnimationFrameRef,
+    }),
+    [profileOwner, pendingMarkerOpenAnimationFrameRef]
   );
-  const profilePresentationControlLane = useSearchRootProfilePresentationControlLane({
-    profileOwner: profileOwnerRuntime.profileOwner,
-    pendingMarkerOpenAnimationFrameRef: profileOwnerRuntime.pendingMarkerOpenAnimationFrameRef,
-  });
-  const mapProfileControlLane = useSearchRootMapProfileControlLane({
-    mapProfileCommandPort: profileMapCommandRuntime.mapProfileCommandPort,
-    mapViewState: profileMapCommandRuntime.mapViewState,
-    restaurantSelectionModel: profileOwnerRuntime.restaurantSelectionModel,
-  });
+  const { mapProfileCommandPort, mapViewState } = profileMapCommandRuntime;
+  const mapProfileControlLane: SearchRootMapProfileControlLane = React.useMemo(
+    () => ({
+      mapProfileCommandPort,
+      mapViewState,
+      restaurantSelectionModel,
+    }),
+    [mapProfileCommandPort, mapViewState, restaurantSelectionModel]
+  );
 
   return React.useMemo<SearchRootProfileControlRuntimeValue>(
     () => ({
