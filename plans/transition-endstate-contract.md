@@ -385,3 +385,19 @@ ONE call site (NavSilhouetteHost.tsx extendActiveRootFromNavReTap). Report-only 
 recorded: G-ROTATE (module-scope Dimensions), G-APPSTATE (wall-clock timers),
 G-A11Y (no announce), G-DIVIDER (registry lacks subscribe semantics — fix belongs
 with sceneScrollStateRegistry), G-MODAL falsifier → R8 grep suite.
+
+## R7 RE-DERIVATION CHECKPOINT (parent-reviewed, landed)
+
+(1) OA1's falsifier is FACTS-AT-REVEAL, not plan-shape: the RED audits residency
+({rowsResident, mapFrameClean}) at the revealed edge, so a plan that silently dropped
+mapFrame still trips it; a liveness-degrade forced reveal is deliberately RED.
+(2) worldJoin membership is two-layered: the SCENE declares family membership (a
+required literal on every foundation-spec row; search by construction), the ENTRY
+carries participation (worldBacked + stamped desire); admission is keyed to the
+active entry — G-ENTRY stacking of listDetail can no longer alias holds.
+(3) D2 fence CLOSED: motion-pending flips on proven facts (willMove, native drag
+begin, hidden excursion) and restores on every rest fact (settle observer, edge
+event, 700ms backstop) — the honest wiring the old deferral demanded. D6 stays
+declare-sheet-always + at-rest self-offer (conditional declaration would race the
+post-txn reveal snap). OA6 correction: home curated lists ARE implemented (verified
+E4); all five mouths arm the SAME join (parity table in the R7 report).
