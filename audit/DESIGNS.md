@@ -894,3 +894,12 @@ never silent.
 **APPROVED (next mobile batch, when the concurrent tracksheet refactor settles):** F1474 then F1473 in that order (write the missing edit-mode-session spec FIRST — it must go RED on the space-containing-id reorder loss — then fix the rejected join(' ') expression the core module already fixed); F1463 (the verbs model takes `kind` so favorites-undeletable is enforced at ONE home, not per-panel); F1453 (isActive leaves ignoreField — it IS render-read three ways and feeds scroll-restore; comparator includes it, spec pins the P3 gate; note the deeper lesson: ignoreField is an unaudited opt-out — a follow-up makes each ignoreField carry a WHY that a spec can check); F1465 (ONE chin-geometry home for the five sites/four numbers); F1475 (the F1371 shape: `if (sheetYValue)` on a non-optional SharedValue makes ~90 lines unreachable — banking re-grep then delete the dead JS spring lane or fix the gate if the lane is wanted; static-provable, no rig needed for the gate itself).
 **Landed in-pass (accepted):** F1450 orphan contracts deleted; F1451 [COMMITDBG] behind the flag with the Profiler tree mounted only when on.
 **Carried unnumbered to next pass:** the polls route-narrowing predicate triplication; the save-list-model spec filename hiding lists-display-order coverage (F1472 recorded).
+
+## D55 — mandate additions (owner, 2026-08-03)
+
+1. **NEW RED-TEAM TERRITORY: search-flow map movement.** The camera's return-to-origin is wrong across entry points (user lists, profile lists, homepage lists, poll-discussion comment spans): the law is "the map returns to the EXACT position where the search flow was triggered" — today the wrong position gets saved, returns land wrong, or the flow gets stuck. The whole search flow (all entry points) gets red-teamed against that law.
+2. **Plan-archaeology is now a REQUIRED Phase-1 step:** every mapper studies the relevant plans/ evolution first — were the goals finished, were the abstractions ideal, what more-ideal primitives were never considered.
+3. **PERFORMANCE joins the ideal-shape rubric as first-class** — an abstraction is not ideal if it is slow; judged everywhere, not as a separate pass.
+4. Priority unchanged: whole-repo coverage + cohesion first; new territories join the queue, not jump it.
+5. Access: exhaust the service-access skill/CLIs (ASC, RC, Stripe...) before declaring anything owner-only.
+6. Reaffirmed: map/LOD core logic (pins/labels/dots, LOD) is hard-won and OFF the red-team table — cleanup of stragglers/contradictions only.
