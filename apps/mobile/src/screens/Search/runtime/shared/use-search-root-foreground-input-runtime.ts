@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchRootForegroundInputRuntimeValue } from '../controller/search-root-foreground-input-runtime';
 import type { SearchRootDataPlaneRuntime } from './use-search-root-session-runtime-contract';
 import type { SearchOverlayStoreRuntime } from './search-root-scaffold-runtime-contract';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
@@ -49,9 +48,8 @@ export const useSearchRootForegroundInputRuntime = ({
     autocompleteRuntime,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchRootForegroundInputRuntimeValue({
+  return React.useMemo<SearchRootForegroundInputRuntime>(
+    () => ({
         captureSearchSessionQuery: foregroundInputSessionRuntime.captureSearchSessionQuery,
         focusSearchInput: foregroundInputFocusRuntime.focusSearchInput,
         handleQueryChange: foregroundInputSessionRuntime.handleQueryChange,

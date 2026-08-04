@@ -1,14 +1,10 @@
 import React from 'react';
 
-import {
-  createSearchRootControlAuthorityRuntimeValue,
-  type SearchRootControlAuthorityRuntimeValue,
-} from '../controller/search-root-control-authority-runtime';
+import type { SearchRootControlAuthorityRuntimeValue } from '../controller/search-root-control-authority-runtime';
 import type { SearchRootMapViewportIntentRuntime } from './search-root-map-viewport-intent-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import { useSearchRootControlFoundationAuthorityRuntime } from './use-search-root-control-foundation-authority-runtime';
 import { useSearchRootControlPresentationAuthorityRuntime } from './use-search-root-control-presentation-authority-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
@@ -21,7 +17,6 @@ type UseSearchRootControlAuthorityRuntimeArgs = {
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
   resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
 };
 
 export const useSearchRootControlAuthorityRuntime = ({
@@ -31,7 +26,6 @@ export const useSearchRootControlAuthorityRuntime = ({
   rootOverlayFoundationRuntime,
   resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
-  searchChromeScalarSurfaceRuntime,
 }: UseSearchRootControlAuthorityRuntimeArgs): SearchRootControlAuthorityRuntimeValue => {
   const foundationAuthorityRuntime = useSearchRootControlFoundationAuthorityRuntime({
     sessionCoreLane,
@@ -48,7 +42,6 @@ export const useSearchRootControlAuthorityRuntime = ({
     autocompleteAuthorityRuntime: foundationAuthorityRuntime.autocompleteAuthorityRuntime,
     resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
-    searchChromeScalarSurfaceRuntime,
   });
   const autocompleteControlLane = React.useMemo(
     () => ({
@@ -57,9 +50,8 @@ export const useSearchRootControlAuthorityRuntime = ({
     [foundationAuthorityRuntime.autocompleteControlPort]
   );
 
-  return React.useMemo(
-    () =>
-      createSearchRootControlAuthorityRuntimeValue({
+  return React.useMemo<SearchRootControlAuthorityRuntimeValue>(
+    () => ({
         foundationAuthorityRuntime,
         presentationAuthorityRuntime,
         autocompleteControlLane,

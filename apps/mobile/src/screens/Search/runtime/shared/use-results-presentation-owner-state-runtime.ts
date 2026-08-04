@@ -16,7 +16,6 @@ import {
   type ResultsPresentationOwnerStateTransitionRuntime,
 } from './use-results-presentation-owner-state-transition-runtime';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 
@@ -52,7 +51,6 @@ export type UseResultsPresentationOwnerStateRuntimeArgs = {
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export type ResultsPresentationOwnerStateRuntime = {
@@ -84,7 +82,6 @@ export const useResultsPresentationOwnerStateRuntime = ({
   emitRuntimeMechanismEvent,
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
-  searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerStateRuntimeArgs): ResultsPresentationOwnerStateRuntime => {
   const sessionRuntime = useResultsPresentationOwnerStateSessionRuntime({
     setActiveTab,
@@ -107,7 +104,6 @@ export const useResultsPresentationOwnerStateRuntime = ({
     searchSurfaceRedrawCoordinatorRef,
     emitRuntimeMechanismEvent,
     onSearchSheetContentLaneChanged,
-    searchChromeScalarSurfacePresentationRuntime,
   });
 
   const transitionRuntime = useResultsPresentationOwnerStateTransitionRuntime({

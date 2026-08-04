@@ -1,6 +1,5 @@
 import { useSearchRootRuntimeSessionAssemblyRuntime } from './use-search-root-runtime-session-assembly-runtime';
 import { useSearchRootRuntimeStateAssemblyRuntime } from './use-search-root-runtime-state-assembly-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import type { SearchPrimitiveUiStateController } from './search-primitive-ui-state-controller';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
@@ -12,7 +11,6 @@ import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-ap
 
 export const useSearchRootRuntimeFoundationStageRuntime = ({
   appEntryPlaneRuntime,
-  searchChromeScalarSurfaceRuntime,
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
@@ -22,7 +20,6 @@ export const useSearchRootRuntimeFoundationStageRuntime = ({
   foregroundPolicyPublicationAuthority,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
@@ -43,7 +40,6 @@ export const useSearchRootRuntimeFoundationStageRuntime = ({
   const stateAssemblyRuntime = useSearchRootRuntimeStateAssemblyRuntime({
     appEntryPlaneRuntime,
     sessionAssemblyRuntime,
-    searchChromeScalarSurfaceRuntime,
     foregroundPolicyPublicationAuthority,
   });
   return {

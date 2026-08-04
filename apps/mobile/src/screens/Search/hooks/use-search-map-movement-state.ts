@@ -14,7 +14,6 @@ import {
 } from '../runtime/map/map-motion-pressure';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
-import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../runtime/native/search-chrome-scalar-surface-primitive-source-runtime';
 import { MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
 import {
   boundsFromCoordinates,
@@ -40,7 +39,6 @@ type UseSearchMapMovementStateArgs = {
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
   anySheetDraggingRef: React.MutableRefObject<boolean>;
   lastSearchBoundsCaptureSeqRef: React.MutableRefObject<number>;
-  searchChromeScalarSurfacePrimitiveSourceRuntime?: SearchChromeScalarSurfacePrimitiveSourceRuntime;
 };
 
 type UseSearchMapMovementStateResult = {
@@ -122,21 +120,12 @@ export const useSearchMapMovementState = ({
   searchInteractionRef,
   anySheetDraggingRef,
   lastSearchBoundsCaptureSeqRef,
-  searchChromeScalarSurfacePrimitiveSourceRuntime,
 }: UseSearchMapMovementStateArgs): UseSearchMapMovementStateResult => {
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const mapMovedSinceSearchRef = React.useRef(false);
   const pendingMapMovedEnterRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
 
-  const writeMapMovedScalarPrimitive = React.useCallback(
-    (mapMovedNext: boolean) => {
-      searchChromeScalarSurfacePrimitiveSourceRuntime?.updatePrimitiveSnapshot({
-        mapMovedSinceSearch: mapMovedNext,
-      });
-    },
-    [searchChromeScalarSurfacePrimitiveSourceRuntime]
-  );
 
   // Startup viewport seed: before the first native camera event, the bootstrap
   // camera's derived bounds fill the ViewportBoundsService so every settled-
@@ -197,7 +186,7 @@ export const useSearchMapMovementState = ({
     [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService]
   );
 
-  // PURE flag reset (the "map moved" boolean + its scalar mirror + the deferred-enter
+  // PURE flag reset (the "map moved" boolean + the deferred-enter
   // latch). The BASELINE is no longer captured here — it is a MIRROR of the desired
   // tuple's committedBounds (the effect below), so "the area STA compares against" and
   // "the area the search ran on" are one value by construction. The seq bump cancels
@@ -206,9 +195,8 @@ export const useSearchMapMovementState = ({
     pendingMapMovedEnterRef.current = false;
     ++lastSearchBoundsCaptureSeqRef.current;
     mapMovedSinceSearchRef.current = false;
-    writeMapMovedScalarPrimitive(false);
     setMapMovedSinceSearch(false);
-  }, [lastSearchBoundsCaptureSeqRef, writeMapMovedScalarPrimitive]);
+  }, [lastSearchBoundsCaptureSeqRef]);
 
   // THE BASELINE MIRROR (§D remaining slice): searchBaselineBounds+submittedPolygon are
   // a PROJECTION of tuple.committedBounds — written here at every committedBounds
@@ -308,7 +296,6 @@ export const useSearchMapMovementState = ({
       }
       pendingMapMovedEnterRef.current = mapMovedRevealAdmission === 'defer_until_idle';
       if (mapMovedRevealAdmission === 'publish_now') {
-        writeMapMovedScalarPrimitive(true);
         setMapMovedSinceSearch(true);
       }
     },
@@ -316,7 +303,6 @@ export const useSearchMapMovementState = ({
       anySheetDraggingRef,
       mapMotionPressureController,
       searchInteractionRef,
-      writeMapMovedScalarPrimitive,
     ]
   );
 

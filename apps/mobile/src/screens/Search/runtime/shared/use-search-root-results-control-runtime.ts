@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchRootResultsControlRuntimeValue } from '../controller/search-root-results-control-runtime';
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootResultsInteractionPorts } from './search-root-control-ports-runtime-contract';
@@ -12,6 +11,7 @@ import type {
   SubmitRuntimeResult,
 } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
+import type { SearchRootResultsControlRuntimeValue } from '../controller/search-root-results-control-runtime';
 import {
   useSearchRootSearchSurfaceResultsTransactionControlLane,
   useSearchRootResultsPresentationStateControlLane,
@@ -72,9 +72,8 @@ export const useSearchRootResultsControlRuntime = ({
     resultsSheetInteractionModel,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchRootResultsControlRuntimeValue({
+  return React.useMemo<SearchRootResultsControlRuntimeValue>(
+    () => ({
         resultsSheetControlLane,
         resultsPresentationStateControlLane,
         resultsTransitionControlLane,

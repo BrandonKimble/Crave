@@ -11,15 +11,3 @@ export type SearchRootResultsControlRuntimeValue = {
   resultsTransitionControlLane: SearchRootResultsTransitionControlLane;
   searchSurfaceResultsTransactionControlLane: SearchRootSearchSurfaceResultsTransactionControlLane;
 };
-
-export const createSearchRootResultsControlRuntimeValue = ({
-  resultsSheetControlLane,
-  resultsPresentationStateControlLane,
-  resultsTransitionControlLane,
-  searchSurfaceResultsTransactionControlLane,
-}: SearchRootResultsControlRuntimeValue): SearchRootResultsControlRuntimeValue => ({
-  resultsSheetControlLane,
-  resultsPresentationStateControlLane,
-  resultsTransitionControlLane,
-  searchSurfaceResultsTransactionControlLane,
-});

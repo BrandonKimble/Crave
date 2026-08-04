@@ -2,7 +2,6 @@ import { useSearchRootMapViewportIntentRuntime } from './use-search-root-map-vie
 import { useSearchRootOverlayFoundationRuntime } from './use-search-root-overlay-foundation-runtime';
 import type { RouteOverlayVisibilityAuthority } from './route-authority-contract';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { useSearchRootRuntimeSessionAssemblyRuntime } from './use-search-root-runtime-session-assembly-runtime';
 import type { useSearchRootRuntimeStateAssemblyRuntime } from './use-search-root-runtime-state-assembly-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
@@ -23,7 +22,6 @@ export const useSearchRootRuntimeOverlayFoundationAssemblyRuntime = ({
   routeSceneRuntime,
   routeOverlayIdentityAuthority,
   routeOverlayVisibilityAuthority,
-  searchChromeScalarSurfaceRuntime,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
   sessionAssemblyRuntime: SearchRootRuntimeSessionAssembly;
@@ -31,7 +29,6 @@ export const useSearchRootRuntimeOverlayFoundationAssemblyRuntime = ({
   routeSceneRuntime: AppRouteSceneRuntime;
   routeOverlayIdentityAuthority: AppRouteSceneRuntime['routeOverlayIdentityAuthority'];
   routeOverlayVisibilityAuthority: RouteOverlayVisibilityAuthority;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
 }) => {
   const rootOverlayFoundationRuntime = useSearchRootOverlayFoundationRuntime({
     insets: appEntryPlaneRuntime.insets,
@@ -41,7 +38,6 @@ export const useSearchRootRuntimeOverlayFoundationAssemblyRuntime = ({
     routeOverlayIdentityAuthority,
     routeOverlayVisibilityAuthority,
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
-    searchChromeScalarSurfaceRuntime,
   });
   const mapViewportIntentRuntime = useSearchRootMapViewportIntentRuntime(
     stateAssemblyRuntime.stateFoundationLane

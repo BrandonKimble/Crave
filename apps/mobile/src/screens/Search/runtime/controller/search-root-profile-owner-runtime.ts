@@ -15,15 +15,3 @@ export type SearchRootProfileOwnerRuntimeValue = {
   pendingMarkerOpenAnimationFrameRef: React.MutableRefObject<number | null>;
   suggestionInteractionRuntime: SuggestionInteractionRuntime;
 };
-
-export const createSearchRootProfileOwnerRuntimeValue = ({
-  profileOwner,
-  restaurantSelectionModel,
-  pendingMarkerOpenAnimationFrameRef,
-  suggestionInteractionRuntime,
-}: SearchRootProfileOwnerRuntimeValue): SearchRootProfileOwnerRuntimeValue => ({
-  profileOwner,
-  restaurantSelectionModel,
-  pendingMarkerOpenAnimationFrameRef,
-  suggestionInteractionRuntime,
-});

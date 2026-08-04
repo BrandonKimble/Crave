@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchFreezeGateRuntimeValue } from '../controller/search-freeze-gate-runtime';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchFreezeGateStateRuntime } from './use-search-freeze-gate-state-runtime';
 import { useSearchResponseFrameFreezeRuntime } from './use-search-response-frame-freeze-runtime';
@@ -54,9 +53,8 @@ export const useSearchFreezeGateRuntime = ({
     searchSurfaceRedrawCommitSpanPressureByOperationRef,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchFreezeGateRuntimeValue({
+  return React.useMemo<UseSearchFreezeGateRuntimeResult>(
+    () => ({
         isSearchSurfaceRedrawChromeFreezeActive:
           freezeGateState.isSearchSurfaceRedrawChromeFreezeActive,
         isSearchSurfaceRedrawPreflightFreezeActive:

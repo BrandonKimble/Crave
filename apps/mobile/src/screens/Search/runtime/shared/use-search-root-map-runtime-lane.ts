@@ -10,7 +10,6 @@ import type {
   SearchRootSessionCoreLane,
   SearchRootSessionPrimitivesLane,
 } from './use-search-root-session-runtime-contract';
-import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
 
 type RootPrimitivesRuntime = {
   mapState: {
@@ -26,7 +25,6 @@ type UseSearchRootMapRuntimeLaneArgs = {
     'latestBoundsRef' | 'viewportBoundsService' | 'searchRuntimeBus'
   >;
   rootSessionPrimitivesLane: SearchRootSessionPrimitivesLane;
-  searchChromeScalarSurfacePrimitiveSourceRuntime?: SearchChromeScalarSurfacePrimitiveSourceRuntime;
 };
 
 export const useSearchRootMapRuntimeLane = ({
@@ -34,7 +32,6 @@ export const useSearchRootMapRuntimeLane = ({
   rootPrimitivesRuntime,
   rootSessionCoreLane,
   rootSessionPrimitivesLane,
-  searchChromeScalarSurfacePrimitiveSourceRuntime,
 }: UseSearchRootMapRuntimeLaneArgs): SearchRootResultsSheetRuntimeLane => {
   const mapMotionPressureControllerRef = React.useRef<MapMotionPressureController | null>(null);
   if (mapMotionPressureControllerRef.current == null) {
@@ -55,7 +52,6 @@ export const useSearchRootMapRuntimeLane = ({
       anySheetDraggingRef: rootSessionPrimitivesLane.primitives.anySheetDraggingRef,
       lastSearchBoundsCaptureSeqRef:
         rootSessionPrimitivesLane.primitives.lastSearchBoundsCaptureSeqRef,
-      searchChromeScalarSurfacePrimitiveSourceRuntime,
     }),
   };
 };

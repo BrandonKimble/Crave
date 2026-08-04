@@ -15,7 +15,6 @@ import {
   type SearchSheetContentLane,
 } from './results-presentation-shell-contract';
 import type { SearchSurfaceVisualPolicySnapshot } from '../surface/search-surface-runtime';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import { resolveSearchHeaderVisualModel } from './results-presentation-shell-visual-runtime';
 import { resolveShortcutToggleDisplayQuery } from './shortcut-toggle-display-query';
 
@@ -44,7 +43,6 @@ type UseResultsPresentationShellModelRuntimeArgs = {
   isCloseTransitionActive: boolean;
   surfaceVisualPolicy: SearchSurfaceVisualPolicySnapshot;
   searchSheetContentLane: SearchSheetContentLane;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export const useResultsPresentationShellModelRuntime = ({
@@ -64,7 +62,6 @@ export const useResultsPresentationShellModelRuntime = ({
   isCloseTransitionActive,
   surfaceVisualPolicy,
   searchSheetContentLane,
-  searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationShellModelRuntimeArgs): SearchResultsShellModel => {
   const backgroundProgress = useDerivedValue(() => {
     const openY = Math.min(resultsSnapY, collapsedY - 1);
@@ -189,12 +186,6 @@ export const useResultsPresentationShellModelRuntime = ({
     surfaceVisualPolicy.transactionId,
   ]);
 
-  searchChromeScalarSurfacePresentationRuntime?.syncShellPresentationScalars({
-    shouldRenderSearchOverlay,
-    headerShortcutsVisibleTarget: headerVisualModel.shortcutsVisibleTarget,
-    headerShortcutsInteractive: headerVisualModel.shortcutsInteractive,
-    backdropTarget: effectiveBackdropTarget,
-  });
 
   return React.useMemo(
     () => ({

@@ -4,7 +4,6 @@ import { selectSearchMode } from './search-desired-tuple-selectors';
 import { useResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import { useResultsPresentationShellModelRuntime } from './use-results-presentation-shell-model-runtime';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import {
   createResultsPresentationPolicyFactsController,
   type ResultsPresentationPolicyFactsLaneChange,
@@ -33,7 +32,6 @@ type UseResultsPresentationShellRuntimeArgs = {
   resultsPresentationAuthority: ResultsPresentationAuthority;
   routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
   resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetTranslateY' | 'snapPoints'>;
 };
 
@@ -50,7 +48,6 @@ export const useResultsPresentationShellRuntime = ({
   resultsPresentationAuthority,
   routeSceneSwitchAuthority,
   onSearchSheetContentLaneChanged,
-  searchChromeScalarSurfacePresentationRuntime,
   resultsSheetRuntime,
 }: UseResultsPresentationShellRuntimeArgs) => {
   const policyFactsControllerRef = React.useRef<ResultsPresentationPolicyFactsController | null>(
@@ -126,7 +123,6 @@ export const useResultsPresentationShellRuntime = ({
     isCloseTransitionActive: surfaceVisualPolicy.phase === 'results_dismissing',
     surfaceVisualPolicy,
     searchSheetContentLane: policyFactsSnapshot.searchSheetContentLane,
-    searchChromeScalarSurfacePresentationRuntime,
   });
 
   return {

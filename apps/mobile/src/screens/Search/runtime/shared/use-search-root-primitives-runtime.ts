@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchRootPrimitivesRuntimeValue } from '../controller/search-root-primitives-runtime';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchRootBootstrapEnvironment } from './search-root-environment-contract';
 import type { SearchPrimitiveUiStateController } from './search-primitive-ui-state-controller';
@@ -30,9 +29,8 @@ export const useSearchRootPrimitivesRuntime = ({
     suggestionPanelStateController,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchRootPrimitivesRuntimeValue({
+  return React.useMemo<SearchRootPrimitivesRuntime>(
+    () => ({
         mapState,
         searchState,
       }),

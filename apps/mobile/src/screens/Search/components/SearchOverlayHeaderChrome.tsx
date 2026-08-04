@@ -20,7 +20,6 @@ import styles from '../styles';
 import SearchHeader from './SearchHeader';
 import SearchShortcutsRow from './SearchShortcutsRow';
 import type { SearchHeaderVisualModel } from '../runtime/shared/use-results-presentation-runtime-owner';
-import { useSearchChromeScalarSurfaceMeasuredControlRef } from '../runtime/native/use-search-chrome-scalar-surface-measured-control-ref';
 
 type SearchHeaderChromeModel = Pick<
   SearchHeaderVisualModel,
@@ -101,8 +100,6 @@ const SearchOverlayHeaderChrome = ({
   handleSearchThisArea,
 }: SearchOverlayHeaderChromeProps) => {
   const { t } = useTranslation();
-  const searchThisAreaScalarSurfaceRef =
-    useSearchChromeScalarSurfaceMeasuredControlRef('search_this_area');
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const searchThisAreaLayoutRef = React.useRef<LayoutRectangle | null>(null);
   const lastSearchThisAreaGeometryKeyRef = React.useRef<string | null>(null);
@@ -214,7 +211,6 @@ const SearchOverlayHeaderChrome = ({
         ]}
       >
         <Pressable
-          ref={searchThisAreaScalarSurfaceRef}
           onPress={handleSearchThisArea}
           style={styles.searchThisAreaButton}
           accessibilityRole="button"

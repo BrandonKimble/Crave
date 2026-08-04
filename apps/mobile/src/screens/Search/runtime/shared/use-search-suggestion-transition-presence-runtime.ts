@@ -9,7 +9,6 @@ export const useSearchSuggestionTransitionPresenceRuntime = ({
   getSuggestionTransitionDurationMs,
   getSuggestionTransitionEasing,
   getSuggestionTransitionDelayMs,
-  searchChromeScalarSurfacePresentationRuntime,
 }: SearchSuggestionTransitionPresenceRuntimeArgs): SearchSuggestionTransitionPresenceRuntime => {
   const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useTransitionDriver(
     {
@@ -21,9 +20,6 @@ export const useSearchSuggestionTransitionPresenceRuntime = ({
     }
   );
   const isSuggestionOverlayVisible = isSuggestionPanelActive || isSuggestionPanelVisible;
-  searchChromeScalarSurfacePresentationRuntime?.syncSuggestionOverlayVisible(
-    isSuggestionOverlayVisible
-  );
 
   return {
     suggestionProgress,

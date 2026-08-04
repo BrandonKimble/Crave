@@ -1,9 +1,6 @@
 import React from 'react';
 
-import {
-  createSearchRootProfileOwnerRuntimeValue,
-  type SearchRootProfileOwnerRuntimeValue,
-} from '../controller/search-root-profile-owner-runtime';
+import type { SearchRootProfileOwnerRuntimeValue } from '../controller/search-root-profile-owner-runtime';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
@@ -109,9 +106,8 @@ export const useSearchRootProfileOwnerRuntime = ({
 
   useRestaurantEntryPopTeardownWriterRuntime({ profileOwner });
 
-  return React.useMemo(
-    () =>
-      createSearchRootProfileOwnerRuntimeValue({
+  return React.useMemo<SearchRootProfileOwnerRuntimeValue>(
+    () => ({
         profileOwner,
         restaurantSelectionModel,
         pendingMarkerOpenAnimationFrameRef,

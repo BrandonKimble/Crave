@@ -6,7 +6,6 @@ import type { ResultsPresentationSurfaceAuthority } from './results-presentation
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import {
@@ -45,7 +44,6 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   searchSurfaceRedrawCoordinatorRef,
   emitRuntimeMechanismEvent,
   onSearchSheetContentLaneChanged,
-  searchChromeScalarSurfacePresentationRuntime,
 }: {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
@@ -75,7 +73,6 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 }): ResultsPresentationOwnerStateSessionRuntime => {
   const bridgeStateRuntime = useResultsPresentationOwnerBridgeStateRuntime({
     setActiveTab,
@@ -103,7 +100,6 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
     routeSceneSwitchAuthority,
     onSearchSheetContentLaneChanged,
     resultsSheetRuntime,
-    searchChromeScalarSurfacePresentationRuntime,
   });
 
   return {

@@ -7,13 +7,3 @@ export type SearchRootControlAuthorityRuntimeValue = {
   presentationAuthorityRuntime: SearchRootControlPresentationAuthorityRuntime;
   autocompleteControlLane: SearchRootAutocompleteControlLane;
 };
-
-export const createSearchRootControlAuthorityRuntimeValue = ({
-  foundationAuthorityRuntime,
-  presentationAuthorityRuntime,
-  autocompleteControlLane,
-}: SearchRootControlAuthorityRuntimeValue): SearchRootControlAuthorityRuntimeValue => ({
-  foundationAuthorityRuntime,
-  presentationAuthorityRuntime,
-  autocompleteControlLane,
-});

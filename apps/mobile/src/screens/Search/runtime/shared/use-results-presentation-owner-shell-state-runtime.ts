@@ -1,5 +1,4 @@
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
@@ -19,7 +18,6 @@ type UseResultsPresentationOwnerShellStateRuntimeArgs = {
   resultsPresentationAuthority: ResultsPresentationAuthority;
   routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
   resultsSheetRuntime: Pick<
     AppRouteSharedSheetRuntimeOwner,
     | 'sheetTranslateY'
@@ -48,7 +46,6 @@ export const useResultsPresentationOwnerShellStateRuntime = ({
   resultsPresentationAuthority,
   routeSceneSwitchAuthority,
   onSearchSheetContentLaneChanged,
-  searchChromeScalarSurfacePresentationRuntime,
   resultsSheetRuntime,
 }: UseResultsPresentationOwnerShellStateRuntimeArgs): ResultsPresentationOwnerShellStateRuntime =>
   useResultsPresentationShellRuntime({
@@ -64,6 +61,5 @@ export const useResultsPresentationOwnerShellStateRuntime = ({
     resultsPresentationAuthority,
     routeSceneSwitchAuthority,
     onSearchSheetContentLaneChanged,
-    searchChromeScalarSurfacePresentationRuntime,
     resultsSheetRuntime,
   });

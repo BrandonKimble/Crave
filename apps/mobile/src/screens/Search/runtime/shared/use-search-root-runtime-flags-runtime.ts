@@ -1,7 +1,6 @@
 import React from 'react';
 import { selectIsSearchSessionActive, selectSearchMode } from './search-desired-tuple-selectors';
 
-import { createSearchRootRuntimeFlagsValue } from '../controller/search-root-data-plane-runtime';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import type {
@@ -61,9 +60,8 @@ export const useSearchRootRuntimeFlagsRuntime = ({
     });
   }, [searchRuntimeBus]);
 
-  return React.useMemo(
-    () =>
-      createSearchRootRuntimeFlagsValue({
+  return React.useMemo<SearchRootRuntimeFlagsRuntime>(
+    () => ({
         searchMode,
         isSearchSessionActive,
         searchSurfaceRedrawOperationId,

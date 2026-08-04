@@ -9,46 +9,6 @@ import type {
 } from '../shared/results-presentation-shell-runtime-contract';
 import type { SearchResultsShellModel } from '../shared/results-presentation-shell-contract';
 
-type ResultsPresentationRuntimeOwnerValue = ResultsPresentationRuntimeOwner;
-
-export const createResultsPresentationRuntimeOwnerValue = ({
-  searchSurfaceResultsTransactionKey,
-  pendingTogglePresentationIntentId,
-  scheduleToggleCommit,
-  cancelToggleInteraction,
-  beginSearchThisAreaPresentationPending,
-  beginVariantRerunPresentationPending,
-  stageSearchSurfaceResultsTransaction,
-  commitSearchSurfaceResultsExitTransaction,
-  clearStagedSearchSurfaceResultsTransaction,
-  handlePageOneResultsCommitted,
-  cancelPresentationIntent,
-  handlePresentationIntentAbort,
-  handleExecutionBatchMountedHidden,
-  handleMarkerEnterStarted,
-  handleMarkerEnterSettled,
-  handleMarkerExitStarted,
-  handleMarkerExitSettled,
-}: ResultsPresentationRuntimeOwnerValue): ResultsPresentationRuntimeOwnerValue => ({
-  searchSurfaceResultsTransactionKey,
-  pendingTogglePresentationIntentId,
-  scheduleToggleCommit,
-  cancelToggleInteraction,
-  beginSearchThisAreaPresentationPending,
-  beginVariantRerunPresentationPending,
-  stageSearchSurfaceResultsTransaction,
-  commitSearchSurfaceResultsExitTransaction,
-  clearStagedSearchSurfaceResultsTransaction,
-  handlePageOneResultsCommitted,
-  cancelPresentationIntent,
-  handlePresentationIntentAbort,
-  handleExecutionBatchMountedHidden,
-  handleMarkerEnterStarted,
-  handleMarkerEnterSettled,
-  handleMarkerExitStarted,
-  handleMarkerExitSettled,
-});
-
 type ResultsPresentationOwnerValue = Pick<
   ResultsPresentationOwner,
   | 'searchSurfaceResultsTransactionKey'

@@ -12,7 +12,6 @@ import type { SearchRootStateFoundationLane } from './use-search-root-foundation
 import { useSearchRootForegroundInputAuthorityRuntime } from './use-search-root-foreground-input-authority-runtime';
 import { useSearchRootResultsInteractionAuthorityRuntime } from './use-search-root-results-interaction-authority-runtime';
 import { useSearchRootResultsPresentationAuthorityRuntime } from './use-search-root-results-presentation-authority-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { SearchRootClearRestoreAuthorityRuntime } from './search-root-control-ports-runtime-contract';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
@@ -27,7 +26,6 @@ type UseSearchRootControlPresentationAuthorityRuntimeArgs = {
   autocompleteAuthorityRuntime: SearchRootAutocompleteAuthorityRuntime;
   resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
 };
 
 export type SearchRootControlPresentationAuthorityRuntime = {
@@ -46,7 +44,6 @@ export const useSearchRootControlPresentationAuthorityRuntime = ({
   autocompleteAuthorityRuntime,
   resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
-  searchChromeScalarSurfaceRuntime,
 }: UseSearchRootControlPresentationAuthorityRuntimeArgs): SearchRootControlPresentationAuthorityRuntime => {
   const resultsInteractionAuthorityRuntime = useSearchRootResultsInteractionAuthorityRuntime();
   const resultsPresentationAuthorityRuntime = useSearchRootResultsPresentationAuthorityRuntime({
@@ -57,7 +54,6 @@ export const useSearchRootControlPresentationAuthorityRuntime = ({
     clearRestoreAuthorityRuntime,
     resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
-    searchChromeScalarSurfaceRuntime,
   });
   const foregroundInputAuthorityRuntime = useSearchRootForegroundInputAuthorityRuntime({
     rootPrimitivesRuntime: stateFoundationLane.rootPrimitivesRuntime,

@@ -8,7 +8,6 @@ import type {
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import { deferMountedResultsCleanupUntilAfterDismiss } from './search-mounted-results-data-store';
@@ -24,7 +23,6 @@ type UseSearchRootResultsPresentationAuthorityRuntimeArgs = {
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
   resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
 };
 
 export const useSearchRootResultsPresentationAuthorityRuntime = ({
@@ -35,7 +33,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
   clearRestoreAuthorityRuntime,
   resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
-  searchChromeScalarSurfaceRuntime,
 }: UseSearchRootResultsPresentationAuthorityRuntimeArgs): SearchRootResultsPresentationAuthorityRuntime => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
   const shouldDisableSearchShortcuts = useShouldDisableSearchShortcuts(
@@ -151,8 +148,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       foregroundPolicyPublicationAuthority?.routeSceneVisibilityPolicyRuntime ??
       rootOverlayFoundationRuntime.routeSceneRuntime.routeSceneVisibilityPolicyRuntime,
     onSearchSheetContentLaneChanged: handleSearchSheetContentLaneChanged,
-    searchChromeScalarSurfacePresentationRuntime:
-      searchChromeScalarSurfaceRuntime?.presentationRuntime,
   });
 
   // F1326 — SCENARIO VERBS ARE WIRED IN AN EFFECT AND UNWIRED ON UNMOUNT.

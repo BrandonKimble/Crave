@@ -1,9 +1,6 @@
 import React from 'react';
 
-import {
-  createSearchRootProfileControlRuntimeValue,
-  type SearchRootProfileControlRuntimeValue,
-} from '../controller/search-root-profile-control-runtime';
+import type { SearchRootProfileControlRuntimeValue } from '../controller/search-root-profile-control-runtime';
 import type { SearchRootEnvironment } from './search-root-environment-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
@@ -76,9 +73,8 @@ export const useSearchRootProfileControlRuntime = ({
     restaurantSelectionModel: profileOwnerRuntime.restaurantSelectionModel,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchRootProfileControlRuntimeValue({
+  return React.useMemo<SearchRootProfileControlRuntimeValue>(
+    () => ({
         profileOwner: profileOwnerRuntime.profileOwner,
         suggestionInteractionControlLane,
         profilePresentationControlLane,

@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createResultsPresentationActionsRuntimeValue } from '../controller/results-presentation-owner-presentation-actions-runtime';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { ResultsPresentationActions } from './results-presentation-shell-runtime-contract';
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
@@ -114,9 +113,8 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     ]
   );
 
-  return React.useMemo(
-    () =>
-      createResultsPresentationActionsRuntimeValue({
+  return React.useMemo<ResultsPresentationActions>(
+    () => ({
         requestSearchPresentationIntent,
         beginCloseSearch: closeActionsRuntime.beginCloseSearch,
         handleCloseResults: closeActionsRuntime.handleCloseResults,

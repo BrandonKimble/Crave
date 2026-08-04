@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchAutocompleteRuntimeValue } from '../controller/search-autocomplete-runtime';
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { Coordinate, MapBounds } from '../../../../types';
 import { useSearchAutocompleteCacheRuntime } from './use-search-autocomplete-cache-runtime';
@@ -23,6 +22,13 @@ type UseSearchAutocompleteRuntimeArgs = {
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   bounds: MapBounds | null;
   userLocation: Coordinate | null;
+};
+
+/** Owned here now: this shape used to live only inside the deleted repacker module. */
+type SearchAutocompleteRuntimeValue = {
+  showCachedSuggestionsIfFresh: (rawQuery: string) => boolean;
+  suppressAutocompleteResults: () => void;
+  allowAutocompleteResults: () => void;
 };
 
 const bucketCoordinate = (value: number | undefined): string =>
@@ -71,9 +77,8 @@ export const useSearchAutocompleteRuntime = ({
     userLocation,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchAutocompleteRuntimeValue({
+  return React.useMemo<SearchAutocompleteRuntimeValue>(
+    () => ({
         showCachedSuggestionsIfFresh: autocompleteCacheRuntime.showCachedSuggestionsIfFresh,
         suppressAutocompleteResults: autocompleteRequestRuntime.suppressAutocompleteResults,
         allowAutocompleteResults: autocompleteRequestRuntime.allowAutocompleteResults,

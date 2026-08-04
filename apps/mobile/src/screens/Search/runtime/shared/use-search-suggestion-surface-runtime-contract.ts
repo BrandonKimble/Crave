@@ -12,7 +12,6 @@ import type {
   RecentlyViewedFood,
   RecentlyViewedRestaurant,
 } from '../../../../services/search';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { SearchStartupGeometrySeed } from './search-startup-geometry';
 
 export type SearchInteractionRef = React.MutableRefObject<{
@@ -62,7 +61,6 @@ export type UseSearchSuggestionSurfaceRuntimeArgs = {
   isAutocompleteLoading: boolean;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setBeginSuggestionCloseHold: (handler: () => boolean) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export type SearchSuggestionVisibilityRuntime = {
@@ -93,7 +91,7 @@ export type SearchSuggestionVisibilityRuntime = {
 
 export type SearchSuggestionTransitionRuntimeArgs = Pick<
   UseSearchSuggestionSurfaceRuntimeArgs,
-  'isSuggestionPanelActive' | 'searchChromeScalarSurfacePresentationRuntime'
+  'isSuggestionPanelActive'
 >;
 
 export type SearchSuggestionTransitionTimingRuntime = {

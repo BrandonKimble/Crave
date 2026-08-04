@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchRootDataPlaneRuntimeValue } from '../controller/search-root-data-plane-runtime';
 import { useSearchFilterStateRuntime } from './use-search-filter-state-runtime';
 import { useSearchFreezeGateRuntime } from './use-search-freeze-gate-runtime';
 import { useSearchHistoryRuntime } from './use-search-history-runtime';
@@ -55,9 +54,8 @@ export const useSearchRootDataPlaneRuntime = ({
   const filterStateRuntime = useSearchFilterStateRuntime(searchRuntimeBus);
   const requestStatusRuntime = useSearchRequestStatusRuntime();
 
-  return React.useMemo(
-    () =>
-      createSearchRootDataPlaneRuntimeValue({
+  return React.useMemo<SearchRootDataPlaneRuntime>(
+    () => ({
         resultsArrivalState,
         runtimeFlags,
         freezeGate,

@@ -1,7 +1,6 @@
 import React from 'react';
 
-import { createSearchRootResultsSheetInteractionModel } from '../controller/search-root-results-sheet-interaction-runtime';
-import { createSearchRootResultsSheetMotionRuntimeValue } from '../controller/search-root-results-sheet-motion-runtime';
+import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
 import type { SubmitRuntimeResult } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
@@ -42,62 +41,46 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
   const resultsSheetSnapRuntime = useSearchRootResultsSheetSnapRuntime({
     interactionStateRuntime: resultsSheetInteractionStateRuntime,
   });
-  const resultsSheetMotionRuntime = React.useMemo(
-    () =>
-      createSearchRootResultsSheetMotionRuntimeValue({
-        handleResultsListScrollBegin:
-          resultsSheetInteractionStateRuntime.handleResultsListScrollBegin,
-        handleResultsListScrollEnd: resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
-        handleResultsListMomentumBegin:
-          resultsSheetInteractionStateRuntime.handleResultsListMomentumBegin,
-        handleResultsListMomentumEnd:
-          resultsSheetInteractionStateRuntime.handleResultsListMomentumEnd,
-        handleResultsSheetDragStateChange:
-          resultsSheetInteractionStateRuntime.handleResultsSheetDragStateChange,
-        handleResultsSheetSettlingChange: resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
-      }),
+  /**
+   * F1619: this used to be TWO repackers in a row. A `motion` value re-wrapped six handlers
+   * (its own hand-copied subset type of `ResultsSheetInteractionModel`), and the model below
+   * immediately read those six fields back out. The motion memo could only change when one of
+   * the six changed — exactly the condition the model's own deps already encode — so it was an
+   * allocation and a copy of the field list, not a memo boundary. The model now reads its
+   * sources directly and `Pick<>`s nothing by hand: the contract type IS the contract.
+   */
+  const resultsSheetInteractionModel = React.useMemo<ResultsSheetInteractionModel>(
+    () => ({
+      handleResultsListScrollBegin: () => {
+        resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
+        resultsSheetInteractionStateRuntime.handleResultsListScrollBegin();
+      },
+      handleResultsListScrollEnd: resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
+      handleResultsListMomentumBegin: () => {
+        resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
+        resultsSheetInteractionStateRuntime.handleResultsListMomentumBegin();
+      },
+      handleResultsListMomentumEnd:
+        resultsSheetInteractionStateRuntime.handleResultsListMomentumEnd,
+      handleResultsSheetDragStateChange:
+        resultsSheetInteractionStateRuntime.handleResultsSheetDragStateChange,
+      handleResultsSheetSettlingChange: resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
+      handleResultsEndReached: resultsSheetLoadMoreRuntime.handleResultsEndReached,
+      resetResultsListScrollProgress: resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
+      handleResultsListUserScrollActivity:
+        resultsSheetLoadMoreRuntime.handleResultsListUserScrollActivity,
+    }),
     [
       resultsSheetInteractionStateRuntime.handleResultsListMomentumBegin,
       resultsSheetInteractionStateRuntime.handleResultsListMomentumEnd,
       resultsSheetInteractionStateRuntime.handleResultsListScrollBegin,
       resultsSheetInteractionStateRuntime.handleResultsListScrollEnd,
       resultsSheetInteractionStateRuntime.handleResultsSheetDragStateChange,
-      resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
-    ]
-  );
-  const resultsSheetInteractionModel = React.useMemo(
-    () =>
-      createSearchRootResultsSheetInteractionModel({
-        handleResultsListScrollBegin: () => {
-          resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
-          resultsSheetMotionRuntime.handleResultsListScrollBegin();
-        },
-        handleResultsListScrollEnd: resultsSheetMotionRuntime.handleResultsListScrollEnd,
-        handleResultsListMomentumBegin: () => {
-          resultsSheetLoadMoreRuntime.markResultsListUserScrollStart();
-          resultsSheetMotionRuntime.handleResultsListMomentumBegin();
-        },
-        handleResultsListMomentumEnd: resultsSheetMotionRuntime.handleResultsListMomentumEnd,
-        handleResultsSheetDragStateChange:
-          resultsSheetMotionRuntime.handleResultsSheetDragStateChange,
-        handleResultsSheetSettlingChange:
-          resultsSheetMotionRuntime.handleResultsSheetSettlingChange,
-        handleResultsEndReached: resultsSheetLoadMoreRuntime.handleResultsEndReached,
-        resetResultsListScrollProgress: resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
-        handleResultsListUserScrollActivity:
-          resultsSheetLoadMoreRuntime.handleResultsListUserScrollActivity,
-      }),
-    [
       resultsSheetLoadMoreRuntime.handleResultsEndReached,
       resultsSheetLoadMoreRuntime.handleResultsListUserScrollActivity,
       resultsSheetLoadMoreRuntime.markResultsListUserScrollStart,
       resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
-      resultsSheetMotionRuntime.handleResultsListMomentumBegin,
-      resultsSheetMotionRuntime.handleResultsListMomentumEnd,
-      resultsSheetMotionRuntime.handleResultsListScrollBegin,
-      resultsSheetMotionRuntime.handleResultsListScrollEnd,
-      resultsSheetMotionRuntime.handleResultsSheetDragStateChange,
-      resultsSheetMotionRuntime.handleResultsSheetSettlingChange,
+      resultsSheetSnapRuntime.handleResultsSheetSettlingChange,
     ]
   );
 

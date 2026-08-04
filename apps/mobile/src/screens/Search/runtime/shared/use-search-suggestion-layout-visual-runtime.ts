@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchSuggestionLayoutVisualRuntimeValue } from '../controller/search-suggestion-layout-visual-runtime';
 import type {
   SearchSuggestionLayoutVisualRuntime,
   SearchSuggestionLayoutVisualRuntimeArgs,
@@ -43,9 +42,8 @@ export const useSearchSuggestionLayoutVisualRuntime = ({
       suggestionLayoutGeometryRuntime.suggestionScrollMaxHeightTarget,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchSuggestionLayoutVisualRuntimeValue({
+  return React.useMemo<SearchSuggestionLayoutVisualRuntime>(
+    () => ({
         resetSearchHeaderFocusProgress:
           suggestionLayoutAnimationRuntime.resetSearchHeaderFocusProgress,
         searchHeaderFocusProgress: suggestionLayoutAnimationRuntime.searchHeaderFocusProgress,

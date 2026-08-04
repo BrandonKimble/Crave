@@ -4,7 +4,6 @@ import type React from 'react';
 import type { TextInput } from 'react-native';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
-import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
 import type { ToggleStripCacheSeat } from '../../../../toggles/toggle-strip-layout-cache';
 import type { SearchMapMarkerEngineHandle } from '../../components/SearchMapWithMarkerEngine';
 import type { MapboxMapRef } from '../../components/search-map';
@@ -33,9 +32,6 @@ export type SearchRootSearchStateRuntime = {
     getSnapshot: () => boolean;
   };
   setShouldDisableSearchShortcuts: (disabled: boolean) => void;
-  setSearchChromeScalarPrimitiveTarget: (
-    target: Pick<SearchChromeScalarSurfacePrimitiveSourceRuntime, 'updatePrimitiveSnapshot'> | null
-  ) => () => void;
   // F1308 — TWO WRITE-ONLY `useState` PAIRS ARE GONE FROM HERE.
   //
   // `showSuggestions` and `error` were both declared as `const [, setX] = useState(...)` — the

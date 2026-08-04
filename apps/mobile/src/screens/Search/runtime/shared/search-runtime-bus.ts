@@ -148,15 +148,6 @@ export type SearchRuntimeBusDiagnosticsSnapshot = {
 
 export type SearchRuntimeBusPolicyFactsSnapshot = ResultsPresentationFreezePolicyFacts;
 
-export type SearchRuntimeBusSearchChromeScalarPrimitiveTarget = {
-  updatePrimitiveSnapshot: (patch: {
-    isSearchSessionActive?: boolean;
-    isSearchLoading?: boolean;
-    isLoadingMore?: boolean;
-    hasResults?: boolean;
-  }) => void;
-};
-
 const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
   transitionStatus: 'idle',
   restaurantPanelSnapshot: null,
@@ -236,9 +227,6 @@ export class SearchRuntimeBus {
 
   private pendingChangedKeys: Set<SearchRuntimeBusKey> | null = null;
 
-  private searchChromeScalarPrimitiveTarget: SearchRuntimeBusSearchChromeScalarPrimitiveTarget | null =
-    null;
-
   private readonly diagnosticsRing: SearchRuntimeBusDiagnosticEntry[] = [];
 
   public getState(): SearchRuntimeBusState {
@@ -282,22 +270,7 @@ export class SearchRuntimeBus {
   public reset(): void {
     this.state = INITIAL_STATE;
     this.policyFactsSnapshot = resolveSearchRuntimeBusPolicyFactsSnapshot(INITIAL_STATE);
-    this.syncSearchChromeScalarPrimitiveTarget(
-      new Set(Object.keys(INITIAL_STATE) as SearchRuntimeBusKey[])
-    );
     this.bump(new Set(Object.keys(INITIAL_STATE) as SearchRuntimeBusKey[]));
-  }
-
-  public setSearchChromeScalarPrimitiveTarget(
-    target: SearchRuntimeBusSearchChromeScalarPrimitiveTarget | null
-  ): () => void {
-    this.searchChromeScalarPrimitiveTarget = target;
-    this.syncSearchChromeScalarPrimitiveTarget(null);
-    return () => {
-      if (this.searchChromeScalarPrimitiveTarget === target) {
-        this.searchChromeScalarPrimitiveTarget = null;
-      }
-    };
   }
 
   public publish(patch: Partial<SearchRuntimeBusState>): void {
@@ -320,7 +293,6 @@ export class SearchRuntimeBus {
     }
     this.state = nextState;
     this.policyFactsSnapshot = resolveSearchRuntimeBusPolicyFactsSnapshot(nextState);
-    this.syncSearchChromeScalarPrimitiveTarget(changedKeys);
     this.bump(changedKeys);
     this.recordDiagnostic('publish', changedKeys, resolveSearchRuntimeBusPerfNow() - startedAt);
   }
@@ -387,43 +359,6 @@ export class SearchRuntimeBus {
         notifiedListenerLabels
       );
     }
-  }
-
-  private syncSearchChromeScalarPrimitiveTarget(
-    changedKeys: ReadonlySet<SearchRuntimeBusKey> | null
-  ): void {
-    const target = this.searchChromeScalarPrimitiveTarget;
-    if (target == null) {
-      return;
-    }
-    if (
-      changedKeys != null &&
-      !changedKeys.has('desiredTuple') &&
-      !changedKeys.has('isSearchLoading') &&
-      !changedKeys.has('isLoadingMore') &&
-      !changedKeys.has('results') &&
-      !changedKeys.has('resultsRequestKey') &&
-      !changedKeys.has('resultsIdentityCandidateKey') &&
-      !changedKeys.has('resultsDishCount') &&
-      !changedKeys.has('resultsRestaurantCount')
-    ) {
-      return;
-    }
-    target.updatePrimitiveSnapshot({
-      // S4e: the session-active rule inlined from selectIsSearchSessionActive (the
-      // selectors module imports this file — type-only, but keep the value dep one-way).
-      isSearchSessionActive:
-        this.state.desiredTuple.queryIdentity.kind !== 'idle' &&
-        this.state.desiredTuple.queryIdentity.kind !== 'profileSeed',
-      isSearchLoading: this.state.isSearchLoading,
-      isLoadingMore: this.state.isLoadingMore,
-      hasResults:
-        this.state.results != null ||
-        this.state.resultsRequestKey != null ||
-        this.state.resultsIdentityCandidateKey != null ||
-        this.state.resultsDishCount > 0 ||
-        this.state.resultsRestaurantCount > 0,
-    });
   }
 
   private recordDiagnostic(

@@ -1,7 +1,5 @@
 import React from 'react';
 
-import { createSearchRootStateFoundationRuntimeValue } from '../controller/search-root-state-foundation-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
@@ -17,7 +15,6 @@ type UseSearchRootStateFoundationRuntimeArgs = {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   sessionCoreLane: SearchRootSessionCoreLane;
   sessionPrimitivesLane: SearchRootSessionPrimitivesLane;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
   foregroundPolicyPublicationAuthority: SearchForegroundPolicyPublicationAuthority;
 };
 
@@ -26,7 +23,6 @@ export const useSearchRootStateFoundationRuntime = ({
   rootPrimitivesRuntime,
   sessionCoreLane,
   sessionPrimitivesLane,
-  searchChromeScalarSurfaceRuntime,
   foregroundPolicyPublicationAuthority,
 }: UseSearchRootStateFoundationRuntimeArgs): SearchRootStateFoundationLane => {
   const rootDataPlaneRuntime = useSearchRootDataPlaneRuntime({
@@ -39,13 +35,10 @@ export const useSearchRootStateFoundationRuntime = ({
     rootPrimitivesRuntime,
     rootSessionPrimitivesLane: sessionPrimitivesLane,
     rootDataPlaneRuntime,
-    searchChromeScalarSurfacePresentationRuntime:
-      searchChromeScalarSurfaceRuntime?.presentationRuntime,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchRootStateFoundationRuntimeValue({
+  return React.useMemo<SearchRootStateFoundationLane>(
+    () => ({
         rootPrimitivesRuntime,
         sessionPrimitivesLane,
         rootDataPlaneRuntime,

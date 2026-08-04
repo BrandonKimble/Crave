@@ -1,7 +1,6 @@
 import React from 'react';
 import { selectSubmittedQuery } from './search-desired-tuple-selectors';
 
-import { createSearchRootResultsArrivalStateValue } from '../controller/search-root-data-plane-runtime';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import type {
   SearchRootResultsArrivalState,
@@ -71,8 +70,8 @@ export const useSearchRootResultsArrivalRuntime = ({
     ] as const,
     'root_results_arrival_runtime'
   );
-  return React.useMemo(() => {
-    return createSearchRootResultsArrivalStateValue({
+  return React.useMemo<SearchRootResultsArrivalState>(() => {
+    return {
       currentResults: null,
       hasResults: hasVisibleSearchResultsSurface({
         resultsRequestKey: resultsArrivalScalarState.resultsRequestKey,
@@ -88,7 +87,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       resultsRequestKey: resultsArrivalScalarState.resultsRequestKey,
       submittedQuery: resultsArrivalScalarState.submittedQuery,
       resultsPage: resultsArrivalScalarState.resultsPage,
-    });
+    };
   }, [
     resultsArrivalScalarState.canLoadMore,
     resultsArrivalScalarState.currentPage,

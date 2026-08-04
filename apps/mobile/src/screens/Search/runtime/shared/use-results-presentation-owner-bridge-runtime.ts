@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createResultsPresentationRuntimeOwnerValue } from '../controller/results-presentation-owner-runtime';
 import type { ResultsPresentationLog } from './results-presentation-runtime-contract';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
@@ -66,15 +65,32 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
     notifyIntentCompleteRef,
   });
 
-  const resultsRuntimeOwner = React.useMemo(
-    () =>
-      createResultsPresentationRuntimeOwnerValue({
-        ...resultsRuntimeMachineOwner,
-        pendingTogglePresentationIntentId:
-          resultsInteractionRuntime.pendingTogglePresentationIntentId,
-        scheduleToggleCommit: resultsInteractionRuntime.scheduleToggleCommit,
-        cancelToggleInteraction: resultsInteractionRuntime.cancelToggleInteraction,
-      }),
+  /**
+   * F1610: the repacker this replaced destructured seventeen named fields, so like the other
+   * spread sites in this cluster it was also a runtime FILTER — a bare
+   * `{ ...resultsRuntimeMachineOwner, ... }` inline would keep the type but change the value.
+   * The fields are named explicitly; the contract type on the memo is what keeps them honest.
+   */
+  const resultsRuntimeOwner = React.useMemo<ResultsPresentationRuntimeOwner>(
+    () => ({
+      beginSearchThisAreaPresentationPending: resultsRuntimeMachineOwner.beginSearchThisAreaPresentationPending,
+      beginVariantRerunPresentationPending: resultsRuntimeMachineOwner.beginVariantRerunPresentationPending,
+      cancelPresentationIntent: resultsRuntimeMachineOwner.cancelPresentationIntent,
+      cancelToggleInteraction: resultsInteractionRuntime.cancelToggleInteraction,
+      clearStagedSearchSurfaceResultsTransaction: resultsRuntimeMachineOwner.clearStagedSearchSurfaceResultsTransaction,
+      commitSearchSurfaceResultsExitTransaction: resultsRuntimeMachineOwner.commitSearchSurfaceResultsExitTransaction,
+      handleExecutionBatchMountedHidden: resultsRuntimeMachineOwner.handleExecutionBatchMountedHidden,
+      handleMarkerEnterSettled: resultsRuntimeMachineOwner.handleMarkerEnterSettled,
+      handleMarkerEnterStarted: resultsRuntimeMachineOwner.handleMarkerEnterStarted,
+      handleMarkerExitSettled: resultsRuntimeMachineOwner.handleMarkerExitSettled,
+      handleMarkerExitStarted: resultsRuntimeMachineOwner.handleMarkerExitStarted,
+      handlePageOneResultsCommitted: resultsRuntimeMachineOwner.handlePageOneResultsCommitted,
+      handlePresentationIntentAbort: resultsRuntimeMachineOwner.handlePresentationIntentAbort,
+      pendingTogglePresentationIntentId: resultsInteractionRuntime.pendingTogglePresentationIntentId,
+      scheduleToggleCommit: resultsInteractionRuntime.scheduleToggleCommit,
+      searchSurfaceResultsTransactionKey: resultsRuntimeMachineOwner.searchSurfaceResultsTransactionKey,
+      stageSearchSurfaceResultsTransaction: resultsRuntimeMachineOwner.stageSearchSurfaceResultsTransaction,
+    }),
     [resultsInteractionRuntime, resultsRuntimeMachineOwner]
   );
 

@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchSuggestionLayoutStateRuntimeValue } from '../controller/search-suggestion-layout-state-runtime';
 import type {
   SearchSuggestionLayoutStateRuntime,
   SearchSuggestionLayoutStateRuntimeArgs,
@@ -45,37 +44,41 @@ export const useSearchSuggestionLayoutStateRuntime = ({
       searchSuggestionShortcutLayoutRuntime.cachedSearchShortcutChipFrames,
   });
 
-  return React.useMemo(
-    () =>
-      createSearchSuggestionLayoutStateRuntimeValue({
-        shouldDriveSuggestionLayout,
-        handleSuggestionContentSizeChange:
-          suggestionContentHeightRuntime.handleSuggestionContentSizeChange,
-        searchLayout: searchSuggestionSearchLayoutRuntime.searchLayout,
-        searchBarFrame: searchSuggestionSearchLayoutRuntime.searchBarFrame,
-        handleSearchHeaderLayout: searchSuggestionSearchLayoutRuntime.handleSearchHeaderLayout,
-        handleSearchContainerLayout:
-          searchSuggestionSearchLayoutRuntime.handleSearchContainerLayout,
-        handleSearchShortcutsRowLayout:
-          searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsRowLayout,
-        handleRestaurantsShortcutLayout:
-          searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
-        handleDishesShortcutLayout:
-          searchSuggestionShortcutLayoutRuntime.handleDishesShortcutLayout,
-        suggestionContentHeight: suggestionContentHeightRuntime.suggestionContentHeight,
-        shouldFreezeSuggestionHeader:
-          searchSuggestionLayoutResolutionRuntime.shouldFreezeSuggestionHeader,
-        shouldIncludeShortcutHoles:
-          searchSuggestionLayoutResolutionRuntime.shouldIncludeShortcutHoles,
-        shouldIncludeShortcutLayout:
-          searchSuggestionLayoutResolutionRuntime.shouldIncludeShortcutLayout,
-        resolvedSearchContainerFrame:
-          searchSuggestionLayoutResolutionRuntime.resolvedSearchContainerFrame,
-        resolvedSearchShortcutsFrame:
-          searchSuggestionLayoutResolutionRuntime.resolvedSearchShortcutsFrame,
-        resolvedSearchShortcutChipFrames:
-          searchSuggestionLayoutResolutionRuntime.resolvedSearchShortcutChipFrames,
-      }),
+  /**
+   * F1620: the repacker this replaced re-declared all sixteen fields of
+   * `SearchSuggestionLayoutStateRuntime` as an inline parameter type — a hand transcription
+   * with nothing holding it to the contract, so a field REMOVED from the contract would have
+   * gone stale here in silence. Typing the memo with the contract itself is the fix: the
+   * transcription is gone, and both additions and removals are now tsc errors.
+   */
+  return React.useMemo<SearchSuggestionLayoutStateRuntime>(
+    () => ({
+      shouldDriveSuggestionLayout,
+      handleSuggestionContentSizeChange:
+        suggestionContentHeightRuntime.handleSuggestionContentSizeChange,
+      searchLayout: searchSuggestionSearchLayoutRuntime.searchLayout,
+      searchBarFrame: searchSuggestionSearchLayoutRuntime.searchBarFrame,
+      handleSearchHeaderLayout: searchSuggestionSearchLayoutRuntime.handleSearchHeaderLayout,
+      handleSearchContainerLayout: searchSuggestionSearchLayoutRuntime.handleSearchContainerLayout,
+      handleSearchShortcutsRowLayout:
+        searchSuggestionShortcutLayoutRuntime.handleSearchShortcutsRowLayout,
+      handleRestaurantsShortcutLayout:
+        searchSuggestionShortcutLayoutRuntime.handleRestaurantsShortcutLayout,
+      handleDishesShortcutLayout: searchSuggestionShortcutLayoutRuntime.handleDishesShortcutLayout,
+      suggestionContentHeight: suggestionContentHeightRuntime.suggestionContentHeight,
+      shouldFreezeSuggestionHeader:
+        searchSuggestionLayoutResolutionRuntime.shouldFreezeSuggestionHeader,
+      shouldIncludeShortcutHoles:
+        searchSuggestionLayoutResolutionRuntime.shouldIncludeShortcutHoles,
+      shouldIncludeShortcutLayout:
+        searchSuggestionLayoutResolutionRuntime.shouldIncludeShortcutLayout,
+      resolvedSearchContainerFrame:
+        searchSuggestionLayoutResolutionRuntime.resolvedSearchContainerFrame,
+      resolvedSearchShortcutsFrame:
+        searchSuggestionLayoutResolutionRuntime.resolvedSearchShortcutsFrame,
+      resolvedSearchShortcutChipFrames:
+        searchSuggestionLayoutResolutionRuntime.resolvedSearchShortcutChipFrames,
+    }),
     [
       searchSuggestionLayoutResolutionRuntime.resolvedSearchContainerFrame,
       searchSuggestionLayoutResolutionRuntime.resolvedSearchShortcutChipFrames,

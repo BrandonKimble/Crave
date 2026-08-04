@@ -14,8 +14,6 @@ import { useSearchRootRouteControlRuntime } from './use-search-root-route-contro
 import { useSearchRootRouteOverlayHostPublicationLanesRuntime } from './use-search-root-route-overlay-host-publication-lanes-runtime';
 import { useSearchRootRouteSurfaceHostRuntime } from './use-search-root-route-surface-host-runtime';
 import { useSearchRootRuntimeVisualStageRuntime } from './use-search-root-runtime-visual-stage-runtime';
-import { createSearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
-import { useSearchChromeScalarSurfaceRuntimeBusPrimitiveSourceRuntime } from '../native/use-search-chrome-scalar-surface-runtime-bus-primitive-source-runtime';
 import { useSearchRouteResultsPolicyDomainRuntime } from './use-search-route-results-policy-domain-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
 import type { SearchRootRuntimeStageRuntime } from './search-root-runtime-stage-contract';
@@ -25,10 +23,6 @@ export const useSearchRootRuntimeStageRuntime = ({
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
 }): SearchRootRuntimeStageRuntime => {
-  const searchChromeScalarSurfaceRuntime = React.useMemo(
-    () => createSearchChromeScalarSurfaceRuntime(),
-    []
-  );
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const searchRouteResultsPolicyRuntime = useSearchRouteResultsPolicyDomainRuntime({
     routeSceneRuntime,
@@ -36,7 +30,6 @@ export const useSearchRootRuntimeStageRuntime = ({
   const { sessionAssemblyRuntime, stateAssemblyRuntime, searchRuntimeBus } =
     useSearchRootRuntimeFoundationStageRuntime({
       appEntryPlaneRuntime,
-      searchChromeScalarSurfaceRuntime,
       searchRuntimeBus: searchRouteResultsPolicyRuntime.searchRuntimeBus,
       resultsPresentationAuthority: searchRouteResultsPolicyRuntime.resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority:
@@ -48,20 +41,6 @@ export const useSearchRootRuntimeStageRuntime = ({
       foregroundPolicyPublicationAuthority:
         searchRouteResultsPolicyRuntime.foregroundPolicyPublicationAuthority,
     });
-  useSearchChromeScalarSurfaceRuntimeBusPrimitiveSourceRuntime({
-    primitiveSourceRuntime: searchChromeScalarSurfaceRuntime.primitiveSourceRuntime,
-    searchRuntimeBus,
-  });
-  React.useEffect(
-    () =>
-      stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState.setSearchChromeScalarPrimitiveTarget(
-        searchChromeScalarSurfaceRuntime.primitiveSourceRuntime
-      ),
-    [
-      searchChromeScalarSurfaceRuntime.primitiveSourceRuntime,
-      stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState,
-    ]
-  );
   const { routeRestaurantOverlayRuntime, routeSceneSwitchAuthority } =
     useSearchRootRouteControlRuntime({
       routeSceneRuntime,
@@ -83,7 +62,6 @@ export const useSearchRootRuntimeStageRuntime = ({
     routeSceneRuntime,
     routeOverlayIdentityAuthority: routeSceneRuntime.routeOverlayIdentityAuthority,
     routeOverlayVisibilityAuthority,
-    searchChromeScalarSurfaceRuntime,
   });
   const controlStageRuntime = useSearchRootRuntimeControlStageRuntime({
     appEntryPlaneRuntime,
@@ -93,7 +71,6 @@ export const useSearchRootRuntimeStageRuntime = ({
     resultsSurfacePolicyController: searchRouteResultsPolicyRuntime.surfacePolicyController,
     foregroundPolicyPublicationAuthority:
       searchRouteResultsPolicyRuntime.foregroundPolicyPublicationAuthority,
-    searchChromeScalarSurfaceRuntime,
   });
   const {
     controlAuthorityRuntime,
@@ -111,7 +88,6 @@ export const useSearchRootRuntimeStageRuntime = ({
     controlAuthorityRuntime,
     resultsControlRuntime,
     viewportShortcutControlLane,
-    searchChromeScalarSurfaceRuntime,
   });
   const appRouteSceneCameraMotionTargetPorts = React.useMemo(
     () => ({

@@ -43,9 +43,19 @@ export const useSearchRootMapSurfaceStateRuntime = ({
         mapViewportIntentRuntime,
       }),
     [
+      // F1610/F1611 (second site, found 2026-08-04 by the mechanical dep-coverage scanner):
+      // `createSearchRootMapSurfaceState` READS mapBearing and mapPitch, and this dep array
+      // omitted both — so a bearing/pitch-only intent could not invalidate this memo, and the
+      // stale `mapSurfaceState` it returned is exactly what feeds the presentation-props memo
+      // where F1611 was hand-fixed in 68e61fed7. That fix could not take effect while this
+      // gate withheld the recompute. Latent, not live (no shipping path emits a bearing/
+      // pitch-only intent — see the sim attribution), but the truth is restored here and the
+      // scanner in spec-support/repacker-dep-array-coverage.spec.ts now holds it.
       mapViewportIntentRuntime.isFollowingUser,
+      mapViewportIntentRuntime.mapBearing,
       mapViewportIntentRuntime.mapCameraAnimation,
       mapViewportIntentRuntime.mapCenter,
+      mapViewportIntentRuntime.mapPitch,
       mapViewportIntentRuntime.mapZoom,
       stateFoundationLane.rootPrimitivesRuntime.mapState.cameraRef,
       stateFoundationLane.rootPrimitivesRuntime.mapState.mapRef,

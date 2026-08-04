@@ -2,12 +2,13 @@ import api from './api';
 
 /** Onboarding teaser payload (business/signal/teaser-spec.md). Public
  *  endpoint — works pre-auth; the api client simply omits the bearer token. */
+/** The teaser shows exactly one kind of number: the Crave score a restaurant
+ *  card shows. Counts and numeric claims were deleted from the payload
+ *  (owner ruling 2026-08-02, F109/D7) — there is nothing else to render. */
 export interface TeaserRow {
   dishName: string;
   restaurantName: string;
   score: number;
-  mentionCount: number;
-  totalUpvotes: number;
 }
 
 export interface TeaserRestaurantRow {
@@ -27,7 +28,6 @@ export interface TeaserPreviewPayload {
   city: string;
   top: TeaserRow;
   runners: TeaserRow[];
-  totalCount: number;
   restaurants: TeaserRestaurantSet | null;
 }
 

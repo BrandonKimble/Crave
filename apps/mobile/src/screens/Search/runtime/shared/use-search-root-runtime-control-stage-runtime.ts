@@ -16,7 +16,6 @@ import { useSearchRootControlProfileExperienceRuntime } from './use-search-root-
 import { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
 import { useSearchRootFilterModalRuntime } from './use-search-root-filter-modal-runtime';
 import { useSearchRootSubmitControlRuntime } from './use-search-root-submit-control-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import { createSearchForegroundTransientCleanupActions } from './search-foreground-transient-cleanup-actions';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
@@ -32,7 +31,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
   overlayFoundationAssemblyRuntime,
   resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
-  searchChromeScalarSurfaceRuntime,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
   sessionAssemblyRuntime: ReturnType<
@@ -46,7 +44,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
   >;
   resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
-  searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
 }): {
   controlAuthorityRuntime: ReturnType<typeof useSearchRootControlAuthorityRuntime>;
   profileControlRuntime: ReturnType<typeof useSearchRootControlProfileExperienceRuntime>;
@@ -65,7 +62,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     rootOverlayFoundationRuntime: overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime,
     resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
-    searchChromeScalarSurfaceRuntime,
   });
   const profileControlRuntime = useSearchRootControlProfileExperienceRuntime({
     sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,

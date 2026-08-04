@@ -1,6 +1,8 @@
 import React from 'react';
 
-import { createResultsPresentationCloseTransitionRuntimeValue } from '../controller/results-presentation-close-transition-runtime';
+import type { OverlayKey } from '../../../../overlays/types';
+import type { ResultsCloseTransitionActions } from './results-presentation-shell-runtime-contract';
+
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
@@ -20,9 +22,18 @@ type UseResultsPresentationCloseTransitionRuntimeArgs = {
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
 
-type ResultsPresentationCloseTransitionRuntime = ReturnType<
-  typeof createResultsPresentationCloseTransitionRuntimeValue
->;
+/** Owned here now: this shape used to live only inside the deleted repacker module. */
+type ResultsPresentationCloseTransitionRuntime = {
+  closeTransitionActions: ResultsCloseTransitionActions;
+  beginCloseTransition: (
+    closeIntentId: string,
+    options?: {
+      outgoingSheetSceneKey?: OverlayKey | null;
+    }
+  ) => void;
+  setPendingCloseIntentId: (intentId: string | null) => void;
+  matchesPendingCloseIntentId: (intentId: string) => boolean;
+};
 
 export const useResultsPresentationCloseTransitionRuntime = ({
   clearSearchState,
@@ -35,9 +46,8 @@ export const useResultsPresentationCloseTransitionRuntime = ({
     routeSceneVisibilityPolicyRuntime,
   });
 
-  return React.useMemo(
-    () =>
-      createResultsPresentationCloseTransitionRuntimeValue({
+  return React.useMemo<ResultsPresentationCloseTransitionRuntime>(
+    () => ({
         closeTransitionActions: closeTransitionStateRuntime.closeTransitionActions,
         beginCloseTransition: closeTransitionStateRuntime.beginCloseTransition,
         setPendingCloseIntentId: closeTransitionStateRuntime.setPendingCloseIntentId,

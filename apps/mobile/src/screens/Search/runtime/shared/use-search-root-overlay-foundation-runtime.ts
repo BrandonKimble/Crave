@@ -17,7 +17,6 @@ import type {
 } from './search-root-environment-contract';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import type { PresentationFrame } from '../../../../navigation/runtime/app-route-presentation-frame-contract';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 
 // Thin adapter over the committed PresentationFrame (page-switch-master-plan.md §9.2 site 5):
 // the docked decision is read from the frame's laneKind — the old parallel
@@ -53,7 +52,6 @@ type UseSearchRootOverlayFoundationRuntimeArgs = Pick<SearchRootEnvironment, 'in
     routeOverlayIdentityAuthority: AppRouteSceneRuntime['routeOverlayIdentityAuthority'];
     routeOverlayVisibilityAuthority: RouteOverlayVisibilityAuthority;
     stateFoundationLane: SearchRootStateFoundationLane;
-    searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
   };
 
 export const useSearchRootOverlayFoundationRuntime = ({
@@ -64,7 +62,6 @@ export const useSearchRootOverlayFoundationRuntime = ({
   routeOverlayIdentityAuthority,
   routeOverlayVisibilityAuthority,
   stateFoundationLane,
-  searchChromeScalarSurfaceRuntime,
 }: UseSearchRootOverlayFoundationRuntimeArgs): SearchRootOverlayFoundationRuntime => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime, sessionPrimitivesLane } =
     stateFoundationLane;
@@ -93,8 +90,6 @@ export const useSearchRootOverlayFoundationRuntime = ({
     rootPrimitivesRuntime,
     rootSessionCoreLane: sessionCoreLane,
     rootSessionPrimitivesLane: sessionPrimitivesLane,
-    searchChromeScalarSurfacePrimitiveSourceRuntime:
-      searchChromeScalarSurfaceRuntime?.primitiveSourceRuntime,
   });
   const appRouteSharedSheetRuntimeOwner = useAppRouteSharedSheetRuntimeOwner();
   const rootOverlayStoreRuntime = useSearchRootOverlayStoreRuntime({

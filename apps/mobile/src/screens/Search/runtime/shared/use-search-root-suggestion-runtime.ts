@@ -2,7 +2,6 @@ import React from 'react';
 
 import { useSearchSuggestionLayoutPlaneRuntime } from './use-search-suggestion-layout-plane-runtime';
 import { useSearchSuggestionPresentationPlaneRuntime } from './use-search-suggestion-presentation-plane-runtime';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type {
   SearchRootDataPlaneRuntime,
@@ -13,14 +12,12 @@ type UseSearchRootSuggestionRuntimeArgs = {
   rootPrimitivesRuntime: SearchRootPrimitivesRuntime;
   rootSessionPrimitivesLane: SearchRootSessionPrimitivesLane;
   rootDataPlaneRuntime: SearchRootDataPlaneRuntime;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export const useSearchRootSuggestionRuntime = ({
   rootPrimitivesRuntime,
   rootSessionPrimitivesLane,
   rootDataPlaneRuntime,
-  searchChromeScalarSurfacePresentationRuntime,
 }: UseSearchRootSuggestionRuntimeArgs) => {
   const shouldFreezeSuggestionDisplayForSearchSurfaceRedraw =
     rootDataPlaneRuntime.freezeGate.isSearchSurfaceRedrawChromeFreezeActive ||
@@ -39,7 +36,6 @@ export const useSearchRootSuggestionRuntime = ({
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
     setBeginSuggestionCloseHold: rootPrimitivesRuntime.searchState.setBeginSuggestionCloseHold,
     shouldFreezeSuggestionDisplayForSearchSurfaceRedraw,
-    searchChromeScalarSurfacePresentationRuntime,
   });
   const suggestionLayoutPlaneRuntime = useSearchSuggestionLayoutPlaneRuntime({
     rootPrimitivesRuntime,

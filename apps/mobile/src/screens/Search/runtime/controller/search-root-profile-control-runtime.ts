@@ -11,15 +11,3 @@ export type SearchRootProfileControlRuntimeValue = {
   profilePresentationControlLane: SearchRootProfilePresentationControlLane;
   mapProfileControlLane: SearchRootMapProfileControlLane;
 };
-
-export const createSearchRootProfileControlRuntimeValue = ({
-  profileOwner,
-  suggestionInteractionControlLane,
-  profilePresentationControlLane,
-  mapProfileControlLane,
-}: SearchRootProfileControlRuntimeValue): SearchRootProfileControlRuntimeValue => ({
-  profileOwner,
-  suggestionInteractionControlLane,
-  profilePresentationControlLane,
-  mapProfileControlLane,
-});

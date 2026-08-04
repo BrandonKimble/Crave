@@ -10,7 +10,6 @@ import type { ResultsPresentationOwner } from './results-presentation-owner-cont
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 import { useResultsPresentationOwnerStateRuntime } from './use-results-presentation-owner-state-runtime';
@@ -52,7 +51,6 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs = {
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export const useResultsPresentationOwnerCompositionRuntime = ({
@@ -82,7 +80,6 @@ export const useResultsPresentationOwnerCompositionRuntime = ({
   emitRuntimeMechanismEvent,
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
-  searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerCompositionRuntimeArgs): ResultsPresentationOwner => {
   const ownerStateRuntime = useResultsPresentationOwnerStateRuntime({
     setActiveTab,
@@ -107,7 +104,6 @@ export const useResultsPresentationOwnerCompositionRuntime = ({
     emitRuntimeMechanismEvent,
     routeSceneVisibilityPolicyRuntime,
     onSearchSheetContentLaneChanged,
-    searchChromeScalarSurfacePresentationRuntime,
   });
 
   return useResultsPresentationOwnerPublicationRuntime({

@@ -9,7 +9,6 @@ import { type SearchRuntimeBus } from './search-runtime-bus';
 import { type ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
-import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import { useResultsPresentationOwnerCompositionRuntime } from './use-results-presentation-owner-composition-runtime';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
@@ -63,7 +62,6 @@ export type UseResultsPresentationOwnerArgs = {
   emitRuntimeMechanismEvent: (event: string, payload: Record<string, unknown>) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   onSearchSheetContentLaneChanged?: (change: ResultsPresentationPolicyFactsLaneChange) => void;
-  searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
 export const useResultsPresentationOwner = ({
@@ -93,7 +91,6 @@ export const useResultsPresentationOwner = ({
   emitRuntimeMechanismEvent,
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
-  searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerArgs): ResultsPresentationOwner => {
   return useResultsPresentationOwnerCompositionRuntime({
     setActiveTab,
@@ -122,6 +119,5 @@ export const useResultsPresentationOwner = ({
     emitRuntimeMechanismEvent,
     routeSceneVisibilityPolicyRuntime,
     onSearchSheetContentLaneChanged,
-    searchChromeScalarSurfacePresentationRuntime,
   });
 };

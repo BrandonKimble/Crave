@@ -14,7 +14,6 @@ import {
   type ToggleStripLayoutCache,
 } from '../../../../toggles/toggle-strip-layout-cache';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
-import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
 import type { SearchPrimitiveUiStateController } from './search-primitive-ui-state-controller';
 import type { SearchSuggestionPanelStateController } from './search-suggestion-panel-state-controller';
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
@@ -65,25 +64,8 @@ export const useSearchRootSearchPrimitivesRuntime = ({
     },
     [primitiveUiStateController]
   );
-  const searchChromeScalarPrimitiveTargetRef = React.useRef<Pick<
-    SearchChromeScalarSurfacePrimitiveSourceRuntime,
-    'updatePrimitiveSnapshot'
-  > | null>(null);
-  // F1323(b)(c)(d) — THE SHORTCUT-DISABLE FACT NOW HAS A SUBSCRIBABLE FORM.
-  //
-  // This is a NATIVE-FIRST scalar: the writer's whole point is to push the value straight at
-  // the chrome-scalar primitive source without a React render, and that part is right — the
-  // ref stays. What was missing is that THREE JS consumers (the visual-stage runtime, the
-  // suggestion layout plane, and the results-presentation authority) read
-  // `shouldDisableSearchShortcutsRef.current` DURING RENDER and passed it downstream as if it
-  // were reactive state. It never notified them, so each got a value that was correct at some
-  // render and stale otherwise — the failure mode that passes every manual test, because some
-  // unrelated render is usually close enough.
-  //
-  // The fix is not to make the writer render-driven (that would undo the native-first design);
-  // it is to give the same fact a NOTIFYING read alongside the ref. One writer, two shapes,
-  // both fed from the same assignment: the native push, and a listener set the JS readers
-  // subscribe through (`useShouldDisableSearchShortcuts` below).
+  // F1323(b)(c)(d) — THE SHORTCUT-DISABLE FACT HAS A SUBSCRIBABLE FORM.
+  // (The chrome-scalar native push half was deleted with the scalar-surface stack, F1700.)
   const shouldDisableSearchShortcutsRef = React.useRef(false);
   const shouldDisableSearchShortcutsListenersRef = React.useRef(new Set<() => void>());
   const shouldDisableSearchShortcutsAuthority = React.useMemo(
@@ -104,34 +86,10 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       return;
     }
     shouldDisableSearchShortcutsRef.current = disabled;
-    searchChromeScalarPrimitiveTargetRef.current?.updatePrimitiveSnapshot({
-      shouldDisableSearchShortcuts: disabled,
-    });
     shouldDisableSearchShortcutsListenersRef.current.forEach((listener) => {
       listener();
     });
   }, []);
-  const setSearchChromeScalarPrimitiveTarget = React.useCallback(
-    (
-      target: Pick<
-        SearchChromeScalarSurfacePrimitiveSourceRuntime,
-        'updatePrimitiveSnapshot'
-      > | null
-    ) => {
-      searchChromeScalarPrimitiveTargetRef.current = target;
-      target?.updatePrimitiveSnapshot({
-        shouldDisableSearchShortcuts: shouldDisableSearchShortcutsRef.current,
-        isSuggestionPanelActive:
-          suggestionPanelStateController.getSnapshot().isSuggestionPanelActive,
-      });
-      return () => {
-        if (searchChromeScalarPrimitiveTargetRef.current === target) {
-          searchChromeScalarPrimitiveTargetRef.current = null;
-        }
-      };
-    },
-    [suggestionPanelStateController]
-  );
   const [query, setQuery] = React.useState('');
   const [suggestions, setSuggestionsState] = React.useState<AutocompleteMatch[]>(
     () => primitiveUiStateController.getSnapshot().suggestions
@@ -185,9 +143,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       if (nextSnapshot == null) {
         return;
       }
-      searchChromeScalarPrimitiveTargetRef.current?.updatePrimitiveSnapshot({
-        isSuggestionPanelActive: nextSnapshot.isSuggestionPanelActive,
-      });
       setIsSuggestionPanelActiveState(nextSnapshot.isSuggestionPanelActive);
     },
     [suggestionPanelStateController]
@@ -287,7 +242,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       shouldDisableSearchShortcutsRef,
       shouldDisableSearchShortcutsAuthority,
       setShouldDisableSearchShortcuts,
-      setSearchChromeScalarPrimitiveTarget,
       query,
       setQuery,
       suggestions,
@@ -333,7 +287,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       suggestionPanelStateController,
       setQuery,
       setShouldDisableSearchShortcuts,
-      setSearchChromeScalarPrimitiveTarget,
       suggestions,
     ]
   );

@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { createSearchForegroundTransientHandlersRuntimeValue } from '../controller/search-foreground-transient-runtime';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundInteractionTransientHandlersRuntime,
@@ -34,12 +33,19 @@ export const useSearchForegroundTransientController = ({
   useSearchRouteSwitchPostCommitRuntime(overlayRuntimeArgs);
   const overlayHandlers = useSearchForegroundOverlayNavigationRuntime(overlayRuntimeArgs);
 
-  return React.useMemo(
-    () =>
-      createSearchForegroundTransientHandlersRuntimeValue({
-        ...editingHandlers,
-        ...overlayHandlers,
-      }),
+  /** F1610 — see use-search-foreground-submit-runtime.ts: the repacker's destructure was a
+   *  runtime FILTER, so the eight fields are named explicitly rather than spread. */
+  return React.useMemo<SearchForegroundInteractionTransientHandlersRuntime>(
+    () => ({
+      handleClear: editingHandlers.handleClear,
+      handleSearchFocus: editingHandlers.handleSearchFocus,
+      handleSearchBlur: editingHandlers.handleSearchBlur,
+      handleSearchBack: editingHandlers.handleSearchBack,
+      handleRecentViewMorePress: overlayHandlers.handleRecentViewMorePress,
+      handleRecentlyViewedMorePress: overlayHandlers.handleRecentlyViewedMorePress,
+      handleOverlaySelect: overlayHandlers.handleOverlaySelect,
+      handleProfilePress: overlayHandlers.handleProfilePress,
+    }),
     [editingHandlers, overlayHandlers]
   );
 };

@@ -10,7 +10,6 @@ import {
 } from '../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import styles from '../styles';
-import { useSearchChromeScalarSurfaceMeasuredControlRef } from '../runtime/native/use-search-chrome-scalar-surface-measured-control-ref';
 
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
@@ -37,9 +36,6 @@ const SearchShortcutsRow = ({
   onRestaurantsChipLayout,
   onDishesChipLayout,
 }: SearchShortcutsRowProps) => {
-  const restaurantsScalarSurfaceRef =
-    useSearchChromeScalarSurfaceMeasuredControlRef('shortcut_restaurants');
-  const dishesScalarSurfaceRef = useSearchChromeScalarSurfaceMeasuredControlRef('shortcut_dishes');
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const logShortcutPress = React.useCallback(
     (target: 'restaurants' | 'dishes', handled: boolean) => {
@@ -82,7 +78,6 @@ const SearchShortcutsRow = ({
       }}
     >
       <AnimatedPressable
-        ref={restaurantsScalarSurfaceRef}
         onPress={handleRestaurantsPress}
         style={[styles.searchShortcutChip, chipAnimatedStyle]}
         accessibilityRole="button"
@@ -100,7 +95,6 @@ const SearchShortcutsRow = ({
         </Reanimated.View>
       </AnimatedPressable>
       <AnimatedPressable
-        ref={dishesScalarSurfaceRef}
         onPress={handleDishesPress}
         style={[styles.searchShortcutChip, chipAnimatedStyle]}
         accessibilityRole="button"

@@ -10,8 +10,6 @@ import { useSearchRootOverlayForegroundVisualPresentationSourceRuntime } from '.
 import { useSearchRootOverlayForegroundVisualSessionSourceRuntime } from './use-search-root-overlay-foreground-visual-session-source-runtime';
 import { useSearchRootOverlayShortcutSubmissionRuntime } from './use-search-root-overlay-shortcut-submission-runtime';
 import { useSearchRootRuntimeVisualAssemblyRuntime } from './use-search-root-runtime-visual-assembly-runtime';
-import { useSearchChromeScalarSurfacePrimitiveSourceWriterRuntime } from '../native/use-search-chrome-scalar-surface-primitive-source-writer-runtime';
-import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { useSearchRootControlAuthorityRuntime } from './use-search-root-control-authority-runtime';
 import type { useSearchRootControlResultsExperienceRuntime } from './use-search-root-control-results-experience-runtime';
 import type { useSearchScreenAppEntryPlaneRuntime } from './use-search-screen-app-entry-plane-runtime';
@@ -28,7 +26,6 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
   controlAuthorityRuntime,
   resultsControlRuntime,
   viewportShortcutControlLane,
-  searchChromeScalarSurfaceRuntime,
 }: {
   appEntryPlaneRuntime: ReturnType<typeof useSearchScreenAppEntryPlaneRuntime>;
   stateAssemblyRuntime: ReturnType<
@@ -40,7 +37,6 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
   controlAuthorityRuntime: ReturnType<typeof useSearchRootControlAuthorityRuntime>;
   resultsControlRuntime: ReturnType<typeof useSearchRootControlResultsExperienceRuntime>;
   viewportShortcutControlLane: SearchRootViewportShortcutControlLane;
-  searchChromeScalarSurfaceRuntime: SearchChromeScalarSurfaceRuntime;
 }): {
   visualAssemblyRuntime: ReturnType<typeof useSearchRootRuntimeVisualAssemblyRuntime>;
 } => {
@@ -165,12 +161,6 @@ export const useSearchRootRuntimeVisualStageRuntime = ({
         controlAuthorityRuntime.presentationAuthorityRuntime.resultsPresentationControlLane
           .resultsPresentationOwner,
     });
-  useSearchChromeScalarSurfacePrimitiveSourceWriterRuntime({
-    primitiveSourceRuntime: searchChromeScalarSurfaceRuntime.primitiveSourceRuntime,
-    routeOverlayIdentityAuthority:
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.routeSceneRuntime
-        .routeOverlayIdentityAuthority,
-  });
   const foregroundVisualRuntime = useSearchForegroundVisualRuntime({
     ...foregroundVisualSessionSourceRuntime,
     ...foregroundVisualPresentationSourceRuntime,
