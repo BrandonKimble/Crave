@@ -401,3 +401,130 @@ exists on that model (`schema.prisma:2525`), so N6 is partly done.
 M4's 15/15 cross-lingual result and the M7 string counts were not re-run
 (they need live embedding calls); the index size is consistent with a
 2026-08-02 measurement plus a day of growth.
+
+---
+
+## ROUND 4 — IMPLEMENTATION DRY-RUN + FROM-SCRATCH FOUNDATIONS (2026-08-03)
+
+Two Opus agents: one mentally implemented every item against real code
+and the mirror; one judged every foundation by "would a day-one-
+multilingual team have built it this way?" Verdict: ARCHITECTURE
+HOLDS (concept/label/surface, gateway rejection, M4b all survived);
+IMPLEMENTABLE AS WRITTEN: NO — the items below amend the doc. Where
+round 4 conflicts with earlier sections, ROUND 4 WINS.
+
+### Code shipped from this round
+
+- Restaurant rename now updates identity keys (same drift class as the
+  ontology rename, live on ~7k rows); ontology rename uses the row's
+  real type. Both committed.
+
+### AMENDMENTS (resolved by synthesis — no owner input needed)
+
+A1. N1+M3 UNIFY — `entity_alias` rows NOW, array becomes projection.
+N1's folded-alias need has exactly one legal shape (app-written —
+a SQL fold expression index is banned by our own law), and the
+foundations audit's #1 cursed item is the untagged bag itself
+(SEVEN writers — merge-fold ×2 verbatim copies, rename, extraction
+banking + create, dish-knowledge LLM, Places enrichment, cuisine
+extraction — zero provenance, feeding confidence-1.0 grounding AND
+the embedding doc). Synthesis: create
+entity*alias(entity_id, form, form_folded, lang, source,
+confidence, created_at) NOW; all seven writers write rows;
+`aliases text[]` becomes a DERIVED PROJECTION maintained by one
+app writer (legal — rows are truth, array is a materialized index
+input, the identity_key precedent). Read arms and all FOUR alias
+indexes (GIN overlap, FTS expression, trgm haystack, per-alias
+unnest) keep working untouched; provenance stops being destroyed
+from day one; M3 later becomes "filter reads by lang", not a
+migration.
+A2. THE ANALYZER SEAM lands with N1/N7: normalize → segment → match →
+fallback as ONE pipeline object with exactly one (English)
+implementation, behavior unchanged — the gazetteer's 70 inlined
+lines become the seam M6/M4b/M8 plug into as packs, not four
+independent surgeries on one function.
+A3. N10 REVISED: the SLUG is demoted to the i18n phase (entity_id is
+already the immutable handle; the slug's only consumer is M2's
+fallback). The lockdown's load-bearing half ships NOW: ONE display
+function every read surface routes through (so M2 edits one
+function, not archaeology) + the lockdown spec. Note explicitly:
+identity_key is the DEDUPE PROBE KEY (must follow renames) and
+must never be treated as the concept handle.
+A4. N2 RESEQUENCED + RESIZED: FOUR language pins (google-places
+service :548/:728 defaults — the dangerous kind — plus both
+enrichment callers), not two. Must land AFTER the restaurant
+rename-identity fix (shipped) and the localized displayName must
+land as a tagged alias/label, NEVER overwrite `name`. Free gift:
+Google already returns displayName.languageCode and we discard
+it — the language tag costs nothing.
+A5. ORDERING CORRECTIONS: N8 (spine/tail ratification) closes BEFORE
+the P3 prompt text is written; N4/N5 are PROMPT-PHASE items
+(listed NOW only as rot-stoppers riding that phase); M4b precedes
+M4 (detection gates the tier); language detection runs ONCE PER
+QUERY, never per residue probe (the probe loop budget is 24 —
+per-probe would 24x the embedding cost the plan calls ~free).
+A6. PROMPT REWRITE ADDITIONS (for the prompt phase): the extraction
+prompt ALREADY emits (canonical, surface) pairs — the day-one
+boundary, credit due. Add ONE schema field: `language` on
+surfaces (makes the P3 dish-source-faithful rule mechanically
+assertable in shadow replay instead of hoped-for). DELETE prompt
+§2.2's natural-language fold rules (a FIFTH fold implementation —
+lowercase/articles/apostrophes belong to canonicalFold, not the
+LLM). Real morphology-encoding count is five, not three (add
+singularish() and the hand-rolled levenshtein to N7's
+consolidation list).
+A7. N6 SPLIT: curated_lists half is CHEAPER than stated (recipe_key
+100% populated, 7 families; render API-side in home-feed; the
+favorites-name copy must SNAPSHOT the rendered string — user data
+never becomes a recipe). poll_topics half needs an OWNER RULING:
+titles mix templated and USER-AUTHORED free text with no marker —
+recipes for templated, literal + source-language tag for
+user-authored (user text is then a translate-on-read surface).
+A8. NEW N-ITEM — ingredient unique index is on RAW name
+(jalapeño ≠ jalapeno TODAY, in English): re-key to the folded
+identity, same class as N1.
+A9. SCORING GATE (replaces the 'verify during shadow run' punt, which
+cannot catch it): per-source calibration is genuinely language-
+free, but SOURCE-FAITHFUL TWINS SPLIT EVIDENCE MASS (pulpo +
+octopus rows each rank below a monolingual competitor). New
+launch-corpus metric: fraction of dish evidence mass on unmerged
+cross-language twins, with a threshold — feeds the judge-merge
+queue, not the calibrator.
+A10. SIGNALS LEDGER (i18n phase, must be listed): Signal
+subjectType='term' keys demand on RAW UNTAGGED text — "pulpo" and
+"octopus" are two demand terms forever, on the surface that
+DRIVES SPEND. Term subjects gain the same detected-lang tag the
+banking loop already designs. Append-only ledgers are the hardest
+keys to change later.
+A11. STALE POINTERS CORRECTED: Places pins are google-places.service
+:548/:728 + enrichment :3013/:3756; M4's insertion anchor is the
+denseMode:'none' site (:473-475), NOT :253-260; the FTS index is
+an EXPRESSION INDEX, not a generated column; derived_entity_word*
+deletes HAS NO WRITER in the repo (the SymSpell fuzzy lane may be
+dead — investigate before pricing M3 against it).
+
+### OWNER DECISIONS (the short list that remains)
+
+D1. N6 poll_topics: ratify recipe-vs-literal split for titles
+(user-authored stays literal + lang tag; templated becomes
+recipes). Recommended: yes.
+D2. N2 repair scope: are the already-anglicized restaurant names
+re-enriched in native script, and at what Places cost? (Can ride
+the already-pending Places backfill campaign approval.)
+D3. M4 calibration + launch gate share ONE artifact: the gold-labeled
+cross-lingual query corpus (~150/language, stratified). Ratify
+building it once for both, and the grading model: LLM-graded
+first pass + native spot-checks for major languages.
+D4. M1 locale home: request header (Accept-Language) negotiated
+per-request + a user PROFILE preference — never the push-device
+row (a user who declines notifications has no locale today).
+Recommended shape stated; ratify.
+
+### Round-4 confidence
+
+Architecture: unchanged, holds. Implementability after these
+amendments: HIGH (the dry-run's eleven blocking decisions are
+resolved above except D1-D4, which are product rulings, not design
+gaps). Credit recorded: extraction's surface/canonical split, the
+'simple' FTS config, the Unicode tokenizer, versioned prompts, and
+recipe_key were ALREADY the day-one shape.
