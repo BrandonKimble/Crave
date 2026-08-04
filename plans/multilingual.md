@@ -537,3 +537,99 @@ resolved above except D1-D4, which are product rulings, not design
 gaps). Credit recorded: extraction's surface/canonical split, the
 'simple' FTS config, the Unicode tokenizer, versioned prompts, and
 recipe_key were ALREADY the day-one shape.
+
+---
+
+## ROUND 5 — MODERN-PRACTICE SWEEP (2026-08-03, web-researched, 2 Opus agents)
+
+Question: "did a modern tool already solve any compromise we made?"
+VERDICT: PLAN IS MODERN — independently rederived the shapes Wikidata,
+Elastic, the entity-linking literature, and Uber Eats' 2026 multilingual
+search paper converged on (opaque ids, label≠alias with per-alias
+provenance, locale-as-prior-not-router, source-faithful documents,
+dense-alongside-lexical hybrid, no pivot-language translation). Postgres
+at 16k entities is 2-4 orders of magnitude below "leave Postgres"
+territory; a dedicated engine would buy ONE tokenizer (Charabia for
+th/km/lo — re-open M6 only if CJK/Thai becomes top-3) and cost a second
+write path + sync pipeline. gemini-embedding-001 remains SOTA-tier;
+CRITICALLY, no model swap fixes the five adversarial failure classes —
+NevIR/ExcluIR prove NO bi-encoder handles negation, homographs are
+information-theoretically absent from one-word inputs, and compound
+blending is structural to single-vector retrieval. The 60% adversarial
+top-1 is a correctly calibrated measurement of a task embeddings don't
+perform, not a bad build.
+
+### AMENDMENTS ADOPTED (round 5 wins over earlier sections)
+
+R5-1. RRF FUSION for the M4 dense tier: merge dense+sparse by RANK
+(reciprocal rank fusion — the 2025-26 default, parameter-free), not
+by score — directly kills the тако 0.821-beats-taco-0.751 hazard of
+comparing incomparable score spaces.
+R5-2. M4b DETECTION SPECIFIED: script detection is a HARD gate (Unicode
+ranges, ~100% reliable, zero ML — alone catches the тако cross-
+script case); language detection (lingua or fastText-lid — NEVER
+CLD3, the worst at 1-3 words) is a SOFT prior fused with request
+locale. Latin-script one-word es/pt/it/fr is NEAR-UNDECIDABLE by
+design — resolved only by locale prior + tagged rows; documented so
+nobody files bugs against the detector.
+R5-3. NEGATION GATE (closes the plan's one unreachable threshold —
+100% non-inversion had NO mechanism): tier 1 is a RULE-BASED
+negation-cue detector per language (sin/no/without/senza/ohne — a
+closed ~10-word list) that FAILS CLOSED: on a cue, drop the dense
+arm, return the un-negated head with the constraint surfaced in UI,
+never silently inverted. Free, and sufficient for the non-inversion
+clause. Tier 2 (recorded as the sanctioned upgrade path, built only
+on measured need): Flash-Lite constraint extraction on the SUBMIT
+path only (~$0.05/1k queries at 2026 pricing — the cost objection
+behind the 08-02 cutover no longer holds at this price; the
+latency + keystroke-path bans stand untouched). Constraint
+extraction is NOT the rejected translation gateway: it emits
+{dish:"birria", dietary:null}, never renders birria as stew.
+R5-4. TYPE-AWARE ADMISSION in M4: constraint-shaped spans must not
+ground to restaurant proper nouns (the "sin gluten"→"Senza Gluten"
+capture was a type-confusion, not a negation failure).
+R5-5. LOCALE KEYS ARE FULL BCP 47 (decide BEFORE the A1 entity_alias
+migration — key changes in append-only stores are the A10 failure
+mode): es-MX/es-AR/es-ES diverge on exactly food vocabulary
+(torta, palta/aguacate); zh-Hans/zh-Hant is unrecoverable from bare
+zh. RFC 4647 lookup fallback (es-MX → es-419 → es); the sweep fills
+regional rows only where they differ; detected tag and request
+locale stored separately (already designed).
+R5-6. WIKIDATA-LEARNED FIELDS added to M2/M3 schemas BEFORE the sweep
+runs over 8,272 concepts: (a) a per-locale short DESCRIPTION
+(labels collide — pan needs a disambiguator; the sweep drafts it in
+the same call; also sharpens the judge-merge gate); (b) alias
+STATUS enum (candidate/active/deprecated) — the loop needs a
+DEMOTION path so a judge-rejected pairing is remembered as wrong
+instead of re-proposed by query spam forever.
+R5-7. THREAD REQUEST LOCALE INTO THE DENSE QUERY INPUT (Uber Eats
+2026: an explicit search-language field, citing "'pan' in Spanish
+vs English" verbatim) — not just the alias-arm filter.
+R5-8. M7 MODERNIZED: react-i18next + i18next-icu (ICU MessageFormat 1)
+named explicitly; MessageFormat 2 recorded as a deliberate 2027+
+deferral (TC39 Stage 2, ~zero adoption). String extraction and the
+~800 RTL sites are MACHINE-DRIVEN + reviewed (i18next-cli localize
+/ jscodeshift class tooling; NativeWind auto-flips its classes —
+measure the Tailwind-vs-StyleSheet split before pricing): budget
+review time, not typing time (~2-5x scope reduction).
+R5-9. HERMES INTL GAPS: Intl.Segmenter and Intl.PluralRules do NOT
+ship in Hermes — M6 segmentation is SERVER-SIDE by declaration;
+client plural handling needs @formatjs/intl-pluralrules (+
+unicode-segmenter if ever needed on-device).
+R5-10. LABEL JUDGE UPGRADED: MQM-style score/error-span output (not
+boolean) with an auto-approve threshold + review queue; MULTI-
+SAMPLE CONSENSUS judging for the spine and single-word terms
+(single-judgment noise is worst exactly on short context-free
+strings). Matches 2026 TMS practice (Lokalise AIQE / GEMBA-MQM).
+R5-11. M8 PINNED: MT cache key = (source_text_hash, target_locale);
+Google NMT default ($20/1M chars, ~$0.004 per 1k snippets), LLM
+mode by exception.
+
+### Standing validations worth keeping
+
+Uber Eats (six markets) ships source-faithful documents + multilingual
+embeddings + hybrid retrieval + explicit search-language field — our
+architecture, at the largest food-search scale there is. Wikidata's
+label/alias/search split is our trichotomy. The one capability class
+we deliberately lack (cross-encoder reranking) is the acknowledged
+ceiling of retrieval-only stacks and is what R5-3 tier 2 exists for.
