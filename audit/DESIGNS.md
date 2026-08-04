@@ -631,3 +631,19 @@ The Phase-3 agent correctly REFUSED the F943 deletion: the mapper's "zero method
 ## D46 — mobile-assets (Phase-2+3, 2026-08-03)
 
 Census verdict accepted (F1150–F1153): 1,222 generated files byte-identical to their generators (drift-clean), 9 live hand assets, 43 orphans. IMPLEMENTED directly (small, doubly-proven): the 41 dead-scheme pin sprites deleted (verified absent from BOTH the manifest and the static-import registry — the first delete attempt used a too-greedy glob that matched 101 live files and was caught+restored before commit, which is exactly why the census check exists); the two fake "fonts" (GitHub HTML pages, not TTFs) deleted. Both generators now rmSync their OUT dir first — the orphan class is unrepresentable; regeneration after the patch reproduces the live set exactly (the executed proof). splash.png size flag recorded as informational.
+
+## D47 — api-scripts pass-2 (Phase-2 review of F1250–F1260, 2026-08-03)
+
+**APPROVED for Phase 3:**
+
+- F1250 the wipe's user-anchor set gains messages.shared_entity_id — AND the deeper fix: a schema-derived anchor SPEC (the anchor list generated/verified from the schema's entity-referencing columns, so a new user-surface column can't silently miss the law again). Proven RED with a GREEN control; this is the caller-must-remember disease inside a data-destruction tool.
+- F1252 containment boundary = import closure: the lockdown spec extends to the 48 headerless files (pass-1 stopped exactly at the lockdown's reach — the boundary was the defect).
+- F1254 validate-crave-score-fixtures routes through the advisory-locked coordinator (§12.6 sole authority); DB leg opt-in. COORDINATE: re-check against the concurrent public-crave-score edits before landing.
+- F1255 the three rt-\* writers get requireNonProdDatabase() + try/finally residue cleanup; README corrected (a READ-ONLY banner over writers is a lie).
+- F1256 seed-google-photos through the metered Places client (invisible billed calls are how the $118 lesson started).
+- F1257 lazy system cache: script boot must not mint billed caches or start mutating background work — the named law joins stopCronsForScript as a family; implement the lazy-init the code's own comment already argues for.
+- F1253 retire fix-integrity-defects.sql (spent one-off, 0/26 ids alive, argues for exterminated models) — banked as a finding, file deleted; README baseline corrected to the re-measured 5/1/2/29.
+- F1259 delete gazetteer-names.ts (F414 ratified it long ago; nothing executed the ratification).
+- F1260 hoist the linker decision to ONE imported predicate; the five stale replicas die.
+
+**Landed in pass (accepted):** F1258 query-samples repoint.
