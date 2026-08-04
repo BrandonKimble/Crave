@@ -685,3 +685,8 @@ Census verdict accepted (F1150–F1153): 1,222 generated files byte-identical to
 - **F303/F304/F305/F350/F372:** do the recorded recommendations; lane running.
 - **F1120(a) XCTest app-host target:** SKIPPED per recommendation (MapLodKit lane suffices until native code needs a host).
 - **F1203 RevenueCat:** EXECUTED inline — the map `premium:entl60198dffff` would have refused EVERY purchase (webhooks carry lookup keys); now `premium:premium` on all four env pairs + local .env, the empty 'crave Pro' entitlement archived (state: inactive), prod api+worker redeployed to pick up the env.
+
+## D53 — navigation/runtime depth verdicts (Phase-2, 2026-08-03; findings F1350–F1399, independently verified)
+
+**APPROVED (next mobile batch):** F1350 (the territory's one unbounded-lifetime hit: superseded scene-switches never fire the caller's continuation AND leak a Map entry per switch — keyed by a monotone counter instead of the closed OverlayKey vocabulary; fix = supersede fires the continuation with a superseded verdict + the map keys on the closed vocabulary, RED via a replayed supersede); F1371 (the frame-authority lane whose comparison is structurally null===null — no subscriber can ever wake: wire the real producer or delete the lane, banking re-grep decides); F1351 (22 ungated [pageswitch] console.logs across 8 files — one **DEV**-gated debug flag, default off); F1359 F1360 F1363 F1366 F1372 F1385 F1390 per their recorded prescriptions (all spot-verified).
+**Process note adopted as law:** a "killed" agent's on-disk work is checked BEFORE relaunching fresh — the relaunch brief now always says verify-first (this pass nearly double-burned an ID range).
