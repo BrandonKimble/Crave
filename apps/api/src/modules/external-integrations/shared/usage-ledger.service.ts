@@ -72,6 +72,11 @@ const ATMOSPHERE_FIELDS = new Set([
   'servesLunch',
   'servesVegetarianFood',
   'servesWine',
+  // `takeout` is an Atmosphere boolean (same group as delivery/dineIn/
+  // curbsidePickup) and IS requested by the default mask — it was absent
+  // here, so on a hypothetical takeout-only mask it would under-meter. The
+  // coverage guard below is what surfaced it.
+  'takeout',
 ]);
 /** Places fields that force the Enterprise SKU. */
 const ENTERPRISE_FIELDS = new Set([
@@ -96,6 +101,29 @@ const PRO_FIELDS = new Set([
   'types',
   'businessStatus',
   'movedPlaceId',
+]);
+/** Places fields billed at the ESSENTIALS floor (id/location/address/time
+ *  basics). Enumerated NOT because the floor changes any classification —
+ *  it never can, essentials is the minimum tier — but so the coverage guard
+ *  below can tell a legitimate essentials field from an UNKNOWN one. Without
+ *  this, an unrecognized (or newly Google-added) field fell through to
+ *  'essentials' and silently UNDER-METERED, exactly the "photos" bug (F1256). */
+const ESSENTIALS_FIELDS = new Set([
+  'id',
+  'formattedAddress',
+  'addressComponents',
+  'location',
+  'utcOffsetMinutes',
+  'timeZone',
+]);
+/** Every Places field the classifier knows. A requested field ABSENT from
+ *  this union is the drift signal: it bills as essentials whatever its true
+ *  SKU, so the classifier must announce it rather than swallow it. */
+const KNOWN_PLACES_FIELDS = new Set<string>([
+  ...ATMOSPHERE_FIELDS,
+  ...ENTERPRISE_FIELDS,
+  ...PRO_FIELDS,
+  ...ESSENTIALS_FIELDS,
 ]);
 
 /**
@@ -353,14 +381,20 @@ export class UsageLedgerService implements OnModuleDestroy {
     }
   }
 
+  /** The requested TOP-LEVEL fields that the classifier does NOT recognize —
+   *  the ones that silently bill as essentials whatever their true SKU. A
+   *  guard against the "photos"/"takeout" class: any non-empty result is
+   *  billing drift, testable over our own request masks (see the spec) and
+   *  logged at runtime so a new Google field cannot under-meter unnoticed. */
+  static unclassifiedPlacesFields(fieldMaskFields: string[]): string[] {
+    return topLevelPlacesFields(fieldMaskFields).filter(
+      (f) => !KNOWN_PLACES_FIELDS.has(f),
+    );
+  }
+
   /** Highest-SKU-in-mask classification, mirroring Google's billing rule. */
   static classifyPlacesSku(fieldMaskFields: string[]): string {
-    // Strip the `places.` prefix text-search masks carry, then keep only the
-    // TOP-LEVEL field: a mask may name a sub-field (`photos.name`), and the
-    // SKU is priced on the top-level field, not the leaf.
-    const fields = fieldMaskFields.map(
-      (f) => f.replace(/^places\./, '').split('.')[0],
-    );
+    const fields = topLevelPlacesFields(fieldMaskFields);
     if (fields.some((f) => ATMOSPHERE_FIELDS.has(f))) {
       return 'enterprise_atmosphere';
     }
@@ -372,4 +406,11 @@ export class UsageLedgerService implements OnModuleDestroy {
     }
     return 'essentials';
   }
+}
+
+/** Strip the `places.` prefix text-search masks carry, then keep only the
+ *  TOP-LEVEL field: a mask may name a sub-field (`photos.name`), and the SKU
+ *  is priced on the top-level field, not the leaf. */
+function topLevelPlacesFields(fieldMaskFields: string[]): string[] {
+  return fieldMaskFields.map((f) => f.replace(/^places\./, '').split('.')[0]);
 }

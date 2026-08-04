@@ -17,7 +17,7 @@ import { UsageLedgerService } from '../shared/usage-ledger.service';
 import { GovernanceService } from '../governance/governance.service';
 import { ExternalApiService } from '../shared/external-integrations.types';
 
-const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
+export const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'id',
   'displayName',
   'editorialSummary',
@@ -83,7 +83,7 @@ export const REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'timeZone',
 ];
 
-const DEFAULT_TEXT_SEARCH_FIELD_MASK_FIELDS = [
+export const DEFAULT_TEXT_SEARCH_FIELD_MASK_FIELDS = [
   'id',
   'displayName',
   'formattedAddress',
@@ -300,6 +300,19 @@ export class GooglePlacesService {
       options.fields,
     );
     const fieldMask = fieldMaskFields.join(',');
+
+    // Billing-drift guard: a requested field the SKU classifier does not
+    // recognize bills as essentials whatever its true tier (the "photos"
+    // F1256 / "takeout" class). Announce it so a new Google field cannot
+    // under-meter silently — the spec asserts our own masks are covered, this
+    // catches an ad-hoc `options.fields` the spec never sees.
+    const unclassified =
+      UsageLedgerService.unclassifiedPlacesFields(fieldMaskFields);
+    if (unclassified.length > 0) {
+      this.logger.warn(
+        `Places field(s) not classified into a billing SKU tier (bills as essentials, may under-meter): ${unclassified.join(', ')}`,
+      );
+    }
 
     // DOLLAR GATE BEFORE THE RATE GATE (capacity re-derivation 2026-08-02):
     // rate limits shape burst, they are not a budget — the configured
