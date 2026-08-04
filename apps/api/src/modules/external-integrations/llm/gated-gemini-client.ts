@@ -1,4 +1,11 @@
 import { GoogleGenAI, type GenerateContentResponse } from '@google/genai';
+import {
+  SURFACE_BILLING,
+  isPaidSurface,
+  undeclaredSurfaces,
+  type GeminiSurface,
+  type GeminiSurfaces,
+} from './gemini-billable-surfaces';
 
 /**
  * THE Gemini client. Every surface that COSTS MONEY runs the spend gate before
@@ -20,16 +27,53 @@ import { GoogleGenAI, type GenerateContentResponse } from '@google/genai';
  * constructed here and never escapes — no getter, no property, nothing to
  * reach past.
  *
- * PAID vs FREE is the load-bearing distinction, so it is stated once, here.
- * Paid: generation, embeddings, context-cache mints AND TTL extensions (both
- * billed in token-hours), and batch submission. Free: reads and terminal
- * lifecycle — get, list, cancel, delete.
+ * PAID vs FREE NO LONGER LIVES HERE. It was a comment plus a habit of writing
+ * `await this.gate()`, and it was wrong once — `updateCacheTtl` was filed under
+ * FREE while the registry calling it metered every extension as billable
+ * storage. A comment cannot be exhaustive and a habit cannot be checked.
  *
- * Placing a method in the free group is a claim about Google's billing, and
- * the only honest way to make it is to find the code that meters the call.
- * `updateCacheTtl` was in the free group until someone did exactly that.
+ * `gemini-billable-surfaces.ts` now holds the disposition of every surface,
+ * derived from the BigQuery billing export rather than from judgment, and this
+ * class is bound to it three ways:
+ *
+ *   - it `implements GeminiSurfaces`, so a declared surface must exist here;
+ *   - every paid method calls `this.gatePaid('name')`, which REFUSES if the
+ *     declaration disagrees with the call — a method body and its billing
+ *     classification cannot drift apart;
+ *   - the constructor rejects any method this codebase has not classified,
+ *     which is the one direction TypeScript cannot express.
  */
-export class GatedGeminiClient {
+/**
+ * Run the spend gate for a surface the declaration says is PAID.
+ *
+ * A MODULE FUNCTION, NOT A METHOD, and that is load-bearing. TypeScript's
+ * `private` is erased at runtime, so a private helper still sits on the
+ * prototype — and the constructor's inventory check found exactly that,
+ * reporting its own helper as an unclassified surface. Keeping helpers off the
+ * prototype makes the prototype EXACTLY the client's surface, which is what
+ * gives that check its meaning.
+ *
+ * Refusing when the declaration disagrees is the point: it makes the
+ * classification and the code acting on it one fact. Calling this from a free
+ * surface is a bug in one of the two places, and either way the process must
+ * not proceed to spend.
+ */
+async function gatePaid(
+  gate: () => Promise<void>,
+  surface: GeminiSurface,
+): Promise<void> {
+  if (!isPaidSurface(surface)) {
+    throw new Error(
+      `${surface} calls the spend gate but SURFACE_BILLING declares it ` +
+        `'${SURFACE_BILLING[surface]}'. One of the two is wrong. Note that ` +
+        `gating deleteCache would INCREASE spend — it stops a running ` +
+        `storage charge.`,
+    );
+  }
+  await gate();
+}
+
+export class GatedGeminiClient implements GeminiSurfaces {
   private readonly raw: GoogleGenAI;
 
   constructor(
@@ -42,19 +86,33 @@ export class GatedGeminiClient {
     private readonly gate: () => Promise<void>,
   ) {
     this.raw = new GoogleGenAI({ apiKey });
+    // THE DIRECTION TYPES CANNOT COVER. TypeScript will not enumerate a
+    // class's own methods and demand each appears in a map, and a new method
+    // is exactly how the updateCacheTtl defect arrived. Every process that
+    // builds this client runs the check, and an unclassified surface is a
+    // boot failure rather than a silent default.
+    const undeclared = undeclaredSurfaces(this);
+    if (undeclared.length > 0) {
+      throw new Error(
+        `GatedGeminiClient exposes surface(s) with no billing classification: ` +
+          `${undeclared.join(', ')}. Add each to SURFACE_BILLING in ` +
+          `gemini-billable-surfaces.ts — check the BigQuery billing export ` +
+          `(scripts/gemini-billable-skus.sh) rather than guessing.`,
+      );
+    }
   }
 
   // ── PAID ──────────────────────────────────────────────────────────────
 
   async generateContent(params: unknown): Promise<GenerateContentResponse> {
-    await this.gate();
+    await gatePaid(this.gate, 'generateContent');
     return this.raw.models.generateContent(params as never);
   }
 
   async embedContent(params: unknown): Promise<{
     embeddings?: Array<{ values?: number[] }>;
   }> {
-    await this.gate();
+    await gatePaid(this.gate, 'embedContent');
     return this.raw.models.embedContent(params as never) as Promise<{
       embeddings?: Array<{ values?: number[] }>;
     }>;
@@ -64,7 +122,7 @@ export class GatedGeminiClient {
     model: string;
     config: { systemInstruction?: unknown; ttl: string };
   }): Promise<{ name?: string; usageMetadata?: { totalTokenCount?: number } }> {
-    await this.gate();
+    await gatePaid(this.gate, 'createCache');
     return this.raw.caches.create(params as never);
   }
 
@@ -84,12 +142,12 @@ export class GatedGeminiClient {
    * the code that meters it.
    */
   async updateCacheTtl(name: string, ttl: string): Promise<void> {
-    await this.gate();
+    await gatePaid(this.gate, 'updateCacheTtl');
     await this.raw.caches.update({ name, config: { ttl } });
   }
 
   async createBatch(params: unknown): Promise<{ name?: string }> {
-    await this.gate();
+    await gatePaid(this.gate, 'createBatch');
     return this.raw.batches.create(params as never) as Promise<{
       name?: string;
     }>;

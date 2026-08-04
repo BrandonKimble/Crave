@@ -1,4 +1,8 @@
 import { GatedGeminiClient } from './gated-gemini-client';
+import {
+  SURFACE_BILLING,
+  undeclaredSurfaces,
+} from './gemini-billable-surfaces';
 
 /**
  * The gate runs BEFORE the vendor call, and a closed gate means the vendor is
@@ -74,6 +78,23 @@ describe('GatedGeminiClient', () => {
     await call(client);
 
     expect(gate).toHaveBeenCalledTimes(1);
+  });
+
+  it('every surface is classified — an unclassified one fails CONSTRUCTION', () => {
+    // The direction types cannot cover, and the direction the original defect
+    // came from: a method added without deciding whether it costs money.
+    // TypeScript will not enumerate a class's methods to demand map coverage,
+    // so this is checked when the client is built.
+    expect(undeclaredSurfaces(new GatedGeminiClient('k', jest.fn()))).toEqual(
+      [],
+    );
+  });
+
+  it('deleteCache is free-and-MUST-STAY-free — gating it would raise spend', () => {
+    // Cache storage bills per token-hour for as long as the cache lives, so
+    // deleting one STOPS a running charge. A closed budget that also blocked
+    // deletion would keep paying for storage it could no longer release.
+    expect(SURFACE_BILLING.deleteCache).toBe('free-and-must-stay-free');
   });
 
   it('free surfaces do not pay the gate', async () => {
