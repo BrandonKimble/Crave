@@ -495,6 +495,12 @@ smell-hunter's 5 executed findings all LANDED and were proven:
 
 ## LANGUAGE & LOCALIZATION (rulings + architecture, 2026-08-02)
 
+> **SUPERSEDED 2026-08-03: plans/multilingual.md is canonical.** Three
+> further red-team rounds broke several claims below (the query-path
+> LLM was already deleted; attributes are open vocabulary; aliases
+> must never carry display labels). This section is kept as the
+> historical record only — implement from plans/multilingual.md.
+
 **LAW (effective now): concept vocabularies are seeded as canonical
 slugs; language lives only in aliases, labels, and prompts.** Internal
 canonical concepts (cuisines, dietary, occasions, attributes, junk and
